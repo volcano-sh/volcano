@@ -52,8 +52,9 @@ const (
 
 // FitErrors is set of FitError on many nodes
 type FitErrors struct {
-	nodes map[string]*FitError
-	err   string
+	nodes     map[string]*FitError
+	hyperNode string
+	err       string
 }
 
 // NewFitErrors returns an FitErrors
@@ -66,6 +67,11 @@ func NewFitErrors() *FitErrors {
 // SetError set the common error message in FitErrors
 func (f *FitErrors) SetError(err string) {
 	f.err = err
+}
+
+// SetHyperNode set the hyperNode name in FitErrors
+func (f *FitErrors) SetHyperNode(hyperNode string) {
+	f.hyperNode = hyperNode
 }
 
 // SetNodeError set the node error in FitErrors
@@ -121,6 +127,9 @@ func (f *FitErrors) Error() string {
 		return reasonStrings
 	}
 	reasonMsg := fmt.Sprintf(f.err+": %v.", strings.Join(sortReasonsHistogram(), ", "))
+	if f.hyperNode != "" {
+		reasonMsg = fmt.Sprintf("In hyperNode %s: %s", f.hyperNode, reasonMsg)
+	}
 	return reasonMsg
 }
 

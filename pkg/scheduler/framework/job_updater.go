@@ -117,7 +117,8 @@ func (ju *JobUpdater) updateJob(index int) {
 	oldStatus, found := ssn.PodGroupOldState.Status[job.UID]
 	updatePGStatus := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus)
 	updatePGAnnotations := ju.isJobAllocatedHyperNodeChanged(job)
-	if _, err := ssn.cache.UpdateJobStatus(job, updatePGStatus, updatePGAnnotations); err != nil {
+	updateJobInfo := ssn.DirtyJobs.Has(job.UID)
+	if _, err := ssn.cache.UpdateJobStatus(job, updatePGStatus, updatePGAnnotations, updateJobInfo); err != nil {
 		klog.Errorf("Failed to update job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
 	}

@@ -37,17 +37,18 @@ func TestMergerCfg(t *testing.T) {
 		wantErr    bool
 	}{
 		{
-			name: "disable cpu qos && disable cpu burst",
+			name: "disable colocation",
 			volcanoCfg: &api.VolcanoAgentConfig{
 				GlobalConfig: &api.ColocationConfig{
-					CPUQosConfig:   &api.CPUQos{Enable: utilpointer.Bool(false)},
-					CPUBurstConfig: &api.CPUBurst{Enable: utilpointer.Bool(false)},
+					NodeLabelConfig: &api.NodeLabelConfig{
+						NodeColocationEnable: utilpointer.Bool(true),
+					},
 				},
 			},
 			node: &corev1.Node{
 				ObjectMeta: metav1.ObjectMeta{},
 			},
-			wantCfg: disableCPUBurst(disableCPUBurst(disableCPUQos(DefaultColocationConfig()))),
+			wantCfg: disableColocation(DefaultColocationConfig()),
 			wantErr: false,
 		},
 
@@ -94,6 +95,7 @@ func TestMergerCfg(t *testing.T) {
 			volcanoCfg: &api.VolcanoAgentConfig{
 				GlobalConfig: &api.ColocationConfig{
 					NetworkQosConfig: &api.NetworkQos{
+						Enable:                          utilpointer.Bool(true),
 						OnlineBandwidthWatermarkPercent: utilpointer.Int(15),
 						OfflineLowBandwidthPercent:      utilpointer.Int(16),
 						OfflineHighBandwidthPercent:     utilpointer.Int(17),
@@ -122,6 +124,7 @@ func TestMergerCfg(t *testing.T) {
 			volcanoCfg: &api.VolcanoAgentConfig{
 				GlobalConfig: &api.ColocationConfig{
 					NetworkQosConfig: &api.NetworkQos{
+						Enable:                          utilpointer.Bool(true),
 						OnlineBandwidthWatermarkPercent: utilpointer.Int(0),
 						OfflineLowBandwidthPercent:      utilpointer.Int(18),
 						OfflineHighBandwidthPercent:     utilpointer.Int(19),
@@ -186,7 +189,8 @@ func TestMergerCfg(t *testing.T) {
 			node: &corev1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"label-key": "label-value",
+						"label-key":                       "label-value",
+						apis.ColocationEnableNodeLabelKey: "true",
 					},
 				},
 			},
@@ -224,6 +228,16 @@ func enableNodeOverSubscription(config *api.ColocationConfig) *api.ColocationCon
 	return config
 }
 
+func enableCPUQos(config *api.ColocationConfig) *api.ColocationConfig {
+	config.CPUQosConfig.Enable = utilpointer.Bool(true)
+	return config
+}
+
+func enableCPUBurst(config *api.ColocationConfig) *api.ColocationConfig {
+	config.CPUBurstConfig.Enable = utilpointer.Bool(true)
+	return config
+}
+
 func disableCPUQos(config *api.ColocationConfig) *api.ColocationConfig {
 	config.CPUQosConfig.Enable = utilpointer.Bool(false)
 	return config
@@ -231,6 +245,11 @@ func disableCPUQos(config *api.ColocationConfig) *api.ColocationConfig {
 
 func disableOverSubscription(config *api.ColocationConfig) *api.ColocationConfig {
 	config.OverSubscriptionConfig.Enable = utilpointer.Bool(false)
+	return config
+}
+
+func disableColocation(config *api.ColocationConfig) *api.ColocationConfig {
+	config.NodeLabelConfig.NodeColocationEnable = utilpointer.Bool(false)
 	return config
 }
 

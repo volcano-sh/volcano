@@ -27,6 +27,7 @@ import (
 	schedulingv1 "k8s.io/api/scheduling/v1"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -38,6 +39,10 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+func init() {
+	options.Default()
+}
 
 func TestReclaim(t *testing.T) {
 	tests := []uthelper.TestCommonStruct{
@@ -218,6 +223,121 @@ func TestReclaim(t *testing.T) {
 			ExpectEvictNum: 0,
 			ExpectEvicted:  []string{},
 		},
+		{
+			Name: "Node available resources should be included in reclaimed resources",
+			Plugins: map[string]framework.PluginBuilder{
+				conformance.PluginName: conformance.New,
+				gang.PluginName:        gang.New,
+				priority.PluginName:    priority.New,
+				proportion.PluginName:  proportion.New,
+			},
+			PriClass: []*schedulingv1.PriorityClass{
+				util.BuildPriorityClass("low-priority", 100),
+				util.BuildPriorityClass("mid-priority", 500),
+				util.BuildPriorityClass("high-priority", 1000),
+			},
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, "mid-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 0, nil, schedulingv1beta1.PodGroupRunning, "mid-priority"),
+				util.BuildPodGroupWithPrio("pg3", "c1", "q3", 1, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1-1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptee2-1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg2", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("2", "1G"), "pg3", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("10", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueueWithPriorityAndResourcesQuantity("q1", 1, nil, nil),
+				util.BuildQueueWithPriorityAndResourcesQuantity("q2", 2, nil, nil),
+				util.BuildQueue("q3", 3, nil),
+			},
+			ExpectEvictNum: 1,
+			// cpu resource is enough in node, memory resource is not enough, need 1G memory to schedule preemptor1
+			ExpectEvicted: []string{"c1/preemptee1-1"},
+		},
+		{
+			Name: "Reclaim succeeds for second task when first task has PreemptionPolicy=Never",
+			Plugins: map[string]framework.PluginBuilder{
+				conformance.PluginName: conformance.New,
+				gang.PluginName:        gang.New,
+				proportion.PluginName:  proportion.New,
+				priority.PluginName:    priority.New,
+			},
+			PriClass: []*schedulingv1.PriorityClass{
+				util.BuildPriorityClass("low-priority", 100),
+				util.BuildPriorityClassWithPreemptionPolicy("high-priority-no-preempt", 1000, v1.PreemptNever),
+				util.BuildPriorityClass("high-priority-can-preempt", 900),
+			},
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg-victim", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
+				util.BuildPodGroupWithPrio("pg-preemptor", "c1", "q2", 2, nil, schedulingv1beta1.PodGroupInqueue, "high-priority-no-preempt"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "victim-pod-no", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
+				util.BuildPod("c1", "victim-pod", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPodWithPreemptionPolicy("c1", "preemptor-task1-non-preemptable", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg-preemptor", make(map[string]string), make(map[string]string), v1.PreemptNever),
+				util.BuildPod("c1", "preemptor-task2-preemptable", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg-preemptor", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, nil),
+				util.BuildQueue("q2", 1, nil),
+			},
+			ExpectEvictNum: 1,
+			ExpectEvicted:  []string{"c1/victim-pod"},
+		},
+		{
+			// Regression: the original victim loop placed the "resources satisfied"
+			// check AFTER each eviction rather than before it.  This caused at least
+			// one victim to be spuriously evicted even when the node's FutureIdle was
+			// already sufficient to host the preemptor — a classic "evict on node1,
+			// then succeed on node2" side-effect where evictions from a node that ends
+			// up unused are committed alongside the winning node's evictions.
+			//
+			// Setup:
+			//   • q1 (weight=1) is overused: victim-n1 (2 CPU) exceeds q1's 1-CPU
+			//     deserved share, so the victim is eligible for reclaim.
+			//   • q2 (weight=9) is starving: preemptor1 requests 3 CPU.
+			//   • n1 has 8 CPU idle (10 CPU – 2 CPU victim), which already satisfies
+			//     the 3-CPU request before any eviction is attempted.
+			//
+			// Without the guard-at-top fix the victim is evicted unnecessarily and
+			// committed to Kubernetes.  With the fix the loop exits immediately and
+			// 0 evictions are committed to the winning node's statement.
+			Name: "only commit evictions on the node where reclaim succeeds",
+			Plugins: map[string]framework.PluginBuilder{
+				conformance.PluginName: conformance.New,
+				gang.PluginName:        gang.New,
+				proportion.PluginName:  proportion.New,
+			},
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg-victim", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
+				util.BuildPodGroupWithPrio("pg-preemptor", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+			},
+			Pods: []*v1.Pod{
+				// victim-n1 uses 2 CPU; n1 still has 8 CPU idle — already enough for the
+				// 3-CPU preemptor, so no eviction should be committed.
+				util.BuildPod("c1", "victim-n1", "n1", v1.PodRunning, api.BuildResourceList("2", "2G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("3", "3G"), "pg-preemptor", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				// 10 CPU / 10G node; after the 2-CPU victim, idle = 8 CPU ≥ preemptor request (3 CPU).
+				util.BuildNode("n1", api.BuildResourceList("10", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				// q1 deserves 1 CPU (weight 1 of 10 total), uses 2 CPU → overused → victim is reclaimable.
+				util.BuildQueue("q1", 1, nil),
+				// q2 deserves 9 CPU (weight 9 of 10 total), uses 0 → starving → preemptor can reclaim.
+				util.BuildQueue("q2", 9, nil),
+			},
+			ExpectEvictNum: 0,
+			ExpectEvicted:  []string{},
+		},
 	}
 
 	reclaim := New()
@@ -247,9 +367,10 @@ func TestReclaim(t *testing.T) {
 					EnablePreemptive:   &trueValue,
 				},
 				{
-					Name:             priority.PluginName,
-					EnabledJobOrder:  &trueValue,
-					EnabledTaskOrder: &trueValue,
+					Name:               priority.PluginName,
+					EnabledReclaimable: &trueValue,
+					EnabledJobOrder:    &trueValue,
+					EnabledTaskOrder:   &trueValue,
 				},
 			},
 		},

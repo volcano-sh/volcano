@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.24.0 AS builder
+FROM golang:1.25.0 AS builder
 WORKDIR /go/src/volcano.sh/
 COPY go.mod go.sum ./
+# Copy staging directory before go mod download since go.mod has replace directive
+COPY staging/ ./staging/
 RUN go mod download
 ADD . volcano
 RUN cd volcano && make vc-controller-manager

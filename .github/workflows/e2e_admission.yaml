@@ -1,0 +1,115 @@
+name: E2E Admission
+
+on:
+  workflow_call:
+
+jobs:
+  e2e_admission_policy:
+    runs-on: ubuntu-24.04
+    name: E2E about Admission Policy
+    timeout-minutes: 50
+    steps:
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.x
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Install dependences
+        run: |
+          GO111MODULE="on" go install sigs.k8s.io/kind@v0.31.0
+          curl -LO https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+
+      - name: Download Images
+        uses: actions/download-artifact@v4
+        with:
+          name: volcano-images
+          path: _output/images
+
+      - name: Load Images
+        run: |
+          make load-images
+
+      - name: Run E2E Tests
+        run: |
+          export ARTIFACTS_PATH=${{ github.workspace }}/e2e-admission-logs
+          make e2e-test-admission-policy FORCE_REBUILD=false
+
+      - name: Upload e2e admission logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: volcano_e2e_admission_policy_logs
+          path: ${{ github.workspace }}/e2e-admission-logs
+
+  e2e_admission_webhook:
+    runs-on: ubuntu-24.04
+    name: E2E about Admission Webhook
+    timeout-minutes: 50
+    steps:
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.x
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Install dependences
+        run: |
+          GO111MODULE="on" go install sigs.k8s.io/kind@v0.31.0
+          curl -LO https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+
+      - name: Download Images
+        uses: actions/download-artifact@v4
+        with:
+          name: volcano-images
+          path: _output/images
+
+      - name: Load Images
+        run: |
+          make load-images
+
+      - name: Run E2E Tests
+        run: |
+          export ARTIFACTS_PATH=${{ github.workspace }}/e2e-admission-logs
+          make e2e-test-admission-webhook FORCE_REBUILD=false
+
+      - name: Upload e2e admission logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: volcano_e2e_admission_webhook_logs
+          path: ${{ github.workspace }}/e2e-admission-logs

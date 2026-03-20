@@ -287,7 +287,6 @@ func TestDescribeJobTemplate(t *testing.T) {
 			ExpectedOutput: `apiVersion: flow.volcano.sh/v1alpha1
 kind: JobTemplate
 metadata:
-  creationTimestamp: null
   name: test-jobtemplate
   namespace: default
 spec: {}
@@ -310,8 +309,7 @@ status: {}`,
   "apiVersion": "flow.volcano.sh/v1alpha1",
   "metadata": {
     "name": "test-jobtemplate",
-    "namespace": "default",
-    "creationTimestamp": null
+    "namespace": "default"
   },
   "spec": {},
   "status": {}

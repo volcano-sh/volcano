@@ -22,7 +22,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/agent/apis"
@@ -43,6 +42,7 @@ import (
 
 func init() {
 	probes.RegisterEventProbeFunc(string(framework.NodeMonitorEventName), NewMonitor)
+	probes.RegisterEventProbeFunc(string(framework.NodeCPUThrottleEventName), NewMonitor)
 }
 
 const (
@@ -53,28 +53,36 @@ type monitor struct {
 	sync.Mutex
 	*config.Configuration
 	policy.Interface
-	cfgLock       sync.RWMutex
-	queue         workqueue.RateLimitingInterface
-	lowWatermark  apis.Watermark
-	highWatermark apis.Watermark
+	cfgLock           sync.RWMutex
+	eventQueueFactory *framework.EventQueueFactory
+	lowWatermark      apis.Watermark
+	highWatermark     apis.Watermark
 	// highUsageCountByResName is used to record whether resources usage are high.
 	highUsageCountByResName map[v1.ResourceName]int
 	getNodeFunc             utilnode.ActiveNode
 	getPodsFunc             utilpod.ActivePods
 	usageGetter             resourceusage.Getter
+	cpuThrottlingThreshold  int
+	lastCPUQuotaMilli       int64
+	cpuJitterLimitPercent   int
+	cpuRecoverLimitPercent  int
 }
 
-func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, workQueue workqueue.RateLimitingInterface) framework.Probe {
+func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, eventQueueFactory *framework.EventQueueFactory) framework.Probe {
 	evictor := eviction.NewEviction(config.GenericConfiguration.KubeClient, config.GenericConfiguration.KubeNodeName)
 	return &monitor{
 		Interface:               policy.GetPolicyFunc(config.GenericConfiguration.OverSubscriptionPolicy)(config, mgr, evictor, queue.NewSqQueue(), local.CollectorName),
-		queue:                   workQueue,
+		eventQueueFactory:       eventQueueFactory,
 		getNodeFunc:             config.GetNode,
 		getPodsFunc:             config.GetActivePods,
 		lowWatermark:            make(apis.Watermark),
 		highWatermark:           make(apis.Watermark),
 		highUsageCountByResName: make(map[v1.ResourceName]int),
 		usageGetter:             resourceusage.NewUsageGetter(mgr, local.CollectorName),
+		lastCPUQuotaMilli:       -1,
+		cpuJitterLimitPercent:   1,
+		cpuThrottlingThreshold:  80,
+		cpuRecoverLimitPercent:  10,
 	}
 }
 
@@ -85,7 +93,8 @@ func (m *monitor) ProbeName() string {
 func (m *monitor) Run(stop <-chan struct{}) {
 	klog.InfoS("Started nodePressure probe")
 	go wait.Until(m.utilizationMonitoring, 10*time.Second, stop)
-	go wait.Until(m.detect, 10*time.Second, stop)
+	go wait.Until(m.detectEviction, 10*time.Second, stop)
+	go wait.Until(m.detectCPUQuota, 10*time.Second, stop)
 }
 
 func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
@@ -98,7 +107,19 @@ func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
 	// reset historical statistics
 	// TODO: make this more fine-grained, only when new setting is a higher watermark should we reset.
 	m.highUsageCountByResName = map[v1.ResourceName]int{}
+
+	m.RefreshCPUThrottleCfg(cfg)
 	return nil
+}
+
+func (m *monitor) RefreshCPUThrottleCfg(cfg *api.ColocationConfig) {
+	m.cfgLock.Lock()
+	if cfg.CPUThrottlingConfig != nil && cfg.CPUThrottlingConfig.Enable != nil && *cfg.CPUThrottlingConfig.Enable {
+		m.cpuThrottlingThreshold, m.cpuJitterLimitPercent, m.cpuRecoverLimitPercent = utils.SetCPUThrottlingConfig(cfg)
+	} else {
+		m.cpuThrottlingThreshold = 0
+	}
+	m.cfgLock.Unlock()
 }
 
 func (m *monitor) utilizationMonitoring() {
@@ -124,7 +145,7 @@ func (m *monitor) utilizationMonitoring() {
 	}
 }
 
-func (m *monitor) detect() {
+func (m *monitor) detectEviction() {
 	node, err := m.getNodeFunc()
 	if err != nil {
 		klog.ErrorS(err, "Eviction: failed to get node")
@@ -147,7 +168,8 @@ func (m *monitor) detect() {
 				Resource:  res,
 			}
 			klog.InfoS("Node pressure detected", "resource", res, "time", event.TimeStamp)
-			m.queue.Add(event)
+			eventQueue := m.eventQueueFactory.EventQueue(string(framework.NodeMonitorEventName)).GetQueue()
+			eventQueue.Add(event)
 		}
 
 		usage := m.usageGetter.UsagesByPercentage(nodeCopy)
@@ -199,4 +221,72 @@ func (m *monitor) nodeHasPressure(resName v1.ResourceName) bool {
 	defer m.Unlock()
 
 	return m.highUsageCountByResName[resName] >= highUsageCountLimit
+}
+
+func (m *monitor) detectCPUQuota() {
+	m.cfgLock.RLock()
+	throttlingThreshold := m.cpuThrottlingThreshold
+	m.cfgLock.RUnlock()
+
+	// If CPUThrottle is disabled, throttlingThreshold will be set to 0.
+	if throttlingThreshold == 0 {
+		return
+	}
+
+	node, err := m.getNodeFunc()
+	if err != nil {
+		klog.ErrorS(err, "CPU Quota Monitor: Failed to get node")
+		return
+	}
+	nodeCopy := node.DeepCopy()
+
+	totalCPU := nodeCopy.Status.Allocatable[v1.ResourceCPU]
+	totalMilli := totalCPU.MilliValue()
+
+	usage := m.usageGetter.UsagesByValue(true, false)
+	usedMilli := usage[v1.ResourceCPU]
+
+	// availableBEMilli represents the CPU quota available to the Best Effort pod defined by Volcano.
+	// The calculation is the allocatable Quota of current node minus the real-time CPU usage.
+	allowedMilli := totalMilli * int64(throttlingThreshold) / 100
+	availableBEMilli := allowedMilli - usedMilli
+	if availableBEMilli < 0 {
+		availableBEMilli = 0
+	}
+
+	lastQuota := m.lastCPUQuotaMilli
+	if lastQuota > 0 && availableBEMilli > lastQuota {
+		maxIncrease := lastQuota * int64(m.cpuRecoverLimitPercent) / 100
+		recoverLimit := lastQuota + maxIncrease
+		if availableBEMilli > recoverLimit {
+			availableBEMilli = recoverLimit
+		}
+	}
+	if lastQuota < 0 {
+		m.sendNodeCPUThrottleEvent(availableBEMilli)
+	} else if lastQuota == 0 {
+		if availableBEMilli != 0 {
+			m.sendNodeCPUThrottleEvent(availableBEMilli)
+		}
+	} else {
+		diff := availableBEMilli - lastQuota
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff >= lastQuota*int64(m.cpuJitterLimitPercent)/100 {
+			m.sendNodeCPUThrottleEvent(availableBEMilli)
+		}
+	}
+}
+
+func (m *monitor) sendNodeCPUThrottleEvent(quota int64) {
+	event := framework.NodeCPUThrottleEvent{
+		TimeStamp:     time.Now(),
+		Resource:      v1.ResourceCPU,
+		CPUQuotaMilli: quota,
+	}
+
+	eventQueue := m.eventQueueFactory.EventQueue(string(framework.NodeCPUThrottleEventName)).GetQueue()
+	eventQueue.Add(event)
+	m.lastCPUQuotaMilli = quota
 }

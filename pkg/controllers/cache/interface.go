@@ -36,6 +36,7 @@ type Cache interface {
 	AddPod(pod *v1.Pod) error
 	UpdatePod(pod *v1.Pod) error
 	DeletePod(pod *v1.Pod) error
+	HasPod(pod *v1.Pod) bool
 
 	TaskCompleted(jobKey, taskName string) bool
 	TaskFailed(jobKey, taskName string) bool

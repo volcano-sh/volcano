@@ -25,14 +25,17 @@ import (
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
-	resourcev1beta1 "k8s.io/api/resource/v1beta1"
+	resourcev1 "k8s.io/api/resource/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	fwk "k8s.io/kube-scheduler/framework"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -47,9 +50,6 @@ func BuildNode(name string, alloc v1.ResourceList, labels map[string]string) *v1
 		Status: v1.NodeStatus{
 			Capacity:    alloc,
 			Allocatable: alloc,
-			Conditions: []v1.NodeCondition{
-				{Type: v1.NodeReady, Status: v1.ConditionTrue},
-			},
 		},
 	}
 }
@@ -150,6 +150,27 @@ func BuildPodWithPVC(namespace, name, nodename string, p v1.PodPhase, req v1.Res
 	}
 }
 
+// BuildPodWithAffinity builds a pod object with affinity
+func BuildPodWithAffinity(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, affinity *v1.Affinity) *v1.Pod {
+	pod := BuildPod(namespace, name, nodeName, p, req, groupName, labels, selector)
+	pod.Spec.Affinity = affinity
+	return pod
+}
+
+// BuildPodWithTolerations builds a pod object with tolerations
+func BuildPodWithTolerations(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, tolerations []v1.Toleration) *v1.Pod {
+	pod := BuildPod(namespace, name, nodeName, p, req, groupName, labels, selector)
+	pod.Spec.Tolerations = tolerations
+	return pod
+}
+
+// BuildPodWithTopologySpreadConstraints builds a pod object with topology spread constraints
+func BuildPodWithTopologySpreadConstraints(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, constraints []v1.TopologySpreadConstraint) *v1.Pod {
+	pod := BuildPod(namespace, name, nodeName, p, req, groupName, labels, selector)
+	pod.Spec.TopologySpreadConstraints = constraints
+	return pod
+}
+
 // BuildPVC builds a PVC with specified storageclass and required resources
 func BuildPVC(namespace, name string, req v1.ResourceList, scName string) *v1.PersistentVolumeClaim {
 	return &v1.PersistentVolumeClaim{
@@ -184,40 +205,46 @@ func BuildPV(name, scName string, capacity v1.ResourceList) *v1.PersistentVolume
 	}
 }
 
-func BuildDeviceRequest(name, deviceClassName string, selectors []resourcev1beta1.DeviceSelector,
-	allocationMode *resourcev1beta1.DeviceAllocationMode, count *int64) resourcev1beta1.DeviceRequest {
-	deviceRequest := resourcev1beta1.DeviceRequest{
-		Name:            name,
+func BuildDeviceRequest(name, deviceClassName string, selectors []resourcev1.DeviceSelector,
+	allocationMode *resourcev1.DeviceAllocationMode, count *int64) resourcev1.DeviceRequest {
+	exactCount := int64(1)
+	if count != nil {
+		exactCount = *count
+	}
+
+	// Default to ExactCount mode if not specified
+	defaultMode := resourcev1.DeviceAllocationModeExactCount
+	mode := defaultMode
+	if allocationMode != nil {
+		mode = *allocationMode
+	}
+
+	exactRequest := &resourcev1.ExactDeviceRequest{
 		DeviceClassName: deviceClassName,
-		AllocationMode:  resourcev1beta1.DeviceAllocationModeExactCount,
-		Count:           1,
+		Count:           exactCount,
+		AllocationMode:  mode,
 	}
 
 	if selectors != nil {
-		deviceRequest.Selectors = selectors
+		exactRequest.Selectors = selectors
 	}
 
-	if allocationMode != nil {
-		deviceRequest.AllocationMode = *allocationMode
+	return resourcev1.DeviceRequest{
+		Name:    name,
+		Exactly: exactRequest,
 	}
-
-	if allocationMode != nil && *allocationMode == resourcev1beta1.DeviceAllocationModeExactCount && count != nil {
-		deviceRequest.Count = *count
-	}
-
-	return deviceRequest
 }
 
-func BuildResourceClaim(namespace, name string, deviceRequests []resourcev1beta1.DeviceRequest,
-	constraints []resourcev1beta1.DeviceConstraint, config []resourcev1beta1.DeviceClaimConfiguration) *resourcev1beta1.ResourceClaim {
-	rc := &resourcev1beta1.ResourceClaim{
+func BuildResourceClaim(namespace, name string, deviceRequests []resourcev1.DeviceRequest,
+	constraints []resourcev1.DeviceConstraint, config []resourcev1.DeviceClaimConfiguration) *resourcev1.ResourceClaim {
+	rc := &resourcev1.ResourceClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:       namespace,
 			Name:            name,
 			ResourceVersion: "1",
 		},
-		Spec: resourcev1beta1.ResourceClaimSpec{
-			Devices: resourcev1beta1.DeviceClaim{
+		Spec: resourcev1.ResourceClaimSpec{
+			Devices: resourcev1.DeviceClaim{
 				Requests: deviceRequests,
 			},
 		},
@@ -234,12 +261,12 @@ func BuildResourceClaim(namespace, name string, deviceRequests []resourcev1beta1
 	return rc
 }
 
-func BuildDeviceClass(name string, selectors []resourcev1beta1.DeviceSelector, config []resourcev1beta1.DeviceClassConfiguration) *resourcev1beta1.DeviceClass {
-	dc := &resourcev1beta1.DeviceClass{
+func BuildDeviceClass(name string, selectors []resourcev1.DeviceSelector, config []resourcev1.DeviceClassConfiguration) *resourcev1.DeviceClass {
+	dc := &resourcev1.DeviceClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: resourcev1beta1.DeviceClassSpec{
+		Spec: resourcev1.DeviceClassSpec{
 			Selectors: selectors,
 		},
 	}
@@ -251,24 +278,22 @@ func BuildDeviceClass(name string, selectors []resourcev1beta1.DeviceSelector, c
 	return dc
 }
 
-func BuildDevice(name string, attributes map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceAttribute,
-	capacity map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceCapacity) resourcev1beta1.Device {
-	return resourcev1beta1.Device{
-		Name: name,
-		Basic: &resourcev1beta1.BasicDevice{
-			Attributes: attributes,
-			Capacity:   capacity,
-		},
+func BuildDevice(name string, attributes map[resourcev1.QualifiedName]resourcev1.DeviceAttribute,
+	capacity map[resourcev1.QualifiedName]resourcev1.DeviceCapacity) resourcev1.Device {
+	return resourcev1.Device{
+		Name:       name,
+		Attributes: attributes,
+		Capacity:   capacity,
 	}
 }
 
-func BuildResourceSlice(name, driver, nodeName string, pool resourcev1beta1.ResourcePool, devices []resourcev1beta1.Device) *resourcev1beta1.ResourceSlice {
-	return &resourcev1beta1.ResourceSlice{
+func BuildResourceSlice(name, driver, nodeName string, pool resourcev1.ResourcePool, devices []resourcev1.Device) *resourcev1.ResourceSlice {
+	return &resourcev1.ResourceSlice{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: resourcev1beta1.ResourceSliceSpec{
-			NodeName: nodeName,
+		Spec: resourcev1.ResourceSliceSpec{
+			NodeName: &nodeName,
 			Driver:   driver,
 			Pool:     pool,
 			Devices:  devices,
@@ -325,6 +350,46 @@ func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[st
 	}
 }
 
+func BuildSubGroupPolicy(name string, matchLabelKeys []string, mode string, highestTierAllowed int) schedulingv1beta1.SubGroupPolicySpec {
+	return BuildSubGroupPolicyWithSubGroupSize(name, matchLabelKeys, mode, highestTierAllowed, 1)
+}
+
+func BuildSubGroupPolicyWithSubGroupSize(name string, matchLabelKeys []string, mode string, highestTierAllowed int, subGroupSize int32) schedulingv1beta1.SubGroupPolicySpec {
+	return BuildSubGroupPolicyWithMinSubGroups(name, matchLabelKeys, mode, highestTierAllowed, subGroupSize, 0)
+}
+
+// BuildSubGroupPolicyWithMinSubGroups builds SubGroupPolicy with minSubGroups, if the mode is not empty, it will also set NetworkTopology for the subgroup
+func BuildSubGroupPolicyWithMinSubGroups(name string, matchLabelKeys []string, mode string, highestTierAllowed int, subGroupSize, minSubGroups int32) schedulingv1beta1.SubGroupPolicySpec {
+	subGroupPolicy := schedulingv1beta1.SubGroupPolicySpec{
+		Name:         name,
+		SubGroupSize: &subGroupSize,
+		MinSubGroups: &minSubGroups,
+	}
+	subGroupPolicy.MatchLabelKeys = matchLabelKeys
+
+	if mode != "" {
+		subGroupPolicy.NetworkTopology = &schedulingv1beta1.NetworkTopologySpec{
+			Mode:               schedulingv1beta1.NetworkTopologyMode(mode),
+			HighestTierAllowed: &highestTierAllowed,
+		}
+	}
+
+	return subGroupPolicy
+}
+
+// BuildPodGroupWithSubGroupPolicy builds podGroup with SubGroupPolicy, if the mode is not empty, it will also set NetworkTopology for the podgroup
+func BuildPodGroupWithSubGroupPolicy(name, ns, hyperNodeName, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, mode string, highestTierAllowed int, subGroupPolicy []schedulingv1beta1.SubGroupPolicySpec) *schedulingv1beta1.PodGroup {
+	var pg *schedulingv1beta1.PodGroup
+	if mode != "" {
+		pg = BuildPodGroupWithNetWorkTopologies(name, ns, hyperNodeName, queue, minMember, taskMinMember, status, mode, highestTierAllowed)
+	} else {
+		pg = BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
+	}
+
+	pg.Spec.SubGroupPolicy = subGroupPolicy
+	return pg
+}
+
 // BuildPodGroupWithNetWorkTopologies builds podGroup with NetWorkTopologies.
 func BuildPodGroupWithNetWorkTopologies(name, ns, hyperNodeName, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, mode string, highestTierAllowed int) *schedulingv1beta1.PodGroup {
 	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
@@ -332,6 +397,17 @@ func BuildPodGroupWithNetWorkTopologies(name, ns, hyperNodeName, queue string, m
 	pg.Spec.NetworkTopology = &schedulingv1beta1.NetworkTopologySpec{
 		Mode:               schedulingv1beta1.NetworkTopologyMode(mode),
 		HighestTierAllowed: &highestTierAllowed,
+	}
+	return pg
+}
+
+// BuildPodGroupUsingNetWorkTopologiesWithTierName builds podGroup using NetWorkTopologies with highestTierName.
+func BuildPodGroupUsingNetWorkTopologiesWithTierName(name, ns, hyperNodeName, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, mode, highestTierName string) *schedulingv1beta1.PodGroup {
+	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
+	pg.Annotations = map[string]string{api.JobAllocatedHyperNode: hyperNodeName}
+	pg.Spec.NetworkTopology = &schedulingv1beta1.NetworkTopologySpec{
+		Mode:            schedulingv1beta1.NetworkTopologyMode(mode),
+		HighestTierName: highestTierName,
 	}
 	return pg
 }
@@ -566,4 +642,114 @@ func (ftsu *FakeStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, 
 func (ftsu *FakeStatusUpdater) UpdateQueueStatus(queue *api.QueueInfo) error {
 	// do nothing here
 	return nil
+}
+
+// UpdateNodeShardStatus do fake empty update for node shard status
+func (ftsu *FakeStatusUpdater) UpdateNodeShardStatus(nodeshard *nodeshardv1alpha1.NodeShard) (*nodeshardv1alpha1.NodeShard, error) {
+	// do nothing here
+	return nodeshard, nil
+}
+
+// QueueWrapper wraps a schedulingv1beta1.Queue for fluent construction.
+// TODO: QueueWrapper is inherited from https://github.com/volcano-sh/volcano/pull/4315, but this PR is not yet completed.
+// It is necessary to rewrite all the "BuildXXX" UT auxiliary functions in test_utils.go and use "Wrapper" to write more extensible UT auxiliary functions.
+// Once the refactor issue: https://github.com/volcano-sh/volcano/issues/4417 is completed, this TODO can be removed.
+type QueueWrapper struct {
+	*schedulingv1beta1.Queue
+}
+
+// MakeQueue creates a new QueueWrapper with the given name and default fields.
+func MakeQueue(name string) *QueueWrapper {
+	return &QueueWrapper{
+		Queue: &schedulingv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: name,
+			},
+			Spec: schedulingv1beta1.QueueSpec{
+				Weight: 1, // default
+			},
+			Status: schedulingv1beta1.QueueStatus{
+				State: schedulingv1beta1.QueueStateOpen,
+			},
+		},
+	}
+}
+
+// Weight sets the weight of the queue.
+func (q *QueueWrapper) Weight(w int32) *QueueWrapper {
+	q.Spec.Weight = w
+	return q
+}
+
+// Capability sets the resource capability of the queue.
+func (q *QueueWrapper) Capability(cap v1.ResourceList) *QueueWrapper {
+	if cap == nil {
+		return q
+	}
+	copied := make(v1.ResourceList)
+	for k, v := range cap {
+		copied[k] = v.DeepCopy()
+	}
+	q.Spec.Capability = copied
+	return q
+}
+
+// Deserved sets the deserving resources of the queue.
+func (q *QueueWrapper) Deserved(deserved v1.ResourceList) *QueueWrapper {
+	if deserved == nil {
+		return q
+	}
+	copied := make(v1.ResourceList)
+	for k, v := range deserved {
+		copied[k] = v.DeepCopy()
+	}
+	q.Spec.Deserved = copied
+	return q
+}
+
+// Priority sets the priority of the queue.
+func (q *QueueWrapper) Priority(priority int32) *QueueWrapper {
+	q.Spec.Priority = priority
+	return q
+}
+
+func (q *QueueWrapper) Parent(parent string) *QueueWrapper {
+	q.Spec.Parent = parent
+	return q
+}
+
+// Annotations adds annotations to the queue object metadata.
+func (q *QueueWrapper) Annotations(annos map[string]string) *QueueWrapper {
+	if q.ObjectMeta.Annotations == nil {
+		q.ObjectMeta.Annotations = make(map[string]string)
+	}
+	for k, v := range annos {
+		q.ObjectMeta.Annotations[k] = v
+	}
+	return q
+}
+
+// State sets the state of the queue.
+func (q *QueueWrapper) State(state schedulingv1beta1.QueueState) *QueueWrapper {
+	q.Status.State = state
+	return q
+}
+
+// Affinity sets the affinity of the queue. We allow setting the affinity to nil.
+func (q *QueueWrapper) Affinity(affinity *schedulingv1beta1.Affinity) *QueueWrapper {
+	q.Spec.Affinity = affinity
+	return q
+}
+
+// Obj returns the raw Queue object.
+func (q *QueueWrapper) Obj() *schedulingv1beta1.Queue {
+	return q.Queue
+}
+
+func ConvertNodeInfoSliceToInterface(m map[string]*k8sframework.NodeInfo) map[string]fwk.NodeInfo {
+	out := make(map[string]fwk.NodeInfo, len(m))
+	for k, v := range m {
+		out[k] = v.Snapshot()
+	}
+	return out
 }

@@ -63,6 +63,11 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["get", "list", "watch"]
+  {{- if .Values.custom.enabled_admissions | regexMatch "/podgroups/mutate" }}
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  {{- end }}
 
 ---
 kind: ClusterRoleBinding
@@ -158,6 +163,14 @@ spec:
               readOnly: true
             - mountPath: /admission.local.config/configmap
               name: admission-config
+          {{- if .Values.custom.go_memlimit_enable }}
+          env:
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.memory
+                  divisor: "1"
+          {{- end }}
           {{- if $admission_main_csc }}
           securityContext:
             {{- toYaml $admission_main_csc | nindent 12 }}

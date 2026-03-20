@@ -23,6 +23,7 @@ limitations under the License.
 package util
 
 import (
+	"fmt"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -136,4 +137,37 @@ func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource
 		}
 	}
 	return inqueue
+}
+
+// ShouldAbort determines if the given status indicates that execution should be aborted.
+// It checks if the status code corresponds to any of the following conditions:
+// - UnschedulableAndUnresolvable: Indicates the task cannot be scheduled and resolved.
+// - Error: Represents an error state that prevents further execution.
+// - Wait: Suggests that the process should pause and not proceed further.
+// - Skip: Indicates that the operation should be skipped entirely.
+//
+// Parameters:
+// - status (*api.Status): The status object to evaluate.
+//
+// Returns:
+// - bool: True if the status code matches any of the abort conditions; false otherwise.
+func ShouldAbort(status *api.Status) bool {
+	return status.Code == api.UnschedulableAndUnresolvable ||
+		status.Code == api.Error ||
+		status.Code == api.Wait ||
+		status.Code == api.Skip
+}
+
+// FormatResourceNames formats a list of resource names into a human-readable string.
+func FormatResourceNames(prefix, verb string, resourceNames []string) string {
+	if len(resourceNames) == 0 {
+		return prefix
+	}
+
+	var parts []string
+	for _, name := range resourceNames {
+		parts = append(parts, fmt.Sprintf("%s %s", verb, name))
+	}
+
+	return fmt.Sprintf("%s: %s", prefix, strings.Join(parts, ", "))
 }

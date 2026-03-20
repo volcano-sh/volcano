@@ -2,8 +2,7 @@
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 featureGates:
-  DynamicResourceAllocation: true
-  DRAResourceClaimDeviceStatus: true
+  MutatingAdmissionPolicy: true
 containerdConfigPatches:
   # Enable CDI as described in
   # https://tags.cncf.io/container-device-interface#containerd-configuration
@@ -23,7 +22,8 @@ nodes:
         kind: ClusterConfiguration
         apiServer:
           extraArgs:
-            runtime-config: "resource.k8s.io/v1beta1=true"
+            runtime-config: "admissionregistration.k8s.io/v1beta1"
+            enable-admission-plugins: "MutatingAdmissionPolicy"
   # the four workers
   - role: worker
   - role: worker

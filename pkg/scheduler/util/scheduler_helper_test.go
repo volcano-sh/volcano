@@ -239,15 +239,7 @@ func TestGetHyperNodeList(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := GetRealNodesListByHyperNode(tc.hyperNodes, tc.allNodes)
-			nodesSet := make(map[string]sets.Set[string])
-			for name, nodes := range result {
-				s := sets.New[string]()
-				for _, node := range nodes {
-					s.Insert(node.Name)
-				}
-				nodesSet[name] = s
-			}
+			_, nodesSet := GetRealNodesByHyperNode(tc.hyperNodes, tc.allNodes)
 			assert.Equal(t, tc.expected, nodesSet)
 		})
 	}
@@ -349,7 +341,7 @@ func TestFindJobTaskNumOfHyperNode(t *testing.T) {
 				taskInfo.NodeName = node
 				job.Tasks[taskInfo.UID] = taskInfo
 			}
-			result := FindJobTaskNumOfHyperNode(tc.hyperNodeName, job, tc.hyperNodes)
+			result := FindJobTaskNumOfHyperNode(tc.hyperNodeName, job.Tasks, tc.hyperNodes)
 			if result != tc.expectedRes {
 				t.Errorf("Test case '%s' failed. Expected result: %d, but got: %d",
 					tc.name, tc.expectedRes, result)
@@ -466,6 +458,82 @@ func TestFindHyperNodeForNode(t *testing.T) {
 			if result != tc.expectedRes {
 				t.Errorf("Test case '%s' failed. Expected result: %s, but got: %s",
 					tc.name, tc.expectedRes, result)
+			}
+		})
+	}
+}
+
+func TestSelectBestHyperNodeAndScore(t *testing.T) {
+	testCases := []struct {
+		name            string
+		hyperNodeScores map[float64][]string
+		expectedNodes   []string
+		expectedScore   float64
+	}{
+		{
+			name:            "has no nodes",
+			hyperNodeScores: map[float64][]string{},
+			expectedNodes:   []string{},
+			expectedScore:   0.0,
+		},
+		{
+			name: "has only one node",
+			hyperNodeScores: map[float64][]string{
+				1.0: {"node1"},
+			},
+			expectedNodes: []string{"node1"},
+			expectedScore: 1.0,
+		},
+		{
+			name: "has multiple nodes with the same score",
+			hyperNodeScores: map[float64][]string{
+				1.0: {"node1", "node2"},
+			},
+			expectedNodes: []string{"node1", "node2"},
+			expectedScore: 1.0,
+		},
+		{
+			name: "has multiple nodes with varying scores",
+			hyperNodeScores: map[float64][]string{
+				1.0: {"node1"},
+				2.0: {"node2"},
+				3.0: {"node3"},
+			},
+			expectedNodes: []string{"node3"},
+			expectedScore: 3.0,
+		},
+		{
+			name: "has multiple nodes with different scores, but the highest score is shared among several nodes",
+			hyperNodeScores: map[float64][]string{
+				1.0: {"node1", "node2"},
+				1.5: {"node3", "node4"},
+				2.0: {"node5", "node6", "node7"},
+			},
+			expectedNodes: []string{"node5", "node6", "node7"},
+			expectedScore: 2.0,
+		},
+	}
+	oneOf := func(node string, nodes []string) bool {
+		if len(nodes) == 0 && len(node) == 0 {
+			return true
+		}
+		for _, v := range nodes {
+			if node == v {
+				return true
+			}
+		}
+		return false
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, score := SelectBestHyperNodeAndScore(tc.hyperNodeScores)
+			if !oneOf(result, tc.expectedNodes) {
+				t.Errorf("Test case '%s' failed. Expected node: %#v, but got: %#v",
+					tc.name, tc.expectedNodes, result)
+			}
+			if score != tc.expectedScore {
+				t.Errorf("Test case '%s' failed. Expected score: %#v, but got: %#v",
+					tc.name, tc.expectedScore, score)
 			}
 		})
 	}

@@ -19,11 +19,13 @@ package uthelper
 import (
 	"context"
 	"fmt"
+	"slices"
+	"sort"
 	"sync/atomic"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	resourcev1beta1 "k8s.io/api/resource/v1beta1"
+	resourcev1 "k8s.io/api/resource/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -32,6 +34,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -65,6 +68,7 @@ type TestCommonStruct struct {
 	HyperNodesSetByTier       map[int]sets.Set[string]
 	HyperNodes                map[string]sets.Set[string]
 	HyperNodesMap             map[string]*api.HyperNodeInfo
+	HyperNodesTierNameMap     api.HyperNodeTierNameMap
 	RealNodesList             map[string][]*api.NodeInfo
 	HyperNodesReadyToSchedule bool
 	PodGroups                 []*vcapisv1.PodGroup
@@ -77,9 +81,9 @@ type TestCommonStruct struct {
 	PVCs               []*v1.PersistentVolumeClaim
 	SCs                []*storagev1.StorageClass
 	// DRA related resources
-	ResourceSlices []*resourcev1beta1.ResourceSlice
-	DeviceClasses  []*resourcev1beta1.DeviceClass
-	ResourceClaims []*resourcev1beta1.ResourceClaim
+	ResourceSlices []*resourcev1.ResourceSlice
+	DeviceClasses  []*resourcev1.DeviceClass
+	ResourceClaims []*resourcev1.ResourceClaim
 	// ExpectBindMap the expected bind results.
 	// bind results: ns/podName -> nodeName
 	ExpectBindMap map[string]string
@@ -98,8 +102,16 @@ type TestCommonStruct struct {
 	// ExpectEvictNum the expected evict events numbers, include preempted and reclaimed evict events
 	ExpectEvictNum int
 
+	ExpectBindNumsInHyperNode []int
+
 	// MinimalBindCheck true will only check both bind num, false by default.
 	MinimalBindCheck bool
+
+	// Shard test configuration (optional). When NodesInShard is non-nil/non-empty,
+	// RegisterSession caller should set options.ServerOpts and ssn.NodesInShard after session is created.
+	ShardingMode string
+	ShardName    string
+	NodesInShard []string
 
 	// fake interface instance when check results need
 	stop       chan struct{}
@@ -142,13 +154,13 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 		kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
 	}
 	for _, dc := range test.DeviceClasses {
-		kubeClient.ResourceV1beta1().DeviceClasses().Create(context.Background(), dc, metav1.CreateOptions{})
+		kubeClient.ResourceV1().DeviceClasses().Create(context.Background(), dc, metav1.CreateOptions{})
 	}
 	for _, rc := range test.ResourceClaims {
-		kubeClient.ResourceV1beta1().ResourceClaims(rc.Namespace).Create(context.Background(), rc, metav1.CreateOptions{})
+		kubeClient.ResourceV1().ResourceClaims(rc.Namespace).Create(context.Background(), rc, metav1.CreateOptions{})
 	}
 	for _, rs := range test.ResourceSlices {
-		kubeClient.ResourceV1beta1().ResourceSlices().Create(context.Background(), rs, metav1.CreateOptions{})
+		kubeClient.ResourceV1().ResourceSlices().Create(context.Background(), rs, metav1.CreateOptions{})
 	}
 	// need to immediately run the cache to make sure the resources are added
 	schedulerCache.Run(test.stop)
@@ -174,6 +186,24 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	}
 	ready := new(atomic.Bool)
 	ready.Store(true)
+	for _, hni := range test.HyperNodesMap {
+		if hni.HyperNode == nil {
+			continue
+		}
+		for _, member := range hni.HyperNode.Spec.Members {
+			if member.Type != topologyv1alpha1.MemberTypeHyperNode {
+				continue
+			}
+			if member.Selector.ExactMatch == nil { // todo support other selector method
+				continue
+			}
+			child := member.Selector.ExactMatch.Name
+			hni.Children.Insert(child)
+			if childInfo, found := test.HyperNodesMap[child]; found {
+				childInfo.Parent = hni.Name
+			}
+		}
+	}
 	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
 
 	return schedulerCache
@@ -356,5 +386,52 @@ func (test *TestCommonStruct) CheckPipelined(caseIndex int) error {
 			}
 		}
 	}
+	return nil
+}
+
+// CheckBind check expected bind result
+func (test *TestCommonStruct) CheckBindInHyperNode(caseIndex int) error {
+	binder := test.binder.(*util.FakeBinder)
+	for i := 0; i < test.ExpectBindsNum; i++ {
+		select {
+		case <-binder.Channel:
+		case <-time.After(300 * time.Millisecond):
+			return fmt.Errorf("failed to get Bind request in case %d(%s)", caseIndex, test.Name)
+		}
+	}
+
+	// in case expected test.BindsNum is 0, but actually there is a binding and wait the binding goroutine to run
+	select {
+	case <-time.After(300 * time.Millisecond):
+	case key := <-binder.Channel:
+		return fmt.Errorf("unexpect binding %s in case %d(%s)", key, caseIndex, test.Name)
+	}
+
+	if test.MinimalBindCheck {
+		return nil
+	}
+
+	binds := binder.Binds()
+
+	if test.ExpectBindsNum != len(binds) {
+		return fmt.Errorf("invalid setting for binding check: want bind count %d, want bind result length %d", test.ExpectBindsNum, len(binds))
+	}
+
+	realHyperNode := make(map[string]int, 0)
+	for _, node := range binds {
+		hyperNode := util.FindHyperNodeForNode(node, test.ssn.RealNodesList, test.ssn.HyperNodesTiers, test.ssn.HyperNodesSetByTier)
+		realHyperNode[hyperNode] += 1
+	}
+
+	actualBindNums := make([]int, 0, len(realHyperNode))
+	for _, value := range realHyperNode {
+		actualBindNums = append(actualBindNums, value)
+	}
+	sort.Ints(actualBindNums)
+
+	if !slices.Equal(actualBindNums, test.ExpectBindNumsInHyperNode) {
+		return fmt.Errorf("case %d(%s) check bind: \nwant: %v\n got: %v ", caseIndex, test.Name, test.ExpectBindNumsInHyperNode, actualBindNums)
+	}
+
 	return nil
 }

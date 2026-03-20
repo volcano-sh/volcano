@@ -21,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -222,14 +223,12 @@ func (pal *PodAffinityLister) FilteredList(podFilter PodFilter, selector labels.
 }
 
 // GenerateNodeMapAndSlice returns the nodeMap and nodeSlice generated from ssn
-func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) map[string]*k8sframework.NodeInfo {
-	nodeMap := make(map[string]*k8sframework.NodeInfo)
+func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) map[string]fwk.NodeInfo {
+	nodeMap := make(map[string]fwk.NodeInfo)
 	for _, node := range nodes {
 		nodeInfo := k8sframework.NewNodeInfo(node.Pods()...)
 		nodeInfo.SetNode(node.Node)
 		nodeMap[node.Name] = nodeInfo
-		// add imagestate into nodeinfo
-		nodeMap[node.Name].ImageStates = node.CloneImageSummary()
 	}
 	return nodeMap
 }
@@ -261,23 +260,4 @@ func (nl *NodeLister) List() ([]*v1.Node, error) {
 		nodes = append(nodes, node.Node)
 	}
 	return nodes, nil
-}
-
-func isNodeUnschedulable(node *v1.Node) bool {
-	if node == nil {
-		return true
-	}
-	return node.Spec.Unschedulable
-}
-
-func isNodeNotReady(node *v1.Node) bool {
-	if node == nil {
-		return true
-	}
-	for _, cond := range node.Status.Conditions {
-		if cond.Type == v1.NodeReady {
-			return cond.Status != v1.ConditionTrue
-		}
-	}
-	return true
 }

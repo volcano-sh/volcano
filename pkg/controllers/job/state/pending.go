@@ -34,7 +34,7 @@ func (ps *pendingState) Execute(action Action) error {
 			status.State.Phase = vcbatch.Restarting
 			return true
 		})
-	case v1alpha1.RestartTaskAction, v1alpha1.RestartPodAction:
+	case v1alpha1.RestartTaskAction, v1alpha1.RestartPodAction, v1alpha1.RestartPartitionAction:
 		return KillTarget(ps.job, action.Target, func(status *vcbatch.JobStatus) bool {
 			status.RetryCount++
 			status.State.Phase = vcbatch.Restarting

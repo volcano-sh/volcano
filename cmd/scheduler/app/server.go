@@ -57,6 +57,12 @@ func Run(opt *options.ServerOption) error {
 		return err
 	}
 
+	// Align default feature-gates with the connected cluster's version.
+	if err := commonutil.SetupComponentGlobals(config); err != nil {
+		klog.Errorf("failed to set component globals: %v", err)
+		return err
+	}
+
 	if opt.PluginsDir != "" {
 		err := framework.LoadCustomPlugins(opt.PluginsDir)
 		if err != nil {
@@ -70,8 +76,11 @@ func Run(opt *options.ServerOption) error {
 		panic(err)
 	}
 
+	// InitKubeSchedulerRelatedMetrics must always be called to initialize
+	// k8smetrics.Goroutines which is used by Kubernetes scheduler framework plugins
+	metrics.InitKubeSchedulerRelatedMetrics()
+
 	if opt.EnableMetrics || opt.EnablePprof {
-		metrics.InitKubeSchedulerRelatedMetrics()
 		go startMetricsServer(opt)
 	}
 

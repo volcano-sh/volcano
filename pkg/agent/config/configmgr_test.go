@@ -189,7 +189,9 @@ func TestPrepareConfigmap(t *testing.T) {
 			name:             "configmap-not-existed",
 			initialObjects:   []runtime.Object{},
 			expectedErrIsNil: true,
-			expectedConfig:   defaultCfg(),
+			expectedConfig: &api.VolcanoAgentConfig{
+				GlobalConfig: utils.DefaultColocationConfig(),
+			},
 		},
 	}
 

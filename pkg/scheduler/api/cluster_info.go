@@ -32,6 +32,7 @@ type ClusterInfo struct {
 	Nodes                     map[string]*NodeInfo
 	HyperNodes                HyperNodeInfoMap
 	HyperNodesSetByTier       map[int]sets.Set[string]
+	HyperNodeTierNameMap      HyperNodeTierNameMap
 	RealNodesSet              map[string]sets.Set[string]
 	HyperNodesReadyToSchedule bool
 	Queues                    map[QueueID]*QueueInfo
@@ -39,6 +40,7 @@ type ClusterInfo struct {
 	RevocableNodes            map[string]*NodeInfo
 	NodeList                  []string
 	CSINodesStatus            map[string]*CSINodeStatusInfo
+	NodesInShard              sets.Set[string]
 }
 
 func (ci ClusterInfo) String() string {

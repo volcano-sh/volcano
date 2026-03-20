@@ -175,20 +175,28 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 		return
 	}
 
-	if pod.DeletionTimestamp != nil {
-		cc.deletePod(pod)
+	taskName, found := pod.Annotations[batch.TaskSpecKey]
+	if !found {
+		klog.Infof("Failed to find taskName of Pod <%s/%s>, skipping",
+			pod.Namespace, pod.Name)
 		return
 	}
 
-	req := apis.Request{
-		Namespace: pod.Namespace,
-		JobName:   jobName,
-		JobUid:    jobUid,
-		PodName:   pod.Name,
-		PodUID:    pod.UID,
+	event := bus.PodPendingEvent
+	if jobhelpers.IsOutOfSyncPod(pod) {
+		event = bus.OutOfSyncEvent
+	}
 
-		Event:      bus.PodPendingEvent,
-		JobVersion: int32(dVersion),
+	req := apis.Request{
+		Namespace:   pod.Namespace,
+		JobName:     jobName,
+		JobUid:      jobUid,
+		PodName:     pod.Name,
+		PodUID:      pod.UID,
+		TaskName:    taskName,
+		PartitionID: apis.GetPartitionID(pod),
+		Event:       event,
+		JobVersion:  int32(dVersion),
 	}
 
 	if err := cc.cache.AddPod(pod); err != nil {
@@ -222,11 +230,6 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 	}
 
 	if newPod.ResourceVersion == oldPod.ResourceVersion {
-		return
-	}
-
-	if newPod.DeletionTimestamp != nil {
-		cc.deletePod(newObj)
 		return
 	}
 
@@ -297,17 +300,21 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		}
 	}
 
-	req := apis.Request{
-		Namespace: newPod.Namespace,
-		JobName:   jobName,
-		JobUid:    jobUid,
-		TaskName:  taskName,
-		PodName:   newPod.Name,
-		PodUID:    newPod.UID,
+	if jobhelpers.IsOutOfSyncPod(newPod) {
+		event = bus.OutOfSyncEvent
+	}
 
-		Event:      event,
-		ExitCode:   exitCode,
-		JobVersion: int32(dVersion),
+	req := apis.Request{
+		Namespace:   newPod.Namespace,
+		JobName:     jobName,
+		JobUid:      jobUid,
+		TaskName:    taskName,
+		PodName:     newPod.Name,
+		PodUID:      newPod.UID,
+		PartitionID: apis.GetPartitionID(newPod),
+		Event:       event,
+		ExitCode:    exitCode,
+		JobVersion:  int32(dVersion),
 	}
 
 	key := jobhelpers.GetJobKeyByReq(&req)
@@ -367,16 +374,21 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 		return
 	}
 
-	req := apis.Request{
-		Namespace: pod.Namespace,
-		JobName:   jobName,
-		JobUid:    jobUid,
-		TaskName:  taskName,
-		PodName:   pod.Name,
-		PodUID:    pod.UID,
+	event := bus.PodEvictedEvent
+	if jobhelpers.IsOutOfSyncPod(pod) || !cc.cache.HasPod(pod) {
+		event = bus.OutOfSyncEvent
+	}
 
-		Event:      bus.PodEvictedEvent,
-		JobVersion: int32(dVersion),
+	req := apis.Request{
+		Namespace:   pod.Namespace,
+		JobName:     jobName,
+		JobUid:      jobUid,
+		TaskName:    taskName,
+		PodName:     pod.Name,
+		PodUID:      pod.UID,
+		PartitionID: apis.GetPartitionID(pod),
+		Event:       event,
+		JobVersion:  int32(dVersion),
 	}
 
 	if err := cc.cache.DeletePod(pod); err != nil {

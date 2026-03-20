@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
@@ -389,5 +390,42 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		}
 		// Deployment should be running after gates removed
 		e2eutil.WaitPodGroupPhase(ctx, pg, schedulingv1beta1.PodGroupRunning)
+	})
+
+	// When a vcjob has subgroups (via partitionPolicy) but no network topology constraint,
+	// the allocate action should still schedule it correctly.
+	ginkgo.It("allocate work when job has subgroups (partitionPolicy) but no network topology constraint", func() {
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			NodesNumLimit: 2,
+			NodesResourceLimit: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2000m"),
+				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+		})
+		defer e2eutil.CleanupTestContext(ctx)
+
+		slot := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("500m"),
+			corev1.ResourceMemory: resource.MustParse("512Mi")}
+
+		job := &e2eutil.JobSpec{
+			Name: "job-subgroups-no-topology",
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: 2,
+					Rep: 2,
+					PartitionPolicy: &batchv1alpha1.PartitionPolicySpec{
+						TotalPartitions: 2,
+						PartitionSize:   1,
+						MinPartitions:   2,
+					},
+				},
+			},
+		}
+
+		createdJob := e2eutil.CreateJob(ctx, job)
+		err := e2eutil.WaitJobReady(ctx, createdJob)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 })

@@ -31,6 +31,14 @@ limitations under the License.
 package devices
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -80,4 +88,153 @@ func NewClient() (*kubernetes.Clientset, error) {
 	}
 	client, err := kubernetes.NewForConfig(config)
 	return client, err
+}
+
+func GetNode(nodename string) (*v1.Node, error) {
+	if nodename == "" {
+		klog.ErrorS(nil, "Node name is empty")
+		return nil, fmt.Errorf("nodename is empty")
+	}
+
+	klog.V(5).InfoS("Fetching node", "nodeName", nodename)
+	n, err := GetClient().CoreV1().Nodes().Get(context.Background(), nodename, metav1.GetOptions{})
+	if err != nil {
+		switch {
+		case apierrors.IsNotFound(err):
+			klog.ErrorS(err, "Node not found", "nodeName", nodename)
+			return nil, fmt.Errorf("node %s not found", nodename)
+		case apierrors.IsUnauthorized(err):
+			klog.ErrorS(err, "Unauthorized to access node", "nodeName", nodename)
+			return nil, fmt.Errorf("unauthorized to access node %s", nodename)
+		default:
+			klog.ErrorS(err, "Failed to get node", "nodeName", nodename)
+			return nil, fmt.Errorf("failed to get node %s: %v", nodename, err)
+		}
+	}
+
+	klog.V(5).InfoS("Successfully fetched node", "nodeName", nodename)
+	return n, nil
+}
+
+func PatchPodAnnotations(kubeClient kubernetes.Interface, pod *v1.Pod, annotations map[string]string) error {
+	type patchMetadata struct {
+		Annotations map[string]string `json:"annotations,omitempty"`
+	}
+	type patchPod struct {
+		Metadata patchMetadata `json:"metadata"`
+		//Spec     patchSpec     `json:"spec,omitempty"`
+	}
+
+	p := patchPod{}
+	p.Metadata.Annotations = annotations
+
+	bytes, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	_, err = kubeClient.CoreV1().Pods(pod.Namespace).
+		Patch(context.Background(), pod.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
+	if err != nil {
+		klog.Errorf("patch pod %v failed, %v", pod.Name, err)
+	}
+
+	return err
+}
+
+func PatchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
+	type patchMetadata struct {
+		Annotations map[string]string `json:"annotations,omitempty"`
+	}
+	type patchPod struct {
+		Metadata patchMetadata `json:"metadata"`
+		//Spec     patchSpec     `json:"spec,omitempty"`
+	}
+
+	p := patchPod{}
+	p.Metadata.Annotations = annotations
+
+	bytes, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	_, err = GetClient().CoreV1().Nodes().
+		Patch(context.Background(), node.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
+	if err != nil {
+		klog.Infoln("annotations=", annotations)
+		klog.Infof("patch node %v failed, %v", node.Name, err)
+	}
+	return err
+}
+
+func ExtractResourceRequest(pod *v1.Pod, resourceType, countName, memoryName, percentageName, coreName string) []ContainerDeviceRequest {
+	resourceName := v1.ResourceName(countName)
+	resourceMem := v1.ResourceName(memoryName)
+	counts := []ContainerDeviceRequest{}
+
+	//Count Nvidia GPU
+	for i := 0; i < len(pod.Spec.Containers); i++ {
+		singledevice := false
+		v, ok := pod.Spec.Containers[i].Resources.Limits[resourceName]
+		if !ok {
+			v, ok = pod.Spec.Containers[i].Resources.Limits[resourceMem]
+			singledevice = true
+		}
+		if ok {
+			n := int64(1)
+			if !singledevice {
+				n, _ = v.AsInt64()
+			}
+			memnum := int32(0)
+			mem, ok := pod.Spec.Containers[i].Resources.Limits[resourceMem]
+			if !ok {
+				mem, ok = pod.Spec.Containers[i].Resources.Requests[resourceMem]
+			}
+			if ok {
+				memnums, ok := mem.AsInt64()
+				if ok {
+					memnum = int32(memnums)
+				}
+			}
+			mempnum := int32(101)
+			if percentageName != "" {
+				resourceMemPercentage := v1.ResourceName(percentageName)
+				mem, ok = pod.Spec.Containers[i].Resources.Limits[resourceMemPercentage]
+				if !ok {
+					mem, ok = pod.Spec.Containers[i].Resources.Requests[resourceMemPercentage]
+				}
+				if ok {
+					mempnums, ok := mem.AsInt64()
+					if ok {
+						mempnum = int32(mempnums)
+					}
+				}
+			}
+			if mempnum == 101 && memnum == 0 {
+				mempnum = 100
+			}
+			corenum := int32(0)
+			if coreName != "" {
+				resourceCores := v1.ResourceName(coreName)
+				core, ok := pod.Spec.Containers[i].Resources.Limits[resourceCores]
+				if !ok {
+					core, ok = pod.Spec.Containers[i].Resources.Requests[resourceCores]
+				}
+				if ok {
+					corenums, ok := core.AsInt64()
+					if ok {
+						corenum = int32(corenums)
+					}
+				}
+			}
+			counts = append(counts, ContainerDeviceRequest{
+				Nums:             int32(n),
+				Type:             resourceType,
+				Memreq:           memnum,
+				MemPercentagereq: int32(mempnum),
+				Coresreq:         corenum,
+			})
+		}
+	}
+	klog.V(3).Infoln("counts=", counts)
+	return counts
 }

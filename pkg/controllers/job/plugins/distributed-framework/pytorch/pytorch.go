@@ -38,6 +38,10 @@ const (
 	DefaultMaster = "master"
 	// DefaultWorker is the default task name of worker host
 	DefaultWorker = "worker"
+	// DefaultTimeout is the default timeout for waiting master (in seconds)
+	DefaultTimeout = 300
+	// DefaultWaitMasterImage is the default image for wait-for-master init container
+	DefaultWaitMasterImage = "busybox:1.36.1"
 
 	// EnvMasterPort is the env name of master port
 	EnvMasterPort = "MASTER_PORT"
@@ -50,11 +54,14 @@ const (
 )
 
 type pytorchPlugin struct {
-	pytorchArguments []string
-	clientset        pluginsinterface.PluginClientset
-	masterName       string
-	workerName       string
-	port             int
+	pytorchArguments  []string
+	clientset         pluginsinterface.PluginClientset
+	masterName        string
+	workerName        string
+	port              int
+	waitMasterEnabled bool
+	waitMasterTimeout int
+	waitMasterImage   string
 }
 
 // New creates pytorch plugin.
@@ -69,6 +76,9 @@ func (pp *pytorchPlugin) addFlags() {
 	flagSet.StringVar(&pp.masterName, "master", DefaultMaster, "name of master role task")
 	flagSet.StringVar(&pp.workerName, "worker", DefaultWorker, "name of worker role task")
 	flagSet.IntVar(&pp.port, "port", DefaultPort, "open port for containers")
+	flagSet.BoolVar(&pp.waitMasterEnabled, "wait-master-enabled", false, "enable init container to wait for master")
+	flagSet.IntVar(&pp.waitMasterTimeout, "wait-master-timeout", DefaultTimeout, "timeout in seconds for waiting master to be ready (only effective when wait-master-enabled=true)")
+	flagSet.StringVar(&pp.waitMasterImage, "wait-master-image", DefaultWaitMasterImage, "image for wait-for-master init container (only effective when wait-master-enabled=true)")
 	if err := flagSet.Parse(pp.pytorchArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", pp.Name(), err)
 	}
@@ -105,6 +115,8 @@ func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 		}
 
 		workerRank = index + 1
+		// Add init container to wait for master to be ready and accessible on the specified port
+		pp.addWaitForMasterInitContainer(pod, masterAddr)
 	}
 
 	totalReplicas := pp.getTotalReplicas(job)
@@ -158,6 +170,22 @@ func (pp *pytorchPlugin) generateMasterAddr(task batch.TaskSpec, jobName string)
 	return host
 }
 
+func (pp *pytorchPlugin) generateWaitForMasterScript(masterAddr string) string {
+	return fmt.Sprintf(`echo "Waiting for master node %s:%d to be ready..."
+TIMEOUT=%d
+ELAPSED=0
+until { nc -z %s %d || echo > /dev/tcp/%s/%d; } 2>/dev/null; do
+  if [ $ELAPSED -ge $TIMEOUT ]; then
+    echo "Timeout waiting for master after ${TIMEOUT} seconds"
+    exit 1
+  fi
+  echo "Master not ready yet, retrying in 2 seconds... (elapsed: ${ELAPSED}s)"
+  sleep 2
+  ELAPSED=$((ELAPSED + 2))
+done
+echo "Master node is ready!"`, masterAddr, pp.port, pp.waitMasterTimeout, masterAddr, pp.port, masterAddr, pp.port)
+}
+
 func (pp *pytorchPlugin) openContainerPort(c *v1.Container, index int, pod *v1.Pod) {
 	hasPort := false
 	for _, p := range c.Ports {
@@ -175,6 +203,31 @@ func (pp *pytorchPlugin) openContainerPort(c *v1.Container, index int, pod *v1.P
 
 		pod.Spec.Containers[index].Ports = append(pod.Spec.Containers[index].Ports, port)
 	}
+}
+
+func (pp *pytorchPlugin) addWaitForMasterInitContainer(pod *v1.Pod, masterAddr string) {
+	if !pp.waitMasterEnabled {
+		return
+	}
+
+	for _, initContainer := range pod.Spec.InitContainers {
+		if initContainer.Name == "wait-for-master" {
+			return
+		}
+	}
+
+	initContainer := v1.Container{
+		Name:  "wait-for-master",
+		Image: pp.waitMasterImage,
+		Command: []string{
+			"sh",
+			"-c",
+			pp.generateWaitForMasterScript(masterAddr),
+		},
+	}
+
+	pod.Spec.InitContainers = append(pod.Spec.InitContainers, initContainer)
+	klog.V(4).Infof("Added wait-for-master init container to worker pod %s/%s", pod.Namespace, pod.Name)
 }
 
 func (pp *pytorchPlugin) OnJobAdd(job *batch.Job) error {

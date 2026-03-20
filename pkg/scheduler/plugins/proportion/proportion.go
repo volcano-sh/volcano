@@ -30,7 +30,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/klog/v2"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -155,8 +155,16 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		// calculate inqueue resource for inqueue jobs
+		// deduct already-allocated task resources from minResources to avoid double-counting:
+		// tasks in Allocated/Binding state are already tracked in attr.allocated (via AllocatedStatus),
+		// but the PodGroup stays Inqueue until tasks reach Running/Bound (ScheduledStatus).
+		// Without this deduction, the same resources appear in both attr.allocated and attr.inqueue.
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
-			attr.inqueue.Add(job.DeductSchGatedResources(job.GetMinResources()))
+			if job.PodGroup.Spec.MinResources != nil {
+				inqueued := util.GetInqueueResource(job, job.Allocated)
+				attr.inqueue.Add(job.DeductSchGatedResources(inqueued))
+			}
 		}
 
 		// calculate inqueue resource for running jobs
@@ -281,7 +289,18 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		for _, reclaimee := range reclaimees {
 			job := ssn.Jobs[reclaimee.Job]
+			if job == nil {
+				klog.Warningf("[proportion] Skip reclaimee <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+					reclaimee.Namespace, reclaimee.Name, reclaimee.Job)
+				continue
+			}
+
 			attr := pp.queueOpts[job.Queue]
+			if attr == nil {
+				klog.Warningf("[proportion] Skip reclaimee <%s/%s>: queue <%s> not found in queueOpts",
+					reclaimee.Namespace, reclaimee.Name, job.Queue)
+				continue
+			}
 
 			if _, found := allocations[job.Queue]; !found {
 				allocations[job.Queue] = attr.allocated.Clone()
@@ -304,7 +323,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
 		metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
-			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
+			klog.V(3).Infof("Queue <%v> is overused: deserved <%v>, allocated <%v>, share <%v>",
 				queue.Name, attr.deserved, attr.allocated, attr.share)
 		}
 
@@ -319,7 +338,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		attr := pp.queueOpts[queue.UID]
 		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
-		allocatable := futureUsed.LessEqualWithDimension(attr.deserved, candidate.Resreq)
+		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, candidate.Resreq)
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
@@ -332,7 +351,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return queueAllocatable(queue, candidate)
 	})
 
-	ssn.AddSimulateAllocatableFn(pp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+	ssn.AddSimulateAllocatableFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		state, err := getProportionState(cycleState)
 		if err != nil {
 			klog.Errorf("getProportionState error: %v", err)
@@ -345,7 +364,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
-		allocatable := futureUsed.LessEqualWithDimension(attr.deserved, candidate.Resreq)
+		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, candidate.Resreq)
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
@@ -402,7 +421,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		// The queue resource quota limit has not reached
 		r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
 
-		inqueue := r.LessEqualWithDimension(attr.realCapability, minReq)
+		inqueue, resourceNames := r.LessEqualWithDimensionAndResourcesName(attr.realCapability, minReq)
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
 		if inqueue {
 			// deduct the resources of scheduling gated tasks in a job when calculating inqueued resources
@@ -410,36 +429,42 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.inqueue.Add(job.DeductSchGatedResources(minReq))
 			return util.Permit
 		}
-		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
+		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), util.FormatResourceNames("queue resource quota insufficient", "insufficient", resourceNames))
 		return util.Reject
 	})
 
-	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 		state, err := getProportionState(cycleState)
 		if err != nil {
 			return fmt.Errorf("failed to get capacity state: %w", err)
 		}
 
 		job := ssn.Jobs[taskToAdd.Job]
+		if job == nil {
+			return fmt.Errorf("[proportion] job %s not found in session (orphaned task from deleted PodGroup)", taskToAdd.Job)
+		}
 		attr := state.queueAttrs[job.Queue]
 		if attr == nil {
-			return fmt.Errorf("queue %s not found", job.Queue)
+			return fmt.Errorf("[proportion] queue %s not found", job.Queue)
 		}
 		attr.allocated.Add(taskToAdd.Resreq)
 		updateQueueAttrShare(attr)
 		return nil
 	})
 
-	ssn.AddSimulateRemoveTaskFn(pp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	ssn.AddSimulateRemoveTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 		state, err := getProportionState(cycleState)
 		if err != nil {
 			return fmt.Errorf("failed to get capacity state: %w", err)
 		}
 
 		job := ssn.Jobs[taskToRemove.Job]
+		if job == nil {
+			return fmt.Errorf("[proportion] job %s not found in session (orphaned task from deleted PodGroup)", taskToRemove.Job)
+		}
 		attr := state.queueAttrs[job.Queue]
 		if attr == nil {
-			return fmt.Errorf("queue %s not found", job.Queue)
+			return fmt.Errorf("[proportion] queue %s not found", job.Queue)
 		}
 		attr.allocated.Sub(taskToRemove.Resreq)
 		updateQueueAttrShare(attr)
@@ -450,24 +475,44 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
 			job := ssn.Jobs[event.Task.Job]
+			if job == nil {
+				klog.Warningf("[proportion] Skip allocate event for task <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+					event.Task.Namespace, event.Task.Name, event.Task.Job)
+				return
+			}
 			attr := pp.queueOpts[job.Queue]
+			if attr == nil {
+				klog.Warningf("[proportion] Skip allocate event for task <%s/%s>: queue <%s> not found in queueOpts",
+					event.Task.Namespace, event.Task.Name, job.Queue)
+				return
+			}
 			attr.allocated.Add(event.Task.Resreq)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			pp.updateShare(attr)
 
-			klog.V(4).Infof("Proportion AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+			klog.V(4).Infof("[proportion] AllocateFunc: task <%v/%v>, resreq <%v>, share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			job := ssn.Jobs[event.Task.Job]
+			if job == nil {
+				klog.Warningf("[proportion] Skip deallocate event for task <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+					event.Task.Namespace, event.Task.Name, event.Task.Job)
+				return
+			}
 			attr := pp.queueOpts[job.Queue]
+			if attr == nil {
+				klog.Warningf("[proportion] Skip deallocate event for task <%s/%s>: queue <%s> not found in queueOpts",
+					event.Task.Namespace, event.Task.Name, job.Queue)
+				return
+			}
 			attr.allocated.Sub(event.Task.Resreq)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			pp.updateShare(attr)
 
-			klog.V(4).Infof("Proportion EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+			klog.V(4).Infof("[proportion] DeallocateFunc: task <%v/%v>, resreq <%v>, share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 	})
@@ -511,7 +556,7 @@ func (qa *queueAttr) Clone() *queueAttr {
 	}
 }
 
-func (s *proportionState) Clone() k8sframework.StateData {
+func (s *proportionState) Clone() fwk.StateData {
 	if s == nil {
 		return nil
 	}
@@ -528,7 +573,7 @@ func (s *proportionState) Clone() k8sframework.StateData {
 	return newState
 }
 
-func getProportionState(cycleState *k8sframework.CycleState) (*proportionState, error) {
+func getProportionState(cycleState fwk.CycleState) (*proportionState, error) {
 	c, err := cycleState.Read(proportionStateKey)
 	if err != nil {
 		// preFilterState doesn't exist, likely PreFilter wasn't invoked.

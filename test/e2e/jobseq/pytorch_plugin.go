@@ -25,11 +25,20 @@ import (
 )
 
 var _ = Describe("Pytorch Plugin E2E Test", func() {
+	var testCtx *e2eutil.TestContext
+
+	BeforeEach(func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, testCtx)
+	})
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
+	})
+
 	It("will run and complete finally", func() {
 		// Community CI can skip this use case, and enable this use case verification when releasing the version.
 		Skip("Pytorch's test image download fails probabilistically, causing the current use case to fail. ")
-		context := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(context)
 
 		slot := e2eutil.OneCPU
 
@@ -68,8 +77,8 @@ var _ = Describe("Pytorch Plugin E2E Test", func() {
 			},
 		}
 
-		job := e2eutil.CreateJob(context, spec)
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{
+		job := e2eutil.CreateJob(testCtx, spec)
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{
 			vcbatch.Pending, vcbatch.Running, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 	})

@@ -35,6 +35,9 @@ const (
 	PodNameFmt = "%s-%s-%d"
 	// persistentVolumeClaimFmt represents persistent volume claim name format
 	persistentVolumeClaimFmt = "%s-pvc-%s"
+	// OutOfSyncKey is the pod annotation indicates that the pod should be restarted.
+	// And vcjob events (e.g. PodFailed, PodEvicted) of the pod with the annotation will be ignored.
+	OutOfSyncKey = "volcano.sh/controller-out-of-sync"
 )
 
 // GetPodIndexUnderTask returns task Index.
@@ -145,4 +148,52 @@ func GetPodsNameUnderTask(taskName string, job *batch.Job) []string {
 		}
 	}
 	return res
+}
+
+// GetTaskIndexOfPod reads the task index from pod.Labels[batch.TaskIndex].
+// This function is used by plugins to determine the task index of a pod within a job.
+func GetTaskIndexOfPod(pod *v1.Pod) (int, error) {
+	// Read task index from pod.Labels[batch.TaskIndex]
+	taskIndexStr, exists := pod.Labels[batch.TaskIndex]
+	if !exists {
+		return -1, fmt.Errorf("pod %v doesn't have %v label", pod.Name, batch.TaskIndex)
+	}
+	taskIndex, err := strconv.Atoi(taskIndexStr)
+	if err != nil {
+		return -1, fmt.Errorf("failed to parse task index for pod %v: %v", pod.Name, err)
+	}
+	return taskIndex, nil
+}
+
+// GetTaskReplicasUnderJob return replicas of the task in the job.
+func GetTaskReplicasUnderJob(taskName string, job *batch.Job) int32 {
+	for _, task := range job.Spec.Tasks {
+		if task.Name == taskName {
+			return task.Replicas
+		}
+	}
+	return 0
+}
+
+// IsOutOfSyncPod checks whether the pod is marked as out-of-sync.
+func IsOutOfSyncPod(pod *v1.Pod) bool {
+	if pod.Annotations == nil {
+		return false
+	}
+	_, exists := pod.Annotations[OutOfSyncKey]
+	return exists
+}
+
+// OutOfSyncJSONPatch generates a JSON patch to mark the pod as out-of-sync with the given reason.
+func OutOfSyncJSONPatch() []byte {
+	return []byte(fmt.Sprintf(`[{"op":"add","path":"/metadata/annotations/%s","value":"true"}]`,
+		escapeJSONPointer(OutOfSyncKey)))
+}
+
+// escapeJSONPointer escapes a string for use in a JSON Pointer.
+// See RFC 6901 for details: https://datatracker.ietf.org/doc/html/rfc6901
+func escapeJSONPointer(s string) string {
+	s = strings.ReplaceAll(s, "~", "~0")
+	s = strings.ReplaceAll(s, "/", "~1")
+	return s
 }

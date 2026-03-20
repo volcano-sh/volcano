@@ -25,10 +25,18 @@ import (
 )
 
 var _ = Describe("MPI Plugin E2E Test", func() {
-	It("will run and complete finally", func() {
-		context := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(context)
+	var testCtx *e2eutil.TestContext
 
+	BeforeEach(func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, testCtx)
+	})
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
+	})
+
+	It("will run and complete finally", func() {
 		slot := e2eutil.OneCPU
 
 		spec := &e2eutil.JobSpec{
@@ -67,8 +75,8 @@ mpiexec --allow-run-as-root --host ${MPI_HOST} -np 2 mpi_hello_world > /home/re`
 			},
 		}
 
-		job := e2eutil.CreateJob(context, spec)
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{
+		job := e2eutil.CreateJob(testCtx, spec)
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{
 			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 	})

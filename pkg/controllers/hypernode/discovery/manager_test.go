@@ -17,16 +17,19 @@ limitations under the License.
 package discovery
 
 import (
-	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/fake"
 	"testing"
 	"time"
+
+	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
+	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
+	fakevcclientset "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/controllers/hypernode/api"
 	"volcano.sh/volcano/pkg/controllers/hypernode/config"
 	fakedisc "volcano.sh/volcano/pkg/controllers/hypernode/discovery/fake"
@@ -43,10 +46,10 @@ func TestManager_StartMultipleDiscoverers(t *testing.T) {
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "hb"}},
 	}
 
-	constructorA := api.DiscovererConstructor(func(cfg api.DiscoveryConfig, kubeClient clientset.Interface) api.Discoverer {
+	constructorA := api.DiscovererConstructor(func(cfg api.DiscoveryConfig, kubeClient clientset.Interface, vcClient vcclientset.Interface) api.Discoverer {
 		return fakedisc.NewFakeDiscoverer(hyperNodesA, cfg)
 	})
-	constructorB := api.DiscovererConstructor(func(cfg api.DiscoveryConfig, kubeClient clientset.Interface) api.Discoverer {
+	constructorB := api.DiscovererConstructor(func(cfg api.DiscoveryConfig, kubeClient clientset.Interface, vcClient vcclientset.Interface) api.Discoverer {
 		return fakedisc.NewFakeDiscoverer(hyperNodesB, cfg)
 	})
 
@@ -71,7 +74,8 @@ func TestManager_StartMultipleDiscoverers(t *testing.T) {
 	queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
 	queue.Add("test-namespace/test-config")
 	fakeClient := fake.NewSimpleClientset()
-	m := NewManager(loader, queue, fakeClient)
+	fakeVcClient := fakevcclientset.NewSimpleClientset()
+	m := NewManager(loader, queue, fakeClient, fakeVcClient)
 	err := m.Start()
 	assert.NoError(t, err)
 
@@ -106,7 +110,7 @@ func TestManager_syncHandler(t *testing.T) {
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "ha1"}},
 	}
 
-	constructor := api.DiscovererConstructor(func(cfg api.DiscoveryConfig, kubeClient clientset.Interface) api.Discoverer {
+	constructor := api.DiscovererConstructor(func(cfg api.DiscoveryConfig, kubeClient clientset.Interface, vcClient vcclientset.Interface) api.Discoverer {
 		return fakedisc.NewFakeDiscoverer(hyperNodes, cfg)
 	})
 
@@ -137,7 +141,8 @@ func TestManager_syncHandler(t *testing.T) {
 	loader := config.NewFakeLoader(discoveryConfigV1)
 	queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
 	fakeClient := fake.NewSimpleClientset()
-	m := NewManager(loader, queue, fakeClient)
+	fakeVcClient := fakevcclientset.NewSimpleClientset()
+	m := NewManager(loader, queue, fakeClient, fakeVcClient)
 
 	// Start the manager
 	err := m.Start()

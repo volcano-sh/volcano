@@ -25,6 +25,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/pkg/agent/apis/extension"
 	"volcano.sh/volcano/pkg/agent/events/framework"
 	"volcano.sh/volcano/pkg/agent/events/handlers"
 	"volcano.sh/volcano/pkg/agent/events/handlers/base"
@@ -62,22 +63,55 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 		return fmt.Errorf("illegal pod event")
 	}
 
-	if !allowedUseExtRes(podEvent.QoSLevel) {
+	if !extension.AllowedUseExtRes(podEvent.QoSLevel) {
 		return nil
 	}
 
-	resources := utilpod.CalculateExtendResources(podEvent.Pod)
+	var resources []utilpod.Resources
+	cgroupVersion := r.cgroupMgr.GetCgroupVersion()
+	switch cgroupVersion {
+	case cgroup.CgroupV1:
+		resources = utilpod.CalculateExtendResources(podEvent.Pod)
+	case cgroup.CgroupV2:
+		resources = utilpod.CalculateExtendResourcesV2(podEvent.Pod)
+	}
+
 	var errs []error
 	// set container and pod level cgroup.
 	for _, cr := range resources {
 		cgroupPath, err := r.cgroupMgr.GetPodCgroupPath(podEvent.QoSClass, cr.CgroupSubSystem, podEvent.UID)
 		if err != nil {
-			klog.ErrorS(err, "Failed to get pod cgroup", "pod", klog.KObj(podEvent.Pod), "subSystem", cr.CgroupSubSystem)
+			klog.ErrorS(err, "Failed to get pod cgroup", "subsystem", cr.CgroupSubSystem, "container", cr.ContainerID,
+				"file", cr.SubPath, "pod", klog.KObj(podEvent.Pod))
 			errs = append(errs, err)
 		}
 
-		filePath := path.Join(cgroupPath, cr.ContainerID, cr.SubPath)
-		err = utils.UpdateFile(filePath, []byte(strconv.FormatInt(cr.Value, 10)))
+		var filePath string
+		if cr.ContainerID == "" {
+			// Pod-level: file is directly under pod cgroup directory
+			filePath = path.Join(cgroupPath, cr.SubPath)
+		} else {
+			// Container-level: file is under container subdirectory
+			containerCgroupName := r.cgroupMgr.BuildContainerCgroupName(cr.ContainerID)
+			filePath = path.Join(cgroupPath, containerCgroupName, cr.SubPath)
+		}
+
+		if cgroupVersion == cgroup.CgroupV2 && cr.Value == -1 {
+			if cr.SubPath == cgroup.CPUQuotaTotalFileV2 {
+				// cpu.max: "max 100000"
+				err = utils.UpdateFile(filePath, []byte("max 100000"))
+			} else {
+				// memory.max: "max"
+				err = utils.UpdateFile(filePath, []byte("max"))
+			}
+		} else if cgroupVersion == cgroup.CgroupV2 && cr.SubPath == cgroup.CPUQuotaTotalFileV2 && cr.Value > 0 {
+			// For cgroup v2 cpu.max, we need to write "quota period" format
+			content := fmt.Sprintf("%d 100000", cr.Value)
+			err = utils.UpdateFile(filePath, []byte(content))
+		} else {
+			err = utils.UpdateFile(filePath, []byte(strconv.FormatInt(cr.Value, 10)))
+		}
+
 		if os.IsNotExist(err) {
 			klog.InfoS("Cgroup file not existed", "filePath", filePath)
 			continue
@@ -85,16 +119,12 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 
 		if err != nil {
 			errs = append(errs, err)
-			klog.ErrorS(err, "Failed to set cgroup", "path", filePath, "pod", klog.KObj(podEvent.Pod))
+			klog.ErrorS(err, "Failed to set cgroup", "subsystem", cr.CgroupSubSystem, "container", cr.ContainerID,
+				"file", cr.SubPath, "pod", klog.KObj(podEvent.Pod))
 			continue
 		}
-		klog.InfoS("Successfully set cpu and memory cgroup", "path", filePath, "pod", klog.KObj(podEvent.Pod))
+		klog.InfoS("Successfully set cgroup", "subsystem", cr.CgroupSubSystem, "container", cr.ContainerID,
+			"file", cr.SubPath, "value", cr.Value, "pod", klog.KObj(podEvent.Pod))
 	}
 	return utilerrors.NewAggregate(errs)
-}
-
-// allowedUseExtRes defines what qos levels can use extension resources,
-// currently only qos level QosLevelLS and QosLevelBE can use.
-func allowedUseExtRes(qosLevel int64) bool {
-	return qosLevel <= 1
 }

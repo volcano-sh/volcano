@@ -1,12 +1,8 @@
 name: E2E Spark Integration Test
 
 on:
-  # Post check in below branches
-  push:
-    branches:
-      - master
-  # PR triggered job
-  pull_request:
+  workflow_call:
+
 jobs:
   k8s-integration-tests:
     name: "E2E about Spark Integration test"
@@ -29,19 +25,7 @@ jobs:
         swap-storage: true
 
     - name: Checkout current Volcano repository
-      if: github.event.inputs.volcano-branch==''
       uses: actions/checkout@v3
-
-    - name: Set TAG from release config
-      run: |
-        if [[ -f .release-version ]]; then
-          TAG=$(cat .release-version | tr -d '\n\r')
-          echo "TAG=${TAG}" >> $GITHUB_ENV
-          echo "Using TAG from .release-version: ${TAG}"
-        else
-          echo "TAG=latest" >> $GITHUB_ENV
-          echo "Using default TAG=latest (.release-version file not found)"
-        fi
 
     - name: Checkout Spark repository
       uses: actions/checkout@v3
@@ -76,20 +60,27 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v5
       with:
-        go-version: 1.24.x
+        go-version: 1.25.x
     - name: Set up Docker Buildx
       id: buildx
       uses: docker/setup-buildx-action@v3
+    - name: Download Images
+      uses: actions/download-artifact@v4
+      with:
+        name: volcano-images
+        path: _output/images
     - name: start minikube
       run: |
         # Use pre-install minikube
         minikube start --cpus max --memory max
-    - name: Build lastest volcano images
+    - name: Load and Deploy volcano images
       run: |
         eval $(minikube docker-env)
-        make TAG=${{ env.TAG }} update-development-yaml
+        
+        make load-images
+        make update-development-yaml
         sed -i 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/g' installer/volcano-development.yaml
-        make TAG=${{ env.TAG }} images
+        
         docker images | grep volcano
         cat ./installer/volcano-development.yaml  | grep image:
         minikube kubectl -- replace --force -f ./installer/volcano-development.yaml
@@ -105,7 +96,7 @@ jobs:
         build/sbt -Pvolcano -Pkubernetes -Pkubernetes-integration-tests -Dspark.kubernetes.test.driverRequestCores=0.5 -Dspark.kubernetes.test.executorRequestCores=0.2 -Dspark.kubernetes.test.volcanoMaxConcurrencyJobNum=1 -Dtest.include.tags=volcano "kubernetes-integration-tests/test"
       working-directory: ${{ github.workspace }}/spark
     - name: Collect Volcano logs
-      if: failure()
+      if: '!success()'
       run: |
         kubectl logs $(kubectl get po -nvolcano-system | grep volcano-scheduler |cut -d" " -f1) -nvolcano-system > volcano-scheduler.log
         kubectl logs $(kubectl get po -nvolcano-system | grep volcano-admission |cut -d" " -f1 | grep -v init) -nvolcano-system > volcano-admission.log
@@ -113,7 +104,7 @@ jobs:
         kubectl get pod -A
         kubectl describe node
     - name: Upload Spark on K8S integration tests log files
-      if: failure()
+      if: '!success()'
       uses: actions/upload-artifact@v4
       with:
         name: spark-on-kubernetes-it-log

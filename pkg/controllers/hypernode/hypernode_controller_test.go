@@ -63,6 +63,9 @@ func (m *mockDiscoveryManager) Stop() {
 	close(m.resultCh)
 }
 
+func (m *mockDiscoveryManager) ResultSynced(source string) {
+}
+
 func (m *mockDiscoveryManager) ResultChannel() <-chan discovery.Result {
 	return m.resultCh
 }

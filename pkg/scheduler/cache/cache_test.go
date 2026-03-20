@@ -32,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -404,7 +405,8 @@ func TestExecutePreBinds(t *testing.T) {
 				sc.RegisterBinder(fmt.Sprintf("prebinder-%d", index), pb)
 			}
 
-			result := sc.executePreBinds(context.Background(), tt.bindContexts)
+			preBinders := sc.binderRegistry.getRegisteredPreBinders()
+			result := sc.executePreBinds(context.Background(), tt.bindContexts, preBinders)
 
 			if !reflect.DeepEqual(result, tt.expectBindContexts) {
 				t.Errorf("case %s: expected bind contexts %v, but got %v",

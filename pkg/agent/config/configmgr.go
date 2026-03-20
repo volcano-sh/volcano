@@ -17,6 +17,7 @@ limitations under the License.
 package config
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -86,6 +87,14 @@ func (m *ConfigManager) PrepareConfigmap() error {
 	}
 
 	klog.InfoS("configMap not found, will create a new one")
+
+	// Format JSON for better readability in ConfigMap
+	formattedCfg, err := formatJSON(utils.DefaultCfg)
+	if err != nil {
+		klog.ErrorS(err, "Failed to format default config, using original")
+		formattedCfg = utils.DefaultCfg
+	}
+
 	var lastCreateErr error
 	waitErr := wait.PollImmediate(200*time.Millisecond, time.Minute, func() (done bool, err error) {
 		_, createErr := m.kubeClient.CoreV1().ConfigMaps(m.configmapNamespace).Create(context.TODO(), &corev1.ConfigMap{
@@ -93,7 +102,7 @@ func (m *ConfigManager) PrepareConfigmap() error {
 				Name:      m.configmapName,
 				Namespace: m.configmapNamespace},
 			Data: map[string]string{
-				utils.ColocationConfigKey: utils.DefaultCfg,
+				utils.ColocationConfigKey: formattedCfg,
 			}}, metav1.CreateOptions{})
 		if errors.IsAlreadyExists(createErr) {
 			return true, nil
@@ -214,14 +223,16 @@ func (m *ConfigManager) process(changedQueue workqueue.RateLimitingInterface) bo
 }
 
 func (m *ConfigManager) notifyListeners() error {
-	config, err := m.source.GetLatestConfig()
+	cfg, err := m.source.GetLatestConfig()
 	if err != nil {
 		return err
 	}
 
+	klog.InfoS("Applying config", "config", cfg)
+
 	var errs []error
 	for _, listener := range m.listeners {
-		if syncErr := listener.SyncConfig(config); syncErr != nil {
+		if syncErr := listener.SyncConfig(cfg); syncErr != nil {
 			errs = append(errs, syncErr)
 		}
 	}
@@ -238,4 +249,13 @@ func (m *ConfigManager) getAgentPod() (*corev1.Pod, error) {
 		return nil, err
 	}
 	return m.kubeClient.CoreV1().Pods(m.agentPodNamespace).Get(context.TODO(), m.agentPodName, metav1.GetOptions{})
+}
+
+// formatJSON formats JSON string with proper indentation for better readability
+func formatJSON(jsonStr string) (string, error) {
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, []byte(jsonStr), "", "  "); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }

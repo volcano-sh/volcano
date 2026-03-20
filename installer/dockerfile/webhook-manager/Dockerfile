@@ -12,15 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.24.0 AS builder
+FROM golang:1.25.0 AS builder
 WORKDIR /go/src/volcano.sh/
 COPY go.mod go.sum ./
+# Copy staging directory before go mod download since go.mod has replace directive
+COPY staging/ ./staging/
 RUN go mod download
 ADD . volcano
 RUN cd volcano && make vc-webhook-manager
 
 FROM alpine:latest
-ARG KUBE_VERSION="1.32.0"
+ARG KUBE_VERSION="1.35.0"
 ARG TARGETARCH
 ARG APK_MIRROR
 RUN if [[ -n "$APK_MIRROR" ]]; then sed -i "s@https://dl-cdn.alpinelinux.org@${APK_MIRROR}@g" /etc/apk/repositories ; fi && \

@@ -267,6 +267,69 @@ func TestPreempt(t *testing.T) {
 			ExpectEvictNum: 0,
 			ExpectEvicted:  []string{}, // no victims should be reclaimed
 		},
+		{
+			// Verify that evictions are rolled back when the preemptor cannot be
+			// allocated due to queue capacity limits. The node has plenty of idle
+			// resources (10 CPU), and victims are preemptable, so evictions will be
+			// attempted inside a temporary nodeStmt. However the preemptor requests
+			// 4 CPU while the queue capacity is only 3 CPU, so the Allocatable
+			// check fails after all victims have been evicted. The temporary
+			// statement is discarded and none of the evictions are committed.
+			Name: "rollback evictions when preemptor exceeds queue capacity after evicting victims",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, map[string]int32{"": 2}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("4", "4G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("10", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, api.BuildResourceList("3", "3G")),
+			},
+			ExpectEvictNum: 0,
+		},
+		{
+			// Verify that when preemption succeeds on n2 after failing on n1, only n2's
+			// victims are committed — n1's evictions must be discarded by nodeStmt.Discard().
+			//
+			// n1 victim (1 CPU): after eviction queue.Allocated drops from 5 to 4 CPU;
+			// 4 + 3 (preemptor) = 7 > 6 (cap) → Allocatable fails → nodeStmt discarded.
+			// n2 victim (4 CPU): after eviction queue.Allocated drops from 5 to 1 CPU;
+			// 1 + 3 = 4 ≤ 6 → Allocatable passes → pipeline succeeds → nodeStmt merged.
+			//
+			// Without the per-node nodeStmt isolation, n1's victim would be committed
+			// alongside n2's because the single shared statement would not be rolled back.
+			Name: "only commit evictions on the node where preemption succeeds",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, map[string]int32{}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+				util.BuildPodGroupWithPrio("pg3", "c1", "q1", 0, map[string]int32{}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+			},
+			Pods: []*v1.Pod{
+				// n1 victim: small — freeing 1 CPU is not enough to satisfy Allocatable
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				// n2 victim: large — freeing 4 CPU brings queue.Allocated within cap
+				util.BuildPod("c1", "preemptee2", "n2", v1.PodRunning, api.BuildResourceList("4", "4G"), "pg3", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("3", "3G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			// Cluster: 7 CPU total. Queue cap: 6 CPU → deserved = 6 CPU.
+			// n1 has 2 CPU idle so ValidateVictims passes (2 idle + 1 victim = 3 ≥ 3).
+			// n2 has 0 CPU idle; ValidateVictims passes via victim alone (4 ≥ 3).
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("3", "3G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.BuildNode("n2", api.BuildResourceList("4", "4G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, api.BuildResourceList("6", "6G")),
+			},
+			ExpectEvictNum: 1,
+			ExpectEvicted:  []string{"c1/preemptee2"},
+		},
 	}
 
 	trueValue := true

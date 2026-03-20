@@ -38,8 +38,9 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	k8sutil "k8s.io/kubernetes/pkg/scheduler/util"
+
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -130,19 +131,28 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 		}
 
 		// check job if starving for more resources.
-		if ssn.JobStarving(job) {
-			if _, found := preemptorsMap[job.Queue]; !found {
-				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+		if !ssn.JobStarving(job) {
+			continue
+		}
+
+		// TODO: Currently, jobs containing networkTopology do not support preemption. Related issue: https://github.com/volcano-sh/volcano/issues/4374
+		if job.ContainsNetworkTopology() {
+			klog.V(3).Infof("Job <%s/%s> Queue <%s> skip preemption, reason: jobs containing networkTopology do not support preemption",
+				job.Namespace, job.Name, job.Queue)
+			continue
+		}
+
+		if _, found := preemptorsMap[job.Queue]; !found {
+			preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+		}
+		preemptorsMap[job.Queue].Push(job)
+		underRequest = append(underRequest, job)
+		preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
+		for _, task := range job.TaskStatusIndex[api.Pending] {
+			if task.SchGated {
+				continue
 			}
-			preemptorsMap[job.Queue].Push(job)
-			underRequest = append(underRequest, job)
-			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
-			for _, task := range job.TaskStatusIndex[api.Pending] {
-				if task.SchGated {
-					continue
-				}
-				preemptorTasks[job.UID].Push(task)
-			}
+			preemptorTasks[job.UID].Push(task)
 		}
 	}
 
@@ -258,12 +268,14 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 				if err != nil {
 					klog.V(3).Infof("Preemptor <%s/%s> failed to preempt Task , err: %s", preemptor.Namespace, preemptor.Name, err)
 				}
-				stmt.Commit()
 
-				// If no preemption, next job.
+				// Only commit if preemption was successful, otherwise discard to rollback evictions.
+				// This is consistent with between-job preemption which checks JobPipelined before committing.
 				if !assigned {
+					stmt.Discard()
 					break
 				}
+				stmt.Commit()
 			}
 		}
 	}
@@ -289,13 +301,22 @@ func (pmpt *Action) preempt(
 
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
 	allNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(preemptor)
-	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateForPreemptAction, pmpt.enablePredicateErrorCache)
+	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateForPreemptAction, pmpt.enablePredicateErrorCache, ssn.NodesInShard)
 
-	if pmpt.enableTopologyAwarePreemption {
-		return pmpt.topologyAwarePreempt(ssn, stmt, preemptor, filter, predicateNodes)
+	candidateNodes := util.GetPredicatedNodeByShard(predicateNodes, ssn.NodesInShard)
+	var preemptSuccess bool
+	var err error
+	//try to preempt in order if multiple candidate Nodes group with priority exist
+	for _, nodes := range candidateNodes {
+		if pmpt.enableTopologyAwarePreemption {
+			if preemptSuccess, err = pmpt.topologyAwarePreempt(ssn, stmt, preemptor, filter, nodes); preemptSuccess {
+				break
+			}
+		} else if preemptSuccess, err = pmpt.normalPreempt(ssn, stmt, preemptor, filter, nodes); preemptSuccess {
+			break
+		}
 	}
-
-	return pmpt.normalPreempt(ssn, stmt, preemptor, filter, predicateNodes)
+	return preemptSuccess, err
 }
 
 func (pmpt *Action) normalPreempt(
@@ -338,6 +359,12 @@ func (pmpt *Action) normalPreempt(
 			continue
 		}
 
+		// Use a temporary statement per node attempt so that eviction operations
+		// are isolated. On success the operations are merged into the caller's
+		// statement; on failure they are discarded, so evictions are only committed
+		// when preemption succeeds.
+		nodeStmt := framework.NewStatement(ssn)
+
 		victimsQueue := ssn.BuildVictimsPriorityQueue(victims, preemptor)
 		// Preempt victims for tasks, pick lowest priority task first.
 		preempted := api.EmptyResource()
@@ -359,11 +386,7 @@ func (pmpt *Action) normalPreempt(
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
 			klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
 				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
-			if err := stmt.Evict(preemptee, "preempt"); err != nil {
-				klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
-					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
-				continue
-			}
+			nodeStmt.Evict(preemptee, "preempt")
 			preempted.Add(preemptee.Resreq)
 		}
 
@@ -378,20 +401,26 @@ func (pmpt *Action) normalPreempt(
 
 		// If preemptor's queue is not allocatable, it means preemptor cannot be allocated. So no need care about the node idle resource
 		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
-			if err := stmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
+			if err := nodeStmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
-				if rollbackErr := stmt.UnPipeline(preemptor); rollbackErr != nil {
+				if rollbackErr := nodeStmt.UnPipeline(preemptor); rollbackErr != nil {
 					klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
 						preemptor.UID, node.Name, ssn.UID, rollbackErr)
 				}
+				// Pipeline failed: discard all evictions for this node and try the next one.
+				nodeStmt.Discard()
+				continue
 			}
 
-			// Ignore pipeline error, will be corrected in next scheduling loop.
+			// Pipeline succeeded: merge this node's operations into the caller's statement.
+			stmt.Merge(nodeStmt)
 			assigned = true
-
 			break
 		}
+
+		// Not enough resources on this node even after evictions: discard and try next node.
+		nodeStmt.Discard()
 	}
 
 	return assigned, nil
@@ -443,7 +472,7 @@ func (pmpt *Action) topologyAwarePreempt(
 	filter func(*api.TaskInfo) bool,
 	predicateNodes []*api.NodeInfo,
 ) (bool, error) {
-	// Find all preemption candidates.
+	// Find all preemption candidates (dry run, no side effects on stmt).
 	candidates, nodeToStatusMap, err := pmpt.findCandidates(preemptor, filter, predicateNodes, stmt)
 	if err != nil && len(candidates) == 0 {
 		return false, err
@@ -461,19 +490,25 @@ func (pmpt *Action) topologyAwarePreempt(
 		return false, fmt.Errorf("no candidate node for preemption")
 	}
 
-	if status := prepareCandidate(bestCandidate, preemptor.Pod, stmt, ssn); !status.IsSuccess() {
-		return false, fmt.Errorf("failed to prepare candidate: %v", status)
-	}
+	// Use a temporary statement so that eviction side effects are only applied
+	// after the entire preemption attempt (evictions + pipeline) succeeds.
+	tmpStmt := framework.NewStatement(ssn)
 
-	if err := stmt.Pipeline(preemptor, bestCandidate.Name(), true); err != nil {
+	prepareCandidate(bestCandidate, preemptor.Pod, tmpStmt)
+	if err := tmpStmt.Pipeline(preemptor, bestCandidate.Name(), true); err != nil {
 		klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 			preemptor.Namespace, preemptor.Name, bestCandidate.Name())
-		if rollbackErr := stmt.UnPipeline(preemptor); rollbackErr != nil {
+		if rollbackErr := tmpStmt.UnPipeline(preemptor); rollbackErr != nil {
 			klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
 				preemptor.UID, bestCandidate.Name(), ssn.UID, rollbackErr)
 		}
+		// Pipeline failed: discard all evictions to prevent side effects.
+		tmpStmt.Discard()
+		return false, err
 	}
 
+	// Success: merge temporary statement into the caller's statement.
+	stmt.Merge(tmpStmt)
 	return true, nil
 }
 
@@ -497,20 +532,14 @@ func (pmpt *Action) findCandidates(preemptor *api.TaskInfo, filter func(*api.Tas
 }
 
 // prepareCandidate evicts the victim pods before nominating the selected candidate
-func prepareCandidate(c *candidate, pod *v1.Pod, stmt *framework.Statement, ssn *framework.Session) *api.Status {
+func prepareCandidate(c *candidate, pod *v1.Pod, stmt *framework.Statement) {
 	for _, victim := range c.Victims() {
 		klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
 			victim.Namespace, victim.Name, pod.Namespace, pod.Name)
-		if err := stmt.Evict(victim, "preempt"); err != nil {
-			klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
-				victim.Namespace, victim.Name, pod.Namespace, pod.Name, err)
-			return api.AsStatus(err)
-		}
+		stmt.Evict(victim, "preempt")
 	}
 
 	metrics.RegisterPreemptionAttempts()
-
-	return nil
 }
 
 // podTerminatingByPreemption returns true if the pod is in the termination state caused by preempt action.
@@ -671,7 +700,7 @@ func (cl *candidateList) get() []*candidate {
 // for "pod" to be scheduled.
 func SelectVictimsOnNode(
 	ctx context.Context,
-	state *k8sframework.CycleState,
+	state fwk.CycleState,
 	preemptor *api.TaskInfo,
 	currentQueue *api.QueueInfo,
 	nodeInfo *api.NodeInfo,
@@ -686,10 +715,7 @@ func SelectVictimsOnNode(
 		if err != nil {
 			return err
 		}
-
-		if err := nodeInfo.RemoveTask(rti); err != nil {
-			return err
-		}
+		nodeInfo.RemoveTask(rti)
 		return nil
 	}
 
