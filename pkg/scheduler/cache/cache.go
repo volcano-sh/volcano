@@ -470,7 +470,7 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 			},
 		}
 
-		return retry.OnError(wait.Backoff{
+		err = retry.OnError(wait.Backoff{
 			Steps:    60,
 			Duration: time.Second,
 			Factor:   1,
@@ -488,6 +488,14 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 			klog.V(2).Infof("Successfully created queue %s", name)
 			return nil
 		})
+
+		// If the queue was created by another scheduler pod concurrently, treat it as success
+		if err != nil && apierrors.IsAlreadyExists(err) {
+			klog.V(2).Infof("Queue %s was created by another scheduler, skip.", name)
+			return nil
+		}
+
+		return err
 	}
 
 	if err := createIfNotExists("root", false); err != nil {
