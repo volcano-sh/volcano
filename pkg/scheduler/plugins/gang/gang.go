@@ -189,7 +189,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		if isReady {
 			klog.V(4).Infof("Gang JobReadyFn: job <%s/%s> is ready", ji.Namespace, ji.Name)
 		} else {
-			klog.V(4).Infof("Gang JobReadyFn: job <%s/%s> is NOT ready, taskReady=%v, subJobReady=%v, isReady=%v",
+			klog.V(4).Infof("Gang JobReadyFn: job <%s/%s> is NOT ready, taskReady=%v, subJobReady=%v, minAvailableReady=%v",
 				ji.Namespace, ji.Name, taskReady, subJobReady, jobIsReady)
 		}
 		return isReady
@@ -252,8 +252,16 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			for _, task := range job.TaskStatusIndex[api.Pending] {
 				pendingTaskNames = append(pendingTaskNames, task.Name)
 			}
+
+			const maxPendingTasksInMsg = 5
+			pendingInMsg := pendingTaskNames
+			if len(pendingInMsg) > maxPendingTasksInMsg {
+				pendingInMsg = append(pendingInMsg[:maxPendingTasksInMsg], fmt.Sprintf("and %d more", len(pendingInMsg)-maxPendingTasksInMsg))
+			}
 			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable, pending tasks: %v. FitError: %v",
-				unreadyTaskCount, len(job.Tasks), pendingTaskNames, job.FitError())
+				unreadyTaskCount, len(job.Tasks), pendingInMsg, job.FitError())
+			klog.V(3).Infof("Gang OnSessionClose: job <%s/%s> unschedulable, all pending tasks: %v",
+				job.Namespace, job.Name, pendingTaskNames)
 
 			unScheduleJobCount++
 			if !ssn.IsJobTerminated(job.UID) {
@@ -299,19 +307,21 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 
 	metrics.UpdateUnscheduleJobCount(unScheduleJobCount)
 
+	var totalJobsWithTasks int
 	var readyJobCount, unreadyJobCount, terminatedJobCount int
 	for _, job := range ssn.Jobs {
 		if len(job.Tasks) == 0 {
 			continue
 		}
-		if job.IsReady() {
-			readyJobCount++
-		} else if ssn.IsJobTerminated(job.UID) {
+		totalJobsWithTasks++
+		if ssn.IsJobTerminated(job.UID) {
 			terminatedJobCount++
+		} else if job.IsReady() {
+			readyJobCount++
 		} else {
 			unreadyJobCount++
 		}
 	}
 	klog.V(3).Infof("Gang OnSessionClose: total jobs: %d, ready: %d, unready: %d, terminated: %d",
-		len(ssn.Jobs), readyJobCount, unreadyJobCount, terminatedJobCount)
+		totalJobsWithTasks, readyJobCount, unreadyJobCount, terminatedJobCount)
 }
