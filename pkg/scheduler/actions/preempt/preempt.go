@@ -242,6 +242,9 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			// preemption pattern above and preventing unnecessary victim evictions.
 			stmt := framework.NewStatement(ssn)
 			for {
+				if _, found := preemptorTasks[job.UID]; !found {
+					break
+				}
 				if preemptorTasks[job.UID].Empty() {
 					break
 				}
