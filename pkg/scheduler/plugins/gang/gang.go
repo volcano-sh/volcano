@@ -182,10 +182,14 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddJobReadyFn(gp.Name(), func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
-		if ji.CheckTaskReady() && ji.CheckSubJobReady() && ji.IsReady() {
-			return true
+		isReady := ji.CheckTaskReady() && ji.CheckSubJobReady() && ji.IsReady()
+		if isReady {
+			klog.V(4).Infof("Gang JobReadyFn: job <%s/%s> is ready", ji.Namespace, ji.Name)
+		} else {
+			klog.V(4).Infof("Gang JobReadyFn: job <%s/%s> is NOT ready, taskReady=%v, subJobReady=%v, isReady=%v",
+				ji.Namespace, ji.Name, ji.CheckTaskReady(), ji.CheckSubJobReady(), ji.IsReady())
 		}
-		return false
+		return isReady
 	})
 
 	ssn.AddSubJobReadyFn(gp.Name(), func(obj interface{}) bool {
@@ -216,6 +220,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		return ji.IsStarving()
 	}
 	ssn.AddJobStarvingFns(gp.Name(), jobStarvingFn)
+	klog.V(3).Infof("Gang plugin initialized, total jobs: %d, total queues: %d", len(ssn.Jobs), len(ssn.Queues))
 }
 
 func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
@@ -240,8 +245,12 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				return num + job.ReadyTaskNum()
 			}
 			unreadyTaskCount = job.MinAvailable - schedulableTaskNum()
-			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
-				unreadyTaskCount, len(job.Tasks), job.FitError())
+			pendingTaskNames := make([]string, 0)
+			for _, task := range job.TaskStatusIndex[api.Pending] {
+				pendingTaskNames = append(pendingTaskNames, task.Name)
+			}
+			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable, pending tasks: %v. FitError: %v",
+				unreadyTaskCount, len(job.Tasks), pendingTaskNames, job.FitError())
 
 			unScheduleJobCount++
 			if !ssn.IsJobTerminated(job.UID) {
@@ -286,4 +295,20 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	}
 
 	metrics.UpdateUnscheduleJobCount(unScheduleJobCount)
+
+	var readyJobCount, unreadyJobCount, terminatedJobCount int
+	for _, job := range ssn.Jobs {
+		if len(job.Tasks) == 0 {
+			continue
+		}
+		if job.IsReady() {
+			readyJobCount++
+		} else if ssn.IsJobTerminated(job.UID) {
+			terminatedJobCount++
+		} else {
+			unreadyJobCount++
+		}
+	}
+	klog.V(3).Infof("Gang OnSessionClose: total jobs: %d, ready: %d, unready: %d, terminated: %d",
+		len(ssn.Jobs), readyJobCount, unreadyJobCount, terminatedJobCount)
 }
