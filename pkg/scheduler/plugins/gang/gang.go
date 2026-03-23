@@ -182,12 +182,15 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddJobReadyFn(gp.Name(), func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
-		isReady := ji.CheckTaskReady() && ji.CheckSubJobReady() && ji.IsReady()
+		taskReady := ji.CheckTaskReady()
+		subJobReady := ji.CheckSubJobReady()
+		jobIsReady := ji.IsReady()
+		isReady := taskReady && subJobReady && jobIsReady
 		if isReady {
 			klog.V(4).Infof("Gang JobReadyFn: job <%s/%s> is ready", ji.Namespace, ji.Name)
 		} else {
 			klog.V(4).Infof("Gang JobReadyFn: job <%s/%s> is NOT ready, taskReady=%v, subJobReady=%v, isReady=%v",
-				ji.Namespace, ji.Name, ji.CheckTaskReady(), ji.CheckSubJobReady(), ji.IsReady())
+				ji.Namespace, ji.Name, taskReady, subJobReady, jobIsReady)
 		}
 		return isReady
 	})
@@ -245,7 +248,7 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				return num + job.ReadyTaskNum()
 			}
 			unreadyTaskCount = job.MinAvailable - schedulableTaskNum()
-			pendingTaskNames := make([]string, 0)
+			pendingTaskNames := make([]string, 0, len(job.TaskStatusIndex[api.Pending]))
 			for _, task := range job.TaskStatusIndex[api.Pending] {
 				pendingTaskNames = append(pendingTaskNames, task.Name)
 			}
