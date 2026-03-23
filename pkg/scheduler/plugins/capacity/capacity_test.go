@@ -19,6 +19,7 @@ package capacity
 import (
 	"os"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -30,6 +31,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
 	"volcano.sh/volcano/pkg/scheduler/actions/reclaim"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
@@ -1069,5 +1071,131 @@ func Test_buildHierarchicalQueueAttrs_nilSafety(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// waitForBinds reads n bind notifications from ch within timeout, failing the
+// test if fewer arrive in time. Returns the set of bound pod keys (namespace/name).
+func waitForBinds(t *testing.T, ch <-chan string, n int, timeout time.Duration) map[string]bool {
+	t.Helper()
+	got := make(map[string]bool, n)
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for i := 0; i < n; i++ {
+		select {
+		case bind := <-ch:
+			got[bind] = true
+		case <-timer.C:
+			t.Fatalf("timeout waiting for bind %d/%d (got so far: %v)", i+1, n, got)
+		}
+	}
+	return got
+}
+
+// TestNoDoubleCountingForInqueueJobWithBindingTasks is a regression test for the
+// double-counting bug in the capacity plugin, mirroring what was fixed for the
+// proportion plugin in #5100. @hajnalmt flagged this in the review of that PR.
+//
+// The bug: when jobA's tasks move to Binding after an allocate cycle, they are
+// tracked in attr.allocated (Binding ∈ AllocatedStatus). But the PodGroup stays
+// Inqueue because Binding ∉ ScheduledStatus, so buildQueueAttrs adds the full
+// minResources to attr.inqueue on top of what's already in attr.allocated.
+// Queue looks over-capacity, jobB gets rejected even though there's room.
+//
+// This test exercises the real Binding window by running two scheduler cycles:
+// cycle 1 allocates jobA's tasks (leaving them in Binding), then cycle 2
+// enqueues + allocates jobB. With the fix, jobB binds correctly.
+func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
+	options.Default()
+
+	prevEnabledActionMap := conf.EnabledActionMap
+	conf.EnabledActionMap = map[string]bool{"enqueue": true}
+	defer func() { conf.EnabledActionMap = prevEnabledActionMap }()
+
+	trueValue := true
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	uthelper.RegisterPlugins(plugins)
+	defer framework.CleanupPluginBuilders()
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledOverused:    &trueValue,
+					EnabledJobEnqueued: &trueValue,
+				},
+			},
+		},
+	}
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+
+	res1cpu := api.BuildResourceList("1", "1Gi")
+	minRes3cpu := api.BuildResourceList("3", "3Gi")
+	minRes1cpu := api.BuildResourceList("1", "1Gi")
+
+	// jobA: 3 pending tasks, PodGroup already Inqueue. Cycle 1 will allocate these,
+	// moving them to Binding in the cache while pgA stays Inqueue.
+	pgA := util.BuildPodGroup("pgA", "ns1", "q1", 3, nil, schedulingv1beta1.PodGroupInqueue)
+	pgA.Spec.MinResources = &minRes3cpu
+	pA1 := util.BuildPod("ns1", "pA1", "", corev1.PodPending, res1cpu, "pgA", nil, nil)
+	pA2 := util.BuildPod("ns1", "pA2", "", corev1.PodPending, res1cpu, "pgA", nil, nil)
+	pA3 := util.BuildPod("ns1", "pA3", "", corev1.PodPending, res1cpu, "pgA", nil, nil)
+
+	// jobB: 1 pending task. 1 CPU is free after jobA takes 3, so it should be
+	// enqueued and bound in cycle 2. The double-counting bug makes the queue appear
+	// at 6/4 CPU and rejects it.
+	pgB := util.BuildPodGroup("pgB", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+	pgB.Spec.MinResources = &minRes1cpu
+	pB1 := util.BuildPod("ns1", "pB1", "", corev1.PodPending, res1cpu, "pgB", nil, nil)
+
+	q1 := util.BuildQueueWithResourcesQuantity("q1", nil, api.BuildResourceList("4", "8Gi"))
+
+	binder := util.NewFakeBinder(10)
+	evictor := util.NewFakeEvictor(0)
+	statusUpdater := &util.FakeStatusUpdater{}
+	stop := make(chan struct{})
+	defer close(stop)
+
+	sc := cache.NewCustomMockSchedulerCache("test-capacity", binder, evictor, statusUpdater, nil, nil)
+	sc.Run(stop)
+	sc.AddOrUpdateNode(n1)
+	// Only jobA in cache for cycle 1 so jobB can't accidentally get scheduled early.
+	sc.AddPod(pA1)
+	sc.AddPod(pA2)
+	sc.AddPod(pA3)
+	sc.AddPodGroupV1beta1(pgA)
+	sc.AddQueueV1beta1(q1)
+
+	// Cycle 1: allocate jobA. After this pA1/pA2/pA3 are Binding in cache,
+	// pgA stays Inqueue (Binding ∉ ScheduledStatus).
+	ssn1 := framework.OpenSession(sc, tiers, nil)
+	allocate.New().Execute(ssn1)
+	framework.CloseSession(ssn1)
+
+	cycle1 := waitForBinds(t, binder.Channel, 3, 5*time.Second)
+	for _, pod := range []string{"ns1/pA1", "ns1/pA2", "ns1/pA3"} {
+		if !cycle1[pod] {
+			t.Errorf("expected %s bound in cycle 1, got %v", pod, cycle1)
+		}
+	}
+
+	// Now add jobB. Cache state: pA1/pA2/pA3 Binding, pgA Inqueue, 1 CPU free.
+	sc.AddPod(pB1)
+	sc.AddPodGroupV1beta1(pgB)
+
+	// Cycle 2: enqueue + allocate.
+	// Correct (fix applied):  allocated=3CPU, inqueue=max(0,3-3)=0 → 1+3+0=4 ≤ 4 → jobB bound.
+	// Buggy (pre-fix):        allocated=3CPU, inqueue=3CPU         → 1+3+3=7 > 4 → jobB rejected.
+	ssn2 := framework.OpenSession(sc, tiers, nil)
+	enqueue.New().Execute(ssn2)
+	allocate.New().Execute(ssn2)
+	framework.CloseSession(ssn2)
+
+	cycle2 := waitForBinds(t, binder.Channel, 1, 5*time.Second)
+	if !cycle2["ns1/pB1"] {
+		t.Errorf("regression: pB1 not bound in cycle 2 (got %v) — capacity plugin double-counting inqueue resources for pgA with tasks in Binding", cycle2)
 	}
 }
