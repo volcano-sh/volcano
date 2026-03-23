@@ -49,16 +49,17 @@ const (
 	binpackMultiplier    = 100
 	spreadMultiplier     = 100
 
-	GPUModeAnnotation      = "volcano.sh/vgpu-mode"
+	GPUModeAnnotation              = "volcano.sh/vgpu-mode"
+	VGPUPodGroupPolicyAnnotation   = "volcano.sh/vgpu-podgroup-policy"
+	VGPUPodGroupPolicySpreadValue  = "spread"
 	vGPUControllerHAMICore = "hami-core"
 	vGPUControllerMIG      = "mig"
 	vGPUControllerMPS      = "mps"
 )
 
 var (
-	VGPUEnable               bool
-	NodeLockEnable           bool
-	VGPUPodGroupDeviceSpread bool // when true, prevent two pods from the same PodGroup from sharing the same vGPU device
+	VGPUEnable     bool
+	NodeLockEnable bool
 )
 
 type ContainerDevice struct {

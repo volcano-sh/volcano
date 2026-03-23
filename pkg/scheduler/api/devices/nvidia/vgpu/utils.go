@@ -356,7 +356,7 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 		gs = gssnap
 	}
 	var currentPodGroupKey string
-	if VGPUPodGroupDeviceSpread {
+	if pod.Annotations[VGPUPodGroupPolicyAnnotation] == VGPUPodGroupPolicySpreadValue {
 		currentPodGroupKey = getPodGroupKey(pod)
 	}
 	ctrdevs := []ContainerDevices{}
@@ -373,7 +373,7 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 			if gs.Device[i].Number <= uint(gs.Device[i].UsedNum) {
 				continue
 			}
-			if VGPUPodGroupDeviceSpread && deviceHasPodFromSameGroup(gs.Device[i], currentPodGroupKey) {
+			if currentPodGroupKey != "" && deviceHasPodFromSameGroup(gs.Device[i], currentPodGroupKey) {
 				continue
 			}
 			memreqForCard := uint(0)
