@@ -334,8 +334,10 @@ func (sc *ShardingController) parseSchedulerConfigsFromOptions() {
 
 	for _, configSpec := range sc.controllerOptions.SchedulerConfigs {
 		config := SchedulerConfig{
-			Name: configSpec.Name,
-			Type: configSpec.Type,
+			Name:            configSpec.Name,
+			Type:            configSpec.Type,
+			PolicyName:      configSpec.Policy,
+			PolicyArguments: configSpec.Arguments,
 			ShardStrategy: ShardStrategy{
 				CPUUtilizationRange: struct {
 					Min float64
@@ -351,18 +353,13 @@ func (sc *ShardingController) parseSchedulerConfigsFromOptions() {
 		}
 
 		sc.schedulerConfigs = append(sc.schedulerConfigs, config)
-		klog.Infof("Added scheduler config: %s", config.Name)
+		klog.Infof("Added scheduler config: %s with policy %s", config.Name, config.PolicyName)
 	}
 
 	klog.Infof("Initialized with %d scheduler configurations", len(sc.schedulerConfigs))
 	for _, config := range sc.schedulerConfigs {
-		klog.Infof("  Scheduler %s (%s): CPU range [%.2f, %.2f], warmup=%v, nodes=[%d,%d]",
-			config.Name, config.Type,
-			config.ShardStrategy.CPUUtilizationRange.Min,
-			config.ShardStrategy.CPUUtilizationRange.Max,
-			config.ShardStrategy.PreferWarmupNodes,
-			config.ShardStrategy.MinNodes,
-			config.ShardStrategy.MaxNodes)
+		klog.Infof("  Scheduler %s (%s): policy=%s, args=%v",
+			config.Name, config.Type, config.PolicyName, config.PolicyArguments)
 	}
 }
 
@@ -866,9 +863,26 @@ func (sc *ShardingController) loadConfigFromConfigMap() (bool, error) {
 func (sc *ShardingController) applyShardingConfig(cfg *ShardingConfig) {
 	newConfigs := make([]SchedulerConfig, 0, len(cfg.SchedulerConfigs))
 	for _, spec := range cfg.SchedulerConfigs {
+		policyName := spec.Policy
+		policyArgs := spec.Arguments
+
+		// Default to allocation-rate policy if not specified
+		if policyName == "" {
+			policyName = "allocation-rate"
+			policyArgs = map[string]interface{}{
+				"minCPUUtil":        spec.CPUUtilizationMin,
+				"maxCPUUtil":        spec.CPUUtilizationMax,
+				"preferWarmupNodes": spec.PreferWarmupNodes,
+				"minNodes":          spec.MinNodes,
+				"maxNodes":          spec.MaxNodes,
+			}
+		}
+
 		newConfigs = append(newConfigs, SchedulerConfig{
-			Name: spec.Name,
-			Type: spec.Type,
+			Name:            spec.Name,
+			Type:            spec.Type,
+			PolicyName:      policyName,
+			PolicyArguments: policyArgs,
 			ShardStrategy: ShardStrategy{
 				CPUUtilizationRange: struct {
 					Min float64
@@ -914,8 +928,8 @@ func (sc *ShardingController) applyShardingConfig(cfg *ShardingConfig) {
 
 	klog.Infof("ShardingController: applied %d scheduler configs from ConfigMap:", len(newConfigs))
 	for _, c := range newConfigs {
-		klog.Infof("  %s (%s): CPU [%.2f, %.2f], warmup=%v, nodes=[%d,%d]",
-			c.Name, c.Type,
+		klog.Infof("  %s (%s): policy=%s, CPU [%.2f, %.2f], warmup=%v, nodes=[%d,%d]",
+			c.Name, c.Type, c.PolicyName,
 			c.ShardStrategy.CPUUtilizationRange.Min,
 			c.ShardStrategy.CPUUtilizationRange.Max,
 			c.ShardStrategy.PreferWarmupNodes,
