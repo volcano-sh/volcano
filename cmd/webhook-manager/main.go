@@ -16,6 +16,7 @@ limitations under the License.
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"runtime"
@@ -49,6 +50,9 @@ var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	klog.InitFlags(nil)
+	// Opt into fixed stderrthreshold behavior (kubernetes/klog#212).
+	_ = flag.CommandLine.Set("legacy_stderr_threshold_behavior", "false")
+	_ = flag.CommandLine.Set("stderrthreshold", "INFO")
 
 	config := options.NewConfig()
 	config.AddFlags(pflag.CommandLine)

@@ -16,6 +16,7 @@ limitations under the License.
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"runtime"
@@ -48,6 +49,9 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	klog.InitFlags(nil)
+	// Opt into fixed stderrthreshold behavior (kubernetes/klog#212).
+	_ = flag.CommandLine.Set("legacy_stderr_threshold_behavior", "false")
+	_ = flag.CommandLine.Set("stderrthreshold", "INFO")
 
 	fs := pflag.CommandLine
 	s := options.NewServerOption()
