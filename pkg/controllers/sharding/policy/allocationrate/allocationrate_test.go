@@ -243,11 +243,21 @@ func TestAllocationRatePolicyCalculate(t *testing.T) {
 					len(result.SelectedNodes), tt.expectedCount, result.SelectedNodes)
 			}
 
-			// For tests with specific expected nodes, verify them
+			// For tests with specific expected nodes, verify exact match (order matters)
 			if tt.expectedNodes != nil && len(tt.expectedNodes) > 0 {
 				if len(result.SelectedNodes) != len(tt.expectedNodes) {
 					t.Errorf("Calculate() selected %d nodes, expected %d",
 						len(result.SelectedNodes), len(tt.expectedNodes))
+				} else {
+					// Verify each node name and order
+					for i := 0; i < len(tt.expectedNodes); i++ {
+						if result.SelectedNodes[i] != tt.expectedNodes[i] {
+							t.Errorf("Calculate() node[%d] = %s, expected %s. Got: %v, Expected: %v",
+								i, result.SelectedNodes[i], tt.expectedNodes[i],
+								result.SelectedNodes, tt.expectedNodes)
+							break
+						}
+					}
 				}
 			}
 		})
