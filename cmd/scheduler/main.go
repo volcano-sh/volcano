@@ -50,8 +50,12 @@ func main() {
 
 	klog.InitFlags(nil)
 	// Opt into fixed stderrthreshold behavior (kubernetes/klog#212).
-	_ = flag.CommandLine.Set("legacy_stderr_threshold_behavior", "false")
-	_ = flag.CommandLine.Set("stderrthreshold", "INFO")
+	if err := flag.CommandLine.Set("legacy_stderr_threshold_behavior", "false"); err != nil {
+		klog.Fatalf("Failed to set legacy_stderr_threshold_behavior: %v", err)
+	}
+	if err := flag.CommandLine.Set("stderrthreshold", "INFO"); err != nil {
+		klog.Fatalf("Failed to set stderrthreshold: %v", err)
+	}
 
 	fs := pflag.CommandLine
 	s := options.NewServerOption()
