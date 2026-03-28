@@ -43,6 +43,9 @@ type QueueStatusApplyConfiguration struct {
 	Reservation *ReservationApplyConfiguration `json:"reservation,omitempty"`
 	// Allocated is allocated resources in queue
 	Allocated *v1.ResourceList `json:"allocated,omitempty"`
+	// SchedulerAllocations is a per-scheduler breakdown of allocated resources.
+	// Key is schedulerName, or schedulerName-podIndex for hash-ring StatefulSet deployments.
+	SchedulerAllocations map[string]SchedulerAllocationApplyConfiguration `json:"schedulerAllocations,omitempty"`
 }
 
 // QueueStatusApplyConfiguration constructs a declarative configuration of the QueueStatus type for use with
@@ -112,5 +115,19 @@ func (b *QueueStatusApplyConfiguration) WithReservation(value *ReservationApplyC
 // If called multiple times, the Allocated field is set to the value of the last call.
 func (b *QueueStatusApplyConfiguration) WithAllocated(value v1.ResourceList) *QueueStatusApplyConfiguration {
 	b.Allocated = &value
+	return b
+}
+
+// WithSchedulerAllocations puts the entries into the SchedulerAllocations field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the SchedulerAllocations field,
+// overwriting an existing map entries in SchedulerAllocations field with the same key.
+func (b *QueueStatusApplyConfiguration) WithSchedulerAllocations(entries map[string]SchedulerAllocationApplyConfiguration) *QueueStatusApplyConfiguration {
+	if b.SchedulerAllocations == nil && len(entries) > 0 {
+		b.SchedulerAllocations = make(map[string]SchedulerAllocationApplyConfiguration, len(entries))
+	}
+	for k, v := range entries {
+		b.SchedulerAllocations[k] = v
+	}
 	return b
 }

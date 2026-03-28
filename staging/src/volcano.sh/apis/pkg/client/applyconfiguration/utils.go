@@ -189,6 +189,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &schedulingv1beta1.QueueStatusApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("Reservation"):
 		return &schedulingv1beta1.ReservationApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("SchedulerAllocation"):
+		return &schedulingv1beta1.SchedulerAllocationApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("SubGroupPolicySpec"):
 		return &schedulingv1beta1.SubGroupPolicySpecApplyConfiguration{}
 
