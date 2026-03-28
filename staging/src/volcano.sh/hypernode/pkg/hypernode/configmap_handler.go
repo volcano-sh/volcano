@@ -28,10 +28,10 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	"volcano.sh/volcano/pkg/controllers/hypernode/config"
+	"volcano.sh/hypernode/pkg/config"
 )
 
-func (hn *hyperNodeController) setConfigMapNamespaceAndName() {
+func (c *Controller) setConfigMapNamespaceAndName() {
 	namespace := os.Getenv(config.NamespaceEnvKey)
 	if namespace == "" {
 		namespace = config.DefaultNamespace
@@ -40,54 +40,52 @@ func (hn *hyperNodeController) setConfigMapNamespaceAndName() {
 	if releaseName == "" {
 		releaseName = config.DefaultReleaseName
 	}
-	hn.configMapNamespace = namespace
-	hn.configMapName = releaseName + "-controller-configmap"
+	c.configMapNamespace = namespace
+	c.configMapName = releaseName + "-controller-configmap"
 }
 
-func (hn *hyperNodeController) setupConfigMapInformer() {
-	// Only list/watch one ConfigMap
+func (c *Controller) setupConfigMapInformer() {
 	filteredInformer := coreinformers.NewFilteredConfigMapInformer(
-		hn.kubeClient,
-		hn.configMapNamespace,
+		c.kubeClient,
+		c.configMapNamespace,
 		0,
 		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 		func(options *metav1.ListOptions) {
-			options.FieldSelector = fmt.Sprintf("metadata.name=%s", hn.configMapName)
+			options.FieldSelector = fmt.Sprintf("metadata.name=%s", c.configMapName)
 		},
 	)
-	hn.informerFactory.InformerFor(&v1.ConfigMap{}, func(kubernetes.Interface, time.Duration) cache.SharedIndexInformer {
+	c.informerFactory.InformerFor(&v1.ConfigMap{}, func(kubernetes.Interface, time.Duration) cache.SharedIndexInformer {
 		return filteredInformer
 	})
-	hn.configMapInformer = hn.informerFactory.Core().V1().ConfigMaps()
-	// TODO: Only trigger handler when networkTopologyDiscovery config changed.
-	hn.configMapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    hn.addConfigMap,
-		UpdateFunc: hn.updateConfigMap,
-		DeleteFunc: hn.deleteConfigMap,
+	c.configMapInformer = c.informerFactory.Core().V1().ConfigMaps()
+	c.configMapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.addConfigMap,
+		UpdateFunc: c.updateConfigMap,
+		DeleteFunc: c.deleteConfigMap,
 	})
 }
 
-func (hn *hyperNodeController) addConfigMap(obj interface{}) {
+func (c *Controller) addConfigMap(obj interface{}) {
 	cm, ok := obj.(*v1.ConfigMap)
 	if !ok {
 		klog.ErrorS(nil, "Cannot convert to *v1.ConfigMap", "obj", obj)
 		return
 	}
 	klog.V(3).InfoS("Add ConfigMap", "namespace", cm.Namespace, "name", cm.Name)
-	hn.enqueueConfigMap(cm)
+	c.enqueueConfigMap(cm)
 }
 
-func (hn *hyperNodeController) updateConfigMap(oldObj, newObj interface{}) {
+func (c *Controller) updateConfigMap(oldObj, newObj interface{}) {
 	cm, ok := newObj.(*v1.ConfigMap)
 	if !ok {
 		klog.ErrorS(nil, "Cannot convert to *v1.ConfigMap", "obj", newObj)
 		return
 	}
 	klog.V(3).InfoS("Update ConfigMap", "namespace", cm.Namespace, "name", cm.Name)
-	hn.enqueueConfigMap(cm)
+	c.enqueueConfigMap(cm)
 }
 
-func (hn *hyperNodeController) deleteConfigMap(obj interface{}) {
+func (c *Controller) deleteConfigMap(obj interface{}) {
 	cm, ok := obj.(*v1.ConfigMap)
 	if !ok {
 		tombstone, isTombstone := obj.(cache.DeletedFinalStateUnknown)
@@ -102,14 +100,14 @@ func (hn *hyperNodeController) deleteConfigMap(obj interface{}) {
 		}
 	}
 	klog.V(3).InfoS("Delete ConfigMap", "namespace", cm.Namespace, "name", cm.Name)
-	hn.enqueueConfigMap(cm)
+	c.enqueueConfigMap(cm)
 }
 
-func (hn *hyperNodeController) enqueueConfigMap(cm *v1.ConfigMap) {
+func (c *Controller) enqueueConfigMap(cm *v1.ConfigMap) {
 	key, err := cache.MetaNamespaceKeyFunc(cm)
 	if err != nil {
 		klog.ErrorS(err, "Failed to get key for ConfigMap", "namespace", cm.Namespace, "name", cm.Name)
 		return
 	}
-	hn.configMapQueue.Add(key)
+	c.configMapQueue.Add(key)
 }

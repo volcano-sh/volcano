@@ -20,7 +20,7 @@ import (
 	"sync"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
-	"volcano.sh/volcano/pkg/controllers/hypernode/api"
+	"volcano.sh/hypernode/pkg/api"
 )
 
 type fakeDiscoverer struct {

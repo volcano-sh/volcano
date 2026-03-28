@@ -31,7 +31,7 @@ import (
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned/fake"
-	"volcano.sh/volcano/pkg/controllers/hypernode/api"
+	"volcano.sh/hypernode/pkg/api"
 )
 
 func TestUfmDiscoverer_Start(t *testing.T) {

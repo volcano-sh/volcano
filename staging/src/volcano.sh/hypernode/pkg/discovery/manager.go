@@ -29,11 +29,11 @@ import (
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
-	"volcano.sh/volcano/pkg/controllers/hypernode/api"
-	"volcano.sh/volcano/pkg/controllers/hypernode/config"
+	"volcano.sh/hypernode/pkg/api"
+	"volcano.sh/hypernode/pkg/config"
 
-	_ "volcano.sh/volcano/pkg/controllers/hypernode/discovery/label"
-	_ "volcano.sh/volcano/pkg/controllers/hypernode/discovery/ufm"
+	_ "volcano.sh/hypernode/pkg/discovery/label"
+	_ "volcano.sh/hypernode/pkg/discovery/ufm"
 )
 
 type Result struct {

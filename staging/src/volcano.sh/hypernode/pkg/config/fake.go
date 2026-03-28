@@ -19,7 +19,7 @@ package config
 import (
 	"sync"
 
-	"volcano.sh/volcano/pkg/controllers/hypernode/api"
+	"volcano.sh/hypernode/pkg/api"
 )
 
 type FakeLoader struct {
