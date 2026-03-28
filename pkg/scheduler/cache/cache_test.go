@@ -33,6 +33,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
+	"stathat.com/c/consistent"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -426,4 +428,48 @@ func (m *mockPreBinder) PreBind(ctx context.Context, bindCtx *BindContext) error
 
 func (m *mockPreBinder) PreBindRollBack(ctx context.Context, bindCtx *BindContext) {
 	// do nothing
+}
+
+func TestSchedulerIdentity(t *testing.T) {
+	tests := []struct {
+		name             string
+		schedulerNames   []string
+		schedulerPodName string
+		useHashRing      bool
+		expected         string
+	}{
+		{
+			name:           "single scheduler returns first scheduler name",
+			schedulerNames: []string{"volcano-scheduler"},
+			expected:       "volcano-scheduler",
+		},
+		{
+			name:             "hash-ring mode returns pod name",
+			schedulerNames:   []string{"volcano-scheduler"},
+			schedulerPodName: "volcano-scheduler-0",
+			useHashRing:      true,
+			expected:         "volcano-scheduler-0",
+		},
+		{
+			name:           "multiple scheduler names returns first",
+			schedulerNames: []string{"volcano-scheduler", "agent-scheduler"},
+			expected:       "volcano-scheduler",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := &SchedulerCache{
+				schedulerNames: tt.schedulerNames,
+			}
+			if tt.useHashRing {
+				sc.schedulerPodName = tt.schedulerPodName
+				sc.c = &consistent.Consistent{} // non-nil to indicate hash-ring mode
+			}
+			got := sc.SchedulerIdentity()
+			if got != tt.expected {
+				t.Errorf("SchedulerIdentity() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
 }
