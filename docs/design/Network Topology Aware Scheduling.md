@@ -291,7 +291,7 @@ spec:
 
 ## Overview
 
-This chapter describes the architectural implementation of network topology aware scheduling across multiple Volcano components. The implementation spans four main areas:
+This chapter describes the architectural implementation of network topology aware scheduling across multiple Volcano components. The implementation spans the following main areas:
 
 1. **API & CRDs**: Introduces new Kubernetes Custom Resource Definitions (HyperNode) and extends existing Volcano Job/PodGroup APIs to support network topology constraints. The HyperNode CRD represents hierarchical performance domains in the cluster, while Job specification is extended with partition policies and network topology constraints.
 
@@ -303,6 +303,9 @@ This chapter describes the architectural implementation of network topology awar
    - **Cache Layer**: Introduces HyperNodeInfo, SubJobInfo structures to represent network topology in the scheduler's object model
    - **Plugin Framework**: Extends the plugin system with new functions for HyperNode gradient organization, HyperNode ordering, SubJob readiness checks, and SubJob ordering
    - **Allocation Logic**: Implements a two-level scheduling strategy that respects both Job-level and SubJob-level network topology constraints, with intelligent HyperNode selection based on tier preferences and resource utilization. Besides, two-level gang scheduling is supported to ensure that both Jobs and SubJobs are scheduled atomically.
+   - **Shared node matching**: `MemberSelector` resolution against Nodes is aligned with the HyperNode controller via `volcano.sh/hypernode/pkg/nodematch` (see [HyperNode standalone controller](./hypernode-standalone-controller.md)).
+
+5. **HyperNode controller & topology discovery**: Creates and maintains HyperNode CRs (including optional auto-discovery sources) and updates status such as `NodeCount`. The implementation lives in the **`volcano.sh/hypernode`** Go module under `staging/src/volcano.sh/hypernode/`. It can run embedded in **`vc-controller-manager`** (default) or as a **standalone binary** `vc-hypernode-controller`. See [HyperNode auto discovery](./hyperNode-auto-discovery.md) and [HyperNode standalone controller](./hypernode-standalone-controller.md).
 
 The interactions among Volcano components are shown as follow:
 

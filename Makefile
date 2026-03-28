@@ -69,7 +69,7 @@ include Makefile.def
 
 .EXPORT_ALL_VARIABLES:
 
-all: vc-scheduler vc-agent-scheduler vc-controller-manager vc-webhook-manager vc-agent vcctl command-lines
+all: vc-scheduler vc-agent-scheduler vc-controller-manager vc-hypernode-controller vc-webhook-manager vc-agent vcctl command-lines
 
 init:
 	mkdir -p ${BIN_DIR}
@@ -92,6 +92,9 @@ vc-agent-scheduler: init
 vc-controller-manager: init
 	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-controller-manager ./cmd/controller-manager
 
+vc-hypernode-controller: init
+	cd staging/src/volcano.sh/hypernode && CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ../../../../${BIN_DIR}/vc-hypernode-controller ./cmd/hypernode-controller
+
 vc-webhook-manager: init
 	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-webhook-manager ./cmd/webhook-manager
 
@@ -102,9 +105,9 @@ vc-agent: init
 vcctl: init
 	CC=${CC} CGO_ENABLED=0 GOOS=${OS} go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vcctl ./cmd/cli
 
-image_bins: vc-scheduler vc-agent-scheduler vc-controller-manager vc-webhook-manager vc-agent
+image_bins: vc-scheduler vc-agent-scheduler vc-controller-manager vc-hypernode-controller vc-webhook-manager vc-agent
 
-images: vc-scheduler-image vc-agent-scheduler-image vc-controller-manager-image vc-webhook-manager-image vc-agent-image
+images: vc-scheduler-image vc-agent-scheduler-image vc-controller-manager-image vc-hypernode-controller-image vc-webhook-manager-image vc-agent-image
 
 # Define a reusable build function for individual component images
 define build_component_image
@@ -124,6 +127,9 @@ endef
 vc-controller-manager-image:
 	$(call build_component_image,controller-manager)
 
+vc-hypernode-controller-image:
+	$(call build_component_image,hypernode-controller)
+
 vc-scheduler-image:
 	$(call build_component_image,scheduler)
 
@@ -140,6 +146,7 @@ save-images:
 	@mkdir -p ${IMAGES_DIR}
 	@echo "Saving images with gzip compression..."
 	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-controller-manager:$(TAG) | gzip > ${IMAGES_DIR}/vc-controller-manager-$(TAG).tar.gz'
+	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-hypernode-controller:$(TAG) | gzip > ${IMAGES_DIR}/vc-hypernode-controller-$(TAG).tar.gz'
 	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-scheduler:$(TAG) | gzip > ${IMAGES_DIR}/vc-scheduler-$(TAG).tar.gz'
 	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-agent-scheduler:$(TAG) | gzip > ${IMAGES_DIR}/vc-agent-scheduler-$(TAG).tar.gz'
 	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-webhook-manager:$(TAG) | gzip > ${IMAGES_DIR}/vc-webhook-manager-$(TAG).tar.gz'
@@ -194,6 +201,7 @@ unit-test:
 	else\
 		go test -p 8 -race $$(find pkg cmd -type f -name '*_test.go' | sed -r 's|/[^/]+$$||' | sort | uniq | sed "s|^|volcano.sh/volcano/|");\
 	fi;
+	cd staging/src/volcano.sh/hypernode && go test ./...;
 
 e2e: images
 	./hack/run-e2e-kind.sh
@@ -259,6 +267,8 @@ verify:
 
 lint: ## Lint the files
 	hack/verify-golangci-lint.sh
+	# Nested module volcano.sh/hypernode is not part of root go list ./...; vet it explicitly (CI runs make lint).
+	cd staging/src/volcano.sh/hypernode && go vet ./...
 
 verify-generated-yaml:
 	./hack/check-generated-yaml.sh

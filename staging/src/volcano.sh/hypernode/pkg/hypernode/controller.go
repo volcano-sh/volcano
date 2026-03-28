@@ -31,22 +31,16 @@ import (
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
 	topologylisterv1alpha1 "volcano.sh/apis/pkg/client/listers/topology/v1alpha1"
-	"volcano.sh/volcano/pkg/controllers/framework"
-	"volcano.sh/volcano/pkg/controllers/hypernode/api"
-	"volcano.sh/volcano/pkg/controllers/hypernode/config"
-	"volcano.sh/volcano/pkg/controllers/hypernode/discovery"
-	"volcano.sh/volcano/pkg/controllers/hypernode/utils"
+	"volcano.sh/hypernode/pkg/api"
+	"volcano.sh/hypernode/pkg/config"
+	"volcano.sh/hypernode/pkg/discovery"
+	"volcano.sh/hypernode/pkg/utils"
 )
 
-func init() {
-	framework.RegisterController(&hyperNodeController{})
-}
+const controllerName = "hyperNode-controller"
 
-const (
-	name = "hyperNode-controller"
-)
-
-type hyperNodeController struct {
+// Controller reconciles HyperNode resources and network topology discovery.
+type Controller struct {
 	vcClient          vcclientset.Interface
 	kubeClient        kubernetes.Interface
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -66,95 +60,97 @@ type hyperNodeController struct {
 	configMapName      string
 }
 
-// Run starts the hyperNode controller
-func (hn *hyperNodeController) Run(stopCh <-chan struct{}) {
-	hn.vcInformerFactory.Start(stopCh)
-	hn.informerFactory.Start(stopCh)
-	for informerType, ok := range hn.informerFactory.WaitForCacheSync(stopCh) {
+// NewController returns a HyperNode controller instance (not yet initialized).
+func NewController() *Controller {
+	return &Controller{}
+}
+
+// Name matches the controller-manager gate name for hyperNode-controller.
+func (c *Controller) Name() string {
+	return controllerName
+}
+
+// Run starts the HyperNode controller.
+func (c *Controller) Run(stopCh <-chan struct{}) {
+	c.vcInformerFactory.Start(stopCh)
+	c.informerFactory.Start(stopCh)
+	for informerType, ok := range c.informerFactory.WaitForCacheSync(stopCh) {
 		if !ok {
 			klog.ErrorS(nil, "Failed to sync informer cache: %v", informerType)
 			return
 		}
 	}
-	for informerType, ok := range hn.vcInformerFactory.WaitForCacheSync(stopCh) {
+	for informerType, ok := range c.vcInformerFactory.WaitForCacheSync(stopCh) {
 		if !ok {
 			klog.ErrorS(nil, "Failed to sync informer cache", "informerType", informerType)
 			return
 		}
 	}
 
-	if err := hn.discoveryManager.Start(); err != nil {
+	if err := c.discoveryManager.Start(); err != nil {
 		klog.ErrorS(err, "Failed to start network topology discovery manager")
 		return
 	}
-	go hn.watchDiscoveryResults()
+	go c.watchDiscoveryResults()
 
-	// Start HyperNode queue processor
-	go hn.processHyperNodeQueue()
+	go c.processHyperNodeQueue()
 
 	klog.InfoS("HyperNode controller started")
 	<-stopCh
-	hn.discoveryManager.Stop()
-	hn.hyperNodeQueue.ShutDown()
+	c.discoveryManager.Stop()
+	c.hyperNodeQueue.ShutDown()
 	klog.InfoS("HyperNode controller stopped")
 }
 
-// Name returns the name of the controller
-func (hn *hyperNodeController) Name() string {
-	return name
-}
+// Initialize wires clients, informers, and discovery from Options.
+func (c *Controller) Initialize(opt *Options) error {
+	c.vcClient = opt.VolcanoClient
+	c.kubeClient = opt.KubeClient
+	c.vcInformerFactory = opt.VCSharedInformerFactory
+	c.informerFactory = opt.SharedInformerFactory
 
-// Initialize initializes the hyperNode controller
-func (hn *hyperNodeController) Initialize(opt *framework.ControllerOption) error {
-	hn.vcClient = opt.VolcanoClient
-	hn.kubeClient = opt.KubeClient
-	hn.vcInformerFactory = opt.VCSharedInformerFactory
-	hn.informerFactory = opt.SharedInformerFactory
+	c.hyperNodeInformer = c.vcInformerFactory.Topology().V1alpha1().HyperNodes()
+	c.hyperNodeLister = c.hyperNodeInformer.Lister()
+	c.hyperNodeQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
+	c.nodeLister = c.informerFactory.Core().V1().Nodes().Lister()
 
-	hn.hyperNodeInformer = hn.vcInformerFactory.Topology().V1alpha1().HyperNodes()
-	hn.hyperNodeLister = hn.hyperNodeInformer.Lister()
-	hn.hyperNodeQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
-	hn.nodeLister = hn.informerFactory.Core().V1().Nodes().Lister()
-
-	hn.setConfigMapNamespaceAndName()
-	hn.setupConfigMapInformer()
-	hn.configMapLister = hn.configMapInformer.Lister()
-	hn.configMapQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
+	c.setConfigMapNamespaceAndName()
+	c.setupConfigMapInformer()
+	c.configMapLister = c.configMapInformer.Lister()
+	c.configMapQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
 
 	configLoader := config.NewConfigLoader(
-		hn.configMapLister,
-		hn.configMapNamespace,
-		hn.configMapName,
+		c.configMapLister,
+		c.configMapNamespace,
+		c.configMapName,
 	)
 
-	hn.discoveryManager = discovery.NewManager(configLoader, hn.configMapQueue, hn.kubeClient, hn.vcClient)
+	c.discoveryManager = discovery.NewManager(configLoader, c.configMapQueue, c.kubeClient, c.vcClient)
 
-	// Add event handlers for HyperNode
-	hn.hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    hn.addHyperNode,
-		UpdateFunc: hn.updateHyperNode,
+	c.hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.addHyperNode,
+		UpdateFunc: c.updateHyperNode,
 	})
 
 	return nil
 }
 
-func (hn *hyperNodeController) watchDiscoveryResults() {
-	resultCh := hn.discoveryManager.ResultChannel()
+func (c *Controller) watchDiscoveryResults() {
+	resultCh := c.discoveryManager.ResultChannel()
 	klog.InfoS("Starting to watch discovery results")
 	for result := range resultCh {
 		if result.HyperNodes != nil {
-			hn.reconcileTopology(result.Source, result.HyperNodes)
-			hn.discoveryManager.ResultSynced(result.Source)
+			c.reconcileTopology(result.Source, result.HyperNodes)
+			c.discoveryManager.ResultSynced(result.Source)
 		}
 	}
 	klog.InfoS("Discovery result channel closed")
 }
 
-// reconcileTopology reconciles the discovered topology with existing HyperNode resources
-func (hn *hyperNodeController) reconcileTopology(source string, discoveredNodes []*topologyv1alpha1.HyperNode) {
+func (c *Controller) reconcileTopology(source string, discoveredNodes []*topologyv1alpha1.HyperNode) {
 	klog.InfoS("Starting topology reconciliation", "source", source, "discoveredNodeCount", len(discoveredNodes))
 
-	existingNodes, err := hn.hyperNodeLister.List(labels.SelectorFromSet(labels.Set{
+	existingNodes, err := c.hyperNodeLister.List(labels.SelectorFromSet(labels.Set{
 		api.NetworkTopologySourceLabelKey: source,
 	}))
 	if err != nil {
@@ -179,12 +175,12 @@ func (hn *hyperNodeController) reconcileTopology(source string, discoveredNodes 
 	for name, node := range discoveredNodeMap {
 		if _, exists := existingNodeMap[name]; !exists {
 			klog.InfoS("Creating new HyperNode", "name", name, "source", source)
-			if err := utils.CreateHyperNode(hn.vcClient, node); err != nil {
+			if err := utils.CreateHyperNode(c.vcClient, node); err != nil {
 				klog.ErrorS(err, "Failed to create HyperNode", "name", name)
 			}
 		} else {
 			klog.InfoS("Updating HyperNode", "name", name, "source", source)
-			if err := utils.UpdateHyperNode(hn.vcClient, hn.hyperNodeLister, node); err != nil {
+			if err := utils.UpdateHyperNode(c.vcClient, c.hyperNodeLister, node); err != nil {
 				klog.ErrorS(err, "Failed to update HyperNode", "name", name)
 			}
 		}
@@ -194,7 +190,7 @@ func (hn *hyperNodeController) reconcileTopology(source string, discoveredNodes 
 
 	for name := range existingNodeMap {
 		klog.InfoS("Deleting HyperNode", "name", name, "source", source)
-		if err := utils.DeleteHyperNode(hn.vcClient, name); err != nil {
+		if err := utils.DeleteHyperNode(c.vcClient, name); err != nil {
 			klog.ErrorS(err, "Failed to delete HyperNode", "name", name)
 		}
 	}

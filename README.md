@@ -167,6 +167,10 @@ This way is only available for x86_64 temporarily.
 
 Please follow the guide [Volcano Agent](https://volcano.sh/en/docs/colocation) to install volcano agent.
 
+### HyperNode controller (optional standalone binary)
+
+By default, the HyperNode controller (network topology discovery and HyperNode CR reconciliation) runs inside **`vc-controller-manager`**. If you prefer to deploy **only** that controller, use the **`volcanosh/vc-hypernode-controller:<tag>`** image (built with `make vc-hypernode-controller-image` or `make images`, same tag as other Volcano images) or build the binary with `make vc-hypernode-controller`. See [HyperNode standalone controller](docs/design/hypernode-standalone-controller.md). **Do not** run it alongside controller-manager with `hyperNode-controller` enabled on the same cluster, or reconciliation will conflict.
+
 ### Install monitoring system
 
 If you want to get prometheus and grafana volcano dashboard after volcano installed, try following commands:
