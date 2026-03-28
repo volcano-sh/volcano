@@ -20,8 +20,11 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
@@ -299,6 +302,118 @@ func TestSyncQueue(t *testing.T) {
 		item, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), testcase.queue.Name, metav1.GetOptions{})
 		assert.NoError(t, err)
 		assert.Equal(t, testcase.ExpectState, item.Status.State)
+	}
+}
+
+func TestSyncQueueAggregatesSchedulerAllocations(t *testing.T) {
+	recentTime := metav1.NewTime(time.Now().Add(-1 * time.Minute))
+	staleTime := metav1.NewTime(time.Now().Add(-10 * time.Minute))
+
+	testCases := []struct {
+		Name            string
+		queue           *schedulingv1beta1.Queue
+		ExpectAllocated v1.ResourceList
+	}{
+		{
+			Name: "Aggregate two active scheduler allocations",
+			queue: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "root",
+				},
+				Status: schedulingv1beta1.QueueStatus{
+					State: schedulingv1beta1.QueueStateOpen,
+					SchedulerAllocations: map[string]schedulingv1beta1.SchedulerAllocation{
+						"scheduler-a": {
+							Allocated: v1.ResourceList{
+								v1.ResourceCPU:    resource.MustParse("4"),
+								v1.ResourceMemory: resource.MustParse("8Gi"),
+							},
+							LastUpdateTime: recentTime,
+						},
+						"scheduler-b": {
+							Allocated: v1.ResourceList{
+								v1.ResourceCPU:    resource.MustParse("2"),
+								v1.ResourceMemory: resource.MustParse("4Gi"),
+							},
+							LastUpdateTime: recentTime,
+						},
+					},
+				},
+			},
+			ExpectAllocated: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("6"),
+				v1.ResourceMemory: resource.MustParse("12Gi"),
+			},
+		},
+		{
+			Name: "Stale entries excluded from aggregation",
+			queue: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "root",
+				},
+				Status: schedulingv1beta1.QueueStatus{
+					State: schedulingv1beta1.QueueStateOpen,
+					SchedulerAllocations: map[string]schedulingv1beta1.SchedulerAllocation{
+						"scheduler-a": {
+							Allocated: v1.ResourceList{
+								v1.ResourceCPU: resource.MustParse("4"),
+							},
+							LastUpdateTime: recentTime,
+						},
+						"scheduler-stale": {
+							Allocated: v1.ResourceList{
+								v1.ResourceCPU: resource.MustParse("10"),
+							},
+							LastUpdateTime: staleTime,
+						},
+					},
+				},
+			},
+			ExpectAllocated: v1.ResourceList{
+				v1.ResourceCPU: resource.MustParse("4"),
+			},
+		},
+		{
+			Name: "Empty scheduler allocations produces empty Allocated",
+			queue: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "root",
+				},
+				Status: schedulingv1beta1.QueueStatus{
+					State: schedulingv1beta1.QueueStateOpen,
+				},
+			},
+			ExpectAllocated: v1.ResourceList{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			c := newFakeController()
+
+			_, err := c.vcClient.SchedulingV1beta1().Queues().Create(
+				context.TODO(), tc.queue, metav1.CreateOptions{})
+			assert.NoError(t, err)
+
+			// Use a no-op state update function to keep state unchanged
+			updateStateFn := func(status *schedulingv1beta1.QueueStatus, podGroupList []string) {
+				status.State = tc.queue.Status.State
+			}
+
+			err = c.syncQueue(tc.queue, updateStateFn)
+			assert.NoError(t, err)
+
+			item, err := c.vcClient.SchedulingV1beta1().Queues().Get(
+				context.TODO(), tc.queue.Name, metav1.GetOptions{})
+			assert.NoError(t, err)
+
+			for resName, expected := range tc.ExpectAllocated {
+				actual, ok := item.Status.Allocated[resName]
+				assert.True(t, ok, "expected resource %s in Allocated", resName)
+				assert.True(t, expected.Equal(actual),
+					"resource %s: expected %s, got %s", resName, expected.String(), actual.String())
+			}
+		})
 	}
 }
 
