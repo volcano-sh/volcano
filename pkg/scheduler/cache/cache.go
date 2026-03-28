@@ -67,6 +67,7 @@ import (
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	shardinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/shard/v1alpha1"
 	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
+	v1beta1apply "volcano.sh/apis/pkg/client/applyconfiguration/scheduling/v1beta1"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
@@ -1657,6 +1658,40 @@ func (sc *SchedulerCache) updateJobInfo(job *schedulingapi.JobInfo) {
 // UpdateQueueStatus update the status of queue.
 func (sc *SchedulerCache) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
 	return sc.StatusUpdater.UpdateQueueStatus(queue)
+}
+
+// SchedulerIdentity returns the unique key for this scheduler instance.
+// For hash-ring StatefulSet deployments, returns the pod name (e.g., "volcano-scheduler-0").
+// For single-scheduler deployments, returns the first scheduler name.
+func (sc *SchedulerCache) SchedulerIdentity() string {
+	if sc.c != nil && sc.schedulerPodName != "" {
+		return sc.schedulerPodName
+	}
+	return sc.schedulerNames[0]
+}
+
+// PatchSchedulerAllocation updates this scheduler's allocation entry in queue status via SSA.
+// Each scheduler uses a unique FieldManager so concurrent patches from different schedulers
+// never conflict — SSA treats each map key as a separate field owned by its writer.
+func (sc *SchedulerCache) PatchSchedulerAllocation(queueName string, identity string, allocated v1.ResourceList) error {
+	allocApply := v1beta1apply.SchedulerAllocation().
+		WithAllocated(allocated).
+		WithLastUpdateTime(metav1.Now())
+
+	queueStatusApply := v1beta1apply.QueueStatus().
+		WithSchedulerAllocations(map[string]v1beta1apply.SchedulerAllocationApplyConfiguration{
+			identity: *allocApply,
+		})
+
+	queueApply := v1beta1apply.Queue(queueName).WithStatus(queueStatusApply)
+
+	fieldManager := "volcano-scheduler-" + identity
+	_, err := sc.vcClient.SchedulingV1beta1().Queues().ApplyStatus(
+		context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: fieldManager})
+	if err != nil {
+		klog.Errorf("failed to patch scheduler allocation for queue %s (identity=%s): %v", queueName, identity, err)
+	}
+	return err
 }
 
 func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventType, reason, msg string) {
