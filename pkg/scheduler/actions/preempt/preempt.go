@@ -109,7 +109,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
 
-	var underRequest []*api.JobInfo
+	underRequestByQueue := map[api.QueueID][]*api.JobInfo{}
 
 	for _, job := range ssn.Jobs {
 		if job.IsPending() {
@@ -142,7 +142,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 		}
 		preemptorsMap[job.Queue].Push(job)
-		underRequest = append(underRequest, job)
+		underRequestByQueue[job.Queue] = append(underRequestByQueue[job.Queue], job)
 		preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 		for _, task := range job.TaskStatusIndex[api.Pending] {
 			if task.SchGated {
@@ -233,7 +233,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 		}
 
 		// Preemption between Task within Job.
-		for _, job := range underRequest {
+		for _, job := range underRequestByQueue[queue.UID] {
 			// Here we need to use a scoped intraJob priority queue instead of overwriting preemptorTasks[job.UID].
 			// The original preemptorTasks map is populated during job discovery (lines above)
 			// and consumed by the "Preemption between Jobs within Queue" loop.
