@@ -42,6 +42,8 @@ func TestNodeGroup(t *testing.T) {
 
 	p5 := util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg5", nil, nil)
 
+	p6 := util.BuildPod("c1", "p6", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg6", nil, nil)
+
 	n1 := util.BuildNode("n1", api.BuildResourceList("2", "4Gi"), map[string]string{
 		NodeGroupNameKey: "group1",
 	})
@@ -61,6 +63,7 @@ func TestNodeGroup(t *testing.T) {
 	pg3 := util.BuildPodGroup("pg3", "c1", "q1-child", 0, nil, "")
 	pg4 := util.BuildPodGroup("pg4", "c1", "q-no-affinity-child", 0, nil, "")
 	pg5 := util.BuildPodGroup("pg5", "c1", "root-no-affinity", 0, nil, "")
+	pg6 := util.BuildPodGroup("pg6", "c1", "q3", 0, nil, "")
 
 	rootQ := util.MakeQueue("root").Affinity(&schedulingv1.Affinity{
 		NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
@@ -95,6 +98,12 @@ func TestNodeGroup(t *testing.T) {
 			PreferredDuringSchedulingIgnoredDuringExecution: []string{"group4"},
 		},
 	}).Parent("root").Obj()
+
+	queue3 := util.MakeQueue("q3").Affinity(&schedulingv1.Affinity{
+		NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
+			PreferredDuringSchedulingIgnoredDuringExecution: []string{"group1", "group3"},
+		},
+	}).Obj()
 
 	noAffinityQ := util.MakeQueue("q-no-affinity").Affinity(nil).Parent("root").Obj()
 	// q1-child's affinity is inherited from q1
@@ -283,6 +292,37 @@ func TestNodeGroup(t *testing.T) {
 					"n1": api.UnschedulableAndUnresolvable,
 					"n2": api.UnschedulableAndUnresolvable,
 					"n3": api.UnschedulableAndUnresolvable,
+					"n4": api.UnschedulableAndUnresolvable,
+					"n5": api.UnschedulableAndUnresolvable,
+				},
+			},
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:      "case: preferred nodegroup priority ordering",
+				PodGroups: []*schedulingv1.PodGroup{pg6},
+				Queues:    []*schedulingv1.Queue{queue3},
+				Pods:      []*v1.Pod{p6},
+				Nodes:     []*v1.Node{n1, n2, n3, n4, n5},
+				Plugins:   plugins,
+			},
+			arguments: framework.Arguments{
+				"enablePreferredOrder": true,
+			},
+			expected: map[string]map[string]float64{
+				"c1/p6": {
+					"n1": 50,
+					"n2": 0.0,
+					"n3": 25,
+					"n4": 0.0,
+					"n5": 0.0,
+				},
+			},
+			expectedStatus: map[string]map[string]int{
+				"c1/p6": {
+					"n1": api.Success,
+					"n2": api.UnschedulableAndUnresolvable,
+					"n3": api.Success,
 					"n4": api.UnschedulableAndUnresolvable,
 					"n5": api.UnschedulableAndUnresolvable,
 				},
