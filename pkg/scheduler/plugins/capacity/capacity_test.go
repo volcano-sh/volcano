@@ -1074,27 +1074,8 @@ func Test_buildHierarchicalQueueAttrs_nilSafety(t *testing.T) {
 	}
 }
 
-// waitForBinds reads n bind notifications from ch within timeout, failing the
-// test if fewer arrive in time. Returns the set of bound pod keys (namespace/name).
-func waitForBinds(t *testing.T, ch <-chan string, n int, timeout time.Duration) map[string]bool {
-	t.Helper()
-	got := make(map[string]bool, n)
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	for i := 0; i < n; i++ {
-		select {
-		case bind := <-ch:
-			got[bind] = true
-		case <-timer.C:
-			t.Fatalf("timeout waiting for bind %d/%d (got so far: %v)", i+1, n, got)
-		}
-	}
-	return got
-}
-
-// TestNoDoubleCountingForInqueueJobWithBindingTasks is a regression test for the
-// double-counting bug in the capacity plugin, mirroring what was fixed for the
-// proportion plugin in #5100. @hajnalmt flagged this in the review of that PR.
+// TestNoDoubleCountingForInqueueJobWithBindingTasks is a regression test for a
+// double-counting bug in the capacity plugin.
 //
 // The bug: when jobA's tasks move to Binding after an allocate cycle, they are
 // tracked in attr.allocated (Binding ∈ AllocatedStatus). But the PodGroup stays
@@ -1175,7 +1156,7 @@ func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
 	allocate.New().Execute(ssn1)
 	framework.CloseSession(ssn1)
 
-	cycle1 := waitForBinds(t, binder.Channel, 3, 5*time.Second)
+	cycle1 := uthelper.WaitForBinds(t, binder.Channel, 3, 5*time.Second)
 	for _, pod := range []string{"ns1/pA1", "ns1/pA2", "ns1/pA3"} {
 		if !cycle1[pod] {
 			t.Errorf("expected %s bound in cycle 1, got %v", pod, cycle1)
@@ -1194,7 +1175,7 @@ func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
 	allocate.New().Execute(ssn2)
 	framework.CloseSession(ssn2)
 
-	cycle2 := waitForBinds(t, binder.Channel, 1, 5*time.Second)
+	cycle2 := uthelper.WaitForBinds(t, binder.Channel, 1, 5*time.Second)
 	if !cycle2["ns1/pB1"] {
 		t.Errorf("regression: pB1 not bound in cycle 2 (got %v) — capacity plugin double-counting inqueue resources for pgA with tasks in Binding", cycle2)
 	}

@@ -47,24 +47,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-// waitForBinds reads exactly n items from ch within deadline and returns them.
-// It fails the test if fewer than n items arrive within the timeout.
-func waitForBinds(t *testing.T, ch <-chan string, n int, timeout time.Duration) map[string]bool {
-	t.Helper()
-	got := make(map[string]bool, n)
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	for i := 0; i < n; i++ {
-		select {
-		case bind := <-ch:
-			got[bind] = true
-		case <-timer.C:
-			t.Fatalf("timeout waiting for bind #%d/%d (got so far: %v)", i+1, n, got)
-		}
-	}
-	return got
-}
-
 func TestMain(m *testing.M) {
 	options.Default()
 	os.Exit(m.Run())
@@ -616,7 +598,7 @@ func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
 	framework.CloseSession(ssn1)
 
 	// Wait for all 3 cycle-1 bind notifications and verify they are for jobA.
-	cycle1 := waitForBinds(t, binder.Channel, 3, 5*time.Second)
+	cycle1 := uthelper.WaitForBinds(t, binder.Channel, 3, 5*time.Second)
 	for _, pod := range []string{"ns1/pA1", "ns1/pA2", "ns1/pA3"} {
 		if !cycle1[pod] {
 			t.Errorf("expected %s to be bound in cycle 1, got %v", pod, cycle1)
@@ -639,7 +621,7 @@ func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
 	allocate.New().Execute(ssn2)
 	framework.CloseSession(ssn2)
 
-	cycle2 := waitForBinds(t, binder.Channel, 1, 5*time.Second)
+	cycle2 := uthelper.WaitForBinds(t, binder.Channel, 1, 5*time.Second)
 	if !cycle2["ns1/pB1"] {
 		t.Errorf("regression: pB1 was not bound in cycle 2 (got %v) — proportion plugin "+
 			"is double-counting inqueue resources for pgA whose tasks are in Binding state", cycle2)
