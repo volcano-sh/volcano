@@ -666,7 +666,7 @@ func TestTopologyAwarePreempt(t *testing.T) {
 			ExpectEvicted:  []string{"c1/preemptee2"},
 		},
 		{
-			Name: "preemption with prioritiy queues",
+			Name: "preemption with priority queues",
 			PodGroups: []*schedulingv1beta1.PodGroup{
 				util.BuildPodGroupWithPrio("pg3", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupRunning, "high-priority"),
 				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),

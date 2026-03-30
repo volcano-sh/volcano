@@ -154,8 +154,10 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 	// If plugin defines queue order function, use it to order queues.
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
-	for _, queue := range ssn.Queues {
-		queues.Push(queue)
+	for queueID := range preemptorsMap {
+		if queue, found := ssn.Queues[queueID]; found {
+			queues.Push(queue)
+		}
 	}
 
 	ph := util.NewPredicateHelper()
