@@ -418,6 +418,20 @@ type QueueStatus struct {
 	// Allocated is allocated resources in queue
 	// +optional
 	Allocated v1.ResourceList `json:"allocated" protobuf:"bytes,8,opt,name=allocated"`
+
+	// SchedulerAllocations is a per-scheduler breakdown of allocated resources.
+	// Key is schedulerName, or schedulerName-podIndex for hash-ring StatefulSet deployments.
+	// +optional
+	SchedulerAllocations map[string]SchedulerAllocation `json:"schedulerAllocations,omitempty" protobuf:"bytes,9,rep,name=schedulerAllocations"`
+}
+
+// SchedulerAllocation records the resource allocation reported by a single scheduler instance.
+type SchedulerAllocation struct {
+	// Allocated is the resources allocated as reported by this scheduler.
+	// +optional
+	Allocated v1.ResourceList `json:"allocated,omitempty" protobuf:"bytes,1,opt,name=allocated"`
+	// LastUpdateTime is when this scheduler last reported its allocation.
+	LastUpdateTime metav1.Time `json:"lastUpdateTime" protobuf:"bytes,2,opt,name=lastUpdateTime"`
 }
 
 // CluterSpec represents the template of Cluster

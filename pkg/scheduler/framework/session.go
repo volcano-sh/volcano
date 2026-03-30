@@ -29,7 +29,7 @@ import (
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
+
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -524,21 +524,16 @@ func updateQueueStatus(ssn *Session) {
 		}
 	}
 
-	// update queue status
+	// update queue status — write only this scheduler's allocation entry via SSA
+	identity := ssn.cache.SchedulerIdentity()
 	for queueID := range ssn.Queues {
 		// convert api.Resource to v1.ResourceList
-		var queueStatus = util.ConvertRes2ResList(allocatedResources[queueID]).DeepCopy()
+		queueAllocated := util.ConvertRes2ResList(allocatedResources[queueID]).DeepCopy()
 
-		if equality.Semantic.DeepEqual(ssn.Queues[queueID].Queue.Status.Allocated, queueStatus) {
-			klog.V(5).Infof("Queue <%s> allocated resource keeps equal, no need to update queue status <%v>.",
-				queueID, ssn.Queues[queueID].Queue.Status.Allocated)
-			continue
-		}
-
-		ssn.Queues[queueID].Queue.Status.Allocated = queueStatus
-
-		if err := ssn.cache.UpdateQueueStatus(ssn.Queues[queueID]); err != nil {
-			klog.Errorf("failed to update queue <%s> status: %s", ssn.Queues[queueID].Name, err.Error())
+		if err := ssn.cache.PatchSchedulerAllocation(
+			string(queueID), identity, queueAllocated); err != nil {
+			klog.Errorf("failed to patch scheduler allocation for queue <%s>: %s",
+				ssn.Queues[queueID].Name, err.Error())
 		}
 	}
 }

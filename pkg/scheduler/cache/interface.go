@@ -68,6 +68,13 @@ type Cache interface {
 	// UpdateQueueStatus update queue status.
 	UpdateQueueStatus(queue *api.QueueInfo) error
 
+	// SchedulerIdentity returns the unique key for this scheduler instance.
+	// Returns schedulerName for single-scheduler, or schedulerPodName for hash-ring deployments.
+	SchedulerIdentity() string
+
+	// PatchSchedulerAllocation updates this scheduler's allocation entry in queue status via SSA.
+	PatchSchedulerAllocation(queueName string, identity string, allocated v1.ResourceList) error
+
 	// Client returns the kubernetes clientSet, which can be used by plugins
 	Client() kubernetes.Interface
 

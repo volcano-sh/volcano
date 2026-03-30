@@ -21,9 +21,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -98,14 +101,66 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 		queueStatus.State = queue.Status.State
 	}
 
+	// Aggregate per-scheduler allocations into total Allocated and garbage-collect stale entries
+	aggregatedAllocated := v1.ResourceList{}
+	var staleKeys []string
+	staleTTL := 5 * time.Minute
+	now := time.Now()
+
+	for key, alloc := range queue.Status.SchedulerAllocations {
+		if now.Sub(alloc.LastUpdateTime.Time) > staleTTL {
+			klog.V(3).Infof("Stale scheduler allocation for %s in queue %s, skipping", key, queue.Name)
+			staleKeys = append(staleKeys, key)
+			continue
+		}
+		for resName, quantity := range alloc.Allocated {
+			existing := aggregatedAllocated[resName]
+			existing.Add(quantity)
+			aggregatedAllocated[resName] = existing
+		}
+	}
+
+	// Remove zero-value entries from aggregated result
+	for resName, quantity := range aggregatedAllocated {
+		if quantity.Cmp(resource.Quantity{}) == 0 {
+			delete(aggregatedAllocated, resName)
+		}
+	}
+
 	newQueue := queue.DeepCopy()
-	// ignore update when state does not change
-	if queueStatus.State != queue.Status.State {
+	stateChanged := queueStatus.State != queue.Status.State
+	allocatedChanged := !equality.Semantic.DeepEqual(aggregatedAllocated, queue.Status.Allocated)
+
+	if stateChanged || allocatedChanged {
 		queueStatusApply := v1beta1apply.QueueStatus().WithState(queueStatus.State)
+		if len(aggregatedAllocated) > 0 {
+			queueStatusApply = queueStatusApply.WithAllocated(aggregatedAllocated)
+		}
 		queueApply := v1beta1apply.Queue(queue.Name).WithStatus(queueStatusApply)
 		if newQueue, err = c.vcClient.SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: controllerName}); err != nil {
-			klog.Errorf("Update queue state from %s to %s failed for %v", queue.Status.State, queueStatus.State, err)
+			klog.Errorf("Update queue %s status failed: %v", queue.Name, err)
 			return err
+		}
+	}
+
+	// Clean up stale scheduler allocation entries via merge patch
+	if len(staleKeys) > 0 {
+		staleMap := make(map[string]interface{})
+		for _, key := range staleKeys {
+			staleMap[key] = nil
+		}
+		patch := map[string]interface{}{
+			"status": map[string]interface{}{
+				"schedulerAllocations": staleMap,
+			},
+		}
+		patchBytes, err := json.Marshal(patch)
+		if err == nil {
+			_, patchErr := c.vcClient.SchedulingV1beta1().Queues().Patch(
+				context.TODO(), queue.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{}, "status")
+			if patchErr != nil {
+				klog.Errorf("Failed to clean up stale scheduler allocations for queue %s: %v", queue.Name, patchErr)
+			}
 		}
 	}
 
