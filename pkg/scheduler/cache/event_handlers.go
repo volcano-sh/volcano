@@ -621,6 +621,11 @@ func (sc *SchedulerCache) SyncNode(nodeName string) error {
 	}
 
 	if !sc.nodeCanAddCache(node) {
+		if deleteErr := sc.RemoveNode(nodeName); deleteErr != nil {
+			klog.Errorf("Failed to remove node <%s> from cache after label change: %s", nodeName, deleteErr.Error())
+			return deleteErr
+		}
+		klog.V(3).Infof("Node <%s> no longer matches node selector, removed from cache.", nodeName)
 		return nil
 	}
 	nodeCopy := node.DeepCopy()
