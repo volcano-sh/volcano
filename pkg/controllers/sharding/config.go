@@ -27,6 +27,10 @@ import (
 const (
 	// ConfigMapDataKey is the key inside the ConfigMap that holds the YAML configuration.
 	ConfigMapDataKey = "sharding.yaml"
+	// DefaultConfigMapName is the default name of the sharding ConfigMap.
+	DefaultConfigMapName = "volcano-sharding-configmap"
+	// DefaultConfigMapNamespace is the default namespace of the sharding ConfigMap.
+	DefaultConfigMapNamespace = "volcano-system"
 )
 
 // SchedulerConfigSpec defines the per-scheduler sharding parameters.
@@ -130,8 +134,8 @@ func NewShardingControllerOptions() ShardingControllerOptions {
 			"volcano:volcano:0.0:0.6:false:2:100",
 			"agent-scheduler:agent:0.7:1.0:true:2:100",
 		},
-		ConfigMapName:      "",
-		ConfigMapNamespace: "",
+		ConfigMapName:      DefaultConfigMapName,
+		ConfigMapNamespace: DefaultConfigMapNamespace,
 	}
 	if err := controllerOptions.ParseConfig(); err != nil {
 		klog.V(4).Infof("cannot parse scheduler configurations: %s correctly, please check and fix it correctly!", strings.Join(controllerOptions.SchedulerConfigsRaw, ", "))
@@ -157,13 +161,13 @@ func (opts *ShardingControllerOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&opts.EnableNodeEventTrigger, "enable-node-event-trigger", true,
 		"Enable node event trigger for shard updates")
 
-	fs.StringVar(&opts.ConfigMapName, "sharding-configmap", "",
+	fs.StringVar(&opts.ConfigMapName, "sharding-configmap", DefaultConfigMapName,
 		"Name of the ConfigMap that contains sharding configuration (key: "+ConfigMapDataKey+"). "+
 			"When set, ConfigMap-based config takes precedence over --scheduler-configs flags and "+
 			"the controller watches the ConfigMap for live updates.")
 
-	fs.StringVar(&opts.ConfigMapNamespace, "sharding-configmap-namespace", "",
-		"Namespace of the sharding configuration ConfigMap. Required when --sharding-configmap is set.")
+	fs.StringVar(&opts.ConfigMapNamespace, "sharding-configmap-namespace", DefaultConfigMapNamespace,
+		"Namespace of the sharding configuration ConfigMap.")
 }
 
 // ParseConfig parses the raw colon-separated config strings into SchedulerConfigs.

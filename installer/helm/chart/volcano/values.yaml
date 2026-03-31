@@ -275,7 +275,7 @@ custom:
 # schedulerConfigs defines one entry per scheduler that participates in
 # node sharding.  Each entry specifies:
 #   name               - must match the scheduler's name in NodeShard CRDs
-#   type               - workload class, e.g. "volcano" or "agent"
+#   type               - scheduler type, e.g. "volcano" or "agent"
 #   cpuUtilizationMin  - lower bound (inclusive) of the CPU utilisation range [0.0, 1.0]
 #   cpuUtilizationMax  - upper bound (inclusive) of the range
 #   preferWarmupNodes  - when true, warmup nodes are sorted first (label: node.volcano.sh/warmup=true)
@@ -307,7 +307,7 @@ custom:
 #         maxNodes: 100
 #     shardSyncPeriod: "60s"
 #     enableNodeEventTrigger: true
-  sharding_configmap_enable: false
+  sharding_configmap_enable: true
   sharding_configmap_data: ~
 
 service:

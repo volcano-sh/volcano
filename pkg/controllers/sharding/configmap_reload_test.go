@@ -443,3 +443,140 @@ schedulerConfigs:
 		context.TODO(), "volcano", metav1.GetOptions{})
 	assert.NoError(t, err, "volcano NodeShard should still exist")
 }
+
+// TestSyncShards_NewSchedulerAddedAndOldShardUpdated verifies that when a new
+// scheduler is added via ConfigMap reload, a NodeShard is created for it during
+// the next syncShards run, and existing schedulers' NodeShards are updated.
+func TestSyncShards_NewSchedulerAddedAndOldShardUpdated(t *testing.T) {
+	opt := &TestControllerOption{
+		InitialObjects: []runtime.Object{
+			CreateTestNode("node-1", "8", false, nil),
+			CreateTestNode("node-2", "8", false, nil),
+		},
+	}
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
+	controller := testCtrl.Controller
+
+	// Run initial sync so default schedulers' NodeShards exist.
+	ForceSyncShards(t, controller, 2*time.Second)
+
+	_, err := controller.vcClient.ShardV1alpha1().NodeShards().Get(
+		context.TODO(), "volcano", metav1.GetOptions{})
+	require.NoError(t, err, "volcano NodeShard should exist after initial sync")
+
+	_, err = controller.vcClient.ShardV1alpha1().NodeShards().Get(
+		context.TODO(), "agent-scheduler", metav1.GetOptions{})
+	require.NoError(t, err, "agent-scheduler NodeShard should exist after initial sync")
+
+	// Wait for informer cache to reflect the created NodeShards.
+	time.Sleep(600 * time.Millisecond)
+
+	// Reload config: keep both existing schedulers and add a new one.
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testConfigMapName,
+			Namespace: testConfigMapNamespace,
+		},
+		Data: map[string]string{
+			ConfigMapDataKey: `
+schedulerConfigs:
+  - name: volcano
+    type: volcano
+    cpuUtilizationMin: 0.0
+    cpuUtilizationMax: 0.4
+    preferWarmupNodes: false
+    minNodes: 1
+    maxNodes: 100
+  - name: agent-scheduler
+    type: agent
+    cpuUtilizationMin: 0.5
+    cpuUtilizationMax: 1.0
+    preferWarmupNodes: true
+    minNodes: 1
+    maxNodes: 100
+  - name: batch-scheduler
+    type: batch
+    cpuUtilizationMin: 0.3
+    cpuUtilizationMax: 0.7
+    preferWarmupNodes: false
+    minNodes: 1
+    maxNodes: 50
+`,
+		},
+	}
+	controller.reloadFromConfigMap(cm)
+
+	// Verify the new scheduler config was applied.
+	controller.configMu.RLock()
+	configCount := len(controller.schedulerConfigs)
+	controller.configMu.RUnlock()
+	require.Equal(t, 3, configCount, "should have 3 scheduler configs after reload")
+
+	// syncShards creates the new NodeShard and updates existing ones.
+	ForceSyncShards(t, controller, 2*time.Second)
+
+	// The new scheduler's NodeShard must be created.
+	batchShard, err := controller.vcClient.ShardV1alpha1().NodeShards().Get(
+		context.TODO(), "batch-scheduler", metav1.GetOptions{})
+	require.NoError(t, err, "batch-scheduler NodeShard should be created after adding scheduler to config")
+	assert.Equal(t, "batch-scheduler", batchShard.Name)
+
+	// The existing volcano NodeShard should still exist and be valid.
+	_, err = controller.vcClient.ShardV1alpha1().NodeShards().Get(
+		context.TODO(), "volcano", metav1.GetOptions{})
+	require.NoError(t, err, "volcano NodeShard should still exist after config reload")
+
+	// agent-scheduler should still exist.
+	_, err = controller.vcClient.ShardV1alpha1().NodeShards().Get(
+		context.TODO(), "agent-scheduler", metav1.GetOptions{})
+	assert.NoError(t, err, "agent-scheduler NodeShard should still exist")
+}
+
+// TestRun_FallsBackToFlagDefaultsWhenConfigMapAbsent verifies that when the
+// sharding ConfigMap does not exist in the cluster at startup, Run() falls
+// back to the flag-based default scheduler configs and the controller
+// operates normally.
+func TestRun_FallsBackToFlagDefaultsWhenConfigMapAbsent(t *testing.T) {
+	opt := &TestControllerOption{
+		InitialObjects: []runtime.Object{
+			CreateTestNode("node-1", "8", false, nil),
+		},
+		SkipConfigMap: true,
+	}
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
+	controller := testCtrl.Controller
+
+	// The controller should have fallen back to the flag-based defaults
+	// defined in NewShardingControllerOptions().
+	controller.configMu.RLock()
+	configs := make([]SchedulerConfig, len(controller.schedulerConfigs))
+	copy(configs, controller.schedulerConfigs)
+	controller.configMu.RUnlock()
+
+	defaults := NewShardingControllerOptions()
+	require.Len(t, configs, len(defaults.SchedulerConfigs),
+		"should fall back to flag-based default scheduler configs")
+
+	for i, expected := range defaults.SchedulerConfigs {
+		assert.Equal(t, expected.Name, configs[i].Name,
+			"scheduler config[%d] name should match flag default", i)
+		assert.InDelta(t, expected.CPUUtilizationMin,
+			configs[i].ShardStrategy.CPUUtilizationRange.Min, 1e-9,
+			"scheduler config[%d] CPUUtilizationMin should match flag default", i)
+		assert.InDelta(t, expected.CPUUtilizationMax,
+			configs[i].ShardStrategy.CPUUtilizationRange.Max, 1e-9,
+			"scheduler config[%d] CPUUtilizationMax should match flag default", i)
+	}
+
+	// The controller should still be functional: syncShards should create
+	// NodeShards for the default schedulers.
+	ForceSyncShards(t, controller, 2*time.Second)
+
+	for _, expected := range defaults.SchedulerConfigs {
+		_, err := controller.vcClient.ShardV1alpha1().NodeShards().Get(
+			context.TODO(), expected.Name, metav1.GetOptions{})
+		assert.NoError(t, err, "NodeShard for %s should be created even without ConfigMap", expected.Name)
+	}
+}
