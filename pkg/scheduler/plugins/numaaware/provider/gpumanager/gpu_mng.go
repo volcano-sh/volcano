@@ -29,6 +29,11 @@ import (
 const (
 	// NvidiaGPUResource is the extended resource name for NVIDIA GPUs.
 	NvidiaGPUResource v1.ResourceName = "nvidia.com/gpu"
+
+	// maxNUMANodes is the practical upper bound for NUMA node count.
+	// IterateBitMasks has O(2^N) complexity, so we cap N to prevent
+	// resource exhaustion from misconfigured or compromised node agents.
+	maxNUMANodes = 16
 )
 
 type gpuMng struct {
@@ -56,29 +61,39 @@ func requestedGPUs(container *v1.Container) int {
 // generateGPUTopologyHints returns topology hints for the requested GPU count
 // based on the available GPUs and their NUMA node affinity.
 func generateGPUTopologyHints(availableGPUs cpuset.CPUSet, gpuDetail api.GPUDetails, request int) []policy.TopologyHint {
-	minAffinitySize := gpuDetail.NUMANodes().Size()
-	hints := []policy.TopologyHint{}
+	numaNodes := gpuDetail.NUMANodes().List()
+	if len(numaNodes) > maxNUMANodes {
+		klog.Warningf("[gpumanager] GPU NUMA node count %d exceeds max %d, skipping hint generation", len(numaNodes), maxNUMANodes)
+		return nil
+	}
 
-	bitmask.IterateBitMasks(gpuDetail.NUMANodes().List(), func(mask bitmask.BitMask) {
-		// Count the total GPUs in the NUMA nodes covered by this mask.
-		gpusInMask := gpuDetail.GPUsInNUMANodes(mask.GetBits()...).Size()
-		if gpusInMask >= request && mask.Count() < minAffinitySize {
-			minAffinitySize = mask.Count()
+	// Pre-compute available GPUs per NUMA node to avoid repeated iteration.
+	availablePerNuma := make(map[int]int)
+	for _, gpuIdx := range availableGPUs.List() {
+		if gpuInfo, ok := gpuDetail[gpuIdx]; ok {
+			availablePerNuma[gpuInfo.NUMANodeID]++
 		}
+	}
 
+	hints := []policy.TopologyHint{}
+	minAffinitySize := len(numaNodes) + 1
+
+	bitmask.IterateBitMasks(numaNodes, func(mask bitmask.BitMask) {
 		// Count how many available GPUs fall within this NUMA node combination.
 		numMatching := 0
-		for _, gpuIdx := range availableGPUs.List() {
-			if gpuInfo, ok := gpuDetail[gpuIdx]; ok {
-				if mask.IsSet(gpuInfo.NUMANodeID) {
-					numMatching++
-				}
-			}
+		for _, numaID := range mask.GetBits() {
+			numMatching += availablePerNuma[numaID]
 		}
 
 		// If not enough GPUs are available in this NUMA combination, skip it.
 		if numMatching < request {
 			return
+		}
+
+		// Track the minimum NUMA span that can satisfy the request
+		// using actually available GPUs (not total).
+		if mask.Count() < minAffinitySize {
+			minAffinitySize = mask.Count()
 		}
 
 		hints = append(hints, policy.TopologyHint{
