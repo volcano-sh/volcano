@@ -69,10 +69,10 @@ type ShardingController struct {
 	shardInformer     shardinformers.NodeShardInformer
 	configMapInformer k8sinformerv1.ConfigMapInformer
 
-	nodeLister      k8slisterv1.NodeLister
-	podLister       k8slisterv1.PodLister
-	shardLister     shardlisters.NodeShardLister
-	configMapLister k8slisterv1.ConfigMapNamespaceLister
+	nodeLister               k8slisterv1.NodeLister
+	podLister                k8slisterv1.PodLister
+	shardLister              shardlisters.NodeShardLister
+	configMapLister          k8slisterv1.ConfigMapNamespaceLister
 	configMapInformerFactory informers.SharedInformerFactory
 
 	nodeMetricsCache map[string]*NodeMetrics
@@ -737,7 +737,6 @@ func (sc *ShardingController) deleteShard(obj interface{}) {
 	klog.V(4).Infof("Deleted shard: %s", shard.Name)
 	sc.enqueueShard(shard.Name)
 }
-
 
 // isShardingConfigMap returns true when the object is the sharding ConfigMap
 // that this controller watches.
