@@ -32,6 +32,23 @@ In Stage 2, the scheduler runs action-specific logic inside those HyperNodes. Fo
 
 This preserves existing behavior where possible, but turns topology from a late check into an upfront constraint.
 
+```mermaid
+graph TD
+    Start[Start Scheduler Cycle] --> G{Get HyperNode Gradients}
+    G --> A[PurposeAllocate]
+    G --> E[PurposeEvict]
+    A --> AG[Try gradients in order]
+    AG --> AH[Score all HyperNodes in current gradient]
+    AH --> AC{Any feasible placement?}
+    AC -- Yes --> AS[Commit best HyperNode in gradient]
+    AC -- No --> AG
+    E --> EL[Try HyperNodes in order]
+    EL --> ES[Select victim bundles in HyperNode]
+    ES --> EP{Post-eviction simulation succeeds?}
+    EP -- Yes --> EC[Evict and nominate]
+    EP -- No --> EL
+```
+
 ## API and Framework Change
 
 To let the same topology API serve both allocation and eviction, the gradient callbacks are extended with an explicit search purpose:
@@ -82,6 +99,8 @@ For each pending preemptor gang, the action starts by fetching ordered topology 
 
 Inside each HyperNode, victim selection is based on the HyperNode-wide footprint of candidate jobs. Candidate tasks are grouped into bundles per job:
 
+A bundle is the smallest eviction selection unit in this action: once selected, its tasks are evicted together as one decision, and its disruption cost is evaluated at bundle scope rather than task scope.
+
 - A safe bundle contains surplus tasks, or tasks from gangs already below their effective availability target.
 - A whole bundle contains core tasks whose eviction implies breaking the gang.
 
@@ -100,6 +119,20 @@ After second-pass sorting, victim bundles are selected incrementally in order. T
 If simulation succeeds, the action determines placement nodes for the preemptor tasks in that HyperNode, then executes eviction and nomination in one transaction and returns success. If simulation fails, the action keeps selecting the next bundle and retries. If all bundles are exhausted without a successful simulation, the current HyperNode is considered invalid for eviction and the action moves to the next HyperNode.
 
 For faster iteration in the first rollout, victim selection can run in Job-level mode, where each candidate job is treated as a single whole bundle and the same two-pass sorting, plugin filtering, simulation, and nomination flow is reused without the safe/whole split step. This reduces implementation complexity and rollout risk while keeping behavior deterministic. A per-job configuration can also be provided to opt out of bundle splitting so the selected job is always treated as one whole bundle. A later phase can enable full bundle splitting by default to improve disruption efficiency once the core path is stable.
+
+```mermaid
+flowchart TB
+    S([Start pending preemptor]) --> H[Get HyperNodes with PurposeEvict]
+    H --> L{Next HyperNode}
+    L --> B[Build and rank bundles]
+    B --> F[One-shot plugin filtering]
+    F --> R[Rebuild bundles and second-pass sort]
+    R --> P{Select bundles + simulate placement}
+    P -- Success --> C[Evict + nominate transaction]
+    C --> OK([Return success])
+    P -- Fail --> L
+    L --> X([Return fail])
+```
 
 ## Why Nomination Matters
 
@@ -120,6 +153,53 @@ A practical formulation of the efficiency metric is:
 - `Efficiency = LocalGain / GlobalCost`.
 
 Future work includes two follow-ups. First, dimensions not requested by the preemptor can be ignored in the base efficiency score in the first rollout, and a later extension can add penalties for evicting bundles that destroy large amounts of unrequested resources. Second, bundle ordering can be extracted as a plugin callback so users can configure comparator precedence, such as whether efficiency is applied before or after priority.
+
+```python
+# Pseudo code: SelectGangVictimsInHyperNode
+def select_gang_victims_in_hypernode(preemptor, hypernode, candidates, ssn):
+    bundles = []
+
+    # Phase 1: build raw bundles for each candidate job.
+    for job in candidates:
+        local_tasks = tasks_in_hypernode(job, hypernode)
+        if not local_tasks:
+            continue
+        safe_bundle, whole_bundle = split_safe_and_whole(job, local_tasks)
+        if safe_bundle:
+            bundles.append(safe_bundle)
+        if whole_bundle:
+            bundles.append(whole_bundle)
+
+    # Phase 2: first-pass sort and one-shot plugin filtering.
+    bundles = sort_bundles(bundles, preemptor)  # safe before whole, then policy order
+    ordered_tasks = flatten_tasks(bundles)
+    allowed = set(filter_eligible_tasks(ssn, preemptor.any_task(), ordered_tasks))
+
+    # Rebuild bundles with integrity rules.
+    valid = []
+    for b in bundles:
+        if b.is_whole():
+            if all(t in allowed for t in b.tasks):
+                valid.append(b)
+        else:
+            kept = [t for t in b.tasks if t in allowed]
+            if kept:
+                b.tasks = kept
+                valid.append(b)
+
+    # Phase 3: second-pass sort, then incremental select + simulate.
+    valid = sort_bundles(valid, preemptor)
+    chosen = []
+    released = zero_resource()
+    for b in valid:
+        chosen.append(b)
+        released = add_resource(released, b.local_resource())
+        if enough(add_resource(current_free(hypernode), released), preemptor.total_request()):
+            if simulate_place(preemptor, hypernode, chosen):
+                return chosen, True
+
+    return None, False
+```
 
 ## `gangPreempt` vs `gangReclaim` Behavior
 
