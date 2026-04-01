@@ -254,8 +254,10 @@ func (sc *ShardingController) Run(stopCh <-chan struct{}) {
 		if !loaded {
 			klog.Infof("Sharding ConfigMap %s/%s not found – using flag-based defaults until ConfigMap is created",
 				sc.configMapNamespace, sc.configMapName)
+			sc.configMu.Lock()
 			sc.parseSchedulerConfigsFromOptions()
 			sc.shardingManager = NewShardingManager(sc.schedulerConfigs, sc)
+			sc.configMu.Unlock()
 		}
 	}
 
