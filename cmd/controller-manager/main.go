@@ -66,6 +66,14 @@ func main() {
 		return controllerNames
 	}
 	s.AddFlags(fs, knownControllers())
+
+	// Register controller-specific flags for controllers that implement FlagProvider.
+	framework.ForeachController(func(controller framework.Controller) {
+		if fp, ok := controller.(framework.FlagProvider); ok {
+			fp.AddFlags(fs)
+		}
+	})
+
 	utilfeature.DefaultMutableFeatureGate.AddFlag(fs)
 
 	commonutil.LeaderElectionDefault(&s.LeaderElection)

@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -98,6 +99,9 @@ type ShardingController struct {
 	// shardSyncPeriodUpdateCh tells the periodic sync loop to reset its timer
 	// after a live config update.
 	shardSyncPeriodUpdateCh chan struct{}
+	// flagsRegistered tracks whether AddFlags was called (production path).
+	// When false, Initialize creates default options instead.
+	flagsRegistered bool
 }
 
 // Return the name of the controller
@@ -105,11 +109,28 @@ func (sc *ShardingController) Name() string {
 	return controllerName
 }
 
+// AddFlags implements framework.FlagProvider, registering controller-specific
+// flags before the binary's flag set is parsed.
+func (sc *ShardingController) AddFlags(fs *pflag.FlagSet) {
+	sc.controllerOptions = NewShardingControllerOptions()
+	sc.controllerOptions.AddFlags(fs)
+	sc.flagsRegistered = true
+}
+
 // Initialize initializes the controller
 func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error {
 	klog.V(2).Infof("Initializing ShardingController...")
 	sc.ctx = context.Background()
-	sc.controllerOptions = NewShardingControllerOptions()
+	// When AddFlags was called (production), re-parse the raw config strings
+	// that may have been overridden by command-line flags.
+	// When it was not called (tests), initialize options with defaults.
+	if sc.flagsRegistered {
+		if err := sc.controllerOptions.ParseConfig(); err != nil {
+			klog.Warningf("Failed to parse scheduler configs from flags: %v", err)
+		}
+	} else {
+		sc.controllerOptions = NewShardingControllerOptions()
+	}
 
 	sc.kubeClient = opt.KubeClient
 	sc.vcClient = opt.VolcanoClient
