@@ -146,13 +146,19 @@ Both sorting passes use the same comparator family, but on different inputs. The
 
 The comparator applies a fixed order. It prefers safe bundles over whole bundles, then applies queue-level fairness or priority depending on action type. For remaining ties, it applies an efficiency metric that compares local gain in the chosen HyperNode against global disruption of the victim job.
 
-A practical formulation of the efficiency metric is:
+A practical way to read the efficiency metric is "how much local relief do we get per unit of global disruption."
 
-- `LocalGain = Sum_i(min(Local_i, Need_i) / Need_i)` over requested resource dimensions.
-- `GlobalCost = Sum_i(Global_i / Need_i)` over the same dimensions.
-- `Efficiency = LocalGain / GlobalCost`.
+For each resource dimension the preemptor actually requests (for example CPU, memory, or GPU), the scheduler compares two quantities from the candidate bundle. `Local` is what the bundle frees inside the current HyperNode, which is the immediate gain for this eviction attempt. `Global` is the total disruption cost of selecting that bundle at cluster scope. For a safe bundle, `Global` is usually the sum of the resources of the evicted tasks. For a whole bundle, `Global` includes the full gang-level disruption implied by breaking that victim job.
 
-Future work includes two follow-ups. First, dimensions not requested by the preemptor can be ignored in the base efficiency score in the first rollout, and a later extension can add penalties for evicting bundles that destroy large amounts of unrequested resources. Second, bundle ordering can be extracted as a plugin callback so users can configure comparator precedence, such as whether efficiency is applied before or after priority.
+The score is then computed in three steps:
+
+- `localGain`: add up `min(Local_i, Need_i) / Need_i` across requested dimensions.
+- `globalCost`: add up `Global_i / Need_i` across the same requested dimensions.
+- `Efficiency = localGain / globalCost`.
+
+Dimensions not requested by the preemptor are skipped in the base score, which keeps the metric preemptor-centric and avoids divide-by-zero cases.
+
+Future work includes two follow-ups. First, in addition to skipping unrequested dimensions in the base score, a later extension can add explicit penalties for evicting bundles that destroy large amounts of unrequested resources. Second, bundle ordering can be extracted as a plugin callback so users can configure comparator precedence, such as whether efficiency is applied before or after priority.
 
 ```python
 # Pseudo code: SelectGangVictimsInHyperNode
