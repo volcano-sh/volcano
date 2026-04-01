@@ -1870,7 +1870,7 @@ func TestVolumeBindingFilterNilStatePanic(t *testing.T) {
 
 	state := framework.NewCycleState()
 
-	state.Write("VolumeBinding", &stateData{
+	state.Write(stateKey, &stateData{
 		podVolumeClaims: nil,
 	})
 
