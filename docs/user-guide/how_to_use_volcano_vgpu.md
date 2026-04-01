@@ -85,6 +85,21 @@ kubectl get node {node-name} -o yaml
 
 ---
 
+### PodGroup Device Spread
+
+To prevent two pods from the same PodGroup from sharing the same vGPU device, add the
+`volcano.sh/vgpu-podgroup-policy: spread` annotation to the pod. Pods without this
+annotation continue to use the default binpacking behavior.
+
+```yaml
+metadata:
+  name: spread-pod
+  annotations:
+    volcano.sh/vgpu-podgroup-policy: "spread"
+```
+
+---
+
 ### HAMI-core Usage
 
 * **Pod Spec**:
