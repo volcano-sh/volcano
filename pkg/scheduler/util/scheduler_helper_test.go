@@ -560,20 +560,20 @@ func TestPrioritizeNodes(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		nodes       []*api.NodeInfo
-		batchFn     api.BatchNodeOrderFn
-		mapFn       api.NodeOrderMapFn
-		reduceFn    api.NodeOrderReduceFn
-		wantScores  map[string]float64 // expected total score per node name
-		wantEmpty   bool               // expect empty result map
+		name       string
+		nodes      []*api.NodeInfo
+		batchFn    api.BatchNodeOrderFn
+		mapFn      api.NodeOrderMapFn
+		reduceFn   api.NodeOrderReduceFn
+		wantScores map[string]float64 // expected total score per node name
+		wantEmpty  bool               // expect empty result map
 	}{
 		{
-			name:  "empty nodes list returns empty map",
-			nodes: []*api.NodeInfo{},
-			batchFn: noopBatchFn,
-			mapFn:   noopMapFn,
-			reduceFn: noopReduceFn,
+			name:      "empty nodes list returns empty map",
+			nodes:     []*api.NodeInfo{},
+			batchFn:   noopBatchFn,
+			mapFn:     noopMapFn,
+			reduceFn:  noopReduceFn,
 			wantEmpty: true,
 		},
 		{
@@ -616,8 +616,8 @@ func TestPrioritizeNodes(t *testing.T) {
 			wantScores: map[string]float64{"node1": 5.0, "node2": 5.0},
 		},
 		{
-			name:  "mapFn error on one node skips that node but others are scored",
-			nodes: []*api.NodeInfo{node1, node2, node3},
+			name:    "mapFn error on one node skips that node but others are scored",
+			nodes:   []*api.NodeInfo{node1, node2, node3},
 			batchFn: noopBatchFn,
 			mapFn: func(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, float64, error) {
 				if node.Name == "node2" {
@@ -630,8 +630,8 @@ func TestPrioritizeNodes(t *testing.T) {
 			wantScores: map[string]float64{"node1": 7.0, "node2": 0.0, "node3": 7.0},
 		},
 		{
-			name:  "reduceFn error returns empty nodeScores",
-			nodes: []*api.NodeInfo{node1, node2},
+			name:    "reduceFn error returns empty nodeScores",
+			nodes:   []*api.NodeInfo{node1, node2},
 			batchFn: noopBatchFn,
 			mapFn:   noopMapFn,
 			reduceFn: func(task *api.TaskInfo, pluginNodeScoreMap map[string]fwk.NodeScoreList) (map[string]float64, error) {
