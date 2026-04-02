@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
 
 	"volcano.sh/volcano/pkg/agentscheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -72,6 +73,7 @@ func NewFramework(actions []Action, tiers []conf.Tier, cache cache.Cache, config
 		nil, // fast path scheduler needs to use snapshot shared lister instead
 		k8sutil.WithSnapshotSharedLister(k8sutil.NewEmptySnapshot()),
 		k8sutil.WithSharedDRAManager(cache.SharedDRAManager()),
+		k8sutil.WithSharedCSIManager(nodevolumelimits.NewCSIManager(cache.SharedInformerFactory().Storage().V1().CSINodes().Lister())),
 		k8sutil.WithClientSet(cache.Client()),
 		k8sutil.WithInformerFactory(cache.SharedInformerFactory()),
 	)
