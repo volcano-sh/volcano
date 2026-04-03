@@ -146,7 +146,10 @@ func TestSchedulerConfigParsing(t *testing.T) {
 	defer closeTestShardingController(testCtrl)
 
 	controller := testCtrl.Controller
-	configs := controller.schedulerConfigs
+	controller.configMu.RLock()
+	configs := make([]SchedulerConfig, len(controller.schedulerConfigs))
+	copy(configs, controller.schedulerConfigs)
+	controller.configMu.RUnlock()
 
 	assert.Equal(t, 2, len(configs), "should have 2 scheduler configs")
 

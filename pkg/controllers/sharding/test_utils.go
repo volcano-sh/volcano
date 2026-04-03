@@ -28,6 +28,7 @@ import (
 	kubeinformer "k8s.io/client-go/informers"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/yaml"
 
 	vcfake "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -46,10 +47,34 @@ type TestControllerOption struct {
 	InitialObjects   []runtime.Object
 	SchedulerConfigs []SchedulerConfigSpec
 	ShardSyncPeriod  time.Duration
-	StopCh           chan struct{} // Add stop channel
+	StopCh           chan struct{}
+	// SkipConfigMap, when true, omits the sharding ConfigMap from the fake
+	// client so the controller exercises the flag-based fallback path.
+	SkipConfigMap bool
 }
 
-// newTestShardingController creates a new test controller with proper setup
+// buildShardingConfigMap creates a ConfigMap containing the given scheduler
+// configs.
+func buildShardingConfigMap(specs []SchedulerConfigSpec) *corev1.ConfigMap {
+	cfg := ShardingConfig{SchedulerConfigs: specs}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		panic(fmt.Sprintf("failed to marshal sharding config for test: %v", err))
+	}
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      DefaultConfigMapName,
+			Namespace: DefaultConfigMapNamespace,
+		},
+		Data: map[string]string{
+			ConfigMapDataKey: string(data),
+		},
+	}
+}
+
+// newTestShardingController creates a new test controller.
+// It mirrors the production flow: scheduler configs are loaded from a
+// ConfigMap (created in the fake client) during Run().
 func newTestShardingController(t *testing.T, opt *TestControllerOption) *TestShardingController {
 	// Create controller
 	controller := &ShardingController{
@@ -71,8 +96,16 @@ func newTestShardingController(t *testing.T, opt *TestControllerOption) *TestSha
 		opt.StopCh = make(chan struct{})
 	}
 
+	// Build a sharding ConfigMap from the requested scheduler configs and
+	// include it in the fake client's initial objects (unless skipped).
+	initialObjects := opt.InitialObjects
+	if !opt.SkipConfigMap {
+		cm := buildShardingConfigMap(opt.SchedulerConfigs)
+		initialObjects = append(initialObjects, cm)
+	}
+
 	// Create fake clients
-	kubeClient := kubefake.NewSimpleClientset(opt.InitialObjects...)
+	kubeClient := kubefake.NewSimpleClientset(initialObjects...)
 	vcClient := vcfake.NewSimpleClientset()
 
 	// Create informer factories
@@ -87,13 +120,9 @@ func newTestShardingController(t *testing.T, opt *TestControllerOption) *TestSha
 		VCSharedInformerFactory: vcInformerFactory,
 	}
 
-	// Initialize controller
+	// Initialize controller -- configs will be loaded from ConfigMap in Run().
 	err := controller.Initialize(controllerOpt)
 	assert.NoError(t, err, "should initialize controller successfully")
-
-	// Initialize with scheduler configs
-	err = controller.InitializeWithConfigs(controllerOpt, opt.SchedulerConfigs)
-	assert.NoError(t, err, "should initialize controller with configs successfully")
 
 	// Start controller in separate goroutine
 	go controller.Run(opt.StopCh)

@@ -17,6 +17,7 @@ limitations under the License.
 package framework
 
 import (
+	"github.com/spf13/pflag"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -52,4 +53,12 @@ type Controller interface {
 	Initialize(opt *ControllerOption) error
 	// Run run the controller
 	Run(stopCh <-chan struct{})
+}
+
+// FlagProvider is an optional interface that controllers can implement to
+// register controller-specific command-line flags. Controllers that implement
+// this interface will have their AddFlags method called during flag setup
+// in the controller-manager binary.
+type FlagProvider interface {
+	AddFlags(fs *pflag.FlagSet)
 }

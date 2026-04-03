@@ -127,6 +127,14 @@ func (sc *ShardingController) areMapsEqual(a, b map[string]string) bool {
 
 // enqueueNodeEvent adds a node event to the queue
 func (sc *ShardingController) enqueueNodeEvent(nodeName, eventType, source string) {
+	sc.configMu.RLock()
+	enableNodeEventTrigger := sc.controllerOptions.EnableNodeEventTrigger
+	sc.configMu.RUnlock()
+	if !enableNodeEventTrigger {
+		klog.V(5).Infof("Skipping node event because enableNodeEventTrigger=false: %s:%s:%s", nodeName, eventType, source)
+		return
+	}
+
 	// Use a consistent key format for deduplication
 	key := fmt.Sprintf("%s:%s:%s", nodeName, eventType, source)
 	sc.nodeEventQueue.Add(key)
