@@ -23,9 +23,11 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
 	"volcano.sh/volcano/pkg/webhooks/router"
@@ -155,6 +157,11 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 // The gate prevents cluster autoscalers from seeing the pod until Volcano
 // determines it's ready (queue admission + gang scheduling satisfied).
 func patchSchedulingGates(pod *v1.Pod) *patchOperation {
+	// Skip if SchedulingGatesQueueAdmission feature gate is not enabled
+	if !utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) {
+		return nil
+	}
+
 	// Check if opt-in annotation is present
 	if !api.HasQueueAllocationGateAnnotation(pod) {
 		klog.V(4).Infof("Pod %s/%s does not have opt-in annotation, skipping gate",

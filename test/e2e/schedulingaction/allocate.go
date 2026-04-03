@@ -494,11 +494,10 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			}, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		createPod := func(name string, nodeSelector map[string]string) {
-			_ = e2eutil.CreatePod(ctx, e2eutil.PodSpec{
-				Name:   name,
-				Req:    slot,
-				Labels: map[string]string{"test": "capacity-reservation"},
+		createPod := func(name string, nodeSelector map[string]string) *corev1.Pod {
+			return e2eutil.CreatePod(ctx, e2eutil.PodSpec{
+				Name: name,
+				Req:  slot,
 				Annotations: map[string]string{
 					"scheduling.k8s.io/group-name":           pgName,
 					schedulingv1beta1.QueueAllocationGateKey: "true",
@@ -510,8 +509,13 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			})
 		}
 
-		ginkgo.By("Pod-1 schedules and runs")
-		createPod("pod-1", nil)
+		ginkgo.By("Pod-1 is created with the scheduling gate, and runs")
+		pod1 := createPod("pod-1", nil)
+
+		// The webhook must have injected the gate synchronously during Create
+		gomega.Expect(e2eutil.PodHasSchedulingGates(pod1, schedulingv1beta1.QueueAllocationGateKey)).
+			To(gomega.BeTrue(), "webhook must inject the QueueAllocationGate")
+
 		err = e2eutil.WaitPodPhase(ctx, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-1"}},
 			[]corev1.PodPhase{corev1.PodRunning})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())

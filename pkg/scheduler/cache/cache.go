@@ -231,7 +231,8 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 
 		// Ensure Volcano QueueAllocationGate is removed before bind, otherwise the bind will fail.
 		// This is a safety guarantee as the async worker may have already removed it.
-		if schedulingapi.HasQueueAllocationGateAnnotation(p) && schedulingapi.HasOnlyVolcanoSchedulingGate(p) {
+		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) &&
+			schedulingapi.HasQueueAllocationGateAnnotation(p) && schedulingapi.HasOnlyVolcanoSchedulingGate(p) {
 			klog.V(3).Infof("Ensuring gate is removed for pod %s/%s before bind", p.Namespace, p.Name)
 			err := RemoveVolcanoSchGate(kubeClient, p)
 

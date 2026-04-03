@@ -26,12 +26,14 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -113,14 +115,13 @@ type Action struct {
 	recorder *Recorder
 
 	// Async gate management infrastructure
-	kubeClient                    kubernetes.Interface // Cached client for worker goroutines
-	schGateRemovalCh              chan schGateRemovalOperation
-	schGateRemovalWorkersWg       sync.WaitGroup
-	schGateRemovalStopCh          chan struct{}
-	gateRemovalWorkerNum          int       // Number of async gate removal workers
-	initSchGateRemovalWorkersOnce sync.Once // guards channel and worker startup so Initialize() is idempotent
-	initOnce                      sync.Once
-	shutdownOnce                  sync.Once
+	kubeClient              kubernetes.Interface // Cached client for worker goroutines
+	schGateRemovalCh        chan schGateRemovalOperation
+	schGateRemovalWorkersWg sync.WaitGroup
+	schGateRemovalStopCh    chan struct{}
+	gateRemovalWorkerNum    int // Number of async gate removal workers
+	initOnce                sync.Once
+	shutdownOnce            sync.Once
 }
 
 // schGateRemovalOperation is a struct that contains the namespace
@@ -143,7 +144,7 @@ func (alloc *Action) Name() string {
 }
 
 func (alloc *Action) Initialize() {
-	alloc.initSchGateRemovalWorkersOnce.Do(func() {
+	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) {
 		// Create channel with buffer size based on worker count (200 operations per worker)
 		channelSize := alloc.gateRemovalWorkerNum * gateRemovalBufferPerWorker
 		alloc.schGateRemovalCh = make(chan schGateRemovalOperation, channelSize)
@@ -154,7 +155,7 @@ func (alloc *Action) Initialize() {
 			go alloc.schGateRemovalWorker()
 		}
 		klog.V(3).Infof("Started %d async workers for gate removal", alloc.gateRemovalWorkerNum)
-	})
+	}
 }
 
 // schGateRemovalWorker processes async gate add/remove requests
@@ -692,7 +693,8 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 		// If task passed allocation check and has the QueueAllocationGate, initiate async gate removal.
 		// Gate will be removed by the background worker (best effort). During the bind operation, we need
 		// to ensure the gate is not present, otherwise the bind will fail.
-		if task.SchGated && api.HasQueueAllocationGateAnnotation(task.Pod) {
+		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) &&
+			task.SchGated && api.HasQueueAllocationGateAnnotation(task.Pod) {
 			klog.V(3).Infof("Task %s/%s has the QueueAllocationGate, queue async gate removal", task.Namespace, task.Name)
 			alloc.schedulingGateRemoval(task, queue.UID)
 		}

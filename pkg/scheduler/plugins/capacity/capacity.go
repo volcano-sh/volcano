@@ -22,11 +22,13 @@ import (
 	"math"
 
 	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -99,18 +101,20 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	klog.V(4).Infof("The total resource is <%v>", cp.totalResource)
 
 	// Rebuild reserved cache for this scheduling cycle
-	cp.buildQueueReservedTasksCache(ssn)
+	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) {
+		cp.buildQueueReservedTasksCache(ssn)
 
-	// Register cleanup function for successful allocations
-	ssn.AddCleanupReservationsFn(cp.Name(), func(obj interface{}) {
-		stmt := obj.(*framework.Statement)
-		for _, op := range stmt.Operations() {
-			if op.Name() == framework.Allocate {
-				task := op.Task()
-				cp.removeTaskFromReservedCache(task.UID)
+		// Register cleanup function for successful allocations
+		ssn.AddCleanupReservationsFn(cp.Name(), func(obj interface{}) {
+			stmt := obj.(*framework.Statement)
+			for _, op := range stmt.Operations() {
+				if op.Name() == framework.Allocate {
+					task := op.Task()
+					cp.removeTaskFromReservedCache(task.UID)
+				}
 			}
-		}
-	})
+		})
+	}
 
 	hierarchyEnabled := ssn.HierarchyEnabled(cp.Name())
 	readyToSchedule := true
@@ -249,7 +253,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		allocatable := cp.checkQueueAllocatableHierarchically(ssn, queue, candidate)
 
 		// If queue has capacity and task has the QueueAllocationGate annotation.
-		if allocatable && api.HasQueueAllocationGateAnnotation(candidate.Pod) {
+		if allocatable && utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) &&
+			api.HasQueueAllocationGateAnnotation(candidate.Pod) {
 			cp.addTaskToReservedCache(queue.UID, candidate)
 		}
 
