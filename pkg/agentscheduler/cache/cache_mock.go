@@ -105,6 +105,7 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 		schedulerName:      schedulerName,
 		nodeSelectorLabels: make(map[string]sets.Empty),
 		imageStates:        make(map[string]*imageState),
+		taskCache:          NewTaskCache(),
 
 		NodeList:       []string{},
 		binderRegistry: NewBinderRegistry(),
