@@ -26,8 +26,6 @@ import (
 	scheduleroptions "volcano.sh/volcano/cmd/scheduler/app/options"
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
-	"volcano.sh/volcano/pkg/agentscheduler/plugins/nodeorder"
-	"volcano.sh/volcano/pkg/agentscheduler/plugins/predicates"
 	agentuthelper "volcano.sh/volcano/pkg/agentscheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -37,60 +35,10 @@ import (
 
 // TestAllocateWithShard tests agent scheduler allocate action behavior with shard configuration
 func TestAllocateWithShard(t *testing.T) {
-	// Register plugins
-	framework.RegisterPluginBuilder(predicates.PluginName, predicates.New)
-	framework.RegisterPluginBuilder(nodeorder.PluginName, nodeorder.New)
-
-	// Initialize ServerOpts if nil (for agent scheduler)
-	if options.ServerOpts == nil {
-		options.ServerOpts = options.NewServerOption()
-	}
-	// Initialize scheduler ServerOpts if nil (for volume binding plugin)
-	// predicate_helper.go uses scheduler's options, so we need to set it
-	if scheduleroptions.ServerOpts == nil {
-		scheduleroptions.ServerOpts = scheduleroptions.NewServerOption()
-	}
-	// Save original options to restore after test
-	originalShardingMode := options.ServerOpts.ShardingMode
-	originalShardName := options.ServerOpts.ShardName
-	originalSchedulerShardingMode := scheduleroptions.ServerOpts.ShardingMode
-	originalSchedulerShardName := scheduleroptions.ServerOpts.ShardName
-	defer func() {
-		if options.ServerOpts != nil {
-			options.ServerOpts.ShardingMode = originalShardingMode
-			options.ServerOpts.ShardName = originalShardName
-		}
-		if scheduleroptions.ServerOpts != nil {
-			scheduleroptions.ServerOpts.ShardingMode = originalSchedulerShardingMode
-			scheduleroptions.ServerOpts.ShardName = originalSchedulerShardName
-		}
-	}()
-
-	scheduleroptions.ServerOpts.PercentageOfNodesToFind = 100
-
-	// Common setup shared across all test cases
-	trueValue := true
-	tiers := []conf.Tier{
-		{
-			Plugins: []conf.PluginOption{
-				{
-					Name:             predicates.PluginName,
-					EnabledPredicate: &trueValue,
-				},
-				{
-					Name:             nodeorder.PluginName,
-					EnabledNodeOrder: &trueValue,
-					Arguments: map[string]interface{}{
-						"leastrequested.weight": 1,
-						"mostrequested.weight":  0,
-					},
-				},
-			},
-		},
-	}
+	agentuthelper.InitTestEnv(t)
 
 	// Create test framework (shared setup)
-	testFwk, err := agentuthelper.NewTestFramework("test-scheduler", []framework.Action{New()}, tiers, []conf.Configuration{})
+	testFwk, err := agentuthelper.NewTestFramework("test-scheduler", 1, []framework.Action{New()}, agentuthelper.DefaultTiers(), []conf.Configuration{})
 	if err != nil {
 		t.Fatalf("Failed to create test framework: %v", err)
 	}
@@ -111,7 +59,7 @@ func TestAllocateWithShard(t *testing.T) {
 	testFwk.MockCache.AddOrUpdateNode(n4)
 
 	// Update snapshot after adding nodes.
-	snapshot := testFwk.Framework.GetSnapshot()
+	snapshot := testFwk.Frameworks[0].GetSnapshot()
 	if err := testFwk.MockCache.UpdateSnapshot(snapshot); err != nil {
 		t.Fatalf("Failed to update snapshot: %v", err)
 	}
@@ -164,10 +112,10 @@ func TestAllocateWithShard(t *testing.T) {
 			}
 
 			// Execute scheduling
-			testFwk.Framework.ClearCycleState()
-			testFwk.Framework.OnCycleStart()
-			testFwk.Action.Execute(testFwk.Framework, schedCtx)
-			testFwk.Framework.OnCycleEnd()
+			testFwk.Frameworks[0].ClearCycleState()
+			testFwk.Frameworks[0].OnCycleStart()
+			testFwk.Actions[0].Execute(testFwk.Frameworks[0], schedCtx)
+			testFwk.Frameworks[0].OnCycleEnd()
 
 			// Verify result
 			agentuthelper.VerifySchedulingResult(t, testFwk.MockCache, tt.expectedNode)

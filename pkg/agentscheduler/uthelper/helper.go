@@ -19,6 +19,7 @@ package uthelper
 import (
 	"context"
 	"reflect"
+	"testing"
 	"time"
 	"unsafe"
 
@@ -31,23 +32,85 @@ import (
 
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 
+	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
+	scheduleroptions "volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/agentscheduler/cache"
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
 	"volcano.sh/volcano/pkg/agentscheduler/metrics"
+	"volcano.sh/volcano/pkg/agentscheduler/plugins/nodeorder"
+	"volcano.sh/volcano/pkg/agentscheduler/plugins/predicates"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 )
 
 // TestFramework wraps common test setup for agent scheduler tests.
 type TestFramework struct {
 	MockCache       *cache.SchedulerCache
-	Framework       *framework.Framework
-	Action          framework.Action
+	Frameworks      []*framework.Framework
+	Actions         []framework.Action
 	Cancel          context.CancelFunc
 	SchedulingQueue k8sschedulingqueue.SchedulingQueue
 }
 
+// DefaultTiers returns the default plugin tiers used across agent scheduler tests.
+func DefaultTiers() []conf.Tier {
+	trueValue := true
+	return []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:             nodeorder.PluginName,
+					EnabledNodeOrder: &trueValue,
+					Arguments: map[string]interface{}{
+						"leastrequested.weight": 1,
+						"mostrequested.weight":  0,
+					},
+				},
+			},
+		},
+	}
+}
+
+// InitTestEnv registers plugins, initializes global options, and returns a cleanup
+// function that restores original option values. Call it at the beginning of each test.
+func InitTestEnv(t *testing.T) {
+	t.Helper()
+
+	// Register plugins (idempotent — safe to call multiple times).
+	framework.RegisterPluginBuilder(predicates.PluginName, predicates.New)
+	framework.RegisterPluginBuilder(nodeorder.PluginName, nodeorder.New)
+
+	// Initialize options if nil.
+	if options.ServerOpts == nil {
+		options.ServerOpts = options.NewServerOption()
+	}
+	if scheduleroptions.ServerOpts == nil {
+		scheduleroptions.ServerOpts = scheduleroptions.NewServerOption()
+	}
+
+	// Save and restore original values.
+	origAgentShardingMode := options.ServerOpts.ShardingMode
+	origAgentShardName := options.ServerOpts.ShardName
+	origSchedShardingMode := scheduleroptions.ServerOpts.ShardingMode
+	origSchedShardName := scheduleroptions.ServerOpts.ShardName
+	origPercentage := scheduleroptions.ServerOpts.PercentageOfNodesToFind
+
+	t.Cleanup(func() {
+		options.ServerOpts.ShardingMode = origAgentShardingMode
+		options.ServerOpts.ShardName = origAgentShardName
+		scheduleroptions.ServerOpts.ShardingMode = origSchedShardingMode
+		scheduleroptions.ServerOpts.ShardName = origSchedShardName
+		scheduleroptions.ServerOpts.PercentageOfNodesToFind = origPercentage
+	})
+
+	scheduleroptions.ServerOpts.PercentageOfNodesToFind = 100
+}
+
 // NewTestFramework creates a new test framework with mock cache and scheduling queue.
-func NewTestFramework(schedulerName string, actions []framework.Action, tiers []conf.Tier, configurations []conf.Configuration) (*TestFramework, error) {
+func NewTestFramework(schedulerName string, workerCount int, actions []framework.Action, tiers []conf.Tier, configurations []conf.Configuration) (*TestFramework, error) {
 	// Initialize metrics.
 	metrics.InitKubeSchedulerRelatedMetrics()
 
@@ -85,25 +148,29 @@ func NewTestFramework(schedulerName string, actions []framework.Action, tiers []
 	*(*k8sschedulingqueue.SchedulingQueue)(fieldAddr) = schedulingQueue
 	mockCache.ConflictAwareBinder = cache.NewConflictAwareBinder(mockCache, schedulingQueue)
 
-	// Create framework.
-	var action framework.Action
-	if len(actions) > 0 {
-		action = actions[0]
+	for _, action := range actions {
 		action.OnActionInit(configurations)
 	}
-	fwk := framework.NewFramework(actions, tiers, mockCache, configurations)
 
-	// Update snapshot.
-	snapshot := fwk.GetSnapshot()
-	if err := mockCache.UpdateSnapshot(snapshot); err != nil {
-		cancel()
-		return nil, err
+	schedulingQueue.Run(klog.Background())
+
+	frameworks := make([]*framework.Framework, workerCount)
+	for i := 0; i < workerCount; i++ {
+		frameworks[i] = framework.NewFramework(actions, tiers, mockCache, configurations)
+	}
+
+	if workerCount > 0 {
+		snapshot := frameworks[0].GetSnapshot()
+		if err := mockCache.UpdateSnapshot(snapshot); err != nil {
+			cancel()
+			return nil, err
+		}
 	}
 
 	return &TestFramework{
 		MockCache:       mockCache,
-		Framework:       fwk,
-		Action:          action,
+		Frameworks:      frameworks,
+		Actions:         actions,
 		Cancel:          cancel,
 		SchedulingQueue: schedulingQueue,
 	}, nil
@@ -111,6 +178,9 @@ func NewTestFramework(schedulerName string, actions []framework.Action, tiers []
 
 // Close cleans up the test framework.
 func (tf *TestFramework) Close() {
+	if tf.SchedulingQueue != nil {
+		tf.SchedulingQueue.Close()
+	}
 	if tf.Cancel != nil {
 		tf.Cancel()
 	}
