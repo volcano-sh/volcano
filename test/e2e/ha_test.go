@@ -32,9 +32,9 @@ var _ = Describe("High Availability Deployment Tests", func() {
 				if err != nil {
 					return 0, err
 				}
-				
+
 				return deployment.Status.ReadyReplicas, nil
-			}, 3*time.Minute, 5*time.Second).Should(Equal(int32(2)), "Component %s did not reach 2 ready replicas", component)
+			}, 3*time.Minute, 5*time.Second).Should(Equal(int32(3)), "Component %s did not reach 3 ready replicas", component)
 		}
 	})
 })
