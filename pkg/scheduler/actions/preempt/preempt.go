@@ -440,7 +440,9 @@ func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {
 
 		err := pmpt.ssn.PredicateFn(preemptor, nodeInfo)
 		if err == nil {
-			return fmt.Errorf("not eligible due to the pod's nominated node is already schedulable, which should not happen as preemption means no node is schedulable")
+			klog.V(4).Infof("Task <%s/%s> nominated node <%s> is schedulable, continue preempt flow",
+				preemptor.Namespace, preemptor.Name, nomNodeName)
+			return nil
 		}
 
 		fitError, ok := err.(*api.FitError)

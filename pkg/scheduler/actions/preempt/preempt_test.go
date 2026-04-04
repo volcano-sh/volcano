@@ -268,6 +268,28 @@ func TestPreempt(t *testing.T) {
 			ExpectEvicted:  []string{}, // no victims should be reclaimed
 		},
 		{
+			Name: "continue preempt flow when nominated node is already schedulable",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroup("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning),
+				util.BuildPodGroup("pg2", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				buildPodWithNominatedNodeName("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", "n1", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("4", "4G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectPipeLined: map[string][]string{
+				"c1/pg2": {"n1"},
+			},
+			ExpectEvictNum: 0,
+			ExpectEvicted:  []string{},
+		},
+		{
 			// Verify that evictions are rolled back when the preemptor cannot be
 			// allocated due to queue capacity limits. The node has plenty of idle
 			// resources (10 CPU), and victims are preemptable, so evictions will be
@@ -690,5 +712,11 @@ func buildPodWithPodAntiAffinity(name, namespace, node string, phase v1.PodPhase
 		},
 	}
 
+	return pod
+}
+
+func buildPodWithNominatedNodeName(namespace, name, node string, phase v1.PodPhase, req v1.ResourceList, groupName, nominatedNodeName string, labels map[string]string, selector map[string]string) *v1.Pod {
+	pod := util.BuildPod(namespace, name, node, phase, req, groupName, labels, selector)
+	pod.Status.NominatedNodeName = nominatedNodeName
 	return pod
 }
