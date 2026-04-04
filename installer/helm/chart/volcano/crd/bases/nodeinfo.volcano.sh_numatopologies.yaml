@@ -58,6 +58,30 @@ spec:
                   Specifies the cpu topology info
                   Key is cpu id
                 type: object
+              gpuDetail:
+                additionalProperties:
+                  description: |-
+                    GPUInfo contains the NUMA topology information for a single GPU device,
+                    including its NUMA node affinity, PCI bus ID, and device model.
+                  properties:
+                    busID:
+                      description: BusID is the PCI Bus-Device-Function address (e.g.
+                        "0000:3b:00.0").
+                      type: string
+                    deviceModel:
+                      description: DeviceModel is the human-readable GPU model name
+                        or PCI vendor:device ID.
+                      type: string
+                    numa:
+                      description: NUMANodeID is the NUMA node to which this GPU is
+                        attached.
+                      minimum: 0
+                      type: integer
+                  type: object
+                description: |-
+                  Specifies the gpu topology info
+                  Key is gpu index (as string)
+                type: object
               numares:
                 additionalProperties:
                   description: ResourceInfo is the sets about resource capacity and

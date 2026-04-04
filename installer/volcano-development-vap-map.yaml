@@ -9942,6 +9942,30 @@ spec:
                   Specifies the cpu topology info
                   Key is cpu id
                 type: object
+              gpuDetail:
+                additionalProperties:
+                  description: |-
+                    GPUInfo contains the NUMA topology information for a single GPU device,
+                    including its NUMA node affinity, PCI bus ID, and device model.
+                  properties:
+                    busID:
+                      description: BusID is the PCI Bus-Device-Function address (e.g.
+                        "0000:3b:00.0").
+                      type: string
+                    deviceModel:
+                      description: DeviceModel is the human-readable GPU model name
+                        or PCI vendor:device ID.
+                      type: string
+                    numa:
+                      description: NUMANodeID is the NUMA node to which this GPU is
+                        attached.
+                      minimum: 0
+                      type: integer
+                  type: object
+                description: |-
+                  Specifies the gpu topology info
+                  Key is gpu index (as string)
+                type: object
               numares:
                 additionalProperties:
                   description: ResourceInfo is the sets about resource capacity and
@@ -11074,25 +11098,10 @@ spec:
           quantity(object.spec.capability[resourceName]).compareTo(quantity(object.spec.deserved[resourceName])) >= 0
         ) &&
         object.spec.deserved.all(resourceName,
-          resourceName in object.spec.capability &&
+          !(resourceName in object.spec.capability) ||
           quantity(object.spec.deserved[resourceName]).compareTo(quantity(object.spec.capability[resourceName])) <= 0
         )
-      message: "deserved should less equal than capability"
-      reason: Invalid
-    # Validate guarantee <= capability (guarantee should less equal than capability)
-    - expression: |
-        !has(object.spec) || !has(object.spec.capability) || !has(object.spec.guarantee) ||
-        !has(object.spec.guarantee.resource) || size(object.spec.capability) == 0 ||
-        size(object.spec.guarantee.resource) == 0 ||
-        object.spec.capability.all(resourceName,
-          !(resourceName in object.spec.guarantee.resource) ||
-          quantity(object.spec.capability[resourceName]).compareTo(quantity(object.spec.guarantee.resource[resourceName])) >= 0
-        ) &&
-        object.spec.guarantee.resource.all(resourceName,
-          resourceName in object.spec.capability &&
-          quantity(object.spec.guarantee.resource[resourceName]).compareTo(quantity(object.spec.capability[resourceName])) <= 0
-        )
-      message: "guarantee should less equal than capability"
+      message: "must be <= capability"
       reason: Invalid
     # Validate guarantee <= deserved (guarantee should less equal than deserved)
     # When guarantee is set, deserved must also be set
@@ -11108,7 +11117,7 @@ spec:
            resourceName in object.spec.deserved &&
            quantity(object.spec.guarantee.resource[resourceName]).compareTo(quantity(object.spec.deserved[resourceName])) <= 0
          ))
-      message: "guarantee should less equal than deserved"
+      message: "must be >= guarantee"
       reason: Invalid
     # Validate hierarchical attributes - path and weights length must match
     - expression: |

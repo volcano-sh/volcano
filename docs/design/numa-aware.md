@@ -18,7 +18,7 @@ We target to resolve the limitation to make scheduler NUMA topology aware so as 
 ## Goals
  - Support cpu resource topology scheduling
  - Support pod-level topology policies
- - Support GPU resource topology scheduling (added in v1.11)
+ - Support GPU resource topology scheduling
  
 
 ## Design Action

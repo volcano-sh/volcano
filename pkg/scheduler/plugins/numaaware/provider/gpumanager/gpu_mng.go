@@ -90,8 +90,9 @@ func generateGPUTopologyHints(availableGPUs cpuset.CPUSet, gpuDetail api.GPUDeta
 			return
 		}
 
-		// Track the minimum NUMA span that can satisfy the request
-		// using actually available GPUs (not total).
+		// Track the minimum NUMA span that can satisfy the request.
+		// This is intentionally placed after the numMatching check above,
+		// so only masks with enough available GPUs influence minAffinitySize.
 		if mask.Count() < minAffinitySize {
 			minAffinitySize = mask.Count()
 		}

@@ -225,7 +225,7 @@ The pod will be scheduled to node-2, because it can allocate the cpu request of 
 
 ## GPU NUMA-Aware Scheduling
 
-Starting from Volcano v1.11, the numa-aware plugin supports **GPU topology-aware scheduling**. This enables Volcano to consider GPU-to-NUMA node affinity when placing GPU workloads, reducing cross-NUMA memory traffic and improving performance for AI/ML training and inference.
+The numa-aware plugin supports **GPU topology-aware scheduling**. This enables Volcano to consider GPU-to-NUMA node affinity when placing GPU workloads, reducing cross-NUMA memory traffic and improving performance for AI/ML training and inference.
 
 ### How It Works
 
@@ -234,27 +234,6 @@ On multi-socket servers, each GPU is physically attached to a specific NUMA node
 1. GPUs are preferentially allocated from the **fewest NUMA nodes** possible.
 2. When both CPUs and GPUs are requested, the scheduler favors nodes where they share the **same NUMA node**, minimizing cross-NUMA data transfers.
 3. Nodes that cannot satisfy the GPU request within the topology policy are **filtered out** during the predicate phase.
-
-```
-                          Volcano Scheduler
-                                |
-                      ┌─────────┴─────────┐
-                      │   numa-aware plugin │
-                      │  ┌───────┐ ┌──────┐│
-                      │  │cpuMng │ │gpuMng││
-                      │  └───┬───┘ └──┬───┘│
-                      └──────┼────────┼────┘
-                             │        │
-                    CPU Hints│        │GPU Hints
-                             │        │
-                      ┌──────┴────────┴────┐
-                      │  Merge & Score      │
-                      │  (NUMA bitmask      │
-                      │   union of CPU+GPU) │
-                      └─────────┬──────────┘
-                                │
-                      Best node selected
-```
 
 **Data flow:**
 1. The **resource-exporter** DaemonSet discovers GPU NUMA affinity by reading `/sys/bus/pci/devices/*/numa_node` and writes it to the `Numatopology` CRD as the `gpuDetail` field.
@@ -266,7 +245,7 @@ On multi-socket servers, each GPU is physically attached to a specific NUMA node
 In addition to the [CPU NUMA prerequisites](#pre-condition) above, GPU NUMA-aware scheduling requires:
 
 1. **NVIDIA GPUs** with the [NVIDIA device plugin](https://github.com/NVIDIA/k8s-device-plugin) installed
-2. **Volcano resource-exporter** with GPU topology support (v0.2+)
+2. **Volcano resource-exporter** with GPU topology support (requires the GPU discovery patch from [resource-exporter#12](https://github.com/volcano-sh/resource-exporter/pull/12))
 
 The resource-exporter automatically discovers NVIDIA GPUs via sysfs and populates the `gpuDetail` field in the `Numatopology` CRD.
 
@@ -304,7 +283,7 @@ spec:
     "7": {"numa": 1, "busID": "0000:d9:00.0", "deviceModel": "NVIDIA A100"}
   numares:
     nvidia.com/gpu:
-      allocatable: "8"
+      allocatable: "0-7"
       capacity: 8
 ```
 
@@ -488,6 +467,15 @@ When a pod requests both CPUs and GPUs, the scorer computes the **union** of NUM
 - If CPUs are on NUMA 0 and GPUs are on NUMA 1, the union count is 2 → lower score.
 
 This ensures that the scheduler naturally co-locates CPUs and GPUs on the same NUMA node when possible, which is critical for AI workloads where the CPU feeds data to the GPU over PCIe.
+
+### Limitations
+
+The scheduler determines the best node for GPU NUMA alignment, but the actual GPU device allocation is performed by kubelet's device plugin (e.g., the NVIDIA device plugin). The scheduler does not directly control which specific GPU devices are assigned to a container.
+
+To ensure consistency between the scheduler's NUMA preference and the actual allocation:
+
+- Set kubelet's **Topology Manager policy** to `restricted` or `single-numa-node`. This causes kubelet to reject allocations that violate the NUMA topology constraint, ensuring alignment with the scheduler's decision.
+- For full scheduler-controlled allocation, **Dynamic Resource Allocation (DRA)** is the long-term solution. Once DRA is GA, the scheduler can make binding allocation decisions that kubelet must respect.
 
 ### Troubleshooting
 
