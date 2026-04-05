@@ -18,16 +18,20 @@ package hypernode
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/util/workqueue"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
@@ -121,6 +125,15 @@ func TestHyperNodeController_Run(t *testing.T) {
 	vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
 	kubeInformerFactory := informers.NewSharedInformerFactory(fakeKubeClient, 0)
 
+	createFailedOnce := false
+	fakeVcClient.PrependReactor("create", "hypernodes", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if !createFailedOnce {
+			createFailedOnce = true
+			return true, nil, apierrors.NewInternalError(fmt.Errorf("failed calling webhook: connection refused"))
+		}
+		return false, nil, nil
+	})
+
 	mockManager := &mockDiscoveryManager{
 		resultCh: make(chan discovery.Result),
 	}
@@ -138,6 +151,8 @@ func TestHyperNodeController_Run(t *testing.T) {
 		configMapNamespace: "test-namespace",
 		configMapName:      "test-release-controller-configmap",
 		hyperNodeQueue:     workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
+		topologyQueue:      workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
+		discoveredNodes:    map[string][]*topologyv1alpha1.HyperNode{},
 	}
 
 	go controller.Run(stopCh)
@@ -176,16 +191,19 @@ func TestHyperNodeController_Run(t *testing.T) {
 		}
 	}()
 
-	time.Sleep(300 * time.Millisecond)
-
-	// verify if the existing HyperNode is updated
-	updatedNode, err := fakeVcClient.TopologyV1alpha1().HyperNodes().Get(context.TODO(), "existing-node-1", metav1.GetOptions{})
-	assert.NoError(t, err, "Should be able to get the updated HyperNode")
-	assert.Equal(t, "updated-node-1", updatedNode.Spec.Members[0].Selector.ExactMatch.Name)
-
-	// verify if the new HyperNode is created
-	_, err = fakeVcClient.TopologyV1alpha1().HyperNodes().Get(context.TODO(), "new-hypernode", metav1.GetOptions{})
-	assert.NoError(t, err, "Should be able to get the created HyperNode")
+	assert.Eventually(t, func() bool {
+		// verify if the existing HyperNode is updated
+		updatedNode, err := fakeVcClient.TopologyV1alpha1().HyperNodes().Get(context.TODO(), "existing-node-1", metav1.GetOptions{})
+		if err != nil || len(updatedNode.Spec.Members) == 0 || updatedNode.Spec.Members[0].Selector.ExactMatch == nil {
+			return false
+		}
+		if updatedNode.Spec.Members[0].Selector.ExactMatch.Name != "updated-node-1" {
+			return false
+		}
+		// verify if the new HyperNode is created
+		_, err = fakeVcClient.TopologyV1alpha1().HyperNodes().Get(context.TODO(), "new-hypernode", metav1.GetOptions{})
+		return err == nil
+	}, 8*time.Second, 100*time.Millisecond)
 
 	// phase2: delete hypernode
 	go func() {
