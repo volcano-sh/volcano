@@ -231,8 +231,8 @@ func (hn *hyperNodeController) reconcileTopology(source string, discoveredNodes 
 		} else {
 			klog.InfoS("Updating HyperNode", "name", name, "source", source)
 			if err := utils.UpdateHyperNode(hn.vcClient, hn.hyperNodeLister, node); err != nil {
-				errs = append(errs, err)
 				klog.ErrorS(err, "Failed to update HyperNode", "name", name)
+				errs = append(errs, err)
 			}
 		}
 
