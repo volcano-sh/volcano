@@ -162,7 +162,7 @@ func (alloc *Action) prioritizeNodes(task *api.TaskInfo, predicateNodes []*api.N
 	var candidateNodesInOtherShards []*api.NodeInfo
 	shardingMode := options.ServerOpts.ShardingMode
 	for _, n := range predicateNodes {
-		if task.InitResreq.LessEqual(n.Idle, api.Zero) {
+		if ok, _ := task.InitResreq.LessEqual(n.Idle, api.Zero); ok {
 			switch shardingMode {
 			case commonutil.NoneShardingMode, commonutil.HardShardingMode:
 				candidateNodesInShard = append(candidateNodesInShard, n) //in hardmode, all predicates nodes are in shard
@@ -263,7 +263,7 @@ func (alloc *Action) failureHandler(schedCtx *agentapi.SchedulingContext) {
 func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 	// Check for Resource Predicate
 	var statusSets api.StatusSets
-	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.Idle, api.Zero); !ok {
+	if ok, resources := task.InitResreq.LessEqual(node.Idle, api.Zero); !ok {
 		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.WrapInsufficientResourceReason(resources)})
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}

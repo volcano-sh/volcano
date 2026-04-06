@@ -380,7 +380,8 @@ func (pmpt *Action) normalPreempt(
 			// so if current queue is not allocatable(the queue will be overused when consider current preemptor's requests)
 			// or current idle resource is not enough for preemptor, it need to continue preempting
 			// otherwise, break out
-			if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+			fit, _ := preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero)
+			if ssn.Allocatable(currentQueue, preemptor) && fit {
 				break
 			}
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
@@ -400,7 +401,8 @@ func (pmpt *Action) normalPreempt(
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
 		// If preemptor's queue is not allocatable, it means preemptor cannot be allocated. So no need care about the node idle resource
-		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+		fit, _ := preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero)
+		if ssn.Allocatable(currentQueue, preemptor) && fit {
 			if err := nodeStmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
@@ -765,7 +767,8 @@ func SelectVictimsOnNode(
 			return nil, api.AsStatus(err)
 		}
 
-		if ssn.SimulateAllocatableFn(ctx, state, currentQueue, preemptor) && preemptor.InitResreq.LessEqual(nodeInfo.FutureIdle(), api.Zero) {
+		fit, _ := preemptor.InitResreq.LessEqual(nodeInfo.FutureIdle(), api.Zero)
+		if ssn.SimulateAllocatableFn(ctx, state, currentQueue, preemptor) && fit {
 			if err := ssn.SimulatePredicateFn(ctx, state, preemptor, nodeInfo); err == nil {
 				klog.V(3).Infof("Pod %v/%v can be scheduled on node %v after preempt %v/%v, stop evicting more pods", preemptor.Namespace, preemptor.Name, nodeInfo.Name, task.Namespace, task.Name)
 				break
@@ -801,7 +804,8 @@ func SelectVictimsOnNode(
 		}
 
 		var fits bool
-		if ssn.SimulateAllocatableFn(ctx, state, currentQueue, preemptor) && preemptor.InitResreq.LessEqual(nodeInfo.FutureIdle(), api.Zero) {
+		fit, _ := preemptor.InitResreq.LessEqual(nodeInfo.FutureIdle(), api.Zero)
+		if ssn.SimulateAllocatableFn(ctx, state, currentQueue, preemptor) && fit {
 			err := ssn.SimulatePredicateFn(ctx, state, preemptor, nodeInfo)
 			fits = err == nil
 		}

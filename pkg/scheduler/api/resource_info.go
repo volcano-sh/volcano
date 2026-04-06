@@ -290,14 +290,15 @@ func (r *Resource) Add(rr *Resource) *Resource {
 
 // Sub subtracts two Resource objects with assertion.
 func (r *Resource) Sub(rr *Resource) *Resource {
-	assert.Assertf(rr.LessEqual(r, Zero), "resource is not sufficient to do operation: <%v> sub <%v>", r, rr)
+	ok, _ := rr.LessEqual(r, Zero)
+	assert.Assertf(ok, "resource is not sufficient to do operation: <%v> sub <%v>", r, rr)
 	return r.sub(rr)
 }
 
 // SubWithoutAssert subtracts two Resource objects without assertion,
 // this function is added because some resource subtraction allows negative results, while others do not.
 func (r *Resource) SubWithoutAssert(rr *Resource) *Resource {
-	ok, resources := rr.LessEqualWithResourcesName(r, Zero)
+	ok, resources := rr.LessEqual(r, Zero)
 	if !ok {
 		klog.Errorf("resources <%v> are not sufficient to do operation: <%v> sub <%v>", resources, r, rr)
 	}
@@ -423,10 +424,11 @@ func (r *Resource) Less(rr *Resource, defaultValue DimensionDefaultValue) bool {
 	return true
 }
 
-// LessEqual returns true only on condition that all dimensions of resources in r are less than or equal with that of rr,
-// Otherwise returns false.
+// LessEqual returns true and an empty slice if all dimensions of resources in r are less than or equal to those of rr,
+// otherwise it returns false and a slice of dimension names where r exceeds rr.
 // @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
-func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) bool {
+func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) (bool, []string) {
+	resources := []string{}
 	lessEqualFunc := func(l, r, diff float64) bool {
 		if l < r || math.Abs(l-r) < diff {
 			return true
@@ -434,103 +436,25 @@ func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) b
 		return false
 	}
 
-	if !lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) {
-		return false
+	if r == nil {
+		return true, resources
 	}
-	if !lessEqualFunc(r.Memory, rr.Memory, minResource) {
-		return false
+	if rr == nil {
+		rr = EmptyResource()
 	}
 
+	if !lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) {
+		resources = append(resources, "cpu")
+	}
+	if !lessEqualFunc(r.Memory, rr.Memory, minResource) {
+		resources = append(resources, "memory")
+	}
 	if defaultValue == Infinity {
 		for name := range rr.ScalarResources {
 			if _, ok := r.ScalarResources[name]; !ok {
-				return false
+				resources = append(resources, string(name))
 			}
 		}
-	}
-
-	for resourceName, leftValue := range r.ScalarResources {
-		rightValue, ok := rr.ScalarResources[resourceName]
-		if !ok && defaultValue == Infinity {
-			continue
-		}
-
-		if !lessEqualFunc(leftValue, rightValue, minResource) {
-			return false
-		}
-	}
-	return true
-}
-
-// LessEqualWithDimensionAndResourcesName only compare the resource items in req param
-// Will return false and a slice of resource names showing the ones that are insufficient
-// @param req define the resource item to be compared
-// if req is nil, equals r.LessEqualWithResourcesName(rr, Zero)
-func (r *Resource) LessEqualWithDimensionAndResourcesName(rr *Resource, req *Resource) (bool, []string) {
-	resources := []string{}
-	if r == nil {
-		return true, []string{}
-	}
-	if rr == nil {
-		for _, name := range r.ResourceNames() {
-			resources = append(resources, string(name))
-		}
-		return false, resources
-	}
-	if req == nil {
-		return r.LessEqualWithResourcesName(rr, Zero)
-	}
-
-	if req.MilliCPU > 0 && r.MilliCPU > rr.MilliCPU {
-		resources = append(resources, "cpu")
-	}
-	if req.Memory > 0 && r.Memory > rr.Memory {
-		resources = append(resources, "memory")
-	}
-
-	// if r.scalar is nil, whatever rr.scalar is, r is less or equal to rr
-	if r.ScalarResources == nil {
-		if len(resources) > 0 {
-			return false, resources
-		}
-		return true, resources
-	}
-
-	for name, quant := range req.ScalarResources {
-		if IsIgnoredScalarResource(name) {
-			continue
-		}
-		rQuant := r.ScalarResources[name]
-		rrQuant := rr.ScalarResources[name]
-		if quant > 0 && rQuant > rrQuant {
-			resources = append(resources, string(name))
-		}
-	}
-
-	if len(resources) > 0 {
-		return false, resources
-	}
-	return true, resources
-}
-
-// LessEqualWithResourcesName returns true, []string{} only on condition that all dimensions of resources in r are less than or equal with that of rr,
-// Otherwise returns false and a slice of string, which shows what resources are insufficient.
-// @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
-// this function is the same as LessEqual, and it will be merged to LessEqual in the future
-func (r *Resource) LessEqualWithResourcesName(rr *Resource, defaultValue DimensionDefaultValue) (bool, []string) {
-	resources := []string{}
-	lessEqualFunc := func(l, r, diff float64) bool {
-		if l < r || math.Abs(l-r) < diff {
-			return true
-		}
-		return false
-	}
-
-	if !lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) {
-		resources = append(resources, "cpu")
-	}
-	if !lessEqualFunc(r.Memory, rr.Memory, minResource) {
-		resources = append(resources, "memory")
 	}
 
 	for resourceName, leftValue := range r.ScalarResources {
@@ -543,10 +467,46 @@ func (r *Resource) LessEqualWithResourcesName(rr *Resource, defaultValue Dimensi
 			resources = append(resources, string(resourceName))
 		}
 	}
+
 	if len(resources) > 0 {
 		return false, resources
 	}
 	return true, resources
+}
+
+// LessEqualWithDimension compares only the dimensions listed in dims.
+// Returns true if r <= rr on all listed dimensions, along with a slice of dimensions where r exceeds rr.
+// If dims is nil or empty, returns true and an empty slice (vacuously true).
+func (r *Resource) LessEqualWithDimension(rr *Resource, dims ResourceNameList) (bool, []string) {
+	if len(dims) == 0 {
+		return true, []string{}
+	}
+	if rr == nil {
+		rr = EmptyResource()
+	}
+
+	resources := []string{}
+	for _, name := range dims {
+		if !r.lessEqualDimension(rr, name) {
+			resources = append(resources, string(name))
+		}
+	}
+
+	return len(resources) == 0, resources
+}
+
+func (r *Resource) lessEqualDimension(rr *Resource, name v1.ResourceName) bool {
+	lessEqualFunc := func(l, r, diff float64) bool {
+		return l < r || math.Abs(l-r) < diff
+	}
+	switch name {
+	case v1.ResourceCPU:
+		return lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource)
+	case v1.ResourceMemory:
+		return lessEqualFunc(r.Memory, rr.Memory, minResource)
+	default:
+		return lessEqualFunc(r.Get(name), rr.Get(name), minResource)
+	}
 }
 
 // LessPartly returns true if there exists any dimension whose resource amount in r is less than that in rr.
@@ -582,10 +542,12 @@ func (r *Resource) LessPartly(rr *Resource, defaultValue DimensionDefaultValue) 
 	return false
 }
 
-// LessEqualPartly returns true if there exists any dimension whose resource amount in r is less than or equal with that in rr.
-// Otherwise returns false.
+// LessEqualPartly returns true and a slice of sufficient resource names if there exists any dimension
+// whose resource amount in r is less than or equal to that in rr.
+// Otherwise returns false and an empty slice.
 // @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
-func (r *Resource) LessEqualPartly(rr *Resource, defaultValue DimensionDefaultValue) bool {
+func (r *Resource) LessEqualPartly(rr *Resource, defaultValue DimensionDefaultValue) (bool, []string) {
+	resources := []string{}
 	lessEqualFunc := func(l, r, diff float64) bool {
 		if l < r || math.Abs(l-r) < diff {
 			return true
@@ -593,14 +555,24 @@ func (r *Resource) LessEqualPartly(rr *Resource, defaultValue DimensionDefaultVa
 		return false
 	}
 
-	if lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) || lessEqualFunc(r.Memory, rr.Memory, minResource) {
-		return true
+	if r == nil {
+		return true, resources
+	}
+	if rr == nil {
+		rr = EmptyResource()
+	}
+
+	if lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) {
+		resources = append(resources, "cpu")
+	}
+	if lessEqualFunc(r.Memory, rr.Memory, minResource) {
+		resources = append(resources, "memory")
 	}
 
 	if defaultValue == Zero {
 		for name := range rr.ScalarResources {
 			if _, ok := r.ScalarResources[name]; !ok {
-				return true
+				resources = append(resources, string(name))
 			}
 		}
 	}
@@ -608,93 +580,74 @@ func (r *Resource) LessEqualPartly(rr *Resource, defaultValue DimensionDefaultVa
 	for resourceName, leftValue := range r.ScalarResources {
 		rightValue, ok := rr.ScalarResources[resourceName]
 		if !ok && defaultValue == Infinity {
-			return true
+			resources = append(resources, string(resourceName))
+			continue
 		}
 
 		if lessEqualFunc(leftValue, rightValue, minResource) {
-			return true
+			resources = append(resources, string(resourceName))
 		}
 	}
-	return false
+
+	if len(resources) > 0 {
+		return true, resources
+	}
+	return false, resources
 }
 
-// LessEqualPartlyWithDimension returns true if there exists any dimension
-// whose resource amount in r is less than or equal with that in rr along the requested dimensions in req.
-// Will return true and a slice of resource names that are sufficient
-// @param req define the resource item with the dimensions to be compared
-// if req is nil then return is false and an empty slice
-func (r *Resource) LessEqualPartlyWithDimension(rr *Resource, req *Resource) (bool, []string) {
-	lessEqualFunc := func(l, r, diff float64) bool {
-		return l < r || math.Abs(l-r) < diff
+// LessEqualPartlyWithDimension returns true if any dimension in dims satisfies r <= rr.
+// Returns the matching dimension names. If dims is nil or empty, returns false and an empty slice.
+func (r *Resource) LessEqualPartlyWithDimension(rr *Resource, dims ResourceNameList) (bool, []string) {
+	if len(dims) == 0 {
+		return false, []string{}
+	}
+	if rr == nil {
+		rr = EmptyResource()
 	}
 
 	resources := []string{}
-	found := false
-
-	if req == nil {
-		return false, resources
-	}
-	// CPU
-	if req.MilliCPU > 0 {
-		if lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) {
-			resources = append(resources, "cpu")
-			found = true
-		}
-	}
-	// Memory
-	if req.Memory > 0 {
-		if lessEqualFunc(r.Memory, rr.Memory, minResource) {
-			resources = append(resources, "memory")
-			found = true
-		}
-	}
-	// Scalar resources
-	for name, quant := range req.ScalarResources {
-		if IsIgnoredScalarResource(name) {
-			continue
-		}
-		if quant > 0 && lessEqualFunc(r.Get(name), rr.Get(name), minResource) {
+	for _, name := range dims {
+		if r.lessEqualDimension(rr, name) {
 			resources = append(resources, string(name))
-			found = true
 		}
 	}
-	return found, resources
+	return len(resources) > 0, resources
 }
 
-// LessEqualPartlyWithDimensionZeroFiltered filters out dimensions present in req that are both zero (or nil) in r and rr,
-// then calls LessEqualPartlyWithDimension to compare only the relevant dimensions.
-// This is needed for preemption cases, where we want to ignore dimensions that are not being used by either the current resource
-// or the compared resource but are present in the requested resource.
-// Returns true and a slice of resource names that are sufficient along the filtered dimensions.
-// @param req define the resource item with the dimensions to be compared
-// If req is nil, returns false and an empty slice.
-func (r *Resource) LessEqualPartlyWithDimensionZeroFiltered(rr *Resource, req *Resource) (bool, []string) {
-	if req == nil {
+// LessEqualPartlyWithRelevantDimensions filters out dimensions where both r and rr are zero,
+// then compares only the remaining dimensions via LessEqualPartlyWithDimension.
+// In preemption cases, dimensions unused by both resources should be ignored.
+// @param dims define the resource names with the dimensions to be compared
+// If dims is nil or empty, returns false and an empty slice.
+func (r *Resource) LessEqualPartlyWithRelevantDimensions(rr *Resource, dims ResourceNameList) (bool, []string) {
+	if len(dims) == 0 {
 		return false, []string{}
 	}
-	filteredReq := &Resource{}
+	if rr == nil {
+		rr = EmptyResource()
+	}
 
-	// CPU
-	if req.MilliCPU > 0 && !(r.MilliCPU < minResource && rr.MilliCPU < minResource) {
-		filteredReq.MilliCPU = req.MilliCPU
-	}
-	// Memory
-	if req.Memory > 0 && !(r.Memory < minResource && rr.Memory < minResource) {
-		filteredReq.Memory = req.Memory
-	}
-	// Scalar resources
-	if req.ScalarResources != nil {
-		filteredReq.ScalarResources = make(map[v1.ResourceName]float64)
-		for name, quant := range req.ScalarResources {
-			rQuant := r.Get(name)
-			rrQuant := rr.Get(name)
-			if quant > 0 && !(rQuant < minResource && rrQuant < minResource) {
-				filteredReq.ScalarResources[name] = quant
-			}
+	filteredDims := ResourceNameList{}
+	for _, name := range dims {
+		rVal := r.getResourceValue(name)
+		rrVal := rr.getResourceValue(name)
+		if !(rVal < minResource && rrVal < minResource) {
+			filteredDims = append(filteredDims, name)
 		}
 	}
 
-	return r.LessEqualPartlyWithDimension(rr, filteredReq)
+	return r.LessEqualPartlyWithDimension(rr, filteredDims)
+}
+
+func (r *Resource) getResourceValue(name v1.ResourceName) float64 {
+	switch name {
+	case v1.ResourceCPU:
+		return r.MilliCPU
+	case v1.ResourceMemory:
+		return r.Memory
+	default:
+		return r.Get(name)
+	}
 }
 
 // Equal returns true only on condition that values in all dimension are equal with each other for r and rr
@@ -723,155 +676,127 @@ func (r *Resource) Equal(rr *Resource, defaultValue DimensionDefaultValue) bool 
 // @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
 // @returns true and a slice of resource names that are exceeding else false and an empty slice.
 func (r *Resource) GreaterPartly(rr *Resource, defaultValue DimensionDefaultValue) (bool, []string) {
-	ok, resources := r.LessEqualWithResourcesName(rr, defaultValue)
+	ok, resources := r.LessEqual(rr, defaultValue)
 	return !ok, resources
 }
 
 // GreaterPartlyWithDimension returns true if there exists any dimension
-// whose resource amount in r is greater than that in rr along the requested dimensions in req.
+// whose resource amount in r is greater than that in rr along the requested dimensions in dims.
 // Will return true and a slice of resource names that are exceeding
 //
 // The main difference between GreaterPartlyWithDimension and GreaterPartlyWithRelevantDimensions is that the latter
 // will filter out standard dimensions (MilliCPU, Memory) where rr is zero or less than minResource and
-// only considers scalar dimensions greater than 0 in req and present in rr.
+// only considers scalar dimensions greater than 0 in dims and present in rr.
 //
 // For example:
 //
-//	r: <gpu 2> rr: <> req: <gpu 1>
-//	  r.GreaterPartlyWithDimension(rr, req) => (true, [gpu])
-//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr does not have gpu resource
-//	r: <cpu 4> rr: <cpu 0> req: <cpu 2>
-//	  r.GreaterPartlyWithDimension(rr, req) => (true, [cpu])
-//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr has zero cpu resource
+//	r: <gpu 2> rr: <> dims: [gpu]
+//	  r.GreaterPartlyWithDimension(rr, dims) => (true, [gpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, dims) => (false, []) since rr does not have gpu resource
+//	r: <cpu 4> rr: <cpu 0> dims: [cpu]
+//	  r.GreaterPartlyWithDimension(rr, dims) => (true, [cpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, dims) => (false, []) since rr has zero cpu resource
 //
 // But these cases are the same:
 //
-//	r: <gpu 2> rr: <gpu 0> req: <gpu 1>
-//	  r.GreaterPartlyWithDimension(rr, req) => (true, [gpu])
-//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (true, [gpu]) since rr has gpu resource defined (even if zero)
-//	r: <cpu 4> rr: <cpu 0.1> req: <cpu 2>
-//	  r.GreaterPartlyWithDimension(rr, req) => (true, [cpu])
-//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (true, [cpu]) since rr has cpu resource greater than minResource
+//	r: <gpu 2> rr: <gpu 0> dims: [gpu]
+//	  r.GreaterPartlyWithDimension(rr, dims) => (true, [gpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, dims) => (true, [gpu]) since rr has gpu resource defined (even if zero)
+//	r: <cpu 4> rr: <cpu 0.1> dims: [cpu]
+//	  r.GreaterPartlyWithDimension(rr, dims) => (true, [cpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, dims) => (true, [cpu]) since rr has cpu resource greater than minResource
 //	r: <cpu 4, memory 8192, gpu 2> rr: <cpu 2, memory 8192, gpu 1>
-//	  req: <cpu 0, memory 0, gpu 1> => return (true, [gpu])
-//	  req: <cpu 2, memory 0, gpu 1> => return (true, [cpu, gpu])
-//	  req: <cpu 0, memory 4096, gpu 0> => return (false, [])
+//	  dims: [gpu]              => return (true, [gpu])
+//	  dims: [cpu, gpu]         => return (true, [cpu, gpu])
+//	  dims: [memory]           => return (false, [])
 //
 // The functions are not interchangeable and should be used based on specific comparison needs.
-// As a remark they don't differ in the handling of r and req, only in the handling of rr.
+// As a remark they don't differ in the handling of r and dims, only in the handling of rr.
 //
 // @param rr is the Resource to compare against. If nil, treated as EmptyResource().
-// @param req is the Resource item with the dimensions to be compared on.
+// @param dims define the resource names with the dimensions to be compared on.
 // @returns true and a slice of resource names that are exceeding else false and an empty slice.
-// If req is nil then return is false and an empty slice.
-func (r *Resource) GreaterPartlyWithDimension(rr *Resource, req *Resource) (bool, []string) {
-	greaterFunc := func(l, r float64) bool {
-		return l > r
-	}
-
-	resources := []string{}
-
-	if req == nil {
-		return false, resources
-	}
-	if rr == nil {
-		rr = EmptyResource()
-	}
-
-	// CPU
-	if req.MilliCPU > 0 {
-		if greaterFunc(r.MilliCPU, rr.MilliCPU) {
-			resources = append(resources, "cpu")
-		}
-	}
-	// Memory
-	if req.Memory > 0 {
-		if greaterFunc(r.Memory, rr.Memory) {
-			resources = append(resources, "memory")
-		}
-	}
-	// Scalar resources
-	for name, quant := range req.ScalarResources {
-		if IsIgnoredScalarResource(name) {
-			continue
-		}
-		if quant > 0 && greaterFunc(r.Get(name), rr.Get(name)) {
-			resources = append(resources, string(name))
-		}
-	}
-	return len(resources) > 0, resources
-}
-
-// GreaterPartlyWithRelevantDimensions compares resource dimensions in req between r and rr,
-// but ignores any standard dimensions (MilliCPU, Memory) where rr is zero or less than minResource.
-// For scalar resources, only dimensions present in both req and rr are considered.
-// This is useful for reclaim scenarios, where you want to check if r exceeds rr
-// only in dimensions that rr actually possesses (i.e., "infinity-type" comparison).
-//
-// The main difference between GreaterPartlyWithDimension and GreaterPartlyWithRelevantDimensions is that the latter
-// will filter out standard dimensions (MilliCPU, Memory) where rr is zero or less than minResource and
-// only considers scalar dimensions greater than 0 in req and present in rr.
-//
-// For example:
-//
-//	r: <gpu 2> rr: <> req: <gpu 1>
-//	  r.GreaterPartlyWithDimension(rr, req) => (true, [gpu])
-//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr does not have gpu resource
-//	r: <cpu 4> rr: <cpu 0> req: <cpu 2>
-//	  r.GreaterPartlyWithDimension(rr, req) => (true, [cpu])
-//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr has zero cpu resource
-//
-// But these cases are the same:
-//
-//	r: <gpu 2> rr: <gpu 0> req: <gpu 1>
-//	  r.GreaterPartlyWithDimension(rr, req) => (true, [gpu])
-//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (true, [gpu]) since rr has gpu resource defined (even if zero)
-//	r: <cpu 4> rr: <cpu 0.1> req: <cpu 2>
-//	  r.GreaterPartlyWithDimension(rr, req) => (true, [cpu])
-//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (true, [cpu]) since rr has cpu resource greater than minResource
-//	r: <cpu 4, memory 8192, gpu 2> rr: <cpu 2, memory 8192, gpu 1>
-//	  req: <cpu 0, memory 0, gpu 1> => return (true, [gpu])
-//	  req: <cpu 2, memory 0, gpu 1> => return (true, [cpu, gpu])
-//	  req: <cpu 0, memory 4096, gpu 0> => return (false, [])
-//
-// The functions are not interchangeable and should be used based on specific comparison needs.
-// As a remark they don't differ in the handling of r and req, only in the handling of rr.
-//
-// @param rr is the Resource to compare against. If nil, treated as EmptyResource().
-// @param req is the Resource item with the dimensions to be compared on.
-// @returns true and a slice of resource names that are exceeding else false and an empty slice.
-// If req is nil then return is false and an empty slice.
-func (r *Resource) GreaterPartlyWithRelevantDimensions(rr *Resource, req *Resource) (bool, []string) {
-	if req == nil {
+// If dims is nil or empty, returns false and an empty slice.
+func (r *Resource) GreaterPartlyWithDimension(rr *Resource, dims ResourceNameList) (bool, []string) {
+	if len(dims) == 0 {
 		return false, []string{}
 	}
 	if rr == nil {
 		rr = EmptyResource()
 	}
-	filteredReq := &Resource{}
 
-	// CPU
-	if req.MilliCPU > 0 && !(rr.MilliCPU < minResource) {
-		filteredReq.MilliCPU = req.MilliCPU
+	resources := []string{}
+	for _, name := range dims {
+		if r.getResourceValue(name) > rr.getResourceValue(name) {
+			resources = append(resources, string(name))
+		}
 	}
 
-	// Memory
-	if req.Memory > 0 && !(rr.Memory < minResource) {
-		filteredReq.Memory = req.Memory
+	return len(resources) > 0, resources
+}
+
+// GreaterPartlyWithRelevantDimensions compares resource dimensions in dims between r and rr,
+// but ignores any standard dimensions (MilliCPU, Memory) where rr is zero or less than minResource.
+// For scalar resources, only dimensions present in both dims and rr are considered.
+// This is useful for reclaim scenarios, where you want to check if r exceeds rr
+// only in dimensions that rr actually possesses (i.e., "infinity-type" comparison).
+//
+// The main difference between GreaterPartlyWithDimension and GreaterPartlyWithRelevantDimensions is that the latter
+// will filter out standard dimensions (MilliCPU, Memory) where rr is zero or less than minResource and
+// only considers scalar dimensions greater than 0 in dims and present in rr.
+//
+// For example:
+//
+//	r: <gpu 2> rr: <> dims: [gpu]
+//	  r.GreaterPartlyWithDimension(rr, dims) => (true, [gpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, dims) => (false, []) since rr does not have gpu resource
+//	r: <cpu 4> rr: <cpu 0> dims: [cpu]
+//	  r.GreaterPartlyWithDimension(rr, dims) => (true, [cpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, dims) => (false, []) since rr has zero cpu resource
+//
+// But these cases are the same:
+//
+//	r: <gpu 2> rr: <gpu 0> dims: [gpu]
+//	  r.GreaterPartlyWithDimension(rr, dims) => (true, [gpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, dims) => (true, [gpu]) since rr has gpu resource defined (even if zero)
+//	r: <cpu 4> rr: <cpu 0.1> dims: [cpu]
+//	  r.GreaterPartlyWithDimension(rr, dims) => (true, [cpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, dims) => (true, [cpu]) since rr has cpu resource greater than minResource
+//	r: <cpu 4, memory 8192, gpu 2> rr: <cpu 2, memory 8192, gpu 1>
+//	  dims: [gpu]              => return (true, [gpu])
+//	  dims: [cpu, gpu]         => return (true, [cpu, gpu])
+//	  dims: [memory]           => return (false, [])
+//
+// The functions are not interchangeable and should be used based on specific comparison needs.
+// As a remark they don't differ in the handling of r and dims, only in the handling of rr.
+//
+// @param rr is the Resource to compare against. If nil, treated as EmptyResource().
+// @param dims define the resource names with the dimensions to be compared on.
+// @returns true and a slice of resource names that are exceeding else false and an empty slice.
+// If dims is nil or empty, returns false and an empty slice.
+func (r *Resource) GreaterPartlyWithRelevantDimensions(rr *Resource, dims ResourceNameList) (bool, []string) {
+	if len(dims) == 0 {
+		return false, []string{}
+	}
+	if rr == nil {
+		rr = EmptyResource()
 	}
 
-	// Scalar resources
-	if req.ScalarResources != nil {
-		filteredReq.ScalarResources = make(map[v1.ResourceName]float64)
-		for name, quant := range req.ScalarResources {
-			_, ok := rr.ScalarResources[name]
-			if quant > 0 && ok {
-				filteredReq.ScalarResources[name] = quant
+	filteredDims := ResourceNameList{}
+	for _, name := range dims {
+		rrVal := rr.getResourceValue(name)
+		if name == v1.ResourceCPU || name == v1.ResourceMemory {
+			if !(rrVal < minResource) {
+				filteredDims = append(filteredDims, name)
+			}
+		} else {
+			if _, ok := rr.ScalarResources[name]; ok {
+				filteredDims = append(filteredDims, name)
 			}
 		}
 	}
 
-	return r.GreaterPartlyWithDimension(rr, filteredReq)
+	return r.GreaterPartlyWithDimension(rr, filteredDims)
 }
 
 // Diff calculate the difference between two resource object
