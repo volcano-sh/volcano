@@ -238,7 +238,7 @@ func SelectBundles(bundles []*Bundle, need *api.Resource, allowWhole bool) []*Bu
 		}
 		selected = append(selected, b)
 		freed.Add(b.LocalRes)
-		if need.LessEqual(freed, api.Zero) {
+		if ok, _ := need.LessEqual(freed, api.Zero); ok {
 			break
 		}
 	}

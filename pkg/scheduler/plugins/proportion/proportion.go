@@ -238,7 +238,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			pp.updateShare(attr)
 			klog.V(4).Infof("Format queue <%s> deserved resource to <%v>", attr.name, attr.deserved)
 
-			if attr.request.LessEqual(attr.deserved, api.Zero) {
+			if ok, _ := attr.request.LessEqual(attr.deserved, api.Zero); ok {
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet", attr.name)
 			} else if equality.Semantic.DeepEqual(attr.deserved, oldDeserved) {
@@ -309,7 +309,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			allocated := allocations[job.Queue]
 
-			if !allocated.LessEqual(attr.deserved, api.Zero) {
+			if ok, _ := allocated.LessEqual(attr.deserved, api.Zero); !ok {
 				allocated.Sub(reclaimee.Resreq)
 				victims = append(victims, reclaimee)
 			}
@@ -322,7 +322,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		queue := obj.(*api.QueueInfo)
 		attr := pp.queueOpts[queue.UID]
 
-		overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
+		overused, _ := attr.deserved.LessEqual(attr.allocated, api.Zero)
 		metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
 			klog.V(3).Infof("Queue <%v> is overused: deserved <%v>, allocated <%v>, share <%v>",
@@ -347,7 +347,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		futureUsed := attr.allocated.Clone().Add(totalReq)
-		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, totalReq)
+		allocatable, _ := futureUsed.LessEqualWithDimension(attr.deserved, totalReq.ResourceNames())
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidates total request <%v>",
 				queue.Name, attr.deserved, attr.allocated, totalReq)
@@ -373,7 +373,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
-		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, candidate.Resreq)
+		allocatable, _ := futureUsed.LessEqualWithDimension(attr.deserved, candidate.Resreq.ResourceNames())
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
@@ -429,7 +429,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		// The queue resource quota limit has not reached
 		r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
 
-		inqueue, resourceNames := r.LessEqualWithDimensionAndResourcesName(attr.realCapability, minReq)
+		inqueue, resourceNames := r.LessEqualWithDimension(attr.realCapability, minReq.ResourceNames())
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
 		if inqueue {
 			return util.Permit
