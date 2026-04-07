@@ -132,7 +132,6 @@ func (sched *Scheduler) Run(stopCh <-chan struct{}) {
 // as defined by the Scheduler's schedule period.
 func (worker *Worker) runOnce() {
 	klog.V(4).Infof("Start scheduling in worker %d ...", worker.index)
-	scheduleStartTime := time.Now()
 	defer klog.V(4).Infof("End scheduling in worker %d ...", worker.index)
 	// Load ConfigMap to check which action is enabled.
 	conf.EnabledActionMap = make(map[string]bool)
@@ -149,6 +148,8 @@ func (worker *Worker) runOnce() {
 		klog.Warningf("No task to schedule")
 		return
 	}
+
+	scheduleStartTime := time.Now()
 
 	// Update snapshot from cache before scheduling
 	snapshot := worker.framework.GetSnapshot()
