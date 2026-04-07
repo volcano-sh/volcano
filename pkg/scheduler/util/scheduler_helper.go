@@ -28,6 +28,7 @@ import (
 	"math/rand"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -46,7 +47,7 @@ const (
 	DefaultComponentName = "vc-scheduler"
 )
 
-var lastProcessedNodeIndex int
+var lastProcessedNodeIndex atomic.Int64
 
 // CalculateNumOfFeasibleNodesToFind returns the number of feasible nodes that once found,
 // the scheduler stops its search for more feasible nodes.
