@@ -69,13 +69,15 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 		nodeErrorCache = map[string]error{}
 	}
 
+	startIndex := int(lastProcessedNodeIndex.Load())
+
 	//create a context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 
 	checkNode := func(index int) {
 		// Check the nodes starting from where is left off in the previous scheduling cycle,
 		// to make sure all nodes have the same chance of being examined across pods.
-		node := nodes[(lastProcessedNodeIndex+index)%allNodes]
+		node := nodes[(startIndex+index)%allNodes]
 		atomic.AddInt32(&processedNodes, 1)
 		klog.V(4).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
 			task.Namespace, task.Name, node.Name, task.Resreq, node.Idle)
@@ -130,8 +132,9 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 	//workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
 	workqueue.ParallelizeUntil(ctx, 16, allNodes, checkNode)
 
-	//processedNodes := int(numFoundNodes) + len(filteredNodesStatuses) + len(failedPredicateMap)
-	lastProcessedNodeIndex = (lastProcessedNodeIndex + int(processedNodes)) % allNodes
+	newIndex := int64((startIndex + int(processedNodes)) % allNodes)
+	lastProcessedNodeIndex.Store(newIndex)
+
 	predicateNodes = predicateNodes[:numFoundNodes]
 	return predicateNodes, fe
 }
