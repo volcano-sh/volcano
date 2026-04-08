@@ -140,7 +140,10 @@ func (p *warmupPolicy) Cleanup() {
 	// No cleanup needed for stateless policy
 }
 
-// sortByUtilization sorts nodes by CPU utilization (lowest first)
+// sortByUtilization sorts nodes by CPU utilization (lowest first).
+// warmup policy prefers nodes with the most available capacity so that
+// pre-warmed nodes can accept new workloads immediately. This is the
+// opposite of allocation-rate which prefers highest utilization first.
 func (p *warmupPolicy) sortByUtilization(nodes []string, nodeMetrics map[string]*policy.NodeMetrics) {
 	sort.Slice(nodes, func(i, j int) bool {
 		metricsI := nodeMetrics[nodes[i]]

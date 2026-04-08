@@ -138,8 +138,11 @@ func (p *capabilityPolicy) filterEligibleNodes(ctx *policy.PolicyContext) []stri
 	return eligibleNodes
 }
 
-// sortByUtilization sorts nodes by utilization (lowest first for most headroom)
-// If preferWarmupNodes is true, warmup nodes are prioritized first
+// sortByUtilization sorts nodes by utilization (lowest first for most headroom).
+// capability policy prefers nodes with the most capacity headroom so that
+// agent workloads can burst without resource pressure. This is the opposite
+// of allocation-rate which prefers highest utilization first.
+// If preferWarmupNodes is true, warmup nodes are prioritized first.
 func (p *capabilityPolicy) sortByUtilization(nodes []string, ctx *policy.PolicyContext) {
 	sort.Slice(nodes, func(i, j int) bool {
 		metricsI := ctx.NodeMetrics[nodes[i]]

@@ -78,6 +78,7 @@ func TestWarmupPolicyCalculate(t *testing.T) {
 		metrics       map[string]*policy.NodeMetrics
 		assignedNodes map[string]string
 		expectedCount int
+		expectedNodes []string
 		description   string
 	}{
 		{
@@ -101,6 +102,8 @@ func TestWarmupPolicyCalculate(t *testing.T) {
 			},
 			assignedNodes: map[string]string{},
 			expectedCount: 4,
+			// Warmup sorted by lowest util first, then non-warmup sorted by lowest util first
+			expectedNodes: []string{"warmup2", "warmup1", "regular2", "regular1"},
 			description:   "Should select all nodes with warmup nodes first",
 		},
 		{
@@ -122,6 +125,7 @@ func TestWarmupPolicyCalculate(t *testing.T) {
 			},
 			assignedNodes: map[string]string{},
 			expectedCount: 2,
+			expectedNodes: []string{"warmup2", "warmup1"},
 			description:   "Should select only warmup nodes when enough available",
 		},
 		{
@@ -143,6 +147,7 @@ func TestWarmupPolicyCalculate(t *testing.T) {
 			},
 			assignedNodes: map[string]string{},
 			expectedCount: 3,
+			expectedNodes: []string{"warmup1", "regular2", "regular1"},
 			description:   "Should include non-warmup nodes to meet minNodes",
 		},
 		{
@@ -164,6 +169,7 @@ func TestWarmupPolicyCalculate(t *testing.T) {
 			},
 			assignedNodes: map[string]string{},
 			expectedCount: 1,
+			expectedNodes: []string{"warmup1"},
 			description:   "Should not include non-warmup nodes when allowNonWarmup=false",
 		},
 		{
@@ -185,6 +191,7 @@ func TestWarmupPolicyCalculate(t *testing.T) {
 			},
 			assignedNodes: map[string]string{},
 			expectedCount: 2,
+			expectedNodes: []string{"warmup2", "warmup3"},
 			description:   "Should select warmup nodes with lowest utilization",
 		},
 		{
@@ -200,12 +207,13 @@ func TestWarmupPolicyCalculate(t *testing.T) {
 			},
 			metrics: map[string]*policy.NodeMetrics{
 				"warmup1": {CPUUtilization: 0.5, IsWarmupNode: true},
-				"warmup2": {CPUUtilization: 0.5, IsWarmupNode: true},
+				"warmup2": {CPUUtilization: 0.4, IsWarmupNode: true},
 			},
 			assignedNodes: map[string]string{
 				"warmup1": "other-scheduler",
 			},
 			expectedCount: 1,
+			expectedNodes: []string{"warmup2"},
 			description:   "Should skip already assigned nodes",
 		},
 		{
@@ -229,6 +237,7 @@ func TestWarmupPolicyCalculate(t *testing.T) {
 			},
 			assignedNodes: map[string]string{},
 			expectedCount: 2,
+			expectedNodes: []string{"warmup2", "warmup1"},
 			description:   "Should respect maxNodes constraint",
 		},
 	}
@@ -257,6 +266,23 @@ func TestWarmupPolicyCalculate(t *testing.T) {
 			if len(result.SelectedNodes) != tt.expectedCount {
 				t.Errorf("%s: Calculate() selected %d nodes, expected %d. Selected: %v",
 					tt.description, len(result.SelectedNodes), tt.expectedCount, result.SelectedNodes)
+			}
+
+			// For tests with specific expected nodes, verify exact match (order matters)
+			if tt.expectedNodes != nil && len(tt.expectedNodes) > 0 {
+				if len(result.SelectedNodes) != len(tt.expectedNodes) {
+					t.Errorf("Calculate() selected %d nodes, expected %d",
+						len(result.SelectedNodes), len(tt.expectedNodes))
+				} else {
+					for i := 0; i < len(tt.expectedNodes); i++ {
+						if result.SelectedNodes[i] != tt.expectedNodes[i] {
+							t.Errorf("Calculate() node[%d] = %s, expected %s. Got: %v, Expected: %v",
+								i, result.SelectedNodes[i], tt.expectedNodes[i],
+								result.SelectedNodes, tt.expectedNodes)
+							break
+						}
+					}
+				}
 			}
 		})
 	}

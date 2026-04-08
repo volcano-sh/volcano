@@ -167,7 +167,11 @@ func (p *allocationRatePolicy) prioritizeNodes(nodes []*corev1.Node, ctx *policy
 		}
 	}
 
-	// Sort nodes by CPU utilization within groups (higher utilization first)
+	// Sort nodes by CPU utilization within groups (higher utilization first).
+	// allocation-rate prefers nodes that are already well-utilized, packing
+	// workloads onto busy nodes so that lightly-loaded nodes remain available
+	// for other schedulers. This is the opposite of capability/warmup policies
+	// which prefer lowest utilization (most headroom).
 	sort.Slice(warmupNodes, func(i, j int) bool {
 		metricsI := ctx.NodeMetrics[warmupNodes[i].Name]
 		metricsJ := ctx.NodeMetrics[warmupNodes[j].Name]
