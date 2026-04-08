@@ -34,6 +34,7 @@ import (
 type QueueSpec struct {
 	Name              string
 	Weight            int32
+	CapabilityResource v1.ResourceList
 	GuaranteeResource v1.ResourceList
 	DeservedResource  v1.ResourceList
 }
@@ -49,6 +50,9 @@ func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
 				Weight: queueSpec.Weight,
 			},
 		}
+		if len(queueSpec.CapabilityResource) != 0 {
+			queue.Spec.Capability = queueSpec.CapabilityResource
+		}
 		if len(queueSpec.GuaranteeResource) != 0 {
 			queue.Spec.Guarantee.Resource = queueSpec.GuaranteeResource
 			// When guarantee is set, deserved must also be set
@@ -61,6 +65,7 @@ func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
 		} else if len(queueSpec.DeservedResource) != 0 {
 			queue.Spec.Deserved = queueSpec.DeservedResource
 		}
+
 		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", queueSpec.Name)
 	}
@@ -70,7 +75,7 @@ func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
 }
 
 // CreateQueue creates Queue with the specified name
-func CreateQueue(ctx *TestContext, q string, deservedResource v1.ResourceList, parent string) {
+func CreateQueue(ctx *TestContext, q string, deservedResource, capabilityResource v1.ResourceList, parent string) {
 	_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
 	if err != nil {
 		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), &schedulingv1beta1.Queue{
@@ -78,9 +83,10 @@ func CreateQueue(ctx *TestContext, q string, deservedResource v1.ResourceList, p
 				Name: q,
 			},
 			Spec: schedulingv1beta1.QueueSpec{
-				Weight:   1,
-				Parent:   parent,
-				Deserved: deservedResource,
+				Weight:     1,
+				Parent:     parent,
+				Deserved:   deservedResource,
+				Capability: capabilityResource,
 			},
 		}, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", q)
@@ -92,7 +98,7 @@ func CreateQueues(ctx *TestContext) {
 	By("Creating Queues")
 
 	for _, queue := range ctx.Queues {
-		CreateQueue(ctx, queue, ctx.DeservedResource[queue], ctx.QueueParent[queue])
+		CreateQueue(ctx, queue, ctx.DeservedResource[queue], ctx.CapabilityResource[queue], ctx.QueueParent[queue])
 	}
 
 	// wait for all queues state open
