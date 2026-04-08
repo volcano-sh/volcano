@@ -333,11 +333,27 @@ func (sc *ShardingController) parseSchedulerConfigsFromOptions() {
 	sc.schedulerConfigs = make([]SchedulerConfig, 0, len(sc.controllerOptions.SchedulerConfigs))
 
 	for _, configSpec := range sc.controllerOptions.SchedulerConfigs {
+		policyName := configSpec.Policy
+		policyArgs := configSpec.Arguments
+
+		// Default to allocation-rate policy if not specified (backward compatibility
+		// for configs constructed without Policy/Arguments, e.g., older code paths).
+		if policyName == "" {
+			policyName = "allocation-rate"
+			policyArgs = map[string]interface{}{
+				"minCPUUtil":        configSpec.CPUUtilizationMin,
+				"maxCPUUtil":        configSpec.CPUUtilizationMax,
+				"preferWarmupNodes": configSpec.PreferWarmupNodes,
+				"minNodes":          configSpec.MinNodes,
+				"maxNodes":          configSpec.MaxNodes,
+			}
+		}
+
 		config := SchedulerConfig{
 			Name:            configSpec.Name,
 			Type:            configSpec.Type,
-			PolicyName:      configSpec.Policy,
-			PolicyArguments: configSpec.Arguments,
+			PolicyName:      policyName,
+			PolicyArguments: policyArgs,
 			ShardStrategy: ShardStrategy{
 				CPUUtilizationRange: struct {
 					Min float64

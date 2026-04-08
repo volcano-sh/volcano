@@ -45,7 +45,7 @@ func NewShardingManager(schedulerConfigs []SchedulerConfig, nodeMetricsProvider 
 
 	// Initialize policies
 	if err := manager.initializePolicies(); err != nil {
-		klog.Fatalf("Failed to initialize policies: %v", err)
+		klog.Errorf("Failed to initialize policies: %v", err)
 	}
 
 	return manager
