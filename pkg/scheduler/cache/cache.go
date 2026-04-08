@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,8 +28,10 @@ import (
 
 	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -73,7 +76,6 @@ import (
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
-	"volcano.sh/volcano/pkg/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
@@ -185,6 +187,9 @@ type SchedulerCache struct {
 	sharedDRAManager fwk.SharedDRAManager
 
 	shardUpdateCoordinator *ShardUpdateCoordinator
+
+	// resourceClaimCache is a cache for ResourceClaims, used for DRA
+	resourceClaimCache *assumecache.AssumeCache
 }
 
 type multiSchedulerInfo struct {
@@ -555,7 +560,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		nodeWorkers: nodeWorkers,
 	}
 
-	if options.ServerOpts.ShardingMode == util.HardShardingMode || options.ServerOpts.ShardingMode == util.SoftShardingMode {
+	if options.ServerOpts.ShardingMode == commonutil.HardShardingMode || options.ServerOpts.ShardingMode == commonutil.SoftShardingMode {
 		sc.shardUpdateCoordinator = NewShardUpdateCoordinator()
 	}
 
@@ -798,7 +803,7 @@ func (sc *SchedulerCache) addEventHandler() {
 		ctx := context.TODO()
 		logger := klog.FromContext(ctx)
 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
-		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+		sc.resourceClaimCache = assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
 			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
 			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
@@ -814,7 +819,7 @@ func (sc *SchedulerCache) addEventHandler() {
 		if err != nil {
 			klog.V(3).Infof("couldn't start resource slice tracker: %v", err)
 		}
-		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, resourceSliceTracker, informerFactory)
+		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, sc.resourceClaimCache, resourceSliceTracker, informerFactory)
 	}
 }
 
@@ -1761,4 +1766,116 @@ func (sc *SchedulerCache) OnSessionClose() {
 		sc.shardUpdateCoordinator.IsSessionRunning.Store(false)
 		sc.notifySessionEnd()
 	}
+}
+
+func resolvePodClaimName(pod *v1.Pod, podClaim v1.PodResourceClaim) string {
+	if podClaim.ResourceClaimName != nil {
+		return *podClaim.ResourceClaimName
+	}
+	for _, status := range pod.Status.ResourceClaimStatuses {
+		if status.Name == podClaim.Name && status.ResourceClaimName != nil {
+			return *status.ResourceClaimName
+		}
+	}
+	return ""
+}
+
+func addDRAResource(dst map[string]*schedulingapi.DRAResource, deviceClass string, count int64, capacity map[string]resource.Quantity) {
+	if dst[deviceClass] == nil {
+		dst[deviceClass] = &schedulingapi.DRAResource{}
+		if len(capacity) > 0 {
+			dst[deviceClass].Capacity = make(map[string]resource.Quantity)
+		}
+	}
+	dst[deviceClass].Count += count
+	for dim, reqQty := range capacity {
+		capQty := dst[deviceClass].Capacity[dim]
+		capQty.Add(reqQty)
+		dst[deviceClass].Capacity[dim] = capQty
+	}
+}
+
+// buildTaskDRAInfo builds aggregated and per-claim DRA resource requests from Pod ResourceClaims.
+func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulingapi.DRAResource, map[string]map[string]*schedulingapi.DRAResource, []string) {
+	if !utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) || len(pod.Spec.ResourceClaims) == 0 || sc.resourceClaimCache == nil {
+		return nil, nil, nil
+	}
+
+	result := make(map[string]*schedulingapi.DRAResource)
+	claimResources := make(map[string]map[string]*schedulingapi.DRAResource)
+	consumableCapacityEnabled := utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRAConsumableCapacity)
+
+	for _, podClaim := range pod.Spec.ResourceClaims {
+		claimName := resolvePodClaimName(pod, podClaim)
+		if claimName == "" {
+			continue
+		}
+		claimKey := pod.Namespace + "/" + claimName
+		if _, exists := claimResources[claimKey]; exists {
+			continue
+		}
+
+		obj, err := sc.resourceClaimCache.Get(claimKey)
+		if err != nil || obj == nil {
+			klog.V(4).Infof("Failed to get ResourceClaim %s: %v", claimKey, err)
+			continue
+		}
+		claim, ok := obj.(*resourcev1.ResourceClaim)
+		if !ok {
+			continue
+		}
+
+		perClaim := make(map[string]*schedulingapi.DRAResource)
+		for _, req := range claim.Spec.Devices.Requests {
+			if req.FirstAvailable != nil {
+				klog.Warningf("ResourceClaim %s uses FirstAvailable; DRA quota tracking is skipped for request %s", claimKey, req.Name)
+				continue
+			}
+			// Check Exactly field
+			if req.Exactly == nil {
+				continue
+			}
+			if req.Exactly.AllocationMode == resourcev1.DeviceAllocationModeAll {
+				klog.Warningf("ResourceClaim %s uses allocationMode=All; DRA quota tracking is skipped for request %s", claimKey, req.Name)
+				continue
+			}
+			deviceClass := req.Exactly.DeviceClassName
+			if deviceClass == "" {
+				continue
+			}
+
+			count := req.Exactly.Count
+			// If AllocationMode is ExactCount and this field is not specified, the default is one.
+			if count == 0 {
+				count = 1
+			}
+
+			var capacity map[string]resource.Quantity
+			if consumableCapacityEnabled && req.Exactly.Capacity != nil && len(req.Exactly.Capacity.Requests) > 0 {
+				capacity = make(map[string]resource.Quantity, len(req.Exactly.Capacity.Requests))
+				for dim, reqQty := range req.Exactly.Capacity.Requests {
+					capacity[string(dim)] = reqQty.DeepCopy()
+				}
+			}
+			addDRAResource(perClaim, deviceClass, count, capacity)
+			addDRAResource(result, deviceClass, count, capacity)
+		}
+		if len(perClaim) > 0 {
+			claimResources[claimKey] = perClaim
+		}
+	}
+
+	if len(claimResources) == 0 {
+		return nil, nil, nil
+	}
+	claimKeys := make([]string, 0, len(claimResources))
+	for claimKey := range claimResources {
+		claimKeys = append(claimKeys, claimKey)
+	}
+	sort.Strings(claimKeys)
+
+	if len(result) == 0 {
+		result = nil
+	}
+	return result, claimResources, claimKeys
 }
