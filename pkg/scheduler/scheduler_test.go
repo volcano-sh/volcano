@@ -27,13 +27,23 @@ func (f *lifecycleTestAction) UnInitialize() {
 	f.callOrder = append(f.callOrder, "uninitialize")
 }
 
+func initActions(actions []framework.Action) {
+	for _, action := range actions {
+		action.Initialize()
+	}
+}
+
+func cleanupActions(actions []framework.Action) {
+	for _, action := range actions {
+		action.UnInitialize()
+	}
+}
+
 func TestScheduler_ActionLifecycle(t *testing.T) {
 	testAction := &lifecycleTestAction{}
-	scheduler := &Scheduler{
-		actions: []framework.Action{testAction},
-	}
-	scheduler.initActions()
-	scheduler.cleanupActions()
+	actions := []framework.Action{testAction}
+	initActions(actions)
+	cleanupActions(actions)
 	expected := []string{"initialize", "uninitialize"}
 	if !reflect.DeepEqual(testAction.callOrder, expected) {
 		t.Fatalf("unexpected lifecycle order: got %v, want %v",
