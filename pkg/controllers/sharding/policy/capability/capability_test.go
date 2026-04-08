@@ -85,6 +85,7 @@ func TestCapabilityPolicyCalculate(t *testing.T) {
 		metrics       map[string]*policy.NodeMetrics
 		assignedNodes map[string]string
 		expectedCount int
+		expectedNodes []string
 		description   string
 	}{
 		{
@@ -101,14 +102,15 @@ func TestCapabilityPolicyCalculate(t *testing.T) {
 				{ObjectMeta: metav1.ObjectMeta{Name: "node4"}},
 			},
 			metrics: map[string]*policy.NodeMetrics{
-				"node1": {CPUUtilization: 0.5},  // 0.5 < 0.7, not eligible
-				"node2": {CPUUtilization: 0.65}, // 0.65 < 0.7, eligible
-				"node3": {CPUUtilization: 0.69}, // 0.69 < 0.7, eligible
+				"node1": {CPUUtilization: 0.5},  // 0.5 <= 0.7, eligible
+				"node2": {CPUUtilization: 0.65}, // 0.65 <= 0.7, eligible
+				"node3": {CPUUtilization: 0.69}, // 0.69 <= 0.7, eligible
 				"node4": {CPUUtilization: 0.75}, // 0.75 > 0.7, not eligible
 			},
 			assignedNodes: map[string]string{},
-			expectedCount: 2,
-			description:   "Nodes with utilization <= 0.70 (1.0 - 0.30) are eligible",
+			expectedCount: 3,
+			expectedNodes: []string{"node1", "node2", "node3"},
+			description:   "Nodes with utilization <= 0.70 (1.0 - 0.30) are eligible, sorted by lowest util",
 		},
 		{
 			name: "sort by lowest utilization",
@@ -123,12 +125,13 @@ func TestCapabilityPolicyCalculate(t *testing.T) {
 				{ObjectMeta: metav1.ObjectMeta{Name: "node3"}},
 			},
 			metrics: map[string]*policy.NodeMetrics{
-				"node1": {CPUUtilization: 0.4}, // Eligible, lower util
-				"node2": {CPUUtilization: 0.3}, // Eligible, lowest util
+				"node1": {CPUUtilization: 0.4},  // Eligible, lower util
+				"node2": {CPUUtilization: 0.3},  // Eligible, lowest util
 				"node3": {CPUUtilization: 0.45}, // Eligible, higher util
 			},
 			assignedNodes: map[string]string{},
 			expectedCount: 2,
+			expectedNodes: []string{"node2", "node1"},
 			description:   "Should select node2 and node1 (lowest utilization first)",
 		},
 		{
@@ -151,6 +154,8 @@ func TestCapabilityPolicyCalculate(t *testing.T) {
 			},
 			assignedNodes: map[string]string{},
 			expectedCount: 3,
+			// Warmup nodes sorted by lowest util first, then non-warmup
+			expectedNodes: []string{"warmup1", "warmup2", "regular1"},
 			description:   "Warmup nodes should be prioritized",
 		},
 		{
@@ -167,13 +172,14 @@ func TestCapabilityPolicyCalculate(t *testing.T) {
 			},
 			metrics: map[string]*policy.NodeMetrics{
 				"node1": {CPUUtilization: 0.3},
-				"node2": {CPUUtilization: 0.3},
-				"node3": {CPUUtilization: 0.3},
+				"node2": {CPUUtilization: 0.2},
+				"node3": {CPUUtilization: 0.4},
 			},
 			assignedNodes: map[string]string{
 				"node1": "other-scheduler",
 			},
 			expectedCount: 2,
+			expectedNodes: []string{"node2", "node3"},
 			description:   "Should skip node1 as it's already assigned",
 		},
 		{
@@ -191,13 +197,14 @@ func TestCapabilityPolicyCalculate(t *testing.T) {
 			},
 			metrics: map[string]*policy.NodeMetrics{
 				"node1": {CPUUtilization: 0.3},
-				"node2": {CPUUtilization: 0.3},
-				"node3": {CPUUtilization: 0.3},
-				"node4": {CPUUtilization: 0.3},
+				"node2": {CPUUtilization: 0.1},
+				"node3": {CPUUtilization: 0.2},
+				"node4": {CPUUtilization: 0.4},
 			},
 			assignedNodes: map[string]string{},
 			expectedCount: 2,
-			description:   "Should respect maxNodes=2",
+			expectedNodes: []string{"node2", "node3"},
+			description:   "Should respect maxNodes=2, selecting lowest utilization nodes",
 		},
 		{
 			name: "no eligible nodes",
@@ -211,7 +218,7 @@ func TestCapabilityPolicyCalculate(t *testing.T) {
 				{ObjectMeta: metav1.ObjectMeta{Name: "node2"}},
 			},
 			metrics: map[string]*policy.NodeMetrics{
-				"node1": {CPUUtilization: 0.9}, // Too high
+				"node1": {CPUUtilization: 0.9},  // Too high
 				"node2": {CPUUtilization: 0.95}, // Too high
 			},
 			assignedNodes: map[string]string{},
@@ -244,6 +251,23 @@ func TestCapabilityPolicyCalculate(t *testing.T) {
 			if len(result.SelectedNodes) != tt.expectedCount {
 				t.Errorf("%s: Calculate() selected %d nodes, expected %d. Selected: %v",
 					tt.description, len(result.SelectedNodes), tt.expectedCount, result.SelectedNodes)
+			}
+
+			// For tests with specific expected nodes, verify exact match (order matters)
+			if tt.expectedNodes != nil && len(tt.expectedNodes) > 0 {
+				if len(result.SelectedNodes) != len(tt.expectedNodes) {
+					t.Errorf("Calculate() selected %d nodes, expected %d",
+						len(result.SelectedNodes), len(tt.expectedNodes))
+				} else {
+					for i := 0; i < len(tt.expectedNodes); i++ {
+						if result.SelectedNodes[i] != tt.expectedNodes[i] {
+							t.Errorf("Calculate() node[%d] = %s, expected %s. Got: %v, Expected: %v",
+								i, result.SelectedNodes[i], tt.expectedNodes[i],
+								result.SelectedNodes, tt.expectedNodes)
+							break
+						}
+					}
+				}
 			}
 		})
 	}
