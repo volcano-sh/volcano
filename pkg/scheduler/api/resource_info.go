@@ -166,9 +166,18 @@ func (r *Resource) Clone() *Resource {
 	return clone
 }
 
+// formatFloat returns a human-readable string for a resource float value.
+// math.MaxFloat64 is displayed as "infinity" to avoid noisy log output.
+func formatFloat(v float64) string {
+	if v == math.MaxFloat64 {
+		return "infinity"
+	}
+	return fmt.Sprintf("%0.2f", v)
+}
+
 // String returns resource details in string format
 func (r *Resource) String() string {
-	str := fmt.Sprintf("cpu %0.2f, memory %0.2f", r.MilliCPU, r.Memory)
+	str := fmt.Sprintf("cpu %s, memory %s", formatFloat(r.MilliCPU), formatFloat(r.Memory))
 	// Sort scalar resource names to ensure consistent string output
 	var resourceNames []string
 	for rName := range r.ScalarResources {
@@ -176,7 +185,7 @@ func (r *Resource) String() string {
 	}
 	sort.Strings(resourceNames)
 	for _, rName := range resourceNames {
-		str = fmt.Sprintf("%s, %s %0.2f", str, rName, r.ScalarResources[v1.ResourceName(rName)])
+		str = fmt.Sprintf("%s, %s %s", str, rName, formatFloat(r.ScalarResources[v1.ResourceName(rName)]))
 	}
 	return str
 }

@@ -1922,3 +1922,47 @@ func TestIntersectionWithIgnoredScalarResources(t *testing.T) {
 		}
 	}
 }
+
+func TestResource_String(t *testing.T) {
+	tests := []struct {
+		name     string
+		resource *Resource
+		want     string
+	}{
+		{
+			name:     "normal values",
+			resource: &Resource{MilliCPU: 4.00, Memory: 8192.00},
+			want:     "cpu 4.00, memory 8192.00",
+		},
+		{
+			name:     "infinite resource shows infinity",
+			resource: InfiniteResource(),
+			want:     "cpu infinity, memory infinity",
+		},
+		{
+			name: "mixed finite and infinite with scalars",
+			resource: &Resource{
+				MilliCPU: 2.00,
+				Memory:   math.MaxFloat64,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu": 4.00,
+				},
+			},
+			want: "cpu 2.00, memory infinity, nvidia.com/gpu 4.00",
+		},
+		{
+			name:     "zero values",
+			resource: &Resource{MilliCPU: 0, Memory: 0},
+			want:     "cpu 0.00, memory 0.00",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.resource.String()
+			if got != tt.want {
+				t.Errorf("Resource.String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
