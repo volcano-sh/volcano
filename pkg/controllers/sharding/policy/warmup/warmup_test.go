@@ -217,6 +217,32 @@ func TestWarmupPolicyCalculate(t *testing.T) {
 			description:   "Should skip already assigned nodes",
 		},
 		{
+			name: "custom warmup label",
+			args: policy.Arguments{
+				"warmupLabel":      "node.example.com/pool",
+				"warmupLabelValue": "warm",
+				"minNodes":         1,
+				"maxNodes":         10,
+				"allowNonWarmup":   true,
+			},
+			nodes: []*corev1.Node{
+				{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "node2"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "node3"}},
+			},
+			metrics: map[string]*policy.NodeMetrics{
+				"node1": {CPUUtilization: 0.3, Labels: map[string]string{"node.example.com/pool": "warm"}},
+				"node2": {CPUUtilization: 0.2, Labels: map[string]string{"node.example.com/pool": "cold"}},
+				"node3": {CPUUtilization: 0.4, Labels: map[string]string{"node.example.com/pool": "warm"}},
+			},
+			assignedNodes: map[string]string{},
+			expectedCount: 3,
+			// node1 and node3 match the custom label, node2 does not
+			// warmup sorted by lowest util first (node1, node3), then non-warmup (node2)
+			expectedNodes: []string{"node1", "node3", "node2"},
+			description:   "Should classify warmup nodes using configured label instead of IsWarmupNode",
+		},
+		{
 			name: "enforce max nodes constraint",
 			args: policy.Arguments{
 				"minNodes":       1,

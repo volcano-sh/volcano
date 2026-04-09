@@ -96,10 +96,11 @@ func (p *warmupPolicy) Calculate(ctx *policy.PolicyContext) (*policy.PolicyResul
 			continue
 		}
 
-		// Check if node is a warmup node
-		if metrics.IsWarmupNode {
+		// Classify warmup nodes using the configured label/value rather than
+		// the pre-computed IsWarmupNode (which uses a hard-coded label key).
+		if p.isWarmupNode(metrics) {
 			warmupNodes = append(warmupNodes, node.Name)
-			klog.V(5).Infof("Node %s identified as warmup node", node.Name)
+			klog.V(5).Infof("Node %s identified as warmup node (label %s=%s)", node.Name, p.warmupLabel, p.warmupLabelValue)
 		} else {
 			nonWarmupNodes = append(nonWarmupNodes, node.Name)
 		}
@@ -117,7 +118,7 @@ func (p *warmupPolicy) Calculate(ctx *policy.PolicyContext) (*policy.PolicyResul
 
 	warmupCount := 0
 	for _, nodeName := range selected {
-		if ctx.NodeMetrics[nodeName] != nil && ctx.NodeMetrics[nodeName].IsWarmupNode {
+		if m := ctx.NodeMetrics[nodeName]; m != nil && p.isWarmupNode(m) {
 			warmupCount++
 		}
 	}
@@ -138,6 +139,16 @@ func (p *warmupPolicy) Calculate(ctx *policy.PolicyContext) (*policy.PolicyResul
 
 func (p *warmupPolicy) Cleanup() {
 	// No cleanup needed for stateless policy
+}
+
+// isWarmupNode checks whether a node is a warmup node using the configured
+// label key/value pair, rather than relying on the pre-computed IsWarmupNode
+// field (which uses a hard-coded label).
+func (p *warmupPolicy) isWarmupNode(metrics *policy.NodeMetrics) bool {
+	if metrics.Labels == nil {
+		return metrics.IsWarmupNode // fallback for tests without labels
+	}
+	return metrics.Labels[p.warmupLabel] == p.warmupLabelValue
 }
 
 // sortByUtilization sorts nodes by CPU utilization (lowest first).
