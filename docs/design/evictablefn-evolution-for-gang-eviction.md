@@ -47,7 +47,8 @@ Plugins that do not register `UnifiedEvictableFn` are skipped on gang paths and 
 type EvictionKind int
 
 const (
-	GangEvictPreempt EvictionKind = iota
+	Unknown 		 EvictionKind = iota
+	GangEvictPreempt
 	GangEvictReclaim
 	TaskEvictPreempt
 	TaskEvictReclaim
@@ -113,3 +114,33 @@ type EvictableFn func(job *JobInfo, task *TaskInfo, candidates []*TaskInfo) ([]*
 * Gang vs legacy mode remains implicit.
 * Implicit contract such as “non-nil `job` means gang-aware” are fragile.
 * Session and actions must populate `job` and `task` consistently, so correctness rests more on caller knowledge.
+
+---
+
+## Migration Plan
+
+This section is forward-looking: it describes how current existing plugins should adopt `UnifiedEvictableFn` once the framework and gang actions expose it.
+
+### Impacted Plugins
+
+Plugins that today register `PreemptableFn` and/or `ReclaimableFn` should add `UnifiedEvictableFn` when they need to run on `gangpreempt` / `gangreclaim`. The four essential plugins below are expected to ship `UnifiedEvictableFn` together with the first framework and gang-action wiring.
+
+Essential Plugins:
+
+* `gang` enforces minAvailable and job-level victim rules.
+* `conformance` keeps system and critical pods out of the victim set on gang paths.
+* `capacity` applies guarantee and deserved constraints.
+* `priority` preserves job- and task-priority ordering for victims.
+
+Later:
+`pdb`, `proportion`, `drf`, `tdm`, `cdp`, and `extender` can follow in subsequent work once the essential set and framework are stable.
+
+### Deprecation of legacy `EvictableFn`
+
+During the initial rollout, nothing deprecates `EvictableFn`. `preempt` and `reclaim` keep using `AddPreemptableFn` / `AddReclaimableFn` as today, while `UnifiedEvictableFn` is introduced only for gang paths.
+
+After that, plugins need to do dual registration. Every victim-filter plugin should register both `EvictableFn` (for legacy actions until they switch) and `UnifiedEvictableFn`, and `EvictableFn` is marked deprecated.
+
+The final step is to remove `EvictableFn`, route legacy `preempt` / `reclaim` through `UnifiedEvictableFn` (with `EvictionKind` set for task-level preempt/reclaim).
+
+Within `UnifiedEvictableFn`, implementations should use `EvictionContext.Kind` to tell gang vs legacy preempt/reclaim apart and branch where behavior differs.
