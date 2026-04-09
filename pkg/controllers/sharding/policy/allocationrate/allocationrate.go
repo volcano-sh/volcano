@@ -29,6 +29,8 @@ const PolicyName = "allocation-rate"
 type allocationRatePolicy struct {
 	minCPUUtil        float64
 	maxCPUUtil        float64
+	minCPURounded     float64 // pre-computed in Initialize
+	maxCPURounded     float64 // pre-computed in Initialize
 	preferWarmupNodes bool
 	minNodes          int
 	maxNodes          int
@@ -66,6 +68,11 @@ func (p *allocationRatePolicy) Initialize(args policy.Arguments) error {
 		return fmt.Errorf("invalid node constraints [%d, %d]: minNodes must be >= 0 and <= maxNodes",
 			p.minNodes, p.maxNodes)
 	}
+
+	// Pre-compute rounded thresholds so filterEligibleNodes avoids
+	// redundant math.Round calls on every node.
+	p.minCPURounded = math.Round(p.minCPUUtil*100) / 100
+	p.maxCPURounded = math.Round(p.maxCPUUtil*100) / 100
 
 	klog.V(3).Infof("Initialized allocation-rate policy: CPU range [%.2f, %.2f], nodes [%d, %d], preferWarmup=%v",
 		p.minCPUUtil, p.maxCPUUtil, p.minNodes, p.maxNodes, p.preferWarmupNodes)
@@ -129,15 +136,13 @@ func (p *allocationRatePolicy) filterEligibleNodes(ctx *policy.PolicyContext) []
 			continue
 		}
 
-		// Round the utilization with 2 floating points for comparison
+		// Round the utilization with 2 decimal places for comparison
 		cpuUtilRounded := math.Round(metrics.CPUUtilization*100) / 100
-		minCPURounded := math.Round(p.minCPUUtil*100) / 100
-		maxCPURounded := math.Round(p.maxCPUUtil*100) / 100
 
-		// Check if node is within CPU utilization range
-		if cpuUtilRounded < minCPURounded || cpuUtilRounded > maxCPURounded {
+		// Check if node is within CPU utilization range (thresholds pre-computed in Initialize)
+		if cpuUtilRounded < p.minCPURounded || cpuUtilRounded > p.maxCPURounded {
 			klog.V(5).Infof("Skipping node %s: CPU utilization %.2f outside range [%.2f, %.2f]",
-				node.Name, cpuUtilRounded, minCPURounded, maxCPURounded)
+				node.Name, cpuUtilRounded, p.minCPURounded, p.maxCPURounded)
 			continue
 		}
 

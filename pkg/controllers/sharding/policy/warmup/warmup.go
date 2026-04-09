@@ -74,8 +74,9 @@ func (p *warmupPolicy) Calculate(ctx *policy.PolicyContext) (*policy.PolicyResul
 	klog.V(4).Infof("Calculating warmup policy for scheduler %s", ctx.SchedulerName)
 
 	// Separate warmup vs non-warmup nodes
-	warmupNodes := []string{}
-	nonWarmupNodes := []string{}
+	nodeCount := len(ctx.AllNodes)
+	warmupNodes := make([]string, 0, nodeCount)
+	nonWarmupNodes := make([]string, 0, nodeCount)
 
 	for _, node := range ctx.AllNodes {
 		// Skip already assigned nodes

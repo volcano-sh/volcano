@@ -207,12 +207,6 @@ func (sm *ShardingManager) calculateShardAssignmentsBatched(
 	return assignments, nil
 }
 
-// DEPRECATED: The following methods have been moved to policy implementations
-// - filterEligibleNodes -> allocationrate.filterEligibleNodes
-// - prioritizeNodes -> allocationrate.prioritizeNodes
-// - selectNodesWithinConstraints -> allocationrate.selectNodesWithinConstraints
-// - calculateDesiredNodeCount -> allocationrate.calculateDesiredNodeCount
-
 // convertNodeMetrics converts NodeMetrics to policy.NodeMetrics
 func (sm *ShardingManager) convertNodeMetrics(metrics map[string]*NodeMetrics) map[string]*policy.NodeMetrics {
 	policyMetrics := make(map[string]*policy.NodeMetrics, len(metrics))
@@ -339,4 +333,3 @@ func (sm *ShardingManager) calculateSingleSchedulerAssignment(
 	return assignment, nil
 }
 
-// DEPRECATED: generateAssignmentReason - now handled by policy.PolicyResult.Reason

@@ -333,27 +333,13 @@ func (sc *ShardingController) parseSchedulerConfigsFromOptions() {
 	sc.schedulerConfigs = make([]SchedulerConfig, 0, len(sc.controllerOptions.SchedulerConfigs))
 
 	for _, configSpec := range sc.controllerOptions.SchedulerConfigs {
-		policyName := configSpec.Policy
-		policyArgs := configSpec.Arguments
-
-		// Default to allocation-rate policy if not specified (backward compatibility
-		// for configs constructed without Policy/Arguments, e.g., older code paths).
-		if policyName == "" {
-			policyName = "allocation-rate"
-			policyArgs = map[string]interface{}{
-				"minCPUUtil":        configSpec.CPUUtilizationMin,
-				"maxCPUUtil":        configSpec.CPUUtilizationMax,
-				"preferWarmupNodes": configSpec.PreferWarmupNodes,
-				"minNodes":          configSpec.MinNodes,
-				"maxNodes":          configSpec.MaxNodes,
-			}
-		}
+		applyPolicyDefaults(&configSpec)
 
 		config := SchedulerConfig{
 			Name:            configSpec.Name,
 			Type:            configSpec.Type,
-			PolicyName:      policyName,
-			PolicyArguments: policyArgs,
+			PolicyName:      configSpec.Policy,
+			PolicyArguments: configSpec.Arguments,
 			ShardStrategy: ShardStrategy{
 				CPUUtilizationRange: struct {
 					Min float64
@@ -879,26 +865,13 @@ func (sc *ShardingController) loadConfigFromConfigMap() (bool, error) {
 func (sc *ShardingController) applyShardingConfig(cfg *ShardingConfig) {
 	newConfigs := make([]SchedulerConfig, 0, len(cfg.SchedulerConfigs))
 	for _, spec := range cfg.SchedulerConfigs {
-		policyName := spec.Policy
-		policyArgs := spec.Arguments
-
-		// Default to allocation-rate policy if not specified
-		if policyName == "" {
-			policyName = "allocation-rate"
-			policyArgs = map[string]interface{}{
-				"minCPUUtil":        spec.CPUUtilizationMin,
-				"maxCPUUtil":        spec.CPUUtilizationMax,
-				"preferWarmupNodes": spec.PreferWarmupNodes,
-				"minNodes":          spec.MinNodes,
-				"maxNodes":          spec.MaxNodes,
-			}
-		}
+		applyPolicyDefaults(&spec)
 
 		newConfigs = append(newConfigs, SchedulerConfig{
 			Name:            spec.Name,
 			Type:            spec.Type,
-			PolicyName:      policyName,
-			PolicyArguments: policyArgs,
+			PolicyName:      spec.Policy,
+			PolicyArguments: spec.Arguments,
 			ShardStrategy: ShardStrategy{
 				CPUUtilizationRange: struct {
 					Min float64
