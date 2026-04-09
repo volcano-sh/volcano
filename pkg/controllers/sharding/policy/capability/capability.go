@@ -169,25 +169,10 @@ func (p *capabilityPolicy) sortByUtilization(nodes []string, ctx *policy.PolicyC
 
 // selectWithConstraints applies min/max node constraints
 func (p *capabilityPolicy) selectWithConstraints(nodes []string) []string {
-	// Compute desired count
-	desiredCount := len(nodes)
+	// Clamp desired count: at least minNodes, at most maxNodes, but never
+	// more than available nodes.
+	desiredCount := min(len(nodes), max(p.minNodes, min(p.maxNodes, len(nodes))))
 
-	// Apply max constraint
-	if desiredCount > p.maxNodes {
-		desiredCount = p.maxNodes
-	}
-
-	// Apply min constraint
-	if desiredCount < p.minNodes {
-		desiredCount = p.minNodes
-	}
-
-	// Can't select more nodes than available
-	if desiredCount > len(nodes) {
-		desiredCount = len(nodes)
-	}
-
-	// Select the first desiredCount nodes (already sorted by priority)
 	if desiredCount == 0 {
 		return []string{}
 	}
