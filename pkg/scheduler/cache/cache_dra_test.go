@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,41 +24,32 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
-	k8sfeature "k8s.io/component-base/featuregate"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/klog/v2"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
 func TestBuildTaskDRAResreq(t *testing.T) {
-	// Enable DRA feature gate
-	originalFeatureGate := utilfeature.DefaultFeatureGate
-	defer func() { utilfeature.DefaultFeatureGate = originalFeatureGate }()
-
-	// We need to set the feature gate. Since we cannot easily modify the global default feature gate in some environments,
-	// we will try to set it if possible, or assume it is enabled if we can't.
-	// However, usually in tests we can replace the feature gate map or use a mutable one.
-	// For this test, we will skip if we can't enable it, or try to set it.
-	// Note: component-base/featuregate is tricky to mutate in tests if initialized.
-	// We will try to set it via command line flags or existing map if mutable.
-	// A simpler way often used in k8s tests:
-	featureGate := utilfeature.DefaultFeatureGate.(k8sfeature.MutableFeatureGate)
-	if err := featureGate.SetFromMap(map[string]bool{string(kubefeatures.DynamicResourceAllocation): true}); err != nil {
-		t.Logf("Failed to enable DynamicResourceAllocation feature gate: %v", err)
-	}
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, kubefeatures.DynamicResourceAllocation, true)
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, kubefeatures.DRAConsumableCapacity, true)
 
 	tests := []struct {
 		name           string
 		pod            *v1.Pod
 		claims         []*resourcev1.ResourceClaim
 		expectedResreq map[string]*schedulingapi.DRAResource
+		expectErr      bool
 	}{
 		{
 			name: "No ResourceClaims",
@@ -151,6 +142,48 @@ func TestBuildTaskDRAResreq(t *testing.T) {
 			},
 		},
 		{
+			name: "Count multiplies consumable capacity",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "pod-capacity", Namespace: "default"},
+				Spec: v1.PodSpec{
+					ResourceClaims: []v1.PodResourceClaim{
+						{Name: "claim1", ResourceClaimName: pointerString("claim-capacity")},
+					},
+				},
+			},
+			claims: []*resourcev1.ResourceClaim{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "claim-capacity", Namespace: "default"},
+					Spec: resourcev1.ResourceClaimSpec{
+						Devices: resourcev1.DeviceClaim{
+							Requests: []resourcev1.DeviceRequest{
+								{
+									Name: "req1",
+									Exactly: &resourcev1.ExactDeviceRequest{
+										DeviceClassName: "gpu.com",
+										Count:           2,
+										Capacity: &resourcev1.CapacityRequirements{
+											Requests: map[resourcev1.QualifiedName]resource.Quantity{
+												"memory": resource.MustParse("8Gi"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedResreq: map[string]*schedulingapi.DRAResource{
+				"gpu.com": {
+					Count: 2,
+					Capacity: map[string]resource.Quantity{
+						"memory": resource.MustParse("16Gi"),
+					},
+				},
+			},
+		},
+		{
 			name: "Mixed device classes",
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{Name: "pod4", Namespace: "default"},
@@ -189,6 +222,30 @@ func TestBuildTaskDRAResreq(t *testing.T) {
 				"gpu.com": {Count: 1},
 				"nic.com": {Count: 2},
 			},
+		},
+		{
+			name: "Missing ResourceClaim returns error",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "pod-missing", Namespace: "default"},
+				Spec: v1.PodSpec{
+					ResourceClaims: []v1.PodResourceClaim{
+						{Name: "claim1", ResourceClaimName: pointerString("missing-claim")},
+					},
+				},
+			},
+			expectErr: true,
+		},
+		{
+			name: "Unresolved ResourceClaimTemplate returns pending error",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "pod-template", Namespace: "default"},
+				Spec: v1.PodSpec{
+					ResourceClaims: []v1.PodResourceClaim{
+						{Name: "claim1", ResourceClaimTemplateName: pointerString("claim-template")},
+					},
+				},
+			},
+			expectErr: true,
 		},
 	}
 
@@ -230,7 +287,15 @@ func TestBuildTaskDRAResreq(t *testing.T) {
 			})
 			assert.NoError(t, err, "failed to wait for resource claim cache sync")
 
-			resreq, claimResreq, claimKeys := sc.buildTaskDRAInfo(tt.pod)
+			resreq, claimResreq, claimKeys, err := sc.buildTaskDRAInfo(tt.pod)
+			if tt.expectErr {
+				assert.Error(t, err)
+				assert.Nil(t, resreq)
+				assert.Nil(t, claimResreq)
+				assert.Nil(t, claimKeys)
+				return
+			}
+			assert.NoError(t, err)
 			assert.Equal(t, tt.expectedResreq, resreq)
 			if tt.expectedResreq == nil {
 				assert.Nil(t, claimResreq)
@@ -238,6 +303,39 @@ func TestBuildTaskDRAResreq(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAddPodWithUnresolvedResourceClaimTemplateCachesTaskForResync(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, kubefeatures.DynamicResourceAllocation, true)
+
+	sc := newMockSchedulerCache("volcano")
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pod-template",
+			Namespace: "default",
+			UID:       types.UID("pod-template-uid"),
+			Annotations: map[string]string{
+				schedulingv1beta1.KubeGroupNameAnnotationKey: "pg-template",
+			},
+		},
+		Spec: v1.PodSpec{
+			SchedulerName: "volcano",
+			ResourceClaims: []v1.PodResourceClaim{
+				{Name: "claim1", ResourceClaimTemplateName: pointerString("claim-template")},
+			},
+		},
+	}
+
+	err := sc.addPod(pod)
+	assert.NoError(t, err)
+
+	job, found := sc.Jobs[schedulingapi.JobID("default/pg-template")]
+	assert.True(t, found)
+	if assert.NotNil(t, job) {
+		_, found = job.Tasks[schedulingapi.TaskID("pod-template-uid")]
+		assert.True(t, found)
+	}
+	assert.Equal(t, 1, sc.errTasks.Len())
 }
 
 func pointerString(s string) *string {

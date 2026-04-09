@@ -151,6 +151,8 @@ In practice:
 
 These two responsibilities are complementary rather than overlapping.
 
+For consumable capacity, Volcano accounts the logical total. A request for two devices with `8Gi` of memory each consumes `16Gi` of the queue's `memory.deviceclass/<DeviceClass>` quota. This does not solve physical fragmentation: if the cluster has two `8Gi` devices, a single Pod that needs `10Gi` on one device can still pass queue quota while failing the final DRA allocation.
+
 ## Root Queue and Total Resource View
 
 For DRA resources, the cluster-wide total can come from actual cluster state or from an administrator’s explicit queue configuration.

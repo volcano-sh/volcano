@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,4 +32,14 @@ func CreateResourceClaim(ctx *TestContext, claim *resourcev1.ResourceClaim) *res
 	c, err := ctx.Kubeclient.ResourceV1().ResourceClaims(claim.Namespace).Create(context.TODO(), claim, metav1.CreateOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to create ResourceClaim %s in namespace %s", claim.Name, claim.Namespace)
 	return c
+}
+
+// CreateResourceClaimTemplate creates a ResourceClaimTemplate in the test context's namespace.
+func CreateResourceClaimTemplate(ctx *TestContext, template *resourcev1.ResourceClaimTemplate) *resourcev1.ResourceClaimTemplate {
+	if template.Namespace == "" {
+		template.Namespace = ctx.Namespace
+	}
+	t, err := ctx.Kubeclient.ResourceV1().ResourceClaimTemplates(template.Namespace).Create(context.TODO(), template, metav1.CreateOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to create ResourceClaimTemplate %s in namespace %s", template.Name, template.Namespace)
+	return t
 }

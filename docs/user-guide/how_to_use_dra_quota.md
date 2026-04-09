@@ -53,8 +53,13 @@ data:
       - name: drf
       - name: predicates
       - name: capacity
+        arguments:
+          capacity.DynamicResourceAllocationEnable: true
+          capacity.DRAConsumableCapacityEnable: true
       - name: nodeorder
 ```
+
+The capacity plugin arguments are optional. When they are not set, Volcano uses the corresponding Kubernetes feature gate values as defaults.
 
 ## Queue Key Formats
 
@@ -66,6 +71,8 @@ Use the following keys in `spec.capability`, `spec.deserved`, and `spec.guarante
 | `<dim>.deviceclass/<DeviceClass>` | `cores.deviceclass/hami-core-gpu.project-hami.io: "800"` | consumable-capacity quota |
 
 These keys can coexist with normal resources such as `cpu`, `memory`, and `nvidia.com/gpu`.
+
+Consumable-capacity requests are counted per allocated device. For example, a ResourceClaim requesting `count: 2` and `memory: 8Gi` consumes `16Gi` of the queue key `memory.deviceclass/<DeviceClass>`.
 
 ## Queue Configuration Examples
 
@@ -302,6 +309,8 @@ The following request styles are not the main quota-accounting target:
 - `FirstAvailable`
 
 If your environment relies heavily on those modes, evaluate behavior carefully before treating them as strict queue quota signals.
+
+Queue quota is a logical total-resource check. It does not guarantee that the requested capacity can be placed on a specific physical device layout. For example, a queue may have `16Gi` of total GPU memory quota, while one Pod requesting `10Gi` still cannot fit onto any single `8Gi` device. Kubernetes DRA and the installed driver make the final physical allocation decision.
 
 ## Best Practices
 
