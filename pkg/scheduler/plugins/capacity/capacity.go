@@ -108,6 +108,8 @@ type draQuotaAttr struct {
 	guarantee map[string]*api.DRAResource
 	// allocated tracks current allocation per DeviceClass
 	allocated map[string]*api.DRAResource
+	// inqueue tracks DRA resources admitted to the queue in the current scheduling session.
+	inqueue map[string]*api.DRAResource
 }
 
 func (da *draQuotaAttr) Clone() *draQuotaAttr {
@@ -119,6 +121,7 @@ func (da *draQuotaAttr) Clone() *draQuotaAttr {
 		deserved:   cloneDRAResourceMap(da.deserved),
 		guarantee:  cloneDRAResourceMap(da.guarantee),
 		allocated:  cloneDRAResourceMap(da.allocated),
+		inqueue:    cloneDRAResourceMap(da.inqueue),
 	}
 	return out
 }
@@ -150,6 +153,9 @@ func parseDRAResourceList(resources v1.ResourceList) map[string]*api.DRAResource
 			if out[deviceClass] == nil {
 				out[deviceClass] = &api.DRAResource{Capacity: make(map[string]resource.Quantity)}
 			}
+			if out[deviceClass].Capacity == nil {
+				out[deviceClass].Capacity = make(map[string]resource.Quantity)
+			}
 			out[deviceClass].Capacity[dim] = quantity.DeepCopy()
 			continue
 		}
@@ -176,6 +182,7 @@ func newDRAQuotaAttr(capability, deserved, guarantee v1.ResourceList) *draQuotaA
 		deserved:   parseDRAResourceList(deserved),
 		guarantee:  parseDRAResourceList(guarantee),
 		allocated:  make(map[string]*api.DRAResource),
+		inqueue:    make(map[string]*api.DRAResource),
 	}
 	if da.capability == nil && da.deserved == nil && da.guarantee == nil {
 		return nil
@@ -251,13 +258,18 @@ func checkDRAAllocatable(dra *draQuotaAttr, taskDRA map[string]*api.DRAResource,
 		if allocated != nil {
 			allocatedCount = allocated.Count
 		}
+		inqueue := dra.inqueue[deviceClass]
+		inqueueCount := int64(0)
+		if inqueue != nil {
+			inqueueCount = inqueue.Count
+		}
 
-		klog.V(5).Infof("checkDRAAllocatable: deviceClass=%s, allocated=%d, request=%d, capability=%d",
-			deviceClass, allocatedCount, request.Count, capability.Count)
+		klog.V(5).Infof("checkDRAAllocatable: deviceClass=%s, allocated=%d, inqueue=%d, request=%d, capability=%d",
+			deviceClass, allocatedCount, inqueueCount, request.Count, capability.Count)
 
-		if capability.Count > 0 && allocatedCount+request.Count > capability.Count {
-			klog.V(3).Infof("checkDRAAllocatable: count exceeded for %s: allocated=%d, requested=%d, capability=%d",
-				deviceClass, allocatedCount, request.Count, capability.Count)
+		if capability.Count > 0 && allocatedCount+inqueueCount+request.Count > capability.Count {
+			klog.V(3).Infof("checkDRAAllocatable: count exceeded for %s: allocated=%d, inqueue=%d, requested=%d, capability=%d",
+				deviceClass, allocatedCount, inqueueCount, request.Count, capability.Count)
 			return false
 		}
 
@@ -273,6 +285,9 @@ func checkDRAAllocatable(dra *draQuotaAttr, taskDRA map[string]*api.DRAResource,
 					allocQty = allocated.Capacity[dim]
 				}
 				futureUsed := allocQty.DeepCopy()
+				if inqueue != nil {
+					futureUsed.Add(inqueue.Capacity[dim])
+				}
 				futureUsed.Add(reqQty)
 				if futureUsed.Cmp(capQty) > 0 {
 					return false
@@ -283,16 +298,48 @@ func checkDRAAllocatable(dra *draQuotaAttr, taskDRA map[string]*api.DRAResource,
 	return true
 }
 
-// updateDRAAllocated adds task's DRA requests to allocated tracking
-func updateDRAAllocated(dra *draQuotaAttr, taskDRA map[string]*api.DRAResource) {
-	for deviceClass, request := range taskDRA {
-		if dra.allocated[deviceClass] == nil {
-			dra.allocated[deviceClass] = &api.DRAResource{
+func mergeTaskDRA(dst map[string]*api.DRAResource, src map[string]*api.DRAResource) {
+	for deviceClass, request := range src {
+		if request == nil {
+			continue
+		}
+		if dst[deviceClass] == nil {
+			dst[deviceClass] = &api.DRAResource{
 				Capacity: make(map[string]resource.Quantity),
 			}
 		}
-		dra.allocated[deviceClass].Add(request)
+		dst[deviceClass].Add(request)
 	}
+}
+
+func incrementalTaskDRA(attr *queueAttr, task *api.TaskInfo) map[string]*api.DRAResource {
+	if task == nil {
+		return nil
+	}
+	if len(task.ResourceClaimDRAResreq) == 0 {
+		return task.DRAResreq
+	}
+
+	incremental := make(map[string]*api.DRAResource)
+	for _, claimKey := range task.ResourceClaimKeys {
+		if attr != nil && attr.resourceClaimRefs[claimKey] > 0 {
+			continue
+		}
+		mergeTaskDRA(incremental, task.ResourceClaimDRAResreq[claimKey])
+	}
+	if len(incremental) == 0 {
+		return nil
+	}
+	return incremental
+}
+
+// updateDRAAllocated adds task's DRA requests to allocated tracking
+func updateDRAAllocated(dra *draQuotaAttr, taskDRA map[string]*api.DRAResource) {
+	mergeTaskDRA(dra.allocated, taskDRA)
+}
+
+func updateDRAInqueue(dra *draQuotaAttr, jobDRA map[string]*api.DRAResource) {
+	mergeTaskDRA(dra.inqueue, jobDRA)
 }
 
 func addTaskDRAAllocated(attr *queueAttr, task *api.TaskInfo) {
@@ -575,11 +622,21 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		// job enqueued
 		deductedResources := job.DeductSchGatedResources(job.GetMinResources())
 		attr.inqueue.Add(deductedResources)
+		var minDRAReq map[string]*api.DRAResource
+		if cp.dynamicResourceAllocationEnable && attr.dra != nil {
+			minDRAReq = job.GetMinDRAResources()
+			if minDRAReq != nil {
+				updateDRAInqueue(attr.dra, minDRAReq)
+			}
+		}
 		// If enable hierarchy, update the inqueue resource for all ancestors queues
 		if hierarchyEnabled {
 			for _, ancestorID := range attr.ancestors {
 				ancestorAttr := cp.queueOpts[ancestorID]
 				ancestorAttr.inqueue.Add(deductedResources)
+				if cp.dynamicResourceAllocationEnable && ancestorAttr.dra != nil && minDRAReq != nil {
+					updateDRAInqueue(ancestorAttr.dra, minDRAReq)
+				}
 			}
 		}
 		klog.V(5).Infof("job <%s/%s> enqueued", job.Namespace, job.Name)
@@ -1375,8 +1432,9 @@ func (cp *capacityPlugin) buildQueueReservedTasksCache(ssn *framework.Session) {
 }
 
 func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo, draEnabled bool, consumableCapacityEnabled bool) bool {
-	if draEnabled && attr.dra != nil && candidate.DRAResreq != nil {
-		if !checkDRAAllocatable(attr.dra, candidate.DRAResreq, consumableCapacityEnabled) {
+	candidateDRA := incrementalTaskDRA(attr, candidate)
+	if draEnabled && attr.dra != nil && candidateDRA != nil {
+		if !checkDRAAllocatable(attr.dra, candidateDRA, consumableCapacityEnabled) {
 			klog.V(3).Infof("Queue <%v> DRA resource insufficient for candidate <%v>", queue.Name, candidate.Name)
 			return false
 		}

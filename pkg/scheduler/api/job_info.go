@@ -1446,9 +1446,69 @@ func (ji *JobInfo) GetMinDRAResources() map[string]*DRAResource {
 	}
 
 	result := make(map[string]*DRAResource)
-	processedRoles := make(map[string]struct{})
+	addResource := func(res map[string]*DRAResource, times int32) {
+		for deviceClass, request := range res {
+			if _, exists := result[deviceClass]; !exists {
+				result[deviceClass] = &DRAResource{
+					Count:    0,
+					Capacity: make(map[string]resource.Quantity),
+				}
+			}
+
+			result[deviceClass].Count += request.Count * int64(times)
+			for dim, cap := range request.Capacity {
+				totalCap := cap.DeepCopy()
+				for i := int32(0); i < times-1; i++ {
+					totalCap.Add(cap)
+				}
+
+				if existing, exists := result[deviceClass].Capacity[dim]; exists {
+					existing.Add(totalCap)
+					result[deviceClass].Capacity[dim] = existing
+				} else {
+					result[deviceClass].Capacity[dim] = totalCap
+				}
+			}
+		}
+	}
+
+	if len(ji.TaskMinAvailable) == 0 {
+		minAvailable := ji.MinAvailable
+		if minAvailable <= 0 {
+			return nil
+		}
+
+		tasks := make([]*TaskInfo, 0, len(ji.Tasks))
+		for _, task := range ji.Tasks {
+			if task.DRAResreq != nil {
+				tasks = append(tasks, task)
+			}
+		}
+		sort.Slice(tasks, func(i, j int) bool {
+			if tasks[i].Namespace != tasks[j].Namespace {
+				return tasks[i].Namespace < tasks[j].Namespace
+			}
+			if tasks[i].Name != tasks[j].Name {
+				return tasks[i].Name < tasks[j].Name
+			}
+			return tasks[i].UID < tasks[j].UID
+		})
+
+		for i, task := range tasks {
+			if int32(i) >= minAvailable {
+				break
+			}
+			addResource(task.DRAResreq, 1)
+		}
+
+		if len(result) == 0 {
+			return nil
+		}
+		return result
+	}
 
 	// Since DRA requests can vary per task/pod, we aggregate them based on TaskMinAvailable
+	processedRoles := make(map[string]struct{})
 	for _, task := range ji.Tasks {
 		if task.DRAResreq == nil {
 			continue
@@ -1465,32 +1525,7 @@ func (ji *JobInfo) GetMinDRAResources() map[string]*DRAResource {
 		}
 		processedRoles[taskType] = struct{}{}
 
-		for deviceClass, res := range task.DRAResreq {
-			if _, exists := result[deviceClass]; !exists {
-				result[deviceClass] = &DRAResource{
-					Count:    0,
-					Capacity: make(map[string]resource.Quantity),
-				}
-			}
-
-			result[deviceClass].Count += res.Count * int64(minNum)
-			for dim, cap := range res.Capacity {
-				totalCap := cap.DeepCopy()
-				// resource.Quantity has no Multiply func, so we parse memory/cpu as MilliValues
-				// For exact values we can just use set
-				// Since Quantity can represent fractional, we will loop to add
-				for i := int32(0); i < minNum-1; i++ {
-					totalCap.Add(cap)
-				}
-
-				if existing, exists := result[deviceClass].Capacity[dim]; exists {
-					existing.Add(totalCap)
-					result[deviceClass].Capacity[dim] = existing
-				} else {
-					result[deviceClass].Capacity[dim] = totalCap
-				}
-			}
-		}
+		addResource(task.DRAResreq, minNum)
 	}
 
 	if len(result) == 0 {

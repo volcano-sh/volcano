@@ -32,11 +32,11 @@ import (
 )
 
 type QueueSpec struct {
-	Name              string
-	Weight            int32
+	Name               string
+	Weight             int32
 	CapabilityResource v1.ResourceList
-	GuaranteeResource v1.ResourceList
-	DeservedResource  v1.ResourceList
+	GuaranteeResource  v1.ResourceList
+	DeservedResource   v1.ResourceList
 }
 
 func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
