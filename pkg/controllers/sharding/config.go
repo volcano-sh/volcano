@@ -31,6 +31,8 @@ const (
 	DefaultConfigMapName = "volcano-sharding-configmap"
 	// DefaultConfigMapNamespace is the default namespace of the sharding ConfigMap.
 	DefaultConfigMapNamespace = "volcano-system"
+	// DefaultPolicyName is the policy used when none is specified (backward compatibility).
+	DefaultPolicyName = "allocation-rate"
 )
 
 // SchedulerConfigSpec defines the per-scheduler sharding parameters.
@@ -253,7 +255,7 @@ func parseOldFormat(parts []string) (SchedulerConfigSpec, error) {
 	return SchedulerConfigSpec{
 		Name:   parts[0],
 		Type:   parts[1],
-		Policy: "allocation-rate", // Default policy for old format
+		Policy: DefaultPolicyName,
 		Arguments: map[string]interface{}{
 			"minCPUUtil":        minUtil,
 			"maxCPUUtil":        maxUtil,
@@ -333,6 +335,21 @@ func parseArgumentValue(s string) interface{} {
 
 	// Default to string
 	return s
+}
+
+// applyPolicyDefaults fills in PolicyName and PolicyArguments from the legacy
+// deprecated fields when the spec has no explicit Policy set.
+func applyPolicyDefaults(spec *SchedulerConfigSpec) {
+	if spec.Policy == "" {
+		spec.Policy = DefaultPolicyName
+		spec.Arguments = map[string]interface{}{
+			"minCPUUtil":        spec.CPUUtilizationMin,
+			"maxCPUUtil":        spec.CPUUtilizationMax,
+			"preferWarmupNodes": spec.PreferWarmupNodes,
+			"minNodes":          spec.MinNodes,
+			"maxNodes":          spec.MaxNodes,
+		}
+	}
 }
 
 // parseUtilization parses a utilization string to float64.

@@ -102,7 +102,7 @@ func (p *capabilityPolicy) Cleanup() {
 
 // filterEligibleNodes filters nodes that have sufficient capacity headroom
 func (p *capabilityPolicy) filterEligibleNodes(ctx *policy.PolicyContext) []string {
-	eligibleNodes := []string{}
+	eligibleNodes := make([]string, 0, len(ctx.AllNodes))
 	maxUtilThreshold := 1.0 - p.maxCapacityPercent
 
 	for _, node := range ctx.AllNodes {
