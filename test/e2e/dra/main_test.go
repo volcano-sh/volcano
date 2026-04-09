@@ -21,9 +21,15 @@ import (
 	"os"
 	"testing"
 
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/testfiles"
 	e2etestingmanifests "k8s.io/kubernetes/test/e2e/testing-manifests"
+
+	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 func TestMain(m *testing.M) {
@@ -31,6 +37,11 @@ func TestMain(m *testing.M) {
 	framework.TestContext.CloudConfig = framework.CloudConfig{
 		Provider: framework.NullProvider{},
 	}
+	home := e2eutil.HomeDir()
+	configPath := e2eutil.KubeconfigPath(home)
+	config, _ := clientcmd.BuildConfigFromFlags(e2eutil.MasterURL(), configPath)
+	e2eutil.VcClient = vcclient.NewForConfigOrDie(config)
+	e2eutil.KubeClient = kubernetes.NewForConfigOrDie(config)
 	testfiles.AddFileSource(e2etestingmanifests.GetE2ETestingManifestsFS())
 	os.Exit(m.Run())
 }

@@ -18,14 +18,52 @@ nodes:
         apiVersion: kubelet.config.k8s.io/v1beta1
         kind: KubeletConfiguration
         containerLogMaxSize: "50Mi"
+        featureGates:
+          DynamicResourceAllocation: true
+          DRAConsumableCapacity: true
       - |
         kind: ClusterConfiguration
         apiServer:
           extraArgs:
             runtime-config: "admissionregistration.k8s.io/v1beta1"
             enable-admission-plugins: "MutatingAdmissionPolicy"
+            feature-gates: "MutatingAdmissionPolicy=true,DynamicResourceAllocation=true,DRAConsumableCapacity=true"
+        controllerManager:
+          extraArgs:
+            feature-gates: "MutatingAdmissionPolicy=true,DynamicResourceAllocation=true,DRAConsumableCapacity=true"
+        scheduler:
+          extraArgs:
+            feature-gates: "MutatingAdmissionPolicy=true,DynamicResourceAllocation=true,DRAConsumableCapacity=true"
   # the four workers
   - role: worker
+    kubeadmConfigPatches:
+      - |
+        apiVersion: kubelet.config.k8s.io/v1beta1
+        kind: KubeletConfiguration
+        featureGates:
+          DynamicResourceAllocation: true
+          DRAConsumableCapacity: true
   - role: worker
+    kubeadmConfigPatches:
+      - |
+        apiVersion: kubelet.config.k8s.io/v1beta1
+        kind: KubeletConfiguration
+        featureGates:
+          DynamicResourceAllocation: true
+          DRAConsumableCapacity: true
   - role: worker
+    kubeadmConfigPatches:
+      - |
+        apiVersion: kubelet.config.k8s.io/v1beta1
+        kind: KubeletConfiguration
+        featureGates:
+          DynamicResourceAllocation: true
+          DRAConsumableCapacity: true
   - role: worker
+    kubeadmConfigPatches:
+      - |
+        apiVersion: kubelet.config.k8s.io/v1beta1
+        kind: KubeletConfiguration
+        featureGates:
+          DynamicResourceAllocation: true
+          DRAConsumableCapacity: true
