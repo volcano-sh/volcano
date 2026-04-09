@@ -27,9 +27,9 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -226,12 +226,18 @@ func Test_capacityPlugin_DRA(t *testing.T) {
 
 func TestSharedResourceClaimIsChargedOnce(t *testing.T) {
 	attr := &queueAttr{
+		allocated:      api.EmptyResource(),
+		realCapability: api.InfiniteResource(),
 		dra: &draQuotaAttr{
 			allocated: make(map[string]*api.DRAResource),
+			capability: map[string]*api.DRAResource{
+				"gpu.com": {Count: 1},
+			},
 		},
 		resourceClaimRefs: make(map[string]int),
 	}
 	taskA := &api.TaskInfo{
+		Resreq:            api.EmptyResource(),
 		ResourceClaimKeys: []string{"ns1/shared"},
 		ResourceClaimDRAResreq: map[string]map[string]*api.DRAResource{
 			"ns1/shared": {
@@ -243,6 +249,7 @@ func TestSharedResourceClaimIsChargedOnce(t *testing.T) {
 		},
 	}
 	taskB := &api.TaskInfo{
+		Resreq:            api.EmptyResource(),
 		ResourceClaimKeys: []string{"ns1/shared"},
 		ResourceClaimDRAResreq: map[string]map[string]*api.DRAResource{
 			"ns1/shared": {
@@ -261,6 +268,28 @@ func TestSharedResourceClaimIsChargedOnce(t *testing.T) {
 		t.Fatalf("shared claim should be counted once after two additions, got %d", got)
 	}
 
+	queue := &api.QueueInfo{Name: "q1"}
+	if !queueAllocatable(attr, taskA, queue, true, false) {
+		t.Fatalf("shared claim should not consume additional DRA quota when the claim is already referenced by the queue")
+	}
+
+	distinctTask := &api.TaskInfo{
+		Name:              "distinct",
+		Resreq:            api.EmptyResource(),
+		ResourceClaimKeys: []string{"ns1/distinct"},
+		ResourceClaimDRAResreq: map[string]map[string]*api.DRAResource{
+			"ns1/distinct": {
+				"gpu.com": {Count: 1},
+			},
+		},
+		DRAResreq: map[string]*api.DRAResource{
+			"gpu.com": {Count: 1},
+		},
+	}
+	if queueAllocatable(attr, distinctTask, queue, true, false) {
+		t.Fatalf("distinct claim should still be rejected when it exceeds remaining DRA quota")
+	}
+
 	removeTaskDRAAllocated(attr, taskA)
 	if got := attr.dra.allocated["gpu.com"].Count; got != 1 {
 		t.Fatalf("shared claim should remain allocated until last reference is removed, got %d", got)
@@ -277,10 +306,10 @@ func TestJobEnqueueableChecksDRAWithoutMinResources(t *testing.T) {
 	cp := &capacityPlugin{
 		queueOpts: map[api.QueueID]*queueAttr{
 			queueID: {
-				allocated:        api.EmptyResource(),
-				inqueue:          api.EmptyResource(),
-				elastic:          api.EmptyResource(),
-				realCapability:   api.InfiniteResource(),
+				allocated:         api.EmptyResource(),
+				inqueue:           api.EmptyResource(),
+				elastic:           api.EmptyResource(),
+				realCapability:    api.InfiniteResource(),
 				resourceClaimRefs: make(map[string]int),
 				dra: newDRAQuotaAttr(v1.ResourceList{
 					v1.ResourceName(DeviceClassCountPrefix + "gpu.com"): resource.MustParse("1"),

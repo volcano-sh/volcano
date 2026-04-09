@@ -33,3 +33,13 @@ func CreateResourceClaim(ctx *TestContext, claim *resourcev1.ResourceClaim) *res
 	Expect(err).NotTo(HaveOccurred(), "failed to create ResourceClaim %s in namespace %s", claim.Name, claim.Namespace)
 	return c
 }
+
+// CreateResourceClaimTemplate creates a ResourceClaimTemplate in the test context's namespace.
+func CreateResourceClaimTemplate(ctx *TestContext, template *resourcev1.ResourceClaimTemplate) *resourcev1.ResourceClaimTemplate {
+	if template.Namespace == "" {
+		template.Namespace = ctx.Namespace
+	}
+	t, err := ctx.Kubeclient.ResourceV1().ResourceClaimTemplates(template.Namespace).Create(context.TODO(), template, metav1.CreateOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to create ResourceClaimTemplate %s in namespace %s", template.Name, template.Namespace)
+	return t
+}
