@@ -177,17 +177,19 @@ func formatFloat(v float64) string {
 
 // String returns resource details in string format
 func (r *Resource) String() string {
-	str := fmt.Sprintf("cpu %s, memory %s", formatFloat(r.MilliCPU), formatFloat(r.Memory))
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "cpu %s, memory %s", formatFloat(r.MilliCPU), formatFloat(r.Memory))
+
 	// Sort scalar resource names to ensure consistent string output
-	var resourceNames []string
+	resourceNames := make([]string, 0, len(r.ScalarResources))
 	for rName := range r.ScalarResources {
 		resourceNames = append(resourceNames, string(rName))
 	}
 	sort.Strings(resourceNames)
 	for _, rName := range resourceNames {
-		str = fmt.Sprintf("%s, %s %s", str, rName, formatFloat(r.ScalarResources[v1.ResourceName(rName)]))
+		fmt.Fprintf(&sb, ", %s %s", rName, formatFloat(r.ScalarResources[v1.ResourceName(rName)]))
 	}
-	return str
+	return sb.String()
 }
 
 // ResourceNames returns all resource types
