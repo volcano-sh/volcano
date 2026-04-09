@@ -170,14 +170,13 @@ func (p *warmupPolicy) selectNodesWithPriority(warmupNodes, nonWarmupNodes []str
 		selected = append(selected, node)
 	}
 
-	// If we need more nodes (either to meet minNodes or use remaining capacity up to maxNodes)
-	// and allowNonWarmup is true, add non-warmup nodes
-	if len(selected) < p.maxNodes && p.allowNonWarmup {
+	// If allowNonWarmup is true and we haven't reached maxNodes, fill remaining
+	// capacity from non-warmup nodes
+	if p.allowNonWarmup {
 		for _, node := range nonWarmupNodes {
 			if len(selected) >= p.maxNodes {
 				break
 			}
-			// Only add if we haven't reached maxNodes
 			selected = append(selected, node)
 		}
 	}
