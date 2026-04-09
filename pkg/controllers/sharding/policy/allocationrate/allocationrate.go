@@ -203,27 +203,19 @@ func (p *allocationRatePolicy) prioritizeNodes(nodes []*corev1.Node, ctx *policy
 	return prioritized
 }
 
-// selectNodesWithinConstraints selects nodes within min/max constraints
+// selectNodesWithinConstraints selects nodes within min/max constraints.
+// Nodes must already be sorted by priority before calling this function.
 func (p *allocationRatePolicy) selectNodesWithinConstraints(nodes []*corev1.Node) []string {
-	// Compute the desired node count
+	// calculateDesiredNodeCount clamps to [minNodes, maxNodes]
 	desiredCount := p.calculateDesiredNodeCount(len(nodes))
 
-	// Ensure the desired node count is at least minNodes
-	if desiredCount < p.minNodes {
-		desiredCount = p.minNodes
-	}
-
-	// If eligible nodes is smaller than desired, use all eligible nodes
-	if len(nodes) < desiredCount {
+	// Can't select more nodes than available
+	if desiredCount > len(nodes) {
 		desiredCount = len(nodes)
 	}
 
-	// Select nodes
 	selected := make([]string, 0, desiredCount)
-
-	// Select nodes according to priority up to desiredCount
-	// desiredCount already accounts for minNodes constraint
-	for i := 0; i < desiredCount && i < len(nodes); i++ {
+	for i := 0; i < desiredCount; i++ {
 		selected = append(selected, nodes[i].Name)
 	}
 
