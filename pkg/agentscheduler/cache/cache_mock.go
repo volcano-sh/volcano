@@ -36,6 +36,7 @@ import (
 
 	fakevcClient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
+	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 )
 
 // NewCustomMockSchedulerCache returns a mock scheduler cache with custom interface
@@ -98,7 +99,7 @@ func getNodeWorkers() uint32 {
 func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 	msc := &SchedulerCache{
 		Nodes:              make(map[string]*nodeInfoListItem),
-		nodeQueue:          workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		nodeQueue:          workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[schedulercache.QueueObjectWrapper]()),
 		kubeClient:         fake.NewSimpleClientset(),
 		vcClient:           fakevcClient.NewSimpleClientset(),
 		restConfig:         nil,
