@@ -206,7 +206,7 @@ func (ni *NodeInfo) RefreshNumaSchedulerInfoByCrd() {
 
 // Clone used to clone nodeInfo Object
 func (ni *NodeInfo) Clone() *NodeInfo {
-	res := NewNodeInfo(ni.Node.DeepCopy())
+	res := NewNodeInfo(ni.Node)
 
 	for _, p := range ni.Tasks {
 		res.AddTask(p)

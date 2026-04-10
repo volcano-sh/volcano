@@ -283,7 +283,7 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		Namespace:                   ti.Namespace,
 		TaskRole:                    ti.TaskRole,
 		Priority:                    ti.Priority,
-		Pod:                         ti.Pod.DeepCopy(),
+		Pod:                         ti.Pod,
 		Resreq:                      ti.Resreq.Clone(),
 		InitResreq:                  ti.InitResreq.Clone(),
 		VolumeReady:                 ti.VolumeReady,
