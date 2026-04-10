@@ -65,12 +65,15 @@ import (
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/features"
-	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
+	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 	"volcano.sh/volcano/pkg/util"
-	commonutil "volcano.sh/volcano/pkg/util"
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
+)
+
+const (
+	handlerSyncPollPeriod = 100 * time.Millisecond
 )
 
 func init() {
@@ -121,7 +124,8 @@ type SchedulerCache struct {
 
 	taskCache *TaskCache
 
-	nodeQueue workqueue.TypedRateLimitingInterface[string]
+	nodeQueue               workqueue.TypedRateLimitingInterface[schedulercache.QueueObjectWrapper]
+	nodeInitialEventTracker *schedulercache.InitialEventAsyncHandlerTracker
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -154,6 +158,11 @@ type SchedulerCache struct {
 	cancel context.CancelFunc
 
 	shardingMode string
+
+	registeredHandlers map[string]cache.ResourceEventHandlerRegistration
+
+	// timeout on waiting for handlers handle initial resource synchronization before starting scheduling, 0 will skip waiting
+	resourceSyncTimeout time.Duration
 }
 
 // TaskCache encapsulates the task map with a seperate lock
@@ -319,7 +328,7 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *Schedule
 
 	sc := &SchedulerCache{
 		Nodes:              make(map[string]*nodeInfoListItem),
-		nodeQueue:          workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		nodeQueue:          workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[schedulercache.QueueObjectWrapper]()),
 		kubeClient:         kubeClient,
 		vcClient:           vcClient,
 		restConfig:         config,
@@ -327,11 +336,12 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *Schedule
 		nodeSelectorLabels: make(map[string]sets.Empty),
 		imageStates:        make(map[string]*imageState),
 
-		NodeList:     []string{},
-		NodeShards:   make(map[string]*schedulingapi.NodeShardInfo),
-		nodeWorkers:  opt.NodeWorkerThreads,
-		taskCache:    NewTaskCache(),
-		shardingMode: opt.ShardingMode,
+		NodeList:            []string{},
+		NodeShards:          make(map[string]*schedulingapi.NodeShardInfo),
+		nodeWorkers:         opt.NodeWorkerThreads,
+		taskCache:           NewTaskCache(),
+		shardingMode:        opt.ShardingMode,
+		resourceSyncTimeout: opt.ResourceSyncTimeout,
 	}
 
 	sc.resyncPeriod = opt.ResyncPeriod
@@ -342,7 +352,7 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *Schedule
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
-	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName([]string{sc.schedulerName})})
+	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: util.GenerateComponentName([]string{sc.schedulerName})})
 
 	// set concurrency configuration when binding
 	sc.setBatchBindParallel()
@@ -408,6 +418,8 @@ func buildQueueingHintMap() k8sschedulingqueue.QueueingHintMap {
 }
 
 func (sc *SchedulerCache) addEventHandler() {
+	handlers := make(map[string]cache.ResourceEventHandlerRegistration, 10)
+	var handlerRegistration cache.ResourceEventHandlerRegistration
 	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, sc.resyncPeriod)
 	sc.informerFactory = informerFactory
 
@@ -434,7 +446,7 @@ func (sc *SchedulerCache) addEventHandler() {
 
 	// create informer for node information
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
-	sc.nodeInformer.Informer().AddEventHandler(
+	handlerRegistration, _ = sc.nodeInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
@@ -452,17 +464,20 @@ func (sc *SchedulerCache) addEventHandler() {
 					return false
 				}
 			},
-			Handler: cache.ResourceEventHandlerFuncs{
+			Handler: cache.ResourceEventHandlerDetailedFuncs{
 				AddFunc:    sc.AddNode,
 				UpdateFunc: sc.UpdateNode,
 				DeleteFunc: sc.DeleteNode,
 			},
 		},
 	)
+	//real node sync is handled in queue instead of event handler, use tracker to track the handling status in node queue
+	sc.nodeInitialEventTracker = schedulercache.NewQueueHandlerTracker(handlerRegistration)
+	handlers["node"] = sc.nodeInitialEventTracker
 
 	sc.podInformer = informerFactory.Core().V1().Pods()
 	// 1. Pods already scheduled, refresh its state in cache
-	sc.podInformer.Informer().AddEventHandler(
+	handlerRegistration, _ = sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
@@ -489,9 +504,10 @@ func (sc *SchedulerCache) addEventHandler() {
 				DeleteFunc: sc.DeletePodFromCache,
 			},
 		})
+	handlers["pod-cache"] = handlerRegistration
 
 	// 2. Pods not scheduled yet, and needed to be scheduled by agent scheduler, add them to scheduling queue
-	sc.podInformer.Informer().AddEventHandler(
+	handlerRegistration, _ = sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
@@ -519,17 +535,19 @@ func (sc *SchedulerCache) addEventHandler() {
 				DeleteFunc: sc.DeletePodFromSchedulingQueue,
 			},
 		})
+	handlers["pod-queue"] = handlerRegistration
 
 	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, sc.resyncPeriod)
 	sc.vcInformerFactory = vcinformers
 	if sc.shardingMode == util.HardShardingMode || sc.shardingMode == util.SoftShardingMode {
 		sc.nodeShardInformer = sc.vcInformerFactory.Shard().V1alpha1().NodeShards()
-		sc.nodeShardInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		handlerRegistration, _ = sc.nodeShardInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddNodeShard,
 			UpdateFunc: sc.UpdateNodeShard,
 			DeleteFunc: sc.DeleteNodeShard,
 		})
 		sc.nodeShardLister = sc.vcInformerFactory.Shard().V1alpha1().NodeShards().Lister()
+		handlers["nodeShard"] = handlerRegistration
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
@@ -580,12 +598,38 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 		sc.cancel() // cancel other goroutines such as metricsRecorder
 		sc.schedulingQueue.Close()
 	}()
+	if sc.resourceSyncTimeout > 0 {
+		klog.V(3).Info("scheduler wait for handlers sync")
+		sc.WaitForHandlerSync(stopCh)
+		klog.V(3).Info("scheduler finished handlers sync")
+	} else {
+		klog.V(3).Info("skip waiting for handlers sync")
+	}
 }
 
 // WaitForCacheSync sync the cache with the api server
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) {
 	sc.informerFactory.WaitForCacheSync(stopCh)
 	sc.vcInformerFactory.WaitForCacheSync(stopCh)
+}
+
+func (sc *SchedulerCache) WaitForHandlerSync(stopCh <-chan struct{}) {
+	err := wait.PollUntilContextTimeout(wait.ContextForChannel(stopCh), handlerSyncPollPeriod, sc.resourceSyncTimeout, true, func(c context.Context) (done bool, err error) {
+		for _, handler := range sc.registeredHandlers {
+			if !handler.HasSynced() {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		klog.Errorf("Error in waiting event handlers syncing: %v", err)
+		for name, handler := range sc.registeredHandlers {
+			if !handler.HasSynced() {
+				klog.Errorf("%s handler synchronization is not completed", name)
+			}
+		}
+	}
 }
 
 // Bind binds task to the target host.
@@ -770,21 +814,24 @@ func (sc *SchedulerCache) runNodeWorker() {
 }
 
 func (sc *SchedulerCache) processSyncNode() bool {
-	nodeName, shutdown := sc.nodeQueue.Get()
+	nodeWrapper, shutdown := sc.nodeQueue.Get()
 	if shutdown {
 		return false
 	}
-	defer sc.nodeQueue.Done(nodeName)
+	defer sc.nodeQueue.Done(nodeWrapper)
 
-	klog.V(5).Infof("started sync node %s", nodeName)
-	err := sc.SyncNode(nodeName)
+	klog.V(5).Infof("started sync node %s", nodeWrapper.Object)
+	err := sc.SyncNode(nodeWrapper.Object)
+	if nodeWrapper.IsInInitialList {
+		sc.nodeInitialEventTracker.Done(nodeWrapper.Object)
+	}
 	if err == nil {
-		sc.nodeQueue.Forget(nodeName)
+		sc.nodeQueue.Forget(nodeWrapper)
 		return true
 	}
 
-	klog.Errorf("Failed to sync node <%s>, retry it.", nodeName)
-	sc.nodeQueue.AddRateLimited(nodeName)
+	klog.Errorf("Failed to sync node <%s>, retry it.", nodeWrapper.Object)
+	sc.nodeQueue.AddRateLimited(nodeWrapper)
 	return true
 }
 
@@ -961,7 +1008,7 @@ func (sc *SchedulerCache) UpdateSnapshot(snapshot *k8sutil.Snapshot) error {
 	snapshotGeneration := snapshot.GetGeneration()
 	// currentNodeNames record the names of nodes that exist in the cache for later deletion of nodes that do not exist in the snapshot.
 	currentNodeNames := make(map[string]bool)
-	var nodesToUpdate []*api.NodeInfo
+	var nodesToUpdate []*schedulingapi.NodeInfo
 
 	for _, node := range sc.Nodes {
 		currentNodeNames[node.info.Name] = true
@@ -1044,7 +1091,7 @@ func (sc *SchedulerCache) RegisterBinder(name string, binder interface{}) {
 }
 
 // UpdateTaskStatus TODO: refer to update task status
-func (sc *SchedulerCache) UpdateTaskStatus(task *api.TaskInfo, status api.TaskStatus) error {
+func (sc *SchedulerCache) UpdateTaskStatus(task *schedulingapi.TaskInfo, status schedulingapi.TaskStatus) error {
 	task.Status = status
 	return nil
 }
