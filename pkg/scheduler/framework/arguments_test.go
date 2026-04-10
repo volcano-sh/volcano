@@ -141,6 +141,72 @@ func TestArgumentsGetFloat64(t *testing.T) {
 	}
 }
 
+func TestArgumentsGetBool(t *testing.T) {
+	key1 := "boolkey"
+
+	cases := []struct {
+		name        string
+		arg         Arguments
+		key         string
+		baseValue   bool
+		expectValue bool
+	}{
+		{
+			name: "key not exist",
+			arg: Arguments{
+				"anotherKey": true,
+			},
+			key:         key1,
+			baseValue:   false,
+			expectValue: false,
+		},
+		{
+			name: "bool value",
+			arg: Arguments{
+				key1: true,
+			},
+			key:         key1,
+			baseValue:   false,
+			expectValue: true,
+		},
+		{
+			name: "string true value",
+			arg: Arguments{
+				key1: "true",
+			},
+			key:         key1,
+			baseValue:   false,
+			expectValue: true,
+		},
+		{
+			name: "string false value",
+			arg: Arguments{
+				key1: "false",
+			},
+			key:         key1,
+			baseValue:   true,
+			expectValue: false,
+		},
+		{
+			name: "invalid value",
+			arg: Arguments{
+				key1: "not-a-bool",
+			},
+			key:         key1,
+			baseValue:   true,
+			expectValue: true,
+		},
+	}
+
+	for index, c := range cases {
+		baseValue := c.baseValue
+		c.arg.GetBool(&baseValue, c.key)
+		if baseValue != c.expectValue {
+			t.Errorf("index %d, case %s, value should be %v, but not %v", index, c.name, c.expectValue, baseValue)
+		}
+	}
+}
+
 func TestGetArgOfActionFromConf(t *testing.T) {
 	cases := []struct {
 		name              string

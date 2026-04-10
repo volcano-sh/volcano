@@ -20,10 +20,14 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 
@@ -41,6 +45,15 @@ const (
 	// Using the name of the plugin will likely help us avoid collisions with other plugins.
 	capacityStateKey = PluginName
 	rootQueueID      = "root"
+
+	// DynamicResourceAllocationEnable is the key for enabling DRA quota enforcement in the capacity plugin
+	DynamicResourceAllocationEnable = "capacity.DynamicResourceAllocationEnable"
+
+	// DRAConsumableCapacityEnable is the key for enabling DRA consumable capacity quota in the capacity plugin
+	DRAConsumableCapacityEnable = "capacity.DRAConsumableCapacityEnable"
+
+	DeviceClassCountPrefix = "deviceclass/"
+	DeviceClassCapacitySep = ".deviceclass/"
 )
 
 type capacityPlugin struct {
@@ -51,6 +64,11 @@ type capacityPlugin struct {
 	queueOpts map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
+
+	// dynamicResourceAllocationEnable controls whether DRA quota is enforced
+	dynamicResourceAllocationEnable bool
+	// draConsumableCapacityEnable controls whether Capacity dimensions inside DRA are enforced
+	draConsumableCapacityEnable bool
 }
 
 type queueAttr struct {
@@ -69,17 +87,314 @@ type queueAttr struct {
 	inqueue    *api.Resource
 	capability *api.Resource
 	// realCapability represents the resource limit of the queue, LessEqual capability
-	realCapability *api.Resource
-	guarantee      *api.Resource
+	realCapability    *api.Resource
+	guarantee         *api.Resource
+	dra               *draQuotaAttr
+	resourceClaimRefs map[string]int
+}
+
+// draQuotaAttr holds DRA quota tracking state for a queue
+type draQuotaAttr struct {
+	// capability is the hard limit per DeviceClass
+	capability map[string]*api.DRAResource
+	// deserved is the soft limit per DeviceClass
+	deserved map[string]*api.DRAResource
+	// guarantee is the guaranteed minimum per DeviceClass
+	guarantee map[string]*api.DRAResource
+	// allocated tracks current allocation per DeviceClass
+	allocated map[string]*api.DRAResource
+}
+
+func (da *draQuotaAttr) Clone() *draQuotaAttr {
+	if da == nil {
+		return nil
+	}
+	out := &draQuotaAttr{
+		capability: cloneDRAResourceMap(da.capability),
+		deserved:   cloneDRAResourceMap(da.deserved),
+		guarantee:  cloneDRAResourceMap(da.guarantee),
+		allocated:  cloneDRAResourceMap(da.allocated),
+	}
+	return out
+}
+
+func cloneDRAResourceMap(m map[string]*api.DRAResource) map[string]*api.DRAResource {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]*api.DRAResource, len(m))
+	for k, v := range m {
+		out[k] = v.Clone()
+	}
+	return out
+}
+
+func parseDRAResourceList(resources v1.ResourceList) map[string]*api.DRAResource {
+	if len(resources) == 0 {
+		return nil
+	}
+	out := make(map[string]*api.DRAResource)
+	for name, quantity := range resources {
+		resourceName := string(name)
+		if idx := strings.Index(resourceName, DeviceClassCapacitySep); idx > 0 {
+			dim := resourceName[:idx]
+			deviceClass := resourceName[idx+len(DeviceClassCapacitySep):]
+			if dim == "" || deviceClass == "" {
+				continue
+			}
+			if out[deviceClass] == nil {
+				out[deviceClass] = &api.DRAResource{Capacity: make(map[string]resource.Quantity)}
+			}
+			out[deviceClass].Capacity[dim] = quantity.DeepCopy()
+			continue
+		}
+		if strings.HasPrefix(resourceName, DeviceClassCountPrefix) {
+			deviceClass := strings.TrimPrefix(resourceName, DeviceClassCountPrefix)
+			if deviceClass == "" {
+				continue
+			}
+			if out[deviceClass] == nil {
+				out[deviceClass] = &api.DRAResource{}
+			}
+			out[deviceClass].Count = quantity.Value()
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func newDRAQuotaAttr(capability, deserved, guarantee v1.ResourceList) *draQuotaAttr {
+	da := &draQuotaAttr{
+		capability: parseDRAResourceList(capability),
+		deserved:   parseDRAResourceList(deserved),
+		guarantee:  parseDRAResourceList(guarantee),
+		allocated:  make(map[string]*api.DRAResource),
+	}
+	if da.capability == nil && da.deserved == nil && da.guarantee == nil {
+		return nil
+	}
+	return da
+}
+
+func getDRADelta(newAttr, oldAttr *draQuotaAttr) map[string]*api.DRAResource {
+	if newAttr == nil {
+		return nil
+	}
+	delta := make(map[string]*api.DRAResource)
+
+	// Create union of keys
+	keys := make(map[string]struct{})
+	if newAttr.allocated != nil {
+		for k := range newAttr.allocated {
+			keys[k] = struct{}{}
+		}
+	}
+	if oldAttr != nil && oldAttr.allocated != nil {
+		for k := range oldAttr.allocated {
+			keys[k] = struct{}{}
+		}
+	}
+
+	for k := range keys {
+		var newRes, oldRes *api.DRAResource
+		if newAttr.allocated != nil {
+			newRes = newAttr.allocated[k]
+		}
+		if oldAttr != nil && oldAttr.allocated != nil {
+			oldRes = oldAttr.allocated[k]
+		}
+
+		res := &api.DRAResource{Capacity: make(map[string]resource.Quantity)}
+		if newRes != nil {
+			res.Count = newRes.Count
+			for dim, val := range newRes.Capacity {
+				res.Capacity[dim] = val.DeepCopy()
+			}
+		}
+		if oldRes != nil {
+			res.Count -= oldRes.Count
+			for dim, val := range oldRes.Capacity {
+				q := res.Capacity[dim]
+				q.Sub(val)
+				res.Capacity[dim] = q
+			}
+		}
+		delta[k] = res
+	}
+	return delta
+}
+
+// checkDRAAllocatable checks if a task's DRA requests fit within queue's DRA capability.
+// consumableCapacityEnabled controls whether the Capacity dimensions are also checked.
+func checkDRAAllocatable(dra *draQuotaAttr, taskDRA map[string]*api.DRAResource, consumableCapacityEnabled bool) bool {
+	if dra == nil || taskDRA == nil {
+		return true // no DRA quota configured or no DRA requests
+	}
+
+	for deviceClass, request := range taskDRA {
+		capability, exists := dra.capability[deviceClass]
+		if !exists {
+			// No capability configured for this DeviceClass → no quota limit, allow
+			klog.V(5).Infof("checkDRAAllocatable: No capability for %s, passing through", deviceClass)
+			continue
+		}
+
+		allocated := dra.allocated[deviceClass]
+		allocatedCount := int64(0)
+		if allocated != nil {
+			allocatedCount = allocated.Count
+		}
+
+		klog.V(5).Infof("checkDRAAllocatable: deviceClass=%s, allocated=%d, request=%d, capability=%d",
+			deviceClass, allocatedCount, request.Count, capability.Count)
+
+		if capability.Count > 0 && allocatedCount+request.Count > capability.Count {
+			klog.V(3).Infof("checkDRAAllocatable: count exceeded for %s: allocated=%d, requested=%d, capability=%d",
+				deviceClass, allocatedCount, request.Count, capability.Count)
+			return false
+		}
+
+		// Check capacity dimensions (only when DRAConsumableCapacity feature is enabled)
+		if consumableCapacityEnabled {
+			for dim, reqQty := range request.Capacity {
+				capQty, ok := capability.Capacity[dim]
+				if !ok {
+					return false // dimension not in capability
+				}
+				var allocQty resource.Quantity
+				if allocated != nil {
+					allocQty = allocated.Capacity[dim]
+				}
+				futureUsed := allocQty.DeepCopy()
+				futureUsed.Add(reqQty)
+				if futureUsed.Cmp(capQty) > 0 {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+func mergeTaskDRA(dst map[string]*api.DRAResource, src map[string]*api.DRAResource) {
+	for deviceClass, request := range src {
+		if request == nil {
+			continue
+		}
+		if dst[deviceClass] == nil {
+			dst[deviceClass] = &api.DRAResource{
+				Capacity: make(map[string]resource.Quantity),
+			}
+		}
+		dst[deviceClass].Add(request)
+	}
+}
+
+func incrementalTaskDRA(attr *queueAttr, task *api.TaskInfo) map[string]*api.DRAResource {
+	if task == nil {
+		return nil
+	}
+	if len(task.ResourceClaimDRAResreq) == 0 {
+		return task.DRAResreq
+	}
+
+	incremental := make(map[string]*api.DRAResource)
+	for _, claimKey := range task.ResourceClaimKeys {
+		if attr != nil && attr.resourceClaimRefs[claimKey] > 0 {
+			continue
+		}
+		mergeTaskDRA(incremental, task.ResourceClaimDRAResreq[claimKey])
+	}
+	if len(incremental) == 0 {
+		return nil
+	}
+	return incremental
+}
+
+// updateDRAAllocated adds task's DRA requests to allocated tracking
+func updateDRAAllocated(dra *draQuotaAttr, taskDRA map[string]*api.DRAResource) {
+	mergeTaskDRA(dra.allocated, taskDRA)
+}
+
+func addTaskDRAAllocated(attr *queueAttr, task *api.TaskInfo) {
+	if attr == nil || attr.dra == nil || task == nil {
+		return
+	}
+	if len(task.ResourceClaimDRAResreq) == 0 {
+		if task.DRAResreq != nil {
+			updateDRAAllocated(attr.dra, task.DRAResreq)
+		}
+		return
+	}
+	if attr.resourceClaimRefs == nil {
+		attr.resourceClaimRefs = make(map[string]int)
+	}
+	for _, claimKey := range task.ResourceClaimKeys {
+		claimReq := task.ResourceClaimDRAResreq[claimKey]
+		if len(claimReq) == 0 {
+			continue
+		}
+		if attr.resourceClaimRefs[claimKey] == 0 {
+			updateDRAAllocated(attr.dra, claimReq)
+		}
+		attr.resourceClaimRefs[claimKey]++
+	}
+}
+
+// subtractDRAAllocated removes task's DRA requests from allocated tracking
+func subtractDRAAllocated(dra *draQuotaAttr, taskDRA map[string]*api.DRAResource) {
+	for deviceClass, request := range taskDRA {
+		allocated := dra.allocated[deviceClass]
+		if allocated == nil {
+			continue
+		}
+		allocated.Sub(request)
+	}
+}
+
+func removeTaskDRAAllocated(attr *queueAttr, task *api.TaskInfo) {
+	if attr == nil || attr.dra == nil || task == nil {
+		return
+	}
+	if len(task.ResourceClaimDRAResreq) == 0 {
+		if task.DRAResreq != nil {
+			subtractDRAAllocated(attr.dra, task.DRAResreq)
+		}
+		return
+	}
+	for _, claimKey := range task.ResourceClaimKeys {
+		claimReq := task.ResourceClaimDRAResreq[claimKey]
+		if len(claimReq) == 0 {
+			continue
+		}
+		refCount := attr.resourceClaimRefs[claimKey]
+		if refCount <= 1 {
+			subtractDRAAllocated(attr.dra, claimReq)
+			delete(attr.resourceClaimRefs, claimKey)
+			continue
+		}
+		attr.resourceClaimRefs[claimKey] = refCount - 1
+	}
 }
 
 // New return capacityPlugin action
 func New(arguments framework.Arguments) framework.Plugin {
+	// Default to k8s feature gate values, allow override via plugin arguments
+	dynamicResourceAllocationEnable := utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation)
+	draConsumableCapacityEnable := utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRAConsumableCapacity)
+
+	arguments.GetBool(&dynamicResourceAllocationEnable, DynamicResourceAllocationEnable)
+	arguments.GetBool(&draConsumableCapacityEnable, DRAConsumableCapacityEnable)
+
 	return &capacityPlugin{
-		totalResource:   api.EmptyResource(),
-		totalGuarantee:  api.EmptyResource(),
-		queueOpts:       map[api.QueueID]*queueAttr{},
-		pluginArguments: arguments,
+		totalResource:                   api.EmptyResource(),
+		totalGuarantee:                  api.EmptyResource(),
+		queueOpts:                       map[api.QueueID]*queueAttr{},
+		pluginArguments:                 arguments,
+		dynamicResourceAllocationEnable: dynamicResourceAllocationEnable,
+		draConsumableCapacityEnable:     draConsumableCapacityEnable,
 	}
 }
 
@@ -257,7 +572,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return util.Permit
 		}
 
-		if job.PodGroup.Spec.MinResources == nil {
+		if job.PodGroup.Spec.MinResources == nil && !(cp.dynamicResourceAllocationEnable && attr.dra != nil && job.GetMinDRAResources() != nil) {
 			klog.V(4).Infof("job %s MinResources is null.", job.Name)
 			return util.Permit
 		}
@@ -308,11 +623,17 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return fmt.Errorf("[capacity] queue %s not found", job.Queue)
 		}
 		attr.allocated.Add(taskToAdd.Resreq)
+		if cp.dynamicResourceAllocationEnable && attr.dra != nil && taskToAdd.DRAResreq != nil {
+			addTaskDRAAllocated(attr, taskToAdd)
+		}
 		updateQueueAttrShare(attr)
 		if hierarchyEnabled {
 			for _, ancestorID := range attr.ancestors {
 				ancestorAttr := state.queueAttrs[ancestorID]
 				ancestorAttr.allocated.Add(taskToAdd.Resreq)
+				if cp.dynamicResourceAllocationEnable && ancestorAttr.dra != nil && taskToAdd.DRAResreq != nil {
+					addTaskDRAAllocated(ancestorAttr, taskToAdd)
+				}
 			}
 		}
 		return nil
@@ -332,11 +653,17 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return fmt.Errorf("[capacity] queue %s not found", job.Queue)
 		}
 		attr.allocated.Sub(taskToRemove.Resreq)
+		if cp.dynamicResourceAllocationEnable && attr.dra != nil && taskToRemove.DRAResreq != nil {
+			removeTaskDRAAllocated(attr, taskToRemove)
+		}
 		updateQueueAttrShare(attr)
 		if hierarchyEnabled {
 			for _, ancestorID := range attr.ancestors {
 				ancestorAttr := state.queueAttrs[ancestorID]
 				ancestorAttr.allocated.Sub(taskToRemove.Resreq)
+				if cp.dynamicResourceAllocationEnable && ancestorAttr.dra != nil && taskToRemove.DRAResreq != nil {
+					removeTaskDRAAllocated(ancestorAttr, taskToRemove)
+				}
 			}
 		}
 		return nil
@@ -359,7 +686,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		simulateQueueAllocatable := func(state *capacityState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 			attr := state.queueAttrs[queue.UID]
-			return queueAllocatable(attr, candidate, queue)
+			return queueAllocatable(attr, candidate, queue, cp.dynamicResourceAllocationEnable, cp.draConsumableCapacityEnable)
 		}
 
 		list := append(state.queueAttrs[queue.UID].ancestors, queue.UID)
@@ -392,6 +719,9 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 			attr.allocated.Add(event.Task.Resreq)
+			if cp.dynamicResourceAllocationEnable && attr.dra != nil && event.Task.DRAResreq != nil {
+				addTaskDRAAllocated(attr, event.Task)
+			}
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			cp.updateShare(attr)
@@ -399,6 +729,9 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 				for _, ancestorID := range attr.ancestors {
 					ancestorAttr := cp.queueOpts[ancestorID]
 					ancestorAttr.allocated.Add(event.Task.Resreq)
+					if cp.dynamicResourceAllocationEnable && ancestorAttr.dra != nil && event.Task.DRAResreq != nil {
+						addTaskDRAAllocated(ancestorAttr, event.Task)
+					}
 				}
 			}
 
@@ -419,6 +752,9 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 			attr.allocated.Sub(event.Task.Resreq)
+			if cp.dynamicResourceAllocationEnable && attr.dra != nil && event.Task.DRAResreq != nil {
+				removeTaskDRAAllocated(attr, event.Task)
+			}
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			cp.updateShare(attr)
@@ -426,6 +762,9 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 				for _, ancestorID := range attr.ancestors {
 					ancestorAttr := cp.queueOpts[ancestorID]
 					ancestorAttr.allocated.Sub(event.Task.Resreq)
+					if cp.dynamicResourceAllocationEnable && ancestorAttr.dra != nil && event.Task.DRAResreq != nil {
+						removeTaskDRAAllocated(ancestorAttr, event.Task)
+					}
 				}
 			}
 
@@ -463,12 +802,13 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 				queueID: queue.UID,
 				name:    queue.Name,
 
-				deserved:  api.NewResource(queue.Queue.Spec.Deserved),
-				allocated: api.EmptyResource(),
-				request:   api.EmptyResource(),
-				elastic:   api.EmptyResource(),
-				inqueue:   api.EmptyResource(),
-				guarantee: api.EmptyResource(),
+				deserved:          api.NewResource(queue.Queue.Spec.Deserved),
+				allocated:         api.EmptyResource(),
+				request:           api.EmptyResource(),
+				elastic:           api.EmptyResource(),
+				inqueue:           api.EmptyResource(),
+				guarantee:         api.EmptyResource(),
+				resourceClaimRefs: make(map[string]int),
 			}
 			if len(queue.Queue.Spec.Capability) != 0 {
 				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
@@ -479,6 +819,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 					attr.capability.Memory = math.MaxFloat64
 				}
 			}
+			attr.dra = newDRAQuotaAttr(queue.Queue.Spec.Capability, queue.Queue.Spec.Deserved, queue.Queue.Spec.Guarantee.Resource)
 			if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
 				attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
 			}
@@ -500,6 +841,9 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 				for _, t := range tasks {
 					attr.allocated.Add(t.Resreq)
 					attr.request.Add(t.Resreq)
+					if cp.dynamicResourceAllocationEnable && attr.dra != nil && t.DRAResreq != nil {
+						addTaskDRAAllocated(attr, t)
+					}
 				}
 			} else if status == api.Pending {
 				for _, t := range tasks {
@@ -626,12 +970,19 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		oldRequest := attr.request.Clone()
 		oldInqueue := attr.inqueue.Clone()
 		oldElastic := attr.elastic.Clone()
+		var oldDRA *draQuotaAttr
+		if attr.dra != nil {
+			oldDRA = attr.dra.Clone()
+		}
 
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
 					attr.allocated.Add(t.Resreq)
 					attr.request.Add(t.Resreq)
+					if cp.dynamicResourceAllocationEnable && attr.dra != nil && t.DRAResreq != nil {
+						addTaskDRAAllocated(attr, t)
+					}
 				}
 			} else if status == api.Pending {
 				for _, t := range tasks {
@@ -659,12 +1010,30 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		requestDelta := attr.request.Clone().Sub(oldRequest)
 		inqueueDelta := attr.inqueue.Clone().Sub(oldInqueue)
 		elasticDelta := attr.elastic.Clone().Sub(oldElastic)
+
+		var draDelta map[string]*api.DRAResource
+		if attr.dra != nil {
+			draDelta = getDRADelta(attr.dra, oldDRA)
+		}
+
 		for _, ancestor := range attr.ancestors {
 			ancestorAttr := cp.queueOpts[ancestor]
 			ancestorAttr.allocated.Add(allocatedDelta)
 			ancestorAttr.request.Add(requestDelta)
 			ancestorAttr.inqueue.Add(inqueueDelta)
 			ancestorAttr.elastic.Add(elasticDelta)
+			if cp.dynamicResourceAllocationEnable && ancestorAttr.dra != nil && draDelta != nil {
+				// Only propagate Delta for DeviceClasses that are configured in ancestor's capability
+				filteredDelta := make(map[string]*api.DRAResource)
+				for dc, res := range draDelta {
+					if _, ok := ancestorAttr.dra.capability[dc]; ok {
+						filteredDelta[dc] = res
+					}
+				}
+				if len(filteredDelta) > 0 {
+					updateDRAAllocated(ancestorAttr.dra, filteredDelta)
+				}
+			}
 		}
 
 		klog.V(5).Infof("Queue %s allocated <%s> request <%s> inqueue <%s> elastic <%s>",
@@ -774,14 +1143,15 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 		ancestors: make([]api.QueueID, 0),
 		children:  make(map[api.QueueID]*queueAttr),
 
-		deserved:       api.NewResource(queue.Queue.Spec.Deserved),
-		allocated:      api.EmptyResource(),
-		request:        api.EmptyResource(),
-		elastic:        api.EmptyResource(),
-		inqueue:        api.EmptyResource(),
-		guarantee:      api.EmptyResource(),
-		capability:     api.EmptyResource(),
-		realCapability: api.EmptyResource(),
+		deserved:          api.NewResource(queue.Queue.Spec.Deserved),
+		allocated:         api.EmptyResource(),
+		request:           api.EmptyResource(),
+		elastic:           api.EmptyResource(),
+		inqueue:           api.EmptyResource(),
+		guarantee:         api.EmptyResource(),
+		capability:        api.EmptyResource(),
+		realCapability:    api.EmptyResource(),
+		resourceClaimRefs: make(map[string]int),
 	}
 	if len(queue.Queue.Spec.Capability) != 0 {
 		attr.capability = api.NewResource(queue.Queue.Spec.Capability)
@@ -790,6 +1160,8 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 	if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
 		attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
 	}
+
+	attr.dra = newDRAQuotaAttr(queue.Queue.Spec.Capability, queue.Queue.Spec.Deserved, queue.Queue.Spec.Guarantee.Resource)
 
 	return attr
 }
@@ -933,10 +1305,18 @@ func (cp *capacityPlugin) isLeafQueue(queueID api.QueueID) bool {
 
 func (cp *capacityPlugin) queueAllocatable(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 	attr := cp.queueOpts[queue.UID]
-	return queueAllocatable(attr, candidate, queue)
+	return queueAllocatable(attr, candidate, queue, cp.dynamicResourceAllocationEnable, cp.draConsumableCapacityEnable)
 }
 
-func queueAllocatable(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo) bool {
+func queueAllocatable(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo, draEnabled bool, consumableCapacityEnabled bool) bool {
+	candidateDRA := incrementalTaskDRA(attr, candidate)
+	if draEnabled && attr.dra != nil && candidateDRA != nil {
+		if !checkDRAAllocatable(attr.dra, candidateDRA, consumableCapacityEnabled) {
+			klog.V(3).Infof("Queue <%v> DRA resource insufficient for candidate <%v>", queue.Name, candidate.Name)
+			return false
+		}
+	}
+
 	futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
 	allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, candidate.Resreq)
 	if !allocatable {
@@ -974,7 +1354,23 @@ func (cp *capacityPlugin) jobEnqueueable(queue *api.QueueInfo, job *api.JobInfo)
 	// The queue resource quota limit has not reached
 	r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
 
-	return r.LessEqualWithDimensionAndResourcesName(attr.realCapability, minReq)
+	valid, reasons := r.LessEqualWithDimensionAndResourcesName(attr.realCapability, minReq)
+	if !valid {
+		return valid, reasons
+	}
+
+	// Check DRA limits if enabled
+	if cp.dynamicResourceAllocationEnable && attr.dra != nil {
+		minDRAReq := job.GetMinDRAResources()
+		if minDRAReq != nil {
+			if !checkDRAAllocatable(attr.dra, minDRAReq, cp.draConsumableCapacityEnable) {
+				klog.V(3).Infof("job %s exceeds queue %s DRA capability", job.Name, queue.Name)
+				return false, append(reasons, "dra-resource-exceeded")
+			}
+		}
+	}
+
+	return true, reasons
 }
 
 func (cp *capacityPlugin) checkJobEnqueueableHierarchically(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo) bool {
@@ -1036,18 +1432,20 @@ func (qa *queueAttr) Clone() *queueAttr {
 	}
 
 	cloned := &queueAttr{
-		queueID:        qa.queueID,
-		name:           qa.name,
-		share:          qa.share,
-		deserved:       qa.deserved.Clone(),
-		allocated:      qa.allocated.Clone(),
-		request:        qa.request.Clone(),
-		elastic:        qa.elastic.Clone(),
-		inqueue:        qa.inqueue.Clone(),
-		capability:     qa.capability.Clone(),
-		realCapability: qa.realCapability.Clone(),
-		guarantee:      qa.guarantee.Clone(),
-		children:       make(map[api.QueueID]*queueAttr),
+		queueID:           qa.queueID,
+		name:              qa.name,
+		share:             qa.share,
+		deserved:          qa.deserved.Clone(),
+		allocated:         qa.allocated.Clone(),
+		request:           qa.request.Clone(),
+		elastic:           qa.elastic.Clone(),
+		inqueue:           qa.inqueue.Clone(),
+		dra:               qa.dra.Clone(),
+		capability:        qa.capability.Clone(),
+		realCapability:    qa.realCapability.Clone(),
+		guarantee:         qa.guarantee.Clone(),
+		resourceClaimRefs: make(map[string]int, len(qa.resourceClaimRefs)),
+		children:          make(map[api.QueueID]*queueAttr),
 	}
 
 	if len(qa.ancestors) > 0 {
@@ -1057,6 +1455,9 @@ func (qa *queueAttr) Clone() *queueAttr {
 
 	for childID, childNode := range qa.children {
 		cloned.children[childID] = childNode.Clone()
+	}
+	for claimKey, refCount := range qa.resourceClaimRefs {
+		cloned.resourceClaimRefs[claimKey] = refCount
 	}
 
 	return cloned
