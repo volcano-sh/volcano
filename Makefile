@@ -203,7 +203,10 @@ e2e-test-schedulingbase: images
 	E2E_TYPE=SCHEDULINGBASE IGNORED_PROVISIONERS="kubernetes.io/no-provisioner" ./hack/run-e2e-kind.sh
 
 e2e-test-schedulingaction: images
-	E2E_TYPE=SCHEDULINGACTION FEATURE_GATES="SchedulingGatesQueueAdmission=true" ./hack/run-e2e-kind.sh
+	E2E_TYPE=SCHEDULINGACTION ./hack/run-e2e-kind.sh
+
+e2e-test-schedulinggates: images
+	E2E_TYPE=SCHEDULINGGATES FEATURE_GATES="SchedulingGatesQueueAdmission=true" ./hack/run-e2e-kind.sh
 
 e2e-test-jobp: images
 	E2E_TYPE=JOBP ./hack/run-e2e-kind.sh
