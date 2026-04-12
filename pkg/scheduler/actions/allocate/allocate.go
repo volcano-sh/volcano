@@ -107,6 +107,101 @@ func (w *SubJobWorksheet) Clone() *SubJobWorksheet {
 	}
 }
 
+// schGateManager handles asynchronous removal of Volcano scheduling gates from pods.
+// When the SchedulingGatesQueueAdmission feature is enabled, pods opt in via the
+// scheduling.volcano.sh/queue-allocation-gate annotation. The webhook injects a scheduling
+// gate at creation time, and this manager removes it asynchronously after the queue capacity
+// check passes, allowing cluster autoscalers to see the Unschedulable condition only when
+// it reflects genuine cluster resource shortage rather than queue limits.
+type schGateManager struct {
+	kubeClient   kubernetes.Interface // Cached client for worker goroutines
+	opCh         chan schGateRemovalOperation
+	workersWg    sync.WaitGroup
+	stopCh       chan struct{}
+	workerNum    int
+	shutdownOnce sync.Once
+}
+
+// schGateRemovalOperation is a request to remove the scheduling gate from a pod.
+type schGateRemovalOperation struct {
+	namespace string
+	name      string
+}
+
+func newSchGateManager(workerNum int) *schGateManager {
+	return &schGateManager{
+		stopCh:    make(chan struct{}),
+		workerNum: workerNum,
+	}
+}
+
+func (m *schGateManager) start() {
+	channelSize := m.workerNum * gateRemovalBufferPerWorker
+	m.opCh = make(chan schGateRemovalOperation, channelSize)
+
+	for i := 0; i < m.workerNum; i++ {
+		m.workersWg.Add(1)
+		go m.worker()
+	}
+	klog.V(3).Infof("Started %d async workers for gate removal", m.workerNum)
+}
+
+func (m *schGateManager) stop() {
+	m.shutdownOnce.Do(func() {
+		close(m.stopCh)
+		m.workersWg.Wait()
+		if m.opCh != nil {
+			close(m.opCh)
+		}
+		klog.V(3).Infof("Async gate removal workers shut down")
+	})
+}
+
+func (m *schGateManager) worker() {
+	defer m.workersWg.Done()
+	for {
+		select {
+		case <-m.stopCh:
+			klog.V(4).Infof("Scheduling gate operation worker shutting down")
+			return
+		case op := <-m.opCh:
+			pod, err := m.kubeClient.CoreV1().Pods(op.namespace).Get(
+				context.Background(),
+				op.name,
+				metav1.GetOptions{})
+			if err != nil {
+				klog.Errorf("Failed to get pod %s/%s for gate operation: %v", op.namespace, op.name, err)
+				continue
+			}
+			if err := cache.RemoveVolcanoSchGate(m.kubeClient, pod); err != nil {
+				klog.Errorf("Failed to remove gate from %s/%s: %v", op.namespace, op.name, err)
+			} else {
+				klog.V(3).Infof("Removed Volcano scheduling gate from pod %s/%s", op.namespace, op.name)
+			}
+		}
+	}
+}
+
+// enqueue queues an async gate removal for the given task.
+// Returns true if the operation was enqueued, false if the channel is full.
+func (m *schGateManager) enqueue(task *api.TaskInfo) bool {
+	if !api.HasOnlyVolcanoSchedulingGate(task.Pod) {
+		return false
+	}
+	op := schGateRemovalOperation{
+		namespace: task.Namespace,
+		name:      task.Name,
+	}
+	select {
+	case m.opCh <- op:
+		klog.V(3).Infof("Queued gate removal for %s/%s", task.Namespace, task.Name)
+		return true
+	default:
+		klog.Warningf("Gate operation queue full, skipping gate removal for %s/%s", task.Namespace, task.Name)
+		return false
+	}
+}
+
 type Action struct {
 	session *framework.Session
 	// configured flag for error cache
@@ -114,28 +209,14 @@ type Action struct {
 
 	recorder *Recorder
 
-	// Async gate management infrastructure
-	kubeClient              kubernetes.Interface // Cached client for worker goroutines
-	schGateRemovalCh        chan schGateRemovalOperation
-	schGateRemovalWorkersWg sync.WaitGroup
-	schGateRemovalStopCh    chan struct{}
-	gateRemovalWorkerNum    int // Number of async gate removal workers
-	initOnce                sync.Once
-	shutdownOnce            sync.Once
-}
-
-// schGateRemovalOperation is a struct that contains the namespace
-// and name of the pod to remove the scheduling gate from.
-type schGateRemovalOperation struct {
-	namespace string
-	name      string
+	schGateManager *schGateManager
+	initOnce       sync.Once
 }
 
 func New() *Action {
 	return &Action{
 		enablePredicateErrorCache: true, // default to enable it
-		schGateRemovalStopCh:      make(chan struct{}),
-		gateRemovalWorkerNum:      5, // default value
+		schGateManager:            newSchGateManager(5),
 	}
 }
 
@@ -145,59 +226,19 @@ func (alloc *Action) Name() string {
 
 func (alloc *Action) Initialize() {
 	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) {
-		// Create channel with buffer size based on worker count (200 operations per worker)
-		channelSize := alloc.gateRemovalWorkerNum * gateRemovalBufferPerWorker
-		alloc.schGateRemovalCh = make(chan schGateRemovalOperation, channelSize)
-
-		// Start async gate operation workers
-		for i := 0; i < alloc.gateRemovalWorkerNum; i++ {
-			alloc.schGateRemovalWorkersWg.Add(1)
-			go alloc.schGateRemovalWorker()
-		}
-		klog.V(3).Infof("Started %d async workers for gate removal", alloc.gateRemovalWorkerNum)
-	}
-}
-
-// schGateRemovalWorker processes async gate add/remove requests
-func (alloc *Action) schGateRemovalWorker() {
-	defer alloc.schGateRemovalWorkersWg.Done()
-	for {
-		select {
-		case <-alloc.schGateRemovalStopCh:
-			klog.V(4).Infof("Scheduling gate operation worker shutting down")
-			return
-		case op := <-alloc.schGateRemovalCh:
-			// Fetch fresh pod state from API server
-			// Use cached kubeClient to avoid data race with session updates
-			pod, err := alloc.kubeClient.CoreV1().Pods(op.namespace).Get(
-				context.Background(),
-				op.name,
-				metav1.GetOptions{})
-
-			if err != nil {
-				klog.Errorf("Failed to get pod %s/%s for gate operation: %v", op.namespace, op.name, err)
-				continue
-			}
-
-			// Remove the Volcano scheduling gate
-			if err := cache.RemoveVolcanoSchGate(alloc.kubeClient, pod); err != nil {
-				klog.Errorf("Failed to remove gate from %s/%s: %v", op.namespace, op.name, err)
-			} else {
-				klog.V(3).Infof("Removed Volcano scheduling gate from pod %s/%s", op.namespace, op.name)
-			}
-		}
+		alloc.schGateManager.start()
 	}
 }
 
 func (alloc *Action) parseArguments(ssn *framework.Session) {
 	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, alloc.Name())
 	arguments.GetBool(&alloc.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
-	arguments.GetInt(&alloc.gateRemovalWorkerNum, GateRemovalWorkerNumKey)
+	arguments.GetInt(&alloc.schGateManager.workerNum, GateRemovalWorkerNumKey)
 
 	// Ensure at least 1 worker
-	if alloc.gateRemovalWorkerNum < 1 {
-		klog.Warningf("Invalid gateRemovalWorkerNum %d, using default value 5", alloc.gateRemovalWorkerNum)
-		alloc.gateRemovalWorkerNum = 5
+	if alloc.schGateManager.workerNum < 1 {
+		klog.Warningf("Invalid gateRemovalWorkerNum %d, using default value 5", alloc.schGateManager.workerNum)
+		alloc.schGateManager.workerNum = 5
 	}
 }
 
@@ -210,7 +251,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	// Initialize workers once with the configured number.
 	// Cache KubeClient for thread-safe access from workers.
 	alloc.initOnce.Do(func() {
-		alloc.kubeClient = ssn.KubeClient()
+		alloc.schGateManager.kubeClient = ssn.KubeClient()
 		alloc.Initialize()
 	})
 
@@ -441,21 +482,9 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 // schedulingGateRemoval queues async gate removal if scheduling failed.
 // This ensures cluster autoscalers can see the Unschedulable condition and trigger scale-up
 func (alloc *Action) schedulingGateRemoval(task *api.TaskInfo, queueID api.QueueID) {
-	// Only enqueue gate removal if the task has only Volcano scheduling gate
-	if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
-		op := schGateRemovalOperation{
-			namespace: task.Namespace,
-			name:      task.Name,
-		}
-
-		select {
-		case alloc.schGateRemovalCh <- op:
-			klog.V(3).Infof("Queued gate removal for %s/%s", task.Namespace, task.Name)
-			// Update task state immediately so it won't be queued again in this cycle
-			task.SchGated = false
-		default:
-			klog.Warningf("Gate operation queue full, skipping gate removal for %s/%s", task.Namespace, task.Name)
-		}
+	if alloc.schGateManager.enqueue(task) {
+		// Update task state immediately so it won't be queued again in this cycle
+		task.SchGated = false
 	}
 }
 
@@ -939,15 +968,5 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 }
 
 func (alloc *Action) UnInitialize() {
-	alloc.shutdownOnce.Do(func() {
-		// Signal workers to shutdown
-		close(alloc.schGateRemovalStopCh)
-		// Wait for all workers to finish
-		alloc.schGateRemovalWorkersWg.Wait()
-		// Close the channel (only if Initialize was ever called)
-		if alloc.schGateRemovalCh != nil {
-			close(alloc.schGateRemovalCh)
-		}
-		klog.V(3).Infof("Async gate removal workers shut down")
-	})
+	alloc.schGateManager.stop()
 }
