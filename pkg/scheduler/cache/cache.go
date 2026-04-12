@@ -234,7 +234,7 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) &&
 			schedulingapi.HasQueueAllocationGateAnnotation(p) && schedulingapi.HasOnlyVolcanoSchedulingGate(p) {
 			klog.V(3).Infof("Ensuring gate is removed for pod %s/%s before bind", p.Namespace, p.Name)
-			err := RemoveVolcanoSchGate(kubeClient, p)
+			err := RemoveVolcanoSchGate(kubeClient, p.Namespace, p.Name)
 
 			// On conflict, verify gates are gone (e.g. another writer removed them)
 			if apierrors.IsConflict(err) {

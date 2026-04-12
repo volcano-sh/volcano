@@ -82,7 +82,7 @@ func TestRemoveVolcanoSchGate(t *testing.T) {
 
 			kubeClient := fake.NewSimpleClientset(pod)
 
-			err := RemoveVolcanoSchGate(kubeClient, pod)
+			err := RemoveVolcanoSchGate(kubeClient, pod.Namespace, pod.Name)
 			if err != nil {
 				t.Fatalf("RemoveVolcanoSchGate returned an unexpected error: %v", err)
 			}

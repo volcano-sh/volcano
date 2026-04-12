@@ -17,14 +17,12 @@
 package allocate
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"slices"
 	"sync"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
@@ -165,15 +163,7 @@ func (m *schGateManager) worker() {
 			klog.V(4).Infof("Scheduling gate operation worker shutting down")
 			return
 		case op := <-m.opCh:
-			pod, err := m.kubeClient.CoreV1().Pods(op.namespace).Get(
-				context.Background(),
-				op.name,
-				metav1.GetOptions{})
-			if err != nil {
-				klog.Errorf("Failed to get pod %s/%s for gate operation: %v", op.namespace, op.name, err)
-				continue
-			}
-			if err := cache.RemoveVolcanoSchGate(m.kubeClient, pod); err != nil {
+			if err := cache.RemoveVolcanoSchGate(m.kubeClient, op.namespace, op.name); err != nil {
 				klog.Errorf("Failed to remove gate from %s/%s: %v", op.namespace, op.name, err)
 			} else {
 				klog.V(3).Infof("Removed Volcano scheduling gate from pod %s/%s", op.namespace, op.name)
@@ -479,15 +469,6 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 	}
 }
 
-// schedulingGateRemoval queues async gate removal if scheduling failed.
-// This ensures cluster autoscalers can see the Unschedulable condition and trigger scale-up
-func (alloc *Action) schedulingGateRemoval(task *api.TaskInfo, queueID api.QueueID) {
-	if alloc.schGateManager.enqueue(task) {
-		// Update task state immediately so it won't be queued again in this cycle
-		task.SchGated = false
-	}
-}
-
 func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet, hyperNodeToAllocate *api.HyperNodeInfo) *framework.Statement {
 	ssn := alloc.session
 
@@ -720,21 +701,19 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 		}
 
 		// If task passed allocation check and has the QueueAllocationGate, initiate async gate removal.
-		// Gate will be removed by the background worker (best effort). During the bind operation, we need
-		// to ensure the gate is not present, otherwise the bind will fail.
+		// Gate will be removed by the background worker (best effort).
 		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) &&
 			task.SchGated && api.HasQueueAllocationGateAnnotation(task.Pod) {
 			klog.V(3).Infof("Task %s/%s has the QueueAllocationGate, queue async gate removal", task.Namespace, task.Name)
-			alloc.schedulingGateRemoval(task, queue.UID)
+			alloc.schGateManager.enqueue(task)
 		}
 
-		// Skip tasks with external (non-Volcano) scheduling gates
+		// Skip gated tasks. If someone added the Volcano gate without the opt-in annotation,
+		// warn them since the gate will never be removed automatically.
 		if task.SchGated {
-			if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
-				klog.Warningf("Task %s/%s has Volcano scheduling gate but missing annotation %q, gate will not be removed automatically; add the annotation or remove the gate manually",
+			if api.HasOnlyVolcanoSchedulingGate(task.Pod) && !api.HasQueueAllocationGateAnnotation(task.Pod) {
+				klog.Warningf("Task %s/%s has Volcano scheduling gate but missing the opt-in annotation %q; gate will not be removed automatically",
 					task.Namespace, task.Name, schedulingv1beta1.QueueAllocationGateKey)
-			} else {
-				klog.V(4).Infof("Task %s/%s has non-Volcano scheduling gate, skipping", task.Namespace, task.Name)
 			}
 			continue
 		}

@@ -138,8 +138,9 @@ func getHyperNodeEventSource(source string) []string {
 	return parts
 }
 
+// RemoveVolcanoSchGate removes the Volcano scheduling gate from a pod by namespace and name.
 // Returns nil if gate is successfully removed or already removed (idempotent).
-func RemoveVolcanoSchGate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
+func RemoveVolcanoSchGate(kubeClient kubernetes.Interface, namespace, name string) error {
 	// We only need to specify the gate we want to remove.
 	// The "$patch": "delete" directive tells the Strategic Merge Patcher
 	// to find the gate with this name and remove it.
@@ -159,9 +160,9 @@ func RemoveVolcanoSchGate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
 		return err
 	}
 
-	_, err = kubeClient.CoreV1().Pods(pod.Namespace).Patch(
+	_, err = kubeClient.CoreV1().Pods(namespace).Patch(
 		context.Background(),
-		pod.Name,
+		name,
 		types.StrategicMergePatchType,
 		patchBytes,
 		metav1.PatchOptions{})
