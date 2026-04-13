@@ -844,6 +844,7 @@ func (sc *SchedulerCache) addEventHandler() {
 		}
 		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, resourceSliceTracker, informerFactory)
 	}
+	sc.registeredHandlers = handlers
 }
 
 // Run  starts the schedulerCache
