@@ -30,14 +30,14 @@ import (
 )
 
 const (
-	defaultSchedulerName   = "volcano"
-	defaultSchedulerPeriod = time.Second
-	defaultResyncPeriod    = 0
+	defaultSchedulerName       = "volcano"
+	defaultSchedulerPeriod     = time.Second
+	defaultResyncPeriod        = 0
 	defaultResourceSyncTimeout = 60 * time.Second
-	defaultQueue           = "default"
-	defaultListenAddress   = ":8080"
-	defaultHealthzAddress  = ":11251"
-	defaultPluginsDir      = ""
+	defaultQueue               = "default"
+	defaultListenAddress       = ":8080"
+	defaultHealthzAddress      = ":11251"
+	defaultPluginsDir          = ""
 
 	defaultQPS   = 2000.0
 	defaultBurst = 2000
@@ -97,6 +97,7 @@ type ServerOption struct {
 
 	// timeout on waiting for handlers handle initial resource synchronization before starting scheduling, 0 will skip waiting
 	ResourceSyncTimeout time.Duration
+}
 
 // DecryptFunc is custom function to parse ca file
 type DecryptFunc func(c *ServerOption) error
