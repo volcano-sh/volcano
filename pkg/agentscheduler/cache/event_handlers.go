@@ -39,6 +39,7 @@ import (
 	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	"volcano.sh/apis/pkg/apis/utils"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 )
 
 func isTerminated(status schedulingapi.TaskStatus) bool {
@@ -404,13 +405,16 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 }
 
 // AddNode add node to scheduler cache
-func (sc *SchedulerCache) AddNode(obj interface{}) {
+func (sc *SchedulerCache) AddNode(obj interface{}, isInInitialList bool) {
 	node, ok := obj.(*v1.Node)
 	if !ok {
 		klog.Errorf("Cannot convert to *v1.Node: %v", obj)
 		return
 	}
-	sc.nodeQueue.Add(node.Name)
+	sc.nodeQueue.Add(schedulercache.QueueObjectWrapper{Object: node.Name, IsInInitialList: isInInitialList})
+	if isInInitialList {
+		sc.nodeInitialEventTracker.Add(node.Name)
+	}
 }
 
 // UpdateNode update node to scheduler cache
@@ -425,7 +429,7 @@ func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
 		klog.Errorf("Cannot convert newObj to *v1.Node: %v", newObj)
 		return
 	}
-	sc.nodeQueue.Add(newNode.Name)
+	sc.nodeQueue.Add(schedulercache.QueueObjectWrapper{Object: newNode.Name, IsInInitialList: false})
 }
 
 // DeleteNode delete node from scheduler cache
@@ -445,7 +449,7 @@ func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 		klog.Errorf("Cannot convert to *v1.Node: %v", t)
 		return
 	}
-	sc.nodeQueue.Add(node.Name)
+	sc.nodeQueue.Add(schedulercache.QueueObjectWrapper{Object: node.Name, IsInInitialList: false})
 }
 
 func (sc *SchedulerCache) SyncNode(nodeName string) error {

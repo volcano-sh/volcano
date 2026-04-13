@@ -24,7 +24,7 @@ import (
 	"os"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/tools/record"
@@ -81,7 +81,7 @@ func FakeNormalSSN(confs []conf.Configuration) *framework.Session {
 		node.Node.Labels[serverTypeKey] = fake910ServerType
 		node.Node.Labels[chipTypeKey] = fakeChipName + fakeChipType
 		node.Node.Annotations[NPU910CardName] = annoCards
-		schedulerCache.AddNode(node.Node)
+		schedulerCache.AddNode(node.Node, false)
 	}
 
 	jobInf := FakeNormalTestJob("pg0", npuIndex3)
