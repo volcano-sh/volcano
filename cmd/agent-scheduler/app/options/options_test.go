@@ -80,6 +80,7 @@ func TestAddFlags(t *testing.T) {
 		NodeWorkerThreads:             defaultNodeWorkers,
 		CacheDumpFileDir:              "/tmp",
 		DisableDefaultSchedulerConfig: false,
+		ResourceSyncTimeout:           60 * time.Second,
 	}
 	expected := &ServerOption{
 		ServerOption:        serverOptions,

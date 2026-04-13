@@ -31,14 +31,12 @@ import (
 )
 
 const (
-	defaultSchedulerName   = "agent-scheduler"
-	defaultShardName       = "agent-scheduler"
-	defaultSchedulerPeriod = time.Second
-	defaultResyncPeriod    = 0
-	defaultQueue           = "default"
-	defaultListenAddress   = ":8080"
-	defaultHealthzAddress  = ":11251"
-	defaultPluginsDir      = ""
+	defaultSchedulerName       = "agent-scheduler"
+	defaultShardName           = "agent-scheduler"
+	defaultResourceSyncTimeout = 60 * time.Second
+	defaultResyncPeriod        = 0
+	defaultListenAddress       = ":8080"
+	defaultHealthzAddress      = ":11251"
 
 	defaultQPS   = 2000.0
 	defaultBurst = 2000
@@ -117,6 +115,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
+	fs.DurationVar(&s.ResourceSyncTimeout, "resource-sync-timeout", defaultResourceSyncTimeout, "timeout on waiting for handler handling initial resources synchronization before starting scheduler, default is 60s, 0 skip waiting")
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
 	fs.Uint32Var(&s.ScheduleWorkerCount, "scheduler-worker-count", defaultScheduleWorkerCount, "The flag indicates the number of worker threads scheduling in parallel")
 	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling, the mode could be none(default, schedule pod without shard)|hard(schedule pod within nodes in shard)|soft(chedule pod within nodes in shard in priority)")
