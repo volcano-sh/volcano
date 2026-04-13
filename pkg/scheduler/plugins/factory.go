@@ -42,6 +42,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/rescheduling"
 	resourcestrategyfit "volcano.sh/volcano/pkg/scheduler/plugins/resource-strategy-fit"
 	"volcano.sh/volcano/pkg/scheduler/plugins/resourcequota"
+	"volcano.sh/volcano/pkg/scheduler/plugins/inqueuetimeout"
 	"volcano.sh/volcano/pkg/scheduler/plugins/sla"
 	tasktopology "volcano.sh/volcano/pkg/scheduler/plugins/task-topology"
 	"volcano.sh/volcano/pkg/scheduler/plugins/tdm"
@@ -70,6 +71,8 @@ func init() {
 	framework.RegisterPluginBuilder(pdb.PluginName, pdb.New)
 	framework.RegisterPluginBuilder(nodegroup.PluginName, nodegroup.New)
 	framework.RegisterPluginBuilder(networktopologyaware.PluginName, networktopologyaware.New)
+
+	framework.RegisterPluginBuilder(inqueuetimeout.PluginName, inqueuetimeout.New)
 
 	// Plugins for Queues
 	framework.RegisterPluginBuilder(proportion.PluginName, proportion.New)

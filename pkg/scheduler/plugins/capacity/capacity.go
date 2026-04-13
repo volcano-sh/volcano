@@ -280,6 +280,27 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return util.Permit
 	})
 
+	ssn.AddJobDequeuedFn(cp.Name(), func(obj interface{}) {
+		job := obj.(*api.JobInfo)
+		attr := cp.queueOpts[api.QueueID(job.Queue)]
+		if attr == nil {
+			return
+		}
+		if job.PodGroup.Spec.MinResources == nil {
+			return
+		}
+		deductedResources := job.DeductSchGatedResources(job.GetMinResources())
+		attr.inqueue.SubWithoutAssert(deductedResources)
+		if hierarchyEnabled {
+			for _, ancestorID := range attr.ancestors {
+				if ancestorAttr := cp.queueOpts[ancestorID]; ancestorAttr != nil {
+					ancestorAttr.inqueue.SubWithoutAssert(deductedResources)
+				}
+			}
+		}
+		klog.V(5).Infof("job <%s/%s> dequeued, released inqueue resources", job.Namespace, job.Name)
+	})
+
 	ssn.AddPrePredicateFn(cp.Name(), func(task *api.TaskInfo) error {
 		state := &capacityState{
 			queueAttrs: make(map[api.QueueID]*queueAttr),
