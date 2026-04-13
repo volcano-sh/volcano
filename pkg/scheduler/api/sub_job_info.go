@@ -52,7 +52,7 @@ type SubJobInfo struct {
 
 	AllocatedHyperNode string
 
-	networkTopology *scheduling.NetworkTopologySpec
+	NetworkTopology *scheduling.NetworkTopologySpec
 }
 
 func NewSubJobInfo(gid SubJobGID, uid SubJobID, job JobID, policy *scheduling.SubGroupPolicySpec, matchValues []string) *SubJobInfo {
@@ -70,7 +70,7 @@ func NewSubJobInfo(gid SubJobGID, uid SubJobID, job JobID, policy *scheduling.Su
 			sji.MinAvailable = *policy.SubGroupSize
 		}
 		if policy.NetworkTopology != nil {
-			sji.networkTopology = policy.NetworkTopology.DeepCopy()
+			sji.NetworkTopology = policy.NetworkTopology.DeepCopy()
 		}
 	}
 	if len(matchValues) > 0 {
@@ -83,24 +83,24 @@ func NewSubJobInfo(gid SubJobGID, uid SubJobID, job JobID, policy *scheduling.Su
 
 // IsHardTopologyMode return whether the subJob's network topology mode is hard and also return the highest allowed tier
 func (sji *SubJobInfo) IsHardTopologyMode() (bool, int) {
-	if sji.networkTopology == nil || sji.networkTopology.HighestTierAllowed == nil {
+	if sji.NetworkTopology == nil || sji.NetworkTopology.HighestTierAllowed == nil {
 		return false, 0
 	}
 
-	return sji.networkTopology.Mode == scheduling.HardNetworkTopologyMode, *sji.networkTopology.HighestTierAllowed
+	return sji.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode, *sji.NetworkTopology.HighestTierAllowed
 }
 
 // IsSoftTopologyMode returns whether the subJob has configured network topologies with soft mode.
 func (sji *SubJobInfo) IsSoftTopologyMode() bool {
-	if sji.networkTopology == nil {
+	if sji.NetworkTopology == nil {
 		return false
 	}
-	return sji.networkTopology.Mode == scheduling.SoftNetworkTopologyMode
+	return sji.NetworkTopology.Mode == scheduling.SoftNetworkTopologyMode
 }
 
 // WithNetworkTopology returns whether the subJob has configured network topologies
 func (sji *SubJobInfo) WithNetworkTopology() bool {
-	return sji.networkTopology != nil
+	return sji.NetworkTopology != nil
 }
 
 func (sji *SubJobInfo) addTask(ti *TaskInfo) {
