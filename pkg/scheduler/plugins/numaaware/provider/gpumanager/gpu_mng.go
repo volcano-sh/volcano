@@ -30,16 +30,15 @@ const (
 	// NvidiaGPUResource is the extended resource name for NVIDIA GPUs.
 	NvidiaGPUResource v1.ResourceName = "nvidia.com/gpu"
 
-	// maxNUMANodes is the practical upper bound for NUMA node count.
-	// IterateBitMasks has O(2^N) complexity, so we cap N to prevent
-	// resource exhaustion from misconfigured or compromised node agents.
+	// maxNUMANodes caps the NUMA node count for hint generation.
+	// IterateBitMasks is O(2^N), 16 is safe for real hardware (2-8 nodes).
 	maxNUMANodes = 16
 )
 
 type gpuMng struct {
 }
 
-// NewProvider return a new GPU topology hint provider
+// NewProvider return a new provider
 func NewProvider() policy.HintProvider {
 	return &gpuMng{}
 }
@@ -49,7 +48,7 @@ func (mng *gpuMng) Name() string {
 	return "gpuMng"
 }
 
-// requestedGPUs returns the integer number of GPUs requested by a container.
+// requestedGPUs return the integer num of request gpu
 func requestedGPUs(container *v1.Container) int {
 	gpuQuantity, ok := container.Resources.Requests[NvidiaGPUResource]
 	if !ok {
@@ -58,8 +57,8 @@ func requestedGPUs(container *v1.Container) int {
 	return int(gpuQuantity.Value())
 }
 
-// generateGPUTopologyHints returns topology hints for the requested GPU count
-// based on the available GPUs and their NUMA node affinity.
+// generateGPUTopologyHints return the numa topology hints based on
+// available GPUs and their NUMA node affinity.
 func generateGPUTopologyHints(availableGPUs cpuset.CPUSet, gpuDetail api.GPUDetails, request int) []policy.TopologyHint {
 	numaNodes := gpuDetail.NUMANodes().List()
 	if len(numaNodes) > maxNUMANodes {
@@ -67,7 +66,6 @@ func generateGPUTopologyHints(availableGPUs cpuset.CPUSet, gpuDetail api.GPUDeta
 		return nil
 	}
 
-	// Pre-compute available GPUs per NUMA node to avoid repeated iteration.
 	availablePerNuma := make(map[int]int)
 	for _, gpuIdx := range availableGPUs.List() {
 		if gpuInfo, ok := gpuDetail[gpuIdx]; ok {
@@ -79,20 +77,17 @@ func generateGPUTopologyHints(availableGPUs cpuset.CPUSet, gpuDetail api.GPUDeta
 	minAffinitySize := len(numaNodes) + 1
 
 	bitmask.IterateBitMasks(numaNodes, func(mask bitmask.BitMask) {
-		// Count how many available GPUs fall within this NUMA node combination.
 		numMatching := 0
 		for _, numaID := range mask.GetBits() {
 			numMatching += availablePerNuma[numaID]
 		}
 
-		// If not enough GPUs are available in this NUMA combination, skip it.
+		// If they don't, then move onto the next combination.
 		if numMatching < request {
 			return
 		}
 
-		// Track the minimum NUMA span that can satisfy the request.
-		// This is intentionally placed after the numMatching check above,
-		// so only masks with enough available GPUs influence minAffinitySize.
+		// Update minAffinitySize for the current request size.
 		if mask.Count() < minAffinitySize {
 			minAffinitySize = mask.Count()
 		}
@@ -103,7 +98,8 @@ func generateGPUTopologyHints(availableGPUs cpuset.CPUSet, gpuDetail api.GPUDeta
 		})
 	})
 
-	// Mark hints with the minimal number of NUMA nodes as preferred.
+	// Loop back through all hints and update the 'Preferred' field based on
+	// the minAffinitySize.
 	for i := range hints {
 		if hints[i].NUMANodeAffinity.Count() == minAffinitySize {
 			hints[i].Preferred = true
@@ -160,7 +156,6 @@ func (mng *gpuMng) Allocate(container *v1.Container, bestHit *policy.TopologyHin
 
 	result := cpuset.New()
 	if bestHit.NUMANodeAffinity != nil {
-		// First, try to allocate GPUs from the preferred NUMA nodes.
 		alignedGPUs := cpuset.New()
 		for _, numaNodeID := range bestHit.NUMANodeAffinity.GetBits() {
 			alignedGPUs = alignedGPUs.Union(availableGPUSet.Intersection(
@@ -172,12 +167,11 @@ func (mng *gpuMng) Allocate(container *v1.Container, bestHit *policy.TopologyHin
 			numAlignedToAlloc = requestNum
 		}
 
-		// Take the first N aligned GPUs.
 		allocated := takeGPUs(alignedGPUs, numAlignedToAlloc)
 		result = result.Union(allocated)
 	}
 
-	// If we still need more GPUs, take from remaining available.
+	// Get any remaining GPUs from what's leftover after attempting to grab aligned ones.
 	remaining := requestNum - result.Size()
 	if remaining > 0 {
 		leftover := availableGPUSet.Difference(result)
@@ -189,7 +183,7 @@ func (mng *gpuMng) Allocate(container *v1.Container, bestHit *policy.TopologyHin
 	}
 }
 
-// takeGPUs selects the first 'count' GPUs from the given set.
+// takeGPUs return first count gpus from the set
 func takeGPUs(gpuSet cpuset.CPUSet, count int) cpuset.CPUSet {
 	result := cpuset.New()
 	for _, gpuIdx := range gpuSet.List() {

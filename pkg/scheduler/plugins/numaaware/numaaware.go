@@ -240,9 +240,7 @@ func getNodeNumaNumForTask(nodeInfo []*api.NodeInfo, resAssignMap map[string]api
 		assignCpus := resAssignMap[node.Name][string(v1.ResourceCPU)]
 		cpuNumaMask := getNumaMaskForCPUID(assignCpus, node.NumaSchedulerInfo.CPUDetail)
 
-		// Build a unified NUMA mask across CPU and GPU assignments.
-		// Using the union ensures that shared NUMA nodes are counted once,
-		// so co-located CPU+GPU on the same NUMA node scores better.
+		// Include GPU NUMA nodes in the mask so CPU+GPU locality is scored together.
 		assignGPUs := resAssignMap[node.Name][string(gpumanager.NvidiaGPUResource)]
 		if assignGPUs.Size() > 0 && node.NumaSchedulerInfo.GPUDetail != nil {
 			gpuNumaMask := getNumaMaskForGPUID(assignGPUs, node.NumaSchedulerInfo.GPUDetail)

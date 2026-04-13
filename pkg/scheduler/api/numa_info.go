@@ -55,15 +55,14 @@ type ResourceInfo struct {
 	UsedPerNuma        map[int]float64 // key: NUMA ID
 }
 
-// GPUInfo contains the NUMA topology information for a single GPU device.
 type GPUInfo struct {
 	NUMANodeID int
 }
 
-// GPUDetails is a map of GPU index to its topology information.
+// GPUDetails map GPU index to topology info
 type GPUDetails map[int]GPUInfo
 
-// NUMANodes returns the set of NUMA node IDs associated with the GPUs.
+// NUMANodes return the set of NUMA nodes across all GPUs
 func (d GPUDetails) NUMANodes() cpuset.CPUSet {
 	numaNodes := cpuset.New()
 	for _, info := range d {
@@ -72,7 +71,7 @@ func (d GPUDetails) NUMANodes() cpuset.CPUSet {
 	return numaNodes
 }
 
-// GPUsInNUMANodes returns the set of GPU indices in the given NUMA nodes.
+// GPUsInNUMANodes return GPU indices belonging to given NUMA nodes
 func (d GPUDetails) GPUsInNUMANodes(numaNodeIDs ...int) cpuset.CPUSet {
 	numaSet := cpuset.New(numaNodeIDs...)
 	result := cpuset.New()
