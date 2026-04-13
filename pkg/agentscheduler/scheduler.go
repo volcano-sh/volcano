@@ -133,11 +133,6 @@ func (sched *Scheduler) Run(stopCh <-chan struct{}) {
 func (worker *Worker) runOnce() {
 	klog.V(4).Infof("Start scheduling in worker %d ...", worker.index)
 	defer klog.V(4).Infof("End scheduling in worker %d ...", worker.index)
-	// Load ConfigMap to check which action is enabled.
-	conf.EnabledActionMap = make(map[string]bool)
-	for _, action := range worker.framework.Actions {
-		conf.EnabledActionMap[action.Name()] = true
-	}
 
 	schedCtx, err := worker.generateNextSchedulingContext()
 	if err != nil {
