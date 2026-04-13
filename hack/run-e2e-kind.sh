@@ -40,7 +40,7 @@ export KWOK_NODE_MEMORY=${KWOK_NODE_MEMORY:-8Gi}  # 8GB
 # create kwok node
 function create-kwok-node() {
   local node_index=$1
-  
+
   kubectl apply -f - <<EOF
 apiVersion: v1
 kind: Node
@@ -191,12 +191,64 @@ custom:
   ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
   ;;
+"AGENTSCHEDULER")
+  echo "Install volcano chart with crd version $crd_version, sharding controller and agent scheduler enabled"
+  helm-install-volcano '  controller_log_level: 5
+  controller_enabled_controllers: "*"
+  agent_scheduler_enable: true
+  agent_scheduler_worker_count: 2
+  agent_scheduler_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  sharding_configmap_data: |
+    schedulerConfigs:
+      - name: volcano
+        type: volcano
+        cpuUtilizationMin: 0.0
+        cpuUtilizationMax: 0.6
+        minNodes: 1
+        maxNodes: 100
+      - name: agent-scheduler
+        type: agent
+        cpuUtilizationMin: 0.7
+        cpuUtilizationMax: 1.0
+        minNodes: 1
+        maxNodes: 100
+    shardSyncPeriod: "30s"
+    enableNodeEventTrigger: true'
+  ;;
 *)
   echo "Install volcano chart with crd version $crd_version"
+  helm-install-volcano
+  ;;
+esac
+}
+
+# helm-install-volcano installs volcano with common helm values.
+# Pass case-specific custom values as a string argument (optional).
+# The extra values are written to a temporary file and merged via --values
+# so that YAML literal block scalars (|) are parsed correctly.
+function helm-install-volcano {
+  local extra_custom_values="${1:-}"
+  local extra_values_flag=""
+  if [[ -n "${extra_custom_values}" ]]; then
+    local tmpfile
+    tmpfile=$(mktemp /tmp/volcano-extra-values-XXXXXX.yaml)
+    cat > "${tmpfile}" <<EXTRA
+custom:
+${extra_custom_values}
+EXTRA
+    extra_values_flag="--values ${tmpfile}"
+  fi
   cat <<EOF | helm install ${CLUSTER_NAME} installer/helm/chart/volcano \
   --namespace ${NAMESPACE} \
   --kubeconfig ${KUBECONFIG} \
   --values - \
+  ${extra_values_flag} \
   --wait
 basic:
   image_pull_policy: IfNotPresent
@@ -233,8 +285,7 @@ custom:
   enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
   ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
-  ;;
-esac
+  [[ -n "${extra_values_flag}" ]] && rm -f "${tmpfile}"
 }
 
 function uninstall-volcano {
@@ -349,9 +400,13 @@ case ${E2E_TYPE} in
     echo "Running hypernode e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/hypernode/
     ;;
-"CRONJOB")  
-    echo "Running cronjob e2e suite..."  
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/cronjob/  
+"CRONJOB")
+    echo "Running cronjob e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/cronjob/
+    ;;
+"AGENTSCHEDULER")
+    echo "Running agent scheduler e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/agentscheduler/
     ;;
 esac
 

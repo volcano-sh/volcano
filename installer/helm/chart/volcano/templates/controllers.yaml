@@ -204,6 +204,9 @@ spec:
             - --sharding-configmap={{ .Release.Name }}-sharding-configmap
             - --sharding-configmap-namespace={{ .Release.Namespace }}
               {{- end }}
+              {{- if .Values.custom.controller_enabled_controllers }}
+            - --controllers={{.Values.custom.controller_enabled_controllers}}
+              {{- end }}
             - -v={{.Values.custom.controller_log_level}}
             - 2>&1
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
