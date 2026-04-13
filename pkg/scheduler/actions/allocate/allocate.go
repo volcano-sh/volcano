@@ -297,6 +297,17 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 		}
 
 		job := jobs.Pop().(*api.JobInfo)
+
+		// Early skip: if job's minimum resources would exceed queue capacity, skip it.
+		// This avoids wasting time iterating through all tasks.
+		if !ssn.JobAllocatable(queue, job) {
+			klog.V(3).Infof("Queue <%s> can not allocate min resources for Job <%s/%s>, skip it.",
+				queue.Name, job.Namespace, job.Name)
+			// Reinsert the queue so remaining jobs in this queue can still be considered.
+			queues.Push(queue)
+			continue
+		}
+
 		updateJobTier(ssn.HyperNodeTierNameMap, job)
 		// Currently, both hard-mode network topology scheduling and subjob level scheduling use allocateForJob.
 		// TODO: In the future, we may need to unify the logic of network topology-aware scheduling and normal scheduling.

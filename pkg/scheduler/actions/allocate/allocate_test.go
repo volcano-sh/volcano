@@ -61,6 +61,92 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func TestJobAllocatable(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{
+		gang.PluginName:       gang.New,
+		proportion.PluginName: proportion.New,
+		predicates.PluginName: predicates.New,
+		nodeorder.PluginName:  nodeorder.New,
+	}
+
+	// pg1: job with minResources that exceed queue deserved (too large to fit)
+	pg1 := util.BuildPodGroup("pg1", "c1", "q1", 0, nil, schedulingv1.PodGroupInqueue)
+	hugeRes := v1.ResourceList{
+		v1.ResourceCPU:    resource.MustParse("100"),
+		v1.ResourceMemory: resource.MustParse("100G"),
+	}
+	pg1.Spec.MinResources = &hugeRes
+
+	// pg2: job with small resources that fits in the queue
+	pg2 := util.BuildPodGroup("pg2", "c1", "q1", 0, nil, schedulingv1.PodGroupInqueue)
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name:      "job with min resources exceeding queue capacity is skipped, other job still scheduled",
+			PodGroups: []*schedulingv1.PodGroup{pg1, pg2},
+			Pods: []*v1.Pod{
+				// pending pod for large job (pg1)
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				// pending pod for small job (pg2)
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("4", "8G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			// Only the small job (pg2/p2) should be bound; the large job is skipped early
+			ExpectBindMap: map[string]string{
+				"c1/p2": "n1",
+			},
+			ExpectBindsNum: 1,
+		},
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:                gang.PluginName,
+					EnabledJobOrder:     &trueValue,
+					EnabledJobReady:     &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledJobStarving:  &trueValue,
+				},
+				{
+					Name:                  proportion.PluginName,
+					EnabledQueueOrder:     &trueValue,
+					EnabledReclaimable:    &trueValue,
+					EnabledAllocatable:    &trueValue,
+					EnabledJobAllocatable: &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:             nodeorder.PluginName,
+					EnabledNodeOrder: &trueValue,
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.Plugins = plugins
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run([]framework.Action{New()})
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestParseArgs(t *testing.T) {
 	test := uthelper.TestCommonStruct{Name: "set cache false"}
 

@@ -359,6 +359,9 @@ type VictimTasksFn func([]*TaskInfo) []*TaskInfo
 // AllocatableFn is the func declaration used to check whether the task can be allocated
 type AllocatableFn func(*QueueInfo, *TaskInfo) bool
 
+// JobAllocatableFn is the func declaration used to check whether the job's min resources can be allocated in the queue
+type JobAllocatableFn func(*QueueInfo, *JobInfo) bool
+
 // SimulateRemoveTaskFn is the func declaration used to simulate the result of removing a task from a node.
 type SimulateRemoveTaskFn func(ctx context.Context, state fwk.CycleState, taskToSchedule *TaskInfo, taskInfoToRemove *TaskInfo, nodeInfo *NodeInfo) error
 
