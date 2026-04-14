@@ -18,6 +18,7 @@ package discovery
 
 import (
 	"fmt"
+	"reflect"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -238,8 +239,14 @@ func (m *manager) syncHandler(key string) error {
 		return err
 	}
 
-	// TODO: Only restart changed discoverers.
 	for _, source := range newConfig.GetEnabledDiscoverySources() {
+		_, running := m.discoverers[source]
+		oldSourceConfig := m.config.GetDiscoveryConfig(source)
+		newSourceConfig := newConfig.GetDiscoveryConfig(source)
+		if running && reflect.DeepEqual(oldSourceConfig, newSourceConfig) {
+			klog.V(5).InfoS("source config unchanged, skipping restart", "source", source)
+			continue
+		}
 		klog.InfoS("Restarting network discovery", "source", source)
 		if err = m.stopSingleDiscoverer(source); err != nil {
 			return err
