@@ -54,4 +54,3 @@ func TestUpdateSnapshot_SkipNodeWithNilNodeObject(t *testing.T) {
 		t.Fatalf("did not expect node-nil to be included in snapshot")
 	}
 }
-
