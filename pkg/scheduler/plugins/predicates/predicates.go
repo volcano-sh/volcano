@@ -125,7 +125,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 		podTopologySpreadEnable:         true,
 		cacheEnable:                     false,
 		volumeBindingEnable:             true,
-		dynamicResourceAllocationEnable: false,
+		dynamicResourceAllocationEnable: utilFeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation),
 	}
 
 	// Checks whether predicate enable args is provided or not.
@@ -138,7 +138,6 @@ func New(arguments framework.Arguments) framework.Plugin {
 	arguments.GetBool(&predicate.volumeZoneEnable, VolumeZoneEnable)
 	arguments.GetBool(&predicate.podTopologySpreadEnable, PodTopologySpreadEnable)
 	arguments.GetBool(&predicate.volumeBindingEnable, VolumeBindingEnable)
-	arguments.GetBool(&predicate.dynamicResourceAllocationEnable, DynamicResourceAllocationEnable)
 	arguments.GetBool(&predicate.cacheEnable, CachePredicate)
 
 	features := feature.Features{
