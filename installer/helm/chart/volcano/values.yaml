@@ -10,7 +10,14 @@ basic:
   agent_scheduler_config_file: "config/agent-scheduler.conf"
   image_pull_secret: ""
   image_pull_policy: "Always"
+  # Common image tag when a per-component tag below is unset or empty.
+  # Per-component keys override this only when set to a non-empty string.
   image_tag_version: "latest"
+  controller_image_tag_version: ""
+  scheduler_image_tag_version: ""
+  agent_scheduler_image_tag_version: ""
+  admission_image_tag_version: ""
+  agent_image_tag_version: ""
   admission_port: 8443
   image_registry: "docker.io"
 custom:
