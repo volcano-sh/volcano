@@ -94,12 +94,33 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	// Start cache for policy.
 	pc.cache.SetMetricsConf(pc.metricsConf)
 	pc.cache.Run(stopCh)
+
+	// Initialize all registered actions before the scheduling loop starts.
+	pc.mutex.Lock()
+	actions := pc.actions
+	pc.mutex.Unlock()
+	for _, action := range actions {
+		action.Initialize()
+	}
+
 	klog.V(2).Infof("Scheduler completes Initialization and start to run")
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
 	if options.ServerOpts.EnableCacheDumper {
 		pc.dumper.ListenForSignal(stopCh)
 	}
 	go runSchedulerSocket()
+
+	// UnInitialize all actions when the scheduler stops.
+	go func() {
+		<-stopCh
+		pc.mutex.Lock()
+		actions := pc.actions
+		pc.mutex.Unlock()
+		for _, action := range actions {
+			action.UnInitialize()
+		}
+		klog.V(2).Infof("Scheduler actions uninitialized")
+	}()
 }
 
 // runOnce executes a single scheduling cycle. This function is called periodically
