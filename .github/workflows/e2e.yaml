@@ -54,3 +54,7 @@ jobs:
   e2e-vcctl:
     needs: build-images
     uses: ./.github/workflows/e2e_vcctl.yaml
+
+  e2e-shard:
+    needs: build-images
+    uses: ./.github/workflows/e2e_shard.yaml
