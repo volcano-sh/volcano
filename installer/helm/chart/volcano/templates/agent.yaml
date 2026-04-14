@@ -91,7 +91,7 @@ spec:
             type: File
       initContainers:
         - name: volcano-agent-init
-          image: {{ .Values.basic.image_registry }}/{{.Values.basic.agent_image_name}}:{{.Values.basic.image_tag_version}}
+          image: {{ .Values.basic.image_registry }}/{{.Values.basic.agent_image_name}}:{{ .Values.basic.agent_image_tag_version | default .Values.basic.image_tag_version }}
           {{- if $agent_init_csc }}
           securityContext:
             {{- toYaml $agent_init_csc | nindent 12 }}
@@ -120,7 +120,7 @@ spec:
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
       containers:
         - name: volcano-agent
-          image: {{ .Values.basic.image_registry }}/{{.Values.basic.agent_image_name}}:{{.Values.basic.image_tag_version}}
+          image: {{ .Values.basic.image_registry }}/{{.Values.basic.agent_image_name}}:{{ .Values.basic.agent_image_tag_version | default .Values.basic.image_tag_version }}
           {{- if $agent_main_csc }}
           securityContext:
             {{- toYaml $agent_main_csc | nindent 12 }}
