@@ -94,7 +94,10 @@ func UnmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []
 
 func runSchedulerSocket() {
 	fs := flag.CommandLine
-	startKlogLevel := fs.Lookup("v").Value.String()
+	startKlogLevel := "0"
+	if verbosityFlag := fs.Lookup("v"); verbosityFlag != nil && verbosityFlag.Value != nil {
+		startKlogLevel = verbosityFlag.Value.String()
+	}
 	socketDir := os.Getenv(util.SocketDirEnvName)
 	if socketDir == "" {
 		socketDir = util.DefaultSocketDir
