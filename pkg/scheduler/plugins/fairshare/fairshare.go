@@ -82,6 +82,7 @@ type fairSharePlugin struct {
 	queueResourceKeys map[string]string
 	targetQueueNames  map[string]struct{}
 	halfLife          time.Duration
+	persistCfg        persistConfig
 
 	queues map[string]*queueState
 
@@ -94,11 +95,15 @@ type fairSharePlugin struct {
 //
 // Supported arguments:
 //
-//	fairshare.targetQueues        - comma-separated queue names (required)
-//	fairshare.resourceKey         - default resource to track (default: "nvidia.com/gpu")
-//	fairshare.resourceKey.<queue> - per-queue resource override (e.g., "cpu" for a CPU queue)
-//	fairshare.enableEnqueueGate   - "true" to enable enqueue gating (default: "false", ordering only)
-//	fairshare.halfLifeMinutes     - half-life for usage decay in minutes (default: 240 = 4 hours)
+//	fairshare.targetQueues          - comma-separated queue names (required)
+//	fairshare.resourceKey           - default resource to track (default: "nvidia.com/gpu")
+//	fairshare.resourceKey.<queue>   - per-queue resource override (e.g., "cpu" for a CPU queue)
+//	fairshare.enableEnqueueGate     - "true" to enable enqueue gating (default: "false", ordering only)
+//	fairshare.halfLifeMinutes       - half-life for usage decay in minutes (default: 240 = 4 hours)
+//	fairshare.persistState          - "true" to persist usage to a ConfigMap across restarts (default: "false")
+//	fairshare.stateNamespace        - namespace for the state ConfigMap (default: "volcano-system")
+//	fairshare.stateConfigMap        - name of the state ConfigMap (default: "fairshare-usage-state")
+//	fairshare.flushIntervalSeconds  - how often to flush state in seconds (default: 30)
 func New(arguments framework.Arguments) framework.Plugin {
 	fsp := &fairSharePlugin{
 		pluginArguments:   arguments,
@@ -145,8 +150,37 @@ func New(arguments framework.Arguments) framework.Plugin {
 		}
 	}
 
-	klog.V(2).Infof("fairshare: plugin created — queues=%v resource=%s halfLife=%s enqueueGate=%v",
-		fsp.targetQueueNames, fsp.defaultResource, fsp.halfLife, fsp.enableEnqueueGate)
+	fsp.persistCfg = persistConfig{
+		namespace:     defaultStateNamespace,
+		configMapName: defaultConfigMapName,
+		flushInterval: defaultFlushInterval,
+	}
+	var persistStr string
+	arguments.GetString(&persistStr, "fairshare.persistState")
+	fsp.persistCfg.enabled = strings.EqualFold(strings.TrimSpace(persistStr), "true")
+
+	var stateNS string
+	arguments.GetString(&stateNS, "fairshare.stateNamespace")
+	if stateNS != "" {
+		fsp.persistCfg.namespace = strings.TrimSpace(stateNS)
+	}
+
+	var stateCM string
+	arguments.GetString(&stateCM, "fairshare.stateConfigMap")
+	if stateCM != "" {
+		fsp.persistCfg.configMapName = strings.TrimSpace(stateCM)
+	}
+
+	var flushStr string
+	arguments.GetString(&flushStr, "fairshare.flushIntervalSeconds")
+	if flushStr != "" {
+		if secs, err := strconv.Atoi(strings.TrimSpace(flushStr)); err == nil && secs > 0 {
+			fsp.persistCfg.flushInterval = time.Duration(secs) * time.Second
+		}
+	}
+
+	klog.V(2).Infof("fairshare: plugin created — queues=%v resource=%s halfLife=%s enqueueGate=%v persist=%v",
+		fsp.targetQueueNames, fsp.defaultResource, fsp.halfLife, fsp.enableEnqueueGate, fsp.persistCfg.enabled)
 
 	return fsp
 }
@@ -176,6 +210,10 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 			userDemand:    make(map[string]float64),
 		}
 	}
+
+	// On the first cycle, load persisted state and start the flush goroutine.
+	// Must happen before acquiring globalMu (loadState takes the lock internally).
+	initPersistence(ssn.KubeClient(), fsp.persistCfg)
 
 	// Hold globalMu for the entire decay + accumulation phase, then snapshot.
 	globalMu.Lock()

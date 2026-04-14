@@ -54,7 +54,7 @@ inactivity. After 24 hours, the penalty is effectively forgotten.
 
 Volcano recreates plugin instances via `New()` every scheduling cycle, so instance-level
 state is lost between cycles. The fairshare plugin uses package-level globals protected
-by a `sync.Mutex` to persist usage history:
+by a `sync.Mutex` to persist usage history across scheduling cycles:
 
 ```go
 var (
@@ -64,9 +64,52 @@ var (
 )
 ```
 
-State survives across cycles within a scheduler process lifetime. On scheduler pod restart,
-all users reset to zero — this is acceptable because restarts are rare and act as a
-"full forgiveness" event.
+#### Durable persistence (ConfigMap)
+
+To survive scheduler restarts, the plugin can optionally persist state to a ConfigMap.
+When `fairshare.persistState` is set to `"true"`:
+
+1. On the **first scheduling cycle**, a `sync.Once` block loads any existing state from
+   the ConfigMap into `globalUsage` / `globalLastCycle`, then starts a background goroutine.
+2. The **background goroutine** periodically flushes the current state to the ConfigMap
+   (default: every 30 seconds). Writes use the ConfigMap's `resourceVersion` for
+   optimistic concurrency.
+3. On restart, the loaded `globalLastCycle` is used to compute the elapsed time and apply
+   the correct decay, so users are not unfairly penalized or forgiven by the downtime.
+
+The ConfigMap is stored in the scheduler's namespace (default: `volcano-system`):
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fairshare-usage-state
+  namespace: volcano-system
+  labels:
+    app: volcano-scheduler
+    component: fairshare
+data:
+  state.json: |
+    {
+      "lastCycle": "2026-04-07T12:00:00Z",
+      "queues": {
+        "gpu-queue": {
+          "alice": 12345.67,
+          "bob": 8901.23
+        }
+      }
+    }
+```
+
+**Design considerations:**
+
+- **Leader election**: Volcano already elects a single active scheduler. Only the leader writes.
+- **Data loss window**: At most `flushInterval` seconds of usage data is lost on a crash.
+  With the default 30-second interval and a 4-hour half-life, this is negligible.
+- **Size**: Even with 1000 users across 50 queues, the JSON payload is ~50 KB — well within
+  the 1 MB ConfigMap limit.
+- **Backward compatibility**: Persistence is disabled by default. Existing deployments are
+  unaffected.
 
 ## Configuration
 
@@ -83,6 +126,7 @@ tiers:
       fairshare.resourceKey: "nvidia.com/gpu"
       fairshare.halfLifeMinutes: "240"
       fairshare.enableEnqueueGate: "false"
+      fairshare.persistState: "true"
 ```
 
 ### Arguments
@@ -94,6 +138,10 @@ tiers:
 | `fairshare.resourceKey.<queue>` | _(none)_ | Per-queue resource override (e.g., `amd.com/gpu`, `cpu`) |
 | `fairshare.halfLifeMinutes` | `240` | Half-life for usage decay in minutes |
 | `fairshare.enableEnqueueGate` | `false` | When `true`, blocks users at/above their calculated share from entering the scheduling pipeline |
+| `fairshare.persistState` | `false` | When `true`, persists usage state to a ConfigMap so it survives scheduler restarts |
+| `fairshare.stateNamespace` | `volcano-system` | Namespace for the state ConfigMap |
+| `fairshare.stateConfigMap` | `fairshare-usage-state` | Name of the state ConfigMap |
+| `fairshare.flushIntervalSeconds` | `30` | How often to flush state to the ConfigMap (in seconds) |
 
 ## Interaction with existing plugins
 
@@ -137,7 +185,7 @@ handles ordering among eligible jobs.
 
 ## Testing
 
-### Unit tests (25 tests)
+### Unit tests (33 tests)
 
 - Max-min fair share algorithm correctness (single user, equal demand, asymmetric demand, progressive elimination)
 - Decay factor math (one/two half-lives, zero elapsed, zero half-life, small elapsed)
@@ -145,6 +193,9 @@ handles ordering among eligible jobs.
 - Usage ordering (lower usage wins, equal usage falls to running tiebreaker, realistic multi-user scenario)
 - Decay scenario (10-hour job decay over 4h and 24h)
 - Helpers (namespace extraction, resource key defaults/overrides)
+- Persistence: flush creates ConfigMap, flush updates existing, load populates globals,
+  load handles missing ConfigMap, load handles empty data, flush→load round-trip,
+  disabled persistence is no-op, corrupt JSON returns error
 
 ### Integration tests
 
@@ -159,6 +210,6 @@ Validated on a test cluster with 2 GPU nodes and 4 user namespaces:
 
 ## Limitations
 
-- State is in-memory only; lost on scheduler restart (all users reset to zero)
+- Without `persistState`, state is in-memory only and lost on scheduler restart
 - Namespace-based identity only; no support for arbitrary user labels (can be extended)
-- No persistence to external storage (could be added via ConfigMap or CRD in the future)
+- ConfigMap persistence has a small data-loss window equal to the flush interval on crashes
