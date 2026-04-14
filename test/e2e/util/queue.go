@@ -114,7 +114,8 @@ func DeleteQueue(ctx *TestContext, q string) {
 			err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{
 				PropagationPolicy: &foreground,
 			})
-			Expect(err).NotTo(HaveOccurred(), "failed to delete vcjob %s in queue %s", job.Name, q)
+			// Job may already be gone due to asynchronous controller cleanup.
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue(), "failed to delete vcjob %s in queue %s", job.Name, q)
 
 			// Wait until the job is deleted
 			delErr := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
