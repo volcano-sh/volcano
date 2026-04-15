@@ -433,6 +433,10 @@ func (pl *VolumeBinding) Filter(ctx context.Context, cs fwk.CycleState, pod *v1.
 		return fwk.AsStatus(err)
 	}
 
+	if state == nil || state.podVolumeClaims == nil {
+		return nil
+	}
+
 	podVolumes, reasons, err := pl.Binder.FindPodVolumes(logger, pod, state.podVolumeClaims, node)
 	if err != nil {
 		return fwk.AsStatus(err)
