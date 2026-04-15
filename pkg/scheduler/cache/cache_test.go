@@ -23,14 +23,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
+	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
+	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 )
 
 func buildNode(name string, alloc v1.ResourceList) *v1.Node {
@@ -422,4 +426,192 @@ func (m *mockPreBinder) PreBind(ctx context.Context, bindCtx *BindContext) error
 
 func (m *mockPreBinder) PreBindRollBack(ctx context.Context, bindCtx *BindContext) {
 	// do nothing
+}
+
+// mockHandlerRegistration is a mock implementation of cache.ResourceEventHandlerRegistration
+type mockHandlerRegistration struct {
+	synced bool
+}
+
+func (m *mockHandlerRegistration) HasSynced() bool {
+	return m.synced
+}
+
+// TestWaitForHandlerSync_AllHandlersSynced verifies that WaitForHandlerSync returns quickly
+// when all registered handlers have already synced.
+func TestWaitForHandlerSync_AllHandlersSynced(t *testing.T) {
+	sc := &SchedulerCache{
+		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
+			"handler1": &mockHandlerRegistration{synced: true},
+			"handler2": &mockHandlerRegistration{synced: true},
+		},
+		resourceSyncTimeout: 5 * time.Second,
+	}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	start := time.Now()
+	sc.WaitForHandlerSync(stopCh)
+	elapsed := time.Since(start)
+
+	assert.Less(t, elapsed, time.Second, "WaitForHandlerSync should return quickly when all handlers are synced")
+}
+
+// TestWaitForHandlerSync_SomeHandlersNotSyncedTimeout verifies that WaitForHandlerSync returns
+// after the resourceSyncTimeout expires when some handlers have not synced.
+func TestWaitForHandlerSync_SomeHandlersNotSyncedTimeout(t *testing.T) {
+	sc := &SchedulerCache{
+		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
+			"handler1": &mockHandlerRegistration{synced: true},
+			"handler2": &mockHandlerRegistration{synced: false},
+		},
+		resourceSyncTimeout: 300 * time.Millisecond,
+	}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	start := time.Now()
+	sc.WaitForHandlerSync(stopCh)
+	elapsed := time.Since(start)
+
+	assert.GreaterOrEqual(t, elapsed, 200*time.Millisecond, "WaitForHandlerSync should wait until timeout when some handlers are not synced")
+	assert.Less(t, elapsed, 2*time.Second, "WaitForHandlerSync should not exceed much more than the resourceSyncTimeout")
+}
+
+// TestWaitForHandlerSync_StopChanClosedBeforeSync verifies that WaitForHandlerSync returns early
+// when stopChan is closed before any handler has synced.
+func TestWaitForHandlerSync_StopChanClosedBeforeSync(t *testing.T) {
+	sc := &SchedulerCache{
+		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
+			"handler1": &mockHandlerRegistration{synced: false},
+		},
+		resourceSyncTimeout: 10 * time.Second,
+	}
+
+	stopCh := make(chan struct{})
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		close(stopCh)
+	}()
+
+	start := time.Now()
+	sc.WaitForHandlerSync(stopCh)
+	elapsed := time.Since(start)
+
+	assert.Less(t, elapsed, 2*time.Second, "WaitForHandlerSync should return early when stopChan is closed")
+}
+
+// TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_Synced verifies that WaitForHandlerSync
+// returns quickly when an InitialEventAsyncHandlerTracker has both upstream synced and no pending objects.
+func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_Synced(t *testing.T) {
+	tracker := &schedulercache.InitialEventAsyncHandlerTracker{
+		UpstreamHasSynced: func() bool { return true },
+		ObjectSet:         sets.New[string](),
+	}
+
+	sc := &SchedulerCache{
+		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
+			"node": tracker,
+		},
+		resourceSyncTimeout: 5 * time.Second,
+	}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	start := time.Now()
+	sc.WaitForHandlerSync(stopCh)
+	elapsed := time.Since(start)
+
+	assert.True(t, tracker.HasSynced(), "InitialEventAsyncHandlerTracker should report HasSynced=true")
+	assert.Less(t, elapsed, time.Second, "WaitForHandlerSync should return quickly when InitialEventAsyncHandlerTracker is synced")
+}
+
+// TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_UpstreamNotSynced verifies that
+// WaitForHandlerSync times out when an InitialEventAsyncHandlerTracker's upstream has not synced.
+func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_UpstreamNotSynced(t *testing.T) {
+	tracker := &schedulercache.InitialEventAsyncHandlerTracker{
+		UpstreamHasSynced: func() bool { return false },
+		ObjectSet:         sets.New[string](),
+	}
+
+	sc := &SchedulerCache{
+		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
+			"node": tracker,
+		},
+		resourceSyncTimeout: 300 * time.Millisecond,
+	}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	start := time.Now()
+	sc.WaitForHandlerSync(stopCh)
+	elapsed := time.Since(start)
+
+	assert.False(t, tracker.HasSynced(), "InitialEventAsyncHandlerTracker should report HasSynced=false when upstream not synced")
+	assert.GreaterOrEqual(t, elapsed, 200*time.Millisecond, "WaitForHandlerSync should timeout when tracker upstream is not synced")
+}
+
+// TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_PendingObjects verifies that
+// WaitForHandlerSync times out when an InitialEventAsyncHandlerTracker still has pending objects
+// in its queue even though the upstream informer has synced.
+func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_PendingObjects(t *testing.T) {
+	tracker := &schedulercache.InitialEventAsyncHandlerTracker{
+		UpstreamHasSynced: func() bool { return true },
+		ObjectSet:         sets.New("node1", "node2"),
+	}
+
+	sc := &SchedulerCache{
+		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
+			"node": tracker,
+		},
+		resourceSyncTimeout: 300 * time.Millisecond,
+	}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	start := time.Now()
+	sc.WaitForHandlerSync(stopCh)
+	elapsed := time.Since(start)
+
+	assert.False(t, tracker.HasSynced(), "InitialEventAsyncHandlerTracker should report HasSynced=false when there are pending objects")
+	assert.GreaterOrEqual(t, elapsed, 200*time.Millisecond, "WaitForHandlerSync should timeout when tracker has pending objects")
+}
+
+// TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_CompletesAfterDone verifies that
+// WaitForHandlerSync returns successfully once all pending objects in an
+// InitialEventAsyncHandlerTracker are marked Done.
+func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_CompletesAfterDone(t *testing.T) {
+	tracker := &schedulercache.InitialEventAsyncHandlerTracker{
+		UpstreamHasSynced: func() bool { return true },
+		ObjectSet:         sets.New("node1"),
+	}
+
+	sc := &SchedulerCache{
+		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
+			"node": tracker,
+		},
+		resourceSyncTimeout: 5 * time.Second,
+	}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	// Simulate async handler completing processing of node1
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		tracker.Done("node1")
+	}()
+
+	start := time.Now()
+	sc.WaitForHandlerSync(stopCh)
+	elapsed := time.Since(start)
+
+	assert.True(t, tracker.HasSynced(), "InitialEventAsyncHandlerTracker should report HasSynced=true after all objects are Done")
+	assert.Less(t, elapsed, 2*time.Second, "WaitForHandlerSync should return after all pending objects are processed")
+	assert.GreaterOrEqual(t, elapsed, 100*time.Millisecond, "WaitForHandlerSync should wait until Done is called")
 }

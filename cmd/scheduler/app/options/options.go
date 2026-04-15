@@ -30,13 +30,14 @@ import (
 )
 
 const (
-	defaultSchedulerName   = "volcano"
-	defaultSchedulerPeriod = time.Second
-	defaultResyncPeriod    = 0
-	defaultQueue           = "default"
-	defaultListenAddress   = ":8080"
-	defaultHealthzAddress  = ":11251"
-	defaultPluginsDir      = ""
+	defaultSchedulerName       = "volcano"
+	defaultSchedulerPeriod     = time.Second
+	defaultResyncPeriod        = 0
+	defaultResourceSyncTimeout = 60 * time.Second
+	defaultQueue               = "default"
+	defaultListenAddress       = ":8080"
+	defaultHealthzAddress      = ":11251"
+	defaultPluginsDir          = ""
 
 	defaultQPS   = 2000.0
 	defaultBurst = 2000
@@ -93,6 +94,9 @@ type ServerOption struct {
 	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
 	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
 	IgnoredCSIProvisioners []string
+
+	// timeout on waiting for handlers handle initial resource synchronization before starting scheduling, 0 will skip waiting
+	ResourceSyncTimeout time.Duration
 }
 
 // DecryptFunc is custom function to parse ca file
@@ -151,6 +155,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
+	fs.DurationVar(&s.ResourceSyncTimeout, "resource-sync-timeout", defaultResourceSyncTimeout, "timeout on waiting for handler handling initial resources synchronization before starting scheduler, default is 60s, 0 skip waiting")
 }
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.
