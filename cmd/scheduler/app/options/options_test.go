@@ -83,6 +83,7 @@ func TestAddFlags(t *testing.T) {
 		PercentageOfNodesToFind:    defaultPercentageOfNodesToFind,
 		NodeWorkerThreads:          defaultNodeWorkers,
 		CacheDumpFileDir:           "/tmp",
+		ResourceSyncTimeout:        60 * time.Second,
 	}
 	expectedFeatureGates := map[featuregate.Feature]bool{
 		features.PodDisruptionBudgetsSupport: false,
