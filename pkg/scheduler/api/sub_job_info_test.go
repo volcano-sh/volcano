@@ -920,9 +920,9 @@ func TestConvertToHardTopology(t *testing.T) {
 			// Record original values for comparison
 			var origMode scheduling.NetworkTopologyMode
 			var origTier *int
-			if sji.networkTopology != nil {
-				origMode = sji.networkTopology.Mode
-				origTier = sji.networkTopology.HighestTierAllowed
+			if sji.NetworkTopology != nil {
+				origMode = sji.NetworkTopology.Mode
+				origTier = sji.NetworkTopology.HighestTierAllowed
 			}
 
 			sji.ConvertToHardTopology(tt.maxTier)
@@ -932,10 +932,10 @@ func TestConvertToHardTopology(t *testing.T) {
 				return
 			}
 
-			assert.Equal(t, tt.wantMode, sji.networkTopology.Mode, "mode mismatch")
+			assert.Equal(t, tt.wantMode, sji.NetworkTopology.Mode, "mode mismatch")
 			if tt.wantTier != nil {
-				assert.NotNil(t, sji.networkTopology.HighestTierAllowed)
-				assert.Equal(t, *tt.wantTier, *sji.networkTopology.HighestTierAllowed, "tier mismatch")
+				assert.NotNil(t, sji.NetworkTopology.HighestTierAllowed)
+				assert.Equal(t, *tt.wantTier, *sji.NetworkTopology.HighestTierAllowed, "tier mismatch")
 			}
 
 			if tt.wantChanged {
@@ -945,9 +945,9 @@ func TestConvertToHardTopology(t *testing.T) {
 				assert.Equal(t, tt.maxTier, tier, "tier should equal maxTier")
 				assert.False(t, sji.IsSoftTopologyMode(), "should not be soft mode after conversion")
 			} else {
-				if sji.networkTopology != nil {
-					assert.Equal(t, origMode, sji.networkTopology.Mode, "mode should not have changed")
-					assert.Equal(t, origTier, sji.networkTopology.HighestTierAllowed, "tier should not have changed")
+				if sji.NetworkTopology != nil {
+					assert.Equal(t, origMode, sji.NetworkTopology.Mode, "mode should not have changed")
+					assert.Equal(t, origTier, sji.NetworkTopology.HighestTierAllowed, "tier should not have changed")
 				}
 			}
 		})
