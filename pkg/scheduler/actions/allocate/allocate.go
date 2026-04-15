@@ -297,7 +297,6 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 		}
 
 		job := jobs.Pop().(*api.JobInfo)
-		updateJobTier(ssn.HyperNodeTierNameMap, job)
 		// Currently, both hard-mode network topology scheduling and subjob level scheduling use allocateForJob.
 		// TODO: In the future, we may need to unify the logic of network topology-aware scheduling and normal scheduling.
 		if job.ContainsHardTopology() || job.ContainsSubJobPolicy() {
@@ -668,30 +667,6 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 	stmt.Discard()
 	return nil
-}
-
-func updateJobTier(hyperNodeTierNameMap api.HyperNodeTierNameMap, job *api.JobInfo) {
-	klog.V(4).InfoS("updateJobTier", "job", job.UID, "hyperNodeTierNameMap", hyperNodeTierNameMap)
-	if job.PodGroup.Spec.NetworkTopology != nil && job.PodGroup.Spec.NetworkTopology.HighestTierName != "" && job.PodGroup.Spec.NetworkTopology.HighestTierAllowed == nil {
-		if tier, ok := hyperNodeTierNameMap[job.PodGroup.Spec.NetworkTopology.HighestTierName]; ok {
-			job.PodGroup.Spec.NetworkTopology.HighestTierAllowed = &tier
-			job.PodGroup.Spec.NetworkTopology.HighestTierName = ""
-		} else {
-			klog.Warningf("The tier corresponding to highestTierName %s is not found, job <%s>",
-				job.PodGroup.Spec.NetworkTopology.HighestTierName, job.UID)
-		}
-	}
-	for _, subGroupPolicy := range job.PodGroup.Spec.SubGroupPolicy {
-		if subGroupPolicy.NetworkTopology != nil && subGroupPolicy.NetworkTopology.HighestTierName != "" && subGroupPolicy.NetworkTopology.HighestTierAllowed == nil {
-			if tier, ok := hyperNodeTierNameMap[subGroupPolicy.NetworkTopology.HighestTierName]; ok {
-				subGroupPolicy.NetworkTopology.HighestTierAllowed = &tier
-				subGroupPolicy.NetworkTopology.HighestTierName = ""
-			} else {
-				klog.Warningf("The tier corresponding to highestTierName %s in subGroupPolicy %s is not found, job <%s>",
-					subGroupPolicy.NetworkTopology.HighestTierName, subGroupPolicy.Name, job.UID)
-			}
-		}
-	}
 }
 
 // getNewAllocatedHyperNode Obtain the newly allocated hyperNode for the job in soft topology mode

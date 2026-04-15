@@ -65,7 +65,7 @@ func TestNewSubJobInfo(t *testing.T) {
 				Tasks:           make(map[TaskID]*TaskInfo),
 				TaskStatusIndex: make(map[TaskStatus]TasksMap),
 				taskPriorities:  make(map[int32]sets.Set[TaskID]),
-				networkTopology: &scheduling.NetworkTopologySpec{
+				NetworkTopology: &scheduling.NetworkTopologySpec{
 					Mode:               scheduling.HardNetworkTopologyMode,
 					HighestTierAllowed: ptr.To(1),
 				},
@@ -89,7 +89,7 @@ func TestNewSubJobInfo(t *testing.T) {
 				Tasks:           make(map[TaskID]*TaskInfo),
 				TaskStatusIndex: make(map[TaskStatus]TasksMap),
 				taskPriorities:  make(map[int32]sets.Set[TaskID]),
-				networkTopology: nil,
+				NetworkTopology: nil,
 			},
 		},
 		{
@@ -115,14 +115,14 @@ func TestNewSubJobInfo(t *testing.T) {
 				Tasks:           make(map[TaskID]*TaskInfo),
 				TaskStatusIndex: make(map[TaskStatus]TasksMap),
 				taskPriorities:  make(map[int32]sets.Set[TaskID]),
-				networkTopology: &scheduling.NetworkTopologySpec{
+				NetworkTopology: &scheduling.NetworkTopologySpec{
 					Mode:               scheduling.HardNetworkTopologyMode,
 					HighestTierAllowed: ptr.To(1),
 				},
 			},
 		},
 		{
-			name: "No networkTopology provided",
+			name: "No NetworkTopology provided",
 			args: args{
 				gid: "test-gid",
 				uid: "test-uid",
@@ -141,7 +141,7 @@ func TestNewSubJobInfo(t *testing.T) {
 				Tasks:           make(map[TaskID]*TaskInfo),
 				TaskStatusIndex: make(map[TaskStatus]TasksMap),
 				taskPriorities:  make(map[int32]sets.Set[TaskID]),
-				networkTopology: nil,
+				NetworkTopology: nil,
 			},
 		},
 	}
@@ -172,7 +172,7 @@ func TestSubJobInfo_IsHardTopologyMode(t *testing.T) {
 		expectedTier int
 	}{
 		{
-			name: "networkTopology is nil",
+			name: "NetworkTopology is nil",
 			fields: fields{
 				networkTopology: nil,
 			},
@@ -223,7 +223,7 @@ func TestSubJobInfo_IsHardTopologyMode(t *testing.T) {
 				TaskStatusIndex:    tt.fields.TaskStatusIndex,
 				taskPriorities:     tt.fields.taskPriorities,
 				AllocatedHyperNode: tt.fields.AllocateHyperNode,
-				networkTopology:    tt.fields.networkTopology,
+				NetworkTopology:    tt.fields.networkTopology,
 			}
 			gotIsHard, gotTier := sji.IsHardTopologyMode()
 			assert.Equal(t, tt.expectedHard, gotIsHard, "IsHardTopologyMode()")
@@ -250,7 +250,7 @@ func TestSubJobInfo_IsSoftTopologyMode(t *testing.T) {
 		expectedHard bool
 	}{
 		{
-			name: "networkTopology is nil",
+			name: "NetworkTopology is nil",
 			fields: fields{
 				networkTopology: nil,
 			},
@@ -278,7 +278,7 @@ func TestSubJobInfo_IsSoftTopologyMode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sji := &SubJobInfo{
-				networkTopology: tt.fields.networkTopology,
+				NetworkTopology: tt.fields.networkTopology,
 			}
 			assert.Equalf(t, tt.expectedHard, sji.IsSoftTopologyMode(), "IsSoftTopologyMode()")
 		})
