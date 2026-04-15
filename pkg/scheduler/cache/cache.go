@@ -906,14 +906,12 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	// Add new task to node.
 	node.UpdateTask(task)
 
-	p := task.Pod
-
-	go func() {
-		err := sc.Evictor.Evict(p, reason)
+	go func(pod *v1.Pod, taskUID schedulingapi.TaskID, jobID schedulingapi.JobID, r string) {
+		err := sc.Evictor.Evict(pod, r)
 		if err != nil {
-			sc.resyncTask(task)
+			sc.resyncTask(&schedulingapi.TaskInfo{UID: taskUID, Job: jobID})
 		}
-	}()
+	}(task.Pod.DeepCopy(), task.UID, task.Job, reason)
 
 	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", reason)
 	return nil

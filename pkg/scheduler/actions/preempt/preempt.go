@@ -473,7 +473,7 @@ func (pmpt *Action) topologyAwarePreempt(
 	predicateNodes []*api.NodeInfo,
 ) (bool, error) {
 	// Find all preemption candidates (dry run, no side effects on stmt).
-	candidates, nodeToStatusMap, err := pmpt.findCandidates(preemptor, filter, predicateNodes, stmt)
+	candidates, nodeToStatusMap, err := pmpt.findCandidates(preemptor, filter, predicateNodes)
 	if err != nil && len(candidates) == 0 {
 		return false, err
 	}
@@ -512,7 +512,7 @@ func (pmpt *Action) topologyAwarePreempt(
 	return true, nil
 }
 
-func (pmpt *Action) findCandidates(preemptor *api.TaskInfo, filter func(*api.TaskInfo) bool, predicateNodes []*api.NodeInfo, stmt *framework.Statement) ([]*candidate, map[string]api.Status, error) {
+func (pmpt *Action) findCandidates(preemptor *api.TaskInfo, filter func(*api.TaskInfo) bool, predicateNodes []*api.NodeInfo) ([]*candidate, map[string]api.Status, error) {
 	if len(predicateNodes) == 0 {
 		klog.V(3).Infof("No nodes are eligible to preempt task %s/%s", preemptor.Namespace, preemptor.Name)
 		return nil, nil, nil
@@ -523,7 +523,7 @@ func (pmpt *Action) findCandidates(preemptor *api.TaskInfo, filter func(*api.Tas
 
 	offset, numCandidates := pmpt.GetOffsetAndNumCandidates(len(predicateNodes))
 
-	candidates, nodeStatuses, err := pmpt.DryRunPreemption(preemptor, predicateNodes, offset, numCandidates, filter, stmt)
+	candidates, nodeStatuses, err := pmpt.DryRunPreemption(preemptor, predicateNodes, offset, numCandidates, filter)
 	for node, nodeStatus := range nodeStatuses {
 		nodeToStatusMap[node] = nodeStatus
 	}
@@ -599,7 +599,7 @@ func (pmpt *Action) GetOffsetAndNumCandidates(numNodes int) (int, int) {
 	return rand.Intn(numNodes), pmpt.calculateNumCandidates(numNodes)
 }
 
-func (pmpt *Action) DryRunPreemption(preemptor *api.TaskInfo, potentialNodes []*api.NodeInfo, offset, numCandidates int, filter func(*api.TaskInfo) bool, stmt *framework.Statement) ([]*candidate, map[string]api.Status, error) {
+func (pmpt *Action) DryRunPreemption(preemptor *api.TaskInfo, potentialNodes []*api.NodeInfo, offset, numCandidates int, filter func(*api.TaskInfo) bool) ([]*candidate, map[string]api.Status, error) {
 	candidates := newCandidateList(numCandidates)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -620,7 +620,7 @@ func (pmpt *Action) DryRunPreemption(preemptor *api.TaskInfo, potentialNodes []*
 		nodeInfoCopy := potentialNodes[(int(offset)+i)%len(potentialNodes)].Clone()
 		stateCopy := state.Clone()
 
-		victims, status := SelectVictimsOnNode(ctx, stateCopy, preemptor, currentQueue, nodeInfoCopy, pmpt.ssn, filter, stmt)
+		victims, status := SelectVictimsOnNode(ctx, stateCopy, preemptor, currentQueue, nodeInfoCopy, pmpt.ssn, filter)
 		if status.IsSuccess() && len(victims) != 0 {
 			c := &candidate{
 				victims: victims,
@@ -706,7 +706,6 @@ func SelectVictimsOnNode(
 	nodeInfo *api.NodeInfo,
 	ssn *framework.Session,
 	filter func(*api.TaskInfo) bool,
-	stmt *framework.Statement,
 ) ([]*api.TaskInfo, *api.Status) {
 	var potentialVictims []*api.TaskInfo
 
