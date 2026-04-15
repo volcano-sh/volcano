@@ -171,7 +171,7 @@ spec:
           resources:
             {{- toYaml .Values.custom.controller_resources | nindent 14 }}
             {{- end }}
-          image: {{ .Values.basic.image_registry }}/{{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
+          image: {{ .Values.basic.image_registry }}/{{.Values.basic.controller_image_name}}:{{ .Values.basic.controller_image_tag_version | default .Values.basic.image_tag_version }}
           args:
             - --logtostderr
             - --enable-healthz=true
@@ -203,6 +203,9 @@ spec:
               {{- if .Values.custom.sharding_configmap_enable }}
             - --sharding-configmap={{ .Release.Name }}-sharding-configmap
             - --sharding-configmap-namespace={{ .Release.Namespace }}
+              {{- end }}
+              {{- if .Values.custom.controller_enabled_controllers }}
+            - --controllers={{.Values.custom.controller_enabled_controllers}}
               {{- end }}
             - -v={{.Values.custom.controller_log_level}}
             - 2>&1

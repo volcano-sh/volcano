@@ -27,10 +27,11 @@ import (
 )
 
 type PodSpec struct {
-	Name        string
-	Node        string
-	Req         v1.ResourceList
-	Tolerations []v1.Toleration
+	Name          string
+	Node          string
+	SchedulerName string
+	Req           v1.ResourceList
+	Tolerations   []v1.Toleration
 }
 
 func CreatePod(ctx *TestContext, spec PodSpec) *v1.Pod {
@@ -40,7 +41,8 @@ func CreatePod(ctx *TestContext, spec PodSpec) *v1.Pod {
 			Namespace: ctx.Namespace,
 		},
 		Spec: v1.PodSpec{
-			NodeName: spec.Node,
+			NodeName:      spec.Node,
+			SchedulerName: spec.SchedulerName,
 			Containers: []v1.Container{
 				{
 					Image:           DefaultNginxImage,
@@ -69,6 +71,43 @@ func WaitPodReady(ctx *TestContext, pod *v1.Pod) error {
 		}
 		return pod.Status.Phase == v1.PodRunning, nil
 	})
+}
+
+// WaitPodScheduled waits for a pod to have the PodScheduled condition set to True.
+func WaitPodScheduled(ctx *TestContext, namespace, podName string) error {
+	return wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, TwoMinute, true,
+		func(c context.Context) (bool, error) {
+			pod, err := ctx.Kubeclient.CoreV1().Pods(namespace).Get(c, podName, metav1.GetOptions{})
+			if err != nil {
+				return false, nil
+			}
+			for _, cond := range pod.Status.Conditions {
+				if cond.Type == v1.PodScheduled && cond.Status == v1.ConditionTrue {
+					return true, nil
+				}
+			}
+			return false, nil
+		})
+}
+
+// WaitPodUnschedulable waits for a pod to have PodScheduled=False with the
+// Unschedulable reason set by the scheduler.
+func WaitPodUnschedulable(ctx *TestContext, namespace, podName string, timeout time.Duration) error {
+	return wait.PollUntilContextTimeout(context.TODO(), 500*time.Millisecond, timeout, true,
+		func(c context.Context) (bool, error) {
+			pod, err := ctx.Kubeclient.CoreV1().Pods(namespace).Get(c, podName, metav1.GetOptions{})
+			if err != nil {
+				return false, nil
+			}
+			for _, cond := range pod.Status.Conditions {
+				if cond.Type == v1.PodScheduled &&
+					cond.Status == v1.ConditionFalse &&
+					cond.Reason == v1.PodReasonUnschedulable {
+					return true, nil
+				}
+			}
+			return false, nil
+		})
 }
 
 func DeletePod(ctx *TestContext, pod *v1.Pod) {
