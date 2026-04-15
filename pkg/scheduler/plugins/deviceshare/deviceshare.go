@@ -66,6 +66,9 @@ type deviceSharePlugin struct {
 	pluginArguments framework.Arguments
 	schedulePolicy  string
 	scheduleWeight  int
+	// lock protects persistedGPUs and persistedPodRules from concurrent access
+	// across scheduling sessions and Allocate calls.
+	lock sync.RWMutex
 	// persistedGPUs survives across scheduling sessions. Maps
 	// nodeName → podName → set of GPU indices allocated to that pod.
 	// Updated by Allocate, pruned by OnSessionOpen.

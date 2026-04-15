@@ -191,14 +191,6 @@ func (a *exclusiveGPUDevices) restoreGPUs(saved map[int]uint) {
 	}
 }
 
-func (a *exclusiveGPUDevices) snapshotUsedNum() map[int]uint {
-	snap := make(map[int]uint, len(a.inner.Device))
-	for idx, dev := range a.inner.Device {
-		snap[idx] = dev.UsedNum
-	}
-	return snap
-}
-
 // trackPodFromPodMap registers a pod in podRules and adds GPU mappings based
 // on PodMap entries only. This is safe to call from AddResource because it
 // does NOT rebuild ruleGPUs from scratch — it only adds new entries.
@@ -313,8 +305,6 @@ func (a *exclusiveGPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.
 		return a.inner.Allocate(kubeClient, pod)
 	}
 
-	before := a.snapshotUsedNum()
-
 	reserved := a.reservedGPUsForPod(pod)
 	klog.V(4).Infof("gpuexclusive: Allocate pod=%s, matched=%v, reserved=%v, ruleGPUs=%v", pod.Name, matched, reserved, a.ruleGPUs)
 	if len(reserved) > 0 {
@@ -336,9 +326,13 @@ func (a *exclusiveGPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.
 	}
 	a.podRules[pod.Name] = ruleSet
 
+	// Detect newly allocated GPUs by checking the PodMap for this pod's UID.
+	// inner.Allocate updates PodMap via addToPodMap, making this reliable
+	// (unlike UsedNum which is not updated during the allocation phase).
 	newGPUs := make(map[int]struct{})
+	podUID := string(pod.UID)
 	for idx, dev := range a.inner.Device {
-		if dev.UsedNum > before[idx] {
+		if _, ok := dev.PodMap[podUID]; ok {
 			newGPUs[idx] = struct{}{}
 			for ruleIdx := range ruleSet {
 				if a.ruleGPUs[ruleIdx] == nil {
@@ -351,6 +345,7 @@ func (a *exclusiveGPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.
 
 	// Persist across scheduling sessions.
 	if a.plugin != nil && a.nodeName != "" {
+		a.plugin.lock.Lock()
 		if a.plugin.persistedGPUs[a.nodeName] == nil {
 			a.plugin.persistedGPUs[a.nodeName] = make(map[string]map[int]struct{})
 		}
@@ -359,6 +354,7 @@ func (a *exclusiveGPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.
 			a.plugin.persistedPodRules[a.nodeName] = make(map[string]map[int]struct{})
 		}
 		a.plugin.persistedPodRules[a.nodeName][pod.Name] = ruleSet
+		a.plugin.lock.Unlock()
 	}
 
 	klog.V(4).Infof("gpuexclusive: allocated pod %s, newGPUs=%v, ruleGPUs=%v",
@@ -386,6 +382,9 @@ func (a *exclusiveGPUDevices) GetStatus() string {
 // wrapGPUDevicesForExclusivity wraps each node's GPUDevices with the exclusivity-aware
 // wrapper during OnSessionOpen. Called from deviceshare's OnSessionOpen.
 func (dp *deviceSharePlugin) wrapGPUDevicesForExclusivity(ssn *framework.Session) {
+	dp.lock.Lock()
+	defer dp.lock.Unlock()
+
 	cfg := loadGPUExclusiveConfig(dp.pluginArguments)
 
 	klog.V(4).Infof("gpuexclusive config: vgpuResourceName=%s, rules=%v",
