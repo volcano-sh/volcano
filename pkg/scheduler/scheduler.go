@@ -46,11 +46,12 @@ import (
 // Scheduler watches for new unscheduled pods(PodGroup) in Volcano.
 // It attempts to find nodes that can accommodate these pods and writes the binding information back to the API server.
 type Scheduler struct {
-	cache          schedcache.Cache
-	schedulerConf  string
-	fileWatcher    filewatcher.FileWatcher
-	schedulePeriod time.Duration
-	once           sync.Once
+	cache                schedcache.Cache
+	schedulerConf        string
+	schedulerConfContent string
+	fileWatcher          filewatcher.FileWatcher
+	schedulePeriod       time.Duration
+	once                 sync.Once
 
 	mutex              sync.Mutex
 	actions            []framework.Action
@@ -137,21 +138,32 @@ func (pc *Scheduler) runOnce() {
 func (pc *Scheduler) loadSchedulerConf() {
 	klog.V(4).Infof("Start loadSchedulerConf ...")
 	defer func() {
-		actions, plugins := pc.getSchedulerConf()
-		klog.V(2).Infof("Finished loading scheduler config. Final state: actions=%v, plugins=%v", actions, plugins)
+		pc.mutex.Lock()
+		config := pc.schedulerConfContent
+		pc.mutex.Unlock()
+		klog.V(2).Infoln("Successfully loaded scheduler conf as follows:")
+		for _, line := range strings.Split(config, "\n") {
+			klog.V(2).Infoln(strings.TrimSpace(line))
+		}
 	}()
 
 	if pc.disableDefaultConf && len(pc.schedulerConf) == 0 {
 		klog.Fatalf("No --scheduler-conf path provided and default configuration fallback is disabled")
 	}
 
-	var err error
 	if !pc.disableDefaultConf {
 		pc.once.Do(func() {
-			pc.actions, pc.plugins, pc.configurations, pc.metricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
+			actions, plugins, configurations, metricsConf, err := UnmarshalSchedulerConf(DefaultSchedulerConf)
 			if err != nil {
 				klog.Fatalf("Invalid default configuration: unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
 			}
+			pc.mutex.Lock()
+			pc.actions = actions
+			pc.plugins = plugins
+			pc.configurations = configurations
+			pc.metricsConf = metricsConf
+			pc.schedulerConfContent = DefaultSchedulerConf
+			pc.mutex.Unlock()
 		})
 	}
 
@@ -183,19 +195,8 @@ func (pc *Scheduler) loadSchedulerConf() {
 	pc.plugins = plugins
 	pc.configurations = configurations
 	pc.metricsConf = metricsConf
+	pc.schedulerConfContent = config
 	pc.mutex.Unlock()
-}
-
-func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
-	for _, action := range pc.actions {
-		actions = append(actions, action.Name())
-	}
-	for _, tier := range pc.plugins {
-		for _, plugin := range tier.Plugins {
-			plugins = append(plugins, plugin.Name)
-		}
-	}
-	return
 }
 
 func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
