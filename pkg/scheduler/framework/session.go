@@ -238,6 +238,7 @@ func openSession(cache cache.Cache) *Session {
 	ssn.HyperNodesReadyToSchedule = snapshot.HyperNodesReadyToSchedule
 	ssn.addClusterTopHyperNode(ssn.NodeList)
 	ssn.parseHyperNodesTiers()
+	ssn.adjustNetworkTopologySpec()
 
 	if ssn.HyperNodesReadyToSchedule {
 		// hyperNodes in ssn has ClusterTopHyperNode
@@ -1025,4 +1026,61 @@ func (ssn *Session) String() string {
 
 func (ssn *Session) IsJobTerminated(jobId api.JobID) bool {
 	return ssn.cache.IsJobTerminated(jobId)
+}
+
+// adjustNetworkTopologySpec translates highestTierName in network topology spec into highestTierAllowed.
+// As a result, once adjustNetworkTopologySpec is invoked, it is no need to consider highestTierName anymore.
+func (ssn *Session) adjustNetworkTopologySpec() {
+	klog.V(3).Infof("Start adjusting jobs' network topology spec according to hyperNodeTierNameMap %v", ssn.HyperNodeTierNameMap)
+	defer klog.V(3).Infof("Finish adjusting jobs' network topology spec according to hyperNodeTierNameMap %v", ssn.HyperNodeTierNameMap)
+
+	for _, job := range ssn.Jobs {
+		if !job.ContainsNetworkTopology() {
+			continue
+		}
+
+		translated, err := translateHighestTierNameToAllowed(job.PodGroup.Spec.NetworkTopology, ssn.HyperNodeTierNameMap)
+		if err != nil {
+			klog.Warningf("Failed to translate highestTierName for job %s/%s: %v, skip translation", job.Namespace, job.Name, err)
+		} else if translated {
+			klog.V(4).Infof("Translated highestTierName for job %s/%s, new highestTierAllowed is %d",
+				job.Namespace, job.Name, *job.PodGroup.Spec.NetworkTopology.HighestTierAllowed)
+		}
+		for _, subGroupPolicy := range job.PodGroup.Spec.SubGroupPolicy {
+			translated, err = translateHighestTierNameToAllowed(subGroupPolicy.NetworkTopology, ssn.HyperNodeTierNameMap)
+			if err != nil {
+				klog.Warningf("Failed to translate highestTierName for subGroupPolicy %s of job %s/%s: %v, skip translation",
+					subGroupPolicy.Name, job.Namespace, job.Name, err)
+			} else if translated {
+				klog.V(4).Infof("Translated highestTierName in subGroupPolicy %s for job %s/%s, new highestTierAllowed is %d",
+					subGroupPolicy.Name, job.Namespace, job.Name, *subGroupPolicy.NetworkTopology.HighestTierAllowed)
+			}
+		}
+
+		// NetworkTopology of SubJob is derived from the original SubGroupPolicy.NetworkTopology, and will be used by plugins like network-topology-aware.
+		// Therefore, for the sake of consistency, NetworkTopology of SubJob should also be updated.
+		for _, subJob := range job.SubJobs {
+			translated, err = translateHighestTierNameToAllowed(subJob.NetworkTopology, ssn.HyperNodeTierNameMap)
+			if err != nil {
+				klog.Warningf("Failed to translate highestTierName for subJob %s of job %s/%s: %v, skip translation",
+					subJob.UID, job.Namespace, job.Name, err)
+			} else if translated {
+				klog.V(4).Infof("Translated highestTierName for subJob %s of job %s/%s, new highestTierAllowed is %d",
+					subJob.UID, job.Namespace, job.Name, *subJob.NetworkTopology.HighestTierAllowed)
+			}
+		}
+	}
+}
+
+func translateHighestTierNameToAllowed(spec *scheduling.NetworkTopologySpec, nameMap api.HyperNodeTierNameMap) (bool, error) {
+	if spec != nil && spec.HighestTierAllowed == nil && spec.HighestTierName != "" {
+		if tier, ok := nameMap[spec.HighestTierName]; ok {
+			spec.HighestTierAllowed = &tier
+			spec.HighestTierName = ""
+			return true, nil
+		} else {
+			return false, fmt.Errorf("failed to find hypernode tier name %s", spec.HighestTierName)
+		}
+	}
+	return false, nil
 }
