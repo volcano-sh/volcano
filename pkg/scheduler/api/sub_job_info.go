@@ -107,11 +107,11 @@ func (sji *SubJobInfo) WithNetworkTopology() bool {
 // This allows soft-mode SubJobs to reuse the hard mode scheduling path with no HyperNode filtering,
 // since all real HyperNode tiers are less than maxTier (ClusterTopHyperNode tier).
 func (sji *SubJobInfo) ConvertToHardTopology(maxTier int) {
-	if sji.networkTopology == nil || sji.networkTopology.Mode != scheduling.SoftNetworkTopologyMode {
+	if sji.NetworkTopology == nil || sji.NetworkTopology.Mode != scheduling.SoftNetworkTopologyMode {
 		return
 	}
-	sji.networkTopology.Mode = scheduling.HardNetworkTopologyMode
-	sji.networkTopology.HighestTierAllowed = &maxTier
+	sji.NetworkTopology.Mode = scheduling.HardNetworkTopologyMode
+	sji.NetworkTopology.HighestTierAllowed = &maxTier
 }
 
 func (sji *SubJobInfo) addTask(ti *TaskInfo) {
