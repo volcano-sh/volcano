@@ -180,8 +180,8 @@ var _ = Describe("Job Error Handling", func() {
 			},
 		})
 
-		// job phase: pending -> running -> restarting -> running
-		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting, vcbatch.Running})
+		// job phase: pending -> running -> restarting -> pending -> running
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
