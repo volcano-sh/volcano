@@ -30,6 +30,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
+	"volcano.sh/volcano/pkg/scheduler/plugins/gpuexclusive"
 	networktopologyaware "volcano.sh/volcano/pkg/scheduler/plugins/network-topology-aware"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodegroup"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
@@ -53,6 +54,7 @@ func init() {
 	framework.RegisterPluginBuilder(drf.PluginName, drf.New)
 	framework.RegisterPluginBuilder(gang.PluginName, gang.New)
 	framework.RegisterPluginBuilder(deviceshare.PluginName, deviceshare.New)
+	framework.RegisterPluginBuilder(gpuexclusive.PluginName, gpuexclusive.New)
 	framework.RegisterPluginBuilder(predicates.PluginName, predicates.New)
 	framework.RegisterPluginBuilder(priority.PluginName, priority.New)
 	framework.RegisterPluginBuilder(nodeorder.PluginName, nodeorder.New)
