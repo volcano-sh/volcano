@@ -818,12 +818,12 @@ func SelectVictimsOnNode(
 	}
 
 	// Now we try to reprieve non-violating victims.
-	// potentialVictims was built by popping from BuildVictimsPriorityQueue which uses
-	// negated ordering, so it is ordered low→high priority. Reverse it so that we
-	// reprieve higher priority pods first, matching the comment above the sort.Slice call.
-	for i, j := 0, len(potentialVictims)-1; i < j; i, j = i+1, j-1 {
-		potentialVictims[i], potentialVictims[j] = potentialVictims[j], potentialVictims[i]
-	}
+	// Sort explicitly by pod importance so reprieve order matches the intended
+	// "higher priority pods first" behavior regardless of how
+	// BuildVictimsPriorityQueue orders its elements internally.
+	sort.Slice(potentialVictims, func(i, j int) bool {
+		return k8sutil.MoreImportantPod(potentialVictims[i].Pod, potentialVictims[j].Pod)
+	})
 	for _, p := range potentialVictims {
 		if _, err := reprievePod(p); err != nil {
 			return nil, api.AsStatus(err)
