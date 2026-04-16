@@ -52,11 +52,17 @@ type Scheduler struct {
 	schedulePeriod time.Duration
 	once           sync.Once
 
-	mutex              sync.Mutex
-	actions            []framework.Action
-	plugins            []conf.Tier
-	configurations     []conf.Configuration
-	metricsConf        map[string]string
+	mutex          sync.Mutex
+	actions        []framework.Action
+	plugins        []conf.Tier
+	configurations []conf.Configuration
+	metricsConf    map[string]string
+
+	defaultActions        []framework.Action
+	defaultPlugins        []conf.Tier
+	defaultConfigurations []conf.Configuration
+	defaultMetricsConf    map[string]string
+
 	dumper             schedcache.Dumper
 	disableDefaultConf bool
 }
@@ -86,10 +92,36 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 	return scheduler, nil
 }
 
-// Run initializes and starts the Scheduler. It loads the configuration,
-// initializes the cache, and begins the scheduling process.
+// Run initializes and starts the Scheduler. It parses the scheduler configuration, initializes actions,
+// applies the configuration and starts the scheduling loop, cache and configuration watcher.
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
-	pc.loadSchedulerConf()
+	actions, plugins, configurations, metricsConf, err := pc.loadSchedulerConf()
+	if err != nil {
+		klog.Fatalf("Failed to load scheduler configuration: %v", err)
+	}
+
+	for _, action := range actions {
+		action.Initialize()
+	}
+
+	pc.mutex.Lock()
+	pc.actions = actions
+	pc.plugins = plugins
+	pc.configurations = configurations
+	pc.metricsConf = metricsConf
+	pc.mutex.Unlock()
+
+	// Cleanup on scheduler shutdown.
+	go func() {
+		<-stopCh
+		pc.mutex.Lock()
+		oldActions := append([]framework.Action(nil), pc.actions...)
+		pc.mutex.Unlock()
+		for _, action := range oldActions {
+			action.UnInitialize()
+		}
+	}()
+
 	go pc.watchSchedulerConf(stopCh)
 	// Start cache for policy.
 	pc.cache.SetMetricsConf(pc.metricsConf)
@@ -134,12 +166,8 @@ func (pc *Scheduler) runOnce() {
 	}
 }
 
-func (pc *Scheduler) loadSchedulerConf() {
+func (pc *Scheduler) loadSchedulerConf() ([]framework.Action, []conf.Tier, []conf.Configuration, map[string]string, error) {
 	klog.V(4).Infof("Start loadSchedulerConf ...")
-	defer func() {
-		actions, plugins := pc.getSchedulerConf()
-		klog.V(2).Infof("Finished loading scheduler config. Final state: actions=%v, plugins=%v", actions, plugins)
-	}()
 
 	if pc.disableDefaultConf && len(pc.schedulerConf) == 0 {
 		klog.Fatalf("No --scheduler-conf path provided and default configuration fallback is disabled")
@@ -148,7 +176,7 @@ func (pc *Scheduler) loadSchedulerConf() {
 	var err error
 	if !pc.disableDefaultConf {
 		pc.once.Do(func() {
-			pc.actions, pc.plugins, pc.configurations, pc.metricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
+			pc.defaultActions, pc.defaultPlugins, pc.defaultConfigurations, pc.defaultMetricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
 			if err != nil {
 				klog.Fatalf("Invalid default configuration: unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
 			}
@@ -162,40 +190,27 @@ func (pc *Scheduler) loadSchedulerConf() {
 			if pc.disableDefaultConf {
 				klog.Fatalf("Failed to read scheduler config and default configuration fallback is disabled")
 			}
-			klog.Errorf("Failed to read the Scheduler config in '%s', using previous configuration: %v",
+			klog.Errorf("Failed to read the Scheduler config in '%s', falling back to default: %v",
 				pc.schedulerConf, err)
-			return
+			return pc.defaultActions, pc.defaultPlugins, pc.defaultConfigurations, pc.defaultMetricsConf, nil
 		}
 		config = strings.TrimSpace(string(confData))
 	}
 
-	actions, plugins, configurations, metricsConf, err := UnmarshalSchedulerConf(config)
-	if err != nil {
-		if pc.disableDefaultConf {
-			klog.Fatalf("Invalid scheduler configuration and default configuration fallback is disabled")
+	if len(config) != 0 {
+		actions, plugins, configurations, metricsConf, err := UnmarshalSchedulerConf(config)
+		if err != nil {
+			if pc.disableDefaultConf {
+				klog.Fatalf("Invalid scheduler configuration and default configuration fallback is disabled")
+			}
+			klog.Errorf("Scheduler config %s is invalid, falling back to default: %v", config, err)
+			return pc.defaultActions, pc.defaultPlugins, pc.defaultConfigurations, pc.defaultMetricsConf, nil
 		}
-		klog.Errorf("Scheduler config %s is invalid: %v", config, err)
-		return
+		klog.V(2).Infof("Loaded scheduler configuration from file")
+		return actions, plugins, configurations, metricsConf, nil
 	}
-
-	pc.mutex.Lock()
-	pc.actions = actions
-	pc.plugins = plugins
-	pc.configurations = configurations
-	pc.metricsConf = metricsConf
-	pc.mutex.Unlock()
-}
-
-func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
-	for _, action := range pc.actions {
-		actions = append(actions, action.Name())
-	}
-	for _, tier := range pc.plugins {
-		for _, plugin := range tier.Plugins {
-			plugins = append(plugins, plugin.Name)
-		}
-	}
-	return
+	klog.V(2).Infof("Using default scheduler configuration")
+	return pc.defaultActions, pc.defaultPlugins, pc.defaultConfigurations, pc.defaultMetricsConf, nil
 }
 
 func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
@@ -212,7 +227,24 @@ func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
 			}
 			klog.V(4).Infof("watch %s event: %v", pc.schedulerConf, event)
 			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
-				pc.loadSchedulerConf()
+				actions, plugins, configurations, metricsConf, err := pc.loadSchedulerConf()
+				if err != nil {
+					klog.Errorf("Failed to reload scheduler config: %v", err)
+					continue
+				}
+				for _, action := range actions {
+					action.Initialize()
+				}
+				pc.mutex.Lock()
+				oldActions := append([]framework.Action(nil), pc.actions...)
+				pc.actions = actions
+				pc.plugins = plugins
+				pc.configurations = configurations
+				pc.metricsConf = metricsConf
+				pc.mutex.Unlock()
+				for _, action := range oldActions {
+					action.UnInitialize()
+				}
 				pc.cache.SetMetricsConf(pc.metricsConf)
 			}
 		case err, ok := <-errCh:
