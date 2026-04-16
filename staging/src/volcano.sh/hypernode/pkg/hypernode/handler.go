@@ -27,72 +27,69 @@ import (
 	"k8s.io/klog/v2"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
-	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/hypernode/pkg/nodematch"
 )
 
-func (hn *hyperNodeController) addHyperNode(obj interface{}) {
+func (c *Controller) addHyperNode(obj interface{}) {
 	hyperNode, ok := obj.(*topologyv1alpha1.HyperNode)
 	if !ok {
 		klog.ErrorS(nil, "Cannot convert to *topologyv1alpha1.HyperNode", "obj", obj)
 		return
 	}
 	klog.V(3).InfoS("Add HyperNode", "name", hyperNode.Name)
-	hn.enqueueHyperNode(hyperNode)
+	c.enqueueHyperNode(hyperNode)
 }
 
-func (hn *hyperNodeController) updateHyperNode(oldObj, newObj interface{}) {
+func (c *Controller) updateHyperNode(oldObj, newObj interface{}) {
 	hyperNode, ok := newObj.(*topologyv1alpha1.HyperNode)
 	if !ok {
 		klog.ErrorS(nil, "Cannot convert to *topologyv1alpha1.HyperNode", "obj", newObj)
 		return
 	}
 	klog.V(3).InfoS("Update HyperNode", "name", hyperNode.Name)
-	hn.enqueueHyperNode(hyperNode)
+	c.enqueueHyperNode(hyperNode)
 }
 
-func (hn *hyperNodeController) enqueueHyperNode(hyperNode *topologyv1alpha1.HyperNode) {
+func (c *Controller) enqueueHyperNode(hyperNode *topologyv1alpha1.HyperNode) {
 	key, err := cache.MetaNamespaceKeyFunc(hyperNode)
 	if err != nil {
 		klog.ErrorS(err, "Failed to get key for HyperNode", "hyperNode", hyperNode.Name)
 		return
 	}
-	hn.hyperNodeQueue.Add(key)
+	c.hyperNodeQueue.Add(key)
 }
 
-// processHyperNodeQueue processes items from the hyperNode work queue
-func (hn *hyperNodeController) processHyperNodeQueue() {
+func (c *Controller) processHyperNodeQueue() {
 	for {
-		key, shutdown := hn.hyperNodeQueue.Get()
+		key, shutdown := c.hyperNodeQueue.Get()
 		if shutdown {
 			klog.InfoS("HyperNode queue has been shut down")
 			return
 		}
 
 		func() {
-			defer hn.hyperNodeQueue.Done(key)
-			err := hn.syncHyperNodeStatus(key)
+			defer c.hyperNodeQueue.Done(key)
+			err := c.syncHyperNodeStatus(key)
 			if err != nil {
 				klog.ErrorS(err, "Error syncing HyperNode", "key", key)
-				hn.hyperNodeQueue.AddRateLimited(key)
+				c.hyperNodeQueue.AddRateLimited(key)
 				return
 			}
 
-			hn.hyperNodeQueue.Forget(key)
+			c.hyperNodeQueue.Forget(key)
 		}()
 	}
 }
 
-// syncHyperNodeStatus updates the NodeCount field in HyperNode status
-func (hn *hyperNodeController) syncHyperNodeStatus(key string) error {
+func (c *Controller) syncHyperNodeStatus(key string) error {
 	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		klog.ErrorS(err, "Failed to split meta namespace key", "key", key)
 		return err
 	}
 
-	hyperNode, err := hn.hyperNodeLister.Get(name)
+	hyperNode, err := c.hyperNodeLister.Get(name)
 	if err != nil {
-		// Check if the error happens because the HyperNode is deleted
 		if errors.IsNotFound(err) {
 			klog.InfoS("HyperNode has been deleted, no status update needed", "name", name)
 			return nil
@@ -101,13 +98,12 @@ func (hn *hyperNodeController) syncHyperNodeStatus(key string) error {
 		return err
 	}
 
-	nodeCount := hn.actualNodeCnt(hyperNode)
+	nodeCount := c.actualNodeCnt(hyperNode)
 	if hyperNode.Status.NodeCount != int64(nodeCount) {
-		// Create a deep copy to avoid modifying cache objects
 		hyperNodeCopy := hyperNode.DeepCopy()
 		hyperNodeCopy.Status.NodeCount = int64(nodeCount)
 
-		_, err = hn.vcClient.TopologyV1alpha1().HyperNodes().UpdateStatus(context.Background(), hyperNodeCopy, metav1.UpdateOptions{})
+		_, err = c.vcClient.TopologyV1alpha1().HyperNodes().UpdateStatus(context.Background(), hyperNodeCopy, metav1.UpdateOptions{})
 		if err != nil {
 			klog.ErrorS(err, "Failed to update HyperNode status", "name", name)
 			return err
@@ -118,15 +114,15 @@ func (hn *hyperNodeController) syncHyperNodeStatus(key string) error {
 	return nil
 }
 
-func (hn *hyperNodeController) actualNodeCnt(hyperNode *topologyv1alpha1.HyperNode) int {
-	nodes, err := hn.nodeLister.List(labels.Everything())
+func (c *Controller) actualNodeCnt(hyperNode *topologyv1alpha1.HyperNode) int {
+	nodes, err := c.nodeLister.List(labels.Everything())
 	if err != nil {
 		klog.ErrorS(err, "Failed to list nodes", "name", hyperNode.Name)
 		return 0
 	}
-	members := sets.New[string]()
+	memberNames := sets.New[string]()
 	for _, member := range hyperNode.Spec.Members {
-		members.Insert(api.GetMembers(member.Selector, nodes).UnsortedList()...)
+		memberNames.Insert(nodematch.NodeNamesForSelector(member.Selector, nodes).UnsortedList()...)
 	}
-	return len(members)
+	return len(memberNames)
 }

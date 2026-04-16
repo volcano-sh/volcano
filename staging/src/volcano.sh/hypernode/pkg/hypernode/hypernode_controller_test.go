@@ -33,10 +33,9 @@ import (
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
-	"volcano.sh/volcano/pkg/controllers/framework"
-	"volcano.sh/volcano/pkg/controllers/hypernode/api"
-	"volcano.sh/volcano/pkg/controllers/hypernode/config"
-	"volcano.sh/volcano/pkg/controllers/hypernode/discovery"
+	"volcano.sh/hypernode/pkg/api"
+	"volcano.sh/hypernode/pkg/config"
+	"volcano.sh/hypernode/pkg/discovery"
 )
 
 type mockDiscoveryManager struct {
@@ -125,7 +124,7 @@ func TestHyperNodeController_Run(t *testing.T) {
 		resultCh: make(chan discovery.Result),
 	}
 
-	controller := &hyperNodeController{
+	controller := &Controller{
 		vcClient:           fakeVcClient,
 		kubeClient:         fakeKubeClient,
 		vcInformerFactory:  vcInformerFactory,
@@ -233,11 +232,11 @@ func TestHyperNodeController_Initialize(t *testing.T) {
 	vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
 	kubeInformerFactory := informers.NewSharedInformerFactory(fakeKubeClient, 0)
 
-	controller := &hyperNodeController{
+	controller := &Controller{
 		informerFactory: kubeInformerFactory,
 	}
 
-	err := controller.Initialize(&framework.ControllerOption{
+	err := controller.Initialize(&Options{
 		VolcanoClient:           fakeVcClient,
 		KubeClient:              fakeKubeClient,
 		VCSharedInformerFactory: vcInformerFactory,

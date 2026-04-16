@@ -33,17 +33,17 @@ import (
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclientsetfake "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
-	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/hypernode/pkg/testutil"
 )
 
-func newFakeHyperNodeController() (*hyperNodeController, *vcclientsetfake.Clientset, *fake.Clientset) {
+func newFakeHyperNodeController() (*Controller, *vcclientsetfake.Clientset, *fake.Clientset) {
 	vcClient := vcclientsetfake.NewSimpleClientset()
 	kubeClient := fake.NewSimpleClientset()
 
 	vcInformerFactory := vcinformer.NewSharedInformerFactory(vcClient, 0)
 	informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 
-	controller := &hyperNodeController{
+	controller := &Controller{
 		vcClient:          vcClient,
 		kubeClient:        kubeClient,
 		vcInformerFactory: vcInformerFactory,
@@ -158,7 +158,7 @@ func TestSyncHyperNodeStatus(t *testing.T) {
 	testCases := []struct {
 		name          string
 		hyperNodeKey  string
-		setupFunc     func(controller *hyperNodeController, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode
+		setupFunc     func(controller *Controller, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode
 		nodes         []*v1.Node
 		expectedError bool
 		expectedCount int64
@@ -166,8 +166,8 @@ func TestSyncHyperNodeStatus(t *testing.T) {
 		{
 			name:         "Normal case: NodeCount needs to be updated",
 			hyperNodeKey: "test-hypernode-1",
-			setupFunc: func(controller *hyperNodeController, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode {
-				hyperNode := api.BuildHyperNode("test-hypernode-1", 0, []api.MemberConfig{
+			setupFunc: func(controller *Controller, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode {
+				hyperNode := testutil.BuildHyperNode("test-hypernode-1", 0, []testutil.MemberConfig{
 					{Name: "node1", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
 					{Name: "node2", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
 					{Name: "node3", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
@@ -184,7 +184,7 @@ func TestSyncHyperNodeStatus(t *testing.T) {
 		{
 			name:         "Node does not exist",
 			hyperNodeKey: "non-existent",
-			setupFunc: func(controller *hyperNodeController, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode {
+			setupFunc: func(controller *Controller, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode {
 				return nil
 			},
 			expectedError: false,
@@ -193,8 +193,8 @@ func TestSyncHyperNodeStatus(t *testing.T) {
 		{
 			name:         "NodeCount already matches, no update needed",
 			hyperNodeKey: "test-hypernode-2",
-			setupFunc: func(controller *hyperNodeController, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode {
-				hyperNode := api.BuildHyperNode("test-hypernode-2", 0, []api.MemberConfig{
+			setupFunc: func(controller *Controller, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode {
+				hyperNode := testutil.BuildHyperNode("test-hypernode-2", 0, []testutil.MemberConfig{
 					{Name: "node1", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
 					{Name: "node2", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
 					{Name: "node3", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
@@ -222,8 +222,8 @@ func TestSyncHyperNodeStatus(t *testing.T) {
 		{
 			name:         "API error case",
 			hyperNodeKey: "test-hypernode-3",
-			setupFunc: func(controller *hyperNodeController, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode {
-				hyperNode := api.BuildHyperNode("test-hypernode-3", 0, []api.MemberConfig{
+			setupFunc: func(controller *Controller, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode {
+				hyperNode := testutil.BuildHyperNode("test-hypernode-3", 0, []testutil.MemberConfig{
 					{Name: "node1", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
 					{Name: "node2", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
 					{Name: "node3", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
@@ -253,8 +253,8 @@ func TestSyncHyperNodeStatus(t *testing.T) {
 		{
 			name:         "Exact & Label & Regex Match",
 			hyperNodeKey: "test-hypernode-4",
-			setupFunc: func(controller *hyperNodeController, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode {
-				hyperNode := api.BuildHyperNode("test-hypernode-4", 0, []api.MemberConfig{
+			setupFunc: func(controller *Controller, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode {
+				hyperNode := testutil.BuildHyperNode("test-hypernode-4", 0, []testutil.MemberConfig{
 					{Name: "master", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
 					{Name: "", Type: topologyv1alpha1.MemberTypeNode, Selector: "label", LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"zone": "east"}}},
 					{Name: "node[1-3]", Type: topologyv1alpha1.MemberTypeNode, Selector: "regex"},
@@ -270,8 +270,8 @@ func TestSyncHyperNodeStatus(t *testing.T) {
 		{
 			name:         "Exact & Nil Label & Regex Match",
 			hyperNodeKey: "test-hypernode-5",
-			setupFunc: func(controller *hyperNodeController, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode {
-				hyperNode := api.BuildHyperNode("test-hypernode-5", 0, []api.MemberConfig{
+			setupFunc: func(controller *Controller, vcClient *vcclientsetfake.Clientset) *topologyv1alpha1.HyperNode {
+				hyperNode := testutil.BuildHyperNode("test-hypernode-5", 0, []testutil.MemberConfig{
 					{Name: "master", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
 					{Name: "", Type: topologyv1alpha1.MemberTypeNode, Selector: "label"},
 					{Name: "node[2-4]", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: "regex"},

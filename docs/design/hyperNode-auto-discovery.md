@@ -23,6 +23,12 @@ The entire network topology discovery function consists of the following core co
 *   **Discoverer**: A specific network topology discoverer, responsible for obtaining network topology information from a specific data source and converting it into `HyperNode` resources.
 *   **HyperNode Controller**: Responsible for listening to changes in `HyperNode` resources and creating, updating, or deleting `HyperNode` resources based on the discovered topology information.
 
+**Implementation location (code organization)**:
+
+*   The controller implementation is developed as the **`volcano.sh/hypernode`** Go module under `staging/src/volcano.sh/hypernode/`.
+*   **Default deployment** still embeds it in **`vc-controller-manager`** via `pkg/controllers/hypernode/register.go`.
+*   Optionally, operators may run a **standalone binary** `vc-hypernode-controller` built from the same module (see [HyperNode standalone controller](./hypernode-standalone-controller.md)).
+
 ### Process Flow
 
 ```
@@ -169,6 +175,8 @@ type Discoverer interface {
 ### HyperNode Controller
 
 `HyperNode Controller` is responsible for listening to changes in `HyperNode` resources and creating, updating, or deleting `HyperNode` resources based on the discovered topology information.
+
+The concrete implementation lives in **`volcano.sh/hypernode/pkg/hypernode`**. The **scheduler** reuses the same selector-to-node matching through **`volcano.sh/hypernode/pkg/nodematch`** (see [standalone module doc](./hypernode-standalone-controller.md)).
 
 *   **Function**:
     *   Listen to change events of `HyperNode` resources.

@@ -81,6 +81,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |----------------|-----------------|----------------------|
 |`basic.image_tag_version`| Docker image version Tag | `latest`|
 |`basic.controller_image_name`|Controller Docker Image Name|`volcanosh/vc-controller-manager`|
+| *(optional, not in chart defaults)* | Standalone HyperNode controller image (built and published with releases; deploy your own Deployment if used) | `volcanosh/vc-hypernode-controller` |
 |`basic.scheduler_image_name`|Scheduler Docker Image Name|`volcanosh/vc-scheduler`|
 |`basic.admission_image_name`|Admission Controller Image Name|`volcanosh/vc-webhook-manager`|
 |`basic.admission_secret_name`|Volcano Admission Secret Name|`volcano-admission-secret`|

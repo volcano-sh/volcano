@@ -32,6 +32,7 @@ import (
 	"k8s.io/klog/v2"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
+	"volcano.sh/hypernode/pkg/nodematch"
 )
 
 // HyperNodesInfo stores and manages the hierarchical structure of HyperNodes.
@@ -494,46 +495,7 @@ func (hni *HyperNodesInfo) addChild(parent, member string) error {
 
 // GetMembers retrieves the members of a HyperNode based on the selector.
 func GetMembers(selector topologyv1alpha1.MemberSelector, nodes []*corev1.Node) sets.Set[string] {
-	members := sets.New[string]()
-	if selector.ExactMatch != nil {
-		if selector.ExactMatch.Name == "" {
-			return members
-		}
-		members.Insert(selector.ExactMatch.Name)
-	}
-
-	if selector.RegexMatch != nil {
-		pattern := selector.RegexMatch.Pattern
-		reg, err := regexp.Compile(pattern)
-		if err != nil {
-			klog.ErrorS(err, "Failed to compile regular expression", "pattern", pattern)
-			return sets.Set[string]{}
-		}
-		for _, node := range nodes {
-			if reg.MatchString(node.Name) {
-				members.Insert(node.Name)
-			}
-		}
-	}
-
-	if selector.LabelMatch != nil {
-		if len(selector.LabelMatch.MatchLabels) == 0 && len(selector.LabelMatch.MatchExpressions) == 0 {
-			return members
-		}
-		labelSelector, err := metav1.LabelSelectorAsSelector(selector.LabelMatch)
-		if err != nil {
-			klog.ErrorS(err, "Failed to convert labelMatch to labelSelector", "LabelMatch", selector.LabelMatch)
-			return sets.Set[string]{}
-		}
-		for _, node := range nodes {
-			nodeLabels := labels.Set(node.Labels)
-			if labelSelector.Matches(nodeLabels) {
-				members.Insert(node.Name)
-			}
-		}
-	}
-
-	return members
+	return nodematch.NodeNamesForSelector(selector, nodes)
 }
 
 // exactMatchMember retrieves the member name if the selector is an exact match.

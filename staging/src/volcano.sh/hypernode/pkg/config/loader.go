@@ -23,7 +23,7 @@ import (
 	v1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
 
-	"volcano.sh/volcano/pkg/controllers/hypernode/api"
+	"volcano.sh/hypernode/pkg/api"
 )
 
 type Loader interface {

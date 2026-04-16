@@ -31,18 +31,18 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	fakevcclientset "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
-	"volcano.sh/volcano/pkg/controllers/hypernode/config"
+	"volcano.sh/hypernode/pkg/config"
 )
 
 // newFakeConfigMapController creates a test controller with fake clients
-func newFakeConfigMapController() *hyperNodeController {
+func newFakeConfigMapController() *Controller {
 	vcClient := fakevcclientset.NewSimpleClientset()
 	kubeClient := fake.NewSimpleClientset()
 
 	vcInformerFactory := vcinformer.NewSharedInformerFactory(vcClient, 0)
 	informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 
-	controller := &hyperNodeController{
+	controller := &Controller{
 		vcClient:          vcClient,
 		kubeClient:        kubeClient,
 		vcInformerFactory: vcInformerFactory,
