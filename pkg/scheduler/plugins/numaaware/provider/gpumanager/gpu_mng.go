@@ -30,8 +30,6 @@ const (
 	// NvidiaGPUResource is the extended resource name for NVIDIA GPUs.
 	NvidiaGPUResource v1.ResourceName = "nvidia.com/gpu"
 
-	// maxNUMANodes caps the NUMA node count for hint generation.
-	// IterateBitMasks is O(2^N), 16 is safe for real hardware (2-8 nodes).
 	maxNUMANodes = 16
 )
 
