@@ -40,9 +40,11 @@ type ShardStrategy struct {
 
 // SchedulerConfig defines the configuration for a scheduler
 type SchedulerConfig struct {
-	Name          string
-	Type          string // "volcano" or "agent"
-	ShardStrategy ShardStrategy
+	Name            string
+	Type            string // "volcano" or "agent"
+	PolicyName      string                 // Policy name (e.g., "allocation-rate")
+	PolicyArguments map[string]interface{} // Policy-specific arguments
+	ShardStrategy   ShardStrategy          // DEPRECATED: Kept for backwards compatibility
 }
 
 // AssignmentCache stores the result of shard assignments with version control

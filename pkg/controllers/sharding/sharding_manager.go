@@ -15,14 +15,13 @@ package sharding
 
 import (
 	"fmt"
-	"math"
-	"sort"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	shardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
+	"volcano.sh/volcano/pkg/controllers/sharding/policy"
 )
 
 const (
@@ -33,6 +32,7 @@ const (
 type ShardingManager struct {
 	schedulerConfigs []SchedulerConfig
 	metricsProvider  NodeMetricsProvider
+	policyCache      map[string]policy.ShardPolicy // NEW: Policy instances
 }
 
 // NewShardingManager creates a new sharding manager
@@ -40,9 +40,43 @@ func NewShardingManager(schedulerConfigs []SchedulerConfig, nodeMetricsProvider 
 	manager := &ShardingManager{
 		schedulerConfigs: schedulerConfigs,
 		metricsProvider:  nodeMetricsProvider,
+		policyCache:      make(map[string]policy.ShardPolicy),
+	}
+
+	// Initialize policies
+	if err := manager.initializePolicies(); err != nil {
+		klog.Errorf("Failed to initialize policies: %v", err)
 	}
 
 	return manager
+}
+
+// initializePolicies initializes policy instances for all schedulers
+func (sm *ShardingManager) initializePolicies() error {
+	for _, config := range sm.schedulerConfigs {
+		// Get policy builder from registry
+		builder, err := policy.GetPolicy(config.PolicyName)
+		if err != nil {
+			return fmt.Errorf("policy %s not found for scheduler %s: %v",
+				config.PolicyName, config.Name, err)
+		}
+
+		// Create policy instance
+		policyInstance := builder()
+
+		// Initialize with arguments
+		policyArgs := policy.Arguments(config.PolicyArguments)
+		if err := policyInstance.Initialize(policyArgs); err != nil {
+			return fmt.Errorf("failed to initialize policy %s for scheduler %s: %v",
+				config.PolicyName, config.Name, err)
+		}
+
+		sm.policyCache[config.Name] = policyInstance
+		klog.V(3).Infof("Initialized policy %s for scheduler %s with args: %v",
+			policyInstance.Name(), config.Name, config.PolicyArguments)
+	}
+
+	return nil
 }
 
 // CalculateShardAssignments calculates shard assignments for all schedulers
@@ -66,13 +100,9 @@ func (sm *ShardingManager) CalculateShardAssignments(
 		return sm.calculateShardAssignmentsBatched(nodes, currentShards)
 	}
 
-	// Prepare node resources info
-	nodeResources := sm.prepareNodeResourcesInfo(nodes)
-	nodeMap := make(map[string]*corev1.Node)
-	for i := range nodes {
-		node := nodes[i]
-		nodeMap[node.Name] = node
-	}
+	// Get all node metrics and convert once (not per-scheduler)
+	allMetrics := sm.metricsProvider.GetAllNodeMetrics()
+	policyMetrics := sm.convertNodeMetrics(allMetrics)
 
 	// Track assigned nodes to ensure mutual exclusivity
 	assignedNodes := make(map[string]string) // node name -> scheduler name
@@ -83,41 +113,55 @@ func (sm *ShardingManager) CalculateShardAssignments(
 		currentShardsMap[currentShards[i].Name] = currentShards[i]
 	}
 
-	// Calculate assignments for each scheduler
+	// Calculate assignments for each scheduler using policies
 	assignments := make(map[string]*ShardAssignment)
 
 	for _, config := range sm.schedulerConfigs {
-		klog.V(4).Infof("Calculating assignment for scheduler: %s", config.Name)
+		klog.V(4).Infof("Calculating assignment for scheduler: %s using policy %s", config.Name, config.PolicyName)
 
-		// Apply hard filtering to get eligible nodes
-		eligibleNodes := sm.filterEligibleNodes(config, nodeResources, nodeMap, assignedNodes)
+		// Get policy instance
+		policyInstance := sm.policyCache[config.Name]
+		if policyInstance == nil {
+			klog.Errorf("Policy not initialized for scheduler %s", config.Name)
+			continue
+		}
 
-		// Prioritize nodes based on warmup preference and utilization
-		prioritizedNodes := sm.prioritizeNodes(config, eligibleNodes, nodeResources)
+		// Build policy context
+		ctx := &policy.PolicyContext{
+			SchedulerName:   config.Name,
+			SchedulerType:   config.Type,
+			AllNodes:        nodes,
+			NodeMetrics:     policyMetrics,
+			AssignedNodes:   assignedNodes,
+			CurrentShard:    currentShardsMap[config.Name],
+			PolicyArguments: policy.Arguments(config.PolicyArguments),
+		}
 
-		// Select nodes within constraints
-		selectedNodes := sm.selectNodesWithinConstraints(config, prioritizedNodes)
+		// Execute policy
+		result, err := policyInstance.Calculate(ctx)
+		if err != nil {
+			klog.Errorf("Policy execution failed for scheduler %s: %v", config.Name, err)
+			continue
+		}
 
 		// Mark nodes as assigned
-		for _, node := range selectedNodes {
-			assignedNodes[node] = config.Name
+		for _, nodeName := range result.SelectedNodes {
+			assignedNodes[nodeName] = config.Name
 		}
 
 		// Create assignment
 		assignment := &ShardAssignment{
 			SchedulerName: config.Name,
-			NodesDesired:  selectedNodes,
-			StrategyUsed:  "hard-filtering",
+			NodesDesired:  result.SelectedNodes,
+			StrategyUsed:  policyInstance.Name(),
 			Version:       fmt.Sprintf("%d", time.Now().UnixNano()),
-			Reason: fmt.Sprintf("Selected %d nodes within CPU range [%.2f, %.2f]",
-				len(selectedNodes), config.ShardStrategy.CPUUtilizationRange.Min,
-				config.ShardStrategy.CPUUtilizationRange.Max),
+			Reason:        result.Reason,
 		}
 
 		assignments[config.Name] = assignment
 
-		klog.Infof("Scheduler %s assigned %d nodes: %v",
-			config.Name, len(selectedNodes), selectedNodes)
+		klog.Infof("Scheduler %s assigned %d nodes using policy %s: %v",
+			config.Name, len(result.SelectedNodes), policyInstance.Name(), result.SelectedNodes)
 	}
 
 	klog.Infof("Completed shard assignments: %d nodes assigned to %d schedulers",
@@ -163,161 +207,30 @@ func (sm *ShardingManager) calculateShardAssignmentsBatched(
 	return assignments, nil
 }
 
-// filterEligibleNodes applies hard filtering based on strategy
-func (sm *ShardingManager) filterEligibleNodes(
-	config SchedulerConfig,
-	nodeResources map[string]*NodeResourceInfo,
-	nodeMap map[string]*corev1.Node,
-	assignedNodes map[string]string,
-) []*corev1.Node {
-	var eligibleNodes []*corev1.Node
-
-	minCPU := config.ShardStrategy.CPUUtilizationRange.Min
-	maxCPU := config.ShardStrategy.CPUUtilizationRange.Max
-
-	for nodeName, resourceInfo := range nodeResources {
-		// Skip already assigned nodes
-		if _, exists := assignedNodes[nodeName]; exists {
+// convertNodeMetrics converts NodeMetrics to policy.NodeMetrics
+func (sm *ShardingManager) convertNodeMetrics(metrics map[string]*NodeMetrics) map[string]*policy.NodeMetrics {
+	policyMetrics := make(map[string]*policy.NodeMetrics, len(metrics))
+	for nodeName, m := range metrics {
+		if m == nil {
 			continue
 		}
-
-		// Skip nodes with invalid utilization data
-		if resourceInfo.CPUUtilization < 0 {
-			continue
-		}
-
-		// round the utilization with 2 floating points
-		cpuUtilRounded := math.Round(resourceInfo.CPUUtilization*100) / 100
-		minCPURounded := math.Round(minCPU*100) / 100
-		maxCPURounded := math.Round(maxCPU*100) / 100
-
-		if cpuUtilRounded < minCPURounded || cpuUtilRounded > maxCPURounded {
-			continue
-		}
-
-		// Node is eligible
-		if node, exists := nodeMap[nodeName]; exists {
-			eligibleNodes = append(eligibleNodes, node)
+		policyMetrics[nodeName] = &policy.NodeMetrics{
+			NodeName:          m.NodeName,
+			ResourceVersion:   m.ResourceVersion,
+			LastUpdated:       m.LastUpdated,
+			CPUCapacity:       m.CPUCapacity,
+			CPUAllocatable:    m.CPUAllocatable,
+			MemoryCapacity:    m.MemoryCapacity,
+			MemoryAllocatable: m.MemoryAllocatable,
+			CPUUtilization:    m.CPUUtilization,
+			MemoryUtilization: m.MemoryUtilization,
+			IsWarmupNode:      m.IsWarmupNode,
+			PodCount:          m.PodCount,
+			Labels:            m.Labels,
+			Annotations:       m.Annotations,
 		}
 	}
-
-	klog.V(4).Infof("Scheduler %s has %d eligible nodes (CPU range: [%.2f, %.2f])",
-		config.Name, len(eligibleNodes), minCPU, maxCPU)
-
-	return eligibleNodes
-}
-
-// prioritizeNodes orders nodes based on warmup preference and utilization
-func (sm *ShardingManager) prioritizeNodes(
-	config SchedulerConfig,
-	nodes []*corev1.Node,
-	nodeResources map[string]*NodeResourceInfo,
-) []*corev1.Node {
-	if len(nodes) <= 1 {
-		return nodes
-	}
-
-	// create node index
-	nodeIndex := make(map[string]int)
-	for i, node := range nodes {
-		nodeIndex[node.Name] = i
-	}
-
-	// divide nodes into two groups using the warmup label
-	warmupNodes := make([]*corev1.Node, 0)
-	nonWarmupNodes := make([]*corev1.Node, 0)
-
-	for _, node := range nodes {
-		info := nodeResources[node.Name]
-		if info.IsWarmupNode {
-			warmupNodes = append(warmupNodes, node)
-		} else {
-			nonWarmupNodes = append(nonWarmupNodes, node)
-		}
-	}
-
-	// sort nodes by CPU utilization within groups
-	sort.Slice(warmupNodes, func(i, j int) bool {
-		infoI := nodeResources[warmupNodes[i].Name]
-		infoJ := nodeResources[warmupNodes[j].Name]
-		return infoI.CPUUtilization > infoJ.CPUUtilization
-	})
-
-	sort.Slice(nonWarmupNodes, func(i, j int) bool {
-		infoI := nodeResources[nonWarmupNodes[i].Name]
-		infoJ := nodeResources[nonWarmupNodes[j].Name]
-		return infoI.CPUUtilization > infoJ.CPUUtilization
-	})
-
-	// combine results: prefer warmup node
-	prioritized := make([]*corev1.Node, 0, len(nodes))
-
-	if config.ShardStrategy.PreferWarmupNodes {
-		prioritized = append(prioritized, warmupNodes...)
-		prioritized = append(prioritized, nonWarmupNodes...)
-	} else {
-		prioritized = append(prioritized, nonWarmupNodes...)
-		prioritized = append(prioritized, warmupNodes...)
-	}
-
-	return prioritized
-}
-
-// selectNodesWithinConstraints selects nodes within min/max constraints
-func (sm *ShardingManager) selectNodesWithinConstraints(
-	config SchedulerConfig,
-	nodes []*corev1.Node,
-) []string {
-	// compute the number of necessary nodes
-	desiredCount := sm.calculateDesiredNodeCount(config, len(nodes))
-
-	// ensure the desired node count is smaller than the minimum nodes
-	if desiredCount < config.ShardStrategy.MinNodes {
-		desiredCount = config.ShardStrategy.MinNodes
-	}
-
-	// if eligible nodes is smaller than desired, then use all eligible nodes
-	if len(nodes) < desiredCount {
-		desiredCount = len(nodes)
-	}
-
-	// select nodes
-	selected := make([]string, 0, desiredCount)
-
-	// first select nodes according to priority
-	for i := 0; i < desiredCount && i < len(nodes); i++ {
-		selected = append(selected, nodes[i].Name)
-	}
-
-	// check whether it meets the minimum node constraint
-	if len(selected) < config.ShardStrategy.MinNodes && len(nodes) > len(selected) {
-		// add extra nodes until the minimum node constraint is met
-		additionalNeeded := config.ShardStrategy.MinNodes - len(selected)
-		for i := len(selected); i < len(nodes) && additionalNeeded > 0; i++ {
-			selected = append(selected, nodes[i].Name)
-			additionalNeeded--
-		}
-	}
-
-	return selected
-}
-
-// calculateDesiredNodeCount calculates desired node count based on strategy constraints
-func (sm *ShardingManager) calculateDesiredNodeCount(config SchedulerConfig, eligibleNodeCount int) int {
-	// select all eligible nodes
-	desired := eligibleNodeCount
-
-	// apply max constraint
-	if desired > config.ShardStrategy.MaxNodes {
-		desired = config.ShardStrategy.MaxNodes
-	}
-
-	// apply min constraint
-	if desired < config.ShardStrategy.MinNodes {
-		desired = config.ShardStrategy.MinNodes
-	}
-
-	return desired
+	return policyMetrics
 }
 
 // prepareNodeResourcesInfo prepares resource information for nodes
@@ -363,7 +276,6 @@ func (sm *ShardingManager) prepareNodeResourcesInfo(nodes []*corev1.Node) map[st
 }
 
 // calculateSingleSchedulerAssignment calculates assignment for a single scheduler
-// This implementation uses hard filtering instead of complex scoring
 func (sm *ShardingManager) calculateSingleSchedulerAssignment(
 	config SchedulerConfig,
 	ctx *AssignmentContext,
@@ -374,52 +286,50 @@ func (sm *ShardingManager) calculateSingleSchedulerAssignment(
 		klog.V(4).Infof("Calculated single scheduler assignment for %s in %v", config.Name, duration)
 	}()
 
-	nodeResources := sm.prepareNodeResourcesInfo(ctx.AllNodes)
-
-	// Create node map for quick lookup
-	nodeMap := make(map[string]*corev1.Node)
-	for _, node := range ctx.AllNodes {
-		nodeMap[node.Name] = node
+	// Get policy instance
+	policyInstance := sm.policyCache[config.Name]
+	if policyInstance == nil {
+		return nil, fmt.Errorf("policy not initialized for scheduler %s", config.Name)
 	}
 
-	// Apply hard filtering to get eligible nodes
-	eligibleNodes := sm.filterEligibleNodes(config, nodeResources, nodeMap, ctx.AssignedNodes)
+	// Get all node metrics
+	allMetrics := sm.metricsProvider.GetAllNodeMetrics()
+	policyMetrics := sm.convertNodeMetrics(allMetrics)
 
-	// Prioritize nodes based on warmup preference and utilization
-	prioritizedNodes := sm.prioritizeNodes(config, eligibleNodes, nodeResources)
+	// Build policy context
+	policyCtx := &policy.PolicyContext{
+		SchedulerName:   config.Name,
+		SchedulerType:   config.Type,
+		AllNodes:        ctx.AllNodes,
+		NodeMetrics:     policyMetrics,
+		AssignedNodes:   ctx.AssignedNodes,
+		CurrentShard:    ctx.CurrentShards[config.Name],
+		PolicyArguments: policy.Arguments(config.PolicyArguments),
+	}
 
-	// Select nodes within constraints
-	selectedNodes := sm.selectNodesWithinConstraints(config, prioritizedNodes)
+	// Execute policy
+	result, err := policyInstance.Calculate(policyCtx)
+	if err != nil {
+		return nil, fmt.Errorf("policy execution failed: %v", err)
+	}
 
 	// Mark nodes as assigned in context
-	for _, nodeName := range selectedNodes {
+	for _, nodeName := range result.SelectedNodes {
 		ctx.AssignedNodes[nodeName] = config.Name
 	}
 
 	// Create assignment
 	assignment := &ShardAssignment{
 		SchedulerName: config.Name,
-		NodesDesired:  selectedNodes,
-		StrategyUsed:  "hard-filtering",
+		NodesDesired:  result.SelectedNodes,
+		StrategyUsed:  policyInstance.Name(),
 		Version:       fmt.Sprintf("%d", time.Now().UnixNano()),
-		Reason:        sm.generateAssignmentReason(config, len(selectedNodes), len(eligibleNodes)),
+		Reason:        result.Reason,
 	}
 
-	klog.Infof("Scheduler %s single assignment completed: %d nodes selected from %d eligible",
-		config.Name, len(selectedNodes), len(eligibleNodes))
+	klog.Infof("Scheduler %s single assignment completed: %d nodes selected using policy %s",
+		config.Name, len(result.SelectedNodes), policyInstance.Name())
 
 	return assignment, nil
 }
 
-// generateAssignmentReason creates a human-readable reason for the assignment
-func (sm *ShardingManager) generateAssignmentReason(config SchedulerConfig, selectedCount, eligibleCount int) string {
-	minCPU := config.ShardStrategy.CPUUtilizationRange.Min
-	maxCPU := config.ShardStrategy.CPUUtilizationRange.Max
-	warmupPref := "with warmup preference"
-	if !config.ShardStrategy.PreferWarmupNodes {
-		warmupPref = "without warmup preference"
-	}
-
-	return fmt.Sprintf("Selected %d nodes from %d eligible nodes in CPU range [%.2f, %.2f] %s",
-		selectedCount, eligibleCount, minCPU, maxCPU, warmupPref)
-}

@@ -31,6 +31,8 @@ const (
 	DefaultConfigMapName = "volcano-sharding-configmap"
 	// DefaultConfigMapNamespace is the default namespace of the sharding ConfigMap.
 	DefaultConfigMapNamespace = "volcano-system"
+	// DefaultPolicyName is the policy used when none is specified (backward compatibility).
+	DefaultPolicyName = "allocation-rate"
 )
 
 // SchedulerConfigSpec defines the per-scheduler sharding parameters.
@@ -41,13 +43,20 @@ type SchedulerConfigSpec struct {
 	Name string `json:"name"`
 	// Type describes the workload class (e.g. "volcano", "agent").
 	Type string `json:"type"`
+	// Policy is the policy name (e.g., "allocation-rate").
+	Policy string `json:"policy,omitempty"`
+	// Arguments holds policy-specific arguments.
+	Arguments map[string]interface{} `json:"arguments,omitempty"`
 	// CPUUtilizationMin is the lower bound (inclusive) of the CPU utilisation range
 	// [0.0, 1.0] that makes a node eligible for this scheduler's shard.
+	// Deprecated: use Policy and Arguments instead.
 	CPUUtilizationMin float64 `json:"cpuUtilizationMin"`
 	// CPUUtilizationMax is the upper bound (inclusive) of the CPU utilisation range.
+	// Deprecated: use Policy and Arguments instead.
 	CPUUtilizationMax float64 `json:"cpuUtilizationMax"`
 	// PreferWarmupNodes indicates whether warmup nodes should be sorted before
 	// regular nodes when selecting shard members.
+	// Deprecated: use Policy and Arguments instead.
 	PreferWarmupNodes bool `json:"preferWarmupNodes"`
 	// MinNodes is the minimum number of nodes the shard must contain.
 	MinNodes int `json:"minNodes"`
@@ -152,7 +161,8 @@ func (opts *ShardingControllerOptions) AddFlags(fs *pflag.FlagSet) {
 
 	fs.StringSliceVar(&opts.SchedulerConfigsRaw, "scheduler-configs", defaultConfigs,
 		"Deprecated: use a sharding ConfigMap (--sharding-configmap) instead. "+
-			"Scheduler configurations in format: name:type:min_util:max_util:prefer_warmup:min_nodes:max_nodes. "+
+			"Old format: name:type:min_util:max_util:prefer_warmup:min_nodes:max_nodes. "+
+			"New format: name:type:policy:min_nodes:max_nodes[:key=val,key=val]. "+
 			"Used only when no valid sharding ConfigMap is available.")
 
 	fs.DurationVar(&opts.ShardSyncPeriod, "shard-sync-period", 60*time.Second,
@@ -170,60 +180,176 @@ func (opts *ShardingControllerOptions) AddFlags(fs *pflag.FlagSet) {
 		"Namespace of the sharding configuration ConfigMap.")
 }
 
-// ParseConfig parses the raw colon-separated config strings into SchedulerConfigs.
+// ParseConfig parses the raw config strings into SchedulerConfigs.
 // This is used only when ConfigMap-based configuration is not available.
+// Supports both old and new formats:
+// OLD: "volcano:volcano:0.0:0.6:false:2:100"
+// NEW: "volcano:volcano:allocation-rate:2:100:minCPUUtil=0.0,maxCPUUtil=0.6,preferWarmupNodes=false"
 func (opts *ShardingControllerOptions) ParseConfig() error {
 	configs := make([]SchedulerConfigSpec, 0, len(opts.SchedulerConfigsRaw))
 
 	for _, configStr := range opts.SchedulerConfigsRaw {
 		parts := strings.Split(configStr, ":")
-		if len(parts) != 7 {
-			return fmt.Errorf("invalid scheduler config format: %s, expected 7 parts separated by ':'", configStr)
+
+		var config SchedulerConfigSpec
+		var err error
+
+		if len(parts) == 7 {
+			// Old format - convert to new format
+			config, err = parseOldFormat(parts)
+			if err != nil {
+				return fmt.Errorf("failed to parse old format config %s: %v", configStr, err)
+			}
+			klog.V(3).Infof("Parsed old format config for scheduler %s, converting to allocation-rate policy", config.Name)
+		} else if len(parts) >= 5 {
+			// New format: name:type:policy:minNodes:maxNodes[:args]
+			config, err = parseNewFormat(parts)
+			if err != nil {
+				return fmt.Errorf("failed to parse new format config %s: %v", configStr, err)
+			}
+			klog.V(3).Infof("Parsed new format config for scheduler %s with policy %s", config.Name, config.Policy)
+		} else {
+			return fmt.Errorf("invalid scheduler config format: %s, expected 7 parts (old format) or 5+ parts (new format)", configStr)
 		}
 
-		// Parse CPU utilization min
-		minUtil, err := parseUtilization(parts[2])
-		if err != nil {
-			return fmt.Errorf("invalid min utilization in %s: %v", configStr, err)
-		}
-
-		// Parse CPU utilization max
-		maxUtil, err := parseUtilization(parts[3])
-		if err != nil {
-			return fmt.Errorf("invalid max utilization in %s: %v", configStr, err)
-		}
-
-		// Parse prefer warmup
-		preferWarmup, err := strconv.ParseBool(parts[4])
-		if err != nil {
-			return fmt.Errorf("invalid prefer warmup flag in %s: %v", configStr, err)
-		}
-
-		// Parse min nodes
-		minNodes, err := strconv.Atoi(parts[5])
-		if err != nil {
-			return fmt.Errorf("invalid min nodes in %s: %v", configStr, err)
-		}
-
-		// Parse max nodes
-		maxNodes, err := strconv.Atoi(parts[6])
-		if err != nil {
-			return fmt.Errorf("invalid max nodes in %s: %v", configStr, err)
-		}
-
-		configs = append(configs, SchedulerConfigSpec{
-			Name:              parts[0],
-			Type:              parts[1],
-			CPUUtilizationMin: minUtil,
-			CPUUtilizationMax: maxUtil,
-			PreferWarmupNodes: preferWarmup,
-			MinNodes:          minNodes,
-			MaxNodes:          maxNodes,
-		})
+		configs = append(configs, config)
 	}
 
 	opts.SchedulerConfigs = configs
 	return nil
+}
+
+// parseOldFormat parses old format config: name:type:minUtil:maxUtil:preferWarmup:minNodes:maxNodes
+func parseOldFormat(parts []string) (SchedulerConfigSpec, error) {
+	// Parse CPU utilization min
+	minUtil, err := parseUtilization(parts[2])
+	if err != nil {
+		return SchedulerConfigSpec{}, fmt.Errorf("invalid min utilization: %v", err)
+	}
+
+	// Parse CPU utilization max
+	maxUtil, err := parseUtilization(parts[3])
+	if err != nil {
+		return SchedulerConfigSpec{}, fmt.Errorf("invalid max utilization: %v", err)
+	}
+
+	// Parse prefer warmup
+	preferWarmup, err := strconv.ParseBool(parts[4])
+	if err != nil {
+		return SchedulerConfigSpec{}, fmt.Errorf("invalid prefer warmup flag: %v", err)
+	}
+
+	// Parse min nodes
+	minNodes, err := strconv.Atoi(parts[5])
+	if err != nil {
+		return SchedulerConfigSpec{}, fmt.Errorf("invalid min nodes: %v", err)
+	}
+
+	// Parse max nodes
+	maxNodes, err := strconv.Atoi(parts[6])
+	if err != nil {
+		return SchedulerConfigSpec{}, fmt.Errorf("invalid max nodes: %v", err)
+	}
+
+	// Convert to new format with allocation-rate policy
+	return SchedulerConfigSpec{
+		Name:   parts[0],
+		Type:   parts[1],
+		Policy: DefaultPolicyName,
+		Arguments: map[string]interface{}{
+			"minCPUUtil":        minUtil,
+			"maxCPUUtil":        maxUtil,
+			"preferWarmupNodes": preferWarmup,
+			"minNodes":          minNodes,
+			"maxNodes":          maxNodes,
+		},
+		// Keep deprecated fields for backwards compatibility
+		CPUUtilizationMin: minUtil,
+		CPUUtilizationMax: maxUtil,
+		PreferWarmupNodes: preferWarmup,
+		MinNodes:          minNodes,
+		MaxNodes:          maxNodes,
+	}, nil
+}
+
+// parseNewFormat parses new format config: name:type:policy:minNodes:maxNodes[:args]
+func parseNewFormat(parts []string) (SchedulerConfigSpec, error) {
+	// Parse min nodes
+	minNodes, err := strconv.Atoi(parts[3])
+	if err != nil {
+		return SchedulerConfigSpec{}, fmt.Errorf("invalid min nodes: %v", err)
+	}
+
+	// Parse max nodes
+	maxNodes, err := strconv.Atoi(parts[4])
+	if err != nil {
+		return SchedulerConfigSpec{}, fmt.Errorf("invalid max nodes: %v", err)
+	}
+
+	config := SchedulerConfigSpec{
+		Name:   parts[0],
+		Type:   parts[1],
+		Policy: parts[2],
+		Arguments: map[string]interface{}{
+			"minNodes": minNodes,
+			"maxNodes": maxNodes,
+		},
+		MinNodes: minNodes,
+		MaxNodes: maxNodes,
+	}
+
+	// Parse optional arguments: "key1=val1,key2=val2"
+	if len(parts) > 5 {
+		argPairs := strings.Split(parts[5], ",")
+		for _, pair := range argPairs {
+			kv := strings.SplitN(pair, "=", 2)
+			if len(kv) != 2 {
+				klog.Warningf("Malformed argument pair: %s, expected format key=value", pair)
+				continue
+			}
+			key := strings.TrimSpace(kv[0])
+			value := parseArgumentValue(strings.TrimSpace(kv[1]))
+			config.Arguments[key] = value
+		}
+	}
+
+	return config, nil
+}
+
+// parseArgumentValue attempts to parse a string into the appropriate type
+func parseArgumentValue(s string) interface{} {
+	// Try bool
+	if b, err := strconv.ParseBool(s); err == nil {
+		return b
+	}
+
+	// Try int
+	if i, err := strconv.Atoi(s); err == nil {
+		return i
+	}
+
+	// Try float
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		return f
+	}
+
+	// Default to string
+	return s
+}
+
+// applyPolicyDefaults fills in PolicyName and PolicyArguments from the legacy
+// deprecated fields when the spec has no explicit Policy set.
+func applyPolicyDefaults(spec *SchedulerConfigSpec) {
+	if spec.Policy == "" {
+		spec.Policy = DefaultPolicyName
+		spec.Arguments = map[string]interface{}{
+			"minCPUUtil":        spec.CPUUtilizationMin,
+			"maxCPUUtil":        spec.CPUUtilizationMax,
+			"preferWarmupNodes": spec.PreferWarmupNodes,
+			"minNodes":          spec.MinNodes,
+			"maxNodes":          spec.MaxNodes,
+		}
+	}
 }
 
 // parseUtilization parses a utilization string to float64.
