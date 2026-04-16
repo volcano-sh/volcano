@@ -35,7 +35,8 @@ import (
 )
 
 const (
-	PluginName = "capacity"
+	PluginName              = "capacity"
+	ancestorReclaimLevelKey = "ancestorReclaimLevel"
 
 	// preFilterStateKey is the key in CycleState to InterPodAffinity pre-computed data for Filtering.
 	// Using the name of the plugin will likely help us avoid collisions with other plugins.
@@ -44,9 +45,10 @@ const (
 )
 
 type capacityPlugin struct {
-	rootQueue      string
-	totalResource  *api.Resource
-	totalGuarantee *api.Resource
+	rootQueue            string
+	totalResource        *api.Resource
+	totalGuarantee       *api.Resource
+	ancestorReclaimLevel int
 
 	queueOpts map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
@@ -76,10 +78,11 @@ type queueAttr struct {
 // New return capacityPlugin action
 func New(arguments framework.Arguments) framework.Plugin {
 	return &capacityPlugin{
-		totalResource:   api.EmptyResource(),
-		totalGuarantee:  api.EmptyResource(),
-		queueOpts:       map[api.QueueID]*queueAttr{},
-		pluginArguments: arguments,
+		totalResource:        api.EmptyResource(),
+		totalGuarantee:       api.EmptyResource(),
+		queueOpts:            map[api.QueueID]*queueAttr{},
+		ancestorReclaimLevel: 0,
+		pluginArguments:      arguments,
 	}
 }
 
@@ -88,6 +91,8 @@ func (cp *capacityPlugin) Name() string {
 }
 
 func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
+	cp.parseArguments()
+
 	// Prepare scheduling data for this session.
 	cp.totalResource.Add(ssn.TotalResource)
 
@@ -110,7 +115,22 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return victims, util.Reject
 		}
 
-		for _, reclaimee := range reclaimees {
+		reclaimerJob := ssn.Jobs[reclaimer.Job]
+		if reclaimerJob == nil {
+			klog.Warningf("[capacity] Skip reclaim for reclaimer <%s/%s>: job <%s> not found in session",
+				reclaimer.Namespace, reclaimer.Name, reclaimer.Job)
+			return victims, util.Reject
+		}
+		reclaimerAttr := cp.queueOpts[reclaimerJob.Queue]
+		if reclaimerAttr == nil {
+			klog.Warningf("[capacity] Skip reclaim for reclaimer <%s/%s>: queue <%s> not found in queueOpts",
+				reclaimer.Namespace, reclaimer.Name, reclaimerJob.Queue)
+			return victims, util.Reject
+		}
+
+		reclaimeesQueue := ssn.BuildVictimsPriorityQueue(reclaimees, reclaimer)
+		for !reclaimeesQueue.Empty() {
+			reclaimee := reclaimeesQueue.Pop().(*api.TaskInfo)
 			job := ssn.Jobs[reclaimee.Job]
 			if job == nil {
 				klog.Warningf("[capacity] Skip reclaimee <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
@@ -141,34 +161,93 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 				allocations[job.Queue] = attr.allocated.Clone()
 			}
 			allocated := allocations[job.Queue]
+			ancestorAllocations := make(map[api.QueueID]*api.Resource)
 
 			// Check guarantee
 			if satisfies, _ := cp.checkGuaranteeConstraint(allocated, reclaimee, attr.guarantee); !satisfies {
 				continue
 			}
 
-			// If the reclaimee has no intersecting resource dimensions with deserved, it is a victim.
+			// A reclaimee is eligible as a victim if it is an immediate victim or
+			// if its queue's allocated resources exceed deserved resources on dimensions relevant to the reclaimee.
+			childEligible := false
 			if isVictim, reason := cp.isImmediateVictim(reclaimee, attr.deserved); isVictim {
-				allocated.Sub(reclaimee.Resreq)
-				victims = append(victims, reclaimee)
-				klog.V(5).Infof("%s. It's a victim. Current victims: %+v.", reason, victims)
-				continue
-			}
-
-			// Check deserved
-			if exceeds, dims, reason := cp.checkDeservedExceedance(
-				allocated, attr.deserved, reclaimee, reclaimer, attr.name); !exceeds {
-				klog.V(5).Infof("%s", reason)
-				continue
-			} else {
+				// If hierarchy is enabled and ancestor reclaim is configured, even if the reclaimee is an immediate victim,
+				// we still need to check if it shares any non-root ancestor within the configured level with the reclaimer and
+				// both leaf deserved signals are empty for requested resources under shared ancestor scope.
+				// If so, the reclaimee will not be reclaimed to avoid unnecessary preemption when there is no real contention.
+				if hierarchyEnabled && cp.ancestorReclaimLevel > 0 && cp.sharesAnyNonRootAncestorWithinLevel(reclaimerAttr, attr) &&
+					!hasRelevantDeserved(reclaimer, reclaimerAttr.deserved) {
+					klog.V(5).Infof("[capacity] Skip reclaim for reclaimee <%s/%s> from queue <%s>: both leaf deserved signals are empty for requested resources under shared ancestor scope ancestorReclaimLevel=%d",
+						reclaimee.Namespace, reclaimee.Name, attr.queueID, cp.ancestorReclaimLevel)
+					continue
+				}
+				childEligible = true
+				klog.V(5).Infof("%s. It's a victim for queue <%s>.", reason, attr.name)
+			} else if exceeds, dims, reason := cp.checkDeservedExceedance(
+				allocated, attr.deserved, reclaimee, reclaimer, attr.name); exceeds {
+				childEligible = true
 				klog.V(5).Infof("[capacity] Reclaimee <%s/%s> is a victim from queue <%s> for reclaimer <%s/%s>. "+
 					"Allocated: <%v>, Deserved: <%v>, Reclaimee Resreq: <%v>, Reclaimable on dimensions: %v.",
 					reclaimee.Namespace, reclaimee.Name, attr.queueID, reclaimer.Namespace, reclaimer.Name,
 					allocated, attr.deserved, reclaimee.Resreq, dims)
-				allocated.Sub(reclaimee.Resreq)
-				victims = append(victims, reclaimee)
-				klog.V(5).Infof("[capacity] Current victims: %+v.", victims)
+			} else {
+				klog.V(5).Infof("%s.", reason)
 			}
+
+			if !childEligible {
+				continue
+			}
+
+			// If hierarchy is enabled and ancestor reclaim is configured,
+			// check ancestors up to the configured level to avoid reclaiming a victim when there is no real contention.
+			ancestorEligible := true
+			if hierarchyEnabled && cp.ancestorReclaimLevel > 0 {
+				for level := 1; level <= cp.ancestorReclaimLevel; level++ {
+					ancestorAttr, needCheck := cp.getReclaimeeAncestorToCheck(reclaimerAttr, attr, level)
+					if !needCheck {
+						continue
+					}
+					if ancestorAttr == nil {
+						ancestorEligible = false
+						klog.Warningf("[capacity] Skip reclaimee <%s/%s>: ancestor check target at level %d is nil", reclaimee.Namespace, reclaimee.Name, level)
+						break
+					}
+					if _, found := allocations[ancestorAttr.queueID]; !found {
+						allocations[ancestorAttr.queueID] = ancestorAttr.allocated.Clone()
+					}
+					ancestorAllocated := allocations[ancestorAttr.queueID]
+					ancestorAllocations[ancestorAttr.queueID] = ancestorAllocated
+
+					if isVictim, reason := cp.isImmediateVictim(reclaimee, ancestorAttr.deserved); isVictim {
+						klog.V(5).Infof("%s. It's a victim for ancestor queue <%s>.", reason, ancestorAttr.name)
+						continue
+					}
+
+					exceeds, dims, reason := cp.checkDeservedExceedance(
+						ancestorAllocated, ancestorAttr.deserved, reclaimee, reclaimer, ancestorAttr.name)
+					if !exceeds {
+						ancestorEligible = false
+						klog.V(5).Infof("%s.", reason)
+						break
+					}
+					klog.V(5).Infof("[capacity] Reclaimee <%s/%s> is a victim from ancestor queue <%s> for reclaimer <%s/%s>. "+
+						"Allocated: <%v>, Deserved: <%v>, Reclaimee Resreq: <%v>, Reclaimable on dimensions: %v.",
+						reclaimee.Namespace, reclaimee.Name, ancestorAttr.name, reclaimer.Namespace, reclaimer.Name,
+						ancestorAllocated, ancestorAttr.deserved, reclaimee.Resreq, dims)
+				}
+			}
+
+			if !ancestorEligible {
+				continue
+			}
+
+			allocated.Sub(reclaimee.Resreq)
+			for _, ancestorAllocated := range ancestorAllocations {
+				ancestorAllocated.Sub(reclaimee.Resreq)
+			}
+			victims = append(victims, reclaimee)
+			klog.V(5).Infof("[capacity] Current victims: %+v.", victims)
 		}
 		klog.V(4).Infof("[capacity] Victims from capacity plugin: victims=%+v reclaimer=%s.", victims, reclaimer)
 		return victims, util.Permit
@@ -204,8 +283,33 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 				"The futureUsed: %v, deserved: %v, allocated: %v, task requested: %v",
 				queue.Name, resourceNames, futureUsed, attr.deserved, attr.allocated, task.Resreq)
 		} else {
-			klog.V(3).Infof("Queue <%v> can not reclaim, futureUsed: %v, deserved: %v, requested: %v",
+			klog.V(4).Infof("Queue <%v> itself can not reclaim, futureUsed: %v, deserved: %v, requested: %v",
 				queue.Name, futureUsed, attr.deserved, task.Resreq)
+			if hierarchyEnabled && cp.ancestorReclaimLevel > 0 {
+				for level := 1; level <= cp.ancestorReclaimLevel; level++ {
+					ancestorID, found := queueAncestorAtDepth(attr, level)
+					if !found || ancestorID == rootQueueID {
+						continue
+					}
+					ancestorAttr := cp.queueOpts[ancestorID]
+					if ancestorAttr == nil {
+						continue
+					}
+
+					futureUsedAncestor := ancestorAttr.allocated.Clone().Add(task.Resreq)
+					isPreemptive, resourceNames = futureUsedAncestor.LessEqualPartlyWithDimensionZeroFiltered(ancestorAttr.deserved, task.Resreq)
+					if isPreemptive {
+						klog.V(3).Infof("Queue's ancestor <%v> can reclaim on resource dimensions: %v. "+
+							"The futureUsedAncestor: %v, deserved: %v, allocated: %v, task requested: %v",
+							ancestorAttr.name, resourceNames, futureUsedAncestor, ancestorAttr.deserved, ancestorAttr.allocated, task.Resreq)
+						break
+					}
+				}
+			}
+			if !isPreemptive {
+				klog.V(4).Infof("Queue <%v> and its ancestors can not reclaim. futureUsed: %v, deserved: %v, requested: %v",
+					queue.Name, futureUsed, attr.deserved, task.Resreq)
+			}
 		}
 
 		// PreemptiveFn is the opposite of OverusedFn in proportion plugin cause as long as there is a one-dimensional
@@ -433,6 +537,45 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 	})
+}
+
+func (cp *capacityPlugin) parseArguments() {
+	ancestorReclaimLevel := 0
+	cp.pluginArguments.GetInt(&ancestorReclaimLevel, ancestorReclaimLevelKey)
+
+	if ancestorReclaimLevel < 0 {
+		klog.Warningf("%s should be non-negative, got %d. Falling back to 0.", ancestorReclaimLevelKey, ancestorReclaimLevel)
+		ancestorReclaimLevel = 0
+	}
+
+	cp.ancestorReclaimLevel = ancestorReclaimLevel
+	klog.V(4).Infof("[capacity] reclaim ancestor level configured as %d", cp.ancestorReclaimLevel)
+}
+
+func (cp *capacityPlugin) getReclaimeeAncestorToCheck(reclaimerAttr, reclaimeeAttr *queueAttr, level int) (*queueAttr, bool) {
+	if reclaimerAttr == nil || reclaimeeAttr == nil || level <= 0 {
+		return nil, false
+	}
+
+	reclaimerAncestors := ancestorsByLevel(reclaimerAttr, level)
+	reclaimeeAncestors := ancestorsByLevel(reclaimeeAttr, level)
+
+	reclaimeeAncestorID, reclaimeeFound := reclaimeeAncestors[level]
+	if !reclaimeeFound || reclaimeeAncestorID == rootQueueID {
+		return nil, false
+	}
+
+	reclaimerAncestorID, reclaimerFound := reclaimerAncestors[level]
+	if reclaimerFound && reclaimerAncestorID == reclaimeeAncestorID {
+		return nil, false
+	}
+
+	ancestorAttr := cp.queueOpts[reclaimeeAncestorID]
+	if ancestorAttr == nil {
+		return nil, true
+	}
+
+	return ancestorAttr, true
 }
 
 func (cp *capacityPlugin) OnSessionClose(ssn *framework.Session) {
@@ -998,20 +1141,6 @@ func (cp *capacityPlugin) checkJobEnqueueableHierarchically(ssn *framework.Sessi
 	return true
 }
 
-func getQueueLevel(l *queueAttr, r *queueAttr) int {
-	level := 0
-
-	for i := 0; i < min(len(l.ancestors), len(r.ancestors)); i++ {
-		if l.ancestors[i] == r.ancestors[i] {
-			level = i
-		} else {
-			return level
-		}
-	}
-
-	return level
-}
-
 func getCapacityState(cycleState fwk.CycleState) (*capacityState, error) {
 	c, err := cycleState.Read(capacityStateKey)
 	if err != nil {
@@ -1137,12 +1266,18 @@ func (cp *capacityPlugin) isImmediateVictim(
 	reclaimee *api.TaskInfo,
 	deserved *api.Resource,
 ) (bool, string) {
-	deservedIntersecting := len(api.Intersection(reclaimee.Resreq, deserved)) > 0
-	if !deservedIntersecting {
+	if !hasRelevantDeserved(reclaimee, deserved) {
 		return true, fmt.Sprintf("[capacity] No intersection between deserved: <%v> and reclaimee <%s/%s>: <%v>",
 			deserved, reclaimee.Namespace, reclaimee.Name, reclaimee.Resreq)
 	}
 	return false, ""
+}
+
+func hasRelevantDeserved(task *api.TaskInfo, deserved *api.Resource) bool {
+	if task == nil || deserved == nil {
+		return false
+	}
+	return len(api.Intersection(task.Resreq, deserved)) > 0
 }
 
 // checkDeservedExceedance checks if the queue's allocated resources exceed its deserved resources
@@ -1166,4 +1301,71 @@ func (cp *capacityPlugin) checkDeservedExceedance(
 		return false, nil, reason
 	}
 	return true, dims, ""
+}
+
+func (cp *capacityPlugin) sharesAnyNonRootAncestorWithinLevel(a, b *queueAttr) bool {
+	if cp == nil || a == nil || b == nil || cp.ancestorReclaimLevel <= 0 {
+		return false
+	}
+
+	aAncestors := ancestorIDSet(ancestorsByLevel(a, cp.ancestorReclaimLevel))
+	bAncestors := ancestorIDSet(ancestorsByLevel(b, cp.ancestorReclaimLevel))
+
+	for ancestor := range aAncestors {
+		if ancestor == rootQueueID {
+			continue
+		}
+		if _, found := bAncestors[ancestor]; found {
+			return true
+		}
+	}
+
+	return false
+}
+
+func getQueueLevel(l *queueAttr, r *queueAttr) int {
+	level := 0
+
+	for i := range min(len(l.ancestors), len(r.ancestors)) {
+		if l.ancestors[i] == r.ancestors[i] {
+			level = i
+		} else {
+			return level
+		}
+	}
+
+	return level
+}
+
+func queueAncestorAtDepth(attr *queueAttr, depth int) (api.QueueID, bool) {
+	if attr == nil || depth <= 0 || len(attr.ancestors) < depth {
+		return "", false
+	}
+
+	return attr.ancestors[len(attr.ancestors)-depth], true
+}
+
+func ancestorsByLevel(attr *queueAttr, maxLevel int) map[int]api.QueueID {
+	ancestors := make(map[int]api.QueueID)
+	if attr == nil || maxLevel <= 0 {
+		return ancestors
+	}
+
+	for level := 1; level <= maxLevel; level++ {
+		ancestorID, found := queueAncestorAtDepth(attr, level)
+		if !found {
+			continue
+		}
+		ancestors[level] = ancestorID
+	}
+
+	return ancestors
+}
+
+func ancestorIDSet(ancestorsByDepth map[int]api.QueueID) map[api.QueueID]struct{} {
+	set := make(map[api.QueueID]struct{}, len(ancestorsByDepth))
+	for _, ancestorID := range ancestorsByDepth {
+		set[ancestorID] = struct{}{}
+	}
+	return set
 }
