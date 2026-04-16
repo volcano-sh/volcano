@@ -22,6 +22,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
@@ -33,7 +34,7 @@ func makeExclusivePod(name string, labels map[string]string, vgpuNum int64) *v1.
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: "default",
-			UID:       "uid-" + name,
+			UID:       types.UID("uid-" + name),
 			Labels:    labels,
 		},
 		Spec: v1.PodSpec{
