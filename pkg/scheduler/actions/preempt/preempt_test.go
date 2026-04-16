@@ -330,6 +330,52 @@ func TestPreempt(t *testing.T) {
 			ExpectEvictNum: 1,
 			ExpectEvicted:  []string{"c1/preemptee2"},
 		},
+		{
+			// Regression test for within-job preemption unconditional commit.
+			//
+			// pg1 has MinAvailable=3: two tasks are already running (one preemptable,
+			// one not) and two high-priority tasks are pending. Only one within-job
+			// victim is available (running-preemptable), so the inner loop yields
+			// assigned=true on the first iteration (task evicted + preemptor pipelined
+			// into the statement) but assigned=false on the second (no more victims).
+			// After the loop the job sits at 1 running + 1 pipelined = 2 < 3
+			// (MinAvailable), so JobPipelined returns false and every eviction must be
+			// discarded.
+			//
+			// Prior to the fix, stmt.Commit() was called unconditionally after each
+			// assigned=true iteration, causing running-preemptable to be evicted even
+			// though the job could never become schedulable — ExpectEvictNum was 1.
+			Name: "within-job preemption: discard evictions when job cannot reach MinAvailable",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroup("pg1", "c1", "q1", 3, map[string]int32{"": 4}, schedulingv1beta1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{
+				// Running, preemptable — the only within-job victim available.
+				util.BuildPod("c1", "running-preemptable", "n1", v1.PodRunning,
+					api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				// Running, NOT preemptable — shielded from within-job preemption.
+				util.BuildPod("c1", "running-protected", "n1", v1.PodRunning,
+					api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
+				// Pending high-priority preemptor #1 — evicts running-preemptable (assigned=true).
+				util.BuildPodWithPriority("c1", "pending-high-1", "", v1.PodPending,
+					api.BuildResourceList("1", "1G"), "pg1",
+					make(map[string]string), make(map[string]string), &highPrio.Value),
+				// Pending high-priority preemptor #2 — no more victims → assigned=false.
+				util.BuildPodWithPriority("c1", "pending-high-2", "", v1.PodPending,
+					api.BuildResourceList("1", "1G"), "pg1",
+					make(map[string]string), make(map[string]string), &highPrio.Value),
+			},
+			Nodes: []*v1.Node{
+				// 2 CPUs total; both consumed by the two running tasks (0 idle).
+				util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectEvictNum: 0,
+		},
 	}
 
 	trueValue := true

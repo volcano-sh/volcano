@@ -236,18 +236,21 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 				}
 				preemptorTasks[job.UID].Push(task)
 			}
+
+			// Use a single statement per job so that evictions are only committed
+			// when the job actually becomes pipelined — matching the cross-queue
+			// preemption pattern above and preventing unnecessary victim evictions.
+			stmt := framework.NewStatement(ssn)
 			for {
 				if _, found := preemptorTasks[job.UID]; !found {
 					break
 				}
-
 				if preemptorTasks[job.UID].Empty() {
 					break
 				}
 
 				preemptor := preemptorTasks[job.UID].Pop().(*api.TaskInfo)
 
-				stmt := framework.NewStatement(ssn)
 				assigned, err := pmpt.preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
 					// Ignore non running task.
 					if !api.PreemptableStatus(task.Status) {
@@ -269,13 +272,20 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					klog.V(3).Infof("Preemptor <%s/%s> failed to preempt Task , err: %s", preemptor.Namespace, preemptor.Name, err)
 				}
 
-				// Only commit if preemption was successful, otherwise discard to rollback evictions.
-				// This is consistent with between-job preemption which checks JobPipelined before committing.
+				// If no preemption possible for this task, stop trying.
 				if !assigned {
 					stmt.Discard()
 					break
 				}
+			}
+
+			// Commit changes only if the job is pipelined after all within-job
+			// preemptions; otherwise discard to avoid evicting victims that don't
+			// make the job schedulable.
+			if ssn.JobPipelined(job) {
 				stmt.Commit()
+			} else {
+				stmt.Discard()
 			}
 		}
 	}
