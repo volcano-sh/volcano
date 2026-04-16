@@ -212,6 +212,10 @@ func (np *nodeGroupPlugin) buildAncestors(ssn *framework.Session, attr *queueAtt
 	}
 
 	queueInfo := ssn.Queues[attr.queueID]
+	if queueInfo == nil {
+		klog.Warningf("Queue %s not found in session, unable to build hierarchy.", attr.queueID)
+		return
+	}
 	parentID := api.QueueID(rootQueueID)
 	if queueInfo.Queue.Spec.Parent != "" {
 		parentID = api.QueueID(queueInfo.Queue.Spec.Parent)
