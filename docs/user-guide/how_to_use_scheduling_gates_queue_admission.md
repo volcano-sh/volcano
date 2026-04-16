@@ -8,14 +8,12 @@ Volcano marks pods as `Unschedulable` for any allocation failure, whether it's d
 
 ## Solution
 
-This feature uses Kubernetes [`schedulingGates`](https://kubernetes.io/docs/concepts/scheduling-eviction/pod-scheduling-readiness/) to hold pods until the queue has capacity. While gated, pods are invisible to autoscalers and the gate is removed only after the queue capacity check passes. If the pod then can't schedule due to missing nodes, it gets marked `Unschedulable`, and autoscalers can react to add more nodes.
+This feature uses Kubernetes [`schedulingGates`](https://kubernetes.io/docs/concepts/scheduling-eviction/pod-scheduling-readiness/) to hold pods until the queue has capacity. While gated, pods are invisible to autoscalers. The gate is removed only after the queue capacity check passes — if the pod then can't schedule due to missing nodes, it gets marked `Unschedulable` legitimately, and autoscalers respond correctly.
 
 ## Prerequisites
 
-> TODO: Validate which release will hold this feature and if proportion also includes this.
-
 - Volcano v1.15+ with the `SchedulingGatesQueueAdmission` feature gate enabled
-- The `capacity` plugin configured in the scheduler (the feature's reserved resource tracking is currently implemented in the capacity plugin).
+- The `capacity` plugin configured in the scheduler (the feature's reserved resource tracking is implemented in the capacity plugin)
 
 ## 1. Enable the Feature Gate
 
@@ -25,7 +23,8 @@ The feature is Alpha and disabled by default. Enable it on both the **scheduler*
 
 ```bash
 helm install volcano volcano/volcano --namespace volcano-system --create-namespace \
-  --set custom.scheduler_feature_gates="SchedulingGatesQueueAdmission=true"
+  --set custom.scheduler_feature_gates="SchedulingGatesQueueAdmission=true" \
+  --set custom.admission_feature_gates="SchedulingGatesQueueAdmission=true"
 ```
 
 ### Using kubectl apply
@@ -83,7 +82,7 @@ When this pod is created:
 2. The pod stays gated (invisible to autoscalers) until the queue has capacity.
 3. Once capacity is available, the scheduler removes the gate.
 4. If the pod can be placed on a node, it gets scheduled normally.
-5. If no node matches (e.g., needs a specific node type), it gets marked `Unschedulable` to trigger autoscaling.
+5. If no node matches (e.g., needs a specific node type), it gets marked `Unschedulable`, correctly triggering the autoscaler.
 
 ## 4. Verify the Feature is Working
 
@@ -108,7 +107,7 @@ kubectl get pod my-pod -o jsonpath='{.spec.schedulingGates}'
 
 ## Interaction with Other Scheduling Gates
 
-If a pod has additional scheduling gates from other controllers (e.g., `example.com/my-gate`), Volcano will not remove its gate until the pod has **only** the Volcano-controlled gate remaining.
+If a pod has additional scheduling gates from other controllers (e.g., `example.com/my-gate`), Volcano will not remove its gate until the pod has **only** the Volcano gate remaining. This ensures Volcano does not interfere with other gate controllers.
 
 ## Limitations
 

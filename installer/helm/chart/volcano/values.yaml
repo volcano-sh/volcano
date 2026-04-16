@@ -269,6 +269,7 @@ custom:
 
   # Specify feature gates for components
   scheduler_feature_gates: ~
+  admission_feature_gates: ~
 
 # Specify options for scheduler sharding
   agent_scheduler_sharding_mode: ~

@@ -145,8 +145,8 @@ spec:
             {{- if $scheduler_name }}
             - --scheduler-name={{- $scheduler_name }}
             {{- end }}
-            {{- if .Values.custom.scheduler_feature_gates }}
-            - --feature-gates={{ .Values.custom.scheduler_feature_gates }}
+            {{- if .Values.custom.admission_feature_gates }}
+            - --feature-gates={{ .Values.custom.admission_feature_gates }}
             {{- end }}
             - --enable-healthz=true
             - --logtostderr
