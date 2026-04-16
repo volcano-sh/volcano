@@ -297,6 +297,12 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 		}
 
 		job := jobs.Pop().(*api.JobInfo)
+
+		// Convert soft topology to hard topology with ClusterTopHyperNode tier as maxTier,
+		// so that soft-mode jobs reuse the hard-mode scheduling path without any HyperNode filtering.
+		if clusterTopHyperNode, exists := ssn.HyperNodes[framework.ClusterTopHyperNode]; exists {
+			convertSoftToHardTopology(job, clusterTopHyperNode.Tier())
+		}
 		// Currently, both hard-mode network topology scheduling and subjob level scheduling use allocateForJob.
 		// TODO: In the future, we may need to unify the logic of network topology-aware scheduling and normal scheduling.
 		if job.ContainsHardTopology() || job.ContainsSubJobPolicy() {
@@ -667,6 +673,41 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 	stmt.Discard()
 	return nil
+}
+
+// convertSoftToHardTopology converts all soft network topology constraints in the job to hard mode
+// with maxTier (ClusterTopHyperNode tier). Since all real HyperNode tiers are less than maxTier,
+// no HyperNode will be filtered out by isEligibleHyperNode, achieving soft affinity semantics:
+// prefer lower tier (higher bandwidth) but never reject any HyperNode.
+func convertSoftToHardTopology(job *api.JobInfo, maxTier int) {
+	if job.PodGroup == nil {
+		return
+	}
+
+	// Convert job-level soft topology
+	if job.PodGroup.Spec.NetworkTopology != nil &&
+		job.PodGroup.Spec.NetworkTopology.Mode == scheduling.SoftNetworkTopologyMode {
+		klog.V(4).InfoS("Converting job-level soft topology to hard mode",
+			"job", job.UID, "maxTier", maxTier)
+		job.PodGroup.Spec.NetworkTopology.Mode = scheduling.HardNetworkTopologyMode
+		job.PodGroup.Spec.NetworkTopology.HighestTierAllowed = &maxTier
+	}
+
+	// Convert SubGroupPolicy-level soft topology
+	for i := range job.PodGroup.Spec.SubGroupPolicy {
+		nt := job.PodGroup.Spec.SubGroupPolicy[i].NetworkTopology
+		if nt != nil && nt.Mode == scheduling.SoftNetworkTopologyMode {
+			klog.V(4).InfoS("Converting SubGroupPolicy soft topology to hard mode",
+				"job", job.UID, "subGroupPolicy", job.PodGroup.Spec.SubGroupPolicy[i].Name, "maxTier", maxTier)
+			nt.Mode = scheduling.HardNetworkTopologyMode
+			nt.HighestTierAllowed = &maxTier
+		}
+	}
+
+	// Convert SubJob-level topology (SubJobInfo has its own deep-copied networkTopology)
+	for _, subJob := range job.SubJobs {
+		subJob.ConvertToHardTopology(maxTier)
+	}
 }
 
 // getNewAllocatedHyperNode Obtain the newly allocated hyperNode for the job in soft topology mode
