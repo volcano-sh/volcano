@@ -196,12 +196,6 @@ spec:
         volcano.sh/vgpu-memory: "16384"
 ```
 
-### Verify GPU Assignments
-
-```bash
-kubectl get pod <pod-name> -o jsonpath='{.metadata.annotations.volcano\.sh/vgpu-ids-new}'
-```
-
 ---
 
 ## Scheduler Mode Selection
