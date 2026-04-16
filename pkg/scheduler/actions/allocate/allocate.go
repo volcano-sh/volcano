@@ -343,7 +343,6 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 				"allocatedHyperNode", job.AllocatedHyperNode, "subJobNum", jobWorksheet.subJobs.Len())
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
 			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
-				ssn.CleanupReservations(stmt)
 				stmt.Commit()
 				ssn.MarkJobDirty(job.UID)
 				alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
@@ -360,7 +359,6 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 				klog.V(3).InfoS("Try to allocate resource", "queue", queue.Name, "job", job.UID, "taskNum", tasks.Len())
 				stmt := alloc.allocateResourcesForTasks(subJob, tasks, framework.ClusterTopHyperNode)
 				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
-					ssn.CleanupReservations(stmt)
 					stmt.Commit()
 
 					// There are still left tasks that need to be allocated when min available < replicas, put the job back

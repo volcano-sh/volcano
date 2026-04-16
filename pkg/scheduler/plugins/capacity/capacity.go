@@ -103,17 +103,6 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Rebuild reserved cache for this scheduling cycle
 	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) {
 		cp.buildQueueReservedTasksCache(ssn)
-
-		// Register cleanup function for successful allocations
-		ssn.AddCleanupReservationsFn(cp.Name(), func(obj interface{}) {
-			stmt := obj.(*framework.Statement)
-			for _, op := range stmt.Operations() {
-				if op.Name() == framework.Allocate {
-					task := op.Task()
-					cp.removeTaskFromReservedCache(task.UID)
-				}
-			}
-		})
 	}
 
 	hierarchyEnabled := ssn.HierarchyEnabled(cp.Name())
@@ -435,6 +424,11 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			klog.V(4).Infof("[capacity] AllocateFunc: task <%v/%v>, resreq <%v>, share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
+
+			// Remove task from reserved cache when it gets allocated
+			if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) {
+				cp.removeTaskFromReservedCache(event.Task.UID)
+			}
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			job := ssn.Jobs[event.Task.Job]
@@ -462,6 +456,12 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			klog.V(4).Infof("[capacity] DeallocateFunc: task <%v/%v>, resreq <%v>, share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
+
+			// Restore task to reserved cache on rollback so capacity remains accounted for
+			if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) &&
+				api.HasQueueAllocationGateAnnotation(event.Task.Pod) {
+				cp.addTaskToReservedCache(job.Queue, event.Task)
+			}
 		},
 	})
 }
