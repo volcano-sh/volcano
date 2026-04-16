@@ -44,17 +44,13 @@ type CPUInfo struct {
 	CoreID int `json:"core,omitempty" protobuf:"varint,3,opt,name=core"`
 }
 
-// GPUInfo contains the NUMA topology information for a single GPU device,
-// including its NUMA node affinity, PCI bus ID, and device model.
+// GPUInfo is the gpu topology detail
 type GPUInfo struct {
-	// NUMANodeID is the NUMA node to which this GPU is attached.
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	NUMANodeID int `json:"numa,omitempty" protobuf:"varint,1,opt,name=numa"`
-	// BusID is the PCI Bus-Device-Function address (e.g. "0000:3b:00.0").
 	// +optional
 	BusID string `json:"busID,omitempty" protobuf:"bytes,2,opt,name=busID"`
-	// DeviceModel is the human-readable GPU model name or PCI vendor:device ID.
 	// +optional
 	DeviceModel string `json:"deviceModel,omitempty" protobuf:"bytes,3,opt,name=deviceModel"`
 }

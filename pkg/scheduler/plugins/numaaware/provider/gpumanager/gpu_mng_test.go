@@ -29,7 +29,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/numaaware/policy"
 )
 
-// 8 GPUs across 2 NUMA nodes: GPUs 0-3 on NUMA 0, GPUs 4-7 on NUMA 1
 var gpuNumaInfo = api.NumatopoInfo{
 	GPUDetail: api.GPUDetails{
 		0: {NUMANodeID: 0},
@@ -51,7 +50,7 @@ func Test_GetTopologyHints(t *testing.T) {
 		expect      []policy.TopologyHint
 	}{
 		{
-			name: "4 GPUs requested, all 8 available - prefer single NUMA",
+			name: "test-1",
 			container: v1.Container{
 				Resources: v1.ResourceRequirements{
 					Requests: v1.ResourceList{
@@ -87,7 +86,7 @@ func Test_GetTopologyHints(t *testing.T) {
 			},
 		},
 		{
-			name: "4 GPUs requested, only NUMA 1 has enough - prefer NUMA 1",
+			name: "test-2",
 			container: v1.Container{
 				Resources: v1.ResourceRequirements{
 					Requests: v1.ResourceList{
@@ -116,7 +115,7 @@ func Test_GetTopologyHints(t *testing.T) {
 			},
 		},
 		{
-			name: "5 GPUs requested - must span both NUMA nodes",
+			name: "test-3",
 			container: v1.Container{
 				Resources: v1.ResourceRequirements{
 					Requests: v1.ResourceList{
@@ -138,7 +137,7 @@ func Test_GetTopologyHints(t *testing.T) {
 			},
 		},
 		{
-			name: "8 GPUs requested - needs all GPUs across both NUMA nodes",
+			name: "test-4",
 			container: v1.Container{
 				Resources: v1.ResourceRequirements{
 					Requests: v1.ResourceList{
@@ -160,7 +159,7 @@ func Test_GetTopologyHints(t *testing.T) {
 			},
 		},
 		{
-			name: "9 GPUs requested - impossible, no hints",
+			name: "test-5",
 			container: v1.Container{
 				Resources: v1.ResourceRequirements{
 					Requests: v1.ResourceList{
@@ -174,7 +173,7 @@ func Test_GetTopologyHints(t *testing.T) {
 			expect: []policy.TopologyHint{},
 		},
 		{
-			name: "no GPU request - nil hints",
+			name: "test-6",
 			container: v1.Container{
 				Resources: v1.ResourceRequirements{
 					Requests: v1.ResourceList{
@@ -209,7 +208,7 @@ func Test_Allocate(t *testing.T) {
 		expect      cpuset.CPUSet
 	}{
 		{
-			name: "4 GPUs from NUMA 0",
+			name: "test-1",
 			container: v1.Container{
 				Resources: v1.ResourceRequirements{
 					Requests: v1.ResourceList{
@@ -230,7 +229,7 @@ func Test_Allocate(t *testing.T) {
 			expect: cpuset.New(0, 1, 2, 3),
 		},
 		{
-			name: "4 GPUs from NUMA 1",
+			name: "test-2",
 			container: v1.Container{
 				Resources: v1.ResourceRequirements{
 					Requests: v1.ResourceList{
@@ -251,7 +250,7 @@ func Test_Allocate(t *testing.T) {
 			expect: cpuset.New(4, 5, 6, 7),
 		},
 		{
-			name: "5 GPUs across both NUMA nodes",
+			name: "test-3",
 			container: v1.Container{
 				Resources: v1.ResourceRequirements{
 					Requests: v1.ResourceList{
@@ -272,7 +271,7 @@ func Test_Allocate(t *testing.T) {
 			expect: cpuset.New(0, 1, 2, 3, 4),
 		},
 		{
-			name: "4 GPUs from NUMA 1 when NUMA 0 partially available",
+			name: "test-4",
 			container: v1.Container{
 				Resources: v1.ResourceRequirements{
 					Requests: v1.ResourceList{
