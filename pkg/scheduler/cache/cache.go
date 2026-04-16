@@ -1466,7 +1466,15 @@ func (sc *SchedulerCache) BindTask() {
 // Snapshot returns the complete snapshot of the cluster from cache
 func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	// snapshotMutexReleased tracks whether we manually released sc.Mutex early
+	// (before wg.Wait) to avoid holding the lock while goroutines run.
+	// The deferred unlock below is a safety net for early-return paths only.
+	snapshotMutexReleased := false
+	defer func() {
+		if !snapshotMutexReleased {
+			sc.Mutex.Unlock()
+		}
+	}()
 
 	snapshot := &schedulingapi.ClusterInfo{
 		Nodes:                make(map[string]*schedulingapi.NodeInfo),
@@ -1521,26 +1529,15 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	var cloneJobLock sync.Mutex
 	var wg sync.WaitGroup
 
-	cloneJob := func(value *schedulingapi.JobInfo) {
-		defer wg.Done()
-		if value.PodGroup != nil {
-			value.Priority = sc.defaultPriority
-
-			priName := value.PodGroup.Spec.PriorityClassName
-			if priorityClass, found := sc.PriorityClasses[priName]; found {
-				value.Priority = priorityClass.Value
-			}
-
-			klog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
-				value.Namespace, value.Name, priName, value.Priority)
-		}
-
-		clonedJob := value.Clone()
-
-		cloneJobLock.Lock()
-		snapshot.Jobs[value.UID] = clonedJob
-		cloneJobLock.Unlock()
+	// Precompute priority for each job under sc.Mutex (still held here) BEFORE spawning
+	// goroutines. This avoids mutating live cache objects (sc.Jobs[x]) from concurrent
+	// goroutines, which would be a data race: the goroutines would write value.Priority
+	// on the shared *JobInfo pointer while other readers may access the same field.
+	type jobWithPriority struct {
+		job      *schedulingapi.JobInfo
+		priority int32
 	}
+	jobsToClone := make([]jobWithPriority, 0, len(sc.Jobs))
 
 	for _, value := range sc.NamespaceCollection {
 		info := value.Snapshot()
@@ -1552,7 +1549,6 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		if value.PodGroup == nil {
 			klog.V(4).Infof("The scheduling spec of Job <%v:%s/%s> is nil, ignore it.",
 				value.UID, value.Namespace, value.Name)
-
 			continue
 		}
 
@@ -1562,8 +1558,43 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			continue
 		}
 
+		// Resolve priority here, under sc.Mutex, on the live object. This is safe
+		// because sc.Mutex is held and no other goroutine can mutate sc.Jobs concurrently.
+		// We record the resolved priority separately so goroutines only operate on clones.
+		priority := sc.defaultPriority
+		priName := value.PodGroup.Spec.PriorityClassName
+		if priorityClass, found := sc.PriorityClasses[priName]; found {
+			priority = priorityClass.Value
+		}
+		klog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
+			value.Namespace, value.Name, priName, priority)
+
+		jobsToClone = append(jobsToClone, jobWithPriority{job: value, priority: priority})
+	}
+
+	// sc.Mutex is still held here — all reads from live cache are done.
+	// Goroutines below only operate on already-snapshotted data (clones), so it is
+	// safe to release sc.Mutex before wg.Wait() to avoid holding the lock while
+	// waiting for goroutines, which would block all cache writers unnecessarily.
+	// We unlock manually here; the deferred unlock becomes a no-op via the flag below.
+	sc.Mutex.Unlock()
+	snapshotMutexReleased = true
+
+	cloneJob := func(jwp jobWithPriority) {
+		defer wg.Done()
+		// Clone the live object first, then set priority on the clone only.
+		// This ensures we never write to shared sc.Jobs[x] from a goroutine.
+		clonedJob := jwp.job.Clone()
+		clonedJob.Priority = jwp.priority
+
+		cloneJobLock.Lock()
+		snapshot.Jobs[clonedJob.UID] = clonedJob
+		cloneJobLock.Unlock()
+	}
+
+	for _, jwp := range jobsToClone {
 		wg.Add(1)
-		go cloneJob(value)
+		go cloneJob(jwp)
 	}
 	wg.Wait()
 

@@ -214,6 +214,10 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		if hierarchyEnabled {
 			queue := ssn.Queues[job.Queue]
+			if queue == nil {
+				klog.V(4).Infof("[drf] Skip hierarchical share update for job <%s/%s>: queue <%s> not found in session", job.Namespace, job.Name, job.Queue)
+				continue
+			}
 			drf.totalAllocated.Add(attr.allocated)
 			drf.UpdateHierarchicalShare(drf.hierarchicalRoot, drf.totalAllocated, job, attr, queue.Hierarchy, queue.Weights)
 		}

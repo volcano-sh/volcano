@@ -67,6 +67,10 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 	pendingTasks := backfill.pickUpPendingTasks(ssn)
 	for _, task := range pendingTasks {
 		job := ssn.Jobs[task.Job]
+		if job == nil {
+			klog.V(3).Infof("Job for task %s/%s not found in session, skipping", task.Namespace, task.Name)
+			continue
+		}
 		ph := util.NewPredicateHelper()
 		fe := api.NewFitErrors()
 

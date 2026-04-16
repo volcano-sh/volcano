@@ -553,7 +553,15 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 	ssn := alloc.session
 
 	job := ssn.Jobs[subJob.Job]
+	if job == nil {
+		klog.V(3).Infof("Job %s not found in session, skipping resource allocation", subJob.Job)
+		return nil
+	}
 	queue := ssn.Queues[job.Queue]
+	if queue == nil {
+		klog.V(3).Infof("Queue %s for job %s not found in session, skipping resource allocation", job.Queue, job.UID)
+		return nil
+	}
 	nodes, exist := ssn.RealNodesList[hyperNode]
 	if !exist || len(nodes) == 0 {
 		klog.V(4).InfoS("There is no node in hyperNode", "job", job.UID, "hyperNode", hyperNode)
