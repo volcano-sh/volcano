@@ -509,9 +509,15 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		}
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
-			// deduct the resources of scheduling gated tasks in a job when calculating inqueued resources
-			// so that it will not block other jobs from being inqueued.
-			attr.inqueue.Add(job.DeductSchGatedResources(job.GetMinResources()))
+			// calculate inqueue resource for inqueue jobs
+			// deduct already-allocated task resources from minResources to avoid double-counting:
+			// tasks in Allocated/Binding state are already tracked in attr.allocated (via AllocatedStatus),
+			// but the PodGroup stays Inqueue until tasks reach Running/Bound (ScheduledStatus).
+			// Without this deduction, the same resources appear in both attr.allocated and attr.inqueue.
+			if job.PodGroup.Spec.MinResources != nil {
+				inqueued := util.GetInqueueResource(job, job.Allocated)
+				attr.inqueue.Add(job.DeductSchGatedResources(inqueued))
+			}
 		}
 
 		// calculate inqueue resource for running jobs
@@ -641,7 +647,12 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		}
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
-			attr.inqueue.Add(job.DeductSchGatedResources(job.GetMinResources()))
+			// same double-counting fix as buildQueueAttrs: deduct already-allocated resources
+			// so tasks in Allocated/Binding state are not counted in both attr.allocated and attr.inqueue.
+			if job.PodGroup.Spec.MinResources != nil {
+				inqueued := util.GetInqueueResource(job, job.Allocated)
+				attr.inqueue.Add(job.DeductSchGatedResources(inqueued))
+			}
 		}
 
 		// calculate inqueue resource for running jobs
