@@ -123,6 +123,10 @@ func NewSnapshot(nodeInfoMap map[string]fwk.NodeInfo) *Snapshot {
 
 func (s *Snapshot) AddOrUpdateNodes(nodes []*api.NodeInfo) {
 	for _, node := range nodes {
+		if node.Node == nil {
+			klog.V(5).Infof("Node %s is nil, removing from snapshot", node.Name)
+			continue
+		}
 		s.addOrUpdateNode(node)
 	}
 }

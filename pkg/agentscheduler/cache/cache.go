@@ -1022,8 +1022,10 @@ func (sc *SchedulerCache) UpdateSnapshot(snapshot *k8sutil.Snapshot) error {
 				node.info.Name, node.info.Generation, snapshotGeneration)
 			break
 		}
-		klog.V(5).Infof("current node name need to update in cache is %s", node.info.Name)
-		nodesToUpdate = append(nodesToUpdate, node.info)
+		if node.info.Node != nil {
+			klog.V(5).Infof("current node name need to update in cache is %s", node.info.Name)
+			nodesToUpdate = append(nodesToUpdate, node.info)
+		}
 	}
 
 	if len(nodesToUpdate) > 0 {
