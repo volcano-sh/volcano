@@ -67,6 +67,15 @@ This metrics describe internal state of volcano.
 | **Metric Name**                           | **Metric Type** | **Labels**                                                                                | **Description**                                                                |
 |-------------------------------------------|-----------------|-------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------|
 | `worker_scheduling_cycle_duration_milliseconds` | Histogram | None | Duration of a single scheduling cycle execution in agent worker. |
+| `task_scheduling_latency_milliseconds`    | HistogramVector | `stage`=&lt;stage&gt;                                                                      | Task scheduling latency from creation to various stages in milliseconds        |
+
+### volcano controller-manager metrics
+These metrics track the performance of the job controller, covering per-pod creation latency and end-to-end job creation duration.
+
+| **Metric Name**                                      | **Metric Type** | **Labels**                                                                                | **Description**                                                                              |
+|------------------------------------------------------|-----------------|-------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
+| `controller_job_to_pod_creation_latency_milliseconds` | Histogram      | None                                                                                      | Latency from VCJob creation to pod created in milliseconds                                   |
+| `controller_job_e2e_creation_duration_milliseconds`  | Gauge           | `job_name`=&lt;job_name&gt;, `queue`=&lt;queue&gt;, `job_namespace`=&lt;job_namespace&gt; | End-to-end duration from VCJob creation to all pods created, in milliseconds                 |
 
 ### volcano Liveness
 Healthcheck last time of volcano activity and timeout

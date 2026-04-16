@@ -28,6 +28,7 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	cliflag "k8s.io/component-base/cli/flag"
 	componentbaseoptions "k8s.io/component-base/config/options"
+	_ "k8s.io/component-base/metrics/prometheus/restclient"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/cmd/controller-manager/app"
