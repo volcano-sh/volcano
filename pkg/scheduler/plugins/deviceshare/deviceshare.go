@@ -18,7 +18,6 @@ package deviceshare
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"reflect"
 	"sync"
@@ -276,10 +275,11 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 					if ok {
 						if deviceInterface, isDeviceInterface := device.(api.Devices); isDeviceInterface {
 							if reflect.ValueOf(deviceInterface).IsNil() {
-								if deviceInterface == nil || deviceInterface.HasDeviceRequest(task.Pod) {
-									return nil, fmt.Errorf("node not initialized with device %s", deviceType)
-								}
-								klog.V(4).Infof("pod %s/%s did not request device %s on %s, skipping it", task.Pod.Namespace, task.Pod.Name, deviceType, nodes[0].Name)
+								klog.V(4).Infof("device %s is null on node %s, skipping", deviceType, node.Name)
+								continue
+							}
+							if !deviceInterface.HasDeviceRequest(task.Pod) {
+								klog.V(4).Infof("pod %s/%s did not request device %s on %s, skipping it", task.Pod.Namespace, task.Pod.Name, deviceType, node.Name)
 								continue
 							}
 							allDevices = append(allDevices, deviceInterface)
