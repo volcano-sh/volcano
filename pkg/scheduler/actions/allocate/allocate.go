@@ -599,8 +599,8 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 		// "NominatedNodeName" can potentially be set in a previous scheduling cycle as a result of preemption.
 		// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
-		if len(task.Pod.Status.NominatedNodeName) > 0 {
-			if nominatedNodeInfo, ok := ssn.Nodes[task.Pod.Status.NominatedNodeName]; ok && task.InitResreq.LessEqual(nominatedNodeInfo.FutureIdle(), api.Zero) {
+		if nominatedNodeInfo, ok := ssn.Nodes[task.Pod.Status.NominatedNodeName]; ok {
+			if fit, _ := task.InitResreq.LessEqual(nominatedNodeInfo.FutureIdle(), api.Zero); fit {
 				predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
 			}
 		}
@@ -695,13 +695,13 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 	var idleCandidateNodesInOtherShards []*api.NodeInfo
 	var futureIdleCandidateNodesInOtherShards []*api.NodeInfo
 	for _, n := range predicateNodes {
-		if task.InitResreq.LessEqual(n.Idle, api.Zero) {
+		if ok, _ := task.InitResreq.LessEqual(n.Idle, api.Zero); ok {
 			if shardingMode == commonutil.SoftShardingMode && !ssn.NodesInShard.Has(n.Name) {
 				idleCandidateNodesInOtherShards = append(idleCandidateNodesInOtherShards, n)
 			} else {
 				idleCandidateNodes = append(idleCandidateNodes, n)
 			}
-		} else if task.InitResreq.LessEqual(n.FutureIdle(), api.Zero) {
+		} else if ok, _ := task.InitResreq.LessEqual(n.FutureIdle(), api.Zero); ok {
 			if shardingMode == commonutil.SoftShardingMode && !ssn.NodesInShard.Has(n.Name) {
 				futureIdleCandidateNodesInOtherShards = append(futureIdleCandidateNodesInOtherShards, n)
 			} else {
@@ -755,7 +755,7 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 
 func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo, job *api.JobInfo) (err error) {
 	// Allocate idle resource to the task.
-	if task.InitResreq.LessEqual(node.Idle, api.Zero) {
+	if ok, _ := task.InitResreq.LessEqual(node.Idle, api.Zero); ok {
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
 		if err = stmt.Allocate(task, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
@@ -775,7 +775,7 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 		task.Namespace, task.Name, node.Name)
 
 	// Allocate releasing resource to the task if any.
-	if task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+	if ok, _ := task.InitResreq.LessEqual(node.FutureIdle(), api.Zero); ok {
 		klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 			task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
 		if err = stmt.Pipeline(task, node.Name, false); err != nil {
@@ -792,7 +792,7 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 	// Check for Resource Predicate
 	var statusSets api.StatusSets
-	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {
+	if ok, resources := task.InitResreq.LessEqual(node.FutureIdle(), api.Zero); !ok {
 		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.WrapInsufficientResourceReason(resources)})
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}

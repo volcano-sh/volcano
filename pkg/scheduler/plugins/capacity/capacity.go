@@ -191,14 +191,14 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		attr := cp.queueOpts[queue.UID]
 		futureUsed := attr.allocated.Clone().Add(task.Resreq)
 
-		if allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, task.Resreq); !allocatable {
+		if allocatable, _ := futureUsed.LessEqualWithDimension(attr.realCapability, task.Resreq.ResourceNames()); !allocatable {
 			klog.V(3).Infof("Queue <%v> cannot reclaim for <%s/%s> because futureUsed <%v> exceeds realCapability <%v>.",
 				queue.Name, task.Namespace, task.Name, futureUsed, attr.realCapability)
 			return false
 		}
 
 		// If there is a single dimension whose deserved is greater than allocated, current task can reclaim by preempt others.
-		isPreemptive, resourceNames := futureUsed.LessEqualPartlyWithDimensionZeroFiltered(attr.deserved, task.Resreq)
+		isPreemptive, resourceNames := futureUsed.LessEqualPartlyWithRelevantDimensions(attr.deserved, task.Resreq.ResourceNames())
 		if isPreemptive {
 			klog.V(3).Infof("Queue <%v> can reclaim on resource dimensions: %v. "+
 				"The futureUsed: %v, deserved: %v, allocated: %v, task requested: %v",
@@ -938,7 +938,7 @@ func (cp *capacityPlugin) queueAllocatable(queue *api.QueueInfo, candidate *api.
 
 func queueAllocatable(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo) bool {
 	futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
-	allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, candidate.Resreq)
+	allocatable, _ := futureUsed.LessEqualWithDimension(attr.realCapability, candidate.Resreq.ResourceNames())
 	if !allocatable {
 		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 			queue.Name, attr.realCapability, attr.allocated, candidate.Name, candidate.Resreq)
@@ -974,7 +974,7 @@ func (cp *capacityPlugin) jobEnqueueable(queue *api.QueueInfo, job *api.JobInfo)
 	// The queue resource quota limit has not reached
 	r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
 
-	return r.LessEqualWithDimensionAndResourcesName(attr.realCapability, minReq)
+	return r.LessEqualWithDimension(attr.realCapability, minReq.ResourceNames())
 }
 
 func (cp *capacityPlugin) checkJobEnqueueableHierarchically(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo) bool {
@@ -1126,7 +1126,7 @@ func (cp *capacityPlugin) checkGuaranteeConstraint(
 	guarantee *api.Resource,
 ) (bool, *api.Resource) {
 	exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
-	reclaimable := guarantee.LessEqual(exceptReclaimee, api.Zero)
+	reclaimable, _ := guarantee.LessEqual(exceptReclaimee, api.Zero)
 	return reclaimable, exceptReclaimee
 }
 
@@ -1155,7 +1155,7 @@ func (cp *capacityPlugin) checkDeservedExceedance(
 	reclaimer *api.TaskInfo,
 	queueName string,
 ) (bool, []string, string) {
-	reclaimable, dims := allocated.GreaterPartlyWithRelevantDimensions(deserved, reclaimee.Resreq)
+	reclaimable, dims := allocated.GreaterPartlyWithRelevantDimensions(deserved, reclaimee.Resreq.ResourceNames())
 	if !reclaimable {
 		reason := fmt.Sprintf(
 			"[capacity] Queue <%v> allocated resources are not greater than deserved on any relevant dimension of reclaimee. "+
