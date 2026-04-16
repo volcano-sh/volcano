@@ -28,6 +28,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	shardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
+
+	"volcano.sh/volcano/pkg/controllers/sharding"
 )
 
 // NodeShardSpec defines the specification for creating a NodeShard in tests.
@@ -218,6 +220,22 @@ func WaitForNodeCountInShard(ctx *TestContext, shardName string, expectedCount i
 			}
 			return len(nodes) == expectedCount, nil
 		})
+}
+
+// GetShardingConfigFromConfigMap reads the sharding configuration from the
+// controller's ConfigMap. It returns the parsed ShardingConfig so tests can
+// dynamically determine expected shard names and parameters.
+func GetShardingConfigFromConfigMap(ctx *TestContext, cmName, cmNamespace string) (*sharding.ShardingConfig, error) {
+	cm, err := ctx.Kubeclient.CoreV1().ConfigMaps(cmNamespace).Get(
+		context.TODO(), cmName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sharding ConfigMap %s/%s: %v", cmNamespace, cmName, err)
+	}
+	data, ok := cm.Data[sharding.ConfigMapDataKey]
+	if !ok {
+		return nil, fmt.Errorf("ConfigMap %s/%s missing key %q", cmNamespace, cmName, sharding.ConfigMapDataKey)
+	}
+	return sharding.ParseShardingConfig([]byte(data))
 }
 
 // CleanupNodeShards deletes all NodeShards created during tests.
