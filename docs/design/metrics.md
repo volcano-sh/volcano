@@ -15,14 +15,14 @@ This metrics track execution of plugins and actions of volcano loop.
 
 | **Metric Name**                           | **Metric Type** | **Labels**                                                                                | **Description**                                                                |
 |-------------------------------------------|-----------------|-------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------|
-| `e2e_scheduling_latency_milliseconds`     | Histogram       | None                                                                                      | End-to-end scheduling latency in milliseconds (scheduling algorithm + binding) |
+| `session_execution_duration_milliseconds` | Histogram       | None                                                                                      | Duration of a single scheduling session execution in milliseconds. It covers the entire cycle from session open, action executions to session close. |
 | `e2e_job_scheduling_latency_milliseconds` | Histogram       | None                                                                                      | End-to-end job scheduling latency in milliseconds                              |
 | `e2e_job_scheduling_duration`             | Gauge           | `job_name`=&lt;job_name&gt;, `queue`=&lt;queue&gt;, `job_namespace`=&lt;job_namespace&gt; | End-to-end job scheduling duration                                             |
 | `e2e_job_scheduling_start_time`           | Gauge           | `job_name`=&lt;job_name&gt;, `queue`=&lt;queue&gt;, `job_namespace`=&lt;job_namespace&gt; | End-to-end job scheduling start time                                           |
 | `plugin_scheduling_latency_milliseconds`  | Histogram       | `plugin`=&lt;plugin_name&gt;, `OnSession`=&lt;OnSession&gt;                               | Plugin scheduling latency in milliseconds                                      |
 | `action_scheduling_latency_milliseconds`  | Histogram       | `action`=&lt;action_name&gt;                                                              | Action scheduling latency in milliseconds                                      |
-| `task_scheduling_latency_milliseconds`    | Histogram       | None                                                                                      | Task scheduling latency in milliseconds                                        |
-
+| `task_scheduling_latency_milliseconds`    | HistogramVector | `stage`=&lt;stage&gt;                                                                      | Task scheduling latency from creation to various stages in milliseconds        |
+| `plugin_stage_execution_duration_milliseconds` | HistogramVector | `stage`=&lt;stage&gt;, `plugin`=&lt;plugin_name&gt;                                        | Plugin execution duration in various stages in milliseconds                    |
 
 ### volcano operations
 This metrics describe internal state of volcano.
@@ -61,6 +61,21 @@ This metrics describe internal state of volcano.
 | `job_retry_counts`                     | Counter         | `job_id`=&lt;job_id&gt;                                           | The number of retry counts for one job        |
 | `job_completed_phase_count`            | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job completed phase             |
 | `job_failed_phase_count`               | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job failed phase                |
+
+### volcano agent scheduler related metrics
+
+| **Metric Name**                           | **Metric Type** | **Labels**                                                                                | **Description**                                                                |
+|-------------------------------------------|-----------------|-------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------|
+| `worker_scheduling_cycle_duration_milliseconds` | Histogram | None | Duration of a single scheduling cycle execution in agent worker. |
+| `task_scheduling_latency_milliseconds`    | HistogramVector | `stage`=&lt;stage&gt;                                                                      | Task scheduling latency from creation to various stages in milliseconds        |
+
+### volcano controller-manager metrics
+These metrics track the performance of the job controller, covering per-pod creation latency and end-to-end job creation duration.
+
+| **Metric Name**                                      | **Metric Type** | **Labels**                                                                                | **Description**                                                                              |
+|------------------------------------------------------|-----------------|-------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
+| `controller_job_to_pod_creation_latency_milliseconds` | Histogram      | None                                                                                      | Latency from VCJob creation to pod created in milliseconds                                   |
+| `controller_job_e2e_creation_duration_milliseconds`  | Gauge           | `job_name`=&lt;job_name&gt;, `queue`=&lt;queue&gt;, `job_namespace`=&lt;job_namespace&gt; | End-to-end duration from VCJob creation to all pods created, in milliseconds                 |
 
 ### volcano Liveness
 Healthcheck last time of volcano activity and timeout

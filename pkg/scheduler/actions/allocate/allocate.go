@@ -567,6 +567,11 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 	for !tasks.Empty() {
 		task := tasks.Pop().(*api.TaskInfo)
+		// Dequeued covers the time span from Creation -> Dequeued.
+		// Since the admin may have enabled enqueue actions, this time means how long the pod waits from being created to the start of scheduling.
+		// Note that due to the existence of gangs, this does not guarantee that the pod will eventually be successfully scheduled.
+		metrics.UpdateTaskScheduleDuration(metrics.TaskStageDequeued, metrics.Duration(task.Pod.CreationTimestamp.Time))
+
 		if !ssn.Allocatable(queue, task) {
 			klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
 			continue

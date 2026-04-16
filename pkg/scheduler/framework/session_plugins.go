@@ -22,12 +22,14 @@ package framework
 
 import (
 	"context"
+	"time"
 
 	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -221,7 +223,10 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 				continue
 			}
 
+			start := time.Now()
 			candidates, abstain := rf(reclaimer, reclaimees)
+			metrics.UpdatePluginStageExecutionDuration(metrics.PluginStageReclaimable, plugin.Name, time.Since(start))
+
 			if abstain == 0 {
 				continue
 			}
@@ -270,7 +275,11 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 			if !found {
 				continue
 			}
+
+			start := time.Now()
 			candidates, abstain := pf(preemptor, preemptees)
+			metrics.UpdatePluginStageExecutionDuration(metrics.PluginStagePreemptable, plugin.Name, time.Since(start))
+
 			if abstain == 0 {
 				continue
 			}
@@ -357,7 +366,10 @@ func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) b
 			if !found {
 				continue
 			}
-			if !af(queue, candidate) {
+			start := time.Now()
+			res := af(queue, candidate)
+			metrics.UpdatePluginStageExecutionDuration(metrics.PluginStageAllocatable, plugin.Name, time.Since(start))
+			if !res {
 				return false
 			}
 		}
@@ -791,7 +803,9 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 			if !found {
 				continue
 			}
+			start := time.Now()
 			err := pfn(task, node)
+			metrics.UpdatePluginStageExecutionDuration(metrics.PluginStagePredicate, plugin.Name, time.Since(start))
 			if err != nil {
 				return err
 			}
@@ -891,7 +905,9 @@ func (ssn *Session) PrePredicateFn(task *api.TaskInfo) error {
 			if !found {
 				continue
 			}
+			start := time.Now()
 			err := pfn(task)
+			metrics.UpdatePluginStageExecutionDuration(metrics.PluginStagePrePredicate, plugin.Name, time.Since(start))
 			if err != nil {
 				return err
 			}
@@ -932,7 +948,9 @@ func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64
 			if !found {
 				continue
 			}
+			start := time.Now()
 			score, err := pfn(task, node)
+			metrics.UpdatePluginStageExecutionDuration(metrics.PluginStageNodeOrder, plugin.Name, time.Since(start))
 			if err != nil {
 				return 0, err
 			}
@@ -954,7 +972,9 @@ func (ssn *Session) BatchNodeOrderFn(task *api.TaskInfo, nodes []*api.NodeInfo) 
 			if !found {
 				continue
 			}
+			start := time.Now()
 			score, err := pfn(task, nodes)
+			metrics.UpdatePluginStageExecutionDuration(metrics.PluginStageBatchNodeOrder, plugin.Name, time.Since(start))
 			if err != nil {
 				return nil, err
 			}
@@ -980,7 +1000,9 @@ func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[
 				continue
 			}
 			if pfn, found := ssn.nodeOrderFns[plugin.Name]; found {
+				start := time.Now()
 				score, err := pfn(task, node)
+				metrics.UpdatePluginStageExecutionDuration(metrics.PluginStageNodeOrder, plugin.Name, time.Since(start))
 				if err != nil {
 					return nodeScoreMap, priorityScore, err
 				}

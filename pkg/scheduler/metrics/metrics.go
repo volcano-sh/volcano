@@ -34,14 +34,32 @@ const (
 
 	// OnSessionClose label
 	OnSessionClose = "OnSessionClose"
+
+	// Task Scheduling Stages (used for taskSchedulingLatency)
+	TaskStageWatched  = "Watched"
+	TaskStageDequeued = "Dequeued" // The time when a task is popped from the queue to be allocated
+	TaskStageAssumed  = "Assumed"  // The time when a task is logically allocated to a node(in the memory but hasn't been bound yet)
+	TaskStagePreBound = "PreBound" // The time when a task finishes PreBind
+	TaskStageBound    = "Bound"    // The time when a task is successfully bound to a node
+
+	// Plugin Execution Stages (used for pluginStageExecutionDuration)
+	PluginStagePredicate      = "Predicate"
+	PluginStagePrePredicate   = "PrePredicate"
+	PluginStageNodeOrder      = "NodeOrder"
+	PluginStageBatchNodeOrder = "BatchNodeOrder"
+	PluginStagePreBind        = "PreBind"
+	PluginStageBind           = "Bind"
+	PluginStageReclaimable    = "Reclaimable"
+	PluginStagePreemptable    = "Preemptable"
+	PluginStageAllocatable    = "Allocatable"
 )
 
 var (
-	e2eSchedulingLatency = promauto.NewHistogram(
+	sessionExecutionDuration = promauto.NewHistogram(
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoSubSystemName,
-			Name:      "e2e_scheduling_latency_milliseconds",
-			Help:      "E2e scheduling latency in milliseconds (scheduling algorithm + binding)",
+			Name:      "session_execution_duration_milliseconds",
+			Help:      "Duration of a single scheduling session execution in milliseconds. It covers the entire cycle from session open, action executions to session close.",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
 		},
 	)
@@ -100,13 +118,22 @@ var (
 		}, []string{"action"},
 	)
 
-	taskSchedulingLatency = promauto.NewHistogram(
+	taskSchedulingLatency = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoSubSystemName,
 			Name:      "task_scheduling_latency_milliseconds",
-			Help:      "Task scheduling latency in milliseconds",
+			Help:      "Task scheduling latency from creation to various stages in milliseconds",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
-		},
+		}, []string{"stage"},
+	)
+
+	pluginStageExecutionDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "plugin_stage_execution_duration_milliseconds",
+			Help:      "Plugin execution duration in various stages (e.g., predicates, nodeorder, bind) in milliseconds",
+			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
+		}, []string{"stage", "plugin"},
 	)
 
 	scheduleAttempts = promauto.NewCounterVec(
@@ -173,9 +200,9 @@ func UpdateActionDuration(actionName string, duration time.Duration) {
 	actionSchedulingLatency.WithLabelValues(actionName).Observe(DurationInMilliseconds(duration))
 }
 
-// UpdateE2eDuration updates entire end to end scheduling latency
-func UpdateE2eDuration(duration time.Duration) {
-	e2eSchedulingLatency.Observe(DurationInMilliseconds(duration))
+// UpdateSessionExecutionDuration updates entire session execution duration
+func UpdateSessionExecutionDuration(duration time.Duration) {
+	sessionExecutionDuration.Observe(DurationInMilliseconds(duration))
 }
 
 // UpdateE2eSchedulingDurationByJob updates entire end to end scheduling duration
@@ -194,9 +221,14 @@ func UpdateE2eSchedulingLastTimeByJob(jobName string, queue string, namespace st
 	e2eJobSchedulingLastTime.WithLabelValues(jobName, queue, namespace).Set(ConvertToUnix(t))
 }
 
-// UpdateTaskScheduleDuration updates single task scheduling latency
-func UpdateTaskScheduleDuration(duration time.Duration) {
-	taskSchedulingLatency.Observe(DurationInMilliseconds(duration))
+// UpdateTaskScheduleDuration updates single task scheduling latency (from creation to stage)
+func UpdateTaskScheduleDuration(stage string, duration time.Duration) {
+	taskSchedulingLatency.WithLabelValues(stage).Observe(DurationInMilliseconds(duration))
+}
+
+// UpdatePluginStageExecutionDuration updates plugin execution duration in various stages
+func UpdatePluginStageExecutionDuration(stage, plugin string, duration time.Duration) {
+	pluginStageExecutionDuration.WithLabelValues(stage, plugin).Observe(DurationInMilliseconds(duration))
 }
 
 // UpdatePodScheduleStatus update pod schedule decision, could be Success, Failure, Error

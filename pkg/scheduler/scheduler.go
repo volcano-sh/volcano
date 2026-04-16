@@ -124,7 +124,7 @@ func (pc *Scheduler) runOnce() {
 	ssn := framework.OpenSession(pc.cache, plugins, configurations)
 	defer func() {
 		framework.CloseSession(ssn)
-		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
+		metrics.UpdateSessionExecutionDuration(metrics.Duration(scheduleStartTime))
 	}()
 
 	for _, action := range actions {

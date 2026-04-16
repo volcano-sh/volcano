@@ -37,6 +37,7 @@ import (
 	jobcache "volcano.sh/volcano/pkg/controllers/cache"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
+	"volcano.sh/volcano/pkg/controllers/metrics"
 )
 
 func (cc *jobcontroller) addCommand(obj interface{}) {
@@ -135,8 +136,8 @@ func (cc *jobcontroller) deleteJob(obj interface{}) {
 			job.Namespace, job.Name, err)
 	}
 
-	// Delete job metrics
 	state.DeleteJobMetrics(fmt.Sprintf("%s/%s", job.Namespace, job.Name), job.Spec.Queue)
+	metrics.DeleteJobE2ECreationMetrics(job.Name, job.Spec.Queue, job.Namespace)
 }
 
 func (cc *jobcontroller) addPod(obj interface{}) {
