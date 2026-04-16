@@ -33,6 +33,7 @@ func makeExclusivePod(name string, labels map[string]string, vgpuNum int64) *v1.
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: "default",
+			UID:       "uid-" + name,
 			Labels:    labels,
 		},
 		Spec: v1.PodSpec{
@@ -47,7 +48,7 @@ func makeExclusivePod(name string, labels map[string]string, vgpuNum int64) *v1.
 		},
 	}
 	if vgpuNum > 0 {
-		pod.Spec.Containers[0].Resources.Limits[v1.ResourceName(defaultGPUExclusiveVGPUResourceName)] = *resource.NewQuantity(vgpuNum, resource.DecimalSI)
+		pod.Spec.Containers[0].Resources.Limits[v1.ResourceName("volcano.sh/vgpu-number")] = *resource.NewQuantity(vgpuNum, resource.DecimalSI)
 	}
 	return pod
 }
@@ -77,8 +78,7 @@ func testExclusiveRules() []exclusiveRule {
 
 func testExclusiveConfig() gpuExclusiveConfig {
 	return gpuExclusiveConfig{
-		vgpuResourceName: defaultGPUExclusiveVGPUResourceName,
-		rules:            testExclusiveRules(),
+		rules: testExclusiveRules(),
 	}
 }
 
@@ -211,21 +211,8 @@ func TestMatchingRules(t *testing.T) {
 func TestLoadGPUExclusiveConfig(t *testing.T) {
 	t.Run("defaults with no rules", func(t *testing.T) {
 		cfg := loadGPUExclusiveConfig(framework.Arguments{})
-		if cfg.vgpuResourceName != defaultGPUExclusiveVGPUResourceName {
-			t.Errorf("vgpuResourceName = %q, want %q", cfg.vgpuResourceName, defaultGPUExclusiveVGPUResourceName)
-		}
 		if len(cfg.rules) != 0 {
 			t.Errorf("rules = %v, want empty", cfg.rules)
-		}
-	})
-
-	t.Run("custom vgpu resource name", func(t *testing.T) {
-		args := framework.Arguments{
-			GPUExclusiveVGPUResourceNameKey: "custom.io/gpu",
-		}
-		cfg := loadGPUExclusiveConfig(args)
-		if cfg.vgpuResourceName != "custom.io/gpu" {
-			t.Errorf("vgpuResourceName = %q, want %q", cfg.vgpuResourceName, "custom.io/gpu")
 		}
 	})
 
@@ -305,13 +292,13 @@ func TestCapGPUsOnlyAffectsSpecifiedIndices(t *testing.T) {
 func TestReservedGPUsForPod(t *testing.T) {
 	cfg := testExclusiveConfig()
 	devices := map[int]*vgpu.GPUDevice{
-		0: makeTestGPUDevice(0, 10, 1, map[string]*vgpu.GPUUsage{"pod-a": {}}),
-		1: makeTestGPUDevice(1, 10, 1, map[string]*vgpu.GPUUsage{"pod-b": {}}),
+		0: makeTestGPUDevice(0, 10, 1, map[string]*vgpu.GPUUsage{"uid-pod-a": {}}),
+		1: makeTestGPUDevice(1, 10, 1, map[string]*vgpu.GPUUsage{"uid-pod-b": {}}),
 		2: makeTestGPUDevice(2, 10, 0, nil),
 	}
 	podRules := map[string]map[int]struct{}{
-		"pod-a": {0: {}},
-		"pod-b": {1: {}},
+		"default/pod-a": {0: {}},
+		"default/pod-b": {1: {}},
 	}
 	ruleGPUs := map[int]map[int]struct{}{
 		0: {0: {}},
@@ -340,13 +327,13 @@ func TestReservedGPUsForPod(t *testing.T) {
 func TestPodMatchingMultipleRulesSeesUnionOfReservedGPUs(t *testing.T) {
 	cfg := testExclusiveConfig()
 	devices := map[int]*vgpu.GPUDevice{
-		0: makeTestGPUDevice(0, 10, 1, map[string]*vgpu.GPUUsage{"pod-a": {}}),
-		1: makeTestGPUDevice(1, 10, 1, map[string]*vgpu.GPUUsage{"pod-b": {}}),
+		0: makeTestGPUDevice(0, 10, 1, map[string]*vgpu.GPUUsage{"uid-pod-a": {}}),
+		1: makeTestGPUDevice(1, 10, 1, map[string]*vgpu.GPUUsage{"uid-pod-b": {}}),
 		2: makeTestGPUDevice(2, 10, 0, nil),
 	}
 	podRules := map[string]map[int]struct{}{
-		"pod-a": {0: {}},
-		"pod-b": {1: {}},
+		"default/pod-a": {0: {}},
+		"default/pod-b": {1: {}},
 	}
 	ruleGPUs := map[int]map[int]struct{}{
 		0: {0: {}},
@@ -388,14 +375,14 @@ func TestEndToEndExclusive(t *testing.T) {
 	cfg := testExclusiveConfig()
 
 	devices := map[int]*vgpu.GPUDevice{
-		0: makeTestGPUDevice(0, 10, 1, map[string]*vgpu.GPUUsage{"pod-a": {}}),
-		1: makeTestGPUDevice(1, 10, 1, map[string]*vgpu.GPUUsage{"pod-b": {}}),
+		0: makeTestGPUDevice(0, 10, 1, map[string]*vgpu.GPUUsage{"uid-pod-a": {}}),
+		1: makeTestGPUDevice(1, 10, 1, map[string]*vgpu.GPUUsage{"uid-pod-b": {}}),
 		2: makeTestGPUDevice(2, 10, 0, nil),
 		3: makeTestGPUDevice(3, 10, 0, nil),
 	}
 	podRules := map[string]map[int]struct{}{
-		"pod-a": {0: {}},
-		"pod-b": {1: {}},
+		"default/pod-a": {0: {}},
+		"default/pod-b": {1: {}},
 	}
 	ruleGPUs := map[int]map[int]struct{}{
 		0: {0: {}},
@@ -437,7 +424,7 @@ func TestOnSessionOpenWrapsDevices(t *testing.T) {
 	taskUID := api.TaskID("default/pod-a")
 
 	devices := map[int]*vgpu.GPUDevice{
-		0: makeTestGPUDevice(0, 10, 1, map[string]*vgpu.GPUUsage{"pod-a": {}}),
+		0: makeTestGPUDevice(0, 10, 1, map[string]*vgpu.GPUUsage{string(podA.UID): {}}),
 		1: makeTestGPUDevice(1, 10, 0, nil),
 	}
 	inner := &vgpu.GPUDevices{Name: "node-1", Device: devices}
@@ -449,12 +436,15 @@ func TestOnSessionOpenWrapsDevices(t *testing.T) {
 		},
 	}
 
-	// Simulate OnSessionOpen wrapping logic
-	podRules := make(map[string]map[int]struct{})
+	// Simulate OnSessionOpen wrapping logic (using podKey and UID)
+	podRulesMap := make(map[string]map[int]struct{})
+	uidToKey := make(map[string]string)
 	for _, task := range node.Tasks {
 		if task.Pod == nil {
 			continue
 		}
+		pk := podKey(task.Pod)
+		uidToKey[string(task.Pod.UID)] = pk
 		matched := matchingRules(task.Pod, cfg.rules)
 		if len(matched) == 0 {
 			continue
@@ -463,13 +453,17 @@ func TestOnSessionOpenWrapsDevices(t *testing.T) {
 		for _, idx := range matched {
 			ruleSet[idx] = struct{}{}
 		}
-		podRules[task.Pod.Name] = ruleSet
+		podRulesMap[pk] = ruleSet
 	}
 
 	ruleGPUs := make(map[int]map[int]struct{})
 	for gpuIdx, dev := range inner.Device {
-		for podName := range dev.PodMap {
-			if ruleSet, ok := podRules[podName]; ok {
+		if dev == nil {
+			continue
+		}
+		for uid := range dev.PodMap {
+			pk := uidToKey[uid]
+			if ruleSet, ok := podRulesMap[pk]; ok {
 				for ruleIdx := range ruleSet {
 					if ruleGPUs[ruleIdx] == nil {
 						ruleGPUs[ruleIdx] = make(map[int]struct{})
@@ -484,7 +478,7 @@ func TestOnSessionOpenWrapsDevices(t *testing.T) {
 		inner:    inner,
 		cfg:      cfg,
 		ruleGPUs: ruleGPUs,
-		podRules: podRules,
+		podRules: podRulesMap,
 		podUIDs:  make(map[string]string),
 	}
 	node.Others[vgpu.DeviceName] = wrapper

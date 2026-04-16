@@ -158,6 +158,52 @@ Note: Actual memory allocated depends on best-fit MIG slice (e.g., request 3GB �
 
 ---
 
+## GPU Exclusivity (HAMI-core only)
+
+GPU exclusivity ensures that pods matching configured label rules get **dedicated physical GPUs** — no other rule-matching pod can share those GPUs. Non-matching pods can still share GPUs normally. This feature only applies to **hami-core** nodes; dynamic MIG nodes are skipped since they already provide hardware-level isolation.
+
+### Configuration
+
+Add `deviceshare.GPUExclusiveRules` to the deviceshare plugin arguments:
+
+```yaml
+- name: deviceshare
+  arguments:
+    deviceshare.VGPUEnable: true
+    deviceshare.GPUExclusiveRules:
+      - workloadType: training
+      - workloadType: batch
+        priority: high
+```
+
+Each rule is a set of label key-value pairs. A pod must match **all** labels in a rule to receive exclusivity. Multiple rules provide cross-rule exclusivity — pods from different rules also cannot share GPUs with each other.
+
+### Pod Example
+
+```yaml
+metadata:
+  name: training-job
+  labels:
+    workloadType: training
+spec:
+  schedulerName: volcano
+  containers:
+  - name: trainer
+    image: nvidia/cuda:12.0-base
+    resources:
+      limits:
+        volcano.sh/vgpu-number: "4"
+        volcano.sh/vgpu-memory: "16384"
+```
+
+### Verify GPU Assignments
+
+```bash
+kubectl get pod <pod-name> -o jsonpath='{.metadata.annotations.volcano\.sh/vgpu-ids-new}'
+```
+
+---
+
 ## Scheduler Mode Selection
 
 * **Explicit Mode**:

@@ -70,10 +70,10 @@ type deviceSharePlugin struct {
 	// across scheduling sessions and Allocate calls.
 	lock sync.RWMutex
 	// persistedGPUs survives across scheduling sessions. Maps
-	// nodeName → podName → set of GPU indices allocated to that pod.
+	// nodeName → namespace/name → set of GPU indices allocated to that pod.
 	// Updated by Allocate, pruned by OnSessionOpen.
 	persistedGPUs map[string]map[string]map[int]struct{}
-	// persistedPodRules maps nodeName → podName → set of rule indices.
+	// persistedPodRules maps nodeName → namespace/name → set of rule indices.
 	persistedPodRules map[string]map[string]map[int]struct{}
 }
 

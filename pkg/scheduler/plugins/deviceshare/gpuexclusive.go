@@ -29,15 +29,17 @@ import (
 )
 
 const (
-	// GPUExclusiveVGPUResourceNameKey is the argument key for configuring the vGPU resource name.
-	GPUExclusiveVGPUResourceNameKey = "deviceshare.GPUExclusiveVGPUResourceName"
 	// GPUExclusiveRulesKey is the argument key for exclusivity rules.
 	// Each rule is a map of label key → value. Pods matching ALL labels in a rule
 	// get exclusive GPU access — no sharing with other rule-matching pods.
 	GPUExclusiveRulesKey = "deviceshare.GPUExclusiveRules"
-
-	defaultGPUExclusiveVGPUResourceName = "volcano.sh/vgpu-number"
 )
+
+// podKey returns a unique key for the pod using namespace/name to avoid
+// cross-namespace collisions.
+func podKey(pod *v1.Pod) string {
+	return pod.Namespace + "/" + pod.Name
+}
 
 // exclusiveRule defines a set of label key-value pairs.
 // A pod matches this rule if it carries ALL specified labels with matching values.
@@ -50,17 +52,11 @@ func (r exclusiveRule) String() string {
 }
 
 type gpuExclusiveConfig struct {
-	vgpuResourceName string
-	rules            []exclusiveRule
+	rules []exclusiveRule
 }
 
 func loadGPUExclusiveConfig(args framework.Arguments) gpuExclusiveConfig {
-	cfg := gpuExclusiveConfig{
-		vgpuResourceName: defaultGPUExclusiveVGPUResourceName,
-	}
-	if v, ok := args[GPUExclusiveVGPUResourceNameKey].(string); ok && v != "" {
-		cfg.vgpuResourceName = v
-	}
+	cfg := gpuExclusiveConfig{}
 	if rawRules, ok := args[GPUExclusiveRulesKey]; ok {
 		cfg.rules = parseExclusiveRules(rawRules)
 	}
@@ -144,9 +140,9 @@ type exclusiveGPUDevices struct {
 	plugin   *deviceSharePlugin
 	// ruleGPUs[ruleIndex] = set of GPU indices used by pods matching that rule
 	ruleGPUs map[int]map[int]struct{}
-	// podRules[podName] = set of rule indices the pod matches
+	// podRules[namespace/name] = set of rule indices the pod matches
 	podRules map[string]map[int]struct{}
-	// podUIDs maps podName → podUID for PodMap lookups (upstream uses UID as key)
+	// podUIDs maps namespace/name → podUID for PodMap lookups (upstream uses UID as key)
 	podUIDs map[string]string
 }
 
@@ -203,11 +199,14 @@ func (a *exclusiveGPUDevices) trackPodFromPodMap(pod *v1.Pod) {
 	for _, idx := range matched {
 		ruleSet[idx] = struct{}{}
 	}
-	a.podRules[pod.Name] = ruleSet
+	a.podRules[podKey(pod)] = ruleSet
 
 	// Only add GPU mappings for this pod if it appears in PodMap.
 	podUID := string(pod.UID)
 	for gpuIdx, dev := range a.inner.Device {
+		if dev == nil {
+			continue
+		}
 		if _, ok := dev.PodMap[podUID]; ok {
 			for ruleIdx := range ruleSet {
 				if a.ruleGPUs[ruleIdx] == nil {
@@ -221,11 +220,12 @@ func (a *exclusiveGPUDevices) trackPodFromPodMap(pod *v1.Pod) {
 
 // untrackPod removes a pod's rule associations and GPU reservations.
 func (a *exclusiveGPUDevices) untrackPod(pod *v1.Pod) {
-	ruleSet, ok := a.podRules[pod.Name]
+	pk := podKey(pod)
+	ruleSet, ok := a.podRules[pk]
 	if !ok {
 		return
 	}
-	delete(a.podRules, pod.Name)
+	delete(a.podRules, pk)
 
 	for ruleIdx := range ruleSet {
 		gpuSet := a.ruleGPUs[ruleIdx]
@@ -234,15 +234,15 @@ func (a *exclusiveGPUDevices) untrackPod(pod *v1.Pod) {
 		}
 		for gpuIdx := range gpuSet {
 			dev, ok := a.inner.Device[gpuIdx]
-			if !ok {
+			if !ok || dev == nil {
 				continue
 			}
 			podUID := string(pod.UID)
 			stillUsed := false
 			for uid := range dev.PodMap {
 				if uid != podUID {
-					for otherName := range a.podRules {
-						if a.podUIDs[otherName] == uid {
+					for otherKey := range a.podRules {
+						if a.podUIDs[otherKey] == uid {
 							stillUsed = true
 							break
 						}
@@ -266,14 +266,14 @@ func (a *exclusiveGPUDevices) untrackPod(pod *v1.Pod) {
 
 func (a *exclusiveGPUDevices) AddResource(pod *v1.Pod) {
 	a.inner.AddResource(pod)
-	a.podUIDs[pod.Name] = string(pod.UID)
+	a.podUIDs[podKey(pod)] = string(pod.UID)
 	a.trackPodFromPodMap(pod)
 }
 
 func (a *exclusiveGPUDevices) SubResource(pod *v1.Pod) {
 	a.inner.SubResource(pod)
 	a.untrackPod(pod)
-	delete(a.podUIDs, pod.Name)
+	delete(a.podUIDs, podKey(pod))
 }
 
 func (a *exclusiveGPUDevices) AddQueueResource(pod *v1.Pod) map[string]float64 {
@@ -324,7 +324,8 @@ func (a *exclusiveGPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.
 	for _, idx := range matched {
 		ruleSet[idx] = struct{}{}
 	}
-	a.podRules[pod.Name] = ruleSet
+	pk := podKey(pod)
+	a.podRules[pk] = ruleSet
 
 	// Detect newly allocated GPUs by checking the PodMap for this pod's UID.
 	// inner.Allocate updates PodMap via addToPodMap, making this reliable
@@ -332,6 +333,9 @@ func (a *exclusiveGPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.
 	newGPUs := make(map[int]struct{})
 	podUID := string(pod.UID)
 	for idx, dev := range a.inner.Device {
+		if dev == nil {
+			continue
+		}
 		if _, ok := dev.PodMap[podUID]; ok {
 			newGPUs[idx] = struct{}{}
 			for ruleIdx := range ruleSet {
@@ -349,16 +353,16 @@ func (a *exclusiveGPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.
 		if a.plugin.persistedGPUs[a.nodeName] == nil {
 			a.plugin.persistedGPUs[a.nodeName] = make(map[string]map[int]struct{})
 		}
-		a.plugin.persistedGPUs[a.nodeName][pod.Name] = newGPUs
+		a.plugin.persistedGPUs[a.nodeName][pk] = newGPUs
 		if a.plugin.persistedPodRules[a.nodeName] == nil {
 			a.plugin.persistedPodRules[a.nodeName] = make(map[string]map[int]struct{})
 		}
-		a.plugin.persistedPodRules[a.nodeName][pod.Name] = ruleSet
+		a.plugin.persistedPodRules[a.nodeName][pk] = ruleSet
 		a.plugin.lock.Unlock()
 	}
 
 	klog.V(4).Infof("gpuexclusive: allocated pod %s, newGPUs=%v, ruleGPUs=%v",
-		pod.Name, newGPUs, a.ruleGPUs)
+		pk, newGPUs, a.ruleGPUs)
 	return nil
 }
 
@@ -387,8 +391,7 @@ func (dp *deviceSharePlugin) wrapGPUDevicesForExclusivity(ssn *framework.Session
 
 	cfg := loadGPUExclusiveConfig(dp.pluginArguments)
 
-	klog.V(4).Infof("gpuexclusive config: vgpuResourceName=%s, rules=%v",
-		cfg.vgpuResourceName, cfg.rules)
+	klog.V(4).Infof("gpuexclusive config: rules=%v", cfg.rules)
 
 	if len(cfg.rules) == 0 {
 		klog.V(2).Info("gpuexclusive: no rules configured, skipping GPU exclusivity wrapping")
@@ -408,17 +411,25 @@ func (dp *deviceSharePlugin) wrapGPUDevicesForExclusivity(ssn *framework.Session
 			continue
 		}
 
+		// GPU exclusivity only applies to hami-core (software vGPU) mode.
+		// Dynamic MIG nodes have hardware-level isolation and don't need it.
+		if inner.Mode != "" && inner.Mode != "hami-core" {
+			klog.V(4).Infof("gpuexclusive: skipping node %s with GPU mode %q (only hami-core supported)", node.Name, inner.Mode)
+			continue
+		}
+
 		// Find existing pods on this node and compute their rule matches.
 		podRules := make(map[string]map[int]struct{})
 		podUIDs := make(map[string]string)
-		uidToName := make(map[string]string)
+		uidToKey := make(map[string]string)
 		for _, task := range node.Tasks {
 			if task.Pod == nil {
 				continue
 			}
+			pk := podKey(task.Pod)
 			uid := string(task.Pod.UID)
-			podUIDs[task.Pod.Name] = uid
-			uidToName[uid] = task.Pod.Name
+			podUIDs[pk] = uid
+			uidToKey[uid] = pk
 			matched := matchingRules(task.Pod, cfg.rules)
 			if len(matched) == 0 {
 				continue
@@ -427,7 +438,7 @@ func (dp *deviceSharePlugin) wrapGPUDevicesForExclusivity(ssn *framework.Session
 			for _, idx := range matched {
 				ruleSet[idx] = struct{}{}
 			}
-			podRules[task.Pod.Name] = ruleSet
+			podRules[pk] = ruleSet
 		}
 
 		// Build UUID → device index map for annotation-based lookup.
@@ -443,9 +454,12 @@ func (dp *deviceSharePlugin) wrapGPUDevicesForExclusivity(ssn *framework.Session
 
 		// Source 1: PodMap
 		for gpuIdx, dev := range inner.Device {
+			if dev == nil {
+				continue
+			}
 			for podUID := range dev.PodMap {
-				podName := uidToName[podUID]
-				if ruleSet, ok := podRules[podName]; ok {
+				pk := uidToKey[podUID]
+				if ruleSet, ok := podRules[pk]; ok {
 					for ruleIdx := range ruleSet {
 						if ruleGPUs[ruleIdx] == nil {
 							ruleGPUs[ruleIdx] = make(map[int]struct{})
@@ -457,10 +471,13 @@ func (dp *deviceSharePlugin) wrapGPUDevicesForExclusivity(ssn *framework.Session
 		}
 
 		// Source 2: Pod annotations
-		for podName, ruleSet := range podRules {
-			podUID := podUIDs[podName]
+		for pk, ruleSet := range podRules {
+			podUID := podUIDs[pk]
 			alreadyTracked := false
 			for _, dev := range inner.Device {
+				if dev == nil {
+					continue
+				}
 				if _, ok := dev.PodMap[podUID]; ok {
 					alreadyTracked = true
 					break
@@ -470,7 +487,7 @@ func (dp *deviceSharePlugin) wrapGPUDevicesForExclusivity(ssn *framework.Session
 				continue
 			}
 			for _, task := range node.Tasks {
-				if task.Pod == nil || task.Pod.Name != podName {
+				if task.Pod == nil || podKey(task.Pod) != pk {
 					continue
 				}
 				ann, ok := task.Pod.Annotations[vgpu.AssignedIDsAnnotations]
@@ -496,13 +513,16 @@ func (dp *deviceSharePlugin) wrapGPUDevicesForExclusivity(ssn *framework.Session
 		// Source 3: Persisted state from previous scheduling cycles.
 		if persisted, ok := dp.persistedGPUs[node.Name]; ok {
 			persistedRules := dp.persistedPodRules[node.Name]
-			for podName, gpuSet := range persisted {
-				if _, inPodRules := podRules[podName]; !inPodRules {
+			for pk, gpuSet := range persisted {
+				if _, inPodRules := podRules[pk]; !inPodRules {
 					continue
 				}
-				podUID := podUIDs[podName]
+				podUID := podUIDs[pk]
 				alreadyTracked := false
 				for _, dev := range inner.Device {
+					if dev == nil {
+						continue
+					}
 					if _, ok := dev.PodMap[podUID]; ok {
 						alreadyTracked = true
 						break
@@ -511,7 +531,7 @@ func (dp *deviceSharePlugin) wrapGPUDevicesForExclusivity(ssn *framework.Session
 				if alreadyTracked {
 					continue
 				}
-				ruleSet := persistedRules[podName]
+				ruleSet := persistedRules[pk]
 				if ruleSet == nil {
 					continue
 				}
@@ -530,15 +550,15 @@ func (dp *deviceSharePlugin) wrapGPUDevicesForExclusivity(ssn *framework.Session
 		activePods := make(map[string]bool, len(node.Tasks))
 		for _, task := range node.Tasks {
 			if task.Pod != nil {
-				activePods[task.Pod.Name] = true
+				activePods[podKey(task.Pod)] = true
 			}
 		}
 		if persisted, ok := dp.persistedGPUs[node.Name]; ok {
-			for podName := range persisted {
-				if !activePods[podName] {
-					delete(persisted, podName)
+			for pk := range persisted {
+				if !activePods[pk] {
+					delete(persisted, pk)
 					if pr, ok := dp.persistedPodRules[node.Name]; ok {
-						delete(pr, podName)
+						delete(pr, pk)
 					}
 				}
 			}
