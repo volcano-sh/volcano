@@ -133,6 +133,22 @@ var (
 		},
 	)
 
+	reclaimVictims = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "pod_reclaim_victims",
+			Help:      "Number of selected reclaim victims",
+		},
+	)
+
+	reclaimAttempts = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "total_reclaim_attempts",
+			Help:      "Total reclaim attempts in the cluster till now",
+		},
+	)
+
 	unscheduleTaskCount = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
@@ -212,6 +228,16 @@ func UpdatePreemptionVictimsCount(victimsCount int) {
 // RegisterPreemptionAttempts records number of attempts for preemtion
 func RegisterPreemptionAttempts() {
 	preemptionAttempts.Inc()
+}
+
+// UpdateReclaimVictimsCount updates count of reclaim victims
+func UpdateReclaimVictimsCount(victimsCount int) {
+	reclaimVictims.Set(float64(victimsCount))
+}
+
+// RegisterReclaimAttempts records number of attempts for reclaim
+func RegisterReclaimAttempts() {
+	reclaimAttempts.Inc()
 }
 
 // UpdateUnscheduleTaskCount records total number of unscheduleable tasks
