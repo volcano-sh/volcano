@@ -21,11 +21,14 @@ limitations under the License.
 package util
 
 import (
+	"fmt"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/util/sets"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -537,4 +540,161 @@ func TestSelectBestHyperNodeAndScore(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPrioritizeNodes(t *testing.T) {
+	task := &api.TaskInfo{Name: "task1", Namespace: "default"}
+
+	node1 := &api.NodeInfo{Name: "node1"}
+	node2 := &api.NodeInfo{Name: "node2"}
+	node3 := &api.NodeInfo{Name: "node3"}
+
+	noopBatchFn := func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+		return map[string]float64{}, nil
+	}
+	noopMapFn := func(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, float64, error) {
+		return map[string]float64{}, 0.0, nil
+	}
+	noopReduceFn := func(task *api.TaskInfo, pluginNodeScoreMap map[string]fwk.NodeScoreList) (map[string]float64, error) {
+		return map[string]float64{}, nil
+	}
+
+	tests := []struct {
+		name       string
+		nodes      []*api.NodeInfo
+		batchFn    api.BatchNodeOrderFn
+		mapFn      api.NodeOrderMapFn
+		reduceFn   api.NodeOrderReduceFn
+		wantScores map[string]float64 // expected total score per node name
+		wantEmpty  bool               // expect empty result map
+	}{
+		{
+			name:      "empty nodes list returns empty map",
+			nodes:     []*api.NodeInfo{},
+			batchFn:   noopBatchFn,
+			mapFn:     noopMapFn,
+			reduceFn:  noopReduceFn,
+			wantEmpty: true,
+		},
+		{
+			name:  "scores from all three functions are correctly aggregated",
+			nodes: []*api.NodeInfo{node1, node2},
+			batchFn: func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+				return map[string]float64{"node1": 10.0, "node2": 20.0}, nil
+			},
+			mapFn: func(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, float64, error) {
+				// orderScore: node1=1.0, node2=2.0
+				scores := map[string]float64{"plugin-a": 5.0}
+				orderScore := map[string]float64{"node1": 1.0, "node2": 2.0}
+				return scores, orderScore[node.Name], nil
+			},
+			reduceFn: func(task *api.TaskInfo, pluginNodeScoreMap map[string]fwk.NodeScoreList) (map[string]float64, error) {
+				// reduce returns 3.0 per node
+				result := map[string]float64{}
+				for _, scores := range pluginNodeScoreMap {
+					for _, ns := range scores {
+						result[ns.Name] += 3.0
+					}
+				}
+				return result, nil
+			},
+			// node1: batch=10 + order=1 + reduce=3 = 14
+			// node2: batch=20 + order=2 + reduce=3 = 25
+			wantScores: map[string]float64{"node1": 14.0, "node2": 25.0},
+		},
+		{
+			name:  "batchFn error causes batch scores to be discarded, map/reduce scores still applied",
+			nodes: []*api.NodeInfo{node1, node2},
+			batchFn: func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+				return nil, fmt.Errorf("batch error")
+			},
+			mapFn: func(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, float64, error) {
+				return map[string]float64{}, 5.0, nil
+			},
+			reduceFn: noopReduceFn,
+			// batch discarded; only orderScore=5.0 per node
+			wantScores: map[string]float64{"node1": 5.0, "node2": 5.0},
+		},
+		{
+			name:    "mapFn error on one node skips that node but others are scored",
+			nodes:   []*api.NodeInfo{node1, node2, node3},
+			batchFn: noopBatchFn,
+			mapFn: func(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, float64, error) {
+				if node.Name == "node2" {
+					return nil, 0, fmt.Errorf("map error for node2")
+				}
+				return map[string]float64{}, 7.0, nil
+			},
+			reduceFn: noopReduceFn,
+			// node1=7, node2 skipped (defaults to 0), node3=7
+			wantScores: map[string]float64{"node1": 7.0, "node2": 0.0, "node3": 7.0},
+		},
+		{
+			name:    "reduceFn error returns empty nodeScores",
+			nodes:   []*api.NodeInfo{node1, node2},
+			batchFn: noopBatchFn,
+			mapFn:   noopMapFn,
+			reduceFn: func(task *api.TaskInfo, pluginNodeScoreMap map[string]fwk.NodeScoreList) (map[string]float64, error) {
+				return nil, fmt.Errorf("reduce error")
+			},
+			wantEmpty: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := PrioritizeNodes(task, tt.nodes, tt.batchFn, tt.mapFn, tt.reduceFn)
+			if tt.wantEmpty {
+				assert.Empty(t, result)
+				return
+			}
+			// Build a name->score map from the result for easy assertion
+			got := map[string]float64{}
+			for score, nodes := range result {
+				for _, n := range nodes {
+					got[n.Name] = score
+				}
+			}
+			assert.Equal(t, tt.wantScores, got)
+		})
+	}
+}
+
+func TestPrioritizeNodesConcurrentCorrectness(t *testing.T) {
+	task := &api.TaskInfo{Name: "task1", Namespace: "default"}
+
+	const numNodes = 100
+	nodes := make([]*api.NodeInfo, numNodes)
+	for i := 0; i < numNodes; i++ {
+		nodes[i] = &api.NodeInfo{Name: fmt.Sprintf("node%d", i)}
+	}
+
+	// Each node gets a unique score from batchFn to verify no data races or overwrites
+	var callCount int64
+	result := PrioritizeNodes(
+		task,
+		nodes,
+		func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+			scores := make(map[string]float64, len(nodes))
+			for i, n := range nodes {
+				scores[n.Name] = float64(i) * 2
+			}
+			return scores, nil
+		},
+		func(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, float64, error) {
+			atomic.AddInt64(&callCount, 1)
+			return map[string]float64{}, 1.0, nil
+		},
+		func(task *api.TaskInfo, pluginNodeScoreMap map[string]fwk.NodeScoreList) (map[string]float64, error) {
+			return map[string]float64{}, nil
+		},
+	)
+
+	// All nodes must appear in the result
+	assert.Equal(t, int64(numNodes), callCount, "mapFn should be called once per node")
+	totalNodes := 0
+	for _, ns := range result {
+		totalNodes += len(ns)
+	}
+	assert.Equal(t, numNodes, totalNodes, "all nodes must appear in result")
 }
