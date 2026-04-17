@@ -56,6 +56,10 @@ type Cache interface {
 	// TODO(jinzhej): clean up expire Tasks.
 	AddBindTask(bindCtx *agentapi.BindContext) error
 
+	RecordCandidateNodesInBinder(nodes []*api.NodeInfo)
+
+	RemoveCandidateNodesFromBinder(nodes []*api.NodeInfo)
+
 	// Client returns the kubernetes clientSet, which can be used by plugins
 	Client() kubernetes.Interface
 
