@@ -160,11 +160,7 @@ Note: Actual memory allocated depends on best-fit MIG slice (e.g., request 3GB �
 
 ## GPU Exclusivity (HAMI-core only)
 
-GPU exclusivity ensures that pods matching configured label rules get **dedicated physical GPUs** — no other rule-matching pod can share those GPUs. Non-matching pods can still share GPUs normally. This feature only applies to **hami-core** nodes; dynamic MIG nodes are skipped since they already provide hardware-level isolation.
-
-**Difference from `spread` policy**: The `spread` scheduling policy distributes pods across different nodes for load balancing. GPU exclusivity operates at the **GPU device level within a single node** — it prevents rule-matching pods from sharing the same physical GPU, even when they land on the same node. The two features are orthogonal and can be used together.
-
-**Pending behavior**: If a rule-matching pod cannot find a GPU that satisfies exclusivity (i.e., all GPUs on a node are already reserved by other rule-matching pods), the pod will **fail FilterNode** for that node and remain pending until a suitable node with available exclusive GPUs becomes available.
+GPU exclusivity ensures that pods matching configured label rules get **dedicated physical GPUs** — no other rule-matching pod can share those GPUs. Non-matching pods can still share GPUs normally. This feature only applies to **hami-core** nodes; dynamic MIG nodes are skipped since they already provide hardware-level isolation. Unlike the `spread` scheduling policy, which distributes pods across different nodes for load balancing, GPU exclusivity operates at the **GPU device level within a single node** — it prevents rule-matching pods from sharing the same physical GPU, even when they land on the same node. The two features are orthogonal and can be used together. If a rule-matching pod cannot find a GPU that satisfies exclusivity (i.e., all GPUs on a node are already reserved by other rule-matching pods), the pod will **fail FilterNode** for that node and remain pending until a suitable node with available exclusive GPUs becomes available.
 
 ### Configuration
 
