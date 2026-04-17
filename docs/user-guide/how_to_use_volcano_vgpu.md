@@ -176,7 +176,7 @@ Add `deviceshare.GPUExclusiveRules` to the deviceshare plugin arguments:
         priority: high
 ```
 
-Each rule is a set of label key-value pairs. A pod must match **all** labels in a rule to receive exclusivity. Cross-rule exclusivity is also enforced: pods matching **different** rules cannot share GPUs with each other. For example, with the configuration above, a pod with `workloadType: training` (rule 1) and a pod with `workloadType: batch, priority: high` (rule 2) will each get their own dedicated GPUs — they cannot share the same physical GPU.
+Each rule is a set of label key-value pairs. A pod must match **all** labels in a rule to receive exclusivity. Exclusivity is enforced within the same rule only — pods matching **different** rules can still share GPUs with each other.
 
 ### Pod Example
 

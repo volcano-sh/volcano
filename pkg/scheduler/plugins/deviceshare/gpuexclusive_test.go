@@ -307,14 +307,14 @@ func TestReservedGPUsForPod(t *testing.T) {
 	}
 	w := makeExclusiveWrapper(devices, cfg, podRules, ruleGPUs)
 
-	// A new pod matching rule 0 should see GPUs 0 and 1 as reserved (union of all rules)
+	// A new pod matching rule 0 should see only GPU 0 reserved (same-rule only, not cross-rule)
 	newPod := makeExclusivePod("pod-c", map[string]string{"app": "training", "team": "ml"}, 1)
 	reserved := w.reservedGPUsForPod(newPod)
 	if _, ok := reserved[0]; !ok {
 		t.Error("GPU 0 should be reserved for pod matching rule 0")
 	}
-	if _, ok := reserved[1]; !ok {
-		t.Error("GPU 1 should be reserved for pod matching rule 0 (union of all rules)")
+	if _, ok := reserved[1]; ok {
+		t.Error("GPU 1 should NOT be reserved for pod matching rule 0 (different rule)")
 	}
 
 	// A pod matching no rules should have no reservations
@@ -391,7 +391,7 @@ func TestEndToEndExclusive(t *testing.T) {
 	}
 	w := makeExclusiveWrapper(devices, cfg, podRules, ruleGPUs)
 
-	// 1. New training pod (rule 0): GPUs 0,1 are capped (union), GPUs 2,3 available
+	// 1. New training pod (rule 0): only GPU 0 is capped (same-rule only), GPUs 1,2,3 available
 	trainPod := makeExclusivePod("pod-c", map[string]string{"app": "training", "team": "ml"}, 1)
 	reserved := w.reservedGPUsForPod(trainPod)
 	saved := w.capGPUs(reserved)
@@ -402,8 +402,8 @@ func TestEndToEndExclusive(t *testing.T) {
 		}
 	}
 	w.restoreGPUs(saved)
-	if available != 2 {
-		t.Errorf("training pod should see 2 available GPUs, got %d", available)
+	if available != 3 {
+		t.Errorf("training pod should see 3 available GPUs (only same-rule GPU capped), got %d", available)
 	}
 
 	// 2. Unrelated pod: all 4 GPUs visible, no capping

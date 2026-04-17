@@ -149,18 +149,20 @@ type exclusiveGPUDevices struct {
 // Compile-time check that exclusiveGPUDevices implements api.Devices.
 var _ api.Devices = (*exclusiveGPUDevices)(nil)
 
-// reservedGPUsForPod returns the union of GPU indices reserved by ALL rules
-// if the pod matches at least one rule. This ensures cross-rule exclusivity:
-// a training pod avoids GPUs used by high-priority batch pods and vice versa.
+// reservedGPUsForPod returns the GPU indices reserved by the rules that
+// the pod matches. Only same-rule exclusivity is enforced: pods matching
+// different rules can still share GPUs with each other.
 func (a *exclusiveGPUDevices) reservedGPUsForPod(pod *v1.Pod) map[int]struct{} {
 	matched := matchingRules(pod, a.cfg.rules)
 	if len(matched) == 0 {
 		return nil
 	}
 	result := make(map[int]struct{})
-	for _, gpuSet := range a.ruleGPUs {
-		for gpuIdx := range gpuSet {
-			result[gpuIdx] = struct{}{}
+	for _, ruleIdx := range matched {
+		if gpuSet, ok := a.ruleGPUs[ruleIdx]; ok {
+			for gpuIdx := range gpuSet {
+				result[gpuIdx] = struct{}{}
+			}
 		}
 	}
 	return result
