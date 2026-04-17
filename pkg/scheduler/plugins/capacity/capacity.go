@@ -22,11 +22,13 @@ import (
 	"math"
 
 	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -51,6 +53,10 @@ type capacityPlugin struct {
 	queueOpts map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
+	// queueGateReservedTasks tracks tasks that passed capacity checks but cannot be scheduled
+	// These tasks reserve queue capacity to prevent other tasks from consuming it
+	// Rebuilt fresh at the start of each scheduling cycle in OnSessionOpen
+	queueGateReservedTasks map[api.QueueID]map[api.TaskID]*api.TaskInfo
 }
 
 type queueAttr struct {
@@ -76,10 +82,11 @@ type queueAttr struct {
 // New return capacityPlugin action
 func New(arguments framework.Arguments) framework.Plugin {
 	return &capacityPlugin{
-		totalResource:   api.EmptyResource(),
-		totalGuarantee:  api.EmptyResource(),
-		queueOpts:       map[api.QueueID]*queueAttr{},
-		pluginArguments: arguments,
+		totalResource:          api.EmptyResource(),
+		totalGuarantee:         api.EmptyResource(),
+		queueOpts:              map[api.QueueID]*queueAttr{},
+		pluginArguments:        arguments,
+		queueGateReservedTasks: make(map[api.QueueID]map[api.TaskID]*api.TaskInfo),
 	}
 }
 
@@ -92,6 +99,11 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	cp.totalResource.Add(ssn.TotalResource)
 
 	klog.V(4).Infof("The total resource is <%v>", cp.totalResource)
+
+	// Rebuild reserved cache for this scheduling cycle
+	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) {
+		cp.buildQueueReservedTasksCache(ssn)
+	}
 
 	hierarchyEnabled := ssn.HierarchyEnabled(cp.Name())
 	readyToSchedule := true
@@ -227,7 +239,15 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return false
 		}
 
-		return cp.checkQueueAllocatableHierarchically(ssn, queue, candidate)
+		allocatable := cp.checkQueueAllocatableHierarchically(ssn, queue, candidate)
+
+		// If queue has capacity and task has the QueueAllocationGate annotation.
+		if allocatable && utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) &&
+			api.HasQueueAllocationGateAnnotation(candidate.Pod) {
+			cp.addTaskToReservedCache(queue.UID, candidate)
+		}
+
+		return allocatable
 	})
 
 	ssn.AddJobEnqueueableFn(cp.Name(), func(obj interface{}) int {
@@ -359,7 +379,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		simulateQueueAllocatable := func(state *capacityState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 			attr := state.queueAttrs[queue.UID]
-			return queueAllocatable(attr, candidate, queue)
+			return cp.queueAllocatableWithReserved(attr, candidate, queue)
 		}
 
 		list := append(state.queueAttrs[queue.UID].ancestors, queue.UID)
@@ -404,6 +424,11 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			klog.V(4).Infof("[capacity] AllocateFunc: task <%v/%v>, resreq <%v>, share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
+
+			// Remove task from reserved cache when it gets allocated
+			if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) {
+				cp.removeTaskFromReservedCache(event.Task.UID)
+			}
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			job := ssn.Jobs[event.Task.Job]
@@ -431,6 +456,12 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			klog.V(4).Infof("[capacity] DeallocateFunc: task <%v/%v>, resreq <%v>, share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
+
+			// Restore task to reserved cache on rollback so capacity remains accounted for
+			if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) &&
+				api.HasQueueAllocationGateAnnotation(event.Task.Pod) {
+				cp.addTaskToReservedCache(job.Queue, event.Task)
+			}
 		},
 	})
 }
@@ -443,6 +474,7 @@ func (cp *capacityPlugin) OnSessionClose(ssn *framework.Session) {
 	cp.totalResource = nil
 	cp.totalGuarantee = nil
 	cp.queueOpts = nil
+	cp.queueGateReservedTasks = nil
 }
 
 func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
@@ -933,15 +965,80 @@ func (cp *capacityPlugin) isLeafQueue(queueID api.QueueID) bool {
 
 func (cp *capacityPlugin) queueAllocatable(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 	attr := cp.queueOpts[queue.UID]
-	return queueAllocatable(attr, candidate, queue)
+	return cp.queueAllocatableWithReserved(attr, candidate, queue)
 }
 
-func queueAllocatable(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo) bool {
-	futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
+// addTaskToReservedCache adds a task to the reserved cache
+// This should be called when a task passes capacity checks
+func (cp *capacityPlugin) addTaskToReservedCache(queueID api.QueueID, task *api.TaskInfo) {
+	if cp.queueGateReservedTasks[queueID] == nil {
+		cp.queueGateReservedTasks[queueID] = make(map[api.TaskID]*api.TaskInfo)
+	}
+	cp.queueGateReservedTasks[queueID][task.UID] = task
+	klog.V(4).Infof("Added task <%s/%s> to reserved cache for queue <%s>", task.Namespace, task.Name, queueID)
+}
+
+// RemoveTaskFromReservedCache removes a specific task from the reserved cache
+// This should be called when a task becomes allocated (no longer needs reservation)
+// It searches across all queues to find and remove the task
+func (cp *capacityPlugin) removeTaskFromReservedCache(taskID api.TaskID) {
+	for queueID, tasks := range cp.queueGateReservedTasks {
+		if _, exists := tasks[taskID]; exists {
+			delete(tasks, taskID)
+			// Clean up empty queue entries
+			if len(tasks) == 0 {
+				delete(cp.queueGateReservedTasks, queueID)
+			}
+			klog.V(4).Infof("Removed task <%s> from reserved cache for queue <%s>", taskID, queueID)
+			return
+		}
+	}
+}
+
+// rebuildReservedCache clears and rebuilds the reserved tasks cache for this scheduling cycle.
+// It scans all pending tasks and adds those that have passed capacity checks in previous cycles
+// but are not yet allocated. These are identified by:
+// - NO queue allocation scheduling gate (gate was removed after passing capacity)
+// - HAS queue allocation scheduling gate annotation (proof they opted-in and passed capacity check)
+func (cp *capacityPlugin) buildQueueReservedTasksCache(ssn *framework.Session) {
+	// Initialize the cache for this session
+	cp.queueGateReservedTasks = make(map[api.QueueID]map[api.TaskID]*api.TaskInfo)
+
+	// Scan all pending tasks and rebuild cache
+	for _, job := range ssn.Jobs {
+		for _, task := range job.TaskStatusIndex[api.Pending] {
+			// Tasks that passed capacity have: NO gate + HAS annotation + Pending status
+			if !task.SchGated && api.HasQueueAllocationGateAnnotation(task.Pod) {
+				if cp.queueGateReservedTasks[job.Queue] == nil {
+					cp.queueGateReservedTasks[job.Queue] = make(map[api.TaskID]*api.TaskInfo)
+				}
+				cp.queueGateReservedTasks[job.Queue][task.UID] = task
+				klog.V(4).Infof("Added task <%s/%s> to reserved cache for queue <%s>",
+					task.Namespace, task.Name, job.Queue)
+			}
+		}
+	}
+}
+
+func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo) bool {
+	// Calculate total reserved resources directly from cache
+	reserved := api.EmptyResource()
+	if queueGateReserved := cp.queueGateReservedTasks[queue.UID]; queueGateReserved != nil {
+		for _, task := range queueGateReserved {
+			if task.UID != candidate.UID {
+				// Skip candidate to avoid double-counting (it will be added in futureUsed below)
+				reserved.Add(task.Resreq)
+			}
+		}
+	}
+
+	// Include reserved resources in capacity check
+	futureUsed := attr.allocated.Clone().Add(reserved).Add(candidate.Resreq)
 	allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, candidate.Resreq)
+
 	if !allocatable {
-		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
-			queue.Name, attr.realCapability, attr.allocated, candidate.Name, candidate.Resreq)
+		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>, reserved <%v>; Candidate <%v>: resource request <%v>",
+			queue.Name, attr.realCapability, attr.allocated, reserved, candidate.Name, candidate.Resreq)
 	}
 
 	return allocatable

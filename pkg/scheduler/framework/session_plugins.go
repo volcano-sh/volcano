@@ -366,6 +366,7 @@ func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) b
 	return true
 }
 
+// CleanupReservations invokes all registered reservation cleanup functions
 func (ssn *Session) SubJobReady(job *api.JobInfo, subJob *api.SubJobInfo) bool {
 	if !job.ContainsSubJobPolicy() {
 		return ssn.JobReady(job)
