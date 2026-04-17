@@ -95,6 +95,7 @@ func (binder *ConflictAwareBinder) requeuePodWithPriority(task *api.TaskInfo, pr
 // CheckAndBindPod check the pod schedule result, send pod for binding if no conflict. Put pod back to schedule queue if there is conflict
 func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *agentapi.PodScheduleResult) {
 	task := scheduleResult.SchedCtx.Task
+	binder.cache.RemoveCandidateNodesFromBinder(scheduleResult.SuggestedNodes)
 	// 1. Check conflict
 	node := binder.FindNonConflictingNode(scheduleResult)
 	if node == nil {

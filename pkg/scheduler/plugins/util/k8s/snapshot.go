@@ -25,6 +25,7 @@ package k8s
 
 import (
 	"fmt"
+	"maps"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -51,6 +52,7 @@ type Snapshot struct {
 	affinityNodeIndex map[string]int
 	// antiAffinityNodeIndex maps node name to index in havePodsWithRequiredAntiAffinityNodeInfoList
 	antiAffinityNodeIndex map[string]int
+	NodesInBinder         map[string]int
 }
 
 // fwkInfo holds snapshot information from the kube-scheduler framework.
@@ -330,6 +332,11 @@ func (s *Snapshot) GetFwkNodeInfoList() []fwk.NodeInfo {
 // GetVolcanoNodeInfoList returns internal volcano nodeInfoList
 func (s *Snapshot) GetVolcanoNodeInfoList() []*api.NodeInfo {
 	return s.volcanoInfo.nodeInfoList
+}
+
+func (s *Snapshot) CloneNodesInBinder(nodesInBinder map[string]int) {
+	s.NodesInBinder = make(map[string]int, len(nodesInBinder))
+	maps.Copy(s.NodesInBinder, nodesInBinder)
 }
 
 type podLister []fwk.NodeInfo
