@@ -37,6 +37,9 @@ type NumatopoSpecApplyConfiguration struct {
 	// Specifies the cpu topology info
 	// Key is cpu id
 	CPUDetail map[string]CPUInfoApplyConfiguration `json:"cpuDetail,omitempty"`
+	// Specifies the gpu topology info
+	// Key is gpu index (as string)
+	GPUDetail map[string]GPUInfoApplyConfiguration `json:"gpuDetail,omitempty"`
 }
 
 // NumatopoSpecApplyConfiguration constructs a declarative configuration of the NumatopoSpec type for use with
@@ -97,6 +100,20 @@ func (b *NumatopoSpecApplyConfiguration) WithCPUDetail(entries map[string]CPUInf
 	}
 	for k, v := range entries {
 		b.CPUDetail[k] = v
+	}
+	return b
+}
+
+// WithGPUDetail puts the entries into the GPUDetail field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the GPUDetail field,
+// overwriting an existing map entries in GPUDetail field with the same key.
+func (b *NumatopoSpecApplyConfiguration) WithGPUDetail(entries map[string]GPUInfoApplyConfiguration) *NumatopoSpecApplyConfiguration {
+	if b.GPUDetail == nil && len(entries) > 0 {
+		b.GPUDetail = make(map[string]GPUInfoApplyConfiguration, len(entries))
+	}
+	for k, v := range entries {
+		b.GPUDetail[k] = v
 	}
 	return b
 }
