@@ -802,11 +802,11 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 			}
 		}
 
-		// Check if the parent queue's capability is less than the child queue's capability
-		if attr.capability.LessPartly(childAttr.capability, api.Zero) {
-			klog.Errorf("Child queue %s capability (%s) exceeds parent queue %s capability (%s). "+
+		// Check if child queue's capability exceeds parent queue's capability.
+		if exceeds, resources := childAttr.capability.GreaterPartly(attr.capability, api.Infinity); exceeds {
+			klog.Errorf("Child queue %s capability (%s) exceeds parent queue %s capability (%s) on resources %v. "+
 				"Child's effective capability will be limited by parent.",
-				childAttr.name, childAttr.capability, attr.name, attr.capability)
+				childAttr.name, childAttr.capability, attr.name, attr.capability, resources)
 		}
 	}
 
