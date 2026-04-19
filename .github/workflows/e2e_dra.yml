@@ -3,6 +3,9 @@ name: E2E DRA
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   e2e_dra:
     runs-on: ubuntu-24.04

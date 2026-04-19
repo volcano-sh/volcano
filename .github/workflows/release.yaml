@@ -9,13 +9,14 @@ on:
       - "v*.*.*"
 
 
-permissions:
-  contents: read
-  packages: write
+permissions: {}
 
 jobs:
   docker:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     env:
       GOPATH: /home/runner/work/${{ github.repository }}
     steps:

@@ -3,6 +3,9 @@ name: Vcctl Test
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   e2e_vcctl:
     runs-on: ubuntu-24.04
