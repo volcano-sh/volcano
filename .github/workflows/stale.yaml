@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: '0 0 * * *' # runs every day at midnight UTC
 
+permissions:
+  contents: read
+
 jobs:
   stale:
     runs-on: ubuntu-latest
