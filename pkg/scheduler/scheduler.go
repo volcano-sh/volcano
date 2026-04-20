@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -92,6 +93,27 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 	return scheduler, nil
 }
 
+func (pc *Scheduler) applySchedulerConf(
+	actions []framework.Action,
+	plugins []conf.Tier,
+	configurations []conf.Configuration,
+	metricsConf map[string]string,
+) {
+	pc.mutex.Lock()
+	pc.actions = actions
+	pc.plugins = plugins
+	pc.configurations = configurations
+	pc.metricsConf = metricsConf
+	pc.mutex.Unlock()
+
+	if pc.cache != nil {
+		pc.cache.SetMetricsConf(pc.metricsConf)
+	}
+
+	actionNames, pluginNames := pc.getSchedulerConf()
+	klog.V(2).Infof("Scheduler configuration applied: actions=%v, plugins=%v", actionNames, pluginNames)
+}
+
 // Run initializes and starts the Scheduler. It parses the scheduler configuration, initializes actions,
 // applies the configuration and starts the scheduling loop, cache and configuration watcher.
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
@@ -104,18 +126,13 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 		action.Initialize()
 	}
 
-	pc.mutex.Lock()
-	pc.actions = actions
-	pc.plugins = plugins
-	pc.configurations = configurations
-	pc.metricsConf = metricsConf
-	pc.mutex.Unlock()
+	pc.applySchedulerConf(actions, plugins, configurations, metricsConf)
 
 	// Cleanup on scheduler shutdown.
 	go func() {
 		<-stopCh
 		pc.mutex.Lock()
-		oldActions := append([]framework.Action(nil), pc.actions...)
+		oldActions := slices.Clone(pc.actions)
 		pc.mutex.Unlock()
 		for _, action := range oldActions {
 			action.UnInitialize()
@@ -123,8 +140,6 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	}()
 
 	go pc.watchSchedulerConf(stopCh)
-	// Start cache for policy.
-	pc.cache.SetMetricsConf(pc.metricsConf)
 	pc.cache.Run(stopCh)
 	klog.V(2).Infof("Scheduler completes Initialization and start to run")
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
@@ -164,6 +179,14 @@ func (pc *Scheduler) runOnce() {
 		action.Execute(ssn)
 		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
 	}
+}
+
+func actionMap(actions []framework.Action) map[string]framework.Action {
+	m := make(map[string]framework.Action)
+	for _, a := range actions {
+		m[a.Name()] = a
+	}
+	return m
 }
 
 func (pc *Scheduler) loadSchedulerConf() ([]framework.Action, []conf.Tier, []conf.Configuration, map[string]string, error) {
@@ -213,6 +236,18 @@ func (pc *Scheduler) loadSchedulerConf() ([]framework.Action, []conf.Tier, []con
 	return pc.defaultActions, pc.defaultPlugins, pc.defaultConfigurations, pc.defaultMetricsConf, nil
 }
 
+func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
+	for _, action := range pc.actions {
+		actions = append(actions, action.Name())
+	}
+	for _, tier := range pc.plugins {
+		for _, plugin := range tier.Plugins {
+			plugins = append(plugins, plugin.Name)
+		}
+	}
+	return
+}
+
 func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
 	if pc.fileWatcher == nil {
 		return
@@ -232,20 +267,23 @@ func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
 					klog.Errorf("Failed to reload scheduler config: %v", err)
 					continue
 				}
-				for _, action := range actions {
-					action.Initialize()
-				}
 				pc.mutex.Lock()
-				oldActions := append([]framework.Action(nil), pc.actions...)
-				pc.actions = actions
-				pc.plugins = plugins
-				pc.configurations = configurations
-				pc.metricsConf = metricsConf
+				oldActions := slices.Clone(pc.actions)
 				pc.mutex.Unlock()
-				for _, action := range oldActions {
-					action.UnInitialize()
+
+				oldMap := actionMap(oldActions)
+				newMap := actionMap(actions)
+				for name, action := range newMap {
+					if _, exists := oldMap[name]; !exists {
+						action.Initialize()
+					}
 				}
-				pc.cache.SetMetricsConf(pc.metricsConf)
+				pc.applySchedulerConf(actions, plugins, configurations, metricsConf)
+				for name, action := range oldMap {
+					if _, exists := newMap[name]; !exists {
+						action.UnInitialize()
+					}
+				}
 			}
 		case err, ok := <-errCh:
 			if !ok {
