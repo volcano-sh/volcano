@@ -177,6 +177,14 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 			continue
 		}
 
+		// Convert soft topology to hard topology with ClusterTopHyperNode tier as maxTier,
+		// so that soft-mode jobs reuse the hard-mode scheduling path without any HyperNode filtering.
+		// This is done here (once per job) rather than in allocateResources loop to avoid redundant
+		// conversion when jobs are pushed back into the queue.
+		if clusterTopHyperNode, exists := ssn.HyperNodes[framework.ClusterTopHyperNode]; exists {
+			convertSoftToHardTopology(job, clusterTopHyperNode.Tier())
+		}
+
 		worksheet := alloc.organizeJobWorksheet(job)
 		if worksheet.Empty() {
 			continue
@@ -297,12 +305,6 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 		}
 
 		job := jobs.Pop().(*api.JobInfo)
-
-		// Convert soft topology to hard topology with ClusterTopHyperNode tier as maxTier,
-		// so that soft-mode jobs reuse the hard-mode scheduling path without any HyperNode filtering.
-		if clusterTopHyperNode, exists := ssn.HyperNodes[framework.ClusterTopHyperNode]; exists {
-			convertSoftToHardTopology(job, clusterTopHyperNode.Tier())
-		}
 		// Currently, both hard-mode network topology scheduling and subjob level scheduling use allocateForJob.
 		// TODO: In the future, we may need to unify the logic of network topology-aware scheduling and normal scheduling.
 		if job.ContainsHardTopology() || job.ContainsSubJobPolicy() {
