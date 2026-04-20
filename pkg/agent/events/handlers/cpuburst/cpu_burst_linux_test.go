@@ -259,7 +259,7 @@ type info struct {
 func prepare(t *testing.T, tmpDir, podUID string, infos []info) {
 	for _, info := range infos {
 		dir := path.Join(tmpDir, "cpu", "kubepods", "pod"+podUID, info.dir)
-		err := os.MkdirAll(dir, 0644)
+		err := os.MkdirAll(dir, 0755)
 		assert.NoError(t, err)
 		filePath := path.Join(dir, info.path)
 		f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
@@ -267,8 +267,6 @@ func prepare(t *testing.T, tmpDir, podUID string, infos []info) {
 		err = f.Chmod(0600)
 		assert.NoError(t, err)
 		_, err = f.WriteString(info.value)
-		assert.NoError(t, err)
-		err = f.Close()
 		assert.NoError(t, err)
 	}
 }
@@ -399,7 +397,7 @@ type infoV2 struct {
 func prepareV2(t *testing.T, tmpDir, podUID string, infos []infoV2) {
 	for _, info := range infos {
 		dir := path.Join(tmpDir, "kubepods", "pod"+podUID, info.dir)
-		err := os.MkdirAll(dir, 0644)
+		err := os.MkdirAll(dir, 0755)
 		assert.NoError(t, err)
 		filePath := path.Join(dir, info.path)
 		f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
