@@ -112,6 +112,7 @@ func (sji *SubJobInfo) ConvertToHardTopology(maxTier int) {
 	}
 	sji.NetworkTopology.Mode = scheduling.HardNetworkTopologyMode
 	sji.NetworkTopology.HighestTierAllowed = &maxTier
+	sji.NetworkTopology.HighestTierName = ""
 }
 
 func (sji *SubJobInfo) addTask(ti *TaskInfo) {
