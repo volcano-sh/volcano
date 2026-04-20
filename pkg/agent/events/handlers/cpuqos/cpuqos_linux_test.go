@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"volcano.sh/volcano/pkg/agent/events/framework"
 	"volcano.sh/volcano/pkg/agent/utils/cgroup"
@@ -36,7 +37,7 @@ func TestCPUQoSHandle_Handle(t *testing.T) {
 	assert.NoError(t, err)
 	filePath := path.Join(dir, "cpu.qos_level")
 	_, err = os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	tests := []struct {
 		name      string

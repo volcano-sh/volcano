@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -326,10 +327,10 @@ func prepare(t *testing.T, tmpDir, podUID, containerID1, containerID2 string) {
 			for _, cgrouPath := range cgroupPaths {
 				// create pod level cgroup.
 				_, err := os.OpenFile(path.Join(podDir, cgrouPath), os.O_RDWR|os.O_CREATE, 0644)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				// create container level cgroup.
 				_, err = os.OpenFile(path.Join(containerDir, cgrouPath), os.O_RDWR|os.O_CREATE, 0644)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		}
 	}
@@ -438,7 +439,7 @@ func prepareV2(t *testing.T, tmpDir, podUID, containerID1, containerID2 string) 
 		// create pod level cgroup files
 		for _, cgroupPath := range cgroupPaths {
 			_, err := os.OpenFile(path.Join(podDir, cgroupPath), os.O_RDWR|os.O_CREATE, 0644)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
 
 		// create container level cgroup files
@@ -449,7 +450,7 @@ func prepareV2(t *testing.T, tmpDir, podUID, containerID1, containerID2 string) 
 
 			for _, cgroupPath := range cgroupPaths {
 				_, err = os.OpenFile(path.Join(containerDir, cgroupPath), os.O_RDWR|os.O_CREATE, 0644)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		}
 	}

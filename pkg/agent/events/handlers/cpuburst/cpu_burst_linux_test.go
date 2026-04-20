@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -263,7 +264,7 @@ func prepare(t *testing.T, tmpDir, podUID string, infos []info) {
 		assert.NoError(t, err)
 		filePath := path.Join(dir, info.path)
 		f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = f.Chmod(0600)
 		assert.NoError(t, err)
 		_, err = f.WriteString(info.value)
@@ -403,7 +404,7 @@ func prepareV2(t *testing.T, tmpDir, podUID string, infos []infoV2) {
 		assert.NoError(t, err)
 		filePath := path.Join(dir, info.path)
 		f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = f.Chmod(0600)
 		assert.NoError(t, err)
 		_, err = f.WriteString(info.value)
