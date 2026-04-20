@@ -693,6 +693,7 @@ func convertSoftToHardTopology(job *api.JobInfo, maxTier int) {
 			"job", job.UID, "maxTier", maxTier)
 		job.PodGroup.Spec.NetworkTopology.Mode = scheduling.HardNetworkTopologyMode
 		job.PodGroup.Spec.NetworkTopology.HighestTierAllowed = &maxTier
+		job.PodGroup.Spec.NetworkTopology.HighestTierName = ""
 	}
 
 	// Convert SubGroupPolicy-level soft topology
@@ -703,6 +704,7 @@ func convertSoftToHardTopology(job *api.JobInfo, maxTier int) {
 				"job", job.UID, "subGroupPolicy", job.PodGroup.Spec.SubGroupPolicy[i].Name, "maxTier", maxTier)
 			nt.Mode = scheduling.HardNetworkTopologyMode
 			nt.HighestTierAllowed = &maxTier
+			nt.HighestTierName = ""
 		}
 	}
 
