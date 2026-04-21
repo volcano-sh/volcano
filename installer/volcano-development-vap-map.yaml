@@ -334,7 +334,6 @@ spec:
                     type: integer
                   highestTierName:
                     maxLength: 253
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                   mode:
                     default: hard
@@ -443,7 +442,6 @@ spec:
                               type: integer
                             highestTierName:
                               maxLength: 253
-                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                               type: string
                             mode:
                               default: hard
@@ -4634,7 +4632,6 @@ spec:
                             type: integer
                           highestTierName:
                             maxLength: 253
-                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                             type: string
                           mode:
                             default: hard
@@ -4743,7 +4740,6 @@ spec:
                                       type: integer
                                     highestTierName:
                                       maxLength: 253
-                                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                                       type: string
                                     mode:
                                       default: hard
@@ -8920,6 +8916,15 @@ data:
   volcano-controller.conf: |
 ---
 # Source: volcano/templates/controllers.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volcano-sharding-configmap
+  namespace: volcano-system
+data:
+  sharding.yaml: |
+---
+# Source: volcano/templates/controllers.yaml
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -9078,6 +9083,8 @@ spec:
             - --worker-threads=3
             - --worker-threads-for-gc=5
             - --worker-threads-for-podgroup=5
+            - --sharding-configmap=volcano-sharding-configmap
+            - --sharding-configmap-namespace=volcano-system
             - -v=4
             - 2>&1
           imagePullPolicy: Always
@@ -11883,7 +11890,6 @@ spec:
                     type: integer
                   highestTierName:
                     maxLength: 253
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                   mode:
                     default: hard
@@ -11992,7 +11998,6 @@ spec:
                               type: integer
                             highestTierName:
                               maxLength: 253
-                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                               type: string
                             mode:
                               default: hard
@@ -16140,7 +16145,6 @@ spec:
                                   type: integer
                                 highestTierName:
                                   maxLength: 253
-                                  pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                                   type: string
                                 mode:
                                   default: hard
@@ -16249,7 +16253,6 @@ spec:
                                             type: integer
                                           highestTierName:
                                             maxLength: 253
-                                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                                             type: string
                                           mode:
                                             default: hard

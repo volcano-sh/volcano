@@ -47,7 +47,6 @@ spec:
                     type: integer
                   highestTierName:
                     maxLength: 253
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                   mode:
                     default: hard
@@ -156,7 +155,6 @@ spec:
                               type: integer
                             highestTierName:
                               maxLength: 253
-                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                               type: string
                             mode:
                               default: hard

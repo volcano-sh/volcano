@@ -152,7 +152,6 @@ type NetworkTopologySpec struct {
 	// HighestTierName specifies the highest tier name that a job allowed to cross when scheduling.
 	// HighestTierName and HighestTierAllowed cannot be set simultaneously.
 	// +kubebuilder:validation:MaxLength=253
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	// +optional
 	HighestTierName string `json:"highestTierName,omitempty" protobuf:"bytes,3,opt,name=highestTierName"`
 }
