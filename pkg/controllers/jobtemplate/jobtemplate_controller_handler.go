@@ -56,7 +56,7 @@ func (jt *jobtemplatecontroller) addJob(obj interface{}) {
 		return
 	}
 
-	// Filter vcjobs created by JobFlow. The namespace cannot contain dots,
+	// Filter vcjobs created by JobTemplate. The namespace cannot contain dots,
 	// but the JobTemplate name can, so only split on the first separator.
 	namespaceName := strings.SplitN(job.Labels[CreatedByJobTemplate], ".", 2)
 	if len(namespaceName) != CreateByJobTemplateValueNum {
