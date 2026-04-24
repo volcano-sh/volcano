@@ -56,10 +56,11 @@ func (jt *jobtemplatecontroller) addJob(obj interface{}) {
 		return
 	}
 
-	//Filter vcjobs created by JobFlow
-	namespaceName := strings.Split(job.Labels[CreatedByJobTemplate], ".")
+	// Filter vcjobs created by JobFlow. The namespace cannot contain dots,
+	// but the JobTemplate name can, so only split on the first separator.
+	namespaceName := strings.SplitN(job.Labels[CreatedByJobTemplate], ".", 2)
 	if len(namespaceName) != CreateByJobTemplateValueNum {
-		klog.Errorf("invalid key format: %s", job.Labels[CreatedByJobTemplate])
+		klog.Warningf("invalid key format: %s", job.Labels[CreatedByJobTemplate])
 		return
 	}
 	namespace, name := namespaceName[0], namespaceName[1]

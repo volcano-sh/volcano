@@ -177,6 +177,10 @@ func SetFakeNPUPodStatus(fPod *v1.Pod, status v1.PodPhase) {
 
 // AddTestTaskLabel add test job's label.
 func AddTestTaskLabel(task *api.TaskInfo, labelKey, labelValue string) {
+	if task == nil || task.Pod == nil {
+		return
+	}
+
 	if len(task.Pod.Spec.NodeSelector) == 0 {
 		task.Pod.Spec.NodeSelector = make(map[string]string, npuIndex3)
 	}
