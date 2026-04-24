@@ -17,10 +17,12 @@ limitations under the License.
 package networkqos
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
 	"strconv"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -36,9 +38,15 @@ import (
 	"volcano.sh/volcano/pkg/agent/features"
 	"volcano.sh/volcano/pkg/agent/utils"
 	"volcano.sh/volcano/pkg/agent/utils/cgroup"
+	"volcano.sh/volcano/pkg/agent/utils/exec"
 	"volcano.sh/volcano/pkg/config"
 	"volcano.sh/volcano/pkg/metriccollect"
 	"volcano.sh/volcano/pkg/networkqos"
+)
+
+const (
+	// bwmcliCmdTimeout is the timeout for bwmcli command execution.
+	bwmcliCmdTimeout = 5 * time.Second
 )
 
 func init() {
@@ -90,6 +98,18 @@ func (h *NetworkQoSHandle) Handle(event interface{}) error {
 		return nil
 	}
 
+	cgroupVersion := h.cgroupMgr.GetCgroupVersion()
+	switch cgroupVersion {
+	case cgroup.CgroupV2:
+		return h.handleV2(podEvent)
+	default:
+		// cgroup v1 or unknown version, fall back to v1 behavior
+		return h.handleV1(podEvent)
+	}
+}
+
+// handleV1 sets the network QoS level for a pod using cgroup v1 net_cls.classid file.
+func (h *NetworkQoSHandle) handleV1(podEvent framework.PodEvent) error {
 	cgroupPath, err := h.cgroupMgr.GetPodCgroupPath(podEvent.QoSClass, cgroup.CgroupNetCLSSubsystem, podEvent.UID)
 	if err != nil {
 		return fmt.Errorf("failed to get pod cgroup file(%s), error: %v", podEvent.UID, err)
@@ -105,6 +125,36 @@ func (h *NetworkQoSHandle) Handle(event interface{}) error {
 		return nil
 	}
 	klog.InfoS("Successfully set network qos level to cgroup file", "qosLevel", string(qosLevel), "cgroupFile", qosLevelFile)
+	return nil
+}
+
+// handleV2 sets the network QoS level for a pod using bwmcli command with cgroup v2 unified path.
+// In cgroup v2, the net_cls controller is not available. Instead, we use bwmcli (oncn-bwm) to set
+// the network priority directly via the cgroup path:
+//
+//	bwmcli -s <cgroup-path> <priority>
+//
+// where priority is 0 for online pods and -1 for offline pods.
+func (h *NetworkQoSHandle) handleV2(podEvent framework.PodEvent) error {
+	// In cgroup v2, all controllers share a unified hierarchy, so we can use any subsystem
+	// (e.g., cpu) to get the correct unified cgroup path.
+	cgroupPath, err := h.cgroupMgr.GetPodCgroupPath(podEvent.QoSClass, cgroup.CgroupCpuSubsystem, podEvent.UID)
+	if err != nil {
+		return fmt.Errorf("failed to get pod cgroup path(%s), error: %v", podEvent.UID, err)
+	}
+
+	qosLevel := extension.NormalizeQosLevel(podEvent.QoSLevel)
+
+	cmdCtx, cancel := context.WithTimeout(context.Background(), bwmcliCmdTimeout)
+	defer cancel()
+	cmd := fmt.Sprintf("bwmcli -s %s %d", cgroupPath, qosLevel)
+	output, err := exec.GetExecutor().CommandContext(cmdCtx, cmd)
+	if err != nil {
+		return fmt.Errorf("failed to set network qos via bwmcli, path=%s, level=%d, error: %v, output: %s",
+			cgroupPath, qosLevel, err, output)
+	}
+
+	klog.InfoS("Successfully set network qos level via bwmcli", "qosLevel", qosLevel, "cgroupPath", cgroupPath)
 	return nil
 }
 

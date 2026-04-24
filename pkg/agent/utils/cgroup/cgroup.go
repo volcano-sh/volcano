@@ -45,6 +45,8 @@ type CgroupSubsystem string
 const (
 	CgroupMemorySubsystem CgroupSubsystem = "memory"
 	CgroupCpuSubsystem    CgroupSubsystem = "cpu"
+	// CgroupNetCLSSubsystem is the net_cls cgroup subsystem (cgroup v1 only).
+	// In cgroup v2, net_cls is not available; use bwmcli with unified cgroup path instead.
 	CgroupNetCLSSubsystem CgroupSubsystem = "net_cls"
 
 	CgroupKubeRoot string = "kubepods"
@@ -59,6 +61,8 @@ const (
 	CPUQuotaBurstFile string = "cpu.cfs_burst_us"
 	CPUQuotaTotalFile string = "cpu.cfs_quota_us"
 
+	// NetCLSFileName is the net_cls classid control file (cgroup v1 only).
+	// In cgroup v2, this file does not exist; network QoS uses bwmcli instead.
 	NetCLSFileName string = "net_cls.classid"
 
 	CPUShareFileName string = "cpu.shares"
