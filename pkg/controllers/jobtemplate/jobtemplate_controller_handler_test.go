@@ -127,7 +127,7 @@ func TestAddJob(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        "job6",
 					Namespace:   namespace,
-					Labels:      map[string]string{CreatedByJobTemplate: ""},
+					Labels:    map[string]string{CreatedByJobTemplate: ""},
 				},
 			},
 			ExpectValue: 0,
