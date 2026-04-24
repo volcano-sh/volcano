@@ -46,11 +46,20 @@ const (
 	defaultBurst = 2000
 
 	// Default parameters to control the number of feasible nodes to find and score
-	defaultMinPercentageOfNodesToFind = 5
-	defaultMinNodesToFind             = 100
-	defaultPercentageOfNodesToFind    = 0
-	defaultLockObjectNamespace        = "volcano-system"
-	defaultNodeWorkers                = 20
+	defaultMinPercentageOfNodesToFind     = 5
+	defaultMinNodesToFind                 = 100
+	defaultPercentageOfNodesToFind        = 0
+	defaultLockObjectNamespace            = "volcano-system"
+	defaultNodeWorkers                    = 20
+	defaultPodStatusLowPressureThreshold  = 500
+	defaultPodStatusHighPressureThreshold = 2000
+	defaultPodStatusLowPressureInterval   = 0 * time.Second
+	defaultPodStatusMidPressureInterval   = 120 * time.Second
+	defaultPodStatusHighPressureInterval  = 300 * time.Second
+	defaultPodStatusForceSyncInterval     = 10 * time.Minute
+	defaultPodEventLowPressureInterval    = 0 * time.Second
+	defaultPodEventMidPressureInterval    = 60 * time.Second
+	defaultPodEventHighPressureInterval   = 120 * time.Second
 )
 
 var (
@@ -114,6 +123,18 @@ type ServerOption struct {
 
 	//Shard name for this scheduler
 	ShardName string
+
+	// Adaptive throttling configuration for repeated unschedulable pod status updates.
+	// NOTE: pressure thresholds are based on cluster-wide Pending pod count, not node count.
+	PodStatusLowPressureThreshold  int
+	PodStatusHighPressureThreshold int
+	PodStatusLowPressureInterval   time.Duration
+	PodStatusMidPressureInterval   time.Duration
+	PodStatusHighPressureInterval  time.Duration
+	PodStatusForceSyncInterval     time.Duration
+	PodEventLowPressureInterval    time.Duration
+	PodEventMidPressureInterval    time.Duration
+	PodEventHighPressureInterval   time.Duration
 }
 
 // DecryptFunc is custom function to parse ca file
@@ -176,11 +197,65 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
 	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling, none(default)|hard|soft mode is supported")
 	fs.StringVar(&s.ShardName, "scheduler-sharding-name", defaultShardName, "The name of shard used for this scheduler")
+	fs.IntVar(&s.PodStatusLowPressureThreshold, "pod-status-low-pressure-threshold", defaultPodStatusLowPressureThreshold, "Pending pod count threshold below which pod status throttling is disabled (this is pod count, not node count)")
+	fs.IntVar(&s.PodStatusHighPressureThreshold, "pod-status-high-pressure-threshold", defaultPodStatusHighPressureThreshold, "Pending pod count threshold above which high-pressure throttling strategy is used (this is pod count, not node count)")
+	fs.DurationVar(&s.PodStatusLowPressureInterval, "pod-status-low-pressure-interval", defaultPodStatusLowPressureInterval, "Throttle interval for repeated unschedulable pod status updates under low pressure")
+	fs.DurationVar(&s.PodStatusMidPressureInterval, "pod-status-mid-pressure-interval", defaultPodStatusMidPressureInterval, "Throttle interval for repeated unschedulable pod status updates under medium pressure")
+	fs.DurationVar(&s.PodStatusHighPressureInterval, "pod-status-high-pressure-interval", defaultPodStatusHighPressureInterval, "Throttle interval for repeated unschedulable pod status updates under high pressure")
+	fs.DurationVar(&s.PodStatusForceSyncInterval, "pod-status-force-sync-interval", defaultPodStatusForceSyncInterval, "Maximum staleness before forcing a pod status sync even when repeated unschedulable updates are throttled")
+	fs.DurationVar(&s.PodEventLowPressureInterval, "pod-event-low-pressure-interval", defaultPodEventLowPressureInterval, "Throttle interval for repeated unschedulable pod events under low pressure")
+	fs.DurationVar(&s.PodEventMidPressureInterval, "pod-event-mid-pressure-interval", defaultPodEventMidPressureInterval, "Throttle interval for repeated unschedulable pod events under medium pressure")
+	fs.DurationVar(&s.PodEventHighPressureInterval, "pod-event-high-pressure-interval", defaultPodEventHighPressureInterval, "Throttle interval for repeated unschedulable pod events under high pressure")
 }
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.
 func (s *ServerOption) CheckOptionOrDie() error {
-	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
+	allErrs := field.ErrorList{}
+	allErrs = append(allErrs, componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection"))...)
+	allErrs = append(allErrs, s.validatePodStatusThrottleOptions()...)
+	return allErrs.ToAggregate()
+}
+
+func (s *ServerOption) validatePodStatusThrottleOptions() field.ErrorList {
+	allErrs := field.ErrorList{}
+	basePath := field.NewPath("podStatusThrottle")
+
+	if s.PodStatusLowPressureThreshold < 0 {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("lowPressureThreshold"), s.PodStatusLowPressureThreshold, "must be >= 0"))
+	}
+	if s.PodStatusHighPressureThreshold <= 0 {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("highPressureThreshold"), s.PodStatusHighPressureThreshold, "must be > 0"))
+	}
+	if s.PodStatusLowPressureThreshold > s.PodStatusHighPressureThreshold {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("lowPressureThreshold"), s.PodStatusLowPressureThreshold, "must be <= highPressureThreshold"))
+	}
+
+	if s.PodStatusLowPressureInterval < 0 {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("lowPressureInterval"), s.PodStatusLowPressureInterval, "must be >= 0"))
+	}
+	if s.PodStatusMidPressureInterval < 0 {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("midPressureInterval"), s.PodStatusMidPressureInterval, "must be >= 0"))
+	}
+	if s.PodStatusHighPressureInterval <= 0 {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("highPressureInterval"), s.PodStatusHighPressureInterval, "must be > 0"))
+	}
+	if s.PodStatusForceSyncInterval <= 0 {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("forceSyncInterval"), s.PodStatusForceSyncInterval, "must be > 0"))
+	}
+	if s.PodStatusForceSyncInterval > 0 && s.PodStatusHighPressureInterval > 0 && s.PodStatusForceSyncInterval < s.PodStatusHighPressureInterval {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("forceSyncInterval"), s.PodStatusForceSyncInterval, "must be >= highPressureInterval"))
+	}
+	if s.PodEventLowPressureInterval < 0 {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("eventLowPressureInterval"), s.PodEventLowPressureInterval, "must be >= 0"))
+	}
+	if s.PodEventMidPressureInterval < 0 {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("eventMidPressureInterval"), s.PodEventMidPressureInterval, "must be >= 0"))
+	}
+	if s.PodEventHighPressureInterval <= 0 {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("eventHighPressureInterval"), s.PodEventHighPressureInterval, "must be > 0"))
+	}
+
+	return allErrs
 }
 
 // RegisterOptions registers options.

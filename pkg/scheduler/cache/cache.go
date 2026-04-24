@@ -18,6 +18,7 @@ package cache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -31,6 +32,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -85,7 +87,62 @@ const (
 	taskUpdaterWorker = 16
 
 	handlerSyncPollPeriod = 100 * time.Millisecond
+
+	defaultPodStatusLowPressureThreshold  = 500
+	defaultPodStatusHighPressureThreshold = 2000
 )
+
+var (
+	podStatusLowPressureThreshold  = defaultPodStatusLowPressureThreshold
+	podStatusHighPressureThreshold = defaultPodStatusHighPressureThreshold
+	podStatusLowPressureInterval   = 0 * time.Second
+	podStatusMidPressureInterval   = 120 * time.Second
+	// With very high scheduling throughput (e.g. 500 pods/s), 15s does not
+	// effectively reduce etcd writes. 180s keeps repeated unschedulable updates
+	// bounded while still providing periodic visibility.
+	podStatusHighPressureInterval = 300 * time.Second
+	// Force periodic refresh for long-lived pending pods; keep it larger than
+	// high pressure interval to avoid defeating throttling.
+	podStatusForceSyncInterval = 10 * time.Minute
+	// Unschedulable event sync intervals are independent from status intervals.
+	// Keep event updates more frequent by default for observability.
+	podEventLowPressureInterval  = 0 * time.Second
+	podEventMidPressureInterval  = 60 * time.Second
+	podEventHighPressureInterval = 120 * time.Second
+)
+
+func applyPodStatusThrottleConfig(opts *options.ServerOption) {
+	if opts == nil {
+		return
+	}
+	if opts.PodStatusLowPressureThreshold > 0 {
+		podStatusLowPressureThreshold = opts.PodStatusLowPressureThreshold
+	}
+	if opts.PodStatusHighPressureThreshold > 0 {
+		podStatusHighPressureThreshold = opts.PodStatusHighPressureThreshold
+	}
+	if opts.PodStatusLowPressureInterval >= 0 {
+		podStatusLowPressureInterval = opts.PodStatusLowPressureInterval
+	}
+	if opts.PodStatusMidPressureInterval >= 0 {
+		podStatusMidPressureInterval = opts.PodStatusMidPressureInterval
+	}
+	if opts.PodStatusHighPressureInterval > 0 {
+		podStatusHighPressureInterval = opts.PodStatusHighPressureInterval
+	}
+	if opts.PodStatusForceSyncInterval > 0 {
+		podStatusForceSyncInterval = opts.PodStatusForceSyncInterval
+	}
+	if opts.PodEventLowPressureInterval >= 0 {
+		podEventLowPressureInterval = opts.PodEventLowPressureInterval
+	}
+	if opts.PodEventMidPressureInterval >= 0 {
+		podEventMidPressureInterval = opts.PodEventMidPressureInterval
+	}
+	if opts.PodEventHighPressureInterval > 0 {
+		podEventHighPressureInterval = opts.PodEventHighPressureInterval
+	}
+}
 
 // defaultIgnoredProvisioners contains provisioners that will be ignored during pod pvc request computation and preemption.
 var defaultIgnoredProvisioners = []string{"rancher.io/local-path", "hostpath.csi.k8s.io"}
@@ -195,6 +252,21 @@ type SchedulerCache struct {
 
 	// timeout on waiting for handlers handle initial resource synchronization before starting scheduling, 0 will skip waiting
 	resourceSyncTimeout time.Duration
+
+	podStatusSyncLock  sync.Mutex
+	podStatusSyncCache map[k8stypes.UID]podStatusSyncMeta
+}
+
+type podStatusSyncMeta struct {
+	// Last successful pod status sync metadata.
+	LastSyncedAt time.Time
+	Phase        v1.PodPhase
+	Reason       string
+	Message      string
+	// Last emitted FailedScheduling event metadata.
+	LastEventAt  time.Time
+	EventReason  string
+	EventMessage string
 }
 
 type multiSchedulerInfo struct {
@@ -337,13 +409,26 @@ func podConditionHaveUpdate(status *v1.PodStatus, condition *v1.PodCondition) bo
 	return !isEqual
 }
 
-func podNominatedNodeNameNeedUpdate(status *v1.PodStatus, nodeName string) bool {
-	return status.NominatedNodeName != nodeName
-}
-
 // UpdatePodStatus will Update pod status
 func (su *defaultStatusUpdater) UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error) {
-	return su.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
+	patchObj := struct {
+		Status v1.PodStatus `json:"status"`
+	}{
+		Status: pod.Status,
+	}
+	patchBytes, err := json.Marshal(patchObj)
+	if err != nil {
+		return nil, err
+	}
+
+	return su.kubeclient.CoreV1().Pods(pod.Namespace).Patch(
+		context.TODO(),
+		pod.Name,
+		k8stypes.StrategicMergePatchType,
+		patchBytes,
+		metav1.PatchOptions{},
+		"status",
+	)
 }
 
 // UpdatePodGroup will Update PodGroup
@@ -514,6 +599,8 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 }
 
 func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration) *SchedulerCache {
+	applyPodStatusThrottleConfig(options.ServerOpts)
+
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -560,6 +647,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		imageStates:         make(map[string]*imageState),
 		InUseNodesInShard:   sets.Set[string]{},
 		NodeShards:          make(map[string]*schedulingapi.NodeShardInfo),
+		podStatusSyncCache:  make(map[k8stypes.UID]podStatusSyncMeta),
 
 		NodeList:            []string{},
 		nodeWorkers:         nodeWorkers,
@@ -993,7 +1081,7 @@ func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*BindContext,
 			sc.Recorder.Eventf(bindContext.TaskInfo.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name, bindContext.TaskInfo.NodeName)
 		} else {
 			unschedulableMsg := fmt.Sprintf("failed to bind to node %s: %s", bindContext.TaskInfo.NodeName, reason)
-			if err := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, unschedulableMsg, ""); err != nil {
+			if err := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, unschedulableMsg, "", sc.getClusterPendingTaskCount()); err != nil {
 				klog.ErrorS(err, "Failed to update pod status when bind task error", "task", bindContext.TaskInfo.Name)
 			}
 
@@ -1068,8 +1156,12 @@ func (sc *SchedulerCache) EventRecorder() record.EventRecorder {
 	return sc.Recorder
 }
 
-// taskUnschedulable updates pod status of pending task
-func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason, message, nominatedNodeName string) error {
+// taskUnschedulable handles an unschedulable scheduling attempt for a pending task.
+// Strategy:
+//  1. Status writes are intentionally "lazy" and can be skipped/throttled to reduce etcd pressure.
+//  2. FailedScheduling events are controlled by a separate event interval policy.
+//  3. Pending pressure is computed by caller and passed in explicitly.
+func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason, message, nominatedNodeName string, pendingTaskCount int) error {
 	pod := task.Pod
 
 	condition := &v1.PodCondition{
@@ -1079,41 +1171,225 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 		Message: message,
 	}
 
-	updateCond := podConditionHaveUpdate(&pod.Status, condition)
+	hasConditionUpdate := podConditionHaveUpdate(&pod.Status, condition)
 
 	// only update pod's nominatedNodeName when nominatedNodeName is not empty
 	// consider this situation:
 	// 1. at session 1, the pod A preempt another lower priority pod B, and we updated A's nominatedNodeName
 	// 2. at session 2, the pod B is still terminating, so the pod A is still pipelined, but it preempt none, so
 	// the nominatedNodeName is empty, but we should not override the A's nominatedNodeName to empty
-	updateNomiNode := len(nominatedNodeName) > 0 && podNominatedNodeNameNeedUpdate(&pod.Status, nominatedNodeName)
-
-	if updateCond || updateNomiNode {
-		pod = pod.DeepCopy()
-
-		if updateCond && podutil.UpdatePodCondition(&pod.Status, condition) {
-			klog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
-		}
-
-		// if nominatedNode field changed, we should update it to the pod status, for k8s
-		// autoscaler will check this field and ignore this pod when scale up.
-		if updateNomiNode {
-			klog.V(3).Infof("Updating pod nominatedNodeName for %s/%s from (%s) to (%s)", pod.Namespace, pod.Name, pod.Status.NominatedNodeName, nominatedNodeName)
-			pod.Status.NominatedNodeName = nominatedNodeName
-		}
-
-		// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
-		// k8s core, so using the same string here.
-		// The reason field in PodCondition can be "Unschedulable"
-		sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", message)
-		if _, err := sc.StatusUpdater.UpdatePodStatus(pod); err != nil {
-			return err
-		}
-	} else {
-		klog.V(4).Infof("task unscheduleable %s/%s, message: %s, skip by no condition update", pod.Namespace, pod.Name, message)
+	hasNominatedNodeUpdate := len(nominatedNodeName) > 0 && pod.Status.NominatedNodeName != nominatedNodeName
+	hasStatusUpdate := hasConditionUpdate || hasNominatedNodeUpdate
+	needForceSync := sc.shouldForceSyncPodStatusUpdate(pod, condition)
+	klog.V(3).Infof("task unschedulable decision for %s/%s: pendingTaskCount=%d, hasConditionUpdate=%t, hasNominatedNodeUpdate=%t, hasStatusUpdate=%t, needForceSync=%t",
+		pod.Namespace, pod.Name, pendingTaskCount, hasConditionUpdate, hasNominatedNodeUpdate, hasStatusUpdate, needForceSync)
+	// For repeated identical unschedulable results, skip status update by default.
+	// A periodic force-sync prevents status from becoming permanently stale.
+	shouldSkipAsRepeated := !hasStatusUpdate && !needForceSync
+	if shouldSkipAsRepeated {
+		sc.recordUnschedulableEventIfNeeded(pod, condition, pendingTaskCount)
+		klog.V(3).Infof("task unscheduleable %s/%s, message: %s, skip by no condition update", pod.Namespace, pod.Name, message)
+		return nil
 	}
 
+	// Throttle status updates under pressure, but keep event reporting on its own cadence.
+	shouldThrottleUpdate := hasStatusUpdate && sc.shouldThrottlePodStatusUpdate(pod, condition, hasNominatedNodeUpdate, pendingTaskCount)
+	if shouldThrottleUpdate {
+		sc.recordUnschedulableEventIfNeeded(pod, condition, pendingTaskCount)
+		klog.V(3).Infof("Skip pod status update for %s/%s due to adaptive throttling, pending task count: %d", pod.Namespace, pod.Name, pendingTaskCount)
+		return nil
+	}
+
+	pod = pod.DeepCopy()
+
+	if hasConditionUpdate && podutil.UpdatePodCondition(&pod.Status, condition) {
+		klog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
+	}
+
+	// if nominatedNode field changed, we should update it to the pod status, for k8s
+	// autoscaler will check this field and ignore this pod when scale up.
+	if hasNominatedNodeUpdate {
+		klog.V(3).Infof("Updating pod nominatedNodeName for %s/%s from (%s) to (%s)", pod.Namespace, pod.Name, pod.Status.NominatedNodeName, nominatedNodeName)
+		pod.Status.NominatedNodeName = nominatedNodeName
+	}
+
+	sc.recordUnschedulableEventIfNeeded(pod, condition, pendingTaskCount)
+	if _, err := sc.StatusUpdater.UpdatePodStatus(pod); err != nil {
+		return err
+	}
+	sc.recordPodStatusSync(pod, condition)
+
 	return nil
+}
+
+func (sc *SchedulerCache) shouldForceSyncPodStatusUpdate(pod *v1.Pod, condition *v1.PodCondition) bool {
+	sc.podStatusSyncLock.Lock()
+	defer sc.podStatusSyncLock.Unlock()
+
+	last, found := sc.podStatusSyncCache[pod.UID]
+	// No history means this pod status has not been synced by this scheduler cache yet.
+	if !found {
+		return true
+	}
+	// Any meaningful status tuple change should be synced immediately.
+	if last.Phase != pod.Status.Phase || last.Reason != condition.Reason || last.Message != condition.Message {
+		return true
+	}
+	// Otherwise force a periodic refresh.
+	return time.Since(last.LastSyncedAt) >= podStatusForceSyncInterval
+}
+
+func (sc *SchedulerCache) recordPodStatusSync(pod *v1.Pod, condition *v1.PodCondition) {
+	sc.podStatusSyncLock.Lock()
+	defer sc.podStatusSyncLock.Unlock()
+
+	if sc.podStatusSyncCache == nil {
+		sc.podStatusSyncCache = make(map[k8stypes.UID]podStatusSyncMeta)
+	}
+	// Missing key is safe here: Go map lookup returns zero-value metadata.
+	last := sc.podStatusSyncCache[pod.UID]
+	last.LastSyncedAt = time.Now()
+	last.Phase = pod.Status.Phase
+	last.Reason = condition.Reason
+	last.Message = condition.Message
+	sc.podStatusSyncCache[pod.UID] = last
+}
+
+func (sc *SchedulerCache) recordUnschedulableEventIfNeeded(pod *v1.Pod, condition *v1.PodCondition, pendingTaskCount int) {
+	if !sc.shouldEmitUnschedulableEvent(pod, condition, pendingTaskCount) {
+		return
+	}
+	// The event reason should be "FailedScheduling" (same convention as upstream scheduler).
+	sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", condition.Message)
+	sc.recordUnschedulableEventSync(pod, condition)
+}
+
+func (sc *SchedulerCache) shouldEmitUnschedulableEvent(pod *v1.Pod, condition *v1.PodCondition, pendingTaskCount int) bool {
+	sc.podStatusSyncLock.Lock()
+	defer sc.podStatusSyncLock.Unlock()
+
+	last, found := sc.podStatusSyncCache[pod.UID]
+	// Always emit the first event for this pod from this cache instance.
+	if !found {
+		return true
+	}
+	// Emit immediately when reason/message changes to preserve diagnostic signal.
+	if last.EventReason != condition.Reason || last.EventMessage != condition.Message {
+		return true
+	}
+
+	interval := sc.getDynamicPodEventInterval(pendingTaskCount)
+	if interval <= 0 {
+		return true
+	}
+	return time.Since(last.LastEventAt) >= interval
+}
+
+func (sc *SchedulerCache) recordUnschedulableEventSync(pod *v1.Pod, condition *v1.PodCondition) {
+	sc.podStatusSyncLock.Lock()
+	defer sc.podStatusSyncLock.Unlock()
+
+	if sc.podStatusSyncCache == nil {
+		sc.podStatusSyncCache = make(map[k8stypes.UID]podStatusSyncMeta)
+	}
+
+	// Missing key is safe here: Go map lookup returns zero-value metadata.
+	last := sc.podStatusSyncCache[pod.UID]
+	last.LastEventAt = time.Now()
+	last.EventReason = condition.Reason
+	last.EventMessage = condition.Message
+	sc.podStatusSyncCache[pod.UID] = last
+}
+
+func (sc *SchedulerCache) removePodStatusSyncMeta(uid k8stypes.UID) {
+	sc.podStatusSyncLock.Lock()
+	defer sc.podStatusSyncLock.Unlock()
+	delete(sc.podStatusSyncCache, uid)
+}
+
+func (sc *SchedulerCache) shouldThrottlePodStatusUpdate(pod *v1.Pod, condition *v1.PodCondition, updateNomiNode bool, pendingTaskCount int) bool {
+	// Never throttle nominated-node changes: this field is consumed by cluster-autoscaler.
+	if updateNomiNode {
+		klog.V(5).Infof("Skip status throttling for %s/%s: nominatedNodeName is updated", pod.Namespace, pod.Name)
+		return false
+	}
+	if pendingTaskCount < podStatusLowPressureThreshold {
+		klog.V(5).Infof("Skip status throttling for %s/%s: pendingTaskCount=%d below low pressure threshold=%d",
+			pod.Namespace, pod.Name, pendingTaskCount, podStatusLowPressureThreshold)
+		return false
+	}
+
+	sc.podStatusSyncLock.Lock()
+	defer sc.podStatusSyncLock.Unlock()
+
+	last, found := sc.podStatusSyncCache[pod.UID]
+	if !found {
+		klog.V(5).Infof("Skip status throttling for %s/%s: no previous sync history in podStatusSyncCache",
+			pod.Namespace, pod.Name)
+		return false
+	}
+	if last.Phase != pod.Status.Phase || last.Reason != condition.Reason {
+		klog.V(5).Infof("Skip status throttling for %s/%s: status tuple changed (lastPhase=%s,lastReason=%s,currentPhase=%s,currentReason=%s)",
+			pod.Namespace, pod.Name, last.Phase, last.Reason, pod.Status.Phase, condition.Reason)
+		return false
+	}
+	// In high pressure, unstable diagnostic message text can change frequently
+	// and trigger unnecessary status writes. Throttle by phase/reason first.
+	if pendingTaskCount <= podStatusHighPressureThreshold && last.Message != condition.Message {
+		klog.V(5).Infof("Skip status throttling for %s/%s: message changed under non-high pressure (pendingTaskCount=%d, highPressureThreshold=%d)",
+			pod.Namespace, pod.Name, pendingTaskCount, podStatusHighPressureThreshold)
+		return false
+	}
+	if time.Since(last.LastSyncedAt) >= podStatusForceSyncInterval {
+		klog.V(5).Infof("Skip status throttling for %s/%s: force sync interval reached (lastSyncAgo=%v, forceSyncInterval=%v)",
+			pod.Namespace, pod.Name, time.Since(last.LastSyncedAt), podStatusForceSyncInterval)
+		return false
+	}
+
+	interval := sc.getDynamicPodStatusInterval(pendingTaskCount)
+	if interval <= 0 {
+		klog.V(5).Infof("Skip status throttling for %s/%s: dynamic status interval=%v", pod.Namespace, pod.Name, interval)
+		return false
+	}
+	lastSyncAgo := time.Since(last.LastSyncedAt)
+	throttled := lastSyncAgo < interval
+	klog.V(5).Infof("Status throttling decision for %s/%s: pendingTaskCount=%d, interval=%v, lastSyncAgo=%v, throttled=%t",
+		pod.Namespace, pod.Name, pendingTaskCount, interval, lastSyncAgo, throttled)
+	return throttled
+}
+
+func (sc *SchedulerCache) getDynamicPodStatusInterval(pendingTaskCount int) time.Duration {
+	if pendingTaskCount < podStatusLowPressureThreshold {
+		return podStatusLowPressureInterval
+	}
+	if pendingTaskCount > podStatusHighPressureThreshold {
+		return podStatusHighPressureInterval
+	}
+	return podStatusMidPressureInterval
+}
+
+func (sc *SchedulerCache) getDynamicPodEventInterval(pendingTaskCount int) time.Duration {
+	// Event intervals are intentionally independent from status intervals.
+	// They are tuned to be more frequent by default for better observability.
+	if pendingTaskCount < podStatusLowPressureThreshold {
+		return podEventLowPressureInterval
+	}
+	if pendingTaskCount > podStatusHighPressureThreshold {
+		return podEventHighPressureInterval
+	}
+	return podEventMidPressureInterval
+}
+
+func (sc *SchedulerCache) getClusterPendingTaskCount() int {
+	// Pressure is defined by Pending pod count across jobs, not by node count.
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	totalPending := 0
+	for _, job := range sc.Jobs {
+		totalPending += len(job.TaskStatusIndex[schedulingapi.Pending])
+	}
+	return totalPending
 }
 
 func (sc *SchedulerCache) deleteJob(job *schedulingapi.JobInfo) {
@@ -1429,7 +1705,7 @@ func (sc *SchedulerCache) executePreBinds(ctx context.Context, bindContexts []*B
 			reason := fmt.Sprintf("execute preBind for pod %s failed: %v, resync the task", klog.KObj(bindContext.TaskInfo.Pod), err)
 			klog.Error(reason)
 			sc.resyncTask(bindContext.TaskInfo)
-			if updateErr := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, reason, ""); updateErr != nil {
+			if updateErr := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, reason, "", sc.getClusterPendingTaskCount()); updateErr != nil {
 				logger.Error(updateErr, "Failed to update pod status", "pod", klog.KObj(bindContext.TaskInfo.Pod))
 			}
 			continue
@@ -1653,6 +1929,10 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 		for _, task := range statusTasks {
 			taskInfos = append(taskInfos, task)
 		}
+		if len(taskInfos) == 0 {
+			continue
+		}
+		pendingTaskCount := sc.getClusterPendingTaskCount()
 
 		workqueue.ParallelizeUntil(context.TODO(), taskUpdaterWorker, len(taskInfos), func(index int) {
 			taskInfo := taskInfos[index]
@@ -1668,7 +1948,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 				msg = baseErrorMessage
 			}
 
-			if err := sc.taskUnschedulable(taskInfo, reason, msg, nominatedNodeName); err != nil {
+			if err := sc.taskUnschedulable(taskInfo, reason, msg, nominatedNodeName, pendingTaskCount); err != nil {
 				klog.ErrorS(err, "Failed to update unschedulable task status", "task", klog.KRef(taskInfo.Namespace, taskInfo.Name),
 					"reason", reason, "message", msg)
 			}

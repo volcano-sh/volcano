@@ -22,6 +22,7 @@ package cache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync"
@@ -36,8 +37,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclientfake "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -428,6 +431,27 @@ type mockPreBinder struct {
 	preBindFn func(context.Context, *BindContext) error
 }
 
+type fakeStatusUpdater struct {
+	updatePodStatusCount int
+}
+
+func (f *fakeStatusUpdater) UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error) {
+	f.updatePodStatusCount++
+	return pod, nil
+}
+
+func (f *fakeStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error) {
+	return pg, nil
+}
+
+func (f *fakeStatusUpdater) UpdateQueueStatus(queue *api.QueueInfo) error {
+	return nil
+}
+
+func (f *fakeStatusUpdater) UpdateNodeShardStatus(nodeShard *nodeshardv1alpha1.NodeShard) (*nodeshardv1alpha1.NodeShard, error) {
+	return nodeShard, nil
+}
+
 func (m *mockPreBinder) PreBind(ctx context.Context, bindCtx *BindContext) error {
 	return m.preBindFn(ctx, bindCtx)
 }
@@ -669,4 +693,541 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_CompletesAfterDone(t
 	assert.True(t, tracker.HasSynced(), "InitialEventAsyncHandlerTracker should report HasSynced=true after all objects are Done")
 	assert.Less(t, elapsed, 2*time.Second, "WaitForHandlerSync should return after all pending objects are processed")
 	assert.GreaterOrEqual(t, elapsed, 100*time.Millisecond, "WaitForHandlerSync should wait until Done is called")
+}
+
+func TestShouldThrottlePodStatusUpdate(t *testing.T) {
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			UID: types.UID("pod-1"),
+		},
+		Status: v1.PodStatus{
+			Phase: v1.PodPending,
+		},
+	}
+
+	condition := &v1.PodCondition{
+		Type:    v1.PodScheduled,
+		Status:  v1.ConditionFalse,
+		Reason:  "Unschedulable",
+		Message: "0/3 nodes are available",
+	}
+
+	tests := []struct {
+		name                string
+		lastSyncAgo         time.Duration
+		lastPhase           v1.PodPhase
+		lastReason          string
+		lastMessage         string
+		updateNominatedNode bool
+		pendingTaskCount    int
+		expectThrottle      bool
+	}{
+		{
+			name:                "high pressure repeated status should throttle",
+			lastSyncAgo:         2 * time.Second,
+			lastPhase:           v1.PodPending,
+			lastReason:          "Unschedulable",
+			lastMessage:         "0/3 nodes are available",
+			updateNominatedNode: false,
+			pendingTaskCount:    podStatusHighPressureThreshold + 1,
+			expectThrottle:      true,
+		},
+		{
+			name:                "high pressure repeated status force sync after max staleness",
+			lastSyncAgo:         podStatusForceSyncInterval + 5*time.Second,
+			lastPhase:           v1.PodPending,
+			lastReason:          "Unschedulable",
+			lastMessage:         "0/3 nodes are available",
+			updateNominatedNode: false,
+			pendingTaskCount:    podStatusHighPressureThreshold + 1,
+			expectThrottle:      false,
+		},
+		{
+			name:                "reason changed should not throttle",
+			lastSyncAgo:         2 * time.Second,
+			lastPhase:           v1.PodPending,
+			lastReason:          "DifferentReason",
+			lastMessage:         "0/3 nodes are available",
+			updateNominatedNode: false,
+			pendingTaskCount:    podStatusHighPressureThreshold + 1,
+			expectThrottle:      false,
+		},
+		{
+			name:                "high pressure message changed should still throttle",
+			lastSyncAgo:         2 * time.Second,
+			lastPhase:           v1.PodPending,
+			lastReason:          "Unschedulable",
+			lastMessage:         "old message",
+			updateNominatedNode: false,
+			pendingTaskCount:    podStatusHighPressureThreshold + 1,
+			expectThrottle:      true,
+		},
+		{
+			name:                "low pressure should not throttle",
+			lastSyncAgo:         2 * time.Second,
+			lastPhase:           v1.PodPending,
+			lastReason:          "Unschedulable",
+			lastMessage:         "0/3 nodes are available",
+			updateNominatedNode: false,
+			pendingTaskCount:    podStatusLowPressureThreshold - 1,
+			expectThrottle:      false,
+		},
+		{
+			name:                "nominated node update should not throttle",
+			lastSyncAgo:         2 * time.Second,
+			lastPhase:           v1.PodPending,
+			lastReason:          "Unschedulable",
+			lastMessage:         "0/3 nodes are available",
+			updateNominatedNode: true,
+			pendingTaskCount:    podStatusHighPressureThreshold + 1,
+			expectThrottle:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := &SchedulerCache{
+				podStatusSyncCache: make(map[types.UID]podStatusSyncMeta),
+			}
+			sc.podStatusSyncCache[pod.UID] = podStatusSyncMeta{
+				LastSyncedAt: time.Now().Add(-tt.lastSyncAgo),
+				Phase:        tt.lastPhase,
+				Reason:       tt.lastReason,
+				Message:      tt.lastMessage,
+			}
+
+			got := sc.shouldThrottlePodStatusUpdate(pod, condition, tt.updateNominatedNode, tt.pendingTaskCount)
+			assert.Equal(t, tt.expectThrottle, got)
+		})
+	}
+}
+
+func TestShouldEmitUnschedulableEvent(t *testing.T) {
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			UID: types.UID("pod-event-1"),
+		},
+	}
+
+	condition := &v1.PodCondition{
+		Type:    v1.PodScheduled,
+		Status:  v1.ConditionFalse,
+		Reason:  "Unschedulable",
+		Message: "0/3 nodes are available",
+	}
+
+	t.Run("emit first event without history", func(t *testing.T) {
+		sc := &SchedulerCache{
+			podStatusSyncCache: make(map[types.UID]podStatusSyncMeta),
+		}
+		assert.True(t, sc.shouldEmitUnschedulableEvent(pod, condition, podStatusHighPressureThreshold+1))
+	})
+
+	t.Run("suppress repeated event inside interval", func(t *testing.T) {
+		sc := &SchedulerCache{
+			podStatusSyncCache: make(map[types.UID]podStatusSyncMeta),
+		}
+		sc.podStatusSyncCache[pod.UID] = podStatusSyncMeta{
+			LastEventAt:  time.Now().Add(-10 * time.Second),
+			EventReason:  "Unschedulable",
+			EventMessage: "0/3 nodes are available",
+		}
+		assert.False(t, sc.shouldEmitUnschedulableEvent(pod, condition, podStatusHighPressureThreshold+1))
+	})
+
+	t.Run("emit repeated event after interval", func(t *testing.T) {
+		sc := &SchedulerCache{
+			podStatusSyncCache: make(map[types.UID]podStatusSyncMeta),
+		}
+		sc.podStatusSyncCache[pod.UID] = podStatusSyncMeta{
+			LastEventAt:  time.Now().Add(-121 * time.Second),
+			EventReason:  "Unschedulable",
+			EventMessage: "0/3 nodes are available",
+		}
+		assert.True(t, sc.shouldEmitUnschedulableEvent(pod, condition, podStatusHighPressureThreshold+1))
+	})
+
+	t.Run("emit immediately when message changes", func(t *testing.T) {
+		sc := &SchedulerCache{
+			podStatusSyncCache: make(map[types.UID]podStatusSyncMeta),
+		}
+		sc.podStatusSyncCache[pod.UID] = podStatusSyncMeta{
+			LastEventAt:  time.Now().Add(-10 * time.Second),
+			EventReason:  "Unschedulable",
+			EventMessage: "old message",
+		}
+		assert.True(t, sc.shouldEmitUnschedulableEvent(pod, condition, podStatusHighPressureThreshold+1))
+	})
+}
+
+func TestRemovePodStatusSyncMeta(t *testing.T) {
+	uid := types.UID("pod-sync-meta")
+	sc := &SchedulerCache{
+		podStatusSyncCache: make(map[types.UID]podStatusSyncMeta),
+	}
+	sc.podStatusSyncCache[uid] = podStatusSyncMeta{
+		LastSyncedAt: time.Now(),
+		Phase:        v1.PodPending,
+		Reason:       "Unschedulable",
+		Message:      "0/3 nodes are available",
+	}
+
+	sc.removePodStatusSyncMeta(uid)
+	_, found := sc.podStatusSyncCache[uid]
+	assert.False(t, found)
+}
+
+func TestGetDynamicPodEventInterval(t *testing.T) {
+	sc := &SchedulerCache{}
+
+	tests := []struct {
+		name             string
+		pendingTaskCount int
+		want             time.Duration
+	}{
+		{
+			name:             "low pressure uses independent event low interval",
+			pendingTaskCount: podStatusLowPressureThreshold - 1,
+			want:             podEventLowPressureInterval,
+		},
+		{
+			name:             "mid pressure uses independent event mid interval",
+			pendingTaskCount: podStatusLowPressureThreshold,
+			want:             podEventMidPressureInterval,
+		},
+		{
+			name:             "high pressure uses independent event high interval",
+			pendingTaskCount: podStatusHighPressureThreshold + 1,
+			want:             podEventHighPressureInterval,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sc.getDynamicPodEventInterval(tt.pendingTaskCount)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestEstimateEtcdStorageGrowthForFrequentUnschedulableUpdates(t *testing.T) {
+	const (
+		podCount            = 8000
+		updateEvery         = 1 * time.Second
+		observationWindow   = 5 * time.Minute
+		sampleRounds        = 5
+		pendingTaskCount    = podCount
+		reasonUnschedulable = "Unschedulable"
+	)
+
+	sc := &SchedulerCache{
+		podStatusSyncCache: make(map[types.UID]podStatusSyncMeta),
+	}
+
+	pods := make([]*v1.Pod, 0, podCount)
+	for i := 0; i < podCount; i++ {
+		pod := buildPod(
+			"default",
+			fmt.Sprintf("estimate-pod-%d", i),
+			"",
+			v1.PodPending,
+			api.BuildResourceList("10m", "32Mi"),
+			nil,
+			map[string]string{"app": "storage-estimator"},
+		)
+		pods = append(pods, pod)
+	}
+
+	var sampledPatchBytes int64
+	var sampledFullPodBytes int64
+	var sampledWrites int64
+
+	for round := 0; round < sampleRounds; round++ {
+		msg := fmt.Sprintf("0/%d nodes are available in scheduling cycle %d", podCount, round)
+		for _, pod := range pods {
+			condition := &v1.PodCondition{
+				Type:    v1.PodScheduled,
+				Status:  v1.ConditionFalse,
+				Reason:  reasonUnschedulable,
+				Message: msg,
+			}
+
+			if !podConditionHaveUpdate(&pod.Status, condition) {
+				continue
+			}
+			podCopy := pod.DeepCopy()
+			if !podutil.UpdatePodCondition(&podCopy.Status, condition) {
+				continue
+			}
+
+			if sc.shouldThrottlePodStatusUpdate(podCopy, condition, false, pendingTaskCount) {
+				continue
+			}
+
+			patchObj := struct {
+				Status v1.PodStatus `json:"status"`
+			}{Status: podCopy.Status}
+
+			patchBytes, err := json.Marshal(patchObj)
+			if err != nil {
+				t.Fatalf("failed to marshal status patch: %v", err)
+			}
+			fullPodBytes, err := json.Marshal(podCopy)
+			if err != nil {
+				t.Fatalf("failed to marshal full pod object: %v", err)
+			}
+
+			sampledPatchBytes += int64(len(patchBytes))
+			sampledFullPodBytes += int64(len(fullPodBytes))
+			sampledWrites++
+
+			sc.recordPodStatusSync(podCopy, condition)
+			pod.Status = podCopy.Status
+		}
+	}
+
+	if sampledWrites == 0 {
+		t.Fatalf("expected sampled writes > 0")
+	}
+
+	totalRounds := int64(observationWindow / updateEvery)
+	totalWrites := int64(podCount) * totalRounds
+	avgPatchBytesPerWrite := sampledPatchBytes / sampledWrites
+	avgFullPodBytesPerWrite := sampledFullPodBytes / sampledWrites
+	estimatedPatchTrafficBytes := avgPatchBytesPerWrite * totalWrites
+	estimatedEtcdStoredBytes := avgFullPodBytesPerWrite * totalWrites
+
+	t.Logf("Estimated writes in %v: %d pods * %d rounds = %d", observationWindow, podCount, totalRounds, totalWrites)
+	t.Logf("Average bytes/write: patch=%d, fullPod=%d", avgPatchBytesPerWrite, avgFullPodBytesPerWrite)
+	t.Logf("Estimated API patch traffic increase: %.2f MiB", float64(estimatedPatchTrafficBytes)/1024.0/1024.0)
+	t.Logf("Estimated etcd storage growth (full object MVCC approximation): %.2f GiB", float64(estimatedEtcdStoredBytes)/1024.0/1024.0/1024.0)
+}
+
+func TestEstimateEtcdStorageGrowthHighPressureWithMessageJitter(t *testing.T) {
+	const (
+		podCount              = 8000
+		scheduleRatePerSecond = 500
+		observationWindow     = 5 * time.Minute
+		bytesPerWrite         = 100 * 1024
+		targetUpperBoundBytes = int64(2 * 1024 * 1024 * 1024) // 2 GiB
+	)
+
+	// In round-robin retry, each pod is revisited every ~16s (8000/500).
+	// Under high pressure throttling with a long interval, each pod should be
+	// written at most a few times within 5 minutes.
+	revisitInterval := time.Duration(podCount/scheduleRatePerSecond) * time.Second
+	writesPerPod := int64(observationWindow/podStatusHighPressureInterval) + 1
+	if revisitInterval > podStatusHighPressureInterval {
+		// If revisit interval is already slower than throttle interval, throttling
+		// effect is limited; this branch documents the bound conservatively.
+		writesPerPod = int64(observationWindow/revisitInterval) + 1
+	}
+
+	totalWrites := int64(podCount) * writesPerPod
+	estimatedEtcdGrowthBytes := totalWrites * bytesPerWrite
+
+	t.Logf("Estimated writes under throttling: pods=%d, writesPerPod=%d, totalWrites=%d", podCount, writesPerPod, totalWrites)
+	t.Logf("Estimated etcd growth with 100KB object size: %.2f GiB", float64(estimatedEtcdGrowthBytes)/1024.0/1024.0/1024.0)
+
+	if estimatedEtcdGrowthBytes > targetUpperBoundBytes {
+		t.Fatalf("estimated etcd growth exceeds target: got %.2f GiB, want <= %.2f GiB",
+			float64(estimatedEtcdGrowthBytes)/1024.0/1024.0/1024.0,
+			float64(targetUpperBoundBytes)/1024.0/1024.0/1024.0)
+	}
+}
+
+func seedPendingTasksForUnschedulableTests(sc *SchedulerCache, count int) {
+	if sc.Jobs == nil {
+		sc.Jobs = make(map[api.JobID]*api.JobInfo)
+	}
+	job := api.NewJobInfo(api.JobID("unschedulable-test-job"))
+	pending := make(api.TasksMap, count)
+	for i := 0; i < count; i++ {
+		pending[api.TaskID(fmt.Sprintf("pending-%d", i))] = nil
+	}
+	job.TaskStatusIndex[api.Pending] = pending
+	sc.Jobs[job.UID] = job
+}
+
+func TestTaskUnschedulable_RepeatedStatusForceSyncBehavior(t *testing.T) {
+	const (
+		reason  = "Unschedulable"
+		message = "0/3 nodes are available"
+	)
+
+	buildPendingTask := func(uid string) *api.TaskInfo {
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				UID:       types.UID(uid),
+				Name:      "p-" + uid,
+				Namespace: "ns",
+			},
+			Status: v1.PodStatus{
+				Phase: v1.PodPending,
+				Conditions: []v1.PodCondition{
+					{
+						Type:    v1.PodScheduled,
+						Status:  v1.ConditionFalse,
+						Reason:  reason,
+						Message: message,
+					},
+				},
+			},
+		}
+		return api.NewTaskInfo(pod)
+	}
+
+	t.Run("skip repeated status inside force interval", func(t *testing.T) {
+		updater := &fakeStatusUpdater{}
+		recorder := record.NewFakeRecorder(10)
+		task := buildPendingTask("repeat-inside")
+		sc := &SchedulerCache{
+			StatusUpdater:      updater,
+			Recorder:           recorder,
+			podStatusSyncCache: make(map[types.UID]podStatusSyncMeta),
+		}
+		seedPendingTasksForUnschedulableTests(sc, podStatusHighPressureThreshold+1)
+		sc.podStatusSyncCache[task.Pod.UID] = podStatusSyncMeta{
+			LastSyncedAt: time.Now(),
+			Phase:        v1.PodPending,
+			Reason:       reason,
+			Message:      message,
+		}
+
+		err := sc.taskUnschedulable(task, reason, message, "", podStatusHighPressureThreshold+1)
+		assert.NoError(t, err)
+		assert.Equal(t, 0, updater.updatePodStatusCount)
+		assert.Equal(t, 1, len(recorder.Events))
+	})
+
+	t.Run("force sync repeated status after force interval", func(t *testing.T) {
+		updater := &fakeStatusUpdater{}
+		recorder := record.NewFakeRecorder(10)
+		task := buildPendingTask("repeat-force")
+		sc := &SchedulerCache{
+			StatusUpdater:      updater,
+			Recorder:           recorder,
+			podStatusSyncCache: make(map[types.UID]podStatusSyncMeta),
+		}
+		seedPendingTasksForUnschedulableTests(sc, podStatusHighPressureThreshold+1)
+		sc.podStatusSyncCache[task.Pod.UID] = podStatusSyncMeta{
+			LastSyncedAt: time.Now().Add(-podStatusForceSyncInterval - time.Second),
+			Phase:        v1.PodPending,
+			Reason:       reason,
+			Message:      message,
+		}
+
+		err := sc.taskUnschedulable(task, reason, message, "", podStatusHighPressureThreshold+1)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, updater.updatePodStatusCount)
+		assert.Equal(t, 1, len(recorder.Events))
+	})
+}
+
+func TestTaskUnschedulable_StatusAndEventThrottleBehavior(t *testing.T) {
+	const (
+		reason  = "Unschedulable"
+		message = "0/3 nodes are available"
+	)
+
+	buildPendingTask := func(uid, msg string) *api.TaskInfo {
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				UID:       types.UID(uid),
+				Name:      "p-" + uid,
+				Namespace: "ns",
+			},
+			Status: v1.PodStatus{
+				Phase: v1.PodPending,
+				Conditions: []v1.PodCondition{
+					{
+						Type:    v1.PodScheduled,
+						Status:  v1.ConditionFalse,
+						Reason:  reason,
+						Message: msg,
+					},
+				},
+			},
+		}
+		return api.NewTaskInfo(pod)
+	}
+
+	t.Run("skip both status and event inside their intervals", func(t *testing.T) {
+		updater := &fakeStatusUpdater{}
+		recorder := record.NewFakeRecorder(10)
+		task := buildPendingTask("throttle-both", message)
+		sc := &SchedulerCache{
+			StatusUpdater:      updater,
+			Recorder:           recorder,
+			podStatusSyncCache: make(map[types.UID]podStatusSyncMeta),
+		}
+		seedPendingTasksForUnschedulableTests(sc, podStatusHighPressureThreshold+1)
+		sc.podStatusSyncCache[task.Pod.UID] = podStatusSyncMeta{
+			LastSyncedAt: time.Now().Add(-10 * time.Second),
+			Phase:        v1.PodPending,
+			Reason:       reason,
+			Message:      message,
+			LastEventAt:  time.Now().Add(-10 * time.Second),
+			EventReason:  reason,
+			EventMessage: message,
+		}
+
+		err := sc.taskUnschedulable(task, reason, message, "", podStatusHighPressureThreshold+1)
+		assert.NoError(t, err)
+		assert.Equal(t, 0, updater.updatePodStatusCount)
+		assert.Equal(t, 0, len(recorder.Events))
+	})
+
+	t.Run("status throttled but event emitted when event interval elapsed", func(t *testing.T) {
+		updater := &fakeStatusUpdater{}
+		recorder := record.NewFakeRecorder(10)
+		task := buildPendingTask("throttle-status-event-pass", message)
+		sc := &SchedulerCache{
+			StatusUpdater:      updater,
+			Recorder:           recorder,
+			podStatusSyncCache: make(map[types.UID]podStatusSyncMeta),
+		}
+		seedPendingTasksForUnschedulableTests(sc, podStatusHighPressureThreshold+1)
+		sc.podStatusSyncCache[task.Pod.UID] = podStatusSyncMeta{
+			LastSyncedAt: time.Now().Add(-10 * time.Second),
+			Phase:        v1.PodPending,
+			Reason:       reason,
+			Message:      message,
+			LastEventAt:  time.Now().Add(-podEventHighPressureInterval - time.Second),
+			EventReason:  reason,
+			EventMessage: message,
+		}
+
+		err := sc.taskUnschedulable(task, reason, message, "", podStatusHighPressureThreshold+1)
+		assert.NoError(t, err)
+		assert.Equal(t, 0, updater.updatePodStatusCount)
+		assert.Equal(t, 1, len(recorder.Events))
+	})
+
+	t.Run("status throttled but event emitted immediately when message changes", func(t *testing.T) {
+		updater := &fakeStatusUpdater{}
+		recorder := record.NewFakeRecorder(10)
+		newMessage := "0/3 nodes are available: node affinity mismatch"
+		task := buildPendingTask("throttle-status-msg-change", newMessage)
+		sc := &SchedulerCache{
+			StatusUpdater:      updater,
+			Recorder:           recorder,
+			podStatusSyncCache: make(map[types.UID]podStatusSyncMeta),
+		}
+		seedPendingTasksForUnschedulableTests(sc, podStatusHighPressureThreshold+1)
+		sc.podStatusSyncCache[task.Pod.UID] = podStatusSyncMeta{
+			LastSyncedAt: time.Now().Add(-10 * time.Second),
+			Phase:        v1.PodPending,
+			Reason:       reason,
+			Message:      message,
+			LastEventAt:  time.Now().Add(-10 * time.Second),
+			EventReason:  reason,
+			EventMessage: message,
+		}
+
+		err := sc.taskUnschedulable(task, reason, newMessage, "", podStatusHighPressureThreshold+1)
+		assert.NoError(t, err)
+		assert.Equal(t, 0, updater.updatePodStatusCount)
+		assert.Equal(t, 1, len(recorder.Events))
+	})
 }

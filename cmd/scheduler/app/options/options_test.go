@@ -76,17 +76,26 @@ func TestAddFlags(t *testing.T) {
 			QPS:        defaultQPS,
 			Burst:      defaultBurst,
 		},
-		PluginsDir:                    defaultPluginsDir,
-		HealthzBindAddress:            ":11251",
-		MinNodesToFind:                defaultMinNodesToFind,
-		MinPercentageOfNodesToFind:    defaultMinPercentageOfNodesToFind,
-		PercentageOfNodesToFind:       defaultPercentageOfNodesToFind,
-		NodeWorkerThreads:             defaultNodeWorkers,
-		CacheDumpFileDir:              "/tmp",
-		DisableDefaultSchedulerConfig: false,
-		ShardingMode:                  commonutil.NoneShardingMode,
-		ShardName:                     defaultSchedulerName,
-		ResourceSyncTimeout:           60 * time.Second,
+		PluginsDir:                     defaultPluginsDir,
+		HealthzBindAddress:             ":11251",
+		MinNodesToFind:                 defaultMinNodesToFind,
+		MinPercentageOfNodesToFind:     defaultMinPercentageOfNodesToFind,
+		PercentageOfNodesToFind:        defaultPercentageOfNodesToFind,
+		NodeWorkerThreads:              defaultNodeWorkers,
+		CacheDumpFileDir:               "/tmp",
+		DisableDefaultSchedulerConfig:  false,
+		ShardingMode:                   commonutil.NoneShardingMode,
+		ShardName:                      defaultSchedulerName,
+		ResourceSyncTimeout:            60 * time.Second,
+		PodStatusLowPressureThreshold:  defaultPodStatusLowPressureThreshold,
+		PodStatusHighPressureThreshold: defaultPodStatusHighPressureThreshold,
+		PodStatusLowPressureInterval:   defaultPodStatusLowPressureInterval,
+		PodStatusMidPressureInterval:   defaultPodStatusMidPressureInterval,
+		PodStatusHighPressureInterval:  defaultPodStatusHighPressureInterval,
+		PodStatusForceSyncInterval:     defaultPodStatusForceSyncInterval,
+		PodEventLowPressureInterval:    defaultPodEventLowPressureInterval,
+		PodEventMidPressureInterval:    defaultPodEventMidPressureInterval,
+		PodEventHighPressureInterval:   defaultPodEventHighPressureInterval,
 	}
 	expectedFeatureGates := map[featuregate.Feature]bool{
 		features.PodDisruptionBudgetsSupport: false,
@@ -99,4 +108,66 @@ func TestAddFlags(t *testing.T) {
 	for k, v := range expectedFeatureGates {
 		assert.Equal(t, v, utilfeature.DefaultFeatureGate.Enabled(k))
 	}
+}
+
+func TestCheckOptionOrDie_PodStatusThrottleValidation(t *testing.T) {
+	t.Run("valid config passes", func(t *testing.T) {
+		s := NewServerOption()
+		s.PodStatusLowPressureThreshold = 500
+		s.PodStatusHighPressureThreshold = 2000
+		s.PodStatusLowPressureInterval = 0
+		s.PodStatusMidPressureInterval = 120 * time.Second
+		s.PodStatusHighPressureInterval = 300 * time.Second
+		s.PodStatusForceSyncInterval = 10 * time.Minute
+		s.PodEventLowPressureInterval = 0
+		s.PodEventMidPressureInterval = 60 * time.Second
+		s.PodEventHighPressureInterval = 120 * time.Second
+
+		assert.NoError(t, s.CheckOptionOrDie())
+	})
+
+	t.Run("invalid thresholds fail", func(t *testing.T) {
+		s := NewServerOption()
+		s.PodStatusLowPressureThreshold = 3000
+		s.PodStatusHighPressureThreshold = 2000
+		s.PodStatusLowPressureInterval = 0
+		s.PodStatusMidPressureInterval = 120 * time.Second
+		s.PodStatusHighPressureInterval = 300 * time.Second
+		s.PodStatusForceSyncInterval = 10 * time.Minute
+		s.PodEventLowPressureInterval = 0
+		s.PodEventMidPressureInterval = 60 * time.Second
+		s.PodEventHighPressureInterval = 120 * time.Second
+
+		assert.Error(t, s.CheckOptionOrDie())
+	})
+
+	t.Run("invalid force sync interval fails", func(t *testing.T) {
+		s := NewServerOption()
+		s.PodStatusLowPressureThreshold = 500
+		s.PodStatusHighPressureThreshold = 2000
+		s.PodStatusLowPressureInterval = 0
+		s.PodStatusMidPressureInterval = 120 * time.Second
+		s.PodStatusHighPressureInterval = 300 * time.Second
+		s.PodStatusForceSyncInterval = 60 * time.Second
+		s.PodEventLowPressureInterval = 0
+		s.PodEventMidPressureInterval = 60 * time.Second
+		s.PodEventHighPressureInterval = 120 * time.Second
+
+		assert.Error(t, s.CheckOptionOrDie())
+	})
+
+	t.Run("invalid event interval fails", func(t *testing.T) {
+		s := NewServerOption()
+		s.PodStatusLowPressureThreshold = 500
+		s.PodStatusHighPressureThreshold = 2000
+		s.PodStatusLowPressureInterval = 0
+		s.PodStatusMidPressureInterval = 120 * time.Second
+		s.PodStatusHighPressureInterval = 300 * time.Second
+		s.PodStatusForceSyncInterval = 10 * time.Minute
+		s.PodEventLowPressureInterval = 0
+		s.PodEventMidPressureInterval = 60 * time.Second
+		s.PodEventHighPressureInterval = 0
+
+		assert.Error(t, s.CheckOptionOrDie())
+	})
 }
