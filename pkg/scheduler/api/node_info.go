@@ -317,7 +317,7 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 	}
 
 	// set NodeState according to resources
-	if ok, resources := ni.Used.LessEqualWithResourcesName(ni.Allocatable, Zero); !ok {
+	if ok, resources := ni.Used.LessEqual(ni.Allocatable, Zero); !ok {
 		klog.ErrorS(nil, "Node out of sync", "name", ni.Name, "resources", resources)
 	}
 
@@ -419,7 +419,7 @@ func (ni *NodeInfo) setNode(node *v1.Node) {
 }
 
 func (ni *NodeInfo) allocateIdleResource(ti *TaskInfo) {
-	ok, resources := ti.Resreq.LessEqualWithResourcesName(ni.Idle, Zero)
+	ok, resources := ti.Resreq.LessEqual(ni.Idle, Zero)
 	if ok {
 		ni.Idle.sub(ti.Resreq)
 		return
@@ -460,7 +460,7 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 			ni.Pipelined.Add(ti.Resreq)
 		case Binding:
 			// When task in Binding status, it will bind to node, we should double-check whether idle resources are enough to put task before bind to apiserver.
-			if ok, resNames := ti.Resreq.LessEqualWithResourcesName(ni.Idle, Zero); !ok {
+			if ok, resNames := ti.Resreq.LessEqual(ni.Idle, Zero); !ok {
 				return fmt.Errorf("node %s resources %v are not enough to put task <%s/%s>, idle: %s, req: %s", ni.Name, resNames, ti.Namespace, ti.Name, ni.Idle.String(), ti.Resreq.String())
 			}
 			ni.allocateIdleResource(ti)

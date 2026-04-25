@@ -756,32 +756,32 @@ func TestLessEqual(t *testing.T) {
 		},
 	}
 
-	for _, test := range testsForDefaultZero {
-		flag := test.resource1.LessEqual(test.resource2, Zero)
+	for i, test := range testsForDefaultZero {
+		flag, _ := test.resource1.LessEqual(test.resource2, Zero)
 		if !equality.Semantic.DeepEqual(test.expected, flag) {
-			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
+			t.Errorf("Case %v expected: %#v, got: %#v", i, test.expected, flag)
 		}
 	}
 	for caseID, test := range testsForDefaultInfinity {
-		flag := test.resource1.LessEqual(test.resource2, Infinity)
+		flag, _ := test.resource1.LessEqual(test.resource2, Infinity)
 		if !equality.Semantic.DeepEqual(test.expected, flag) {
 			t.Errorf("caseID %d expected: %#v, got: %#v", caseID, test.expected, flag)
 		}
 	}
 }
 
-func TestLessEqualWithDimensionAndResourcesName(t *testing.T) {
+func TestLessEqualWithDimension(t *testing.T) {
 	tests := []struct {
 		resource1             *Resource
 		resource2             *Resource
-		req                   *Resource
+		dims                  ResourceNameList
 		expectedFlag          bool
 		expectedResourceNames []string
 	}{
 		{
 			resource1:             &Resource{},
 			resource2:             &Resource{},
-			req:                   nil,
+			dims:                  nil,
 			expectedFlag:          true,
 			expectedResourceNames: []string{},
 		},
@@ -791,9 +791,9 @@ func TestLessEqualWithDimensionAndResourcesName(t *testing.T) {
 				Memory:   4000,
 			},
 			resource2:             &Resource{},
-			req:                   nil,
-			expectedFlag:          false,
-			expectedResourceNames: []string{"cpu", "memory"},
+			dims:                  nil,
+			expectedFlag:          true,
+			expectedResourceNames: []string{},
 		},
 		{
 			resource1: &Resource{MilliCPU: 5000},
@@ -802,14 +802,14 @@ func TestLessEqualWithDimensionAndResourcesName(t *testing.T) {
 				Memory:          2000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000},
 			},
-			req:                   &Resource{MilliCPU: 1000},
+			dims:                  ResourceNameList{v1.ResourceCPU},
 			expectedFlag:          false,
 			expectedResourceNames: []string{"cpu"},
 		},
 		{
 			resource1:             &Resource{MilliCPU: 3000, Memory: 3000},
 			resource2:             &Resource{MilliCPU: 4000, Memory: 2000},
-			req:                   &Resource{Memory: 1000},
+			dims:                  ResourceNameList{v1.ResourceMemory},
 			expectedFlag:          false,
 			expectedResourceNames: []string{"memory"},
 		},
@@ -819,7 +819,7 @@ func TestLessEqualWithDimensionAndResourcesName(t *testing.T) {
 				Memory:   4000,
 			},
 			resource2:             &Resource{},
-			req:                   &Resource{},
+			dims:                  ResourceNameList{},
 			expectedFlag:          true,
 			expectedResourceNames: []string{},
 		},
@@ -829,10 +829,7 @@ func TestLessEqualWithDimensionAndResourcesName(t *testing.T) {
 				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1},
 			},
 			resource2: &Resource{MilliCPU: 8, Memory: 8000},
-			req: &Resource{
-				MilliCPU: 4, Memory: 2000,
-				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1},
-			},
+			dims:                  ResourceNameList{"nvidia.com/gpu"},
 			expectedFlag:          false,
 			expectedResourceNames: []string{"nvidia.com/gpu"},
 		},
@@ -845,12 +842,9 @@ func TestLessEqualWithDimensionAndResourcesName(t *testing.T) {
 				MilliCPU: 100, Memory: 8000,
 				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/A100": 1},
 			},
-			req: &Resource{
-				MilliCPU: 10, Memory: 4000,
-				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 0, "nvidia.com/A100": 1, "scalar": 1},
-			},
-			expectedFlag:          true,
-			expectedResourceNames: []string{},
+			dims:                  ResourceNameList{"nvidia.com/gpu", "nvidia.com/A100", "scalar"},
+			expectedFlag:          false,
+			expectedResourceNames: []string{"nvidia.com/gpu"},
 		},
 		{
 			resource1: &Resource{
@@ -861,17 +855,14 @@ func TestLessEqualWithDimensionAndResourcesName(t *testing.T) {
 				MilliCPU: 100, Memory: 8000,
 				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/A100": 1, "scalar": 1},
 			},
-			req: &Resource{
-				Memory:          4000,
-				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 0, "nvidia.com/A100": 1, "scalar": 1},
-			},
-			expectedFlag:          true,
-			expectedResourceNames: []string{},
+			dims:                  ResourceNameList{v1.ResourceMemory, "nvidia.com/gpu", "nvidia.com/A100", "scalar"},
+			expectedFlag:          false,
+			expectedResourceNames: []string{"nvidia.com/gpu"},
 		},
 	}
 
 	for i, test := range tests {
-		flag, resourceNames := test.resource1.LessEqualWithDimensionAndResourcesName(test.resource2, test.req)
+		flag, resourceNames := test.resource1.LessEqualWithDimension(test.resource2, test.dims)
 		if !equality.Semantic.DeepEqual(test.expectedFlag, flag) {
 			t.Errorf("Case %v: expected: %#v, got: %#v", i, test.expectedFlag, flag)
 		}
@@ -1180,13 +1171,13 @@ func TestLessEqualPartly(t *testing.T) {
 	}
 
 	for _, test := range testsForDefaultZero {
-		flag := test.resource1.LessEqualPartly(test.resource2, Zero)
+		flag, _ := test.resource1.LessEqualPartly(test.resource2, Zero)
 		if !equality.Semantic.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
 	}
 	for _, test := range testsForDefaultInfinity {
-		flag := test.resource1.LessEqualPartly(test.resource2, Infinity)
+		flag, _ := test.resource1.LessEqualPartly(test.resource2, Infinity)
 		if !equality.Semantic.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
@@ -1197,77 +1188,77 @@ func TestLessEqualPartlyWithDimension(t *testing.T) {
 	tests := []struct {
 		r         *Resource
 		rr        *Resource
-		req       *Resource
+		dims      ResourceNameList
 		wantBool  bool
 		wantNames []string
 	}{
 		{
 			r:         &Resource{MilliCPU: 1000},
 			rr:        &Resource{MilliCPU: 2000},
-			req:       nil,
+			dims:      nil,
 			wantBool:  false,
 			wantNames: []string{},
 		},
 		{
 			r:         &Resource{MilliCPU: 3000},
 			rr:        &Resource{MilliCPU: 2000},
-			req:       &Resource{MilliCPU: 4000},
+			dims:      ResourceNameList{v1.ResourceCPU},
 			wantBool:  false,
 			wantNames: []string{},
 		},
 		{
 			r:         &Resource{MilliCPU: 1000},
 			rr:        &Resource{MilliCPU: 2000},
-			req:       &Resource{MilliCPU: 500},
+			dims:      ResourceNameList{v1.ResourceCPU},
 			wantBool:  true,
 			wantNames: []string{"cpu"},
 		},
 		{
 			r:         &Resource{Memory: 1024},
 			rr:        &Resource{Memory: 1024},
-			req:       &Resource{Memory: 512},
+			dims:      ResourceNameList{v1.ResourceMemory},
 			wantBool:  true,
 			wantNames: []string{"memory"},
 		},
 		{
 			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2}},
 			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 4}},
-			req:       &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1}},
+			dims:      ResourceNameList{"nvidia.com/gpu"},
 			wantBool:  true,
 			wantNames: []string{"nvidia.com/gpu"},
 		},
 		{
 			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 4}},
 			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 4}},
-			req:       &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2}},
+			dims:      ResourceNameList{"nvidia.com/gpu"},
 			wantBool:  true,
 			wantNames: []string{"nvidia.com/gpu"},
 		},
 		{
 			r:         &Resource{MilliCPU: 3000, Memory: 2048, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 5}},
 			rr:        &Resource{MilliCPU: 2000, Memory: 1024, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 4}},
-			req:       &Resource{MilliCPU: 1000, Memory: 512, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1}},
+			dims:      ResourceNameList{v1.ResourceCPU, v1.ResourceMemory, "nvidia.com/gpu"},
 			wantBool:  false,
 			wantNames: []string{},
 		},
 		{
 			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 2, "fpga": 2}},
 			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 2}},
-			req:       &Resource{MilliCPU: 1000, Memory: 512, ScalarResources: map[v1.ResourceName]float64{"rdma": 1, "fpga": 1, "nvidia.com/gpu": 2}},
+			dims:      ResourceNameList{v1.ResourceCPU, v1.ResourceMemory, "rdma", "fpga", "nvidia.com/gpu"},
 			wantBool:  true,
 			wantNames: []string{"cpu", "memory", "rdma", "nvidia.com/gpu"},
 		},
 		{
 			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 1, "fpga": 2, "nvidia.com/gpu": 2}},
 			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 2, "fpga": 2}},
-			req:       &Resource{MilliCPU: 1000, Memory: 512, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2, "rdma": 1, "fpga": 1}},
+			dims:      ResourceNameList{v1.ResourceCPU, v1.ResourceMemory, "nvidia.com/gpu", "rdma", "fpga"},
 			wantBool:  true,
 			wantNames: []string{"cpu", "memory", "rdma", "fpga"},
 		},
 	}
 
 	for _, tt := range tests {
-		gotBool, gotNames := tt.r.LessEqualPartlyWithDimension(tt.rr, tt.req)
+		gotBool, gotNames := tt.r.LessEqualPartlyWithDimension(tt.rr, tt.dims)
 		if gotBool != tt.wantBool {
 			t.Errorf("got bool %v, want %v", gotBool, tt.wantBool)
 		}
@@ -1279,67 +1270,67 @@ func TestLessEqualPartlyWithDimension(t *testing.T) {
 	}
 }
 
-func TestLessEqualPartlyWithDimensionZeroFiltered(t *testing.T) {
+func TestLessEqualPartlyWithRelevantDimensions(t *testing.T) {
 	tests := []struct {
 		r         *Resource
 		rr        *Resource
-		req       *Resource
+		dims      ResourceNameList
 		wantBool  bool
 		wantNames []string
 	}{
 		{
 			r:         &Resource{MilliCPU: 0, Memory: 0},
 			rr:        &Resource{MilliCPU: 0, Memory: 0},
-			req:       &Resource{MilliCPU: 1000, Memory: 512},
+			dims:      ResourceNameList{v1.ResourceCPU, v1.ResourceMemory},
 			wantBool:  false,
 			wantNames: []string{},
 		},
 		{
 			r:         &Resource{MilliCPU: 1000, Memory: 0},
 			rr:        &Resource{MilliCPU: 2000, Memory: 0},
-			req:       &Resource{MilliCPU: 1000, Memory: 512},
+			dims:      ResourceNameList{v1.ResourceCPU, v1.ResourceMemory},
 			wantBool:  true,
 			wantNames: []string{"cpu"},
 		},
 		{
 			r:         &Resource{MilliCPU: 0, Memory: 0},
 			rr:        &Resource{MilliCPU: 0, Memory: 2048},
-			req:       &Resource{MilliCPU: 1000, Memory: 512},
+			dims:      ResourceNameList{v1.ResourceCPU, v1.ResourceMemory},
 			wantBool:  true,
 			wantNames: []string{"memory"},
 		},
 		{
 			r:         &Resource{MilliCPU: 1000, Memory: 1024},
 			rr:        &Resource{MilliCPU: 2000, Memory: 2048},
-			req:       &Resource{MilliCPU: 1000, Memory: 512},
+			dims:      ResourceNameList{v1.ResourceCPU, v1.ResourceMemory},
 			wantBool:  true,
 			wantNames: []string{"cpu", "memory"},
 		},
 		{
 			r:         &Resource{MilliCPU: 0, Memory: 1024},
 			rr:        &Resource{MilliCPU: 2000, Memory: 0, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 4}},
-			req:       &Resource{MilliCPU: 1000, Memory: 512, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2}},
+			dims:      ResourceNameList{v1.ResourceCPU, v1.ResourceMemory, "nvidia.com/gpu"},
 			wantBool:  true,
 			wantNames: []string{"cpu", "nvidia.com/gpu"},
 		},
 		{
 			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 2, "fpga": 2}},
 			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 2}},
-			req:       &Resource{MilliCPU: 1000, Memory: 512, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2, "rdma": 1, "fpga": 1}},
+			dims:      ResourceNameList{"nvidia.com/gpu", "rdma", "fpga"},
 			wantBool:  true,
 			wantNames: []string{"rdma"},
 		},
 		{
 			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 1, "fpga": 2, "nvidia.com/gpu": 2}},
 			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 2, "fpga": 2}},
-			req:       &Resource{MilliCPU: 1000, Memory: 512, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2, "rdma": 1, "fpga": 1}},
+			dims:      ResourceNameList{"nvidia.com/gpu", "rdma", "fpga"},
 			wantBool:  true,
 			wantNames: []string{"rdma", "fpga"},
 		},
 	}
 
 	for _, tt := range tests {
-		gotBool, gotNames := tt.r.LessEqualPartlyWithDimensionZeroFiltered(tt.rr, tt.req)
+		gotBool, gotNames := tt.r.LessEqualPartlyWithRelevantDimensions(tt.rr, tt.dims)
 		if gotBool != tt.wantBool {
 			t.Errorf("got bool %v, want %v", gotBool, tt.wantBool)
 		}
@@ -1356,15 +1347,15 @@ func TestGreaterPartlyWithDimension(t *testing.T) {
 		name      string
 		r         *Resource
 		rr        *Resource
-		req       *Resource
+		dims      ResourceNameList
 		wantBool  bool
 		wantNames []string
 	}{
 		{
-			name:      "nil req returns false",
+			name:      "nil dims returns false",
 			r:         &Resource{MilliCPU: 1000},
 			rr:        &Resource{MilliCPU: 500},
-			req:       nil,
+			dims:      nil,
 			wantBool:  false,
 			wantNames: []string{},
 		},
@@ -1372,7 +1363,7 @@ func TestGreaterPartlyWithDimension(t *testing.T) {
 			name:      "cpu greater",
 			r:         &Resource{MilliCPU: 2000},
 			rr:        &Resource{MilliCPU: 1000},
-			req:       &Resource{MilliCPU: 1000},
+			dims:      ResourceNameList{v1.ResourceCPU},
 			wantBool:  true,
 			wantNames: []string{"cpu"},
 		},
@@ -1380,7 +1371,7 @@ func TestGreaterPartlyWithDimension(t *testing.T) {
 			name:      "scalar resource greater",
 			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2}},
 			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1}},
-			req:       &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1}},
+			dims:      ResourceNameList{"nvidia.com/gpu"},
 			wantBool:  true,
 			wantNames: []string{"nvidia.com/gpu"},
 		},
@@ -1388,7 +1379,7 @@ func TestGreaterPartlyWithDimension(t *testing.T) {
 			name:      "cpu and memory, both greater",
 			r:         &Resource{MilliCPU: 2000, Memory: 2048},
 			rr:        &Resource{MilliCPU: 1000, Memory: 1024},
-			req:       &Resource{MilliCPU: 1000, Memory: 1024},
+			dims:      ResourceNameList{v1.ResourceCPU, v1.ResourceMemory},
 			wantBool:  true,
 			wantNames: []string{"cpu", "memory"},
 		},
@@ -1396,7 +1387,7 @@ func TestGreaterPartlyWithDimension(t *testing.T) {
 			name:      "memory greater but not requested",
 			r:         &Resource{MilliCPU: 1000, Memory: 2048},
 			rr:        &Resource{MilliCPU: 1000, Memory: 1024},
-			req:       &Resource{MilliCPU: 1000},
+			dims:      ResourceNameList{v1.ResourceCPU},
 			wantBool:  false,
 			wantNames: []string{},
 		},
@@ -1404,14 +1395,14 @@ func TestGreaterPartlyWithDimension(t *testing.T) {
 			name:      "nothing greater",
 			r:         &Resource{MilliCPU: 1000, Memory: 1024},
 			rr:        &Resource{MilliCPU: 2000, Memory: 2048},
-			req:       &Resource{MilliCPU: 1000, Memory: 1024},
+			dims:      ResourceNameList{v1.ResourceCPU, v1.ResourceMemory},
 			wantBool:  false,
 			wantNames: []string{},
 		},
 	}
 
 	for _, tt := range tests {
-		gotBool, gotNames := tt.r.GreaterPartlyWithDimension(tt.rr, tt.req)
+		gotBool, gotNames := tt.r.GreaterPartlyWithDimension(tt.rr, tt.dims)
 		if gotBool != tt.wantBool {
 			t.Errorf("%s: got bool %v, want %v", tt.name, gotBool, tt.wantBool)
 		}
@@ -1428,15 +1419,15 @@ func TestGreaterPartlyWithRelevantDimensions(t *testing.T) {
 		name      string
 		r         *Resource
 		rr        *Resource
-		req       *Resource
+		dims      ResourceNameList
 		wantBool  bool
 		wantNames []string
 	}{
 		{
-			name:      "nil req returns false",
+			name:      "nil dims returns false",
 			r:         &Resource{MilliCPU: 1000},
 			rr:        &Resource{MilliCPU: 500},
-			req:       nil,
+			dims:      nil,
 			wantBool:  false,
 			wantNames: []string{},
 		},
@@ -1444,7 +1435,7 @@ func TestGreaterPartlyWithRelevantDimensions(t *testing.T) {
 			name:      "cpu greater, rr has cpu",
 			r:         &Resource{MilliCPU: 2000},
 			rr:        &Resource{MilliCPU: 1000},
-			req:       &Resource{MilliCPU: 1000},
+			dims:      ResourceNameList{v1.ResourceCPU},
 			wantBool:  true,
 			wantNames: []string{"cpu"},
 		},
@@ -1452,7 +1443,7 @@ func TestGreaterPartlyWithRelevantDimensions(t *testing.T) {
 			name:      "cpu greater, rr has no cpu (should be ignored)",
 			r:         &Resource{MilliCPU: 2000},
 			rr:        &Resource{},
-			req:       &Resource{MilliCPU: 1000},
+			dims:      ResourceNameList{v1.ResourceCPU},
 			wantBool:  false,
 			wantNames: []string{},
 		},
@@ -1460,7 +1451,7 @@ func TestGreaterPartlyWithRelevantDimensions(t *testing.T) {
 			name:      "scalar resource greater, rr has scalar",
 			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2}},
 			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1}},
-			req:       &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1}},
+			dims:      ResourceNameList{"nvidia.com/gpu"},
 			wantBool:  true,
 			wantNames: []string{"nvidia.com/gpu"},
 		},
@@ -1468,7 +1459,7 @@ func TestGreaterPartlyWithRelevantDimensions(t *testing.T) {
 			name:      "scalar resource greater, rr does not have scalar (should be ignored)",
 			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2}},
 			rr:        &Resource{},
-			req:       &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1}},
+			dims:      ResourceNameList{"nvidia.com/gpu"},
 			wantBool:  false,
 			wantNames: []string{},
 		},
@@ -1476,7 +1467,7 @@ func TestGreaterPartlyWithRelevantDimensions(t *testing.T) {
 			name:      "cpu and memory, only memory greater and present in rr",
 			r:         &Resource{MilliCPU: 1000, Memory: 2048},
 			rr:        &Resource{MilliCPU: 1000, Memory: 1024},
-			req:       &Resource{MilliCPU: 1000, Memory: 1024},
+			dims:      ResourceNameList{v1.ResourceCPU, v1.ResourceMemory},
 			wantBool:  true,
 			wantNames: []string{"memory"},
 		},
@@ -1484,14 +1475,14 @@ func TestGreaterPartlyWithRelevantDimensions(t *testing.T) {
 			name:      "nothing greater",
 			r:         &Resource{MilliCPU: 1000, Memory: 1024},
 			rr:        &Resource{MilliCPU: 2000, Memory: 2048},
-			req:       &Resource{MilliCPU: 1000, Memory: 1024},
+			dims:      ResourceNameList{v1.ResourceCPU, v1.ResourceMemory},
 			wantBool:  false,
 			wantNames: []string{},
 		},
 	}
 
 	for _, tt := range tests {
-		gotBool, gotNames := tt.r.GreaterPartlyWithRelevantDimensions(tt.rr, tt.req)
+		gotBool, gotNames := tt.r.GreaterPartlyWithRelevantDimensions(tt.rr, tt.dims)
 		if gotBool != tt.wantBool {
 			t.Errorf("%s: got bool %v, want %v", tt.name, gotBool, tt.wantBool)
 		}
@@ -1804,7 +1795,7 @@ func TestResource_LessEqualResource(t *testing.T) {
 				Memory:          2000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
 			},
-			expected: []string{},
+			expected: []string{"hugepages-test", "scalar.test/scalar1"},
 		},
 		{
 			resource1: &Resource{
@@ -1817,16 +1808,18 @@ func TestResource_LessEqualResource(t *testing.T) {
 		},
 	}
 
-	for _, test := range testsForDefaultZero {
-		_, reason := test.resource1.LessEqualWithResourcesName(test.resource2, Zero)
+	for i := range testsForDefaultZero {
+		test := &testsForDefaultZero[i]
+		_, reason := test.resource1.LessEqual(test.resource2, Zero)
 		sort.Strings(test.expected)
 		sort.Strings(reason)
 		if !equality.Semantic.DeepEqual(test.expected, reason) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, reason)
 		}
 	}
-	for caseID, test := range testsForDefaultInfinity {
-		_, reason := test.resource1.LessEqualWithResourcesName(test.resource2, Infinity)
+	for i := range testsForDefaultInfinity {
+		caseID, test := i, &testsForDefaultInfinity[i]
+		_, reason := test.resource1.LessEqual(test.resource2, Infinity)
 		sort.Strings(test.expected)
 		sort.Strings(reason)
 		if !equality.Semantic.DeepEqual(test.expected, reason) {

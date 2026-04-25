@@ -225,7 +225,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		nodeStmt := framework.NewStatement(ssn)
 		evictionOccurred := false
 		for !victimsQueue.Empty() {
-			if resreq.LessEqual(availableResources, api.Zero) {
+			if ok, _ := resreq.LessEqual(availableResources, api.Zero); ok {
 				break
 			}
 			reclaimee := victimsQueue.Pop().(*api.TaskInfo)
@@ -239,7 +239,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 
 		klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>, and Node <%s> availableResources <%v>.", reclaimed, task.Namespace, task.Name, task.InitResreq, n.Name, availableResources)
 
-		if resreq.LessEqual(availableResources, api.Zero) {
+		if ok, _ := resreq.LessEqual(availableResources, api.Zero); ok {
 			if err := nodeStmt.Pipeline(task, n.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					task.Namespace, task.Name, n.Name)

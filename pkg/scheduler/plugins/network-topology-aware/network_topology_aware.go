@@ -641,7 +641,13 @@ func (nta *networkTopologyAwarePlugin) isEligibleHyperNode(hn *api.HyperNodeInfo
 		return true // Resource status for hypernode not found in cache, skipping pre-filtering for it.
 	}
 
-	if minResource.LessEqual(hnResourceStatus.idle, api.Zero) || minResource.LessEqual(hnResourceStatus.futureIdle, api.Zero) {
+	if minResource == nil {
+		return true
+	}
+
+	lessEqualIdle, _ := minResource.LessEqual(hnResourceStatus.idle, api.Zero)
+	lessEqualFutureIdle, _ := minResource.LessEqual(hnResourceStatus.futureIdle, api.Zero)
+	if lessEqualIdle || lessEqualFutureIdle {
 		return true
 	}
 	return false
