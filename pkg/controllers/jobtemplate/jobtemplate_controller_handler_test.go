@@ -81,9 +81,9 @@ func TestAddJob(t *testing.T) {
 			Name: "Valid with dots in name",
 			job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        "job2",
-					Namespace:   namespace,
-					Labels:      map[string]string{CreatedByJobTemplate: "test.my.template"},
+					Name:      "job2",
+					Namespace: namespace,
+					Labels:    map[string]string{CreatedByJobTemplate: "test.my.template"},
 				},
 			},
 			ExpectValue: 1,
@@ -92,9 +92,9 @@ func TestAddJob(t *testing.T) {
 			Name: "Invalid no dots",
 			job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        "job3",
-					Namespace:   namespace,
-					Labels:      map[string]string{CreatedByJobTemplate: "nonamespaceorname"},
+					Name:      "job3",
+					Namespace: namespace,
+					Labels:    map[string]string{CreatedByJobTemplate: "nonamespaceorname"},
 				},
 			},
 			ExpectValue: 0,
@@ -103,9 +103,9 @@ func TestAddJob(t *testing.T) {
 			Name: "Invalid empty name",
 			job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        "job4",
-					Namespace:   namespace,
-					Labels:      map[string]string{CreatedByJobTemplate: "test."},
+					Name:      "job4",
+					Namespace: namespace,
+					Labels:    map[string]string{CreatedByJobTemplate: "test."},
 				},
 			},
 			ExpectValue: 0,
@@ -114,9 +114,9 @@ func TestAddJob(t *testing.T) {
 			Name: "Invalid empty namespace",
 			job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        "job5",
-					Namespace:   namespace,
-					Labels:      map[string]string{CreatedByJobTemplate: ".name"},
+					Name:      "job5",
+					Namespace: namespace,
+					Labels:    map[string]string{CreatedByJobTemplate: ".name"},
 				},
 			},
 			ExpectValue: 0,
@@ -125,8 +125,8 @@ func TestAddJob(t *testing.T) {
 			Name: "Invalid empty value",
 			job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        "job6",
-					Namespace:   namespace,
+					Name:      "job6",
+					Namespace: namespace,
 					Labels:    map[string]string{CreatedByJobTemplate: ""},
 				},
 			},
