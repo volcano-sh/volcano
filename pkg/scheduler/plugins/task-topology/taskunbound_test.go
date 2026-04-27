@@ -54,7 +54,7 @@ func newTestTask(uid, taskSpec, nodeName string) *api.TaskInfo {
 	}
 	t := api.NewTaskInfo(pod)
 	t.NodeName = nodeName
-	t.Job = "job-test"
+	t.Job = api.JobID("job-test")
 	return t
 }
 
@@ -137,7 +137,7 @@ func TestBucket_TaskUnbound_IsInverseOfTaskBound(t *testing.T) {
 // invariant at the JobManager level — including the nodeTaskSet
 // bookkeeping that drives inter-task affinity scoring.
 func TestJobManager_TaskUnbound_IsInverseOfTaskBound(t *testing.T) {
-	jm := NewJobManager("job-test")
+	jm := NewJobManager(api.JobID("job-test"))
 	bucket := jm.NewBucket()
 
 	task := newTestTask("u1", "ps", "")
