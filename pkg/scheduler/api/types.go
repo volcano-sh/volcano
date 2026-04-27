@@ -124,8 +124,8 @@ type VictimCompareFn func(interface{}, interface{}, interface{}) int
 // ValidateFn is the func declaration used to check object's status.
 type ValidateFn func(interface{}) bool
 
-// ValidateWithCandidateFn behaves like ValidateFn but take the candidate task into consideration.
-type ValidateWithCandidateFn func(interface{}, interface{}) bool
+// ValidateWithCandidateFn behaves like ValidateFn but takes candidate tasks into consideration.
+type ValidateWithCandidateFn func(interface{}, []*TaskInfo) bool
 
 // ValidateResult is struct to which can used to determine the result
 type ValidateResult struct {
@@ -323,6 +323,31 @@ type BestNodeFn func(*TaskInfo, map[float64][]*NodeInfo) *NodeInfo
 // EvictableFn is the func declaration used to evict tasks.
 type EvictableFn func(*TaskInfo, []*TaskInfo) ([]*TaskInfo, int)
 
+// EvictionKind distinguishes gang-aware eviction from legacy task-level eviction.
+type EvictionKind int
+
+const (
+	EvictionKindUnknown          EvictionKind = iota
+	EvictionKindGangPreempt                   // gang-aware preemption (gangpreempt action)
+	EvictionKindGangReclaim                   // gang-aware reclaim (gangreclaim action)
+	EvictionKindTaskPreempt                   // legacy task-level preemption
+	EvictionKindTaskReclaim                   // legacy task-level reclaim
+)
+
+// EvictionContext carries the full initiator context for unified victim filtering.
+type EvictionContext struct {
+	Kind      EvictionKind
+	Job       *JobInfo
+	// Task is only populated for task-level eviction (EvictionKindTaskPreempt / EvictionKindTaskReclaim).
+	// For gang-aware eviction kinds it is nil; use Job instead.
+	Task      *TaskInfo
+	HyperNode string
+}
+
+// UnifiedEvictableFn is the victim-filter callback for gang-aware eviction.
+// Plugins use EvictionContext.Kind to branch between gang and legacy modes.
+type UnifiedEvictableFn func(ctx *EvictionContext, candidates []*TaskInfo) ([]*TaskInfo, int)
+
 // NodeOrderFn is the func declaration used to get priority score for a node for a particular task.
 type NodeOrderFn func(*TaskInfo, *NodeInfo) (float64, error)
 
@@ -373,10 +398,19 @@ type SimulatePredicateFn func(ctx context.Context, state fwk.CycleState, task *T
 // Plugins implement this function to verify if the queue has enough resources to schedule the task while maintaining topology constraints
 type SimulateAllocatableFn func(ctx context.Context, state fwk.CycleState, queue *QueueInfo, task *TaskInfo) bool
 
+type SearchPurpose int
+
+const (
+	// PurposeAllocate indicates the caller is performing placement/allocation search.
+	PurposeAllocate SearchPurpose = iota
+	// PurposeEvict indicates the caller is performing eviction search.
+	PurposeEvict
+)
+
 // HyperNodeGradientForJobFn group hyperNodes into several gradients,
 // and discard hyperNodes that unmatched the job topology requirements.
-type HyperNodeGradientForJobFn func(job *JobInfo, hyperNode *HyperNodeInfo) [][]*HyperNodeInfo
+type HyperNodeGradientForJobFn func(job *JobInfo, hyperNode *HyperNodeInfo, purpose SearchPurpose) [][]*HyperNodeInfo
 
 // HyperNodeGradientForSubJobFn group hyperNodes into several gradients,
 // and discard hyperNodes that unmatched the subJob topology requirements.
-type HyperNodeGradientForSubJobFn func(subJob *SubJobInfo, hyperNode *HyperNodeInfo) [][]*HyperNodeInfo
+type HyperNodeGradientForSubJobFn func(subJob *SubJobInfo, hyperNode *HyperNodeInfo, purpose SearchPurpose) [][]*HyperNodeInfo

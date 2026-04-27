@@ -146,7 +146,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 					continue
 				}
 
-				if !ssn.Preemptive(queue, task) {
+				if !ssn.Preemptive(queue, []*api.TaskInfo{task}) {
 					klog.V(3).Infof("Queue <%s> cannot reclaim for task <%s>, skip", queue.Name, task.Name)
 					continue
 				}

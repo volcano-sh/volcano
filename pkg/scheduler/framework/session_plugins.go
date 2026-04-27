@@ -58,12 +58,26 @@ func (ssn *Session) AddTaskOrderFn(name string, cf api.CompareFn) {
 
 // AddPreemptableFn add preemptable function
 func (ssn *Session) AddPreemptableFn(name string, cf api.EvictableFn) {
+	if ssn.preemptableFns == nil {
+		ssn.preemptableFns = map[string]api.EvictableFn{}
+	}
 	ssn.preemptableFns[name] = cf
 }
 
 // AddReclaimableFn add Reclaimable function
 func (ssn *Session) AddReclaimableFn(name string, rf api.EvictableFn) {
+	if ssn.reclaimableFns == nil {
+		ssn.reclaimableFns = map[string]api.EvictableFn{}
+	}
 	ssn.reclaimableFns[name] = rf
+}
+
+// AddUnifiedEvictableFn registers a UnifiedEvictableFn for gang-aware victim filtering.
+func (ssn *Session) AddUnifiedEvictableFn(name string, fn api.UnifiedEvictableFn) {
+	if ssn.unifiedEvictableFns == nil {
+		ssn.unifiedEvictableFns = map[string]api.UnifiedEvictableFn{}
+	}
+	ssn.unifiedEvictableFns[name] = fn
 }
 
 // AddJobReadyFn add JobReady function
@@ -306,6 +320,47 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 	return victims
 }
 
+// UnifiedEvictable invokes UnifiedEvictableFn plugins for gang-aware victim filtering.
+// Tier walking and intersection semantics match Preemptable/Reclaimable.
+func (ssn *Session) UnifiedEvictable(ctx *api.EvictionContext, candidates []*api.TaskInfo) []*api.TaskInfo {
+	var victims []*api.TaskInfo
+
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			fn, found := ssn.unifiedEvictableFns[plugin.Name]
+			if !found {
+				continue
+			}
+			result, abstain := fn(ctx, candidates)
+			if abstain == 0 {
+				continue
+			}
+			if len(result) == 0 {
+				victims = nil
+				break
+			}
+			if victims == nil {
+				victims = result
+			} else {
+				var intersection []*api.TaskInfo
+				for _, v := range victims {
+					for _, c := range result {
+						if v.UID == c.UID {
+							intersection = append(intersection, v)
+						}
+					}
+				}
+				victims = intersection
+			}
+		}
+		if victims != nil {
+			return victims
+		}
+	}
+
+	return victims
+}
+
 // Overused invoke overused function of the plugins
 func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 	for _, tier := range ssn.Tiers {
@@ -326,8 +381,8 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 	return false
 }
 
-// Preemptive invoke can preemptive function of the plugins
-func (ssn *Session) Preemptive(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+// Preemptive invokes preemptive functions of the plugins.
+func (ssn *Session) Preemptive(queue *api.QueueInfo, candidates []*api.TaskInfo) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			of, found := ssn.preemptiveFns[plugin.Name]
@@ -337,7 +392,7 @@ func (ssn *Session) Preemptive(queue *api.QueueInfo, candidate *api.TaskInfo) bo
 			if !found {
 				continue
 			}
-			if !of(queue, candidate) {
+			if !of(queue, candidates) {
 				return false
 			}
 		}
@@ -1047,7 +1102,7 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 // HyperNodeGradientForJobFn group hyperNodes into several gradients,
 // and discard hyperNodes that unmatched the job topology requirements.
 // The result is determined by the first plugin that registered this fn.
-func (ssn *Session) HyperNodeGradientForJobFn(job *api.JobInfo, hyperNode *api.HyperNodeInfo) [][]*api.HyperNodeInfo {
+func (ssn *Session) HyperNodeGradientForJobFn(job *api.JobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledHyperNodeGradient) {
@@ -1057,7 +1112,7 @@ func (ssn *Session) HyperNodeGradientForJobFn(job *api.JobInfo, hyperNode *api.H
 			if !found {
 				continue
 			}
-			return fn(job, hyperNode)
+			return fn(job, hyperNode, purpose)
 		}
 	}
 
@@ -1068,7 +1123,7 @@ func (ssn *Session) HyperNodeGradientForJobFn(job *api.JobInfo, hyperNode *api.H
 // HyperNodeGradientForSubJobFn group hyperNodes into several gradients,
 // and discard hyperNodes that unmatched the subJob topology requirements.
 // The result is determined by the first plugin that registered this fn.
-func (ssn *Session) HyperNodeGradientForSubJobFn(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo) [][]*api.HyperNodeInfo {
+func (ssn *Session) HyperNodeGradientForSubJobFn(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledHyperNodeGradient) {
@@ -1078,7 +1133,7 @@ func (ssn *Session) HyperNodeGradientForSubJobFn(subJob *api.SubJobInfo, hyperNo
 			if !found {
 				continue
 			}
-			return fn(subJob, hyperNode)
+			return fn(subJob, hyperNode, purpose)
 		}
 	}
 

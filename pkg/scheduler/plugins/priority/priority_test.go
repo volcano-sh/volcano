@@ -59,6 +59,83 @@ var (
 	}
 )
 
+func TestUnifiedEvictableFn_GangReclaimPermitsAll(t *testing.T) {
+	tests := []struct {
+		uthelper.TestCommonStruct
+		tiers []conf.Tier
+	}{
+		{
+			tiers: []conf.Tier{
+				{Plugins: []conf.PluginOption{pluginEnableEvict}},
+			},
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:    "GangReclaim permits all candidates regardless of priority",
+				Plugins: map[string]framework.PluginBuilder{PluginName: New},
+				PriClass: []*schedulingv1.PriorityClass{
+					util.BuildPriorityClass("low-priority", 100),
+					util.BuildPriorityClass("high-priority", 1000),
+				},
+				PodGroups: []*vcapisv1.PodGroup{
+					util.BuildPodGroupWithPrio("pg-high", "ns1", "q1", 1, map[string]int32{}, vcapisv1.PodGroupRunning, "high-priority"),
+					util.BuildPodGroupWithPrio("pg-low", "ns2", "q1", 1, map[string]int32{}, vcapisv1.PodGroupRunning, "low-priority"),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPod("ns1", "high-task", "node1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-high", map[string]string{vcapisv1.PodPreemptable: "true"}, make(map[string]string)),
+					util.BuildPod("ns2", "low-task", "node1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-low", map[string]string{vcapisv1.PodPreemptable: "true"}, make(map[string]string)),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("node1", api.BuildResourceList("4", "4G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				},
+				Queues: []*vcapisv1.Queue{
+					util.BuildQueue("q1", 1, api.BuildResourceList("4", "4G")),
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			ssn := test.RegisterSession(test.tiers, nil)
+			defer test.Close()
+			var highTask, lowTask *api.TaskInfo
+			for _, job := range ssn.Jobs {
+				for _, task := range job.Tasks {
+					if task.Name == "high-task" {
+						highTask = task.Clone()
+					} else if task.Name == "low-task" {
+						lowTask = task.Clone()
+					}
+				}
+			}
+			if highTask == nil || lowTask == nil {
+				t.Fatal("failed to find test tasks")
+			}
+
+			candidates := []*api.TaskInfo{highTask, lowTask}
+			reclaimJob := &api.JobInfo{UID: "reclaimer", Priority: 500}
+
+			reclaimResult := ssn.UnifiedEvictable(&api.EvictionContext{
+				Kind: api.EvictionKindGangReclaim,
+				Job:  reclaimJob,
+			}, candidates)
+			if len(reclaimResult) != 2 {
+				t.Fatalf("GangReclaim: expected all 2 candidates permitted, got %d", len(reclaimResult))
+			}
+
+			preemptResult := ssn.UnifiedEvictable(&api.EvictionContext{
+				Kind: api.EvictionKindGangPreempt,
+				Job:  reclaimJob,
+			}, candidates)
+			if len(preemptResult) != 1 {
+				t.Fatalf("GangPreempt: expected 1 candidate (low-priority only), got %d", len(preemptResult))
+			}
+			if preemptResult[0].Name != "low-task" {
+				t.Fatalf("GangPreempt: expected low-task as victim, got %s", preemptResult[0].Name)
+			}
+		})
+	}
+}
+
 func TestPreempt(t *testing.T) {
 	actions := []framework.Action{allocate.New(), preempt.New()}
 	plugins := map[string]framework.PluginBuilder{PluginName: New}

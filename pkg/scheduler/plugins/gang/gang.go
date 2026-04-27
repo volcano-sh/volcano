@@ -128,6 +128,14 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddReclaimableFn(gp.Name(), preemptableFn)
 	ssn.AddPreemptableFn(gp.Name(), preemptableFn)
 
+	// Currently handles GangReclaim and GangPreempt only.
+	// Support for legacy task-level preempt/reclaim will be added in the future.
+	ssn.AddUnifiedEvictableFn(gp.Name(), func(_ *api.EvictionContext, candidates []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		// Gang-aware eviction uses the bundle model (safe/whole split) to manage
+		// MinAvailable constraints, so the plugin permits all candidates here.
+		return candidates, util.Permit
+	})
+
 	jobOrderFn := func(l, r interface{}) int {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)

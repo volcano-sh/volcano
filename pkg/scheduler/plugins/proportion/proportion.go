@@ -330,25 +330,32 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return overused
 	})
 
-	queueAllocatable := func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+	queueAllocatable := func(queue *api.QueueInfo, candidates []*api.TaskInfo) bool {
 		if queue.Queue.Status.State != scheduling.QueueStateOpen {
-			klog.V(3).Infof("Queue <%s> current state: %s, is not in open state, can not allocate task <%s>.", queue.Name, queue.Queue.Status.State, candidate.Name)
+			klog.V(3).Infof("Queue <%s> current state: %s, is not in open state, can not allocate tasks.", queue.Name, queue.Queue.Status.State)
 			return false
 		}
 
 		attr := pp.queueOpts[queue.UID]
-		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
-		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, candidate.Resreq)
+		totalReq := api.EmptyResource()
+		for _, task := range candidates {
+			if task != nil {
+				totalReq.Add(task.Resreq)
+			}
+		}
+
+		futureUsed := attr.allocated.Clone().Add(totalReq)
+		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, totalReq)
 		if !allocatable {
-			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
-				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
+			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidates total request <%v>",
+				queue.Name, attr.deserved, attr.allocated, totalReq)
 		}
 
 		return allocatable
 	}
 
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
-		return queueAllocatable(queue, candidate)
+		return queueAllocatable(queue, []*api.TaskInfo{candidate})
 	})
 
 	ssn.AddSimulateAllocatableFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
@@ -373,10 +380,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return allocatable
 	})
 
-	ssn.AddPreemptiveFn(pp.Name(), func(obj interface{}, candidate interface{}) bool {
+	ssn.AddPreemptiveFn(pp.Name(), func(obj interface{}, candidates []*api.TaskInfo) bool {
 		queue := obj.(*api.QueueInfo)
-		task := candidate.(*api.TaskInfo)
-		return queueAllocatable(queue, task)
+		return queueAllocatable(queue, candidates)
 	})
 
 	ssn.AddPrePredicateFn(pp.Name(), func(task *api.TaskInfo) error {

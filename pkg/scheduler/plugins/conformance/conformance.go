@@ -64,6 +64,20 @@ func (pp *conformancePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddPreemptableFn(pp.Name(), evictableFn)
 	ssn.AddReclaimableFn(pp.Name(), evictableFn)
+
+	ssn.AddUnifiedEvictableFn(pp.Name(), func(ctx *api.EvictionContext, candidates []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		var victims []*api.TaskInfo
+		for _, evictee := range candidates {
+			className := evictee.Pod.Spec.PriorityClassName
+			if className == scheduling.SystemClusterCritical ||
+				className == scheduling.SystemNodeCritical ||
+				evictee.Namespace == v1.NamespaceSystem {
+				continue
+			}
+			victims = append(victims, evictee)
+		}
+		return victims, util.Permit
+	})
 }
 
 func (pp *conformancePlugin) OnSessionClose(ssn *framework.Session) {}
