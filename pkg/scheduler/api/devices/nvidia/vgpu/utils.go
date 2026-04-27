@@ -84,7 +84,8 @@ func decodeNodeDevices(name, str string) (*GPUDevices, string) {
 				Health:      health,
 				MigTemplate: []config.Geometry{},
 				MigUsage: config.MigInUse{
-					Index: -1},
+					Index: -1,
+				},
 			}
 			sharingMode = getSharingMode(items[5])
 			if sharingMode == vGPUControllerMIG {
@@ -109,7 +110,7 @@ func encodeContainerDevices(cd []ContainerDevice) string {
 	}
 	klog.V(4).Infoln("Encoded container Devices=", tmp)
 	return tmp
-	//return strings.Join(cd, ",")
+	// return strings.Join(cd, ",")
 }
 
 func encodePodDevices(pd []ContainerDevices) string {
@@ -121,9 +122,6 @@ func encodePodDevices(pd []ContainerDevices) string {
 }
 
 func decodeContainerDevices(str string) ContainerDevices {
-	if len(str) == 0 {
-		return ContainerDevices{}
-	}
 	cd := strings.Split(str, ":")
 	contdev := ContainerDevices{}
 	tmpdev := ContainerDevice{}
@@ -251,7 +249,7 @@ func checkGPUtype(annos map[string]string, cardtype string) bool {
 }
 
 func checkType(annos map[string]string, d GPUDevice, n devices.ContainerDeviceRequest) bool {
-	//General type check, NVIDIA->NVIDIA MLU->MLU
+	// General type check, NVIDIA->NVIDIA MLU->MLU
 	if !strings.Contains(d.Type, n.Type) {
 		return false
 	}
@@ -407,8 +405,8 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 				klog.V(3).Info(gs.Device[i].ID, "not fit")
 				continue
 			}
-			//total += gs.Devices[i].Count
-			//free += node.Devices[i].Count - node.Devices[i].Used
+			// total += gs.Devices[i].Count
+			// free += node.Devices[i].Count - node.Devices[i].Used
 			if val.Nums > 0 {
 				val.Nums--
 				klog.V(3).Info("fitted uuid: ", uuid)
@@ -453,7 +451,7 @@ func patchPodAnnotations(kubeClient kubernetes.Interface, pod *v1.Pod, annotatio
 	}
 	type patchPod struct {
 		Metadata patchMetadata `json:"metadata"`
-		//Spec     patchSpec     `json:"spec,omitempty"`
+		// Spec     patchSpec     `json:"spec,omitempty"`
 	}
 
 	p := patchPod{}
@@ -478,7 +476,7 @@ func patchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
 	}
 	type patchNode struct {
 		Metadata patchMetadata `json:"metadata"`
-		//Spec     patchSpec     `json:"spec,omitempty"`
+		// Spec     patchSpec     `json:"spec,omitempty"`
 	}
 
 	p := patchNode{}
