@@ -17,6 +17,7 @@ limitations under the License.
 package metrics
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -104,7 +105,7 @@ var (
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoSubSystemName,
 			Name:      "task_scheduling_latency_milliseconds",
-			Help:      "Task scheduling latency in milliseconds",
+			Help:      "Task scheduling latency in milliseconds (task create to task bound to a node)",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
 		},
 	)
@@ -148,7 +149,34 @@ var (
 			Help:      "Number of jobs could not be scheduled",
 		},
 	)
+
+	taskOperationLatency = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "task_operation_latency_milliseconds",
+			Help:      "Task operation latency in milliseconds",
+			Buckets:   prometheus.ExponentialBuckets(32, 2, 10),
+		}, []string{"operation", "result"},
+	)
 )
+
+func RegisterCacheTaskCountFunc(status string, function func() float64) {
+	promauto.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      fmt.Sprintf("task_%s_count", status),
+			Help:      fmt.Sprintf("Number of %s tasks in the cache", status),
+		}, function,
+	)
+}
+
+func UpdateTaskOperationSuccessLatency(operation string, duration time.Duration) {
+	taskOperationLatency.WithLabelValues(operation, "success").Observe(DurationInMilliseconds(duration))
+}
+
+func UpdateTaskOperationErrLatency(operation string, duration time.Duration) {
+	taskOperationLatency.WithLabelValues(operation, "success").Observe(DurationInMilliseconds(duration))
+}
 
 // InitKubeSchedulerRelatedMetrics is used to init metrics global variables in k8s.io/kubernetes/pkg/scheduler/metrics/metrics.go.
 // We don't use InitMetrics() to init all global variables because currently only "Goroutines" is required when calling kube-scheduler
