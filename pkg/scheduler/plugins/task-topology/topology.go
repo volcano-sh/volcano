@@ -214,6 +214,16 @@ func (p *taskTopologyPlugin) AllocateFunc(event *framework.Event) {
 	jobManager.TaskBound(task)
 }
 
+func (p *taskTopologyPlugin) DeallocateFunc(event *framework.Event) {
+	task := event.Task
+
+	jobManager, hasManager := p.managers[task.Job]
+	if !hasManager {
+		return
+	}
+	jobManager.TaskUnbound(task)
+}
+
 func (p *taskTopologyPlugin) initBucket(ssn *framework.Session) {
 	for jobID, job := range ssn.Jobs {
 		if !job.HasPendingTasks() {
@@ -347,7 +357,8 @@ func (p *taskTopologyPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddNodeOrderFn(p.Name(), p.NodeOrderFn)
 
 	ssn.AddEventHandler(&framework.EventHandler{
-		AllocateFunc: p.AllocateFunc,
+		AllocateFunc:   p.AllocateFunc,
+		DeallocateFunc: p.DeallocateFunc,
 	})
 
 	klog.V(3).Infof("finished to init task topology plugin, using time %v", time.Since(start))
