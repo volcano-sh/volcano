@@ -107,3 +107,23 @@ func (b *Bucket) TaskBound(task *api.TaskInfo) {
 	delete(b.tasks, task.Pod.UID)
 	b.CalcResReq(task.Resreq, reqSub)
 }
+
+// TaskUnbound reverses TaskBound: it returns the task to the pending
+// set, restores its resource request to the bucket, and decrements the
+// bound counters. The framework invokes this through DeallocateFunc when
+// a Statement is discarded, so subsequent NodeOrderFn calls in the same
+// session do not score against rolled-back allocations.
+func (b *Bucket) TaskUnbound(task *api.TaskInfo) {
+	if task.NodeName != "" {
+		b.node[task.NodeName]--
+		if b.node[task.NodeName] <= 0 {
+			delete(b.node, task.NodeName)
+		}
+	}
+	if b.boundTask > 0 {
+		b.boundTask--
+	}
+
+	b.tasks[task.Pod.UID] = task
+	b.CalcResReq(task.Resreq, reqAdd)
+}
