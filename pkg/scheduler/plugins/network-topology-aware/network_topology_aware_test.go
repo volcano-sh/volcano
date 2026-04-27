@@ -26,9 +26,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 
+	scheduling "volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
@@ -146,6 +148,23 @@ func TestNew(t *testing.T) {
 			assert.Equal(t, tt.expectedPlugin.hyperNodeResourceCache, nta.hyperNodeResourceCache)
 		})
 	}
+}
+
+func TestTruncateHyperNodeGradientsByPurpose(t *testing.T) {
+	plugin := &networkTopologyAwarePlugin{maxHyperNodesForEviction: 3}
+	hn := func(name string) *api.HyperNodeInfo { return &api.HyperNodeInfo{Name: name} }
+	gradients := [][]*api.HyperNodeInfo{
+		{hn("a"), hn("b")},
+		{hn("c"), hn("d")},
+	}
+
+	allocateResult := plugin.truncateHyperNodeGradientsByPurpose(gradients, api.PurposeAllocate)
+	assert.Equal(t, gradients, allocateResult)
+
+	evictResult := plugin.truncateHyperNodeGradientsByPurpose(gradients, api.PurposeEvict)
+	assert.Equal(t, 2, len(evictResult))
+	assert.Equal(t, []string{"c", "d"}, []string{evictResult[0][0].Name, evictResult[0][1].Name})
+	assert.Equal(t, []string{"b"}, []string{evictResult[1][0].Name})
 }
 
 func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
@@ -3385,7 +3404,7 @@ func Test_batchNodeOrderFnForNormalPods(t *testing.T) {
 }
 
 // TestHyperNodeGradientPreFiltering tests the pre-filtering logic in hyperNodeGradientFn.
-// It verifies that HyperNodes are correctly filtered based on idle and futureIdle resources.
+// It verifies HyperNodes are correctly filtered for allocation and eviction purposes.
 func TestHyperNodeGradientPreFiltering(t *testing.T) {
 	const (
 		nodeCount       = 1000
@@ -3399,6 +3418,7 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 	tests := []struct {
 		name                string
 		isSubJob            bool
+		purpose             api.SearchPurpose
 		highestAllowedTier  int
 		minResource         *api.Resource
 		idleResource        *api.Resource
@@ -3409,6 +3429,7 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 		{
 			name:               "Job - idle sufficient, futureIdle sufficient",
 			isSubJob:           false,
+			purpose:            api.PurposeAllocate,
 			highestAllowedTier: 2,
 			minResource: &api.Resource{
 				MilliCPU: 20000,
@@ -3427,6 +3448,7 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 		{
 			name:               "Job - idle sufficient, futureIdle insufficient",
 			isSubJob:           false,
+			purpose:            api.PurposeAllocate,
 			highestAllowedTier: 2,
 			minResource: &api.Resource{
 				MilliCPU: 20000,
@@ -3445,6 +3467,7 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 		{
 			name:               "Job - idle insufficient, futureIdle sufficient",
 			isSubJob:           false,
+			purpose:            api.PurposeAllocate,
 			highestAllowedTier: 2,
 			minResource: &api.Resource{
 				MilliCPU: 20000,
@@ -3463,6 +3486,7 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 		{
 			name:               "Job - idle insufficient, futureIdle insufficient",
 			isSubJob:           false,
+			purpose:            api.PurposeAllocate,
 			highestAllowedTier: 2,
 			minResource: &api.Resource{
 				MilliCPU: 20000,
@@ -3482,6 +3506,7 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 		{
 			name:               "SubJob - idle sufficient, futureIdle sufficient",
 			isSubJob:           true,
+			purpose:            api.PurposeAllocate,
 			highestAllowedTier: 1,
 			minResource: &api.Resource{
 				MilliCPU: 10000,
@@ -3500,6 +3525,7 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 		{
 			name:               "SubJob - idle sufficient, futureIdle insufficient",
 			isSubJob:           true,
+			purpose:            api.PurposeAllocate,
 			highestAllowedTier: 1,
 			minResource: &api.Resource{
 				MilliCPU: 10000,
@@ -3518,6 +3544,7 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 		{
 			name:               "SubJob - idle insufficient, futureIdle sufficient",
 			isSubJob:           true,
+			purpose:            api.PurposeAllocate,
 			highestAllowedTier: 1,
 			minResource: &api.Resource{
 				MilliCPU: 10000,
@@ -3536,6 +3563,7 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 		{
 			name:               "SubJob - idle insufficient, futureIdle insufficient",
 			isSubJob:           true,
+			purpose:            api.PurposeAllocate,
 			highestAllowedTier: 1,
 			minResource: &api.Resource{
 				MilliCPU: 10000,
@@ -3548,6 +3576,44 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 			futureIdleResource: &api.Resource{
 				MilliCPU: 5000,
 				Memory:   10 * 1024 * 1024 * 1024,
+			},
+			expectTier1Selected: false,
+		},
+		{
+			name:               "Evict purpose - idle insufficient, futureIdle insufficient",
+			isSubJob:           false,
+			purpose:            api.PurposeEvict,
+			highestAllowedTier: 2,
+			minResource: &api.Resource{
+				MilliCPU: 20000,
+				Memory:   40 * 1024 * 1024 * 1024,
+			},
+			idleResource: &api.Resource{
+				MilliCPU: 15000,
+				Memory:   30 * 1024 * 1024 * 1024,
+			},
+			futureIdleResource: &api.Resource{
+				MilliCPU: 15000,
+				Memory:   30 * 1024 * 1024 * 1024,
+			},
+			expectTier1Selected: true,
+		},
+		{
+			name:               "Evict purpose - allocatable insufficient",
+			isSubJob:           false,
+			purpose:            api.PurposeEvict,
+			highestAllowedTier: 2,
+			minResource: &api.Resource{
+				MilliCPU: 50000,
+				Memory:   100 * 1024 * 1024 * 1024,
+			},
+			idleResource: &api.Resource{
+				MilliCPU: 15000,
+				Memory:   30 * 1024 * 1024 * 1024,
+			},
+			futureIdleResource: &api.Resource{
+				MilliCPU: 15000,
+				Memory:   30 * 1024 * 1024 * 1024,
 			},
 			expectTier1Selected: false,
 		},
@@ -3656,6 +3722,7 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 				tt.highestAllowedTier,
 				"",
 				tt.minResource,
+				tt.purpose,
 			)
 
 			assert.NoError(t, err)
@@ -3691,4 +3758,130 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHyperNodeGradientForSubJobFn_NoSubJobPolicyRespectsHardTopology(t *testing.T) {
+	schedulerCache := &cache.SchedulerCache{
+		Nodes:             map[string]*api.NodeInfo{},
+		Jobs:              map[api.JobID]*api.JobInfo{},
+		Queues:            map[api.QueueID]*api.QueueInfo{},
+		HyperNodesInfo:    api.NewHyperNodesInfo(nil),
+		InUseNodesInShard: sets.Set[string]{},
+	}
+	ssn := framework.OpenSession(schedulerCache, nil, nil)
+	defer framework.CloseSession(ssn)
+
+	newNode := func(name string) *api.NodeInfo {
+		return &api.NodeInfo{
+			Name:        name,
+			Allocatable: &api.Resource{MilliCPU: 8000},
+			Used:        api.EmptyResource(),
+			Releasing:   api.EmptyResource(),
+			Pipelined:   api.EmptyResource(),
+			Idle:        &api.Resource{MilliCPU: 8000},
+		}
+	}
+	nodeA1 := newNode("node-a-1")
+	nodeA2 := newNode("node-a-2")
+	nodeD1 := newNode("node-d-1")
+	nodeD2 := newNode("node-d-2")
+	allNodes := []*api.NodeInfo{nodeA1, nodeA2, nodeD1, nodeD2}
+	ssn.Nodes = map[string]*api.NodeInfo{
+		nodeA1.Name: nodeA1,
+		nodeA2.Name: nodeA2,
+		nodeD1.Name: nodeD1,
+		nodeD2.Name: nodeD2,
+	}
+
+	rootName := framework.ClusterTopHyperNode
+	zoneA := api.NewHyperNodeInfo(api.BuildHyperNode("zone-a", 1, nil))
+	zoneD := api.NewHyperNodeInfo(api.BuildHyperNode("zone-d", 1, nil))
+	region := api.NewHyperNodeInfo(api.BuildHyperNode("region", 2, nil))
+	root := api.NewHyperNodeInfo(api.BuildHyperNode(rootName, 3, nil))
+
+	zoneA.Parent = region.Name
+	zoneD.Parent = region.Name
+	region.Parent = rootName
+	region.Children = sets.New[string](zoneA.Name, zoneD.Name)
+	root.Children = sets.New[string](region.Name)
+
+	ssn.HyperNodes = map[string]*api.HyperNodeInfo{
+		zoneA.Name: zoneA,
+		zoneD.Name: zoneD,
+		region.Name: region,
+		rootName:   root,
+	}
+	ssn.HyperNodesSetByTier = map[int]sets.Set[string]{
+		1: sets.New[string](zoneA.Name, zoneD.Name),
+		2: sets.New[string](region.Name),
+		3: sets.New[string](rootName),
+	}
+	ssn.HyperNodesTiers = []int{1, 2, 3}
+	ssn.RealNodesSet = map[string]sets.Set[string]{
+		zoneA.Name: sets.New[string](nodeA1.Name, nodeA2.Name),
+		zoneD.Name: sets.New[string](nodeD1.Name, nodeD2.Name),
+		region.Name: sets.New[string](nodeA1.Name, nodeA2.Name, nodeD1.Name, nodeD2.Name),
+		rootName:   sets.New[string](nodeA1.Name, nodeA2.Name, nodeD1.Name, nodeD2.Name),
+	}
+	ssn.RealNodesList = map[string][]*api.NodeInfo{
+		zoneA.Name: {nodeA1, nodeA2},
+		zoneD.Name: {nodeD1, nodeD2},
+		region.Name: allNodes,
+		rootName:   allNodes,
+	}
+
+	highestTierAllowed := 1
+	jobID := api.JobID("job-hard-no-subjob-policy")
+	job := api.NewJobInfo(jobID)
+	job.PodGroup = &api.PodGroup{
+		PodGroup: scheduling.PodGroup{
+			Spec: scheduling.PodGroupSpec{
+				NetworkTopology: &scheduling.NetworkTopologySpec{
+					Mode:               scheduling.HardNetworkTopologyMode,
+					HighestTierAllowed: &highestTierAllowed,
+				},
+			},
+		},
+	}
+
+	subJobPolicy := &scheduling.SubGroupPolicySpec{
+		NetworkTopology: &scheduling.NetworkTopologySpec{
+			Mode:               scheduling.HardNetworkTopologyMode,
+			HighestTierAllowed: &highestTierAllowed,
+		},
+	}
+	subJob := api.NewSubJobInfo(api.SubJobGID("gid"), api.SubJobID("sid"), jobID, subJobPolicy, nil)
+	task := &api.TaskInfo{
+		UID:        api.TaskID("pending-task"),
+		Resreq:     &api.Resource{MilliCPU: 20000},
+		InitResreq: &api.Resource{MilliCPU: 20000},
+		TransactionContext: api.TransactionContext{
+			Status: api.Pending,
+		},
+	}
+	subJob.TaskStatusIndex[api.Pending] = api.TasksMap{task.UID: task}
+	subJob.Tasks[task.UID] = task
+	job.SubJobs[subJob.UID] = subJob
+	ssn.Jobs[jobID] = job
+
+	enabled := true
+	ssn.Tiers = []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:                     PluginName,
+					EnabledHyperNodeGradient: &enabled,
+				},
+			},
+		},
+	}
+
+	plugin, ok := New(framework.Arguments{}).(*networkTopologyAwarePlugin)
+	if !ok {
+		t.Fatalf("expected networkTopologyAwarePlugin type assertion to succeed")
+	}
+	plugin.OnSessionOpen(ssn)
+
+	gradients := ssn.HyperNodeGradientForSubJobFn(subJob, ssn.HyperNodes[rootName], api.PurposeEvict)
+	assert.Empty(t, gradients, "hard topology without feasible tier-1 domain should not fallback to root")
 }

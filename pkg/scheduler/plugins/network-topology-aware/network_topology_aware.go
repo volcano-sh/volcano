@@ -50,6 +50,8 @@ const (
 	HyperNodeBinPackNormalPodEnable = "hypernode.binpack.normal-pod.enable"
 	// HyperNodeBinPackNormalPodFading is the key for tier weight fading parameter for pods without network topology
 	HyperNodeBinPackNormalPodFading = "hypernode.binpack.normal-pod.fading"
+	// HyperNodeGradientEvictMaxHyperNodes is the key for eviction-domain truncation in gradient generation.
+	HyperNodeGradientEvictMaxHyperNodes = "hypernode.gradient.evict.max-hypernodes"
 )
 
 const (
@@ -59,6 +61,8 @@ const (
 	DefaultNormalPodEnable = true
 	// DefaultNormalPodFading is the default value of hypernode.binpack.normal-pod.fading
 	DefaultNormalPodFading = 0.8
+	// DefaultEvictMaxHyperNodes is the default max number of HyperNodes returned for eviction purpose.
+	DefaultEvictMaxHyperNodes = 8
 )
 
 type networkTopologyAwarePlugin struct {
@@ -67,6 +71,7 @@ type networkTopologyAwarePlugin struct {
 	weight          *priorityWeight
 	*normalPodConfig
 	*hyperNodesTier
+	maxHyperNodesForEviction int
 	// hyperNodeResourceCache stores the resource status of hypernodes to avoid repeated calculation: hypernode -> resourceStatus
 	hyperNodeResourceCache map[string]*resourceStatus
 }
@@ -143,14 +148,24 @@ func (nta *networkTopologyAwarePlugin) initHyperNodeResourceCache(ssn *framework
 // New function returns prioritizePlugin object
 func New(arguments framework.Arguments) framework.Plugin {
 	plugin := networkTopologyAwarePlugin{
-		pluginArguments:        arguments,
-		weight:                 getPriorityWeight(arguments),
-		normalPodConfig:        getNormalPodConfig(arguments),
-		hyperNodesTier:         &hyperNodesTier{},
-		hyperNodeResourceCache: make(map[string]*resourceStatus),
+		pluginArguments:          arguments,
+		weight:                   getPriorityWeight(arguments),
+		normalPodConfig:          getNormalPodConfig(arguments),
+		hyperNodesTier:           &hyperNodesTier{},
+		maxHyperNodesForEviction: getMaxHyperNodesForEviction(arguments),
+		hyperNodeResourceCache:   make(map[string]*resourceStatus),
 	}
 	klog.V(5).InfoS("successfully built plugin", "name", PluginName, "arguments", plugin.String())
 	return &plugin
+}
+
+func getMaxHyperNodesForEviction(args framework.Arguments) int {
+	maxHyperNodes := DefaultEvictMaxHyperNodes
+	args.GetInt(&maxHyperNodes, HyperNodeGradientEvictMaxHyperNodes)
+	if maxHyperNodes <= 0 {
+		maxHyperNodes = DefaultEvictMaxHyperNodes
+	}
+	return maxHyperNodes
 }
 
 func (nta *networkTopologyAwarePlugin) Name() string {
@@ -275,33 +290,30 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 		return nta.batchNodeOrderFn(ssn, task, nodes)
 	})
 
-	ssn.AddHyperNodeGradientForJobFn(nta.Name(), func(job *api.JobInfo, hyperNode *api.HyperNodeInfo) [][]*api.HyperNodeInfo {
+	ssn.AddHyperNodeGradientForJobFn(nta.Name(), func(job *api.JobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
 		if hardMode, highestAllowedTier := job.IsHardTopologyMode(); hardMode {
 			jobMinResource := job.GetMinResources()
-			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, job.AllocatedHyperNode, jobMinResource)
+			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, job.AllocatedHyperNode, jobMinResource, purpose)
 			if err != nil {
 				klog.ErrorS(err, "build hyperNode gradient fail", "job", job.UID, "hyperNode", hyperNode.Name,
 					"highestAllowedTier", highestAllowedTier, "allocatedHyperNode", job.AllocatedHyperNode)
 				return nil
 			}
-			return result
+			return nta.truncateHyperNodeGradientsByPurpose(result, purpose)
 		}
 		return [][]*api.HyperNodeInfo{{hyperNode}}
 	})
 
-	ssn.AddHyperNodeGradientForSubJobFn(nta.Name(), func(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo) [][]*api.HyperNodeInfo {
-		if job, found := ssn.Jobs[subJob.Job]; found && !job.ContainsSubJobPolicy() {
-			return [][]*api.HyperNodeInfo{{hyperNode}} // it is unnecessary to try child hyperNode when there is no actual subJob
-		}
+	ssn.AddHyperNodeGradientForSubJobFn(nta.Name(), func(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
 		if hardMode, highestAllowedTier := subJob.IsHardTopologyMode(); hardMode {
 			subJobMinResource := subJob.GetMinResources()
-			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, subJob.AllocatedHyperNode, subJobMinResource)
+			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, subJob.AllocatedHyperNode, subJobMinResource, purpose)
 			if err != nil {
 				klog.ErrorS(err, "build hyperNode gradient fail", "subJob", subJob.UID, "hyperNode", hyperNode.Name,
 					"highestAllowedTier", highestAllowedTier, "allocatedHyperNode", subJob.AllocatedHyperNode)
 				return nil
 			}
-			return result
+			return nta.truncateHyperNodeGradientsByPurpose(result, purpose)
 		}
 		return [][]*api.HyperNodeInfo{{hyperNode}}
 	})
@@ -580,7 +592,8 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFnForNetworkAwarePods(ssn *
 //   - highestAllowedTier: maximum allowed topology tier to limit search scope
 //   - allocatedHyperNode: previously allocated HyperNode name for partially running scenarios (empty for initial scheduling)
 //   - minResource: minimum resource requirements for resource pre-filtering (nil to skip resource checks)
-func (nta *networkTopologyAwarePlugin) hyperNodeGradientFn(ssn *framework.Session, hyperNode *api.HyperNodeInfo, highestAllowedTier int, allocatedHyperNode string, minResource *api.Resource) ([][]*api.HyperNodeInfo, error) {
+//   - purpose: indicates whether this gradient is used for allocation or eviction
+func (nta *networkTopologyAwarePlugin) hyperNodeGradientFn(ssn *framework.Session, hyperNode *api.HyperNodeInfo, highestAllowedTier int, allocatedHyperNode string, minResource *api.Resource, purpose api.SearchPurpose) ([][]*api.HyperNodeInfo, error) {
 	enqueued := set.New[string]()
 	var processQueue []*api.HyperNodeInfo
 
@@ -598,7 +611,7 @@ func (nta *networkTopologyAwarePlugin) hyperNodeGradientFn(ssn *framework.Sessio
 		current := processQueue[0]
 		processQueue = processQueue[1:]
 
-		if nta.isEligibleHyperNode(current, highestAllowedTier, allocatedHyperNode, minResource) {
+		if nta.isEligibleHyperNode(current, highestAllowedTier, allocatedHyperNode, minResource, purpose) {
 			eligibleHyperNodes[current.Tier()] = append(eligibleHyperNodes[current.Tier()], current)
 		}
 
@@ -627,7 +640,7 @@ func (nta *networkTopologyAwarePlugin) hyperNodeGradientFn(ssn *framework.Sessio
 	return result, nil
 }
 
-func (nta *networkTopologyAwarePlugin) isEligibleHyperNode(hn *api.HyperNodeInfo, highestAllowedTier int, allocatedHyperNode string, minResource *api.Resource) bool {
+func (nta *networkTopologyAwarePlugin) isEligibleHyperNode(hn *api.HyperNodeInfo, highestAllowedTier int, allocatedHyperNode string, minResource *api.Resource, purpose api.SearchPurpose) bool {
 	if hn.Tier() > highestAllowedTier {
 		return false // the tier should not exceed the highest allowed
 	}
@@ -639,6 +652,10 @@ func (nta *networkTopologyAwarePlugin) isEligibleHyperNode(hn *api.HyperNodeInfo
 	hnResourceStatus, found := nta.hyperNodeResourceCache[hn.Name]
 	if !found {
 		return true // Resource status for hypernode not found in cache, skipping pre-filtering for it.
+	}
+
+	if purpose == api.PurposeEvict {
+		return minResource.LessEqual(hnResourceStatus.allocatable, api.Zero)
 	}
 
 	if minResource.LessEqual(hnResourceStatus.idle, api.Zero) || minResource.LessEqual(hnResourceStatus.futureIdle, api.Zero) {
@@ -701,6 +718,31 @@ func getHighestAllowedHyperNode(hyperNodes api.HyperNodeInfoMap, highestAllowedT
 }
 
 func (nta *networkTopologyAwarePlugin) OnSessionClose(ssn *framework.Session) {
+}
+
+func (nta *networkTopologyAwarePlugin) truncateHyperNodeGradientsByPurpose(gradients [][]*api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
+	if purpose != api.PurposeEvict || nta.maxHyperNodesForEviction <= 0 {
+		return gradients
+	}
+
+	remaining := nta.maxHyperNodesForEviction
+	result := make([][]*api.HyperNodeInfo, 0, len(gradients))
+	// For eviction, prefer higher-level topology domains first.
+	// Gradients are ordered from lower tier to higher tier, so we truncate from the end.
+	for i := len(gradients) - 1; i >= 0; i-- {
+		gradient := gradients[i]
+		if remaining == 0 {
+			break
+		}
+		if len(gradient) <= remaining {
+			result = append(result, gradient)
+			remaining -= len(gradient)
+			continue
+		}
+		result = append(result, gradient[len(gradient)-remaining:])
+		remaining = 0
+	}
+	return result
 }
 
 // networkTopologyAwareScore use the best fit polices during scheduling.

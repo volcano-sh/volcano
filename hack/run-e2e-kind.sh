@@ -345,25 +345,33 @@ Customize kind options other than --name:
 Disable displaying volcano component logs:
 
     export SHOW_VOLCANO_LOGS=0
+
+Skip cluster creation and Volcano installation (use existing cluster):
+
+    export SKIP_CLUSTER_SETUP=1
 "
   exit 0
 fi
 
-if [[ $CLEANUP_CLUSTER -eq 1 ]]; then
-    trap cleanup EXIT
-fi
-
 source "${VK_ROOT}/hack/lib/install.sh"
-
-check-prerequisites
-kind-up-cluster
-install-kwok-with-helm
 
 if [[ -z ${KUBECONFIG+x} ]]; then
     export KUBECONFIG="${HOME}/.kube/config"
 fi
 
-install-volcano
+if [[ "${SKIP_CLUSTER_SETUP:-0}" -eq 1 ]]; then
+    echo "Skipping cluster setup (SKIP_CLUSTER_SETUP=1), using existing cluster"
+    check-prerequisites
+else
+    if [[ $CLEANUP_CLUSTER -eq 1 ]]; then
+        trap cleanup EXIT
+    fi
+
+    check-prerequisites
+    kind-up-cluster
+    install-kwok-with-helm
+    install-volcano
+fi
 
 # Run e2e test
 cd ${VK_ROOT}
@@ -442,6 +450,11 @@ case ${E2E_TYPE} in
 "SHARDINGCONTROLLER")
     echo "Running sharding controller e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/shardingcontroller/
+"GANGEVICT")
+    echo "Creating 4 kwok nodes for gang eviction topology tests"
+    install-kwok-nodes 4
+    echo "Running gang eviction e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/gangevict/
     ;;
 esac
 

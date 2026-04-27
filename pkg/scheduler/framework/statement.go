@@ -432,9 +432,11 @@ func SaveOperations(stmts ...*Statement) *Statement {
 	for _, stmt := range stmts {
 		stmt.outputOperations("Save operations: ", 4)
 		for _, op := range stmt.operations {
+			task := op.task.Clone()
+			task.EvictionOccurred = op.task.EvictionOccurred
 			stmtTmp.operations = append(stmtTmp.operations, operation{
 				name:   op.name,
-				task:   op.task.Clone(),
+				task:   task,
 				reason: op.reason,
 			})
 		}
@@ -452,7 +454,7 @@ func (s *Statement) RecoverOperations(stmt *Statement) error {
 		case Evict:
 			s.Evict(op.task, op.reason)
 		case Pipeline:
-			err := s.Pipeline(op.task, op.task.NodeName, false)
+			err := s.Pipeline(op.task, op.task.NodeName, op.task.EvictionOccurred)
 			if err != nil {
 				klog.Errorf("Failed to pipeline task: %s", err.Error())
 				return err

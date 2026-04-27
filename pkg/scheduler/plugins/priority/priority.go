@@ -148,6 +148,29 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddPreemptableFn(pp.Name(), preemptableFn)
 
+	// Currently handles GangReclaim and GangPreempt only.
+	// Support for legacy task-level preempt/reclaim will be added in the future.
+	ssn.AddUnifiedEvictableFn(pp.Name(), func(evictCtx *api.EvictionContext, candidates []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		if evictCtx.Kind == api.EvictionKindGangReclaim {
+			// Reclaim is fairness-driven (cross-queue); priority does not gate
+			// reclaimability — consistent with legacy reclaim where priority
+			// registers no ReclaimableFn.
+			return candidates, util.Permit
+		}
+		var victims []*api.TaskInfo
+		for _, candidate := range candidates {
+			candidateJob := ssn.Jobs[candidate.Job]
+			if candidateJob.Priority >= evictCtx.Job.Priority {
+				klog.V(4).Infof("Can not evict task <%v/%v> because victim job priority (%d) >= preemptor job priority (%d)",
+					candidate.Namespace, candidate.Name, candidateJob.Priority, evictCtx.Job.Priority)
+			} else {
+				victims = append(victims, candidate)
+			}
+		}
+		klog.V(4).Infof("Victims from Priority UnifiedEvictableFn are %+v", victims)
+		return victims, util.Permit
+	})
+
 	jobStarvingFn := func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
 		return ji.ReadyTaskNum()+ji.WaitingTaskNum() < int32(len(ji.Tasks))
