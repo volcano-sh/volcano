@@ -154,7 +154,7 @@ spec:
             - --port=8443
             - -v=4
             - 2>&1
-          image: docker.io/volcanosh/vc-webhook-manager:v1.14.1
+          image: docker.io/volcanosh/vc-webhook-manager:v1.14.2
           imagePullPolicy: Always
           name: admission
           volumeMounts:
@@ -252,7 +252,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: main
-          image: docker.io/volcanosh/vc-webhook-manager:v1.14.1
+          image: docker.io/volcanosh/vc-webhook-manager:v1.14.2
           imagePullPolicy: Always
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
@@ -9035,7 +9035,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-controllers
-          image: docker.io/volcanosh/vc-controller-manager:v1.14.1
+          image: docker.io/volcanosh/vc-controller-manager:v1.14.2
           args:
             - --logtostderr
             - --enable-healthz=true
@@ -9252,7 +9252,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-scheduler
-          image: docker.io/volcanosh/vc-scheduler:v1.14.1
+          image: docker.io/volcanosh/vc-scheduler:v1.14.2
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
@@ -11042,25 +11042,10 @@ spec:
           quantity(object.spec.capability[resourceName]).compareTo(quantity(object.spec.deserved[resourceName])) >= 0
         ) &&
         object.spec.deserved.all(resourceName,
-          resourceName in object.spec.capability &&
+          !(resourceName in object.spec.capability) ||
           quantity(object.spec.deserved[resourceName]).compareTo(quantity(object.spec.capability[resourceName])) <= 0
         )
-      message: "deserved should less equal than capability"
-      reason: Invalid
-    # Validate guarantee <= capability (guarantee should less equal than capability)
-    - expression: |
-        !has(object.spec) || !has(object.spec.capability) || !has(object.spec.guarantee) ||
-        !has(object.spec.guarantee.resource) || size(object.spec.capability) == 0 ||
-        size(object.spec.guarantee.resource) == 0 ||
-        object.spec.capability.all(resourceName,
-          !(resourceName in object.spec.guarantee.resource) ||
-          quantity(object.spec.capability[resourceName]).compareTo(quantity(object.spec.guarantee.resource[resourceName])) >= 0
-        ) &&
-        object.spec.guarantee.resource.all(resourceName,
-          resourceName in object.spec.capability &&
-          quantity(object.spec.guarantee.resource[resourceName]).compareTo(quantity(object.spec.capability[resourceName])) <= 0
-        )
-      message: "guarantee should less equal than capability"
+      message: "must be <= capability"
       reason: Invalid
     # Validate guarantee <= deserved (guarantee should less equal than deserved)
     # When guarantee is set, deserved must also be set
@@ -11076,7 +11061,7 @@ spec:
            resourceName in object.spec.deserved &&
            quantity(object.spec.guarantee.resource[resourceName]).compareTo(quantity(object.spec.deserved[resourceName])) <= 0
          ))
-      message: "guarantee should less equal than deserved"
+      message: "must be >= guarantee"
       reason: Invalid
     # Validate hierarchical attributes - path and weights length must match
     - expression: |
