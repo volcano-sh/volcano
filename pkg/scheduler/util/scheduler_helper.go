@@ -223,8 +223,9 @@ func SelectBestHyperNodeAndScore(hyperNodeScores map[float64][]string) (string, 
 	return bestHyperNodes[rand.Intn(len(bestHyperNodes))], maxScore
 }
 
-// SelectBestNodesAndScores returns the best N node whose score is highest N score, pick one randomly if there are many nodes with same score.
-func SelectBestNodesAndScores(nodeScores map[float64][]*api.NodeInfo, count int, nodesInBinder map[string]int) []*api.NodeInfo {
+// SelectBestNodes returns the best N node whose score is highest N score, pick one randomly if there are many nodes with same score.
+// Nodes in nodesInBinder will be downgraded to reduce the conflict with binder.
+func SelectBestNodes(nodeScores map[float64][]*api.NodeInfo, count int, nodesInBinder map[string]int) []*api.NodeInfo {
 	bestNodes := []*api.NodeInfo{}
 	lowPriorityNodes := make([]*api.NodeInfo, 0, len(nodesInBinder))
 	if count <= 0 || len(nodeScores) == 0 {
@@ -241,6 +242,9 @@ func SelectBestNodesAndScores(nodeScores map[float64][]*api.NodeInfo, count int,
 	if nodeCount >= count {
 		bestNodes = make([]*api.NodeInfo, 0, count)
 	}
+	//
+	// It is possible that nodes with high scores were sent to binder in previous scheduling round and not handled yet, so scheduling on these nodes may conflict if same node is chosen in binder,
+	// then the node selected in this scheduling round will be rejected by binder. In this case, select nodes not in binder first to reduce the conflict if the number of qulified nodes is much larger than the candidate count.
 	if nodeCount > count && len(nodesInBinder) > 0 {
 		downgradeNode = true
 	}

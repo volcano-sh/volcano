@@ -203,7 +203,7 @@ func (alloc *Action) prioritizeNodes(fwk *framework.Framework, task *api.TaskInf
 			bestNodes = append(bestNodes, nodes[0])
 		case len(nodes) > 1: // If more than one node after predicate, using "the best" one
 			nodeScores := util.PrioritizeNodes(task, nodes, fwk.BatchNodeOrderFn, fwk.NodeOrderMapFn, fwk.NodeOrderReduceFn)
-			bestNodes = util.SelectBestNodesAndScores(nodeScores, alloc.candidateNodeCount, fwk.GetSnapshot().NodesInBinder)
+			bestNodes = util.SelectBestNodes(nodeScores, alloc.candidateNodeCount, fwk.GetSnapshot().NodesInBinder)
 		}
 		if len(bestNodes) > 0 {
 			break

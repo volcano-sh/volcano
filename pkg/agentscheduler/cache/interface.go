@@ -56,6 +56,7 @@ type Cache interface {
 	// TODO(jinzhej): clean up expire Tasks.
 	AddBindTask(bindCtx *agentapi.BindContext) error
 
+	// RecordCandidateNodesInBinder records candidate nodes to be checked in binder and these nodes are waiting to be checked in binder.
 	RecordCandidateNodesInBinder(nodes []*api.NodeInfo)
 
 	RemoveCandidateNodesFromBinder(nodes []*api.NodeInfo)
