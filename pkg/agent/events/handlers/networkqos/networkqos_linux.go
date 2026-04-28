@@ -101,9 +101,10 @@ func (h *NetworkQoSHandle) Handle(event interface{}) error {
 	cgroupVersion := h.cgroupMgr.GetCgroupVersion()
 	switch cgroupVersion {
 	case cgroup.CgroupV2:
+		klog.V(2).InfoS("Detected cgroup version v2 for network qos handling. Network QoS will use oncn-bwm mode.")
 		return h.handleV2(podEvent)
 	default:
-		// cgroup v1 or unknown version, fall back to v1 behavior
+		klog.V(2).InfoS("Detected cgroup version v1 for network qos handling. Falling back to legacy net_cls mode.")
 		return h.handleV1(podEvent)
 	}
 }
