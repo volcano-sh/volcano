@@ -204,7 +204,7 @@ func TestNetworkQoSHandle_HandleV2(t *testing.T) {
 			},
 			mockExecErr:     nil,
 			expectedErr:     false,
-			expectedCmdPart: "bwmcli -s",
+			expectedCmdPart: "nsenter --target 1 --mount -- bwmcli -s",
 			expectedLevel:   "-1",
 		},
 		{
@@ -223,7 +223,7 @@ func TestNetworkQoSHandle_HandleV2(t *testing.T) {
 			},
 			mockExecErr:     nil,
 			expectedErr:     false,
-			expectedCmdPart: "bwmcli -s",
+			expectedCmdPart: "nsenter --target 1 --mount -- bwmcli -s",
 			expectedLevel:   "0",
 		},
 		{
@@ -242,7 +242,7 @@ func TestNetworkQoSHandle_HandleV2(t *testing.T) {
 			},
 			mockExecErr:     nil,
 			expectedErr:     false,
-			expectedCmdPart: "bwmcli -s",
+			expectedCmdPart: "nsenter --target 1 --mount -- bwmcli -s",
 			expectedLevel:   "-1",
 		},
 		{
@@ -261,7 +261,7 @@ func TestNetworkQoSHandle_HandleV2(t *testing.T) {
 			},
 			mockExecErr:     nil,
 			expectedErr:     false,
-			expectedCmdPart: "bwmcli -s",
+			expectedCmdPart: "nsenter --target 1 --mount -- bwmcli -s",
 			expectedLevel:   "0",
 		},
 		{
@@ -280,7 +280,7 @@ func TestNetworkQoSHandle_HandleV2(t *testing.T) {
 			},
 			mockExecErr:     nil,
 			expectedErr:     false,
-			expectedCmdPart: "bwmcli -s",
+			expectedCmdPart: "nsenter --target 1 --mount -- bwmcli -s",
 			expectedLevel:   "-1",
 		},
 		{
@@ -299,7 +299,7 @@ func TestNetworkQoSHandle_HandleV2(t *testing.T) {
 			},
 			mockExecErr:     fmt.Errorf("bwmcli: command not found"),
 			expectedErr:     true,
-			expectedCmdPart: "bwmcli -s",
+			expectedCmdPart: "nsenter --target 1 --mount -- bwmcli -s",
 			expectedLevel:   "-1",
 		},
 	}

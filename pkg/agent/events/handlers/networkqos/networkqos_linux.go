@@ -22,6 +22,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -136,6 +137,11 @@ func (h *NetworkQoSHandle) handleV1(podEvent framework.PodEvent) error {
 //	bwmcli -s <cgroup-path> <priority>
 //
 // where priority is 0 for online pods and -1 for offline pods.
+//
+// Since bwmcli is installed on the host (not in the agent container), we use nsenter to execute
+// the command in the host's mount namespace. The cgroup path from CgroupManager may contain a
+// "/host" prefix (because the agent container mounts the host filesystem at /host), which must
+// be stripped when running in the host namespace.
 func (h *NetworkQoSHandle) handleV2(podEvent framework.PodEvent) error {
 	// In cgroup v2, all controllers share a unified hierarchy, so we can use any subsystem
 	// (e.g., cpu) to get the correct unified cgroup path.
@@ -144,18 +150,26 @@ func (h *NetworkQoSHandle) handleV2(podEvent framework.PodEvent) error {
 		return fmt.Errorf("failed to get pod cgroup path(%s), error: %v", podEvent.UID, err)
 	}
 
+	// Strip the "/host" prefix from the cgroup path if present, because bwmcli runs on the host
+	// via nsenter and sees the native host filesystem paths (e.g., /sys/fs/cgroup/...).
+	hostCgroupPath := strings.TrimPrefix(cgroupPath, "/host")
+
 	qosLevel := extension.NormalizeQosLevel(podEvent.QoSLevel)
 
 	cmdCtx, cancel := context.WithTimeout(context.Background(), bwmcliCmdTimeout)
 	defer cancel()
-	cmd := fmt.Sprintf("bwmcli -s %s %d", cgroupPath, qosLevel)
+	// Use nsenter to execute bwmcli in the host's mount namespace (PID 1).
+	// bwmcli is a host-installed tool (oncn-bwm package) and is not available inside the agent container.
+	// Running via nsenter ensures bwmcli and all its shared library dependencies (e.g., libbpf.so.1)
+	// are loaded from the host's native filesystem.
+	cmd := fmt.Sprintf("nsenter --target 1 --mount -- bwmcli -s %s %d", hostCgroupPath, qosLevel)
 	output, err := exec.GetExecutor().CommandContext(cmdCtx, cmd)
 	if err != nil {
 		return fmt.Errorf("failed to set network qos via bwmcli, path=%s, level=%d, error: %v, output: %s",
-			cgroupPath, qosLevel, err, output)
+			hostCgroupPath, qosLevel, err, output)
 	}
 
-	klog.InfoS("Successfully set network qos level via bwmcli", "qosLevel", qosLevel, "cgroupPath", cgroupPath)
+	klog.InfoS("Successfully set network qos level via bwmcli", "qosLevel", qosLevel, "cgroupPath", hostCgroupPath)
 	return nil
 }
 
