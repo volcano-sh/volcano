@@ -57,7 +57,6 @@ const (
 	DefaultPodStatusLowPressureInterval   = 0 * time.Second
 	DefaultPodStatusMidPressureInterval   = 120 * time.Second
 	DefaultPodStatusHighPressureInterval  = 300 * time.Second
-	DefaultPodStatusForceSyncInterval     = 10 * time.Minute
 	DefaultPodEventLowPressureInterval    = 0 * time.Second
 	DefaultPodEventMidPressureInterval    = 60 * time.Second
 	DefaultPodEventHighPressureInterval   = 120 * time.Second
@@ -132,7 +131,6 @@ type ServerOption struct {
 	PodStatusLowPressureInterval   time.Duration
 	PodStatusMidPressureInterval   time.Duration
 	PodStatusHighPressureInterval  time.Duration
-	PodStatusForceSyncInterval     time.Duration
 	PodEventLowPressureInterval    time.Duration
 	PodEventMidPressureInterval    time.Duration
 	PodEventHighPressureInterval   time.Duration
@@ -203,7 +201,6 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&s.PodStatusLowPressureInterval, "pod-status-low-pressure-interval", DefaultPodStatusLowPressureInterval, "Throttle interval for repeated unschedulable pod status updates under low pressure")
 	fs.DurationVar(&s.PodStatusMidPressureInterval, "pod-status-mid-pressure-interval", DefaultPodStatusMidPressureInterval, "Throttle interval for repeated unschedulable pod status updates under medium pressure")
 	fs.DurationVar(&s.PodStatusHighPressureInterval, "pod-status-high-pressure-interval", DefaultPodStatusHighPressureInterval, "Throttle interval for repeated unschedulable pod status updates under high pressure")
-	fs.DurationVar(&s.PodStatusForceSyncInterval, "pod-status-force-sync-interval", DefaultPodStatusForceSyncInterval, "Maximum staleness before forcing a pod status sync even when repeated unschedulable updates are throttled")
 	fs.DurationVar(&s.PodEventLowPressureInterval, "pod-event-low-pressure-interval", DefaultPodEventLowPressureInterval, "Throttle interval for repeated unschedulable pod events under low pressure")
 	fs.DurationVar(&s.PodEventMidPressureInterval, "pod-event-mid-pressure-interval", DefaultPodEventMidPressureInterval, "Throttle interval for repeated unschedulable pod events under medium pressure")
 	fs.DurationVar(&s.PodEventHighPressureInterval, "pod-event-high-pressure-interval", DefaultPodEventHighPressureInterval, "Throttle interval for repeated unschedulable pod events under high pressure")
@@ -239,12 +236,6 @@ func (s *ServerOption) validatePodStatusThrottleOptions() field.ErrorList {
 	}
 	if s.PodStatusHighPressureInterval <= 0 {
 		allErrs = append(allErrs, field.Invalid(basePath.Child("highPressureInterval"), s.PodStatusHighPressureInterval, "must be > 0"))
-	}
-	if s.PodStatusForceSyncInterval <= 0 {
-		allErrs = append(allErrs, field.Invalid(basePath.Child("forceSyncInterval"), s.PodStatusForceSyncInterval, "must be > 0"))
-	}
-	if s.PodStatusForceSyncInterval > 0 && s.PodStatusHighPressureInterval > 0 && s.PodStatusForceSyncInterval < s.PodStatusHighPressureInterval {
-		allErrs = append(allErrs, field.Invalid(basePath.Child("forceSyncInterval"), s.PodStatusForceSyncInterval, "must be >= highPressureInterval"))
 	}
 	if s.PodEventLowPressureInterval < 0 {
 		allErrs = append(allErrs, field.Invalid(basePath.Child("eventLowPressureInterval"), s.PodEventLowPressureInterval, "must be >= 0"))

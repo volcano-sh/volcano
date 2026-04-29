@@ -1127,13 +1127,10 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 	// the nominatedNodeName is empty, but we should not override the A's nominatedNodeName to empty
 	hasNominatedNodeUpdate := len(nominatedNodeName) > 0 && pod.Status.NominatedNodeName != nominatedNodeName
 	hasStatusUpdate := hasConditionUpdate || hasNominatedNodeUpdate
-	needForceSync := sc.shouldForceSyncPodStatusUpdate(pod, condition)
-	klog.V(3).Infof("task unschedulable decision for %s/%s: pendingTaskCount=%d, hasConditionUpdate=%t, hasNominatedNodeUpdate=%t, hasStatusUpdate=%t, needForceSync=%t",
-		pod.Namespace, pod.Name, pendingTaskCount, hasConditionUpdate, hasNominatedNodeUpdate, hasStatusUpdate, needForceSync)
-	// For repeated identical unschedulable results, skip status update by default.
-	// A periodic force-sync prevents status from becoming permanently stale.
-	shouldSkipAsRepeated := !hasStatusUpdate && !needForceSync
-	if shouldSkipAsRepeated {
+	klog.V(3).Infof("task unschedulable decision for %s/%s: pendingTaskCount=%d, hasConditionUpdate=%t, hasNominatedNodeUpdate=%t, hasStatusUpdate=%t",
+		pod.Namespace, pod.Name, pendingTaskCount, hasConditionUpdate, hasNominatedNodeUpdate, hasStatusUpdate)
+	// For repeated identical unschedulable results, skip status update directly.
+	if !hasStatusUpdate {
 		sc.recordUnschedulableEventIfNeeded(pod, condition, pendingTaskCount)
 		klog.V(3).Infof("task unschedulable %s/%s, message: %s, skip by no condition update", pod.Namespace, pod.Name, message)
 		return nil

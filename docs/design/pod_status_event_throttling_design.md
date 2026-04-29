@@ -52,7 +52,6 @@ The following logic is executed in `taskUnschedulable`:
 
 2. **Short-circuit repeated status**
    - If the new condition has no meaningful change from current status, skip status write by default.
-   - Use `ForceSyncInterval` as periodic fallback to prevent stale status from never being refreshed.
 
 3. **Prioritize critical changes**
    - `nominatedNodeName` changes are not throttled for status updates (to preserve autoscaler-related semantics).
@@ -79,7 +78,6 @@ The following logic is executed in `taskUnschedulable`:
 - `--pod-status-low-pressure-interval` (default `0s`)
 - `--pod-status-mid-pressure-interval` (default `120s`)
 - `--pod-status-high-pressure-interval` (default `300s`)
-- `--pod-status-force-sync-interval` (default `600s`)
 
 Threshold semantics:
 - `pod-status-*-pressure-threshold` values represent Pending Pod count thresholds, not node-count thresholds.
@@ -100,8 +98,6 @@ The scheduler validates the following constraints at startup (invalid values fai
 - `lowPressureThreshold <= highPressureThreshold`
 - `status low/mid interval >= 0`
 - `status high interval > 0`
-- `forceSyncInterval > 0`
-- `forceSyncInterval >= statusHighPressureInterval`
 - `event low/mid interval >= 0`
 - `event high interval > 0`
 
@@ -110,7 +106,7 @@ The scheduler validates the following constraints at startup (invalid values fai
 For different cluster sizes, use these guidelines:
 
 - **Small clusters (low Pending count)**: keep defaults or reduce mid/high intervals for better status freshness.
-- **Large high-pressure clusters**: increase status mid/high intervals and force-sync interval first to suppress write storms.
+- **Large high-pressure clusters**: increase status mid/high intervals first to suppress write storms.
 - **Troubleshooting-first observability**: decrease event intervals for more timely signals.
 - **Control-plane stability first**: increase high-pressure event interval to further reduce alert/event storms.
 
@@ -119,7 +115,7 @@ For different cluster sizes, use these guidelines:
 - Default values are built in. **Without new flags, the feature remains usable**, while behavior changes from high-frequency full updates to patch + adaptive backoff.
 - All parameters are CLI-overridable and support progressive rollout without code changes.
 - If freshness is more important, reduce intervals; if control-plane stability is more important, increase mid/high intervals.
-- To temporarily approximate legacy behavior, reduce status/event intervals close to `0s` (while keeping required force sync).
+- To temporarily approximate legacy behavior, reduce status/event intervals close to `0s`.
 
 ## 7. Parameter Templates
 
@@ -131,7 +127,6 @@ For different cluster sizes, use these guidelines:
 --pod-status-low-pressure-interval=0s \
 --pod-status-mid-pressure-interval=30s \
 --pod-status-high-pressure-interval=60s \
---pod-status-force-sync-interval=180s \
 --pod-event-low-pressure-interval=0s \
 --pod-event-mid-pressure-interval=20s \
 --pod-event-high-pressure-interval=40s
@@ -145,7 +140,6 @@ For different cluster sizes, use these guidelines:
 --pod-status-low-pressure-interval=0s \
 --pod-status-mid-pressure-interval=120s \
 --pod-status-high-pressure-interval=300s \
---pod-status-force-sync-interval=600s \
 --pod-event-low-pressure-interval=0s \
 --pod-event-mid-pressure-interval=60s \
 --pod-event-high-pressure-interval=120s

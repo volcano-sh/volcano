@@ -706,7 +706,7 @@ func seedPendingTasksForUnschedulableTests(sc *SchedulerCache, count int) {
 	sc.Jobs[job.UID] = job
 }
 
-func TestTaskUnschedulable_RepeatedStatusForceSyncBehavior(t *testing.T) {
+func TestTaskUnschedulable_RepeatedStatusSkipBehavior(t *testing.T) {
 	const (
 		reason  = "Unschedulable"
 		message = "0/3 nodes are available"
@@ -734,7 +734,7 @@ func TestTaskUnschedulable_RepeatedStatusForceSyncBehavior(t *testing.T) {
 		return api.NewTaskInfo(pod)
 	}
 
-	t.Run("skip repeated status inside force interval", func(t *testing.T) {
+	t.Run("skip repeated status without status refresh", func(t *testing.T) {
 		updater := &fakeStatusUpdater{}
 		recorder := record.NewFakeRecorder(10)
 		task := buildPendingTask("repeat-inside")
@@ -757,10 +757,10 @@ func TestTaskUnschedulable_RepeatedStatusForceSyncBehavior(t *testing.T) {
 		assert.Equal(t, 1, len(recorder.Events))
 	})
 
-	t.Run("force sync repeated status after force interval", func(t *testing.T) {
+	t.Run("skip repeated status even after long interval", func(t *testing.T) {
 		updater := &fakeStatusUpdater{}
 		recorder := record.NewFakeRecorder(10)
-		task := buildPendingTask("repeat-force")
+		task := buildPendingTask("repeat-late")
 		sc := &SchedulerCache{
 			StatusUpdater:      updater,
 			Recorder:           recorder,
@@ -768,7 +768,7 @@ func TestTaskUnschedulable_RepeatedStatusForceSyncBehavior(t *testing.T) {
 		}
 		seedPendingTasksForUnschedulableTests(sc, podStatusHighPressureThreshold+1)
 		sc.podStatusSyncCache[task.Pod.UID] = podStatusSyncMeta{
-			LastSyncedAt: time.Now().Add(-podStatusForceSyncInterval - time.Second),
+			LastSyncedAt: time.Now().Add(-24 * time.Hour),
 			Phase:        v1.PodPending,
 			Reason:       reason,
 			Message:      message,
@@ -776,7 +776,7 @@ func TestTaskUnschedulable_RepeatedStatusForceSyncBehavior(t *testing.T) {
 
 		err := sc.taskUnschedulable(task, reason, message, "", podStatusHighPressureThreshold+1)
 		assert.NoError(t, err)
-		assert.Equal(t, 1, updater.updatePodStatusCount)
+		assert.Equal(t, 0, updater.updatePodStatusCount)
 		assert.Equal(t, 1, len(recorder.Events))
 	})
 }

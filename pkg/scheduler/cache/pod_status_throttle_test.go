@@ -38,7 +38,6 @@ var (
 	podStatusLowPressureInterval   = options.DefaultPodStatusLowPressureInterval
 	podStatusMidPressureInterval   = options.DefaultPodStatusMidPressureInterval
 	podStatusHighPressureInterval  = options.DefaultPodStatusHighPressureInterval
-	podStatusForceSyncInterval     = options.DefaultPodStatusForceSyncInterval
 	podEventLowPressureInterval    = options.DefaultPodEventLowPressureInterval
 	podEventMidPressureInterval    = options.DefaultPodEventMidPressureInterval
 	podEventHighPressureInterval   = options.DefaultPodEventHighPressureInterval
@@ -53,7 +52,6 @@ func TestBuildPodStatusThrottleConfig(t *testing.T) {
 		assert.Equal(t, options.DefaultPodStatusLowPressureInterval, cfg.lowPressureInterval)
 		assert.Equal(t, options.DefaultPodStatusMidPressureInterval, cfg.midPressureInterval)
 		assert.Equal(t, options.DefaultPodStatusHighPressureInterval, cfg.highPressureInterval)
-		assert.Equal(t, options.DefaultPodStatusForceSyncInterval, cfg.forceSyncInterval)
 		assert.Equal(t, options.DefaultPodEventLowPressureInterval, cfg.eventLowInterval)
 		assert.Equal(t, options.DefaultPodEventMidPressureInterval, cfg.eventMidInterval)
 		assert.Equal(t, options.DefaultPodEventHighPressureInterval, cfg.eventHighInterval)
@@ -66,7 +64,6 @@ func TestBuildPodStatusThrottleConfig(t *testing.T) {
 			PodStatusLowPressureInterval:   5 * time.Second,
 			PodStatusMidPressureInterval:   30 * time.Second,
 			PodStatusHighPressureInterval:  2 * time.Minute,
-			PodStatusForceSyncInterval:     10 * time.Minute,
 			PodEventLowPressureInterval:    3 * time.Second,
 			PodEventMidPressureInterval:    20 * time.Second,
 			PodEventHighPressureInterval:   1 * time.Minute,
@@ -79,7 +76,6 @@ func TestBuildPodStatusThrottleConfig(t *testing.T) {
 		assert.Equal(t, 5*time.Second, cfg.lowPressureInterval)
 		assert.Equal(t, 30*time.Second, cfg.midPressureInterval)
 		assert.Equal(t, 2*time.Minute, cfg.highPressureInterval)
-		assert.Equal(t, 10*time.Minute, cfg.forceSyncInterval)
 		assert.Equal(t, 3*time.Second, cfg.eventLowInterval)
 		assert.Equal(t, 20*time.Second, cfg.eventMidInterval)
 		assert.Equal(t, 1*time.Minute, cfg.eventHighInterval)
@@ -92,7 +88,6 @@ func TestBuildPodStatusThrottleConfig(t *testing.T) {
 			PodStatusLowPressureInterval:   -1,
 			PodStatusMidPressureInterval:   -1,
 			PodStatusHighPressureInterval:  0,
-			PodStatusForceSyncInterval:     0,
 			PodEventLowPressureInterval:    -1,
 			PodEventMidPressureInterval:    -1,
 			PodEventHighPressureInterval:   0,
@@ -105,7 +100,6 @@ func TestBuildPodStatusThrottleConfig(t *testing.T) {
 		assert.Equal(t, options.DefaultPodStatusLowPressureInterval, cfg.lowPressureInterval)
 		assert.Equal(t, options.DefaultPodStatusMidPressureInterval, cfg.midPressureInterval)
 		assert.Equal(t, options.DefaultPodStatusHighPressureInterval, cfg.highPressureInterval)
-		assert.Equal(t, options.DefaultPodStatusForceSyncInterval, cfg.forceSyncInterval)
 		assert.Equal(t, options.DefaultPodEventLowPressureInterval, cfg.eventLowInterval)
 		assert.Equal(t, options.DefaultPodEventMidPressureInterval, cfg.eventMidInterval)
 		assert.Equal(t, options.DefaultPodEventHighPressureInterval, cfg.eventHighInterval)
@@ -122,7 +116,6 @@ func TestGetPodStatusThrottleConfig_DefaultFallback(t *testing.T) {
 	assert.Equal(t, options.DefaultPodStatusLowPressureInterval, cfg.lowPressureInterval)
 	assert.Equal(t, options.DefaultPodStatusMidPressureInterval, cfg.midPressureInterval)
 	assert.Equal(t, options.DefaultPodStatusHighPressureInterval, cfg.highPressureInterval)
-	assert.Equal(t, options.DefaultPodStatusForceSyncInterval, cfg.forceSyncInterval)
 	assert.Equal(t, options.DefaultPodEventLowPressureInterval, cfg.eventLowInterval)
 	assert.Equal(t, options.DefaultPodEventMidPressureInterval, cfg.eventMidInterval)
 	assert.Equal(t, options.DefaultPodEventHighPressureInterval, cfg.eventHighInterval)
@@ -202,16 +195,6 @@ func TestShouldThrottlePodStatusUpdate(t *testing.T) {
 			updateNominatedNode: false,
 			pendingTaskCount:    podStatusHighPressureThreshold + 1,
 			expectThrottle:      true,
-		},
-		{
-			name:                "high pressure repeated status force sync after max staleness",
-			lastSyncAgo:         podStatusForceSyncInterval + 5*time.Second,
-			lastPhase:           v1.PodPending,
-			lastReason:          "Unschedulable",
-			lastMessage:         "0/3 nodes are available",
-			updateNominatedNode: false,
-			pendingTaskCount:    podStatusHighPressureThreshold + 1,
-			expectThrottle:      false,
 		},
 		{
 			name:                "reason changed should not throttle",

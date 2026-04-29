@@ -32,7 +32,6 @@ type podStatusThrottleConfig struct {
 	lowPressureInterval   time.Duration
 	midPressureInterval   time.Duration
 	highPressureInterval  time.Duration
-	forceSyncInterval     time.Duration
 	eventLowInterval      time.Duration
 	eventMidInterval      time.Duration
 	eventHighInterval     time.Duration
@@ -45,7 +44,6 @@ func newDefaultPodStatusThrottleConfig() podStatusThrottleConfig {
 		lowPressureInterval:   options.DefaultPodStatusLowPressureInterval,
 		midPressureInterval:   options.DefaultPodStatusMidPressureInterval,
 		highPressureInterval:  options.DefaultPodStatusHighPressureInterval,
-		forceSyncInterval:     options.DefaultPodStatusForceSyncInterval,
 		eventLowInterval:      options.DefaultPodEventLowPressureInterval,
 		eventMidInterval:      options.DefaultPodEventMidPressureInterval,
 		eventHighInterval:     options.DefaultPodEventHighPressureInterval,
@@ -72,9 +70,6 @@ func buildPodStatusThrottleConfig(opts *options.ServerOption) podStatusThrottleC
 	if opts.PodStatusHighPressureInterval > 0 {
 		cfg.highPressureInterval = opts.PodStatusHighPressureInterval
 	}
-	if opts.PodStatusForceSyncInterval > 0 {
-		cfg.forceSyncInterval = opts.PodStatusForceSyncInterval
-	}
 	if opts.PodEventLowPressureInterval >= 0 {
 		cfg.eventLowInterval = opts.PodEventLowPressureInterval
 	}
@@ -92,24 +87,6 @@ func (sc *SchedulerCache) getPodStatusThrottleConfig() podStatusThrottleConfig {
 		return newDefaultPodStatusThrottleConfig()
 	}
 	return *sc.podStatusThrottle
-}
-
-func (sc *SchedulerCache) shouldForceSyncPodStatusUpdate(pod *v1.Pod, condition *v1.PodCondition) bool {
-	cfg := sc.getPodStatusThrottleConfig()
-	sc.podStatusSyncLock.Lock()
-	defer sc.podStatusSyncLock.Unlock()
-
-	last, found := sc.podStatusSyncCache[pod.UID]
-	// No history means this pod status has not been synced by this scheduler cache yet.
-	if !found {
-		return true
-	}
-	// Any meaningful status tuple change should be synced immediately.
-	if last.Phase != pod.Status.Phase || last.Reason != condition.Reason || last.Message != condition.Message {
-		return true
-	}
-	// Otherwise force a periodic refresh.
-	return time.Since(last.LastSyncedAt) >= cfg.forceSyncInterval
 }
 
 func (sc *SchedulerCache) recordPodStatusSync(pod *v1.Pod, condition *v1.PodCondition) {
@@ -214,12 +191,6 @@ func (sc *SchedulerCache) shouldThrottlePodStatusUpdate(pod *v1.Pod, condition *
 			pod.Namespace, pod.Name, pendingTaskCount, cfg.highPressureThreshold)
 		return false
 	}
-	if time.Since(last.LastSyncedAt) >= cfg.forceSyncInterval {
-		klog.V(5).Infof("Skip status throttling for %s/%s: force sync interval reached (lastSyncAgo=%v, forceSyncInterval=%v)",
-			pod.Namespace, pod.Name, time.Since(last.LastSyncedAt), cfg.forceSyncInterval)
-		return false
-	}
-
 	interval := sc.getDynamicPodStatusInterval(pendingTaskCount)
 	if interval <= 0 {
 		klog.V(5).Infof("Skip status throttling for %s/%s: dynamic status interval=%v", pod.Namespace, pod.Name, interval)

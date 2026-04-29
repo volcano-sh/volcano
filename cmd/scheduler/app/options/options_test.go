@@ -92,7 +92,6 @@ func TestAddFlags(t *testing.T) {
 		PodStatusLowPressureInterval:   DefaultPodStatusLowPressureInterval,
 		PodStatusMidPressureInterval:   DefaultPodStatusMidPressureInterval,
 		PodStatusHighPressureInterval:  DefaultPodStatusHighPressureInterval,
-		PodStatusForceSyncInterval:     DefaultPodStatusForceSyncInterval,
 		PodEventLowPressureInterval:    DefaultPodEventLowPressureInterval,
 		PodEventMidPressureInterval:    DefaultPodEventMidPressureInterval,
 		PodEventHighPressureInterval:   DefaultPodEventHighPressureInterval,
@@ -118,7 +117,6 @@ func TestCheckOptionOrDie_PodStatusThrottleValidation(t *testing.T) {
 		s.PodStatusLowPressureInterval = 0
 		s.PodStatusMidPressureInterval = 120 * time.Second
 		s.PodStatusHighPressureInterval = 300 * time.Second
-		s.PodStatusForceSyncInterval = 10 * time.Minute
 		s.PodEventLowPressureInterval = 0
 		s.PodEventMidPressureInterval = 60 * time.Second
 		s.PodEventHighPressureInterval = 120 * time.Second
@@ -133,22 +131,6 @@ func TestCheckOptionOrDie_PodStatusThrottleValidation(t *testing.T) {
 		s.PodStatusLowPressureInterval = 0
 		s.PodStatusMidPressureInterval = 120 * time.Second
 		s.PodStatusHighPressureInterval = 300 * time.Second
-		s.PodStatusForceSyncInterval = 10 * time.Minute
-		s.PodEventLowPressureInterval = 0
-		s.PodEventMidPressureInterval = 60 * time.Second
-		s.PodEventHighPressureInterval = 120 * time.Second
-
-		assert.Error(t, s.CheckOptionOrDie())
-	})
-
-	t.Run("invalid force sync interval fails", func(t *testing.T) {
-		s := NewServerOption()
-		s.PodStatusLowPressureThreshold = 500
-		s.PodStatusHighPressureThreshold = 2000
-		s.PodStatusLowPressureInterval = 0
-		s.PodStatusMidPressureInterval = 120 * time.Second
-		s.PodStatusHighPressureInterval = 300 * time.Second
-		s.PodStatusForceSyncInterval = 60 * time.Second
 		s.PodEventLowPressureInterval = 0
 		s.PodEventMidPressureInterval = 60 * time.Second
 		s.PodEventHighPressureInterval = 120 * time.Second
@@ -163,7 +145,6 @@ func TestCheckOptionOrDie_PodStatusThrottleValidation(t *testing.T) {
 		s.PodStatusLowPressureInterval = 0
 		s.PodStatusMidPressureInterval = 120 * time.Second
 		s.PodStatusHighPressureInterval = 300 * time.Second
-		s.PodStatusForceSyncInterval = 10 * time.Minute
 		s.PodEventLowPressureInterval = 0
 		s.PodEventMidPressureInterval = 60 * time.Second
 		s.PodEventHighPressureInterval = 0
