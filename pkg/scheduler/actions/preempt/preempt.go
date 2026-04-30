@@ -813,12 +813,12 @@ func SelectVictimsOnNode(
 		return fits, nil
 	}
 
-        // Reverse potentialVictims to reprieve higher priority pods first.
-        // potentialVictims is collected from victimsQueue.Pop() which returns lower priority first,
-        // so we need to reverse it to ensure higher priority pods are reprieved first.
-        for i, j := 0, len(potentialVictims)-1; i < j; i, j = i+1, j-1 {
-                potentialVictims[i], potentialVictims[j] = potentialVictims[j], potentialVictims[i]
-        } 
+	// Reverse potentialVictims to reprieve higher priority pods first.
+	// potentialVictims is collected from victimsQueue.Pop() which returns lower priority first,
+	// so we need to reverse it to ensure higher priority pods are reprieved first.
+	for i, j := 0, len(potentialVictims)-1; i < j; i, j = i+1, j-1 {
+		potentialVictims[i], potentialVictims[j] = potentialVictims[j], potentialVictims[i]
+	}
 
 	// Now we try to reprieve non-violating victims.
 	for _, p := range potentialVictims {
