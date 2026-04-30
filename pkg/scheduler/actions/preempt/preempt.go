@@ -108,8 +108,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
 
-	var underRequest []*api.JobInfo
-	queues := map[api.QueueID]*api.QueueInfo{}
+	underRequestByQueue := map[api.QueueID][]*api.JobInfo{}
 
 	for _, job := range ssn.Jobs {
 		if job.IsPending() {
@@ -121,12 +120,9 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		if queue, found := ssn.Queues[job.Queue]; !found {
+		if _, found := ssn.Queues[job.Queue]; !found {
+			klog.V(3).Infof("Queue <%s> not found for Job <%s/%s>, skip preemption", job.Queue, job.Namespace, job.Name)
 			continue
-		} else if _, existed := queues[queue.UID]; !existed {
-			klog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
-				queue.Name, job.Namespace, job.Name)
-			queues[queue.UID] = queue
 		}
 
 		// check job if starving for more resources.
@@ -135,7 +131,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
 			preemptorsMap[job.Queue].Push(job)
-			underRequest = append(underRequest, job)
+			underRequestByQueue[job.Queue] = append(underRequestByQueue[job.Queue], job)
 			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
 				if task.SchGated {
@@ -146,9 +142,22 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 		}
 	}
 
+	// If plugin defines queue order function, use it to order queues.
+	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
+	for queueID := range preemptorsMap {
+		if queue, found := ssn.Queues[queueID]; found {
+			queues.Push(queue)
+		}
+	}
+
 	ph := util.NewPredicateHelper()
 	// Preemption between Jobs within Queue.
-	for _, queue := range queues {
+	for {
+		if queues.Empty() {
+			break
+		}
+
+		queue := queues.Pop().(*api.QueueInfo)
 		for {
 			preemptors := preemptorsMap[queue.UID]
 
@@ -216,7 +225,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 		}
 
 		// Preemption between Task within Job.
-		for _, job := range underRequest {
+		for _, job := range underRequestByQueue[queue.UID] {
 			// Here we need to use a scoped intraJob priority queue instead of overwriting preemptorTasks[job.UID].
 			// The original preemptorTasks map is populated during job discovery (lines above)
 			// and consumed by the "Preemption between Jobs within Queue" loop.
