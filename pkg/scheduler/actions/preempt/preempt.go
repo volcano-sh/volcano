@@ -227,25 +227,25 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 		// Preemption between Task within Job.
 		for _, job := range underRequest {
-			// Fix: preemptor numbers lose when in same job
-			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
+			// Here we need to use a scoped intraJob priority queue instead of overwriting preemptorTasks[job.UID].
+			// The original preemptorTasks map is populated during job discovery (lines above)
+			// and consumed by the "Preemption between Jobs within Queue" loop.
+			// Overwriting it here causes preemptors from other queues' starving jobs to be
+			// lost due to non-deterministic Go map iteration order in multi-queue scenarios.
+			intraJobPreemptors := util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
 				// Again, skip scheduling gated tasks
 				if task.SchGated {
 					continue
 				}
-				preemptorTasks[job.UID].Push(task)
+				intraJobPreemptors.Push(task)
 			}
 			for {
-				if _, found := preemptorTasks[job.UID]; !found {
+				if intraJobPreemptors.Empty() {
 					break
 				}
 
-				if preemptorTasks[job.UID].Empty() {
-					break
-				}
-
-				preemptor := preemptorTasks[job.UID].Pop().(*api.TaskInfo)
+				preemptor := intraJobPreemptors.Pop().(*api.TaskInfo)
 
 				stmt := framework.NewStatement(ssn)
 				assigned, err := pmpt.preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
