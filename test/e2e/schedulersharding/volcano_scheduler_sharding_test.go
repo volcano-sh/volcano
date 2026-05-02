@@ -23,6 +23,7 @@ package schedulersharding
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -132,14 +133,21 @@ var _ = Describe("Volcano Scheduler Sharding E2E Test", func() {
 	})
 
 	Describe("Basic Volcano Job Scheduling with Sharding", func() {
-		It("Volcano jobs should be scheduled to cluster nodes", func() {
+		It("Volcano jobs should be scheduled only to volcano shard nodes", func() {
 			waitForNodeShardsCreated()
 
 			By("Getting volcano NodeShard")
 			volcanoShard, err := e2eutil.GetNodeShard(ctx, VolcanoShardName)
 			Expect(err).NotTo(HaveOccurred())
-
 			GinkgoWriter.Printf("Volcano shard nodes: %v\n", volcanoShard.Spec.NodesDesired)
+			Expect(len(volcanoShard.Spec.NodesDesired)).To(BeNumerically(">=", 1),
+				"volcano shard must have nodes for verification")
+
+			// Build a set of volcano shard node names for lookup
+			shardNodeSet := make(map[string]bool, len(volcanoShard.Spec.NodesDesired))
+			for _, n := range volcanoShard.Spec.NodesDesired {
+				shardNodeSet[n] = true
+			}
 
 			By("Creating a Volcano job")
 			job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
@@ -158,7 +166,91 @@ var _ = Describe("Volcano Scheduler Sharding E2E Test", func() {
 			err = e2eutil.WaitJobReady(ctx, job)
 			Expect(err).NotTo(HaveOccurred(), "job should become ready")
 
-			By("Verifying pods are scheduled")
+			By("Verifying all pods are scheduled onto volcano shard nodes")
+			pods, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(
+				context.TODO(), metav1.ListOptions{
+					LabelSelector: "volcano.sh/job-name=" + job.Name,
+				})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(pods.Items)).To(BeNumerically(">=", 1))
+
+			for _, pod := range pods.Items {
+				GinkgoWriter.Printf("Pod %s scheduled to %s\n", pod.Name, pod.Spec.NodeName)
+				Expect(pod.Spec.NodeName).NotTo(BeEmpty())
+				Expect(shardNodeSet).To(HaveKey(pod.Spec.NodeName),
+					fmt.Sprintf("pod %s scheduled to node %q which is NOT in the volcano shard %q",
+						pod.Name, pod.Spec.NodeName, VolcanoShardName))
+			}
+		})
+
+		It("job requesting more CPU than any single shard node should stay pending", func() {
+			waitForNodeShardsCreated()
+
+			By("Creating a job that requests excessive CPU per task")
+			job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+				Name: "insufficient-resource-job",
+				Tasks: []e2eutil.TaskSpec{
+					{
+						Img: e2eutil.DefaultBusyBoxImage,
+						Req: e2eutil.ThirtyCPU,
+						Min: 1,
+						Rep: 1,
+					},
+				},
+			})
+
+			By("Verifying job stays pending (resources cannot be satisfied by any single node)")
+			err := e2eutil.WaitJobStatePending(ctx, job)
+			Expect(err).NotTo(HaveOccurred(),
+				"job requesting excessive CPU should remain in Pending state")
+
+			GinkgoWriter.Printf("Job %s correctly stays pending due to insufficient resources\n", job.Name)
+		})
+
+		It("should not schedule pods onto nodes outside the volcano shard", func() {
+			waitForNodeShardsCreated()
+
+			By("Collecting node assignments across both shards")
+			volcanoShard, err := e2eutil.GetNodeShard(ctx, VolcanoShardName)
+			Expect(err).NotTo(HaveOccurred())
+			agentShard, err := e2eutil.GetNodeShard(ctx, AgentSchedulerShardName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Compute nodes that are ONLY in agent shard (not in volcano shard)
+			volcanoNodeSet := make(map[string]bool, len(volcanoShard.Spec.NodesDesired))
+			for _, n := range volcanoShard.Spec.NodesDesired {
+				volcanoNodeSet[n] = true
+			}
+			agentOnlyNodes := make(map[string]bool)
+			for _, n := range agentShard.Spec.NodesDesired {
+				if !volcanoNodeSet[n] {
+					agentOnlyNodes[n] = true
+				}
+			}
+			GinkgoWriter.Printf("Volcano shard nodes: %v\n", volcanoShard.Spec.NodesDesired)
+			GinkgoWriter.Printf("Agent-only shard nodes: (excluded from verification)\n")
+			for n := range agentOnlyNodes {
+				GinkgoWriter.Printf("  - %s\n", n)
+			}
+
+			By("Creating a Volcano job with multiple replicas")
+			job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+				Name: "shard-isolation-job",
+				Tasks: []e2eutil.TaskSpec{
+					{
+						Img: e2eutil.DefaultBusyBoxImage,
+						Req: e2eutil.HalfCPU,
+						Min: 1,
+						Rep: 3,
+					},
+				},
+			})
+
+			By("Waiting for job to be ready")
+			err = e2eutil.WaitJobReady(ctx, job)
+			Expect(err).NotTo(HaveOccurred(), "job should become ready")
+
+			By("Verifying no pods are scheduled onto agent-only nodes")
 			pods, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(
 				context.TODO(), metav1.ListOptions{
 					LabelSelector: "volcano.sh/job-name=" + job.Name,
@@ -167,8 +259,13 @@ var _ = Describe("Volcano Scheduler Sharding E2E Test", func() {
 
 			for _, pod := range pods.Items {
 				GinkgoWriter.Printf("Pod %s scheduled to %s\n", pod.Name, pod.Spec.NodeName)
-				Expect(pod.Spec.NodeName).NotTo(BeEmpty())
+				if len(agentOnlyNodes) > 0 {
+					Expect(agentOnlyNodes).NotTo(HaveKey(pod.Spec.NodeName),
+						fmt.Sprintf("pod %s was scheduled to agent-only node %q, violating shard isolation",
+							pod.Name, pod.Spec.NodeName))
+				}
 			}
+			GinkgoWriter.Printf("All pods correctly isolated to volcano shard nodes\n")
 		})
 	})
 
