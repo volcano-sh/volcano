@@ -1167,7 +1167,14 @@ func (ji *JobInfo) CheckSubJobPipelined() bool {
 }
 
 func (ji *JobInfo) IsReady() bool {
-	return ji.ReadyTaskNum()+ji.PendingBestEffortTaskNum() >= ji.MinAvailable
+	if ji.ReadyTaskNum()+ji.PendingBestEffortTaskNum() < ji.MinAvailable {
+		return false
+	}
+	if ji.PodGroup == nil || ji.PodGroup.Spec.MinResources == nil {
+		return true
+	}
+	minRes := ji.GetMinResources()
+	return minRes.IsEmpty() || minRes.LessEqual(ji.Allocated, Zero)
 }
 
 func (ji *JobInfo) IsPipelined() bool {

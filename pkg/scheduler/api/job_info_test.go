@@ -486,6 +486,68 @@ func TestJobInfo(t *testing.T) {
 	}
 }
 
+func TestJobInfoMinResources(t *testing.T) {
+	cpu := func(c string) *Resource {
+		return NewResource(v1.ResourceList{"cpu": resource.MustParse(c)})
+	}
+	running := func(uid string, res *Resource) *TaskInfo {
+		return &TaskInfo{
+			UID:                TaskID(uid),
+			Job:                "j",
+			Name:               uid,
+			TransactionContext: TransactionContext{Status: Running},
+			Resreq:             res,
+			InitResreq:         res,
+		}
+	}
+
+	tests := []struct {
+		name      string
+		minMember int32
+		minRes    *v1.ResourceList
+		tasks     []*TaskInfo
+		want      bool
+	}{
+		{
+			name: "no gating",
+			want: true,
+		},
+		{
+			name:   "minRes unmet, no minMember",
+			minRes: &v1.ResourceList{"cpu": resource.MustParse("4")},
+			tasks:  []*TaskInfo{running("t1", cpu("1"))},
+			want:   false,
+		},
+		{
+			name:   "minRes met, no minMember",
+			minRes: &v1.ResourceList{"cpu": resource.MustParse("2")},
+			tasks:  []*TaskInfo{running("t1", cpu("1")), running("t2", cpu("1"))},
+			want:   true,
+		},
+		{
+			name:      "minMember met, minRes unmet",
+			minMember: 1,
+			minRes:    &v1.ResourceList{"cpu": resource.MustParse("4")},
+			tasks:     []*TaskInfo{running("t1", cpu("1"))},
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		ji := NewJobInfo("j")
+		for _, ti := range tt.tasks {
+			ji.AddTaskInfo(ti)
+		}
+		ji.SetPodGroup(&PodGroup{PodGroup: scheduling.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: "ns"},
+			Spec:       scheduling.PodGroupSpec{MinMember: tt.minMember, MinResources: tt.minRes},
+		}})
+		if got := ji.IsReady(); got != tt.want {
+			t.Errorf("%s: IsReady() = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
 func TestGetElasticResources(t *testing.T) {
 	resNoGPU := BuildResourceList("1", "1G")
 	resWithGPU := BuildResourceListWithGPU("1", "1G", "1")
