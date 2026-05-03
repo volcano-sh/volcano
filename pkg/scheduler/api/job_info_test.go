@@ -500,7 +500,7 @@ func TestJobInfoMinResources(t *testing.T) {
 			InitResreq:         res,
 		}
 	}
-	running := func(uid string, res *Resource) *TaskInfo  { return taskWithStatus(uid, res, Running) }
+	running := func(uid string, res *Resource) *TaskInfo { return taskWithStatus(uid, res, Running) }
 	succeeded := func(uid string, res *Resource) *TaskInfo { return taskWithStatus(uid, res, Succeeded) }
 
 	tests := []struct {
@@ -576,7 +576,7 @@ func TestJobInfoIsPipelinedMinResources(t *testing.T) {
 			InitResreq:         res,
 		}
 	}
-	running   := func(uid string, res *Resource) *TaskInfo { return taskWithStatus(uid, res, Running) }
+	running := func(uid string, res *Resource) *TaskInfo { return taskWithStatus(uid, res, Running) }
 	pipelined := func(uid string, res *Resource) *TaskInfo { return taskWithStatus(uid, res, Pipelined) }
 
 	tests := []struct {
