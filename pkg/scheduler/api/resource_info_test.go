@@ -1983,3 +1983,50 @@ func TestIntersectionWithIgnoredScalarResources(t *testing.T) {
 		}
 	}
 }
+
+func TestResourceString(t *testing.T) {
+	cases := []struct {
+		name     string
+		resource *Resource
+		expected string
+	}{
+		{
+			name:     "normal values",
+			resource: &Resource{MilliCPU: 2000, Memory: 4096},
+			expected: "cpu 2000.00, memory 4096.00",
+		},
+		{
+			name:     "infinite cpu and memory",
+			resource: &Resource{MilliCPU: math.MaxFloat64, Memory: math.MaxFloat64},
+			expected: "cpu maxFloat, memory maxFloat",
+		},
+		{
+			name: "infinite scalar resource",
+			resource: &Resource{
+				MilliCPU: 1000,
+				Memory:   2048,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu": float64(math.MaxInt64),
+				},
+			},
+			expected: "cpu 1000.00, memory 2048.00, nvidia.com/gpu maxInt",
+		},
+		{
+			name: "mixed normal and infinite scalar",
+			resource: &Resource{
+				MilliCPU: math.MaxFloat64,
+				Memory:   math.MaxFloat64,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu": float64(math.MaxInt64),
+				},
+			},
+			expected: "cpu maxFloat, memory maxFloat, nvidia.com/gpu maxInt",
+		},
+	}
+	for _, c := range cases {
+		got := c.resource.String()
+		if got != c.expected {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.expected)
+		}
+	}
+}
