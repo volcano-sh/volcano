@@ -168,29 +168,27 @@ func (r *Resource) Clone() *Resource {
 
 // String returns resource details in string format
 func (r *Resource) String() string {
-	cpuStr := "maxFloat"
-	if r.MilliCPU != math.MaxFloat64 {
-		cpuStr = fmt.Sprintf("%0.2f", r.MilliCPU)
+	format := func(val float64) string {
+		if val == math.MaxFloat64 {
+			return "maxFloat"
+		}
+		if val == float64(math.MaxInt64) {
+			return "maxInt"
+		}
+		return fmt.Sprintf("%0.2f", val)
 	}
-	memStr := "maxFloat"
-	if r.Memory != math.MaxFloat64 {
-		memStr = fmt.Sprintf("%0.2f", r.Memory)
-	}
-	str := fmt.Sprintf("cpu %s, memory %s", cpuStr, memStr)
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "cpu %s, memory %s", format(r.MilliCPU), format(r.Memory))
 	var resourceNames []string
 	for rName := range r.ScalarResources {
 		resourceNames = append(resourceNames, string(rName))
 	}
 	sort.Strings(resourceNames)
 	for _, rName := range resourceNames {
-		val := r.ScalarResources[v1.ResourceName(rName)]
-		valStr := "maxInt"
-		if val != math.MaxInt64 {
-			valStr = fmt.Sprintf("%0.2f", val)
-		}
-		str = fmt.Sprintf("%s, %s %s", str, rName, valStr)
+		fmt.Fprintf(&sb, ", %s %s", rName, format(r.ScalarResources[v1.ResourceName(rName)]))
 	}
-	return str
+	return sb.String()
 }
 
 // ResourceNames returns all resource types
