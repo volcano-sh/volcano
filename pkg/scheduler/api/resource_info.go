@@ -168,15 +168,27 @@ func (r *Resource) Clone() *Resource {
 
 // String returns resource details in string format
 func (r *Resource) String() string {
-	str := fmt.Sprintf("cpu %0.2f, memory %0.2f", r.MilliCPU, r.Memory)
-	// Sort scalar resource names to ensure consistent string output
+	cpuStr := "maxFloat"
+	if r.MilliCPU != math.MaxFloat64 {
+		cpuStr = fmt.Sprintf("%0.2f", r.MilliCPU)
+	}
+	memStr := "maxFloat"
+	if r.Memory != math.MaxFloat64 {
+		memStr = fmt.Sprintf("%0.2f", r.Memory)
+	}
+	str := fmt.Sprintf("cpu %s, memory %s", cpuStr, memStr)
 	var resourceNames []string
 	for rName := range r.ScalarResources {
 		resourceNames = append(resourceNames, string(rName))
 	}
 	sort.Strings(resourceNames)
 	for _, rName := range resourceNames {
-		str = fmt.Sprintf("%s, %s %0.2f", str, rName, r.ScalarResources[v1.ResourceName(rName)])
+		val := r.ScalarResources[v1.ResourceName(rName)]
+		valStr := "maxInt"
+		if val != math.MaxInt64 {
+			valStr = fmt.Sprintf("%0.2f", val)
+		}
+		str = fmt.Sprintf("%s, %s %s", str, rName, valStr)
 	}
 	return str
 }
