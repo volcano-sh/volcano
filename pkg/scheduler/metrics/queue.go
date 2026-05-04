@@ -173,7 +173,7 @@ var (
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_inqueue_milli_cpu",
-			Help:      "Inqueue CPU reserved for admitted-but-not-yet-running jobs in one queue",
+			Help:      "Inqueue CPU for admitted but not yet running jobs in one queue",
 		}, []string{"queue_name"},
 	)
 
@@ -181,7 +181,7 @@ var (
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_inqueue_memory_bytes",
-			Help:      "Inqueue memory reserved for admitted-but-not-yet-running jobs in one queue",
+			Help:      "Inqueue memory for admitted but not yet running jobs in one queue",
 		}, []string{"queue_name"},
 	)
 
@@ -189,7 +189,7 @@ var (
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_inqueue_scalar_resources",
-			Help:      "Inqueue scalar resources reserved for admitted-but-not-yet-running jobs in one queue",
+			Help:      "Inqueue scalar resources for admitted but not yet running jobs in one queue",
 		}, []string{"queue_name", "resource"},
 	)
 
@@ -276,7 +276,7 @@ func UpdateQueueRealCapacity(queueName string, milliCPU, memory float64, scalarR
 	updateScalarResourceMetrics(queueRealCapacityScalarResource, queueName, scalarResources)
 }
 
-// UpdateQueueInqueue records resources reserved for admitted-but-not-yet-running jobs in one queue
+// UpdateQueueInqueue records resources for admitted but not yet running jobs in one queue
 func UpdateQueueInqueue(queueName string, milliCPU, memory float64, scalarResources map[v1.ResourceName]float64) {
 	queueInqueueMilliCPU.WithLabelValues(queueName).Set(milliCPU)
 	queueInqueueMemory.WithLabelValues(queueName).Set(memory)
