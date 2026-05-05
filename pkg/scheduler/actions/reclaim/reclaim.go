@@ -174,6 +174,8 @@ func (ra *Action) Execute(ssn *framework.Session) {
 }
 
 func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Statement, task *api.TaskInfo, job *api.JobInfo) {
+	metrics.RegisterReclaimAttempts()
+
 	totalNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
 	predicateHelper := util.NewPredicateHelper()
 	predicateNodes, _ := predicateHelper.PredicateNodes(task, totalNodes, ssn.PredicateForPreemptAction, ra.enablePredicateErrorCache, ssn.NodesInShard)
@@ -208,8 +210,6 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		}
 
 		victims := ssn.Reclaimable(task, reclaimees)
-		metrics.UpdateReclaimVictimsCount(len(victims))
-
 		if err := util.ValidateVictims(task, n, victims); err != nil {
 			klog.V(3).Infof("No validated victims on Node <%s>: %v", n.Name, err)
 			continue
@@ -227,6 +227,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		// so victims on nodes that end up unused are never committed to Kubernetes.
 		nodeStmt := framework.NewStatement(ssn)
 		evictionOccurred := false
+		victimsEvicted := 0
 		for !victimsQueue.Empty() {
 			if resreq.LessEqual(availableResources, api.Zero) {
 				break
@@ -238,9 +239,9 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			reclaimed.Add(reclaimee.Resreq)
 			availableResources.Add(reclaimee.Resreq)
 			evictionOccurred = true
+			victimsEvicted++
 		}
 
-		metrics.RegisterReclaimAttempts()
 		klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>, and Node <%s> availableResources <%v>.", reclaimed, task.Namespace, task.Name, task.InitResreq, n.Name, availableResources)
 
 		if resreq.LessEqual(availableResources, api.Zero) {
@@ -255,6 +256,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 				continue
 			}
 			stmt.Merge(nodeStmt)
+			metrics.UpdateReclaimVictimsCount(victimsEvicted)
 			break
 		}
 		nodeStmt.Discard()

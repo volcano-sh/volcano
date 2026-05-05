@@ -133,11 +133,12 @@ var (
 		},
 	)
 
-	reclaimVictims = promauto.NewGauge(
-		prometheus.GaugeOpts{
+	reclaimVictims = promauto.NewHistogram(
+		prometheus.HistogramOpts{
 			Subsystem: VolcanoSubSystemName,
 			Name:      "pod_reclaim_victims",
-			Help:      "Number of selected reclaim victims",
+			Help:      "Distribution of reclaim victims actually evicted per successful task reclaim",
+			Buckets:   []float64{0, 1, 2, 5, 10, 20, 50},
 		},
 	)
 
@@ -145,7 +146,7 @@ var (
 		prometheus.CounterOpts{
 			Subsystem: VolcanoSubSystemName,
 			Name:      "total_reclaim_attempts",
-			Help:      "Total reclaim attempts in the cluster till now",
+			Help:      "Total task-level reclaim attempts by this scheduler instance since start",
 		},
 	)
 
@@ -230,12 +231,13 @@ func RegisterPreemptionAttempts() {
 	preemptionAttempts.Inc()
 }
 
-// UpdateReclaimVictimsCount updates count of reclaim victims
+// UpdateReclaimVictimsCount records the number of reclaim victims evicted in
+// a single successful task reclaim.
 func UpdateReclaimVictimsCount(victimsCount int) {
-	reclaimVictims.Set(float64(victimsCount))
+	reclaimVictims.Observe(float64(victimsCount))
 }
 
-// RegisterReclaimAttempts records number of attempts for reclaim
+// RegisterReclaimAttempts records a task-level reclaim attempt.
 func RegisterReclaimAttempts() {
 	reclaimAttempts.Inc()
 }
