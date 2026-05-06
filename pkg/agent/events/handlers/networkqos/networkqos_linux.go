@@ -69,7 +69,7 @@ func NewNetworkQoSHandle(config *config.Configuration, mgr *metriccollect.Metric
 			Config: config,
 		},
 		cgroupMgr:     cgroupMgr,
-		networkqosMgr: networkqos.GetNetworkQoSManager(config),
+		networkqosMgr: networkqos.GetNetworkQoSManager(config, cgroupMgr.GetCgroupVersion()),
 		poLister:      config.InformerFactory.K8SInformerFactory.Core().V1().Pods().Lister(),
 		recorder:      config.GenericConfiguration.Recorder,
 	}
