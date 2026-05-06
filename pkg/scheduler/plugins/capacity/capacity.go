@@ -588,6 +588,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 				metrics.UpdateQueueCapacity(attr.name, attr.capability.MilliCPU, attr.capability.Memory, attr.capability.ScalarResources)
 			}
 			metrics.UpdateQueueRealCapacity(attr.name, attr.realCapability.MilliCPU, attr.realCapability.Memory, attr.realCapability.ScalarResources)
+			metrics.UpdateQueueGuarantee(attr.name, attr.guarantee.MilliCPU, attr.guarantee.Memory, attr.guarantee.ScalarResources)
 			continue
 		}
 		deservedCPU, deservedMem, scalarResources := 0.0, 0.0, map[v1.ResourceName]float64{}
@@ -611,6 +612,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			metrics.UpdateQueueCapacity(queueInfo.Name, capacity.MilliCPU, capacity.Memory, capacity.ScalarResources)
 		}
 		metrics.UpdateQueueRealCapacity(queueInfo.Name, realCapacity.MilliCPU, realCapacity.Memory, realCapacity.ScalarResources)
+		metrics.UpdateQueueGuarantee(queueInfo.Name, guarantee.MilliCPU, guarantee.Memory, guarantee.ScalarResources)
 	}
 
 	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
@@ -751,6 +753,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
 		metrics.UpdateQueueCapacity(attr.name, attr.capability.MilliCPU, attr.capability.Memory, attr.capability.ScalarResources)
 		metrics.UpdateQueueRealCapacity(attr.name, attr.realCapability.MilliCPU, attr.realCapability.Memory, attr.realCapability.ScalarResources)
+		metrics.UpdateQueueGuarantee(attr.name, attr.guarantee.MilliCPU, attr.guarantee.Memory, attr.guarantee.ScalarResources)
 	}
 
 	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {

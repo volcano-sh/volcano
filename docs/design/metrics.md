@@ -41,13 +41,16 @@ This metrics describe internal state of volcano.
 | `queue_request_scalar_resources`       | Gauge           | `queue_name`=&lt;queue_name&gt;, `resource`=&lt;resource_name&gt; | Requested scalar resource for one queue       |
 | `queue_deserved_milli_cpu`             | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Deserved CPU count for one queue              |
 | `queue_deserved_memory_bytes`          | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Deserved memory for one queue                 |
-| `queue_deserved_scalar_resources`      | Gauge           | `queue_name`=&lt;queue_name&gt;,                                  | Deserved scalar resource for one queue        |
-| `queue_capacity_mill_cpu`              | Gauge           | `queue_name`=&lt;queue_name&gt;,                                  | CPU count capacity for one queue              |
-| `queue_capacity_memory_bytes`          | Gauge           | `queue_name`=&lt;queue_name&gt;,                                  | memory capacity for one queue                 |
+| `queue_deserved_scalar_resources`      | Gauge           | `queue_name`=&lt;queue_name&gt;, `resource`=&lt;resource_name&gt; | Deserved scalar resource for one queue        |
+| `queue_capacity_milli_cpu`             | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | CPU count capacity for one queue              |
+| `queue_capacity_memory_bytes`          | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Memory capacity for one queue                 |
 | `queue_capacity_scalar_resources`      | Gauge           | `queue_name`=&lt;queue_name&gt;, `resource`=&lt;resource_name&gt; | Scalar resource capacity for one queue        |
-| `queue_real_capacity_mill_cpu`         | Gauge           | `queue_name`=&lt;queue_name&gt;,                                  | CPU count real capacity for one queue         |
-| `queue_real_capacity_memory_bytes`     | Gauge           | `queue_name`=&lt;queue_name&gt;,                                  | Memory real capacity for one queue            |
+| `queue_real_capacity_milli_cpu`        | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | CPU count real capacity for one queue         |
+| `queue_real_capacity_memory_bytes`     | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Memory real capacity for one queue            |
 | `queue_real_capacity_scalar_resources` | Gauge           | `queue_name`=&lt;queue_name&gt;, `resource`=&lt;resource_name&gt; | Scalar resource real capacity for one queue   |
+| `queue_guarantee_milli_cpu`            | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Guaranteed CPU count for one queue            |
+| `queue_guarantee_memory_bytes`         | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Guaranteed memory for one queue               |
+| `queue_guarantee_scalar_resources`     | Gauge           | `queue_name`=&lt;queue_name&gt;, `resource`=&lt;resource_name&gt; | Guaranteed scalar resource for one queue      |
 | `queue_share`                          | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Share for one queue                           |
 | `queue_weight`                         | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Weight for one queue                          |
 | `queue_overused`                       | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Whether one queue is overused                 |
