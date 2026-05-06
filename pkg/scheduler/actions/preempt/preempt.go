@@ -279,7 +279,6 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 				}
 
 				// Only commit if preemption was successful, otherwise discard to rollback evictions.
-				// This is consistent with between-job preemption which checks JobPipelined before committing.
 				if !assigned {
 					stmt.Discard()
 					break
