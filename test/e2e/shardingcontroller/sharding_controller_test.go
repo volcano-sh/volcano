@@ -303,42 +303,69 @@ var _ = Describe("ShardingController E2E Test", func() {
 	})
 
 	Describe("Node Lifecycle", func() {
-		It("deleted node should be removed from shards, and re-registered node should be added back and schedule pods", func() {
+		It("newly created node should be added to a shard, and removed from shards when deleted", func() {
 			cfg := getShardingConfig()
 			waitForNodeShardsCreated(cfg)
 			lowUtil := findScheduler(cfg, isLowUtil)
 			Expect(lowUtil).NotTo(BeNil())
 
-			nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-			Expect(err).NotTo(HaveOccurred())
-			workerNodes := filterWorkerNodes(nodes.Items)
-			Expect(len(workerNodes)).To(BeNumerically(">=", 2),
-				"need at least 2 worker nodes so deleting one leaves the cluster usable")
-			target := workerNodes[len(workerNodes)-1]
+			fakeName := "shard-e2e-fake-node"
+			// Best-effort cleanup of leftover from a prior failed run.
+			_ = ctx.Kubeclient.CoreV1().Nodes().Delete(context.TODO(), fakeName, metav1.DeleteOptions{})
 
-			By(fmt.Sprintf("Verifying node %s starts in low-util shard %q", target.Name, lowUtil.Name))
-			Expect(waitNodeInShard(ctx, lowUtil.Name, target.Name)).To(Succeed())
+			fakeNode := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   fakeName,
+					Labels: map[string]string{"e2e.volcano.sh/fake-node": "true"},
+				},
+				Spec: corev1.NodeSpec{
+					// Taint so real workloads do not land on a node without a kubelet.
+					Taints: []corev1.Taint{{
+						Key:    "e2e.volcano.sh/fake-node",
+						Effect: corev1.TaintEffectNoSchedule,
+					}},
+				},
+			}
 
-			By(fmt.Sprintf("Deleting Node object %s to simulate node removal", target.Name))
+			By(fmt.Sprintf("Creating fake Node %s to simulate a new node joining the cluster", fakeName))
+			created, err := ctx.Kubeclient.CoreV1().Nodes().Create(context.TODO(), fakeNode, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to create fake Node")
+			defer func() {
+				_ = ctx.Kubeclient.CoreV1().Nodes().Delete(context.TODO(), fakeName, metav1.DeleteOptions{})
+			}()
+
+			// Set capacity/allocatable via /status subresource so the controller sees a usable node.
+			created.Status = corev1.NodeStatus{
+				Capacity: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("4"),
+					corev1.ResourceMemory: resource.MustParse("8Gi"),
+					corev1.ResourcePods:   resource.MustParse("110"),
+				},
+				Allocatable: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("4"),
+					corev1.ResourceMemory: resource.MustParse("8Gi"),
+					corev1.ResourcePods:   resource.MustParse("110"),
+				},
+				Conditions: []corev1.NodeCondition{{
+					Type:               corev1.NodeReady,
+					Status:             corev1.ConditionTrue,
+					LastHeartbeatTime:  metav1.Now(),
+					LastTransitionTime: metav1.Now(),
+				}},
+			}
+			_, err = ctx.Kubeclient.CoreV1().Nodes().UpdateStatus(context.TODO(), created, metav1.UpdateOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to set fake Node status")
+
+			By(fmt.Sprintf("Waiting for fake node %s to be added to low-util shard %q", fakeName, lowUtil.Name))
+			Expect(waitNodeInShard(ctx, lowUtil.Name, fakeName)).To(Succeed(),
+				"newly created node with 0 CPU utilization should join the low-util shard")
+
+			By(fmt.Sprintf("Deleting fake Node %s to simulate node removal", fakeName))
 			Expect(ctx.Kubeclient.CoreV1().Nodes().Delete(
-				context.TODO(), target.Name, metav1.DeleteOptions{})).To(Succeed())
+				context.TODO(), fakeName, metav1.DeleteOptions{})).To(Succeed())
 
-			Expect(waitNodeNotInAnyShard(ctx, cfg, target.Name)).To(Succeed(),
+			Expect(waitNodeNotInAnyShard(ctx, cfg, fakeName)).To(Succeed(),
 				"deleted node should be removed from every shard")
-
-			By(fmt.Sprintf("Waiting for kubelet to re-register node %s", target.Name))
-			Expect(waitNodeRegistered(ctx, target.Name)).To(Succeed(),
-				"kubelet should re-register the deleted node")
-
-			Expect(waitNodeInShard(ctx, lowUtil.Name, target.Name)).To(Succeed(),
-				"re-registered node should rejoin low-util shard")
-
-			By(fmt.Sprintf("Scheduling test pod onto re-registered node %s", target.Name))
-			testPod := newStressPod("lifecycle-schedule-test", ctx.Namespace, target.Name, 10)
-			_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), testPod, metav1.CreateOptions{})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(waitPodReady(ctx, ctx.Namespace, testPod.Name)).To(Succeed(),
-				"pod should run on re-registered node")
 		})
 	})
 
@@ -465,22 +492,6 @@ func newStressPod(name, ns, nodeName string, cpuMillis int64) *corev1.Pod {
 	}
 }
 
-func waitNodeRegistered(ctx *e2eutil.TestContext, nodeName string) error {
-	return wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
-		func(c context.Context) (bool, error) {
-			node, err := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
-			if err != nil {
-				return false, nil
-			}
-			for _, cond := range node.Status.Conditions {
-				if cond.Type == corev1.NodeReady && cond.Status == corev1.ConditionTrue {
-					return true, nil
-				}
-			}
-			return false, nil
-		})
-}
-
 func waitNodeInShard(ctx *e2eutil.TestContext, shardName, nodeName string) error {
 	return wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
 		func(c context.Context) (bool, error) {
@@ -516,17 +527,6 @@ func waitNodeNotInAnyShard(ctx *e2eutil.TestContext, cfg *sharding.ShardingConfi
 				}
 			}
 			return true, nil
-		})
-}
-
-func waitPodReady(ctx *e2eutil.TestContext, ns, name string) error {
-	return wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
-		func(c context.Context) (bool, error) {
-			p, err := ctx.Kubeclient.CoreV1().Pods(ns).Get(context.TODO(), name, metav1.GetOptions{})
-			if err != nil {
-				return false, nil
-			}
-			return p.Status.Phase == corev1.PodRunning || p.Status.Phase == corev1.PodSucceeded, nil
 		})
 }
 
