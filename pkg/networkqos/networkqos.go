@@ -41,8 +41,10 @@ const (
 	// defaultNetworkDevice is the default network interface managed by bwmcli in cgroup v2 mode.
 	defaultNetworkDevice = "eth0"
 
-	// nsenterPrefix is the command prefix to execute commands in the host's mount namespace.
-	nsenterPrefix = "nsenter --target 1 --mount --"
+	// chrootPrefix is the command prefix to execute commands on the host filesystem
+	// via chroot into /proc/1/root. This avoids the need for nsenter binary in the container.
+	// Requires hostPID: true and privileged: true (or SYS_CHROOT capability) in the agent Pod spec.
+	chrootPrefix = "chroot /proc/1/root"
 )
 
 type NetworkQoSManager interface {
@@ -93,7 +95,7 @@ func (m *NetworkQoSManagerImp) initV2() error {
 	klog.InfoS("Initializing network QoS for cgroup v2 mode (oncn-bwm)")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := nsenterPrefix + " which bwmcli"
+	cmd := chrootPrefix + " which bwmcli"
 	output, err := exec.GetExecutor().CommandContext(ctx, cmd)
 	if err != nil {
 		return fmt.Errorf("bwmcli not found on host, network QoS v2 requires oncn-bwm package: %v, output: %s", err, output)
@@ -118,7 +120,7 @@ func (m *NetworkQoSManagerImp) HealthCheck() error {
 func (m *NetworkQoSManagerImp) healthCheckV2() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := nsenterPrefix + " bwmcli -p devs"
+	cmd := chrootPrefix + " bwmcli -p devs"
 	output, err := exec.GetExecutor().CommandContext(ctx, cmd)
 	if err != nil {
 		return fmt.Errorf("bwmcli health check failed: %v, output: %s", err, output)
@@ -184,7 +186,7 @@ func (m *NetworkQoSManagerImp) enableNetworkQoSV2(qosConf *api.NetworkQos) error
 	defer cancel()
 
 	// Step 1: Set offline bandwidth range (lowBandwidth, highBandwidth)
-	cmd := fmt.Sprintf("%s bwmcli -s bandwidth %s,%s", nsenterPrefix, lowBw, highBw)
+	cmd := fmt.Sprintf("%s bwmcli -s bandwidth %s,%s", chrootPrefix, lowBw, highBw)
 	output, err := exec.GetExecutor().CommandContext(ctx, cmd)
 	if err != nil {
 		return fmt.Errorf("failed to set bandwidth via bwmcli: %v, output: %s", err, output)
@@ -192,7 +194,7 @@ func (m *NetworkQoSManagerImp) enableNetworkQoSV2(qosConf *api.NetworkQos) error
 	klog.InfoS("Successfully set bandwidth via bwmcli", "low", lowBw, "high", highBw)
 
 	// Step 2: Set online bandwidth waterline
-	cmd = fmt.Sprintf("%s bwmcli -s waterline %s", nsenterPrefix, watermark)
+	cmd = fmt.Sprintf("%s bwmcli -s waterline %s", chrootPrefix, watermark)
 	output, err = exec.GetExecutor().CommandContext(ctx, cmd)
 	if err != nil {
 		return fmt.Errorf("failed to set waterline via bwmcli: %v, output: %s", err, output)
@@ -200,7 +202,7 @@ func (m *NetworkQoSManagerImp) enableNetworkQoSV2(qosConf *api.NetworkQos) error
 	klog.InfoS("Successfully set waterline via bwmcli", "waterline", watermark)
 
 	// Step 3: Enable network device
-	cmd = fmt.Sprintf("%s bwmcli -e %s", nsenterPrefix, defaultNetworkDevice)
+	cmd = fmt.Sprintf("%s bwmcli -e %s", chrootPrefix, defaultNetworkDevice)
 	output, err = exec.GetExecutor().CommandContext(ctx, cmd)
 	if err != nil {
 		return fmt.Errorf("failed to enable network device via bwmcli: %v, output: %s", err, output)
@@ -238,7 +240,7 @@ func (m *NetworkQoSManagerImp) disableNetworkQoSV1() error {
 func (m *NetworkQoSManagerImp) disableNetworkQoSV2() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := fmt.Sprintf("%s bwmcli -d %s", nsenterPrefix, defaultNetworkDevice)
+	cmd := fmt.Sprintf("%s bwmcli -d %s", chrootPrefix, defaultNetworkDevice)
 	output, err := exec.GetExecutor().CommandContext(ctx, cmd)
 	if err != nil {
 		return fmt.Errorf("failed to disable network qos via bwmcli: %v, output: %s", err, output)

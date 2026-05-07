@@ -138,8 +138,8 @@ func (h *NetworkQoSHandle) handleV1(podEvent framework.PodEvent) error {
 //
 // where priority is 0 for online pods and -1 for offline pods.
 //
-// Since bwmcli is installed on the host (not in the agent container), we use nsenter to execute
-// the command in the host's mount namespace. The cgroup path from CgroupManager may contain a
+// Since bwmcli is installed on the host (not in the agent container), we use chroot /proc/1/root
+// to execute the command on the host filesystem. The cgroup path from CgroupManager may contain a
 // "/host" prefix (because the agent container mounts the host filesystem at /host), which must
 // be stripped when running in the host namespace.
 func (h *NetworkQoSHandle) handleV2(podEvent framework.PodEvent) error {
@@ -151,18 +151,18 @@ func (h *NetworkQoSHandle) handleV2(podEvent framework.PodEvent) error {
 	}
 
 	// Strip the "/host" prefix from the cgroup path if present, because bwmcli runs on the host
-	// via nsenter and sees the native host filesystem paths (e.g., /sys/fs/cgroup/...).
+	// via chroot /proc/1/root and sees the native host filesystem paths (e.g., /sys/fs/cgroup/...).
 	hostCgroupPath := strings.TrimPrefix(cgroupPath, "/host")
 
 	qosLevel := extension.NormalizeQosLevel(podEvent.QoSLevel)
 
 	cmdCtx, cancel := context.WithTimeout(context.Background(), bwmcliCmdTimeout)
 	defer cancel()
-	// Use nsenter to execute bwmcli in the host's mount namespace (PID 1).
+	// Use chroot /proc/1/root to execute bwmcli on the host filesystem.
 	// bwmcli is a host-installed tool (oncn-bwm package) and is not available inside the agent container.
-	// Running via nsenter ensures bwmcli and all its shared library dependencies (e.g., libbpf.so.1)
-	// are loaded from the host's native filesystem.
-	cmd := fmt.Sprintf("nsenter --target 1 --mount -- bwmcli -s %s %d", hostCgroupPath, qosLevel)
+	// Running via chroot ensures bwmcli and all its shared library dependencies (e.g., libbpf.so.1)
+	// are loaded from the host's native filesystem. Requires hostPID: true and privileged: true.
+	cmd := fmt.Sprintf("chroot /proc/1/root bwmcli -s %s %d", hostCgroupPath, qosLevel)
 	output, err := exec.GetExecutor().CommandContext(cmdCtx, cmd)
 	if err != nil {
 		return fmt.Errorf("failed to set network qos via bwmcli, path=%s, level=%d, error: %v, output: %s",
