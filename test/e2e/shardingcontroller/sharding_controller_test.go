@@ -19,6 +19,8 @@ package shardingcontroller
 import (
 	"context"
 	"fmt"
+	"slices"
+	"sort"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -28,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"sigs.k8s.io/yaml"
 
 	"volcano.sh/volcano/pkg/controllers/sharding"
 	e2eutil "volcano.sh/volcano/test/e2e/util"
@@ -38,14 +41,9 @@ const (
 	shardingConfigMapName      = "integration-sharding-configmap"
 	shardingConfigMapNamespace = "volcano-system"
 
-	// Polling intervals
-	pollInterval = 500 * time.Millisecond
-
-	// Wait time for sharding controller to create NodeShards after startup
+	pollInterval         = 500 * time.Millisecond
 	shardCreationTimeout = 3 * time.Minute
-
-	// Wait time for shard reassignment after workload changes
-	reassignmentTimeout = 3 * time.Minute
+	reassignmentTimeout  = 3 * time.Minute
 )
 
 var _ = Describe("ShardingController E2E Test", func() {
@@ -65,42 +63,49 @@ var _ = Describe("ShardingController E2E Test", func() {
 		}
 	})
 
-	// getShardingConfig reads the sharding configuration from the ConfigMap deployed by helm.
 	getShardingConfig := func() *sharding.ShardingConfig {
 		cfg, err := e2eutil.GetShardingConfigFromConfigMap(ctx, shardingConfigMapName, shardingConfigMapNamespace)
 		ExpectWithOffset(1, err).NotTo(HaveOccurred(), "failed to read sharding config from ConfigMap")
 		return cfg
 	}
 
-	// waitForNodeShardsCreated waits for all NodeShards defined in the ConfigMap to be created.
 	waitForNodeShardsCreated := func(cfg *sharding.ShardingConfig) {
 		By("Waiting for ShardingController to create NodeShards")
-		expectedNames := make(map[string]bool, len(cfg.SchedulerConfigs))
+		expected := make(map[string]struct{}, len(cfg.SchedulerConfigs))
 		for _, sc := range cfg.SchedulerConfigs {
-			expectedNames[sc.Name] = false
+			expected[sc.Name] = struct{}{}
 		}
 		err := wait.PollUntilContextTimeout(context.TODO(), pollInterval, shardCreationTimeout, true,
 			func(c context.Context) (bool, error) {
 				shards, err := e2eutil.ListNodeShards(ctx)
 				if err != nil {
-					GinkgoWriter.Printf("Error listing NodeShards: %v\n", err)
 					return false, nil
 				}
 				found := 0
 				for _, shard := range shards.Items {
-					if _, ok := expectedNames[shard.Name]; ok {
+					if _, ok := expected[shard.Name]; ok {
 						found++
 					}
 				}
-				if found == len(expectedNames) {
-					GinkgoWriter.Printf("All %d expected NodeShards found\n", found)
-					return true, nil
-				}
-				GinkgoWriter.Printf("Waiting for NodeShards... found=%d, expected=%d, total=%d\n",
-					found, len(expectedNames), len(shards.Items))
-				return false, nil
+				return found == len(expected), nil
 			})
 		Expect(err).NotTo(HaveOccurred(), "NodeShards should be created for all configured schedulers")
+	}
+
+	findScheduler := func(cfg *sharding.ShardingConfig, pred func(*sharding.SchedulerConfigSpec) bool) *sharding.SchedulerConfigSpec {
+		for i := range cfg.SchedulerConfigs {
+			if pred(&cfg.SchedulerConfigs[i]) {
+				return &cfg.SchedulerConfigs[i]
+			}
+		}
+		return nil
+	}
+
+	isLowUtil := func(s *sharding.SchedulerConfigSpec) bool {
+		return s.CPUUtilizationMin == 0.0
+	}
+	isHighUtil := func(s *sharding.SchedulerConfigSpec) bool {
+		return s.CPUUtilizationMax >= 1.0 && s.CPUUtilizationMin > 0
 	}
 
 	Describe("Shard Creation", func() {
@@ -108,24 +113,17 @@ var _ = Describe("ShardingController E2E Test", func() {
 			cfg := getShardingConfig()
 			waitForNodeShardsCreated(cfg)
 
-			By("Listing all NodeShards in the cluster")
 			shards, err := e2eutil.ListNodeShards(ctx)
 			Expect(err).NotTo(HaveOccurred(), "failed to list NodeShards")
-
-			By("Verifying NodeShard count matches ConfigMap")
 			Expect(len(shards.Items)).To(BeNumerically(">=", len(cfg.SchedulerConfigs)),
 				"at least as many NodeShards as configured schedulers should exist")
 
-			By("Verifying each configured scheduler has a corresponding NodeShard")
-			shardMap := make(map[string]bool)
+			shardNames := make(map[string]struct{}, len(shards.Items))
 			for _, shard := range shards.Items {
-				shardMap[shard.Name] = true
-				GinkgoWriter.Printf("Found NodeShard: %s with %d nodes desired, %d nodes in use\n",
-					shard.Name, len(shard.Spec.NodesDesired), len(shard.Status.NodesInUse))
+				shardNames[shard.Name] = struct{}{}
 			}
-
 			for _, sc := range cfg.SchedulerConfigs {
-				Expect(shardMap).To(HaveKey(sc.Name),
+				Expect(shardNames).To(HaveKey(sc.Name),
 					fmt.Sprintf("NodeShard for scheduler %q should exist", sc.Name))
 			}
 		})
@@ -134,23 +132,17 @@ var _ = Describe("ShardingController E2E Test", func() {
 			cfg := getShardingConfig()
 			waitForNodeShardsCreated(cfg)
 
-			By("Getting cluster worker nodes")
 			nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
-			workerNodes := filterWorkerNodes(nodes.Items)
-			Expect(len(workerNodes)).To(BeNumerically(">=", 1),
+			Expect(len(filterWorkerNodes(nodes.Items))).To(BeNumerically(">=", 1),
 				"cluster should have at least 1 worker node")
 
-			By("Summing nodes assigned across all configured shards")
 			totalAssigned := 0
 			for _, sc := range cfg.SchedulerConfigs {
 				shard, err := e2eutil.GetNodeShard(ctx, sc.Name)
 				Expect(err).NotTo(HaveOccurred(), "failed to get NodeShard %s", sc.Name)
-				GinkgoWriter.Printf("Shard %s: %d nodes desired\n", sc.Name, len(shard.Spec.NodesDesired))
 				totalAssigned += len(shard.Spec.NodesDesired)
 			}
-
-			GinkgoWriter.Printf("Total worker nodes: %d, Total assigned: %d\n", len(workerNodes), totalAssigned)
 			Expect(totalAssigned).To(BeNumerically(">", 0),
 				"at least one node should be assigned to a shard")
 		})
@@ -160,153 +152,81 @@ var _ = Describe("ShardingController E2E Test", func() {
 			waitForNodeShardsCreated(cfg)
 
 			schedulerName := cfg.SchedulerConfigs[0].Name
+			Expect(e2eutil.DeleteNodeShard(ctx, schedulerName)).To(Succeed())
 
-			By(fmt.Sprintf("Deleting NodeShard %q to simulate accidental removal", schedulerName))
-			err := e2eutil.DeleteNodeShard(ctx, schedulerName)
-			Expect(err).NotTo(HaveOccurred(), "failed to delete NodeShard")
-
-			By("Waiting for ShardingController to recreate the NodeShard")
-			err = wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
+			err := wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
 				func(c context.Context) (bool, error) {
 					_, err := e2eutil.GetNodeShard(ctx, schedulerName)
 					return err == nil, nil
 				})
 			Expect(err).NotTo(HaveOccurred(),
-				fmt.Sprintf("NodeShard %q should be recreated by the controller after deletion", schedulerName))
+				fmt.Sprintf("NodeShard %q should be recreated after deletion", schedulerName))
 		})
 	})
 
-	Describe("CPU-Based Node Assignment", func() {
-		It("nodes with low CPU utilization should be assigned to the low-utilization shard", func() {
+	Describe("CPU-Based Node Assignment and Reassignment", func() {
+		It("node should move from low-util shard to high-util shard when load increases, and back when load is removed", func() {
 			cfg := getShardingConfig()
 			waitForNodeShardsCreated(cfg)
 
-			// Find the scheduler configured for low CPU utilization (cpuUtilizationMin == 0)
-			var lowUtilScheduler *sharding.SchedulerConfigSpec
-			for i := range cfg.SchedulerConfigs {
-				if cfg.SchedulerConfigs[i].CPUUtilizationMin == 0.0 {
-					lowUtilScheduler = &cfg.SchedulerConfigs[i]
-					break
-				}
-			}
-			Expect(lowUtilScheduler).NotTo(BeNil(),
-				"ConfigMap should have a scheduler with cpuUtilizationMin=0")
+			lowUtil := findScheduler(cfg, isLowUtil)
+			highUtil := findScheduler(cfg, isHighUtil)
+			Expect(lowUtil).NotTo(BeNil(), "ConfigMap should have a low-utilization scheduler (cpuUtilizationMin=0)")
+			Expect(highUtil).NotTo(BeNil(), "ConfigMap should have a high-utilization scheduler (cpuUtilizationMax>=1.0, min>0)")
 
-			By(fmt.Sprintf("Verifying low-utilization scheduler %q shard has nodes", lowUtilScheduler.Name))
-			// In a fresh kind cluster with no workloads, all worker nodes have ~0% CPU utilization
-			// and should be assigned to the low-utilization shard
-			err := wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
-				func(c context.Context) (bool, error) {
-					shard, err := e2eutil.GetNodeShard(ctx, lowUtilScheduler.Name)
-					if err != nil {
-						return false, nil
-					}
-					if len(shard.Spec.NodesDesired) > 0 {
-						GinkgoWriter.Printf("Low-util shard %q has %d nodes: %v\n",
-							lowUtilScheduler.Name, len(shard.Spec.NodesDesired), shard.Spec.NodesDesired)
-						return true, nil
-					}
-					return false, nil
-				})
-			Expect(err).NotTo(HaveOccurred(),
-				"low-utilization shard should have nodes assigned in a fresh cluster")
-		})
-
-		It("nodes with high CPU utilization should be assigned to the high-utilization shard", func() {
-			cfg := getShardingConfig()
-			waitForNodeShardsCreated(cfg)
-
-			// Find the scheduler configured for high CPU utilization
-			var highUtilScheduler *sharding.SchedulerConfigSpec
-			for i := range cfg.SchedulerConfigs {
-				if cfg.SchedulerConfigs[i].CPUUtilizationMax >= 1.0 && cfg.SchedulerConfigs[i].CPUUtilizationMin > 0 {
-					highUtilScheduler = &cfg.SchedulerConfigs[i]
-					break
-				}
-			}
-			Expect(highUtilScheduler).NotTo(BeNil(),
-				"ConfigMap should have a scheduler for high CPU utilization (max=1.0, min>0)")
-
-			By("Getting a worker node to load")
 			nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			workerNodes := filterWorkerNodes(nodes.Items)
 			Expect(len(workerNodes)).To(BeNumerically(">=", 1))
 			targetNode := workerNodes[0]
 
-			// Calculate CPU request to push utilization above the high-util shard's min threshold.
-			// CPU utilization = total pod CPU requests / node CPU capacity.
+			By(fmt.Sprintf("Verifying node %s starts in low-util shard %q (fresh cluster, no load)", targetNode.Name, lowUtil.Name))
+			Expect(waitNodeInShard(ctx, lowUtil.Name, targetNode.Name)).To(Succeed(),
+				"node should start in low-util shard")
+
 			cpuCapacity := targetNode.Status.Capacity.Cpu().MilliValue()
-			targetUtilization := (highUtilScheduler.CPUUtilizationMin + highUtilScheduler.CPUUtilizationMax) / 2
-			cpuRequestMillis := int64(float64(cpuCapacity) * targetUtilization)
-			if cpuRequestMillis < 1 {
-				cpuRequestMillis = 1
-			}
+			targetUtil := (highUtil.CPUUtilizationMin + highUtil.CPUUtilizationMax) / 2
+			cpuRequestMillis := int64(float64(cpuCapacity) * targetUtil)
+			Expect(cpuRequestMillis).To(BeNumerically(">", 0))
 
-			By(fmt.Sprintf("Creating CPU stress pod on node %s requesting %dm CPU (target util %.0f%%, capacity %dm)",
-				targetNode.Name, cpuRequestMillis, targetUtilization*100, cpuCapacity))
-
-			stressPod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "cpu-stress-high-util",
-					Namespace: ctx.Namespace,
-				},
-				Spec: corev1.PodSpec{
-					NodeName:      targetNode.Name,
-					RestartPolicy: corev1.RestartPolicyNever,
-					Containers: []corev1.Container{
-						{
-							Name:    "stress",
-							Image:   "busybox",
-							Command: []string{"sleep", "3600"},
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU: *resource.NewMilliQuantity(cpuRequestMillis, resource.DecimalSI),
-								},
-							},
-						},
-					},
-				},
-			}
+			By(fmt.Sprintf("Creating CPU stress pod on %s requesting %dm (target util %.0f%% of %dm)",
+				targetNode.Name, cpuRequestMillis, targetUtil*100, cpuCapacity))
+			stressPod := newStressPod("cpu-stress-reassign", ctx.Namespace, targetNode.Name, cpuRequestMillis)
 			_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), stressPod, metav1.CreateOptions{})
-			Expect(err).NotTo(HaveOccurred(), "failed to create CPU stress pod")
+			Expect(err).NotTo(HaveOccurred(), "failed to create stress pod")
 
-			By(fmt.Sprintf("Waiting for node %s to appear in high-util shard %q", targetNode.Name, highUtilScheduler.Name))
-			err = wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
-				func(c context.Context) (bool, error) {
-					shard, err := e2eutil.GetNodeShard(ctx, highUtilScheduler.Name)
-					if err != nil {
-						return false, nil
-					}
-					for _, n := range shard.Spec.NodesDesired {
-						if n == targetNode.Name {
-							GinkgoWriter.Printf("Node %s found in high-util shard %q\n",
-								targetNode.Name, highUtilScheduler.Name)
-							return true, nil
-						}
-					}
-					return false, nil
-				})
-			Expect(err).NotTo(HaveOccurred(),
-				fmt.Sprintf("node %s should be assigned to high-util shard %q after CPU load",
-					targetNode.Name, highUtilScheduler.Name))
+			By(fmt.Sprintf("Waiting for node %s to enter high-util shard %q AND leave low-util shard %q",
+				targetNode.Name, highUtil.Name, lowUtil.Name))
+			Expect(waitNodeInShard(ctx, highUtil.Name, targetNode.Name)).To(Succeed(),
+				"node should move to high-util shard after load")
+			Expect(waitNodeNotInShard(ctx, lowUtil.Name, targetNode.Name)).To(Succeed(),
+				"node should leave low-util shard after load (mutual exclusivity)")
+
+			By("Deleting stress pod to remove CPU load")
+			Expect(ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Delete(
+				context.TODO(), stressPod.Name, metav1.DeleteOptions{})).To(Succeed())
+
+			By(fmt.Sprintf("Waiting for node %s to return to low-util shard %q AND leave high-util shard %q",
+				targetNode.Name, lowUtil.Name, highUtil.Name))
+			Expect(waitNodeInShard(ctx, lowUtil.Name, targetNode.Name)).To(Succeed(),
+				"node should return to low-util shard after load removed")
+			Expect(waitNodeNotInShard(ctx, highUtil.Name, targetNode.Name)).To(Succeed(),
+				"node should leave high-util shard after load removed")
 		})
 
 		It("node with CPU utilization in the gap between shard ranges should not be assigned to any shard", func() {
 			cfg := getShardingConfig()
 			waitForNodeShardsCreated(cfg)
 
-			// Find the largest gap between any two configured shard CPU ranges.
-			// A utilization value inside such a gap should match no shard.
+			// Pick the largest gap between configured CPU ranges; a util in this gap matches no shard.
 			type gap struct{ lo, hi float64 }
 			var chosen *gap
 			for i := range cfg.SchedulerConfigs {
-				a := cfg.SchedulerConfigs[i]
 				for j := range cfg.SchedulerConfigs {
 					if i == j {
 						continue
 					}
-					b := cfg.SchedulerConfigs[j]
+					a, b := cfg.SchedulerConfigs[i], cfg.SchedulerConfigs[j]
 					if a.CPUUtilizationMax < b.CPUUtilizationMin {
 						g := gap{lo: a.CPUUtilizationMax, hi: b.CPUUtilizationMin}
 						if chosen == nil || (g.hi-g.lo) > (chosen.hi-chosen.lo) {
@@ -316,13 +236,10 @@ var _ = Describe("ShardingController E2E Test", func() {
 				}
 			}
 			if chosen == nil {
-				Skip("no gap between configured shard CPU ranges; cannot test unassigned-node behavior")
+				Skip("no gap between configured shard CPU ranges")
 			}
 			targetUtil := (chosen.lo + chosen.hi) / 2
-			GinkgoWriter.Printf("Targeting CPU utilization %.2f in gap (%.2f, %.2f)\n",
-				targetUtil, chosen.lo, chosen.hi)
 
-			By("Selecting a worker node and pushing its CPU utilization into the gap")
 			nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			workerNodes := filterWorkerNodes(nodes.Items)
@@ -333,167 +250,14 @@ var _ = Describe("ShardingController E2E Test", func() {
 			cpuRequestMillis := int64(float64(cpuCapacity) * targetUtil)
 			Expect(cpuRequestMillis).To(BeNumerically(">", 0))
 
-			stressPod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "cpu-gap-util",
-					Namespace: ctx.Namespace,
-				},
-				Spec: corev1.PodSpec{
-					NodeName:      targetNode.Name,
-					RestartPolicy: corev1.RestartPolicyNever,
-					Containers: []corev1.Container{
-						{
-							Name:    "stress",
-							Image:   "busybox",
-							Command: []string{"sleep", "3600"},
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU: *resource.NewMilliQuantity(cpuRequestMillis, resource.DecimalSI),
-								},
-							},
-						},
-					},
-				},
-			}
-			_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), stressPod, metav1.CreateOptions{})
+			By(fmt.Sprintf("Loading node %s into gap (%.2f, %.2f)", targetNode.Name, chosen.lo, chosen.hi))
+			gapPod := newStressPod("cpu-gap-util", ctx.Namespace, targetNode.Name, cpuRequestMillis)
+			_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), gapPod, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred(), "failed to create gap-util pod")
 
-			By(fmt.Sprintf("Verifying node %s is excluded from every shard", targetNode.Name))
-			err = wait.PollUntilContextTimeout(context.TODO(), 5*time.Second, reassignmentTimeout, true,
-				func(c context.Context) (bool, error) {
-					for _, sc := range cfg.SchedulerConfigs {
-						shard, err := e2eutil.GetNodeShard(ctx, sc.Name)
-						if err != nil {
-							return false, nil
-						}
-						for _, n := range shard.Spec.NodesDesired {
-							if n == targetNode.Name {
-								GinkgoWriter.Printf("Node %s still in shard %q, waiting for eviction\n",
-									targetNode.Name, sc.Name)
-								return false, nil
-							}
-						}
-					}
-					return true, nil
-				})
-			Expect(err).NotTo(HaveOccurred(),
-				fmt.Sprintf("node %s with utilization %.2f should not be assigned to any shard (gap: %.2f-%.2f)",
+			Expect(waitNodeNotInAnyShard(ctx, cfg, targetNode.Name)).To(Succeed(),
+				fmt.Sprintf("node %s with util %.2f should not appear in any shard (gap %.2f-%.2f)",
 					targetNode.Name, targetUtil, chosen.lo, chosen.hi))
-		})
-	})
-
-	Describe("Node Reassignment on Workload Change", func() {
-		It("node should move between shards when CPU utilization changes", func() {
-			cfg := getShardingConfig()
-			waitForNodeShardsCreated(cfg)
-
-			// Identify low-util and high-util schedulers from the ConfigMap
-			var lowUtilScheduler, highUtilScheduler *sharding.SchedulerConfigSpec
-			for i := range cfg.SchedulerConfigs {
-				sc := &cfg.SchedulerConfigs[i]
-				if sc.CPUUtilizationMin == 0.0 && lowUtilScheduler == nil {
-					lowUtilScheduler = sc
-				}
-				if sc.CPUUtilizationMax >= 1.0 && sc.CPUUtilizationMin > 0 && highUtilScheduler == nil {
-					highUtilScheduler = sc
-				}
-			}
-			Expect(lowUtilScheduler).NotTo(BeNil(), "need a low-utilization scheduler in config")
-			Expect(highUtilScheduler).NotTo(BeNil(), "need a high-utilization scheduler in config")
-
-			By("Getting a worker node")
-			nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-			Expect(err).NotTo(HaveOccurred())
-			workerNodes := filterWorkerNodes(nodes.Items)
-			Expect(len(workerNodes)).To(BeNumerically(">=", 1))
-			targetNode := workerNodes[0]
-
-			By(fmt.Sprintf("Verifying node %s starts in the low-util shard %q", targetNode.Name, lowUtilScheduler.Name))
-			err = wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
-				func(c context.Context) (bool, error) {
-					shard, err := e2eutil.GetNodeShard(ctx, lowUtilScheduler.Name)
-					if err != nil {
-						return false, nil
-					}
-					for _, n := range shard.Spec.NodesDesired {
-						if n == targetNode.Name {
-							return true, nil
-						}
-					}
-					return false, nil
-				})
-			Expect(err).NotTo(HaveOccurred(),
-				"node should be in low-util shard initially")
-
-			By("Creating CPU-intensive pods to push utilization into the high-util range")
-			cpuCapacity := targetNode.Status.Capacity.Cpu().MilliValue()
-			targetUtilization := (highUtilScheduler.CPUUtilizationMin + highUtilScheduler.CPUUtilizationMax) / 2
-			cpuRequestMillis := int64(float64(cpuCapacity) * targetUtilization)
-
-			stressPod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "cpu-stress-reassign",
-					Namespace: ctx.Namespace,
-					Labels:    map[string]string{"e2e-test": "sharding-reassign"},
-				},
-				Spec: corev1.PodSpec{
-					NodeName:      targetNode.Name,
-					RestartPolicy: corev1.RestartPolicyNever,
-					Containers: []corev1.Container{
-						{
-							Name:    "stress",
-							Image:   "busybox",
-							Command: []string{"sleep", "3600"},
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU: *resource.NewMilliQuantity(cpuRequestMillis, resource.DecimalSI),
-								},
-							},
-						},
-					},
-				},
-			}
-			_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), stressPod, metav1.CreateOptions{})
-			Expect(err).NotTo(HaveOccurred(), "failed to create stress pod")
-
-			By(fmt.Sprintf("Waiting for node %s to move to high-util shard %q", targetNode.Name, highUtilScheduler.Name))
-			err = wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
-				func(c context.Context) (bool, error) {
-					shard, err := e2eutil.GetNodeShard(ctx, highUtilScheduler.Name)
-					if err != nil {
-						return false, nil
-					}
-					for _, n := range shard.Spec.NodesDesired {
-						if n == targetNode.Name {
-							return true, nil
-						}
-					}
-					return false, nil
-				})
-			Expect(err).NotTo(HaveOccurred(),
-				"node should move to high-util shard after CPU load increases")
-
-			By("Deleting the stress pod to reduce CPU utilization")
-			err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Delete(
-				context.TODO(), stressPod.Name, metav1.DeleteOptions{})
-			Expect(err).NotTo(HaveOccurred(), "failed to delete stress pod")
-
-			By(fmt.Sprintf("Waiting for node %s to return to low-util shard %q", targetNode.Name, lowUtilScheduler.Name))
-			err = wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
-				func(c context.Context) (bool, error) {
-					shard, err := e2eutil.GetNodeShard(ctx, lowUtilScheduler.Name)
-					if err != nil {
-						return false, nil
-					}
-					for _, n := range shard.Spec.NodesDesired {
-						if n == targetNode.Name {
-							return true, nil
-						}
-					}
-					return false, nil
-				})
-			Expect(err).NotTo(HaveOccurred(),
-				"node should return to low-util shard after CPU load is removed")
 		})
 	})
 
@@ -502,196 +266,179 @@ var _ = Describe("ShardingController E2E Test", func() {
 			cfg := getShardingConfig()
 			waitForNodeShardsCreated(cfg)
 
-			By("Collecting NodesDesired from all shards")
 			nodeToShard := make(map[string]string)
 			for _, sc := range cfg.SchedulerConfigs {
 				shard, err := e2eutil.GetNodeShard(ctx, sc.Name)
 				Expect(err).NotTo(HaveOccurred(), "failed to get NodeShard %s", sc.Name)
 				for _, nodeName := range shard.Spec.NodesDesired {
-					existingShard, duplicate := nodeToShard[nodeName]
-					Expect(duplicate).To(BeFalse(),
-						fmt.Sprintf("node %s is assigned to both %q and %q -- shards must be mutually exclusive",
-							nodeName, existingShard, sc.Name))
+					existing, dup := nodeToShard[nodeName]
+					Expect(dup).To(BeFalse(),
+						fmt.Sprintf("node %s assigned to both %q and %q", nodeName, existing, sc.Name))
 					nodeToShard[nodeName] = sc.Name
 				}
 			}
-			GinkgoWriter.Printf("Verified mutual exclusivity across %d shards, %d total node assignments\n",
-				len(cfg.SchedulerConfigs), len(nodeToShard))
 		})
 	})
 
-	Describe("MinNodes Constraint", func() {
-		It("shards with eligible nodes should respect the configured MinNodes constraint", func() {
+	Describe("MinNodes / MaxNodes Constraints", func() {
+		It("shards with eligible nodes should respect MinNodes and MaxNodes", func() {
 			cfg := getShardingConfig()
 			waitForNodeShardsCreated(cfg)
+			time.Sleep(syncPeriod(cfg))
 
-			// Wait for the controller to complete at least one full sync cycle
-			// so that node assignments are populated.
-			time.Sleep(30 * time.Second)
-
-			By("Checking MinNodes for each configured scheduler")
 			for _, sc := range cfg.SchedulerConfigs {
 				shard, err := e2eutil.GetNodeShard(ctx, sc.Name)
 				Expect(err).NotTo(HaveOccurred(), "failed to get NodeShard %s", sc.Name)
+				count := len(shard.Spec.NodesDesired)
 
-				nodeCount := len(shard.Spec.NodesDesired)
-				GinkgoWriter.Printf("Shard %q: %d nodes desired (minNodes=%d, maxNodes=%d)\n",
-					sc.Name, nodeCount, sc.MinNodes, sc.MaxNodes)
-
-				// MinNodes is a best-effort constraint that can only be satisfied
-				// when there are enough nodes whose CPU utilization falls within
-				// the scheduler's configured range. In a fresh cluster all nodes
-				// have ~0% CPU utilization, so a shard with cpuUtilizationMin > 0
-				// may have zero eligible nodes. Only assert MinNodes when the
-				// shard actually has some nodes assigned (i.e. eligible nodes exist).
-				if nodeCount > 0 {
-					Expect(nodeCount).To(BeNumerically(">=", sc.MinNodes),
-						fmt.Sprintf("shard %q has eligible nodes but fewer than minNodes=%d (has %d)",
-							sc.Name, sc.MinNodes, nodeCount))
-				} else {
-					GinkgoWriter.Printf("Shard %q has 0 nodes -- no eligible nodes in CPU range [%.2f, %.2f], skipping MinNodes check\n",
-						sc.Name, sc.CPUUtilizationMin, sc.CPUUtilizationMax)
+				// MinNodes is best-effort: only enforce when the shard has any eligible node.
+				if count > 0 {
+					Expect(count).To(BeNumerically(">=", sc.MinNodes),
+						fmt.Sprintf("shard %q has %d nodes < MinNodes=%d", sc.Name, count, sc.MinNodes))
 				}
-
-				// MaxNodes should always be respected
-				Expect(nodeCount).To(BeNumerically("<=", sc.MaxNodes),
-					fmt.Sprintf("shard %q should have at most %d nodes (has %d)",
-						sc.Name, sc.MaxNodes, nodeCount))
+				Expect(count).To(BeNumerically("<=", sc.MaxNodes),
+					fmt.Sprintf("shard %q has %d nodes > MaxNodes=%d", sc.Name, count, sc.MaxNodes))
 			}
 		})
 	})
 
-	Describe("Warmup Node Preference", func() {
-		It("warmup-labeled nodes should be prioritized for schedulers with preferWarmupNodes=true", func() {
+	Describe("Node Lifecycle", func() {
+		It("uncordoning a node should add it back to a shard, and pods schedule onto it", func() {
 			cfg := getShardingConfig()
+			waitForNodeShardsCreated(cfg)
+			lowUtil := findScheduler(cfg, isLowUtil)
+			Expect(lowUtil).NotTo(BeNil())
 
-			// Find a scheduler with preferWarmupNodes=true
-			var warmupScheduler *sharding.SchedulerConfigSpec
-			for i := range cfg.SchedulerConfigs {
-				if cfg.SchedulerConfigs[i].PreferWarmupNodes {
-					warmupScheduler = &cfg.SchedulerConfigs[i]
-					break
-				}
-			}
-			if warmupScheduler == nil {
-				Skip("no scheduler with preferWarmupNodes=true in ConfigMap")
-			}
-
-			By("Labeling a worker node as a warmup node")
 			nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			workerNodes := filterWorkerNodes(nodes.Items)
 			Expect(len(workerNodes)).To(BeNumerically(">=", 1))
-			targetNode := workerNodes[0]
+			target := workerNodes[len(workerNodes)-1]
 
-			// Label the node as warmup
-			targetNode.Labels["node.volcano.sh/warmup"] = "true"
-			_, err = ctx.Kubeclient.CoreV1().Nodes().Update(context.TODO(), &targetNode, metav1.UpdateOptions{})
-			Expect(err).NotTo(HaveOccurred(), "failed to label node as warmup")
+			By(fmt.Sprintf("Cordoning node %s to remove it from cluster's schedulable pool", target.Name))
+			Expect(setNodeUnschedulable(ctx, target.Name, true)).To(Succeed())
+			defer func() { _ = setNodeUnschedulable(ctx, target.Name, false) }()
 
-			// Ensure label is cleaned up after the test
-			defer func() {
-				node, err := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), targetNode.Name, metav1.GetOptions{})
-				if err == nil {
-					delete(node.Labels, "node.volcano.sh/warmup")
-					_, _ = ctx.Kubeclient.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{})
-				}
-			}()
+			Expect(waitNodeNotInAnyShard(ctx, cfg, target.Name)).To(Succeed(),
+				"cordoned node should be removed from all shards")
 
-			// The warmup node needs to be in the CPU utilization range of the warmup scheduler.
-			// Create a pod to push its utilization into that range if needed.
-			cpuCapacity := targetNode.Status.Capacity.Cpu().MilliValue()
-			targetUtilization := (warmupScheduler.CPUUtilizationMin + warmupScheduler.CPUUtilizationMax) / 2
-			cpuRequestMillis := int64(float64(cpuCapacity) * targetUtilization)
+			By(fmt.Sprintf("Uncordoning node %s to re-add it", target.Name))
+			Expect(setNodeUnschedulable(ctx, target.Name, false)).To(Succeed())
 
-			if cpuRequestMillis > 0 {
-				By(fmt.Sprintf("Creating pod to push warmup node %s into util range [%.0f%%, %.0f%%]",
-					targetNode.Name, warmupScheduler.CPUUtilizationMin*100, warmupScheduler.CPUUtilizationMax*100))
-				warmupPod := &corev1.Pod{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "warmup-util-driver",
-						Namespace: ctx.Namespace,
-					},
-					Spec: corev1.PodSpec{
-						NodeName:      targetNode.Name,
-						RestartPolicy: corev1.RestartPolicyNever,
-						Containers: []corev1.Container{
-							{
-								Name:    "driver",
-								Image:   "busybox",
-								Command: []string{"sleep", "3600"},
-								Resources: corev1.ResourceRequirements{
-									Requests: corev1.ResourceList{
-										corev1.ResourceCPU: *resource.NewMilliQuantity(cpuRequestMillis, resource.DecimalSI),
-									},
-								},
-							},
-						},
-					},
-				}
-				_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), warmupPod, metav1.CreateOptions{})
-				Expect(err).NotTo(HaveOccurred(), "failed to create warmup util driver pod")
-			}
+			Expect(waitNodeInShard(ctx, lowUtil.Name, target.Name)).To(Succeed(),
+				"uncordoned node should rejoin low-util shard")
 
+			By(fmt.Sprintf("Scheduling test pod onto re-added node %s", target.Name))
+			testPod := newStressPod("lifecycle-schedule-test", ctx.Namespace, target.Name, 10)
+			_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), testPod, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(waitPodReady(ctx, ctx.Namespace, testPod.Name)).To(Succeed(),
+				"pod should run on re-added node")
+		})
+
+		It("cordoning a node should remove it from all shards", func() {
+			cfg := getShardingConfig()
 			waitForNodeShardsCreated(cfg)
 
-			By(fmt.Sprintf("Waiting for warmup node %s to appear in shard %q", targetNode.Name, warmupScheduler.Name))
+			nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			workerNodes := filterWorkerNodes(nodes.Items)
+			Expect(len(workerNodes)).To(BeNumerically(">=", 1))
+			target := workerNodes[0]
+
+			By(fmt.Sprintf("Cordoning node %s", target.Name))
+			Expect(setNodeUnschedulable(ctx, target.Name, true)).To(Succeed())
+			defer func() { _ = setNodeUnschedulable(ctx, target.Name, false) }()
+
+			Expect(waitNodeNotInAnyShard(ctx, cfg, target.Name)).To(Succeed(),
+				"cordoned node should disappear from every shard")
+		})
+	})
+
+	Describe("ConfigMap Update", func() {
+		It("changes to sharding ConfigMap should be reflected in shard parameters", func() {
+			origCM, err := ctx.Kubeclient.CoreV1().ConfigMaps(shardingConfigMapNamespace).Get(
+				context.TODO(), shardingConfigMapName, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to get sharding ConfigMap")
+			origData := origCM.Data[sharding.ConfigMapDataKey]
+
+			cfg, err := sharding.ParseShardingConfig([]byte(origData))
+			Expect(err).NotTo(HaveOccurred())
+			waitForNodeShardsCreated(cfg)
+
+			// Pick the low-util scheduler and shrink MaxNodes to 1; controller should observe the limit.
+			lowUtil := findScheduler(cfg, isLowUtil)
+			Expect(lowUtil).NotTo(BeNil())
+			targetSchedulerName := lowUtil.Name
+
+			newCfg := *cfg
+			newCfg.SchedulerConfigs = append([]sharding.SchedulerConfigSpec(nil), cfg.SchedulerConfigs...)
+			for i := range newCfg.SchedulerConfigs {
+				if newCfg.SchedulerConfigs[i].Name == targetSchedulerName {
+					newCfg.SchedulerConfigs[i].MinNodes = 1
+					newCfg.SchedulerConfigs[i].MaxNodes = 1
+				}
+			}
+			newYAML, err := yaml.Marshal(&newCfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			By(fmt.Sprintf("Updating ConfigMap to set %q maxNodes=1", targetSchedulerName))
+			origCM.Data[sharding.ConfigMapDataKey] = string(newYAML)
+			_, err = ctx.Kubeclient.CoreV1().ConfigMaps(shardingConfigMapNamespace).Update(
+				context.TODO(), origCM, metav1.UpdateOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to update ConfigMap")
+			defer func() {
+				cm, gerr := ctx.Kubeclient.CoreV1().ConfigMaps(shardingConfigMapNamespace).Get(
+					context.TODO(), shardingConfigMapName, metav1.GetOptions{})
+				if gerr != nil {
+					return
+				}
+				cm.Data[sharding.ConfigMapDataKey] = origData
+				_, _ = ctx.Kubeclient.CoreV1().ConfigMaps(shardingConfigMapNamespace).Update(
+					context.TODO(), cm, metav1.UpdateOptions{})
+			}()
+
+			By(fmt.Sprintf("Waiting for shard %q to respect new MaxNodes=1", targetSchedulerName))
 			err = wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
 				func(c context.Context) (bool, error) {
-					shard, err := e2eutil.GetNodeShard(ctx, warmupScheduler.Name)
-					if err != nil {
+					shard, gerr := e2eutil.GetNodeShard(ctx, targetSchedulerName)
+					if gerr != nil {
 						return false, nil
 					}
-					for _, n := range shard.Spec.NodesDesired {
-						if n == targetNode.Name {
-							return true, nil
-						}
-					}
-					return false, nil
+					return len(shard.Spec.NodesDesired) <= 1, nil
 				})
 			Expect(err).NotTo(HaveOccurred(),
-				fmt.Sprintf("warmup node %s should be in shard %q (preferWarmupNodes=true)",
-					targetNode.Name, warmupScheduler.Name))
+				fmt.Sprintf("shard %q should reflect updated MaxNodes=1 from ConfigMap", targetSchedulerName))
 		})
 	})
 
 	Describe("Node Stability", func() {
-		It("node assignments should remain stable without significant cluster changes", func() {
+		It("NodesDesired should be identical across sync cycles without cluster changes", func() {
 			cfg := getShardingConfig()
 			waitForNodeShardsCreated(cfg)
 
-			// Use the first configured scheduler for stability check
 			schedulerName := cfg.SchedulerConfigs[0].Name
-
-			By(fmt.Sprintf("Recording initial shard assignments for %q", schedulerName))
-			shard1, err := e2eutil.GetNodeShard(ctx, schedulerName)
+			shardBefore, err := e2eutil.GetNodeShard(ctx, schedulerName)
 			Expect(err).NotTo(HaveOccurred())
-			initialNodes := make([]string, len(shard1.Spec.NodesDesired))
-			copy(initialNodes, shard1.Spec.NodesDesired)
+			before := append([]string(nil), shardBefore.Spec.NodesDesired...)
+			sort.Strings(before)
 
-			By("Waiting for a sync period without making changes")
-			time.Sleep(30 * time.Second)
+			waitDuration := 2 * syncPeriod(cfg)
+			By(fmt.Sprintf("Sleeping %s (>= 2x syncPeriod) without cluster changes", waitDuration))
+			time.Sleep(waitDuration)
 
-			By("Verifying assignments remain stable")
-			shard2, err := e2eutil.GetNodeShard(ctx, schedulerName)
+			shardAfter, err := e2eutil.GetNodeShard(ctx, schedulerName)
 			Expect(err).NotTo(HaveOccurred())
+			after := append([]string(nil), shardAfter.Spec.NodesDesired...)
+			sort.Strings(after)
 
-			GinkgoWriter.Printf("Initial nodes: %v\n", initialNodes)
-			GinkgoWriter.Printf("Current nodes: %v\n", shard2.Spec.NodesDesired)
-
-			commonNodes := countCommonNodes(initialNodes, shard2.Spec.NodesDesired)
-			if len(initialNodes) > 0 {
-				stabilityRatio := float64(commonNodes) / float64(len(initialNodes))
-				GinkgoWriter.Printf("Stability ratio: %.2f (%d/%d nodes unchanged)\n",
-					stabilityRatio, commonNodes, len(initialNodes))
-				Expect(stabilityRatio).To(BeNumerically(">=", 0.8),
-					"at least 80%% of nodes should remain stable")
-			}
+			Expect(after).To(Equal(before),
+				"NodesDesired must be identical before and after sync without cluster changes")
 		})
 	})
 })
 
-// Helper functions
+// Helpers
 
 func filterWorkerNodes(nodes []corev1.Node) []corev1.Node {
 	var workers []corev1.Node
@@ -711,16 +458,93 @@ func filterWorkerNodes(nodes []corev1.Node) []corev1.Node {
 	return workers
 }
 
-func countCommonNodes(a, b []string) int {
-	count := 0
-	bMap := make(map[string]bool)
-	for _, n := range b {
-		bMap[n] = true
+func newStressPod(name, ns, nodeName string, cpuMillis int64) *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+		Spec: corev1.PodSpec{
+			NodeName:      nodeName,
+			RestartPolicy: corev1.RestartPolicyNever,
+			Containers: []corev1.Container{{
+				Name:    "stress",
+				Image:   "busybox",
+				Command: []string{"sleep", "3600"},
+				Resources: corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU: *resource.NewMilliQuantity(cpuMillis, resource.DecimalSI),
+					},
+				},
+			}},
+		},
 	}
-	for _, n := range a {
-		if bMap[n] {
-			count++
-		}
+}
+
+func setNodeUnschedulable(ctx *e2eutil.TestContext, nodeName string, unschedulable bool) error {
+	node, err := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	if err != nil {
+		return err
 	}
-	return count
+	node.Spec.Unschedulable = unschedulable
+	_, err = ctx.Kubeclient.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{})
+	return err
+}
+
+func waitNodeInShard(ctx *e2eutil.TestContext, shardName, nodeName string) error {
+	return wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
+		func(c context.Context) (bool, error) {
+			shard, err := e2eutil.GetNodeShard(ctx, shardName)
+			if err != nil {
+				return false, nil
+			}
+			return slices.Contains(shard.Spec.NodesDesired, nodeName), nil
+		})
+}
+
+func waitNodeNotInShard(ctx *e2eutil.TestContext, shardName, nodeName string) error {
+	return wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
+		func(c context.Context) (bool, error) {
+			shard, err := e2eutil.GetNodeShard(ctx, shardName)
+			if err != nil {
+				return false, nil
+			}
+			return !slices.Contains(shard.Spec.NodesDesired, nodeName), nil
+		})
+}
+
+func waitNodeNotInAnyShard(ctx *e2eutil.TestContext, cfg *sharding.ShardingConfig, nodeName string) error {
+	return wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
+		func(c context.Context) (bool, error) {
+			for _, sc := range cfg.SchedulerConfigs {
+				shard, err := e2eutil.GetNodeShard(ctx, sc.Name)
+				if err != nil {
+					return false, nil
+				}
+				if slices.Contains(shard.Spec.NodesDesired, nodeName) {
+					return false, nil
+				}
+			}
+			return true, nil
+		})
+}
+
+func waitPodReady(ctx *e2eutil.TestContext, ns, name string) error {
+	return wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
+		func(c context.Context) (bool, error) {
+			p, err := ctx.Kubeclient.CoreV1().Pods(ns).Get(context.TODO(), name, metav1.GetOptions{})
+			if err != nil {
+				return false, nil
+			}
+			return p.Status.Phase == corev1.PodRunning || p.Status.Phase == corev1.PodSucceeded, nil
+		})
+}
+
+// syncPeriod returns the configured ShardSyncPeriod or a 60s default.
+func syncPeriod(cfg *sharding.ShardingConfig) time.Duration {
+	if cfg.ShardSyncPeriod == "" {
+		return 60 * time.Second
+	}
+	d, err := time.ParseDuration(cfg.ShardSyncPeriod)
+	if err != nil {
+		return 60 * time.Second
+	}
+	return d
 }
