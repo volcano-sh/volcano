@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -51,18 +50,12 @@ type Scheduler struct {
 	schedulerConf  string
 	fileWatcher    filewatcher.FileWatcher
 	schedulePeriod time.Duration
-	once           sync.Once
 
-	mutex          sync.Mutex
+	mutex          sync.RWMutex
 	actions        []framework.Action
 	plugins        []conf.Tier
 	configurations []conf.Configuration
 	metricsConf    map[string]string
-
-	defaultActions        []framework.Action
-	defaultPlugins        []conf.Tier
-	defaultConfigurations []conf.Configuration
-	defaultMetricsConf    map[string]string
 
 	dumper             schedcache.Dumper
 	disableDefaultConf bool
@@ -132,9 +125,8 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	go func() {
 		<-stopCh
 		pc.mutex.Lock()
-		oldActions := slices.Clone(pc.actions)
-		pc.mutex.Unlock()
-		for _, action := range oldActions {
+		defer pc.mutex.Unlock()
+		for _, action := range pc.actions {
 			action.UnInitialize()
 		}
 	}()
@@ -156,11 +148,11 @@ func (pc *Scheduler) runOnce() {
 	scheduleStartTime := time.Now()
 	defer klog.V(4).Infof("End scheduling ...")
 
-	pc.mutex.Lock()
+	pc.mutex.RLock()
+	defer pc.mutex.RUnlock()
 	actions := pc.actions
 	plugins := pc.plugins
 	configurations := pc.configurations
-	pc.mutex.Unlock()
 
 	// Load ConfigMap to check which action is enabled.
 	conf.EnabledActionMap = make(map[string]bool)
@@ -196,44 +188,49 @@ func (pc *Scheduler) loadSchedulerConf() ([]framework.Action, []conf.Tier, []con
 		klog.Fatalf("No --scheduler-conf path provided and default configuration fallback is disabled")
 	}
 
-	var err error
-	if !pc.disableDefaultConf {
-		pc.once.Do(func() {
-			pc.defaultActions, pc.defaultPlugins, pc.defaultConfigurations, pc.defaultMetricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
-			if err != nil {
-				klog.Fatalf("Invalid default configuration: unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
-			}
-		})
-	}
-
-	var config string
-	if len(pc.schedulerConf) != 0 {
-		confData, err := os.ReadFile(pc.schedulerConf)
+	// If config file path is not given, only parse and return DefaultSchedulerConf
+	if len(pc.schedulerConf) == 0 {
+		actions, plugins, configurations, metricsConf, err := UnmarshalSchedulerConf(DefaultSchedulerConf)
 		if err != nil {
-			if pc.disableDefaultConf {
-				klog.Fatalf("Failed to read scheduler config and default configuration fallback is disabled")
-			}
-			klog.Errorf("Failed to read the Scheduler config in '%s', falling back to default: %v",
-				pc.schedulerConf, err)
-			return pc.defaultActions, pc.defaultPlugins, pc.defaultConfigurations, pc.defaultMetricsConf, nil
+			klog.Fatalf("Invalid builtin default configuration: %v", err)
 		}
-		config = strings.TrimSpace(string(confData))
-	}
-
-	if len(config) != 0 {
-		actions, plugins, configurations, metricsConf, err := UnmarshalSchedulerConf(config)
-		if err != nil {
-			if pc.disableDefaultConf {
-				klog.Fatalf("Invalid scheduler configuration and default configuration fallback is disabled")
-			}
-			klog.Errorf("Scheduler config %s is invalid, falling back to default: %v", config, err)
-			return pc.defaultActions, pc.defaultPlugins, pc.defaultConfigurations, pc.defaultMetricsConf, nil
-		}
-		klog.V(2).Infof("Loaded scheduler configuration from file")
+		klog.V(2).Infof("No scheduler config file provided, using builtin default configuration")
 		return actions, plugins, configurations, metricsConf, nil
 	}
-	klog.V(2).Infof("Using default scheduler configuration")
-	return pc.defaultActions, pc.defaultPlugins, pc.defaultConfigurations, pc.defaultMetricsConf, nil
+
+	// If config file path is given, read the file
+	confData, err := os.ReadFile(pc.schedulerConf)
+	if err != nil {
+		if pc.disableDefaultConf {
+			klog.Fatalf("Failed to read scheduler config and default configuration fallback is disabled")
+		}
+
+		return nil, nil, nil, nil, fmt.Errorf("Failed to read scheduler config '%s': %w", pc.schedulerConf, err)
+	}
+
+	config := strings.TrimSpace(string(confData))
+
+	// If file exists but is empty, treat it as config not provided
+	if len(config) == 0 {
+		klog.V(2).Infof("Scheduler config file '%s' is empty, using builtin default configuration", pc.schedulerConf)
+		actions, plugins, configurations, metricsConf, err := UnmarshalSchedulerConf(DefaultSchedulerConf)
+		if err != nil {
+			klog.Fatalf("Invalid builtin default configuration: %v", err)
+		}
+		return actions, plugins, configurations, metricsConf, nil
+	}
+
+	// Parse the file content
+	actions, plugins, configurations, metricsConf, err := UnmarshalSchedulerConf(config)
+	if err != nil {
+		if pc.disableDefaultConf {
+			klog.Fatalf("Invalid scheduler configuration and default configuration fallback is disabled")
+		}
+		return nil, nil, nil, nil, fmt.Errorf("Failed to parse scheduler config '%s': %w", pc.schedulerConf, err)
+	}
+
+	klog.V(2).Infof("Loaded scheduler configuration from file '%s'", pc.schedulerConf)
+	return actions, plugins, configurations, metricsConf, nil
 }
 
 func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
@@ -264,26 +261,32 @@ func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
 			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
 				actions, plugins, configurations, metricsConf, err := pc.loadSchedulerConf()
 				if err != nil {
-					klog.Errorf("Failed to reload scheduler config: %v", err)
+					klog.Errorf("Skipping config reload, keeping current active configuration: %v", err)
 					continue
 				}
 				pc.mutex.Lock()
-				oldActions := slices.Clone(pc.actions)
-				pc.mutex.Unlock()
-
-				oldMap := actionMap(oldActions)
+				oldMap := actionMap(pc.actions)
 				newMap := actionMap(actions)
 				for name, action := range newMap {
 					if _, exists := oldMap[name]; !exists {
 						action.Initialize()
 					}
 				}
-				pc.applySchedulerConf(actions, plugins, configurations, metricsConf)
+				pc.actions = actions
+				pc.plugins = plugins
+				pc.configurations = configurations
+				pc.metricsConf = metricsConf
 				for name, action := range oldMap {
 					if _, exists := newMap[name]; !exists {
 						action.UnInitialize()
 					}
 				}
+				pc.mutex.Unlock()
+				if pc.cache != nil {
+					pc.cache.SetMetricsConf(metricsConf)
+				}
+				actionNames, pluginNames := pc.getSchedulerConf()
+				klog.V(2).Infof("Scheduler configuration reloaded: actions=%v, plugins=%v", actionNames, pluginNames)
 			}
 		case err, ok := <-errCh:
 			if !ok {
