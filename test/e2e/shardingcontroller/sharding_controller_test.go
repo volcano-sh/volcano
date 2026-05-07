@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/yaml"
 
 	"volcano.sh/volcano/pkg/controllers/sharding"
@@ -328,32 +329,40 @@ var _ = Describe("ShardingController E2E Test", func() {
 			}
 
 			By(fmt.Sprintf("Creating fake Node %s to simulate a new node joining the cluster", fakeName))
-			created, err := ctx.Kubeclient.CoreV1().Nodes().Create(context.TODO(), fakeNode, metav1.CreateOptions{})
+			_, err := ctx.Kubeclient.CoreV1().Nodes().Create(context.TODO(), fakeNode, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred(), "failed to create fake Node")
 			defer func() {
 				_ = ctx.Kubeclient.CoreV1().Nodes().Delete(context.TODO(), fakeName, metav1.DeleteOptions{})
 			}()
 
-			// Set capacity/allocatable via /status subresource so the controller sees a usable node.
-			created.Status = corev1.NodeStatus{
-				Capacity: corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse("4"),
-					corev1.ResourceMemory: resource.MustParse("8Gi"),
-					corev1.ResourcePods:   resource.MustParse("110"),
-				},
-				Allocatable: corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse("4"),
-					corev1.ResourceMemory: resource.MustParse("8Gi"),
-					corev1.ResourcePods:   resource.MustParse("110"),
-				},
-				Conditions: []corev1.NodeCondition{{
-					Type:               corev1.NodeReady,
-					Status:             corev1.ConditionTrue,
-					LastHeartbeatTime:  metav1.Now(),
-					LastTransitionTime: metav1.Now(),
-				}},
-			}
-			_, err = ctx.Kubeclient.CoreV1().Nodes().UpdateStatus(context.TODO(), created, metav1.UpdateOptions{})
+			// Set capacity/allocatable via /status subresource. Retry on conflict because
+			// the node controller may modify the Node concurrently after creation.
+			err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				latest, gerr := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), fakeName, metav1.GetOptions{})
+				if gerr != nil {
+					return gerr
+				}
+				latest.Status = corev1.NodeStatus{
+					Capacity: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("4"),
+						corev1.ResourceMemory: resource.MustParse("8Gi"),
+						corev1.ResourcePods:   resource.MustParse("110"),
+					},
+					Allocatable: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("4"),
+						corev1.ResourceMemory: resource.MustParse("8Gi"),
+						corev1.ResourcePods:   resource.MustParse("110"),
+					},
+					Conditions: []corev1.NodeCondition{{
+						Type:               corev1.NodeReady,
+						Status:             corev1.ConditionTrue,
+						LastHeartbeatTime:  metav1.Now(),
+						LastTransitionTime: metav1.Now(),
+					}},
+				}
+				_, uerr := ctx.Kubeclient.CoreV1().Nodes().UpdateStatus(context.TODO(), latest, metav1.UpdateOptions{})
+				return uerr
+			})
 			Expect(err).NotTo(HaveOccurred(), "failed to set fake Node status")
 
 			By(fmt.Sprintf("Waiting for fake node %s to be added to low-util shard %q", fakeName, lowUtil.Name))
