@@ -303,7 +303,7 @@ var _ = Describe("ShardingController E2E Test", func() {
 	})
 
 	Describe("Node Lifecycle", func() {
-		It("uncordoning a node should add it back to a shard, and pods schedule onto it", func() {
+		It("deleted node should be removed from shards, and re-registered node should be added back and schedule pods", func() {
 			cfg := getShardingConfig()
 			waitForNodeShardsCreated(cfg)
 			lowUtil := findScheduler(cfg, isLowUtil)
@@ -312,46 +312,33 @@ var _ = Describe("ShardingController E2E Test", func() {
 			nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			workerNodes := filterWorkerNodes(nodes.Items)
-			Expect(len(workerNodes)).To(BeNumerically(">=", 1))
+			Expect(len(workerNodes)).To(BeNumerically(">=", 2),
+				"need at least 2 worker nodes so deleting one leaves the cluster usable")
 			target := workerNodes[len(workerNodes)-1]
 
-			By(fmt.Sprintf("Cordoning node %s to remove it from cluster's schedulable pool", target.Name))
-			Expect(setNodeUnschedulable(ctx, target.Name, true)).To(Succeed())
-			defer func() { _ = setNodeUnschedulable(ctx, target.Name, false) }()
+			By(fmt.Sprintf("Verifying node %s starts in low-util shard %q", target.Name, lowUtil.Name))
+			Expect(waitNodeInShard(ctx, lowUtil.Name, target.Name)).To(Succeed())
+
+			By(fmt.Sprintf("Deleting Node object %s to simulate node removal", target.Name))
+			Expect(ctx.Kubeclient.CoreV1().Nodes().Delete(
+				context.TODO(), target.Name, metav1.DeleteOptions{})).To(Succeed())
 
 			Expect(waitNodeNotInAnyShard(ctx, cfg, target.Name)).To(Succeed(),
-				"cordoned node should be removed from all shards")
+				"deleted node should be removed from every shard")
 
-			By(fmt.Sprintf("Uncordoning node %s to re-add it", target.Name))
-			Expect(setNodeUnschedulable(ctx, target.Name, false)).To(Succeed())
+			By(fmt.Sprintf("Waiting for kubelet to re-register node %s", target.Name))
+			Expect(waitNodeRegistered(ctx, target.Name)).To(Succeed(),
+				"kubelet should re-register the deleted node")
 
 			Expect(waitNodeInShard(ctx, lowUtil.Name, target.Name)).To(Succeed(),
-				"uncordoned node should rejoin low-util shard")
+				"re-registered node should rejoin low-util shard")
 
-			By(fmt.Sprintf("Scheduling test pod onto re-added node %s", target.Name))
+			By(fmt.Sprintf("Scheduling test pod onto re-registered node %s", target.Name))
 			testPod := newStressPod("lifecycle-schedule-test", ctx.Namespace, target.Name, 10)
 			_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), testPod, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(waitPodReady(ctx, ctx.Namespace, testPod.Name)).To(Succeed(),
-				"pod should run on re-added node")
-		})
-
-		It("cordoning a node should remove it from all shards", func() {
-			cfg := getShardingConfig()
-			waitForNodeShardsCreated(cfg)
-
-			nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-			Expect(err).NotTo(HaveOccurred())
-			workerNodes := filterWorkerNodes(nodes.Items)
-			Expect(len(workerNodes)).To(BeNumerically(">=", 1))
-			target := workerNodes[0]
-
-			By(fmt.Sprintf("Cordoning node %s", target.Name))
-			Expect(setNodeUnschedulable(ctx, target.Name, true)).To(Succeed())
-			defer func() { _ = setNodeUnschedulable(ctx, target.Name, false) }()
-
-			Expect(waitNodeNotInAnyShard(ctx, cfg, target.Name)).To(Succeed(),
-				"cordoned node should disappear from every shard")
+				"pod should run on re-registered node")
 		})
 	})
 
@@ -478,14 +465,20 @@ func newStressPod(name, ns, nodeName string, cpuMillis int64) *corev1.Pod {
 	}
 }
 
-func setNodeUnschedulable(ctx *e2eutil.TestContext, nodeName string, unschedulable bool) error {
-	node, err := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-	node.Spec.Unschedulable = unschedulable
-	_, err = ctx.Kubeclient.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{})
-	return err
+func waitNodeRegistered(ctx *e2eutil.TestContext, nodeName string) error {
+	return wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
+		func(c context.Context) (bool, error) {
+			node, err := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+			if err != nil {
+				return false, nil
+			}
+			for _, cond := range node.Status.Conditions {
+				if cond.Type == corev1.NodeReady && cond.Status == corev1.ConditionTrue {
+					return true, nil
+				}
+			}
+			return false, nil
+		})
 }
 
 func waitNodeInShard(ctx *e2eutil.TestContext, shardName, nodeName string) error {
