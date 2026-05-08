@@ -10,7 +10,7 @@
 source "$(dirname "$0")/common.sh"
 require_cmd curl
 
-GRAFANA_URL="${GRAFANA_URL:-http://localhost:30080}"
+GRAFANA_URL="${GRAFANA_URL:-http://localhost:30004}"
 RESULTS_DIR="${BENCHMARK_DIR}/results"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 CHARTS_DIR="${RESULTS_DIR}/charts-${TIMESTAMP}"
@@ -34,9 +34,18 @@ done
 
 # Panel definitions: id|filename|width|height
 PANELS=(
-    "1|pod-scheduling-progress|1200|500"
-    "2|scheduling-latency|800|400"
-    "3|job-e2e-duration|800|400"
+    "1|session-execution-duration|800|400"
+    "2|job-e2e-duration|800|400"
+    "3|task-latency-by-stage-p50|800|500"
+    "4|task-latency-by-stage-p99|800|500"
+    "5|plugin-execution-by-plugin-p99|800|500"
+    "6|action-execution-duration|800|400"
+    "7|scheduler-rest-client-qps|800|400"
+    "8|scheduler-rest-client-latency-p99|800|400"
+    "9|apiserver-request-rate|800|400"
+    "10|apiserver-request-latency-p99|800|400"
+    "11|controller-job-to-pod-creation-latency|800|400"
+    "12|controller-job-e2e-pod-creation|800|400"
 )
 
 render_dashboard() {
@@ -170,5 +179,5 @@ log_info "Charts saved to: ${CHARTS_DIR}/"
 
 if [[ ${FAILED} -gt 0 ]]; then
     log_warn "Some panels failed to render. Ensure the Grafana Image Renderer sidecar is running."
-    log_warn "Check: kubectl logs -n monitoring deployment/grafana -c renderer"
+    log_warn "Check: kubectl logs -n volcano-monitoring deployment/grafana -c renderer"
 fi

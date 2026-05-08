@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ .PodName }}
+  namespace: {{ .Namespace }}
+  labels:
+    volcano.sh/benchmark: "true"
+spec:
+  schedulerName: {{ .SchedulerName }}
+  containers:
+    - name: {{ .PodName }}
+      image: {{ .Image }}
+      imagePullPolicy: IfNotPresent
+      {{- if .Command }}
+      command:
+      {{- range .Command }}
+        - {{ . }}
+      {{- end }}
+      {{- end }}
+      resources:
+        requests:
+          cpu: {{ .CPU }}
+          memory: {{ .Memory }}
+        limits:
+          cpu: {{ .CPU }}
+          memory: {{ .Memory }}
+  nodeSelector:
+    type: kwok
+  tolerations:
+    - key: kwok.x-k8s.io/node
+      operator: Exists
+      effect: NoSchedule

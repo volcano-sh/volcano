@@ -2,167 +2,137 @@
 # run-tests.sh — Run benchmark tests
 #
 # Usage:
-#   ./scripts/run-tests.sh <scenario> [options]
-#   ./scripts/run-tests.sh <scenario>/<case>
+#   ./scripts/run-tests.sh <scenario> --config=<profile.yaml>
+#
+# Note:
+#   For a complete list of supported YAML parameters, please refer to:
+#   testcases/<scenario>/profiles/comprehensive.yaml
 #
 # Examples:
-#   # Gang scheduling with CLI parameters
-#   ./scripts/run-tests.sh gang --jobs=20 --pods=50 --cpu=1 --memory=1Gi
-#
-#   # Run predefined test case
-#   ./scripts/run-tests.sh gang/case_20x50
-#
-#   # Run all tests in a scenario
-#   ./scripts/run-tests.sh gang
-#
-# Gang scenario options:
-#   --jobs=N          Number of VCJobs to create
-#   --pods=N          Number of pods per job
-#   --cpu=N           CPU request per pod (default: 1)
-#   --memory=SIZE     Memory request per pod (default: 1Gi)
-#   --min-available=N Gang scheduling minAvailable (default: same as --pods)
-#   --queue=NAME      Volcano queue name (default: benchmark-queue)
+#   # Gang scheduling with YAML config
+#   ./scripts/run-tests.sh gang --config=profiles/basic-gang.yaml
 
 source "$(dirname "$0")/common.sh"
-require_cmd go
+require_cmd go kubectl
+
+usage() {
+    echo "Usage: $0 <scenario> --config=<profile.yaml>"
+    echo ""
+    echo "Examples:"
+    echo "  $0 gang --config=profiles/basic-gang.yaml"
+}
 
 # --- Parse arguments ---
 if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 <scenario> [options]"
-    echo "       $0 <scenario>/<case>"
-    echo ""
-    echo "Examples:"
-    echo "  $0 gang --jobs=20 --pods=50"
-    echo "  $0 gang/case_20x50"
+    usage
     exit 1
 fi
 
-FIRST_ARG="$1"
+SCENE_DIR="$1"
 shift
 
-# Determine if it's a predefined case (contains /) or scenario with params
-if [[ "${FIRST_ARG}" == *"/"* ]]; then
-    # Predefined test case mode: gang/case_20x50
-    SCENE_DIR="${FIRST_ARG%%/*}"
-    CASE_NAME="${FIRST_ARG##*/}"
-    # case_20x50 -> TestGang20x50
-    TEST_FUNC="TestGang${CASE_NAME#case_}"
-    TEST_FUNC=$(echo "${TEST_FUNC}" | sed 's/_//g' | sed 's/x/x/g')
-    CLI_MODE=false
-    log_info "Predefined case mode: scenario=${SCENE_DIR}, case=${CASE_NAME}, func=${TEST_FUNC}"
-else
-    # Scenario with optional CLI parameters
-    SCENE_DIR="${FIRST_ARG}"
-    CLI_MODE=false
-    TEST_FUNC=""
-    
-    # Default values
-    JOBS=""
-    PODS=""
-    CPU="1"
-    MEMORY="1Gi"
-    MIN_AVAILABLE=""
-    QUEUE="benchmark-queue"
-    
-    # Parse scenario-specific options
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --jobs=*)
-                JOBS="${1#*=}"
-                CLI_MODE=true
-                shift
-                ;;
-            --pods=*)
-                PODS="${1#*=}"
-                shift
-                ;;
-            --cpu=*)
-                CPU="${1#*=}"
-                shift
-                ;;
-            --memory=*)
-                MEMORY="${1#*=}"
-                shift
-                ;;
-            --min-available=*)
-                MIN_AVAILABLE="${1#*=}"
-                shift
-                ;;
-            --queue=*)
-                QUEUE="${1#*=}"
-                shift
-                ;;
-            *)
-                log_error "Unknown option: $1"
-                exit 1
-                ;;
-        esac
-    done
-    
-    if [[ "${CLI_MODE}" == "true" ]]; then
-        # Validate required params for CLI mode
-        if [[ -z "${JOBS}" || -z "${PODS}" ]]; then
-            log_error "CLI mode requires --jobs and --pods"
-            exit 1
-        fi
-        MIN_AVAILABLE="${MIN_AVAILABLE:-${PODS}}"
-        TEST_FUNC="TestFromCLI"
-        log_info "CLI params mode: scenario=${SCENE_DIR}, jobs=${JOBS}, pods=${PODS}, cpu=${CPU}, memory=${MEMORY}, minAvailable=${MIN_AVAILABLE}, queue=${QUEUE}"
-    else
-        log_info "Running all tests in scenario: ${SCENE_DIR}"
-    fi
+CONFIG_FILE=""
+SCENARIO_DIR_PATH="${BENCHMARK_DIR}/testcases/${SCENE_DIR}"
+
+if [[ ! -d "${SCENARIO_DIR_PATH}" ]]; then
+    log_error "Scenario not found: ${SCENE_DIR}"
+    exit 1
 fi
 
-# Update SCENARIO_DIR based on parsed scenario
-export SCENARIO="${SCENE_DIR}"
-export SCENARIO_DIR="${BENCHMARK_DIR}/testcases/${SCENE_DIR}"
+# Parse scenario-specific options
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --config=*)
+            CONFIG_FILE="${1#*=}"
+            shift
+            ;;
+        --template=*)
+            TEMPLATE_FILE="${1#*=}"
+            
+            # Resolve template path
+            if [[ ! -f "${TEMPLATE_FILE}" ]] && [[ -f "${SCENARIO_DIR_PATH}/${TEMPLATE_FILE}" ]]; then
+                TEMPLATE_FILE="${SCENARIO_DIR_PATH}/${TEMPLATE_FILE}"
+            fi
+            
+            CONFIG_FILE_TMP="${TEMPLATE_FILE%.yaml}-temp.yaml"
+            log_info "Rendering config ${CONFIG_FILE_TMP} from template ${TEMPLATE_FILE} using envsubst"
+            
+            export JOBS MIN_AVAILABLE REPLICAS PODS SCHEDULER_NAME
+            envsubst '$JOBS,$MIN_AVAILABLE,$REPLICAS,$PODS,$SCHEDULER_NAME' < "${TEMPLATE_FILE}" > "${CONFIG_FILE_TMP}"
+            # Clean up temp file on exit
+            trap "rm -f '${CONFIG_FILE_TMP}'" EXIT
+            # Make CONFIG_FILE point to the temporary rendered file
+            CONFIG_FILE="${CONFIG_FILE_TMP}"
+            shift
+            ;;
+        *)
+            log_error "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
 
-# --- Compile test binary ---
-log_info "Compiling test binary: testcases/${SCENE_DIR}..."
-mkdir -p "${BENCHMARK_DIR}/bin"
-mkdir -p "${BENCHMARK_DIR}/results"
-cd "${VOLCANO_ROOT}"
-go test -c -o "${BENCHMARK_DIR}/bin/test-${SCENE_DIR}" "./benchmark/testcases/${SCENE_DIR}/..."
+if [[ -z "${CONFIG_FILE}" ]]; then
+    log_error "Missing required option: --config=<profile.yaml>"
+    usage
+    exit 1
+fi
+
+# Resolve config path (absolute > existing relative > scenario-relative)
+if [[ "${CONFIG_FILE}" = /* ]]; then
+    RESOLVED_CONFIG="${CONFIG_FILE}"
+elif [[ -f "${CONFIG_FILE}" ]]; then
+    RESOLVED_CONFIG="$(cd "$(dirname "${CONFIG_FILE}")" && pwd)/$(basename "${CONFIG_FILE}")"
+else
+    RESOLVED_CONFIG="${SCENARIO_DIR_PATH}/${CONFIG_FILE}"
+fi
+
+if [[ ! -f "${RESOLVED_CONFIG}" ]]; then
+    log_error "Config file not found: ${RESOLVED_CONFIG}"
+    exit 1
+fi
+
+log_info "Config mode: scenario=${SCENE_DIR}, config=${RESOLVED_CONFIG}"
+export BENCHMARK_CONFIG="${RESOLVED_CONFIG}"
+
+export SCENARIO="${SCENE_DIR}"
+export SCENARIO_DIR="${SCENARIO_DIR_PATH}"
+export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
 
 # --- Run tests ---
-log_info "Running tests..."
-RUN_ARGS="-test.v -test.timeout 600s"
-if [[ -n "${TEST_FUNC}" ]]; then
-    RUN_ARGS="-test.run ${TEST_FUNC} ${RUN_ARGS}"
-    log_info "  Test function: ${TEST_FUNC}"
-fi
 
-# Export env vars for Go test binary to read
-export KUBECONFIG="${KUBECONFIG}"
-export BENCHMARK_SCENARIO="${SCENARIO}"
-export BENCHMARK_SCENARIO_DIR="${SCENARIO_DIR}"
-
-if [[ "${CLI_MODE}" == "true" ]]; then
-    export BENCHMARK_JOBS="${JOBS}"
-    export BENCHMARK_PODS="${PODS}"
-    export BENCHMARK_CPU="${CPU}"
-    export BENCHMARK_MEMORY="${MEMORY}"
-    export BENCHMARK_MIN_AVAILABLE="${MIN_AVAILABLE}"
-    export BENCHMARK_QUEUE="${QUEUE}"
-fi
-
+mkdir -p "${BENCHMARK_DIR}/results"
 RESULT_FILE="${BENCHMARK_DIR}/results/test-${SCENE_DIR}-$(date +%Y%m%d-%H%M%S).log"
 
-# Record test start time (epoch milliseconds)
-START_TIME_MS=$(date +%s%3N)
+log_info "Running tests for scenario '${SCENE_DIR}' with config '${RESOLVED_CONFIG}'..."
 
-"${BENCHMARK_DIR}/bin/test-${SCENE_DIR}" ${RUN_ARGS} 2>&1 | tee "${RESULT_FILE}"
+PROM_URL="${PROM_URL:-http://localhost:30003}"
 
-# Record test end time (epoch milliseconds)
-END_TIME_MS=$(date +%s%3N)
+# Record Prometheus timestamp before test for baseline snapshot
+TIME_BEFORE=$(curl -s "${PROM_URL}/api/v1/query" \
+    --data-urlencode 'query=time()' | jq -r '.data.result[1]')
 
-log_info "Tests completed. Results saved to: ${RESULT_FILE}"
+cd "${VOLCANO_ROOT}"
+set +e
+go test -count=1 -v -timeout 1800s "./benchmark/testcases/${SCENE_DIR}/..." -run TestFromConfig 2>&1 | tee "${RESULT_FILE}"
+TEST_EXIT_CODE=${PIPESTATUS[0]}
+set -e
 
-# Wait for Prometheus to scrape final metrics (scrape interval = 1s)
-log_info "Waiting 5s for Prometheus to collect final metrics..."
-sleep 5
+if [[ ${TEST_EXIT_CODE} -eq 0 ]]; then
+    log_info "Tests completed. Results saved to: ${RESULT_FILE}"
+else
+    log_warn "Tests failed (exit code: ${TEST_EXIT_CODE}). Results saved to: ${RESULT_FILE}"
+fi
 
-# Auto-collect report with the exact test time window
-log_info "Collecting report and exporting Grafana charts..."
-bash "${SCRIPT_DIR}/collect-report.sh" --from "${START_TIME_MS}" --to "${END_TIME_MS}" \
+# Wait for Prometheus to scrape audit-exporter (scrape_interval=5s)
+log_info "Waiting 10s for Prometheus to scrape audit-exporter metrics..."
+sleep 10
+
+TIME_AFTER=$(curl -s "${PROM_URL}/api/v1/query" \
+    --data-urlencode 'query=time()' | jq -r '.data.result[1]')
+
+log_info "Collecting scheduling latency report from audit-exporter..."
+bash "${SCRIPT_DIR}/collect-report.sh" --before "${TIME_BEFORE}" --after "${TIME_AFTER}" \
     || log_warn "Report collection failed (monitoring may not be available)"
+
+exit "${TEST_EXIT_CODE}"

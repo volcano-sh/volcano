@@ -10,13 +10,11 @@ export KWOK_NODE_COUNT="${KWOK_NODE_COUNT:-100}"
 export CPU_PER_NODE="${CPU_PER_NODE:-32}"
 export MEMORY_PER_NODE="${MEMORY_PER_NODE:-256Gi}"
 export KWOK_VERSION="${KWOK_VERSION:-v0.7.0}"
-export SCENARIO="${SCENARIO:-default}"
 
 # Project paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export BENCHMARK_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 export VOLCANO_ROOT="$(cd "${BENCHMARK_DIR}/.." && pwd)"
-export SCENARIO_DIR="${BENCHMARK_DIR}/testcases/${SCENARIO}"
 
 # Logging functions
 log_info()  { echo "[INFO]  $(date '+%H:%M:%S') $*"; }

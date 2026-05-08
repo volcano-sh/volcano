@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # create-cluster.sh — Create a Kind cluster
+#
+# Renders kind-config.yaml (replacing __VOLCANO_ROOT__ with the repo's
+# absolute path, since kind requires absolute hostPaths) and creates the
+# cluster. Pre-creates benchmark/logs/ so the apiserver audit log mount
+# succeeds on first boot.
 
 source "$(dirname "$0")/common.sh"
 require_cmd kind docker kubectl
@@ -10,9 +15,18 @@ if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
     kind delete cluster --name "${CLUSTER_NAME}"
 fi
 
+AUDIT_LOG_DIR="${BENCHMARK_DIR}/logs"
+mkdir -p "${AUDIT_LOG_DIR}"
+log_info "Audit log host dir: ${AUDIT_LOG_DIR}"
+
+RENDERED_CONFIG="${BENCHMARK_DIR}/config/.kind-config.rendered.yaml"
+sed "s|__VOLCANO_ROOT__|${VOLCANO_ROOT}|g" \
+    "${BENCHMARK_DIR}/config/kind-config.yaml" > "${RENDERED_CONFIG}"
+log_info "Rendered kind config: ${RENDERED_CONFIG}"
+
 log_info "Creating Kind cluster ${CLUSTER_NAME}..."
 kind create cluster \
-    --config "${BENCHMARK_DIR}/config/kind-config.yaml" \
+    --config "${RENDERED_CONFIG}" \
     --name "${CLUSTER_NAME}"
 
 log_info "Exporting kubeconfig..."

@@ -1,0 +1,21 @@
+# Volcano Benchmark Profile: Basic Network Topology Scheduling
+# This is a minimal case demonstrating job-level Network Topology scheduling.
+# By default, it schedules tasks with a 'hard' network topology constraint.
+jobs: 10
+
+jobTemplate:
+  name: gang-net-topo
+  minAvailable: 50
+  queue: default
+  enableNetworkTopology: true
+  networkTopologyMode: hard
+  networkTopologyHighestTier: 2
+  tasks:
+    - name: worker
+      replicas: 50
+      cpu: "1"
+      memory: "1Gi"
+      enableNodeSelector: true
+      nodeSelector:
+        type: kwok
+

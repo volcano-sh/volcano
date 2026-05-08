@@ -1,183 +1,193 @@
 # Volcano Benchmark Framework
 
-A Kind + KWOK based performance benchmark framework for the Volcano scheduler.
+A Kind + KWOK based performance benchmark framework for the Volcano schedulers.
 
 ## Quick Start
 
 ```bash
-# Full workflow (local source, gang scenario): create cluster -> build images -> install -> run tests -> report
 cd benchmark
-make all SCENARIO=gang
-
-# Full workflow (release version)
-make all SCENARIO=gang VOLCANO_VERSION=v1.10.0
-
-# Run a specific predefined test case under gang scheduling
-make test-gang-20x50    # 20 jobs × 50 pods/job
-make test-gang-10x100   # 10 jobs × 100 pods/job
-
-# Run ad-hoc CLI test with custom parameters
-make test-cli SCENARIO=gang JOBS=5 PODS=200 CPU=2 MEMORY=2Gi
-
-# Cleanup
-make cleanup            # Delete all resources except the kind cluster
-make cleanup-all        # Delete all resources including the kind cluster
 ```
 
-## Scenario-Based Architecture
-
-Each test scenario has its own self-contained directory under `testcases/<scenario>/manifests/`, including:
-- Scheduler configuration (which plugins to enable)
-- Queue definition
-- KWOK Stages (node heartbeat, pod lifecycle simulation)
-- Job templates (for scenarios that need them)
-
-The `SCENARIO` environment variable (default: `gang`) determines which scenario's manifests are used during setup.
-
-### Available Scenarios
-
-| Scenario | Description                  | Gang Plugin |
-|----------|------------------------------|-------------|
-| `default` | Baseline — default configmap | Disabled |
-| `gang` | Gang scheduling   | Enabled |
-
-## Two Test Execution Modes
-
-### 1. Predefined Test Cases
-
-Run pre-configured test cases with fixed parameters:
+### 1. Setup Environment
 
 ```bash
-# Setup the environment for gang scenario
-make setup SCENARIO=gang
-
-# Run predefined test cases
-make test-gang-20x50     # 20 jobs × 50 pods/job, minAvailable=50
-make test-gang-10x100    # 10 jobs × 100 pods/job, minAvailable=100
-
-# Run all gang test cases
-make test                # Runs all tests in the current SCENARIO
+make setup VOLCANO_VERSION=v1.14.2
 ```
 
-### 2. Ad-hoc CLI Tests
+This creates a Kind cluster, sets up KWOK simulated nodes, builds the audit-exporter image,
+installs Volcano from the Helm repo, and deploys the monitoring stack (Prometheus, Grafana, audit-exporter).
 
-Run custom tests with arbitrary parameters via command-line options:
+To test local source code instead of a release version:
+```bash
+make setup
+```
+
+### 2. Run Tests
 
 ```bash
-# Via run-tests.sh directly
-./scripts/run-tests.sh gang --jobs=5 --pods=200 --cpu=2 --memory=2Gi
-
-# Via Makefile
-make test-cli SCENARIO=gang JOBS=5 PODS=200 CPU=2 MEMORY=2Gi
-
-# Or directly with go test
-BENCHMARK_SCENARIO=gang BENCHMARK_JOBS=10 BENCHMARK_PODS=100 \
-  BENCHMARK_CPU=1 BENCHMARK_MEMORY=1Gi \
-  go test -v -run TestFromCLI -timeout 600s ./testcases/gang/
+make test-gang-env JOBS=10 REPLICAS=100 MIN_AVAILABLE=100
 ```
 
-run-tests.sh CLI options (gang scenario):
+This creates 10 VCJobs, each with 100 replicas (minAvailable=100), to benchmark the Volcano
+batch scheduler's gang scheduling performance. Scheduling latency metrics are automatically
+collected from audit-exporter and printed after the test.
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--jobs=N` | _(required)_ | Number of VCJobs to create |
-| `--pods=N` | _(required)_ | Number of pods per job |
-| `--cpu=N` | `1` | CPU request per pod |
-| `--memory=SIZE` | `1Gi` | Memory request per pod |
-| `--min-available=N` | same as --pods | minAvailable for gang scheduling |
-| `--queue=NAME` | `benchmark-queue` | Volcano queue name |
+To benchmark bare pod scheduling (agent-scheduler, no gang/queue):
+```bash
+make test-pod-env PODS=500
+```
 
-CLI environment variables:
+For more details on each step, see the [Step-by-Step Guide](#step-by-step-guide).
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BENCHMARK_JOBS` | _(required)_ | Number of VCJobs to create |
-| `BENCHMARK_PODS` | _(required)_ | Number of pods per job |
-| `BENCHMARK_CPU` | `1` | CPU request per pod |
-| `BENCHMARK_MEMORY` | `1Gi` | Memory request per pod |
-| `BENCHMARK_MIN_AVAILABLE` | same as PODS | minAvailable for gang scheduling |
-| `BENCHMARK_QUEUE` | `benchmark-queue` | Volcano queue name |
-| `BENCHMARK_SCENARIO` | `default` | Scenario name |
+### Other Useful Commands
+
+```bash
+# Dry run (skip post-test cleanup, useful for debugging)
+DRY_RUN=true make test-gang-env JOBS=10 REPLICAS=10 MIN_AVAILABLE=10
+
+# Run test using a yaml profile (see testcases/<scenario>/cases/ for examples)
+make test-config SCENARIO=gang CONFIG=testcases/gang/cases/comprehensive.yaml
+make test-config SCENARIO=pod CONFIG=testcases/pod/cases/my-profile.yaml
+
+# Cleanup leftover resources (when paired with DRY_RUN mode)
+make clean-vcjobs   # gang scenario
+make clean-pods     # pod scenario
+
+# Delete test resources, keep the cluster
+make cleanup
+
+# Delete everything including the cluster
+make cleanup-all
+```
+
+## Layout
+
+```text
+third_party/kube-apiserver-audit-exporter/ # Customized apiserver audit log exporter for precise latency metrics
+benchmark/
+  config/              # Configurations for infrastructure (e.g., Kind cluster config and audit policies)
+  manifests/           # Kubernetes YAML manifests for benchmark infrastructure setup
+    audit-exporter/    # Dockerfile and DaemonSet for deploying the audit-exporter
+    monitoring/        # Prometheus, Grafana dashboards, and kube-state-metrics settings
+  scripts/             # Shell scripts invoked by the Makefile (cluster creation, setup, and cleanup)
+  testcases/           # Source code for E2E test scenarios (e.g., 'gang', 'pod')
+    util/              # Shared test utilities and constants
+    <scenario>/        # Scenario-specific directory
+      cases/           # Pre-defined test configurations (YAML) for quickly running different scales
+      config/          # Dedicated configurations (like 'scheduler-config.yaml' and 'queue.yaml') for this scenario
+      *_test.go        # Go test logic defining workloads and metrics evaluation
+  results/             # (Generated dynamically) Contains JSON metric reports and test execution logs
+```
+
+## Scenarios
+
+Each scenario lives under `testcases/<scenario>`:
+
+| Scenario | Scheduler | Description                                                 |
+|----------|-----------|-------------------------------------------------------------|
+| `gang` | `volcano` (session-based) | Gang scheduling benchmark                                   |
+| `pod` | `agent-scheduler` (per-pod) | Bare pod scheduling benchmark (default for agent-scheduler) |
 
 ## Monitoring
 
-- Prometheus: http://localhost:30090
-- Grafana: http://localhost:30080 (admin/admin)
+Metrics come from three sources:
 
-### Metrics Reference
+1. **audit-exporter** — microsecond-precision latency from apiserver audit events (scheduler-agnostic)
+2. **Volcano internal** — `volcano_session_*`, `volcano_plugin_*`, `volcano_action_*`, etc.
+3. **kube-state-metrics** — pod / job lifecycle counts
 
-| Metric | Source | Description |
-|--------|--------|-------------|
-| VCJob submission to pod creation latency | Go code `MeasurePodsCreationLatency()` | Pod creation completion timestamp - VCJob submission timestamp |
-| Core scheduling latency | Prometheus: `volcano_e2e_scheduling_latency_milliseconds` | Volcano internal scheduling latency histogram |
-| Pod status statistics | kube-state-metrics | Three curves: created / scheduled / deleted |
+Services are exposed via Kind NodePort + `extraPortMappings` on ports 30003/30004.
 
-## Step-by-Step Testing Guide
+| Service | URL |
+|---------|-----|
+| Prometheus | `http://<host-ip>:30003` |
+| Grafana | `http://<host-ip>:30004` (admin/admin) |
+| Dashboard | `http://<host-ip>:30004/d/volcano-benchmark` |
+
+### Audit-exporter metrics
+
+The apiserver writes audit events to `/var/log/kubernetes/kube-apiserver-audit.log`
+(configured in `config/kind-config.yaml`). The audit-exporter tails that file and exposes:
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `pod_scheduling_latency_seconds` | Histogram | `namespace`, `user` | Time from pod creation to `pods/binding` creation. `user` identifies the scheduler |
+| `batchjob_completion_latency_seconds` | Histogram | `namespace`, `user` | Time from job creation to completion (`batch.Job` and `batch.volcano.sh/Job`) |
+| `api_requests_total` | Counter | `namespace`, `user`, `verb`, `resource`, `code` | Audited API request count |
+| `pod_deleted_total` | Counter | `namespace`, `user`, `phase` | Pod deletions by terminal phase |
+| `pod_completed_total` | Counter | `namespace`, `user`, `phase` | Pods reaching `Succeeded` or `Failed` |
+
+Why audit logs: `metav1.MicroTime` precision (vs `metav1.Time` on pod objects), and
+`pods/binding` is the universal binding entrypoint — works for any scheduler.
+
+### Volcano internal metrics
+
+Metrics exposed by the Volcano scheduler and controller-manager.
+The Grafana dashboard panels that reference these metrics require the corresponding
+Volcano version with the metrics instrumented.
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `volcano_e2e_scheduling_latency_milliseconds` | Histogram | — | E2E scheduling latency (scheduling algorithm + binding) |
+| `volcano_e2e_job_scheduling_latency_milliseconds` | Histogram | — | E2E job scheduling latency |
+| `volcano_e2e_job_scheduling_duration` | Gauge | `job_name`, `queue`, `job_namespace` | E2E job scheduling duration |
+| `volcano_plugin_scheduling_latency_milliseconds` | Histogram | `plugin`, `OnSession` | Plugin execution latency |
+| `volcano_action_scheduling_latency_milliseconds` | Histogram | `action` | Action (allocate/reclaim/preempt) latency |
+| `volcano_task_scheduling_latency_milliseconds` | Histogram | — | Task scheduling latency |
+| `volcano_schedule_attempts_total` | Counter | `result` | Number of attempts to schedule pods |
+
+## Step-by-Step Guide
 
 ### Prerequisites
 
-Ensure the following tools are installed and available in your `PATH`:
-
-- **Go** >= 1.24.0
-- **Docker** (running)
-- **kind** >= 0.20.0 — for creating local Kubernetes clusters
-- **kubectl** — matching your cluster version
-- **helm** >= 3.0 — for installing Volcano
-- **curl** and **jq** — for collecting Prometheus metrics
-- **make** — for running Makefile targets
-
-Verify with:
+- Go >= 1.24.0, Docker, kind >= 0.20.0, kubectl, helm >= 3.0, curl, jq, make
 
 ```bash
 go version && docker info > /dev/null && kind version && kubectl version --client && helm version && jq --version
 ```
 
-### Step 1: Create the Kind Cluster
+### Step 1: Create Kind Cluster
 
 ```bash
 cd benchmark
 make create-cluster
 ```
 
-This creates a Kind cluster named `volcano-benchmark` with high API server QPS/burst settings and NodePort mappings for Prometheus (30090) and Grafana (30080). The kubeconfig is exported to `benchmark/kubeconfig`.
+Creates cluster `volcano-benchmark` with config from `config/kind-config.yaml`.
 
-### Step 2: Create KWOK Simulated Nodes
-
-```bash
-make create-nodes SCENARIO=gang
-```
-
-By default, 100 KWOK nodes are created, each with 32 CPU and 256Gi memory. KWOK Stages are loaded from the scenario's manifests directory. Customize via environment variables:
+### Step 2: Create KWOK Nodes
 
 ```bash
-KWOK_NODE_COUNT=200 CPU_PER_NODE=64 MEMORY_PER_NODE=512Gi make create-nodes SCENARIO=gang
+make create-nodes
 ```
 
-### Step 3: Build Volcano Images (local mode only)
+Installs KWOK controller and creates simulated nodes:
+
+| Variable | Default |
+|---|---|
+| `KWOK_NODE_COUNT` | `100` |
+| `CPU_PER_NODE` | `32` |
+| `MEMORY_PER_NODE` | `256Gi` |
+| `KWOK_VERSION` | `v0.7.0` |
+
+Override example: `make create-nodes KWOK_NODE_COUNT=200 CPU_PER_NODE=64`
+
+### Step 3: Build Images
 
 ```bash
 make build-images
 ```
 
-This runs `make images` in the Volcano root directory and loads the resulting images into the Kind cluster. This step is automatically skipped when using `VOLCANO_VERSION`.
+When `VOLCANO_VERSION` is set, only the audit-exporter image is built
+(Volcano components are pulled from the Helm repo). Otherwise all Volcano
+component images are also built from local source.
 
 ### Step 4: Install Volcano
 
-**Option A — Local source (default):**
-
 ```bash
-make install-volcano SCENARIO=gang
+make install-volcano VOLCANO_VERSION=v1.14.2  # from Helm repo
+make install-volcano                          # from local source
 ```
-
-Installs Volcano from the local Helm chart at `installer/helm/chart/volcano`. Applies the scenario's scheduler config.
-
-**Option B — Specific release version:**
-
-```bash
-make install-volcano SCENARIO=gang VOLCANO_VERSION=v1.10.0
-```
-
-Downloads and installs the specified version from the official Volcano Helm repository (`https://volcano-sh.github.io/volcano`). No local image build is needed.
 
 ### Step 5: Install Monitoring
 
@@ -185,94 +195,83 @@ Downloads and installs the specified version from the official Volcano Helm repo
 make install-monitoring
 ```
 
-Deploys Prometheus (with 1-second scrape interval), kube-state-metrics, and Grafana with a pre-configured dashboard. Access:
-
-- Prometheus: http://localhost:30090
-- Grafana: http://localhost:30080 (credentials: admin/admin)
+Deploys Prometheus + kube-state-metrics + Grafana + audit-exporter.
 
 ### Step 6: Run Tests
 
-Run all gang scheduling tests:
-
+**Gang scheduling:**
 ```bash
-make test SCENARIO=gang
+# Quick run with env vars
+make test-gang-env JOBS=10 REPLICAS=100 MIN_AVAILABLE=100
+
+# Run with a yaml profile
+make test-config SCENARIO=gang CONFIG=testcases/gang/cases/comprehensive.yaml
 ```
 
-Run a specific test case:
-
+**Bare pod scheduling:**
 ```bash
-make test-gang-20x50     # 20 jobs × 50 pods/job, minAvailable=50
-make test-gang-10x100    # 10 jobs × 100 pods/job, minAvailable=100
+# Quick run with env vars
+make test-pod-env PODS=500
+
+# Run for specific scheduler(default is agent-scheduler)
+make test-pod-env PODS=1000 SCHEDULER_NAME=agent-scheduler
+
+# Run with a yaml profile
+make test-config SCENARIO=pod CONFIG=testcases/pod/cases/my-profile.yaml
 ```
 
-Run ad-hoc CLI test:
+For details on YAML profile parameters, see `testcases/<scenario>/cases/comprehensive.yaml`.
+
+### Step 7: View Results
+
+Test results are automatically collected after each run:
+
+- JSON report: `results/report-<timestamp>.json`
+- Test log: `results/test-<scenario>-<timestamp>.log`
+- Grafana dashboard: `http://<host-ip>:30004/d/volcano-benchmark`
+
+### Step 8: Cleanup
 
 ```bash
-make test-cli SCENARIO=gang JOBS=15 PODS=80 CPU=1 MEMORY=1Gi
+make cleanup       # remove test resources, keep cluster
+make cleanup-all   # remove everything
 ```
 
-Results are saved to `results/`.
+## Variables
 
-### Step 7: Collect Report
-
-```bash
-make report
-```
-
-Queries Prometheus for scheduling latency (P50/P99), pod counts, and job E2E duration. Outputs a JSON report to `results/report-<timestamp>.json`.
-
-### Step 8: View Results
-
-Open the Grafana dashboard at http://localhost:30080/d/volcano-benchmark to see:
-
-- **Pod Scheduling Progress**: time-series chart with created/scheduled/deleted pod counts (X-axis: time, Y-axis: pod count, 1-second refresh)
-- **Scheduling Latency**: P50 and P99 latency over time
-- **Job E2E Duration**: table of per-job scheduling durations
-
-The Go test output also prints:
-- Total pod count
-- Pod creation latency (VCJob submit → all pods created)
-- Throughput (pods/sec)
-
-### Step 9: Cleanup
-
-```bash
-make cleanup          # Remove test resources, keep the cluster
-make cleanup-all      # Remove everything including the Kind cluster
-```
-
-Cleanup does not require a `SCENARIO` parameter — it removes all VCJobs, pods, and queues regardless of scenario.
-
-## Configuring Parameters
-
-### Makefile Variables
+### Global
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLUSTER_NAME` | `volcano-benchmark` | Kind cluster name |
-| `SCENARIO` | `gang` | Test scenario (`gang`, `default`, etc.) |
-| `KWOK_NODE_COUNT` | `100` | Number of KWOK simulated nodes |
-| `CPU_PER_NODE` | `32` | CPU capacity per KWOK node |
-| `MEMORY_PER_NODE` | `256Gi` | Memory capacity per KWOK node |
-| `TEST_CASE` | `$(SCENARIO)` | Test case to run (used by `make test`) |
-| `VOLCANO_VERSION` | _(empty)_ | Set to a release tag (e.g. `v1.10.0`) to install from Helm repo |
+| `KWOK_NODE_COUNT` | `100` | Number of KWOK nodes |
+| `CPU_PER_NODE` | `32` | CPU per KWOK node |
+| `MEMORY_PER_NODE` | `256Gi` | Memory per KWOK node |
+| `VOLCANO_VERSION` | _(empty)_ | Release tag (e.g. `v1.14.0`) to install from Helm repo |
+| `DRY_RUN` | `false` | Skip post-test cleanup (useful for debugging) |
+
+### Gang Scenario (`test-gang-env`)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JOBS` | `10` | Number of VCJobs to create |
+| `REPLICAS` | `100` | Replicas per task |
+| `MIN_AVAILABLE` | `100` | MinAvailable for gang scheduling |
+
+For all available parameters (network topology, partition policy, node selectors, etc.),
+see `testcases/gang/cases/comprehensive.yaml`.
+
+### Pod Scenario (`test-pod-env`)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PODS` | `500` | Number of bare pods to create |
+| `SCHEDULER_NAME` | `agent-scheduler` | The scheduler to benchmark |
+
+For all available parameters, see `testcases/pod/cases/case-template.yaml`.
 
 ## Adding New Scenarios
 
-1. Create `testcases/<scenario>/manifests/` with:
-   - `scheduler-config.yaml` — Volcano scheduler configuration
-   - `queue.yaml` — Volcano queue definition
-   - KWOK Stage files (`node-heartbeat.yaml`, `pod-complete.yaml`, `pod-delete.yaml`)
-   - Any job templates needed (e.g. `vcjob-template.yaml`)
-2. Create `testcases/<scenario>/*_test.go` files with test logic
-3. Run: `make setup SCENARIO=<scenario> && make test SCENARIO=<scenario>`
-
-## Dependencies
-
-- Go >= 1.24.0
-- Docker
-- kind >= 0.20.0
-- kubectl
-- helm >= 3.0
-- curl, jq
-- sigs.k8s.io/e2e-framework (Go module)
+1. Create `testcases/<scenario>/config/` with `scheduler-config.yaml` and `queue.yaml`
+2. Create `testcases/<scenario>/*_test.go` with test logic
+3. Run: `make setup && make test-config SCENARIO=<scenario> CONFIG=<profile>.yaml`
