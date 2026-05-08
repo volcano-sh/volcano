@@ -643,7 +643,7 @@ func (ni *NodeInfo) CloneOthers() map[string]interface{} {
 	others := make(map[string]interface{})
 	for k, v := range ni.Others {
 		if d, ok := v.(Devices); ok {
-			if reflect.ValueOf(v).IsNil() {
+			if rv := reflect.ValueOf(v); rv.Kind() == reflect.Ptr && rv.IsNil() {
 				others[k] = v
 				continue
 			}
