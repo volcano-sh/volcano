@@ -18,6 +18,7 @@ package router
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
@@ -46,8 +47,14 @@ func serve(w http.ResponseWriter, r *http.Request, admit AdmitFunc) {
 		r.Body = http.MaxBytesReader(w, r.Body, MaxRequestBody)
 		data, err := io.ReadAll(r.Body)
 		if err != nil {
-			klog.Errorf("Failed to read admission request body: %v", err)
-			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				klog.Errorf("Admission request body exceeds limit of %d bytes", MaxRequestBody)
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			} else {
+				klog.Errorf("Failed to read admission request body: %v", err)
+				http.Error(w, "failed to read request body", http.StatusBadRequest)
+			}
 			return
 		}
 		body = data
