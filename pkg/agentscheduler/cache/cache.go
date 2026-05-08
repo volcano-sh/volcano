@@ -442,9 +442,9 @@ func (sc *SchedulerCache) addEventHandler() {
 	informerFactory.Core().V1().PersistentVolumes().Informer()
 	informerFactory.Storage().V1().StorageClasses().Informer()
 	informerFactory.Storage().V1().CSINodes().Informer()
-	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage {
+	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
 		informerFactory.Storage().V1().CSIDrivers().Informer()
-		informerFactory.Storage().V1beta1().CSIStorageCapacities().Informer()
+		informerFactory.Storage().V1().CSIStorageCapacities().Informer()
 	}
 
 	// create informer for node information
