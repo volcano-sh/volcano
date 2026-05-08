@@ -314,9 +314,8 @@ func TestCloneOthersPreservesTypedNilDevices(t *testing.T) {
 			t.Errorf("cloned[%q] does not satisfy Devices interface (typed-nil was lost)", k)
 			continue
 		}
-		rv := reflect.ValueOf(d)
-		if rv.Kind() != reflect.Ptr || !rv.IsNil() {
-			t.Errorf("cloned[%q] should be a typed-nil pointer, got kind=%v", k, rv.Kind())
+		if !IsNilDevice(d) {
+			t.Errorf("cloned[%q] should be a typed-nil pointer", k)
 		}
 	}
 }

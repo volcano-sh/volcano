@@ -17,6 +17,7 @@
 package api
 
 import (
+	"reflect"
 	"slices"
 	"sync"
 
@@ -97,6 +98,12 @@ func RegisterDevice(deviceName string) {
 		}
 	}
 	RegisteredDevices = append(RegisteredDevices, deviceName)
+}
+
+// IsNilDevice reports whether d wraps a typed-nil pointer.
+func IsNilDevice(d Devices) bool {
+	rv := reflect.ValueOf(d)
+	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
 
 var IgnoredDevicesList = ignoredDevicesList{}
