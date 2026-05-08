@@ -74,7 +74,9 @@ var ServerOpts *ServerOption
 
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
-	return &ServerOption{ServerOption: &voptions.ServerOption{}}
+	return &ServerOption{ServerOption: &voptions.ServerOption{
+		EnableCSIStorage: true,
+	}}
 }
 
 // AddFlags adds flags for a specific CMServer to the specified FlagSet.
@@ -107,8 +109,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	// The percentage of nodes that would be scored in each scheduling cycle; if <= 0, an adaptive percentage will be calculated
 	fs.Int32Var(&s.PercentageOfNodesToFind, "percentage-nodes-to-find", defaultPercentageOfNodesToFind, "The percentage of nodes to find and score, if <=0 will be calculated based on the cluster size")
 
-	fs.BoolVar(&s.EnableCSIStorage, "csi-storage", false,
-		"Enable tracking of available storage capacity that CSI drivers provide; it is false by default")
+	fs.BoolVar(&s.EnableCSIStorage, "csi-storage", true,
+		"When true (default) and the CSIStorage feature gate is enabled, register CSIDriver and CSIStorageCapacity informers on the agent-scheduler cache; set false to reduce API watches. Does not disable kube VolumeBinding capacity checks.")
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")

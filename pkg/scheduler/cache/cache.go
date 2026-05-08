@@ -39,7 +39,6 @@ import (
 	infov1 "k8s.io/client-go/informers/core/v1"
 	schedv1 "k8s.io/client-go/informers/scheduling/v1"
 	storagev1 "k8s.io/client-go/informers/storage/v1"
-	storagev1beta1 "k8s.io/client-go/informers/storage/v1beta1"
 	"k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
@@ -130,7 +129,7 @@ type SchedulerCache struct {
 	quotaInformer              infov1.ResourceQuotaInformer
 	csiNodeInformer            storagev1.CSINodeInformer
 	csiDriverInformer          storagev1.CSIDriverInformer
-	csiStorageCapacityInformer storagev1beta1.CSIStorageCapacityInformer
+	csiStorageCapacityInformer storagev1.CSIStorageCapacityInformer
 	cpuInformer                cpuinformerv1.NumatopologyInformer
 	nodeShardInformer          shardinformerv1alpha1.NodeShardInformer
 
@@ -692,7 +691,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
 		sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
 		sc.csiDriverInformer.Informer()
-		sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
+		sc.csiStorageCapacityInformer = informerFactory.Storage().V1().CSIStorageCapacities()
 		sc.csiStorageCapacityInformer.Informer()
 	}
 
