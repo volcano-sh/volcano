@@ -42,7 +42,7 @@ func RegisterAdmission(service *AdmissionService) error {
 
 	// Also register handler to the service.
 	service.Handler = func(w http.ResponseWriter, r *http.Request) {
-		Serve(w, r, service.Func)
+		serve(w, r, service.Func)
 	}
 
 	admissionMap[service.Path] = service
