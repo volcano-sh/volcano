@@ -11,7 +11,7 @@ Rather than reinventing the wheel, Volcano adopts this mature queue logic and co
 ## Source
 
 - **Repository**: `https://github.com/kubernetes/kubernetes`
-- **Version**: `v1.34`
+- **Version**: `v1.36`
 - **Source Package**: `pkg/scheduler/backend/queue`
 - **Copied Files**:
     - `scheduling_queue.go` - Main scheduling queue implementation
@@ -34,7 +34,7 @@ For small version bumps:
 
 ```bash
 # In kubernetes repo
-git diff v1.34.0..v1.35.0 -- pkg/scheduler/backend/queue
+git diff v1.35.0..v1.36.0 -- pkg/scheduler/backend/queue
 ```
 
 Then manually apply changes.

@@ -70,6 +70,7 @@ func TestAddFlags(t *testing.T) {
 		},
 		DefaultQueue:  defaultQueue,
 		ListenAddress: defaultListenAddress,
+		EnableCSIStorage: true,
 		KubeClientOptions: kube.ClientOptions{
 			Master:     "",
 			KubeConfig: "",

@@ -33,7 +33,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/sets"
 	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
@@ -492,6 +491,27 @@ func (m *mockHandlerRegistration) HasSynced() bool {
 	return m.synced
 }
 
+func (m *mockHandlerRegistration) HasSyncedChecker() kcache.DoneChecker {
+	ch := make(chan struct{})
+	if m.synced {
+		close(ch)
+	}
+	return &mockHandlerDoneChecker{name: "mockHandlerRegistration", ch: ch}
+}
+
+type mockHandlerDoneChecker struct {
+	name string
+	ch   chan struct{}
+}
+
+func (m *mockHandlerDoneChecker) Name() string {
+	return m.name
+}
+
+func (m *mockHandlerDoneChecker) Done() <-chan struct{} {
+	return m.ch
+}
+
 // TestWaitForHandlerSync_AllHandlersSynced verifies that WaitForHandlerSync returns quickly
 // when all registered handlers have already synced.
 func TestWaitForHandlerSync_AllHandlersSynced(t *testing.T) {
@@ -561,10 +581,7 @@ func TestWaitForHandlerSync_StopChanClosedBeforeSync(t *testing.T) {
 // TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_Synced verifies that WaitForHandlerSync
 // returns quickly when an InitialEventAsyncHandlerTracker has both upstream synced and no pending objects.
 func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_Synced(t *testing.T) {
-	tracker := &schedulercache.InitialEventAsyncHandlerTracker{
-		UpstreamHasSynced: func() bool { return true },
-		ObjectSet:         sets.New[string](),
-	}
+	tracker := schedulercache.NewQueueHandlerTracker(&mockHandlerRegistration{synced: true})
 
 	sc := &SchedulerCache{
 		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
@@ -587,10 +604,7 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_Synced(t *testing.T)
 // TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_UpstreamNotSynced verifies that
 // WaitForHandlerSync times out when an InitialEventAsyncHandlerTracker's upstream has not synced.
 func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_UpstreamNotSynced(t *testing.T) {
-	tracker := &schedulercache.InitialEventAsyncHandlerTracker{
-		UpstreamHasSynced: func() bool { return false },
-		ObjectSet:         sets.New[string](),
-	}
+	tracker := schedulercache.NewQueueHandlerTracker(&mockHandlerRegistration{synced: false})
 
 	sc := &SchedulerCache{
 		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
@@ -614,10 +628,9 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_UpstreamNotSynced(t 
 // WaitForHandlerSync times out when an InitialEventAsyncHandlerTracker still has pending objects
 // in its queue even though the upstream informer has synced.
 func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_PendingObjects(t *testing.T) {
-	tracker := &schedulercache.InitialEventAsyncHandlerTracker{
-		UpstreamHasSynced: func() bool { return true },
-		ObjectSet:         sets.New("node1", "node2"),
-	}
+	tracker := schedulercache.NewQueueHandlerTracker(&mockHandlerRegistration{synced: true})
+	tracker.Add("node1")
+	tracker.Add("node2")
 
 	sc := &SchedulerCache{
 		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
@@ -641,10 +654,8 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_PendingObjects(t *te
 // WaitForHandlerSync returns successfully once all pending objects in an
 // InitialEventAsyncHandlerTracker are marked Done.
 func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_CompletesAfterDone(t *testing.T) {
-	tracker := &schedulercache.InitialEventAsyncHandlerTracker{
-		UpstreamHasSynced: func() bool { return true },
-		ObjectSet:         sets.New("node1"),
-	}
+	tracker := schedulercache.NewQueueHandlerTracker(&mockHandlerRegistration{synced: true})
+	tracker.Add("node1")
 
 	sc := &SchedulerCache{
 		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{

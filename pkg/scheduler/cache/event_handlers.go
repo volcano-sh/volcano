@@ -45,7 +45,6 @@ import (
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
-	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/utils/cpuset"
 
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
@@ -153,7 +152,7 @@ func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName]int
 		// the cache set up, in this case it is very difficult to refresh all task caches.
 		// For unattachable volume, set the limits number to a very large value, in this way, scheduling will never
 		// be limited due to insufficient quantity of it.
-		k := v1.ResourceName(volumeutil.GetCSIAttachLimitKey(driverName))
+		k := csiAttachLimitResourceName(driverName)
 		if _, ok := volumes[k]; !ok {
 			volumes[k] = 1
 		} else {
@@ -1318,6 +1317,12 @@ func (sc *SchedulerCache) AddJob(obj interface{}) {
 	sc.Jobs[job.UID] = job
 }
 
+// csiAttachLimitResourceName returns the node ResourceName used for per-CSI-driver volume attach limits.
+// This must stay aligned with kubelet naming (formerly k8s.io/kubernetes/pkg/volume/util.GetCSIAttachLimitKey).
+func csiAttachLimitResourceName(driverName string) v1.ResourceName {
+	return v1.ResourceName("attachable-volumes-csi-" + strings.ReplaceAll(driverName, "/", "-"))
+}
+
 func (sc *SchedulerCache) setCSIResourceOnNode(csiNode *sv1.CSINode, node *v1.Node) {
 	if csiNode == nil || node == nil {
 		return
@@ -1326,7 +1331,7 @@ func (sc *SchedulerCache) setCSIResourceOnNode(csiNode *sv1.CSINode, node *v1.No
 	csiResources := make(map[v1.ResourceName]resource.Quantity)
 	for i := range csiNode.Spec.Drivers {
 		d := csiNode.Spec.Drivers[i]
-		k := v1.ResourceName(volumeutil.GetCSIAttachLimitKey(d.Name))
+		k := csiAttachLimitResourceName(d.Name)
 		if d.Allocatable != nil && d.Allocatable.Count != nil {
 			csiResources[k] = *resource.NewScaledQuantity(int64(*d.Allocatable.Count), -3)
 		} else {
