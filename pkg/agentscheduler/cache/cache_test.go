@@ -12,6 +12,7 @@ import (
 
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
+	agentmetrics "volcano.sh/volcano/pkg/agentscheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -29,6 +30,7 @@ func newTestSchedulerCache(t *testing.T) *SchedulerCache {
 	if options.ServerOpts == nil {
 		options.Default()
 	}
+	agentmetrics.InitKubeSchedulerRelatedMetrics()
 	sc := NewDefaultMockSchedulerCache("test-scheduler")
 
 	ctx, cancel := context.WithCancel(context.Background())

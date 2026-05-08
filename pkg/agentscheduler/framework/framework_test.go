@@ -3,6 +3,7 @@ package framework
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -52,7 +53,24 @@ func (p *testPlugin) OnPluginInit(fwk *Framework) {
 func (p *testPlugin) OnCycleStart(*Framework) { p.state.cycleStart++ }
 func (p *testPlugin) OnCycleEnd(*Framework)   { p.state.cycleEnd++ }
 
+func withIsolatedPluginRegistry(t *testing.T) {
+	t.Helper()
+
+	pluginMutex.Lock()
+	original := maps.Clone(pluginBuilders)
+	pluginBuilders = map[string]PluginBuilder{}
+	pluginMutex.Unlock()
+
+	t.Cleanup(func() {
+		pluginMutex.Lock()
+		pluginBuilders = original
+		pluginMutex.Unlock()
+	})
+}
+
 func TestNewFrameworkRegistersPluginsAndInvokesHooks(t *testing.T) {
+	withIsolatedPluginRegistry(t)
+
 	cache := agentcache.NewDefaultMockSchedulerCache("test-scheduler")
 
 	pluginName := "framework-test-plugin"
@@ -131,6 +149,8 @@ func TestNewFrameworkRegistersPluginsAndInvokesHooks(t *testing.T) {
 }
 
 func TestFrameworkFailedFunctionTracking(t *testing.T) {
+	withIsolatedPluginRegistry(t)
+
 	cache := agentcache.NewDefaultMockSchedulerCache("test-scheduler")
 
 	pluginName := "framework-failure-plugin"
@@ -179,6 +199,8 @@ func TestFrameworkFailedFunctionTracking(t *testing.T) {
 }
 
 func TestNodeOrderAggregatesAcrossPlugins(t *testing.T) {
+	withIsolatedPluginRegistry(t)
+
 	cache := agentcache.NewDefaultMockSchedulerCache("test-scheduler")
 
 	trueValue := true
