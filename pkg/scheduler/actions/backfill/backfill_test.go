@@ -162,6 +162,7 @@ func TestPickUpPendingTasks(t *testing.T) {
 			task, found := ssn.Jobs[jobID].Tasks[api.PodKey(pod)]
 			if found {
 				stmt.Pipeline(task, "node1", false)
+				stmt.Commit()
 			}
 		}
 
