@@ -1,0 +1,79 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: {{ .JobName }}
+  namespace: {{ .Namespace }}
+  labels:
+    volcano.sh/benchmark: "true"
+spec:
+  schedulerName: volcano
+  minAvailable: {{ .MinAvailable }}
+  queue: {{ .Queue }}
+  {{- if .EnableNetworkTopology }}
+  networkTopology:
+    mode: {{ .NetworkTopologyMode }}
+    {{- if .NetworkTopologyHighestTier }}
+    highestTierAllowed: {{ .NetworkTopologyHighestTier }}
+    {{- end }}
+    {{- if .NetworkTopologyHighestTierName }}
+    highestTierName: {{ .NetworkTopologyHighestTierName }}
+    {{- end }}
+  {{- end }}
+  tasks:
+  {{- range .Tasks }}
+    - name: {{ .Name }}
+      replicas: {{ .Replicas }}
+      {{- if .EnablePartitionPolicy }}
+      partitionPolicy:
+        totalPartitions: {{ .PartitionTotalPartitions }}
+        partitionSize: {{ .PartitionSize }}
+        {{- if .PartitionMinPartitions }}
+        minPartitions: {{ .PartitionMinPartitions }}
+        {{- end }}
+        {{- if .EnablePartitionNetworkTopology }}
+        networkTopology:
+          mode: {{ .PartitionNetworkMode }}
+          {{- if .PartitionHighestTier }}
+          highestTierAllowed: {{ .PartitionHighestTier }}
+          {{- end }}
+          {{- if .PartitionHighestTierName }}
+          highestTierName: {{ .PartitionHighestTierName }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      template:
+        metadata:
+          labels:
+            volcano.sh/benchmark: "true"
+        spec:
+          schedulerName: volcano
+          containers:
+            - name: {{ .Name }}
+              image: {{ .Image }}
+              imagePullPolicy: IfNotPresent
+              {{- if .Command }}
+              command:
+              {{- range .Command }}
+                - {{ . }}
+              {{- end }}
+              {{- end }}
+              resources:
+                requests:
+                  cpu: {{ .CPU }}
+                  memory: {{ .Memory }}
+                limits:
+                  cpu: {{ .CPU }}
+                  memory: {{ .Memory }}
+          nodeSelector:
+            type: kwok
+            {{- if .EnableNodeSelector }}
+            {{- range $k, $v := .NodeSelector }}
+            {{ $k }}: {{ $v }}
+            {{- end }}
+            {{- end }}
+          # Tolerations for tainted nodes (e.g. kwok nodes)
+          tolerations:
+            - key: kwok.x-k8s.io/node
+              operator: Exists
+              effect: NoSchedule
+  {{- end }}

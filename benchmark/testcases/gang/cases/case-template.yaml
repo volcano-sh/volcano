@@ -1,0 +1,17 @@
+# Volcano Benchmark Profile: Basic Gang Scheduling
+# This template is used for basic benchmarking by specifying cores parameters:
+# JOBS, REPLICAS, and MIN_AVAILABLE. Usually invoked via 'make test-gang-env'.
+jobs: ${JOBS}
+
+jobTemplate:
+  name: gang-test
+  minAvailable: ${MIN_AVAILABLE}
+  queue: default
+  tasks:
+    - name: worker
+      replicas: ${REPLICAS}
+      cpu: "1"
+      memory: "1Gi"
+      enableNodeSelector: true
+      nodeSelector:
+        type: kwok

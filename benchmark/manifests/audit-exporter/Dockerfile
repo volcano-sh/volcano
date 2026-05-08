@@ -1,4 +1,4 @@
-# Copyright 2019 The Volcano Authors.
+# Copyright 2026 The Volcano Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,16 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Build the kube-apiserver-audit-exporter binary used by the benchmark
+# framework to derive metrics from kube-apiserver audit logs.
+#
+# Build context must be the Volcano repo root so the build stage can see
+# third_party/, the top-level go.mod, and staging/.
 
 FROM golang:1.25.7 AS builder
 WORKDIR /go/src/volcano.sh/
 COPY go.mod go.sum ./
-# Copy staging directory before go mod download since go.mod has replace directive
 COPY staging/ ./staging/
 RUN go mod download
 ADD . volcano
-RUN cd volcano && make vc-controller-manager
+RUN cd volcano && \
+    CGO_ENABLED=0 go build -o /kube-apiserver-audit-exporter \
+        ./third_party/kube-apiserver-audit-exporter/cmd/kube-apiserver-audit-exporter
 
 FROM alpine:latest
-COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-controller-manager /vc-controller-manager
-ENTRYPOINT ["/vc-controller-manager"]
+COPY --from=builder /kube-apiserver-audit-exporter /kube-apiserver-audit-exporter
+ENTRYPOINT ["/kube-apiserver-audit-exporter"]

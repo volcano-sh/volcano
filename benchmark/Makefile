@@ -4,34 +4,23 @@ KWOK_NODE_COUNT ?= 100
 CPU_PER_NODE ?= 32
 MEMORY_PER_NODE ?= 256Gi
 VOLCANO_VERSION ?=
-TEST_CASE ?= $(SCENARIO)
+CONFIG ?= basic.yaml
 
 export CLUSTER_NAME
-export SCENARIO
 export KWOK_NODE_COUNT
 export CPU_PER_NODE
 export MEMORY_PER_NODE
 
-.PHONY: all
-all: gang-all default-all cleanup-all
-
-# Environment setup - requires SCENARIO to be set (e.g., make setup SCENARIO=gang)
-# Can also install specific volcano version as make setup SCENARIO=gang VOLCANO_VERSION=v1.14.0
+# Environment setup — scenario-independent infrastructure.
+# Can also install specific volcano version: make setup VOLCANO_VERSION=v1.14.0
 .PHONY: setup
 setup:
-	@echo "Setting up environment for scenario: $(SCENARIO)"
-ifdef VOLCANO_VERSION
+	@echo "Setting up benchmark infrastructure..."
 	$(MAKE) create-cluster
-	$(MAKE) create-nodes SCENARIO=$(SCENARIO)
-	$(MAKE) install-volcano SCENARIO=$(SCENARIO)
-	$(MAKE) install-monitoring
-else
-	$(MAKE) create-cluster
-	$(MAKE) create-nodes SCENARIO=$(SCENARIO)
+	$(MAKE) create-nodes
 	$(MAKE) build-images
-	$(MAKE) install-volcano SCENARIO=$(SCENARIO)
+	$(MAKE) install-volcano
 	$(MAKE) install-monitoring
-endif
 
 .PHONY: create-cluster
 create-cluster:
@@ -39,22 +28,23 @@ create-cluster:
 
 .PHONY: create-nodes
 create-nodes:
-	SCENARIO=$(SCENARIO) bash scripts/create-kwok-nodes.sh
+	bash scripts/create-kwok-nodes.sh
 
 .PHONY: build-images
 build-images:
 ifdef VOLCANO_VERSION
-	@echo "Skipping image build (using release version $(VOLCANO_VERSION))"
-else
+	@echo "Using release version $(VOLCANO_VERSION) — building audit-exporter only"
 	bash scripts/build-images.sh
+else
+	BUILD_VOLCANO=true bash scripts/build-images.sh
 endif
 
 .PHONY: install-volcano
 install-volcano:
 ifdef VOLCANO_VERSION
-	SCENARIO=$(SCENARIO) bash scripts/install-volcano.sh --release $(VOLCANO_VERSION)
+	bash scripts/install-volcano.sh --release $(VOLCANO_VERSION)
 else
-	SCENARIO=$(SCENARIO) bash scripts/install-volcano.sh --local
+	bash scripts/install-volcano.sh --local
 endif
 
 .PHONY: install-monitoring
@@ -77,35 +67,41 @@ cleanup:
 cleanup-all:
 	bash scripts/cleanup.sh --delete-cluster
 
-# Run predefined test cases
-.PHONY: test
-test:
-	bash scripts/run-tests.sh $(TEST_CASE)
+# Run custom test using a yaml configuration profile
+# SCENARIO determines which scheduler config + queue to apply before running.
+# DRY_RUN=true can be used to skip cleanup
+# Example: make test-config SCENARIO=gang CONFIG=basic.yaml
+.PHONY: test-config
+test-config:
+	bash scripts/run-tests.sh $(SCENARIO) --config=$(CONFIG)
 
-# Run ad-hoc CLI test
-# Example: make test-cli SCENARIO=gang JOBS=10 PODS=100
-.PHONY: test-cli
-test-cli:
-	bash scripts/run-tests.sh $(SCENARIO) --jobs=$(JOBS) --pods=$(PODS) $(if $(CPU),--cpu=$(CPU)) $(if $(MEMORY),--memory=$(MEMORY))
+# Run basic gang scheduling tests with configurable parameters
+# This target uses cases/case-template.yaml to specify Job counts, Replicas, and MinAvailable.
+# DRY_RUN=true can be used to skip cleanup
+# Usage: make test-gang-env JOBS=10 REPLICAS=100 MIN_AVAILABLE=100
+.PHONY: test-gang-env
+test-gang-env:
+	$(eval JOBS ?= 10)
+	$(eval REPLICAS ?= 100)
+	$(eval MIN_AVAILABLE ?= 100)
+	JOBS=$(JOBS) REPLICAS=$(REPLICAS) MIN_AVAILABLE=$(MIN_AVAILABLE) bash scripts/run-tests.sh gang --template=cases/case-template.yaml
 
-# Shortcut targets for predefined test cases
-.PHONY: test-gang-20x50
-test-gang-20x50:
-	SCENARIO=gang bash scripts/run-tests.sh gang/case_20x50
+.PHONY: clean-vcjobs
+clean-vcjobs:
+	kubectl delete vcjob -l volcano.sh/benchmark=true -A --ignore-not-found
+	kubectl delete pods -l volcano.sh/benchmark=true -A --ignore-not-found
 
-.PHONY: test-gang-10x100
-test-gang-10x100:
-	SCENARIO=gang bash scripts/run-tests.sh gang/case_10x100
+.PHONY: clean-pods
+clean-pods:
+	kubectl delete pods -l volcano.sh/benchmark=true -A --ignore-not-found
 
-# Run all test cases in a scenario: setup -> test all cases -> cleanup
-.PHONY: gang-all
-gang-all:
-	$(MAKE) setup SCENARIO=gang
-	$(MAKE) test TEST_CASE=gang SCENARIO=gang
-	$(MAKE) cleanup
-
-.PHONY: default-all
-default-all:
-	$(MAKE) setup SCENARIO=default
-	$(MAKE) test TEST_CASE=default SCENARIO=default
-	$(MAKE) cleanup
+# Run bare pod scheduling tests with configurable parameters
+# Parameters:
+#   PODS: Number of bare pods to create (default: 500)
+#   SCHEDULER_NAME: The scheduler to benchmark (default: agent-scheduler)
+# Usage: make test-pod-env PODS=500 SCHEDULER_NAME=agent-scheduler
+.PHONY: test-pod-env
+test-pod-env:
+	$(eval PODS ?= 500)
+	$(eval SCHEDULER_NAME ?= agent-scheduler)
+	PODS=$(PODS) SCHEDULER_NAME=$(SCHEDULER_NAME) bash scripts/run-tests.sh pod --template=cases/case-template.yaml

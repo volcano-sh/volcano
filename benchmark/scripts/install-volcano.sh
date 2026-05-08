@@ -5,8 +5,6 @@
 #   ./scripts/install-volcano.sh                    # Default: install from local source
 #   ./scripts/install-volcano.sh --local             # Explicitly install from local source
 #   ./scripts/install-volcano.sh --release v1.10.0   # Install a specific release version
-#
-# The scheduler config and queue are read from SCENARIO_DIR (set via SCENARIO env var).
 
 source "$(dirname "$0")/common.sh"
 require_cmd kubectl helm
@@ -14,6 +12,7 @@ require_cmd kubectl helm
 # --- Parse arguments ---
 INSTALL_MODE="local"
 VOLCANO_VERSION=""
+SCHEDULER_CONFIG=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -24,6 +23,10 @@ while [[ $# -gt 0 ]]; do
         --release)
             INSTALL_MODE="release"
             VOLCANO_VERSION="${2:?ERROR: --release requires a version argument (e.g. v1.10.0)}"
+            shift 2
+            ;;
+        --scheduler-config)
+            SCHEDULER_CONFIG="${2:?ERROR: --scheduler-config requires a file path}"
             shift 2
             ;;
         *)
@@ -63,6 +66,7 @@ if [[ "${INSTALL_MODE}" == "release" ]]; then
         --create-namespace \
         --set basic.scheduler_config_file=volcano-scheduler-configmap \
         --set basic.image_pull_policy=IfNotPresent \
+        --set custom.agent_scheduler_enable=true \
         --wait --timeout 180s
 else
     log_info "Installing Volcano from local source..."
@@ -72,20 +76,20 @@ else
         --create-namespace \
         --set basic.scheduler_config_file=volcano-scheduler-configmap \
         --set basic.image_pull_policy=IfNotPresent \
+        --set custom.agent_scheduler_enable=true \
         --wait --timeout 120s
 fi
 
-# --- Post-install configuration (reads from scenario directory) ---
+# --- Post-install configuration (optional, only when --scheduler-config is provided) ---
 
-log_info "Applying scheduler configuration from ${SCENARIO_DIR}/manifests/volcano/scheduler-config.yaml..."
-kubectl apply -f "${SCENARIO_DIR}/manifests/volcano/scheduler-config.yaml"
+if [[ -n "${SCHEDULER_CONFIG}" ]]; then
+    log_info "Applying scheduler configuration from ${SCHEDULER_CONFIG}..."
+    kubectl apply -f "${SCHEDULER_CONFIG}"
 
-log_info "Restarting volcano-scheduler to load new configuration..."
-kubectl rollout restart deployment/volcano-scheduler -n volcano-system
-kubectl rollout status deployment/volcano-scheduler -n volcano-system --timeout=120s
+    log_info "Restarting volcano-scheduler to load new configuration..."
+    kubectl rollout restart deployment/volcano-scheduler -n volcano-system
+    kubectl rollout status deployment/volcano-scheduler -n volcano-system --timeout=120s
+fi
 
-log_info "Creating test queue from ${SCENARIO_DIR}/manifests/volcano/queue.yaml..."
-kubectl apply -f "${SCENARIO_DIR}/manifests/volcano/queue.yaml"
-
-log_info "Volcano installation complete (mode=${INSTALL_MODE}, scenario=${SCENARIO})"
+log_info "Volcano installation complete (mode=${INSTALL_MODE})"
 kubectl get pods -n volcano-system
