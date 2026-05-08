@@ -66,26 +66,11 @@ type deviceSharePlugin struct {
 	pluginArguments framework.Arguments
 	schedulePolicy  string
 	scheduleWeight  int
-	// lock protects persistedGPUs and persistedPodRules from concurrent access
-	// across scheduling sessions and Allocate calls.
-	lock sync.RWMutex
-	// persistedGPUs survives across scheduling sessions. Maps
-	// nodeName → namespace/name → set of GPU indices allocated to that pod.
-	// Updated by Allocate, pruned by OnSessionOpen.
-	persistedGPUs map[string]map[string]map[int]struct{}
-	// persistedPodRules maps nodeName → namespace/name → set of rule indices.
-	persistedPodRules map[string]map[string]map[int]struct{}
 }
 
 // New return priority plugin
 func New(arguments framework.Arguments) framework.Plugin {
-	dsp := &deviceSharePlugin{
-		pluginArguments:   arguments,
-		schedulePolicy:    "",
-		scheduleWeight:    0,
-		persistedGPUs:     make(map[string]map[string]map[int]struct{}),
-		persistedPodRules: make(map[string]map[string]map[int]struct{}),
-	}
+	dsp := &deviceSharePlugin{pluginArguments: arguments, schedulePolicy: "", scheduleWeight: 0}
 	enablePredicate(dsp)
 	return dsp
 }
@@ -111,7 +96,6 @@ func enablePredicate(dsp *deviceSharePlugin) {
 
 	args.GetString(&dsp.schedulePolicy, SchedulePolicyArgument)
 	args.GetInt(&dsp.scheduleWeight, ScheduleWeight)
-	vgpu.SchedulePolicy = dsp.schedulePolicy
 
 	if gpushare.GpuSharingEnable && gpushare.GpuNumberEnable {
 		klog.Fatal("can not define true in both gpu sharing and gpu number")
@@ -219,11 +203,6 @@ func initializeDevice(device api.Devices, ssn *framework.Session, nodeInfo *api.
 }
 
 func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
-	// Wrap GPU devices with exclusivity-aware wrappers if rules are configured.
-	// This must happen before initializeDevicesWithSession and predicate registration
-	// so that the wrapped devices are used throughout the scheduling cycle.
-	dp.wrapGPUDevicesForExclusivity(ssn)
-
 	// initialize devices which needs ssn as input
 	initializeDevicesWithSession(ssn)
 

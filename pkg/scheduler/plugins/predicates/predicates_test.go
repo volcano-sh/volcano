@@ -585,18 +585,17 @@ func TestPredicateFailureReasonAggregationOrderStable(t *testing.T) {
 		nodePortEnable:        true,
 		taintTolerationEnable: true,
 	}
-	pp.StableFilterPlugins = map[string]k8sframework.FilterPlugin{
+	pp.StableFilterPlugins = map[string]schedframework.FilterPlugin{
 		nodeunschedulable.Name: &fakeFilterPlugin{name: nodeunschedulable.Name, message: "stable-nodeunschedulable"},
 		nodeaffinity.Name:      &fakeFilterPlugin{name: nodeaffinity.Name, message: "stable-nodeaffinity"},
 		tainttoleration.Name:   &fakeFilterPlugin{name: tainttoleration.Name, message: "stable-tainttoleration"},
 	}
-	pp.FilterPlugins = map[string]k8sframework.FilterPlugin{
+	pp.FilterPlugins = map[string]schedframework.FilterPlugin{
 		nodeunschedulable.Name: &fakeFilterPlugin{name: nodeunschedulable.Name, message: "stable-nodeunschedulable"},
 		nodeaffinity.Name:      &fakeFilterPlugin{name: nodeaffinity.Name, message: "stable-nodeaffinity"},
 		nodeports.Name:         &fakeFilterPlugin{name: nodeports.Name, message: "normal-nodeports"},
 		tainttoleration.Name:   &fakeFilterPlugin{name: tainttoleration.Name, message: "stable-tainttoleration"},
 	}
-	// Predicate walks StableFilterOrder / FilterOrder (filled by InitPlugin in production). Mirror that order here.
 	pp.StableFilterOrder = []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name}
 	pp.FilterOrder = []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name}
 
@@ -648,7 +647,7 @@ func TestReserveRollbackOrderStable(t *testing.T) {
 		volumeBindingEnable:             true,
 		dynamicResourceAllocationEnable: true,
 	}
-	pp.ReservePlugins = map[string]k8sframework.ReservePlugin{
+	pp.ReservePlugins = map[string]schedframework.ReservePlugin{
 		vbcap.Name:            &fakeReservePlugin{name: vbcap.Name, calls: &calls},
 		dynamicresources.Name: &fakeReservePlugin{name: dynamicresources.Name, calls: &calls},
 	}
@@ -667,7 +666,17 @@ func TestReserveRollbackOrderStable(t *testing.T) {
 	task := api.NewTaskInfo(pod)
 
 	event := &framework.Event{Task: task}
-	pp.runReservePlugins(&framework.Session{}, event)
+	ssn := &framework.Session{
+		Jobs: map[api.JobID]*api.JobInfo{
+			task.Job: {
+				UID: task.Job,
+				Tasks: map[api.TaskID]*api.TaskInfo{
+					task.UID: task,
+				},
+			},
+		},
+	}
+	pp.runReservePlugins(ssn, event)
 	if event.Err != nil {
 		t.Fatalf("unexpected reserve error: %v", event.Err)
 	}

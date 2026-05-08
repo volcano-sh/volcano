@@ -259,7 +259,7 @@ type info struct {
 func prepare(t *testing.T, tmpDir, podUID string, infos []info) {
 	for _, info := range infos {
 		dir := path.Join(tmpDir, "cpu", "kubepods", "pod"+podUID, info.dir)
-		err := os.MkdirAll(dir, 0755)
+		err := os.MkdirAll(dir, 0644)
 		assert.NoError(t, err)
 		filePath := path.Join(dir, info.path)
 		f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
@@ -399,7 +399,7 @@ type infoV2 struct {
 func prepareV2(t *testing.T, tmpDir, podUID string, infos []infoV2) {
 	for _, info := range infos {
 		dir := path.Join(tmpDir, "kubepods", "pod"+podUID, info.dir)
-		err := os.MkdirAll(dir, 0755)
+		err := os.MkdirAll(dir, 0644)
 		assert.NoError(t, err)
 		filePath := path.Join(dir, info.path)
 		f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)

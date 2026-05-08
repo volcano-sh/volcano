@@ -29,7 +29,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
-	fwk "k8s.io/kube-scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
@@ -92,7 +92,7 @@ type Cache interface {
 	RegisterBinder(name string, binder interface{})
 
 	// SharedDRAManager returns the shared DRAManager
-	SharedDRAManager() fwk.SharedDRAManager
+	SharedDRAManager() framework.SharedDRAManager
 
 	// IsJobTerminated returns if the job was terminated
 	IsJobTerminated(jobId api.JobID) bool

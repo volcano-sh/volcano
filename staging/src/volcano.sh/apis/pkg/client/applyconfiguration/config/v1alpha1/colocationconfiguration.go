@@ -25,16 +25,11 @@ import (
 
 // ColocationConfigurationApplyConfiguration represents a declarative configuration of the ColocationConfiguration type for use
 // with apply.
-//
-// ColocationConfiguration is the Schema for the colocationconfigurations API
 type ColocationConfigurationApplyConfiguration struct {
-	v1.TypeMetaApplyConfiguration `json:",inline"`
-	// metadata is a standard object metadata
+	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	// spec defines the desired state of ColocationConfiguration
-	Spec *ColocationConfigurationSpecApplyConfiguration `json:"spec,omitempty"`
-	// status defines the observed state of ColocationConfiguration
-	Status *ColocationConfigurationStatusApplyConfiguration `json:"status,omitempty"`
+	Spec                             *ColocationConfigurationSpecApplyConfiguration   `json:"spec,omitempty"`
+	Status                           *ColocationConfigurationStatusApplyConfiguration `json:"status,omitempty"`
 }
 
 // ColocationConfiguration constructs a declarative configuration of the ColocationConfiguration type for use with
@@ -47,7 +42,6 @@ func ColocationConfiguration(name, namespace string) *ColocationConfigurationApp
 	b.WithAPIVersion("config.volcano.sh/v1alpha1")
 	return b
 }
-
 func (b ColocationConfigurationApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

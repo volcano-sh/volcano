@@ -74,12 +74,6 @@ type Devices interface {
 
 	// GetStatus used for debug and monitor
 	GetStatus() string
-
-	// DeepCopy returns a deep copy of this device object for use in dry-run
-	// simulation (e.g. topology-aware preemption).  The return type is
-	// interface{} to avoid circular imports: each device package does not
-	// import the top-level api package.
-	DeepCopy() interface{}
 }
 
 // make sure GPUDevices implements Devices interface

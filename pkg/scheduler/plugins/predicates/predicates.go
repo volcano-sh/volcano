@@ -102,11 +102,11 @@ type PredicatesPlugin struct {
 
 	features feature.Features
 
-	FilterPlugins       map[string]fwk.FilterPlugin
-	StableFilterPlugins map[string]fwk.FilterPlugin // Subset of FilterPlugins for cache-stable filters
-	PreFilterPlugins    map[string]fwk.PreFilterPlugin
-	ReservePlugins      map[string]fwk.ReservePlugin
-	PreBindPlugins      map[string]fwk.PreBindPlugin
+	FilterPlugins       map[string]k8sframework.FilterPlugin
+	StableFilterPlugins map[string]k8sframework.FilterPlugin // Subset of FilterPlugins for cache-stable filters
+	PreFilterPlugins    map[string]k8sframework.PreFilterPlugin
+	ReservePlugins      map[string]k8sframework.ReservePlugin
+	PreBindPlugins      map[string]k8sframework.PreBindPlugin
 	ScorePlugins        map[string]nodescore.BaseScorePlugin
 	ScoreWeights        map[string]int // Weight for each score plugin
 	FilterOrder         []string
@@ -116,7 +116,7 @@ type PredicatesPlugin struct {
 	PreBindOrder        []string
 	ScoreOrder          []string
 	PredicateCache      *predicateCache
-	Handle              fwk.Handle
+	Handle              k8sframework.Handle
 }
 
 // New return predicate plugin
@@ -131,7 +131,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 		podTopologySpreadEnable:         true,
 		cacheEnable:                     false,
 		volumeBindingEnable:             true,
-		dynamicResourceAllocationEnable: utilFeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation),
+		dynamicResourceAllocationEnable: false,
 	}
 
 	// Checks whether predicate enable args is provided or not.
@@ -144,6 +144,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 	arguments.GetBool(&predicate.volumeZoneEnable, VolumeZoneEnable)
 	arguments.GetBool(&predicate.podTopologySpreadEnable, PodTopologySpreadEnable)
 	arguments.GetBool(&predicate.volumeBindingEnable, VolumeBindingEnable)
+	arguments.GetBool(&predicate.dynamicResourceAllocationEnable, DynamicResourceAllocationEnable)
 	arguments.GetBool(&predicate.cacheEnable, CachePredicate)
 
 	features := feature.Features{
@@ -157,12 +158,12 @@ func New(arguments framework.Arguments) framework.Plugin {
 		EnableCSIMigrationPortworx:                   utilFeature.DefaultFeatureGate.Enabled(features.CSIMigrationPortworx),
 		EnableDRAExtendedResource:                    utilFeature.DefaultFeatureGate.Enabled(features.DRAExtendedResource),
 		EnableDRAPrioritizedList:                     utilFeature.DefaultFeatureGate.Enabled(features.DRAPrioritizedList),
-		EnableDRAConsumableCapacity:                  utilFeature.DefaultFeatureGate.Enabled(features.DRAConsumableCapacity),
+		EnableConsumableCapacity:                     utilFeature.DefaultFeatureGate.Enabled(features.DRAConsumableCapacity),
 		EnableDRADeviceTaints:                        utilFeature.DefaultFeatureGate.Enabled(features.DRADeviceTaints),
 		EnableDRASchedulerFilterTimeout:              utilFeature.DefaultFeatureGate.Enabled(features.DRASchedulerFilterTimeout),
 		EnableDRAResourceClaimDeviceStatus:           utilFeature.DefaultFeatureGate.Enabled(features.DRAResourceClaimDeviceStatus),
 		EnableDRADeviceBindingConditions:             utilFeature.DefaultFeatureGate.Enabled(features.DRADeviceBindingConditions),
-		EnableDRAPartitionableDevices:                utilFeature.DefaultFeatureGate.Enabled(features.DRAPartitionableDevices),
+		EnablePartitionableDevices:                   utilFeature.DefaultFeatureGate.Enabled(features.DRAPartitionableDevices),
 	}
 	return &PredicatesPlugin{pluginArguments: arguments, enabledPredicates: predicate, features: features}
 }
@@ -195,7 +196,6 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	nodeMap := ssn.NodeMap
 	handle := k8s.NewFramework(nodeMap,
 		k8s.WithSharedDRAManager(ssn.SharedDRAManager()),
-		k8s.WithSharedCSIManager(nodevolumelimits.NewCSIManager(ssn.InformerFactory().Storage().V1().CSINodes().Lister())),
 		k8s.WithClientSet(ssn.KubeClient()),
 		k8s.WithInformerFactory(ssn.InformerFactory()),
 	)
@@ -226,9 +226,6 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			// run reserve plugins
 			pp.runReservePlugins(ssn, event)
-			if event.Err != nil {
-				return
-			}
 			//predicate gpu sharing
 			for _, val := range api.RegisteredDevices {
 				if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
@@ -239,7 +236,6 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					err := devices.Allocate(ssn.KubeClient(), pod)
 					if err != nil {
 						klog.Errorf("AllocateToPod failed %s", err.Error())
-						event.Err = err
 						return
 					}
 				} else {
@@ -400,28 +396,6 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				}
 			}
 		}
-
-		// Device-aware check: use FilterNode (pure read, no side effects) so that
-		// the topology-aware preemption dry-run correctly accounts for device
-		// availability after simulated victim removals.
-		for _, val := range api.RegisteredDevices {
-			devObj, ok := node.Others[val]
-			if !ok {
-				continue
-			}
-			devs, ok := devObj.(api.Devices)
-			if !ok {
-				continue
-			}
-			if !devs.HasDeviceRequest(task.Pod) {
-				continue
-			}
-			if code, msg, err := devs.FilterNode(task.Pod, ""); code != 0 || err != nil {
-				klog.Errorf("SimulatePredicate device %s FilterNode failed for task %s/%s on node %s: code=%d msg=%s err=%v",
-					val, task.Namespace, task.Name, node.Name, code, msg, err)
-				return fmt.Errorf("device %s cannot fit task %s/%s on node %s: %s", val, task.Namespace, task.Name, node.Name, msg)
-			}
-		}
 		return nil
 	})
 }
@@ -456,12 +430,12 @@ func (pp *PredicatesPlugin) PrePredicate(task *api.TaskInfo, state *k8sframework
 }
 
 func (pp *PredicatesPlugin) InitPlugin() {
-	filterPlugins := map[string]fwk.FilterPlugin{}
-	stableFilterPlugins := map[string]fwk.FilterPlugin{} // Subset for cache-stable filters
-	prefilterPlugins := map[string]fwk.PreFilterPlugin{}
-	reservePlugins := map[string]fwk.ReservePlugin{}
+	filterPlugins := map[string]k8sframework.FilterPlugin{}
+	stableFilterPlugins := map[string]k8sframework.FilterPlugin{} // Subset for cache-stable filters
+	prefilterPlugins := map[string]k8sframework.PreFilterPlugin{}
+	reservePlugins := map[string]k8sframework.ReservePlugin{}
 	scorePlugins := map[string]nodescore.BaseScorePlugin{}
-	preBindPlugins := map[string]fwk.PreBindPlugin{}
+	preBindPlugins := map[string]k8sframework.PreBindPlugin{}
 	scoreWeights := map[string]int{} // Weight for each score plugin
 	var filterOrder []string
 	var stableFilterOrder []string
@@ -470,23 +444,23 @@ func (pp *PredicatesPlugin) InitPlugin() {
 	var preBindOrder []string
 	var scoreOrder []string
 
-	addFilterPlugin := func(name string, plugin fwk.FilterPlugin) {
+	addFilterPlugin := func(name string, plugin k8sframework.FilterPlugin) {
 		filterPlugins[name] = plugin
 		filterOrder = append(filterOrder, name)
 	}
-	addStableFilterPlugin := func(name string, plugin fwk.FilterPlugin) {
+	addStableFilterPlugin := func(name string, plugin k8sframework.FilterPlugin) {
 		stableFilterPlugins[name] = plugin
 		stableFilterOrder = append(stableFilterOrder, name)
 	}
-	addPreFilterPlugin := func(name string, plugin fwk.PreFilterPlugin) {
+	addPreFilterPlugin := func(name string, plugin k8sframework.PreFilterPlugin) {
 		prefilterPlugins[name] = plugin
 		preFilterOrder = append(preFilterOrder, name)
 	}
-	addReservePlugin := func(name string, plugin fwk.ReservePlugin) {
+	addReservePlugin := func(name string, plugin k8sframework.ReservePlugin) {
 		reservePlugins[name] = plugin
 		reserveOrder = append(reserveOrder, name)
 	}
-	addPreBindPlugin := func(name string, plugin fwk.PreBindPlugin) {
+	addPreBindPlugin := func(name string, plugin k8sframework.PreBindPlugin) {
 		preBindPlugins[name] = plugin
 		preBindOrder = append(preBindOrder, name)
 	}

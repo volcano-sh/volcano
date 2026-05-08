@@ -23,13 +23,9 @@ import (
 
 // HyperNodeStatusApplyConfiguration represents a declarative configuration of the HyperNodeStatus type for use
 // with apply.
-//
-// HyperNodeStatus represents the observed state of a HyperNode.
 type HyperNodeStatusApplyConfiguration struct {
-	// Conditions provide details about the current state of the HyperNode.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
-	// NodeCount is the total number of nodes currently in the HyperNode.
-	NodeCount *int64 `json:"nodeCount,omitempty"`
+	NodeCount  *int64                           `json:"nodeCount,omitempty"`
 }
 
 // HyperNodeStatusApplyConfiguration constructs a declarative configuration of the HyperNodeStatus type for use with

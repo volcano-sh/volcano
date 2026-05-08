@@ -48,7 +48,7 @@ spec:
     env: []
     svc: []
   policies:
-    - event: PodEvicted # Job level policy. If any pod is evicted, restart the job.
+    - event: PodEvicted   # Job level policy. If any pod is evicted, restart the job. It will only work on `ps` task.
       action: RestartJob
   queue: default
   tasks:

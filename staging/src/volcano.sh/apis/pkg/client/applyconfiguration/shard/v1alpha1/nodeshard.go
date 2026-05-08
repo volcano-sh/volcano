@@ -25,17 +25,11 @@ import (
 
 // NodeShardApplyConfiguration represents a declarative configuration of the NodeShard type for use
 // with apply.
-//
-// NodeShard is a collection of nodes dedicated to a specific scheduler
 type NodeShardApplyConfiguration struct {
-	v1.TypeMetaApplyConfiguration `json:",inline"`
-	// Standard object's metadata.
+	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	// Specification of the desired behavior of the NodeShard.
-	Spec *NodeShardSpecApplyConfiguration `json:"spec,omitempty"`
-	// Status represents the current information about a NodeShard.
-	// This data may not be up to date.
-	Status *NodeShardStatusApplyConfiguration `json:"status,omitempty"`
+	Spec                             *NodeShardSpecApplyConfiguration   `json:"spec,omitempty"`
+	Status                           *NodeShardStatusApplyConfiguration `json:"status,omitempty"`
 }
 
 // NodeShard constructs a declarative configuration of the NodeShard type for use with
@@ -47,7 +41,6 @@ func NodeShard(name string) *NodeShardApplyConfiguration {
 	b.WithAPIVersion("shard.volcano.sh/v1alpha1")
 	return b
 }
-
 func (b NodeShardApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

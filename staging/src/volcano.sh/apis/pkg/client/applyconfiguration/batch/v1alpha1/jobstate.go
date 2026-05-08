@@ -24,17 +24,11 @@ import (
 
 // JobStateApplyConfiguration represents a declarative configuration of the JobState type for use
 // with apply.
-//
-// JobState contains details for the current state of the job.
 type JobStateApplyConfiguration struct {
-	// The phase of Job.
-	Phase *batchv1alpha1.JobPhase `json:"phase,omitempty"`
-	// Unique, one-word, CamelCase reason for the phase's last transition.
-	Reason *string `json:"reason,omitempty"`
-	// Human-readable message indicating details about last transition.
-	Message *string `json:"message,omitempty"`
-	// Last time the condition transit from one phase to another.
-	LastTransitionTime *v1.Time `json:"lastTransitionTime,omitempty"`
+	Phase              *batchv1alpha1.JobPhase `json:"phase,omitempty"`
+	Reason             *string                 `json:"reason,omitempty"`
+	Message            *string                 `json:"message,omitempty"`
+	LastTransitionTime *v1.Time                `json:"lastTransitionTime,omitempty"`
 }
 
 // JobStateApplyConfiguration constructs a declarative configuration of the JobState type for use with

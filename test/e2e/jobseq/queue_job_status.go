@@ -37,27 +37,25 @@ import (
 var _ = Describe("Queue Job Status Transition", func() {
 
 	var testCtx *e2eutil.TestContext
-	var q1 string
-	var rep int32
-	var podNamespace string
-
-	BeforeEach(func() {
-		q1 = "queue-jobs-status-transition"
-		testCtx = e2eutil.InitTestContext(e2eutil.Options{
-			Queues: []string{q1},
-		})
-		DeferCleanup(e2eutil.CleanupTestContext, testCtx)
-
-		slot := e2eutil.HalfCPU
-		rep = e2eutil.ClusterSize(testCtx, slot)
-	})
 
 	JustAfterEach(func() {
 		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
 	})
 
+	AfterEach(func() {
+		e2eutil.CleanupTestContext(testCtx)
+	})
+
 	XIt("Transform from inqueque to running should succeed", func() {
 		Skip("Prepare 2 job")
+		var q1 string
+		var rep int32
+		q1 = "queue-jobs-status-transition"
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues: []string{q1},
+		})
+		slot := e2eutil.HalfCPU
+		rep = e2eutil.ClusterSize(testCtx, slot)
 
 		if rep < 4 {
 			err := fmt.Errorf("You need at least 2 logical cpu for this test case, please skip 'Queue Job Status Transition' when you see this message")
@@ -70,7 +68,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 					{
 						Name: "queue-job",
 						Img:  e2eutil.DefaultNginxImage,
-						Req:  e2eutil.HalfCPU,
+						Req:  slot,
 						Min:  rep,
 						Rep:  rep,
 					},
@@ -98,10 +96,18 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 	It("Transform from running to pending should succeed", func() {
 		By("Prepare 2 job")
+		var q1 string
+		var podNamespace string
+		var rep int32
 		var firstJobName string
 
+		q1 = "queue-jobs-status-transition"
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues: []string{q1},
+		})
 		podNamespace = testCtx.Namespace
 		slot := e2eutil.HalfCPU
+		rep = e2eutil.ClusterSize(testCtx, slot)
 
 		if rep < 4 {
 			err := fmt.Errorf("You need at least 2 logical cpu for this test case, please skip 'Queue Job Status Transition' when you see this message")
@@ -153,7 +159,14 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 	It("Transform from running to unknown should succeed", func() {
 		By("Prepare 2 job")
+		var q1 string
+		var podNamespace string
+		var rep int32
 
+		q1 = "queue-jobs-status-transition"
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues: []string{q1},
+		})
 		podNamespace = testCtx.Namespace
 		slot := e2eutil.HalfCPU
 		rep = e2eutil.ClusterSize(testCtx, slot)

@@ -23,8 +23,6 @@ import (
 
 // ClusterApplyConfiguration represents a declarative configuration of the Cluster type for use
 // with apply.
-//
-// CluterSpec represents the template of Cluster
 type ClusterApplyConfiguration struct {
 	Name     *string          `json:"name,omitempty"`
 	Weight   *int32           `json:"weight,omitempty"`

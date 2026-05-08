@@ -19,7 +19,6 @@ package nodegroup
 import (
 	"container/list"
 	"errors"
-	"fmt"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
@@ -52,22 +51,18 @@ const (
 //    - name: proportion
 //    - name: nodegroup
 //      #enableHierarchy: true # If user wants to enable hierarchy, set this to true. Queue without affinity will inherit affinity from its nearest ancestor.
-//      arguments:
-//        enablePreferredOrder: true # If user wants preferred nodegroups to be scored by their list order (earlier = higher priority), set this to true.
 
 type nodeGroupPlugin struct {
 	// Arguments given for the plugin
-	pluginArguments      framework.Arguments
-	strict               bool
-	enablePreferredOrder bool
-	queueAttrs           map[api.QueueID]*queueAttr
+	pluginArguments framework.Arguments
+	strict          bool
+	queueAttrs      map[api.QueueID]*queueAttr
 }
 
 // New function returns prioritize plugin object.
 func New(arguments framework.Arguments) framework.Plugin {
 	nodeGroupPlugin := &nodeGroupPlugin{pluginArguments: arguments, strict: true}
 	arguments.GetBool(&nodeGroupPlugin.strict, "strict")
-	arguments.GetBool(&nodeGroupPlugin.enablePreferredOrder, "enablePreferredOrder")
 	return nodeGroupPlugin
 }
 
@@ -82,11 +77,10 @@ type queueAttr struct {
 }
 
 type queueGroupAffinity struct {
-	queueGroupAntiAffinityRequired     sets.Set[string]
-	queueGroupAntiAffinityPreferred    sets.Set[string]
-	queueGroupAffinityRequired         sets.Set[string]
-	queueGroupAffinityPreferred        sets.Set[string]
-	queueGroupAffinityPreferredIndexes map[string]int
+	queueGroupAntiAffinityRequired  sets.Set[string]
+	queueGroupAntiAffinityPreferred sets.Set[string]
+	queueGroupAffinityRequired      sets.Set[string]
+	queueGroupAffinityPreferred     sets.Set[string]
 }
 
 func newQueueAttr(queue *api.QueueInfo) *queueAttr {
@@ -113,10 +107,6 @@ func newQueueGroupAffinity(queue *api.QueueInfo) *queueGroupAffinity {
 	if nodeGroupAffinity != nil {
 		affinity.queueGroupAffinityPreferred.Insert(nodeGroupAffinity.PreferredDuringSchedulingIgnoredDuringExecution...)
 		affinity.queueGroupAffinityRequired.Insert(nodeGroupAffinity.RequiredDuringSchedulingIgnoredDuringExecution...)
-		affinity.queueGroupAffinityPreferredIndexes = make(map[string]int, len(nodeGroupAffinity.PreferredDuringSchedulingIgnoredDuringExecution))
-		for i, group := range nodeGroupAffinity.PreferredDuringSchedulingIgnoredDuringExecution {
-			affinity.queueGroupAffinityPreferredIndexes[group] = i
-		}
 	}
 	nodeGroupAntiAffinity := queue.Queue.Spec.Affinity.NodeGroupAntiAffinity
 	if nodeGroupAntiAffinity != nil {
@@ -150,7 +140,7 @@ func (q queueGroupAffinity) predicate(group string) error {
 	return nil
 }
 
-func (q queueGroupAffinity) score(group string, enablePreferredOrder bool) float64 {
+func (q queueGroupAffinity) score(group string) float64 {
 	nodeScore := 0.0
 	// Affinity: hard constraints should be checked first
 	// to make sure soft constraints can cover score.
@@ -158,15 +148,8 @@ func (q queueGroupAffinity) score(group string, enablePreferredOrder bool) float
 	if q.queueGroupAffinityRequired.Has(group) {
 		nodeScore += BaseScore
 	}
-	if enablePreferredOrder {
-		if i, ok := q.queueGroupAffinityPreferredIndexes[group]; ok {
-			n := len(q.queueGroupAffinityPreferredIndexes)
-			nodeScore += 0.5 * BaseScore * float64(n-i) / float64(n)
-		}
-	} else {
-		if q.queueGroupAffinityPreferred.Has(group) {
-			nodeScore += 0.5 * BaseScore
-		}
+	if q.queueGroupAffinityPreferred.Has(group) {
+		nodeScore += 0.5 * BaseScore
 	}
 	if q.queueGroupAntiAffinityPreferred.Has(group) {
 		nodeScore = -1
@@ -277,32 +260,22 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 			return score, nil
 		}
 		job := ssn.Jobs[task.Job]
-		if job == nil {
-			klog.Warningf("[nodegroup] Skip node scoring for task <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
-				task.Namespace, task.Name, task.Job)
-			return score, nil
-		}
 		attr := np.queueAttrs[job.Queue]
 		if attr != nil && attr.affinity != nil {
-			score = attr.affinity.score(group, np.enablePreferredOrder)
+			score = attr.affinity.score(group)
 		}
 
-		klog.V(4).Infof("[nodegroup] task <%s>/<%s> queue %s on node %s of nodegroup %s, score %v", task.Namespace, task.Name, job.Queue, node.Name, group, score)
+		klog.V(4).Infof("task <%s>/<%s> queue %s on node %s of nodegroup %s, score %v", task.Namespace, task.Name, job.Queue, node.Name, group, score)
 		return score, nil
 	}
 	ssn.AddNodeOrderFn(np.Name(), nodeOrderFn)
 
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		job := ssn.Jobs[task.Job]
-		if job == nil {
-			klog.Warningf("[nodegroup] Skip predicate for task <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
-				task.Namespace, task.Name, task.Job)
-			return fmt.Errorf("job %s not found in session", task.Job)
-		}
 		attr := np.queueAttrs[job.Queue]
 
 		// Check if the queue has any node group affinity rules
-		unsetAffinity := attr == nil || attr.affinity == nil ||
+		unsetAffinity := attr.affinity == nil ||
 			(attr.affinity.queueGroupAffinityRequired.Len() == 0 &&
 				attr.affinity.queueGroupAffinityPreferred.Len() == 0 &&
 				attr.affinity.queueGroupAntiAffinityRequired.Len() == 0 &&

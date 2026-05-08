@@ -19,8 +19,6 @@ package v1alpha1
 
 // CPUInfoApplyConfiguration represents a declarative configuration of the CPUInfo type for use
 // with apply.
-//
-// CPUInfo is the cpu topology detail
 type CPUInfoApplyConfiguration struct {
 	NUMANodeID *int `json:"numa,omitempty"`
 	SocketID   *int `json:"socket,omitempty"`

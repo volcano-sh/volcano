@@ -71,7 +71,7 @@ spec:
   reclaimable: true
   deserved: # set the deserved field.
     cpu: 2
-    memory: 8Gi
+    memeory: 8Gi
 ```
 
 config queue2's deserved field with 6 cpu and 24Gi memory.

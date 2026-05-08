@@ -19,8 +19,6 @@ package v1alpha1
 
 // JobFlowStatusApplyConfiguration represents a declarative configuration of the JobFlowStatus type for use
 // with apply.
-//
-// JobFlowStatus defines the observed state of JobFlow
 type JobFlowStatusApplyConfiguration struct {
 	PendingJobs    []string                               `json:"pendingJobs,omitempty"`
 	RunningJobs    []string                               `json:"runningJobs,omitempty"`

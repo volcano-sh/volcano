@@ -20,15 +20,10 @@ package v1alpha1
 // PartitionPolicySpecApplyConfiguration represents a declarative configuration of the PartitionPolicySpec type for use
 // with apply.
 type PartitionPolicySpecApplyConfiguration struct {
-	// TotalPartitions indicates how many groups a set of pods within a task is divided into.
-	// The product of TotalPartitions and PartitionSize should be equal to Replicas.
-	TotalPartitions *int32 `json:"totalPartitions,omitempty"`
-	// PartitionSize is the number of pods included in each group.
-	PartitionSize *int32 `json:"partitionSize,omitempty"`
-	// NetworkTopology defines the NetworkTopology config, this field works in conjunction with network topology feature and hyperNode CRD.
+	TotalPartitions *int32                                 `json:"totalPartitions,omitempty"`
+	PartitionSize   *int32                                 `json:"partitionSize,omitempty"`
 	NetworkTopology *NetworkTopologySpecApplyConfiguration `json:"networkTopology,omitempty"`
-	// MinPartitions defines the minimum number of sub-affinity groups required.
-	MinPartitions *int32 `json:"minPartitions,omitempty"`
+	MinPartitions   *int32                                 `json:"minPartitions,omitempty"`
 }
 
 // PartitionPolicySpecApplyConfiguration constructs a declarative configuration of the PartitionPolicySpec type for use with

@@ -38,15 +38,14 @@ import (
 var _ = Describe("Job Error Handling", func() {
 	var testCtx *e2eutil.TestContext
 
-	BeforeEach(func() {
-		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
-		DeferCleanup(e2eutil.CleanupTestContext, testCtx)
-	})
-
 	JustAfterEach(func() {
 		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
 	})
 	It("job level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
+		By("init test context")
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "failed-restart-job",
@@ -80,6 +79,10 @@ var _ = Describe("Job Error Handling", func() {
 	})
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: TerminateJob", func() {
+		By("init test context")
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "failed-terminate-job",
@@ -113,6 +116,9 @@ var _ = Describe("Job Error Handling", func() {
 	})
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob", func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "failed-abort-job",
@@ -146,6 +152,10 @@ var _ = Describe("Job Error Handling", func() {
 	})
 
 	It("job level LifecyclePolicy, Event: PodFailed, Action: RestartPod; Event PodEvicted, Action: TerminateJob, Timeout: 5m", func() {
+		By("init test context")
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "failed-restart-job",
@@ -186,6 +196,9 @@ var _ = Describe("Job Error Handling", func() {
 	})
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "evicted-restart-job",
@@ -226,6 +239,9 @@ var _ = Describe("Job Error Handling", func() {
 	})
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "evicted-terminate-job",
@@ -266,6 +282,9 @@ var _ = Describe("Job Error Handling", func() {
 	})
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: AbortJob", func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "evicted-abort-job",
@@ -306,6 +325,9 @@ var _ = Describe("Job Error Handling", func() {
 	})
 
 	It("job level LifecyclePolicy, Event: Any; Action: RestartJob", func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "any-restart-job",
@@ -347,6 +369,8 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("Job error handling: Restart job when job is unschedulable", func() {
 		By("init test context")
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 		rep := e2eutil.ClusterSize(testCtx, e2eutil.OneCPU)
 
 		jobSpec := &e2eutil.JobSpec{
@@ -403,6 +427,8 @@ var _ = Describe("Job Error Handling", func() {
 	})
 
 	It("Job error handling: Abort job when job is unschedulable", func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 		rep := e2eutil.ClusterSize(testCtx, e2eutil.OneCPU)
 
 		jobSpec := &e2eutil.JobSpec{
@@ -456,6 +482,8 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
 		By("init test context")
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
@@ -496,6 +524,8 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: TaskFailed; Action: TerminateJob", func() {
 		By("init test context")
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
@@ -549,6 +579,8 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, error code: 3; Action: RestartJob", func() {
 		By("init test context")
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
 		var erroCode int32 = 3
@@ -585,6 +617,9 @@ var _ = Describe("Job Error Handling", func() {
 	})
 
 	It("job level LifecyclePolicy, Event[]: PodEvicted, PodFailed; Action: TerminateJob", func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "evicted-terminate-job",
@@ -628,6 +663,8 @@ var _ = Describe("Job Error Handling", func() {
 	})
 	It("Task level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
 		By("init test context")
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
@@ -661,6 +698,9 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "evicted-restart-job",
@@ -701,6 +741,9 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "evicted-terminate-job",
@@ -740,6 +783,9 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "any-complete-job",
@@ -777,6 +823,8 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob and Task level lifecyclePolicy, Event : PodFailed; Action: RestartJob", func() {
 		By("init test context")
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
 		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
@@ -824,7 +872,7 @@ var _ = Describe("Job Error Handling", func() {
 				e2eutil.WorkerPriority: e2eutil.WorkerPriorityValue,
 			},
 		})
-		DeferCleanup(e2eutil.CleanupTestContext, testCtx)
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		rep := e2eutil.ClusterSize(testCtx, e2eutil.OneCPU)
 		nodecount := e2eutil.ClusterNodeNumber(testCtx)

@@ -85,21 +85,6 @@ kubectl get node {node-name} -o yaml
 
 ---
 
-### PodGroup Device Spread
-
-To prevent two pods from the same PodGroup from sharing the same vGPU device, add the
-`volcano.sh/vgpu-podgroup-policy: spread` annotation to the pod. Pods without this
-annotation continue to use the default binpacking behavior.
-
-```yaml
-metadata:
-  name: spread-pod
-  annotations:
-    volcano.sh/vgpu-podgroup-policy: "spread"
-```
-
----
-
 ### HAMI-core Usage
 
 * **Pod Spec**:
@@ -155,46 +140,6 @@ spec:
 ```
 
 Note: Actual memory allocated depends on best-fit MIG slice (e.g., request 3GB → 5GB slice used).
-
----
-
-## GPU Exclusivity (HAMI-core only)
-
-GPU exclusivity ensures that pods matching configured label rules get **dedicated physical GPUs** — no other rule-matching pod can share those GPUs. Non-matching pods can still share GPUs normally. This feature only applies to **hami-core** nodes; dynamic MIG nodes are skipped since they already provide hardware-level isolation. Unlike the `spread` scheduling policy, which distributes pods across different nodes for load balancing, GPU exclusivity operates at the **GPU device level within a single node** — it prevents rule-matching pods from sharing the same physical GPU, even when they land on the same node. The two features are orthogonal and can be used together. If a rule-matching pod cannot find a GPU that satisfies exclusivity (i.e., all GPUs on a node are already reserved by other rule-matching pods), the pod will **fail FilterNode** for that node and remain pending until a suitable node with available exclusive GPUs becomes available.
-
-### Configuration
-
-Add `deviceshare.GPUExclusiveRules` to the deviceshare plugin arguments:
-
-```yaml
-- name: deviceshare
-  arguments:
-    deviceshare.VGPUEnable: true
-    deviceshare.GPUExclusiveRules:
-      - workloadType: training
-      - workloadType: batch
-        priority: high
-```
-
-Each rule is a set of label key-value pairs. A pod must match **all** labels in a rule to receive exclusivity. Exclusivity is enforced within the same rule only — pods matching **different** rules can still share GPUs with each other.
-
-### Pod Example
-
-```yaml
-metadata:
-  name: training-job
-  labels:
-    workloadType: training
-spec:
-  schedulerName: volcano
-  containers:
-  - name: trainer
-    image: nvidia/cuda:12.0-base
-    resources:
-      limits:
-        volcano.sh/vgpu-number: "4"
-        volcano.sh/vgpu-memory: "16384"
-```
 
 ---
 

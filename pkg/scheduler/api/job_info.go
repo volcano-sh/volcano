@@ -575,17 +575,10 @@ func (ji *JobInfo) GetMinResources() *Resource {
 
 // Get the total resources of tasks whose pod is scheduling gated
 // By definition, if a pod is scheduling gated, it's status is Pending
-// Note: Tasks that are only Volcano scheduling gated (scheduling.volcano.sh/queue-allocation-gate)
-// are excluded from this calculation, as they should be counted in inqueue resources.
 func (ji *JobInfo) GetSchGatedPodResources() *Resource {
 	res := EmptyResource()
 	for _, task := range ji.Tasks {
 		if task.SchGated {
-			// Exclude tasks that are only Volcano scheduling gated
-			// These should be counted in inqueue resources, not deducted
-			if HasOnlyVolcanoSchedulingGate(task.Pod) {
-				continue
-			}
 			res.Add(task.Resreq)
 		}
 	}
@@ -648,15 +641,24 @@ func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
 }
 
 // UpdateTaskStatus is used to update task's status in a job.
-func (ji *JobInfo) UpdateTaskStatus(task *TaskInfo, status TaskStatus) {
+// If error occurs both task and job are guaranteed to be in the original state.
+func (ji *JobInfo) UpdateTaskStatus(task *TaskInfo, status TaskStatus) error {
+	if err := validateStatusUpdate(task.Status, status); err != nil {
+		return err
+	}
+
 	// First remove the task (if exist) from the task list.
 	if _, found := ji.Tasks[task.UID]; found {
-		ji.DeleteTaskInfo(task)
+		if err := ji.DeleteTaskInfo(task); err != nil {
+			return err
+		}
 	}
 
 	// Update task's status to the target status once task addition is guaranteed to succeed.
 	task.Status = status
 	ji.AddTaskInfo(task)
+
+	return nil
 }
 
 func (ji *JobInfo) deleteTaskIndex(ti *TaskInfo) {
@@ -670,7 +672,7 @@ func (ji *JobInfo) deleteTaskIndex(ti *TaskInfo) {
 }
 
 // DeleteTaskInfo is used to delete a task from a job
-func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) {
+func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) error {
 	if task, found := ji.Tasks[ti.UID]; found {
 		ji.TotalRequest.Sub(task.Resreq)
 		if AllocatedStatus(task.Status) {
@@ -679,10 +681,11 @@ func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) {
 		delete(ji.Tasks, task.UID)
 		ji.deleteTaskIndex(task)
 		ji.deleteTaskFromSubJob(ti)
-		return
+		return nil
 	}
 
 	klog.Warningf("failed to find task <%v/%v> in job <%v/%v>", ti.Namespace, ti.Name, ji.Namespace, ji.Name)
+	return nil
 }
 
 // Clone is used to clone a jobInfo object

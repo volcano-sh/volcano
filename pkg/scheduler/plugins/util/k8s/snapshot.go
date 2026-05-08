@@ -76,7 +76,7 @@ type volcanoInfo struct {
 	nodeInfoList []*api.NodeInfo
 }
 
-var _ fwk.SharedLister = &Snapshot{}
+var _ framework.SharedLister = &Snapshot{}
 
 // NewEmptySnapshot initializes a Snapshot struct and returns it.
 func NewEmptySnapshot() *Snapshot {
@@ -284,12 +284,12 @@ func (s *Snapshot) Pods() scheduler.PodsLister {
 }
 
 // NodeInfos returns a NodeInfoLister.
-func (s *Snapshot) NodeInfos() fwk.NodeInfoLister {
+func (s *Snapshot) NodeInfos() framework.NodeInfoLister {
 	return s
 }
 
 // StorageInfos returns a StorageInfoLister.
-func (s *Snapshot) StorageInfos() fwk.StorageInfoLister {
+func (s *Snapshot) StorageInfos() framework.StorageInfoLister {
 	return s
 }
 

@@ -117,9 +117,6 @@ rules:
     resources: ["resourceclaims/status"]
     verbs: ["update"]
   - apiGroups: ["resource.k8s.io"]
-    resources: ["resourceclaims/binding"]
-    verbs: ["update", "patch"]
-  - apiGroups: ["resource.k8s.io"]
     resources: ["deviceclasses","resourceslices"]
     verbs: ["get", "list", "watch", "create"]
   - apiGroups: [ "resource.k8s.io" ]
@@ -195,7 +192,7 @@ spec:
       {{- end }}
       containers:
         - name: {{ .Release.Name }}-scheduler
-          image: {{ .Values.basic.image_registry }}/{{.Values.basic.scheduler_image_name}}:{{ .Values.basic.scheduler_image_tag_version | default .Values.basic.image_tag_version }}
+          image: {{ .Values.basic.image_registry }}/{{.Values.basic.scheduler_image_name}}:{{.Values.basic.image_tag_version}}
           {{- if .Values.custom.scheduler_resources }}
           resources:
           {{- toYaml .Values.custom.scheduler_resources | nindent 12 }}
@@ -228,9 +225,6 @@ spec:
             {{- end }}
             {{- if .Values.custom.scheduler_node_worker_threads }}
             - --node-worker-threads={{.Values.custom.scheduler_node_worker_threads}}
-            {{- end }}
-            {{- if ne .Values.custom.scheduler_percentage_nodes_to_find nil }}
-            - --percentage-nodes-to-find={{.Values.custom.scheduler_percentage_nodes_to_find}}
             {{- end }}
             {{- if .Values.custom.scheduler_plugins_dir }}
             - --plugins-dir={{ .Values.custom.scheduler_plugins_dir }}

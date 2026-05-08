@@ -23,10 +23,7 @@ import (
 
 // TaskStateApplyConfiguration represents a declarative configuration of the TaskState type for use
 // with apply.
-//
-// TaskState contains details for the current state of the task.
 type TaskStateApplyConfiguration struct {
-	// The phase of Task.
 	Phase map[v1.PodPhase]int32 `json:"phase,omitempty"`
 }
 

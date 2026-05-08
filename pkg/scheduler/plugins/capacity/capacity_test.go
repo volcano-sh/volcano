@@ -19,7 +19,6 @@ package capacity
 import (
 	"os"
 	"testing"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -31,7 +30,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
 	"volcano.sh/volcano/pkg/scheduler/actions/reclaim"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
@@ -205,21 +203,6 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 	pg32 := util.BuildPodGroup("pg32", "ns1", "queue20", 1, nil, schedulingv1beta1.PodGroupInqueue)
 	queue20 := util.BuildQueueWithResourcesQuantity("queue20", api.BuildResourceList("2", "2Gi"), nil)
 
-	// case10: PreemptiveFn respects capability — do not reclaim when futureUsed would exceed capability (even if below deserved on some dimensions).
-	// Simulating: https://github.com/volcano-sh/volcano/issues/5048
-	//   - Bug 3 preemptiveFn does not check queue capability which allows reclaim above capability/realCapability
-	//     Queue q-cap has capability=deserved=8 CPU 100Gi, allocated 7 CPU 90Gi; pending task 2 CPU 5Gi → futureUsed 9 CPU 95Gi exceeds capability on CPU.
-	n9 := util.BuildNode("n9", api.BuildResourceList("8", "100Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
-	n10 := util.BuildNode("n10", api.BuildResourceList("8", "100Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
-	p33 := util.BuildPod("ns1", "p33", "n9", corev1.PodRunning, api.BuildResourceList("7", "90Gi"), "pg33", make(map[string]string), nil)
-	p34 := util.BuildPod("ns1", "p34", "", corev1.PodPending, api.BuildResourceList("2", "5Gi"), "pg34", make(map[string]string), nil)
-	p35 := util.BuildPod("ns1", "p35", "n10", corev1.PodRunning, api.BuildResourceList("2", "5Gi"), "pg35", make(map[string]string), nil)
-	pg33 := util.BuildPodGroup("pg33", "ns1", "queue21", 1, nil, schedulingv1beta1.PodGroupRunning)
-	pg34 := util.BuildPodGroup("pg34", "ns1", "queue21", 1, nil, schedulingv1beta1.PodGroupInqueue)
-	pg35 := util.BuildPodGroup("pg35", "ns1", "queue22", 1, nil, schedulingv1beta1.PodGroupRunning)
-	queue21 := util.BuildQueueWithResourcesQuantity("queue21", api.BuildResourceList("8", "100Gi"), api.BuildResourceList("8", "100Gi"))
-	queue22 := util.BuildQueueWithResourcesQuantity("queue22", nil, api.BuildResourceList("2", "5Gi"))
-
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name:      "case0: Pod allocatable when queue has not exceed capability",
@@ -338,17 +321,6 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 			Nodes:           []*corev1.Node{n8},
 			PodGroups:       []*schedulingv1beta1.PodGroup{pg31, pg32},
 			Queues:          []*schedulingv1beta1.Queue{queue19, queue20},
-			ExpectPipeLined: map[string][]string{},
-			ExpectEvicted:   []string{},
-			ExpectEvictNum:  0,
-		},
-		{
-			Name:            "case10: PreemptiveFn respects capability — no reclaim when futureUsed would exceed capability",
-			Plugins:         plugins,
-			Pods:            []*corev1.Pod{p33, p34, p35},
-			Nodes:           []*corev1.Node{n9, n10},
-			PodGroups:       []*schedulingv1beta1.PodGroup{pg33, pg34, pg35},
-			Queues:          []*schedulingv1beta1.Queue{queue21, queue22},
 			ExpectPipeLined: map[string][]string{},
 			ExpectEvicted:   []string{},
 			ExpectEvictNum:  0,
@@ -984,199 +956,5 @@ func Test_updateQueueAttrShare(t *testing.T) {
 				t.Errorf("updateQueueAttrShare() share = %v, want %v", attr.share, tt.wantShare)
 			}
 		})
-	}
-}
-
-// Test_buildHierarchicalQueueAttrs_nilSafety is a regression test for nil pointer
-// dereferences in buildHierarchicalQueueAttrs when the root queue or a job's queue
-// is absent from the session snapshot.
-func Test_buildHierarchicalQueueAttrs_nilSafety(t *testing.T) {
-	plugins := map[string]framework.PluginBuilder{PluginName: New, predicates.PluginName: predicates.New, gang.PluginName: gang.New}
-	trueValue := true
-	actions := []framework.Action{allocate.New()}
-
-	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
-
-	tiers := []conf.Tier{
-		{
-			Plugins: []conf.PluginOption{
-				{
-					Name:               PluginName,
-					EnabledAllocatable: &trueValue,
-					EnabledReclaimable: &trueValue,
-					EnabledQueueOrder:  &trueValue,
-					EnabledHierarchy:   &trueValue,
-					EnabledJobEnqueued: &trueValue,
-				},
-				{
-					Name:             predicates.PluginName,
-					EnabledPredicate: &trueValue,
-				},
-				{
-					Name:               gang.PluginName,
-					EnabledJobStarving: &trueValue,
-				},
-			},
-		},
-	}
-
-	tests := []uthelper.TestCommonStruct{
-		{
-			// Regression: root queue absent from ssn.Queues caused nil pointer dereference
-			// at buildHierarchicalQueueAttrs:679 (rootQueueAttr.capability.IsEmpty()).
-			// With the fix, buildHierarchicalQueueAttrs returns false and the session
-			// completes gracefully without scheduling any pods.
-			Name:           "no-panic when root queue is absent (empty ssn.Queues)",
-			Plugins:        plugins,
-			Pods:           []*corev1.Pod{},
-			Nodes:          []*corev1.Node{n1},
-			PodGroups:      []*schedulingv1beta1.PodGroup{},
-			Queues:         []*schedulingv1beta1.Queue{}, // no Queue CRs at all
-			ExpectBindMap:  map[string]string{},
-			ExpectBindsNum: 0,
-		},
-		{
-			// Regression: a job whose queue was deleted between scheduling sessions caused
-			// nil pointer dereference at buildHierarchicalQueueAttrs:615 (attr.children).
-			// The root queue IS present so the queues loop succeeds, but the job's queue
-			// is missing from ssn.Queues. With the fix the job is skipped with a warning
-			// and scheduling continues for all other work.
-			Name:    "no-panic when job references a deleted queue",
-			Plugins: plugins,
-			Pods: []*corev1.Pod{
-				util.BuildPod("ns1", "orphan", "", corev1.PodPending,
-					api.BuildResourceList("1", "1Gi"), "pg-orphan",
-					make(map[string]string), make(map[string]string)),
-			},
-			Nodes: []*corev1.Node{n1},
-			PodGroups: []*schedulingv1beta1.PodGroup{
-				// pg-orphan belongs to "deleted-queue" which is NOT in Queues below
-				util.BuildPodGroup("pg-orphan", "ns1", "deleted-queue", 1, nil,
-					schedulingv1beta1.PodGroupInqueue),
-			},
-			// Only the root queue exists; "deleted-queue" has been removed
-			Queues:         []*schedulingv1beta1.Queue{buildQueueWithParents("root", "", nil, nil)},
-			ExpectBindMap:  map[string]string{},
-			ExpectBindsNum: 0,
-		},
-	}
-
-	for i, test := range tests {
-		t.Run(test.Name, func(t *testing.T) {
-			test.RegisterSession(tiers, nil)
-			defer test.Close()
-			// Must not panic; any panic will surface as a test failure via t.Fatal.
-			test.Run(actions)
-			if err := test.CheckAll(i); err != nil {
-				t.Fatal(err)
-			}
-		})
-	}
-}
-
-// TestNoDoubleCountingForInqueueJobWithBindingTasks is a regression test for a
-// double-counting bug in the capacity plugin.
-//
-// The bug: when jobA's tasks move to Binding after an allocate cycle, they are
-// tracked in attr.allocated (Binding ∈ AllocatedStatus). But the PodGroup stays
-// Inqueue because Binding ∉ ScheduledStatus, so buildQueueAttrs adds the full
-// minResources to attr.inqueue on top of what's already in attr.allocated.
-// Queue looks over-capacity, jobB gets rejected even though there's room.
-//
-// This test exercises the real Binding window by running two scheduler cycles:
-// cycle 1 allocates jobA's tasks (leaving them in Binding), then cycle 2
-// enqueues + allocates jobB. With the fix, jobB binds correctly.
-func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
-	options.Default()
-
-	prevEnabledActionMap := conf.EnabledActionMap
-	conf.EnabledActionMap = map[string]bool{"enqueue": true}
-	defer func() { conf.EnabledActionMap = prevEnabledActionMap }()
-
-	trueValue := true
-	plugins := map[string]framework.PluginBuilder{PluginName: New}
-	uthelper.RegisterPlugins(plugins)
-	defer framework.CleanupPluginBuilders()
-
-	tiers := []conf.Tier{
-		{
-			Plugins: []conf.PluginOption{
-				{
-					Name:               PluginName,
-					EnabledAllocatable: &trueValue,
-					EnabledOverused:    &trueValue,
-					EnabledJobEnqueued: &trueValue,
-				},
-			},
-		},
-	}
-
-	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
-
-	res1cpu := api.BuildResourceList("1", "1Gi")
-	minRes3cpu := api.BuildResourceList("3", "3Gi")
-	minRes1cpu := api.BuildResourceList("1", "1Gi")
-
-	// jobA: 3 pending tasks, PodGroup already Inqueue. Cycle 1 will allocate these,
-	// moving them to Binding in the cache while pgA stays Inqueue.
-	pgA := util.BuildPodGroup("pgA", "ns1", "q1", 3, nil, schedulingv1beta1.PodGroupInqueue)
-	pgA.Spec.MinResources = &minRes3cpu
-	pA1 := util.BuildPod("ns1", "pA1", "", corev1.PodPending, res1cpu, "pgA", nil, nil)
-	pA2 := util.BuildPod("ns1", "pA2", "", corev1.PodPending, res1cpu, "pgA", nil, nil)
-	pA3 := util.BuildPod("ns1", "pA3", "", corev1.PodPending, res1cpu, "pgA", nil, nil)
-
-	// jobB: 1 pending task. 1 CPU is free after jobA takes 3, so it should be
-	// enqueued and bound in cycle 2. The double-counting bug makes the queue appear
-	// at 6/4 CPU and rejects it.
-	pgB := util.BuildPodGroup("pgB", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
-	pgB.Spec.MinResources = &minRes1cpu
-	pB1 := util.BuildPod("ns1", "pB1", "", corev1.PodPending, res1cpu, "pgB", nil, nil)
-
-	q1 := util.BuildQueueWithResourcesQuantity("q1", nil, api.BuildResourceList("4", "8Gi"))
-
-	binder := util.NewFakeBinder(10)
-	evictor := util.NewFakeEvictor(0)
-	statusUpdater := &util.FakeStatusUpdater{}
-	stop := make(chan struct{})
-	defer close(stop)
-
-	sc := cache.NewCustomMockSchedulerCache("test-capacity", binder, evictor, statusUpdater, nil, nil)
-	sc.Run(stop)
-	sc.AddOrUpdateNode(n1)
-	// Only jobA in cache for cycle 1 so jobB can't accidentally get scheduled early.
-	sc.AddPod(pA1)
-	sc.AddPod(pA2)
-	sc.AddPod(pA3)
-	sc.AddPodGroupV1beta1(pgA)
-	sc.AddQueueV1beta1(q1)
-
-	// Cycle 1: allocate jobA. After this pA1/pA2/pA3 are Binding in cache,
-	// pgA stays Inqueue (Binding ∉ ScheduledStatus).
-	ssn1 := framework.OpenSession(sc, tiers, nil)
-	allocate.New().Execute(ssn1)
-	framework.CloseSession(ssn1)
-
-	cycle1 := uthelper.WaitForBinds(t, binder.Channel, 3, 5*time.Second)
-	for _, pod := range []string{"ns1/pA1", "ns1/pA2", "ns1/pA3"} {
-		if !cycle1[pod] {
-			t.Errorf("expected %s bound in cycle 1, got %v", pod, cycle1)
-		}
-	}
-
-	// Now add jobB. Cache state: pA1/pA2/pA3 Binding, pgA Inqueue, 1 CPU free.
-	sc.AddPod(pB1)
-	sc.AddPodGroupV1beta1(pgB)
-
-	// Cycle 2: enqueue + allocate.
-	// Correct (fix applied):  allocated=3CPU, inqueue=max(0,3-3)=0 → 1+3+0=4 ≤ 4 → jobB bound.
-	// Buggy (pre-fix):        allocated=3CPU, inqueue=3CPU         → 1+3+3=7 > 4 → jobB rejected.
-	ssn2 := framework.OpenSession(sc, tiers, nil)
-	enqueue.New().Execute(ssn2)
-	allocate.New().Execute(ssn2)
-	framework.CloseSession(ssn2)
-
-	cycle2 := uthelper.WaitForBinds(t, binder.Channel, 1, 5*time.Second)
-	if !cycle2["ns1/pB1"] {
-		t.Errorf("regression: pB1 not bound in cycle 2 (got %v) — capacity plugin double-counting inqueue resources for pgA with tasks in Binding", cycle2)
 	}
 }

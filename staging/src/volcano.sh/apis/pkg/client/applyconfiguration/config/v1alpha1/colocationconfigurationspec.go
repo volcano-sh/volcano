@@ -23,12 +23,8 @@ import (
 
 // ColocationConfigurationSpecApplyConfiguration represents a declarative configuration of the ColocationConfigurationSpec type for use
 // with apply.
-//
-// ColocationConfigurationSpec defines the desired state of ColocationConfiguration
 type ColocationConfigurationSpecApplyConfiguration struct {
-	// Selector is a label selector to match the target pods
-	Selector *v1.LabelSelectorApplyConfiguration `json:"selector,omitempty"`
-	// Configuration defines the colocation configuration for the target pods
+	Selector                        *v1.LabelSelectorApplyConfiguration `json:"selector,omitempty"`
 	ConfigurationApplyConfiguration `json:",inline"`
 }
 

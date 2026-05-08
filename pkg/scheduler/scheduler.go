@@ -31,17 +31,14 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"k8s.io/apimachinery/pkg/util/wait"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/filewatcher"
 	schedcache "volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
-	"volcano.sh/volcano/pkg/scheduler/gate"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
@@ -62,9 +59,6 @@ type Scheduler struct {
 	metricsConf        map[string]string
 	dumper             schedcache.Dumper
 	disableDefaultConf bool
-
-	// schGateManager is used for async scheduling gate removal.
-	schGateManager *gate.SchGateManager
 }
 
 // NewScheduler returns a Scheduler
@@ -96,17 +90,6 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 // initializes the cache, and begins the scheduling process.
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	pc.loadSchedulerConf()
-
-	// Start the gate manager (if the feature gate is enabled).
-	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) {
-		pc.schGateManager = gate.NewSchGateManager(pc.cache.Client(), options.ServerOpts.GateRemovalWorkerNum)
-		pc.schGateManager.Start()
-		go func() {
-			<-stopCh
-			pc.schGateManager.Stop()
-		}()
-	}
-
 	go pc.watchSchedulerConf(stopCh)
 	// Start cache for policy.
 	pc.cache.SetMetricsConf(pc.metricsConf)
@@ -139,7 +122,6 @@ func (pc *Scheduler) runOnce() {
 	}
 
 	ssn := framework.OpenSession(pc.cache, plugins, configurations)
-	ssn.SetSchGateManager(pc.schGateManager)
 	defer func() {
 		framework.CloseSession(ssn)
 		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))

@@ -20,12 +20,9 @@ package v1alpha1
 // MemoryQosApplyConfiguration represents a declarative configuration of the MemoryQos type for use
 // with apply.
 type MemoryQosApplyConfiguration struct {
-	// HighRatio is the memory throttling ratio; default=100, range: 0~100
 	HighRatio *int `json:"highRatio,omitempty"`
-	// LowRatio is the memory priority protection ratio; default=0, range: 0~100
-	LowRatio *int `json:"lowRatio,omitempty"`
-	// MinRatio is the absolute memory protection ratio; default=0, range: 0~100
-	MinRatio *int `json:"minRatio,omitempty"`
+	LowRatio  *int `json:"lowRatio,omitempty"`
+	MinRatio  *int `json:"minRatio,omitempty"`
 }
 
 // MemoryQosApplyConfiguration constructs a declarative configuration of the MemoryQos type for use with

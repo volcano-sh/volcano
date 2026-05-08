@@ -49,18 +49,15 @@ const (
 	binpackMultiplier    = 100
 	spreadMultiplier     = 100
 
-	GPUModeAnnotation             = "volcano.sh/vgpu-mode"
-	VGPUPodGroupPolicyAnnotation  = "volcano.sh/vgpu-podgroup-policy"
-	VGPUPodGroupPolicySpreadValue = "spread"
-	vGPUControllerHAMICore        = "hami-core"
-	vGPUControllerMIG             = "mig"
-	vGPUControllerMPS             = "mps"
+	GPUModeAnnotation      = "volcano.sh/vgpu-mode"
+	vGPUControllerHAMICore = "hami-core"
+	vGPUControllerMIG      = "mig"
+	vGPUControllerMPS      = "mps"
 )
 
 var (
 	VGPUEnable     bool
 	NodeLockEnable bool
-	SchedulePolicy string
 )
 
 type ContainerDevice struct {

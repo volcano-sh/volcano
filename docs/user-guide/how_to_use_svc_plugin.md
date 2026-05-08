@@ -174,11 +174,11 @@ spec:
       readOnly: true
   dnsPolicy: ClusterFirst
   enableServiceLinks: true
-  hostname: tensorflow-dist-mnist-ps-0    ## Add `hostname` field
+  hostname: tensorflow-dist-mnist-ps-0    ## Add `hostname` filed
   nodeName: volcano-control-plane
   restartPolicy: Never
   schedulerName: volcano
-  subdomain: tensorflow-dist-mnist        ## Add `subdomain` field
+  subdomain: tensorflow-dist-mnist        ## Add `subdomain` filed
   tolerations:
   - effect: NoExecute
     key: node.kubernetes.io/not-ready

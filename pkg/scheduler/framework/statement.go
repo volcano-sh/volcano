@@ -69,10 +69,13 @@ func (s *Statement) Operations() []operation {
 }
 
 // Evict the pod
-func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) {
+func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 	// Update status in session
 	if job, found := s.ssn.Jobs[reclaimee.Job]; found {
-		job.UpdateTaskStatus(reclaimee, api.Releasing)
+		if err := job.UpdateTaskStatus(reclaimee, api.Releasing); err != nil {
+			klog.Errorf("Failed to update task <%v/%v> status to %v when evicting in Session <%v>: %v",
+				reclaimee.Namespace, reclaimee.Name, api.Releasing, s.ssn.UID, err)
+		}
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when evicting.",
 			reclaimee.Job, s.ssn.UID)
@@ -80,7 +83,12 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) {
 
 	// Update task in node.
 	if node, found := s.ssn.Nodes[reclaimee.NodeName]; found {
-		node.UpdateTask(reclaimee)
+		err := node.UpdateTask(reclaimee)
+		if err != nil {
+			klog.Errorf("Failed to update task <%v/%v> in node %v for: %s",
+				reclaimee.Namespace, reclaimee.Name, reclaimee.NodeName, err.Error())
+			return err
+		}
 	}
 
 	for _, eh := range s.ssn.eventHandlers {
@@ -96,6 +104,8 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) {
 		task:   reclaimee,
 		reason: reason,
 	})
+
+	return nil
 }
 
 func (s *Statement) evict(reclaimee *api.TaskInfo, reason string) error {
@@ -109,18 +119,14 @@ func (s *Statement) evict(reclaimee *api.TaskInfo, reason string) error {
 	return nil
 }
 
-// UnEvict reverses a prior Evict call for a single task, restoring the task's
-// Running status and node resources. Use this to clean up session state after
-// an individual eviction attempt fails (where the operation was not recorded).
-func (s *Statement) UnEvict(reclaimee *api.TaskInfo) error {
-	return s.unevict(reclaimee)
-}
-
 func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 	// Update status in session
 	job, found := s.ssn.Jobs[reclaimee.Job]
 	if found {
-		job.UpdateTaskStatus(reclaimee, api.Running)
+		if err := job.UpdateTaskStatus(reclaimee, api.Running); err != nil {
+			klog.Errorf("Failed to update task <%v/%v> status to %v when unevicting in Session <%v>: %v",
+				reclaimee.Namespace, reclaimee.Name, api.Running, s.ssn.UID, err)
+		}
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when unevicting.",
 			reclaimee.Job, s.ssn.UID)
@@ -128,7 +134,12 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 
 	// Update task in node.
 	if node, found := s.ssn.Nodes[reclaimee.NodeName]; found {
-		node.UpdateTask(reclaimee)
+		err := node.UpdateTask(reclaimee)
+		if err != nil {
+			klog.Errorf("Failed to update task <%v/%v> in node %v for: %s",
+				reclaimee.Namespace, reclaimee.Name, reclaimee.NodeName, err.Error())
+			return err
+		}
 	}
 
 	for _, eh := range s.ssn.eventHandlers {
@@ -147,7 +158,11 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 	errInfos := make([]error, 0)
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
-		job.UpdateTaskStatus(task, api.Pipelined)
+		if err := job.UpdateTaskStatus(task, api.Pipelined); err != nil {
+			klog.Errorf("Failed to update task <%v/%v> status to %v when pipeline in Session <%v>: %v",
+				task.Namespace, task.Name, api.Pipelined, s.ssn.UID, err)
+			errInfos = append(errInfos, err)
+		}
 	} else {
 		err := fmt.Errorf("Failed to find Job <%s> in Session <%s> index when pipeline.",
 			task.Job, s.ssn.UID)
@@ -206,13 +221,19 @@ func (s *Statement) pipeline(task *api.TaskInfo) {
 func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
-		job.UpdateTaskStatus(task, api.Pending)
+		if err := job.UpdateTaskStatus(task, api.Pending); err != nil {
+			klog.Errorf("Failed to update task <%v/%v> status to %v when unpipeline in Session <%v>: %v",
+				task.Namespace, task.Name, api.Pending, s.ssn.UID, err)
+		}
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when unpipeline.", task.Job, s.ssn.UID)
 	}
 
 	if node, found := s.ssn.Nodes[task.NodeName]; found {
-		node.RemoveTask(task)
+		if err := node.RemoveTask(task); err != nil {
+			klog.Errorf("Failed to remove task <%v/%v> to node <%v> when unpipeline in Session <%v>: %v",
+				task.Namespace, task.Name, task.NodeName, s.ssn.UID, err)
+		}
 		klog.V(3).Infof("After unpipelined Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
@@ -239,7 +260,7 @@ func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 }
 
 // Allocate the task to node
-func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
 	errInfos := make([]error, 0)
 	hostname := nodeInfo.Name
 	task.Pod.Spec.NodeName = hostname
@@ -247,7 +268,11 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 	// Only update status in session
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
-		job.UpdateTaskStatus(task, api.Allocated)
+		if err := job.UpdateTaskStatus(task, api.Allocated); err != nil {
+			klog.Errorf("Failed to update task <%v/%v> status to %v when allocating in Session <%v>: %v",
+				task.Namespace, task.Name, api.Allocated, s.ssn.UID, err)
+			errInfos = append(errInfos, err)
+		}
 	} else {
 		err := fmt.Errorf("Failed to find Job <%s> in Session <%s> index when allocating.",
 			task.Job, s.ssn.UID)
@@ -313,7 +338,11 @@ func (s *Statement) allocate(task *api.TaskInfo) error {
 	}
 
 	if job, found := s.ssn.Jobs[task.Job]; found {
-		job.UpdateTaskStatus(task, api.Binding)
+		if err := job.UpdateTaskStatus(task, api.Binding); err != nil {
+			klog.Errorf("Failed to update task <%v/%v> status to %v when binding in Session <%v>: %v",
+				task.Namespace, task.Name, api.Binding, s.ssn.UID, err)
+			return err
+		}
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when binding.",
 			task.Job, s.ssn.UID)
@@ -329,7 +358,10 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 	// Update status in session
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
-		job.UpdateTaskStatus(task, api.Pending)
+		if err := job.UpdateTaskStatus(task, api.Pending); err != nil {
+			klog.Errorf("Failed to update task <%v/%v> status to %v when unallocating in Session <%v>: %v",
+				task.Namespace, task.Name, api.Pending, s.ssn.UID, err)
+		}
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when unallocating.",
 			task.Job, s.ssn.UID)
@@ -337,7 +369,10 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 
 	if node, found := s.ssn.Nodes[task.NodeName]; found {
 		klog.V(3).Infof("Remove Task <%v> on node <%v>", task.Name, task.NodeName)
-		node.RemoveTask(task)
+		err := node.RemoveTask(task)
+		if err != nil {
+			klog.Errorf("Failed to remove Task <%v> on node <%v> when unallocating: %s", task.Name, task.NodeName, err.Error())
+		}
 	}
 
 	for _, eh := range s.ssn.eventHandlers {
@@ -377,7 +412,6 @@ func (s *Statement) Discard() {
 			}
 		}
 	}
-	s.operations = nil
 }
 
 // Commit operation for evict and pipeline
@@ -402,20 +436,6 @@ func (s *Statement) Commit() {
 				klog.Errorf("Failed to allocate task <%v/%v>: %v.", op.task.Namespace, op.task.Name, err)
 			}
 		}
-	}
-	s.operations = nil
-}
-
-// Merge transfers operations from the given statements into this statement.
-// The source statements share the same session, so their in-memory state changes
-// (evictions, pipelines) are already reflected in the session. Merge moves ownership
-// of those operation records so they will be committed or discarded with this statement.
-// After merging, source statements' operations are cleared to prevent double-commit or
-// double-discard.
-func (s *Statement) Merge(stmts ...*Statement) {
-	for _, stmt := range stmts {
-		s.operations = append(s.operations, stmt.operations...)
-		stmt.operations = nil
 	}
 }
 
@@ -442,7 +462,11 @@ func (s *Statement) RecoverOperations(stmt *Statement) error {
 	for _, op := range stmt.operations {
 		switch op.name {
 		case Evict:
-			s.Evict(op.task, op.reason)
+			err := s.Evict(op.task, op.reason)
+			if err != nil {
+				klog.Errorf("Failed to evict task: %s", err.Error())
+				return err
+			}
 		case Pipeline:
 			err := s.Pipeline(op.task, op.task.NodeName, false)
 			if err != nil {

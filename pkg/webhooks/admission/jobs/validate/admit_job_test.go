@@ -22,12 +22,10 @@ import (
 	"testing"
 
 	admissionv1 "k8s.io/api/admission/v1"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	featuregatetesting "k8s.io/component-base/featuregate/testing"
-	"k8s.io/kubernetes/pkg/features"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
@@ -44,51 +42,17 @@ func TestValidateJobCreate(t *testing.T) {
 	highestTierAllowed := 1
 
 	testCases := []struct {
-		Name                     string
-		PodLevelResourcesEnabled bool
-		Job                      v1alpha1.Job
-		ExpectErr                bool
-		reviewResponse           admissionv1.AdmissionResponse
-		ret                      string
+		Name           string
+		Job            v1alpha1.Job
+		ExpectErr      bool
+		reviewResponse admissionv1.AdmissionResponse
+		ret            string
 	}{
 		{
-			Name:                     "simple-valid-job",
-			PodLevelResourcesEnabled: false,
+			Name: "validate valid-job",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "simple-valid-job",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "task-1",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "",
-			ExpectErr:      false,
-		},
-		{
-			Name: "simple-valid-job-with-policy",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "simple-valid-job-with-policy",
+					Name:      "valid-job",
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.JobSpec{
@@ -107,72 +71,6 @@ func TestValidateJobCreate(t *testing.T) {
 										{
 											Name:  "fake-name",
 											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-					Policies: []v1alpha1.LifecyclePolicy{
-						{
-							Event:  busv1alpha1.PodEvictedEvent,
-							Action: busv1alpha1.RestartTaskAction,
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "",
-			ExpectErr:      false,
-		},
-		{
-			Name:                     "validate valid-job with pod level resources",
-			PodLevelResourcesEnabled: true,
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "valid-job-with-pod-level-resources",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Resources: &v1.ResourceRequirements{
-										Requests: v1.ResourceList{
-											v1.ResourceCPU:                     resource.MustParse("4"),
-											v1.ResourceMemory:                  resource.MustParse("8Gi"),
-											v1.ResourceHugePagesPrefix + "1Mi": resource.MustParse("2Gi"),
-										},
-										Limits: v1.ResourceList{
-											v1.ResourceCPU:                     resource.MustParse("4"),
-											v1.ResourceMemory:                  resource.MustParse("8Gi"),
-											v1.ResourceHugePagesPrefix + "1Mi": resource.MustParse("2Gi"),
-										},
-									},
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-											Resources: v1.ResourceRequirements{
-												Requests: v1.ResourceList{
-													v1.ResourceCPU:                     resource.MustParse("2"),
-													v1.ResourceMemory:                  resource.MustParse("4Gi"),
-													v1.ResourceHugePagesPrefix + "1Mi": resource.MustParse("1Gi"),
-												},
-												Limits: v1.ResourceList{
-													v1.ResourceCPU:                     resource.MustParse("2"),
-													v1.ResourceMemory:                  resource.MustParse("4Gi"),
-													v1.ResourceHugePagesPrefix + "1Mi": resource.MustParse("1Gi"),
-												},
-											},
 										},
 									},
 								},
@@ -193,8 +91,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// duplicate task name
 		{
-			Name:                     "duplicate-task-job",
-			PodLevelResourcesEnabled: false,
+			Name: "duplicate-task-job",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "duplicate-task-job",
@@ -247,8 +144,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// Duplicated Policy Event
 		{
-			Name:                     "job-policy-duplicated",
-			PodLevelResourcesEnabled: false,
+			Name: "job-policy-duplicated",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-policy-duplicated",
@@ -294,8 +190,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// Min Available illegal
 		{
-			Name:                     "Min Available illegal",
-			PodLevelResourcesEnabled: false,
+			Name: "Min Available illegal",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-min-illegal",
@@ -331,8 +226,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// Job Plugin illegal
 		{
-			Name:                     "Job Plugin illegal",
-			PodLevelResourcesEnabled: false,
+			Name: "Job Plugin illegal",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-plugin-illegal",
@@ -379,8 +273,7 @@ func TestValidateJobCreate(t *testing.T) {
 		// These validations are now enforced by CRD schema validation and VAP (ValidatingAdmissionPolicy).
 		// no task specified in the job
 		{
-			Name:                     "no-task",
-			PodLevelResourcesEnabled: false,
+			Name: "no-task",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "no-task",
@@ -398,8 +291,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// replica set less than zero
 		{
-			Name:                     "replica-lessThanZero",
-			PodLevelResourcesEnabled: false,
+			Name: "replica-lessThanZero",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "replica-lessThanZero",
@@ -435,8 +327,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// Policy Event with exit code
 		{
-			Name:                     "job-policy-withExitCode",
-			PodLevelResourcesEnabled: false,
+			Name: "job-policy-withExitCode",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-policy-withExitCode",
@@ -479,8 +370,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// Both policy event and exit code are nil
 		{
-			Name:                     "policy-noEvent-noExCode",
-			PodLevelResourcesEnabled: false,
+			Name: "policy-noEvent-noExCode",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "policy-noEvent-noExCode",
@@ -521,8 +411,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// invalid policy event
 		{
-			Name:                     "invalid-policy-event",
-			PodLevelResourcesEnabled: false,
+			Name: "invalid-policy-event",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "invalid-policy-event",
@@ -564,8 +453,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// invalid policy action
 		{
-			Name:                     "invalid-policy-action",
-			PodLevelResourcesEnabled: false,
+			Name: "invalid-policy-action",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "invalid-policy-action",
@@ -607,8 +495,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// policy exit-code zero
 		{
-			Name:                     "policy-extcode-zero",
-			PodLevelResourcesEnabled: false,
+			Name: "policy-extcode-zero",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "policy-extcode-zero",
@@ -652,8 +539,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// duplicate policy exit-code
 		{
-			Name:                     "duplicate-exitcode",
-			PodLevelResourcesEnabled: false,
+			Name: "duplicate-exitcode",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "duplicate-exitcode",
@@ -701,8 +587,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// Policy with any event and other events
 		{
-			Name:                     "job-policy-withExitCode",
-			PodLevelResourcesEnabled: false,
+			Name: "job-policy-withExitCode",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-policy-withExitCode",
@@ -748,8 +633,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// invalid mount volume
 		{
-			Name:                     "invalid-mount-volume",
-			PodLevelResourcesEnabled: false,
+			Name: "invalid-mount-volume",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "invalid-mount-volume",
@@ -796,8 +680,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// duplicate mount volume
 		{
-			Name:                     "duplicate-mount-volume",
-			PodLevelResourcesEnabled: false,
+			Name: "duplicate-mount-volume",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "duplicate-mount-volume",
@@ -848,8 +731,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      true,
 		},
 		{
-			Name:                     "volume without VolumeClaimName and VolumeClaim",
-			PodLevelResourcesEnabled: false,
+			Name: "volume without VolumeClaimName and VolumeClaim",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "invalid-volume",
@@ -899,8 +781,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// task Policy with any event and other events
 		{
-			Name:                     "taskpolicy-withAnyandOthrEvent",
-			PodLevelResourcesEnabled: false,
+			Name: "taskpolicy-withAnyandOthrEvent",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "taskpolicy-withAnyandOthrEvent",
@@ -946,8 +827,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// job with no queue created
 		{
-			Name:                     "job-with-noQueue",
-			PodLevelResourcesEnabled: false,
+			Name: "job-with-noQueue",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-with-noQueue",
@@ -982,8 +862,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      true,
 		},
 		{
-			Name:                     "job with privileged init container",
-			PodLevelResourcesEnabled: false,
+			Name: "job with privileged init container",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "valid-job",
@@ -1027,8 +906,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      false,
 		},
 		{
-			Name:                     "job with privileged container",
-			PodLevelResourcesEnabled: false,
+			Name: "job with privileged container",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "valid-job",
@@ -1066,8 +944,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      false,
 		},
 		{
-			Name:                     "job with valid task depends on",
-			PodLevelResourcesEnabled: false,
+			Name: "job with valid task depends on",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-with-valid-task-depends-on",
@@ -1117,8 +994,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      false,
 		},
 		{
-			Name:                     "job with invalid task depends on",
-			PodLevelResourcesEnabled: false,
+			Name: "job with invalid task depends on",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-with-invalid-task-depends-on",
@@ -1169,8 +1045,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// task PartitionSize set less than zero
 		{
-			Name:                     "PartitionSize-lessThanZero",
-			PodLevelResourcesEnabled: false,
+			Name: "PartitionSize-lessThanZero",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "PartitionSize-lessThanZero",
@@ -1210,8 +1085,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// task TotalPartitions set less than zero
 		{
-			Name:                     "TotalPartitions-lessThanZero",
-			PodLevelResourcesEnabled: false,
+			Name: "TotalPartitions-lessThanZero",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "TotalPartitions-lessThanZero",
@@ -1251,8 +1125,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// task-with-invalid-PartitionPolicy: replicas not equal to TotalPartitions*PartitionSize
 		{
-			Name:                     "task-with-invalid-PartitionPolicy",
-			PodLevelResourcesEnabled: false,
+			Name: "task-with-invalid-PartitionPolicy",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "task-with-invalid-PartitionPolicy",
@@ -1292,8 +1165,7 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		// task-with-valid-PartitionPolicy: replicas equal to TotalPartitions*PartitionSize
 		{
-			Name:                     "task-with-valid-PartitionPolicy",
-			PodLevelResourcesEnabled: false,
+			Name: "task-with-valid-PartitionPolicy",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "task-with-valid-PartitionPolicy",
@@ -1332,8 +1204,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      false,
 		},
 		{
-			Name:                     "task-with-valid-NetworkTopology-and-PartitionPolicy",
-			PodLevelResourcesEnabled: false,
+			Name: "task-with-valid-NetworkTopology-and-PartitionPolicy",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "task-with-valid-NetworkTopology-and-PartitionPolicy",
@@ -1380,8 +1251,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      false,
 		},
 		{
-			Name:                     "job-with-invalid-NetworkTopology-and-PartitionPolicy",
-			PodLevelResourcesEnabled: false,
+			Name: "job-with-invalid-NetworkTopology-and-PartitionPolicy",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-with-invalid-NetworkTopology-and-PartitionPolicy",
@@ -1430,8 +1300,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      true,
 		},
 		{
-			Name:                     "job-with-invalid-NetworkTopology",
-			PodLevelResourcesEnabled: false,
+			Name: "job-with-invalid-NetworkTopology",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-with-invalid-NetworkTopology",
@@ -1475,8 +1344,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      true,
 		},
 		{
-			Name:                     "task-with-invalid-PartitionPolicy",
-			PodLevelResourcesEnabled: false,
+			Name: "task-with-invalid-PartitionPolicy",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "task-with-invalid-PartitionPolicy",
@@ -1520,8 +1388,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      true,
 		},
 		{
-			Name:                     "task-with-valid-PartitionPolicy-MinPartitions",
-			PodLevelResourcesEnabled: false,
+			Name: "task-with-valid-PartitionPolicy-MinPartitions",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "task-with-valid-PartitionPolicy-MinPartitions",
@@ -1561,8 +1428,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      false,
 		},
 		{
-			Name:                     "task-with-invalid-PartitionPolicy-MinPartitions-not-equal",
-			PodLevelResourcesEnabled: false,
+			Name: "task-with-invalid-PartitionPolicy-MinPartitions-not-equal",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "task-with-invalid-PartitionPolicy-MinPartitions",
@@ -1603,8 +1469,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      true,
 		},
 		{
-			Name:                     "task-with-valid-PartitionPolicy-MinPartitions-equal",
-			PodLevelResourcesEnabled: false,
+			Name: "task-with-valid-PartitionPolicy-MinPartitions-equal",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "task-with-valid-PartitionPolicy-MinPartitions-equal",
@@ -1644,339 +1509,6 @@ func TestValidateJobCreate(t *testing.T) {
 			ret:            "",
 			ExpectErr:      false,
 		},
-		// Test MPI plugin validation
-		{
-			Name:                     "job-with-mpi-plugin-valid-master",
-			PodLevelResourcesEnabled: false,
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job-with-mpi-plugin-valid-master",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "launcher",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "launcher",
-											Image: "mpi:latest",
-										},
-									},
-								},
-							},
-						},
-						{
-							Name:     "worker",
-							Replicas: 2,
-							Template: v1.PodTemplateSpec{
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "worker",
-											Image: "mpi:latest",
-										},
-									},
-								},
-							},
-						},
-					},
-					Plugins: map[string][]string{
-						"mpi": {"--master=launcher"},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "",
-			ExpectErr:      false,
-		},
-		{
-			Name:                     "job-with-mpi-plugin-valid-master-without-worker",
-			PodLevelResourcesEnabled: false,
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job-with-mpi-plugin-valid-master",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "launcher",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "launcher",
-											Image: "mpi:latest",
-										},
-									},
-								},
-							},
-						},
-					},
-					Plugins: map[string][]string{
-						"mpi": {"--master=launcher"},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "",
-			ExpectErr:      false,
-		},
-		{
-			Name:                     "job-with-mpi-plugin-invalid-master",
-			PodLevelResourcesEnabled: false,
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job-with-mpi-plugin-invalid-master",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "worker",
-							Replicas: 2,
-							Template: v1.PodTemplateSpec{
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "worker",
-											Image: "mpi:latest",
-										},
-									},
-								},
-							},
-						},
-					},
-					Plugins: map[string][]string{
-						"mpi": {"--master=launcher"},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "The specified mpi master task was not found",
-			ExpectErr:      true,
-		},
-		{
-			Name:                     "validate invalid-job with pod level resources less than aggregate container resources",
-			PodLevelResourcesEnabled: true,
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "invalid-job-with-pod-level-resources",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Resources: &v1.ResourceRequirements{
-										Requests: v1.ResourceList{
-											v1.ResourceCPU:                     resource.MustParse("2"),
-											v1.ResourceHugePagesPrefix + "1Mi": resource.MustParse("2Gi"),
-											v1.ResourceHugePagesPrefix + "1Ki": resource.MustParse("2Gi"),
-										},
-										Limits: v1.ResourceList{
-											v1.ResourceCPU:                     resource.MustParse("2"),
-											v1.ResourceHugePagesPrefix + "1Mi": resource.MustParse("2Gi"),
-											v1.ResourceHugePagesPrefix + "1Ki": resource.MustParse("2Gi"),
-										},
-									},
-									InitContainers: []v1.Container{
-										{
-											Name:  "fake-name-0",
-											Image: "busybox:1.24",
-											Resources: v1.ResourceRequirements{
-												Requests: v1.ResourceList{
-													v1.ResourceCPU: resource.MustParse("2"),
-												},
-											},
-										},
-									},
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name-1",
-											Image: "busybox:1.24",
-											Resources: v1.ResourceRequirements{
-												Requests: v1.ResourceList{
-													v1.ResourceCPU: resource.MustParse("2"),
-												},
-											},
-										},
-										{
-											Name:  "fake-name-2",
-											Image: "busybox:1.24",
-											Resources: v1.ResourceRequirements{
-												Requests: v1.ResourceList{
-													v1.ResourceCPU: resource.MustParse("2"),
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "spec.task[0].template.spec.resources.requests[cpu]: Invalid value: \"2\": must be greater than or equal to aggregate container requests of 4",
-			ExpectErr:      true,
-		},
-		{
-			Name:                     "validate valid-job with pod level resources less than aggregate container resources, but PodLevelResources disabled",
-			PodLevelResourcesEnabled: false,
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "invalid-job-with-pod-level-resources",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Resources: &v1.ResourceRequirements{
-										Requests: v1.ResourceList{
-											v1.ResourceCPU:                     resource.MustParse("2"),
-											v1.ResourceHugePagesPrefix + "1Mi": resource.MustParse("2Gi"),
-											v1.ResourceHugePagesPrefix + "1Ki": resource.MustParse("2Gi"),
-										},
-										Limits: v1.ResourceList{
-											v1.ResourceCPU:                     resource.MustParse("2"),
-											v1.ResourceHugePagesPrefix + "1Mi": resource.MustParse("2Gi"),
-											v1.ResourceHugePagesPrefix + "1Ki": resource.MustParse("2Gi"),
-										},
-									},
-									InitContainers: []v1.Container{
-										{
-											Name:  "fake-name-0",
-											Image: "busybox:1.24",
-											Resources: v1.ResourceRequirements{
-												Requests: v1.ResourceList{
-													v1.ResourceCPU: resource.MustParse("2"),
-												},
-											},
-										},
-									},
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name-1",
-											Image: "busybox:1.24",
-											Resources: v1.ResourceRequirements{
-												Requests: v1.ResourceList{
-													v1.ResourceCPU: resource.MustParse("2"),
-												},
-											},
-										},
-										{
-											Name:  "fake-name-2",
-											Image: "busybox:1.24",
-											Resources: v1.ResourceRequirements{
-												Requests: v1.ResourceList{
-													v1.ResourceCPU: resource.MustParse("2"),
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "",
-			ExpectErr:      false,
-		},
-		{
-			Name:                     "validate invalid-job with pod level resource requests greater than limits",
-			PodLevelResourcesEnabled: true,
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "invalid-job-with-pod-level-resources",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Resources: &v1.ResourceRequirements{
-										Requests: v1.ResourceList{
-											v1.ResourceCPU: resource.MustParse("6"),
-										},
-										Limits: v1.ResourceList{
-											v1.ResourceCPU: resource.MustParse("4"),
-										},
-									},
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name-1",
-											Image: "busybox:1.24",
-											Resources: v1.ResourceRequirements{
-												Requests: v1.ResourceList{
-													v1.ResourceCPU: resource.MustParse("2"),
-												},
-												Limits: v1.ResourceList{
-													v1.ResourceCPU: resource.MustParse("2"),
-												},
-											},
-										},
-										{
-											Name:  "fake-name-2",
-											Image: "busybox:1.24",
-											Resources: v1.ResourceRequirements{
-												Requests: v1.ResourceList{
-													v1.ResourceCPU: resource.MustParse("2"),
-												},
-												Limits: v1.ResourceList{
-													v1.ResourceCPU: resource.MustParse("2"),
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "spec.task[0].template.spec.resources.requests: Invalid value: \"6\": must be less than or equal to cpu limit of 4",
-			ExpectErr:      true,
-		},
 	}
 
 	defaultqueue := &schedulingv1beta2.Queue{
@@ -2008,9 +1540,8 @@ func TestValidateJobCreate(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.PodLevelResources, testCase.PodLevelResourcesEnabled)
 			ret := validateJobCreate(&testCase.Job, &testCase.reviewResponse)
-			//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret, testCase.reviewResponse)
+			//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
 			if testCase.ExpectErr == true && ret == "" {
 				t.Errorf("Expect error msg :%s, but got nil.", testCase.ret)
 			}

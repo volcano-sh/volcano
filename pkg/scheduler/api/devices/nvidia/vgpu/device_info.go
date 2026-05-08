@@ -32,9 +32,8 @@ import (
 )
 
 type GPUUsage struct {
-	UsedMem     uint
-	UsedCore    uint
-	PodGroupKey string // namespace/name of PodGroup, or "" if pod has no group
+	UsedMem  uint
+	UsedCore uint
 }
 
 // GPUDevice include gpu id, memory and the pods that are sharing it.
@@ -159,7 +158,7 @@ func (gs *GPUDevices) AddQueueResource(pod *v1.Pod) map[string]float64 {
 		klog.Errorf("pod %s has no annotation volcano.sh/devices-to-allocate", pod.Name)
 		return res
 	}
-	podDev := DecodePodDevices(ids)
+	podDev := decodePodDevices(ids)
 	for _, val := range podDev {
 		for _, deviceused := range val {
 			for _, gsdevice := range gs.Device {
@@ -189,16 +188,13 @@ func (gs *GPUDevices) addResource(annotations map[string]string, pod *v1.Pod) {
 		klog.Errorf("pod %s has no annotation volcano.sh/devices-to-allocate", pod.Name)
 		return
 	}
-	podDev := DecodePodDevices(ids)
+	podDev := decodePodDevices(ids)
 	for _, val := range podDev {
 		for _, deviceused := range val {
 			for index, gsdevice := range gs.Device {
 				if strings.Contains(deviceused.UUID, gsdevice.UUID) {
 					err := gs.Sharing.AddPod(gsdevice, deviceused.Usedmem, deviceused.Usedcores, string(pod.UID), deviceused.UUID)
 					if err == nil {
-						if u := gsdevice.PodMap[string(pod.UID)]; u != nil {
-							u.PodGroupKey = getPodGroupKey(pod)
-						}
 						gs.AddPodMetrics(index, string(pod.UID), pod.Name)
 					} else {
 						klog.ErrorS(err, "add resource failed")
@@ -216,7 +212,7 @@ func (gs *GPUDevices) addToPodMap(annotations map[string]string, pod *v1.Pod) {
 		klog.Errorf("pod %s has no annotation volcano.sh/devices-to-allocate", pod.Name)
 		return
 	}
-	podDev := DecodePodDevices(ids)
+	podDev := decodePodDevices(ids)
 	for _, val := range podDev {
 		for _, deviceused := range val {
 			for _, gsdevice := range gs.Device {
@@ -225,15 +221,13 @@ func (gs *GPUDevices) addToPodMap(annotations map[string]string, pod *v1.Pod) {
 					_, ok := gsdevice.PodMap[podUID]
 					if !ok {
 						gsdevice.PodMap[podUID] = &GPUUsage{
-							UsedMem:     0,
-							UsedCore:    0,
-							PodGroupKey: getPodGroupKey(pod),
+							UsedMem:  0,
+							UsedCore: 0,
 						}
 					}
 
 					gsdevice.PodMap[podUID].UsedMem += deviceused.Usedmem
 					gsdevice.PodMap[podUID].UsedCore += deviceused.Usedcores
-					gsdevice.PodMap[podUID].PodGroupKey = getPodGroupKey(pod)
 				}
 			}
 		}
@@ -249,7 +243,7 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 	if !ok {
 		return
 	}
-	podDev := DecodePodDevices(ids)
+	podDev := decodePodDevices(ids)
 	for _, val := range podDev {
 		for _, deviceused := range val {
 			for index, gsdevice := range gs.Device {
@@ -275,9 +269,6 @@ func (gs *GPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
 }
 
 func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	// Release is required for rollback paths (e.g. UnPipeline) where NodeInfo
-	// does not invoke subResource for Pipelined tasks.
-	gs.SubResource(pod)
 	return nil
 }
 
@@ -298,12 +289,7 @@ func (gs *GPUDevices) FilterNode(pod *v1.Pod, schedulePolicy string) (int, strin
 func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
 	if VGPUEnable {
 		klog.V(4).Infoln("hami-vgpu DeviceSharing:Into AllocateToPod", pod.Name)
-		if alreadyAssignedOnNode(pod, gs.Name) {
-			klog.V(4).InfoS("hami-vgpu DeviceSharing: skip duplicate AllocateToPod",
-				"pod", pod.Name, "namespace", pod.Namespace, "node", gs.Name)
-			return nil
-		}
-		fit, device, _, err := checkNodeGPUSharingPredicateAndScore(pod, gs, false, SchedulePolicy)
+		fit, device, _, err := checkNodeGPUSharingPredicateAndScore(pod, gs, false, "")
 		if err != nil || !fit {
 			klog.ErrorS(err, "Failed to allocate vgpu task", "pod", pod.Name)
 			return err
@@ -324,15 +310,6 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 
 		annotations[DeviceBindPhase] = "allocating"
 		annotations[BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
-		// Keep in-memory pod object in sync so rollback paths (UnPipeline ->
-		// Deallocate -> Release) can see allocated IDs before apiserver watch
-		// catches up.
-		if pod.Annotations == nil {
-			pod.Annotations = map[string]string{}
-		}
-		for k, v := range annotations {
-			pod.Annotations[k] = v
-		}
 		// To avoid that the pod allocated info updating latency, add it first
 		gs.addToPodMap(annotations, pod)
 		err = patchPodAnnotations(kubeClient, pod, annotations)
@@ -343,64 +320,4 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 		klog.V(3).Infoln("DeviceSharing:Allocate Success")
 	}
 	return nil
-}
-
-// DeepCopy returns a deep copy of GPUDevices for use in dry-run simulation.
-func (gs *GPUDevices) DeepCopy() interface{} {
-	if gs == nil {
-		return nil
-	}
-	cp := &GPUDevices{
-		Name:    gs.Name,
-		Mode:    gs.Mode,
-		Score:   gs.Score,
-		Sharing: gs.Sharing,
-		Device:  make(map[int]*GPUDevice, len(gs.Device)),
-	}
-	for id, dev := range gs.Device {
-		newDev := &GPUDevice{
-			ID:       dev.ID,
-			Node:     dev.Node,
-			UUID:     dev.UUID,
-			Memory:   dev.Memory,
-			Number:   dev.Number,
-			Type:     dev.Type,
-			Health:   dev.Health,
-			UsedNum:  dev.UsedNum,
-			UsedMem:  dev.UsedMem,
-			UsedCore: dev.UsedCore,
-			MigUsage: deviceconfig.MigInUse{
-				Index:     dev.MigUsage.Index,
-				UsageList: make(deviceconfig.MIGS, len(dev.MigUsage.UsageList)),
-			},
-			PodMap: make(map[string]*GPUUsage, len(dev.PodMap)),
-		}
-		copy(newDev.MigUsage.UsageList, dev.MigUsage.UsageList)
-		if len(dev.MigTemplate) > 0 {
-			newDev.MigTemplate = make([]deviceconfig.Geometry, len(dev.MigTemplate))
-			for i, g := range dev.MigTemplate {
-				ng := deviceconfig.Geometry{
-					Group:     g.Group,
-					Instances: make([]deviceconfig.MigTemplate, len(g.Instances)),
-				}
-				copy(ng.Instances, g.Instances)
-				newDev.MigTemplate[i] = ng
-			}
-		}
-		for uid, usage := range dev.PodMap {
-			u := *usage
-			newDev.PodMap[uid] = &u
-		}
-		cp.Device[id] = newDev
-	}
-	return cp
-}
-
-func alreadyAssignedOnNode(pod *v1.Pod, nodeName string) bool {
-	if pod == nil || pod.Annotations == nil || nodeName == "" {
-		return false
-	}
-
-	return pod.Annotations[AssignedNodeAnnotations] == nodeName &&
-		pod.Annotations[AssignedIDsAnnotations] != ""
 }

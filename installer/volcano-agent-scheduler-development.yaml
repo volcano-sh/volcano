@@ -97,9 +97,6 @@ rules:
     resources: ["resourceclaims/status"]
     verbs: ["update"]
   - apiGroups: ["resource.k8s.io"]
-    resources: ["resourceclaims/binding"]
-    verbs: ["update", "patch"]
-  - apiGroups: ["resource.k8s.io"]
     resources: ["deviceclasses","resourceslices"]
     verbs: ["get", "list", "watch", "create"]
   - apiGroups: ["shard.volcano.sh"]
@@ -172,7 +169,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-agent-scheduler
-          image: docker.io/volcanosh/vc-agent-scheduler:latest
+          image: docker.io/volcanosh/vc-agent-scheduler:v1.14.2
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/agent-scheduler.conf

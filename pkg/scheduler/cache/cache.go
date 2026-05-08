@@ -52,6 +52,7 @@ import (
 	fwk "k8s.io/kube-scheduler/framework"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
 	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 	"stathat.com/c/consistent"
@@ -189,7 +190,7 @@ type SchedulerCache struct {
 	binderRegistry *BinderRegistry
 
 	// sharedDRAManager is used in DRA plugin, contains resourceClaimTracker, resourceSliceLister and deviceClassLister
-	sharedDRAManager fwk.SharedDRAManager
+	sharedDRAManager k8sframework.SharedDRAManager
 
 	shardUpdateCoordinator *ShardUpdateCoordinator
 
@@ -828,13 +829,13 @@ func (sc *SchedulerCache) addEventHandler() {
 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
 		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
-			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
-			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
-			KubeClient:             sc.kubeClient,
+			EnableDeviceTaints: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
+			SliceInformer:      informerFactory.Resource().V1().ResourceSlices(),
+			KubeClient:         sc.kubeClient,
 		}
 		// If device taints are disabled, the additional informers are not needed and
 		// the tracker turns into a simple wrapper around the slice informer.
-		if resourceSliceTrackerOpts.EnableDeviceTaintRules {
+		if resourceSliceTrackerOpts.EnableDeviceTaints {
 			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
 			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
 		}
@@ -944,22 +945,23 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 			task.UID, task.NodeName)
 	}
 
-	// Check PodGroup and prepare for event recording BEFORE any state changes.
-	// This ensures we don't start eviction if PodGroup is nil or conversion fails.
-	if job.PodGroup == nil {
-		return fmt.Errorf("cannot evict Task %v: PodGroup of Job <%s/%s> is nil",
-			task.UID, job.Namespace, job.Name)
-	}
-	podgroup := &vcv1beta1.PodGroup{}
-	if err = schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
-		klog.Errorf("Error while converting PodGroup to v1beta1.PodGroup with error: %v", err)
+	originalStatus := task.Status
+	if err := job.UpdateTaskStatus(task, schedulingapi.Releasing); err != nil {
 		return err
 	}
 
-	job.UpdateTaskStatus(task, schedulingapi.Releasing)
-
 	// Add new task to node.
-	node.UpdateTask(task)
+	if err := node.UpdateTask(task); err != nil {
+		// After failing to update task to a node we need to revert task status from Releasing,
+		// otherwise task might be stuck in the Releasing state indefinitely.
+		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+				"from %s to %s after failing to update Task on Node <%s>: %v",
+				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+			sc.resyncTask(task)
+		}
+		return err
+	}
 
 	p := task.Pod
 
@@ -970,6 +972,17 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 		}
 	}()
 
+	podgroup := &vcv1beta1.PodGroup{}
+	if job.PodGroup != nil {
+		err = schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil)
+	} else {
+		err = fmt.Errorf("the PodGroup of Job <%s/%s> is nil", job.Namespace, job.Name)
+	}
+
+	if err != nil {
+		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+		return err
+	}
 	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", reason)
 	return nil
 }
@@ -1349,7 +1362,9 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	}
 
 	originalStatus := task.Status
-	job.UpdateTaskStatus(task, schedulingapi.Binding)
+	if err := job.UpdateTaskStatus(task, schedulingapi.Binding); err != nil {
+		return err
+	}
 
 	err = bindContext.TaskInfo.SetPodResourceDecision()
 	if err != nil {
@@ -1361,7 +1376,12 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	if err := node.AddTask(task); err != nil {
 		// After failing to update task to a node we need to revert task status from Releasing,
 		// otherwise task might be stuck in the Releasing state indefinitely.
-		job.UpdateTaskStatus(task, originalStatus)
+		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+				"from %s to %s after failing to update Task on Node <%s>: %v",
+				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+			sc.resyncTask(task)
+		}
 		return err
 	}
 
@@ -1575,7 +1595,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	return snapshot
 }
 
-func (sc *SchedulerCache) SharedDRAManager() fwk.SharedDRAManager {
+func (sc *SchedulerCache) SharedDRAManager() k8sframework.SharedDRAManager {
 	return sc.sharedDRAManager
 }
 

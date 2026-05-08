@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -31,7 +30,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
-	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 )
@@ -146,8 +144,7 @@ func decodeContainerDevices(str string) ContainerDevices {
 	return contdev
 }
 
-// DecodePodDevices parses the vgpu-ids-new annotation into per-container device lists.
-func DecodePodDevices(str string) []ContainerDevices {
+func decodePodDevices(str string) []ContainerDevices {
 	if len(str) == 0 {
 		return []ContainerDevices{}
 	}
@@ -157,42 +154,6 @@ func DecodePodDevices(str string) []ContainerDevices {
 		pd = append(pd, cd)
 	}
 	return pd
-}
-
-// getPodGroupKey returns a unique key for the pod's group (namespace/name of PodGroup),
-// or "" if the pod has no group annotation. Used to avoid placing two pods from the same
-// PodGroup on the same vGPU device. Uses the same annotation keys as the job/podgroup
-// controllers (KubeGroupNameAnnotationKey and VolcanoGroupNameAnnotationKey).
-func getPodGroupKey(pod *v1.Pod) string {
-	if pod == nil || pod.Annotations == nil {
-		return ""
-	}
-	groupName := pod.Annotations[v1beta1.KubeGroupNameAnnotationKey]
-	if groupName == "" {
-		groupName = pod.Annotations[v1beta1.VolcanoGroupNameAnnotationKey]
-	}
-	if groupName == "" {
-		return ""
-	}
-	return pod.Namespace + "/" + groupName
-}
-
-// deviceHasPodFromSameGroup returns true if the device already has a pod from the same
-// PodGroup as currentKey (and that pod has non-zero usage), so we should not place
-// another pod from the same group on this device.
-func deviceHasPodFromSameGroup(gd *GPUDevice, currentKey string) bool {
-	if gd == nil || currentKey == "" {
-		return false
-	}
-	for _, usage := range gd.PodMap {
-		if usage == nil {
-			continue
-		}
-		if usage.PodGroupKey == currentKey && (usage.UsedMem > 0 || usage.UsedCore > 0) {
-			return true
-		}
-	}
-	return false
 }
 
 func checkVGPUResourcesInPod(pod *v1.Pod) bool {
@@ -273,18 +234,11 @@ func getGPUDeviceSnapShot(snap *GPUDevices) *GPUDevices {
 	}
 	for index, val := range snap.Device {
 		if val != nil {
-			podMapCopy := make(map[string]*GPUUsage, len(val.PodMap))
-			for uid, usage := range val.PodMap {
-				if usage != nil {
-					u := *usage
-					podMapCopy[uid] = &u
-				}
-			}
 			ret.Device[index] = &GPUDevice{
 				ID:          val.ID,
 				Node:        val.Node,
 				UUID:        val.UUID,
-				PodMap:      podMapCopy,
+				PodMap:      val.PodMap,
 				Memory:      val.Memory,
 				Number:      val.Number,
 				Type:        val.Type,
@@ -357,54 +311,18 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 	} else {
 		gs = gssnap
 	}
-	var currentPodGroupKey string
-	if pod.Annotations[VGPUPodGroupPolicyAnnotation] == VGPUPodGroupPolicySpreadValue {
-		currentPodGroupKey = getPodGroupKey(pod)
-	}
-
-	type tentativeAlloc struct {
-		device *GPUDevice
-		mem    uint
-		core   uint
-	}
-	rollbackTentative := func(allocs []tentativeAlloc) {
-		for _, alloc := range allocs {
-			if alloc.device == nil {
-				continue
-			}
-			if alloc.device.UsedNum > 0 {
-				alloc.device.UsedNum--
-			}
-			if alloc.device.UsedMem >= alloc.mem {
-				alloc.device.UsedMem -= alloc.mem
-			} else {
-				alloc.device.UsedMem = 0
-			}
-			if alloc.device.UsedCore >= alloc.core {
-				alloc.device.UsedCore -= alloc.core
-			} else {
-				alloc.device.UsedCore = 0
-			}
-		}
-	}
-
-	tentativeAllocs := []tentativeAlloc{}
 	ctrdevs := []ContainerDevices{}
 	for _, val := range ctrReq {
 		devs := []ContainerDevice{}
 		if int(val.Nums) > len(gs.Device) {
-			rollbackTentative(tentativeAllocs)
 			return false, []ContainerDevices{}, 0, fmt.Errorf("no enough gpu cards on node %s", gs.Name)
 		}
 		klog.V(3).InfoS("Allocating device for container", "request", val)
 
-		for _, i := range sortedDeviceIndicesByPolicy(gs, schedulePolicy) {
+		for i := len(gs.Device) - 1; i >= 0; i-- {
 			klog.V(3).InfoS("Scoring pod request", "memReq", val.Memreq, "memPercentageReq", val.MemPercentagereq, "coresReq", val.Coresreq, "Nums", val.Nums, "Index", i, "ID", gs.Device[i].ID)
-			klog.V(3).InfoS("Current Device", "Index", i, "TotalMemory", gs.Device[i].Memory, "UsedMemory", gs.Device[i].UsedMem, "UsedCores", gs.Device[i].UsedCore, "UsedNum", gs.Device[i].UsedNum, "Number", gs.Device[i].Number, "replicate", replicate)
+			klog.V(3).InfoS("Current Device", "Index", i, "TotalMemory", gs.Device[i].Memory, "UsedMemory", gs.Device[i].UsedMem, "UsedCores", gs.Device[i].UsedCore, "replicate", replicate)
 			if gs.Device[i].Number <= uint(gs.Device[i].UsedNum) {
-				continue
-			}
-			if currentPodGroupKey != "" && deviceHasPodFromSameGroup(gs.Device[i], currentPodGroupKey) {
 				continue
 			}
 			memreqForCard := uint(0)
@@ -437,11 +355,6 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 				klog.V(3).Info(gs.Device[i].ID, "not fit")
 				continue
 			}
-			tentativeAllocs = append(tentativeAllocs, tentativeAlloc{
-				device: gs.Device[i],
-				mem:    memreqForCard,
-				core:   uint(val.Coresreq),
-			})
 			//total += gs.Devices[i].Count
 			//free += node.Devices[i].Count - node.Devices[i].Used
 			if val.Nums > 0 {
@@ -460,46 +373,11 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 			}
 		}
 		if val.Nums > 0 {
-			rollbackTentative(tentativeAllocs)
 			return false, []ContainerDevices{}, 0, fmt.Errorf("not enough gpu fitted on this node")
 		}
 		ctrdevs = append(ctrdevs, devs)
 	}
 	return true, ctrdevs, score, nil
-}
-
-func sortedDeviceIndicesByPolicy(gs *GPUDevices, schedulePolicy string) []int {
-	n := len(gs.Device)
-	idx := make([]int, 0, n)
-	switch schedulePolicy {
-	case binpackPolicy:
-		for i := range gs.Device {
-			idx = append(idx, i)
-		}
-		sort.Slice(idx, func(a, b int) bool {
-			da, db := gs.Device[idx[a]], gs.Device[idx[b]]
-			if da.UsedMem != db.UsedMem {
-				return da.UsedMem > db.UsedMem
-			}
-			return idx[a] < idx[b]
-		})
-	case spreadPolicy:
-		for i := range gs.Device {
-			idx = append(idx, i)
-		}
-		sort.Slice(idx, func(a, b int) bool {
-			da, db := gs.Device[idx[a]], gs.Device[idx[b]]
-			if da.UsedNum != db.UsedNum {
-				return da.UsedNum < db.UsedNum
-			}
-			return idx[a] < idx[b]
-		})
-	default:
-		for i := n - 1; i >= 0; i-- {
-			idx = append(idx, i)
-		}
-	}
-	return idx
 }
 
 func GPUScore(schedulePolicy string, device *GPUDevice) float64 {
@@ -508,7 +386,7 @@ func GPUScore(schedulePolicy string, device *GPUDevice) float64 {
 	case binpackPolicy:
 		score = binpackMultiplier * (float64(device.UsedMem) / float64(device.Memory))
 	case spreadPolicy:
-		if device.UsedNum == 0 {
+		if device.UsedNum == 1 {
 			score = spreadMultiplier
 		}
 	default:

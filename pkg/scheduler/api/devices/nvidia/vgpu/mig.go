@@ -89,8 +89,10 @@ func (f MIGFactory) SubPod(gd *GPUDevice, mem uint, core uint, podUID string, de
 	gd.UsedMem -= mem
 	gd.UsedCore -= core
 
-	klog.V(4).Infoln("sub Pod: ", podUID, usedMem)
-	delete(gd.PodMap, podUID)
+	gd.PodMap[podUID].UsedMem -= usedMem
+	gd.PodMap[podUID].UsedCore -= core
+
+	klog.V(4).Infoln("sub Pod: ", podUID, usedMem, gd.PodMap[podUID].UsedMem, gd.PodMap[podUID].UsedCore)
 	return nil
 }
 

@@ -82,7 +82,6 @@ func TestAddFlags(t *testing.T) {
 		MinPercentageOfNodesToFind:    defaultMinPercentageOfNodesToFind,
 		PercentageOfNodesToFind:       defaultPercentageOfNodesToFind,
 		NodeWorkerThreads:             defaultNodeWorkers,
-		GateRemovalWorkerNum:          5,
 		CacheDumpFileDir:              "/tmp",
 		DisableDefaultSchedulerConfig: false,
 		ShardingMode:                  commonutil.NoneShardingMode,

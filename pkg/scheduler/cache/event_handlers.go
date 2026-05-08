@@ -332,9 +332,11 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 }
 
 func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
+	var jobErr, nodeErr error
+
 	if len(ti.Job) != 0 {
 		if job, found := sc.Jobs[ti.Job]; found {
-			job.DeleteTaskInfo(ti)
+			jobErr = job.DeleteTaskInfo(ti)
 		} else {
 			klog.Warningf("Failed to find Job <%v> for Task <%v/%v> in cache.", ti.Job, ti.Namespace, ti.Name)
 		}
@@ -350,9 +352,13 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 		if !isTerminated(ti.Status) {
 			node := sc.Nodes[ti.NodeName]
 			if node != nil {
-				node.RemoveTask(ti)
+				nodeErr = node.RemoveTask(ti)
 			}
 		}
+	}
+
+	if jobErr != nil || nodeErr != nil {
+		return schedulingapi.MergeErrors(jobErr, nodeErr)
 	}
 
 	return nil

@@ -24,7 +24,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-	fwk "k8s.io/kube-scheduler/framework"
+	k8sFramework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/utils/set"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -424,26 +424,7 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFn(ssn *framework.Session, 
 	var err error
 
 	job := ssn.Jobs[task.Job]
-	if job == nil {
-		klog.Warningf("[network-topology-aware] Skip batch node ordering for task <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
-			task.Namespace, task.Name, task.Job)
-		return make(map[string]float64), nil
-	}
-
-	subJobID, found := job.TaskToSubJob[task.UID]
-	if !found {
-		klog.V(4).Infof("[network-topology-aware] Skip batch node ordering for task <%s/%s>: task not mapped to any subJob",
-			task.Namespace, task.Name)
-		return nta.batchNodeOrderFnForNormalPods(ssn, task, nodes)
-	}
-
-	subJob, found := job.SubJobs[subJobID]
-	if !found || subJob == nil {
-		klog.V(4).Infof("[network-topology-aware] Skip batch node ordering for task <%s/%s>: subJob <%s> not found in job",
-			task.Namespace, task.Name, subJobID)
-		return nta.batchNodeOrderFnForNormalPods(ssn, task, nodes)
-	}
-
+	subJob := job.SubJobs[job.TaskToSubJob[task.UID]]
 	if subJob.WithNetworkTopology() {
 		nodeScores, err = nta.batchNodeOrderFnForNetworkAwarePods(ssn, task, subJob, nodes)
 	} else {
@@ -758,7 +739,7 @@ func scoreHyperNodeWithTaskNum(taskNum int, allTaskNum int) float64 {
 func (nta *networkTopologyAwarePlugin) scaleFinalScore(scores map[string]float64) map[string]float64 {
 	scaledScores := make(map[string]float64)
 	for name, score := range scores {
-		scaledScores[name] = float64(fwk.MaxNodeScore) * float64(nta.weight.GlobalWeight) * score
+		scaledScores[name] = float64(k8sFramework.MaxNodeScore) * float64(nta.weight.GlobalWeight) * score
 	}
 	return scaledScores
 }

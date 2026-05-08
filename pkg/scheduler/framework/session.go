@@ -49,7 +49,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
-	"volcano.sh/volcano/pkg/scheduler/gate"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -79,10 +78,6 @@ type Session struct {
 	PodGroupOldState *api.PodGroupOldState
 	// DirtyJobs include the jobs that need to flush to SchedulerCache on session close
 	DirtyJobs sets.Set[api.JobID]
-
-	// schGateManager is the scheduler gate manager, passed in from the Scheduler.
-	// Nil when SchedulingGatesQueueAdmission feature gate is disabled.
-	schGateManager *gate.SchGateManager
 
 	Jobs           map[api.JobID]*api.JobInfo
 	Nodes          map[string]*api.NodeInfo
@@ -708,7 +703,11 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	// Only update status in session
 	job, found := ssn.Jobs[task.Job]
 	if found {
-		job.UpdateTaskStatus(task, api.Pipelined)
+		if err := job.UpdateTaskStatus(task, api.Pipelined); err != nil {
+			klog.Errorf("Failed to update task <%v/%v> status to %v when pipeline in Session <%v>: %v",
+				task.Namespace, task.Name, api.Pipelined, ssn.UID, err)
+			return err
+		}
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when pipeline.",
 			task.Job, ssn.UID)
@@ -750,7 +749,11 @@ func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 	// Only update status in session
 	job, found := ssn.Jobs[task.Job]
 	if found {
-		job.UpdateTaskStatus(task, api.Allocated)
+		if err := job.UpdateTaskStatus(task, api.Allocated); err != nil {
+			klog.Errorf("Failed to update task <%v/%v> status to %v when binding in Session <%v>: %v",
+				task.Namespace, task.Name, api.Allocated, ssn.UID, err)
+			return err
+		}
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when binding.",
 			task.Job, ssn.UID)
@@ -803,7 +806,11 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 
 	// Update status in session
 	if job, found := ssn.Jobs[task.Job]; found {
-		job.UpdateTaskStatus(task, api.Binding)
+		if err := job.UpdateTaskStatus(task, api.Binding); err != nil {
+			klog.Errorf("Failed to update task <%v/%v> status to %v when binding in Session <%v>: %v",
+				task.Namespace, task.Name, api.Binding, ssn.UID, err)
+			return err
+		}
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when binding.",
 			task.Job, ssn.UID)
@@ -875,7 +882,11 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	// Update status in session
 	job, found := ssn.Jobs[reclaimee.Job]
 	if found {
-		job.UpdateTaskStatus(reclaimee, api.Releasing)
+		if err := job.UpdateTaskStatus(reclaimee, api.Releasing); err != nil {
+			klog.Errorf("Failed to update task <%v/%v> status to %v when evicting in Session <%v>: %v",
+				reclaimee.Namespace, reclaimee.Name, api.Releasing, ssn.UID, err)
+			return err
+		}
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when evicting.",
 			reclaimee.Job, ssn.UID)
@@ -884,7 +895,11 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 
 	// Update task in node.
 	if node, found := ssn.Nodes[reclaimee.NodeName]; found {
-		node.UpdateTask(reclaimee)
+		if err := node.UpdateTask(reclaimee); err != nil {
+			klog.Errorf("Failed to update task <%v/%v> in Session <%v>: %v",
+				reclaimee.Namespace, reclaimee.Name, ssn.UID, err)
+			return err
+		}
 	}
 
 	for _, eh := range ssn.eventHandlers {
@@ -943,17 +958,6 @@ func (ssn *Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
 }
 
-// SchGateManager returns the scheduler gate manager.
-// Returns nil when SchedulingGatesQueueAdmission feature gate is disabled.
-func (ssn *Session) SchGateManager() *gate.SchGateManager {
-	return ssn.schGateManager
-}
-
-// SetSchGateManager sets the gate manager on the session.
-func (ssn *Session) SetSchGateManager(m *gate.SchGateManager) {
-	ssn.schGateManager = m
-}
-
 // VCClient returns the volcano client
 func (ssn *Session) VCClient() vcclient.Interface {
 	return ssn.vcClient
@@ -984,7 +988,7 @@ func (ssn *Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reaso
 }
 
 // SharedDRAManager returns the shared DRAManager from cache
-func (ssn *Session) SharedDRAManager() fwk.SharedDRAManager {
+func (ssn *Session) SharedDRAManager() k8sframework.SharedDRAManager {
 	return ssn.cache.SharedDRAManager()
 }
 

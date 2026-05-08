@@ -100,12 +100,6 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		for _, preemptee := range preemptees {
 			job := ssn.Jobs[preemptee.Job]
-			if job == nil {
-				klog.Warningf("[gang] Skip preemptee <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
-					preemptee.Namespace, preemptee.Name, preemptee.Job)
-				continue
-			}
-
 			if _, found := jobOccupiedMap[job.UID]; !found {
 				jobOccupiedMap[job.UID] = job.ReadyTaskNum()
 			}

@@ -103,7 +103,9 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 		return nil
 	}
 
-	sc.deletePod(oldPod)
+	if err := sc.deletePod(oldPod); err != nil {
+		return err
+	}
 	//when delete pod, the ownerreference of pod will be set nil, just as orphan pod
 	if len(utils.GetController(newPod)) == 0 {
 		newPod.OwnerReferences = oldPod.OwnerReferences
@@ -111,8 +113,9 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 	return sc.addPod(newPod)
 }
 
-func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) {
+func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 	// TODO need to refactoring
+	var nodeErr error
 	if len(ti.NodeName) != 0 {
 		// We don't need to delete tasks from the Nodes cache that are already terminated.
 		// These tasks will be cleaned up during the UpdatePod -> updatePod -> deletePod -> deleteTask sequence,
@@ -124,20 +127,31 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) {
 				sc.Nodes[ti.NodeName].info.Generation = nextGeneration()
 				sc.moveNodeToHead(ti.NodeName)
 				klog.V(5).Infof("Node %s updated by delete task, generation incremented to %d", ti.NodeName, sc.Nodes[ti.NodeName].info.Generation)
-				node.info.RemoveTask(ti)
+				nodeErr = node.info.RemoveTask(ti)
 			}
 		}
 	}
+
+	if nodeErr != nil {
+		return schedulingapi.MergeErrors(nodeErr)
+	}
+
+	return nil
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) deletePod(pod *v1.Pod) {
+func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 	pi, exist := sc.GetTaskInfo(schedulingapi.TaskID(pod.UID))
 	if !exist {
 		// If it doesn't exist, then new a taskinfo, especially for those pods which are not scheduled by agent-scheduler or in restarting scenario
 		pi = schedulingapi.NewTaskInfo(pod)
 	}
-	sc.deleteTask(pi)
+	if err := sc.deleteTask(pi); err != nil {
+		klog.Errorf("Failed to delete task from cache: %v", err)
+		return err
+	}
+
+	return nil
 }
 
 // AddPodToCache add pod to scheduler cache
@@ -200,7 +214,11 @@ func (sc *SchedulerCache) DeletePodFromCache(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	sc.deletePod(pod)
+	err = sc.deletePod(pod)
+	if err != nil {
+		klog.Errorf("Failed to delete pod %v from cache: %v", pod.Name, err)
+		return
+	}
 
 	klog.V(3).Infof("Deleted pod <%s/%v> from cache.", pod.Namespace, pod.Name)
 

@@ -42,7 +42,7 @@ var _ = Describe("Queue E2E Test", func() {
 		testCtx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{q1},
 		})
-		DeferCleanup(e2eutil.CleanupTestContext, testCtx)
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("Close queue command check")
 		err := util.CreateQueueCommand(testCtx.Vcclient, defaultQueue, q1, busv1alpha1.CloseQueueAction)
@@ -87,7 +87,7 @@ var _ = Describe("Queue E2E Test", func() {
 			},
 		})
 		testCtx.Queues = []string{q11, q1, q2}
-		DeferCleanup(e2eutil.CleanupTestContext, testCtx)
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("Close queue with child queues")
 		err := util.CreateQueueCommand(testCtx.Vcclient, defaultQueue, q1, busv1alpha1.CloseQueueAction)

@@ -23,12 +23,8 @@ import (
 
 // MemberSpecApplyConfiguration represents a declarative configuration of the MemberSpec type for use
 // with apply.
-//
-// MemberSpec represents a specific node or a hyperNodes in the hyperNode.
 type MemberSpecApplyConfiguration struct {
-	// Type specifies the member type.
-	Type *topologyv1alpha1.MemberType `json:"type,omitempty"`
-	// Selector defines the selection rules for this member.
+	Type     *topologyv1alpha1.MemberType      `json:"type,omitempty"`
 	Selector *MemberSelectorApplyConfiguration `json:"selector,omitempty"`
 }
 

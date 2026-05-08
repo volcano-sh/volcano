@@ -46,12 +46,6 @@ const (
 
 	// CronVolcanoJobSupport can identify and schedule volcano cronjob.
 	CronVolcanoJobSupport featuregate.Feature = "CronVolcanoJobSupport"
-
-	// SchedulingGatesQueueAdmission uses Kubernetes schedulingGates to delay
-	// setting the Unschedulable condition on pods until the queue has enough
-	// capacity, preventing cluster autoscalers from triggering unnecessary
-	// scale-ups for pods that are simply waiting for queue admission.
-	SchedulingGatesQueueAdmission featuregate.Feature = "SchedulingGatesQueueAdmission"
 )
 
 func init() {
@@ -65,8 +59,7 @@ var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec
 	QueueCommandSync:            {Default: true, PreRelease: featuregate.Alpha},
 	PriorityClass:               {Default: true, PreRelease: featuregate.Alpha},
 	// CSIStorage is explicitly set to false by default.
-	CSIStorage:                    {Default: false, PreRelease: featuregate.Alpha},
-	ResourceTopology:              {Default: true, PreRelease: featuregate.Alpha},
-	CronVolcanoJobSupport:         {Default: true, PreRelease: featuregate.Alpha},
-	SchedulingGatesQueueAdmission: {Default: false, PreRelease: featuregate.Alpha},
+	CSIStorage:            {Default: false, PreRelease: featuregate.Alpha},
+	ResourceTopology:      {Default: true, PreRelease: featuregate.Alpha},
+	CronVolcanoJobSupport: {Default: true, PreRelease: featuregate.Alpha},
 }
