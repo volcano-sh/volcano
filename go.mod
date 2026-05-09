@@ -41,7 +41,7 @@ require (
 	k8s.io/code-generator v0.35.3
 	k8s.io/component-base v0.35.3
 	k8s.io/component-helpers v0.35.3
-	k8s.io/csi-translation-lib v0.35.0
+	k8s.io/csi-translation-lib v0.35.3
 	k8s.io/dynamic-resource-allocation v0.35.3
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kubectl v0.0.0
