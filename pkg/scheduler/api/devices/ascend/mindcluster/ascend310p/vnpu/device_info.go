@@ -219,3 +219,101 @@ func (ns *NPUDevices) GetStatus() string {
 func (ns *NPUDevices) GetIgnoredDevices() []string {
 	return []string{""}
 }
+
+// DeepCopy returns a deep copy of NPUDevices for use in dry-run simulation.
+func (ns *NPUDevices) DeepCopy() interface{} {
+	if ns == nil {
+		return nil
+	}
+	cp := &NPUDevices{
+		Name:      ns.Name,
+		FrameAttr: ns.FrameAttr,
+	}
+
+	// Deep copy NodeInf maps
+	cp.NodeInf = NodeInf{
+		Name:              ns.NodeInf.Name,
+		BaseDeviceInfo:    ns.NodeInf.BaseDeviceInfo,
+		Address:           ns.NodeInf.Address,
+		SuperPodID:        ns.NodeInf.SuperPodID,
+		DevInfoUpdateTime: ns.NodeInf.DevInfoUpdateTime,
+		Capability:        make(map[v1.ResourceName]float64, len(ns.NodeInf.Capability)),
+		Allocate:          make(map[v1.ResourceName]float64, len(ns.NodeInf.Allocate)),
+		Idle:              make(map[v1.ResourceName]float64, len(ns.NodeInf.Idle)),
+		Annotation:        make(map[string]string, len(ns.NodeInf.Annotation)),
+		Label:             make(map[string]string, len(ns.NodeInf.Label)),
+	}
+	for k, v := range ns.NodeInf.Capability {
+		cp.NodeInf.Capability[k] = v
+	}
+	for k, v := range ns.NodeInf.Allocate {
+		cp.NodeInf.Allocate[k] = v
+	}
+	for k, v := range ns.NodeInf.Idle {
+		cp.NodeInf.Idle[k] = v
+	}
+	for k, v := range ns.NodeInf.Annotation {
+		cp.NodeInf.Annotation[k] = v
+	}
+	for k, v := range ns.NodeInf.Label {
+		cp.NodeInf.Label[k] = v
+	}
+
+	// Deep copy NPUDevice
+	cp.NPUDevice = NPUDevice{
+		VT: VTemplate{
+			Temp: ns.NPUDevice.VT.Temp,
+			Data: make(map[string]VResource, len(ns.NPUDevice.VT.Data)),
+		},
+		ChipKind:         ns.NPUDevice.ChipKind,
+		ServerType:       ns.NPUDevice.ServerType,
+		TotalChipNum:     ns.NPUDevice.TotalChipNum,
+		AiCorePerChip:    ns.NPUDevice.AiCorePerChip,
+		FreeChipNum:      ns.NPUDevice.FreeChipNum,
+		TotalRes:         ns.NPUDevice.TotalRes,
+		ValidVNode:       ns.NPUDevice.ValidVNode,
+		ChipType:         ns.NPUDevice.ChipType,
+		Chips:            make(map[int]*VChip, len(ns.NPUDevice.Chips)),
+		UnhealthyChipIds: make(map[int]struct{}, len(ns.NPUDevice.UnhealthyChipIds)),
+		DowngradeCache:   make(map[string]struct{}, len(ns.NPUDevice.DowngradeCache)),
+		ConCache:         make(map[string]map[types.UID]struct{}, len(ns.NPUDevice.ConCache)),
+	}
+	for k, v := range ns.NPUDevice.VT.Data {
+		cp.NPUDevice.VT.Data[k] = v
+	}
+	for k := range ns.NPUDevice.UnhealthyChipIds {
+		cp.NPUDevice.UnhealthyChipIds[k] = struct{}{}
+	}
+	for k := range ns.NPUDevice.DowngradeCache {
+		cp.NPUDevice.DowngradeCache[k] = struct{}{}
+	}
+	for k, inner := range ns.NPUDevice.ConCache {
+		newInner := make(map[types.UID]struct{}, len(inner))
+		for uid := range inner {
+			newInner[uid] = struct{}{}
+		}
+		cp.NPUDevice.ConCache[k] = newInner
+	}
+	for id, chip := range ns.NPUDevice.Chips {
+		newChip := &VChip{
+			Name:        chip.Name,
+			Kind:        chip.Kind,
+			IsDual:      chip.IsDual,
+			Unstable:    chip.Unstable,
+			CoreNum:     chip.CoreNum,
+			SegmentFlag: chip.SegmentFlag,
+			TotalRes:    chip.TotalRes,
+			UsedRes:     chip.UsedRes,
+			FreeRes:     chip.FreeRes,
+			ID:          make([]string, len(chip.ID)),
+			PodMap:      make(map[string]*v1.Pod, len(chip.PodMap)),
+		}
+		copy(newChip.ID, chip.ID)
+		for uid, pod := range chip.PodMap {
+			newChip.PodMap[uid] = pod
+		}
+		cp.NPUDevice.Chips[id] = newChip
+	}
+
+	return cp
+}

@@ -17,16 +17,19 @@ limitations under the License.
 package predicates
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	apiv1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8sframework "k8s.io/kube-scheduler/framework"
+	schedframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
@@ -43,6 +46,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/actions/backfill"
 	"volcano.sh/volcano/pkg/scheduler/actions/preempt"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
 	vbcap "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -52,6 +56,37 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+type fakeFilterPlugin struct {
+	name    string
+	message string
+}
+
+func (p *fakeFilterPlugin) Name() string {
+	return p.name
+}
+
+func (p *fakeFilterPlugin) Filter(_ context.Context, _ k8sframework.CycleState, _ *apiv1.Pod, _ k8sframework.NodeInfo) *k8sframework.Status {
+	return k8sframework.NewStatus(k8sframework.Unschedulable, p.message)
+}
+
+type fakeReservePlugin struct {
+	name  string
+	calls *[]string
+}
+
+func (p *fakeReservePlugin) Name() string {
+	return p.name
+}
+
+func (p *fakeReservePlugin) Reserve(_ context.Context, _ k8sframework.CycleState, _ *apiv1.Pod, _ string) *k8sframework.Status {
+	*p.calls = append(*p.calls, "reserve-"+p.name)
+	return k8sframework.NewStatus(k8sframework.Success)
+}
+
+func (p *fakeReservePlugin) Unreserve(_ context.Context, _ k8sframework.CycleState, _ *apiv1.Pod, _ string) {
+	*p.calls = append(*p.calls, "unreserve-"+p.name)
+}
 
 func getWorkerAffinity() *apiv1.Affinity {
 	return &apiv1.Affinity{
@@ -490,10 +525,10 @@ func TestInitPlugin(t *testing.T) {
 				}
 			}
 
-			// Verify PrefilterPlugins
+			// Verify PreFilterPlugins
 			for _, pluginName := range tt.expectInPrefilter {
-				if _, exists := pp.PrefilterPlugins[pluginName]; !exists {
-					t.Errorf("expected %s in PrefilterPlugins, but not found", pluginName)
+				if _, exists := pp.PreFilterPlugins[pluginName]; !exists {
+					t.Errorf("expected %s in PreFilterPlugins, but not found", pluginName)
 				}
 			}
 
@@ -541,4 +576,112 @@ func TestInitPlugin(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPredicateFailureReasonAggregationOrderStable(t *testing.T) {
+	pp := New(nil).(*PredicatesPlugin)
+	pp.enabledPredicates = predicateEnable{
+		nodeAffinityEnable:    true,
+		nodePortEnable:        true,
+		taintTolerationEnable: true,
+	}
+	pp.StableFilterPlugins = map[string]k8sframework.FilterPlugin{
+		nodeunschedulable.Name: &fakeFilterPlugin{name: nodeunschedulable.Name, message: "stable-nodeunschedulable"},
+		nodeaffinity.Name:      &fakeFilterPlugin{name: nodeaffinity.Name, message: "stable-nodeaffinity"},
+		tainttoleration.Name:   &fakeFilterPlugin{name: tainttoleration.Name, message: "stable-tainttoleration"},
+	}
+	pp.FilterPlugins = map[string]k8sframework.FilterPlugin{
+		nodeunschedulable.Name: &fakeFilterPlugin{name: nodeunschedulable.Name, message: "stable-nodeunschedulable"},
+		nodeaffinity.Name:      &fakeFilterPlugin{name: nodeaffinity.Name, message: "stable-nodeaffinity"},
+		nodeports.Name:         &fakeFilterPlugin{name: nodeports.Name, message: "normal-nodeports"},
+		tainttoleration.Name:   &fakeFilterPlugin{name: tainttoleration.Name, message: "stable-tainttoleration"},
+	}
+	// Predicate walks StableFilterOrder / FilterOrder (filled by InitPlugin in production). Mirror that order here.
+	pp.StableFilterOrder = []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name}
+	pp.FilterOrder = []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name}
+
+	node := &apiv1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-1"},
+		Status: apiv1.NodeStatus{
+			Capacity: apiv1.ResourceList{
+				apiv1.ResourceCPU:    resource.MustParse("4"),
+				apiv1.ResourceMemory: resource.MustParse("8Gi"),
+				apiv1.ResourcePods:   resource.MustParse("100"),
+			},
+			Allocatable: apiv1.ResourceList{
+				apiv1.ResourceCPU:    resource.MustParse("4"),
+				apiv1.ResourceMemory: resource.MustParse("8Gi"),
+				apiv1.ResourcePods:   resource.MustParse("100"),
+			},
+		},
+	}
+	k8sNodeInfo := schedframework.NewNodeInfo()
+	k8sNodeInfo.SetNode(node)
+	pp.Handle = k8s.NewFramework(map[string]k8sframework.NodeInfo{"node-1": k8sNodeInfo})
+
+	task := api.NewTaskInfo(util.BuildPod("ns", "p1", "", apiv1.PodPending, nil, "pg", nil, nil))
+	volcanoNode := api.NewNodeInfo(node)
+
+	expected := []string{
+		"stable-nodeunschedulable",
+		"stable-nodeaffinity",
+		"stable-tainttoleration",
+		"normal-nodeports",
+	}
+	for i := 0; i < 20; i++ {
+		err := pp.Predicate(task, volcanoNode, schedframework.NewCycleState())
+		if err == nil {
+			t.Fatalf("expected predicate error, got nil")
+		}
+		fitErr, ok := err.(*api.FitError)
+		if !ok {
+			t.Fatalf("expected *api.FitError, got %T", err)
+		}
+		assert.Equal(t, expected, fitErr.Reasons())
+	}
+}
+
+func TestReserveRollbackOrderStable(t *testing.T) {
+	calls := make([]string, 0, 8)
+	pp := New(nil).(*PredicatesPlugin)
+	pp.enabledPredicates = predicateEnable{
+		volumeBindingEnable:             true,
+		dynamicResourceAllocationEnable: true,
+	}
+	pp.ReservePlugins = map[string]k8sframework.ReservePlugin{
+		vbcap.Name:            &fakeReservePlugin{name: vbcap.Name, calls: &calls},
+		dynamicresources.Name: &fakeReservePlugin{name: dynamicresources.Name, calls: &calls},
+	}
+	pp.ReserveOrder = []string{vbcap.Name, dynamicresources.Name}
+
+	pod := util.BuildPod("ns", "p1", "", apiv1.PodPending, nil, "pg", nil, nil)
+	pod.Spec.NodeName = "node-1"
+	pod.Spec.Volumes = []apiv1.Volume{
+		{
+			Name: "pvc-vol",
+			VolumeSource: apiv1.VolumeSource{
+				PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{ClaimName: "claim-1"},
+			},
+		},
+	}
+	task := api.NewTaskInfo(pod)
+
+	event := &framework.Event{Task: task}
+	pp.runReservePlugins(&framework.Session{}, event)
+	if event.Err != nil {
+		t.Fatalf("unexpected reserve error: %v", event.Err)
+	}
+
+	bindCtx := &cache.BindContext{
+		TaskInfo:   task,
+		Extensions: map[string]cache.BindContextExtension{pp.Name(): &BindContextExtension{State: schedframework.NewCycleState()}},
+	}
+	pp.PreBindRollBack(context.Background(), bindCtx)
+
+	assert.Equal(t, []string{
+		"reserve-VolumeBinding",
+		"reserve-DynamicResources",
+		"unreserve-DynamicResources",
+		"unreserve-VolumeBinding",
+	}, calls)
 }

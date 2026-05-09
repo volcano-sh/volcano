@@ -17,6 +17,7 @@
 package api
 
 import (
+	"reflect"
 	"slices"
 	"sync"
 
@@ -74,6 +75,12 @@ type Devices interface {
 
 	// GetStatus used for debug and monitor
 	GetStatus() string
+
+	// DeepCopy returns a deep copy of this device object for use in dry-run
+	// simulation (e.g. topology-aware preemption).  The return type is
+	// interface{} to avoid circular imports: each device package does not
+	// import the top-level api package.
+	DeepCopy() interface{}
 }
 
 // make sure GPUDevices implements Devices interface
@@ -91,6 +98,12 @@ func RegisterDevice(deviceName string) {
 		}
 	}
 	RegisteredDevices = append(RegisteredDevices, deviceName)
+}
+
+// IsNilDevice reports whether d wraps a typed-nil pointer.
+func IsNilDevice(d Devices) bool {
+	rv := reflect.ValueOf(d)
+	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
 
 var IgnoredDevicesList = ignoredDevicesList{}

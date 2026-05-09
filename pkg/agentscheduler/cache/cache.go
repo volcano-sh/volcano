@@ -97,7 +97,8 @@ func New(config *rest.Config, opt *options.ServerOption) Cache {
 
 // SchedulerCache cache for the kube batch
 type SchedulerCache struct {
-	sync.Mutex
+	Mutex       sync.RWMutex
+	BinderMutex sync.RWMutex
 
 	kubeClient kubernetes.Interface
 	restConfig *rest.Config
@@ -117,10 +118,11 @@ type SchedulerCache struct {
 
 	Recorder record.EventRecorder
 
-	Nodes      map[string]*nodeInfoListItem // TODO: do we need to also add a seperate lock for Nodes cache?
-	headNode   *nodeInfoListItem
-	NodeList   []string
-	NodeShards map[string]*schedulingapi.NodeShardInfo
+	Nodes         map[string]*nodeInfoListItem // TODO: do we need to also add a seperate lock for Nodes cache?
+	headNode      *nodeInfoListItem
+	NodeList      []string
+	NodeShards    map[string]*schedulingapi.NodeShardInfo
+	NodesInBinder map[string]int //Candidate nodes wait to be checked in binder
 
 	taskCache *TaskCache
 
@@ -327,15 +329,15 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *Schedule
 	}
 
 	sc := &SchedulerCache{
-		Nodes:              make(map[string]*nodeInfoListItem),
-		nodeQueue:          workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[schedulercache.QueueObjectWrapper]()),
-		kubeClient:         kubeClient,
-		vcClient:           vcClient,
-		restConfig:         config,
-		schedulerName:      opt.SchedulerName,
-		nodeSelectorLabels: make(map[string]sets.Empty),
-		imageStates:        make(map[string]*imageState),
-
+		Nodes:               make(map[string]*nodeInfoListItem),
+		nodeQueue:           workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[schedulercache.QueueObjectWrapper]()),
+		kubeClient:          kubeClient,
+		vcClient:            vcClient,
+		restConfig:          config,
+		schedulerName:       opt.SchedulerName,
+		nodeSelectorLabels:  make(map[string]sets.Empty),
+		imageStates:         make(map[string]*imageState),
+		NodesInBinder:       make(map[string]int),
 		NodeList:            []string{},
 		NodeShards:          make(map[string]*schedulingapi.NodeShardInfo),
 		nodeWorkers:         opt.NodeWorkerThreads,
@@ -1000,8 +1002,12 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 }
 
 func (sc *SchedulerCache) UpdateSnapshot(snapshot *k8sutil.Snapshot) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.BinderMutex.RLock()
+	snapshot.CloneNodesInBinder(sc.NodesInBinder)
+	sc.BinderMutex.RUnlock()
+
+	sc.Mutex.RLock()
+	defer sc.Mutex.RUnlock()
 
 	klog.V(5).Infof("begin to update the snapshot ...")
 	klog.V(5).Infof("the snapshot is %v", snapshot)
@@ -1046,8 +1052,8 @@ func (sc *SchedulerCache) SharedDRAManager() fwk.SharedDRAManager {
 
 // String returns information about the cache in a string format
 func (sc *SchedulerCache) String() string {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.Mutex.RLock()
+	defer sc.Mutex.RUnlock()
 
 	str := "Cache:\n"
 
@@ -1099,6 +1105,31 @@ func (sc *SchedulerCache) UpdateTaskStatus(task *schedulingapi.TaskInfo, status 
 
 func (sc *SchedulerCache) EnqueueScheduleResult(scheduleResult *agentapi.PodScheduleResult) {
 	sc.ConflictAwareBinder.EnqueueScheduleResult(scheduleResult)
+}
+
+func (sc *SchedulerCache) RecordCandidateNodesInBinder(nodes []*schedulingapi.NodeInfo) {
+	sc.BinderMutex.Lock()
+	defer sc.BinderMutex.Unlock()
+	for _, nodeInfo := range nodes {
+		if nodeInfo == nil {
+			continue
+		}
+		sc.NodesInBinder[nodeInfo.Name] += 1
+	}
+}
+
+func (sc *SchedulerCache) RemoveCandidateNodesFromBinder(nodes []*schedulingapi.NodeInfo) {
+	sc.BinderMutex.Lock()
+	defer sc.BinderMutex.Unlock()
+	for _, nodeInfo := range nodes {
+		if nodeInfo == nil {
+			continue
+		}
+		sc.NodesInBinder[nodeInfo.Name] -= 1
+		if sc.NodesInBinder[nodeInfo.Name] <= 0 {
+			delete(sc.NodesInBinder, nodeInfo.Name)
+		}
+	}
 }
 
 // nodeInfoListItem holds a NodeInfo pointer and acts as an item in a doubly

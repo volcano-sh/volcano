@@ -39,6 +39,10 @@ jobs:
     needs: build-images
     uses: ./.github/workflows/e2e_scheduling_actions.yaml
 
+  e2e-scheduling-gates:
+    needs: build-images
+    uses: ./.github/workflows/e2e_scheduling_gates.yaml
+
   e2e-scheduling-basic:
     needs: build-images
     uses: ./.github/workflows/e2e_scheduling_basic.yaml

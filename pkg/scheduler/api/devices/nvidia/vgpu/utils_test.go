@@ -17,6 +17,7 @@ limitations under the License.
 package vgpu
 
 import (
+	"strings"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -228,5 +229,108 @@ func TestDeviceHasPodFromSameGroup(t *testing.T) {
 				t.Errorf("deviceHasPodFromSameGroup() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSortedDeviceIndicesByPolicy_PicksExpectedDevice(t *testing.T) {
+	VGPUEnable = true
+	defer func() { VGPUEnable = false }()
+
+	testCases := []struct {
+		name      string
+		numGPUs   int
+		seed      func(gs *GPUDevices)
+		policy    string
+		wantDevID int
+	}{
+		{
+			name:    "binpack picks busier device",
+			numGPUs: 2,
+			seed: func(gs *GPUDevices) {
+				gs.Device[0].UsedMem = 4096
+				gs.Device[0].UsedNum = 1
+			},
+			policy:    binpackPolicy,
+			wantDevID: 0,
+		},
+		{
+			name:    "spread picks idle device over shared one",
+			numGPUs: 2,
+			seed: func(gs *GPUDevices) {
+				gs.Device[0].UsedMem = 4096
+				gs.Device[0].UsedNum = 1
+			},
+			policy:    spreadPolicy,
+			wantDevID: 1,
+		},
+		{
+			name:      "unset policy preserves legacy descending-index order",
+			numGPUs:   3,
+			seed:      func(gs *GPUDevices) {},
+			policy:    "",
+			wantDevID: 2,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			gs := makeGPUDevices("node-1", tc.numGPUs, 16384, 4)
+			tc.seed(gs)
+			wantUUID := gs.Device[tc.wantDevID].UUID
+			pod := makeVGPUPod("worker", "default", "uid", 4096, false, "")
+			fit, devs, _, err := checkNodeGPUSharingPredicateAndScore(pod, gs, true, tc.policy)
+			if err != nil || !fit {
+				t.Fatalf("pod should fit: fit=%v err=%v", fit, err)
+			}
+			got := getDeviceUUID(devs)
+			if !strings.Contains(got, wantUUID) {
+				t.Errorf("policy=%q: expected device %s, got %s", tc.policy, wantUUID, got)
+			}
+		})
+	}
+}
+
+func TestGPUScore(t *testing.T) {
+	idle := &GPUDevice{UsedNum: 0, UsedMem: 0, Memory: 16384}
+	shared := &GPUDevice{UsedNum: 1, UsedMem: 4096, Memory: 16384}
+	full := &GPUDevice{UsedNum: 4, UsedMem: 16384, Memory: 16384}
+
+	testCases := []struct {
+		name   string
+		policy string
+		device *GPUDevice
+		want   float64
+	}{
+		{name: "spread rewards idle GPU", policy: spreadPolicy, device: idle, want: spreadMultiplier},
+		{name: "spread does not reward shared GPU", policy: spreadPolicy, device: shared, want: 0},
+		{name: "spread does not reward full GPU", policy: spreadPolicy, device: full, want: 0},
+		{name: "binpack rewards full GPU most", policy: binpackPolicy, device: full, want: binpackMultiplier},
+		{name: "binpack does not reward idle GPU", policy: binpackPolicy, device: idle, want: 0},
+		{name: "unset policy returns zero", policy: "", device: shared, want: 0},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := GPUScore(tc.policy, tc.device); got != tc.want {
+				t.Errorf("GPUScore(%q) = %f, want %f", tc.policy, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBinpackStacksSequentialPods(t *testing.T) {
+	VGPUEnable = true
+	defer func() { VGPUEnable = false }()
+
+	gs := makeGPUDevices("node-1", 3, 16384, 4)
+	uuids := make([]string, 0, 3)
+	for i, name := range []string{"a", "b", "c"} {
+		pod := makeVGPUPod("worker-"+name, "default", name, 4096, false, "")
+		fit, devs, _, err := checkNodeGPUSharingPredicateAndScore(pod, gs, false, binpackPolicy)
+		if err != nil || !fit {
+			t.Fatalf("pod %d should fit: fit=%v err=%v", i, fit, err)
+		}
+		uuids = append(uuids, getDeviceUUID(devs))
+	}
+	if uuids[0] != uuids[1] || uuids[1] != uuids[2] {
+		t.Errorf("binpack should stack 3 sequential pods on the same GPU, got: %v", uuids)
 	}
 }

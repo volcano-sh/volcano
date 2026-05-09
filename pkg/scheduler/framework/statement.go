@@ -377,6 +377,7 @@ func (s *Statement) Discard() {
 			}
 		}
 	}
+	s.operations = nil
 }
 
 // Commit operation for evict and pipeline
@@ -402,6 +403,7 @@ func (s *Statement) Commit() {
 			}
 		}
 	}
+	s.operations = nil
 }
 
 // Merge transfers operations from the given statements into this statement.

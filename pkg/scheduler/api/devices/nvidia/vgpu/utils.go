@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -145,7 +146,8 @@ func decodeContainerDevices(str string) ContainerDevices {
 	return contdev
 }
 
-func decodePodDevices(str string) []ContainerDevices {
+// DecodePodDevices parses the vgpu-ids-new annotation into per-container device lists.
+func DecodePodDevices(str string) []ContainerDevices {
 	if len(str) == 0 {
 		return []ContainerDevices{}
 	}
@@ -359,17 +361,46 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 	if pod.Annotations[VGPUPodGroupPolicyAnnotation] == VGPUPodGroupPolicySpreadValue {
 		currentPodGroupKey = getPodGroupKey(pod)
 	}
+
+	type tentativeAlloc struct {
+		device *GPUDevice
+		mem    uint
+		core   uint
+	}
+	rollbackTentative := func(allocs []tentativeAlloc) {
+		for _, alloc := range allocs {
+			if alloc.device == nil {
+				continue
+			}
+			if alloc.device.UsedNum > 0 {
+				alloc.device.UsedNum--
+			}
+			if alloc.device.UsedMem >= alloc.mem {
+				alloc.device.UsedMem -= alloc.mem
+			} else {
+				alloc.device.UsedMem = 0
+			}
+			if alloc.device.UsedCore >= alloc.core {
+				alloc.device.UsedCore -= alloc.core
+			} else {
+				alloc.device.UsedCore = 0
+			}
+		}
+	}
+
+	tentativeAllocs := []tentativeAlloc{}
 	ctrdevs := []ContainerDevices{}
 	for _, val := range ctrReq {
 		devs := []ContainerDevice{}
 		if int(val.Nums) > len(gs.Device) {
+			rollbackTentative(tentativeAllocs)
 			return false, []ContainerDevices{}, 0, fmt.Errorf("no enough gpu cards on node %s", gs.Name)
 		}
 		klog.V(3).InfoS("Allocating device for container", "request", val)
 
-		for i := len(gs.Device) - 1; i >= 0; i-- {
+		for _, i := range sortedDeviceIndicesByPolicy(gs, schedulePolicy) {
 			klog.V(3).InfoS("Scoring pod request", "memReq", val.Memreq, "memPercentageReq", val.MemPercentagereq, "coresReq", val.Coresreq, "Nums", val.Nums, "Index", i, "ID", gs.Device[i].ID)
-			klog.V(3).InfoS("Current Device", "Index", i, "TotalMemory", gs.Device[i].Memory, "UsedMemory", gs.Device[i].UsedMem, "UsedCores", gs.Device[i].UsedCore, "replicate", replicate)
+			klog.V(3).InfoS("Current Device", "Index", i, "TotalMemory", gs.Device[i].Memory, "UsedMemory", gs.Device[i].UsedMem, "UsedCores", gs.Device[i].UsedCore, "UsedNum", gs.Device[i].UsedNum, "Number", gs.Device[i].Number, "replicate", replicate)
 			if gs.Device[i].Number <= uint(gs.Device[i].UsedNum) {
 				continue
 			}
@@ -406,6 +437,11 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 				klog.V(3).Info(gs.Device[i].ID, "not fit")
 				continue
 			}
+			tentativeAllocs = append(tentativeAllocs, tentativeAlloc{
+				device: gs.Device[i],
+				mem:    memreqForCard,
+				core:   uint(val.Coresreq),
+			})
 			//total += gs.Devices[i].Count
 			//free += node.Devices[i].Count - node.Devices[i].Used
 			if val.Nums > 0 {
@@ -424,11 +460,46 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 			}
 		}
 		if val.Nums > 0 {
+			rollbackTentative(tentativeAllocs)
 			return false, []ContainerDevices{}, 0, fmt.Errorf("not enough gpu fitted on this node")
 		}
 		ctrdevs = append(ctrdevs, devs)
 	}
 	return true, ctrdevs, score, nil
+}
+
+func sortedDeviceIndicesByPolicy(gs *GPUDevices, schedulePolicy string) []int {
+	n := len(gs.Device)
+	idx := make([]int, 0, n)
+	switch schedulePolicy {
+	case binpackPolicy:
+		for i := range gs.Device {
+			idx = append(idx, i)
+		}
+		sort.Slice(idx, func(a, b int) bool {
+			da, db := gs.Device[idx[a]], gs.Device[idx[b]]
+			if da.UsedMem != db.UsedMem {
+				return da.UsedMem > db.UsedMem
+			}
+			return idx[a] < idx[b]
+		})
+	case spreadPolicy:
+		for i := range gs.Device {
+			idx = append(idx, i)
+		}
+		sort.Slice(idx, func(a, b int) bool {
+			da, db := gs.Device[idx[a]], gs.Device[idx[b]]
+			if da.UsedNum != db.UsedNum {
+				return da.UsedNum < db.UsedNum
+			}
+			return idx[a] < idx[b]
+		})
+	default:
+		for i := n - 1; i >= 0; i-- {
+			idx = append(idx, i)
+		}
+	}
+	return idx
 }
 
 func GPUScore(schedulePolicy string, device *GPUDevice) float64 {
@@ -437,7 +508,7 @@ func GPUScore(schedulePolicy string, device *GPUDevice) float64 {
 	case binpackPolicy:
 		score = binpackMultiplier * (float64(device.UsedMem) / float64(device.Memory))
 	case spreadPolicy:
-		if device.UsedNum == 1 {
+		if device.UsedNum == 0 {
 			score = spreadMultiplier
 		}
 	default:

@@ -64,7 +64,8 @@ func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource
 	if _, _, err := deserializer.Decode(raw, nil, &job); err != nil {
 		return &job, err
 	}
-	klog.V(3).Infof("the job struct is %+v", job)
+	klog.V(3).Infof("decoded job uid=%s namespace=%s name=%s", job.UID, job.Namespace, job.Name)
+	klog.V(7).Infof("the job struct is %+v", job)
 
 	return &job, nil
 }
@@ -83,7 +84,8 @@ func DecodeCronJob(object runtime.RawExtension, resource metav1.GroupVersionReso
 	if _, _, err := deserializer.Decode(raw, nil, &cronjob); err != nil {
 		return &cronjob, err
 	}
-	klog.V(3).Infof("the cronjob struct is %+v", cronjob)
+	klog.V(3).Infof("decoded cronjob uid=%s namespace=%s name=%s", cronjob.UID, cronjob.Namespace, cronjob.Name)
+	klog.V(7).Infof("the cronjob struct is %+v", cronjob)
 
 	return &cronjob, nil
 }
@@ -102,7 +104,8 @@ func DecodePod(object runtime.RawExtension, resource metav1.GroupVersionResource
 	if _, _, err := deserializer.Decode(raw, nil, &pod); err != nil {
 		return &pod, err
 	}
-	klog.V(3).Infof("the pod struct is %+v", pod)
+	klog.V(3).Infof("decoded pod uid=%s namespace=%s name=%s", pod.UID, pod.Namespace, pod.Name)
+	klog.V(7).Infof("the pod struct is %+v", pod)
 
 	return &pod, nil
 }
@@ -185,7 +188,8 @@ func DecodeJobFlow(object runtime.RawExtension, resource metav1.GroupVersionReso
 	if _, _, err := deserializer.Decode(raw, nil, &jobFlow); err != nil {
 		return &jobFlow, err
 	}
-	klog.V(3).Infof("the jobflow struct is %+v", jobFlow)
+	klog.V(3).Infof("decoded jobflow uid=%s namespace=%s name=%s", jobFlow.UID, jobFlow.Namespace, jobFlow.Name)
+	klog.V(7).Infof("the jobflow struct is %+v", jobFlow)
 
 	return &jobFlow, nil
 }

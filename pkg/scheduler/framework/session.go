@@ -49,6 +49,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
+	"volcano.sh/volcano/pkg/scheduler/gate"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -78,6 +79,10 @@ type Session struct {
 	PodGroupOldState *api.PodGroupOldState
 	// DirtyJobs include the jobs that need to flush to SchedulerCache on session close
 	DirtyJobs sets.Set[api.JobID]
+
+	// schGateManager is the scheduler gate manager, passed in from the Scheduler.
+	// Nil when SchedulingGatesQueueAdmission feature gate is disabled.
+	schGateManager *gate.SchGateManager
 
 	Jobs           map[api.JobID]*api.JobInfo
 	Nodes          map[string]*api.NodeInfo
@@ -936,6 +941,17 @@ func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNuma
 // KubeClient returns the kubernetes client
 func (ssn *Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
+}
+
+// SchGateManager returns the scheduler gate manager.
+// Returns nil when SchedulingGatesQueueAdmission feature gate is disabled.
+func (ssn *Session) SchGateManager() *gate.SchGateManager {
+	return ssn.schGateManager
+}
+
+// SetSchGateManager sets the gate manager on the session.
+func (ssn *Session) SetSchGateManager(m *gate.SchGateManager) {
+	ssn.schGateManager = m
 }
 
 // VCClient returns the volcano client

@@ -1835,6 +1835,67 @@ func TestResource_LessEqualResource(t *testing.T) {
 	}
 }
 
+func TestResource_GreaterPartly(t *testing.T) {
+	tests := []struct {
+		name              string
+		child             *Resource
+		parent            *Resource
+		expectedExceeds   bool
+		expectedResources []string
+	}{
+		{
+			name: "missing parent scalar key with zero child value",
+			child: &Resource{
+				ScalarResources: map[v1.ResourceName]float64{"vendor.com/gpu-x": 0},
+			},
+			parent:            &Resource{},
+			expectedExceeds:   false,
+			expectedResources: []string{},
+		},
+		{
+			name: "missing parent scalar key with positive child value",
+			child: &Resource{
+				ScalarResources: map[v1.ResourceName]float64{"vendor.com/gpu-x": 8},
+			},
+			parent:            &Resource{},
+			expectedExceeds:   false,
+			expectedResources: []string{},
+		},
+		{
+			name: "shared scalar key where child exceeds parent",
+			child: &Resource{
+				ScalarResources: map[v1.ResourceName]float64{"vendor.com/gpu-x": 8},
+			},
+			parent: &Resource{
+				ScalarResources: map[v1.ResourceName]float64{"vendor.com/gpu-x": 4},
+			},
+			expectedExceeds:   true,
+			expectedResources: []string{"vendor.com/gpu-x"},
+		},
+		{
+			name: "cpu exceeds parent",
+			child: &Resource{
+				MilliCPU: 8000,
+			},
+			parent: &Resource{
+				MilliCPU: 4000,
+			},
+			expectedExceeds:   true,
+			expectedResources: []string{"cpu"},
+		},
+	}
+
+	for _, test := range tests {
+		exceeds, resources := test.child.GreaterPartly(test.parent, Infinity)
+		sort.Strings(resources)
+		sort.Strings(test.expectedResources)
+		if exceeds != test.expectedExceeds || !equality.Semantic.DeepEqual(resources, test.expectedResources) {
+			t.Errorf("test %q: expected exceeds=%v resources=%v, got exceeds=%v resources=%v",
+				test.name, test.expectedExceeds, test.expectedResources, exceeds, resources)
+		}
+	}
+}
+
 func TestIntersection(t *testing.T) {
 	cases := []struct {
 		name   string

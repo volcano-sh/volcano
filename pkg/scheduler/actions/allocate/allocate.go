@@ -23,10 +23,13 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -251,8 +254,11 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 		}
 
 		for _, task := range subJob.TaskStatusIndex[api.Pending] {
-			// Skip tasks whose pod are scheduling gated
-			if task.SchGated {
+			// Skip tasks with external (non-Volcano) scheduling gates
+			// Allow Volcano-managed gates (they'll be handled by capacity plugin)
+			if task.SchGated && !api.HasOnlyVolcanoSchedulingGate(task.Pod) {
+				klog.V(4).Infof("Task <%v/%v> has external scheduling gate, skip it.",
+					task.Namespace, task.Name)
 				continue
 			}
 
@@ -569,6 +575,24 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 		task := tasks.Pop().(*api.TaskInfo)
 		if !ssn.Allocatable(queue, task) {
 			klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
+			continue
+		}
+
+		// If task passed allocation check and has the QueueAllocationGate, initiate async gate removal.
+		// Gate will be removed by the background worker (best effort).
+		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) &&
+			task.SchGated && api.HasQueueAllocationGateAnnotation(task.Pod) {
+			klog.V(3).Infof("Task %s/%s has the QueueAllocationGate, queue async gate removal", task.Namespace, task.Name)
+			ssn.SchGateManager().Enqueue(task)
+		}
+
+		// Skip gated tasks. If someone added the Volcano gate without the opt-in annotation,
+		// warn them since the gate will never be removed automatically.
+		if task.SchGated {
+			if api.HasOnlyVolcanoSchedulingGate(task.Pod) && !api.HasQueueAllocationGateAnnotation(task.Pod) {
+				klog.Warningf("Task %s/%s has Volcano scheduling gate but missing the opt-in annotation %q; gate will not be removed automatically",
+					task.Namespace, task.Name, schedulingv1beta1.QueueAllocationGateKey)
+			}
 			continue
 		}
 

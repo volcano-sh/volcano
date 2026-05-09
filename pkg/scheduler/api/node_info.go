@@ -407,7 +407,6 @@ func (ni *NodeInfo) setNode(node *v1.Node) {
 			ni.allocateIdleResource(ti)
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
-			ni.addResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
 		default:
@@ -455,7 +454,6 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 			ni.allocateIdleResource(ti)
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
-			ni.addResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
 		case Binding:
@@ -502,7 +500,6 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) {
 			ni.Releasing.Sub(task.Resreq)
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)
-			ni.subResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Sub(task.Resreq)
 		default:
@@ -640,11 +637,19 @@ func (ni *NodeInfo) CloneImageSummary() map[string]*fwk.ImageStateSummary {
 	return nodeImageStates
 }
 
-// CloneOthers clone other map resources
+// CloneOthers clone other map resources using deepcopy
 func (ni *NodeInfo) CloneOthers() map[string]interface{} {
 	others := make(map[string]interface{})
 	for k, v := range ni.Others {
-		others[k] = v
+		if d, ok := v.(Devices); ok {
+			if IsNilDevice(d) {
+				others[k] = v
+				continue
+			}
+			others[k] = d.DeepCopy()
+		} else {
+			others[k] = v
+		}
 	}
 	return others
 }

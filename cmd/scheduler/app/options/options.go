@@ -97,6 +97,10 @@ type ServerOption struct {
 	EnableCacheDumper bool
 	NodeWorkerThreads uint32
 
+	// GateRemovalWorkerNum is the number of async workers for scheduling gate removal.
+	// Only used when SchedulingGatesQueueAdmission feature gate is enabled.
+	GateRemovalWorkerNum int
+
 	// IgnoredCSIProvisioners contains a list of provisioners, and pod request pvc with these provisioners will
 	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
 	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
@@ -171,6 +175,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
+	fs.IntVar(&s.GateRemovalWorkerNum, "gate-removal-worker-num", 5, "The number of async workers for scheduling gate removal (used when SchedulingGatesQueueAdmission is enabled).")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 	fs.DurationVar(&s.ResourceSyncTimeout, "resource-sync-timeout", defaultResourceSyncTimeout, "timeout on waiting for handler handling initial resources synchronization before starting scheduler, default is 60s, 0 skip waiting")
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")

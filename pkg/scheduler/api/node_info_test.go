@@ -290,3 +290,32 @@ func TestNodeInfo_SetNode(t *testing.T) {
 		}
 	}
 }
+
+func TestCloneOthersPreservesTypedNilDevices(t *testing.T) {
+	ni := &NodeInfo{
+		Name: "test-node",
+		Others: map[string]interface{}{
+			vgpu.DeviceName:     (*vgpu.GPUDevices)(nil),
+			gpushare.DeviceName: (*gpushare.GPUDevices)(nil),
+			vnpu.DeviceName:     (*vnpu.NPUDevices)(nil),
+		},
+	}
+
+	cloned := ni.CloneOthers()
+
+	for k := range ni.Others {
+		cv, present := cloned[k]
+		if !present {
+			t.Errorf("cloned map missing key %q", k)
+			continue
+		}
+		d, ok := cv.(Devices)
+		if !ok {
+			t.Errorf("cloned[%q] does not satisfy Devices interface (typed-nil was lost)", k)
+			continue
+		}
+		if !IsNilDevice(d) {
+			t.Errorf("cloned[%q] should be a typed-nil pointer", k)
+		}
+	}
+}

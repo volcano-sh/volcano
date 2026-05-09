@@ -44,7 +44,7 @@ Please refer to the links below regarding detecting `Unschedulable` Pods in Clus
 > - [CA (v1.34.1): listers.go – func isUnschedulable(pod \*apiv1.Pod) bool](https://github.com/kubernetes/autoscaler/blob/cluster-autoscaler-1.34.1/cluster-autoscaler/utils/kubernetes/listers.go#L161-L170)
 >   (also check
 >   [FAQ.md](https://github.com/kubernetes/autoscaler/blob/cluster-autoscaler-release-1.34/cluster-autoscaler/FAQ.md#how-does-scale-up-work))
-> - [Karpenter (v1.8.0): scheduling.go – func FailedToSchedule(pod \*corev1.Pod) bool](https://github.com/kubernetes-sigs/karpenter/blob/v1.8.0/pkg/utils/pod/scheduling.go#L116-L129)
+> - [Karpenter (v1.11.1): scheduling.go – func FailedToSchedule(pod \*corev1.Pod) bool](https://github.com/kubernetes-sigs/karpenter/blob/v1.11.1/pkg/utils/pod/scheduling.go#L122)
 
 This mechanism works as intended with the default `kube-scheduler`, but can cause unintended behavior when used with
 Volcano. Volcano's current implementation marks pods as `Unschedulable` for any allocation failure, regardless of
@@ -247,7 +247,9 @@ tries to allocate resources for each Task in a given Queue and
 gives us the needed signal (by running every plugin check) for eventually removing the gate added previously by the
 **MutatingAdmissionWebhook**. 
 
-The implementation proposes to remove gates at two points: first asynchronously after the capacity check passes (performance optimization), then synchronously before binding if needed (safety guarantee). The async removal is handled by background workers to avoid blocking the scheduler. The following code snippet showcases the high-level changes to the function
+The implementation removes gates asynchronously after the capacity check passes, handled by background workers to avoid
+blocking the scheduler. Gated tasks are skipped in the current cycle and only processed after the gate is actually
+removed by the async worker. The following code snippet showcases the high-level changes to the function
 [`allocateResourcesForTasks(...)`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L551):
 
 ```go
@@ -266,27 +268,25 @@ func (alloc *Action) allocateResourcesForTasks(...) {
         }
 
 		// If task passed allocation check and has the QueueAllocationGate, initiate async gate removal.
-		// Gate will be removed by the background worker (best effort). During the bind operation, we need
-		// to ensure the gate is not present, otherwise the bind will fail.
+		// Gate will be removed by the background worker (best effort).
         if task.SchGated && api.HasQueueAllocationGateAnnotation(task.Pod) {
             klog.V(3).Infof("Task %s/%s has the QueueAllocationGate, queue async gate removal", task.Namespace, task.Name)
-            alloc.schedulingGateRemoval(task, queue.UID)
+            alloc.schGateManager.enqueue(task)
         }
 
-		// Skip tasks with external (non-Volcano) scheduling gates
+		// Skip gated tasks. If someone added the Volcano gate without the opt-in annotation,
+		// warn them since the gate will never be removed automatically.
 		if task.SchGated {
-			if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
-				klog.Warningf("Task %s/%s has Volcano scheduling gate but missing annotation %q, gate will not be removed automatically; add the annotation or remove the gate manually",
+			if api.HasOnlyVolcanoSchedulingGate(task.Pod) && !api.HasQueueAllocationGateAnnotation(task.Pod) {
+				klog.Warningf("Task %s/%s has Volcano scheduling gate but missing annotation %q; gate will not be removed automatically",
 					task.Namespace, task.Name, schedulingv1beta1.QueueAllocationGateKey)
-			} else {
-				klog.V(4).Infof("Task %s/%s has non-Volcano scheduling gate, skipping", task.Namespace, task.Name)
 			}
 			continue
 		}
 
         // ... predicate checks ...
         // PrePredicate, node filtering, prioritization:
-        // If any fail, pod is marked Unschedulable (gate was already queued for removal above)
+        // If any fail, pod is marked Unschedulable after the gate is removed in the next cycle
 
         // Allocate task to best node if found
         if err := alloc.allocateResourcesForTask(stmt, task, bestNode, job); err == nil {
@@ -296,117 +296,57 @@ func (alloc *Action) allocateResourcesForTasks(...) {
 
     // ...
 }
-
-// schedulingGateRemoval queues async gate removal if scheduling failed.
-// This ensures cluster autoscalers can see the Unschedulable condition and trigger scale-up
-func (alloc *Action) schedulingGateRemoval(task *api.TaskInfo, queueID api.QueueID) {
-	// Only enqueue gate removal if the task has only Volcano scheduling gate
-	if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
-		op := schGateRemovalOperation{
-			namespace: task.Namespace,
-			name:      task.Name,
-		}
-
-		select {
-		case alloc.schGateRemovalCh <- op:
-			klog.V(3).Infof("Queued gate removal for %s/%s", task.Namespace, task.Name)
-			// Update task state immediately so it won't be queued again in this cycle
-			task.SchGated = false
-		default:
-			klog.Warningf("Gate operation queue full, skipping gate removal for %s/%s", task.Namespace, task.Name)
-		}
-	}
-}
 ```
 
-To support asynchronous gate removal, the `Action` struct must be **enhanced with channels** and **worker management
-fields**:
+Note that gated tasks are **not** allocated in the same cycle, they are skipped after enqueuing the gate removal. The
+task will be picked up in the next scheduling cycle once the async worker has removed the gate and the informer cache
+reflects the updated pod state.
+
+To support asynchronous gate removal, the gate management infrastructure could live in a dedicated
+`SchGateManager` struct in `pkg/scheduler/gate/schedulinggate.go`. The manager is owned by the
+`Scheduler` and its lifecycle is tied to the scheduler process. It should then be passed to each scheduling session via `OpenSession()` and accessed by the allocate
+action through `ssn.SchGateManager()`:
 
 ```go
-// Enhance the Action struct
-type Action struct {
-    session *framework.Session
+// SchGateManager handles asynchronous removal of Volcano scheduling gates from pods.
+type SchGateManager struct {
+    kubeClient kubernetes.Interface
+    opCh       chan gateRemovalOp
+    workersWg  sync.WaitGroup
+    stopCh     chan struct{}
+    workerNum  int
     // ...
-
-    // Async gate management infrastructure
-    schGateRemovalCh         chan schGateRemovalOperation
-    schGateRemovalWorkersWg  sync.WaitGroup
-    schGateRemovalStopCh     chan struct{}
-}
-
-type schGateRemovalOperation struct {
-    namespace string
-    name      string
 }
 
 // Background worker processes gate removal operations
-func (alloc *Action) schGateRemovalWorker() {
-    defer alloc.schGateRemovalWorkersWg.Done()
+func (m *SchGateManager) worker() {
+    defer m.workersWg.Done()
     for {
         select {
-        case <-alloc.schGateRemovalStopCh:
+        case <-m.stopCh:
             return
-        case op := <-alloc.schGateRemovalCh:
-            // Fetch fresh pod state from API server
-            // Use cached kubeClient to avoid data race with session updates
-            pod, err := alloc.kubeClient.CoreV1().Pods(op.namespace).Get(
-                context.Background(),
-                op.name,
-                metav1.GetOptions{})
-
-            if err != nil {
-                klog.Errorf("Failed to get pod %s/%s for gate operation: %v", op.namespace, op.name, err)
-                continue
-            }
-
-            // Remove the Volcano scheduling gate
-            if err := cache.RemoveVolcanoSchGate(alloc.kubeClient, pod); err != nil {
+        case op := <-m.opCh:
+            if err := cache.RemoveVolcanoSchGate(m.kubeClient, op.namespace, op.name); err != nil {
                 klog.Errorf("Failed to remove gate from %s/%s: %v", op.namespace, op.name, err)
             }
         }
     }
 }
-
-// Note: When starting the worker routine (e.g., in Action initialization), we should
-// call alloc.schGateRemovalWorkersWg.Add(1) before launching the goroutine.
 ```
 
-**Synchronous Gate Removal Before Bind**
-
-While the async worker provides best-effort gate removal, the [`Bind()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L218) operation includes a synchronous gate removal step to guarantee that Kubernetes will accept the bind request:
+The `Scheduler` creates and owns the manager:
 
 ```go
-// In DefaultBinder.Bind()
-func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*schedulingapi.TaskInfo) map[schedulingapi.TaskID]string {
-    errMsg := make(map[schedulingapi.TaskID]string)
-    for _, task := range tasks {
-        p := task.Pod
+// In Scheduler.Run():
+pc.schGateManager = gate.NewSchGateManager(pc.cache.Client(), options.ServerOpts.GateRemovalWorkerNum)
+pc.schGateManager.Start()
+go func() {
+    <-stopCh
+    pc.schGateManager.Stop()
+}()
 
-		// Ensure Volcano QueueAllocationGate is removed before bind, otherwise the bind will fail.
-		// This is a safety guarantee as the async worker may have already removed it.
-		if schedulingapi.HasQueueAllocationGateAnnotation(p) && schedulingapi.HasOnlyVolcanoSchedulingGate(p) {
-			klog.V(3).Infof("Ensuring gate is removed for pod %s/%s before bind", p.Namespace, p.Name)
-			err := RemoveVolcanoSchGate(kubeClient, p)
-
-			// On conflict, verify gates are gone
-			if apierrors.IsConflict(err) {
-				freshPod, _ := kubeClient.CoreV1().Pods(p.Namespace).Get(context.TODO(), p.Name, metav1.GetOptions{})
-				if freshPod != nil && len(freshPod.Spec.SchedulingGates) == 0 {
-					err = nil
-				}
-			}
-
-			if err != nil {
-				klog.Errorf("Failed to remove gate for <%v/%v>: %v", p.Namespace, p.Name, err)
-				errMsg[task.UID] = fmt.Sprintf("gate removal failed: %v", err)
-				continue
-			}
-		}
-
-        // Standard bind operation
-        // ...
-    }
-}
+// Passed to each session:
+ssn := framework.OpenSession(pc.cache, plugins, configurations, pc.schGateManager)
 ```
 
 ##### Queue Capacity Accounting for Ungated Pods
@@ -469,7 +409,7 @@ function (which invokes the capacity plugin) needs to account for:
 
 ###### Dynamic Reserved Calculation
 
-Rather than modifying the `allocated` attribute (which semantically represents bound resources), we add a new helper
+Rather than modifying the `allocated` attribute (which semantically represents bound resources), we can add a new helper
 method `queueAllocatableWithReserved` to the
 [capacity plugin](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/plugins/capacity/capacity.go). This
 new method extends the existing
@@ -537,8 +477,6 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
     // Rebuild reserved cache for this scheduling cycle
     cp.buildQueueReservedTasksCache(ssn)
 
-    ssn.AddCleanupReservationsFn(cp.Name(), ...)
-
     // ... rest of capacity plugin initialization ...
 }
 
@@ -563,8 +501,8 @@ func (cp *capacityPlugin) buildQueueReservedTasksCache(ssn *framework.Session) {
 
 ###### Cache Updates During Allocation
 
-The cache is updated incrementally during the scheduling session through two mechanisms: **adding tasks when they pass
-capacity checks** and **removing tasks before statement commit**.
+The cache is updated incrementally during the scheduling session through the existing `AllocateFunc` and
+`DeallocateFunc` event handlers registered by the capacity plugin.
 
 **Adding Tasks to Reserved Cache**
 
@@ -589,54 +527,42 @@ ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskIn
 })
 ```
 
-**Removing Tasks from Reserved Cache**
+**Removing Tasks from Reserved Cache on Allocation**
 
-The capacity plugin registers a **reservation cleanup function** during
-[`OnSessionOpen()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/plugins/capacity/capacity.go#L91)
-that removes tasks from the reserved cache before statement commit:
+When a task is successfully allocated (tentatively assigned to a node), the capacity plugin's existing `AllocateFunc`
+event handler removes it from the reserved cache. At this point the task's resources are counted in `attr.allocated`,
+so they must no longer be in the reserved cache to avoid double-counting:
 
 ```go
-// In capacity plugin's OnSessionOpen
-ssn.AddCleanupReservationsFn(cp.Name(), func(obj interface{}) {
-    stmt := obj.(*framework.Statement)
-    for _, op := range stmt.Operations() {
-        if op.Name() == framework.Allocate {
-            task := op.Task()
-            cp.removeTaskFromReservedCache(task.UID)
-        }
+// In capacity plugin's AllocateFunc event handler
+AllocateFunc: func(event *framework.Event) {
+    // ... existing allocated resource accounting ...
+
+    // Remove task from reserved cache when it gets allocated
+    cp.removeTaskFromReservedCache(event.Task.UID)
+},
+```
+
+**Restoring Tasks to Reserved Cache on Rollback**
+
+If an allocation is rolled back (*e.g.*, gang scheduling where not all tasks could be placed), the `DeallocateFunc`
+event handler restores the task to the reserved cache so capacity remains accounted for:
+
+```go
+// In capacity plugin's DeallocateFunc event handler
+DeallocateFunc: func(event *framework.Event) {
+    // ... existing deallocated resource accounting ...
+
+    // Restore task to reserved cache on rollback
+    if api.HasQueueAllocationGateAnnotation(event.Task.Pod) {
+        cp.addTaskToReservedCache(job.Queue, event.Task)
     }
-})
+},
 ```
 
-The `allocate` action calls the `CleanupReservations` method, which executes all registered reservation cleanup
-functions, before committing the statement. There are two locations where this will be called:
+The capacity plugin owns all its reservation logic internally through private methods (`addTaskToReservedCache` and `removeTaskFromReservedCache`):
 
 ```go
-// Location 1: Jobs with hard topology (job.ContainsHardTopology())
-// https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L308
-if stmt != nil && ssn.JobReady(job) {
-    ssn.CleanupReservations(stmt)
-    stmt.Commit()
-    ssn.MarkJobDirty(job.UID)
-    // ...
-}
-
-// Location 2: Jobs without hard topology (else clause)
-// https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L324
-if stmt != nil && ssn.JobReady(job) {
-    ssn.CleanupReservations(stmt)
-    stmt.Commit()
-    // ...
-}
-```
-
-This approach ensures that tasks are only removed from the reserved cache if the allocation is actually committed,
-preventing issues with gang scheduling where statements may be discarded. The capacity plugin owns all its reservation
-logic internally through private methods (`addTaskToReservedCache` and `removeTaskFromReservedCache`), maintaining
-proper encapsulation and avoiding tight coupling with the framework layer:
-
-```go
-// In capacity plugin's addTaskToReservedCache
 func (cp *capacityPlugin) addTaskToReservedCache(queueID api.QueueID, task *api.TaskInfo) {
     if cp.queueGateReservedTasks[queueID] == nil {
         cp.queueGateReservedTasks[queueID] = make(map[api.TaskID]*api.TaskInfo)
@@ -644,12 +570,10 @@ func (cp *capacityPlugin) addTaskToReservedCache(queueID api.QueueID, task *api.
     cp.queueGateReservedTasks[queueID][task.UID] = task
 }
 
-// In capacity plugin's removeTaskFromReservedCache
 func (cp *capacityPlugin) removeTaskFromReservedCache(taskID api.TaskID) {
     for queueID, tasks := range cp.queueGateReservedTasks {
         if _, exists := tasks[taskID]; exists {
             delete(tasks, taskID)
-            // Clean up empty queue entries
             if len(tasks) == 0 {
                 delete(cp.queueGateReservedTasks, queueID)
             }
@@ -659,21 +583,9 @@ func (cp *capacityPlugin) removeTaskFromReservedCache(taskID api.TaskID) {
 }
 ```
 
-The reservation cleanup mechanism follows the standard Volcano plugin extension point pattern, similar to
-[`AddAllocatableFn`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/framework/session_plugins.go#L131)
-and
-[`AddPreemptiveFn`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/framework/session_plugins.go#L126).
-The `CleanupReservationsFn` type can be defined in
-[`pkg/scheduler/api/types.go`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/api/types.go) and allows
-any plugin to register cleanup logic that runs before statement commit. This design makes the architecture extensible,
-enabling other plugins like
-[`proportion`](https://github.com/volcano-sh/volcano/tree/v1.14.0/pkg/scheduler/plugins/proportion) or
-[`tdm`](https://github.com/volcano-sh/volcano/tree/v1.14.0/pkg/scheduler/plugins/tdm) to implement similar reservation
-cleanup logic in the future without modifying the framework.
-
 ## Feature gate
 
-The entire scheduling-gates queue-admission flow is controlled by a [feature gate](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/features/volcano_features.go), for example, `SchedulingGatesQueueAdmission` (Alpha, default off). When the gate is enabled, all of the behavior described in this document applies. This keeps existing clusters and configurations unchanged unless the feature is explicitly enabled (*e.g.* `--feature-gates=SchedulingGatesQueueAdmission=true`).
+The entire scheduling-gates queue-admission flow is controlled by a [feature gate](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/features/volcano_features.go), for example, `SchedulingGatesQueueAdmission` (Alpha and off by default). When the gate is enabled, all of the behavior described in this document applies. This keeps existing clusters and configurations unchanged unless the feature is explicitly enabled (*e.g.* `--feature-gates=SchedulingGatesQueueAdmission=true`).
 
 ## Limitations
 

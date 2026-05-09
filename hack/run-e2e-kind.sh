@@ -140,6 +140,7 @@ custom:
   default_ns:
     node-role.kubernetes.io/control-plane: ""
   scheduler_feature_gates: ${FEATURE_GATES}
+  admission_feature_gates: ${FEATURE_GATES}
   enabled_admissions: ""
   vap_enable: true
   map_enable: true
@@ -185,6 +186,7 @@ custom:
   default_ns:
     node-role.kubernetes.io/control-plane: ""
   scheduler_feature_gates: ${FEATURE_GATES}
+  admission_feature_gates: ${FEATURE_GATES}
   enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
   vap_enable: false
   map_enable: false
@@ -282,6 +284,7 @@ custom:
   default_ns:
     node-role.kubernetes.io/control-plane: ""
   scheduler_feature_gates: ${FEATURE_GATES}
+  admission_feature_gates: ${FEATURE_GATES}
   enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
   ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
@@ -373,6 +376,10 @@ case ${E2E_TYPE} in
 "SCHEDULINGACTION")
     echo "Running scheduling action e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingaction/
+    ;;
+"SCHEDULINGGATES")
+    echo "Running scheduling gates e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulinggates/
     ;;
 "VCCTL")
     echo "Running vcctl e2e suite..."

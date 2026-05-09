@@ -48,6 +48,7 @@ type TaskSpec struct {
 	Limit                 v1.ResourceList
 	Affinity              *v1.Affinity
 	Labels                map[string]string
+	Annotations           map[string]string
 	Policies              []batchv1alpha1.LifecyclePolicy
 	RestartPolicy         v1.RestartPolicy
 	Tolerations           []v1.Toleration
@@ -238,8 +239,9 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 			PartitionPolicy: task.PartitionPolicy,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:   name,
-					Labels: task.Labels,
+					Name:        name,
+					Labels:      task.Labels,
+					Annotations: task.Annotations,
 				},
 				Spec: v1.PodSpec{
 					RestartPolicy:     restartPolicy,

@@ -152,7 +152,6 @@ type NetworkTopologySpec struct {
 	// HighestTierName specifies the highest tier name that a job allowed to cross when scheduling.
 	// HighestTierName and HighestTierAllowed cannot be set simultaneously.
 	// +kubebuilder:validation:MaxLength=253
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	// +optional
 	HighestTierName string `json:"highestTierName,omitempty" protobuf:"bytes,3,opt,name=highestTierName"`
 }
@@ -516,7 +515,7 @@ type CronJobSpec struct {
 	// database by the API server during CronJob validation and the controller manager during execution.
 	// If no system-wide time zone database can be found a bundled version of the database is used instead.
 	// If the time zone name becomes invalid during the lifetime of a CronJob or due to a change in host
-	// configuration, the controller will stop creating new new Jobs and will create a system event with the
+	// configuration, the controller will stop creating new Jobs and will create a system event with the
 	// reason UnknownTimeZone.
 	// More information can be found in https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/#time-zones
 	// +optional
@@ -557,7 +556,7 @@ type CronJobSpec struct {
 
 	// The number of failed finished jobs to retain.
 	// This is a pointer to distinguish between explicit zero and not specified.
-	// Defaults to 3.
+	// Defaults to 1.
 	// +kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=0
 	// +optional
