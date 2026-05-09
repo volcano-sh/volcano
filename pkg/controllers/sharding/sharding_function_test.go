@@ -246,3 +246,55 @@ func TestScheduleShardSyncSerializesFollowUpExecution(t *testing.T) {
 	assert.Equal(t, int32(0), concurrentRuns.Load(), "all shard sync executions should have completed")
 	controller.stopScheduledShardSync()
 }
+
+func TestScheduleShardSyncQueuesOnlyOneFollowUpWhileExecutionBlocked(t *testing.T) {
+	controller := &ShardingController{}
+	var syncCount atomic.Int32
+	started := make(chan struct{}, 2)
+	done := make(chan struct{}, 2)
+
+	controller.syncShardsRunner = func() {
+		syncCount.Add(1)
+		started <- struct{}{}
+		done <- struct{}{}
+	}
+
+	// Simulate a periodic/initial sync already holding the full-sync execution lock.
+	controller.shardSyncExecMu.Lock()
+	controller.scheduleShardSync()
+
+	time.Sleep(shardSyncDebounceDelay * 2)
+	controller.scheduleShardSync()
+	controller.scheduleShardSync()
+	controller.scheduleShardSync()
+
+	controller.shardSyncExecMu.Unlock()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first blocked shard sync to start")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first blocked shard sync to finish")
+	}
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for queued follow-up shard sync to start")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for queued follow-up shard sync to finish")
+	}
+
+	time.Sleep(shardSyncDebounceDelay * 2)
+	assert.Equal(t, int32(2), syncCount.Load(), "blocked execution should produce only one queued follow-up shard sync")
+	controller.stopScheduledShardSync()
+}

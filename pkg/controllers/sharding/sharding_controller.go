@@ -104,6 +104,12 @@ type ShardingController struct {
 	// node/pod changes collapse into a single shard sync.
 	shardSyncTimerMu sync.Mutex
 	shardSyncTimer   *time.Timer
+	// shardSyncInProgress tracks whether an event-driven shard sync callback is
+	// already waiting on execution or actively running.
+	shardSyncInProgress bool
+	// shardSyncRerunQueued tracks whether a follow-up event-driven sync should
+	// be scheduled after the current one finishes.
+	shardSyncRerunQueued bool
 	// shardSyncExecMu serializes full sync execution so periodic and
 	// event-driven triggers do not run global shard recomputation in parallel.
 	shardSyncExecMu sync.Mutex
@@ -344,6 +350,11 @@ func (sc *ShardingController) scheduleShardSync() {
 	sc.shardSyncTimerMu.Lock()
 	defer sc.shardSyncTimerMu.Unlock()
 
+	if sc.shardSyncInProgress {
+		sc.shardSyncRerunQueued = true
+		return
+	}
+
 	if sc.shardSyncTimer == nil {
 		sc.shardSyncTimer = time.AfterFunc(shardSyncDebounceDelay, sc.fireScheduledShardSync)
 		return
@@ -355,9 +366,23 @@ func (sc *ShardingController) scheduleShardSync() {
 func (sc *ShardingController) fireScheduledShardSync() {
 	sc.shardSyncTimerMu.Lock()
 	sc.shardSyncTimer = nil
+	if sc.shardSyncInProgress {
+		sc.shardSyncRerunQueued = true
+		sc.shardSyncTimerMu.Unlock()
+		return
+	}
+	sc.shardSyncInProgress = true
 	sc.shardSyncTimerMu.Unlock()
 
 	sc.executeShardSync()
+
+	sc.shardSyncTimerMu.Lock()
+	sc.shardSyncInProgress = false
+	if sc.shardSyncRerunQueued {
+		sc.shardSyncRerunQueued = false
+		sc.shardSyncTimer = time.AfterFunc(shardSyncDebounceDelay, sc.fireScheduledShardSync)
+	}
+	sc.shardSyncTimerMu.Unlock()
 }
 
 func (sc *ShardingController) stopScheduledShardSync() {
@@ -365,11 +390,13 @@ func (sc *ShardingController) stopScheduledShardSync() {
 	defer sc.shardSyncTimerMu.Unlock()
 
 	if sc.shardSyncTimer == nil {
+		sc.shardSyncRerunQueued = false
 		return
 	}
 
 	sc.shardSyncTimer.Stop()
 	sc.shardSyncTimer = nil
+	sc.shardSyncRerunQueued = false
 }
 
 func (sc *ShardingController) executeShardSync() {
