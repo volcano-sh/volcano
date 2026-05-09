@@ -35,13 +35,22 @@ var CONTENTTYPE = "Content-Type"
 // APPLICATIONJSON json content.
 var APPLICATIONJSON = "application/json"
 
-// Serve the http request.
-func Serve(w io.Writer, r *http.Request, admit AdmitFunc) {
+// MaxRequestBody caps the admission request body size to avoid OOM from
+// oversized requests. 3 MiB matches the kube-apiserver default.
+const MaxRequestBody int64 = 3 * 1024 * 1024
+
+// serve the http request.
+func serve(w http.ResponseWriter, r *http.Request, admit AdmitFunc) {
 	var body []byte
 	if r.Body != nil {
-		if data, err := io.ReadAll(r.Body); err == nil {
-			body = data
+		r.Body = http.MaxBytesReader(w, r.Body, MaxRequestBody)
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			klog.Errorf("Failed to read admission request body: %v", err)
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
 		}
+		body = data
 	}
 
 	// verify the content type is accurate
