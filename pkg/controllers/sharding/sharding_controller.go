@@ -48,6 +48,7 @@ const (
 	maxAssignmentCacheRetention = 5 * time.Minute
 	nodeUsageChangeThreshold    = 0.5
 	nodeRefreshPeriod           = 80 * time.Second
+	shardSyncDebounceDelay      = 200 * time.Millisecond
 )
 
 func init() {
@@ -99,6 +100,16 @@ type ShardingController struct {
 	// shardSyncPeriodUpdateCh tells the periodic sync loop to reset its timer
 	// after a live config update.
 	shardSyncPeriodUpdateCh chan struct{}
+	// shardSyncTimerMu guards the event-driven debounce timer so bursts of
+	// node/pod changes collapse into a single shard sync.
+	shardSyncTimerMu sync.Mutex
+	shardSyncTimer   *time.Timer
+	// shardSyncExecMu serializes full sync execution so periodic and
+	// event-driven triggers do not run global shard recomputation in parallel.
+	shardSyncExecMu sync.Mutex
+	// syncShardsRunner allows tests to observe full-sync execution without
+	// patching the production sync logic.
+	syncShardsRunner func()
 	// flagsRegistered tracks whether AddFlags was called (production path).
 	// When false, Initialize creates default options instead.
 	flagsRegistered bool
@@ -238,6 +249,7 @@ func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error 
 func (sc *ShardingController) Run(stopCh <-chan struct{}) {
 	defer sc.nodeShardQueue.ShutDown()
 	defer sc.nodeEventQueue.ShutDown()
+	defer sc.stopScheduledShardSync()
 
 	klog.Infof("Starting sharding controller.")
 	defer klog.Infof("Shutting down sharding controller.")
@@ -286,7 +298,7 @@ func (sc *ShardingController) Run(stopCh <-chan struct{}) {
 	sc.refreshNodeMetrics()
 
 	// Initial sync
-	sc.syncShards()
+	sc.executeShardSync()
 
 	// Start workers
 	go wait.Until(sc.worker, time.Second, stopCh)
@@ -326,6 +338,50 @@ func (sc *ShardingController) refreshNodeMetrics() {
 			sc.updateNodeUtilization(node.Name, newMetrics)
 		}
 	}
+}
+
+func (sc *ShardingController) scheduleShardSync() {
+	sc.shardSyncTimerMu.Lock()
+	defer sc.shardSyncTimerMu.Unlock()
+
+	if sc.shardSyncTimer == nil {
+		sc.shardSyncTimer = time.AfterFunc(shardSyncDebounceDelay, sc.fireScheduledShardSync)
+		return
+	}
+
+	sc.shardSyncTimer.Reset(shardSyncDebounceDelay)
+}
+
+func (sc *ShardingController) fireScheduledShardSync() {
+	sc.shardSyncTimerMu.Lock()
+	sc.shardSyncTimer = nil
+	sc.shardSyncTimerMu.Unlock()
+
+	sc.executeShardSync()
+}
+
+func (sc *ShardingController) stopScheduledShardSync() {
+	sc.shardSyncTimerMu.Lock()
+	defer sc.shardSyncTimerMu.Unlock()
+
+	if sc.shardSyncTimer == nil {
+		return
+	}
+
+	sc.shardSyncTimer.Stop()
+	sc.shardSyncTimer = nil
+}
+
+func (sc *ShardingController) executeShardSync() {
+	sc.shardSyncExecMu.Lock()
+	defer sc.shardSyncExecMu.Unlock()
+
+	if sc.syncShardsRunner != nil {
+		sc.syncShardsRunner()
+		return
+	}
+
+	sc.syncShards()
 }
 
 // parseSchedulerConfigsFromOptions parses scheduler configs from controller options
@@ -950,7 +1006,7 @@ func (sc *ShardingController) periodicShardSync(stopCh <-chan struct{}) {
 			}
 			timer.Reset(sc.getShardSyncPeriod())
 		case <-timer.C:
-			sc.syncShards()
+			sc.executeShardSync()
 			timer.Reset(sc.getShardSyncPeriod())
 		}
 	}

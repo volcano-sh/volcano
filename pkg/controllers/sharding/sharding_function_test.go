@@ -15,6 +15,8 @@ package sharding
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -168,4 +170,79 @@ func TestSchedulerConfigParsing(t *testing.T) {
 	assert.False(t, volcanoConfig.ShardStrategy.PreferWarmupNodes, "volcano should not prefer warmup nodes")
 	assert.Equal(t, 1, volcanoConfig.ShardStrategy.MinNodes, "volcano min nodes should be 1")
 	assert.Equal(t, 10, volcanoConfig.ShardStrategy.MaxNodes, "volcano max nodes should be 10")
+}
+
+func TestScheduleShardSyncCoalescesBurstRequests(t *testing.T) {
+	controller := &ShardingController{}
+	var syncCount atomic.Int32
+	done := make(chan struct{}, 4)
+
+	controller.syncShardsRunner = func() {
+		syncCount.Add(1)
+		done <- struct{}{}
+	}
+
+	controller.scheduleShardSync()
+	controller.scheduleShardSync()
+	controller.scheduleShardSync()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for debounced shard sync")
+	}
+
+	time.Sleep(shardSyncDebounceDelay * 2)
+	assert.Equal(t, int32(1), syncCount.Load(), "burst requests should collapse into one shard sync")
+	controller.stopScheduledShardSync()
+}
+
+func TestScheduleShardSyncSerializesFollowUpExecution(t *testing.T) {
+	controller := &ShardingController{}
+	var syncCount atomic.Int32
+	var concurrentRuns atomic.Int32
+	firstStarted := make(chan struct{}, 1)
+	releaseFirst := make(chan struct{})
+	allDone := make(chan struct{}, 2)
+	var once sync.Once
+
+	controller.syncShardsRunner = func() {
+		if concurrentRuns.Add(1) != 1 {
+			t.Error("shard sync should not run concurrently")
+		}
+		currentRun := syncCount.Add(1)
+		if currentRun == 1 {
+			once.Do(func() { firstStarted <- struct{}{} })
+			<-releaseFirst
+		}
+		concurrentRuns.Add(-1)
+		allDone <- struct{}{}
+	}
+
+	controller.scheduleShardSync()
+
+	select {
+	case <-firstStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first shard sync to start")
+	}
+
+	controller.scheduleShardSync()
+	close(releaseFirst)
+
+	select {
+	case <-allDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first shard sync to finish")
+	}
+
+	select {
+	case <-allDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for follow-up shard sync to finish")
+	}
+
+	assert.Equal(t, int32(2), syncCount.Load(), "a request raised during an in-flight sync should trigger one follow-up run")
+	assert.Equal(t, int32(0), concurrentRuns.Load(), "all shard sync executions should have completed")
+	controller.stopScheduledShardSync()
 }
