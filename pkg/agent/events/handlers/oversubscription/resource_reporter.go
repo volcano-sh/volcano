@@ -70,7 +70,7 @@ func NewReporter(config *config.Configuration, mgr *metriccollect.MetricCollecto
 	}
 }
 
-func (r *reporter) Handle(event interface{}) error {
+func (r *reporter) Handle(event any) error {
 	nodeResourceEvent, ok := event.(framework.NodeResourceEvent)
 	if !ok {
 		klog.ErrorS(nil, "Invalid node resource event", "type", reflect.TypeOf(event))

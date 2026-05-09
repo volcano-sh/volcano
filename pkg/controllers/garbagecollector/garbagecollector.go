@@ -114,7 +114,7 @@ func (gc *gccontroller) Run(stopCh <-chan struct{}) {
 	<-stopCh
 }
 
-func (gc *gccontroller) addJob(obj interface{}) {
+func (gc *gccontroller) addJob(obj any) {
 	job := obj.(*v1alpha1.Job)
 	klog.V(4).Infof("Adding job %s/%s", job.Namespace, job.Name)
 
@@ -123,7 +123,7 @@ func (gc *gccontroller) addJob(obj interface{}) {
 	}
 }
 
-func (gc *gccontroller) updateJob(old, cur interface{}) {
+func (gc *gccontroller) updateJob(old, cur any) {
 	job := cur.(*v1alpha1.Job)
 	klog.V(4).Infof("Updating job %s/%s", job.Namespace, job.Name)
 

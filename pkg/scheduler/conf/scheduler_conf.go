@@ -45,7 +45,7 @@ type Configuration struct {
 	// Name is name of action
 	Name string `yaml:"name"`
 	// Arguments defines the different arguments that can be given to specified action
-	Arguments map[string]interface{} `yaml:"arguments"`
+	Arguments map[string]any `yaml:"arguments"`
 }
 
 // PluginOption defines the options of plugin
@@ -103,5 +103,5 @@ type PluginOption struct {
 	// EnabledHyperNodeGradient defines whether hyperNodeGradientFn is enabled
 	EnabledHyperNodeGradient *bool `yaml:"enabledHyperNodeGradient"`
 	// Arguments defines the different arguments that can be given to different plugins
-	Arguments map[string]interface{} `yaml:"arguments"`
+	Arguments map[string]any `yaml:"arguments"`
 }

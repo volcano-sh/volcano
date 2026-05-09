@@ -263,7 +263,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddPreemptableFn(drf.Name(), preemptableFn)
 
 	if hierarchyEnabled {
-		queueOrderFn := func(l interface{}, r interface{}) int {
+		queueOrderFn := func(l any, r any) int {
 			lv := l.(*api.QueueInfo)
 			rv := r.(*api.QueueInfo)
 			ret := drf.compareQueues(drf.hierarchicalRoot, lv, rv)
@@ -367,7 +367,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		ssn.AddReclaimableFn(drf.Name(), reclaimFn)
 	}
 
-	jobOrderFn := func(l interface{}, r interface{}) int {
+	jobOrderFn := func(l any, r any) int {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 

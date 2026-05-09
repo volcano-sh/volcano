@@ -425,7 +425,7 @@ func (ssn *Session) SubJobPipelined(job *api.JobInfo, subJob *api.SubJobInfo) bo
 }
 
 // JobReady invoke jobready function of the plugins
-func (ssn *Session) JobReady(obj interface{}) bool {
+func (ssn *Session) JobReady(obj any) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledJobReady) {
@@ -447,7 +447,7 @@ func (ssn *Session) JobReady(obj interface{}) bool {
 
 // JobPipelined invoke pipelined function of the plugins
 // Check if job has get enough resource to run
-func (ssn *Session) JobPipelined(obj interface{}) bool {
+func (ssn *Session) JobPipelined(obj any) bool {
 	var hasFound bool
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -479,7 +479,7 @@ func (ssn *Session) JobPipelined(obj interface{}) bool {
 
 // JobStarving invoke jobStarving function of the plugins
 // Check if job still need more resource
-func (ssn *Session) JobStarving(obj interface{}) bool {
+func (ssn *Session) JobStarving(obj any) bool {
 	var hasFound bool
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -506,7 +506,7 @@ func (ssn *Session) JobStarving(obj interface{}) bool {
 }
 
 // JobValid invoke jobvalid function of the plugins
-func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
+func (ssn *Session) JobValid(obj any) *api.ValidateResult {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			jrf, found := ssn.jobValidFns[plugin.Name]
@@ -524,7 +524,7 @@ func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
 }
 
 // JobEnqueueable invoke jobEnqueueableFns function of the plugins
-func (ssn *Session) JobEnqueueable(obj interface{}) bool {
+func (ssn *Session) JobEnqueueable(obj any) bool {
 	var hasFound bool
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -555,7 +555,7 @@ func (ssn *Session) JobEnqueueable(obj interface{}) bool {
 }
 
 // JobEnqueued invoke jobEnqueuedFns function of the plugins
-func (ssn *Session) JobEnqueued(obj interface{}) {
+func (ssn *Session) JobEnqueued(obj any) {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledJobEnqueued) {
@@ -631,7 +631,7 @@ func (ssn *Session) ReservedNodes() {
 	}
 }
 
-func (ssn *Session) SubJobOrderFn(l, r interface{}) bool {
+func (ssn *Session) SubJobOrderFn(l, r any) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledSubJobOrder) {
@@ -657,7 +657,7 @@ func (ssn *Session) SubJobOrderFn(l, r interface{}) bool {
 }
 
 // JobOrderFn invoke joborder function of the plugins
-func (ssn *Session) JobOrderFn(l, r interface{}) bool {
+func (ssn *Session) JobOrderFn(l, r any) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledJobOrder) {
@@ -683,7 +683,7 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 }
 
 // ClusterOrderFn invoke ClusterOrderFn function of the plugins
-func (ssn *Session) ClusterOrderFn(l, r interface{}) bool {
+func (ssn *Session) ClusterOrderFn(l, r any) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledClusterOrder) {
@@ -706,7 +706,7 @@ func (ssn *Session) ClusterOrderFn(l, r interface{}) bool {
 }
 
 // QueueOrderFn invoke queueorder function of the plugins
-func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
+func (ssn *Session) QueueOrderFn(l, r any) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledQueueOrder) {
@@ -732,7 +732,7 @@ func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 }
 
 // VictimQueueOrderFn invoke victimqueueorder function of the plugins
-func (ssn *Session) VictimQueueOrderFn(l, r, preemptor interface{}) bool {
+func (ssn *Session) VictimQueueOrderFn(l, r, preemptor any) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			qof, found := ssn.victimQueueOrderFns[plugin.Name]
@@ -749,7 +749,7 @@ func (ssn *Session) VictimQueueOrderFn(l, r, preemptor interface{}) bool {
 }
 
 // TaskCompareFns invoke taskorder function of the plugins
-func (ssn *Session) TaskCompareFns(l, r interface{}) int {
+func (ssn *Session) TaskCompareFns(l, r any) int {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledTaskOrder) {
@@ -769,7 +769,7 @@ func (ssn *Session) TaskCompareFns(l, r interface{}) int {
 }
 
 // TaskOrderFn invoke taskorder function of the plugins
-func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
+func (ssn *Session) TaskOrderFn(l, r any) bool {
 	if res := ssn.TaskCompareFns(l, r); res != 0 {
 		return res < 0
 	}
@@ -1090,7 +1090,7 @@ func (ssn *Session) HyperNodeGradientForSubJobFn(subJob *api.SubJobInfo, hyperNo
 // if victims has same job id, sorted by !ssn.TaskOrderFn
 // if victims has different job id, sorted by !ssn.JobOrderFn
 func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor *api.TaskInfo) *util.PriorityQueue {
-	victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
+	victimsQueue := util.NewPriorityQueue(func(l, r any) bool {
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
 		if lv.Job == rv.Job {
@@ -1137,6 +1137,6 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor
 }
 
 // RegisterBinder registers the passed binder to the cache, the binder type can be such as pre-binder, post-binder
-func (ssn *Session) RegisterBinder(name string, binder interface{}) {
+func (ssn *Session) RegisterBinder(name string, binder any) {
 	ssn.cache.RegisterBinder(name, binder)
 }

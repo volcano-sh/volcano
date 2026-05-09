@@ -77,22 +77,22 @@ func NewConfigMapSource(client clientset.Interface, nodeName, namespace string) 
 		configmapName:      utils.ConfigMapName,
 	}
 	configMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { cs.queue.Add("configmap") },
-		UpdateFunc: func(oldObj, newObj interface{}) { cs.queue.Add("configmap") },
+		AddFunc:    func(obj any) { cs.queue.Add("configmap") },
+		UpdateFunc: func(oldObj, newObj any) { cs.queue.Add("configmap") },
 	})
 	nodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { cs.nodeAdd(obj) },
-		UpdateFunc: func(oldObj, newObj interface{}) { cs.nodeUpdate(oldObj, newObj) },
+		AddFunc:    func(obj any) { cs.nodeAdd(obj) },
+		UpdateFunc: func(oldObj, newObj any) { cs.nodeUpdate(oldObj, newObj) },
 	})
 
 	return cs
 }
 
-func (cs *configMapSource) nodeAdd(obj interface{}) {
+func (cs *configMapSource) nodeAdd(obj any) {
 	cs.queue.Add("node")
 }
 
-func (cs *configMapSource) nodeUpdate(oldObj, newObj interface{}) {
+func (cs *configMapSource) nodeUpdate(oldObj, newObj any) {
 	oldNode, ok := oldObj.(*corev1.Node)
 	if !ok {
 		klog.ErrorS(nil, "can not convert interface object to Node", "oldobj", oldObj)

@@ -279,7 +279,7 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	if ep.config.jobEnqueueableVerb != "" {
-		ssn.AddJobEnqueueableFn(ep.Name(), func(obj interface{}) int {
+		ssn.AddJobEnqueueableFn(ep.Name(), func(obj any) int {
 			job := obj.(*api.JobInfo)
 			resp := &JobEnqueueableResponse{}
 			err := ep.send(ep.config.jobEnqueueableVerb, &JobEnqueueableRequest{Job: job}, resp)
@@ -297,7 +297,7 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	if ep.config.queueOverusedVerb != "" {
-		ssn.AddOverusedFn(ep.Name(), func(obj interface{}) bool {
+		ssn.AddOverusedFn(ep.Name(), func(obj any) bool {
 			queue := obj.(*api.QueueInfo)
 			resp := &QueueOverusedResponse{}
 			err := ep.send(ep.config.queueOverusedVerb, &QueueOverusedRequest{Queue: queue}, resp)
@@ -312,7 +312,7 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	if ep.config.jobReadyVerb != "" {
-		ssn.AddJobReadyFn(ep.Name(), func(obj interface{}) bool {
+		ssn.AddJobReadyFn(ep.Name(), func(obj any) bool {
 			job := obj.(*api.JobInfo)
 			resp := &JobReadyResponse{}
 			err := ep.send(ep.config.jobReadyVerb, &JobReadyRequest{Job: job}, resp)
@@ -337,7 +337,7 @@ func (ep *extenderPlugin) OnSessionClose(ssn *framework.Session) {
 	}
 }
 
-func (ep *extenderPlugin) send(action string, args interface{}, result interface{}) error {
+func (ep *extenderPlugin) send(action string, args any, result any) error {
 	out, err := json.Marshal(args)
 	if err != nil {
 		return err

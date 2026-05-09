@@ -110,7 +110,7 @@ func GenRandomStr(l int) string {
 	bytes := []byte(str)
 	var result []byte
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	for i := 0; i < l; i++ {
+	for range l {
 		result = append(result, bytes[r.Intn(len(bytes))])
 	}
 	return string(result)
@@ -186,8 +186,8 @@ func IsOutOfSyncPod(pod *v1.Pod) bool {
 
 // OutOfSyncJSONPatch generates a JSON patch to mark the pod as out-of-sync with the given reason.
 func OutOfSyncJSONPatch() []byte {
-	return []byte(fmt.Sprintf(`[{"op":"add","path":"/metadata/annotations/%s","value":"true"}]`,
-		escapeJSONPointer(OutOfSyncKey)))
+	return fmt.Appendf(nil, `[{"op":"add","path":"/metadata/annotations/%s","value":"true"}]`,
+		escapeJSONPointer(OutOfSyncKey))
 }
 
 // escapeJSONPointer escapes a string for use in a JSON Pointer.

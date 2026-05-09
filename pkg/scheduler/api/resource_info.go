@@ -23,6 +23,7 @@ package api
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"sort"
@@ -158,9 +159,7 @@ func (r *Resource) Clone() *Resource {
 
 	if r.ScalarResources != nil {
 		clone.ScalarResources = make(map[v1.ResourceName]float64)
-		for k, v := range r.ScalarResources {
-			clone.ScalarResources[k] = v
-		}
+		maps.Copy(clone.ScalarResources, r.ScalarResources)
 	}
 
 	return clone
@@ -345,9 +344,7 @@ func (r *Resource) SetMaxResource(rr *Resource) {
 	for rrName, rrQuant := range rr.ScalarResources {
 		if r.ScalarResources == nil {
 			r.ScalarResources = make(map[v1.ResourceName]float64)
-			for k, v := range rr.ScalarResources {
-				r.ScalarResources[k] = v
-			}
+			maps.Copy(r.ScalarResources, rr.ScalarResources)
 			return
 		}
 		_, ok := r.ScalarResources[rrName]

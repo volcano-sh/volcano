@@ -263,7 +263,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
+	ssn.AddQueueOrderFn(pp.Name(), func(l, r any) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
@@ -316,7 +316,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims, util.Permit
 	})
 
-	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) bool {
+	ssn.AddOverusedFn(pp.Name(), func(obj any) bool {
 		queue := obj.(*api.QueueInfo)
 		attr := pp.queueOpts[queue.UID]
 
@@ -373,7 +373,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return allocatable
 	})
 
-	ssn.AddPreemptiveFn(pp.Name(), func(obj interface{}, candidate interface{}) bool {
+	ssn.AddPreemptiveFn(pp.Name(), func(obj any, candidate any) bool {
 		queue := obj.(*api.QueueInfo)
 		task := candidate.(*api.TaskInfo)
 		return queueAllocatable(queue, task)
@@ -393,7 +393,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return nil
 	})
 
-	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
+	ssn.AddJobEnqueueableFn(pp.Name(), func(obj any) int {
 		job := obj.(*api.JobInfo)
 		queueID := job.Queue
 		attr := pp.queueOpts[queueID]

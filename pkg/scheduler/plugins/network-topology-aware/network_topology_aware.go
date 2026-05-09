@@ -186,8 +186,8 @@ func getPriorityWeight(args framework.Arguments) *priorityWeight {
 		resourcesStr = ""
 	}
 
-	resources := strings.Split(resourcesStr, ",")
-	for _, resource := range resources {
+	resources := strings.SplitSeq(resourcesStr, ",")
+	for resource := range resources {
 		resource = strings.TrimSpace(resource)
 		if resource == "" {
 			continue

@@ -44,7 +44,7 @@ func (h *BaseHandle) IsActive() bool {
 	return h.Active
 }
 
-func (h *BaseHandle) Handle(event interface{}) error {
+func (h *BaseHandle) Handle(event any) error {
 	return errors.New("unimplemented")
 }
 

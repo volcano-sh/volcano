@@ -160,7 +160,7 @@ func nodeCPUState() (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to read proc state file: %v", err)
 	}
-	for _, line := range strings.Split(string(contents), "\n") {
+	for line := range strings.SplitSeq(string(contents), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 0 || fields[0] != "cpu" {
 			continue
@@ -211,8 +211,8 @@ func readCPUUsageV2(filePath string) (int64, error) {
 		return 0, err
 	}
 
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(data), "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

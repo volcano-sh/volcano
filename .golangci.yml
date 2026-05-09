@@ -12,6 +12,7 @@ linters:
     - govet
     - depguard
     - ineffassign
+    - modernize
     - staticcheck
     - unused
     - whitespace
@@ -20,6 +21,9 @@ linters:
     goimports:
       local-prefixes:
         - volcano.sh
+    modernize:
+      disable:
+        - omitzero
     staticcheck:
       checks:
         - "all"

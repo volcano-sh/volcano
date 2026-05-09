@@ -39,9 +39,9 @@ type EbpfMap interface {
 	// UnpinArrayMap removes the persisted state for the map from the BPF virtual filesystem
 	UnpinArrayMap(pinPath string) (err error)
 	// LookUpMapValue looks up the value of the key
-	LookUpMapValue(pinPath string, key, value interface{}) (err error)
+	LookUpMapValue(pinPath string, key, value any) (err error)
 	// UpdateMapValue updates the value of the key
-	UpdateMapValue(pinPath string, key, value interface{}) (err error)
+	UpdateMapValue(pinPath string, key, value any) (err error)
 }
 
 type Map struct{}
@@ -108,7 +108,7 @@ func (m *Map) UnpinArrayMap(pinPath string) (err error) {
 	return nil
 }
 
-func (m *Map) LookUpMapValue(pinPath string, key, value interface{}) (err error) {
+func (m *Map) LookUpMapValue(pinPath string, key, value any) (err error) {
 	_, err = os.Stat(pinPath)
 	if err != nil {
 		return err
@@ -127,7 +127,7 @@ func (m *Map) LookUpMapValue(pinPath string, key, value interface{}) (err error)
 	return nil
 }
 
-func (m *Map) UpdateMapValue(pinPath string, key, value interface{}) (err error) {
+func (m *Map) UpdateMapValue(pinPath string, key, value any) (err error) {
 	_, err = os.Stat(pinPath)
 	if err != nil {
 		return err

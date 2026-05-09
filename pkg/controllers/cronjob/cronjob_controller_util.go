@@ -19,6 +19,7 @@ package cronjob
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -238,16 +239,12 @@ func getJobName(cj *batchv1.CronJob, scheduleTime time.Time) string {
 }
 func copyLabels(template *batchv1.JobTemplateSpec) labels.Set {
 	l := make(labels.Set)
-	for k, v := range template.Labels {
-		l[k] = v
-	}
+	maps.Copy(l, template.Labels)
 	return l
 }
 func copyAnnotations(template *batchv1.JobTemplateSpec) labels.Set {
 	a := make(labels.Set)
-	for k, v := range template.Annotations {
-		a[k] = v
-	}
+	maps.Copy(a, template.Annotations)
 	return a
 }
 func getJobFromTemplate(cj *batchv1.CronJob, scheduledTime time.Time) (*batchv1.Job, error) {
@@ -307,7 +304,7 @@ func deleteFromActiveList(cc *batchv1.CronJob, uid types.UID) {
 	originalLen := len(active)
 	newLen := 0
 
-	for i := 0; i < originalLen; i++ {
+	for i := range originalLen {
 		if active[i].UID != uid {
 			active[newLen] = active[i]
 			newLen++

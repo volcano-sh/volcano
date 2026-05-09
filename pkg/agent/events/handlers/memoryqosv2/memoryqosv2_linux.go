@@ -69,7 +69,7 @@ func NewMemoryQoSV2Handle(config *config.Configuration, mgr *metriccollect.Metri
 
 // Handle processes PodEvents to apply memory QoS settings.
 // It retrieves the pod, parses colocation config, and updates cgroup memory limits (High, Low, Min) for each container.
-func (h *MemoryQoSV2Handle) Handle(event interface{}) error {
+func (h *MemoryQoSV2Handle) Handle(event any) error {
 	podEvent, ok := event.(framework.PodEvent)
 	if !ok {
 		klog.Warningf("illegal pod event. type: %T", event)

@@ -30,7 +30,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
-func (hn *hyperNodeController) addHyperNode(obj interface{}) {
+func (hn *hyperNodeController) addHyperNode(obj any) {
 	hyperNode, ok := obj.(*topologyv1alpha1.HyperNode)
 	if !ok {
 		klog.ErrorS(nil, "Cannot convert to *topologyv1alpha1.HyperNode", "obj", obj)
@@ -40,7 +40,7 @@ func (hn *hyperNodeController) addHyperNode(obj interface{}) {
 	hn.enqueueHyperNode(hyperNode)
 }
 
-func (hn *hyperNodeController) updateHyperNode(oldObj, newObj interface{}) {
+func (hn *hyperNodeController) updateHyperNode(oldObj, newObj any) {
 	hyperNode, ok := newObj.(*topologyv1alpha1.HyperNode)
 	if !ok {
 		klog.ErrorS(nil, "Cannot convert to *topologyv1alpha1.HyperNode", "obj", newObj)

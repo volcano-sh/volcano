@@ -85,8 +85,8 @@ func (r *historicalUsageCalculator) RefreshCfg(cfg *api.ColocationConfig) error 
 	}
 	// refresh overSubscription resource types.
 	set := sets.NewString()
-	typ := strings.Split(*cfg.OverSubscriptionConfig.OverSubscriptionTypes, ",")
-	for _, resType := range typ {
+	typ := strings.SplitSeq(*cfg.OverSubscriptionConfig.OverSubscriptionTypes, ",")
+	for resType := range typ {
 		if resType == "" {
 			continue
 		}
@@ -158,8 +158,8 @@ func (r *historicalUsageCalculator) getOverSubscriptionTypes(node *v1.Node) map[
 		return ret
 	}
 	ret = make(map[v1.ResourceName]bool)
-	typ := strings.Split(value, ",")
-	for _, resType := range typ {
+	typ := strings.SplitSeq(value, ",")
+	for resType := range typ {
 		if resType == "" {
 			continue
 		}

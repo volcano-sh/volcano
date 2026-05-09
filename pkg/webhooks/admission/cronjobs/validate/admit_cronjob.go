@@ -122,15 +122,15 @@ func validateCronJobUpdate(new *v1alpha1.CronJob) error {
 	return nil
 }
 func validateCronjobSpec(spec *v1alpha1.CronJobSpec, nameSpace string) string {
-	var msg string
+	var msg strings.Builder
 	if len(spec.Schedule) == 0 {
-		msg += " schedule is required, but got empty"
+		msg.WriteString(" schedule is required, but got empty")
 	} else {
 		if strings.Contains(spec.Schedule, "TZ") {
-			msg += " schedule should not contain TZ or CRON_TZ, TZ should only be set in the timeZone field"
+			msg.WriteString(" schedule should not contain TZ or CRON_TZ, TZ should only be set in the timeZone field")
 		} else {
 			if _, err := cron.ParseStandard(spec.Schedule); err != nil {
-				msg += "schedule is not a valid cron expression"
+				msg.WriteString("schedule is not a valid cron expression")
 			}
 		}
 	}
@@ -138,23 +138,23 @@ func validateCronjobSpec(spec *v1alpha1.CronJobSpec, nameSpace string) string {
 	var validTimeZoneCharacters = regexp.MustCompile(`^[A-Za-z\.\-_0-9+]{1,14}$`)
 	if spec.TimeZone != nil {
 		if len(*spec.TimeZone) == 0 {
-			msg += " timeZone must be nil or non-empty string, got empty string"
+			msg.WriteString(" timeZone must be nil or non-empty string, got empty string")
 		} else {
-			for _, part := range strings.Split(*spec.TimeZone, "/") {
+			for part := range strings.SplitSeq(*spec.TimeZone, "/") {
 				if part == "." || part == ".." || strings.HasPrefix(part, "-") || !validTimeZoneCharacters.MatchString(part) {
-					msg += " unknown timeZone"
+					msg.WriteString(" unknown timeZone")
 				}
 			}
 			if strings.EqualFold(*spec.TimeZone, "Local") {
-				msg += " timeZone can't be Local, and must be defined in https://www.iana.org/time-zones"
+				msg.WriteString(" timeZone can't be Local, and must be defined in https://www.iana.org/time-zones")
 			} else {
 				if _, err := time.LoadLocation(*spec.TimeZone); err != nil {
-					msg += " invalid timeZone"
+					msg.WriteString(" invalid timeZone")
 				}
 			}
 		}
 	}
-	return msg
+	return msg.String()
 }
 func validateCronJobName(name string) string {
 	const (

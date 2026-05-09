@@ -19,6 +19,7 @@ package podgroup
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"reflect"
 	"slices"
 	"strconv"
@@ -56,7 +57,7 @@ type annotationForMergePatch struct {
 	Annotations map[string]string `json:"annotations"`
 }
 
-func (pg *pgcontroller) addPod(obj interface{}) {
+func (pg *pgcontroller) addPod(obj any) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
 		klog.Errorf("Failed to convert %v to v1.Pod", obj)
@@ -71,7 +72,7 @@ func (pg *pgcontroller) addPod(obj interface{}) {
 	pg.queue.Add(req)
 }
 
-func (pg *pgcontroller) addReplicaSet(obj interface{}) {
+func (pg *pgcontroller) addReplicaSet(obj any) {
 	rs, ok := obj.(*appsv1.ReplicaSet)
 	if !ok {
 		klog.Errorf("Failed to convert %v to appsv1.ReplicaSet", obj)
@@ -120,11 +121,11 @@ func (pg *pgcontroller) addReplicaSet(obj interface{}) {
 	}
 }
 
-func (pg *pgcontroller) updateReplicaSet(oldObj, newObj interface{}) {
+func (pg *pgcontroller) updateReplicaSet(oldObj, newObj any) {
 	pg.addReplicaSet(newObj)
 }
 
-func (pg *pgcontroller) addStatefulSet(obj interface{}) {
+func (pg *pgcontroller) addStatefulSet(obj any) {
 	sts, ok := obj.(*appsv1.StatefulSet)
 	if !ok {
 		klog.Errorf("Failed to convert %v to appsv1.StatefulSet", obj)
@@ -144,9 +145,7 @@ func (pg *pgcontroller) addStatefulSet(obj interface{}) {
 	// In this event, need to create PodGroup for the pod.
 	if *sts.Spec.Replicas > 0 {
 		matchLabels := make(map[string]string, len(sts.Spec.Selector.MatchLabels)+1)
-		for k, v := range sts.Spec.Selector.MatchLabels {
-			matchLabels[k] = v
-		}
+		maps.Copy(matchLabels, sts.Spec.Selector.MatchLabels)
 		matchLabels[controllerRevisionHashLabelKey] = sts.Status.UpdateRevision
 		selector := metav1.LabelSelector{MatchLabels: matchLabels}
 		labelSelector, err := metav1.LabelSelectorAsSelector(&selector)
@@ -182,7 +181,7 @@ func (pg *pgcontroller) addStatefulSet(obj interface{}) {
 	}
 }
 
-func (pg *pgcontroller) updateStatefulSet(oldObj, newObj interface{}) {
+func (pg *pgcontroller) updateStatefulSet(oldObj, newObj any) {
 	pg.addStatefulSet(newObj)
 }
 

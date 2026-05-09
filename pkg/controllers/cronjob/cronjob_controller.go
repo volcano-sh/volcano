@@ -112,13 +112,13 @@ func (cc *cronjobcontroller) Initialize(opt *framework.ControllerOption) error {
 		cc.cronJobList = cc.cronJobInformer.Lister()
 		cc.cronJobSync = cc.cronJobInformer.Informer().HasSynced
 		cc.cronJobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
+			AddFunc: func(obj any) {
 				cc.addCronjobcontrollerQueue(obj, 0)
 			},
-			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
+			UpdateFunc: func(oldObj any, newObj any) {
 				cc.updateCronJob(oldObj, newObj)
 			},
-			DeleteFunc: func(obj interface{}) {
+			DeleteFunc: func(obj any) {
 				cc.addCronjobcontrollerQueue(obj, 0)
 			},
 		})

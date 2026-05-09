@@ -39,7 +39,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
-func (cc *jobcontroller) addCommand(obj interface{}) {
+func (cc *jobcontroller) addCommand(obj any) {
 	cmd, ok := obj.(*bus.Command)
 	if !ok {
 		klog.Errorf("obj is not Command")
@@ -49,7 +49,7 @@ func (cc *jobcontroller) addCommand(obj interface{}) {
 	cc.commandQueue.Add(cmd)
 }
 
-func (cc *jobcontroller) addJob(obj interface{}) {
+func (cc *jobcontroller) addJob(obj any) {
 	job, ok := obj.(*batch.Job)
 	if !ok {
 		klog.Errorf("obj is not Job")
@@ -73,7 +73,7 @@ func (cc *jobcontroller) addJob(obj interface{}) {
 	queue.Add(req)
 }
 
-func (cc *jobcontroller) updateJob(oldObj, newObj interface{}) {
+func (cc *jobcontroller) updateJob(oldObj, newObj any) {
 	newJob, ok := newObj.(*batch.Job)
 	if !ok {
 		klog.Errorf("newObj is not Job")
@@ -114,7 +114,7 @@ func (cc *jobcontroller) updateJob(oldObj, newObj interface{}) {
 	queue.Add(req)
 }
 
-func (cc *jobcontroller) deleteJob(obj interface{}) {
+func (cc *jobcontroller) deleteJob(obj any) {
 	job, ok := obj.(*batch.Job)
 	if !ok {
 		// If we reached here it means the Job was deleted but its final state is unrecorded.
@@ -139,7 +139,7 @@ func (cc *jobcontroller) deleteJob(obj interface{}) {
 	state.DeleteJobMetrics(fmt.Sprintf("%s/%s", job.Namespace, job.Name), job.Spec.Queue)
 }
 
-func (cc *jobcontroller) addPod(obj interface{}) {
+func (cc *jobcontroller) addPod(obj any) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
 		klog.Errorf("Failed to convert %v to v1.Pod", obj)
@@ -208,7 +208,7 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 	queue.Add(req)
 }
 
-func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
+func (cc *jobcontroller) updatePod(oldObj, newObj any) {
 	oldPod, ok := oldObj.(*v1.Pod)
 	if !ok {
 		klog.Errorf("Failed to convert %v to v1.Pod", oldObj)
@@ -322,7 +322,7 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 	queue.Add(req)
 }
 
-func (cc *jobcontroller) deletePod(obj interface{}) {
+func (cc *jobcontroller) deletePod(obj any) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
 		// If we reached here it means the pod was deleted but its final state is unrecorded.
@@ -449,7 +449,7 @@ func (cc *jobcontroller) processNextCommand() bool {
 	return true
 }
 
-func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
+func (cc *jobcontroller) updatePodGroup(oldObj, newObj any) {
 	oldPG, ok := oldObj.(*scheduling.PodGroup)
 	if !ok {
 		klog.Errorf("Failed to convert %v to PodGroup", newObj)

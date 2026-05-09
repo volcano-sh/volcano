@@ -57,7 +57,7 @@ func NewResources(config *config.Configuration, mgr *metriccollect.MetricCollect
 	}
 }
 
-func (r *ResourcesHandle) Handle(event interface{}) error {
+func (r *ResourcesHandle) Handle(event any) error {
 	podEvent, ok := event.(framework.PodEvent)
 	if !ok {
 		return fmt.Errorf("illegal pod event")

@@ -52,7 +52,7 @@ func Assert(condition bool, message string) {
 }
 
 // Assertf check condition, if condition is false, print message using Assert
-func Assertf(condition bool, format string, args ...interface{}) {
+func Assertf(condition bool, format string, args ...any) {
 	if condition {
 		return
 	}

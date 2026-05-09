@@ -35,7 +35,7 @@ type Handle interface {
 	// Handle handles the given event
 	// Return an error only if the event needs to be re-enqueued to be processed
 	// Need to avoid returning errors that cannot be resolved by retrying
-	Handle(event interface{}) error
+	Handle(event any) error
 	// IsActive returns true if the handler is enabled
 	IsActive() bool
 	// RefreshCfg hot update handler's cfg.

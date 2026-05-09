@@ -143,7 +143,7 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 	if utilfeature.DefaultFeatureGate.Enabled(features.QueueCommandSync) {
 		c.cmdInformer = factory.Bus().V1alpha1().Commands()
 		c.cmdInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
+			FilterFunc: func(obj any) bool {
 				switch v := obj.(type) {
 				case *busv1alpha1.Command:
 					return IsQueueReference(v.TargetObject)

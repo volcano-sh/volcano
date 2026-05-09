@@ -18,7 +18,9 @@ package api
 
 import (
 	"fmt"
+	"maps"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -76,7 +78,7 @@ type NodeInfo struct {
 	RevocableZone     string
 
 	// Used to store custom information
-	Others map[string]interface{}
+	Others map[string]any
 	//SharedDevices map[string]SharedDevicePool
 
 	// enable node resource oversubscription
@@ -139,12 +141,8 @@ func (nu *NodeUsage) DeepCopy() *NodeUsage {
 		MEMUsageAvg: make(map[string]float64),
 	}
 	newUsage.MetricsTime = nu.MetricsTime
-	for k, v := range nu.CPUUsageAvg {
-		newUsage.CPUUsageAvg[k] = v
-	}
-	for k, v := range nu.MEMUsageAvg {
-		newUsage.MEMUsageAvg[k] = v
-	}
+	maps.Copy(newUsage.CPUUsageAvg, nu.CPUUsageAvg)
+	maps.Copy(newUsage.MEMUsageAvg, nu.MEMUsageAvg)
 	return newUsage
 }
 
@@ -163,7 +161,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		OversubscriptionResource: EmptyResource(),
 		Tasks:                    make(map[TaskID]*TaskInfo),
 
-		Others:      make(map[string]interface{}),
+		Others:      make(map[string]any),
 		ImageStates: make(map[string]*fwk.ImageStateSummary),
 	}
 
@@ -602,17 +600,17 @@ func (ni *NodeInfo) UpdateTask(ti *TaskInfo) {
 
 // String returns nodeInfo details in string format
 func (ni NodeInfo) String() string {
-	tasks := ""
+	var tasks strings.Builder
 
 	i := 0
 	for _, task := range ni.Tasks {
-		tasks += fmt.Sprintf("\n\t %d: %v", i, task)
+		fmt.Fprintf(&tasks, "\n\t %d: %v", i, task)
 		i++
 	}
 
 	return fmt.Sprintf("Node (%s): allocatable<%v> idle <%v>, used <%v>, releasing <%v>, oversubscribution <%v>, "+
 		"state <phase %s, reaseon %s>, oversubscributionNode <%v>, offlineJobEvicting <%v>,taints <%v>%s, imageStates %v",
-		ni.Name, ni.Allocatable, ni.Idle, ni.Used, ni.Releasing, ni.OversubscriptionResource, ni.State.Phase, ni.State.Reason, ni.OversubscriptionNode, ni.OfflineJobEvicting, ni.Node.Spec.Taints, tasks, ni.ImageStates)
+		ni.Name, ni.Allocatable, ni.Idle, ni.Used, ni.Releasing, ni.OversubscriptionResource, ni.State.Phase, ni.State.Reason, ni.OversubscriptionNode, ni.OfflineJobEvicting, ni.Node.Spec.Taints, tasks.String(), ni.ImageStates)
 }
 
 // Pods returns all pods running in that node
@@ -638,8 +636,8 @@ func (ni *NodeInfo) CloneImageSummary() map[string]*fwk.ImageStateSummary {
 }
 
 // CloneOthers clone other map resources using deepcopy
-func (ni *NodeInfo) CloneOthers() map[string]interface{} {
-	others := make(map[string]interface{})
+func (ni *NodeInfo) CloneOthers() map[string]any {
+	others := make(map[string]any)
 	for k, v := range ni.Others {
 		if d, ok := v.(Devices); ok {
 			if IsNilDevice(d) {
@@ -664,8 +662,6 @@ func (cs *CSINodeStatusInfo) Clone() *CSINodeStatusInfo {
 		CSINodeName:  cs.CSINodeName,
 		DriverStatus: make(map[string]bool),
 	}
-	for k, v := range cs.DriverStatus {
-		newcs.DriverStatus[k] = v
-	}
+	maps.Copy(newcs.DriverStatus, cs.DriverStatus)
 	return newcs
 }

@@ -167,8 +167,8 @@ func (ns *NPUDevices) UpdateNodeInfoWholeWithAdd(allocChipIDs string) {
 		Aicpu:  ns.TotalRes.Aicpu / ns.TotalChipNum,
 		DVPP:   AscendDVPPEnabledNull,
 	}
-	allocChipIDList := strings.Split(allocChipIDs, ",")
-	for _, allocChipID := range allocChipIDList {
+	allocChipIDList := strings.SplitSeq(allocChipIDs, ",")
+	for allocChipID := range allocChipIDList {
 		for chipID, chip := range ns.Chips {
 			if strconv.Itoa(chipID) != allocChipID {
 				continue
@@ -196,8 +196,8 @@ func (ns *NPUDevices) UpdateNodeInfoWholeWithSub(allocChipIDs string) {
 		Aicpu:  ns.TotalRes.Aicpu / ns.TotalChipNum,
 		DVPP:   AscendDVPPEnabledNull,
 	}
-	allocChipIDList := strings.Split(allocChipIDs, ",")
-	for _, allocChipID := range allocChipIDList {
+	allocChipIDList := strings.SplitSeq(allocChipIDs, ",")
+	for allocChipID := range allocChipIDList {
 		for chipID, chip := range ns.Chips {
 			if strconv.Itoa(chipID) != allocChipID {
 				continue

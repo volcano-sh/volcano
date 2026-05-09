@@ -78,8 +78,8 @@ func getUnhealthyGPUs(gs *GPUDevices, node *v1.Node) (unhealthyGPUs []int) {
 		return
 	}
 
-	idsStr := strings.Split(devicesStr, ",")
-	for _, sid := range idsStr {
+	idsStr := strings.SplitSeq(devicesStr, ",")
+	for sid := range idsStr {
 		id, err := strconv.Atoi(sid)
 		if err != nil {
 			klog.Warningf("Failed to parse unhealthy gpu id %s due to %v", sid, err)

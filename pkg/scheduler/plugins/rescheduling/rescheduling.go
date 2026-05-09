@@ -43,7 +43,7 @@ var (
 	Session *framework.Session
 
 	// RegisteredStrategyConfigs collects all the strategy configurations registered.
-	RegisteredStrategyConfigs map[string]interface{}
+	RegisteredStrategyConfigs map[string]any
 
 	// VictimFn contains all the VictimTasksFn for registered the strategies
 	VictimFn map[string]api.VictimTasksFn
@@ -53,7 +53,7 @@ var (
 )
 
 func init() {
-	RegisteredStrategyConfigs = make(map[string]interface{})
+	RegisteredStrategyConfigs = make(map[string]any)
 	VictimFn = make(map[string]api.VictimTasksFn)
 	MetricsPeriod = "5m"
 
@@ -125,8 +125,8 @@ type Configs struct {
 
 // Strategy is the struct for rescheduling strategy
 type Strategy struct {
-	Name   string                 `json:"name"`
-	Params map[string]interface{} `json:"params"`
+	Name   string         `json:"name"`
+	Params map[string]any `json:"params"`
 }
 
 // NewReschedulingConfigs creates an object of rescheduling configurations with default configuration
@@ -164,7 +164,7 @@ func (rc *Configs) parseArguments(arguments framework.Arguments) {
 	}
 	strategies, ok := arguments["strategies"]
 	if ok {
-		strategyArray, _ := strategies.([]interface{})
+		strategyArray, _ := strategies.([]any)
 		if len(strategyArray) != 0 {
 			rc.strategies = rc.strategies[0:0]
 		}

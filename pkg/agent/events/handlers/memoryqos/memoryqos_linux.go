@@ -54,7 +54,7 @@ func NewMemoryQoSHandle(config *config.Configuration, mgr *metriccollect.MetricC
 	}
 }
 
-func (h *MemoryQoSHandle) Handle(event interface{}) error {
+func (h *MemoryQoSHandle) Handle(event any) error {
 	podEvent, ok := event.(framework.PodEvent)
 	if !ok {
 		return fmt.Errorf("illegal pod event")
@@ -66,7 +66,7 @@ func (h *MemoryQoSHandle) Handle(event interface{}) error {
 	}
 
 	qosLevelFile := path.Join(cgroupPath, cgroup.MemoryQoSLevelFile)
-	qosLevel := []byte(fmt.Sprintf("%d", extension.NormalizeQosLevel(podEvent.QoSLevel)))
+	qosLevel := fmt.Appendf(nil, "%d", extension.NormalizeQosLevel(podEvent.QoSLevel))
 
 	err = utils.UpdatePodCgroup(qosLevelFile, qosLevel)
 	if err != nil {

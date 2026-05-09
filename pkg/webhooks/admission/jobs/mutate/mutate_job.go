@@ -19,6 +19,7 @@ package mutate
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strconv"
 
 	admissionv1 "k8s.io/api/admission/v1"
@@ -76,9 +77,9 @@ var service = &router.AdmissionService{
 var config = &router.AdmissionServiceConfig{}
 
 type patchOperation struct {
-	Op    string      `json:"op"`
-	Path  string      `json:"path"`
-	Value interface{} `json:"value,omitempty"`
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value any    `json:"value,omitempty"`
 }
 
 // Jobs mutate jobs.
@@ -233,9 +234,7 @@ func patchDefaultPlugins(job *v1alpha1.Job) *patchOperation {
 		return nil
 	}
 	plugins := map[string][]string{}
-	for k, v := range job.Spec.Plugins {
-		plugins[k] = v
-	}
+	maps.Copy(plugins, job.Spec.Plugins)
 
 	// Because the tensorflow-plugin, mpi-plugin and pytorch-plugin depend on svc-plugin.
 	// If the svc-plugin is not defined, we should add it.

@@ -25,6 +25,8 @@ package framework
 import (
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"k8s.io/klog/v2"
 
@@ -356,8 +358,8 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 // Discard operation for evict, pipeline and allocate
 func (s *Statement) Discard() {
 	klog.V(3).Info("Discarding operations ...")
-	for i := len(s.operations) - 1; i >= 0; i-- {
-		op := s.operations[i]
+	for _, v := range slices.Backward(s.operations) {
+		op := v
 		op.task.GenerateLastTxContext()
 		switch op.name {
 		case Evict:
@@ -469,16 +471,16 @@ func (s *Statement) outputOperations(msg string, level klog.Level) {
 		return
 	}
 
-	var buffer string
+	var buffer strings.Builder
 	for _, op := range s.operations {
 		switch op.name {
 		case Evict:
-			buffer += fmt.Sprintf("task %s evict from node %s ", op.task.Name, op.task.NodeName)
+			fmt.Fprintf(&buffer, "task %s evict from node %s ", op.task.Name, op.task.NodeName)
 		case Pipeline:
-			buffer += fmt.Sprintf("task %s pipeline from node %s ", op.task.Name, op.task.NodeName)
+			fmt.Fprintf(&buffer, "task %s pipeline from node %s ", op.task.Name, op.task.NodeName)
 		case Allocate:
-			buffer += fmt.Sprintf("task %s allocate from node %s ", op.task.Name, op.task.NodeName)
+			fmt.Fprintf(&buffer, "task %s allocate from node %s ", op.task.Name, op.task.NodeName)
 		}
 	}
-	klog.V(level).Info(msg, buffer)
+	klog.V(level).Info(msg, buffer.String())
 }

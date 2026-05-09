@@ -18,6 +18,7 @@ package apis
 
 import (
 	"fmt"
+	"maps"
 
 	v1 "k8s.io/api/core/v1"
 
@@ -54,9 +55,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 	for key, pods := range ji.Pods {
 		job.Pods[key] = make(map[string]*v1.Pod, len(pods))
-		for pn, pod := range pods {
-			job.Pods[key][pn] = pod
-		}
+		maps.Copy(job.Pods[key], pods)
 	}
 
 	for taskName, partitionInfo := range ji.Partitions {
@@ -64,9 +63,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		partition := make(map[string]map[string]*v1.Pod, len(partitionInfo.Partition))
 		for partitionID, pods := range partitionInfo.Partition {
 			group := make(map[string]*v1.Pod, len(pods))
-			for podName, pod := range pods {
-				group[podName] = pod
-			}
+			maps.Copy(group, pods)
 			partition[partitionID] = group
 		}
 		job.Partitions[taskName].Partition = partition

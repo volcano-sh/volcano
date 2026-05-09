@@ -19,6 +19,7 @@ package gpushare
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
@@ -179,7 +180,7 @@ func (gs *GPUDevices) GetStatus() string {
 }
 
 // DeepCopy returns a deep copy of GPUDevices for use in dry-run simulation.
-func (gs *GPUDevices) DeepCopy() interface{} {
+func (gs *GPUDevices) DeepCopy() any {
 	if gs == nil {
 		return nil
 	}
@@ -193,9 +194,7 @@ func (gs *GPUDevices) DeepCopy() interface{} {
 			Memory: dev.Memory,
 			PodMap: make(map[string]*v1.Pod, len(dev.PodMap)),
 		}
-		for uid, pod := range dev.PodMap {
-			newDev.PodMap[uid] = pod
-		}
+		maps.Copy(newDev.PodMap, dev.PodMap)
 		cp.Device[id] = newDev
 	}
 	return cp

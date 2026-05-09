@@ -31,7 +31,7 @@ const (
 
 // QueueParentIndexFunc is an index function that indexes queues by their parent name
 // This allows efficient lookup of all children of a given parent queue
-func QueueParentIndexFunc(obj interface{}) ([]string, error) {
+func QueueParentIndexFunc(obj any) ([]string, error) {
 	queue, ok := obj.(*schedulingv1beta1.Queue)
 	if !ok {
 		return []string{}, nil

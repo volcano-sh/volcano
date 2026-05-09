@@ -33,12 +33,12 @@ type NodeUtilization struct {
 	pods        []*v1.Pod
 }
 
-type thresholdFilter func(*NodeUtilization, interface{}) bool
+type thresholdFilter func(*NodeUtilization, any) bool
 
-type isContinueEviction func(usage *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, config interface{}) bool
+type isContinueEviction func(usage *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, config any) bool
 
 // groupNodesByUtilization divides the nodes into two groups by resource utilization filters
-func groupNodesByUtilization(nodeUtilizationList []*NodeUtilization, lowThresholdFilter, highThresholdFilter thresholdFilter, config interface{}) ([]*NodeUtilization, []*NodeUtilization) {
+func groupNodesByUtilization(nodeUtilizationList []*NodeUtilization, lowThresholdFilter, highThresholdFilter thresholdFilter, config any) ([]*NodeUtilization, []*NodeUtilization) {
 	lowNodes := make([]*NodeUtilization, 0)
 	highNodes := make([]*NodeUtilization, 0)
 
@@ -73,7 +73,7 @@ func getNodeUtilization() []*NodeUtilization {
 }
 
 // evictPodsFromSourceNodes evict pods from source nodes to target nodes according to priority and QoS
-func evictPodsFromSourceNodes(sourceNodes, targetNodes []*NodeUtilization, tasks []*api.TaskInfo, evictionCon isContinueEviction, config interface{}) []*api.TaskInfo {
+func evictPodsFromSourceNodes(sourceNodes, targetNodes []*NodeUtilization, tasks []*api.TaskInfo, evictionCon isContinueEviction, config any) []*api.TaskInfo {
 	resourceNames := []v1.ResourceName{
 		v1.ResourceCPU,
 		v1.ResourceMemory,
@@ -113,7 +113,7 @@ func evictPodsFromSourceNodes(sourceNodes, targetNodes []*NodeUtilization, tasks
 
 // parseArgToConfig returns a nodeUtilizationConfig object from parameters
 // TODO: It is just for lowNodeUtilization now, which should be abstracted as a common function.
-func parseArgToConfig(config interface{}) *LowNodeUtilizationConf {
+func parseArgToConfig(config any) *LowNodeUtilizationConf {
 	var utilizationConfig *LowNodeUtilizationConf
 	if arg, ok := config.(LowNodeUtilizationConf); ok {
 		utilizationConfig = &arg
@@ -160,7 +160,7 @@ func sortPods(pods []*v1.Pod) {
 }
 
 // evict select victims and add to the eviction list
-func evict(pods []*v1.Pod, utilization *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, continueEviction isContinueEviction, tasks []*api.TaskInfo, config interface{}) []*api.TaskInfo {
+func evict(pods []*v1.Pod, utilization *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, continueEviction isContinueEviction, tasks []*api.TaskInfo, config any) []*api.TaskInfo {
 	victims := make([]*api.TaskInfo, 0)
 	for _, pod := range pods {
 		if !continueEviction(utilization, totalAllocatableResource, config) {

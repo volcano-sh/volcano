@@ -62,7 +62,7 @@ func (d *Dumper) dumpToJSONFile() {
 	klog.Infoln("Successfully dump info in scheduler cache to file", fName)
 }
 
-func encodeCache(file *os.File, v ...interface{}) error {
+func encodeCache(file *os.File, v ...any) error {
 	for _, item := range v {
 		err := json.NewEncoder(file).Encode(item)
 		if err != nil {
@@ -118,7 +118,7 @@ func (d *Dumper) printHyperNodeInfo(HyperNodesSetByTier map[int]sets.Set[string]
 	data.WriteString("\n")
 	for tier, hyperNodes := range HyperNodesSetByTier {
 		for hyperNode := range hyperNodes {
-			data.WriteString(fmt.Sprintf("Tier: %d, HyperNodeName: %s, Nodes: %s, HyperNodeInfo: %#v\n", tier, hyperNode, realNodesSet[hyperNode], hyperNodeInfoMap[hyperNode]))
+			fmt.Fprintf(&data, "Tier: %d, HyperNodeName: %s, Nodes: %s, HyperNodeInfo: %#v\n", tier, hyperNode, realNodesSet[hyperNode], hyperNodeInfoMap[hyperNode])
 		}
 	}
 	data.WriteString("\n")

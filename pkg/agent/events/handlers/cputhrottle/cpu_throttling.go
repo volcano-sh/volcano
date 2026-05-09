@@ -65,7 +65,7 @@ func NewCPUThrottleHandler(config *config.Configuration, mgr *metriccollect.Metr
 	}
 }
 
-func (h *CPUThrottleHandler) Handle(event interface{}) error {
+func (h *CPUThrottleHandler) Handle(event any) error {
 	cpuEvent, ok := event.(framework.NodeCPUThrottleEvent)
 	if !ok {
 		return fmt.Errorf("invalid event type for CPU Throttle handler")

@@ -19,6 +19,7 @@ package util
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -26,14 +27,15 @@ import (
 // CheckError prints the error of commands.
 func CheckError(cmd *cobra.Command, err error) {
 	if err != nil {
-		msg := "Failed to"
+		var msg strings.Builder
+		msg.WriteString("Failed to")
 
 		// Ignore the root command.
 		for cur := cmd; cur.Parent() != nil; cur = cur.Parent() {
-			msg += fmt.Sprintf(" %s", cur.Name())
+			fmt.Fprintf(&msg, " %s", cur.Name())
 		}
 
-		fmt.Printf("%s: %v\n", msg, err)
+		fmt.Printf("%s: %v\n", msg.String(), err)
 		os.Exit(-1)
 	}
 }

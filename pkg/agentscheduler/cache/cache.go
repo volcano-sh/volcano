@@ -25,6 +25,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -86,7 +87,7 @@ func init() {
 
 var _ Cache = &SchedulerCache{}
 
-var generation int64
+var generation atomic.Int64
 
 // New returns a Cache implementation.
 func New(config *rest.Config, opt *options.ServerOption) Cache {
@@ -401,7 +402,7 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *Schedule
 
 // defaultQueueingHintFn is the default queueing hint function.
 // It always returns Queue as the queueing hint.
-var defaultQueueingHintFn = func(_ klog.Logger, _ *v1.Pod, _, _ interface{}) (fwk.QueueingHint, error) {
+var defaultQueueingHintFn = func(_ klog.Logger, _ *v1.Pod, _, _ any) (fwk.QueueingHint, error) {
 	return fwk.Queue, nil
 }
 
@@ -450,7 +451,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
 	handlerRegistration, _ = sc.nodeInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
+			FilterFunc: func(obj any) bool {
 				switch t := obj.(type) {
 				case *v1.Node:
 					return true
@@ -481,7 +482,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	// 1. Pods already scheduled, refresh its state in cache
 	handlerRegistration, _ = sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
+			FilterFunc: func(obj any) bool {
 				switch v := obj.(type) {
 				case *v1.Pod:
 					if len(v.Spec.NodeName) != 0 {
@@ -511,7 +512,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	// 2. Pods not scheduled yet, and needed to be scheduled by agent scheduler, add them to scheduling queue
 	handlerRegistration, _ = sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
+			FilterFunc: func(obj any) bool {
 				switch v := obj.(type) {
 				case *v1.Pod:
 					// if the pod is not scheduled and scheduled by agent scheduler
@@ -914,9 +915,9 @@ func (sc *SchedulerCache) executePreBind(ctx context.Context, bindContext *agent
 
 		if err := preBinder.PreBind(ctx, bindContext); err != nil {
 			// If PreBind fails, rollback the executed PreBinders
-			for i := len(executedPreBinders) - 1; i >= 0; i-- {
-				if executedPreBinders[i] != nil {
-					executedPreBinders[i].PreBindRollBack(ctx, bindContext)
+			for _, v := range slices.Backward(executedPreBinders) {
+				if v != nil {
+					v.PreBindRollBack(ctx, bindContext)
 				}
 			}
 			return err
@@ -1055,27 +1056,28 @@ func (sc *SchedulerCache) String() string {
 	sc.Mutex.RLock()
 	defer sc.Mutex.RUnlock()
 
-	str := "Cache:\n"
+	var str strings.Builder
+	str.WriteString("Cache:\n")
 
 	if len(sc.Nodes) != 0 {
-		str += "Nodes:\n"
+		str.WriteString("Nodes:\n")
 		for _, n := range sc.Nodes {
-			str += fmt.Sprintf("\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
+			fmt.Fprintf(&str, "\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
 				n.info.Name, n.info.Idle, n.info.Used, n.info.Allocatable, len(n.info.Tasks))
 
 			i := 0
 			for _, p := range n.info.Tasks {
-				str += fmt.Sprintf("\t\t %d: %v\n", i, p)
+				fmt.Fprintf(&str, "\t\t %d: %v\n", i, p)
 				i++
 			}
 		}
 	}
 
 	if len(sc.NodeList) != 0 {
-		str += fmt.Sprintf("NodeList: %v\n", sc.NodeList)
+		fmt.Fprintf(&str, "NodeList: %v\n", sc.NodeList)
 	}
 
-	return str
+	return str.String()
 }
 
 func (sc *SchedulerCache) SetMetricsConf(conf map[string]string) {
@@ -1090,7 +1092,7 @@ func (sc *SchedulerCache) createImageStateSummary(state *imageState) *fwk.ImageS
 	}
 }
 
-func (sc *SchedulerCache) RegisterBinder(name string, binder interface{}) {
+func (sc *SchedulerCache) RegisterBinder(name string, binder any) {
 	if sc.binderRegistry == nil {
 		sc.binderRegistry = NewBinderRegistry()
 	}
@@ -1142,7 +1144,7 @@ type nodeInfoListItem struct {
 }
 
 func nextGeneration() int64 {
-	return atomic.AddInt64(&generation, 1)
+	return generation.Add(1)
 }
 
 // moveNodeInfoToHead moves a NodeInfo to the head of "cache.nodes" doubly

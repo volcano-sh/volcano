@@ -27,7 +27,7 @@ import (
 )
 
 // DefaultLowNodeConf defines the default configuration for LNU strategy
-var DefaultLowNodeConf = map[string]interface{}{
+var DefaultLowNodeConf = map[string]any{
 	"thresholds":                 map[string]float64{"cpu": 100, "memory": 100, "pods": 100},
 	"targetThresholds":           map[string]float64{"cpu": 100, "memory": 100, "pods": 100},
 	"thresholdPriorityClassName": "system-cluster-critical",
@@ -54,13 +54,13 @@ func NewLowNodeUtilizationConf() *LowNodeUtilizationConf {
 }
 
 // parse converts the config map to struct object
-func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
+func (lnuc *LowNodeUtilizationConf) parse(configs map[string]any) {
 	if len(configs) == 0 {
 		return
 	}
 	lowThresholdsConfigs, ok := configs["thresholds"]
 	if ok {
-		lowConfigs, ok := lowThresholdsConfigs.(map[interface{}]interface{})
+		lowConfigs, ok := lowThresholdsConfigs.(map[any]any)
 		if !ok {
 			klog.Warningln("Assert lowThresholdsConfigs to map error, abort the configuration parse.")
 			return
@@ -73,7 +73,7 @@ func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
 	}
 	targetThresholdsConfigs, ok := configs["targetThresholds"]
 	if ok {
-		targetConfigs, ok := targetThresholdsConfigs.(map[interface{}]interface{})
+		targetConfigs, ok := targetThresholdsConfigs.(map[any]any)
 		if !ok {
 			klog.Warningln("Assert targetThresholdsConfigs to map error, abort the configuration parse.")
 			return
@@ -112,8 +112,8 @@ var victimsFnForLnu = func(tasks []*api.TaskInfo) []*api.TaskInfo {
 	// parse configuration arguments
 	utilizationConfig := NewLowNodeUtilizationConf()
 	parametersConfig := RegisteredStrategyConfigs["lowNodeUtilization"]
-	var config map[string]interface{}
-	config, ok := parametersConfig.(map[string]interface{})
+	var config map[string]any
+	config, ok := parametersConfig.(map[string]any)
 	if !ok {
 		klog.Errorln("parameters parse error for lowNodeUtilization")
 		return victims
@@ -142,7 +142,7 @@ var victimsFnForLnu = func(tasks []*api.TaskInfo) []*api.TaskInfo {
 }
 
 // lowThresholdFilter filter nodes which all resource dimensions are under the low utilization threshold
-func lowThresholdFilter(usage *NodeUtilization, config interface{}) bool {
+func lowThresholdFilter(usage *NodeUtilization, config any) bool {
 	utilizationConfig := parseArgToConfig(config)
 	if utilizationConfig == nil {
 		klog.V(4).Infoln("lack of LowNodeUtilizationConf pointer parameter")
@@ -164,7 +164,7 @@ func lowThresholdFilter(usage *NodeUtilization, config interface{}) bool {
 }
 
 // highThresholdFilter filter nodes which at least one resource dimension above the target utilization threshold
-func highThresholdFilter(usage *NodeUtilization, config interface{}) bool {
+func highThresholdFilter(usage *NodeUtilization, config any) bool {
 	utilizationConfig := parseArgToConfig(config)
 	if utilizationConfig == nil {
 		klog.V(4).Infof("lack of LowNodeUtilizationConf pointer parameter")
@@ -183,7 +183,7 @@ func highThresholdFilter(usage *NodeUtilization, config interface{}) bool {
 }
 
 // isContinueEvictPods judges whether continue to select victim pods
-func isContinueEvictPods(usage *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, config interface{}) bool {
+func isContinueEvictPods(usage *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, config any) bool {
 	var isNodeOverused bool
 	utilizationConfig := parseArgToConfig(config)
 	for rName, usage := range usage.utilization {

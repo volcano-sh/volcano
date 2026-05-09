@@ -723,14 +723,14 @@ func (sc *ShardingController) enqueueShard(schedulerName string) {
 }
 
 // addShard handles shard addition events
-func (sc *ShardingController) addShard(obj interface{}) {
+func (sc *ShardingController) addShard(obj any) {
 	shard := obj.(*shardv1alpha1.NodeShard)
 	klog.V(4).Infof("Added shard: %s", shard.Name)
 	sc.enqueueShard(shard.Name)
 }
 
 // updateShard handles shard update events
-func (sc *ShardingController) updateShard(oldObj, newObj interface{}) {
+func (sc *ShardingController) updateShard(oldObj, newObj any) {
 	oldShard := oldObj.(*shardv1alpha1.NodeShard)
 	newShard := newObj.(*shardv1alpha1.NodeShard)
 
@@ -743,7 +743,7 @@ func (sc *ShardingController) updateShard(oldObj, newObj interface{}) {
 }
 
 // deleteShard handles shard deletion events
-func (sc *ShardingController) deleteShard(obj interface{}) {
+func (sc *ShardingController) deleteShard(obj any) {
 	shard, ok := obj.(*shardv1alpha1.NodeShard)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -763,7 +763,7 @@ func (sc *ShardingController) deleteShard(obj interface{}) {
 
 // isShardingConfigMap returns true when the object is the sharding ConfigMap
 // that this controller watches.
-func (sc *ShardingController) isShardingConfigMap(obj interface{}) bool {
+func (sc *ShardingController) isShardingConfigMap(obj any) bool {
 	cm, ok := obj.(*corev1.ConfigMap)
 	if !ok {
 		// Handle tombstone objects from the Delete event.
@@ -780,14 +780,14 @@ func (sc *ShardingController) isShardingConfigMap(obj interface{}) bool {
 }
 
 // onConfigMapAdd reacts to the sharding ConfigMap being created.
-func (sc *ShardingController) onConfigMapAdd(obj interface{}) {
+func (sc *ShardingController) onConfigMapAdd(obj any) {
 	cm := obj.(*corev1.ConfigMap)
 	klog.Infof("Sharding ConfigMap %s/%s added; reloading scheduler configs", cm.Namespace, cm.Name)
 	sc.reloadFromConfigMap(cm)
 }
 
 // onConfigMapUpdate reacts to the sharding ConfigMap being modified.
-func (sc *ShardingController) onConfigMapUpdate(oldObj, newObj interface{}) {
+func (sc *ShardingController) onConfigMapUpdate(oldObj, newObj any) {
 	old := oldObj.(*corev1.ConfigMap)
 	cur := newObj.(*corev1.ConfigMap)
 	if old.ResourceVersion == cur.ResourceVersion {
@@ -799,7 +799,7 @@ func (sc *ShardingController) onConfigMapUpdate(oldObj, newObj interface{}) {
 
 // onConfigMapDelete logs a warning when the sharding ConfigMap is removed.
 // The controller continues to use the last successfully loaded configuration.
-func (sc *ShardingController) onConfigMapDelete(obj interface{}) {
+func (sc *ShardingController) onConfigMapDelete(obj any) {
 	cm, ok := obj.(*corev1.ConfigMap)
 	if !ok {
 		if tombstone, isTombstone := obj.(cache.DeletedFinalStateUnknown); isTombstone {
@@ -962,12 +962,4 @@ func abs(x int) int {
 		return -x
 	}
 	return x
-}
-
-// max returns maximum of two integers
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

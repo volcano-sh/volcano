@@ -25,6 +25,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math"
 	"reflect"
 	"slices"
@@ -383,7 +384,7 @@ func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 }
 
 // AddPod add pod to scheduler cache
-func (sc *SchedulerCache) AddPod(obj interface{}) {
+func (sc *SchedulerCache) AddPod(obj any) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
 		klog.Errorf("Cannot convert to *v1.Pod: %v", obj)
@@ -403,7 +404,7 @@ func (sc *SchedulerCache) AddPod(obj interface{}) {
 }
 
 // UpdatePod update pod to scheduler cache
-func (sc *SchedulerCache) UpdatePod(oldObj, newObj interface{}) {
+func (sc *SchedulerCache) UpdatePod(oldObj, newObj any) {
 	oldPod, ok := oldObj.(*v1.Pod)
 	if !ok {
 		klog.Errorf("Cannot convert oldObj to *v1.Pod: %v", oldObj)
@@ -428,7 +429,7 @@ func (sc *SchedulerCache) UpdatePod(oldObj, newObj interface{}) {
 }
 
 // DeletePod delete pod from scheduler cache
-func (sc *SchedulerCache) DeletePod(obj interface{}) {
+func (sc *SchedulerCache) DeletePod(obj any) {
 	var pod *v1.Pod
 	switch t := obj.(type) {
 	case *v1.Pod:
@@ -513,11 +514,8 @@ func (sc *SchedulerCache) AddOrUpdateNode(node *v1.Node) error {
 	sc.addNodeImageStates(node, sc.Nodes[node.Name])
 
 	var nodeExisted bool
-	for _, name := range sc.NodeList {
-		if name == node.Name {
-			nodeExisted = true
-			break
-		}
+	if slices.Contains(sc.NodeList, node.Name) {
+		nodeExisted = true
 	}
 	if !nodeExisted {
 		sc.NodeList = append(sc.NodeList, node.Name)
@@ -555,7 +553,7 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 }
 
 // AddNode add node to scheduler cache
-func (sc *SchedulerCache) AddNode(obj interface{}, isInInitialList bool) {
+func (sc *SchedulerCache) AddNode(obj any, isInInitialList bool) {
 	node, ok := obj.(*v1.Node)
 	if !ok {
 		klog.Errorf("Cannot convert to *v1.Node: %v", obj)
@@ -570,7 +568,7 @@ func (sc *SchedulerCache) AddNode(obj interface{}, isInInitialList bool) {
 }
 
 // UpdateNode update node to scheduler cache
-func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
+func (sc *SchedulerCache) UpdateNode(oldObj, newObj any) {
 	oldNode, ok := oldObj.(*v1.Node)
 	if !ok {
 		klog.Errorf("Cannot convert oldObj to *v1.Node: %v", oldObj)
@@ -588,7 +586,7 @@ func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
 }
 
 // DeleteNode delete node from scheduler cache
-func (sc *SchedulerCache) DeleteNode(obj interface{}) {
+func (sc *SchedulerCache) DeleteNode(obj any) {
 	var node *v1.Node
 	switch t := obj.(type) {
 	case *v1.Node:
@@ -655,7 +653,7 @@ func (sc *SchedulerCache) nodeCanAddCache(node *v1.Node) bool {
 	return false
 }
 
-func (sc *SchedulerCache) AddOrUpdateCSINode(obj interface{}, isInInitialList bool) {
+func (sc *SchedulerCache) AddOrUpdateCSINode(obj any, isInInitialList bool) {
 	csiNode, ok := obj.(*sv1.CSINode)
 	if !ok {
 		return
@@ -680,7 +678,7 @@ func (sc *SchedulerCache) AddOrUpdateCSINode(obj interface{}, isInInitialList bo
 	sc.nodeQueue.Add(schedulercache.QueueObjectWrapper{Object: csiNode.Name, IsInInitialList: isInInitialList})
 }
 
-func (sc *SchedulerCache) UpdateCSINode(oldObj, newObj interface{}) {
+func (sc *SchedulerCache) UpdateCSINode(oldObj, newObj any) {
 	oldCSINode, ok := oldObj.(*sv1.CSINode)
 	if !ok {
 		return
@@ -695,7 +693,7 @@ func (sc *SchedulerCache) UpdateCSINode(oldObj, newObj interface{}) {
 	sc.AddOrUpdateCSINode(newObj, false)
 }
 
-func (sc *SchedulerCache) DeleteCSINode(obj interface{}) {
+func (sc *SchedulerCache) DeleteCSINode(obj any) {
 	var csiNode *sv1.CSINode
 	switch t := obj.(type) {
 	case *sv1.CSINode:
@@ -828,7 +826,7 @@ func (sc *SchedulerCache) deletePodGroup(id schedulingapi.JobID) error {
 }
 
 // AddPodGroupV1beta1 add podgroup to scheduler cache
-func (sc *SchedulerCache) AddPodGroupV1beta1(obj interface{}) {
+func (sc *SchedulerCache) AddPodGroupV1beta1(obj any) {
 	ss, ok := obj.(*schedulingv1beta1.PodGroup)
 	if !ok {
 		klog.Errorf("Cannot convert to *schedulingv1beta1.PodGroup: %v", obj)
@@ -856,7 +854,7 @@ func (sc *SchedulerCache) AddPodGroupV1beta1(obj interface{}) {
 }
 
 // UpdatePodGroupV1beta1 add podgroup to scheduler cache
-func (sc *SchedulerCache) UpdatePodGroupV1beta1(oldObj, newObj interface{}) {
+func (sc *SchedulerCache) UpdatePodGroupV1beta1(oldObj, newObj any) {
 	oldSS, ok := oldObj.(*schedulingv1beta1.PodGroup)
 	if !ok {
 		klog.Errorf("Cannot convert oldObj to *schedulingv1beta1.SchedulingSpec: %v", oldObj)
@@ -892,7 +890,7 @@ func (sc *SchedulerCache) UpdatePodGroupV1beta1(oldObj, newObj interface{}) {
 }
 
 // DeletePodGroupV1beta1 delete podgroup from scheduler cache
-func (sc *SchedulerCache) DeletePodGroupV1beta1(obj interface{}) {
+func (sc *SchedulerCache) DeletePodGroupV1beta1(obj any) {
 	var ss *schedulingv1beta1.PodGroup
 	switch t := obj.(type) {
 	case *schedulingv1beta1.PodGroup:
@@ -921,7 +919,7 @@ func (sc *SchedulerCache) DeletePodGroupV1beta1(obj interface{}) {
 }
 
 // AddQueueV1beta1 add queue to scheduler cache
-func (sc *SchedulerCache) AddQueueV1beta1(obj interface{}) {
+func (sc *SchedulerCache) AddQueueV1beta1(obj any) {
 	ss, ok := obj.(*schedulingv1beta1.Queue)
 	if !ok {
 		klog.Errorf("Cannot convert to *schedulingv1beta1.Queue: %v", obj)
@@ -942,7 +940,7 @@ func (sc *SchedulerCache) AddQueueV1beta1(obj interface{}) {
 }
 
 // UpdateQueueV1beta1 update queue to scheduler cache
-func (sc *SchedulerCache) UpdateQueueV1beta1(oldObj, newObj interface{}) {
+func (sc *SchedulerCache) UpdateQueueV1beta1(oldObj, newObj any) {
 	oldSS, ok := oldObj.(*schedulingv1beta1.Queue)
 	if !ok {
 		klog.Errorf("Cannot convert oldObj to *schedulingv1beta1.Queue: %v", oldObj)
@@ -970,7 +968,7 @@ func (sc *SchedulerCache) UpdateQueueV1beta1(oldObj, newObj interface{}) {
 }
 
 // DeleteQueueV1beta1 delete queue from the scheduler cache
-func (sc *SchedulerCache) DeleteQueueV1beta1(obj interface{}) {
+func (sc *SchedulerCache) DeleteQueueV1beta1(obj any) {
 	var ss *schedulingv1beta1.Queue
 	switch t := obj.(type) {
 	case *schedulingv1beta1.Queue:
@@ -1009,7 +1007,7 @@ func (sc *SchedulerCache) deleteQueue(id schedulingapi.QueueID) {
 }
 
 // DeletePriorityClass delete priorityclass from the scheduler cache
-func (sc *SchedulerCache) DeletePriorityClass(obj interface{}) {
+func (sc *SchedulerCache) DeletePriorityClass(obj any) {
 	var ss *schedulingv1.PriorityClass
 	switch t := obj.(type) {
 	case *schedulingv1.PriorityClass:
@@ -1033,7 +1031,7 @@ func (sc *SchedulerCache) DeletePriorityClass(obj interface{}) {
 }
 
 // UpdatePriorityClass update priorityclass to scheduler cache
-func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
+func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj any) {
 	oldSS, ok := oldObj.(*schedulingv1.PriorityClass)
 	if !ok {
 		klog.Errorf("Cannot convert oldObj to *schedulingv1.PriorityClass: %v", oldObj)
@@ -1055,7 +1053,7 @@ func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
 }
 
 // AddPriorityClass add priorityclass to scheduler cache
-func (sc *SchedulerCache) AddPriorityClass(obj interface{}) {
+func (sc *SchedulerCache) AddPriorityClass(obj any) {
 	ss, ok := obj.(*schedulingv1.PriorityClass)
 	if !ok {
 		klog.Errorf("Cannot convert to *schedulingv1.PriorityClass: %v", obj)
@@ -1110,7 +1108,7 @@ func (sc *SchedulerCache) deleteResourceQuota(quota *v1.ResourceQuota) {
 }
 
 // DeleteResourceQuota delete ResourceQuota from the scheduler cache
-func (sc *SchedulerCache) DeleteResourceQuota(obj interface{}) {
+func (sc *SchedulerCache) DeleteResourceQuota(obj any) {
 	var r *v1.ResourceQuota
 	switch t := obj.(type) {
 	case *v1.ResourceQuota:
@@ -1135,7 +1133,7 @@ func (sc *SchedulerCache) DeleteResourceQuota(obj interface{}) {
 }
 
 // UpdateResourceQuota update ResourceQuota to scheduler cache
-func (sc *SchedulerCache) UpdateResourceQuota(oldObj, newObj interface{}) {
+func (sc *SchedulerCache) UpdateResourceQuota(oldObj, newObj any) {
 	newR, ok := newObj.(*v1.ResourceQuota)
 	if !ok {
 		klog.Errorf("Cannot convert newObj to *v1.ResourceQuota: %v", newObj)
@@ -1150,7 +1148,7 @@ func (sc *SchedulerCache) UpdateResourceQuota(oldObj, newObj interface{}) {
 }
 
 // AddResourceQuota add ResourceQuota to scheduler cache
-func (sc *SchedulerCache) AddResourceQuota(obj interface{}) {
+func (sc *SchedulerCache) AddResourceQuota(obj any) {
 	var r *v1.ResourceQuota
 	switch t := obj.(type) {
 	case *v1.ResourceQuota:
@@ -1178,9 +1176,7 @@ func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopology) *schedulingapi.Numatopo
 	}
 
 	policies := srcInfo.Spec.Policies
-	for name, policy := range policies {
-		numaInfo.Policies[name] = policy
-	}
+	maps.Copy(numaInfo.Policies, policies)
 
 	numaResMap := srcInfo.Spec.NumaResMap
 	for name, resInfo := range numaResMap {
@@ -1254,7 +1250,7 @@ func (sc *SchedulerCache) deleteNumaInfo(info *nodeinfov1alpha1.Numatopology) {
 }
 
 // AddNumaInfoV1alpha1 add numa information to scheduler cache
-func (sc *SchedulerCache) AddNumaInfoV1alpha1(obj interface{}) {
+func (sc *SchedulerCache) AddNumaInfoV1alpha1(obj any) {
 	ss, ok := obj.(*nodeinfov1alpha1.Numatopology)
 	if !ok {
 		klog.Errorf("Cannot convert oldObj to *nodeinfov1alpha1.Numatopology: %v", obj)
@@ -1268,7 +1264,7 @@ func (sc *SchedulerCache) AddNumaInfoV1alpha1(obj interface{}) {
 }
 
 // UpdateNumaInfoV1alpha1 update numa information to scheduler cache
-func (sc *SchedulerCache) UpdateNumaInfoV1alpha1(oldObj, newObj interface{}) {
+func (sc *SchedulerCache) UpdateNumaInfoV1alpha1(oldObj, newObj any) {
 	ss, ok := newObj.(*nodeinfov1alpha1.Numatopology)
 	if !ok {
 		klog.Errorf("Cannot convert oldObj to *nodeinfov1alpha1.Numatopology: %v", newObj)
@@ -1282,7 +1278,7 @@ func (sc *SchedulerCache) UpdateNumaInfoV1alpha1(oldObj, newObj interface{}) {
 }
 
 // DeleteNumaInfoV1alpha1 delete numa information from scheduler cache
-func (sc *SchedulerCache) DeleteNumaInfoV1alpha1(obj interface{}) {
+func (sc *SchedulerCache) DeleteNumaInfoV1alpha1(obj any) {
 	var ss *nodeinfov1alpha1.Numatopology
 	switch t := obj.(type) {
 	case *nodeinfov1alpha1.Numatopology:
@@ -1307,7 +1303,7 @@ func (sc *SchedulerCache) DeleteNumaInfoV1alpha1(obj interface{}) {
 }
 
 // AddJob add job to scheduler cache
-func (sc *SchedulerCache) AddJob(obj interface{}) {
+func (sc *SchedulerCache) AddJob(obj any) {
 	job, ok := obj.(*schedulingapi.JobInfo)
 	if !ok {
 		klog.Errorf("Cannot convert to *api.JobInfo: %v", obj)
@@ -1357,7 +1353,7 @@ func (sc *SchedulerCache) setCSIResourceOnNode(csiNode *sv1.CSINode, node *v1.No
 }
 
 // AddHyperNode adds hyperNode name to the hyperNodesQueue.
-func (sc *SchedulerCache) AddHyperNode(obj interface{}, isInInitialList bool) {
+func (sc *SchedulerCache) AddHyperNode(obj any, isInInitialList bool) {
 	hn, ok := obj.(*topologyv1alpha1.HyperNode)
 	if !ok {
 		klog.ErrorS(nil, "Cannot convert to *topologyv1alpha1.HyperNode", "type", reflect.TypeOf(obj))
@@ -1372,7 +1368,7 @@ func (sc *SchedulerCache) AddHyperNode(obj interface{}, isInInitialList bool) {
 }
 
 // UpdateHyperNode adds hyperNode name to the hyperNodesQueue.
-func (sc *SchedulerCache) UpdateHyperNode(oldObj, newObj interface{}) {
+func (sc *SchedulerCache) UpdateHyperNode(oldObj, newObj any) {
 	newHyperNode, ok := newObj.(*topologyv1alpha1.HyperNode)
 	if !ok {
 		klog.ErrorS(nil, "Cannot convert newObj to *topologyv1alpha1.HyperNode: %v", reflect.TypeOf(newObj))
@@ -1382,7 +1378,7 @@ func (sc *SchedulerCache) UpdateHyperNode(oldObj, newObj interface{}) {
 }
 
 // DeleteHyperNode adds hyperNode name to the hyperNodesQueue.
-func (sc *SchedulerCache) DeleteHyperNode(obj interface{}) {
+func (sc *SchedulerCache) DeleteHyperNode(obj any) {
 	var hn *topologyv1alpha1.HyperNode
 	switch t := obj.(type) {
 	case *topologyv1alpha1.HyperNode:
@@ -1415,7 +1411,7 @@ func (sc *SchedulerCache) deleteHyperNode(name string) error {
 }
 
 // AddNodeShard add nodeshard to scheduler cache
-func (sc *SchedulerCache) AddNodeShard(obj interface{}) {
+func (sc *SchedulerCache) AddNodeShard(obj any) {
 	shard, ok := obj.(*nodeshardv1alpha1.NodeShard)
 	if !ok {
 		klog.Errorf("Cannot convert to *nodeshardv1alpha1.NodeShard: %v", obj)
@@ -1425,7 +1421,7 @@ func (sc *SchedulerCache) AddNodeShard(obj interface{}) {
 }
 
 // UpdateNodeShard update nodeshard to scheduler cache
-func (sc *SchedulerCache) UpdateNodeShard(oldObj, newObj interface{}) {
+func (sc *SchedulerCache) UpdateNodeShard(oldObj, newObj any) {
 	newShard, ok := newObj.(*nodeshardv1alpha1.NodeShard)
 	if !ok {
 		klog.Errorf("Cannot convert newObj to *nodeshardv1alpha1.NodeShard: %v", newObj)
@@ -1435,7 +1431,7 @@ func (sc *SchedulerCache) UpdateNodeShard(oldObj, newObj interface{}) {
 }
 
 // DeleteNodeShard delete nodeshard from scheduler cache
-func (sc *SchedulerCache) DeleteNodeShard(obj interface{}) {
+func (sc *SchedulerCache) DeleteNodeShard(obj any) {
 	shard, ok := obj.(*nodeshardv1alpha1.NodeShard)
 	if !ok {
 		klog.Errorf("Cannot convert to *nodeshardv1alpha1.NodeShard: %v", obj)

@@ -80,7 +80,7 @@ type Devices interface {
 	// simulation (e.g. topology-aware preemption).  The return type is
 	// interface{} to avoid circular imports: each device package does not
 	// import the top-level api package.
-	DeepCopy() interface{}
+	DeepCopy() any
 }
 
 // make sure GPUDevices implements Devices interface
@@ -92,10 +92,8 @@ var _ Devices = new(hami.AscendDevices)
 var RegisteredDevices = []string{}
 
 func RegisterDevice(deviceName string) {
-	for _, name := range RegisteredDevices {
-		if name == deviceName {
-			return
-		}
+	if slices.Contains(RegisteredDevices, deviceName) {
+		return
 	}
 	RegisteredDevices = append(RegisteredDevices, deviceName)
 }
@@ -103,7 +101,7 @@ func RegisterDevice(deviceName string) {
 // IsNilDevice reports whether d wraps a typed-nil pointer.
 func IsNilDevice(d Devices) bool {
 	rv := reflect.ValueOf(d)
-	return rv.Kind() == reflect.Ptr && rv.IsNil()
+	return rv.Kind() == reflect.Pointer && rv.IsNil()
 }
 
 var IgnoredDevicesList = ignoredDevicesList{}

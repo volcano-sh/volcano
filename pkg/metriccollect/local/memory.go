@@ -101,8 +101,8 @@ func getMemoryUsage(cgroupRoot string, cgroupVersion string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	lines := strings.Split(string(date), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(date), "\n")
+	for line := range lines {
 		slices := strings.Split(line, " ")
 		if len(slices) != 2 {
 			continue
@@ -141,7 +141,7 @@ func nodeMemoryUsage() (int64, error) {
 	}
 
 	total, available := int64(0), int64(0)
-	for _, line := range strings.Split(string(content), "\n") {
+	for line := range strings.SplitSeq(string(content), "\n") {
 		fields := strings.SplitN(line, ":", 2)
 		if len(fields) < 2 {
 			continue

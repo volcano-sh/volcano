@@ -65,7 +65,7 @@ func (p *taskTopologyPlugin) Name() string {
 // the right task order should be:
 //
 //	a1 a3 a2 b1 b2 a4 b3
-func (p *taskTopologyPlugin) TaskOrderFn(l interface{}, r interface{}) int {
+func (p *taskTopologyPlugin) TaskOrderFn(l any, r any) int {
 	lv, ok := l.(*api.TaskInfo)
 	if !ok {
 		klog.Errorf("Object is not a taskinfo")

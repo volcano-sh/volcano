@@ -263,7 +263,7 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims
 	}
 
-	jobOrderFn := func(l, r interface{}) int {
+	jobOrderFn := func(l, r any) int {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
@@ -278,7 +278,7 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 		return 1
 	}
 
-	jobPipelinedFn := func(obj interface{}) int {
+	jobPipelinedFn := func(obj any) int {
 		jobInfo := obj.(*api.JobInfo)
 		if jobInfo.IsPipelined() {
 			return tutil.Permit
@@ -286,7 +286,7 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 		return tutil.Reject
 	}
 
-	jobStarvingFn := func(obj interface{}) bool {
+	jobStarvingFn := func(obj any) bool {
 		jobInfo := obj.(*api.JobInfo)
 		// allow none preemptable elastic job (deployment) preempt task
 		if jobInfo.Preemptable {

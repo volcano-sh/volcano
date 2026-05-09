@@ -17,6 +17,8 @@ limitations under the License.
 package node
 
 import (
+	"maps"
+
 	v1 "k8s.io/api/core/v1"
 
 	"volcano.sh/volcano/pkg/agent/apis"
@@ -38,9 +40,7 @@ func updateAnnotation(annotations map[string]string) Modifier {
 		if node.Annotations == nil {
 			node.Annotations = make(map[string]string)
 		}
-		for k, v := range annotations {
-			node.Annotations[k] = v
-		}
+		maps.Copy(node.Annotations, annotations)
 	}
 }
 

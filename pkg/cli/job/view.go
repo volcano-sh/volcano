@@ -253,10 +253,10 @@ func GetEvents(ctx context.Context, config *rest.Config, job *v1alpha1.Job) []co
 }
 
 // WriteLine write lines with specified indent.
-func WriteLine(writer io.Writer, spaces int, content string, params ...interface{}) {
-	prefix := ""
-	for i := 0; i < spaces; i++ {
-		prefix += "  "
+func WriteLine(writer io.Writer, spaces int, content string, params ...any) {
+	var prefix strings.Builder
+	for range spaces {
+		prefix.WriteString("  ")
 	}
-	fmt.Fprintf(writer, prefix+content, params...)
+	fmt.Fprintf(writer, prefix.String()+content, params...)
 }

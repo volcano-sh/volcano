@@ -47,7 +47,7 @@ func (pp *priorityPlugin) Name() string {
 }
 
 func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
-	taskOrderFn := func(l interface{}, r interface{}) int {
+	taskOrderFn := func(l any, r any) int {
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
 
@@ -68,7 +68,7 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Add Task Order function
 	ssn.AddTaskOrderFn(pp.Name(), taskOrderFn)
 
-	jobOrderFn := func(l, r interface{}) int {
+	jobOrderFn := func(l, r any) int {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
@@ -88,7 +88,7 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddJobOrderFn(pp.Name(), jobOrderFn)
 
-	subJobOrderFn := func(l, r interface{}) int {
+	subJobOrderFn := func(l, r any) int {
 		lv := l.(*api.SubJobInfo)
 		rv := r.(*api.SubJobInfo)
 
@@ -148,7 +148,7 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddPreemptableFn(pp.Name(), preemptableFn)
 
-	jobStarvingFn := func(obj interface{}) bool {
+	jobStarvingFn := func(obj any) bool {
 		ji := obj.(*api.JobInfo)
 		return ji.ReadyTaskNum()+ji.WaitingTaskNum() < int32(len(ji.Tasks))
 	}

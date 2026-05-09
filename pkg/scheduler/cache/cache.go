@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -209,7 +210,7 @@ type imageState struct {
 	nodes sets.Set[string]
 }
 
-type BindContextExtension interface{}
+type BindContextExtension any
 
 type BindContext struct {
 	TaskInfo *schedulingapi.TaskInfo
@@ -644,7 +645,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
 	handlerRegistration, _ = sc.nodeInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
+			FilterFunc: func(obj any) bool {
 				switch t := obj.(type) {
 				case *v1.Node:
 					return true
@@ -700,7 +701,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	// create informer for pod information
 	handlerRegistration, _ = sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
+			FilterFunc: func(obj any) bool {
 				switch v := obj.(type) {
 				case *v1.Pod:
 					if !responsibleForPod(v, sc.schedulerNames, sc.schedulerPodName, sc.c) {
@@ -757,7 +758,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	sc.podGroupInformerV1beta1 = vcinformers.Scheduling().V1beta1().PodGroups()
 	handlerRegistration, _ = sc.podGroupInformerV1beta1.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
+			FilterFunc: func(obj any) bool {
 				var pg *vcv1beta1.PodGroup
 				switch v := obj.(type) {
 				case *vcv1beta1.PodGroup:
@@ -1406,9 +1407,9 @@ func (sc *SchedulerCache) executePreBind(ctx context.Context, bindContext *BindC
 
 		if err := preBinder.PreBind(ctx, bindContext); err != nil {
 			// If PreBind fails, rollback the executed PreBinders
-			for i := len(executedPreBinders) - 1; i >= 0; i-- {
-				if executedPreBinders[i] != nil {
-					executedPreBinders[i].PreBindRollBack(ctx, bindContext)
+			for _, v := range slices.Backward(executedPreBinders) {
+				if v != nil {
+					v.PreBindRollBack(ctx, bindContext)
 				}
 			}
 			return err
@@ -1584,42 +1585,43 @@ func (sc *SchedulerCache) String() string {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	str := "Cache:\n"
+	var str strings.Builder
+	str.WriteString("Cache:\n")
 
 	if len(sc.Nodes) != 0 {
-		str += "Nodes:\n"
+		str.WriteString("Nodes:\n")
 		for _, n := range sc.Nodes {
-			str += fmt.Sprintf("\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
+			fmt.Fprintf(&str, "\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
 				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Tasks))
 
 			i := 0
 			for _, p := range n.Tasks {
-				str += fmt.Sprintf("\t\t %d: %v\n", i, p)
+				fmt.Fprintf(&str, "\t\t %d: %v\n", i, p)
 				i++
 			}
 		}
 	}
 
 	if len(sc.Jobs) != 0 {
-		str += "Jobs:\n"
+		str.WriteString("Jobs:\n")
 		for _, job := range sc.Jobs {
-			str += fmt.Sprintf("\t %s\n", job)
+			fmt.Fprintf(&str, "\t %s\n", job)
 		}
 	}
 
 	if len(sc.NamespaceCollection) != 0 {
-		str += "Namespaces:\n"
+		str.WriteString("Namespaces:\n")
 		for _, ns := range sc.NamespaceCollection {
 			info := ns.Snapshot()
-			str += fmt.Sprintf("\t Namespace(%s)\n", info.Name)
+			fmt.Fprintf(&str, "\t Namespace(%s)\n", info.Name)
 		}
 	}
 
 	if len(sc.NodeList) != 0 {
-		str += fmt.Sprintf("NodeList: %v\n", sc.NodeList)
+		fmt.Fprintf(&str, "NodeList: %v\n", sc.NodeList)
 	}
 
-	return str
+	return str.String()
 }
 
 // RecordJobStatusEvent records related events according to job status.
@@ -1804,7 +1806,7 @@ func (sc *SchedulerCache) createImageStateSummary(state *imageState) *fwk.ImageS
 	}
 }
 
-func (sc *SchedulerCache) RegisterBinder(name string, binder interface{}) {
+func (sc *SchedulerCache) RegisterBinder(name string, binder any) {
 	if sc.binderRegistry == nil {
 		sc.binderRegistry = NewBinderRegistry()
 	}

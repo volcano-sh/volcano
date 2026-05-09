@@ -23,7 +23,7 @@ GOPATH="$(go env GOPATH | awk -F ':' '{print $1}')"
 
 # ---------- Configuration ----------
 # Bump this version when upgrading golangci-lint for the project.
-REQUIRED_VERSION="v2.8.0"
+REQUIRED_VERSION="v2.12.2"
 GOLANGCI_LINT_PKG="github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
 # -----------------------------------
 
@@ -59,7 +59,7 @@ check_golangci_lint() {
   fi
 
   # Extract the installed version. golangci-lint v2 prints e.g.
-  #   golangci-lint has version v2.8.0 built with go1.25.7 from ... on ...
+  #   golangci-lint has version v2.12.2 built with go1.25.7 from ... on ...
   # while v1 prints e.g.
   #   golangci-lint has version 1.64.8 built with ...
   local raw_version

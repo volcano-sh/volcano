@@ -17,6 +17,8 @@ limitations under the License.
 package mutate
 
 import (
+	"slices"
+
 	v1 "k8s.io/api/core/v1"
 
 	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
@@ -35,11 +37,5 @@ func (resGroup *namespaceResGroup) IsBelongResGroup(pod *v1.Pod, resGroupConfig 
 		return false
 	}
 
-	for _, val := range resGroupConfig.Object.Value {
-		if pod.Namespace == val {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(resGroupConfig.Object.Value, pod.Namespace)
 }

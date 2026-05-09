@@ -59,7 +59,7 @@ type DiscoveryConfig struct {
 	Credentials *Credentials `json:"credentials" yaml:"credentials"`
 
 	// Config contains specific configuration parameters for each discovery source
-	Config map[string]interface{} `json:"config" yaml:"config"`
+	Config map[string]any `json:"config" yaml:"config"`
 }
 
 // GetDiscoveryConfig returns the configuration for a specific discovery source

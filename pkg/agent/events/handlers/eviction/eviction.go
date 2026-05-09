@@ -62,7 +62,7 @@ func NewManager(config *config.Configuration, mgr *metriccollect.MetricCollector
 	return m
 }
 
-func (m *manager) Handle(event interface{}) error {
+func (m *manager) Handle(event any) error {
 	nodeMonitorEvent, ok := event.(framework.NodeMonitorEvent)
 	if !ok {
 		klog.ErrorS(nil, "Invalid node monitor event", "type", reflect.TypeOf(event))

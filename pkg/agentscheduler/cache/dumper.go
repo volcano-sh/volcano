@@ -61,7 +61,7 @@ func (d *Dumper) dumpToJSONFile() {
 	klog.Infoln("Successfully dump info in scheduler cache to file", fName)
 }
 
-func encodeCache(file *os.File, v ...interface{}) error {
+func encodeCache(file *os.File, v ...any) error {
 	for _, item := range v {
 		err := json.NewEncoder(file).Encode(item)
 		if err != nil {

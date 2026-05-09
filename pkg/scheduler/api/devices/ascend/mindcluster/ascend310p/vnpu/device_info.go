@@ -17,6 +17,7 @@ limitations under the License.
 package vnpu
 
 import (
+	"maps"
 	"strings"
 	"sync"
 
@@ -221,7 +222,7 @@ func (ns *NPUDevices) GetIgnoredDevices() []string {
 }
 
 // DeepCopy returns a deep copy of NPUDevices for use in dry-run simulation.
-func (ns *NPUDevices) DeepCopy() interface{} {
+func (ns *NPUDevices) DeepCopy() any {
 	if ns == nil {
 		return nil
 	}
@@ -243,21 +244,11 @@ func (ns *NPUDevices) DeepCopy() interface{} {
 		Annotation:        make(map[string]string, len(ns.NodeInf.Annotation)),
 		Label:             make(map[string]string, len(ns.NodeInf.Label)),
 	}
-	for k, v := range ns.NodeInf.Capability {
-		cp.NodeInf.Capability[k] = v
-	}
-	for k, v := range ns.NodeInf.Allocate {
-		cp.NodeInf.Allocate[k] = v
-	}
-	for k, v := range ns.NodeInf.Idle {
-		cp.NodeInf.Idle[k] = v
-	}
-	for k, v := range ns.NodeInf.Annotation {
-		cp.NodeInf.Annotation[k] = v
-	}
-	for k, v := range ns.NodeInf.Label {
-		cp.NodeInf.Label[k] = v
-	}
+	maps.Copy(cp.NodeInf.Capability, ns.NodeInf.Capability)
+	maps.Copy(cp.NodeInf.Allocate, ns.NodeInf.Allocate)
+	maps.Copy(cp.NodeInf.Idle, ns.NodeInf.Idle)
+	maps.Copy(cp.NodeInf.Annotation, ns.NodeInf.Annotation)
+	maps.Copy(cp.NodeInf.Label, ns.NodeInf.Label)
 
 	// Deep copy NPUDevice
 	cp.NPUDevice = NPUDevice{
@@ -278,9 +269,7 @@ func (ns *NPUDevices) DeepCopy() interface{} {
 		DowngradeCache:   make(map[string]struct{}, len(ns.NPUDevice.DowngradeCache)),
 		ConCache:         make(map[string]map[types.UID]struct{}, len(ns.NPUDevice.ConCache)),
 	}
-	for k, v := range ns.NPUDevice.VT.Data {
-		cp.NPUDevice.VT.Data[k] = v
-	}
+	maps.Copy(cp.NPUDevice.VT.Data, ns.NPUDevice.VT.Data)
 	for k := range ns.NPUDevice.UnhealthyChipIds {
 		cp.NPUDevice.UnhealthyChipIds[k] = struct{}{}
 	}
@@ -309,9 +298,7 @@ func (ns *NPUDevices) DeepCopy() interface{} {
 			PodMap:      make(map[string]*v1.Pod, len(chip.PodMap)),
 		}
 		copy(newChip.ID, chip.ID)
-		for uid, pod := range chip.PodMap {
-			newChip.PodMap[uid] = pod
-		}
+		maps.Copy(newChip.PodMap, chip.PodMap)
 		cp.NPUDevice.Chips[id] = newChip
 	}
 

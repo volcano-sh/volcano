@@ -13,6 +13,8 @@ limitations under the License.
 
 package sharding
 
+import "maps"
+
 // Implement NodeMetricsProvider interface
 func (sc *ShardingController) GetNodeMetrics(nodeName string) *NodeMetrics {
 	return sc.nodeMetricsCache[nodeName]
@@ -24,9 +26,7 @@ func (sc *ShardingController) GetAllNodeMetrics() map[string]*NodeMetrics {
 
 	// Create a copy to avoid concurrent modification
 	metricsCopy := make(map[string]*NodeMetrics, len(sc.nodeMetricsCache))
-	for name, metrics := range sc.nodeMetricsCache {
-		metricsCopy[name] = metrics
-	}
+	maps.Copy(metricsCopy, sc.nodeMetricsCache)
 	return metricsCopy
 }
 

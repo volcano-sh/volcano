@@ -53,7 +53,7 @@ func NewCPUQoSHandle(config *config.Configuration, mgr *metriccollect.MetricColl
 	}
 }
 
-func (h *CPUQoSHandle) Handle(event interface{}) error {
+func (h *CPUQoSHandle) Handle(event any) error {
 	podEvent, ok := event.(framework.PodEvent)
 	if !ok {
 		return fmt.Errorf("illegal pod event")
@@ -65,7 +65,7 @@ func (h *CPUQoSHandle) Handle(event interface{}) error {
 	}
 
 	qosLevelFile := path.Join(cgroupPath, cgroup.CPUQoSLevelFile)
-	qosLevelByte := []byte(fmt.Sprintf("%d", podEvent.QoSLevel))
+	qosLevelByte := fmt.Appendf(nil, "%d", podEvent.QoSLevel)
 
 	err = utils.UpdatePodCgroup(qosLevelFile, qosLevelByte)
 	if err != nil {

@@ -32,5 +32,5 @@ type MetricCollect interface {
 
 	// CollectMetrics collects metrics from collector.
 	// If window == 0, return the latest data, otherwise return the time series data
-	CollectMetrics(metricInfo interface{}, start time.Time, window metav1.Duration) ([]*prompb.TimeSeries, error)
+	CollectMetrics(metricInfo any, start time.Time, window metav1.Duration) ([]*prompb.TimeSeries, error)
 }

@@ -136,10 +136,7 @@ func (sm *ShardingManager) calculateShardAssignmentsBatched(
 
 	// Process nodes in batches
 	for i := 0; i < len(nodes); i += batchSize {
-		end := i + batchSize
-		if end > len(nodes) {
-			end = len(nodes)
-		}
+		end := min(i+batchSize, len(nodes))
 
 		batch := nodes[i:end]
 		batchAssignments, err := sm.CalculateShardAssignments(batch, currentShards)
@@ -269,17 +266,12 @@ func (sm *ShardingManager) selectNodesWithinConstraints(
 	nodes []*corev1.Node,
 ) []string {
 	// compute the number of necessary nodes
-	desiredCount := sm.calculateDesiredNodeCount(config, len(nodes))
+	desiredCount := min(
+		// ensure the desired node count is smaller than the minimum nodes
+		// if eligible nodes is smaller than desired, then use all eligible nodes
+		len(nodes), max(
 
-	// ensure the desired node count is smaller than the minimum nodes
-	if desiredCount < config.ShardStrategy.MinNodes {
-		desiredCount = config.ShardStrategy.MinNodes
-	}
-
-	// if eligible nodes is smaller than desired, then use all eligible nodes
-	if len(nodes) < desiredCount {
-		desiredCount = len(nodes)
-	}
+			sm.calculateDesiredNodeCount(config, len(nodes)), config.ShardStrategy.MinNodes))
 
 	// select nodes
 	selected := make([]string, 0, desiredCount)
@@ -305,17 +297,12 @@ func (sm *ShardingManager) selectNodesWithinConstraints(
 // calculateDesiredNodeCount calculates desired node count based on strategy constraints
 func (sm *ShardingManager) calculateDesiredNodeCount(config SchedulerConfig, eligibleNodeCount int) int {
 	// select all eligible nodes
-	desired := eligibleNodeCount
+	desired := max(
+		// apply max constraint
+		// apply min constraint
+		min(
 
-	// apply max constraint
-	if desired > config.ShardStrategy.MaxNodes {
-		desired = config.ShardStrategy.MaxNodes
-	}
-
-	// apply min constraint
-	if desired < config.ShardStrategy.MinNodes {
-		desired = config.ShardStrategy.MinNodes
-	}
+			eligibleNodeCount, config.ShardStrategy.MaxNodes), config.ShardStrategy.MinNodes)
 
 	return desired
 }

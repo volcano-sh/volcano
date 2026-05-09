@@ -17,6 +17,8 @@ limitations under the License.
 package policy
 
 import (
+	"maps"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask"
 	"k8s.io/utils/cpuset"
@@ -86,9 +88,7 @@ func Allocate(container *v1.Container, bestHit *TopologyHint,
 	allResAlloc := make(map[string]cpuset.CPUSet)
 	for _, provider := range hintProviders {
 		resAlloc := provider.Allocate(container, bestHit, topoInfo, resNumaSets)
-		for resName, assign := range resAlloc {
-			allResAlloc[resName] = assign
-		}
+		maps.Copy(allResAlloc, resAlloc)
 	}
 
 	return allResAlloc

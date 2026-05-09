@@ -182,7 +182,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	}
 
 	var i uint32
-	for i = 0; i < workers; i++ {
+	for i = range workers {
 		cc.queueList[i] = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 	}
 
@@ -203,7 +203,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 		cc.cmdInformer = factory.Bus().V1alpha1().Commands()
 		cc.cmdInformer.Informer().AddEventHandler(
 			cache.FilteringResourceEventHandler{
-				FilterFunc: func(obj interface{}) bool {
+				FilterFunc: func(obj any) bool {
 					switch v := obj.(type) {
 					case *busv1alpha1.Command:
 						if v.TargetObject != nil &&

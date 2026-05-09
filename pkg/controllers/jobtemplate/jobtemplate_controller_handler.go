@@ -30,7 +30,7 @@ func (jt *jobtemplatecontroller) enqueue(req apis.FlowRequest) {
 	jt.queue.Add(req)
 }
 
-func (jt *jobtemplatecontroller) addJobTemplate(obj interface{}) {
+func (jt *jobtemplatecontroller) addJobTemplate(obj any) {
 	jobTemplate, ok := obj.(*v1alpha1.JobTemplate)
 	if !ok {
 		klog.Errorf("Failed to convert %v to jobTemplate", obj)
@@ -45,7 +45,7 @@ func (jt *jobtemplatecontroller) addJobTemplate(obj interface{}) {
 	jt.enqueueJobTemplate(req)
 }
 
-func (jt *jobtemplatecontroller) addJob(obj interface{}) {
+func (jt *jobtemplatecontroller) addJob(obj any) {
 	job, ok := obj.(*batch.Job)
 	if !ok {
 		klog.Errorf("Failed to convert %v to vcjob", obj)
