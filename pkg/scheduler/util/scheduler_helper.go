@@ -22,6 +22,7 @@ limitations under the License.
 package util
 
 import (
+	"container/heap"
 	"context"
 	"fmt"
 	"math"
@@ -227,14 +228,11 @@ func SelectBestHyperNodeAndScore(hyperNodeScores map[float64][]string) (string, 
 // Nodes in nodesInBinder will be downgraded to reduce the conflict with binder.
 func SelectBestNodes(nodeScores map[float64][]*api.NodeInfo, count int, nodesInBinder map[string]int) []*api.NodeInfo {
 	bestNodes := []*api.NodeInfo{}
-	lowPriorityNodes := make([]*api.NodeInfo, 0, len(nodesInBinder))
 	if count <= 0 || len(nodeScores) == 0 {
 		return bestNodes
 	}
-	allScores := make([]float64, 0, len(nodeScores))
 	nodeCount := 0
-	for score, nodes := range nodeScores {
-		allScores = append(allScores, score)
+	for _, nodes := range nodeScores {
 		nodeCount += len(nodes)
 	}
 
@@ -248,34 +246,104 @@ func SelectBestNodes(nodeScores map[float64][]*api.NodeInfo, count int, nodesInB
 	if nodeCount > count && len(nodesInBinder) > 0 {
 		downgradeNode = true
 	}
-	sort.Sort(sort.Reverse(sort.Float64Slice(allScores)))
 
-	selecteNodeCount := 0
-	for _, score := range allScores {
-		nodes := nodeScores[score]
-		if len(nodes)+selecteNodeCount > count {
+	if !downgradeNode {
+		return appendSelectedNodes(bestNodes, topScoreBuckets(nodeScores, count), count)
+	}
+
+	freeNodeScores := make(map[float64][]*api.NodeInfo, len(nodeScores))
+	binderNodeScores := make(map[float64][]*api.NodeInfo, len(nodesInBinder))
+	for score, nodes := range nodeScores {
+		for _, node := range nodes {
+			if binderCount, ok := nodesInBinder[node.Name]; ok && binderCount > 0 {
+				binderNodeScores[score] = append(binderNodeScores[score], node)
+				continue
+			}
+			freeNodeScores[score] = append(freeNodeScores[score], node)
+		}
+	}
+
+	bestNodes = appendSelectedNodes(bestNodes, topScoreBuckets(freeNodeScores, count), count)
+	if len(bestNodes) < count {
+		bestNodes = appendSelectedNodes(bestNodes, topScoreBuckets(binderNodeScores, count), count)
+	}
+	return bestNodes
+}
+
+type scoreBucket struct {
+	score float64
+	nodes []*api.NodeInfo
+}
+
+type scoreBucketHeap struct {
+	buckets []*scoreBucket
+}
+
+func (h scoreBucketHeap) Len() int { return len(h.buckets) }
+
+func (h scoreBucketHeap) Less(i, j int) bool { return h.buckets[i].score < h.buckets[j].score }
+
+func (h scoreBucketHeap) Swap(i, j int) { h.buckets[i], h.buckets[j] = h.buckets[j], h.buckets[i] }
+
+func (h *scoreBucketHeap) Push(x interface{}) {
+	h.buckets = append(h.buckets, x.(*scoreBucket))
+}
+
+func (h *scoreBucketHeap) Pop() interface{} {
+	old := h.buckets
+	n := len(old)
+	item := old[n-1]
+	h.buckets = old[:n-1]
+	return item
+}
+
+func topScoreBuckets(nodeScores map[float64][]*api.NodeInfo, count int) []*scoreBucket {
+	if count <= 0 || len(nodeScores) == 0 {
+		return nil
+	}
+
+	selected := &scoreBucketHeap{buckets: make([]*scoreBucket, 0, len(nodeScores))}
+	totalNodes := 0
+	for score, nodes := range nodeScores {
+		if len(nodes) == 0 {
+			continue
+		}
+
+		heap.Push(selected, &scoreBucket{score: score, nodes: nodes})
+		totalNodes += len(nodes)
+
+		for selected.Len() > 0 {
+			lowest := selected.buckets[0]
+			if totalNodes-len(lowest.nodes) < count {
+				break
+			}
+			totalNodes -= len(lowest.nodes)
+			heap.Pop(selected)
+		}
+	}
+
+	buckets := make([]*scoreBucket, selected.Len())
+	for i := len(buckets) - 1; i >= 0; i-- {
+		buckets[i] = heap.Pop(selected).(*scoreBucket)
+	}
+	return buckets
+}
+
+func appendSelectedNodes(bestNodes []*api.NodeInfo, buckets []*scoreBucket, count int) []*api.NodeInfo {
+	selectedNodeCount := len(bestNodes)
+	for _, bucket := range buckets {
+		nodes := bucket.nodes
+		if len(nodes)+selectedNodeCount > count {
 			rand.Shuffle(len(nodes), func(i, j int) {
 				nodes[i], nodes[j] = nodes[j], nodes[i]
 			})
 		}
 		for _, node := range nodes {
-			if downgradeNode {
-				if count, ok := nodesInBinder[node.Name]; ok && count > 0 {
-					lowPriorityNodes = append(lowPriorityNodes, node)
-					continue
-				}
-			}
 			bestNodes = append(bestNodes, node)
-			selecteNodeCount++
-			if len(bestNodes) == count {
+			selectedNodeCount++
+			if selectedNodeCount == count {
 				return bestNodes
 			}
-		}
-	}
-	if downgradeNode {
-		selectedNodeCount := len(bestNodes)
-		if selectedNodeCount < count {
-			bestNodes = append(bestNodes, lowPriorityNodes[:count-selectedNodeCount]...)
 		}
 	}
 	return bestNodes
