@@ -251,23 +251,7 @@ func SelectBestNodes(nodeScores map[float64][]*api.NodeInfo, count int, nodesInB
 		return appendSelectedNodes(bestNodes, topScoreBuckets(nodeScores, count), count)
 	}
 
-	freeNodeScores := make(map[float64][]*api.NodeInfo, len(nodeScores))
-	binderNodeScores := make(map[float64][]*api.NodeInfo, len(nodesInBinder))
-	for score, nodes := range nodeScores {
-		for _, node := range nodes {
-			if binderCount, ok := nodesInBinder[node.Name]; ok && binderCount > 0 {
-				binderNodeScores[score] = append(binderNodeScores[score], node)
-				continue
-			}
-			freeNodeScores[score] = append(freeNodeScores[score], node)
-		}
-	}
-
-	bestNodes = appendSelectedNodes(bestNodes, topScoreBuckets(freeNodeScores, count), count)
-	if len(bestNodes) < count {
-		bestNodes = appendSelectedNodes(bestNodes, topScoreBuckets(binderNodeScores, count), count)
-	}
-	return bestNodes
+	return selectBestNodesWithDowngrade(bestNodes, nodeScores, nodeCount, count, nodesInBinder)
 }
 
 type scoreBucket struct {
@@ -302,7 +286,7 @@ func topScoreBuckets(nodeScores map[float64][]*api.NodeInfo, count int) []*score
 		return nil
 	}
 
-	selected := &scoreBucketHeap{buckets: make([]*scoreBucket, 0, len(nodeScores))}
+	selected := &scoreBucketHeap{}
 	totalNodes := 0
 	for score, nodes := range nodeScores {
 		if len(nodes) == 0 {
@@ -347,6 +331,65 @@ func appendSelectedNodes(bestNodes []*api.NodeInfo, buckets []*scoreBucket, coun
 		}
 	}
 	return bestNodes
+}
+
+func selectBestNodesWithDowngrade(bestNodes []*api.NodeInfo, nodeScores map[float64][]*api.NodeInfo, nodeCount, count int, nodesInBinder map[string]int) []*api.NodeInfo {
+	remaining := count - len(bestNodes)
+	if remaining <= 0 {
+		return bestNodes
+	}
+
+	lowPriorityBuckets := make([]*scoreBucket, 0, min(len(nodesInBinder), remaining))
+	for _, bucket := range topScoreBuckets(nodeScores, nodeCount) {
+		freeNodes, binderNodes := splitBucketNodes(bucket.nodes, nodesInBinder)
+		bestNodes = appendNodesWithLimit(bestNodes, freeNodes, count)
+		if len(bestNodes) == count {
+			return bestNodes
+		}
+		if len(binderNodes) > 0 {
+			lowPriorityBuckets = append(lowPriorityBuckets, &scoreBucket{score: bucket.score, nodes: binderNodes})
+		}
+	}
+
+	if len(bestNodes) < count {
+		bestNodes = appendSelectedNodes(bestNodes, lowPriorityBuckets, count)
+	}
+	return bestNodes
+}
+
+func splitBucketNodes(nodes []*api.NodeInfo, nodesInBinder map[string]int) ([]*api.NodeInfo, []*api.NodeInfo) {
+	freeNodes := make([]*api.NodeInfo, 0, len(nodes))
+	binderNodes := make([]*api.NodeInfo, 0, min(len(nodes), len(nodesInBinder)))
+	for _, node := range nodes {
+		if binderCount, ok := nodesInBinder[node.Name]; ok && binderCount > 0 {
+			binderNodes = append(binderNodes, node)
+			continue
+		}
+		freeNodes = append(freeNodes, node)
+	}
+	return freeNodes, binderNodes
+}
+
+func appendNodesWithLimit(bestNodes []*api.NodeInfo, nodes []*api.NodeInfo, count int) []*api.NodeInfo {
+	if len(nodes) == 0 || len(bestNodes) >= count {
+		return bestNodes
+	}
+
+	remaining := count - len(bestNodes)
+	if len(nodes) > remaining {
+		rand.Shuffle(len(nodes), func(i, j int) {
+			nodes[i], nodes[j] = nodes[j], nodes[i]
+		})
+		nodes = nodes[:remaining]
+	}
+	return append(bestNodes, nodes...)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // GetNodeList returns values of the map 'nodes'
