@@ -25,7 +25,6 @@ import (
 	"unicode"
 
 	"github.com/mitchellh/mapstructure"
-	"golang.org/x/exp/maps"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -303,7 +302,7 @@ func (l *labelDiscoverer) AddNode(obj interface{}) {
 func (l *labelDiscoverer) UpdateNode(oldObj, newObj interface{}) {
 	oldLabelMap := l.getNodeNetworkTopologyLabels(oldObj)
 	newLabelMap := l.getNodeNetworkTopologyLabels(newObj)
-	if !maps.Equal(oldLabelMap, newLabelMap) {
+	if !stringMapsEqual(oldLabelMap, newLabelMap) {
 		l.enqueue()
 	}
 }
@@ -353,6 +352,18 @@ func (l *labelDiscoverer) getNodeNetworkTopologyLabels(obj interface{}) map[stri
 		}
 	}
 	return tempMap
+}
+
+func stringMapsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
 }
 
 // generateHyperNodeInfo generate the hyperNodeInfoMap based on all node labels
