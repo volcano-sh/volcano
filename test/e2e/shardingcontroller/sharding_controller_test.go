@@ -129,23 +129,47 @@ var _ = Describe("ShardingController E2E Test", func() {
 			}
 		})
 
-		It("should have worker nodes assigned to shards after controller startup", func() {
+		It("every worker node should be assigned to exactly one configured shard after controller startup", func() {
 			cfg := getShardingConfig()
 			waitForNodeShardsCreated(cfg)
 
 			nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
-			Expect(len(filterWorkerNodes(nodes.Items))).To(BeNumerically(">=", 1),
+			workerNodes := filterWorkerNodes(nodes.Items)
+			Expect(len(workerNodes)).To(BeNumerically(">=", 1),
 				"cluster should have at least 1 worker node")
 
-			totalAssigned := 0
-			for _, sc := range cfg.SchedulerConfigs {
-				shard, err := e2eutil.GetNodeShard(ctx, sc.Name)
-				Expect(err).NotTo(HaveOccurred(), "failed to get NodeShard %s", sc.Name)
-				totalAssigned += len(shard.Spec.NodesDesired)
+			workerSet := make(map[string]struct{}, len(workerNodes))
+			for _, n := range workerNodes {
+				workerSet[n.Name] = struct{}{}
 			}
-			Expect(totalAssigned).To(BeNumerically(">", 0),
-				"at least one node should be assigned to a shard")
+
+			By("Waiting for every worker node to land in some configured shard")
+			err = wait.PollUntilContextTimeout(context.TODO(), pollInterval, reassignmentTimeout, true,
+				func(c context.Context) (bool, error) {
+					nodeToShard := make(map[string]string)
+					for _, sc := range cfg.SchedulerConfigs {
+						shard, gerr := e2eutil.GetNodeShard(ctx, sc.Name)
+						if gerr != nil {
+							return false, nil
+						}
+						for _, n := range shard.Spec.NodesDesired {
+							// Mutual exclusivity: a node must not appear in two shards.
+							if existing, dup := nodeToShard[n]; dup {
+								return false, fmt.Errorf("node %s assigned to both %q and %q", n, existing, sc.Name)
+							}
+							nodeToShard[n] = sc.Name
+						}
+					}
+					for w := range workerSet {
+						if _, ok := nodeToShard[w]; !ok {
+							return false, nil
+						}
+					}
+					return true, nil
+				})
+			Expect(err).NotTo(HaveOccurred(),
+				"every worker node should be assigned to exactly one configured shard")
 		})
 
 		It("should recreate a NodeShard after it is manually deleted", func() {
