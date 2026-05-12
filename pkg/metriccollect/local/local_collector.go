@@ -87,7 +87,7 @@ func (c *LocalCollector) Run() error {
 	return nil
 }
 
-func (c *LocalCollector) CollectMetrics(metricInfo interface{}, start time.Time, window metav1.Duration) ([]*prompb.TimeSeries, error) {
+func (c *LocalCollector) CollectMetrics(metricInfo any, start time.Time, window metav1.Duration) ([]*prompb.TimeSeries, error) {
 	metric, ok := metricInfo.(*LocalMetricInfo)
 	if !ok {
 		return nil, fmt.Errorf("metricInfo phase invoked with an invalid data struct %s", metricInfo)

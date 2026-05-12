@@ -105,7 +105,7 @@ func (sp *slaPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	jobOrderFn := func(l, r interface{}) int {
+	jobOrderFn := func(l, r any) int {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
@@ -133,7 +133,7 @@ func (sp *slaPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddJobOrderFn(sp.Name(), jobOrderFn)
 
-	permitableFn := func(obj interface{}) int {
+	permitableFn := func(obj any) int {
 		jobInfo := obj.(*api.JobInfo)
 		var jwt = sp.readJobWaitingTime(jobInfo.WaitingTime)
 

@@ -109,7 +109,7 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	ssn.AddJobEnqueueableFn(op.Name(), func(obj interface{}) int {
+	ssn.AddJobEnqueueableFn(op.Name(), func(obj any) int {
 		job := obj.(*api.JobInfo)
 		idle := op.idleResource
 		inqueue := api.EmptyResource()
@@ -133,7 +133,7 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 		return util.Reject
 	})
 
-	ssn.AddJobEnqueuedFn(op.Name(), func(obj interface{}) {
+	ssn.AddJobEnqueuedFn(op.Name(), func(obj any) {
 		job := obj.(*api.JobInfo)
 		if job.PodGroup.Spec.MinResources == nil {
 			return

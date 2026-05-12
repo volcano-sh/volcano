@@ -2,6 +2,7 @@ package vnpu
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -220,11 +221,8 @@ func (vChip *VChip) getVGroups() []int {
 			continue
 		}
 		var existFlag bool
-		for _, v := range vGroups {
-			if vGroup == v {
-				existFlag = true
-				break
-			}
+		if slices.Contains(vGroups, vGroup) {
+			existFlag = true
 		}
 		if !existFlag {
 			vGroups = append(vGroups, vGroup)
@@ -263,7 +261,7 @@ func (vChip *VChip) SetSegmentFlag(value bool) {
 func PtrInit[T any](v T) *T { return &v }
 
 // SafePrint safe print error
-func SafePrint(args ...interface{}) string {
+func SafePrint(args ...any) string {
 	msg := fmt.Sprint(args...)
 	trimMsg := strings.Replace(msg, "\r", " ", -1)
 	trimMsg = strings.Replace(trimMsg, "\n", " ", -1)

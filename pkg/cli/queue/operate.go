@@ -87,7 +87,7 @@ func OperateQueue(ctx context.Context) error {
 		}
 
 		queueClient := versioned.NewForConfigOrDie(config)
-		patchBytes := []byte(fmt.Sprintf(`{"spec":{"weight":%d}}`, operateQueueFlags.Weight))
+		patchBytes := fmt.Appendf(nil, `{"spec":{"weight":%d}}`, operateQueueFlags.Weight)
 		_, err := queueClient.SchedulingV1beta1().Queues().Patch(ctx,
 			operateQueueFlags.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{})
 

@@ -23,6 +23,7 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"strings"
 
 	"golang.org/x/crypto/ssh"
 	v1 "k8s.io/api/core/v1"
@@ -260,7 +261,8 @@ func (sp *sshPlugin) addFlags() {
 }
 
 func generateSSHConfig(job *batch.Job, port int) string {
-	config := "StrictHostKeyChecking no\nUserKnownHostsFile /dev/null\n"
+	var config strings.Builder
+	config.WriteString("StrictHostKeyChecking no\nUserKnownHostsFile /dev/null\n")
 
 	for _, ts := range job.Spec.Tasks {
 		for i := 0; i < int(ts.Replicas); i++ {
@@ -273,14 +275,14 @@ func generateSSHConfig(job *batch.Job, port int) string {
 				subdomain = job.Name
 			}
 
-			config += "Host " + hostName + "\n"
-			config += "  HostName " + hostName + "." + subdomain + "\n"
-			config += fmt.Sprintf("  Port %d\n", port)
+			config.WriteString("Host " + hostName + "\n")
+			config.WriteString("  HostName " + hostName + "." + subdomain + "\n")
+			fmt.Fprintf(&config, "  Port %d\n", port)
 			if len(ts.Template.Spec.Hostname) != 0 {
 				break
 			}
 		}
 	}
 
-	return config
+	return config.String()
 }

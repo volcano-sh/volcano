@@ -104,12 +104,12 @@ func decodeNodeDevices(name, str string) (*GPUDevices, string) {
 }
 
 func encodeContainerDevices(cd []ContainerDevice) string {
-	tmp := ""
+	var tmp strings.Builder
 	for _, val := range cd {
-		tmp += val.UUID + "," + val.Type + "," + strconv.Itoa(int(val.Usedmem)) + "," + strconv.Itoa(int(val.Usedcores)) + ":"
+		tmp.WriteString(val.UUID + "," + val.Type + "," + strconv.Itoa(int(val.Usedmem)) + "," + strconv.Itoa(int(val.Usedcores)) + ":")
 	}
-	klog.V(4).Infoln("Encoded container Devices=", tmp)
-	return tmp
+	klog.V(4).Infoln("Encoded container Devices=", tmp.String())
+	return tmp.String()
 	//return strings.Join(cd, ",")
 }
 
@@ -152,7 +152,7 @@ func DecodePodDevices(str string) []ContainerDevices {
 		return []ContainerDevices{}
 	}
 	var pd []ContainerDevices
-	for _, s := range strings.Split(str, ";") {
+	for s := range strings.SplitSeq(str, ";") {
 		cd := decodeContainerDevices(s)
 		pd = append(pd, cd)
 	}
@@ -225,7 +225,7 @@ func checkGPUtype(annos map[string]string, cardtype string) bool {
 				return true
 			}
 		} else {
-			for _, val := range strings.Split(inuse, ",") {
+			for val := range strings.SplitSeq(inuse, ",") {
 				if strings.Contains(strings.ToUpper(cardtype), strings.ToUpper(val)) {
 					return true
 				}
@@ -240,7 +240,7 @@ func checkGPUtype(annos map[string]string, cardtype string) bool {
 				return false
 			}
 		} else {
-			for _, val := range strings.Split(nouse, ",") {
+			for val := range strings.SplitSeq(nouse, ",") {
 				if strings.Contains(strings.ToUpper(cardtype), strings.ToUpper(val)) {
 					return false
 				}

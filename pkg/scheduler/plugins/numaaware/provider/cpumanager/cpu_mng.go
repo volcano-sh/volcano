@@ -192,10 +192,7 @@ func (mng *cpuMng) Allocate(container *v1.Container, bestHit *policy.TopologyHin
 			alignedCPUs = alignedCPUs.Union(availableCPUSet.Intersection(cputopo.CPUDetails.CPUsInNUMANodes(numaNodeID)))
 		}
 
-		numAlignedToAlloc := alignedCPUs.Size()
-		if requestNum < numAlignedToAlloc {
-			numAlignedToAlloc = requestNum
-		}
+		numAlignedToAlloc := min(requestNum, alignedCPUs.Size())
 
 		alignedCPUs, err := takeByTopology(cputopo, alignedCPUs, numAlignedToAlloc)
 		if err != nil {

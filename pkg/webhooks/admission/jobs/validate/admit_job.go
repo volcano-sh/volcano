@@ -353,11 +353,12 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 		PodLevelResourcesEnabled: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.PodLevelResources),
 	}
 	if allErrs := k8scorevalid.ValidatePodTemplate(&corePodTemplate, opts); len(allErrs) > 0 {
-		msg := fmt.Sprintf("spec.task[%d].", index)
+		var msg strings.Builder
+		fmt.Fprintf(&msg, "spec.task[%d].", index)
 		for index := range allErrs {
-			msg += allErrs[index].Error() + ". "
+			msg.WriteString(allErrs[index].Error() + ". ")
 		}
-		return msg
+		return msg.String()
 	}
 
 	msg := validateTaskTopoPolicy(task, index)

@@ -18,6 +18,7 @@ package validate
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -214,10 +215,8 @@ func validateStateOfQueue(value schedulingv1beta1.QueueState, fldPath *field.Pat
 		schedulingv1beta1.QueueStateClosed,
 	}
 
-	for _, validQueue := range validQueueStates {
-		if value == validQueue {
-			return errs
-		}
+	if slices.Contains(validQueueStates, value) {
+		return errs
 	}
 
 	return append(errs, field.Invalid(fldPath, value, fmt.Sprintf("queue state must be in %v", validQueueStates)))

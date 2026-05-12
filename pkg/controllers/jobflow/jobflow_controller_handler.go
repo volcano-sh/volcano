@@ -29,7 +29,7 @@ func (jf *jobflowcontroller) enqueue(req apis.FlowRequest) {
 	jf.queue.Add(req)
 }
 
-func (jf *jobflowcontroller) addJobFlow(obj interface{}) {
+func (jf *jobflowcontroller) addJobFlow(obj any) {
 	jobFlow, ok := obj.(*jobflowv1alpha1.JobFlow)
 	if !ok {
 		klog.Errorf("Failed to convert %v to jobFlow", obj)
@@ -48,7 +48,7 @@ func (jf *jobflowcontroller) addJobFlow(obj interface{}) {
 	jf.enqueueJobFlow(req)
 }
 
-func (jf *jobflowcontroller) updateJobFlow(oldObj, newObj interface{}) {
+func (jf *jobflowcontroller) updateJobFlow(oldObj, newObj any) {
 	oldJobFlow, ok := oldObj.(*jobflowv1alpha1.JobFlow)
 	if !ok {
 		klog.Errorf("Failed to convert %v to jobflow", oldJobFlow)
@@ -81,7 +81,7 @@ func (jf *jobflowcontroller) updateJobFlow(oldObj, newObj interface{}) {
 	jf.enqueueJobFlow(req)
 }
 
-func (jf *jobflowcontroller) updateJob(oldObj, newObj interface{}) {
+func (jf *jobflowcontroller) updateJob(oldObj, newObj any) {
 	oldJob, ok := oldObj.(*batch.Job)
 	if !ok {
 		klog.Errorf("Failed to convert %v to vcjob", oldObj)

@@ -18,6 +18,7 @@ package utils
 
 import (
 	"context"
+	"maps"
 	"sort"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -52,16 +53,12 @@ func UpdateHyperNode(vcClient vcclientset.Interface, lister v1alpha1.HyperNodeLi
 		if current.Labels == nil {
 			current.Labels = make(map[string]string)
 		}
-		for k, v := range updated.Labels {
-			current.Labels[k] = v
-		}
+		maps.Copy(current.Labels, updated.Labels)
 
 		if current.Annotations == nil {
 			current.Annotations = make(map[string]string)
 		}
-		for k, v := range updated.Annotations {
-			current.Annotations[k] = v
-		}
+		maps.Copy(current.Annotations, updated.Annotations)
 
 		_, err = vcClient.TopologyV1alpha1().HyperNodes().Update(context.Background(), current, metav1.UpdateOptions{})
 		if err != nil {

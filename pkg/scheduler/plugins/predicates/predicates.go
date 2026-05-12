@@ -24,6 +24,7 @@ package predicates
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
@@ -809,8 +810,8 @@ func (pp *PredicatesPlugin) runUnReservePlugins(ssn *framework.Session, event *f
 }
 
 func (pp *PredicatesPlugin) runUnreservePluginsWithState(ctx context.Context, state *k8sframework.CycleState, pod *v1.Pod, nodeName string) {
-	for i := len(pp.ReserveOrder) - 1; i >= 0; i-- {
-		plugin, exists := pp.ReservePlugins[pp.ReserveOrder[i]]
+	for _, v := range slices.Backward(pp.ReserveOrder) {
+		plugin, exists := pp.ReservePlugins[v]
 		if !exists {
 			continue
 		}

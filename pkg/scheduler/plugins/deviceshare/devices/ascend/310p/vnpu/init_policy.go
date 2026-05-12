@@ -19,6 +19,7 @@ package vnpu310p
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"strconv"
 	"strings"
@@ -429,8 +430,8 @@ func getCardPhysicsIDFromAscendCore(pod *v1.Pod, isWholeCard bool) ([]int, error
 		physicsIDs = append(physicsIDs, phyCardID)
 		return physicsIDs, nil
 	}
-	coreNameSplit := strings.Split(coreNameStr, ",")
-	for _, id := range coreNameSplit {
+	coreNameSplit := strings.SplitSeq(coreNameStr, ",")
+	for id := range coreNameSplit {
 		phyCardID, err := strconv.Atoi(id)
 		if err != nil {
 			return physicsIDs, fmt.Errorf("getCardPhysicsIDFromAscendCore device <%s> get physics id failed",
@@ -485,8 +486,8 @@ func addNPUResourceWholeCard(device *vnpu.NPUDevices, pod *v1.Pod) {
 
 // isPodWholeCardFromAscendCore judge if card is whole card 0,1/0-vir04
 func isPodWholeCardFromAscendCore(coreCardName string) bool {
-	temp := strings.Split(coreCardName, ",")
-	for _, cardName := range temp {
+	temp := strings.SplitSeq(coreCardName, ",")
+	for cardName := range temp {
 		singleCardTemp := strings.Split(cardName, "-")
 		if len(singleCardTemp) == util.NPUIndex1 {
 			return true
@@ -526,8 +527,8 @@ func getCardIDsFromNodeAndDeviceInfo(device *vnpu.NPUDevices, cardHealthTypeSuff
 	}
 
 	CardIDs := make([]int, 0)
-	Chips := strings.Split(ChipsStr, ",")
-	for _, chip := range Chips {
+	Chips := strings.SplitSeq(ChipsStr, ",")
+	for chip := range Chips {
 		if chip == "" {
 			continue
 		}
@@ -807,9 +808,7 @@ func getRealHealthyDeviceList(device *vnpu.NPUDevices, deviceKey, oldList, newLi
 func syncAnnotation(device *vnpu.NPUDevices, npuNode *api.NodeInfo, nodeInfoOfNodeD k8s.NodeDNodeInfo) {
 	existAnno := make(map[string]string)
 	// 1. sync v1.node annotations
-	for k, v := range npuNode.Node.Annotations {
-		existAnno[k] = v
-	}
+	maps.Copy(existAnno, npuNode.Node.Annotations)
 	// 2. last session device infos
 	for annoKey, annoValue := range device.Annotation {
 		if strings.Contains(annoKey, util.HwPreName) {

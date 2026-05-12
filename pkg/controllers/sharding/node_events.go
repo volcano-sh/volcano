@@ -33,7 +33,7 @@ const (
 )
 
 // addNodeEvent handles node addition events
-func (sc *ShardingController) addNodeEvent(obj interface{}) {
+func (sc *ShardingController) addNodeEvent(obj any) {
 	node := sc.getNodeFromObject(obj)
 	if node == nil {
 		return
@@ -44,7 +44,7 @@ func (sc *ShardingController) addNodeEvent(obj interface{}) {
 }
 
 // updateNodeEvent handles node update events
-func (sc *ShardingController) updateNodeEvent(oldObj, newObj interface{}) {
+func (sc *ShardingController) updateNodeEvent(oldObj, newObj any) {
 	newNode := sc.getNodeFromObject(newObj)
 	if newNode == nil {
 		return
@@ -65,7 +65,7 @@ func (sc *ShardingController) updateNodeEvent(oldObj, newObj interface{}) {
 }
 
 // deleteNodeEvent handles node deletion events
-func (sc *ShardingController) deleteNodeEvent(obj interface{}) {
+func (sc *ShardingController) deleteNodeEvent(obj any) {
 	node := sc.getNodeFromObject(obj)
 	if node == nil {
 		return
@@ -83,7 +83,7 @@ func (sc *ShardingController) deleteNodeEvent(obj interface{}) {
 }
 
 // getNodeFromObject safely extracts a Node from an object
-func (sc *ShardingController) getNodeFromObject(obj interface{}) *corev1.Node {
+func (sc *ShardingController) getNodeFromObject(obj any) *corev1.Node {
 	switch obj := obj.(type) {
 	case *corev1.Node:
 		return obj
@@ -181,7 +181,7 @@ func (sc *ShardingController) processNodeEvent() bool {
 func (sc *ShardingController) processNodeEventWithRetry(nodeName, eventType, source string, maxRetries int) error {
 	var lastErr error
 
-	for i := 0; i < maxRetries; i++ {
+	for i := range maxRetries {
 		// Get node from cache
 		_, err := sc.nodeLister.Get(nodeName)
 		if err != nil {

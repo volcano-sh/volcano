@@ -30,7 +30,7 @@ import (
 )
 
 // Arguments map
-type Arguments map[string]interface{}
+type Arguments map[string]any
 
 // GetInt get the integer value from string
 func (a Arguments) GetInt(ptr *int, key string) {

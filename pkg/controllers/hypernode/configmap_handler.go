@@ -67,7 +67,7 @@ func (hn *hyperNodeController) setupConfigMapInformer() {
 	})
 }
 
-func (hn *hyperNodeController) addConfigMap(obj interface{}) {
+func (hn *hyperNodeController) addConfigMap(obj any) {
 	cm, ok := obj.(*v1.ConfigMap)
 	if !ok {
 		klog.ErrorS(nil, "Cannot convert to *v1.ConfigMap", "obj", obj)
@@ -77,7 +77,7 @@ func (hn *hyperNodeController) addConfigMap(obj interface{}) {
 	hn.enqueueConfigMap(cm)
 }
 
-func (hn *hyperNodeController) updateConfigMap(oldObj, newObj interface{}) {
+func (hn *hyperNodeController) updateConfigMap(oldObj, newObj any) {
 	cm, ok := newObj.(*v1.ConfigMap)
 	if !ok {
 		klog.ErrorS(nil, "Cannot convert to *v1.ConfigMap", "obj", newObj)
@@ -87,7 +87,7 @@ func (hn *hyperNodeController) updateConfigMap(oldObj, newObj interface{}) {
 	hn.enqueueConfigMap(cm)
 }
 
-func (hn *hyperNodeController) deleteConfigMap(obj interface{}) {
+func (hn *hyperNodeController) deleteConfigMap(obj any) {
 	cm, ok := obj.(*v1.ConfigMap)
 	if !ok {
 		tombstone, isTombstone := obj.(cache.DeletedFinalStateUnknown)

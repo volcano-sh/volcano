@@ -34,7 +34,7 @@ import (
 	configv1alpha1 "volcano.sh/apis/pkg/apis/config/v1alpha1"
 )
 
-func parseObjToPod(obj interface{}) (*corev1.Pod, error) {
+func parseObjToPod(obj any) (*corev1.Pod, error) {
 	switch t := obj.(type) {
 	case *corev1.Pod:
 		return t, nil
@@ -49,7 +49,7 @@ func parseObjToPod(obj interface{}) (*corev1.Pod, error) {
 	}
 }
 
-func (c *colocationConfigController) podHandler(obj interface{}) {
+func (c *colocationConfigController) podHandler(obj any) {
 	pod, err := parseObjToPod(obj)
 	if err != nil {
 		klog.ErrorS(err, "Failed to parse obj to Pod", "obj", obj)
@@ -59,7 +59,7 @@ func (c *colocationConfigController) podHandler(obj interface{}) {
 	c.enqueuePod(pod)
 }
 
-func (c *colocationConfigController) podUpdateHandler(oldObj, newObj interface{}) {
+func (c *colocationConfigController) podUpdateHandler(oldObj, newObj any) {
 	oldPod, err := parseObjToPod(oldObj)
 	if err != nil {
 		klog.ErrorS(err, "Failed to parse oldObj to Pod", "obj", oldObj)
@@ -85,7 +85,7 @@ func (c *colocationConfigController) enqueuePod(pod *corev1.Pod) {
 	}
 }
 
-func parseObjToColocationConfiguration(obj interface{}) (*configv1alpha1.ColocationConfiguration, error) {
+func parseObjToColocationConfiguration(obj any) (*configv1alpha1.ColocationConfiguration, error) {
 	switch t := obj.(type) {
 	case *configv1alpha1.ColocationConfiguration:
 		return t, nil
@@ -100,7 +100,7 @@ func parseObjToColocationConfiguration(obj interface{}) (*configv1alpha1.Colocat
 	}
 }
 
-func (c *colocationConfigController) colocationConfigurationHandler(obj interface{}) {
+func (c *colocationConfigController) colocationConfigurationHandler(obj any) {
 	cfg, err := parseObjToColocationConfiguration(obj)
 	if err != nil {
 		klog.ErrorS(err, "Failed to parse obj to ColocationConfiguration", "obj", obj)
@@ -110,7 +110,7 @@ func (c *colocationConfigController) colocationConfigurationHandler(obj interfac
 	c.enqueueRelatedPods(cfg)
 }
 
-func (c *colocationConfigController) colocationConfigurationUpdateHandler(oldObj, newObj interface{}) {
+func (c *colocationConfigController) colocationConfigurationUpdateHandler(oldObj, newObj any) {
 	oldCfg, err := parseObjToColocationConfiguration(oldObj)
 	if err != nil {
 		klog.ErrorS(err, "Failed to parse oldObj to ColocationConfiguration", "obj", oldObj)

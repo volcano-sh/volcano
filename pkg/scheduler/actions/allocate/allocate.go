@@ -234,7 +234,7 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 		}
 	}
 	jWorksheet := &JobWorksheet{
-		subJobs: util.NewPriorityQueue(func(l, r interface{}) bool {
+		subJobs: util.NewPriorityQueue(func(l, r any) bool {
 			lv := l.(*api.SubJobInfo)
 			rv := r.(*api.SubJobInfo)
 

@@ -29,7 +29,7 @@ const (
 )
 
 // addPod handles pod addition events
-func (sc *ShardingController) addPod(obj interface{}) {
+func (sc *ShardingController) addPod(obj any) {
 	pod := sc.getPodFromObject(obj)
 	if pod == nil || pod.Spec.NodeName == "" {
 		return
@@ -39,7 +39,7 @@ func (sc *ShardingController) addPod(obj interface{}) {
 }
 
 // updatePod handles pod update events
-func (sc *ShardingController) updatePod(oldObj, newObj interface{}) {
+func (sc *ShardingController) updatePod(oldObj, newObj any) {
 	oldPod := sc.getPodFromObject(oldObj)
 	newPod := sc.getPodFromObject(newObj)
 
@@ -69,7 +69,7 @@ func (sc *ShardingController) updatePod(oldObj, newObj interface{}) {
 }
 
 // deletePod handles pod deletion events
-func (sc *ShardingController) deletePod(obj interface{}) {
+func (sc *ShardingController) deletePod(obj any) {
 	pod := sc.getPodFromObject(obj)
 	if pod == nil || pod.Spec.NodeName == "" {
 		return
@@ -104,7 +104,7 @@ func (sc *ShardingController) podResourcesChanged(oldPod, newPod *corev1.Pod) bo
 }
 
 // getPodFromObject safely extracts a Pod from an object
-func (sc *ShardingController) getPodFromObject(obj interface{}) *corev1.Pod {
+func (sc *ShardingController) getPodFromObject(obj any) *corev1.Pod {
 	switch obj := obj.(type) {
 	case *corev1.Pod:
 		return obj

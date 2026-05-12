@@ -52,7 +52,7 @@ func (rq *resourceQuotaPlugin) Name() string {
 func (rq *resourceQuotaPlugin) OnSessionOpen(ssn *framework.Session) {
 	pendingResources := make(map[string]v1.ResourceList)
 
-	ssn.AddJobEnqueueableFn(rq.Name(), func(obj interface{}) int {
+	ssn.AddJobEnqueueableFn(rq.Name(), func(obj any) int {
 		job := obj.(*api.JobInfo)
 
 		resourcesRequests := job.PodGroup.Spec.MinResources

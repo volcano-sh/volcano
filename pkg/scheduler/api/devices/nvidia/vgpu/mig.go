@@ -18,6 +18,7 @@ package vgpu
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -185,18 +186,12 @@ func pickFromGroup(group config.Geometry, usage config.MIGS, requestMemory uint)
 
 func getPosition(group config.Geometry, count int, usedIndex []int, index int) int {
 	position := 0
-	for i := 0; i < index; i++ {
+	for i := range index {
 		position += group.Instances[i].Count
 	}
 
-	for i := 0; i < count; i++ {
-		found := false
-		for _, v := range usedIndex {
-			if v == i {
-				found = true
-				break
-			}
-		}
+	for i := range count {
+		found := slices.Contains(usedIndex, i)
 		if !found {
 			position += i
 			break

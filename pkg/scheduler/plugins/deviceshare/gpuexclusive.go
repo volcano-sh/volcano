@@ -18,6 +18,7 @@ package deviceshare
 
 import (
 	"fmt"
+	"maps"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -65,8 +66,8 @@ func loadGPUExclusiveConfig(args framework.Arguments) gpuExclusiveConfig {
 
 // parseExclusiveRules converts the raw YAML-decoded rules into typed exclusiveRule slices.
 // Expected input: []interface{} where each element is a map of label key → value.
-func parseExclusiveRules(raw interface{}) []exclusiveRule {
-	slice, ok := raw.([]interface{})
+func parseExclusiveRules(raw any) []exclusiveRule {
+	slice, ok := raw.([]any)
 	if !ok {
 		return nil
 	}
@@ -74,13 +75,13 @@ func parseExclusiveRules(raw interface{}) []exclusiveRule {
 	for _, item := range slice {
 		labels := make(map[string]string)
 		switch m := item.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			for k, v := range m {
 				if sv, ok := v.(string); ok {
 					labels[k] = sv
 				}
 			}
-		case map[interface{}]interface{}:
+		case map[any]any:
 			for k, v := range m {
 				if sk, ok := k.(string); ok {
 					if sv, ok := v.(string); ok {
@@ -388,7 +389,7 @@ func (a *exclusiveGPUDevices) GetStatus() string {
 // DeepCopy returns a deep copy of exclusiveGPUDevices for use in dry-run simulation.
 // cfg, plugin, and nodeName are configuration/references shared safely; only the
 // mutable tracking maps and inner device state are deep-copied.
-func (a *exclusiveGPUDevices) DeepCopy() interface{} {
+func (a *exclusiveGPUDevices) DeepCopy() any {
 	if a == nil {
 		return nil
 	}
@@ -414,9 +415,7 @@ func (a *exclusiveGPUDevices) DeepCopy() interface{} {
 		}
 		cp.podRules[podKey] = newSet
 	}
-	for k, v := range a.podUIDs {
-		cp.podUIDs[k] = v
-	}
+	maps.Copy(cp.podUIDs, a.podUIDs)
 	if a.inner != nil {
 		cp.inner = a.inner.DeepCopy().(*vgpu.GPUDevices)
 	}

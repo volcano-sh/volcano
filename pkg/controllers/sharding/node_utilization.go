@@ -15,6 +15,7 @@ package sharding
 
 import (
 	"fmt"
+	"maps"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -52,7 +53,7 @@ func (sc *ShardingController) initNodeIndices() {
 	// Only add if not already exists
 	if _, exists := sc.podInformer.Informer().GetIndexer().GetIndexers()["node"]; !exists {
 		if err := sc.podInformer.Informer().AddIndexers(cache.Indexers{
-			"node": func(obj interface{}) ([]string, error) {
+			"node": func(obj any) ([]string, error) {
 				pod, ok := obj.(*corev1.Pod)
 				if !ok || pod.Spec.NodeName == "" {
 					return []string{}, nil
@@ -170,12 +171,8 @@ func (sc *ShardingController) calculateMetricsFromPodsAndNode(pods []*corev1.Pod
 	}
 
 	// Copy labels and annotations
-	for k, v := range node.Labels {
-		metrics.Labels[k] = v
-	}
-	for k, v := range node.Annotations {
-		metrics.Annotations[k] = v
-	}
+	maps.Copy(metrics.Labels, node.Labels)
+	maps.Copy(metrics.Annotations, node.Annotations)
 
 	klog.V(5).Infof("Node %s metrics: CPU=%.2f (%d/%d mCPU), Memory=%.2f (%d/%d bytes), Pods=%d",
 		node.Name, cpuUtilization, totalCPURequest, cpuCapacity.MilliValue(),

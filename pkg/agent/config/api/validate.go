@@ -96,8 +96,8 @@ func (o *OverSubscription) Validate() []error {
 	}
 
 	var errs []error
-	types := strings.Split(*o.OverSubscriptionTypes, ",")
-	for _, t := range types {
+	types := strings.SplitSeq(*o.OverSubscriptionTypes, ",")
+	for t := range types {
 		if t != "cpu" && t != "memory" {
 			errs = append(errs, fmt.Errorf(IllegalOverSubscriptionTypes, t))
 		}

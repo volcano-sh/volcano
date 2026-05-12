@@ -19,6 +19,7 @@ package label
 import (
 	"errors"
 	"fmt"
+	maps0 "maps"
 	"sort"
 	"strings"
 	"time"
@@ -278,9 +279,7 @@ func (l *labelDiscoverer) buildHyperNodes(hyperNodeInfoMap map[string]HyperNodeI
 		labelMap := map[string]string{
 			api.NetworkTopologySourceLabelKey: l.Name(),
 		}
-		for key, value := range hyperNodeInfo.labels {
-			labelMap[key] = value
-		}
+		maps0.Copy(labelMap, hyperNodeInfo.labels)
 
 		// Create the HyperNode object
 		hyperNode := utils.BuildHyperNodeWithTierName(hyperNodeName, hyperNodeInfo.tier, hyperNodeInfo.tierName, members, labelMap)
@@ -292,7 +291,7 @@ func (l *labelDiscoverer) buildHyperNodes(hyperNodeInfoMap map[string]HyperNodeI
 }
 
 // AddNode Reconstruct the hyperNode when the node changes.
-func (l *labelDiscoverer) AddNode(obj interface{}) {
+func (l *labelDiscoverer) AddNode(obj any) {
 	labelMap := l.getNodeNetworkTopologyLabels(obj)
 	if len(labelMap) > 0 {
 		l.enqueue()
@@ -300,7 +299,7 @@ func (l *labelDiscoverer) AddNode(obj interface{}) {
 }
 
 // UpdateNode Reconstruct the hyperNode when the node changes.
-func (l *labelDiscoverer) UpdateNode(oldObj, newObj interface{}) {
+func (l *labelDiscoverer) UpdateNode(oldObj, newObj any) {
 	oldLabelMap := l.getNodeNetworkTopologyLabels(oldObj)
 	newLabelMap := l.getNodeNetworkTopologyLabels(newObj)
 	if !maps.Equal(oldLabelMap, newLabelMap) {
@@ -309,7 +308,7 @@ func (l *labelDiscoverer) UpdateNode(oldObj, newObj interface{}) {
 }
 
 // DeleteNode Reconstruct the hyperNode when the node changes.
-func (l *labelDiscoverer) DeleteNode(obj interface{}) {
+func (l *labelDiscoverer) DeleteNode(obj any) {
 	labelMap := l.getNodeNetworkTopologyLabels(obj)
 	if len(labelMap) > 0 {
 		l.enqueue()
@@ -317,7 +316,7 @@ func (l *labelDiscoverer) DeleteNode(obj interface{}) {
 }
 
 // DeleteHyperNode Reconstruct the hyperNode when the hyperNode has been deleted.
-func (l *labelDiscoverer) DeleteHyperNode(obj interface{}) {
+func (l *labelDiscoverer) DeleteHyperNode(obj any) {
 	_, ok := obj.(*topologyv1alpha1.HyperNode)
 	if !ok {
 		// If we reached here it means the HyperNode was deleted but its final state is unrecorded.
@@ -336,7 +335,7 @@ func (l *labelDiscoverer) DeleteHyperNode(obj interface{}) {
 }
 
 // getLabelMap get the labelMap on the node used to construct the hyperNode
-func (l *labelDiscoverer) getNodeNetworkTopologyLabels(obj interface{}) map[string]string {
+func (l *labelDiscoverer) getNodeNetworkTopologyLabels(obj any) map[string]string {
 	tempMap := make(map[string]string)
 	node, ok := obj.(*v1.Node)
 	if !ok {
@@ -442,7 +441,7 @@ func (l *labelDiscoverer) buildHyperNodeName(topologyTypeName, key, value string
 			}
 		}
 	}
-	for i := 0; i < loopCount; i++ {
+	for range loopCount {
 		randomSuffix := rand.String(5)
 		hyperNodeName := fmt.Sprintf("hypernode-%s-tier%d-%s", topologyTypeName, tier, randomSuffix)
 		_, err := l.hyperNodeLister.Get(hyperNodeName)

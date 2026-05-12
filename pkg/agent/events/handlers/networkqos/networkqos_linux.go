@@ -66,7 +66,7 @@ func NewNetworkQoSHandle(config *config.Configuration, mgr *metriccollect.Metric
 	}
 }
 
-func (h *NetworkQoSHandle) Handle(event interface{}) error {
+func (h *NetworkQoSHandle) Handle(event any) error {
 	podEvent, ok := event.(framework.PodEvent)
 	if !ok {
 		return fmt.Errorf("illegal pod event: %v", event)

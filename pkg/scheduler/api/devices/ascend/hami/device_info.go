@@ -336,7 +336,7 @@ func (ads *AscendDevices) GetStatus() string {
 }
 
 // DeepCopy returns a deep copy of AscendDevices for use in dry-run simulation.
-func (ads *AscendDevices) DeepCopy() interface{} {
+func (ads *AscendDevices) DeepCopy() any {
 	if ads == nil {
 		return nil
 	}

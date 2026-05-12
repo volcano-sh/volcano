@@ -18,6 +18,7 @@ package api
 
 import (
 	"encoding/json"
+	"maps"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
@@ -77,9 +78,7 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 	}
 
 	policies := info.Policies
-	for name, policy := range policies {
-		numaInfo.Policies[name] = policy
-	}
+	maps.Copy(numaInfo.Policies, policies)
 
 	for resName, resInfo := range info.NumaResMap {
 		tmpInfo := &ResourceInfo{
@@ -89,26 +88,18 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 		tmpInfo.Capacity = resInfo.Capacity
 		tmpInfo.Allocatable = resInfo.Allocatable.Clone()
 
-		for numaID, data := range resInfo.AllocatablePerNuma {
-			tmpInfo.AllocatablePerNuma[numaID] = data
-		}
+		maps.Copy(tmpInfo.AllocatablePerNuma, resInfo.AllocatablePerNuma)
 
-		for numaID, data := range resInfo.UsedPerNuma {
-			tmpInfo.UsedPerNuma[numaID] = data
-		}
+		maps.Copy(tmpInfo.UsedPerNuma, resInfo.UsedPerNuma)
 
 		numaInfo.NumaResMap[resName] = tmpInfo
 	}
 
 	cpuDetail := info.CPUDetail
-	for cpuID, detail := range cpuDetail {
-		numaInfo.CPUDetail[cpuID] = detail
-	}
+	maps.Copy(numaInfo.CPUDetail, cpuDetail)
 
 	resReserved := info.ResReserved
-	for resName, res := range resReserved {
-		numaInfo.ResReserved[resName] = res
-	}
+	maps.Copy(numaInfo.ResReserved, resReserved)
 
 	return numaInfo
 }

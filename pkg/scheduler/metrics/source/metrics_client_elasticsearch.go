@@ -103,35 +103,35 @@ func (e *ElasticsearchMetricsClient) NodesMetricsAvg(ctx context.Context, nodeMe
 func (e *ElasticsearchMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName string) (*NodeMetrics, error) {
 	nodeMetrics := &NodeMetrics{}
 	var buf bytes.Buffer
-	query := map[string]interface{}{
+	query := map[string]any{
 		"size": 0,
-		"query": map[string]interface{}{
-			"bool": map[string]interface{}{
-				"must": []map[string]interface{}{
+		"query": map[string]any{
+			"bool": map[string]any{
+				"must": []map[string]any{
 					{
-						"range": map[string]interface{}{
-							"@timestamp": map[string]interface{}{
+						"range": map[string]any{
+							"@timestamp": map[string]any{
 								"gte": "now-" + NODE_METRICS_PERIOD,
 								"lt":  "now",
 							},
 						},
 					},
 					{
-						"term": map[string]interface{}{
+						"term": map[string]any{
 							e.hostnameFieldName: nodeName,
 						},
 					},
 				},
 			},
 		},
-		"aggs": map[string]interface{}{
-			"cpu": map[string]interface{}{
-				"avg": map[string]interface{}{
+		"aggs": map[string]any{
+			"cpu": map[string]any{
+				"avg": map[string]any{
 					"field": esCPUUsageField,
 				},
 			},
-			"mem": map[string]interface{}{
-				"avg": map[string]interface{}{
+			"mem": map[string]any{
+				"avg": map[string]any{
 					"field": esMemUsageField,
 				},
 			},

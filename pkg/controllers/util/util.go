@@ -40,7 +40,7 @@ func GetPodQuotaUsage(pod *v1.Pod) v1.ResourceList {
 func CalTaskRequests(pod *v1.Pod, validReplica int32) v1.ResourceList {
 	minReq := v1.ResourceList{}
 	usage := GetPodQuotaUsage(pod)
-	for i := int32(0); i < validReplica; i++ {
+	for range validReplica {
 		minReq = quotav1.Add(minReq, usage)
 	}
 	return minReq

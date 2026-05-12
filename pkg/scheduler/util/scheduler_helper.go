@@ -59,16 +59,10 @@ func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
 
 	adaptivePercentage := opts.PercentageOfNodesToFind
 	if adaptivePercentage <= 0 {
-		adaptivePercentage = baselinePercentageOfNodesToFind - numAllNodes/125
-		if adaptivePercentage < opts.MinPercentageOfNodesToFind {
-			adaptivePercentage = opts.MinPercentageOfNodesToFind
-		}
+		adaptivePercentage = max(baselinePercentageOfNodesToFind-numAllNodes/125, opts.MinPercentageOfNodesToFind)
 	}
 
-	numNodes = numAllNodes * adaptivePercentage / 100
-	if numNodes < opts.MinNodesToFind {
-		numNodes = opts.MinNodesToFind
-	}
+	numNodes = max(numAllNodes*adaptivePercentage/100, opts.MinNodesToFind)
 	return numNodes
 }
 

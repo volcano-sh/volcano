@@ -30,7 +30,7 @@ func (c *queuecontroller) enqueue(req *apis.Request) {
 	c.queue.Add(req)
 }
 
-func (c *queuecontroller) addQueue(obj interface{}) {
+func (c *queuecontroller) addQueue(obj any) {
 	queue := obj.(*schedulingv1beta1.Queue)
 
 	req := &apis.Request{
@@ -43,7 +43,7 @@ func (c *queuecontroller) addQueue(obj interface{}) {
 	c.enqueue(req)
 }
 
-func (c *queuecontroller) deleteQueue(obj interface{}) {
+func (c *queuecontroller) deleteQueue(obj any) {
 	queue, ok := obj.(*schedulingv1beta1.Queue)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -64,7 +64,7 @@ func (c *queuecontroller) deleteQueue(obj interface{}) {
 	delete(c.podGroups, queue.Name)
 }
 
-func (c *queuecontroller) updateQueue(oldObj, newObj interface{}) {
+func (c *queuecontroller) updateQueue(oldObj, newObj any) {
 	oldQueue := oldObj.(*schedulingv1beta1.Queue)
 	newQueue := newObj.(*schedulingv1beta1.Queue)
 
@@ -73,7 +73,7 @@ func (c *queuecontroller) updateQueue(oldObj, newObj interface{}) {
 	}
 }
 
-func (c *queuecontroller) addPodGroup(obj interface{}) {
+func (c *queuecontroller) addPodGroup(obj any) {
 	pg := obj.(*schedulingv1beta1.PodGroup)
 	key, _ := cache.MetaNamespaceKeyFunc(obj)
 
@@ -95,7 +95,7 @@ func (c *queuecontroller) addPodGroup(obj interface{}) {
 	c.enqueue(req)
 }
 
-func (c *queuecontroller) updatePodGroup(old, new interface{}) {
+func (c *queuecontroller) updatePodGroup(old, new any) {
 	oldPG := old.(*schedulingv1beta1.PodGroup)
 	newPG := new.(*schedulingv1beta1.PodGroup)
 
@@ -106,7 +106,7 @@ func (c *queuecontroller) updatePodGroup(old, new interface{}) {
 	}
 }
 
-func (c *queuecontroller) deletePodGroup(obj interface{}) {
+func (c *queuecontroller) deletePodGroup(obj any) {
 	pg, ok := obj.(*schedulingv1beta1.PodGroup)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -138,7 +138,7 @@ func (c *queuecontroller) deletePodGroup(obj interface{}) {
 	c.enqueue(req)
 }
 
-func (c *queuecontroller) addCommand(obj interface{}) {
+func (c *queuecontroller) addCommand(obj any) {
 	cmd, ok := obj.(*busv1alpha1.Command)
 	if !ok {
 		klog.Errorf("Obj %v is not command.", obj)

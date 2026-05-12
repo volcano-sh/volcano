@@ -32,7 +32,7 @@ type PriorityQueue struct {
 }
 
 type priorityQueue struct {
-	items  []interface{}
+	items  []any
 	lessFn api.LessFn
 }
 
@@ -40,19 +40,19 @@ type priorityQueue struct {
 func NewPriorityQueue(lessFn api.LessFn) *PriorityQueue {
 	return &PriorityQueue{
 		queue: priorityQueue{
-			items:  make([]interface{}, 0),
+			items:  make([]any, 0),
 			lessFn: lessFn,
 		},
 	}
 }
 
 // Push pushes element in the priority Queue
-func (q *PriorityQueue) Push(it interface{}) {
+func (q *PriorityQueue) Push(it any) {
 	heap.Push(&q.queue, it)
 }
 
 // Pop pops element in the priority Queue
-func (q *PriorityQueue) Pop() interface{} {
+func (q *PriorityQueue) Pop() any {
 	if q.Len() == 0 {
 		return nil
 	}
@@ -71,7 +71,7 @@ func (q *PriorityQueue) Len() int {
 }
 
 func (q *PriorityQueue) Clone() *PriorityQueue {
-	items := make([]interface{}, len(q.queue.items), cap(q.queue.items))
+	items := make([]any, len(q.queue.items), cap(q.queue.items))
 	copy(items, q.queue.items)
 
 	newPq := &PriorityQueue{
@@ -98,11 +98,11 @@ func (pq *priorityQueue) Swap(i, j int) {
 	pq.items[i], pq.items[j] = pq.items[j], pq.items[i]
 }
 
-func (pq *priorityQueue) Push(x interface{}) {
+func (pq *priorityQueue) Push(x any) {
 	(*pq).items = append((*pq).items, x)
 }
 
-func (pq *priorityQueue) Pop() interface{} {
+func (pq *priorityQueue) Pop() any {
 	old := (*pq).items
 	n := len(old)
 	item := old[n-1]

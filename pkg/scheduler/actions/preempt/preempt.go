@@ -26,6 +26,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"math/rand"
 	"sync"
@@ -531,9 +532,7 @@ func (pmpt *Action) findCandidates(preemptor *api.TaskInfo, filter func(*api.Tas
 	offset, numCandidates := pmpt.GetOffsetAndNumCandidates(len(predicateNodes))
 
 	candidates, nodeStatuses, err := pmpt.DryRunPreemption(preemptor, predicateNodes, offset, numCandidates, filter, stmt)
-	for node, nodeStatus := range nodeStatuses {
-		nodeToStatusMap[node] = nodeStatus
-	}
+	maps.Copy(nodeToStatusMap, nodeStatuses)
 
 	return candidates, nodeToStatusMap, err
 }
@@ -579,19 +578,7 @@ func PodPriority(pod *v1.Pod) int32 {
 // <minCandidateNodesPercentage> and <minCandidateNodesAbsolute>. The number of
 // candidates returned will never be greater than <numNodes>.
 func (pmpt *Action) calculateNumCandidates(numNodes int) int {
-	n := (numNodes * pmpt.minCandidateNodesPercentage) / 100
-
-	if n < pmpt.minCandidateNodesAbsolute {
-		n = pmpt.minCandidateNodesAbsolute
-	}
-
-	if n > pmpt.maxCandidateNodesAbsolute {
-		n = pmpt.maxCandidateNodesAbsolute
-	}
-
-	if n > numNodes {
-		n = numNodes
-	}
+	n := min(min(max((numNodes*pmpt.minCandidateNodesPercentage)/100, pmpt.minCandidateNodesAbsolute), pmpt.maxCandidateNodesAbsolute), numNodes)
 
 	return n
 }
@@ -690,10 +677,7 @@ func (cl *candidateList) add(c *candidate) {
 // ensure that all add() operations complete before accessing the elements of
 // the list.
 func (cl *candidateList) size() int {
-	n := int(atomic.LoadInt32(&cl.idx) + 1)
-	if n >= len(cl.items) {
-		n = len(cl.items)
-	}
+	n := min(int(atomic.LoadInt32(&cl.idx)+1), len(cl.items))
 	return n
 }
 

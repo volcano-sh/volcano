@@ -249,10 +249,7 @@ func (m *monitor) detectCPUQuota() {
 	// availableBEMilli represents the CPU quota available to the Best Effort pod defined by Volcano.
 	// The calculation is the allocatable Quota of current node minus the real-time CPU usage.
 	allowedMilli := totalMilli * int64(throttlingThreshold) / 100
-	availableBEMilli := allowedMilli - usedMilli
-	if availableBEMilli < 0 {
-		availableBEMilli = 0
-	}
+	availableBEMilli := max(allowedMilli-usedMilli, 0)
 
 	lastQuota := m.lastCPUQuotaMilli
 	if lastQuota > 0 && availableBEMilli > lastQuota {

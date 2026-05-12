@@ -144,9 +144,9 @@ func RemoveVolcanoSchGate(kubeClient kubernetes.Interface, namespace, name strin
 	// We only need to specify the gate we want to remove.
 	// The "$patch": "delete" directive tells the Strategic Merge Patcher
 	// to find the gate with this name and remove it.
-	patch := map[string]interface{}{
-		"spec": map[string]interface{}{
-			"schedulingGates": []map[string]interface{}{
+	patch := map[string]any{
+		"spec": map[string]any{
+			"schedulingGates": []map[string]any{
 				{
 					"name":   scheduling.QueueAllocationGateKey,
 					"$patch": "delete",

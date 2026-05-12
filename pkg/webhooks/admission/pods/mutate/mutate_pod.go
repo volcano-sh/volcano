@@ -19,6 +19,7 @@ package mutate
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
@@ -37,9 +38,9 @@ import (
 
 // patchOperation define the patch operation structure
 type patchOperation struct {
-	Op    string      `json:"op"`
-	Path  string      `json:"path"`
-	Value interface{} `json:"value,omitempty"`
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value any    `json:"value,omitempty"`
 }
 
 // init register mutate pod
@@ -206,13 +207,9 @@ func patchLabels(pod *v1.Pod, resGroupConfig wkconfig.ResGroupConfig) *patchOper
 	}
 
 	nodeSelector := make(map[string]string)
-	for key, label := range pod.Spec.NodeSelector {
-		nodeSelector[key] = label
-	}
+	maps.Copy(nodeSelector, pod.Spec.NodeSelector)
 
-	for key, label := range resGroupConfig.Labels {
-		nodeSelector[key] = label
-	}
+	maps.Copy(nodeSelector, resGroupConfig.Labels)
 
 	return &patchOperation{Op: "add", Path: "/spec/nodeSelector", Value: nodeSelector}
 }

@@ -17,6 +17,8 @@ limitations under the License.
 package node
 
 import (
+	"maps"
+
 	v1 "k8s.io/api/core/v1"
 
 	"volcano.sh/volcano/pkg/agent/apis"
@@ -28,9 +30,7 @@ func updateLabel(labels map[string]string) Modifier {
 		if node.Labels == nil {
 			node.Labels = make(map[string]string)
 		}
-		for k, v := range labels {
-			node.Labels[k] = v
-		}
+		maps.Copy(node.Labels, labels)
 	}
 }
 

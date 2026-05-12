@@ -26,7 +26,6 @@ import (
 	"sync"
 
 	"github.com/moby/sys/userns"
-	cgroupsystemd "github.com/opencontainers/cgroups/systemd"
 	"golang.org/x/sys/unix"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -83,6 +82,9 @@ const (
 	// Cgroup driver types
 	CgroupDriverSystemd  string = "systemd"
 	CgroupDriverCgroupfs string = "cgroupfs"
+
+	// CGROUP2_SUPER_MAGIC is the magic number for cgroup2 filesystem
+	CGROUP2_SUPER_MAGIC = 0x63677270
 )
 
 type CgroupManager interface {
@@ -207,11 +209,11 @@ func parseKubeletConfig(configPath string) string {
 
 	// Look for cgroupDriver in YAML format
 	if strings.Contains(content, "cgroupDriver:") {
-		lines := strings.Split(content, "\n")
-		for _, line := range lines {
+		lines := strings.SplitSeq(content, "\n")
+		for line := range lines {
 			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "cgroupDriver:") {
-				driver := strings.TrimSpace(strings.TrimPrefix(line, "cgroupDriver:"))
+			if after, ok := strings.CutPrefix(line, "cgroupDriver:"); ok {
+				driver := strings.TrimSpace(after)
 				if driver == CgroupDriverSystemd || driver == CgroupDriverCgroupfs {
 					return driver
 				}
@@ -221,8 +223,8 @@ func parseKubeletConfig(configPath string) string {
 
 	// Look for --cgroup-driver in command line arguments
 	if strings.Contains(content, "--cgroup-driver") {
-		lines := strings.Split(content, "\n")
-		for _, line := range lines {
+		lines := strings.SplitSeq(content, "\n")
+		for line := range lines {
 			line = strings.TrimSpace(line)
 			if strings.Contains(line, "--cgroup-driver") {
 				parts := strings.Fields(line)
@@ -288,7 +290,7 @@ func readProcessCmdline(pid int) ([]string, error) {
 
 	// Split by null bytes and filter out empty strings
 	var args []string
-	for _, arg := range strings.Split(string(cmdlineData), "\x00") {
+	for arg := range strings.SplitSeq(string(cmdlineData), "\x00") {
 		if arg != "" {
 			args = append(args, arg)
 		}
@@ -302,8 +304,8 @@ func parseCgroupDriverFromCmdline(args []string) string {
 	// First, try to find --cgroup-driver parameter
 	for i, arg := range args {
 		// Handle both formats: "--cgroup-driver=value" and "--cgroup-driver value"
-		if strings.HasPrefix(arg, "--cgroup-driver=") {
-			driver := strings.TrimPrefix(arg, "--cgroup-driver=")
+		if after, ok := strings.CutPrefix(arg, "--cgroup-driver="); ok {
+			driver := after
 			if driver == CgroupDriverSystemd || driver == CgroupDriverCgroupfs {
 				return driver
 			}
@@ -318,8 +320,8 @@ func parseCgroupDriverFromCmdline(args []string) string {
 	// If --cgroup-driver not found, try to find --config parameter
 	for i, arg := range args {
 		// Handle both formats: "--config=value" and "--config value"
-		if strings.HasPrefix(arg, "--config=") {
-			configPath := strings.TrimPrefix(arg, "--config=")
+		if after, ok := strings.CutPrefix(arg, "--config="); ok {
+			configPath := after
 			// Read and parse the config file
 			if driver := parseKubeletConfig(configPath); driver != "" {
 				return driver
@@ -392,7 +394,7 @@ func IsCgroupsV2(unifiedMountpoint string) bool {
 			isUnified = false
 			return
 		}
-		isUnified = st.Type == unix.CGROUP2_SUPER_MAGIC
+		isUnified = st.Type == CGROUP2_SUPER_MAGIC
 	})
 	return isUnified
 }
@@ -577,7 +579,7 @@ func (cgroupName CgroupName) ToSystemd() (string, error) {
 		newparts = append(newparts, part)
 	}
 
-	result, err := cgroupsystemd.ExpandSlice(strings.Join(newparts, "-") + SystemdSuffix)
+	result, err := expandSlice(strings.Join(newparts, "-") + SystemdSuffix)
 	if err != nil {
 		return "", fmt.Errorf("error converting cgroup name [%v] to systemd format: %v", cgroupName, err)
 	}
@@ -590,6 +592,31 @@ func (cgroupName CgroupName) ToCgroupfs() (string, error) {
 
 func escapeSystemdCgroupName(part string) string {
 	return strings.Replace(part, "-", "_", -1)
+}
+
+// expandSlice converts a systemd slice name to its corresponding path.
+// For example, "test-a-b.slice" becomes "/test.slice/test-a.slice/test-a-b.slice".
+func expandSlice(slice string) (string, error) {
+	suffix := ".slice"
+	if len(slice) < len(suffix) || !strings.HasSuffix(slice, suffix) {
+		return "", fmt.Errorf("invalid slice name: %s", slice)
+	}
+	if strings.Contains(slice, "/") {
+		return "", fmt.Errorf("invalid slice name: %s", slice)
+	}
+	var result, prefix string
+	sliceName := strings.TrimSuffix(slice, suffix)
+	if sliceName == "-" {
+		return "/", nil
+	}
+	for component := range strings.SplitSeq(sliceName, "-") {
+		if component == "" {
+			return "", fmt.Errorf("invalid slice name: %s", slice)
+		}
+		result += "/" + prefix + component + suffix
+		prefix += component + "-"
+	}
+	return result, nil
 }
 
 // getPodCgroupNameSuffix returns the last element of the pod CgroupName identifier

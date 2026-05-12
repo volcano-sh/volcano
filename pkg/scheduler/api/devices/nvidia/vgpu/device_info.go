@@ -17,6 +17,7 @@ limitations under the License.
 package vgpu
 
 import (
+	"maps"
 	"strconv"
 	"strings"
 	"time"
@@ -330,9 +331,7 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 		if pod.Annotations == nil {
 			pod.Annotations = map[string]string{}
 		}
-		for k, v := range annotations {
-			pod.Annotations[k] = v
-		}
+		maps.Copy(pod.Annotations, annotations)
 		// To avoid that the pod allocated info updating latency, add it first
 		gs.addToPodMap(annotations, pod)
 		err = patchPodAnnotations(kubeClient, pod, annotations)
@@ -346,7 +345,7 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 }
 
 // DeepCopy returns a deep copy of GPUDevices for use in dry-run simulation.
-func (gs *GPUDevices) DeepCopy() interface{} {
+func (gs *GPUDevices) DeepCopy() any {
 	if gs == nil {
 		return nil
 	}

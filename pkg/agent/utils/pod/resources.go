@@ -124,12 +124,9 @@ func FindContainerIDByName(pod *v1.Pod, name string) string {
 // milliCPUToQuota converts milliCPU to CFS quota and period values
 func milliCPUToQuota(milliCPU int64, period int64) (quota int64) {
 	// we then convert your milliCPU to a value normalized over a period
-	quota = (milliCPU * period) / milliCPUToCPU
-
-	// quota needs to be a minimum of 1ms.
-	if quota < minQuotaPeriod {
-		quota = minQuotaPeriod
-	}
+	quota = max(
+		// quota needs to be a minimum of 1ms.
+		(milliCPU*period)/milliCPUToCPU, minQuotaPeriod)
 
 	return
 }
@@ -320,10 +317,7 @@ func milliCPUToMax(milliCPU, period int64) string {
 	if milliCPU == 0 {
 		return "max 100000"
 	}
-	quota := (milliCPU * period) / 1000
-	if quota < 1000 {
-		quota = 1000
-	}
+	quota := max((milliCPU*period)/1000, 1000)
 	return fmt.Sprintf("%d %d", quota, period)
 }
 

@@ -89,7 +89,7 @@ type Cache interface {
 	EventRecorder() record.EventRecorder
 
 	// RegisterBinder registers the passed binder to the cache's binderRegistry
-	RegisterBinder(name string, binder interface{})
+	RegisterBinder(name string, binder any)
 
 	// SharedDRAManager returns the shared DRAManager
 	SharedDRAManager() fwk.SharedDRAManager

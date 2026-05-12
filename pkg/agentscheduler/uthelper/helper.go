@@ -64,7 +64,7 @@ func DefaultTiers() []conf.Tier {
 				{
 					Name:             nodeorder.PluginName,
 					EnabledNodeOrder: &trueValue,
-					Arguments: map[string]interface{}{
+					Arguments: map[string]any{
 						"leastrequested.weight": 1,
 						"mostrequested.weight":  0,
 					},
@@ -122,7 +122,7 @@ func NewTestFramework(schedulerName string, workerCount int, actions []framework
 	metricsRecorder := k8smetrics.NewMetricsAsyncRecorder(1000, time.Second, ctx.Done())
 	queueingHintMapPerProfile := make(k8sschedulingqueue.QueueingHintMapPerProfile)
 	queueingHintMap := make(k8sschedulingqueue.QueueingHintMap)
-	defaultQueueingHintFn := func(_ klog.Logger, _ *v1.Pod, _, _ interface{}) (fwk.QueueingHint, error) {
+	defaultQueueingHintFn := func(_ klog.Logger, _ *v1.Pod, _, _ any) (fwk.QueueingHint, error) {
 		return fwk.Queue, nil
 	}
 	wildCardEvent := fwk.ClusterEvent{Resource: fwk.WildCard, ActionType: fwk.All}
@@ -155,7 +155,7 @@ func NewTestFramework(schedulerName string, workerCount int, actions []framework
 	schedulingQueue.Run(klog.Background())
 
 	frameworks := make([]*framework.Framework, workerCount)
-	for i := 0; i < workerCount; i++ {
+	for i := range workerCount {
 		frameworks[i] = framework.NewFramework(actions, tiers, mockCache, configurations)
 	}
 
@@ -188,7 +188,7 @@ func (tf *TestFramework) Close() {
 
 // VerifySchedulingResult verifies the scheduling result from BindCheckChannel.
 func VerifySchedulingResult(t interface {
-	Fatalf(format string, args ...interface{})
+	Fatalf(format string, args ...any)
 }, mockCache *cache.SchedulerCache, expectedNode string) {
 	select {
 	case result := <-mockCache.ConflictAwareBinder.BindCheckChannel:

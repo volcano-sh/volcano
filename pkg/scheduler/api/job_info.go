@@ -719,9 +719,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
 
-	for task, minAvailable := range ji.TaskMinAvailable {
-		info.TaskMinAvailable[task] = minAvailable
-	}
+	maps.Copy(info.TaskMinAvailable, ji.TaskMinAvailable)
 	for _, task := range ji.Tasks {
 		info.AddTaskInfo(task.Clone())
 	}
@@ -739,16 +737,16 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 // String returns a jobInfo object in string format
 func (ji JobInfo) String() string {
-	res := ""
+	var res strings.Builder
 
 	i := 0
 	for _, task := range ji.Tasks {
-		res += fmt.Sprintf("\n\t %d: %v", i, task)
+		fmt.Fprintf(&res, "\n\t %d: %v", i, task)
 		i++
 	}
 
 	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v, preemptable %+v, revocableZone %+v, minAvailable %+v, maxAvailable %+v",
-		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.RevocableZone, ji.Budget.MinAvailable, ji.Budget.MaxUnavailable) + res
+		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.RevocableZone, ji.Budget.MinAvailable, ji.Budget.MaxUnavailable) + res.String()
 }
 
 // FitError returns detailed information on why a job's task failed to fit on
@@ -774,7 +772,8 @@ func (ji *JobInfo) FitError() string {
 	if ji.IsReady() {
 		podGroupStatus = scheduling.PodGroupReady
 	}
-	reasonMsg := fmt.Sprintf("%v, %v", podGroupStatus, strings.Join(sortReasonsHistogram(reasons), ", "))
+	var reasonMsg strings.Builder
+	fmt.Fprintf(&reasonMsg, "%v, %v", podGroupStatus, strings.Join(sortReasonsHistogram(reasons), ", "))
 
 	// Stat histogram for pending tasks only
 	reasons = make(map[string]int)
@@ -783,23 +782,23 @@ func (ji *JobInfo) FitError() string {
 		reasons[reason]++
 	}
 	if len(reasons) > 0 {
-		reasonMsg += "; " + fmt.Sprintf("%s: %s", Pending.String(), strings.Join(sortReasonsHistogram(reasons), ", "))
+		reasonMsg.WriteString("; " + fmt.Sprintf("%s: %s", Pending.String(), strings.Join(sortReasonsHistogram(reasons), ", ")))
 	}
 
 	// record the original reason: such as can not enqueue or failed reasons of first pod failed to predicated
 	if ji.JobFitErrors != "" {
-		reasonMsg += ". Origin reason is: " + ji.JobFitErrors
+		reasonMsg.WriteString(". Origin reason is: " + ji.JobFitErrors)
 	} else {
 		for _, taskInfo := range ji.Tasks {
 			fitError := ji.NodesFitErrors[taskInfo.UID]
 			if fitError != nil {
-				reasonMsg += fmt.Sprintf(". Origin reason is %v: %v", taskInfo.Name, fitError.Error())
+				fmt.Fprintf(&reasonMsg, ". Origin reason is %v: %v", taskInfo.Name, fitError.Error())
 				break
 			}
 		}
 	}
 
-	return reasonMsg
+	return reasonMsg.String()
 }
 
 // TaskSchedulingReason get detailed reason and message of the given task

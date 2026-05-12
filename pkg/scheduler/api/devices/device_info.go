@@ -117,12 +117,12 @@ func UnMarshalNodeDevices(str string) ([]*DeviceInfo, error) {
 }
 
 func EncodeContainerDevices(cd ContainerDevices) string {
-	tmp := ""
+	var tmp strings.Builder
 	for _, val := range cd {
-		tmp += val.UUID + "," + val.Type + "," + strconv.Itoa(int(val.Usedmem)) + "," + strconv.Itoa(int(val.Usedcores)) + OneContainerMultiDeviceSplitSymbol
+		tmp.WriteString(val.UUID + "," + val.Type + "," + strconv.Itoa(int(val.Usedmem)) + "," + strconv.Itoa(int(val.Usedcores)) + OneContainerMultiDeviceSplitSymbol)
 	}
-	klog.Infof("Encoded container Devices: %s", tmp)
-	return tmp
+	klog.Infof("Encoded container Devices: %s", tmp.String())
+	return tmp.String()
 	//return strings.Join(cd, ",")
 }
 
@@ -176,7 +176,7 @@ func DecodePodDevices(checklist map[string]string, annos map[string]string) (Pod
 			continue
 		}
 		pd[devID] = make(PodSingleDevice, 0)
-		for _, s := range strings.Split(str, OnePodMultiContainerSplitSymbol) {
+		for s := range strings.SplitSeq(str, OnePodMultiContainerSplitSymbol) {
 			cd, err := DecodeContainerDevices(s)
 			if err != nil {
 				return PodDevices{}, err

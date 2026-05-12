@@ -113,19 +113,19 @@ func (np NodePhase) String() string {
 }
 
 // LessFn is the func declaration used by sort or priority queue.
-type LessFn func(interface{}, interface{}) bool
+type LessFn func(any, any) bool
 
 // CompareFn is the func declaration used by sort or priority queue.
-type CompareFn func(interface{}, interface{}) int
+type CompareFn func(any, any) int
 
 // VictimCompareFn is the func declaration used by sort or priority victims.
-type VictimCompareFn func(interface{}, interface{}, interface{}) int
+type VictimCompareFn func(any, any, any) int
 
 // ValidateFn is the func declaration used to check object's status.
-type ValidateFn func(interface{}) bool
+type ValidateFn func(any) bool
 
 // ValidateWithCandidateFn behaves like ValidateFn but take the candidate task into consideration.
-type ValidateWithCandidateFn func(interface{}, interface{}) bool
+type ValidateWithCandidateFn func(any, any) bool
 
 // ValidateResult is struct to which can used to determine the result
 type ValidateResult struct {
@@ -303,13 +303,13 @@ func ConvertPredicateStatus(status *fwk.Status) *Status {
 }
 
 // ValidateExFn is the func declaration used to validate the result.
-type ValidateExFn func(interface{}) *ValidateResult
+type ValidateExFn func(any) *ValidateResult
 
 // VoteFn is the func declaration used to check object's complicated status.
-type VoteFn func(interface{}) int
+type VoteFn func(any) int
 
 // JobEnqueuedFn is the func declaration used to call after job enqueued.
-type JobEnqueuedFn func(interface{})
+type JobEnqueuedFn func(any)
 
 // PredicateFn is the func declaration used to predicate node for task.
 type PredicateFn func(*TaskInfo, *NodeInfo) error

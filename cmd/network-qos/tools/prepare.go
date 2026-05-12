@@ -109,7 +109,7 @@ func (c *prepareCmd) install(onlineBandwidthWatermark, offlineLowBandwidth, offl
 		return fmt.Errorf("failed to set network qos:%v, output:%s", err, output)
 	}
 
-	cniConf := make(map[string]interface{})
+	cniConf := make(map[string]any)
 	cniConf["name"] = utils.CNIPluginName
 	cniConf["type"] = utils.CNIPluginName
 	cniConf["args"] = map[string]string{

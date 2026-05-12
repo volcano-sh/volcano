@@ -87,7 +87,7 @@ func New(args framework.Arguments) framework.Plugin {
 		return plugin
 	}
 
-	thresholdArgs, ok := argsValue.(map[interface{}]interface{})
+	thresholdArgs, ok := argsValue.(map[any]any)
 	if !ok {
 		klog.Errorf("Failed to convert the thresholds information, thresholds args values is %v", argsValue)
 		return plugin

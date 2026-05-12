@@ -40,6 +40,8 @@ import (
 	"volcano.sh/volcano/pkg/metriccollect"
 )
 
+const fixedQuotaValue = -1
+
 func init() {
 	handlers.RegisterEventHandleFunc(string(framework.PodEventName), NewCPUBurst)
 }
@@ -61,7 +63,7 @@ func NewCPUBurst(config *config.Configuration, mgr *metriccollect.MetricCollecto
 	}
 }
 
-func (c *CPUBurstHandle) Handle(event interface{}) error {
+func (c *CPUBurstHandle) Handle(event any) error {
 	podEvent, ok := event.(framework.PodEvent)
 	if !ok {
 		return fmt.Errorf("illegal pod event")

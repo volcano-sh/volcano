@@ -18,6 +18,7 @@ package job
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -296,12 +297,7 @@ func getEventlist(policy batch.LifecyclePolicy) []v1alpha1.Event {
 }
 
 func checkEventExist(policyEvents []v1alpha1.Event, reqEvent v1alpha1.Event) bool {
-	for _, event := range policyEvents {
-		if event == reqEvent {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(policyEvents, reqEvent)
 }
 
 // TaskPriority structure.

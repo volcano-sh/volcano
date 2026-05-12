@@ -145,7 +145,7 @@ func (pl *VolumeBinding) EventsToRegister(_ context.Context) ([]fwk.ClusterEvent
 	return events, nil
 }
 
-func (pl *VolumeBinding) isSchedulableAfterCSINodeChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj interface{}) (fwk.QueueingHint, error) {
+func (pl *VolumeBinding) isSchedulableAfterCSINodeChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj any) (fwk.QueueingHint, error) {
 	if oldObj == nil {
 		logger.V(5).Info("CSINode creation could make the pod schedulable")
 		return fwk.Queue, nil
@@ -170,7 +170,7 @@ func (pl *VolumeBinding) isSchedulableAfterCSINodeChange(logger klog.Logger, pod
 	return fwk.QueueSkip, nil
 }
 
-func (pl *VolumeBinding) isSchedulableAfterPersistentVolumeClaimChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj interface{}) (fwk.QueueingHint, error) {
+func (pl *VolumeBinding) isSchedulableAfterPersistentVolumeClaimChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj any) (fwk.QueueingHint, error) {
 	_, newPVC, err := util.As[*v1.PersistentVolumeClaim](oldObj, newObj)
 	if err != nil {
 		return fwk.Queue, err
@@ -214,7 +214,7 @@ func (pl *VolumeBinding) isSchedulableAfterPersistentVolumeClaimChange(logger kl
 // Any StorageClass addition and a StorageClass update to allowedTopologies
 // might make a Pod schedulable.
 // Note that an update to volume binding mode is not allowed and we don't have to consider while examining the update event.
-func (pl *VolumeBinding) isSchedulableAfterStorageClassChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj interface{}) (fwk.QueueingHint, error) {
+func (pl *VolumeBinding) isSchedulableAfterStorageClassChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj any) (fwk.QueueingHint, error) {
 	oldSC, newSC, err := util.As[*storagev1.StorageClass](oldObj, newObj)
 	if err != nil {
 		return fwk.Queue, err
@@ -248,7 +248,7 @@ func (pl *VolumeBinding) isSchedulableAfterStorageClassChange(logger klog.Logger
 // (calculated based on capacity and maximumVolumeSize) might make a Pod schedulable.
 // Note that an update to nodeTopology and storageClassName is not allowed and
 // we don't have to consider while examining the update event.
-func (pl *VolumeBinding) isSchedulableAfterCSIStorageCapacityChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj interface{}) (fwk.QueueingHint, error) {
+func (pl *VolumeBinding) isSchedulableAfterCSIStorageCapacityChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj any) (fwk.QueueingHint, error) {
 	oldCap, newCap, err := util.As[*storagev1beta1.CSIStorageCapacity](oldObj, newObj)
 	if err != nil {
 		return fwk.Queue, err
@@ -283,7 +283,7 @@ func (pl *VolumeBinding) isSchedulableAfterCSIStorageCapacityChange(logger klog.
 	return fwk.QueueSkip, nil
 }
 
-func (pl *VolumeBinding) isSchedulableAfterCSIDriverChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj interface{}) (fwk.QueueingHint, error) {
+func (pl *VolumeBinding) isSchedulableAfterCSIDriverChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj any) (fwk.QueueingHint, error) {
 	originalCSIDriver, modifiedCSIDriver, err := util.As[*storagev1.CSIDriver](oldObj, newObj)
 	if err != nil {
 		return fwk.Queue, err

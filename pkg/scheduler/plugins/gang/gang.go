@@ -55,7 +55,7 @@ func (gp *gangPlugin) Name() string {
 }
 
 func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
-	validJobFn := func(obj interface{}) *api.ValidateResult {
+	validJobFn := func(obj any) *api.ValidateResult {
 		job, ok := obj.(*api.JobInfo)
 		if !ok {
 			return &api.ValidateResult{
@@ -128,7 +128,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddReclaimableFn(gp.Name(), preemptableFn)
 	ssn.AddPreemptableFn(gp.Name(), preemptableFn)
 
-	jobOrderFn := func(l, r interface{}) int {
+	jobOrderFn := func(l, r any) int {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
@@ -154,7 +154,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddJobOrderFn(gp.Name(), jobOrderFn)
 
-	subJobOrderFn := func(l, r interface{}) int {
+	subJobOrderFn := func(l, r any) int {
 		lv := l.(*api.SubJobInfo)
 		rv := r.(*api.SubJobInfo)
 
@@ -180,7 +180,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddSubJobOrderFn(gp.Name(), subJobOrderFn)
 
-	ssn.AddJobReadyFn(gp.Name(), func(obj interface{}) bool {
+	ssn.AddJobReadyFn(gp.Name(), func(obj any) bool {
 		ji := obj.(*api.JobInfo)
 		if ji.CheckTaskReady() && ji.CheckSubJobReady() && ji.IsReady() {
 			return true
@@ -188,12 +188,12 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		return false
 	})
 
-	ssn.AddSubJobReadyFn(gp.Name(), func(obj interface{}) bool {
+	ssn.AddSubJobReadyFn(gp.Name(), func(obj any) bool {
 		sji := obj.(*api.SubJobInfo)
 		return sji.IsReady()
 	})
 
-	pipelinedFn := func(obj interface{}) int {
+	pipelinedFn := func(obj any) int {
 		ji := obj.(*api.JobInfo)
 		if ji.CheckTaskPipelined() && ji.CheckSubJobPipelined() && ji.IsPipelined() {
 			return util.Permit
@@ -202,7 +202,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddJobPipelinedFn(gp.Name(), pipelinedFn)
 
-	ssn.AddSubJobPipelinedFn(gp.Name(), func(obj interface{}) int {
+	ssn.AddSubJobPipelinedFn(gp.Name(), func(obj any) int {
 		sji := obj.(*api.SubJobInfo)
 		if sji.IsPipelined() {
 			return util.Permit
@@ -210,7 +210,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		return util.Reject
 	})
 
-	jobStarvingFn := func(obj interface{}) bool {
+	jobStarvingFn := func(obj any) bool {
 		ji := obj.(*api.JobInfo)
 		// In the preemption scenario, the taskMinAvailable configuration is not concerned, only the jobMinAvailable is concerned
 		return ji.IsStarving()

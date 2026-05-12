@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 
 	v1 "k8s.io/api/core/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -186,7 +187,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims, util.Permit
 	})
 
-	ssn.AddPreemptiveFn(cp.Name(), func(obj interface{}, candidate interface{}) bool {
+	ssn.AddPreemptiveFn(cp.Name(), func(obj any, candidate any) bool {
 		if !readyToSchedule {
 			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
 			return false
@@ -250,7 +251,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return allocatable
 	})
 
-	ssn.AddJobEnqueueableFn(cp.Name(), func(obj interface{}) int {
+	ssn.AddJobEnqueueableFn(cp.Name(), func(obj any) int {
 		if !readyToSchedule {
 			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
 			return util.Reject
@@ -613,7 +614,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		metrics.UpdateQueueRealCapacity(queueInfo.Name, realCapacity.MilliCPU, realCapacity.Memory, realCapacity.ScalarResources)
 	}
 
-	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
+	ssn.AddQueueOrderFn(cp.Name(), func(l, r any) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
@@ -753,7 +754,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		metrics.UpdateQueueRealCapacity(attr.name, attr.realCapability.MilliCPU, attr.realCapability.Memory, attr.realCapability.ScalarResources)
 	}
 
-	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
+	ssn.AddQueueOrderFn(cp.Name(), func(l, r any) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
@@ -788,7 +789,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		return cp.compareShareWithDeserved(cp.queueOpts[lvParentID], cp.queueOpts[rvParentID])
 	})
 
-	ssn.AddVictimQueueOrderFn(cp.Name(), func(l, r, preemptor interface{}) int {
+	ssn.AddVictimQueueOrderFn(cp.Name(), func(l, r, preemptor any) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 		pv := preemptor.(*api.QueueInfo)
@@ -1059,8 +1060,8 @@ func (cp *capacityPlugin) checkQueueAllocatableHierarchically(ssn *framework.Ses
 	// If hierarchical queue is not enabled, list will only contain the queue itself.
 	list := append(cp.queueOpts[queue.UID].ancestors, queue.UID)
 	// Check whether the candidate task can be allocated to the queue and all its ancestors.
-	for i := len(list) - 1; i >= 0; i-- {
-		if !cp.queueAllocatable(ssn.Queues[list[i]], candidate) {
+	for i, v := range slices.Backward(list) {
+		if !cp.queueAllocatable(ssn.Queues[v], candidate) {
 			// If log level is 5, print the information of all queues from leaf to ancestor.
 			if klog.V(5).Enabled() {
 				for j := i - 1; j >= 0; j-- {
@@ -1089,8 +1090,8 @@ func (cp *capacityPlugin) checkJobEnqueueableHierarchically(ssn *framework.Sessi
 	// If hierarchical queue is not enabled, list will only contain the queue itself.
 	list := append(cp.queueOpts[queue.UID].ancestors, queue.UID)
 	// Check whether the job can be enqueued to the queue and all its ancestors.
-	for i := len(list) - 1; i >= 0; i-- {
-		if inqueue, resourceNames := cp.jobEnqueueable(ssn.Queues[list[i]], job); !inqueue {
+	for i, v := range slices.Backward(list) {
+		if inqueue, resourceNames := cp.jobEnqueueable(ssn.Queues[v], job); !inqueue {
 			// If log level is 5, print the information of all queues from leaf to ancestor.
 			if klog.V(5).Enabled() {
 				for j := i - 1; j >= 0; j-- {

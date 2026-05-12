@@ -39,9 +39,9 @@ type PodProbe struct {
 
 func NewPodProbe(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, eventQueueFactory *framework.EventQueueFactory) framework.Probe {
 	podHandler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { enqueuePod(obj, eventQueueFactory) },
-		UpdateFunc: func(oldObj, newObj interface{}) { enqueuePod(newObj, eventQueueFactory) },
-		DeleteFunc: func(obj interface{}) {},
+		AddFunc:    func(obj any) { enqueuePod(obj, eventQueueFactory) },
+		UpdateFunc: func(oldObj, newObj any) { enqueuePod(newObj, eventQueueFactory) },
+		DeleteFunc: func(obj any) {},
 	}
 	config.InformerFactory.K8SInformerFactory.Core().V1().Pods().Informer().AddEventHandler(podHandler)
 	return &PodProbe{
@@ -62,7 +62,7 @@ func (p *PodProbe) RefreshCfg(cfg *api.ColocationConfig) error {
 	return nil
 }
 
-func enqueuePod(obj interface{}, eventQueueFactory *framework.EventQueueFactory) {
+func enqueuePod(obj any, eventQueueFactory *framework.EventQueueFactory) {
 	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		klog.ErrorS(nil, "Pod phase invoked with an invalid data struct", "obj", obj)

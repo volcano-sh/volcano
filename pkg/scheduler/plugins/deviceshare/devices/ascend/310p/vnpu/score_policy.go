@@ -18,6 +18,7 @@ package vnpu310p
 
 import (
 	"reflect"
+	"slices"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -60,13 +61,7 @@ func ScoreBatchNodes(pod *v1.Pod, schedulePolicy string, device api.Devices, nei
 	} else {
 		// 3. if downgrade nodes exists, skip, util find none-downgraded nodes and add score
 		for _, node := range nodesSorted {
-			downgradeFlag := false
-			for _, dNode := range podDowngradeCache {
-				if node.Name == dNode {
-					downgradeFlag = true
-					break
-				}
-			}
+			downgradeFlag := slices.Contains(podDowngradeCache, node.Name)
 			if !downgradeFlag {
 				scoreMap[node.Name] += util.NPUIndex8 * util.NPUIndex2
 				break

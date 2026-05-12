@@ -74,8 +74,8 @@ func PopulateResourceListV1(spec string) (v1.ResourceList, error) {
 	}
 
 	result := v1.ResourceList{}
-	resourceStatements := strings.Split(spec, ",")
-	for _, resourceStatement := range resourceStatements {
+	resourceStatements := strings.SplitSeq(spec, ",")
+	for resourceStatement := range resourceStatements {
 		parts := strings.Split(resourceStatement, "=")
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid argument syntax %v, expected <resource>=<value>", resourceStatement)
@@ -216,7 +216,7 @@ func CaptureOutput(r *os.File, oldStdout *os.File) string {
 }
 
 // CreateTestServer creates an HTTP server that responds with the given response.
-func CreateTestServer(response interface{}) *httptest.Server {
+func CreateTestServer(response any) *httptest.Server {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		val, err := json.Marshal(response)

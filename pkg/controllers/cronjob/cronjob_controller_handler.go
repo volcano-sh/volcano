@@ -42,7 +42,7 @@ import (
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 )
 
-func (cc *cronjobcontroller) addJob(obj interface{}) {
+func (cc *cronjobcontroller) addJob(obj any) {
 	job, ok := obj.(*batchv1.Job)
 	if !ok {
 		klog.Errorf("obj is not Job")
@@ -58,7 +58,7 @@ func (cc *cronjobcontroller) addJob(obj interface{}) {
 		return
 	}
 }
-func (cc *cronjobcontroller) updateJob(oldObj, newObj interface{}) {
+func (cc *cronjobcontroller) updateJob(oldObj, newObj any) {
 	oldJob, okOld := oldObj.(*batchv1.Job)
 	if !okOld {
 		klog.Errorf("Failed to convert %v to batchv1.Job", oldObj)
@@ -82,7 +82,7 @@ func (cc *cronjobcontroller) updateJob(oldObj, newObj interface{}) {
 		cc.addCronjobcontrollerQueue(oldCronJob, 0)
 	}
 }
-func (cc *cronjobcontroller) deleteJob(obj interface{}) {
+func (cc *cronjobcontroller) deleteJob(obj any) {
 	job, ok := obj.(*batchv1.Job)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -101,7 +101,7 @@ func (cc *cronjobcontroller) deleteJob(obj interface{}) {
 		cc.addCronjobcontrollerQueue(cronJob, 0)
 	}
 }
-func (cc *cronjobcontroller) addCronjobcontrollerQueue(obj interface{}, duration time.Duration) {
+func (cc *cronjobcontroller) addCronjobcontrollerQueue(obj any, duration time.Duration) {
 	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
 		klog.Errorf("Failed to get key for object <%v>: %v", obj, err)
@@ -113,7 +113,7 @@ func (cc *cronjobcontroller) addCronjobcontrollerQueue(obj interface{}, duration
 	}
 	cc.queue.AddAfter(key, duration)
 }
-func (cc *cronjobcontroller) updateCronJob(oldObj interface{}, newObj interface{}) {
+func (cc *cronjobcontroller) updateCronJob(oldObj any, newObj any) {
 	oldCronjob, okOld := oldObj.(*batchv1.CronJob)
 	if !okOld {
 		klog.Errorf("Failed to convert %v to batchv1.CronJob", oldObj)
@@ -305,7 +305,7 @@ func (cc *cronjobcontroller) removeOldestJobs(cj *batchv1.CronJob, js []*batchv1
 	}
 	klog.V(4).Info("Cleaning up jobs from CronJob list", "deletejobnum", numToDelete, "jobnum", len(js), "cronjob", klog.KObj(cj))
 	sort.Sort(byJobCreationTimestamp(js))
-	for i := 0; i < numToDelete; i++ {
+	for i := range numToDelete {
 		klog.V(4).Info("Removing job from CronJob list", "job", js[i].Name, "cronjob", klog.KObj(cj))
 		if deleteJobByClient(cc.vcClient, cc.jobClient, cj, js[i], cc.recorder) {
 			updateStatus = true
