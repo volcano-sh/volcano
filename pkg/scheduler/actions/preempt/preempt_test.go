@@ -321,6 +321,39 @@ func TestPreempt(t *testing.T) {
 			ExpectEvictNum: 1,
 			ExpectEvicted:  []string{"c1/preemptee1"},
 		},
+		{
+			// Equivalent behavior to the fix in #5214 (SelectVictimsOnNode in master).
+			// When multiple victims of differing pod priorities are eligible for eviction
+			// and only one eviction is needed, the lowest-priority victim must be chosen,
+			// sparing the higher-priority victim.
+			Name: "evict lowest priority victim first to spare higher priority pods",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, map[string]int32{}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				// Two preemptable victims in the same low-priority job with different pod priorities.
+				// pg1's two tasks consume all 2 CPUs of the queue capacity, so the queue is full.
+				util.BuildPodWithPriority("c1", "victim-low-prio", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string), &lowPrio.Value),
+				util.BuildPodWithPriority("c1", "victim-high-prio", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string), &highPrio.Value),
+				// The preemptor only needs 1 CPU — a single eviction is sufficient.
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2",
+					make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("12", "12G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				// Queue capacity matches the total usage of pg1 (2 CPUs), so the preemptor
+				// cannot be accommodated without evicting at least one victim.
+				util.BuildQueue("q1", 1, api.BuildResourceList("2", "2G")),
+			},
+			// Only the lowest-priority victim should be evicted; the higher-priority one is spared.
+			ExpectEvicted:  []string{"c1/victim-low-prio"},
+			ExpectEvictNum: 1,
+		},
 	}
 
 	trueValue := true
