@@ -168,6 +168,10 @@ type SchedulerCache struct {
 
 	registeredHandlers map[string]cache.ResourceEventHandlerRegistration
 
+	// stopCh is stored at Run time so background workers spawned for
+	// per-task operations (e.g., Evict) can observe scheduler shutdown.
+	stopCh <-chan struct{}
+
 	BindFlowChannel chan *BindContext
 	bindCache       []*BindContext
 	batchNum        int
@@ -849,6 +853,7 @@ func (sc *SchedulerCache) addEventHandler() {
 
 // Run  starts the schedulerCache
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
+	sc.stopCh = stopCh
 	sc.informerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
 	sc.WaitForCacheSync(stopCh)
@@ -964,13 +969,27 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	p := task.Pod
 
 	go func() {
-		err := sc.Evictor.Evict(p, reason)
-		if err != nil {
-			sc.resyncTask(task)
+		// Skip eviction if the scheduler is shutting down to avoid holding the
+		// apiserver connection open past shutdown and firing misleading events.
+		if sc.stopCh != nil {
+			select {
+			case <-sc.stopCh:
+				klog.V(3).Infof("Skipping evict of pod %s/%s: scheduler is shutting down", p.Namespace, p.Name)
+				return
+			default:
+			}
 		}
+
+		if err := sc.Evictor.Evict(p, reason); err != nil {
+			klog.Errorf("Failed to evict pod %s/%s: %v", p.Namespace, p.Name, err)
+			sc.Recorder.Eventf(podgroup, v1.EventTypeWarning, "EvictFailed",
+				"Failed to evict pod %s/%s: %v", p.Namespace, p.Name, err)
+			sc.resyncTask(task)
+			return
+		}
+		sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", reason)
 	}()
 
-	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", reason)
 	return nil
 }
 
