@@ -144,9 +144,9 @@ var _ = Describe("Volcano Scheduler Sharding E2E Test", func() {
 				"volcano shard must have nodes for verification")
 
 			// Build a set of volcano shard node names for lookup
-			shardNodeSet := make(map[string]bool, len(volcanoShard.Spec.NodesDesired))
+			shardNodeSet := make(map[string]struct{}, len(volcanoShard.Spec.NodesDesired))
 			for _, n := range volcanoShard.Spec.NodesDesired {
-				shardNodeSet[n] = true
+				shardNodeSet[n] = struct{}{}
 			}
 
 			By("Creating a Volcano job")
@@ -217,14 +217,14 @@ var _ = Describe("Volcano Scheduler Sharding E2E Test", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Compute nodes that are ONLY in agent shard (not in volcano shard)
-			volcanoNodeSet := make(map[string]bool, len(volcanoShard.Spec.NodesDesired))
+			volcanoNodeSet := make(map[string]struct{}, len(volcanoShard.Spec.NodesDesired))
 			for _, n := range volcanoShard.Spec.NodesDesired {
-				volcanoNodeSet[n] = true
+				volcanoNodeSet[n] = struct{}{}
 			}
-			agentOnlyNodes := make(map[string]bool)
+			agentOnlyNodes := make(map[string]struct{})
 			for _, n := range agentShard.Spec.NodesDesired {
-				if !volcanoNodeSet[n] {
-					agentOnlyNodes[n] = true
+				if _, ok := volcanoNodeSet[n]; !ok {
+					agentOnlyNodes[n] = struct{}{}
 				}
 			}
 			GinkgoWriter.Printf("Volcano shard nodes: %v\n", volcanoShard.Spec.NodesDesired)
@@ -268,6 +268,55 @@ var _ = Describe("Volcano Scheduler Sharding E2E Test", func() {
 			GinkgoWriter.Printf("All pods correctly isolated to volcano shard nodes\n")
 		})
 	})
+
+		It("second job should stay pending when shard resources are exhausted by first job", func() {
+			waitForNodeShardsCreated()
+
+			By("Getting volcano shard node count")
+			volcanoShard, err := e2eutil.GetNodeShard(ctx, VolcanoShardName)
+			Expect(err).NotTo(HaveOccurred())
+			shardNodeCount := len(volcanoShard.Spec.NodesDesired)
+			Expect(shardNodeCount).To(BeNumerically(">=", 1),
+				"volcano shard must have at least 1 node")
+
+			By(fmt.Sprintf("Creating first job consuming all %d shard nodes", shardNodeCount))
+			firstJob := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+				Name: "exhaust-shard-job-1",
+				Tasks: []e2eutil.TaskSpec{
+					{
+						Img: e2eutil.DefaultBusyBoxImage,
+						Req: e2eutil.HalfCPU,
+						Min: 1,
+						Rep: int32(shardNodeCount),
+					},
+				},
+			})
+
+			By("Waiting for first job to be ready")
+			err = e2eutil.WaitJobReady(ctx, firstJob)
+			Expect(err).NotTo(HaveOccurred(), "first job should become ready")
+
+			By("Creating second job that has no free shard nodes")
+			secondJob := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+				Name: "exhaust-shard-job-2",
+				Tasks: []e2eutil.TaskSpec{
+					{
+						Img: e2eutil.DefaultBusyBoxImage,
+						Req: e2eutil.HalfCPU,
+						Min: 1,
+						Rep: 1,
+					},
+				},
+			})
+
+			By("Verifying second job stays pending due to exhausted shard")
+			err = e2eutil.WaitJobStatePending(ctx, secondJob)
+			Expect(err).NotTo(HaveOccurred(),
+				"second job should stay pending because all shard nodes are occupied by first job")
+
+			GinkgoWriter.Printf("First job has %d pods occupying all shard nodes, second job correctly pending\n",
+				shardNodeCount)
+		})
 
 	Describe("Shard State Consistency", func() {
 		It("Shard state should remain consistent during job execution", func() {
