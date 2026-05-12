@@ -18,6 +18,7 @@ package api
 
 import (
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -46,8 +47,7 @@ type HyperNodesInfo struct {
 	// s0->node0, node1, s1->node2, node3, s4->node0, node1, s1->node2, node3
 	realNodesSet map[string]sets.Set[string]
 	// nodeLister Lister to list Kubernetes nodes.
-	nodeLister        listerv1.NodeLister
-	builtErrHyperNode string
+	nodeLister listerv1.NodeLister
 
 	// ready indicates whether the HyperNodesInfo is ready (build process is complete).
 	ready *atomic.Bool
@@ -248,11 +248,47 @@ func (hni *HyperNodesInfo) DeleteHyperNode(name string) error {
 }
 
 func (hni *HyperNodesInfo) UpdateHyperNode(hn *topologyv1alpha1.HyperNode) error {
-	hni.updateParent(hn)
-	hni.updateHyperNodesSetByTier(hn)
-
 	name := hn.Name
 	old, exists := hni.hyperNodes[name]
+
+	specChanged := true
+	membersChanged := true
+	tierChanged := true
+	if exists && old.HyperNode != nil {
+		oldSpec := old.HyperNode.Spec
+		specChanged = !reflect.DeepEqual(oldSpec, hn.Spec)
+		membersChanged = !reflect.DeepEqual(oldSpec.Members, hn.Spec.Members)
+		tierChanged = oldSpec.Tier != hn.Spec.Tier
+	}
+
+	// Fast-path: skip all rebuild work when the spec is unchanged AND the HyperNode
+	// has only exact-match members.
+	//
+	// Regex/label-match members resolve to a node set that depends on current cluster
+	// state (i.e. which nodes exist), not just the spec. When a node is added or
+	// deleted, UpdateHyperNode is called with the same unchanged spec to trigger a
+	// re-evaluation of the selector. In that case we must NOT skip the rebuild even
+	// though specChanged == false.
+	if !specChanged && exists && !hyperNodeHasRegexOrLabelMember(hn) {
+		old.HyperNode = hn
+		old.tier = hn.Spec.Tier
+		old.tierName = hn.Spec.TierName
+		return nil
+	}
+
+	// Release any children removed from this node's member list and record them so
+	// that we can immediately rebuild any other HyperNode that spec-claims one of
+	// those newly-freed members (they may have previously failed to adopt the member
+	// because it still had a parent pointer here).
+	var freedMembers sets.Set[string]
+	if membersChanged {
+		freedMembers = hni.updateParent(hn)
+	}
+
+	if !exists || tierChanged {
+		hni.updateHyperNodesSetByTier(hn)
+	}
+
 	if exists {
 		old.HyperNode = hn
 		old.tier = hn.Spec.Tier
@@ -261,7 +297,51 @@ func (hni *HyperNodesInfo) UpdateHyperNode(hn *topologyv1alpha1.HyperNode) error
 		hni.hyperNodes[name] = NewHyperNodeInfo(hn)
 	}
 
-	return hni.updateAncestors(name)
+	// Rebuild the ancestor chain whenever:
+	// - members (spec) changed, OR
+	// - this HyperNode uses regex/label selectors whose resolved node set may have
+	//   changed because a cluster node was added or deleted.
+	if membersChanged || hyperNodeHasRegexOrLabelMember(hn) {
+		nodes, err := hni.nodeLister.List(labels.Everything())
+		if err != nil {
+			klog.ErrorS(err, "Failed to list nodes", "hyperNodeName", name)
+			hni.setReady(false)
+			return err
+		}
+
+		if err := hni.rebuildCache(name, nodes); err != nil {
+			hni.setReady(false)
+			return err
+		}
+
+		// For each child released above, find every other HyperNode whose spec
+		// claims that child as an exact-match member and rebuild it now.  Those
+		// nodes may have failed to adopt the child while it still had a parent
+		// pointer here; releasing that pointer makes the adoption valid.
+		for freed := range freedMembers {
+			for _, claimer := range hni.hyperNodesThatClaimMember(freed, name) {
+				if err := hni.rebuildCache(claimer, nodes); err != nil {
+					hni.setReady(false)
+					return err
+				}
+			}
+		}
+
+		hni.setReady(true)
+	}
+	return nil
+}
+
+// hyperNodeHasRegexOrLabelMember reports whether any member of hn uses a regex or
+// label selector. Such HyperNodes have a realNodesSet that depends on live cluster
+// node state, not just the spec, so they require a rebuild on every node event.
+func hyperNodeHasRegexOrLabelMember(hn *topologyv1alpha1.HyperNode) bool {
+	for _, member := range hn.Spec.Members {
+		if member.Selector.RegexMatch != nil || member.Selector.LabelMatch != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (hni *HyperNodesInfo) BuildHyperNodeCache(hn *HyperNodeInfo, processed sets.Set[string], ancestorsChain sets.Set[string], ancestors sets.Set[string], nodes []*corev1.Node) error {
@@ -344,8 +424,9 @@ func (hni *HyperNodesInfo) setReady(ready bool) {
 	hni.ready.Store(ready)
 }
 
-// updateParent updates the parent-child relationships if members are removed.
-func (hni *HyperNodesInfo) updateParent(hn *topologyv1alpha1.HyperNode) {
+// updateParent clears the parent pointer of any HyperNode children that were
+// removed from hn's member list, and returns the set of those freed children.
+func (hni *HyperNodesInfo) updateParent(hn *topologyv1alpha1.HyperNode) sets.Set[string] {
 	oldMembers := hni.getChildren(hn.Name)
 	newMembers := sets.New[string]()
 	for _, member := range hn.Spec.Members {
@@ -355,12 +436,10 @@ func (hni *HyperNodesInfo) updateParent(hn *topologyv1alpha1.HyperNode) {
 	}
 
 	removedMembers := oldMembers.Difference(newMembers)
-	if removedMembers.Len() == 0 {
-		return
-	}
 	for member := range removedMembers {
 		hni.resetParent(member)
 	}
+	return removedMembers
 }
 
 // GetDescendants returns all descendants of a given HyperNode.
@@ -468,7 +547,6 @@ func (hni *HyperNodesInfo) GetRegexOrLabelMatchLeafHyperNodes() sets.Set[string]
 func (hni *HyperNodesInfo) addChild(parent, member string) error {
 	parentHn, ok := hni.hyperNodes[parent]
 	if !ok {
-		hni.builtErrHyperNode = parent
 		return fmt.Errorf("parent HyperNode %s not exists in cache", parent)
 	}
 
@@ -482,7 +560,6 @@ func (hni *HyperNodesInfo) addChild(parent, member string) error {
 	}
 
 	if childHn.Parent != "" && childHn.Parent != parent {
-		hni.builtErrHyperNode = parent
 		return fmt.Errorf("HyperNode %s already has a parent %s, and cannot set another parent %s", member, childHn.Parent, parent)
 	}
 
@@ -544,30 +621,55 @@ func (hni *HyperNodesInfo) exactMatchMember(selector topologyv1alpha1.MemberSele
 	return ""
 }
 
-func (hni *HyperNodesInfo) updateAncestors(name string) error {
-	if err := hni.rebuildCache(name); err != nil {
-		hni.setReady(false)
-		return err
-	}
-	// When last time BuildHyperNodeCache has an err that a hyperNode has multi parents, after the parent is updated
-	// we should find the parent hyperNode to rebuild the correct cache.
-	if hni.builtErrHyperNode == name {
-		klog.InfoS("Rebuilt parent hyperNode", "name", hni.builtErrHyperNode)
-		leafHyperNodes := hni.GetLeafNodes(name)
-		for leaf := range leafHyperNodes {
-			if err := hni.rebuildCache(leaf); err != nil {
-				return err
+// hyperNodesThatClaimMember returns the names of all HyperNodes (other than
+// 'exclude') whose spec lists 'memberName' as an exact-match HyperNode member.
+// These are nodes that may have been blocked from adopting 'memberName' while it
+// still carried a parent pointer to another HyperNode.
+func (hni *HyperNodesInfo) hyperNodesThatClaimMember(memberName, exclude string) []string {
+	var claimers []string
+	for name, hnInfo := range hni.hyperNodes {
+		if name == exclude || hnInfo == nil || hnInfo.HyperNode == nil {
+			continue
+		}
+		for _, member := range hnInfo.HyperNode.Spec.Members {
+			if member.Type == topologyv1alpha1.MemberTypeHyperNode &&
+				member.Selector.ExactMatch != nil &&
+				member.Selector.ExactMatch.Name == memberName {
+				claimers = append(claimers, name)
+				break
 			}
 		}
 	}
-	hni.builtErrHyperNode = ""
+	return claimers
+}
+
+// updateAncestors rebuilds the cache for the ancestor chain of the given HyperNode.
+func (hni *HyperNodesInfo) updateAncestors(name string) error {
+	nodes, err := hni.nodeLister.List(labels.Everything())
+	if err != nil {
+		klog.ErrorS(err, "Failed to list nodes", "hyperNodeName", name)
+		hni.setReady(false)
+		return err
+	}
+
+	if err := hni.rebuildCache(name, nodes); err != nil {
+		hni.setReady(false)
+		return err
+	}
+
 	hni.setReady(true)
 	return nil
 }
 
-func (hni *HyperNodesInfo) rebuildCache(name string) error {
+// rebuildCache recomputes the realNodesSet and parent/child relationships for the
+// full ancestor chain of 'name', using the provided node list.
+// The ancestor set is computed once and reused across all BuildHyperNodeCache calls
+// to avoid repeated allocations.
+func (hni *HyperNodesInfo) rebuildCache(name string, nodes []*corev1.Node) error {
 	ancestors := hni.hyperNodes.GetAncestors(name)
-	// Clear realNodesSet of hyperNode before rebuild hyperNode cache.
+	ancestorSet := sets.New(ancestors...)
+
+	// Clear all derived state for ancestors before recomputing from scratch.
 	for _, ancestor := range ancestors {
 		delete(hni.realNodesSet, ancestor)
 		hni.resetParent(ancestor)
@@ -576,17 +678,13 @@ func (hni *HyperNodesInfo) rebuildCache(name string) error {
 
 	processed := sets.New[string]()
 	ancestorsChain := sets.New[string]()
-	nodes, err := hni.nodeLister.List(labels.Everything())
-	if err != nil {
-		klog.ErrorS(err, "Failed to list nodes", "hyperNodeName", name)
-		return err
-	}
-
 	for _, ancestor := range ancestors {
-		if hn, ok := hni.hyperNodes[ancestor]; ok {
-			if err := hni.BuildHyperNodeCache(hn, processed, ancestorsChain, sets.New[string](ancestors...), nodes); err != nil {
-				return err
-			}
+		hn, ok := hni.hyperNodes[ancestor]
+		if !ok {
+			continue
+		}
+		if err := hni.BuildHyperNodeCache(hn, processed, ancestorsChain, ancestorSet, nodes); err != nil {
+			return err
 		}
 	}
 

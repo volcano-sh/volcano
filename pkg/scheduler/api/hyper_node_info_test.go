@@ -17,7 +17,9 @@ limitations under the License.
 package api
 
 import (
+	"fmt"
 	"log"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -93,6 +95,106 @@ func TestHyperNodesInfo_UpdateHyperNode_Normal(t *testing.T) {
 			assert.Equal(t, tt.ready, hni.Ready())
 		})
 	}
+}
+
+func TestHyperNodesInfo_UpdateHyperNode_NoSpecChange(t *testing.T) {
+	// Exact-match HyperNode: realNodesSet is purely spec-driven, so an unchanged
+	// spec (only metadata changed) must NOT trigger a rebuild.
+	selector := "exact"
+	s0 := BuildHyperNode("s0", 1, []MemberConfig{{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil}})
+	hyperNodes := map[string]*HyperNodeInfo{
+		"s0": NewHyperNodeInfo(s0),
+	}
+	hyperNodesSetByTier := map[int]sets.Set[string]{
+		1: sets.New[string]("s0"),
+	}
+	realNodesSet := map[string]sets.Set[string]{
+		"s0": sets.New[string]("node-0"),
+	}
+	ready := new(atomic.Bool)
+	ready.Store(false)
+	hni := NewHyperNodesInfoWithCache(hyperNodes, hyperNodesSetByTier, realNodesSet, ready)
+
+	updated := s0.DeepCopy()
+	updated.Labels = map[string]string{"env": "test"}
+
+	err := hni.UpdateHyperNode(updated)
+	assert.NoError(t, err)
+	// ready must remain unchanged (no rebuild happened).
+	assert.False(t, hni.Ready())
+	assert.Equal(t, realNodesSet, hni.realNodesSet)
+	assert.Equal(t, hyperNodesSetByTier, hni.hyperNodesSetByTier)
+	assert.Equal(t, "test", hni.hyperNodes["s0"].HyperNode.Labels["env"])
+}
+
+func TestHyperNodesInfo_UpdateHyperNode_RegexMember_AlwaysRebuilds(t *testing.T) {
+	// Regex-match HyperNode: even if the spec is unchanged, a rebuild must happen
+	// because the matching node set depends on current cluster state (node add/delete).
+	s0 := BuildHyperNode("s0", 1, []MemberConfig{{"node-.*", topologyv1alpha1.MemberTypeNode, "regex", nil}})
+
+	informerFactory := informers.NewSharedInformerFactory(fakeclientset.NewClientset(), 0)
+	nodeLister := informerFactory.Core().V1().Nodes().Lister()
+	hni := NewHyperNodesInfo(nodeLister)
+
+	err := hni.UpdateHyperNode(s0)
+	assert.NoError(t, err)
+	// No real nodes in the lister yet → realNodesSet for s0 is empty/absent.
+	assert.True(t, hni.Ready())
+
+	// Same spec, but calling UpdateHyperNode again must still rebuild (node state may differ).
+	err = hni.UpdateHyperNode(s0.DeepCopy())
+	assert.NoError(t, err)
+	assert.True(t, hni.Ready())
+}
+
+func TestHyperNodesInfo_UpdateHyperNode_TierOnlyChange(t *testing.T) {
+	selector := "exact"
+	s0 := BuildHyperNode("s0", 1, []MemberConfig{{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil}})
+	hyperNodes := map[string]*HyperNodeInfo{
+		"s0": NewHyperNodeInfo(s0),
+	}
+	hyperNodesSetByTier := map[int]sets.Set[string]{
+		1: sets.New[string]("s0"),
+	}
+	realNodesSet := map[string]sets.Set[string]{
+		"s0": sets.New[string]("node-0"),
+	}
+	ready := new(atomic.Bool)
+	ready.Store(false)
+	hni := NewHyperNodesInfoWithCache(hyperNodes, hyperNodesSetByTier, realNodesSet, ready)
+
+	updated := s0.DeepCopy()
+	updated.Spec.Tier = 2
+
+	err := hni.UpdateHyperNode(updated)
+	assert.NoError(t, err)
+	assert.False(t, hni.Ready())
+	assert.Equal(t, realNodesSet, hni.realNodesSet)
+	assert.Equal(t, map[int]sets.Set[string]{2: sets.New[string]("s0")}, hni.hyperNodesSetByTier)
+	assert.Equal(t, 2, hni.hyperNodes["s0"].tier)
+}
+
+func TestHyperNodesInfo_UpdateHyperNode_MembersChangeTriggersRebuild(t *testing.T) {
+	selector := "exact"
+	s0 := BuildHyperNode("s0", 1, []MemberConfig{{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil}})
+
+	informerFactory := informers.NewSharedInformerFactory(fakeclientset.NewClientset(), 0)
+	nodeLister := informerFactory.Core().V1().Nodes().Lister()
+	hni := NewHyperNodesInfo(nodeLister)
+
+	err := hni.UpdateHyperNode(s0)
+	assert.NoError(t, err)
+	assert.Equal(t, sets.New[string]("node-0"), hni.realNodesSet["s0"])
+
+	updated := BuildHyperNode("s0", 1, []MemberConfig{
+		{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil},
+		{"node-1", topologyv1alpha1.MemberTypeNode, selector, nil},
+	})
+
+	err = hni.UpdateHyperNode(updated)
+	assert.NoError(t, err)
+	assert.True(t, hni.Ready())
+	assert.Equal(t, sets.New[string]("node-0", "node-1"), hni.realNodesSet["s0"])
 }
 
 func TestHyperNodesInfo_UpdateHyperNode_WithCycle(t *testing.T) {
@@ -199,7 +301,6 @@ func TestHyperNodesInfo_UpdateHyperNode_MultipleParents(t *testing.T) {
 	tests := []struct {
 		name                   string
 		initialHyperNodes      []*topologyv1alpha1.HyperNode
-		correctHyperNode       *topologyv1alpha1.HyperNode
 		expectedRealNodesSet   map[string]sets.Set[string]
 		expectedHyperNodesInfo map[string]string
 		expectError            bool
@@ -207,7 +308,6 @@ func TestHyperNodesInfo_UpdateHyperNode_MultipleParents(t *testing.T) {
 		{
 			name:              "multi parents",
 			initialHyperNodes: initialHyperNodes,
-			correctHyperNode:  s22,
 			expectedRealNodesSet: map[string]sets.Set[string]{
 				"s0": sets.New[string]("node-0", "node-1"),
 				"s1": sets.New[string]("node-0", "node-1"),
@@ -238,6 +338,8 @@ func TestHyperNodesInfo_UpdateHyperNode_MultipleParents(t *testing.T) {
 				}
 			}
 			assert.Equal(t, false, hni.Ready())
+
+			fmt.Printf("%v\n", hni.HyperNodesInfo())
 
 			log.Println("begin update...")
 			// update and resolve multi parents.
