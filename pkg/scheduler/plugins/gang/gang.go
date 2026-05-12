@@ -182,10 +182,17 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddJobReadyFn(gp.Name(), func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
-		if ji.CheckTaskReady() && ji.CheckSubJobReady() && ji.IsReady() {
-			return true
+		taskReady := ji.CheckTaskReady()
+		subJobReady := ji.CheckSubJobReady()
+		jobIsReady := ji.IsReady()
+		isReady := taskReady && subJobReady && jobIsReady
+		if isReady {
+			klog.V(4).Infof("Gang JobReadyFn: job <%s/%s> is ready", ji.Namespace, ji.Name)
+		} else {
+			klog.V(4).Infof("Gang JobReadyFn: job <%s/%s> is NOT ready, taskReady=%v, subJobReady=%v, minAvailableReady=%v",
+				ji.Namespace, ji.Name, taskReady, subJobReady, jobIsReady)
 		}
-		return false
+		return isReady
 	})
 
 	ssn.AddSubJobReadyFn(gp.Name(), func(obj interface{}) bool {
@@ -216,6 +223,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		return ji.IsStarving()
 	}
 	ssn.AddJobStarvingFns(gp.Name(), jobStarvingFn)
+	klog.V(3).Infof("Gang plugin initialized, total jobs: %d, total queues: %d", len(ssn.Jobs), len(ssn.Queues))
 }
 
 func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
@@ -240,8 +248,20 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				return num + job.ReadyTaskNum()
 			}
 			unreadyTaskCount = job.MinAvailable - schedulableTaskNum()
-			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
-				unreadyTaskCount, len(job.Tasks), job.FitError())
+			pendingTaskNames := make([]string, 0, len(job.TaskStatusIndex[api.Pending]))
+			for _, task := range job.TaskStatusIndex[api.Pending] {
+				pendingTaskNames = append(pendingTaskNames, task.Name)
+			}
+
+			const maxPendingTasksInMsg = 5
+			pendingInMsg := pendingTaskNames
+			if len(pendingInMsg) > maxPendingTasksInMsg {
+				pendingInMsg = append(pendingInMsg[:maxPendingTasksInMsg], fmt.Sprintf("and %d more", len(pendingInMsg)-maxPendingTasksInMsg))
+			}
+			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable, pending tasks: %v. FitError: %v",
+				unreadyTaskCount, len(job.Tasks), pendingInMsg, job.FitError())
+			klog.V(3).Infof("Gang OnSessionClose: job <%s/%s> unschedulable, all pending tasks: %v",
+				job.Namespace, job.Name, pendingTaskNames)
 
 			unScheduleJobCount++
 			if !ssn.IsJobTerminated(job.UID) {
@@ -286,4 +306,22 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	}
 
 	metrics.UpdateUnscheduleJobCount(unScheduleJobCount)
+
+	var totalJobsWithTasks int
+	var readyJobCount, unreadyJobCount, terminatedJobCount int
+	for _, job := range ssn.Jobs {
+		if len(job.Tasks) == 0 {
+			continue
+		}
+		totalJobsWithTasks++
+		if ssn.IsJobTerminated(job.UID) {
+			terminatedJobCount++
+		} else if job.IsReady() {
+			readyJobCount++
+		} else {
+			unreadyJobCount++
+		}
+	}
+	klog.V(3).Infof("Gang OnSessionClose: total jobs: %d, ready: %d, unready: %d, terminated: %d",
+		totalJobsWithTasks, readyJobCount, unreadyJobCount, terminatedJobCount)
 }
