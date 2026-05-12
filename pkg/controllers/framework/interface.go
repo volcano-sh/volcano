@@ -24,6 +24,8 @@ import (
 
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
+
+	podgroup "volcano.sh/volcano/pkg/controllers/podgroup/options"
 )
 
 // ControllerOption is the main context object for the controllers.
@@ -37,10 +39,11 @@ type ControllerOption struct {
 	CronJobWorkerNum        uint32
 	MaxRequeueNum           int
 
-	InheritOwnerAnnotations bool
-	WorkerThreadsForPG      uint32
-	WorkerThreadsForQueue   uint32
-	WorkerThreadsForGC      uint32
+	PodGroupControllerOptions podgroup.Options
+
+	WorkerThreadsForPG    uint32
+	WorkerThreadsForQueue uint32
+	WorkerThreadsForGC    uint32
 
 	// Config holds the common attributes that can be passed to a Kubernetes client
 	// and controllers registered by the users can use it.
