@@ -67,6 +67,9 @@ const (
 
 	// PodGroupScheduled is scheduled event type
 	PodGroupScheduled PodGroupConditionType = "Scheduled"
+
+	// PodGroupInqueuedType is the condition type indicating when a PodGroup entered Inqueue state
+	PodGroupInqueuedType PodGroupConditionType = "Inqueued"
 )
 
 type PodGroupConditionDetail string

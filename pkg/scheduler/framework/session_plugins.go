@@ -146,6 +146,16 @@ func (ssn *Session) AddJobEnqueuedFn(name string, fn api.JobEnqueuedFn) {
 	ssn.jobEnqueuedFns[name] = fn
 }
 
+// AddJobDequeueableFn add jobDequeueable function
+func (ssn *Session) AddJobDequeueableFn(name string, fn api.VoteFn) {
+	ssn.jobDequeueableFns[name] = fn
+}
+
+// AddJobDequeuedFn add jobDequeued function
+func (ssn *Session) AddJobDequeuedFn(name string, fn api.JobEnqueuedFn) {
+	ssn.jobDequeuedFns[name] = fn
+}
+
 // AddTargetJobFn add targetjob function
 func (ssn *Session) AddTargetJobFn(name string, fn api.TargetJobFn) {
 	ssn.targetJobFns[name] = fn
@@ -562,6 +572,53 @@ func (ssn *Session) JobEnqueued(obj interface{}) {
 				continue
 			}
 			fn, found := ssn.jobEnqueuedFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			fn(obj)
+		}
+	}
+}
+
+// JobDequeueable invoke jobDequeueableFns function of the plugins.
+// Returns true if any plugin votes to dequeue the job.
+func (ssn *Session) JobDequeueable(obj interface{}) bool {
+	var hasFound bool
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledJobEnqueued) {
+				continue
+			}
+			fn, found := ssn.jobDequeueableFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			res := fn(obj)
+			if res < 0 {
+				return false
+			}
+			if res > 0 {
+				hasFound = true
+			}
+		}
+		if hasFound {
+			return true
+		}
+	}
+
+	return false
+}
+
+// JobDequeued invoke jobDequeuedFns function of the plugins
+func (ssn *Session) JobDequeued(obj interface{}) {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledJobEnqueued) {
+				continue
+			}
+			fn, found := ssn.jobDequeuedFns[plugin.Name]
 			if !found {
 				continue
 			}
