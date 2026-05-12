@@ -1,0 +1,4 @@
+dependencies:
+  - name: jobflow
+    version: "1.0.0"
+    repository: "file://charts/jobflow"
