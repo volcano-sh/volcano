@@ -1,0 +1,79 @@
+# Simple MPI Job with Argo Workflow
+# This example creates a basic MPI job using Argo without WorkflowTemplate
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: mpi-volcano-
+  namespace: argo
+spec:
+  serviceAccountName: argo
+  entrypoint: mpi-job
+  
+  templates:
+  - name: mpi-job
+    steps:
+    - - name: submit
+        template: submit-mpi
+    - - name: monitor
+        template: monitor-mpi
+
+  - name: submit-mpi
+    resource:
+      action: create
+      successCondition: status.state.phase == Completed
+      failureCondition: status.state.phase == Failed
+      manifest: |
+        apiVersion: batch.volcano.sh/v1alpha1
+        kind: Job
+        metadata:
+          generateName: mpi-job-
+          ownerReferences:
+          - apiVersion: argoproj.io/v1alpha1
+            blockOwnerDeletion: true
+            kind: Workflow
+            name: "{{workflow.name}}"
+            uid: "{{workflow.uid}}"
+        spec:
+          minAvailable: 3
+          schedulerName: volcano
+          plugins:
+            ssh: []
+            svc: []
+          policies:
+            - event: TaskCompleted
+              action: CompleteJob
+          tasks:
+          - name: mpimaster
+            replicas: 1
+            template:
+              spec:
+                containers:
+                - name: mpimaster
+                  image: mpioperator/mpi-pi:latest
+                  command: [mpirun, "--allow-run-as-root", "--hostfile", "/etc/volcano/mpi.hostfile", "-np", "2", "./mpi-pi"]
+                  resources:
+                    requests:
+                      cpu: "1"
+                      memory: "1Gi"
+          - name: mpiworker
+            replicas: 2
+            template:
+              spec:
+                containers:
+                - name: mpiworker
+                  image: mpioperator/mpi-pi:latest
+                  command: [/usr/sbin/sshd, "-D"]
+                  resources:
+                    requests:
+                      cpu: "1"
+                      memory: "1Gi"
+
+  - name: monitor-mpi
+    container:
+      image: bitnami/kubectl:latest
+      command: [sh, -c]
+      args:
+        - |
+          echo "Monitoring MPI job..."
+          kubectl get jobs -n $(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace) -l batch.volcano.sh/job-name
