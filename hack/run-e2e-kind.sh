@@ -223,6 +223,29 @@ EOF
     shardSyncPeriod: "30s"
     enableNodeEventTrigger: true'
   ;;
+"SHARDINGCONTROLLER")
+  echo "Install volcano chart with crd version $crd_version and sharding controller enabled"
+  helm-install-volcano '  controller_log_level: 5
+  controller_enabled_controllers: "*"
+  sharding_configmap_data: |
+    schedulerConfigs:
+      - name: volcano
+        type: volcano
+        cpuUtilizationMin: 0.0
+        cpuUtilizationMax: 0.6
+        preferWarmupNodes: false
+        minNodes: 2
+        maxNodes: 100
+      - name: agent-scheduler
+        type: agent
+        cpuUtilizationMin: 0.7
+        cpuUtilizationMax: 1.0
+        preferWarmupNodes: true
+        minNodes: 2
+        maxNodes: 100
+    shardSyncPeriod: "60s"
+    enableNodeEventTrigger: true'
+  ;;
 *)
   echo "Install volcano chart with crd version $crd_version"
   helm-install-volcano
@@ -414,6 +437,10 @@ case ${E2E_TYPE} in
 "AGENTSCHEDULER")
     echo "Running agent scheduler e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/agentscheduler/
+    ;;
+"SHARDINGCONTROLLER")
+    echo "Running sharding controller e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/shardingcontroller/
     ;;
 esac
 
