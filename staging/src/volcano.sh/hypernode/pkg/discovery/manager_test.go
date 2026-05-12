@@ -30,9 +30,9 @@ import (
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	fakevcclientset "volcano.sh/apis/pkg/client/clientset/versioned/fake"
-	"volcano.sh/volcano/pkg/controllers/hypernode/api"
-	"volcano.sh/volcano/pkg/controllers/hypernode/config"
-	fakedisc "volcano.sh/volcano/pkg/controllers/hypernode/discovery/fake"
+	"volcano.sh/hypernode/pkg/api"
+	"volcano.sh/hypernode/pkg/config"
+	fakedisc "volcano.sh/hypernode/pkg/discovery/fake"
 )
 
 func TestManager_StartMultipleDiscoverers(t *testing.T) {

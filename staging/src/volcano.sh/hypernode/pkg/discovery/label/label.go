@@ -43,8 +43,8 @@ import (
 	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
 	topologylisterv1alpha1 "volcano.sh/apis/pkg/client/listers/topology/v1alpha1"
 
-	"volcano.sh/volcano/pkg/controllers/hypernode/api"
-	"volcano.sh/volcano/pkg/controllers/hypernode/utils"
+	"volcano.sh/hypernode/pkg/api"
+	"volcano.sh/hypernode/pkg/utils"
 )
 
 const (

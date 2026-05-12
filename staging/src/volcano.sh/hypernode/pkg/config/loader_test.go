@@ -29,7 +29,7 @@ import (
 	v1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 
-	"volcano.sh/volcano/pkg/controllers/hypernode/api"
+	"volcano.sh/hypernode/pkg/api"
 )
 
 func TestLoadConfig(t *testing.T) {
