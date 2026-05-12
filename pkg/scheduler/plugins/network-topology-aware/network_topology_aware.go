@@ -299,7 +299,10 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 					"highestAllowedTier", highestAllowedTier, "allocatedHyperNode", job.AllocatedHyperNode)
 				return nil
 			}
-			return nta.truncateHyperNodeGradientsByPurpose(result, purpose)
+			if purpose != api.PurposeEvict {
+				return result
+			}
+			return nta.reverseAndCapEvictionGradients(result)
 		}
 		return [][]*api.HyperNodeInfo{{hyperNode}}
 	})
@@ -313,7 +316,10 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 					"highestAllowedTier", highestAllowedTier, "allocatedHyperNode", subJob.AllocatedHyperNode)
 				return nil
 			}
-			return nta.truncateHyperNodeGradientsByPurpose(result, purpose)
+			if purpose != api.PurposeEvict {
+				return result
+			}
+			return nta.reverseAndCapEvictionGradients(result)
 		}
 		return [][]*api.HyperNodeInfo{{hyperNode}}
 	})
@@ -720,15 +726,17 @@ func getHighestAllowedHyperNode(hyperNodes api.HyperNodeInfoMap, highestAllowedT
 func (nta *networkTopologyAwarePlugin) OnSessionClose(ssn *framework.Session) {
 }
 
-func (nta *networkTopologyAwarePlugin) truncateHyperNodeGradientsByPurpose(gradients [][]*api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
-	if purpose != api.PurposeEvict || nta.maxHyperNodesForEviction <= 0 {
+// reverseAndCapEvictionGradients reverses the gradient tier order so wider/higher-tier
+// domains are visited first to increase the chance of finding a feasible placement,
+// and caps the total number of HyperNodes returned at maxHyperNodesForEviction.
+func (nta *networkTopologyAwarePlugin) reverseAndCapEvictionGradients(gradients [][]*api.HyperNodeInfo) [][]*api.HyperNodeInfo {
+	if nta.maxHyperNodesForEviction <= 0 {
 		return gradients
 	}
 
 	remaining := nta.maxHyperNodesForEviction
 	result := make([][]*api.HyperNodeInfo, 0, len(gradients))
-	// For eviction, prefer higher-level topology domains first.
-	// Gradients are ordered from lower tier to higher tier, so we truncate from the end.
+	// Gradients run lower tier to higher tier; walk from the end to prefer wider domains first.
 	for i := len(gradients) - 1; i >= 0; i-- {
 		gradient := gradients[i]
 		if remaining == 0 {

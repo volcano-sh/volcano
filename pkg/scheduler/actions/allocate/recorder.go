@@ -80,6 +80,14 @@ func (d *Recorder) UpdateDecisionToJob(job *api.JobInfo, hyperNodes api.HyperNod
 				"old", subJob.AllocatedHyperNode, "new", allocatedHyperNode)
 			subJob.AllocatedHyperNode = allocatedHyperNode
 		}
+		// The nomination's promise has been redeemed by this commit.
+		// Clearing it prevents the per-subJob fast path from retrying on
+		// stale state in a later session.
+		if subJob.NominatedHyperNode != "" {
+			klog.V(3).InfoS("clear nominated hyperNode for committed subJob",
+				"subJob", subJob.UID, "old", subJob.NominatedHyperNode)
+			subJob.NominatedHyperNode = ""
+		}
 	}
 }
 

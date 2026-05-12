@@ -71,6 +71,33 @@ func TestParseArguments(t *testing.T) {
 	assert.False(t, action.allowWholeBundle)
 }
 
+func TestParseArguments_InvalidMaxDomainsFallsBackToDefault(t *testing.T) {
+	cases := []struct {
+		name  string
+		value int
+	}{
+		{name: "zero", value: 0},
+		{name: "negative", value: -1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ssn := &framework.Session{
+				Configurations: []conf.Configuration{
+					{
+						Name: "gangpreempt",
+						Arguments: map[string]interface{}{
+							MaxDomainsKey: tc.value,
+						},
+					},
+				},
+			}
+			action := New()
+			action.parseArguments(ssn)
+			assert.Equal(t, defaultMaxDomains, action.maxDomains)
+		})
+	}
+}
+
 func TestSelectDomainVictims_RespectAllowWholeBundle(t *testing.T) {
 	preemptorJobID := api.JobID("ns/preemptor")
 	victimJobID := api.JobID("ns/victim")
