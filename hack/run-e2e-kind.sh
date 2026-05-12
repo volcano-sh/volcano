@@ -247,7 +247,7 @@ EOF
     enableNodeEventTrigger: true'
   ;;
 "SCHEDULERSHARDING")
-  echo "Install volcano chart with crd version $crd_version and sharding controller enabled"
+  echo "Install volcano chart with crd version $crd_version and scheduler sharding enabled"
   helm-install-volcano '  controller_log_level: 5
   controller_enabled_controllers: "*"
   sharding_configmap_data: |
