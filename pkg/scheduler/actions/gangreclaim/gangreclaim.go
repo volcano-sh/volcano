@@ -26,14 +26,20 @@ import (
 )
 
 const (
-	MaxDomainsKey        = "maxDomains"
-	AllowWholeBundleKey  = "allowWholeBundle"
-	defaultMaxDomains    = 8
+	// MaxDomainsKey caps the number of candidate hyper-node domains scanned per starving reclaimer.
+	MaxDomainsKey = "maxDomains"
+	// AllowWholeBundleKey toggles whether whole-job ("whole-bundle") victim bundles may be selected.
+	AllowWholeBundleKey = "allowWholeBundle"
+	// defaultMaxDomains is used when maxDomains is unset or invalid (<= 0).
+	defaultMaxDomains = 8
+	// defaultWholeBundleOn is the default for allowWholeBundle.
 	defaultWholeBundleOn = true
 )
 
 type Action struct {
-	maxDomains       int
+	// maxDomains caps the number of candidate hyper-node domains scanned per starving reclaimer.
+	maxDomains int
+	// allowWholeBundle permits selecting whole-job victim bundles when true.
 	allowWholeBundle bool
 }
 
@@ -53,6 +59,11 @@ func (gr *Action) Initialize() {}
 func (gr *Action) parseArguments(ssn *framework.Session) {
 	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, gr.Name())
 	arguments.GetInt(&gr.maxDomains, MaxDomainsKey)
+	if gr.maxDomains <= 0 {
+		klog.Warningf("Invalid %s value %d for action %s, falling back to default %d",
+			MaxDomainsKey, gr.maxDomains, gr.Name(), defaultMaxDomains)
+		gr.maxDomains = defaultMaxDomains
+	}
 	arguments.GetBool(&gr.allowWholeBundle, AllowWholeBundleKey)
 }
 
@@ -103,11 +114,12 @@ func (gr *Action) Execute(ssn *framework.Session) {
 			}
 			job := jobsQ.Pop().(*api.JobInfo)
 			stmt := framework.NewStatement(ssn)
-			_ = gr.reclaimJobInDomains(ssn, stmt, queue, job)
+			subJobHyperNodes := gr.reclaimJobInDomains(ssn, stmt, queue, job)
 
 			// Mirror legacy commit behavior: commit only when the job becomes pipelined.
 			if ssn.JobPipelined(job) {
 				stmt.Commit()
+				gangevict.ApplySubJobNominations(job, subJobHyperNodes)
 			} else {
 				stmt.Discard()
 			}
@@ -117,14 +129,14 @@ func (gr *Action) Execute(ssn *framework.Session) {
 
 func (gr *Action) UnInitialize() {}
 
-func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.Statement, queue *api.QueueInfo, job *api.JobInfo) bool {
+func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.Statement, queue *api.QueueInfo, job *api.JobInfo) map[api.SubJobID]string {
 	pending := gangevict.CollectPendingTasksForGangEviction(ssn, job, ssn.SubJobOrderFn, ssn.TaskOrderFn)
 	if len(pending) == 0 {
-		return false
+		return nil
 	}
 	if queue != nil && !ssn.Preemptive(queue, pending) {
 		klog.V(3).Infof("Queue <%s> cannot reclaim for job <%s/%s>, skip", queue.Name, job.Namespace, job.Name)
-		return false
+		return nil
 	}
 	jobNeed := gangevict.SumInitResreq(pending)
 	domains := gangevict.GetCandidateDomains(ssn, job, gr.maxDomains)
@@ -161,17 +173,17 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 			} else {
 				jobHN = &api.HyperNodeInfo{Name: domain}
 			}
-			plan, ok := gangevict.BuildNominationPlanInDomain(ssn, queue, job, jobHN, attemptVictims, gangevict.ReasonGangReclaim)
+			plan, subJobHyperNodes, ok := gangevict.BuildNominationPlanInDomain(ssn, queue, job, jobHN, attemptVictims, gangevict.ReasonGangReclaim)
 			if !ok {
 				continue
 			}
 			if err := stmt.RecoverOperations(plan); err != nil {
 				continue
 			}
-			return true
+			return subJobHyperNodes
 		}
 	}
-	return false
+	return nil
 }
 
 func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l, r *api.QueueInfo) bool, reclaimerJob *api.JobInfo, pendingTasks []*api.TaskInfo, domain string) []*gangevict.Bundle {

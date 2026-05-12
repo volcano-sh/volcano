@@ -26,14 +26,20 @@ import (
 )
 
 const (
-	MaxDomainsKey        = "maxDomains"
-	AllowWholeBundleKey  = "allowWholeBundle"
-	defaultMaxDomains    = 8
+	// MaxDomainsKey caps the number of candidate hyper-node domains scanned per starving preemptor.
+	MaxDomainsKey = "maxDomains"
+	// AllowWholeBundleKey toggles whether whole-job ("whole-bundle") victim bundles may be selected.
+	AllowWholeBundleKey = "allowWholeBundle"
+	// defaultMaxDomains is used when maxDomains is unset or invalid (<= 0).
+	defaultMaxDomains = 8
+	// defaultWholeBundleOn is the default for allowWholeBundle.
 	defaultWholeBundleOn = true
 )
 
 type Action struct {
-	maxDomains       int
+	// maxDomains caps the number of candidate hyper-node domains scanned per starving preemptor.
+	maxDomains int
+	// allowWholeBundle permits selecting whole-job victim bundles when true.
 	allowWholeBundle bool
 }
 
@@ -53,6 +59,11 @@ func (gp *Action) Initialize() {}
 func (gp *Action) parseArguments(ssn *framework.Session) {
 	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, gp.Name())
 	arguments.GetInt(&gp.maxDomains, MaxDomainsKey)
+	if gp.maxDomains <= 0 {
+		klog.Warningf("Invalid %s value %d for action %s, falling back to default %d",
+			MaxDomainsKey, gp.maxDomains, gp.Name(), defaultMaxDomains)
+		gp.maxDomains = defaultMaxDomains
+	}
 	arguments.GetBool(&gp.allowWholeBundle, AllowWholeBundleKey)
 }
 
@@ -62,7 +73,8 @@ func (gp *Action) Execute(ssn *framework.Session) {
 
 	gp.parseArguments(ssn)
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
-	queues := map[api.QueueID]*api.QueueInfo{}
+	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
+	queueMap := map[api.QueueID]*api.QueueInfo{}
 
 	for _, job := range ssn.Jobs {
 		if job.IsPending() {
@@ -76,7 +88,10 @@ func (gp *Action) Execute(ssn *framework.Session) {
 		if !found {
 			continue
 		}
-		queues[queue.UID] = queue
+		if _, ok := queueMap[queue.UID]; !ok {
+			queueMap[queue.UID] = queue
+			queues.Push(queue)
+		}
 
 		if !ssn.JobStarving(job) {
 			continue
@@ -87,7 +102,8 @@ func (gp *Action) Execute(ssn *framework.Session) {
 		preemptorsMap[job.Queue].Push(job)
 	}
 
-	for _, queue := range queues {
+	for !queues.Empty() {
+		queue := queues.Pop().(*api.QueueInfo)
 		for {
 			preemptors := preemptorsMap[queue.UID]
 			if preemptors == nil || preemptors.Empty() {
@@ -96,16 +112,12 @@ func (gp *Action) Execute(ssn *framework.Session) {
 
 			preemptorJob := preemptors.Pop().(*api.JobInfo)
 			stmt := framework.NewStatement(ssn)
-			assigned := false
-
-			assigned, _ = gp.preemptJobInDomains(ssn, stmt, queue, preemptorJob)
+			subJobHyperNodes := gp.preemptJobInDomains(ssn, stmt, queue, preemptorJob)
 
 			// Mirror legacy commit behavior: commit only when the job becomes pipelined.
 			if ssn.JobPipelined(preemptorJob) {
 				stmt.Commit()
-				if assigned {
-					preemptors.Push(preemptorJob)
-				}
+				gangevict.ApplySubJobNominations(preemptorJob, subJobHyperNodes)
 			} else {
 				stmt.Discard()
 			}
@@ -115,10 +127,10 @@ func (gp *Action) Execute(ssn *framework.Session) {
 
 func (gp *Action) UnInitialize() {}
 
-func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.Statement, queue *api.QueueInfo, preemptorJob *api.JobInfo) (bool, error) {
+func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.Statement, queue *api.QueueInfo, preemptorJob *api.JobInfo) map[api.SubJobID]string {
 	pending := gangevict.CollectPendingTasksForGangEviction(ssn, preemptorJob, ssn.SubJobOrderFn, ssn.TaskOrderFn)
 	if len(pending) == 0 {
-		return false, nil
+		return nil
 	}
 
 	jobNeed := gangevict.SumInitResreq(pending)
@@ -156,17 +168,17 @@ func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.St
 			} else {
 				jobHN = &api.HyperNodeInfo{Name: domain}
 			}
-			plan, ok := gangevict.BuildNominationPlanInDomain(ssn, queue, preemptorJob, jobHN, attemptVictims, gangevict.ReasonGangPreempt)
+			plan, subJobHyperNodes, ok := gangevict.BuildNominationPlanInDomain(ssn, queue, preemptorJob, jobHN, attemptVictims, gangevict.ReasonGangPreempt)
 			if !ok {
 				continue
 			}
 			if err := stmt.RecoverOperations(plan); err != nil {
 				continue
 			}
-			return true, nil
+			return subJobHyperNodes
 		}
 	}
-	return false, nil
+	return nil
 }
 
 func (gp *Action) selectDomainBundles(ssn *framework.Session, preemptorJob *api.JobInfo, pendingTasks []*api.TaskInfo, domain string) []*gangevict.Bundle {

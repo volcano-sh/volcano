@@ -35,30 +35,38 @@ const (
 	ReasonGangReclaim = "gangreclaim"
 )
 
-// BuildNominationPlanInDomain performs a dry-run in the given domain and returns
-// a statement plan only when the target job reaches JobPipelined.
-//
-// jobDomainHyperNode is the job-level hypernode context for this eviction domain (same role as
-// hyperNodeForJob in allocate's allocateForSubJob). Callers must pass a non-nil hypernode whose
-// Name keys ssn.RealNodesList for the node universe used in simulation.
-func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo, jobDomainHyperNode *api.HyperNodeInfo, victims []*api.TaskInfo, reason string) (*framework.Statement, bool) {
+// BuildNominationPlanInDomain dry-runs eviction + placement in jobDomainHyperNode and returns a
+// fresh plan Statement only when the target job reaches JobPipelined. session is clean on return;
+// callers must RecoverOperations(plan) to commit, or may drop the plan if not proceeding.
+func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo, jobDomainHyperNode *api.HyperNodeInfo, victims []*api.TaskInfo, reason string) (*framework.Statement, map[api.SubJobID]string, bool) {
 	if ssn == nil || job == nil || jobDomainHyperNode == nil {
-		return nil, false
+		return nil, nil, false
 	}
 	nodesForDomain := ssn.RealNodesList[jobDomainHyperNode.Name]
 	if len(nodesForDomain) == 0 {
-		return nil, false
+		return nil, nil, false
 	}
 
-	placementBefore := placementProgressCount(job)
 	jobWasReady := ssn.JobReady(job)
 
-	evictStmt := framework.NewStatement(ssn)
-	for _, victim := range victims {
-		evictStmt.Evict(victim, reason)
+	// Statement chain: one victimStmt (if any victims) plus one per successfully pipelined
+	// sub-job, each kept applied to session so subsequent trials see the cumulative state. Failed
+	// gradient trials Discard themselves. On success the chain is Saved into the returned plan
+	// and then Discarded; on failure the chain is Discarded outright.
+	var chain []*framework.Statement
+	discardChain := func() {
+		for i := len(chain) - 1; i >= 0; i-- {
+			chain[i].Discard()
+		}
 	}
-	cumulativePlan := framework.SaveOperations(evictStmt)
-	evictStmt.Discard()
+
+	if len(victims) > 0 {
+		victimStmt := framework.NewStatement(ssn)
+		for _, victim := range victims {
+			victimStmt.Evict(victim, reason)
+		}
+		chain = append(chain, victimStmt)
+	}
 
 	victimsPresent := len(victims) > 0
 	enablePredCache := true
@@ -69,8 +77,12 @@ func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, j
 		// TODO: Worksheet is empty while allocate may still have eligible pending (e.g. SchGated /
 		// empty-resreq filtered here only, pending tasks missing from SubJobs maps with fallback
 		// ordering in allocate, or subjob index skew). Model those paths before returning a plan.
-		return nil, false
+		discardChain()
+		return nil, nil, false
 	}
+
+	subJobHyperNodes := make(map[api.SubJobID]string)
+	jobPipelinedAfterLastSubJob := false
 
 	for !worksheet.subJobs.Empty() {
 		subJob := worksheet.subJobs.Pop().(*api.SubJobInfo)
@@ -79,9 +91,8 @@ func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, j
 			continue
 		}
 
-		savedAllocHN := subJob.AllocatedHyperNode
-
-		var winner hyperNodeSimTrial
+		var winnerStmt *framework.Statement
+		var winnerHN string
 		if job.ContainsHardTopology() {
 			gradients := ssn.HyperNodeGradientForSubJobFn(subJob, jobDomainHyperNode, api.PurposeEvict)
 		gradientSearch:
@@ -90,62 +101,47 @@ func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, j
 					if hn == nil {
 						continue
 					}
-					var ok bool
-					winner, ok = runSimulateTrialAtHyperNode(ssn, cumulativePlan, queue, job, subJob, sjWS, savedAllocHN, hn.Name, victimsPresent, enablePredCache)
-					if ok {
+					if trial, ok := runSimulateTrialAtHyperNode(ssn, queue, job, subJob, sjWS, hn.Name, victimsPresent, enablePredCache); ok {
+						winnerStmt = trial
+						winnerHN = hn.Name
 						break gradientSearch
 					}
 				}
 			}
 		} else {
-			winner, _ = runSimulateTrialAtHyperNode(ssn, cumulativePlan, queue, job, subJob, sjWS, savedAllocHN, hyperNodeKeyForFlat(jobDomainHyperNode), victimsPresent, enablePredCache)
+			hn := hyperNodeKeyForFlat(jobDomainHyperNode)
+			if trial, ok := runSimulateTrialAtHyperNode(ssn, queue, job, subJob, sjWS, hn, victimsPresent, enablePredCache); ok {
+				winnerStmt = trial
+				winnerHN = hn
+			}
 		}
-		if winner.plan == nil {
-			return nil, false
-		}
-
-		cumulativePlan = winner.plan
-		if ssn.HyperNodes != nil && job.ContainsHardTopology() {
-			subJob.AllocatedHyperNode = ssn.HyperNodes.GetLCAHyperNode(savedAllocHN, winner.hyperNode)
-		}
-
-		if winner.remaining != nil && !winner.remaining.Empty() {
-			sjWS.tasks = winner.remaining
-			worksheet.subJobs.Push(subJob)
+		if winnerStmt == nil {
+			discardChain()
+			return nil, nil, false
 		}
 
-		if !jobWasReady && ssn.JobPipelined(job) {
-			return finalizeNominationPlan(ssn, job, cumulativePlan, placementBefore)
-		}
-		if jobWasReady {
+		chain = append(chain, winnerStmt)
+		subJobHyperNodes[subJob.UID] = winnerHN
+		jobPipelinedAfterLastSubJob = ssn.JobPipelined(job)
+
+		// Stop once the cumulative chain satisfies the job.
+		//   jobWasReady:                 job already JobReady; caller only requested one sub-job's pending placement.
+		//   jobPipelinedAfterLastSubJob: starting-up job; cumulative chain now flips JobPipelined.
+		if jobWasReady || jobPipelinedAfterLastSubJob {
 			break
 		}
 	}
 
-	return finalizeNominationPlan(ssn, job, cumulativePlan, placementBefore)
-}
-
-func placementProgressCount(job *api.JobInfo) int {
-	if job == nil {
-		return 0
+	if !jobPipelinedAfterLastSubJob {
+		discardChain()
+		return nil, nil, false
 	}
-	return len(job.TaskStatusIndex[api.Pipelined]) + len(job.TaskStatusIndex[api.Binding]) + len(job.TaskStatusIndex[api.Allocated])
-}
-
-func finalizeNominationPlan(ssn *framework.Session, job *api.JobInfo, cumulativePlan *framework.Statement, placementBefore int) (*framework.Statement, bool) {
-	verify := framework.NewStatement(ssn)
-	if err := verify.RecoverOperations(cumulativePlan); err != nil {
-		verify.Discard()
-		return nil, false
-	}
-	defer verify.Discard()
-	if placementProgressCount(job) <= placementBefore {
-		return nil, false
-	}
-	if !ssn.JobPipelined(job) {
-		return nil, false
-	}
-	return framework.SaveOperations(verify), true
+	// Even on success, the chain is discarded so session is clean for the caller. SaveOperations
+	// clones the ops into the returned plan first; callers replay via RecoverOperations to
+	// actually commit (or ignore the plan, which is safe since session was already cleaned here).
+	plan := framework.SaveOperations(chain...)
+	discardChain()
+	return plan, subJobHyperNodes, true
 }
 
 func hyperNodeKeyForFlat(jobHN *api.HyperNodeInfo) string {
@@ -224,47 +220,76 @@ func organizeEvictionWorksheet(ssn *framework.Session, job *api.JobInfo) *evicti
 	return jWorksheet
 }
 
-// hyperNodeSimTrial holds the outcome of a successful runSimulateTrialAtHyperNode attempt.
-type hyperNodeSimTrial struct {
-	plan      *framework.Statement
-	hyperNode string
-	remaining *util.PriorityQueue
-}
-
-// runSimulateTrialAtHyperNode dry-runs placing sjWS tasks onto RealNodesList[hyperNodeKey]. On success
-// returns a populated hyperNodeSimTrial and true; on failure returns zero value and false. Always restores
-// subJob.AllocatedHyperNode to savedAllocHN.
+// runSimulateTrialAtHyperNode pipelines a sub-job's pending tasks onto nodes within the given
+// hyperNode in a fresh Statement. On success returns that Statement with its ops still applied
+// to session; the caller owns it and must keep, Discard, or Commit it. On failure session is
+// left unchanged.
 func runSimulateTrialAtHyperNode(
 	ssn *framework.Session,
-	cumulativePlan *framework.Statement,
 	queue *api.QueueInfo,
 	job *api.JobInfo,
 	subJob *api.SubJobInfo,
 	sjWS *evictionSubWorksheet,
-	savedAllocHN string,
 	hyperNodeKey string,
 	victimsPresent bool,
 	enablePredCache bool,
-) (hyperNodeSimTrial, bool) {
-	if len(ssn.RealNodesList[hyperNodeKey]) == 0 {
-		return hyperNodeSimTrial{}, false
+) (*framework.Statement, bool) {
+	candidate := ssn.RealNodesList[hyperNodeKey]
+	if len(candidate) == 0 {
+		return nil, false
 	}
+
 	trial := framework.NewStatement(ssn)
-	if err := trial.RecoverOperations(cumulativePlan); err != nil {
-		trial.Discard()
-		subJob.AllocatedHyperNode = savedAllocHN
-		return hyperNodeSimTrial{}, false
+	success := false
+	defer func() {
+		if !success {
+			trial.Discard()
+		}
+	}()
+
+	tasks := sjWS.tasks.Clone()
+	ph := util.NewPredicateHelper()
+	for !tasks.Empty() {
+		task := tasks.Pop().(*api.TaskInfo)
+		if queue != nil && !ssn.Allocatable(queue, task) {
+			return nil, false
+		}
+		schedulable := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
+		nodes := intersectNodesByName(candidate, schedulable)
+		if len(nodes) == 0 {
+			return nil, false
+		}
+		if err := ssn.PrePredicateFn(task); err != nil {
+			return nil, false
+		}
+		predicateNodes, _ := ph.PredicateNodes(task, nodes, func(t *api.TaskInfo, n *api.NodeInfo) error {
+			return simulatePredicate(ssn, t, n)
+		}, enablePredCache, ssn.NodesInShard)
+		if len(predicateNodes) == 0 {
+			return nil, false
+		}
+		bestNode := prioritizeNodesForSimulate(ssn, task, predicateNodes)
+		if bestNode == nil {
+			return nil, false
+		}
+		if !task.InitResreq.LessEqual(bestNode.FutureIdle(), api.Zero) {
+			return nil, false
+		}
+		if err := trial.Pipeline(task, bestNode.Name, victimsPresent); err != nil {
+			klog.ErrorS(err, "Simulate pipeline failed", "task", task.Name)
+			_ = trial.UnPipeline(task)
+			return nil, false
+		}
 	}
-	tasksClone := sjWS.tasks.Clone()
-	if !simulateResourcesForTasks(ssn, trial, queue, job, subJob, tasksClone, victimsPresent, hyperNodeKey, enablePredCache) {
-		trial.Discard()
-		subJob.AllocatedHyperNode = savedAllocHN
-		return hyperNodeSimTrial{}, false
+
+	if len(trial.Operations()) == 0 {
+		return nil, false
 	}
-	plan := framework.SaveOperations(trial)
-	trial.Discard()
-	subJob.AllocatedHyperNode = savedAllocHN
-	return hyperNodeSimTrial{plan: plan, hyperNode: hyperNodeKey, remaining: tasksClone}, true
+	if !ssn.SubJobReady(job, subJob) && !ssn.SubJobPipelined(job, subJob) {
+		return nil, false
+	}
+	success = true
+	return trial, true
 }
 
 func simulatePredicate(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo) error {
@@ -301,110 +326,6 @@ func intersectNodesByName(primary, filter []*api.NodeInfo) []*api.NodeInfo {
 		}
 	}
 	return out
-}
-
-func simulateResourcesForTasks(
-	ssn *framework.Session,
-	stmt *framework.Statement,
-	queue *api.QueueInfo,
-	job *api.JobInfo,
-	subJob *api.SubJobInfo,
-	tasks *util.PriorityQueue,
-	victimsPresent bool,
-	hyperNodeName string,
-	enablePredicateErrorCache bool,
-) bool {
-	initialStmtOps := len(stmt.Operations())
-	ph := util.NewPredicateHelper()
-	allocatedHyperNode := subJob.AllocatedHyperNode
-
-	for !tasks.Empty() {
-		task := tasks.Pop().(*api.TaskInfo)
-		if queue != nil && !ssn.Allocatable(queue, task) {
-			return false
-		}
-
-		candidate := ssn.RealNodesList[hyperNodeName]
-		if len(candidate) == 0 {
-			return false
-		}
-		schedulable := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
-		nodes := intersectNodesByName(candidate, schedulable)
-		if len(nodes) == 0 {
-			return false
-		}
-
-		if err := ssn.PrePredicateFn(task); err != nil {
-			return false
-		}
-
-		predicateNodes, _ := ph.PredicateNodes(task, nodes, func(t *api.TaskInfo, n *api.NodeInfo) error {
-			return simulatePredicate(ssn, t, n)
-		}, enablePredicateErrorCache, ssn.NodesInShard)
-		if len(predicateNodes) == 0 {
-			return false
-		}
-
-		if subJob.WithNetworkTopology() {
-			task.JobAllocatedHyperNode = allocatedHyperNode
-		}
-
-		bestNode := prioritizeNodesForSimulate(ssn, task, predicateNodes)
-		if bestNode == nil {
-			return false
-		}
-
-		if task.InitResreq.LessEqual(bestNode.Idle, api.Zero) {
-			if err := stmt.Allocate(task, bestNode); err != nil {
-				klog.ErrorS(err, "Simulate allocate failed", "task", task.Name)
-				_ = stmt.UnAllocate(task)
-				if task.Pod != nil {
-					task.Pod.Spec.NodeName = ""
-				}
-				return false
-			}
-		} else if task.InitResreq.LessEqual(bestNode.FutureIdle(), api.Zero) {
-			if err := stmt.Pipeline(task, bestNode.Name, victimsPresent); err != nil {
-				_ = stmt.UnPipeline(task)
-				return false
-			}
-		} else {
-			return false
-		}
-
-		if subJob.WithNetworkTopology() {
-			allocatedHyperNode = getNewAllocatedHyperNodeForSimulate(ssn, bestNode.Name, allocatedHyperNode)
-		}
-
-		if ssn.SubJobReady(job, subJob) {
-			break
-		}
-	}
-
-	if len(stmt.Operations()) == initialStmtOps {
-		return false
-	}
-	if ssn.SubJobReady(job, subJob) {
-		if subJob.IsSoftTopologyMode() {
-			subJob.AllocatedHyperNode = allocatedHyperNode
-		}
-		return true
-	}
-	return ssn.SubJobPipelined(job, subJob)
-}
-
-func getNewAllocatedHyperNodeForSimulate(ssn *framework.Session, bestNode string, jobAllocatedHyperNode string) string {
-	if ssn.HyperNodes == nil {
-		return jobAllocatedHyperNode
-	}
-	hyperNode := util.FindHyperNodeForNode(bestNode, ssn.RealNodesList, ssn.HyperNodesTiers, ssn.HyperNodesSetByTier)
-	if hyperNode != "" {
-		if jobAllocatedHyperNode == "" {
-			return hyperNode
-		}
-		return ssn.HyperNodes.GetLCAHyperNode(hyperNode, jobAllocatedHyperNode)
-	}
-	return jobAllocatedHyperNode
 }
 
 // prioritizeNodesForSimulate mirrors allocate.prioritizeNodes (idle / future-idle gradients and soft sharding).
@@ -467,34 +388,6 @@ func CollectPendingTasksForGangEviction(ssn *framework.Session, job *api.JobInfo
 		return collectPendingTasksForRunningJob(ssn, job)
 	}
 	return collectPendingTasksForJobStartup(ssn, job)
-}
-
-// CollectPendingTasksForJobStartup flattens organizeEvictionWorksheet: every subJob on the worksheet (PQ
-// order, including MinSubJobs boosting), each subJob’s pending tasks in TaskOrderFn order. Returns nil if the
-// worksheet is empty. Intended for sizing when JobReady(job) is false.
-//
-// subJobLessFn and taskLessFn are unused; kept for call-site compatibility.
-func CollectPendingTasksForJobStartup(ssn *framework.Session, job *api.JobInfo, subJobLessFn func(l, r interface{}) bool, taskLessFn api.LessFn) []*api.TaskInfo {
-	_, _ = subJobLessFn, taskLessFn
-	return collectPendingTasksForJobStartup(ssn, job)
-}
-
-// CollectPendingTasksForRunningJob returns pending tasks for the first worksheet subJob (PQ / MinSubJobs
-// order) whose pending task queue is non-empty. Returns nil if the worksheet is empty or no such subJob.
-// Intended for sizing when JobReady(job) is true (one starving subJob at a time).
-func CollectPendingTasksForRunningJob(ssn *framework.Session, job *api.JobInfo) []*api.TaskInfo {
-	return collectPendingTasksForRunningJob(ssn, job)
-}
-
-// CollectAllPendingTasksOrderedForJob returns all eligible pending tasks: subJob-ordered traversal (using
-// subJobLessFn / taskLessFn when provided) plus any fallback pending pods not indexed under SubJobs.
-func CollectAllPendingTasksOrderedForJob(job *api.JobInfo, subJobLessFn func(l, r interface{}) bool, taskLessFn api.LessFn) []*api.TaskInfo {
-	return collectPendingTasks(job, subJobLessFn, taskLessFn)
-}
-
-// CollectPendingTasksForJob is an alias for CollectAllPendingTasksOrderedForJob.
-func CollectPendingTasksForJob(job *api.JobInfo, subJobLessFn func(l, r interface{}) bool, taskLessFn api.LessFn) []*api.TaskInfo {
-	return CollectAllPendingTasksOrderedForJob(job, subJobLessFn, taskLessFn)
 }
 
 func collectPendingTasksForJobStartup(ssn *framework.Session, job *api.JobInfo) []*api.TaskInfo {

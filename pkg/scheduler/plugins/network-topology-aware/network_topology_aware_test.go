@@ -150,7 +150,7 @@ func TestNew(t *testing.T) {
 	}
 }
 
-func TestTruncateHyperNodeGradientsByPurpose(t *testing.T) {
+func TestReverseAndCapEvictionGradients(t *testing.T) {
 	plugin := &networkTopologyAwarePlugin{maxHyperNodesForEviction: 3}
 	hn := func(name string) *api.HyperNodeInfo { return &api.HyperNodeInfo{Name: name} }
 	gradients := [][]*api.HyperNodeInfo{
@@ -158,13 +158,13 @@ func TestTruncateHyperNodeGradientsByPurpose(t *testing.T) {
 		{hn("c"), hn("d")},
 	}
 
-	allocateResult := plugin.truncateHyperNodeGradientsByPurpose(gradients, api.PurposeAllocate)
-	assert.Equal(t, gradients, allocateResult)
-
-	evictResult := plugin.truncateHyperNodeGradientsByPurpose(gradients, api.PurposeEvict)
+	evictResult := plugin.reverseAndCapEvictionGradients(gradients)
 	assert.Equal(t, 2, len(evictResult))
 	assert.Equal(t, []string{"c", "d"}, []string{evictResult[0][0].Name, evictResult[0][1].Name})
 	assert.Equal(t, []string{"b"}, []string{evictResult[1][0].Name})
+
+	noLimitPlugin := &networkTopologyAwarePlugin{maxHyperNodesForEviction: 0}
+	assert.Equal(t, gradients, noLimitPlugin.reverseAndCapEvictionGradients(gradients))
 }
 
 func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
