@@ -130,11 +130,11 @@ The format can be described more formally as follows:
 
 ```
 <subsystem>: <what changed>
-<BLANK LINE>
+
 <why this change was made>
-<BLANK LINE>
-<footer>
 ```
+
+You can optionally add a footer after another blank line, for example to reference an issue.
 
 The first line is the subject and should be no longer than 70 characters, the second line is always blank, and other lines should be wrapped at 80 characters. This allows the message to be easier to read on GitHub as well as in various git tools.
 
