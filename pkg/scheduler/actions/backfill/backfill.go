@@ -34,7 +34,14 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
+type backfillContext struct {
+	queues         *util.PriorityQueue                 // queue of *api.QueueInfo
+	jobsByQueue    map[api.QueueID]*util.PriorityQueue // queue of *api.JobInfo
+	taskQueueByJob map[api.JobID]*util.PriorityQueue   // queue of *api.TaskInfo
+}
+
 type Action struct {
+	session                   *framework.Session
 	enablePredicateErrorCache bool
 }
 
@@ -60,16 +67,115 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 	defer klog.V(5).Infof("Leaving Backfill ...")
 
 	backfill.parseArguments(ssn)
+	backfill.session = ssn
 
+	actx := backfill.buildBackfillContext()
+	backfill.allocateResources(actx)
+}
+
+func (backfill *Action) buildBackfillContext() *backfillContext {
+	ssn := backfill.session
+
+	actx := &backfillContext{
+		queues:         util.NewPriorityQueue(ssn.QueueOrderFn),
+		jobsByQueue:    map[api.QueueID]*util.PriorityQueue{},
+		taskQueueByJob: map[api.JobID]*util.PriorityQueue{},
+	}
+
+	for _, job := range ssn.Jobs {
+		if job.IsPending() {
+			continue
+		}
+
+		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
+			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip backfill, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
+			continue
+		}
+
+		queue, found := ssn.Queues[job.Queue]
+		if !found {
+			continue
+		}
+
+		taskQueue := util.NewPriorityQueue(ssn.TaskOrderFn)
+		for _, task := range job.TaskStatusIndex[api.Pending] {
+			if !task.BestEffort || task.SchGated {
+				continue
+			}
+			taskQueue.Push(task)
+		}
+
+		for _, task := range job.TaskStatusIndex[api.Pipelined] {
+			if !task.BestEffort {
+				continue
+			}
+			stmt := framework.NewStatement(ssn)
+			if err := stmt.UnPipeline(task); err != nil {
+				klog.Warningf("Failed to unpipeline task: %s", err.Error())
+				continue
+			}
+			taskQueue.Push(task)
+		}
+
+		if taskQueue.Empty() {
+			continue
+		}
+
+		if _, existed := actx.jobsByQueue[queue.UID]; !existed {
+			actx.jobsByQueue[queue.UID] = util.NewPriorityQueue(ssn.JobOrderFn)
+			actx.queues.Push(queue)
+		}
+		actx.jobsByQueue[queue.UID].Push(job)
+		actx.taskQueueByJob[job.UID] = taskQueue
+	}
+
+	return actx
+}
+
+func (backfill *Action) allocateResources(actx *backfillContext) {
+	ssn := backfill.session
+
+	queues := actx.queues
+	for !queues.Empty() {
+		queue := queues.Pop().(*api.QueueInfo)
+
+		jobQueue, found := actx.jobsByQueue[queue.UID]
+		if !found || jobQueue.Empty() {
+			continue
+		}
+
+		job := jobQueue.Pop().(*api.JobInfo)
+		taskQueue, found := actx.taskQueueByJob[job.UID]
+		if !found || taskQueue.Empty() {
+			queues.Push(queue)
+			continue
+		}
+
+		stmt := framework.NewStatement(ssn)
+		backfill.allocateTasksForJob(stmt, job, taskQueue)
+
+		if len(stmt.Operations()) > 0 && ssn.JobReady(job) {
+			stmt.Commit()
+			if !taskQueue.Empty() {
+				jobQueue.Push(job)
+			}
+		} else {
+			stmt.Discard()
+		}
+
+		queues.Push(queue)
+	}
+}
+
+func (backfill *Action) allocateTasksForJob(stmt *framework.Statement, job *api.JobInfo, taskQueue *util.PriorityQueue) {
+	ssn := backfill.session
 	predicateFunc := ssn.PredicateForAllocateAction
+	ph := util.NewPredicateHelper()
 
-	// TODO (k82cn): When backfill, it's also need to balance between Queues.
-	pendingTasks := backfill.pickUpPendingTasks(ssn)
-	for _, task := range pendingTasks {
-		job := ssn.Jobs[task.Job]
-		ph := util.NewPredicateHelper()
+	for !taskQueue.Empty() {
+		task := taskQueue.Pop().(*api.TaskInfo)
+
 		fe := api.NewFitErrors()
-
 		if err := ssn.PrePredicateFn(task); err != nil {
 			klog.V(3).Infof("PrePredicate for task %s/%s failed in backfill for: %v", task.Namespace, task.Name, err)
 			for _, ni := range ssn.Nodes {
@@ -101,8 +207,11 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 		}
 
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
-		if err := ssn.Allocate(task, node); err != nil {
+		if err := stmt.Allocate(task, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v", task.UID, node.Name, ssn.UID)
+			if rollbackErr := stmt.UnAllocate(task); rollbackErr != nil {
+				klog.Errorf("Failed to unallocate Task %v on %v in Session %v for %v", task.UID, node.Name, ssn.UID, rollbackErr)
+			}
 			fe.SetNodeError(node.Name, err)
 			job.NodesFitErrors[task.UID] = fe
 			continue
@@ -111,91 +220,10 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 		metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 		metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 
-		// TODO (k82cn): backfill for other case.
+		if ssn.JobReady(job) {
+			break
+		}
 	}
 }
 
 func (backfill *Action) UnInitialize() {}
-
-func (backfill *Action) pickUpPendingTasks(ssn *framework.Session) []*api.TaskInfo {
-	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
-	jobs := map[api.QueueID]*util.PriorityQueue{}
-	tasks := map[api.JobID]*util.PriorityQueue{}
-	var pendingTasks []*api.TaskInfo
-	for _, job := range ssn.Jobs {
-		if job.IsPending() {
-			continue
-		}
-
-		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
-			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip backfill, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
-			continue
-		}
-
-		queue, found := ssn.Queues[job.Queue]
-		if !found {
-			continue
-		}
-
-		for _, task := range job.TaskStatusIndex[api.Pending] {
-			if !task.BestEffort {
-				continue
-			}
-
-			if task.SchGated {
-				continue
-			}
-
-			if _, existed := tasks[job.UID]; !existed {
-				tasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
-			}
-			tasks[job.UID].Push(task)
-		}
-
-		for _, task := range job.TaskStatusIndex[api.Pipelined] {
-			if !task.BestEffort {
-				continue
-			}
-
-			stmt := framework.NewStatement(ssn)
-			err := stmt.UnPipeline(task)
-			if err != nil {
-				klog.Errorf("Failed to unpipeline task: %s", err.Error())
-				continue
-			}
-			if _, existed := tasks[job.UID]; !existed {
-				tasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
-			}
-			tasks[job.UID].Push(task)
-		}
-
-		if _, existed := tasks[job.UID]; !existed {
-			continue
-		}
-
-		if _, existed := jobs[queue.UID]; !existed {
-			queues.Push(queue)
-			jobs[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
-		}
-		jobs[job.Queue].Push(job)
-	}
-
-	for !queues.Empty() {
-		queue, ok := queues.Pop().(*api.QueueInfo)
-		if !ok {
-			klog.V(3).Infof("QueueInfo transition failed, ignore it.")
-			continue
-		}
-		for !jobs[queue.UID].Empty() {
-			job, ok := jobs[queue.UID].Pop().(*api.JobInfo)
-			if !ok {
-				klog.Errorf("JobInfo transition failed, ignore it.")
-				continue
-			}
-			for !tasks[job.UID].Empty() {
-				pendingTasks = append(pendingTasks, tasks[job.UID].Pop().(*api.TaskInfo))
-			}
-		}
-	}
-	return pendingTasks
-}
