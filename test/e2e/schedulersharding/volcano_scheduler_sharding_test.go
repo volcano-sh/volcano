@@ -24,13 +24,11 @@ package schedulersharding
 import (
 	"context"
 	"fmt"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
@@ -40,12 +38,6 @@ const (
 	VolcanoSchedulerName    = "volcano"
 	VolcanoShardName        = "volcano"
 	AgentSchedulerShardName = "agent-scheduler"
-
-	// Polling intervals
-	pollInterval = 500 * time.Millisecond
-
-	// Wait time for sharding controller to create NodeShards after startup
-	shardCreationTimeout = 3 * time.Minute
 )
 
 var _ = Describe("Volcano Scheduler Sharding E2E Test", func() {
@@ -65,35 +57,10 @@ var _ = Describe("Volcano Scheduler Sharding E2E Test", func() {
 		}
 	})
 
-	// waitForNodeShardsCreated waits for NodeShards to be created by the ShardingController
+	// waitForNodeShardsCreated waits for both volcano and agent-scheduler NodeShards.
 	waitForNodeShardsCreated := func() {
 		By("Waiting for ShardingController to create NodeShards")
-		err := wait.PollUntilContextTimeout(context.TODO(), pollInterval, shardCreationTimeout, true,
-			func(c context.Context) (bool, error) {
-				shards, err := e2eutil.ListNodeShards(ctx)
-				if err != nil {
-					GinkgoWriter.Printf("Error listing NodeShards: %v\n", err)
-					return false, nil
-				}
-				// Check if both expected shards exist
-				foundVolcano := false
-				foundAgent := false
-				for _, shard := range shards.Items {
-					if shard.Name == VolcanoShardName {
-						foundVolcano = true
-					}
-					if shard.Name == AgentSchedulerShardName {
-						foundAgent = true
-					}
-				}
-				if foundVolcano && foundAgent {
-					GinkgoWriter.Printf("Found NodeShards: volcano=%v, agent-scheduler=%v\n", foundVolcano, foundAgent)
-					return true, nil
-				}
-				GinkgoWriter.Printf("Waiting for NodeShards... volcano=%v, agent-scheduler=%v, total=%d\n",
-					foundVolcano, foundAgent, len(shards.Items))
-				return false, nil
-			})
+		err := e2eutil.WaitForNodeShardsCreated(ctx, []string{VolcanoShardName, AgentSchedulerShardName})
 		Expect(err).NotTo(HaveOccurred(), "NodeShards should be created by ShardingController")
 	}
 

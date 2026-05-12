@@ -72,24 +72,11 @@ var _ = Describe("ShardingController E2E Test", func() {
 
 	waitForNodeShardsCreated := func(cfg *sharding.ShardingConfig) {
 		By("Waiting for ShardingController to create NodeShards")
-		expected := make(map[string]struct{}, len(cfg.SchedulerConfigs))
+		names := make([]string, 0, len(cfg.SchedulerConfigs))
 		for _, sc := range cfg.SchedulerConfigs {
-			expected[sc.Name] = struct{}{}
+			names = append(names, sc.Name)
 		}
-		err := wait.PollUntilContextTimeout(context.TODO(), pollInterval, shardCreationTimeout, true,
-			func(c context.Context) (bool, error) {
-				shards, err := e2eutil.ListNodeShards(ctx)
-				if err != nil {
-					return false, nil
-				}
-				found := 0
-				for _, shard := range shards.Items {
-					if _, ok := expected[shard.Name]; ok {
-						found++
-					}
-				}
-				return found == len(expected), nil
-			})
+		err := e2eutil.WaitForNodeShardsCreated(ctx, names)
 		Expect(err).NotTo(HaveOccurred(), "NodeShards should be created for all configured schedulers")
 	}
 

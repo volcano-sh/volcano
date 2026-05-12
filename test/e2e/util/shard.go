@@ -222,6 +222,30 @@ func WaitForNodeCountInShard(ctx *TestContext, shardName string, expectedCount i
 		})
 }
 
+// WaitForNodeShardsCreated waits for NodeShards with the given names to be
+// created by the ShardingController. It returns nil when all expected shards
+// exist, or an error if the timeout expires.
+func WaitForNodeShardsCreated(ctx *TestContext, names []string) error {
+	expected := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		expected[n] = struct{}{}
+	}
+	return wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, ThreeMinute, true,
+		func(c context.Context) (bool, error) {
+			shards, err := ListNodeShards(ctx)
+			if err != nil {
+				return false, nil
+			}
+			found := 0
+			for _, shard := range shards.Items {
+				if _, ok := expected[shard.Name]; ok {
+					found++
+				}
+			}
+			return found == len(expected), nil
+		})
+}
+
 // GetShardingConfigFromConfigMap reads the sharding configuration from the
 // controller's ConfigMap. It returns the parsed ShardingConfig so tests can
 // dynamically determine expected shard names and parameters.
