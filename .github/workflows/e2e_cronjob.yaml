@@ -3,15 +3,16 @@ name: E2E CRONJOB
 on:
   workflow_call:
 
-permissions:
-  contents: read
-  actions: write
+permissions: {}
 
 jobs:
   cronjob:
     runs-on: ubuntu-24.04
     name: E2E about CRONJOB
     timeout-minutes: 70
+    permissions:
+      contents: read
+      actions: write
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
