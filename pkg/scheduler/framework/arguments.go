@@ -23,6 +23,8 @@ limitations under the License.
 package framework
 
 import (
+	"strconv"
+
 	"github.com/mitchellh/mapstructure"
 	"k8s.io/klog/v2"
 
@@ -89,6 +91,15 @@ func (a Arguments) GetBool(ptr *bool, key string) {
 
 	value, ok := argv.(bool)
 	if !ok {
+		if stringValue, ok := argv.(string); ok {
+			parsed, err := strconv.ParseBool(stringValue)
+			if err != nil {
+				klog.Warningf("Could not parse argument: %v for key %s to bool", argv, key)
+				return
+			}
+			*ptr = parsed
+			return
+		}
 		klog.Warningf("Could not parse argument: %v for key %s to bool", argv, key)
 		return
 	}

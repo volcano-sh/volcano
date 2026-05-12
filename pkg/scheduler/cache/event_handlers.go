@@ -250,6 +250,13 @@ func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, err
 	}
 	// Update BestEffort because the InitResreq maybe changes
 	taskInfo.BestEffort = taskInfo.InitResreq.IsEmpty()
+	draResreq, claimDRAResreq, claimKeys, err := sc.buildTaskDRAInfo(pod)
+	if err != nil {
+		return taskInfo, err
+	}
+	taskInfo.DRAResreq = draResreq
+	taskInfo.ResourceClaimDRAResreq = claimDRAResreq
+	taskInfo.ResourceClaimKeys = claimKeys
 	return taskInfo, nil
 }
 
@@ -259,6 +266,7 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	if err != nil {
 		klog.Errorf("generate taskInfo for pod(%s) failed: %v", pod.Name, err)
 		sc.resyncTask(pi)
+		return err
 	}
 
 	return sc.addTask(pi)
