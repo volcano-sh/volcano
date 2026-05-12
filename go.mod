@@ -45,7 +45,7 @@ require (
 	k8s.io/dynamic-resource-allocation v0.35.3
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kubectl v0.0.0
-	k8s.io/kubernetes v1.35.0
+	k8s.io/kubernetes v1.35.3
 	k8s.io/metrics v0.35.3
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
@@ -63,7 +63,7 @@ require (
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/Microsoft/hnslib v0.1.1 // indirect
+	github.com/Microsoft/hnslib v0.1.2 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2 // indirect
