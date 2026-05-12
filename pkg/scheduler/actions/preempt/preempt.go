@@ -28,7 +28,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,7 +37,6 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	k8sutil "k8s.io/kubernetes/pkg/scheduler/util"
 
 	fwk "k8s.io/kube-scheduler/framework"
 
@@ -754,10 +752,6 @@ func SelectVictimsOnNode(
 
 	klog.V(3).Infof("allVictims: %v", allVictims)
 
-	// Sort potentialVictims by pod priority from high to low, which ensures to
-	// reprieve higher priority pods first.
-	sort.Slice(allVictims, func(i, j int) bool { return k8sutil.MoreImportantPod(allVictims[i].Pod, allVictims[j].Pod) })
-
 	victimsQueue := ssn.BuildVictimsPriorityQueue(allVictims, preemptor)
 
 	for !victimsQueue.Empty() {
@@ -817,6 +811,13 @@ func SelectVictimsOnNode(
 		}
 		klog.Infof("reprievePod for task: %v, fits: %v", pi.Name, fits)
 		return fits, nil
+	}
+
+	// Reverse potentialVictims to reprieve higher priority pods first.
+	// potentialVictims is collected from victimsQueue.Pop() which returns lower priority first,
+	// so we need to reverse it to ensure higher priority pods are reprieved first.
+	for i, j := 0, len(potentialVictims)-1; i < j; i, j = i+1, j-1 {
+		potentialVictims[i], potentialVictims[j] = potentialVictims[j], potentialVictims[i]
 	}
 
 	// Now we try to reprieve non-violating victims.
