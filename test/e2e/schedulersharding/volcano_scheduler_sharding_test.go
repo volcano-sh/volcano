@@ -236,54 +236,54 @@ var _ = Describe("Volcano Scheduler Sharding E2E Test", func() {
 		})
 	})
 
-		It("second job should stay pending when shard resources are exhausted by first job", func() {
-			waitForNodeShardsCreated()
+	It("second job should stay pending when shard resources are exhausted by first job", func() {
+		waitForNodeShardsCreated()
 
-			By("Getting volcano shard node count")
-			volcanoShard, err := e2eutil.GetNodeShard(ctx, VolcanoShardName)
-			Expect(err).NotTo(HaveOccurred())
-			shardNodeCount := len(volcanoShard.Spec.NodesDesired)
-			Expect(shardNodeCount).To(BeNumerically(">=", 1),
-				"volcano shard must have at least 1 node")
+		By("Getting volcano shard node count")
+		volcanoShard, err := e2eutil.GetNodeShard(ctx, VolcanoShardName)
+		Expect(err).NotTo(HaveOccurred())
+		shardNodeCount := len(volcanoShard.Spec.NodesDesired)
+		Expect(shardNodeCount).To(BeNumerically(">=", 1),
+			"volcano shard must have at least 1 node")
 
-			By(fmt.Sprintf("Creating first job consuming all %d shard nodes", shardNodeCount))
-			firstJob := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
-				Name: "exhaust-shard-job-1",
-				Tasks: []e2eutil.TaskSpec{
-					{
-						Img: e2eutil.DefaultBusyBoxImage,
-						Req: e2eutil.HalfCPU,
-						Min: 1,
-						Rep: int32(shardNodeCount),
-					},
+		By(fmt.Sprintf("Creating first job consuming all %d shard nodes", shardNodeCount))
+		firstJob := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+			Name: "exhaust-shard-job-1",
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultBusyBoxImage,
+					Req: e2eutil.HalfCPU,
+					Min: 1,
+					Rep: int32(shardNodeCount),
 				},
-			})
-
-			By("Waiting for first job to be ready")
-			err = e2eutil.WaitJobReady(ctx, firstJob)
-			Expect(err).NotTo(HaveOccurred(), "first job should become ready")
-
-			By("Creating second job that has no free shard nodes")
-			secondJob := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
-				Name: "exhaust-shard-job-2",
-				Tasks: []e2eutil.TaskSpec{
-					{
-						Img: e2eutil.DefaultBusyBoxImage,
-						Req: e2eutil.HalfCPU,
-						Min: 1,
-						Rep: 1,
-					},
-				},
-			})
-
-			By("Verifying second job stays pending due to exhausted shard")
-			err = e2eutil.WaitJobStatePending(ctx, secondJob)
-			Expect(err).NotTo(HaveOccurred(),
-				"second job should stay pending because all shard nodes are occupied by first job")
-
-			GinkgoWriter.Printf("First job has %d pods occupying all shard nodes, second job correctly pending\n",
-				shardNodeCount)
+			},
 		})
+
+		By("Waiting for first job to be ready")
+		err = e2eutil.WaitJobReady(ctx, firstJob)
+		Expect(err).NotTo(HaveOccurred(), "first job should become ready")
+
+		By("Creating second job that has no free shard nodes")
+		secondJob := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+			Name: "exhaust-shard-job-2",
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultBusyBoxImage,
+					Req: e2eutil.HalfCPU,
+					Min: 1,
+					Rep: 1,
+				},
+			},
+		})
+
+		By("Verifying second job stays pending due to exhausted shard")
+		err = e2eutil.WaitJobStatePending(ctx, secondJob)
+		Expect(err).NotTo(HaveOccurred(),
+			"second job should stay pending because all shard nodes are occupied by first job")
+
+		GinkgoWriter.Printf("First job has %d pods occupying all shard nodes, second job correctly pending\n",
+			shardNodeCount)
+	})
 
 	Describe("Shard State Consistency", func() {
 		It("Shard state should remain consistent during job execution", func() {

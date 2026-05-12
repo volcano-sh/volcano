@@ -50,22 +50,22 @@ import (
 )
 
 var (
-	OneMinute    = 1 * time.Minute
-	TwoMinute    = 2 * time.Minute
-	ThreeMinute  = 3 * time.Minute
-	FiveMinute = 5 * time.Minute
-	TenMinute  = 10 * time.Minute
-	OneCPU     = v1.ResourceList{"cpu": resource.MustParse("1000m")}
-	TwoCPU     = v1.ResourceList{"cpu": resource.MustParse("2000m")}
-	ThreeCPU   = v1.ResourceList{"cpu": resource.MustParse("3000m")}
-	ThirtyCPU  = v1.ResourceList{"cpu": resource.MustParse("30000m")}
-	HalfCPU    = v1.ResourceList{"cpu": resource.MustParse("500m")}
-	CPU1Mem1   = v1.ResourceList{"cpu": resource.MustParse("1000m"), "memory": resource.MustParse("1024Mi")}
-	CPU2Mem2   = v1.ResourceList{"cpu": resource.MustParse("2000m"), "memory": resource.MustParse("2048Mi")}
-	CPU3Mem3   = v1.ResourceList{"cpu": resource.MustParse("3000m"), "memory": resource.MustParse("3072Mi")}
-	CPU4Mem4   = v1.ResourceList{"cpu": resource.MustParse("4000m"), "memory": resource.MustParse("4096Mi")}
-	CPU5Mem5   = v1.ResourceList{"cpu": resource.MustParse("5000m"), "memory": resource.MustParse("5120Mi")}
-	CPU6Mem6   = v1.ResourceList{"cpu": resource.MustParse("6000m"), "memory": resource.MustParse("6144Mi")}
+	OneMinute   = 1 * time.Minute
+	TwoMinute   = 2 * time.Minute
+	ThreeMinute = 3 * time.Minute
+	FiveMinute  = 5 * time.Minute
+	TenMinute   = 10 * time.Minute
+	OneCPU      = v1.ResourceList{"cpu": resource.MustParse("1000m")}
+	TwoCPU      = v1.ResourceList{"cpu": resource.MustParse("2000m")}
+	ThreeCPU    = v1.ResourceList{"cpu": resource.MustParse("3000m")}
+	ThirtyCPU   = v1.ResourceList{"cpu": resource.MustParse("30000m")}
+	HalfCPU     = v1.ResourceList{"cpu": resource.MustParse("500m")}
+	CPU1Mem1    = v1.ResourceList{"cpu": resource.MustParse("1000m"), "memory": resource.MustParse("1024Mi")}
+	CPU2Mem2    = v1.ResourceList{"cpu": resource.MustParse("2000m"), "memory": resource.MustParse("2048Mi")}
+	CPU3Mem3    = v1.ResourceList{"cpu": resource.MustParse("3000m"), "memory": resource.MustParse("3072Mi")}
+	CPU4Mem4    = v1.ResourceList{"cpu": resource.MustParse("4000m"), "memory": resource.MustParse("4096Mi")}
+	CPU5Mem5    = v1.ResourceList{"cpu": resource.MustParse("5000m"), "memory": resource.MustParse("5120Mi")}
+	CPU6Mem6    = v1.ResourceList{"cpu": resource.MustParse("6000m"), "memory": resource.MustParse("6144Mi")}
 )
 
 const (
