@@ -20,6 +20,10 @@ jobs:
             target: e2e-test-shardingcontroller
             logs_dir: e2e-sharding-controller-logs
             artifact: volcano_e2e_sharding_controller_logs
+          - name: E2E Scheduler Sharding
+            target: e2e-test-schedulersharding
+            logs_dir: e2e-scheduler-sharding-logs
+            artifact: volcano_e2e_scheduler_sharding_logs
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
