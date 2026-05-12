@@ -153,6 +153,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		// Group=nodeinfo.volcano.sh, Version=v1alpha1
 	case nodeinfov1alpha1.SchemeGroupVersion.WithKind("CPUInfo"):
 		return &applyconfigurationnodeinfov1alpha1.CPUInfoApplyConfiguration{}
+	case nodeinfov1alpha1.SchemeGroupVersion.WithKind("GPUInfo"):
+		return &applyconfigurationnodeinfov1alpha1.GPUInfoApplyConfiguration{}
 	case nodeinfov1alpha1.SchemeGroupVersion.WithKind("Numatopology"):
 		return &applyconfigurationnodeinfov1alpha1.NumatopologyApplyConfiguration{}
 	case nodeinfov1alpha1.SchemeGroupVersion.WithKind("NumatopoSpec"):
