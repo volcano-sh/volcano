@@ -47,7 +47,7 @@ function create_kwok_nodes() {
 
     log_info "Creating ${KWOK_NODE_COUNT} KWOK simulated nodes (${CPU_PER_NODE} CPU, ${MEMORY_PER_NODE} Memory)..."
     for i in $(seq 0 $((KWOK_NODE_COUNT - 1))); do
-        cat <<EOF | kubectl apply -f -
+        cat <<EOF
 apiVersion: v1
 kind: Node
 metadata:
@@ -87,7 +87,8 @@ status:
       lastTransitionTime: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   phase: Running
 EOF
-    done
+        echo "---"
+    done | kubectl apply -f -
 
     log_info "Waiting for all KWOK nodes to be ready..."
     kubectl wait --for=condition=Ready node -l type=kwok --timeout=120s

@@ -60,6 +60,15 @@ func Index() uint64 {
 	return atomic.AddUint64(&index, 1)
 }
 
+// EnvInt returns a positive integer from the environment, or fallback when unset/invalid.
+func EnvInt(name string, fallback int) int {
+	value, err := strconv.Atoi(os.Getenv(name))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
 // InitTestMain initializes the test environment with kubeconfig and REST client.
 func InitTestMain(m *testing.M) {
 	var err error
@@ -69,8 +78,8 @@ func InitTestMain(m *testing.M) {
 
 	restConfig := EnvConfig.Client().RESTConfig()
 	restConfig.RateLimiter = nil
-	restConfig.QPS = 100
-	restConfig.Burst = 200
+	restConfig.QPS = float32(EnvInt("BENCHMARK_CLIENT_QPS", 500))
+	restConfig.Burst = EnvInt("BENCHMARK_CLIENT_BURST", 1000)
 
 	Resources, err = resources.New(restConfig)
 	if err != nil {

@@ -31,6 +31,14 @@ REPORT_FILE="${RESULTS_DIR}/report-${TIMESTAMP}.json"
 
 log_info "Querying audit-exporter metrics from Prometheus..."
 
+json_number_or_null() {
+    if [[ "$1" == "N/A" || -z "$1" ]]; then
+        echo "null"
+    else
+        echo "$1"
+    fi
+}
+
 # Compute histogram percentiles by subtracting bucket values at two time points.
 # This avoids increase() extrapolation issues with short time windows.
 compute_hist_percentile() {
@@ -39,12 +47,12 @@ compute_hist_percentile() {
     local ns_filter='namespace="default"'
 
     if [[ -n "${TIME_BEFORE}" && -n "${TIME_AFTER}" ]]; then
-        BEFORE_BUCKETS=$(curl -s "${PROM_URL}/api/v1/query" \
+        BEFORE_BUCKETS=$(curl -fsS "${PROM_URL}/api/v1/query" \
             --data-urlencode "time=${TIME_BEFORE}" \
             --data-urlencode "query=sum by (le) (${metric}{${ns_filter}})" \
             | jq -r '[.data.result[] | {le: .metric.le, val: (.value[1] | tonumber)}]')
 
-        AFTER_BUCKETS=$(curl -s "${PROM_URL}/api/v1/query" \
+        AFTER_BUCKETS=$(curl -fsS "${PROM_URL}/api/v1/query" \
             --data-urlencode "time=${TIME_AFTER}" \
             --data-urlencode "query=sum by (le) (${metric}{${ns_filter}})" \
             | jq -r '[.data.result[] | {le: .metric.le, val: (.value[1] | tonumber)}]')
@@ -76,7 +84,7 @@ compute_hist_percentile() {
             end
         '
     else
-        curl -s "${PROM_URL}/api/v1/query" \
+        curl -fsS "${PROM_URL}/api/v1/query" \
             --data-urlencode "query=histogram_quantile(${quantile}, sum by (le) (increase(${metric}{${ns_filter}}[10m])))" \
             | jq -r '.data.result[0].value[1] // "N/A"'
     fi
@@ -88,17 +96,17 @@ compute_count_delta() {
     local ns_filter='namespace="default"'
 
     if [[ -n "${TIME_BEFORE}" && -n "${TIME_AFTER}" ]]; then
-        BEFORE_VAL=$(curl -s "${PROM_URL}/api/v1/query" \
+        BEFORE_VAL=$(curl -fsS "${PROM_URL}/api/v1/query" \
             --data-urlencode "time=${TIME_BEFORE}" \
             --data-urlencode "query=sum(${metric}{${ns_filter}})" \
             | jq -r '.data.result[0].value[1] // "0"')
-        AFTER_VAL=$(curl -s "${PROM_URL}/api/v1/query" \
+        AFTER_VAL=$(curl -fsS "${PROM_URL}/api/v1/query" \
             --data-urlencode "time=${TIME_AFTER}" \
             --data-urlencode "query=sum(${metric}{${ns_filter}})" \
             | jq -r '.data.result[0].value[1] // "0"')
         echo "${AFTER_VAL} - ${BEFORE_VAL}" | bc | cut -d. -f1
     else
-        curl -s "${PROM_URL}/api/v1/query" \
+        curl -fsS "${PROM_URL}/api/v1/query" \
             --data-urlencode "query=sum(increase(${metric}{${ns_filter}}[10m]))" \
             | jq -r '.data.result[0].value[1] // "0"' | awk '{printf "%d", $1+0.5}'
     fi
@@ -124,9 +132,9 @@ cat > "${REPORT_FILE}" <<EOF
     "after": "${TIME_AFTER:-unknown}"
   },
   "pod_scheduling_latency_seconds": {
-    "p50": ${POD_SCHED_P50},
-    "p90": ${POD_SCHED_P90},
-    "p99": ${POD_SCHED_P99},
+    "p50": $(json_number_or_null "${POD_SCHED_P50}"),
+    "p90": $(json_number_or_null "${POD_SCHED_P90}"),
+    "p99": $(json_number_or_null "${POD_SCHED_P99}"),
     "count": ${POD_SCHED_COUNT}
   },
   "grafana_url": "http://localhost:30004/d/volcano-benchmark",

@@ -168,7 +168,7 @@ func CreateGangJobs(ctx context.Context, cfg VCJobConfig, count int) error {
 		}
 	}
 
-	workqueue.ParallelizeUntil(ctx, 16, count, checkJob)
+	workqueue.ParallelizeUntil(ctx, util.EnvInt("BENCHMARK_CREATE_CONCURRENCY", 16), count, checkJob)
 
 	for _, err := range errs {
 		if err != nil {

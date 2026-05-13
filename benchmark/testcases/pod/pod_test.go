@@ -131,7 +131,7 @@ func BuildPod(cfg PodConfig, index uint64) (*corev1.Pod, error) {
 // createPods creates bare pods concurrently using client-go.
 func createPods(ctx context.Context, cfg PodConfig, count int) error {
 	errs := make([]error, count)
-	workqueue.ParallelizeUntil(ctx, 16, count, func(i int) {
+	workqueue.ParallelizeUntil(ctx, util.EnvInt("BENCHMARK_CREATE_CONCURRENCY", 16), count, func(i int) {
 		pod, err := BuildPod(cfg, util.Index())
 		if err != nil {
 			errs[i] = fmt.Errorf("building pod %d: %w", i, err)
