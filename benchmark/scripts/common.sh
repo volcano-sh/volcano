@@ -11,6 +11,11 @@ export CPU_PER_NODE="${CPU_PER_NODE:-32}"
 export MEMORY_PER_NODE="${MEMORY_PER_NODE:-256Gi}"
 export KWOK_VERSION="${KWOK_VERSION:-v0.7.0}"
 
+# Existing cluster mode: skip Kind create/delete
+export USE_EXISTING_CLUSTER="${USE_EXISTING_CLUSTER:-false}"
+# Skip Volcano installation (use pre-installed Volcano on the cluster)
+export SKIP_INSTALL_VOLCANO="${SKIP_INSTALL_VOLCANO:-false}"
+
 # Project paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export BENCHMARK_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"

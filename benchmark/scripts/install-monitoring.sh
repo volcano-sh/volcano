@@ -48,6 +48,15 @@ EOF
 log_info "Patching Grafana to mount benchmark dashboard..."
 kubectl patch deployment grafana -n "${MONITORING_NS}" --type=strategic -p "${PATCH}" 2>/dev/null || true
 
+# audit-exporter reads apiserver audit logs from the control-plane node.
+# On existing clusters, audit logging may not be enabled or the log path may differ.
+if [[ "${USE_EXISTING_CLUSTER}" == "true" ]]; then
+    log_warn "Using existing cluster, audit-exporter requires apiserver audit logging."
+    log_warn "Ensure your apiserver has --audit-policy-file and --audit-log-path configured."
+    log_warn "The default audit log path expected by the DaemonSet is /var/log/kubernetes/kube-apiserver-audit.log"
+    log_warn "See the README 'Enabling Apiserver Audit Logging' section for setup instructions."
+fi
+
 log_info "Deploying kube-apiserver-audit-exporter DaemonSet..."
 kubectl apply -f "${AUDIT_EXPORTER_MANIFEST}"
 
@@ -66,6 +75,13 @@ kubectl rollout status daemonset/kube-apiserver-audit-exporter \
     log_warn "audit-exporter rollout not ready yet (image may still be loading)"
 
 log_info "Monitoring components installed successfully"
-log_info "  Prometheus:    http://localhost:30003"
-log_info "  Grafana:       http://localhost:30004 (admin/admin)"
+if [[ "${USE_EXISTING_CLUSTER}" == "true" ]]; then
+    log_info "  Prometheus:  accessible via NodePort 30003 or kubectl port-forward"
+    log_info "  Grafana:     accessible via NodePort 30004 or kubectl port-forward (admin/admin)"
+    log_info "  Example: kubectl port-forward svc/prometheus-service -n ${MONITORING_NS} 30003:8080 &"
+    log_info "  Then set PROM_URL=http://localhost:30003 when running tests"
+else
+    log_info "  Prometheus:    http://localhost:30003"
+    log_info "  Grafana:       http://localhost:30004 (admin/admin)"
+fi
 log_info "  Audit metrics: scrape via Service kube-apiserver-audit-exporter.${MONITORING_NS}:8080/metrics"

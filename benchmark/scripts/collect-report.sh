@@ -136,7 +136,7 @@ EOF
 
 log_info "Report saved to: ${REPORT_FILE}"
 log_info ""
-log_info "=== Pod Scheduling Latency (created → scheduled) ==="
+log_info "=== Pod Scheduling Latency (created -> scheduled) ==="
 log_info "  P50:  $(fmt_ms ${POD_SCHED_P50}) ms"
 log_info "  P90:  $(fmt_ms ${POD_SCHED_P90}) ms"
 log_info "  P99:  $(fmt_ms ${POD_SCHED_P99}) ms"
