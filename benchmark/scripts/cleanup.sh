@@ -35,11 +35,15 @@ log_info "Cleaning up KWOK nodes..."
 "${BENCHMARK_DIR}/scripts/cleanup-kwok-nodes.sh" --all
 
 # Volcano
-log_info "Cleaning up Volcano..."
-helm uninstall volcano -n volcano-system 2>/dev/null || true
-kubectl delete job -n volcano-system --all --ignore-not-found 2>/dev/null || true
-kubectl delete namespace volcano-system --ignore-not-found 2>/dev/null || true
-kubectl get crd -o name 2>/dev/null | grep 'volcano\.sh' | xargs -r kubectl delete --ignore-not-found 2>/dev/null || true
+if [[ "${SKIP_INSTALL_VOLCANO}" == "true" ]]; then
+    log_info "Skipping Volcano cleanup (SKIP_INSTALL_VOLCANO=true, Volcano is managed externally)"
+else
+    log_info "Cleaning up Volcano..."
+    helm uninstall volcano -n volcano-system 2>/dev/null || true
+    kubectl delete job -n volcano-system --all --ignore-not-found 2>/dev/null || true
+    kubectl delete namespace volcano-system --ignore-not-found 2>/dev/null || true
+    kubectl get crd -o name 2>/dev/null | grep 'volcano\.sh' | xargs -r kubectl delete --ignore-not-found 2>/dev/null || true
+fi
 
 # Local artifacts
 log_info "Cleaning up local artifacts..."
@@ -47,10 +51,14 @@ rm -rf "${BENCHMARK_DIR}"/{bin,results,logs}
 rm -f "${BENCHMARK_DIR}/config/.kind-config.rendered.yaml"
 
 if [[ "${DELETE_CLUSTER}" == "true" ]]; then
-    require_cmd kind
-    log_info "Deleting Kind cluster ${CLUSTER_NAME}..."
-    kind delete cluster --name "${CLUSTER_NAME}"
-    rm -f "${BENCHMARK_DIR}/kubeconfig"
+    if [[ "${USE_EXISTING_CLUSTER}" == "true" ]]; then
+        log_warn "USE_EXISTING_CLUSTER=true, skipping cluster deletion (cluster not managed by this framework)"
+    else
+        require_cmd kind
+        log_info "Deleting Kind cluster ${CLUSTER_NAME}..."
+        kind delete cluster --name "${CLUSTER_NAME}"
+        rm -f "${BENCHMARK_DIR}/kubeconfig"
+    fi
 fi
 
 log_info "Cleanup complete"

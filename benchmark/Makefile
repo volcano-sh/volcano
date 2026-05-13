@@ -5,21 +5,33 @@ CPU_PER_NODE ?= 32
 MEMORY_PER_NODE ?= 256Gi
 VOLCANO_VERSION ?=
 CONFIG ?= basic.yaml
+USE_EXISTING_CLUSTER ?= false
+SKIP_INSTALL_VOLCANO ?= false
 
 export CLUSTER_NAME
 export KWOK_NODE_COUNT
 export CPU_PER_NODE
 export MEMORY_PER_NODE
+export USE_EXISTING_CLUSTER
+export SKIP_INSTALL_VOLCANO
 
 # Environment setup — scenario-independent infrastructure.
 # Can also install specific volcano version: make setup VOLCANO_VERSION=v1.14.0
 .PHONY: setup
 setup:
 	@echo "Setting up benchmark infrastructure..."
+ifeq ($(USE_EXISTING_CLUSTER),true)
+	@echo "Using existing cluster (USE_EXISTING_CLUSTER=true), skipping Kind cluster creation and image build..."
+else
 	$(MAKE) create-cluster
-	$(MAKE) create-nodes
 	$(MAKE) build-images
+endif
+	$(MAKE) create-nodes
+ifeq ($(SKIP_INSTALL_VOLCANO),true)
+	@echo "Skipping Volcano installation (SKIP_INSTALL_VOLCANO=true), using pre-installed Volcano..."
+else
 	$(MAKE) install-volcano
+endif
 	$(MAKE) install-monitoring
 
 .PHONY: create-cluster
@@ -58,6 +70,11 @@ export-charts:
 .PHONY: report
 report:
 	bash scripts/collect-report.sh
+
+# Collect scheduling latency from pod timestamps (for use with DRY_RUN=true, no audit-exporter needed)
+.PHONY: collect-pod-latency
+collect-pod-latency:
+	bash scripts/collect-pod-latency.sh
 
 .PHONY: cleanup
 cleanup:

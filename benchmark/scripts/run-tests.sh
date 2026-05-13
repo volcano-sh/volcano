@@ -108,9 +108,14 @@ log_info "Running tests for scenario '${SCENE_DIR}' with config '${RESOLVED_CONF
 
 PROM_URL="${PROM_URL:-http://localhost:30003}"
 
-# Record Prometheus timestamp before test for baseline snapshot
-TIME_BEFORE=$(curl -s "${PROM_URL}/api/v1/query" \
-    --data-urlencode 'query=time()' | jq -r '.data.result[1]')
+# Try to record Prometheus timestamp before test (may fail if Prometheus is not available)
+PROM_AVAILABLE=true
+TIME_BEFORE=$(curl -s --connect-timeout 3 "${PROM_URL}/api/v1/query" \
+    --data-urlencode 'query=time()' 2>/dev/null | jq -r '.data.result[1] // empty' 2>/dev/null) || true
+if [[ -z "${TIME_BEFORE}" ]]; then
+    PROM_AVAILABLE=false
+    log_warn "Prometheus not reachable at ${PROM_URL}, audit-exporter report will be skipped"
+fi
 
 cd "${VOLCANO_ROOT}"
 set +e
@@ -124,15 +129,24 @@ else
     log_warn "Tests failed (exit code: ${TEST_EXIT_CODE}). Results saved to: ${RESULT_FILE}"
 fi
 
-# Wait for Prometheus to scrape audit-exporter (scrape_interval=5s)
-log_info "Waiting 10s for Prometheus to scrape audit-exporter metrics..."
-sleep 10
+# Collect audit-exporter report from Prometheus (only if Prometheus is available)
+if [[ "${PROM_AVAILABLE}" == "true" ]]; then
+    log_info "Waiting 10s for Prometheus to scrape audit-exporter metrics..."
+    sleep 10
 
-TIME_AFTER=$(curl -s "${PROM_URL}/api/v1/query" \
-    --data-urlencode 'query=time()' | jq -r '.data.result[1]')
+    TIME_AFTER=$(curl -s "${PROM_URL}/api/v1/query" \
+        --data-urlencode 'query=time()' | jq -r '.data.result[1]')
 
-log_info "Collecting scheduling latency report from audit-exporter..."
-bash "${SCRIPT_DIR}/collect-report.sh" --before "${TIME_BEFORE}" --after "${TIME_AFTER}" \
-    || log_warn "Report collection failed (monitoring may not be available)"
+    log_info "Collecting scheduling latency report from audit-exporter..."
+    bash "${SCRIPT_DIR}/collect-report.sh" --before "${TIME_BEFORE}" --after "${TIME_AFTER}" \
+        || log_warn "Report collection failed (monitoring may not be available)"
+fi
+
+# audit-exporter may produce empty results if apiserver audit logging is not
+# enabled, even when Prometheus itself is reachable.
+log_info ""
+log_info "If audit-exporter metrics are empty (apiserver audit logging not enabled),"
+log_info "run with DRY_RUN=true and then 'make collect-pod-latency' to collect latency from pod timestamps."
+log_info "For full precision, enable apiserver audit logging (see README)."
 
 exit "${TEST_EXIT_CODE}"
