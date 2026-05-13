@@ -138,15 +138,21 @@ type EstimatorConfig struct {
 func CalcDynamicSigma(config *EstimatorConfig, nodeUtilization float64) float64
 
 // EstimatePodResource 统一估算 Pod 的单维度资源占用（CPU 或 MEM）
-// 有 Request/Limit: Request + (Limit - Request) * sigma_dynamic
+// 有 Request/Limit: Request + (Limit - Request) * sigmaDynamic
 // BestEffort: nodeCap * ratio * beta^n
 // 参数 request/limit 为该维度的 Pod 资源请求/限制绝对值
-// 参数 nodeCap 为该维度的节点容量绝对值
-// 参数 nodeComp 为该维度的节点综合利用率（0.0-1.0）
-// 参数 bestEffortCount 为该节点上已有的 BestEffort Pod 数量
+// 参数 sigmaDynamic 为预先通过 CalcDynamicSigma 计算好的动态风险系数
+// 参数 nodeCap 为该维度的节点容量绝对值（仅 BestEffort 时使用）
+// 参数 bestEffortCount 为该节点上已有的 BestEffort Pod 数量（仅 BestEffort 时使用）
 // 参数 isBestEffort 标识当前 Pod 是否为 BestEffort
-func EstimatePodResource(config *EstimatorConfig, request, limit, nodeCap, nodeComp float64,
+func EstimatePodResource(config *EstimatorConfig, request, limit, sigmaDynamic, nodeCap float64,
     bestEffortCount int, isBestEffort bool) float64
+
+// CalcNodeRealUtilization 计算节点真实综合利用率（加权平均，用于 Sigmoid 输入）
+// U_node,cpu = realCPUPercent / 100
+// U_node,mem = realMemPercent / 100
+// U_node = (U_node,cpu * cpuWeight + U_node,mem * memWeight) / (cpuWeight + memWeight)
+func CalcNodeRealUtilization(realCPUPercent, realMemPercent float64, cpuWeight, memWeight int) float64
 
 // CalcCompositeUtilization 分维度计算综合利用率（CPU 维度或 MEM 维度）
 // U_r = (realLoadPercent/100 * capacity + shadowEstAbs) / capacity，截断上限 1.0
@@ -156,7 +162,7 @@ func CalcCompositeUtilization(realLoadPercent float64, shadowEstAbs, capacity fl
 // CalcNodeScore 从综合利用率计算节点得分
 // score = ((1 - cpuComp) * cpuWeight + (1 - memComp) * memWeight) / (cpuWeight + memWeight) * MaxNodeScore
 // 注意：usageWeight 是插件在调度器整体打分中的权重，由框架层处理，不在此函数中乘入
-// cpuWeight/memWeight 读取自 usagePlugin 的 cpuWeight/memoryWeight 配置
+// cpuWeight/memWeight 直接读取 usagePlugin 的 cpuWeight/memoryWeight 字段
 func CalcNodeScore(cpuComp, memComp float64, cpuWeight, memWeight int) float64
 ```
 
@@ -220,13 +226,14 @@ OnSessionOpen 流程：
 2. 初始化新的 ShadowLoadCache
 3. 从 scheduler configmap 获取 metrics.interval 作为监控时延窗口
 4. 遍历 ssn.Nodes 中所有节点：
-   a. 遍历该节点的 Tasks：
+   a. 遍历该节点的 Tasks（包括 BestEffort Pod，遵循与 guaranteed/burstable 一致的 shouldAddToShadowCache 逻辑）：
       - 判断是否需要加入 ShadowCache（shouldAddToShadowCache）
       - 对需要加入的 Pod：
         * 先读普罗上报的真实利用率（realCPU/realMem）
-        * 计算当前节点综合利用率 cpuComp/memComp（用于 Sigmoid）
-        * 调用 EstimatePodResource 分别计算 CPU/MEM 预估值
-        * 调用 shadowCache.AddEstimate 累加到 nodeCPUEst/nodeMemEst
+        * 计算节点真实综合利用率 nodeRealUtil = CalcNodeRealUtilization（加权平均）
+        * 计算 sigmaDynamic = CalcDynamicSigma(config, nodeRealUtil)
+        * 调用 EstimatePodResource(config, req, lim, sigmaDynamic, nodeCap, beCount, isBE) 分别计算 CPU/MEM 预估值
+        * 调用 shadowCache.AddEstimate 累加到 nodeCPUEst/nodeMemEst（同时更新 BestEffortCounts）
 5. 注册 EventHandler（见 5.5）
 6. 注册 PredicateFn / NodeOrderFn / BatchNodeOrderFn
 ```
@@ -269,21 +276,20 @@ ssn.AddEventHandler(&framework.EventHandler{
             return
         }
 
-        // Step 1: 读取普罗上报的真实利用率 + 当前 Shadow 预估值，计算综合利用率
-        cpuEst, memEst := up.shadowCache.GetNodeEst(nodeName)
+        // Step 1: 计算节点真实综合利用率 → sigmaDynamic
         realCPU := getRealCPUPercent(node, up.period)
         realMem := getRealMemPercent(node, up.period)
-        cpuComp := CalcCompositeUtilization(realCPU, cpuEst, node.Capacity.MilliCPU)
-        memComp := CalcCompositeUtilization(realMem, memEst, node.Capacity.Memory)
+        nodeRealUtil := CalcNodeRealUtilization(realCPU, realMem, up.cpuWeight, up.memoryWeight)
+        sigmaDynamic := CalcDynamicSigma(up.estimatorConfig, nodeRealUtil)
 
         // Step 2: 计算 Pod 预估资源（统一调用 EstimatePodResource，分 CPU/MEM 维度）
         bestEffortCount := up.shadowCache.GetBestEffortCount(nodeName)
         cpuReq, cpuLim := getPodCPURequestLimit(task.Pod)
         memReq, memLim := getPodMemRequestLimit(task.Pod)
         estCPU := EstimatePodResource(up.estimatorConfig, cpuReq, cpuLim,
-            node.Capacity.MilliCPU, cpuComp, bestEffortCount, task.BestEffort)
+            sigmaDynamic, node.Capacity.MilliCPU, bestEffortCount, task.BestEffort)
         estMem := EstimatePodResource(up.estimatorConfig, memReq, memLim,
-            node.Capacity.Memory, memComp, bestEffortCount, task.BestEffort)
+            sigmaDynamic, node.Capacity.Memory, bestEffortCount, task.BestEffort)
 
         // Step 3: 累加到 ShadowCache
         up.shadowCache.AddEstimate(nodeName, estCPU, estMem, task.BestEffort)
@@ -298,19 +304,18 @@ ssn.AddEventHandler(&framework.EventHandler{
         }
 
         // 回退 Allocate 的操作：重新计算该 Pod 的预估值并减去
-        cpuEst, memEst := up.shadowCache.GetNodeEst(nodeName)
         realCPU := getRealCPUPercent(node, up.period)
         realMem := getRealMemPercent(node, up.period)
-        cpuComp := CalcCompositeUtilization(realCPU, cpuEst, node.Capacity.MilliCPU)
-        memComp := CalcCompositeUtilization(realMem, memEst, node.Capacity.Memory)
+        nodeRealUtil := CalcNodeRealUtilization(realCPU, realMem, up.cpuWeight, up.memoryWeight)
+        sigmaDynamic := CalcDynamicSigma(up.estimatorConfig, nodeRealUtil)
 
         bestEffortCount := up.shadowCache.GetBestEffortCount(nodeName)
         cpuReq, cpuLim := getPodCPURequestLimit(task.Pod)
         memReq, memLim := getPodMemRequestLimit(task.Pod)
         estCPU := EstimatePodResource(up.estimatorConfig, cpuReq, cpuLim,
-            node.Capacity.MilliCPU, cpuComp, bestEffortCount, task.BestEffort)
+            sigmaDynamic, node.Capacity.MilliCPU, bestEffortCount, task.BestEffort)
         estMem := EstimatePodResource(up.estimatorConfig, memReq, memLim,
-            node.Capacity.Memory, memComp, bestEffortCount, task.BestEffort)
+            sigmaDynamic, node.Capacity.Memory, bestEffortCount, task.BestEffort)
 
         // 从 ShadowCache 减去
         up.shadowCache.SubEstimate(nodeName, estCPU, estMem, task.BestEffort)
@@ -507,7 +512,7 @@ metrics:
 ## 10. 实现顺序
 
 ### 第一阶段：基础设施（无外部依赖）
-1. `estimator.go` — 纯数学函数：CalcDynamicSigma、EstimatePodResource（统一 CPU/MEM 预估）、CalcCompositeUtilization（分维度）、CalcNodeScore
+1. `estimator.go` — 纯数学函数：CalcDynamicSigma、EstimatePodResource（统一 CPU/MEM 预估）、CalcNodeRealUtilization（加权平均真实利用率）、CalcCompositeUtilization（分维度）、CalcNodeScore
 2. `shadow_cache.go` — 纯数据结构：ShadowLoadCache + 并发安全的 AddEstimate/SubEstimate/GetNodeEst
 
 ### 第二阶段：插件集成
