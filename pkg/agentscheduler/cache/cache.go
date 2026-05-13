@@ -475,7 +475,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	)
 	//real node sync is handled in queue instead of event handler, use tracker to track the handling status in node queue
 	sc.nodeInitialEventTracker = schedulercache.NewQueueHandlerTracker(handlerRegistration)
-	handlers["node"] = sc.nodeInitialEventTracker
+	handlers["node"] = schedulercache.NewInitialEventHandlerRegistration(handlerRegistration, sc.nodeInitialEventTracker)
 
 	sc.podInformer = informerFactory.Core().V1().Pods()
 	// 1. Pods already scheduled, refresh its state in cache

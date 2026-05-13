@@ -581,11 +581,12 @@ func TestWaitForHandlerSync_StopChanClosedBeforeSync(t *testing.T) {
 // TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_Synced verifies that WaitForHandlerSync
 // returns quickly when an InitialEventAsyncHandlerTracker has both upstream synced and no pending objects.
 func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_Synced(t *testing.T) {
-	tracker := schedulercache.NewQueueHandlerTracker(&mockHandlerRegistration{synced: true})
+	mockReg := &mockHandlerRegistration{synced: true}
+	tracker := schedulercache.NewQueueHandlerTracker(mockReg)
 
 	sc := &SchedulerCache{
 		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
-			"node": tracker,
+			"node": schedulercache.NewInitialEventHandlerRegistration(mockReg, tracker),
 		},
 		resourceSyncTimeout: 5 * time.Second,
 	}
@@ -604,11 +605,12 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_Synced(t *testing.T)
 // TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_UpstreamNotSynced verifies that
 // WaitForHandlerSync times out when an InitialEventAsyncHandlerTracker's upstream has not synced.
 func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_UpstreamNotSynced(t *testing.T) {
-	tracker := schedulercache.NewQueueHandlerTracker(&mockHandlerRegistration{synced: false})
+	mockReg := &mockHandlerRegistration{synced: false}
+	tracker := schedulercache.NewQueueHandlerTracker(mockReg)
 
 	sc := &SchedulerCache{
 		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
-			"node": tracker,
+			"node": schedulercache.NewInitialEventHandlerRegistration(mockReg, tracker),
 		},
 		resourceSyncTimeout: 300 * time.Millisecond,
 	}
@@ -628,13 +630,14 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_UpstreamNotSynced(t 
 // WaitForHandlerSync times out when an InitialEventAsyncHandlerTracker still has pending objects
 // in its queue even though the upstream informer has synced.
 func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_PendingObjects(t *testing.T) {
-	tracker := schedulercache.NewQueueHandlerTracker(&mockHandlerRegistration{synced: true})
+	mockReg := &mockHandlerRegistration{synced: true}
+	tracker := schedulercache.NewQueueHandlerTracker(mockReg)
 	tracker.Add("node1")
 	tracker.Add("node2")
 
 	sc := &SchedulerCache{
 		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
-			"node": tracker,
+			"node": schedulercache.NewInitialEventHandlerRegistration(mockReg, tracker),
 		},
 		resourceSyncTimeout: 300 * time.Millisecond,
 	}
@@ -654,12 +657,13 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_PendingObjects(t *te
 // WaitForHandlerSync returns successfully once all pending objects in an
 // InitialEventAsyncHandlerTracker are marked Done.
 func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_CompletesAfterDone(t *testing.T) {
-	tracker := schedulercache.NewQueueHandlerTracker(&mockHandlerRegistration{synced: true})
+	mockReg := &mockHandlerRegistration{synced: true}
+	tracker := schedulercache.NewQueueHandlerTracker(mockReg)
 	tracker.Add("node1")
 
 	sc := &SchedulerCache{
 		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
-			"node": tracker,
+			"node": schedulercache.NewInitialEventHandlerRegistration(mockReg, tracker),
 		},
 		resourceSyncTimeout: 5 * time.Second,
 	}

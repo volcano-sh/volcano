@@ -668,7 +668,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	)
 	//real node sync is handled in queue instead of event handler, use tracker to track the handling status in node queue
 	sc.nodeInitialEventTracker = schedulercache.NewQueueHandlerTracker(handlerRegistration)
-	handlers["node"] = sc.nodeInitialEventTracker
+	handlers["node"] = schedulercache.NewInitialEventHandlerRegistration(handlerRegistration, sc.nodeInitialEventTracker)
 
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
 	sc.pvcInformer.Informer()
@@ -809,7 +809,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	})
 	//real hypernode sync is handled in queue instead of event handler, use tracker to track the handling status in hypenode queue
 	sc.hyperNodesInitialEventTracker = schedulercache.NewQueueHandlerTracker(handlerRegistration)
-	handlers["hypernode"] = sc.hyperNodesInitialEventTracker
+	handlers["hypernode"] = schedulercache.NewInitialEventHandlerRegistration(handlerRegistration, sc.hyperNodesInitialEventTracker)
 
 	if options.ServerOpts.ShardingMode == commonutil.HardShardingMode || options.ServerOpts.ShardingMode == commonutil.SoftShardingMode {
 		sc.nodeShardInformer = sc.vcInformerFactory.Shard().V1alpha1().NodeShards()
