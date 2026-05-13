@@ -372,7 +372,7 @@ func (up *usagePlugin) calcNodeScore(node *api.NodeInfo) float64 {
 	realMem := getRealMemPercent(node, up.period)
 	cpuComp := CalcCompositeUtilization(realCPU, cpuEst, node.Capacity.MilliCPU)
 	memComp := CalcCompositeUtilization(realMem, memEst, node.Capacity.Memory)
-	score := CalcNodeScore(cpuComp, memComp, up.cpuWeight, up.memoryWeight)
+	score := CalcNodeScore(cpuComp, memComp, up.cpuWeight, up.memoryWeight, up.usageWeight)
 	klog.V(4).Infof("Node %s score: cpuComp=%.4f, memComp=%.4f, score=%.2f (max=%d)",
 		node.Name, cpuComp, memComp, score, fwk.MaxNodeScore)
 	return score

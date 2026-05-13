@@ -103,17 +103,15 @@ func CalcCompositeUtilization(realLoadPercent float64, shadowEstAbs, capacity fl
 }
 
 // CalcNodeScore computes the node score from composite utilization values.
-// Formula: score = ((1 - cpuComp) * cpuWeight + (1 - memComp) * memWeight) / (cpuWeight + memWeight) * MaxNodeScore
-//
-// Note: usageWeight is the plugin's weight in the overall scheduler scoring,
-// handled by the framework layer, NOT multiplied here.
+// Formula: score = ((1 - cpuComp) * cpuWeight + (1 - memComp) * memWeight) / (cpuWeight + memWeight) * MaxNodeScore * usageWeight
 //
 // Parameters:
 //   - cpuComp: composite CPU utilization (0.0 - 1.0)
 //   - memComp: composite MEM utilization (0.0 - 1.0)
 //   - cpuWeight: CPU weight from usagePlugin.cpuWeight
 //   - memWeight: MEM weight from usagePlugin.memoryWeight
-func CalcNodeScore(cpuComp, memComp float64, cpuWeight, memWeight int) float64 {
+//   - usageWeight: plugin weight in the overall scheduler scoring
+func CalcNodeScore(cpuComp, memComp float64, cpuWeight, memWeight, usageWeight int) float64 {
 	totalWeight := cpuWeight + memWeight
 	if totalWeight == 0 {
 		return 0
@@ -121,7 +119,7 @@ func CalcNodeScore(cpuComp, memComp float64, cpuWeight, memWeight int) float64 {
 	cpuScore := (1.0 - cpuComp) * float64(cpuWeight)
 	memScore := (1.0 - memComp) * float64(memWeight)
 	score := (cpuScore + memScore) / float64(totalWeight)
-	return score * float64(fwk.MaxNodeScore)
+	return score * float64(fwk.MaxNodeScore) * float64(usageWeight)
 }
 
 // getPodCPURequestLimit extracts the total CPU request and limit from a pod (in milliCPU).
