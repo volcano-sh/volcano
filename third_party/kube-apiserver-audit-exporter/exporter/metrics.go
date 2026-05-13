@@ -198,7 +198,7 @@ func (p *Exporter) updateMetrics(clusterLabel string, event auditv1.Event) {
 						return
 					}
 					if job.Status.IsCompleted() {
-						latency := event.StageTimestamp.Sub(job.Metadata.CreationTimestamp).Seconds()
+						latency := event.StageTimestamp.Sub(*createTime).Seconds()
 						user := extractUserAgent(event.UserAgent)
 						batchJobCompleteLatency.WithLabelValues(
 							clusterLabel,
