@@ -328,6 +328,29 @@ func (jm *JobManager) TaskBound(task *api.TaskInfo) {
 	}
 }
 
+// TaskUnbound reverses TaskBound. It is invoked from the plugin's
+// DeallocateFunc when the scheduler rolls back an allocation (e.g.
+// Statement.Discard on a failed gang-schedule attempt) so the bucket
+// and node-affinity bookkeeping match the actual session state.
+func (jm *JobManager) TaskUnbound(task *api.TaskInfo) {
+	if taskName := getTaskName(task); taskName != "" {
+		if set, ok := jm.nodeTaskSet[task.NodeName]; ok {
+			set[taskName]--
+			if set[taskName] <= 0 {
+				delete(set, taskName)
+			}
+			if len(set) == 0 {
+				delete(jm.nodeTaskSet, task.NodeName)
+			}
+		}
+	}
+
+	bucket := jm.GetBucket(task)
+	if bucket != nil {
+		bucket.TaskUnbound(task)
+	}
+}
+
 // GetBucket get bucket inside which task has been
 func (jm *JobManager) GetBucket(task *api.TaskInfo) *Bucket {
 	index, ok := jm.podInBucket[task.Pod.UID]
