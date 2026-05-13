@@ -155,7 +155,7 @@ func (p *warmupPolicy) isWarmupNode(metrics *policy.NodeMetrics) bool {
 // sortByUtilization sorts nodes by CPU utilization (lowest first).
 // warmup policy prefers nodes with the most available capacity so that
 // pre-warmed nodes can accept new workloads immediately. This is the
-// opposite of allocation-rate which prefers highest utilization first.
+// opposite of the utilization policy which prefers highest utilization first.
 func (p *warmupPolicy) sortByUtilization(nodes []string, nodeMetrics map[string]*policy.NodeMetrics) {
 	sort.Slice(nodes, func(i, j int) bool {
 		metricsI := nodeMetrics[nodes[i]]
@@ -172,7 +172,7 @@ func (p *warmupPolicy) sortByUtilization(nodes []string, nodeMetrics map[string]
 
 // selectNodesWithPriority selects nodes prioritizing warmup nodes first
 func (p *warmupPolicy) selectNodesWithPriority(warmupNodes, nonWarmupNodes []string) []string {
-	selected := []string{}
+	selected := make([]string, 0, p.maxNodes)
 
 	// First, select from warmup nodes up to maxNodes
 	for _, node := range warmupNodes {

@@ -1,302 +1,217 @@
 # Volcano Shard Policy Framework
 
-This directory contains the pluggable policy framework for Volcano's NodeShard controller, which enables different node assignment strategies for schedulers.
+This package implements the pluggable policy framework used by the NodeShard
+controller to assign nodes to schedulers. Each policy implements the
+`ShardPolicy` interface (see `interface.go`) and is configured via the
+sharding ConfigMap.
 
-## Background
+## Package layout
 
-This framework was implemented to address two key issues:
-
-**Issue #4722 - Fast Scheduling for AI Agent Workloads**
-- Agent tasks require ultra-fast scheduling at scale with minimal latency
-- Proposed dedicated agent scheduler operating alongside Volcano's main scheduler
-- Node-level sharding with dynamic assignment based on cluster state
-
-**Issue #4944 - Pluggable Shard Policies**
-- Original NodeShard implementation only supported allocation-rate strategy
-- Code was tightly coupled, making it difficult to extend
-- Required: refactor to plugin architecture + add capability and warmup strategies
-
-## Overview
-
-The policy framework allows administrators to configure different sharding strategies (policies) for schedulers without modifying core code. Each policy implements the `ShardPolicy` interface and determines how nodes should be assigned to schedulers.
-
-This enables key use cases like:
-- ✅ Fast Agent scheduling with guaranteed capacity headroom
-- ✅ Warmup pool prioritization for minimal task startup latency
-- ✅ Traditional batch workload optimization
-- ✅ Multiple schedulers with different strategies coexisting
-
-## Architecture
-
-### Core Components
-
-1. **ShardPolicy Interface** (`interface.go`)
-   - Defines the contract that all policies must implement
-   - Methods: `Name()`, `Initialize()`, `Calculate()`, `Cleanup()`
-
-2. **Policy Registry** (`registry.go`)
-   - Thread-safe registration and lookup mechanism
-   - Policies are registered at initialization via `init()` functions
-
-3. **Arguments System** (`arguments.go`)
-   - Type-safe parameter parsing (int, float64, bool, string)
-   - Follows Volcano's scheduler plugin pattern
-
-4. **Policy Factory** (`factory.go`)
-   - Registers all built-in policies at startup
-   - Extensible for custom policies
-
-## Built-in Policies
-
-### 1. Allocation-Rate Policy (`allocationrate/`)
-
-**Purpose**: Assigns nodes based on CPU utilization ranges (default behavior from original implementation).
-
-**Configuration**:
-```bash
---scheduler-configs="volcano:volcano:allocation-rate:2:100:minCPUUtil=0.0,maxCPUUtil=0.6,preferWarmupNodes=false"
+```
+policy/
+├── interface.go      // ShardPolicy interface, PolicyContext, PolicyResult
+├── registry.go       // Thread-safe RegisterPolicy / GetPolicy
+├── arguments.go      // Type-safe argument parsing helpers
+├── types.go          // Shared types
+├── allocationrate/   // Default: CPU-utilization range filter
+├── capability/       // Capacity-headroom filter
+└── warmup/           // Warmup-label-prioritized selection
 ```
 
-**Parameters**:
-- `minCPUUtil` (float64): Minimum CPU utilization threshold (0.0-1.0)
-- `maxCPUUtil` (float64): Maximum CPU utilization threshold (0.0-1.0)
-- `preferWarmupNodes` (bool): Prioritize warmup nodes
-- `minNodes` (int): Minimum nodes to assign
-- `maxNodes` (int): Maximum nodes to assign
+## Configuration
 
-**Behavior**:
-- Filters nodes within CPU utilization range [minCPUUtil, maxCPUUtil]
-- Sorts by utilization (higher first) within warmup preference groups
-- Selects nodes within min/max constraints
+Policies are selected per-scheduler via the sharding ConfigMap (key
+`sharding.yaml`). The full ConfigMap schema and reload behaviour are
+documented in
+[`docs/user-guide/how_to_configure_sharding_configmap.md`](../../../../docs/user-guide/how_to_configure_sharding_configmap.md);
+this section covers only the `policy` and `arguments` fields.
 
-### 2. Capability Policy (`capability/`)
-
-**Purpose**: Assigns nodes with sufficient capacity headroom (e.g., current utilization + 30% ≤ 100%).
-
-**Configuration**:
-```bash
---scheduler-configs="agent:agent:capability:2:50:maxCapacityPercent=0.30"
+```yaml
+schedulerConfigs:
+  - name: <scheduler-name>      # must match NodeShard.schedulerName
+    type: <workload-class>      # e.g. "volcano", "agent"
+    policy: <policy-name>       # see "Built-in policies" below
+    minNodes: <int>
+    maxNodes: <int>
+    arguments:                  # policy-specific, see below
+      <key>: <value>
 ```
 
-**Parameters**:
-- `maxCapacityPercent` (float64): Maximum additional capacity percentage (0.0-1.0)
-- `preferWarmupNodes` (bool): Prioritize warmup nodes
-- `minNodes` (int): Minimum nodes to assign
-- `maxNodes` (int): Maximum nodes to assign
+A complete example lives at
+[`example/sharding/sharding-config-configmap.yaml`](../../../../example/sharding/sharding-config-configmap.yaml).
 
-**Behavior**:
-- Filters nodes where `CPUUtilization ≤ (1.0 - maxCapacityPercent)`
-- Sorts by lowest utilization (most headroom)
-- Ensures scheduler has room to allocate resources
+If `policy` is omitted, the controller defaults to `utilization` and
+translates `cpuUtilizationMin` / `cpuUtilizationMax` into the equivalent
+arguments. The legacy `preferWarmupNodes` field is no longer honored — use
+`policy: warmup` to prioritize warmup nodes; a deprecation warning is logged
+when it is set. The colon-separated `--scheduler-configs` CLI flag is still
+parsed for backward compatibility but is deprecated; new deployments should
+use the ConfigMap.
 
-### 3. Warmup Policy (`warmup/`)
+> **Renamed**: the previous policy name `allocation-rate` was renamed to
+> `utilization` because it is more precise (the policy filters by CPU
+> utilization range, not a rate) and generalises cleanly to future resource
+> dimensions like memory. `allocation-rate` is still accepted as a
+> deprecated alias and emits a warning when used. Plan to remove the alias
+> in a future release.
 
-**Purpose**: Prioritizes nodes with warmup labels for faster scheduling.
+## Built-in policies
 
-**Configuration**:
-```bash
---scheduler-configs="warmup-sched:warmup:warmup:5:100:allowNonWarmup=true"
+### `utilization`
+
+Selects nodes whose resource utilization falls within configured per-resource
+ranges, then bin-packs onto the highest-utilization eligible nodes (so that
+lightly-loaded nodes remain free for other schedulers). This is the default
+policy and the successor of the legacy `allocation-rate` name.
+
+| Argument | Type | Description |
+|---|---|---|
+| `minCPUUtil` | float | Lower bound of the CPU utilization range, `[0.0, 1.0]`. Default `0.0`. |
+| `maxCPUUtil` | float | Upper bound of the CPU utilization range, `[0.0, 1.0]`. Default `1.0`. |
+| `minMemoryUtil` | float | _(planned)_ Lower bound of memory utilization, `[0.0, 1.0]`. |
+| `maxMemoryUtil` | float | _(planned)_ Upper bound of memory utilization, `[0.0, 1.0]`. |
+
+All configured ranges are ANDed: a node is eligible only if every configured
+resource is within its `[min, max]` range. New resource dimensions extend the
+schema by adding more `min<Resource>Util` / `max<Resource>Util` keys without
+introducing a new policy.
+
+```yaml
+- name: volcano
+  type: volcano
+  policy: utilization
+  minNodes: 2
+  maxNodes: 100
+  arguments:
+    minCPUUtil: 0.0
+    maxCPUUtil: 0.6
 ```
 
-**Parameters**:
-- `warmupLabel` (string): Label key to identify warmup nodes (default: "node.volcano.sh/warmup")
-- `warmupLabelValue` (string): Label value for warmup nodes (default: "true")
-- `allowNonWarmup` (bool): Fallback to non-warmup nodes if needed
-- `minNodes` (int): Minimum nodes to assign
-- `maxNodes` (int): Maximum nodes to assign
+### `capability`
 
-**Behavior**:
-- Prioritizes warmup nodes first
-- Sorts by lowest utilization within each group
-- Falls back to non-warmup nodes if `allowNonWarmup=true` and minNodes not met
+Selects nodes with enough free capacity for new workloads. Useful for
+latency-sensitive schedulers (e.g. Agent) that need guaranteed headroom.
 
-## Configuration Format
+| Argument | Type | Description |
+|---|---|---|
+| `maxCapacityPercent` | float | Required headroom, `[0.0, 1.0]`. A node is eligible if `cpuUtilization <= 1.0 - maxCapacityPercent`. |
 
-### Old Format (Backwards Compatible)
-```bash
---scheduler-configs="name:type:minUtil:maxUtil:preferWarmup:minNodes:maxNodes"
-```
-**Example**: `volcano:volcano:0.0:0.6:false:2:100`
-
-Automatically converted to `allocation-rate` policy.
-
-### New Format
-```bash
---scheduler-configs="name:type:policy:minNodes:maxNodes[:key=val,key=val]"
-```
-**Examples**:
-- `volcano:volcano:allocation-rate:2:100:minCPUUtil=0.0,maxCPUUtil=0.6`
-- `agent:agent:capability:2:50:maxCapacityPercent=0.30`
-- `warmup-sched:warmup:warmup:5:100:allowNonWarmup=true`
-
-### Mixed Configuration
-Both formats can be used simultaneously:
-```bash
---scheduler-configs="volcano:volcano:0.0:0.6:false:2:100,agent:agent:capability:2:50:maxCapacityPercent=0.30"
+```yaml
+- name: agent-scheduler
+  type: agent
+  policy: capability
+  minNodes: 2
+  maxNodes: 50
+  arguments:
+    maxCapacityPercent: 0.30
 ```
 
-## Creating Custom Policies
+### `warmup`
 
-### 1. Implement the ShardPolicy Interface
+Prioritizes pre-warmed nodes (identified by a label) for ultra-low-latency
+scheduling.
+
+| Argument | Type | Description |
+|---|---|---|
+| `warmupLabel` | string | Label key identifying warmup nodes. Default: `node.volcano.sh/warmup`. |
+| `warmupLabelValue` | string | Label value identifying warmup nodes. Default: `"true"`. |
+| `allowNonWarmup` | bool | If true, fall back to non-warmup nodes when warmup nodes alone do not meet `minNodes`. |
+
+```yaml
+- name: warmup-scheduler
+  type: agent
+  policy: warmup
+  minNodes: 5
+  maxNodes: 100
+  arguments:
+    allowNonWarmup: true
+```
+
+## Adding a custom policy
+
+### 1. Implement the `ShardPolicy` interface
 
 ```go
 package mypolicy
 
-import "volcano.sh/volcano/pkg/controllers/sharding/policy"
+import (
+    "fmt"
+
+    "volcano.sh/volcano/pkg/controllers/sharding/policy"
+)
 
 const PolicyName = "my-policy"
 
 type myPolicy struct {
-    // Configuration fields
     param1 float64
     param2 int
 }
 
 func New() policy.ShardPolicy {
-    return &myPolicy{
-        // Default values
-        param1: 0.5,
-        param2: 10,
-    }
+    return &myPolicy{param1: 0.5, param2: 10}
 }
 
-func (p *myPolicy) Name() string {
-    return PolicyName
-}
+func (p *myPolicy) Name() string { return PolicyName }
 
 func (p *myPolicy) Initialize(args policy.Arguments) error {
     args.GetFloat64(&p.param1, "param1")
     args.GetInt(&p.param2, "param2")
-
-    // Validate parameters
     if p.param1 < 0 || p.param1 > 1 {
         return fmt.Errorf("invalid param1: must be in [0, 1]")
     }
-
     return nil
 }
 
 func (p *myPolicy) Calculate(ctx *policy.PolicyContext) (*policy.PolicyResult, error) {
-    // Implement your node selection logic
-    selectedNodes := []string{}
-
+    selected := []string{}
     for _, node := range ctx.AllNodes {
-        // Skip assigned nodes
         if _, assigned := ctx.AssignedNodes[node.Name]; assigned {
             continue
         }
-
-        // Your selection logic here
-        metrics := ctx.NodeMetrics[node.Name]
-        if metrics != nil && /* your condition */ {
-            selectedNodes = append(selectedNodes, node.Name)
-        }
+        // your selection logic here
+        selected = append(selected, node.Name)
     }
-
     return &policy.PolicyResult{
-        SelectedNodes: selectedNodes,
-        Reason:        "Your policy description",
-        Metadata:      map[string]interface{}{"key": "value"},
+        SelectedNodes: selected,
+        Reason:        "selected by my-policy",
     }, nil
 }
 
-func (p *myPolicy) Cleanup() {
-    // Release resources if needed
-}
+func (p *myPolicy) Cleanup() {}
 ```
 
-### 2. Register Your Policy
+### 2. Register the policy
+
+Add the registration to `policy/builtin/builtin.go` so it fires as part of
+the standard registration `init()` (importing your policy subpackage from
+`policy` itself would create an import cycle):
 
 ```go
-// In factory.go or your plugin's init function
+// in pkg/controllers/sharding/policy/builtin/builtin.go
+import "volcano.sh/volcano/pkg/controllers/sharding/policy/mypolicy"
+
 func init() {
+    // ...existing registrations...
     policy.RegisterPolicy(mypolicy.PolicyName, mypolicy.New)
 }
 ```
 
-### 3. Configure and Use
+### 3. Reference it from the sharding ConfigMap
 
-```bash
---scheduler-configs="my-scheduler:volcano:my-policy:2:100:param1=0.7,param2=15"
+```yaml
+schedulerConfigs:
+  - name: my-scheduler
+    type: volcano
+    policy: my-policy
+    minNodes: 2
+    maxNodes: 100
+    arguments:
+      param1: 0.7
+      param2: 15
 ```
 
-## Testing
+## Tests
 
-Each policy has comprehensive unit tests:
-- `allocationrate/allocationrate_test.go`
-- `capability/capability_test.go`
-- `warmup/warmup_test.go`
-- `registry_test.go`
-
-Run tests:
 ```bash
 go test ./pkg/controllers/sharding/policy/...
 ```
-
-## Benefits
-
-1. **Extensibility**: Add new policies without modifying core code
-2. **Testability**: Each policy tested in isolation
-3. **Maintainability**: Clear separation of concerns
-4. **Backwards Compatibility**: Old configs still work
-5. **Flexibility**: Different schedulers can use different policies
-6. **Type Safety**: Strong interfaces prevent runtime errors
-
-## Migration Notes
-
-- No breaking changes - old config format still works
-- Default policy is "allocation-rate" if not specified
-- Deprecation warnings logged for old format
-- All three policies (allocation-rate, capability, warmup) available immediately
-
-## Example Configurations
-
-### Single Scheduler with Allocation-Rate
-```bash
---scheduler-configs="volcano:volcano:allocation-rate:2:100:minCPUUtil=0.0,maxCPUUtil=0.6"
-```
-
-### Multiple Schedulers with Different Policies
-```bash
---scheduler-configs="volcano:volcano:allocation-rate:2:100:minCPUUtil=0.0,maxCPUUtil=0.6,agent:agent:capability:2:50:maxCapacityPercent=0.30"
-```
-
-### Warmup Pool Scheduler
-```bash
---scheduler-configs="warmup-pool:volcano:warmup:5:100:allowNonWarmup=false"
-```
-
-### AI Agent Workload Configuration (Issue #4722 Use Case)
-
-For fast Agent scheduling with minimal latency:
-
-```bash
-# Traditional batch scheduler (Volcano) - allocation rate
-# Handles nodes with 0-60% utilization for traditional batch workloads
---scheduler-configs="volcano:volcano:allocation-rate:2:100:minCPUUtil=0.0,maxCPUUtil=0.6"
-
-# Agent scheduler - capability-based
-# Restricted to 30% of node capacity to ensure fast response times
-# Only selects nodes with sufficient headroom (utilization ≤ 70%)
---scheduler-configs="agent-scheduler:agent:capability:2:50:maxCapacityPercent=0.30"
-
-# Warmup pool scheduler - warmup-based
-# Only schedule on pre-warmed nodes for ultra-low latency
-# No fallback to non-warmup nodes (allowNonWarmup=false)
---scheduler-configs="warmup-agent:agent:warmup:5:20:allowNonWarmup=false"
-```
-
-**This configuration achieves:**
-- Fast scheduling via capability policy ensuring headroom for Agent tasks
-- Warmup pools for minimal task startup latency
-- Dynamic shard assignment via pluggable policies
-- Coexistence of multiple schedulers with different strategies
-- Resource isolation between batch and Agent workloads
-
-## References
-
-- **Primary Issue**: [#4944 - Make NodeShard sharding policies pluggable](https://github.com/volcano-sh/volcano/issues/4944)
-- **Parent Issue**: [#4722 - Fast scheduling for AI Agent workloads](https://github.com/volcano-sh/volcano/issues/4722)
-- **Related PRs**: #4777 (initial NodeShard), #4804 (agent scheduler), #4848, #4855 (node sharding implementations)
-- Design follows Volcano's scheduler plugin framework pattern
-- Inspired by Kubernetes scheduler framework

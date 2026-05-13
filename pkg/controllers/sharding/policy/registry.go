@@ -16,6 +16,8 @@ package policy
 import (
 	"fmt"
 	"sync"
+
+	"k8s.io/klog/v2"
 )
 
 var (
@@ -29,7 +31,7 @@ func RegisterPolicy(name string, builder PolicyBuilder) {
 	defer registryMutex.Unlock()
 
 	if _, exists := registry[name]; exists {
-		panic(fmt.Sprintf("policy %s already registered", name))
+		klog.Fatalf("policy %s already registered", name)
 	}
 
 	registry[name] = builder

@@ -24,26 +24,27 @@ import (
 	"volcano.sh/volcano/pkg/controllers/sharding/policy"
 )
 
-const PolicyName = "allocation-rate"
+// PolicyName is the user-visible name of this policy. It was previously
+// "allocation-rate"; that legacy name is still accepted as a deprecated
+// alias by the registry. See pkg/controllers/sharding/policy/builtin.
+const PolicyName = "utilization"
 
 type allocationRatePolicy struct {
-	minCPUUtil        float64
-	maxCPUUtil        float64
-	minCPURounded     float64 // pre-computed in Initialize
-	maxCPURounded     float64 // pre-computed in Initialize
-	preferWarmupNodes bool
-	minNodes          int
-	maxNodes          int
+	minCPUUtil    float64
+	maxCPUUtil    float64
+	minCPURounded float64 // pre-computed in Initialize
+	maxCPURounded float64 // pre-computed in Initialize
+	minNodes      int
+	maxNodes      int
 }
 
-// New creates a new allocation-rate policy instance
+// New creates a new utilization policy instance.
 func New() policy.ShardPolicy {
 	return &allocationRatePolicy{
-		minCPUUtil:        0.0,
-		maxCPUUtil:        1.0,
-		preferWarmupNodes: false,
-		minNodes:          1,
-		maxNodes:          1000,
+		minCPUUtil: 0.0,
+		maxCPUUtil: 1.0,
+		minNodes:   1,
+		maxNodes:   1000,
 	}
 }
 
@@ -54,7 +55,6 @@ func (p *allocationRatePolicy) Name() string {
 func (p *allocationRatePolicy) Initialize(args policy.Arguments) error {
 	args.GetFloat64(&p.minCPUUtil, "minCPUUtil")
 	args.GetFloat64(&p.maxCPUUtil, "maxCPUUtil")
-	args.GetBool(&p.preferWarmupNodes, "preferWarmupNodes")
 	args.GetInt(&p.minNodes, "minNodes")
 	args.GetInt(&p.maxNodes, "maxNodes")
 
@@ -74,21 +74,22 @@ func (p *allocationRatePolicy) Initialize(args policy.Arguments) error {
 	p.minCPURounded = math.Round(p.minCPUUtil*100) / 100
 	p.maxCPURounded = math.Round(p.maxCPUUtil*100) / 100
 
-	klog.V(3).Infof("Initialized allocation-rate policy: CPU range [%.2f, %.2f], nodes [%d, %d], preferWarmup=%v",
-		p.minCPUUtil, p.maxCPUUtil, p.minNodes, p.maxNodes, p.preferWarmupNodes)
+	klog.V(3).Infof("Initialized utilization policy: CPU range [%.2f, %.2f], nodes [%d, %d]",
+		p.minCPUUtil, p.maxCPUUtil, p.minNodes, p.maxNodes)
 
 	return nil
 }
 
 func (p *allocationRatePolicy) Calculate(ctx *policy.PolicyContext) (*policy.PolicyResult, error) {
-	klog.V(4).Infof("Calculating allocation-rate policy for scheduler %s", ctx.SchedulerName)
+	klog.V(4).Infof("Calculating utilization policy for scheduler %s", ctx.SchedulerName)
 
 	// 1. Filter nodes by CPU utilization range [minCPUUtil, maxCPUUtil]
 	eligibleNodes := p.filterEligibleNodes(ctx)
 	klog.V(4).Infof("Scheduler %s has %d eligible nodes (CPU range: [%.2f, %.2f])",
 		ctx.SchedulerName, len(eligibleNodes), p.minCPUUtil, p.maxCPUUtil)
 
-	// 2. Prioritize: warmup nodes first (if preferWarmupNodes), sorted by utilization
+	// 2. Sort by utilization (highest first) so workloads pack onto already-busy
+	// nodes, leaving lightly-loaded nodes available for other schedulers.
 	prioritizedNodes := p.prioritizeNodes(eligibleNodes, ctx)
 
 	// 3. Select nodes within [minNodes, maxNodes] constraints
@@ -96,15 +97,13 @@ func (p *allocationRatePolicy) Calculate(ctx *policy.PolicyContext) (*policy.Pol
 
 	return &policy.PolicyResult{
 		SelectedNodes: selectedNodes,
-		Reason: fmt.Sprintf("Selected %d nodes from %d eligible in CPU range [%.2f, %.2f]%s",
-			len(selectedNodes), len(eligibleNodes), p.minCPUUtil, p.maxCPUUtil,
-			p.warmupPreferenceString()),
+		Reason: fmt.Sprintf("Selected %d nodes from %d eligible in CPU range [%.2f, %.2f]",
+			len(selectedNodes), len(eligibleNodes), p.minCPUUtil, p.maxCPUUtil),
 		Metadata: map[string]interface{}{
-			"eligible_count":  len(eligibleNodes),
-			"selected_count":  len(selectedNodes),
-			"prefer_warmup":   p.preferWarmupNodes,
-			"min_cpu_util":    p.minCPUUtil,
-			"max_cpu_util":    p.maxCPUUtil,
+			"eligible_count": len(eligibleNodes),
+			"selected_count": len(selectedNodes),
+			"min_cpu_util":   p.minCPUUtil,
+			"max_cpu_util":   p.maxCPUUtil,
 		},
 	}, nil
 }
@@ -115,7 +114,7 @@ func (p *allocationRatePolicy) Cleanup() {
 
 // filterEligibleNodes applies hard filtering based on CPU utilization range
 func (p *allocationRatePolicy) filterEligibleNodes(ctx *policy.PolicyContext) []*corev1.Node {
-	var eligibleNodes []*corev1.Node
+	eligibleNodes := make([]*corev1.Node, 0, len(ctx.AllNodes))
 
 	for _, node := range ctx.AllNodes {
 		// Skip already assigned nodes
@@ -153,59 +152,26 @@ func (p *allocationRatePolicy) filterEligibleNodes(ctx *policy.PolicyContext) []
 	return eligibleNodes
 }
 
-// prioritizeNodes orders nodes based on warmup preference and utilization
+// prioritizeNodes sorts nodes by CPU utilization (highest first).
+// The utilization policy prefers nodes that are already well-utilized so
+// that lightly-loaded nodes remain available for other schedulers. This is
+// the opposite of capability/warmup policies which prefer lowest utilization.
 func (p *allocationRatePolicy) prioritizeNodes(nodes []*corev1.Node, ctx *policy.PolicyContext) []*corev1.Node {
 	if len(nodes) <= 1 {
 		return nodes
 	}
 
-	// Divide nodes into two groups using the warmup label
-	warmupNodes := make([]*corev1.Node, 0)
-	nonWarmupNodes := make([]*corev1.Node, 0)
-
-	for _, node := range nodes {
-		metrics := ctx.NodeMetrics[node.Name]
-		if metrics != nil && metrics.IsWarmupNode {
-			warmupNodes = append(warmupNodes, node)
-		} else {
-			nonWarmupNodes = append(nonWarmupNodes, node)
-		}
-	}
-
-	// Sort nodes by CPU utilization within groups (higher utilization first).
-	// allocation-rate prefers nodes that are already well-utilized, packing
-	// workloads onto busy nodes so that lightly-loaded nodes remain available
-	// for other schedulers. This is the opposite of capability/warmup policies
-	// which prefer lowest utilization (most headroom).
-	sort.Slice(warmupNodes, func(i, j int) bool {
-		metricsI := ctx.NodeMetrics[warmupNodes[i].Name]
-		metricsJ := ctx.NodeMetrics[warmupNodes[j].Name]
-		if metricsI == nil || metricsJ == nil {
+	sorted := make([]*corev1.Node, len(nodes))
+	copy(sorted, nodes)
+	sort.Slice(sorted, func(i, j int) bool {
+		mi := ctx.NodeMetrics[sorted[i].Name]
+		mj := ctx.NodeMetrics[sorted[j].Name]
+		if mi == nil || mj == nil {
 			return false
 		}
-		return metricsI.CPUUtilization > metricsJ.CPUUtilization
+		return mi.CPUUtilization > mj.CPUUtilization
 	})
-
-	sort.Slice(nonWarmupNodes, func(i, j int) bool {
-		metricsI := ctx.NodeMetrics[nonWarmupNodes[i].Name]
-		metricsJ := ctx.NodeMetrics[nonWarmupNodes[j].Name]
-		if metricsI == nil || metricsJ == nil {
-			return false
-		}
-		return metricsI.CPUUtilization > metricsJ.CPUUtilization
-	})
-
-	// Combine results: prefer warmup nodes if configured
-	prioritized := make([]*corev1.Node, 0, len(nodes))
-	if p.preferWarmupNodes {
-		prioritized = append(prioritized, warmupNodes...)
-		prioritized = append(prioritized, nonWarmupNodes...)
-	} else {
-		prioritized = append(prioritized, nonWarmupNodes...)
-		prioritized = append(prioritized, warmupNodes...)
-	}
-
-	return prioritized
+	return sorted
 }
 
 // selectNodesWithinConstraints selects nodes within min/max constraints.
@@ -243,12 +209,4 @@ func (p *allocationRatePolicy) calculateDesiredNodeCount(eligibleNodeCount int) 
 	}
 
 	return desired
-}
-
-// warmupPreferenceString returns a string describing warmup preference
-func (p *allocationRatePolicy) warmupPreferenceString() string {
-	if p.preferWarmupNodes {
-		return " with warmup preference"
-	}
-	return " without warmup preference"
 }

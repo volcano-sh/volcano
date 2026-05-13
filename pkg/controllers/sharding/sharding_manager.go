@@ -22,6 +22,12 @@ import (
 
 	shardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/sharding/policy"
+
+	// Blank-import registers all built-in shard policies (utilization,
+	// capability, warmup) plus the deprecated "allocation-rate" alias
+	// with the policy registry at process init. Removing this import
+	// will leave the registry empty and break policy lookup.
+	_ "volcano.sh/volcano/pkg/controllers/sharding/policy/builtin"
 )
 
 const (
@@ -32,7 +38,7 @@ const (
 type ShardingManager struct {
 	schedulerConfigs []SchedulerConfig
 	metricsProvider  NodeMetricsProvider
-	policyCache      map[string]policy.ShardPolicy // NEW: Policy instances
+	policyCache      map[string]policy.ShardPolicy
 }
 
 // NewShardingManager creates a new sharding manager

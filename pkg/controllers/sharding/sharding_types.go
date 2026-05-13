@@ -42,7 +42,7 @@ type ShardStrategy struct {
 type SchedulerConfig struct {
 	Name            string
 	Type            string // "volcano" or "agent"
-	PolicyName      string                 // Policy name (e.g., "allocation-rate")
+	PolicyName      string                 // Policy name (e.g., "utilization")
 	PolicyArguments map[string]interface{} // Policy-specific arguments
 	ShardStrategy   ShardStrategy          // DEPRECATED: Kept for backwards compatibility
 }

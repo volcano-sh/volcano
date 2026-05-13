@@ -135,30 +135,6 @@ func TestCapabilityPolicyCalculate(t *testing.T) {
 			description:   "Should select node2 and node1 (lowest utilization first)",
 		},
 		{
-			name: "prefer warmup nodes",
-			args: policy.Arguments{
-				"maxCapacityPercent": 0.50,
-				"preferWarmupNodes":  true,
-				"minNodes":           1,
-				"maxNodes":           10,
-			},
-			nodes: []*corev1.Node{
-				{ObjectMeta: metav1.ObjectMeta{Name: "warmup1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "regular1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "warmup2"}},
-			},
-			metrics: map[string]*policy.NodeMetrics{
-				"warmup1":  {CPUUtilization: 0.4, IsWarmupNode: true},
-				"regular1": {CPUUtilization: 0.3, IsWarmupNode: false},
-				"warmup2":  {CPUUtilization: 0.45, IsWarmupNode: true},
-			},
-			assignedNodes: map[string]string{},
-			expectedCount: 3,
-			// Warmup nodes sorted by lowest util first, then non-warmup
-			expectedNodes: []string{"warmup1", "warmup2", "regular1"},
-			description:   "Warmup nodes should be prioritized",
-		},
-		{
 			name: "skip already assigned nodes",
 			args: policy.Arguments{
 				"maxCapacityPercent": 0.50,

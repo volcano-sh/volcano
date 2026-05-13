@@ -31,11 +31,10 @@ func TestAllocationRatePolicyInitialize(t *testing.T) {
 		{
 			name: "valid configuration",
 			args: policy.Arguments{
-				"minCPUUtil":        0.0,
-				"maxCPUUtil":        0.6,
-				"preferWarmupNodes": false,
-				"minNodes":          2,
-				"maxNodes":          100,
+				"minCPUUtil": 0.0,
+				"maxCPUUtil": 0.6,
+				"minNodes":   2,
+				"maxNodes":   100,
 			},
 			expectErr: false,
 		},
@@ -127,27 +126,26 @@ func TestAllocationRatePolicyCalculate(t *testing.T) {
 			expectedNodes: []string{"node3", "node2"}, // Sorted by utilization (highest first)
 		},
 		{
-			name: "prefer warmup nodes",
+			name: "sort by utilization (highest first)",
 			args: policy.Arguments{
-				"minCPUUtil":        0.0,
-				"maxCPUUtil":        1.0,
-				"preferWarmupNodes": true,
-				"minNodes":          1,
-				"maxNodes":          10,
+				"minCPUUtil": 0.0,
+				"maxCPUUtil": 1.0,
+				"minNodes":   1,
+				"maxNodes":   10,
 			},
 			nodes: []*corev1.Node{
-				{ObjectMeta: metav1.ObjectMeta{Name: "warmup1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "regular1"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "warmup2"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "low"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "high"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "mid"}},
 			},
 			metrics: map[string]*policy.NodeMetrics{
-				"warmup1":  {CPUUtilization: 0.5, IsWarmupNode: true},
-				"regular1": {CPUUtilization: 0.6, IsWarmupNode: false},
-				"warmup2":  {CPUUtilization: 0.4, IsWarmupNode: true},
+				"low":  {CPUUtilization: 0.2},
+				"high": {CPUUtilization: 0.8},
+				"mid":  {CPUUtilization: 0.5},
 			},
 			assignedNodes: map[string]string{},
 			expectedCount: 3,
-			expectedNodes: []string{"warmup1", "warmup2", "regular1"}, // Warmup nodes first
+			expectedNodes: []string{"high", "mid", "low"}, // Highest utilization first
 		},
 		{
 			name: "skip already assigned nodes",

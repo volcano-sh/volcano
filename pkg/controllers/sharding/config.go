@@ -32,8 +32,15 @@ const (
 	// DefaultConfigMapNamespace is the default namespace of the sharding ConfigMap.
 	DefaultConfigMapNamespace = "volcano-system"
 	// DefaultPolicyName is the policy used when none is specified (backward compatibility).
-	DefaultPolicyName = "allocation-rate"
+	DefaultPolicyName = "utilization"
 )
+
+// preferWarmupNodesDeprecatedMsg is logged when a config sets the deprecated
+// top-level preferWarmupNodes field. The flag is no longer honored by the
+// utilization policy after the pluggable-policy refactor; users who want
+// warmup-aware ordering should switch to policy=warmup.
+const preferWarmupNodesDeprecatedMsg = "scheduler %q: preferWarmupNodes is no longer honored by the utilization policy; " +
+	"use policy=warmup to prioritize warmup nodes"
 
 // SchedulerConfigSpec defines the per-scheduler sharding parameters.
 // It is used both as the internal representation and as the YAML-serialisable
@@ -43,7 +50,7 @@ type SchedulerConfigSpec struct {
 	Name string `json:"name"`
 	// Type describes the workload class (e.g. "volcano", "agent").
 	Type string `json:"type"`
-	// Policy is the policy name (e.g., "allocation-rate").
+	// Policy is the policy name (e.g., "utilization").
 	Policy string `json:"policy,omitempty"`
 	// Arguments holds policy-specific arguments.
 	Arguments map[string]interface{} `json:"arguments,omitempty"`
@@ -184,7 +191,7 @@ func (opts *ShardingControllerOptions) AddFlags(fs *pflag.FlagSet) {
 // This is used only when ConfigMap-based configuration is not available.
 // Supports both old and new formats:
 // OLD: "volcano:volcano:0.0:0.6:false:2:100"
-// NEW: "volcano:volcano:allocation-rate:2:100:minCPUUtil=0.0,maxCPUUtil=0.6,preferWarmupNodes=false"
+// NEW: "volcano:volcano:utilization:2:100:minCPUUtil=0.0,maxCPUUtil=0.6"
 func (opts *ShardingControllerOptions) ParseConfig() error {
 	configs := make([]SchedulerConfigSpec, 0, len(opts.SchedulerConfigsRaw))
 
@@ -200,7 +207,7 @@ func (opts *ShardingControllerOptions) ParseConfig() error {
 			if err != nil {
 				return fmt.Errorf("failed to parse old format config %s: %v", configStr, err)
 			}
-			klog.V(3).Infof("Parsed old format config for scheduler %s, converting to allocation-rate policy", config.Name)
+			klog.V(3).Infof("Parsed old format config for scheduler %s, converting to %s policy", config.Name, DefaultPolicyName)
 		} else if len(parts) >= 5 {
 			// New format: name:type:policy:minNodes:maxNodes[:args]
 			config, err = parseNewFormat(parts)
@@ -251,17 +258,20 @@ func parseOldFormat(parts []string) (SchedulerConfigSpec, error) {
 		return SchedulerConfigSpec{}, fmt.Errorf("invalid max nodes: %v", err)
 	}
 
-	// Convert to new format with allocation-rate policy
+	if preferWarmup {
+		klog.Warningf(preferWarmupNodesDeprecatedMsg, parts[0])
+	}
+
+	// Convert to new format with the default (utilization) policy
 	return SchedulerConfigSpec{
 		Name:   parts[0],
 		Type:   parts[1],
 		Policy: DefaultPolicyName,
 		Arguments: map[string]interface{}{
-			"minCPUUtil":        minUtil,
-			"maxCPUUtil":        maxUtil,
-			"preferWarmupNodes": preferWarmup,
-			"minNodes":          minNodes,
-			"maxNodes":          maxNodes,
+			"minCPUUtil": minUtil,
+			"maxCPUUtil": maxUtil,
+			"minNodes":   minNodes,
+			"maxNodes":   maxNodes,
 		},
 		// Keep deprecated fields for backwards compatibility
 		CPUUtilizationMin: minUtil,
@@ -341,13 +351,15 @@ func parseArgumentValue(s string) interface{} {
 // deprecated fields when the spec has no explicit Policy set.
 func applyPolicyDefaults(spec *SchedulerConfigSpec) {
 	if spec.Policy == "" {
+		if spec.PreferWarmupNodes {
+			klog.Warningf(preferWarmupNodesDeprecatedMsg, spec.Name)
+		}
 		spec.Policy = DefaultPolicyName
 		spec.Arguments = map[string]interface{}{
-			"minCPUUtil":        spec.CPUUtilizationMin,
-			"maxCPUUtil":        spec.CPUUtilizationMax,
-			"preferWarmupNodes": spec.PreferWarmupNodes,
-			"minNodes":          spec.MinNodes,
-			"maxNodes":          spec.MaxNodes,
+			"minCPUUtil": spec.CPUUtilizationMin,
+			"maxCPUUtil": spec.CPUUtilizationMax,
+			"minNodes":   spec.MinNodes,
+			"maxNodes":   spec.MaxNodes,
 		}
 	}
 }

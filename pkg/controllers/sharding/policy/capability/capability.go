@@ -28,7 +28,6 @@ type capabilityPolicy struct {
 	maxCapacityPercent float64 // Default 0.30 (30%)
 	minNodes           int
 	maxNodes           int
-	preferWarmupNodes  bool
 }
 
 // New creates a new capability policy instance
@@ -37,7 +36,6 @@ func New() policy.ShardPolicy {
 		maxCapacityPercent: 0.30,
 		minNodes:           1,
 		maxNodes:           1000,
-		preferWarmupNodes:  false,
 	}
 }
 
@@ -49,7 +47,6 @@ func (p *capabilityPolicy) Initialize(args policy.Arguments) error {
 	args.GetFloat64(&p.maxCapacityPercent, "maxCapacityPercent")
 	args.GetInt(&p.minNodes, "minNodes")
 	args.GetInt(&p.maxNodes, "maxNodes")
-	args.GetBool(&p.preferWarmupNodes, "preferWarmupNodes")
 
 	// Validate parameters
 	if p.maxCapacityPercent <= 0 || p.maxCapacityPercent > 1 {
@@ -62,8 +59,8 @@ func (p *capabilityPolicy) Initialize(args policy.Arguments) error {
 			p.minNodes, p.maxNodes)
 	}
 
-	klog.V(3).Infof("Initialized capability policy: maxCapacity %.0f%%, nodes [%d, %d], preferWarmup=%v",
-		p.maxCapacityPercent*100, p.minNodes, p.maxNodes, p.preferWarmupNodes)
+	klog.V(3).Infof("Initialized capability policy: maxCapacity %.0f%%, nodes [%d, %d]",
+		p.maxCapacityPercent*100, p.minNodes, p.maxNodes)
 
 	return nil
 }
@@ -91,7 +88,6 @@ func (p *capabilityPolicy) Calculate(ctx *policy.PolicyContext) (*policy.PolicyR
 			"eligible_count":       len(eligibleNodes),
 			"selected_count":       len(selected),
 			"max_capacity_percent": p.maxCapacityPercent,
-			"prefer_warmup":        p.preferWarmupNodes,
 		},
 	}, nil
 }
@@ -141,8 +137,7 @@ func (p *capabilityPolicy) filterEligibleNodes(ctx *policy.PolicyContext) []stri
 // sortByUtilization sorts nodes by utilization (lowest first for most headroom).
 // capability policy prefers nodes with the most capacity headroom so that
 // agent workloads can burst without resource pressure. This is the opposite
-// of allocation-rate which prefers highest utilization first.
-// If preferWarmupNodes is true, warmup nodes are prioritized first.
+// of the utilization policy which prefers highest utilization first.
 func (p *capabilityPolicy) sortByUtilization(nodes []string, ctx *policy.PolicyContext) {
 	sort.Slice(nodes, func(i, j int) bool {
 		metricsI := ctx.NodeMetrics[nodes[i]]
@@ -150,16 +145,6 @@ func (p *capabilityPolicy) sortByUtilization(nodes []string, ctx *policy.PolicyC
 
 		if metricsI == nil || metricsJ == nil {
 			return false
-		}
-
-		// If preferWarmupNodes is enabled, prioritize warmup nodes
-		if p.preferWarmupNodes {
-			if metricsI.IsWarmupNode && !metricsJ.IsWarmupNode {
-				return true
-			}
-			if !metricsI.IsWarmupNode && metricsJ.IsWarmupNode {
-				return false
-			}
 		}
 
 		// Sort by lowest utilization (most headroom)

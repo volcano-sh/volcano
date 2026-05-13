@@ -219,8 +219,8 @@ func TestParseConfigOldFormat(t *testing.T) {
 	if config1.Type != "volcano" {
 		t.Errorf("config1.Type = %v, want volcano", config1.Type)
 	}
-	if config1.Policy != "allocation-rate" {
-		t.Errorf("config1.Policy = %v, want allocation-rate", config1.Policy)
+	if config1.Policy != "utilization" {
+		t.Errorf("config1.Policy = %v, want utilization", config1.Policy)
 	}
 	if config1.Arguments["minCPUUtil"] != 0.0 {
 		t.Errorf("config1.Arguments[minCPUUtil] = %v, want 0.0", config1.Arguments["minCPUUtil"])
@@ -228,8 +228,9 @@ func TestParseConfigOldFormat(t *testing.T) {
 	if config1.Arguments["maxCPUUtil"] != 0.6 {
 		t.Errorf("config1.Arguments[maxCPUUtil] = %v, want 0.6", config1.Arguments["maxCPUUtil"])
 	}
-	if config1.Arguments["preferWarmupNodes"] != false {
-		t.Errorf("config1.Arguments[preferWarmupNodes] = %v, want false", config1.Arguments["preferWarmupNodes"])
+	if _, ok := config1.Arguments["preferWarmupNodes"]; ok {
+		t.Errorf("config1.Arguments[preferWarmupNodes] should be absent for utilization; "+
+			"got %v", config1.Arguments["preferWarmupNodes"])
 	}
 	if config1.Arguments["minNodes"] != 2 {
 		t.Errorf("config1.Arguments[minNodes] = %v, want 2", config1.Arguments["minNodes"])
@@ -246,15 +247,16 @@ func TestParseConfigOldFormat(t *testing.T) {
 	if config2.Arguments["minCPUUtil"] != 0.7 {
 		t.Errorf("config2.Arguments[minCPUUtil] = %v, want 0.7", config2.Arguments["minCPUUtil"])
 	}
-	if config2.Arguments["preferWarmupNodes"] != true {
-		t.Errorf("config2.Arguments[preferWarmupNodes] = %v, want true", config2.Arguments["preferWarmupNodes"])
+	if _, ok := config2.Arguments["preferWarmupNodes"]; ok {
+		t.Errorf("config2.Arguments[preferWarmupNodes] should be absent for utilization; "+
+			"got %v", config2.Arguments["preferWarmupNodes"])
 	}
 }
 
 func TestParseConfigNewFormat(t *testing.T) {
 	opts := &ShardingControllerOptions{
 		SchedulerConfigsRaw: []string{
-			"volcano:volcano:allocation-rate:2:100:minCPUUtil=0.0,maxCPUUtil=0.6,preferWarmupNodes=false",
+			"volcano:volcano:utilization:2:100:minCPUUtil=0.0,maxCPUUtil=0.6,preferWarmupNodes=false",
 			"agent:agent:capability:2:50:maxCapacityPercent=0.30",
 			"warmup-sched:warmup:warmup:5:100:allowNonWarmup=true",
 		},
@@ -269,13 +271,13 @@ func TestParseConfigNewFormat(t *testing.T) {
 		t.Fatalf("ParseConfig() parsed %d configs, want 3", len(opts.SchedulerConfigs))
 	}
 
-	// Check first config (allocation-rate)
+	// Check first config (utilization)
 	config1 := opts.SchedulerConfigs[0]
 	if config1.Name != "volcano" {
 		t.Errorf("config1.Name = %v, want volcano", config1.Name)
 	}
-	if config1.Policy != "allocation-rate" {
-		t.Errorf("config1.Policy = %v, want allocation-rate", config1.Policy)
+	if config1.Policy != "utilization" {
+		t.Errorf("config1.Policy = %v, want utilization", config1.Policy)
 	}
 	if config1.Arguments["minNodes"] != 2 {
 		t.Errorf("config1.Arguments[minNodes] = %v, want 2", config1.Arguments["minNodes"])
@@ -332,9 +334,9 @@ func TestParseConfigMixedFormats(t *testing.T) {
 		t.Fatalf("ParseConfig() parsed %d configs, want 2", len(opts.SchedulerConfigs))
 	}
 
-	// Old format should be converted to allocation-rate
-	if opts.SchedulerConfigs[0].Policy != "allocation-rate" {
-		t.Errorf("Old format config policy = %v, want allocation-rate", opts.SchedulerConfigs[0].Policy)
+	// Old format should be converted to the default utilization policy
+	if opts.SchedulerConfigs[0].Policy != "utilization" {
+		t.Errorf("Old format config policy = %v, want utilization", opts.SchedulerConfigs[0].Policy)
 	}
 
 	// New format should be parsed correctly
