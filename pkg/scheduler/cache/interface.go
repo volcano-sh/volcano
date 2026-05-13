@@ -85,6 +85,9 @@ type Cache interface {
 	// SetMetricsConf set the metrics server related configuration
 	SetMetricsConf(conf map[string]string)
 
+	// GetMetricsConf returns the metrics server related configuration
+	GetMetricsConf() map[string]string
+
 	// EventRecorder returns the event recorder
 	EventRecorder() record.EventRecorder
 
