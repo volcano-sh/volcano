@@ -38,6 +38,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -47,7 +48,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/actions/preempt"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
-	vbcap "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
@@ -410,10 +410,10 @@ func TestInitPlugin(t *testing.T) {
 			expectInReserve:         []string{},
 			expectInPreBind:         []string{},
 			expectInScore:           []string{},
-			expectNotInFilter:       []string{vbcap.Name, dynamicresources.Name},
-			expectNotInReserve:      []string{vbcap.Name, dynamicresources.Name},
-			expectNotInPreBind:      []string{vbcap.Name, dynamicresources.Name},
-			expectNotInScore:        []string{vbcap.Name},
+			expectNotInFilter:       []string{volumebinding.Name, dynamicresources.Name},
+			expectNotInReserve:      []string{volumebinding.Name, dynamicresources.Name},
+			expectNotInPreBind:      []string{volumebinding.Name, dynamicresources.Name},
+			expectNotInScore:        []string{volumebinding.Name},
 		},
 		{
 			name:                    "volume binding enabled",
@@ -426,12 +426,12 @@ func TestInitPlugin(t *testing.T) {
 			enablePodTopologySpread: false,
 			enableVolumeBinding:     true,
 			enableDRA:               false,
-			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, vbcap.Name},
+			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, volumebinding.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
-			expectInPrefilter:       []string{vbcap.Name},
-			expectInReserve:         []string{vbcap.Name},
-			expectInPreBind:         []string{vbcap.Name},
-			expectInScore:           []string{vbcap.Name},
+			expectInPrefilter:       []string{volumebinding.Name},
+			expectInReserve:         []string{volumebinding.Name},
+			expectInPreBind:         []string{volumebinding.Name},
+			expectInScore:           []string{volumebinding.Name},
 			expectNotInFilter:       []string{nodeports.Name, interpodaffinity.Name, dynamicresources.Name},
 			expectNotInReserve:      []string{dynamicresources.Name},
 			expectNotInPreBind:      []string{dynamicresources.Name},
@@ -453,10 +453,10 @@ func TestInitPlugin(t *testing.T) {
 			expectInReserve:         []string{dynamicresources.Name},
 			expectInPreBind:         []string{dynamicresources.Name},
 			expectInScore:           []string{},
-			expectNotInFilter:       []string{vbcap.Name},
-			expectNotInReserve:      []string{vbcap.Name},
-			expectNotInPreBind:      []string{vbcap.Name},
-			expectNotInScore:        []string{dynamicresources.Name, vbcap.Name},
+			expectNotInFilter:       []string{volumebinding.Name},
+			expectNotInReserve:      []string{volumebinding.Name},
+			expectNotInPreBind:      []string{volumebinding.Name},
+			expectNotInScore:        []string{dynamicresources.Name, volumebinding.Name},
 		},
 		{
 			name:                    "both volume binding and dra enabled",
@@ -469,12 +469,12 @@ func TestInitPlugin(t *testing.T) {
 			enablePodTopologySpread: true,
 			enableVolumeBinding:     true,
 			enableDRA:               true,
-			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumezone.Name, podtopologyspread.Name, vbcap.Name, dynamicresources.Name},
+			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumezone.Name, podtopologyspread.Name, volumebinding.Name, dynamicresources.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
-			expectInPrefilter:       []string{nodeports.Name, interpodaffinity.Name, podtopologyspread.Name, vbcap.Name, dynamicresources.Name},
-			expectInReserve:         []string{vbcap.Name, dynamicresources.Name},
-			expectInPreBind:         []string{vbcap.Name, dynamicresources.Name},
-			expectInScore:           []string{vbcap.Name},
+			expectInPrefilter:       []string{nodeports.Name, interpodaffinity.Name, podtopologyspread.Name, volumebinding.Name, dynamicresources.Name},
+			expectInReserve:         []string{volumebinding.Name, dynamicresources.Name},
+			expectInPreBind:         []string{volumebinding.Name, dynamicresources.Name},
+			expectInScore:           []string{volumebinding.Name},
 			expectNotInScore:        []string{dynamicresources.Name},
 		},
 	}
@@ -570,7 +570,7 @@ func TestInitPlugin(t *testing.T) {
 
 			// Verify VolumeBinding weight if enabled
 			if tt.enableVolumeBinding {
-				if weight, exists := pp.ScoreWeights[vbcap.Name]; !exists || weight == 0 {
+				if weight, exists := pp.ScoreWeights[volumebinding.Name]; !exists || weight == 0 {
 					t.Errorf("expected VolumeBinding to have non-zero weight in ScoreWeights")
 				}
 			}
@@ -649,10 +649,10 @@ func TestReserveRollbackOrderStable(t *testing.T) {
 		dynamicResourceAllocationEnable: true,
 	}
 	pp.ReservePlugins = map[string]k8sframework.ReservePlugin{
-		vbcap.Name:            &fakeReservePlugin{name: vbcap.Name, calls: &calls},
+		volumebinding.Name:    &fakeReservePlugin{name: volumebinding.Name, calls: &calls},
 		dynamicresources.Name: &fakeReservePlugin{name: dynamicresources.Name, calls: &calls},
 	}
-	pp.ReserveOrder = []string{vbcap.Name, dynamicresources.Name}
+	pp.ReserveOrder = []string{volumebinding.Name, dynamicresources.Name}
 
 	pod := util.BuildPod("ns", "p1", "", apiv1.PodPending, nil, "pg", nil, nil)
 	pod.Spec.NodeName = "node-1"

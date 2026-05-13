@@ -43,11 +43,11 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
-	vbcap "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
@@ -90,7 +90,7 @@ const (
 )
 
 var (
-	volumeBindingPluginInstance *vbcap.VolumeBinding
+	volumeBindingPluginInstance *volumebinding.VolumeBinding
 	volumeBindingPluginOnce     sync.Once
 )
 
@@ -154,7 +154,6 @@ func New(arguments framework.Arguments) framework.Plugin {
 		EnableDRAAdminAccess:                         utilFeature.DefaultFeatureGate.Enabled(features.DRAAdminAccess),
 		EnableDynamicResourceAllocation:              utilFeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation),
 		EnableVolumeAttributesClass:                  utilFeature.DefaultFeatureGate.Enabled(features.VolumeAttributesClass),
-		EnableCSIMigrationPortworx:                   utilFeature.DefaultFeatureGate.Enabled(features.CSIMigrationPortworx),
 		EnableDRAExtendedResource:                    utilFeature.DefaultFeatureGate.Enabled(features.DRAExtendedResource),
 		EnableDRAPrioritizedList:                     utilFeature.DefaultFeatureGate.Enabled(features.DRAPrioritizedList),
 		EnableDRAConsumableCapacity:                  utilFeature.DefaultFeatureGate.Enabled(features.DRAConsumableCapacity),
@@ -600,18 +599,18 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		volumeBindingPluginOnce.Do(func() {
 			setUpVolumeBindingArgs(vbArgs, pp.pluginArguments)
 
-			plugin, err := vbcap.New(context.TODO(), vbArgs.VolumeBindingArgs, pp.Handle, pp.features)
+			plugin, err := volumebinding.New(context.TODO(), vbArgs.VolumeBindingArgs, pp.Handle, pp.features)
 			if err != nil {
 				klog.Fatalf("failed to create volume binding plugin with args %+v: %v", vbArgs, err)
 			}
-			volumeBindingPluginInstance = plugin.(*vbcap.VolumeBinding)
+			volumeBindingPluginInstance = plugin.(*volumebinding.VolumeBinding)
 		})
 
-		addFilterPlugin(vbcap.Name, volumeBindingPluginInstance)
-		addPreFilterPlugin(vbcap.Name, volumeBindingPluginInstance)
-		addReservePlugin(vbcap.Name, volumeBindingPluginInstance)
-		addPreBindPlugin(vbcap.Name, volumeBindingPluginInstance)
-		addScorePlugin(vbcap.Name, volumeBindingPluginInstance, vbArgs.Weight)
+		addFilterPlugin(volumebinding.Name, volumeBindingPluginInstance)
+		addPreFilterPlugin(volumebinding.Name, volumeBindingPluginInstance)
+		addReservePlugin(volumebinding.Name, volumeBindingPluginInstance)
+		addPreBindPlugin(volumebinding.Name, volumeBindingPluginInstance)
+		addScorePlugin(volumebinding.Name, volumeBindingPluginInstance, vbArgs.Weight)
 	}
 	// 10. DRA
 	if pp.enabledPredicates.dynamicResourceAllocationEnable {

@@ -29,9 +29,9 @@ import (
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
-	scheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
 // Framework is a K8S framework who mainly provides some methods
@@ -128,12 +128,12 @@ func (f *Framework) SharedInformerFactory() informers.SharedInformerFactory {
 }
 
 // VolumeBinder returns the volume binder used by scheduler.
-func (f *Framework) VolumeBinder() scheduling.SchedulerVolumeBinder {
+func (f *Framework) VolumeBinder() volumebinding.SchedulerVolumeBinder {
 	panic("not implemented")
 }
 
 // EventRecorder was introduced in k8s v1.19.6 and to be implemented
-func (f *Framework) EventRecorder() events.EventRecorder {
+func (f *Framework) EventRecorder() events.EventRecorderLogger {
 	return nil
 }
 
@@ -177,6 +177,18 @@ func (f *Framework) RejectWaitingPod(uid types.UID) bool {
 	panic("implement me")
 }
 
+func (f *Framework) AddPodInPreBind(uid types.UID, cancel context.CancelCauseFunc) {
+	panic("implement me")
+}
+
+func (f *Framework) GetPodInPreBind(uid types.UID) fwk.PodInPreBind {
+	panic("implement me")
+}
+
+func (f *Framework) RemovePodInPreBind(uid types.UID) {
+	panic("implement me")
+}
+
 func (f *Framework) KubeConfig() *rest.Config {
 	panic("implement me")
 }
@@ -217,11 +229,11 @@ func (f *Framework) SharedCSIManager() fwk.CSIManager {
 	return f.sharedCSIManager
 }
 
-func (f *Framework) WorkloadManager() fwk.WorkloadManager {
-	return nil
+func (f *Framework) PodGroupManager() fwk.PodGroupManager {
+	panic("implement me")
 }
 
-func (f *Framework) SignPod(ctx context.Context, pod *v1.Pod, recordPluginStats bool) fwk.PodSignature {
+func (f *Framework) SignPod(ctx context.Context, pod *v1.Pod) fwk.PodSignature {
 	return nil
 }
 

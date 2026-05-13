@@ -103,7 +103,7 @@ func RegisterDevice(deviceName string) {
 // IsNilDevice reports whether d wraps a typed-nil pointer.
 func IsNilDevice(d Devices) bool {
 	rv := reflect.ValueOf(d)
-	return rv.Kind() == reflect.Ptr && rv.IsNil()
+	return rv.Kind() == reflect.Pointer && rv.IsNil()
 }
 
 var IgnoredDevicesList = ignoredDevicesList{}

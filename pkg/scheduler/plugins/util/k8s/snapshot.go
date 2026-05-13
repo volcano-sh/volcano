@@ -29,6 +29,8 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
@@ -291,6 +293,29 @@ func (s *Snapshot) NodeInfos() fwk.NodeInfoLister {
 // StorageInfos returns a StorageInfoLister.
 func (s *Snapshot) StorageInfos() fwk.StorageInfoLister {
 	return s
+}
+
+// Volcano does not track kube-scheduler PodGroup state in this snapshot; return an empty state so
+// in-tree plugins that consult PodGroupStates keep working.
+type emptyPodGroupState struct{}
+
+func (emptyPodGroupState) AllPods() sets.Set[types.UID]        { return sets.Set[types.UID]{} }
+func (emptyPodGroupState) AllPodsCount() int                   { return 0 }
+func (emptyPodGroupState) UnscheduledPods() map[string]*v1.Pod { return nil }
+func (emptyPodGroupState) AssumedPods() sets.Set[types.UID]    { return sets.Set[types.UID]{} }
+func (emptyPodGroupState) AssignedPods() sets.Set[types.UID]   { return sets.Set[types.UID]{} }
+func (emptyPodGroupState) ScheduledPods() []*v1.Pod            { return nil }
+func (emptyPodGroupState) ScheduledPodsCount() int             { return 0 }
+
+type snapshotPodGroupStateLister struct{}
+
+func (snapshotPodGroupStateLister) Get(string, string) (fwk.PodGroupState, error) {
+	return emptyPodGroupState{}, nil
+}
+
+// PodGroupStates implements fwk.SharedLister (Kubernetes 1.36+).
+func (s *Snapshot) PodGroupStates() fwk.PodGroupStateLister {
+	return snapshotPodGroupStateLister{}
 }
 
 // VolcanoNodeInfos returns a list of volcano NodeInfo.

@@ -18,8 +18,12 @@ nodes:
         apiVersion: kubelet.config.k8s.io/v1beta1
         kind: KubeletConfiguration
         containerLogMaxSize: "50Mi"
+      # Explicit kubeadm.k8s.io/v1beta3 for clusters up through Kubernetes 1.35 (current kind default).
+      # When moving e2e to Kubernetes 1.36+ / kubeadm v1beta4, add a second patch with
+      # apiVersion: kubeadm.k8s.io/v1beta4 and apiServer.extraArgs as a list (name/value pairs).
       - |
         kind: ClusterConfiguration
+        apiVersion: kubeadm.k8s.io/v1beta3
         apiServer:
           extraArgs:
             runtime-config: "admissionregistration.k8s.io/v1beta1"

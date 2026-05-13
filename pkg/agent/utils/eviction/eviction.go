@@ -114,7 +114,7 @@ func (e *eviction) Evict(ctx context.Context, pod *corev1.Pod, eventRecorder rec
 		return false
 	}
 
-	eventRecorder.Eventf(pod, corev1.EventTypeWarning, Reason, evictMsg)
+	eventRecorder.Eventf(pod, corev1.EventTypeWarning, Reason, "%s", evictMsg)
 	klog.InfoS("Successfully evicted pod", "pod", klog.KObj(pod))
 	return true
 }
