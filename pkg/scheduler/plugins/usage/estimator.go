@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,53 +23,13 @@ import (
 	fwk "k8s.io/kube-scheduler/framework"
 )
 
-// EstimatorConfig holds configuration for the dynamic sigma resource estimation model.
-type EstimatorConfig struct {
-	// SigmaBase is the base risk floor. Even when a node is completely idle,
-	// we reserve SigmaBase * (Limit - Request) extra beyond Request.
-	// Default: 0.15
-	SigmaBase float64
-
-	// Threshold is the utilization watermark. When node utilization exceeds this,
-	// the scheduling strategy transitions from aggressive to conservative.
-	// Default: 0.5
-	Threshold float64
-
-	// Sensitivity (k) determines how quickly the estimated load approaches Limit
-	// when crossing the threshold watermark.
-	// Default: 12.0
-	Sensitivity float64
-
-	// BERatio is the default resource ratio for BestEffort pods.
-	// A single BestEffort pod is estimated to consume nodeCap * BERatio.
-	// Default: 0.1
-	BERatio float64
-
-	// BEPenalty is the exponential penalty factor for BestEffort pod density.
-	// When there are already n BestEffort pods on a node, the next one is estimated
-	// at nodeCap * BERatio * BEPenalty^n.
-	// Default: 1.2
-	BEPenalty float64
-}
-
-// DefaultEstimatorConfig returns an EstimatorConfig with default values.
-func DefaultEstimatorConfig() *EstimatorConfig {
-	return &EstimatorConfig{
-		SigmaBase:   0.15,
-		Threshold:   0.5,
-		Sensitivity: 12.0,
-		BERatio:     0.1,
-		BEPenalty:   1.2,
-	}
-}
-
 // CalcDynamicSigma computes the dynamic risk coefficient using a sigmoid function.
-// Formula: sigma = sigmaBase + (1 - sigmaBase) / (1 + exp(-k * (nodeUtilization - threshold)))
+// Formula: sigma = sigmaBase + (1 - sigmaBase) / (1 + exp(-k * (nodeUtilization - watermark)))
 // nodeUtilization is the weighted average real utilization of the node (0.0 - 1.0).
-func CalcDynamicSigma(config *EstimatorConfig, nodeUtilization float64) float64 {
-	exponent := -config.Sensitivity * (nodeUtilization - config.Threshold)
+func CalcDynamicSigma(sigmaBase, watermark, sensitivity, nodeUtilization float64) float64 {
+	exponent := -sensitivity * (nodeUtilization - watermark)
 	sigmoid := 1.0 / (1.0 + math.Exp(exponent))
-	return config.SigmaBase + (1.0-config.SigmaBase)*sigmoid
+	return sigmaBase + (1.0-sigmaBase)*sigmoid
 }
 
 // CalcNodeRealUtilization computes the weighted average real utilization of a node.
@@ -91,23 +51,24 @@ func CalcNodeRealUtilization(realCPUPercent, realMemPercent float64, cpuWeight, 
 //
 //	estimated = request + (limit - request) * sigmaDynamic
 //
-// For BestEffort pods (request == 0 && limit == 0):
+// For BestEffort pods (isBestEffort == true):
 //
-//	estimated = nodeCap * BERatio * BEPenalty^bestEffortCount
+//	estimated = nodeCap * beRatio * bePenalty^bestEffortCount
 //
 // Parameters:
-//   - config: estimator configuration (only BERatio/BEPenalty used for BestEffort)
 //   - request: pod's resource request for this dimension (absolute value)
 //   - limit: pod's resource limit for this dimension (absolute value)
 //   - sigmaDynamic: pre-computed dynamic sigma via CalcDynamicSigma
 //   - nodeCap: node capacity for this dimension (absolute value, used only for BestEffort)
+//   - beRatio: BestEffort default resource ratio
+//   - bePenalty: BestEffort density penalty factor
 //   - bestEffortCount: number of BestEffort pods already on this node
 //   - isBestEffort: whether this pod is BestEffort
-func EstimatePodResource(config *EstimatorConfig, request, limit, sigmaDynamic, nodeCap float64,
+func EstimatePodResource(request, limit, sigmaDynamic, nodeCap, beRatio, bePenalty float64,
 	bestEffortCount int, isBestEffort bool) float64 {
 	if isBestEffort {
 		// BestEffort: nodeCap * ratio * beta^n
-		return nodeCap * config.BERatio * math.Pow(config.BEPenalty, float64(bestEffortCount))
+		return nodeCap * beRatio * math.Pow(bePenalty, float64(bestEffortCount))
 	}
 	// Guaranteed/Burstable: Request + (Limit - Request) * sigmaDynamic
 	if limit <= request {

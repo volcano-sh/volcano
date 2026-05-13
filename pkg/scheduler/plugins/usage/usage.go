@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,6 +35,9 @@ const (
 	MetricsActiveTime     = 5 * time.Minute
 	NodeUsageCPUExtend    = "the CPU load of the node exceeds the upper limit."
 	NodeUsageMemoryExtend = "the memory load of the node exceeds the upper limit."
+
+	// defaultMetricsInterval is the default interval for metrics collection (used as monitoring delay window)
+	defaultMetricsInterval = 30 * time.Second
 )
 
 /*
@@ -52,7 +55,7 @@ const (
            mem: 80
          # --- Dynamic Sigma parameters ---
          dynamic.sigma_base: 0.15
-         dynamic.threshold: 0.5
+         dynamic.watermark: 0.5
          dynamic.sensitivity: 12.0
          # --- BestEffort Pod handling ---
          be_default_ratio: 0.1
@@ -71,8 +74,13 @@ type usagePlugin struct {
 	memThresholds   float64
 	period          string
 
-	// Dynamic sigma estimator configuration
-	estimatorConfig *EstimatorConfig
+	// Dynamic sigma estimator parameters
+	sigmaBase   float64 // Base risk floor, default 0.15
+	watermark   float64 // Utilization watermark for sigmoid, default 0.5
+	sensitivity float64 // Sigmoid sensitivity (k), default 12.0
+	beRatio     float64 // BestEffort default resource ratio, default 0.1
+	bePenalty   float64 // BestEffort density penalty factor, default 1.2
+
 	// Session-level shadow load cache
 	shadowCache *ShadowLoadCache
 	// Metrics collection interval (used as the monitoring delay window)
@@ -90,8 +98,12 @@ func New(args framework.Arguments) framework.Plugin {
 		cpuThresholds:   80,
 		memThresholds:   80,
 		period:          source.NODE_METRICS_PERIOD,
-		estimatorConfig: DefaultEstimatorConfig(),
-		metricsInterval: 30 * time.Second,
+		sigmaBase:       0.15,
+		watermark:       0.5,
+		sensitivity:     12.0,
+		beRatio:         0.1,
+		bePenalty:       1.2,
+		metricsInterval: defaultMetricsInterval,
 	}
 	args.GetInt(&plugin.usageWeight, "usage.weight")
 	args.GetInt(&plugin.cpuWeight, "cpu.weight")
@@ -118,11 +130,11 @@ func New(args framework.Arguments) framework.Plugin {
 	}
 
 	// Parse dynamic sigma parameters
-	parseFloatArg(plugin.pluginArguments, "dynamic.sigma_base", &plugin.estimatorConfig.SigmaBase)
-	parseFloatArg(plugin.pluginArguments, "dynamic.threshold", &plugin.estimatorConfig.Threshold)
-	parseFloatArg(plugin.pluginArguments, "dynamic.sensitivity", &plugin.estimatorConfig.Sensitivity)
-	parseFloatArg(plugin.pluginArguments, "be_default_ratio", &plugin.estimatorConfig.BERatio)
-	parseFloatArg(plugin.pluginArguments, "be_penalty_factor", &plugin.estimatorConfig.BEPenalty)
+	parseFloatArg(plugin.pluginArguments, "dynamic.sigma_base", &plugin.sigmaBase)
+	parseFloatArg(plugin.pluginArguments, "dynamic.watermark", &plugin.watermark)
+	parseFloatArg(plugin.pluginArguments, "dynamic.sensitivity", &plugin.sensitivity)
+	parseFloatArg(plugin.pluginArguments, "be_default_ratio", &plugin.beRatio)
+	parseFloatArg(plugin.pluginArguments, "be_penalty_factor", &plugin.bePenalty)
 
 	return plugin
 }
@@ -157,7 +169,18 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	up.shadowCache = NewShadowLoadCache()
 
-	// Step 2: Warm up shadow cache by scanning existing tasks on nodes
+	// Step 2: Read metricsInterval from scheduler configmap (metrics.interval)
+	metricsConf := ssn.GetMetricsConf()
+	if metricsConf != nil {
+		if intervalStr, ok := metricsConf["interval"]; ok {
+			if interval, err := time.ParseDuration(intervalStr); err == nil && interval > 0 {
+				up.metricsInterval = interval
+				klog.V(4).Infof("Usage plugin: metricsInterval set to %v from configmap", interval)
+			}
+		}
+	}
+
+	// Step 3: Warm up shadow cache by scanning existing tasks on nodes
 	up.warmUpShadowCache(ssn)
 
 	if klog.V(4).Enabled() {
@@ -169,7 +192,7 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	// Step 3: Register EventHandler for Allocate/Deallocate tracking
+	// Step 4: Register EventHandler for Allocate/Deallocate tracking
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
 			up.handleAllocate(ssn, event)
@@ -179,7 +202,7 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		},
 	})
 
-	// Step 4: Register PredicateFn - only checks real load against thresholds
+	// Step 5: Register PredicateFn - only checks real load against thresholds
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		predicateStatus := make([]*api.Status, 0)
 		usageStatus := &api.Status{Plugin: PluginName}
@@ -211,7 +234,7 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		return nil
 	}
 
-	// Step 5: Register NodeOrderFn - scores nodes based on composite utilization
+	// Step 6: Register NodeOrderFn - scores nodes based on composite utilization
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		if !up.isMetricsAvailable(node) {
 			return 0, nil
@@ -219,7 +242,7 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		return up.calcNodeScore(node), nil
 	}
 
-	// Step 6: Register BatchNodeOrderFn - batch scores all candidate nodes
+	// Step 7: Register BatchNodeOrderFn - batch scores all candidate nodes
 	batchNodeOrderFn := func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
 		scores := make(map[string]float64, len(nodes))
 		for _, node := range nodes {
@@ -251,7 +274,7 @@ func (up *usagePlugin) warmUpShadowCache(ssn *framework.Session) {
 		realCPU := getRealCPUPercent(nodeInfo, up.period)
 		realMem := getRealMemPercent(nodeInfo, up.period)
 		nodeRealUtil := CalcNodeRealUtilization(realCPU, realMem, up.cpuWeight, up.memoryWeight)
-		sigmaDynamic := CalcDynamicSigma(up.estimatorConfig, nodeRealUtil)
+		sigmaDynamic := CalcDynamicSigma(up.sigmaBase, up.watermark, up.sensitivity, nodeRealUtil)
 
 		for _, task := range nodeInfo.Tasks {
 			if !shouldAddToShadowCache(task, up.metricsInterval) {
@@ -262,10 +285,12 @@ func (up *usagePlugin) warmUpShadowCache(ssn *framework.Session) {
 			cpuReq, cpuLim := getPodCPURequestLimit(task.Pod)
 			memReq, memLim := getPodMemRequestLimit(task.Pod)
 
-			estCPU := EstimatePodResource(up.estimatorConfig, cpuReq, cpuLim,
-				sigmaDynamic, nodeInfo.Capacity.MilliCPU, bestEffortCount, task.BestEffort)
-			estMem := EstimatePodResource(up.estimatorConfig, memReq, memLim,
-				sigmaDynamic, nodeInfo.Capacity.Memory, bestEffortCount, task.BestEffort)
+			estCPU := EstimatePodResource(cpuReq, cpuLim,
+				sigmaDynamic, nodeInfo.Capacity.MilliCPU, up.beRatio, up.bePenalty,
+				bestEffortCount, task.BestEffort)
+			estMem := EstimatePodResource(memReq, memLim,
+				sigmaDynamic, nodeInfo.Capacity.Memory, up.beRatio, up.bePenalty,
+				bestEffortCount, task.BestEffort)
 
 			up.shadowCache.AddEstimate(nodeInfo.Name, estCPU, estMem, task.BestEffort)
 
@@ -288,16 +313,18 @@ func (up *usagePlugin) handleAllocate(ssn *framework.Session, event *framework.E
 	realCPU := getRealCPUPercent(node, up.period)
 	realMem := getRealMemPercent(node, up.period)
 	nodeRealUtil := CalcNodeRealUtilization(realCPU, realMem, up.cpuWeight, up.memoryWeight)
-	sigmaDynamic := CalcDynamicSigma(up.estimatorConfig, nodeRealUtil)
+	sigmaDynamic := CalcDynamicSigma(up.sigmaBase, up.watermark, up.sensitivity, nodeRealUtil)
 
 	// Estimate pod resource consumption
 	bestEffortCount := up.shadowCache.GetBestEffortCount(nodeName)
 	cpuReq, cpuLim := getPodCPURequestLimit(task.Pod)
 	memReq, memLim := getPodMemRequestLimit(task.Pod)
-	estCPU := EstimatePodResource(up.estimatorConfig, cpuReq, cpuLim,
-		sigmaDynamic, node.Capacity.MilliCPU, bestEffortCount, task.BestEffort)
-	estMem := EstimatePodResource(up.estimatorConfig, memReq, memLim,
-		sigmaDynamic, node.Capacity.Memory, bestEffortCount, task.BestEffort)
+	estCPU := EstimatePodResource(cpuReq, cpuLim,
+		sigmaDynamic, node.Capacity.MilliCPU, up.beRatio, up.bePenalty,
+		bestEffortCount, task.BestEffort)
+	estMem := EstimatePodResource(memReq, memLim,
+		sigmaDynamic, node.Capacity.Memory, up.beRatio, up.bePenalty,
+		bestEffortCount, task.BestEffort)
 
 	// Add to shadow cache
 	up.shadowCache.AddEstimate(nodeName, estCPU, estMem, task.BestEffort)
@@ -319,15 +346,17 @@ func (up *usagePlugin) handleDeallocate(ssn *framework.Session, event *framework
 	realCPU := getRealCPUPercent(node, up.period)
 	realMem := getRealMemPercent(node, up.period)
 	nodeRealUtil := CalcNodeRealUtilization(realCPU, realMem, up.cpuWeight, up.memoryWeight)
-	sigmaDynamic := CalcDynamicSigma(up.estimatorConfig, nodeRealUtil)
+	sigmaDynamic := CalcDynamicSigma(up.sigmaBase, up.watermark, up.sensitivity, nodeRealUtil)
 
 	bestEffortCount := up.shadowCache.GetBestEffortCount(nodeName)
 	cpuReq, cpuLim := getPodCPURequestLimit(task.Pod)
 	memReq, memLim := getPodMemRequestLimit(task.Pod)
-	estCPU := EstimatePodResource(up.estimatorConfig, cpuReq, cpuLim,
-		sigmaDynamic, node.Capacity.MilliCPU, bestEffortCount, task.BestEffort)
-	estMem := EstimatePodResource(up.estimatorConfig, memReq, memLim,
-		sigmaDynamic, node.Capacity.Memory, bestEffortCount, task.BestEffort)
+	estCPU := EstimatePodResource(cpuReq, cpuLim,
+		sigmaDynamic, node.Capacity.MilliCPU, up.beRatio, up.bePenalty,
+		bestEffortCount, task.BestEffort)
+	estMem := EstimatePodResource(memReq, memLim,
+		sigmaDynamic, node.Capacity.Memory, up.beRatio, up.bePenalty,
+		bestEffortCount, task.BestEffort)
 
 	// Subtract from shadow cache
 	up.shadowCache.SubEstimate(nodeName, estCPU, estMem, task.BestEffort)
@@ -361,7 +390,7 @@ func (up *usagePlugin) isMetricsAvailable(node *api.NodeInfo) bool {
 
 // shouldAddToShadowCache determines whether a task should be tracked in the shadow cache.
 // A task is added if it has been assigned to a node but its metrics are not yet visible
-// in the monitoring system.
+// in the monitoring system. BestEffort pods follow the same logic as Guaranteed/Burstable.
 func shouldAddToShadowCache(task *api.TaskInfo, metricsDelay time.Duration) bool {
 	// Only consider pods that have been assigned to a node
 	if task.NodeName == "" {

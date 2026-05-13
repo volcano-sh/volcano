@@ -988,6 +988,11 @@ func (ssn *Session) SharedDRAManager() fwk.SharedDRAManager {
 	return ssn.cache.SharedDRAManager()
 }
 
+// GetMetricsConf returns the metrics server related configuration from cache
+func (ssn *Session) GetMetricsConf() map[string]string {
+	return ssn.cache.GetMetricsConf()
+}
+
 // HierarchyEnabled returns whether plugin enabled hierarchical queues
 func (ssn *Session) HierarchyEnabled(pluginName string) bool {
 	for _, tier := range ssn.Tiers {

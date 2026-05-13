@@ -1741,6 +1741,10 @@ func (sc *SchedulerCache) SetMetricsConf(conf map[string]string) {
 	sc.metricsConf = conf
 }
 
+func (sc *SchedulerCache) GetMetricsConf() map[string]string {
+	return sc.metricsConf
+}
+
 func (sc *SchedulerCache) GetMetricsData() {
 	metricsType := sc.metricsConf["type"]
 	if len(metricsType) == 0 {
