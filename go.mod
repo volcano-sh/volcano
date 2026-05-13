@@ -43,7 +43,7 @@ require (
 	k8s.io/component-helpers v0.35.0
 	k8s.io/csi-translation-lib v0.35.0
 	k8s.io/dynamic-resource-allocation v0.35.0
-	k8s.io/klog/v2 v2.130.1
+	k8s.io/klog/v2 v2.140.0
 	k8s.io/kubectl v0.0.0
 	k8s.io/kubernetes v1.35.0
 	k8s.io/metrics v0.35.0
