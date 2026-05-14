@@ -292,7 +292,7 @@ func (up *usagePlugin) warmUpShadowCache(ssn *framework.Session) {
 				sigmaDynamic, nodeInfo.Capacity.Memory, up.beRatio, up.bePenalty,
 				bestEffortCount, task.BestEffort)
 
-			up.shadowCache.AddEstimate(nodeInfo.Name, estCPU, estMem, task.BestEffort)
+			up.shadowCache.AddEstimate(nodeInfo.Name, task.UID, estCPU, estMem, task.BestEffort)
 
 			klog.V(5).Infof("Shadow cache warm-up: task %s/%s on node %s, estCPU=%.2f, estMem=%.2f, bestEffort=%v",
 				task.Namespace, task.Name, nodeInfo.Name, estCPU, estMem, task.BestEffort)
@@ -326,43 +326,22 @@ func (up *usagePlugin) handleAllocate(ssn *framework.Session, event *framework.E
 		sigmaDynamic, node.Capacity.Memory, up.beRatio, up.bePenalty,
 		bestEffortCount, task.BestEffort)
 
-	// Add to shadow cache
-	up.shadowCache.AddEstimate(nodeName, estCPU, estMem, task.BestEffort)
+	// Add to shadow cache with snapshot
+	up.shadowCache.AddEstimate(nodeName, task.UID, estCPU, estMem, task.BestEffort)
 
 	klog.V(4).Infof("Usage plugin Allocate: task %s/%s to node %s, estCPU=%.2f, estMem=%.2f",
 		task.Namespace, task.Name, nodeName, estCPU, estMem)
 }
 
 // handleDeallocate is called when a pod allocation is rolled back.
+// It uses the snapshot recorded during allocation to ensure precise subtraction.
 func (up *usagePlugin) handleDeallocate(ssn *framework.Session, event *framework.Event) {
 	task := event.Task
-	nodeName := task.NodeName
-	node, ok := ssn.Nodes[nodeName]
-	if !ok {
-		return
-	}
+	// Use snapshot-based subtraction for precise consistency
+	up.shadowCache.SubEstimateBySnapshot(task.UID)
 
-	// Recompute the same estimate that was added during Allocate
-	realCPU := getRealCPUPercent(node, up.period)
-	realMem := getRealMemPercent(node, up.period)
-	nodeRealUtil := CalcNodeRealUtilization(realCPU, realMem, up.cpuWeight, up.memoryWeight)
-	sigmaDynamic := CalcDynamicSigma(up.sigmaBase, up.watermark, up.sensitivity, nodeRealUtil)
-
-	bestEffortCount := up.shadowCache.GetBestEffortCount(nodeName)
-	cpuReq, cpuLim := getPodCPURequestLimit(task.Pod)
-	memReq, memLim := getPodMemRequestLimit(task.Pod)
-	estCPU := EstimatePodResource(cpuReq, cpuLim,
-		sigmaDynamic, node.Capacity.MilliCPU, up.beRatio, up.bePenalty,
-		bestEffortCount, task.BestEffort)
-	estMem := EstimatePodResource(memReq, memLim,
-		sigmaDynamic, node.Capacity.Memory, up.beRatio, up.bePenalty,
-		bestEffortCount, task.BestEffort)
-
-	// Subtract from shadow cache
-	up.shadowCache.SubEstimate(nodeName, estCPU, estMem, task.BestEffort)
-
-	klog.V(4).Infof("Usage plugin Deallocate: task %s/%s from node %s, estCPU=%.2f, estMem=%.2f",
-		task.Namespace, task.Name, nodeName, estCPU, estMem)
+	klog.V(4).Infof("Usage plugin Deallocate: task %s/%s, snapshot-based subtraction",
+		task.Namespace, task.Name)
 }
 
 // calcNodeScore computes the score for a node based on composite utilization.

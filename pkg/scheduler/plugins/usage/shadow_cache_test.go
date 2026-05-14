@@ -17,9 +17,12 @@ limitations under the License.
 package usage
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"testing"
+
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 func TestNewShadowLoadCache(t *testing.T) {
@@ -36,7 +39,7 @@ func TestShadowLoadCache_AddEstimate(t *testing.T) {
 	cache := NewShadowLoadCache()
 
 	// Add first pod estimate
-	cache.AddEstimate("node1", 1000, 2048, false)
+	cache.AddEstimate("node1", "task1", 1000, 2048, false)
 	cpuEst, memEst := cache.GetNodeEst("node1")
 	if math.Abs(cpuEst-1000) > testEps {
 		t.Errorf("Expected cpuEst=1000, got %v", cpuEst)
@@ -49,7 +52,7 @@ func TestShadowLoadCache_AddEstimate(t *testing.T) {
 	}
 
 	// Add second pod estimate to same node
-	cache.AddEstimate("node1", 500, 1024, false)
+	cache.AddEstimate("node1", "task2", 500, 1024, false)
 	cpuEst, memEst = cache.GetNodeEst("node1")
 	if math.Abs(cpuEst-1500) > testEps {
 		t.Errorf("Expected cpuEst=1500, got %v", cpuEst)
@@ -59,7 +62,7 @@ func TestShadowLoadCache_AddEstimate(t *testing.T) {
 	}
 
 	// Add BestEffort pod
-	cache.AddEstimate("node1", 800, 1600, true)
+	cache.AddEstimate("node1", "task3", 800, 1600, true)
 	cpuEst, memEst = cache.GetNodeEst("node1")
 	if math.Abs(cpuEst-2300) > testEps {
 		t.Errorf("Expected cpuEst=2300, got %v", cpuEst)
@@ -70,15 +73,25 @@ func TestShadowLoadCache_AddEstimate(t *testing.T) {
 	if cache.GetBestEffortCount("node1") != 1 {
 		t.Errorf("Expected BestEffortCount=1, got %v", cache.GetBestEffortCount("node1"))
 	}
+
+	// Verify snapshots were recorded
+	snap := cache.GetSnapshot("task1")
+	if snap == nil || snap.CPUMillis != 1000 || snap.MemBytes != 2048 || snap.BestEffort != false {
+		t.Errorf("Snapshot for task1 incorrect: %+v", snap)
+	}
+	snap3 := cache.GetSnapshot("task3")
+	if snap3 == nil || snap3.BestEffort != true {
+		t.Errorf("Snapshot for task3 incorrect: %+v", snap3)
+	}
 }
 
-func TestShadowLoadCache_SubEstimate(t *testing.T) {
+func TestShadowLoadCache_SubEstimateBySnapshot(t *testing.T) {
 	cache := NewShadowLoadCache()
 
-	// Add then subtract
-	cache.AddEstimate("node1", 1000, 2048, true)
-	cache.AddEstimate("node1", 500, 1024, false)
-	cache.SubEstimate("node1", 500, 1024, false)
+	// Add then subtract using snapshot
+	cache.AddEstimate("node1", "task1", 1000, 2048, true)
+	cache.AddEstimate("node1", "task2", 500, 1024, false)
+	cache.SubEstimateBySnapshot("task2")
 
 	cpuEst, memEst := cache.GetNodeEst("node1")
 	if math.Abs(cpuEst-1000) > testEps {
@@ -92,37 +105,91 @@ func TestShadowLoadCache_SubEstimate(t *testing.T) {
 	}
 
 	// Subtract BestEffort
-	cache.SubEstimate("node1", 1000, 2048, true)
+	cache.SubEstimateBySnapshot("task1")
+	cpuEst, memEst = cache.GetNodeEst("node1")
+	if cpuEst != 0 || memEst != 0 {
+		t.Errorf("Expected (0, 0) after all subs, got (%v, %v)", cpuEst, memEst)
+	}
 	if cache.GetBestEffortCount("node1") != 0 {
 		t.Errorf("Expected BestEffortCount=0, got %v", cache.GetBestEffortCount("node1"))
 	}
+
+	// Snapshot should be deleted after sub
+	if cache.GetSnapshot("task1") != nil {
+		t.Error("Snapshot for task1 should be nil after SubEstimateBySnapshot")
+	}
 }
 
-func TestShadowLoadCache_SubEstimate_NoNegative(t *testing.T) {
+func TestShadowLoadCache_SubEstimateBySnapshot_NonExistent(t *testing.T) {
 	cache := NewShadowLoadCache()
 
-	// Subtract more than what was added - should clamp to 0
-	cache.AddEstimate("node1", 100, 200, true)
-	cache.SubEstimate("node1", 500, 1000, true)
+	// Subtracting a non-existent task should be a no-op
+	cache.AddEstimate("node1", "task1", 100, 200, false)
+	cache.SubEstimateBySnapshot("nonexistent")
 
 	cpuEst, memEst := cache.GetNodeEst("node1")
-	if cpuEst < 0 {
-		t.Errorf("cpuEst should not be negative, got %v", cpuEst)
+	if math.Abs(cpuEst-100) > testEps || math.Abs(memEst-200) > testEps {
+		t.Errorf("Non-existent sub should be no-op, got (%v, %v)", cpuEst, memEst)
 	}
-	if memEst < 0 {
-		t.Errorf("memEst should not be negative, got %v", memEst)
+}
+
+func TestShadowLoadCache_SnapshotConsistency_BestEffort(t *testing.T) {
+	// This test verifies that the snapshot approach solves the BestEffort
+	// count inconsistency problem. Multiple BestEffort pods are allocated
+	// with different counts, then deallocated in reverse order.
+	cache := NewShadowLoadCache()
+
+	// Allocate 3 BestEffort pods sequentially
+	// Each gets a different estimate due to exponential penalty
+	cache.AddEstimate("node1", "be1", 800, 1600, true)  // count=0 at time of alloc
+	cache.AddEstimate("node1", "be2", 960, 1920, true)  // count=1 at time of alloc
+	cache.AddEstimate("node1", "be3", 1152, 2304, true) // count=2 at time of alloc
+
+	totalCPU := 800.0 + 960.0 + 1152.0
+	totalMem := 1600.0 + 1920.0 + 2304.0
+
+	cpuEst, memEst := cache.GetNodeEst("node1")
+	if math.Abs(cpuEst-totalCPU) > testEps {
+		t.Errorf("Expected cpuEst=%v, got %v", totalCPU, cpuEst)
 	}
-	if cache.GetBestEffortCount("node1") < 0 {
-		t.Errorf("BestEffortCount should not be negative, got %v", cache.GetBestEffortCount("node1"))
+	if math.Abs(memEst-totalMem) > testEps {
+		t.Errorf("Expected memEst=%v, got %v", totalMem, memEst)
+	}
+
+	// Deallocate in reverse order - each should subtract exactly what was added
+	cache.SubEstimateBySnapshot("be3")
+	cpuEst, memEst = cache.GetNodeEst("node1")
+	expectedCPU := 800.0 + 960.0
+	expectedMem := 1600.0 + 1920.0
+	if math.Abs(cpuEst-expectedCPU) > testEps {
+		t.Errorf("After removing be3: expected cpuEst=%v, got %v", expectedCPU, cpuEst)
+	}
+	if math.Abs(memEst-expectedMem) > testEps {
+		t.Errorf("After removing be3: expected memEst=%v, got %v", expectedMem, memEst)
+	}
+
+	cache.SubEstimateBySnapshot("be1")
+	cpuEst, memEst = cache.GetNodeEst("node1")
+	if math.Abs(cpuEst-960) > testEps {
+		t.Errorf("After removing be1: expected cpuEst=960, got %v", cpuEst)
+	}
+
+	cache.SubEstimateBySnapshot("be2")
+	cpuEst, memEst = cache.GetNodeEst("node1")
+	if cpuEst != 0 || memEst != 0 {
+		t.Errorf("After removing all: expected (0, 0), got (%v, %v)", cpuEst, memEst)
+	}
+	if cache.GetBestEffortCount("node1") != 0 {
+		t.Errorf("Expected BestEffortCount=0, got %v", cache.GetBestEffortCount("node1"))
 	}
 }
 
 func TestShadowLoadCache_MultipleNodes(t *testing.T) {
 	cache := NewShadowLoadCache()
 
-	cache.AddEstimate("node1", 1000, 2000, false)
-	cache.AddEstimate("node2", 3000, 4000, true)
-	cache.AddEstimate("node3", 500, 800, false)
+	cache.AddEstimate("node1", "t1", 1000, 2000, false)
+	cache.AddEstimate("node2", "t2", 3000, 4000, true)
+	cache.AddEstimate("node3", "t3", 500, 800, false)
 
 	cpuEst1, memEst1 := cache.GetNodeEst("node1")
 	cpuEst2, memEst2 := cache.GetNodeEst("node2")
@@ -161,8 +228,8 @@ func TestShadowLoadCache_GetNodeEst_NonExistentNode(t *testing.T) {
 func TestShadowLoadCache_Reset(t *testing.T) {
 	cache := NewShadowLoadCache()
 
-	cache.AddEstimate("node1", 1000, 2000, true)
-	cache.AddEstimate("node2", 3000, 4000, false)
+	cache.AddEstimate("node1", "t1", 1000, 2000, true)
+	cache.AddEstimate("node2", "t2", 3000, 4000, false)
 
 	if cache.IsClean() {
 		t.Error("Cache should not be clean after adding estimates")
@@ -178,6 +245,9 @@ func TestShadowLoadCache_Reset(t *testing.T) {
 	if cpuEst != 0 || memEst != 0 {
 		t.Errorf("After reset, node1 should return (0, 0), got (%v, %v)", cpuEst, memEst)
 	}
+	if cache.GetSnapshot("t1") != nil {
+		t.Error("After reset, snapshots should be nil")
+	}
 }
 
 func TestShadowLoadCache_IsClean(t *testing.T) {
@@ -187,7 +257,7 @@ func TestShadowLoadCache_IsClean(t *testing.T) {
 		t.Error("New cache should be clean")
 	}
 
-	cache.AddEstimate("node1", 100, 200, false)
+	cache.AddEstimate("node1", "t1", 100, 200, false)
 	if cache.IsClean() {
 		t.Error("Cache with data should not be clean")
 	}
@@ -202,11 +272,11 @@ func TestShadowLoadCache_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			nodeName := "node1"
+			taskID := api.TaskID(fmt.Sprintf("task-%d", idx))
 			if idx%2 == 0 {
-				cache.AddEstimate(nodeName, 10, 20, idx%3 == 0)
+				cache.AddEstimate("node1", taskID, 10, 20, idx%3 == 0)
 			} else {
-				cache.SubEstimate(nodeName, 5, 10, idx%3 == 0)
+				cache.SubEstimateBySnapshot(taskID)
 			}
 		}(i)
 	}
@@ -224,7 +294,7 @@ func TestShadowLoadCache_ConcurrentAccess(t *testing.T) {
 
 	wg.Wait()
 
-	// Just verify no panic occurred - the exact values depend on goroutine scheduling
+	// Just verify no panic occurred
 	cpuEst, _ := cache.GetNodeEst("node1")
 	if cpuEst < 0 {
 		t.Errorf("cpuEst should not be negative after concurrent access, got %v", cpuEst)
@@ -235,24 +305,46 @@ func TestShadowLoadCache_BestEffortCounts(t *testing.T) {
 	cache := NewShadowLoadCache()
 
 	// Add multiple BestEffort pods
-	cache.AddEstimate("node1", 100, 200, true)
-	cache.AddEstimate("node1", 100, 200, true)
-	cache.AddEstimate("node1", 100, 200, true)
-	cache.AddEstimate("node1", 100, 200, false) // non-BE
+	cache.AddEstimate("node1", "be1", 100, 200, true)
+	cache.AddEstimate("node1", "be2", 100, 200, true)
+	cache.AddEstimate("node1", "be3", 100, 200, true)
+	cache.AddEstimate("node1", "non-be", 100, 200, false) // non-BE
 
 	if cache.GetBestEffortCount("node1") != 3 {
 		t.Errorf("Expected BestEffortCount=3, got %v", cache.GetBestEffortCount("node1"))
 	}
 
-	// Remove one BE
-	cache.SubEstimate("node1", 100, 200, true)
+	// Remove one BE via snapshot
+	cache.SubEstimateBySnapshot("be1")
 	if cache.GetBestEffortCount("node1") != 2 {
 		t.Errorf("Expected BestEffortCount=2 after sub, got %v", cache.GetBestEffortCount("node1"))
 	}
 
-	// Remove non-BE should not affect count
-	cache.SubEstimate("node1", 100, 200, false)
+	// Remove non-BE should not affect BE count
+	cache.SubEstimateBySnapshot("non-be")
 	if cache.GetBestEffortCount("node1") != 2 {
 		t.Errorf("Expected BestEffortCount=2 after non-BE sub, got %v", cache.GetBestEffortCount("node1"))
+	}
+}
+
+func TestShadowLoadCache_AllocateDeallocateExactMatch(t *testing.T) {
+	// Verify that Allocate + Deallocate for the same task results in near-zero (within floating point precision)
+	cache := NewShadowLoadCache()
+
+	cache.AddEstimate("node1", "task-a", 1234.5678, 9876543.21, false)
+	cache.AddEstimate("node1", "task-b", 567.89, 1234567.89, true)
+
+	cache.SubEstimateBySnapshot("task-a")
+	cache.SubEstimateBySnapshot("task-b")
+
+	cpuEst, memEst := cache.GetNodeEst("node1")
+	if math.Abs(cpuEst) > testEps {
+		t.Errorf("Expected cpuEst≈0 after exact match, got %v", cpuEst)
+	}
+	if math.Abs(memEst) > testEps {
+		t.Errorf("Expected memEst≈0 after exact match, got %v", memEst)
+	}
+	if cache.GetBestEffortCount("node1") != 0 {
+		t.Errorf("Expected BestEffortCount=0, got %v", cache.GetBestEffortCount("node1"))
 	}
 }
