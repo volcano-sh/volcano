@@ -35,7 +35,7 @@ func init() {
 
 func (f MIGFactory) TryAddPod(gd *GPUDevice, mem uint, core uint) (bool, string) {
 	requestMemory := mem
-	memoryFactor := config.GetConfig().NvidiaConfig.GPUMemoryFactor
+	memoryFactor := getConfig().GPUMemoryFactor
 	if memoryFactor > 1 {
 		requestMemory = requestMemory * memoryFactor
 		klog.V(5).Infof("rawRequestMemory: %d, realRequestMemory: %d, memoryFactor: %d", mem, requestMemory, memoryFactor)
@@ -74,7 +74,7 @@ func (f MIGFactory) AddPod(gd *GPUDevice, mem uint, core uint, podUID string, de
 	}
 	usedMem := addMigUsed(gd, group, index)
 	realMem := usedMem
-	memoryFactor := config.GetConfig().NvidiaConfig.GPUMemoryFactor
+	memoryFactor := getConfig().GPUMemoryFactor
 	if memoryFactor > 1 {
 		realMem = usedMem / memoryFactor
 		klog.V(5).Infof("rawUsedMemory: %d, realUsedMemory: %d, memoryFactor: %d", usedMem, realMem, memoryFactor)
@@ -103,7 +103,7 @@ func (f MIGFactory) SubPod(gd *GPUDevice, mem uint, core uint, podUID string, de
 
 	usedMem := subMigUsed(gd, groupName, index)
 	realMem := usedMem
-	memoryFactor := config.GetConfig().NvidiaConfig.GPUMemoryFactor
+	memoryFactor := getConfig().GPUMemoryFactor
 	if memoryFactor > 1 {
 		realMem = usedMem / memoryFactor
 		klog.V(5).Infof("rawUsedMemory: %d, realUsedMemory: %d, memoryFactor: %d", usedMem, realMem, memoryFactor)
