@@ -18,11 +18,31 @@ package usage
 
 import (
 	"sync"
+
+	"k8s.io/klog/v2"
+
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
+
+// PodEstSnapshot records the estimated resource consumption of a pod at the time
+// it was allocated. This snapshot is used during deallocation to ensure the exact
+// same value is subtracted, avoiding inconsistencies caused by re-calculation
+// (e.g., BestEffort count changes between allocate and deallocate).
+type PodEstSnapshot struct {
+	NodeName   string
+	CPUMillis  float64
+	MemBytes   float64
+	BestEffort bool
+}
 
 // ShadowLoadCache is a session-level cache that tracks the estimated resource
 // consumption of shadow pods (pods that have been scheduled but whose metrics
 // are not yet visible in the monitoring system).
+//
+// It uses a "snapshot persistence" strategy: when a pod is allocated, its estimated
+// resource values are recorded in a per-pod snapshot. During deallocation, the exact
+// snapshot values are subtracted, guaranteeing add/sub consistency regardless of
+// formula state changes between the two events.
 type ShadowLoadCache struct {
 	mu sync.RWMutex
 
@@ -37,6 +57,10 @@ type ShadowLoadCache struct {
 	// BestEffortCounts stores the number of BestEffort pods on each node
 	// that are tracked in the shadow cache.
 	BestEffortCounts map[string]int
+
+	// podSnapshots stores the per-pod estimation snapshot, keyed by TaskID.
+	// This ensures that deallocation subtracts the exact value that was added.
+	podSnapshots map[api.TaskID]*PodEstSnapshot
 }
 
 // NewShadowLoadCache creates a new empty ShadowLoadCache.
@@ -45,6 +69,7 @@ func NewShadowLoadCache() *ShadowLoadCache {
 		nodeCPUEst:       make(map[string]float64),
 		nodeMemEst:       make(map[string]float64),
 		BestEffortCounts: make(map[string]int),
+		podSnapshots:     make(map[api.TaskID]*PodEstSnapshot),
 	}
 }
 
@@ -55,19 +80,22 @@ func (c *ShadowLoadCache) Reset() {
 	c.nodeCPUEst = make(map[string]float64)
 	c.nodeMemEst = make(map[string]float64)
 	c.BestEffortCounts = make(map[string]int)
+	c.podSnapshots = make(map[api.TaskID]*PodEstSnapshot)
 }
 
 // IsClean returns true if the cache contains no data.
 func (c *ShadowLoadCache) IsClean() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return len(c.nodeCPUEst) == 0 && len(c.nodeMemEst) == 0 && len(c.BestEffortCounts) == 0
+	return len(c.nodeCPUEst) == 0 && len(c.nodeMemEst) == 0 &&
+		len(c.BestEffortCounts) == 0 && len(c.podSnapshots) == 0
 }
 
-// AddEstimate adds a pod's estimated resource consumption to the specified node.
+// AddEstimate adds a pod's estimated resource consumption to the specified node
+// and records a snapshot for later precise deallocation.
 // This is called when a pod is determined to be a shadow pod (during OnSessionOpen
 // initialization or when an Allocate event fires).
-func (c *ShadowLoadCache) AddEstimate(nodeName string, cpuMillis, memBytes float64, isBestEffort bool) {
+func (c *ShadowLoadCache) AddEstimate(nodeName string, taskID api.TaskID, cpuMillis, memBytes float64, isBestEffort bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.nodeCPUEst[nodeName] += cpuMillis
@@ -75,27 +103,42 @@ func (c *ShadowLoadCache) AddEstimate(nodeName string, cpuMillis, memBytes float
 	if isBestEffort {
 		c.BestEffortCounts[nodeName]++
 	}
+	// Record snapshot for precise deallocation
+	c.podSnapshots[taskID] = &PodEstSnapshot{
+		NodeName:   nodeName,
+		CPUMillis:  cpuMillis,
+		MemBytes:   memBytes,
+		BestEffort: isBestEffort,
+	}
 }
 
-// SubEstimate subtracts a pod's estimated resource consumption from the specified node.
-// This is the reverse of AddEstimate, called during Deallocate events.
-func (c *ShadowLoadCache) SubEstimate(nodeName string, cpuMillis, memBytes float64, isBestEffort bool) {
+// SubEstimateBySnapshot subtracts a pod's estimated resource consumption using
+// the snapshot recorded during allocation. This guarantees that the exact value
+// added is subtracted, regardless of any state changes between allocate and deallocate.
+// If no snapshot exists for the given taskID, this is a no-op.
+func (c *ShadowLoadCache) SubEstimateBySnapshot(taskID api.TaskID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.nodeCPUEst[nodeName] -= cpuMillis
-	if c.nodeCPUEst[nodeName] < 0 {
-		c.nodeCPUEst[nodeName] = 0
+	snapshot, ok := c.podSnapshots[taskID]
+	if !ok {
+		klog.V(5).Infof("ShadowLoadCache: no snapshot found for task %s, skipping SubEstimate", taskID)
+		return
 	}
-	c.nodeMemEst[nodeName] -= memBytes
-	if c.nodeMemEst[nodeName] < 0 {
-		c.nodeMemEst[nodeName] = 0
+	c.nodeCPUEst[snapshot.NodeName] -= snapshot.CPUMillis
+	if c.nodeCPUEst[snapshot.NodeName] < 0 {
+		c.nodeCPUEst[snapshot.NodeName] = 0
 	}
-	if isBestEffort {
-		c.BestEffortCounts[nodeName]--
-		if c.BestEffortCounts[nodeName] < 0 {
-			c.BestEffortCounts[nodeName] = 0
+	c.nodeMemEst[snapshot.NodeName] -= snapshot.MemBytes
+	if c.nodeMemEst[snapshot.NodeName] < 0 {
+		c.nodeMemEst[snapshot.NodeName] = 0
+	}
+	if snapshot.BestEffort {
+		c.BestEffortCounts[snapshot.NodeName]--
+		if c.BestEffortCounts[snapshot.NodeName] < 0 {
+			c.BestEffortCounts[snapshot.NodeName] = 0
 		}
 	}
+	delete(c.podSnapshots, taskID)
 }
 
 // GetNodeEst returns the total estimated CPU (milliCPU) and Memory (bytes)
@@ -112,4 +155,12 @@ func (c *ShadowLoadCache) GetBestEffortCount(nodeName string) int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.BestEffortCounts[nodeName]
+}
+
+// GetSnapshot returns the estimation snapshot for a specific task.
+// Returns nil if no snapshot exists.
+func (c *ShadowLoadCache) GetSnapshot(taskID api.TaskID) *PodEstSnapshot {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.podSnapshots[taskID]
 }

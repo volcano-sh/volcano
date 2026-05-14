@@ -213,7 +213,7 @@ func TestEstimatePodResource(t *testing.T) {
 			bePenalty:       1.2,
 			bestEffortCount: 0,
 			isBestEffort:    false,
-			expected:        500, // request * sigmaDynamic = 1000 * 0.5
+			expected:        1000, // limit==request, so estimate = request (no burst possible)
 		},
 		{
 			name:            "Burstable pod (limit > request), sigma=0.3",
