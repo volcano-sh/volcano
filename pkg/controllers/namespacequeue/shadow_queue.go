@@ -19,8 +19,8 @@ package namespacequeue
 import (
 	"crypto/sha256"
 	"fmt"
-	"reflect"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -144,8 +144,63 @@ func buildShadowQueue(nsq *schedulingv1beta1.NamespaceQueue) *schedulingv1beta1.
 }
 
 // shadowQueueSpecChanged reports whether the shadow Queue's spec has drifted from
-// what buildShadowQueue would produce for the current NamespaceQueue. Used by the
-// reconciler to decide whether an Update call is necessary, avoiding spurious writes.
+// what buildShadowQueue would produce for the current NamespaceQueue.
+//
+// We compare only the fields that buildShadowQueue explicitly manages — NOT the full
+// Spec via reflect.DeepEqual. Using DeepEqual on the entire Spec would cause an
+// infinite update loop: the existing queue controller's updateQueueParent sets
+// spec.parent="root" on any queue without a parent, so our shadow Queue (which
+// leaves Parent empty) would appear to drift on every sync cycle, triggering an
+// Update that clears the parent, which triggers updateQueueParent again, ad infinitum.
+//
+// Fields we own: Weight, Capability, Reclaimable, Guarantee, Deserved, Priority.
+// Fields we intentionally ignore: Parent (managed by the queue controller until
+// the full clusterQueueRef design is resolved with mentors).
 func shadowQueueSpecChanged(existing *schedulingv1beta1.Queue, desired *schedulingv1beta1.Queue) bool {
-	return !reflect.DeepEqual(existing.Spec, desired.Spec)
+	if existing.Spec.Weight != desired.Spec.Weight {
+		return true
+	}
+	if existing.Spec.Priority != desired.Spec.Priority {
+		return true
+	}
+	if !resourceListEqual(existing.Spec.Capability, desired.Spec.Capability) {
+		return true
+	}
+	if !resourceListEqual(existing.Spec.Deserved, desired.Spec.Deserved) {
+		return true
+	}
+	if !resourceListEqual(existing.Spec.Guarantee.Resource, desired.Spec.Guarantee.Resource) {
+		return true
+	}
+	if !reclaimableEqual(existing.Spec.Reclaimable, desired.Spec.Reclaimable) {
+		return true
+	}
+	return false
 }
+
+func resourceListEqual(a, b v1.ResourceList) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key, valA := range a {
+		valB, ok := b[key]
+		if !ok {
+			return false
+		}
+		if valA.Cmp(valB) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func reclaimableEqual(a, b *bool) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+

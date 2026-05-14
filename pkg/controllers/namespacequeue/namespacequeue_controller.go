@@ -85,6 +85,11 @@ type namespaceQueueController struct {
 	nsqSynced          cache.InformerSynced
 
 	queue workqueue.TypedRateLimitingInterface[string]
+
+	// ctx is derived from the stopCh passed to Run so that all API calls respect
+	// the controller lifecycle and are cancelled cleanly on shutdown.
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // Name implements framework.Controller.
@@ -149,6 +154,14 @@ func (c *namespaceQueueController) Run(stopCh <-chan struct{}) {
 	klog.Infof("Starting %s", controllerName)
 	defer klog.Infof("Shutting down %s", controllerName)
 
+	// Derive a context that is cancelled when the controller stops, so all
+	// in-flight API calls are cleaned up properly on shutdown.
+	c.ctx, c.cancel = context.WithCancel(context.Background())
+	go func() {
+		<-stopCh
+		c.cancel()
+	}()
+
 	c.dynInformerFactory.Start(stopCh)
 
 	if !cache.WaitForCacheSync(stopCh, c.nsqSynced) {
@@ -193,7 +206,7 @@ func (c *namespaceQueueController) processNextItem() bool {
 // The shadow Queue name is derived by shadowQueueName, which is deterministic and
 // based on a hash of namespace+name, guaranteeing idempotency.
 func (c *namespaceQueueController) reconcile(key string) error {
-	ctx := context.TODO()
+	ctx := c.ctx
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return fmt.Errorf("invalid key %q: %w", key, err)
@@ -278,6 +291,7 @@ func (c *namespaceQueueController) updateStatus(ctx context.Context, nsq *schedu
 		"status": map[string]interface{}{
 			"shadowQueueName": shadowName,
 			"state":           string(shadowQueue.Status.State),
+			"allocated":       shadowQueue.Status.Allocated,
 			"pending":         shadowQueue.Status.Pending,
 			"running":         shadowQueue.Status.Running,
 			"inqueue":         shadowQueue.Status.Inqueue,
