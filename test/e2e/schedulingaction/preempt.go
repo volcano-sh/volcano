@@ -18,7 +18,9 @@ package schedulingaction
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -480,59 +482,124 @@ var _ = Describe("Job E2E Test", func() {
 			return e2eutil.ModifySchedulerConfig(data, modifier)
 		})
 		defer cmc.UndoChanged()
+		// Wait for the scheduler file watcher to reload the refreshed ConfigMap volume.
+		time.Sleep(10 * time.Second)
 
 		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			PriorityClasses: map[string]int32{
-				highPriority: highPriorityValue,
-				lowPriority:  lowPriorityValue,
+				highPriority:   highPriorityValue,
+				middlePriority: middlePriorityValue,
+				lowPriority:    lowPriorityValue,
 			},
 		})
 
-		slot := e2eutil.OneCPU
-		rep := e2eutil.ClusterSize(ctx, slot)
+		rep := int32(e2eutil.ClusterNodeNumber(ctx))
+		Expect(rep).Should(BeNumerically(">=", 2))
+		slots := e2eutil.ClusterSize(ctx, e2eutil.OneCPU) / rep
+		Expect(slots).Should(BeNumerically(">=", 3))
+		highRep := rep - 1
+		highReq := e2eutil.CPUResource(fmt.Sprintf("%d", slots-1))
 
-		// Create low priority pod with specific label
-		lowPriorityLabels := map[string]string{
-			"app": "test-app",
+		blockerLabels := map[string]string{
+			"app": "blocker",
 		}
-		job := &e2eutil.JobSpec{
+		bystanderLabels := map[string]string{
+			"app": "bystander",
+		}
+
+		blockerJob := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
 					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
+					Req: e2eutil.OneCPU,
 					Min: 1,
 					Rep: rep,
 					Labels: map[string]string{
 						schedulingv1beta1.PodPreemptable: "true",
-						"app":                            "test-app",
-					},
-				},
-			},
-		}
-
-		job.Name = "low-priority-job"
-		job.Pri = lowPriority
-		lowPriorityJob := e2eutil.CreateJob(ctx, job)
-		err := e2eutil.WaitTasksReady(ctx, lowPriorityJob, int(rep))
-		Expect(err).NotTo(HaveOccurred())
-
-		// Create high priority pod with anti-affinity rule
-		highPriorityJob := &e2eutil.JobSpec{
-			Tasks: []e2eutil.TaskSpec{
-				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: rep / 2,
-					Rep: rep,
-					Labels: map[string]string{
-						schedulingv1beta1.PodPreemptable: "true",
+						"app":                            "blocker",
 					},
 					Affinity: &corev1.Affinity{
 						PodAntiAffinity: &corev1.PodAntiAffinity{
 							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
 								{
 									LabelSelector: &metav1.LabelSelector{
-										MatchLabels: lowPriorityLabels,
+										MatchLabels: blockerLabels,
+									},
+									TopologyKey: "kubernetes.io/hostname",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		blockerJob.Name = "blocker-job"
+		blockerJob.Pri = middlePriority
+		blockerJobCreated := e2eutil.CreateJob(ctx, blockerJob)
+		err := e2eutil.WaitTasksReady(ctx, blockerJobCreated, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+
+		bystanderJob := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: e2eutil.OneCPU,
+					Min: 1,
+					Rep: rep,
+					Labels: map[string]string{
+						schedulingv1beta1.PodPreemptable: "true",
+						"app":                            "bystander",
+					},
+					Affinity: &corev1.Affinity{
+						PodAffinity: &corev1.PodAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
+								{
+									LabelSelector: &metav1.LabelSelector{
+										MatchLabels: blockerLabels,
+									},
+									TopologyKey: "kubernetes.io/hostname",
+								},
+							},
+						},
+						PodAntiAffinity: &corev1.PodAntiAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
+								{
+									LabelSelector: &metav1.LabelSelector{
+										MatchLabels: bystanderLabels,
+									},
+									TopologyKey: "kubernetes.io/hostname",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		bystanderJob.Name = "bystander-job"
+		bystanderJob.Pri = lowPriority
+		bystanderJobCreated := e2eutil.CreateJob(ctx, bystanderJob)
+		err = e2eutil.WaitTasksReady(ctx, bystanderJobCreated, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+
+		highPriorityJob := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: highReq,
+					Min: highRep,
+					Rep: highRep,
+					Labels: map[string]string{
+						schedulingv1beta1.PodPreemptable: "true",
+						"app":                            "preemptor",
+					},
+					Affinity: &corev1.Affinity{
+						PodAntiAffinity: &corev1.PodAntiAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
+								{
+									LabelSelector: &metav1.LabelSelector{
+										MatchLabels: blockerLabels,
 									},
 									TopologyKey: "kubernetes.io/hostname",
 								},
@@ -547,12 +614,13 @@ var _ = Describe("Job E2E Test", func() {
 		highPriorityJob.Pri = highPriority
 		highPriorityJobCreated := e2eutil.CreateJob(ctx, highPriorityJob)
 
-		// Verify high priority pod is successfully scheduled
-		err = e2eutil.WaitTasksReady(ctx, highPriorityJobCreated, int(rep)/2)
+		err = e2eutil.WaitTasksReady(ctx, highPriorityJobCreated, int(highRep))
 		Expect(err).NotTo(HaveOccurred())
-
-		// Verify low priority pod is preempted
-		err = e2eutil.WaitTasksReady(ctx, lowPriorityJob, int(rep)/2)
+		err = e2eutil.WaitTasksReady(ctx, bystanderJobCreated, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+		err = e2eutil.WaitTasksReadyEx(ctx, blockerJobCreated, map[string]int{
+			middlePriority: 1,
+		})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
