@@ -327,17 +327,17 @@ type EvictableFn func(*TaskInfo, []*TaskInfo) ([]*TaskInfo, int)
 type EvictionKind int
 
 const (
-	EvictionKindUnknown          EvictionKind = iota
-	EvictionKindGangPreempt                   // gang-aware preemption (gangpreempt action)
-	EvictionKindGangReclaim                   // gang-aware reclaim (gangreclaim action)
-	EvictionKindTaskPreempt                   // legacy task-level preemption
-	EvictionKindTaskReclaim                   // legacy task-level reclaim
+	EvictionKindUnknown     EvictionKind = iota
+	EvictionKindGangPreempt              // gang-aware preemption (gangpreempt action)
+	EvictionKindGangReclaim              // gang-aware reclaim (gangreclaim action)
+	EvictionKindTaskPreempt              // legacy task-level preemption
+	EvictionKindTaskReclaim              // legacy task-level reclaim
 )
 
 // EvictionContext carries the full initiator context for unified victim filtering.
 type EvictionContext struct {
-	Kind      EvictionKind
-	Job       *JobInfo
+	Kind EvictionKind
+	Job  *JobInfo
 	// Task is only populated for task-level eviction (EvictionKindTaskPreempt / EvictionKindTaskReclaim).
 	// For gang-aware eviction kinds it is nil; use Job instead.
 	Task      *TaskInfo

@@ -3806,10 +3806,10 @@ func TestHyperNodeGradientForSubJobFn_NoSubJobPolicyRespectsHardTopology(t *test
 	root.Children = sets.New[string](region.Name)
 
 	ssn.HyperNodes = map[string]*api.HyperNodeInfo{
-		zoneA.Name: zoneA,
-		zoneD.Name: zoneD,
+		zoneA.Name:  zoneA,
+		zoneD.Name:  zoneD,
 		region.Name: region,
-		rootName:   root,
+		rootName:    root,
 	}
 	ssn.HyperNodesSetByTier = map[int]sets.Set[string]{
 		1: sets.New[string](zoneA.Name, zoneD.Name),
@@ -3818,16 +3818,16 @@ func TestHyperNodeGradientForSubJobFn_NoSubJobPolicyRespectsHardTopology(t *test
 	}
 	ssn.HyperNodesTiers = []int{1, 2, 3}
 	ssn.RealNodesSet = map[string]sets.Set[string]{
-		zoneA.Name: sets.New[string](nodeA1.Name, nodeA2.Name),
-		zoneD.Name: sets.New[string](nodeD1.Name, nodeD2.Name),
+		zoneA.Name:  sets.New[string](nodeA1.Name, nodeA2.Name),
+		zoneD.Name:  sets.New[string](nodeD1.Name, nodeD2.Name),
 		region.Name: sets.New[string](nodeA1.Name, nodeA2.Name, nodeD1.Name, nodeD2.Name),
-		rootName:   sets.New[string](nodeA1.Name, nodeA2.Name, nodeD1.Name, nodeD2.Name),
+		rootName:    sets.New[string](nodeA1.Name, nodeA2.Name, nodeD1.Name, nodeD2.Name),
 	}
 	ssn.RealNodesList = map[string][]*api.NodeInfo{
-		zoneA.Name: {nodeA1, nodeA2},
-		zoneD.Name: {nodeD1, nodeD2},
+		zoneA.Name:  {nodeA1, nodeA2},
+		zoneD.Name:  {nodeD1, nodeD2},
 		region.Name: allNodes,
-		rootName:   allNodes,
+		rootName:    allNodes,
 	}
 
 	highestTierAllowed := 1

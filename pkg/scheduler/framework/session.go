@@ -127,9 +127,9 @@ type Session struct {
 	nodeMapFns          map[string]api.NodeMapFn
 	nodeReduceFns       map[string]api.NodeReduceFn
 	hyperNodeOrderFns   map[string]api.HyperNodeOrderFn
-	preemptableFns       map[string]api.EvictableFn
-	reclaimableFns       map[string]api.EvictableFn
-	unifiedEvictableFns  map[string]api.UnifiedEvictableFn
+	preemptableFns      map[string]api.EvictableFn
+	reclaimableFns      map[string]api.EvictableFn
+	unifiedEvictableFns map[string]api.UnifiedEvictableFn
 	overusedFns         map[string]api.ValidateFn
 	// preemptiveFns means whether current queue can reclaim from other queue,
 	// while reclaimableFns means whether current queue's resources can be reclaimed.
