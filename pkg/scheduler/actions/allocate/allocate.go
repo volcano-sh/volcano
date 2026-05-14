@@ -357,7 +357,7 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 
 	alloc.recorder.SnapshotSubJobStatus(job, jobWorksheet)
 
-	hyperNodeGradients := ssn.HyperNodeGradientForJobFn(job, hyperNodeToAllocate)
+	hyperNodeGradients := ssn.HyperNodeGradientForJobFn(job, hyperNodeToAllocate, api.PurposeAllocate)
 	for gradient, hyperNodes := range hyperNodeGradients {
 		stmtBackup := make(map[string]*framework.Statement)   // backup the statement after the job is allocated to a hyperNode
 		jobWorksheetsBackup := make(map[string]*JobWorksheet) // backup the job worksheet after the job is allocated to a hyperNode
@@ -451,10 +451,17 @@ func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *
 		return nil, 0
 	}
 
-	klog.V(3).InfoS("Try to allocate resource for subJob", "job", subJob.Job,
-		"subJob", subJob.UID, "allocatedHyperNode", subJob.AllocatedHyperNode, "taskNum", subJobWorksheet.tasks.Len())
+	klog.V(3).InfoS("Try to allocate resource for subJob", "job", subJob.Job, "subJob", subJob.UID,
+		"allocatedHyperNode", subJob.AllocatedHyperNode, "nominatedHyperNode", subJob.NominatedHyperNode,
+		"taskNum", subJobWorksheet.tasks.Len())
 
-	hyperNodeGradients := ssn.HyperNodeGradientForSubJobFn(subJob, hyperNodeForJob)
+	if subJob.NominatedHyperNode != "" {
+		if stmt, score, ok := alloc.allocateFromNomination(subJob, subJobWorksheet, hyperNodeForJob); ok {
+			return stmt, score
+		}
+	}
+
+	hyperNodeGradients := ssn.HyperNodeGradientForSubJobFn(subJob, hyperNodeForJob, api.PurposeAllocate)
 	for gradient, hyperNodes := range hyperNodeGradients {
 		stmtBackup := make(map[string]*framework.Statement)         // backup the statement after the subJob is allocated to a hyperNode
 		subJobWorksheetsBackup := make(map[string]*SubJobWorksheet) // backup the subJob worksheet after the subJob is allocated to a hyperNode
@@ -555,6 +562,135 @@ func (alloc *Action) selectBestHyperNodeForSubJob(stmts map[string]*framework.St
 	return bestHyperNode, bestScore, nil
 }
 
+// nominationPlanEntry pairs a pending task with its NominatedHyperNode leaf node.
+type nominationPlanEntry struct {
+	task *api.TaskInfo
+	node *api.NodeInfo
+}
+
+// allocateFromNomination is the quick path to allocate a subJob's pending
+// tasks based on NominatedHyperNode + per-task NominatedNodeName, skipping
+// the gradient search. On any validation miss it clears the nomination so
+// the caller falls back to the regular allocate path.
+func (alloc *Action) allocateFromNomination(subJob *api.SubJobInfo, subJobWorksheet *SubJobWorksheet, hyperNodeForJob *api.HyperNodeInfo) (stmt *framework.Statement, score float64, ok bool) {
+	ssn := alloc.session
+	job := ssn.Jobs[subJob.Job]
+	queue := ssn.Queues[job.Queue]
+	pinned := subJob.NominatedHyperNode
+
+	defer func() {
+		if !ok {
+			invalidateSubJobNomination(subJob, subJobWorksheet)
+		}
+	}()
+
+	leafNodes, exist := ssn.RealNodesList[pinned]
+	if !exist || len(leafNodes) == 0 {
+		klog.V(3).InfoS("NominatedHyperNode no longer in topology, falling back",
+			"subJob", subJob.UID, "nominatedHyperNode", pinned)
+		return nil, 0, false
+	}
+	leafByName := make(map[string]*api.NodeInfo, len(leafNodes))
+	for _, n := range leafNodes {
+		if n != nil {
+			leafByName[n.Name] = n
+		}
+	}
+
+	plan, validated := alloc.validateNomination(subJob, subJobWorksheet, queue, leafByName)
+	if !validated {
+		return nil, 0, false
+	}
+
+	stmt = framework.NewStatement(ssn)
+	for _, p := range plan {
+		if subJob.WithNetworkTopology() {
+			p.task.JobAllocatedHyperNode = pinned
+		}
+		if err := alloc.allocateResourcesForTask(stmt, p.task, p.node, job); err != nil {
+			klog.ErrorS(err, "Allocate from nomination fail, falling back",
+				"subJob", subJob.UID, "task", p.task.UID, "node", p.node.Name)
+			stmt.Discard()
+			return nil, 0, false
+		}
+	}
+
+	// Validation ran on a clone of tasks; drain the real worksheet so
+	// allocateForSubJob's caller observes Empty() and does not re-enqueue
+	// this subJob into the gradient search.
+	for !subJobWorksheet.tasks.Empty() {
+		subJobWorksheet.tasks.Pop()
+	}
+	newAllocatedHyperNode := ssn.HyperNodes.GetLCAHyperNode(subJob.AllocatedHyperNode, pinned)
+	subJob.AllocatedHyperNode = newAllocatedHyperNode
+	alloc.recorder.SaveSubJobDecision(subJob.Job, hyperNodeForJob.Name, subJob.UID, newAllocatedHyperNode)
+	klog.V(3).InfoS("Allocate subJob from nomination success", "subJob", subJob.UID,
+		"nominatedHyperNode", pinned, "newAllocatedHyperNode", newAllocatedHyperNode)
+	return stmt, 0, true
+}
+
+// validateNomination checks each pending task's NominatedNodeName against the
+// pinned hyperNode's leaf set plus PrePredicate/Predicate. On any miss the
+// caller invalidates the nomination.
+//
+// TODO: the per-task check sequence overlaps with allocateResourcesForTasks's
+// pre-bind path; consider unifying once we are ready to touch the regular
+// allocate path.
+func (alloc *Action) validateNomination(subJob *api.SubJobInfo, subJobWorksheet *SubJobWorksheet, queue *api.QueueInfo, leafByName map[string]*api.NodeInfo) ([]nominationPlanEntry, bool) {
+	ssn := alloc.session
+	pinned := subJob.NominatedHyperNode
+	ph := util.NewPredicateHelper()
+	plan := make([]nominationPlanEntry, 0, subJobWorksheet.tasks.Len())
+	preview := subJobWorksheet.tasks.Clone()
+	for !preview.Empty() {
+		task := preview.Pop().(*api.TaskInfo)
+		if !ssn.Allocatable(queue, task) {
+			klog.V(3).InfoS("Queue overused vs nominated bind, falling back",
+				"queue", queue.Name, "subJob", subJob.UID, "task", task.UID)
+			return nil, false
+		}
+		nominated := task.Pod.Status.NominatedNodeName
+		if nominated == "" {
+			klog.V(3).InfoS("Task missing NominatedNodeName under NominatedHyperNode, falling back",
+				"subJob", subJob.UID, "task", task.UID, "nominatedHyperNode", pinned)
+			return nil, false
+		}
+		nodeInfo, ok := leafByName[nominated]
+		if !ok {
+			klog.V(3).InfoS("Task NominatedNodeName outside NominatedHyperNode leaf set, falling back",
+				"subJob", subJob.UID, "task", task.UID, "nominated", nominated, "nominatedHyperNode", pinned)
+			return nil, false
+		}
+		if err := ssn.PrePredicateFn(task); err != nil {
+			klog.V(3).InfoS("PrePredicate failed against nominated node, falling back",
+				"subJob", subJob.UID, "task", task.UID, "node", nominated, "err", err)
+			return nil, false
+		}
+		predicateNodes, _ := ph.PredicateNodes(task, []*api.NodeInfo{nodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
+		if len(predicateNodes) == 0 {
+			klog.V(3).InfoS("Predicate failed against nominated node, falling back",
+				"subJob", subJob.UID, "task", task.UID, "node", nominated)
+			return nil, false
+		}
+		plan = append(plan, nominationPlanEntry{task: task, node: nodeInfo})
+	}
+	return plan, true
+}
+
+func invalidateSubJobNomination(subJob *api.SubJobInfo, subJobWorksheet *SubJobWorksheet) {
+	subJob.NominatedHyperNode = ""
+	if subJobWorksheet == nil {
+		return
+	}
+	preview := subJobWorksheet.tasks.Clone()
+	for !preview.Empty() {
+		task := preview.Pop().(*api.TaskInfo)
+		if task.Pod != nil && task.Pod.Status.NominatedNodeName != "" {
+			task.Pod.Status.NominatedNodeName = ""
+		}
+	}
+}
+
 func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *util.PriorityQueue, hyperNode string) *framework.Statement {
 	ssn := alloc.session
 
@@ -564,6 +700,13 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 	if !exist || len(nodes) == 0 {
 		klog.V(4).InfoS("There is no node in hyperNode", "job", job.UID, "hyperNode", hyperNode)
 		return nil
+	}
+
+	nodeNameSet := make(map[string]struct{}, len(nodes))
+	for _, n := range nodes {
+		if n != nil {
+			nodeNameSet[n.Name] = struct{}{}
+		}
 	}
 
 	stmt := framework.NewStatement(ssn)
@@ -623,9 +766,12 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 		// "NominatedNodeName" can potentially be set in a previous scheduling cycle as a result of preemption.
 		// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
-		if len(task.Pod.Status.NominatedNodeName) > 0 {
-			if nominatedNodeInfo, ok := ssn.Nodes[task.Pod.Status.NominatedNodeName]; ok && task.InitResreq.LessEqual(nominatedNodeInfo.FutureIdle(), api.Zero) {
-				predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
+		// Only honor it when the nominated node belongs to this iteration's leaf set (defense in depth against cross-domain leaks).
+		if nominated := task.Pod.Status.NominatedNodeName; len(nominated) > 0 {
+			if _, inLeafSet := nodeNameSet[nominated]; inLeafSet {
+				if nominatedNodeInfo, ok := ssn.Nodes[nominated]; ok && task.InitResreq.LessEqual(nominatedNodeInfo.FutureIdle(), api.Zero) {
+					predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
+				}
 			}
 		}
 

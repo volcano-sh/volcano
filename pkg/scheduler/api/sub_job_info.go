@@ -51,6 +51,10 @@ type SubJobInfo struct {
 	taskPriorities  map[int32]sets.Set[TaskID]
 
 	AllocatedHyperNode string
+	// NominatedHyperNode is the hyperNode chosen by gangpreempt/gangreclaim
+	// for this subJob. allocate honors it via a per-subJob fast path and
+	// clears it on commit. In-memory only; not persisted across restarts.
+	NominatedHyperNode string
 
 	NetworkTopology *scheduling.NetworkTopologySpec
 }
@@ -260,6 +264,7 @@ func (sji *SubJobInfo) AllocatedTaskNum() int32 {
 
 func (sji *SubJobInfo) CloneStatusFrom(source *SubJobInfo) {
 	sji.AllocatedHyperNode = source.AllocatedHyperNode
+	sji.NominatedHyperNode = source.NominatedHyperNode
 }
 
 // GetMinResources The current sub job is constrained to gang scheduling,
