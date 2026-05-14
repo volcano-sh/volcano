@@ -73,8 +73,8 @@ func EstimatePodResource(request, limit, sigmaDynamic, nodeCap, beRatio, bePenal
 	// Guaranteed/Burstable: Request + (Limit - Request) * sigmaDynamic
 	if limit <= request {
 		// If limit <= request (e.g., Guaranteed QoS where limit == request),
-		// the estimated usage is simply the request value scaled by sigmaDynamic.
-		return request * sigmaDynamic
+		// the estimated usage is simply the request value.
+		return request
 	}
 	return request + (limit-request)*sigmaDynamic
 }
