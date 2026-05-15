@@ -7,6 +7,9 @@ VOLCANO_VERSION ?=
 CONFIG ?= basic.yaml
 USE_EXISTING_CLUSTER ?= false
 SKIP_INSTALL_VOLCANO ?= false
+SKIP_INSTALL_MONITORING ?= false
+SKIP_KWOK ?= false
+AUDIT_EXPORTER_IMAGE ?= volcanosh/kube-apiserver-audit-exporter:dev
 
 export CLUSTER_NAME
 export KWOK_NODE_COUNT
@@ -14,8 +17,11 @@ export CPU_PER_NODE
 export MEMORY_PER_NODE
 export USE_EXISTING_CLUSTER
 export SKIP_INSTALL_VOLCANO
+export SKIP_INSTALL_MONITORING
+export SKIP_KWOK
+export AUDIT_EXPORTER_IMAGE
 
-# Environment setup — scenario-independent infrastructure.
+# Environment setup, scenario-independent infrastructure.
 # Can also install specific volcano version: make setup VOLCANO_VERSION=v1.14.0
 .PHONY: setup
 setup:
@@ -26,13 +32,21 @@ else
 	$(MAKE) create-cluster
 	$(MAKE) build-images
 endif
+ifeq ($(SKIP_KWOK),true)
+	@echo "Skipping KWOK node creation (SKIP_KWOK=true), using existing cluster nodes..."
+else
 	$(MAKE) create-nodes
+endif
 ifeq ($(SKIP_INSTALL_VOLCANO),true)
 	@echo "Skipping Volcano installation (SKIP_INSTALL_VOLCANO=true), using pre-installed Volcano..."
 else
 	$(MAKE) install-volcano
 endif
+ifeq ($(SKIP_INSTALL_MONITORING),true)
+	@echo "Skipping monitoring installation (SKIP_INSTALL_MONITORING=true)..."
+else
 	$(MAKE) install-monitoring
+endif
 
 .PHONY: create-cluster
 create-cluster:
@@ -45,11 +59,20 @@ create-nodes:
 .PHONY: build-images
 build-images:
 ifdef VOLCANO_VERSION
-	@echo "Using release version $(VOLCANO_VERSION) — building audit-exporter only"
+	@echo "Using release version $(VOLCANO_VERSION), building audit-exporter only"
 	bash scripts/build-images.sh
 else
 	BUILD_VOLCANO=true bash scripts/build-images.sh
 endif
+
+# Build audit-exporter image only (for existing clusters that need the image pushed to a registry)
+.PHONY: build-audit-exporter
+build-audit-exporter:
+	@echo "Building audit-exporter image ($(AUDIT_EXPORTER_IMAGE))..."
+	docker build \
+		-f manifests/audit-exporter/Dockerfile \
+		-t $(AUDIT_EXPORTER_IMAGE) \
+		$(shell cd .. && pwd)
 
 .PHONY: install-volcano
 install-volcano:

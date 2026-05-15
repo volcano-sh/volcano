@@ -112,7 +112,7 @@ PROM_URL="${PROM_URL:-http://localhost:30003}"
 # Try to record Prometheus timestamp before test (may fail if Prometheus is not available)
 PROM_AVAILABLE=true
 TIME_BEFORE=$(curl -s --connect-timeout 3 "${PROM_URL}/api/v1/query" \
-    --data-urlencode 'query=time()' 2>/dev/null | jq -r '.data.result[0].value[1] // empty' 2>/dev/null) || true
+    --data-urlencode 'query=time()' 2>/dev/null | jq -r '.data.result[1] // empty' 2>/dev/null) || true
 if [[ -z "${TIME_BEFORE}" ]]; then
     PROM_AVAILABLE=false
     log_warn "Prometheus not reachable at ${PROM_URL}, audit-exporter report will be skipped"
@@ -136,7 +136,7 @@ if [[ "${PROM_AVAILABLE}" == "true" ]]; then
     sleep 10
 
     TIME_AFTER=$(curl -s "${PROM_URL}/api/v1/query" \
-        --data-urlencode 'query=time()' | jq -r '.data.result[0].value[1] // empty')
+        --data-urlencode 'query=time()' | jq -r '.data.result[1] // empty')
 
     if [[ -n "${TIME_AFTER}" ]]; then
         log_info "Collecting scheduling latency report from audit-exporter..."

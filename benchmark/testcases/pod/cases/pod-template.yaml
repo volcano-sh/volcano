@@ -24,9 +24,11 @@ spec:
         limits:
           cpu: {{ .CPU }}
           memory: {{ .Memory }}
+  {{- if ne (env "SKIP_KWOK") "true" }}
   nodeSelector:
     type: kwok
   tolerations:
     - key: kwok.x-k8s.io/node
       operator: Exists
       effect: NoSchedule
+  {{- end }}

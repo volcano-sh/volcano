@@ -33,5 +33,3 @@ jobTemplate:
       partitionNetworkMode: soft
       # Node selector configuration
       enableNodeSelector: false
-      nodeSelector:
-        type: "kwok"
