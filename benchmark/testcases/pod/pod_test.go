@@ -104,7 +104,9 @@ func BuildPod(cfg PodConfig, index uint64) (*corev1.Pod, error) {
 		return nil, fmt.Errorf("reading pod template %s: %w", templatePath, err)
 	}
 
-	tmpl, err := template.New("pod").Parse(string(tmplContent))
+	tmpl, err := template.New("pod").Funcs(template.FuncMap{
+		"env": os.Getenv,
+	}).Parse(string(tmplContent))
 	if err != nil {
 		return nil, fmt.Errorf("parsing pod template: %w", err)
 	}

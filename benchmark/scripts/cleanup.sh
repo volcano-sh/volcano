@@ -25,14 +25,22 @@ kubectl delete pods -l volcano.sh/benchmark=true -A --ignore-not-found --grace-p
 kubectl delete podgroups.scheduling.volcano.sh --all -n default --ignore-not-found --grace-period=0 --force 2>/dev/null || true
 
 # Monitoring stack (audit-exporter + Prometheus + Grafana)
-log_info "Cleaning up monitoring..."
-kubectl delete -f "${BENCHMARK_DIR}/manifests/audit-exporter/daemonset.yaml" --ignore-not-found 2>/dev/null || true
-kubectl delete configmap grafana-benchmark-dashboard -n volcano-monitoring --ignore-not-found 2>/dev/null || true
-kubectl delete -f "${VOLCANO_ROOT}/installer/volcano-monitoring.yaml" --ignore-not-found 2>/dev/null || true
+if [[ "${SKIP_INSTALL_MONITORING}" == "true" ]]; then
+    log_info "Skipping monitoring cleanup (SKIP_INSTALL_MONITORING=true, monitoring is managed externally)"
+else
+    log_info "Cleaning up monitoring..."
+    kubectl delete -f "${BENCHMARK_DIR}/manifests/audit-exporter/daemonset.yaml" --ignore-not-found 2>/dev/null || true
+    kubectl delete configmap grafana-benchmark-dashboard -n volcano-monitoring --ignore-not-found 2>/dev/null || true
+    kubectl delete -f "${VOLCANO_ROOT}/installer/volcano-monitoring.yaml" --ignore-not-found 2>/dev/null || true
+fi
 
 # KWOK nodes
-log_info "Cleaning up KWOK nodes..."
-"${BENCHMARK_DIR}/scripts/cleanup-kwok-nodes.sh" --all
+if [[ "${SKIP_KWOK}" == "true" ]]; then
+    log_info "Skipping KWOK cleanup (SKIP_KWOK=true, using real cluster nodes)"
+else
+    log_info "Cleaning up KWOK nodes..."
+    "${BENCHMARK_DIR}/scripts/cleanup-kwok-nodes.sh" --all
+fi
 
 # Volcano
 if [[ "${SKIP_INSTALL_VOLCANO}" == "true" ]]; then

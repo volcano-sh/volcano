@@ -15,6 +15,12 @@ export KWOK_VERSION="${KWOK_VERSION:-v0.7.0}"
 export USE_EXISTING_CLUSTER="${USE_EXISTING_CLUSTER:-false}"
 # Skip Volcano installation (use pre-installed Volcano on the cluster)
 export SKIP_INSTALL_VOLCANO="${SKIP_INSTALL_VOLCANO:-false}"
+# Skip monitoring stack installation (Prometheus, Grafana, audit-exporter already deployed)
+export SKIP_INSTALL_MONITORING="${SKIP_INSTALL_MONITORING:-false}"
+# Skip KWOK node creation (use real cluster nodes instead of simulated KWOK nodes)
+export SKIP_KWOK="${SKIP_KWOK:-false}"
+# Audit exporter image (configurable for private registries)
+export AUDIT_EXPORTER_IMAGE="${AUDIT_EXPORTER_IMAGE:-volcanosh/kube-apiserver-audit-exporter:dev}"
 
 # Project paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

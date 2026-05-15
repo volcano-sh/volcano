@@ -12,6 +12,3 @@ jobTemplate:
       replicas: ${REPLICAS}
       cpu: "1"
       memory: "1Gi"
-      enableNodeSelector: true
-      nodeSelector:
-        type: kwok

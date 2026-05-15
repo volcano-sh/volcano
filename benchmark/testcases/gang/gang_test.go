@@ -126,7 +126,9 @@ func BuildVCJob(cfg VCJobConfig, index uint64) (*batchv1alpha1.Job, error) {
 		return nil, fmt.Errorf("reading vcjob template %s: %w", templatePath, err)
 	}
 
-	tmpl, err := template.New("vcjob").Parse(string(tmplContent))
+	tmpl, err := template.New("vcjob").Funcs(template.FuncMap{
+		"env": os.Getenv,
+	}).Parse(string(tmplContent))
 	if err != nil {
 		return nil, fmt.Errorf("parsing vcjob template: %w", err)
 	}
