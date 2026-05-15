@@ -1,0 +1,11 @@
+# Bare Pod Benchmark Profile
+# Template variables: PODS, SCHEDULER_NAME (substituted by envsubst via run-tests.sh)
+# Usage: make test-pod-env PODS=500 SCHEDULER_NAME=agent-scheduler
+pods: ${PODS}
+
+podTemplate:
+  name: pod-test
+  schedulerName: ${SCHEDULER_NAME}
+  image: "busybox:1.36"
+  cpu: "1"
+  memory: "1Gi"
