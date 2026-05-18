@@ -63,5 +63,19 @@ This metrics describe internal state of volcano.
 | `job_completed_phase_count`            | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job completed phase             |
 | `job_failed_phase_count`               | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job failed phase                |
 
+### volcano agent scheduler related metrics
+
+| **Metric Name**                           | **Metric Type** | **Labels**                                                                                | **Description**                                                                |
+|-------------------------------------------|-----------------|-------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------|
+| `worker_scheduling_cycle_duration_milliseconds` | Histogram | None | Duration of a single scheduling cycle execution in agent worker. |
+| `update_snapshot_duration_milliseconds` | Histogram | None | Duration of updating the scheduling snapshot from cache in agent worker. |
+| `task_scheduling_latency_milliseconds`    | HistogramVector | `stage`=&lt;stage&gt;                                                                      | Task scheduling latency from creation to various stages in milliseconds        |
+
+### volcano controller-manager related metrics
+
+| **Metric Name**                                      | **Metric Type** | **Labels**                                                                                | **Description**                                                                              |
+|------------------------------------------------------|-----------------|-------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
+| `controller_job_to_pod_creation_latency_milliseconds` | Histogram      | None                                                                                      | Latency from VCJob creation to pod created in milliseconds                                   |
+
 ### volcano Liveness
 Healthcheck last time of volcano activity and timeout

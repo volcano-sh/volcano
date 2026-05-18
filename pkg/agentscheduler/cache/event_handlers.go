@@ -39,6 +39,7 @@ import (
 	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	"volcano.sh/apis/pkg/apis/utils"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 )
 
@@ -157,6 +158,9 @@ func (sc *SchedulerCache) AddPodToCache(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("Added pod <%s/%v> into cache.", pod.Namespace, pod.Name)
+	if pod.Spec.NodeName == "" {
+		metrics.UpdateTaskScheduleDuration(metrics.TaskStageWatched, metrics.Duration(pod.CreationTimestamp.Time))
+	}
 
 	// Currently we still use AssignedPodAdded and only care about pod affinity and pod topology spread,
 	// directly using MoveAllToActiveOrBackoffQueue may lead to a decrease in throughput.
