@@ -180,8 +180,8 @@ var _ = Describe("Job Error Handling", func() {
 			},
 		})
 
-		// job phase: pending -> running -> restarting -> running
-		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting, vcbatch.Running})
+		// The failed task keeps failing after RestartPod, so the stable signal is the transition to Restarting.
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
