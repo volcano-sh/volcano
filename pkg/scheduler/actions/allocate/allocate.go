@@ -677,16 +677,21 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 	return nil
 }
 
-// convertSoftToHardTopology converts all soft network topology constraints in the job to hard mode
-// with maxTier (ClusterTopHyperNode tier). Since all real HyperNode tiers are less than maxTier,
-// no HyperNode will be filtered out by isEligibleHyperNode, achieving soft affinity semantics:
-// prefer lower tier (higher bandwidth) but never reject any HyperNode.
+// convertSoftToHardTopology converts all soft network topology constraints in the job to hard mode.
+// Conversion strategy:
+//   - Job-level soft: converted with maxTier (ClusterTopHyperNode tier), achieving no HyperNode
+//     filtering (full soft affinity across the cluster).
+//   - SubGroupPolicy/SubJob-level soft: converted with the effective job-level tier (subJobMaxTier).
+//     If the job has a hard tier limit (either user-specified or from the job-level conversion above),
+//     subgroup soft affinity is bounded by that limit. This properly handles the mixed-mode scenario
+//     where job is hard but subgroup is soft: the subgroup prefers lower tiers but never exceeds
+//     the job's hard tier constraint.
 func convertSoftToHardTopology(job *api.JobInfo, maxTier int) {
 	if job.PodGroup == nil {
 		return
 	}
 
-	// Convert job-level soft topology
+	// Convert job-level soft topology to hard mode with maxTier.
 	if job.PodGroup.Spec.NetworkTopology != nil &&
 		job.PodGroup.Spec.NetworkTopology.Mode == scheduling.SoftNetworkTopologyMode {
 		klog.V(4).InfoS("Converting job-level soft topology to hard mode",
@@ -696,21 +701,31 @@ func convertSoftToHardTopology(job *api.JobInfo, maxTier int) {
 		job.PodGroup.Spec.NetworkTopology.HighestTierName = ""
 	}
 
-	// Convert SubGroupPolicy-level soft topology
+	// Determine the effective maxTier for SubGroupPolicy/SubJob conversion.
+	// If the job has an effective tier limit (from hard mode or job-level soft→hard conversion above),
+	// subgroup soft affinity must be bounded by it. Otherwise, fall back to the cluster-wide maxTier.
+	subJobMaxTier := maxTier
+	if job.PodGroup.Spec.NetworkTopology != nil &&
+		job.PodGroup.Spec.NetworkTopology.HighestTierAllowed != nil {
+		subJobMaxTier = *job.PodGroup.Spec.NetworkTopology.HighestTierAllowed
+	}
+
+	// Convert SubGroupPolicy-level soft topology with subJobMaxTier.
 	for i := range job.PodGroup.Spec.SubGroupPolicy {
 		nt := job.PodGroup.Spec.SubGroupPolicy[i].NetworkTopology
 		if nt != nil && nt.Mode == scheduling.SoftNetworkTopologyMode {
 			klog.V(4).InfoS("Converting SubGroupPolicy soft topology to hard mode",
-				"job", job.UID, "subGroupPolicy", job.PodGroup.Spec.SubGroupPolicy[i].Name, "maxTier", maxTier)
+				"job", job.UID, "subGroupPolicy", job.PodGroup.Spec.SubGroupPolicy[i].Name,
+				"maxTier", subJobMaxTier)
 			nt.Mode = scheduling.HardNetworkTopologyMode
-			nt.HighestTierAllowed = &maxTier
+			nt.HighestTierAllowed = &subJobMaxTier
 			nt.HighestTierName = ""
 		}
 	}
 
-	// Convert SubJob-level topology (SubJobInfo has its own deep-copied networkTopology)
+	// Convert SubJob-level topology (SubJobInfo has its own deep-copied networkTopology).
 	for _, subJob := range job.SubJobs {
-		subJob.ConvertToHardTopology(maxTier)
+		subJob.ConvertToHardTopology(subJobMaxTier)
 	}
 }
 
