@@ -236,22 +236,17 @@ func SelectBestNodes(nodeScores map[float64][]*api.NodeInfo, count int, nodesInB
 		nodeCount += len(nodes)
 	}
 
-	downgradeNode := false
 	if nodeCount >= count {
 		bestNodes = make([]*api.NodeInfo, 0, count)
 	}
-	//
+
 	// It is possible that nodes with high scores were sent to binder in previous scheduling round and not handled yet, so scheduling on these nodes may conflict if same node is chosen in binder,
-	// then the node selected in this scheduling round will be rejected by binder. In this case, select nodes not in binder first to reduce the conflict if the number of qulified nodes is much larger than the candidate count.
-	if nodeCount > count && len(nodesInBinder) > 0 {
-		downgradeNode = true
+	// then the node selected in this scheduling round will be rejected by binder. In this case, select nodes not in binder first to reduce the conflict if the number of qualified nodes is much larger than the candidate count.
+	if nodeCount > count && hasActiveBinderNode(nodesInBinder) {
+		return selectBestNodesWithDowngrade(bestNodes, nodeScores, nodeCount, count, nodesInBinder)
 	}
 
-	if !downgradeNode {
-		return appendSelectedNodes(bestNodes, topScoreBuckets(nodeScores, count), count)
-	}
-
-	return selectBestNodesWithDowngrade(bestNodes, nodeScores, nodeCount, count, nodesInBinder)
+	return appendSelectedNodes(bestNodes, topScoreBuckets(nodeScores, count), count)
 }
 
 type scoreBucket struct {
@@ -318,6 +313,7 @@ func appendSelectedNodes(bestNodes []*api.NodeInfo, buckets []*scoreBucket, coun
 	for _, bucket := range buckets {
 		nodes := bucket.nodes
 		if len(nodes)+selectedNodeCount > count {
+			nodes = append([]*api.NodeInfo(nil), nodes...)
 			rand.Shuffle(len(nodes), func(i, j int) {
 				nodes[i], nodes[j] = nodes[j], nodes[i]
 			})
@@ -331,6 +327,15 @@ func appendSelectedNodes(bestNodes []*api.NodeInfo, buckets []*scoreBucket, coun
 		}
 	}
 	return bestNodes
+}
+
+func hasActiveBinderNode(nodesInBinder map[string]int) bool {
+	for _, binderCount := range nodesInBinder {
+		if binderCount > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func selectBestNodesWithDowngrade(bestNodes []*api.NodeInfo, nodeScores map[float64][]*api.NodeInfo, nodeCount, count int, nodesInBinder map[string]int) []*api.NodeInfo {
@@ -377,19 +382,13 @@ func appendNodesWithLimit(bestNodes []*api.NodeInfo, nodes []*api.NodeInfo, coun
 
 	remaining := count - len(bestNodes)
 	if len(nodes) > remaining {
+		nodes = append([]*api.NodeInfo(nil), nodes...)
 		rand.Shuffle(len(nodes), func(i, j int) {
 			nodes[i], nodes[j] = nodes[j], nodes[i]
 		})
 		nodes = nodes[:remaining]
 	}
 	return append(bestNodes, nodes...)
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // GetNodeList returns values of the map 'nodes'
