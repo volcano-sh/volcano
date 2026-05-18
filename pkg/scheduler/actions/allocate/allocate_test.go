@@ -5825,7 +5825,7 @@ func TestConvertSoftToHardTopology(t *testing.T) {
 			wantContainsHardTopology: true,
 		},
 		{
-			name: "mixed: job hard + subGroupPolicy soft",
+			name: "mixed: job hard + subGroupPolicy soft (subgroup bounded by job tier)",
 			jobNetworkTopology: &scheduling.NetworkTopologySpec{
 				Mode:               scheduling.HardNetworkTopologyMode,
 				HighestTierAllowed: ptr.To(2),
@@ -5842,7 +5842,35 @@ func TestConvertSoftToHardTopology(t *testing.T) {
 			wantJobMode:              scheduling.HardNetworkTopologyMode,
 			wantJobTier:              ptr.To(2),
 			wantSubGroupPolicyModes:  []scheduling.NetworkTopologyMode{scheduling.HardNetworkTopologyMode},
-			wantSubGroupPolicyTiers:  []*int{ptr.To(maxTier)},
+			wantSubGroupPolicyTiers:  []*int{ptr.To(2)}, // bounded by job's HighestTierAllowed=2
+			wantContainsHardTopology: true,
+		},
+		{
+			name: "mixed: job hard tier=3 + multiple subGroupPolicies soft (all bounded by job tier)",
+			jobNetworkTopology: &scheduling.NetworkTopologySpec{
+				Mode:               scheduling.HardNetworkTopologyMode,
+				HighestTierAllowed: ptr.To(3),
+			},
+			subGroupPolicies: []scheduling.SubGroupPolicySpec{
+				{
+					Name:         "worker",
+					SubGroupSize: ptr.To(int32(4)),
+					NetworkTopology: &scheduling.NetworkTopologySpec{
+						Mode: scheduling.SoftNetworkTopologyMode,
+					},
+				},
+				{
+					Name:         "ps",
+					SubGroupSize: ptr.To(int32(2)),
+					NetworkTopology: &scheduling.NetworkTopologySpec{
+						Mode: scheduling.SoftNetworkTopologyMode,
+					},
+				},
+			},
+			wantJobMode:              scheduling.HardNetworkTopologyMode,
+			wantJobTier:              ptr.To(3),
+			wantSubGroupPolicyModes:  []scheduling.NetworkTopologyMode{scheduling.HardNetworkTopologyMode, scheduling.HardNetworkTopologyMode},
+			wantSubGroupPolicyTiers:  []*int{ptr.To(3), ptr.To(3)}, // both bounded by job's HighestTierAllowed=3
 			wantContainsHardTopology: true,
 		},
 		{
