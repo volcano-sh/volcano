@@ -320,7 +320,7 @@ func (s *Statement) allocate(task *api.TaskInfo) error {
 		return fmt.Errorf("failed to find job %s", task.Job)
 	}
 
-	metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
+	metrics.UpdateTaskScheduleDuration(metrics.TaskStageAssumed, metrics.Duration(task.Pod.CreationTimestamp.Time))
 	return nil
 }
 

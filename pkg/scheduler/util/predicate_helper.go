@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/workqueue"
@@ -28,6 +29,7 @@ import (
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/util"
 )
 
@@ -130,7 +132,9 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 	}
 
 	//workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
+	predicateStart := time.Now()
 	workqueue.ParallelizeUntil(ctx, 16, allNodes, checkNode)
+	metrics.UpdateSchedulingStageDuration(metrics.SchedulingStagePredicate, time.Since(predicateStart))
 
 	newIndex := int64((startIndex + int(processedNodes)) % allNodes)
 	lastProcessedNodeIndex.Store(newIndex)

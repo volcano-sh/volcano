@@ -37,6 +37,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
+	"volcano.sh/volcano/pkg/controllers/metrics"
 )
 
 var calMutex sync.Mutex
@@ -535,6 +536,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 					} else {
 						classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
 						calcPodStatus(newPod, taskStatusCount)
+						metrics.ObserveJobToPodCreationLatency(newPod.CreationTimestamp.Sub(job.CreationTimestamp.Time))
 						klog.V(5).InfoS("Created Pod for Job", "Job", klog.KObj(job), "Pod", klog.KObj(pod))
 					}
 				}(pod)
