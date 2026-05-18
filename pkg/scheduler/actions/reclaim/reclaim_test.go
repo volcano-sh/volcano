@@ -338,6 +338,36 @@ func TestReclaim(t *testing.T) {
 			ExpectEvictNum: 0,
 			ExpectEvicted:  []string{},
 		},
+		{
+			// In a scenario where a portion of the job doesn't require resource reclamation (and there are no reclaimable tasks on the node),
+			// while another portion needs to reclaim tasks on the node, the reclamation should succeed.
+			Name: "pipeline on idle node without cross-queue reclaimees",
+			Plugins: map[string]framework.PluginBuilder{
+				conformance.PluginName: conformance.New,
+				gang.PluginName:        gang.New,
+				proportion.PluginName:  proportion.New,
+			},
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg-victim", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
+				util.BuildPodGroup("pg1", "c1", "q1", 2, nil, schedulingv1beta1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "victim-n1", "n1", v1.PodRunning, api.BuildResourceList("2", "2G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptor2", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg1", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectEvictNum: 0,
+			ExpectEvicted:  []string{},
+			ExpectPipeLined: map[string][]string{
+				"c1/pg1": {"n1"},
+			},
+		},
 	}
 
 	reclaim := New()
