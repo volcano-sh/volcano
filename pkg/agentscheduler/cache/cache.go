@@ -118,7 +118,7 @@ type SchedulerCache struct {
 
 	Recorder record.EventRecorder
 
-	Nodes         map[string]*nodeInfoListItem // TODO: do we need to also add a seperate lock for Nodes cache?
+	Nodes         map[string]*nodeInfoListItem // TODO: do we need to also add a separate lock for Nodes cache?
 	headNode      *nodeInfoListItem
 	NodeList      []string
 	NodeShards    map[string]*schedulingapi.NodeShardInfo
@@ -167,7 +167,7 @@ type SchedulerCache struct {
 	resourceSyncTimeout time.Duration
 }
 
-// TaskCache encapsulates the task map with a seperate lock
+// TaskCache encapsulates the task map with a separate lock
 type TaskCache struct {
 	sync.RWMutex
 	tasks map[schedulingapi.TaskID]*schedulingapi.TaskInfo
