@@ -56,6 +56,10 @@ create-cluster:
 create-nodes:
 	bash scripts/create-kwok-nodes.sh
 
+.PHONY: create-hypernodes
+create-hypernodes:
+	bash scripts/create-hypernodes.sh
+
 .PHONY: build-images
 build-images:
 ifdef VOLCANO_VERSION

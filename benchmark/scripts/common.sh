@@ -19,6 +19,12 @@ export SKIP_INSTALL_VOLCANO="${SKIP_INSTALL_VOLCANO:-false}"
 export SKIP_INSTALL_MONITORING="${SKIP_INSTALL_MONITORING:-false}"
 # Skip KWOK node creation (use real cluster nodes instead of simulated KWOK nodes)
 export SKIP_KWOK="${SKIP_KWOK:-false}"
+# Topology-aware scheduling: distribute nodes across rack/spine domains with HyperNode CRDs
+export ENABLE_TOPOLOGY="${ENABLE_TOPOLOGY:-false}"
+export TOPOLOGY_RACKS="${TOPOLOGY_RACKS:-4}"
+export TOPOLOGY_SPINES="${TOPOLOGY_SPINES:-2}"
+# Custom labels applied to all KWOK nodes (comma-separated key=value pairs)
+export KWOK_NODE_LABELS="${KWOK_NODE_LABELS:-}"
 # Audit exporter image (configurable for private registries)
 export AUDIT_EXPORTER_IMAGE="${AUDIT_EXPORTER_IMAGE:-volcanosh/kube-apiserver-audit-exporter:dev}"
 

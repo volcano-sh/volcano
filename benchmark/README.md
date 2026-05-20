@@ -56,14 +56,44 @@ make create-nodes
 Installs KWOK controller and creates simulated nodes. Set `SKIP_KWOK=true` to skip
 this step when using real cluster nodes.
 
-| Variable | Default |
-|---|---|
-| `KWOK_NODE_COUNT` | `100` |
-| `CPU_PER_NODE` | `32` |
-| `MEMORY_PER_NODE` | `256Gi` |
-| `KWOK_VERSION` | `v0.7.0` |
+| Variable | Default | Description |
+|---|---|---|
+| `KWOK_NODE_COUNT` | `100` | Number of simulated nodes |
+| `CPU_PER_NODE` | `32` | CPU capacity per node |
+| `MEMORY_PER_NODE` | `256Gi` | Memory capacity per node |
+| `KWOK_VERSION` | `v0.7.0` | KWOK controller version |
+| `ENABLE_TOPOLOGY` | `false` | Distribute nodes across topology domains and create HyperNode CRDs |
+| `TOPOLOGY_RACKS` | `4` | Number of rack-level domains (tier 1) |
+| `TOPOLOGY_SPINES` | `2` | Number of spine-level domains (tier 2) |
+| `KWOK_NODE_LABELS` | *(empty)* | Comma-separated `key=value` labels for all nodes (e.g. auto-discovery) |
 
 Override example: `make create-nodes KWOK_NODE_COUNT=200 CPU_PER_NODE=64`
+
+**Topology-aware scheduling:**
+
+When `ENABLE_TOPOLOGY=true`, nodes are evenly distributed across racks and spines,
+and HyperNode CRDs are created to represent the hierarchy:
+
+```
+spine-0 (tier 2)
+├── rack-0 (tier 1) ── kwok-node-0 .. kwok-node-24
+├── rack-1 (tier 1) ── kwok-node-25 .. kwok-node-49
+spine-1 (tier 2)
+├── rack-2 (tier 1) ── kwok-node-50 .. kwok-node-74
+└── rack-3 (tier 1) ── kwok-node-75 .. kwok-node-99
+```
+
+```bash
+# Topology mode: create labeled nodes (HyperNode CRDs are created separately after Volcano install)
+make create-nodes ENABLE_TOPOLOGY=true TOPOLOGY_RACKS=4 TOPOLOGY_SPINES=2
+
+# Auto-discovery: only label nodes, hypernode-controller builds HyperNodes from ConfigMap
+make create-nodes KWOK_NODE_LABELS="topology-rack=rack-0,topology-spine=spine-0"
+```
+
+> **Note:** When `ENABLE_TOPOLOGY=true`, this step only creates labeled KWOK nodes.
+> HyperNode CRDs require the Volcano CRD to be installed first — use
+> `make create-hypernodes` (step 4b) after Volcano installation.
 
 #### 3. Build Images
 
@@ -81,6 +111,26 @@ component images are also built from local source.
 make install-volcano VOLCANO_VERSION=v1.14.2  # from Helm repo
 make install-volcano                          # from local source
 ```
+
+#### 4b. Create HyperNode Topology (optional)
+
+If you used `ENABLE_TOPOLOGY=true` in step 2, create HyperNode CRDs now
+(requires the `topology.volcano.sh` CRD from Volcano):
+
+```bash
+make create-hypernodes
+# or with custom sizing (must match step 2):
+make create-hypernodes TOPOLOGY_RACKS=8 TOPOLOGY_SPINES=4
+```
+
+> **Important:** `TOPOLOGY_RACKS` and `TOPOLOGY_SPINES` must match the values
+> used in step 2 (`create-nodes`), otherwise the HyperNode labelSelectors
+> won't match the corresponding nodes. If step 2 used defaults (4 racks / 2 spines),
+> use defaults here as well.
+
+For auto-discovery mode (using `KWOK_NODE_LABELS`), skip this step — the
+hypernode-controller builds HyperNodes automatically based on node labels
+and its ConfigMap configuration.
 
 #### 5. Install Monitoring
 
@@ -209,6 +259,67 @@ make install-volcano VOLCANO_VERSION=v1.14.2
 ```
 
 If Volcano is already installed, set `SKIP_INSTALL_VOLCANO=true` during setup to skip this step.
+
+#### 2b. Create HyperNode Topology (optional)
+
+To benchmark topology-aware scheduling on an existing cluster, you can create
+HyperNode CRDs that represent your cluster's network topology. This requires
+Volcano to be installed first (for the `topology.volcano.sh` CRD).
+
+**Option A: Using KWOK nodes with topology labels (simulated topology)**
+
+If you created KWOK nodes with `ENABLE_TOPOLOGY=true` in step 1:
+```bash
+make create-hypernodes TOPOLOGY_RACKS=4 TOPOLOGY_SPINES=2
+```
+
+**Option B: Using real nodes with custom labels (real topology)**
+
+For existing clusters with real nodes, label your nodes to reflect the actual
+network topology, then create corresponding HyperNodes:
+
+```bash
+# 1. Label your real nodes with topology information
+kubectl label node worker-01 worker-02 worker-03 topology-rack=rack-0
+kubectl label node worker-04 worker-05 worker-06 topology-rack=rack-1
+
+# 2. Create HyperNodes (edit the script or apply manually)
+make create-hypernodes TOPOLOGY_RACKS=2 TOPOLOGY_SPINES=1
+```
+
+> **Note:** The `create-hypernodes.sh` script uses `type: kwok` in the rack
+> labelSelector. For real nodes, either add `type: kwok` label to your nodes,
+> or apply HyperNode manifests directly with your own labelSelector. Example:
+>
+> ```yaml
+> apiVersion: topology.volcano.sh/v1alpha1
+> kind: HyperNode
+> metadata:
+>   name: rack-0
+> spec:
+>   tier: 1
+>   tierName: rack
+>   members:
+>     - type: Node
+>       selector:
+>         labelMatch:
+>           matchLabels:
+>             topology-rack: "rack-0"
+> ```
+
+**Option C: Auto-discovery via hypernode-controller**
+
+If the hypernode-controller is enabled with the `label` discoverer in the
+Volcano ConfigMap, you only need to label nodes — the controller will automatically
+create HyperNode resources:
+
+```bash
+kubectl label node worker-01 topology-rack=rack-0 topology-spine=spine-0
+# ... controller auto-creates rack-0, spine-0 HyperNodes
+```
+
+The scheduler uses a virtual `ClusterHyperNode` as a global root, so you
+only need rack (tier 1) and spine (tier 2) levels — no explicit root HyperNode is required.
 
 #### 3. Build and Deploy Audit-Exporter (optional)
 

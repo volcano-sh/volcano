@@ -12,4 +12,5 @@
 | `collect-report.sh` | Query audit-exporter metrics from Prometheus, write JSON report | Called by `run-tests.sh`; `make report` |
 | `export-grafana-charts.sh` | Export Grafana dashboard panels as PNG via Render API | `make export-charts` |
 | `cleanup.sh` | Tear down VCJobs, monitoring, Volcano, KWOK; optionally delete cluster | `make cleanup`, `make cleanup-all` |
-| `cleanup-kwok-nodes.sh` | Delete KWOK nodes only (sub-task used by `cleanup.sh`) | `cleanup.sh` |
+| `create-hypernodes.sh` | Create HyperNode CRDs for topology-aware scheduling (run after Volcano install) | `make create-hypernodes` |
+| `cleanup-kwok-nodes.sh` | Delete KWOK nodes and HyperNodes (sub-task used by `cleanup.sh`) | `cleanup.sh` |

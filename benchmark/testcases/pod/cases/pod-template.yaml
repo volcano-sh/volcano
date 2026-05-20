@@ -24,9 +24,16 @@ spec:
         limits:
           cpu: {{ .CPU }}
           memory: {{ .Memory }}
-  {{- if ne (env "SKIP_KWOK") "true" }}
   nodeSelector:
+    {{- if ne (env "SKIP_KWOK") "true" }}
     type: kwok
+    {{- end }}
+    {{- if .EnableNodeSelector }}
+    {{- range $k, $v := .NodeSelector }}
+    {{ $k }}: {{ $v }}
+    {{- end }}
+    {{- end }}
+  {{- if ne (env "SKIP_KWOK") "true" }}
   tolerations:
     - key: kwok.x-k8s.io/node
       operator: Exists
