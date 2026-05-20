@@ -471,11 +471,11 @@ func (cc *jobcontroller) processNextJob() bool {
 		return true
 	}
 
-	for i, req := range reqs {
+	for reqIdx, req := range reqs {
 		if err := cc.processOneRequest(st, req, key); err != nil {
 			if retryErr, ok := err.(*jobRetryError); ok {
 				if cc.handleJobError(key, req, st, retryErr.err, retryErr.action) {
-					cc.requeueToHead(key, reqs[i:])
+					cc.requeueToHead(key, reqs[reqIdx:])
 					// In dense event storms, pushRequest's immediate Add(key) can mark this key dirty
 					// while in-flight and effectively short-circuit this retry rate-limit delay.
 					// This is a known workqueue behavior and accepted for this cleanup scope.
