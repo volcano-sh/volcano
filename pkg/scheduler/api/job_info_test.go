@@ -771,7 +771,7 @@ func TestIsGenuinelyUnschedulable(t *testing.T) {
 				job := NewJobInfo("job-1",
 					newPendingTask("task-1"),
 					&TaskInfo{
-						UID:  "task-2",
+						UID:  TaskID("task-2"),
 						Name: "task-2",
 						TransactionContext: TransactionContext{
 							Status: Pipelined,
@@ -780,7 +780,7 @@ func TestIsGenuinelyUnschedulable(t *testing.T) {
 						InitResreq: res,
 					},
 					&TaskInfo{
-						UID:  "task-3",
+						UID:  TaskID("task-3"),
 						Name: "task-3",
 						TransactionContext: TransactionContext{
 							Status: Running,

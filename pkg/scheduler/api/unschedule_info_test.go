@@ -78,6 +78,19 @@ func TestFitError(t *testing.T) {
 	}
 }
 
+func TestFitErrorsHasErrors(t *testing.T) {
+	assert.False(t, (*FitErrors)(nil).HasErrors())
+	assert.False(t, NewFitErrors().HasErrors())
+
+	errOnly := NewFitErrors()
+	errOnly.SetError("resource fit failed")
+	assert.True(t, errOnly.HasErrors())
+
+	nodeErr := NewFitErrors()
+	nodeErr.SetNodeError("node1", errors.New(NodeResourceFitFailed))
+	assert.True(t, nodeErr.HasErrors())
+}
+
 func TestFitErrors(t *testing.T) {
 	tests := []struct {
 		node      string

@@ -1188,7 +1188,7 @@ func (ji *JobInfo) IsGenuinelyUnschedulable() bool {
 		return false
 	}
 	for uid := range ji.TaskStatusIndex[Pending] {
-		if fe := ji.NodesFitErrors[uid]; fe != nil && (len(fe.nodes) > 0 || fe.err != "") {
+		if fe := ji.NodesFitErrors[uid]; fe != nil && fe.HasErrors() {
 			return true
 		}
 	}
