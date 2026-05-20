@@ -227,6 +227,12 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			continue
 		}
 		if !job.IsReady() {
+			markUnschedulable := job.IsGenuinelyUnschedulable() ||
+				job.PodGroup.Status.Phase != scheduling.PodGroupInqueue
+			if !markUnschedulable {
+				continue
+			}
+
 			schedulableTaskNum := func() (num int32) {
 				for _, task := range job.TaskStatusIndex[api.Pending] {
 					ctx := task.GetTransactionContext()

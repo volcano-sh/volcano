@@ -718,3 +718,97 @@ func TestParseMinMemberInfoChanged(t *testing.T) {
 		})
 	}
 }
+
+func TestIsGenuinelyUnschedulable(t *testing.T) {
+	newPendingTask := func(uid types.UID) *TaskInfo {
+		res := NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})
+		return &TaskInfo{
+			UID:  TaskID(uid),
+			Name: string(uid),
+			TransactionContext: TransactionContext{
+				Status: Pending,
+			},
+			Resreq:     res,
+			InitResreq: res,
+		}
+	}
+
+	tests := []struct {
+		name     string
+		job      func() *JobInfo
+		expected bool
+	}{
+		{
+			name: "all pending without fit errors",
+			job: func() *JobInfo {
+				job := NewJobInfo("job-1",
+					newPendingTask("task-1"),
+					newPendingTask("task-2"),
+					newPendingTask("task-3"),
+				)
+				job.MinAvailable = 3
+				return job
+			},
+			expected: false,
+		},
+		{
+			name: "pending task with node fit errors",
+			job: func() *JobInfo {
+				task := newPendingTask("task-1")
+				job := NewJobInfo("job-1", task)
+				job.MinAvailable = 1
+				fe := NewFitErrors()
+				fe.SetNodeError("node-1", NewFitError(task, &NodeInfo{Name: "node-1"}, "resource fit failed"))
+				job.NodesFitErrors[task.UID] = fe
+				return job
+			},
+			expected: true,
+		},
+		{
+			name: "pipelined job is not genuinely unschedulable",
+			job: func() *JobInfo {
+				res := NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})
+				job := NewJobInfo("job-1",
+					newPendingTask("task-1"),
+					&TaskInfo{
+						UID:  "task-2",
+						Name: "task-2",
+						TransactionContext: TransactionContext{
+							Status: Pipelined,
+						},
+						Resreq:     res,
+						InitResreq: res,
+					},
+					&TaskInfo{
+						UID:  "task-3",
+						Name: "task-3",
+						TransactionContext: TransactionContext{
+							Status: Running,
+						},
+						Resreq:     res,
+						InitResreq: res,
+					},
+				)
+				job.MinAvailable = 3
+				return job
+			},
+			expected: false,
+		},
+		{
+			name: "job fit errors indicate unschedulable",
+			job: func() *JobInfo {
+				job := NewJobInfo("job-1", newPendingTask("task-1"))
+				job.MinAvailable = 1
+				job.JobFitErrors = "queue resource quota insufficient"
+				return job
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.job().IsGenuinelyUnschedulable())
+		})
+	}
+}

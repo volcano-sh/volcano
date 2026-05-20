@@ -1178,6 +1178,23 @@ func (ji *JobInfo) IsStarving() bool {
 	return ji.WaitingTaskNum()+ji.ReadyTaskNum() < ji.MinAvailable
 }
 
+// IsGenuinelyUnschedulable returns true if the job has real scheduling failures,
+// as opposed to temporarily not meeting gang scheduling minAvailable requirements.
+func (ji *JobInfo) IsGenuinelyUnschedulable() bool {
+	if ji.JobFitErrors != "" {
+		return true
+	}
+	if ji.IsPipelined() {
+		return false
+	}
+	for uid := range ji.TaskStatusIndex[Pending] {
+		if fe := ji.NodesFitErrors[uid]; fe != nil && (len(fe.nodes) > 0 || fe.err != "") {
+			return true
+		}
+	}
+	return false
+}
+
 // IsPending returns whether job is in pending status
 func (ji *JobInfo) IsPending() bool {
 	return ji.PodGroup == nil ||
