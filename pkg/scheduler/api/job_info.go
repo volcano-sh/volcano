@@ -1188,6 +1188,10 @@ func (ji *JobInfo) IsGenuinelyUnschedulable() bool {
 		return false
 	}
 	for uid := range ji.TaskStatusIndex[Pending] {
+		task := ji.Tasks[uid]
+		if task != nil && task.SchGated && task.Pod != nil && !HasOnlyVolcanoSchedulingGate(task.Pod) {
+			return true
+		}
 		if fe := ji.NodesFitErrors[uid]; fe != nil && fe.HasErrors() {
 			return true
 		}

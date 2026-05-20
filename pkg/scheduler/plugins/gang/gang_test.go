@@ -93,6 +93,22 @@ func TestOnSessionCloseConditions(t *testing.T) {
 			expectScheduled:     false,
 		},
 		{
+			name:     "inqueue job blocked by external scheduling gates should set unschedulable",
+			podGroup: util.BuildPodGroup("pg1", "c1", "c1", 2, nil, schedulingv1.PodGroupInqueue),
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "p1", "", v1.PodPending, resource, "pg1", nil, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, resource, "pg1", nil, nil),
+			},
+			setupJob: func(job *api.JobInfo) {
+				for _, task := range job.TaskStatusIndex[api.Pending] {
+					task.SchGated = true
+					task.Pod.Spec.SchedulingGates = []v1.PodSchedulingGate{{Name: "example.com/g1"}}
+				}
+			},
+			expectUnschedulable: true,
+			expectScheduled:     false,
+		},
+		{
 			name:     "pending job should set unschedulable",
 			podGroup: util.BuildPodGroup("pg1", "c1", "c1", 2, nil, schedulingv1.PodGroupPending),
 			pods: []*v1.Pod{

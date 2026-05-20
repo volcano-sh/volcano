@@ -804,6 +804,38 @@ func TestIsGenuinelyUnschedulable(t *testing.T) {
 			},
 			expected: true,
 		},
+		{
+			name: "pending task blocked by external scheduling gate",
+			job: func() *JobInfo {
+				task := newPendingTask("task-1")
+				task.SchGated = true
+				task.Pod = &v1.Pod{
+					Spec: v1.PodSpec{
+						SchedulingGates: []v1.PodSchedulingGate{{Name: "example.com/g1"}},
+					},
+				}
+				job := NewJobInfo("job-1", task, newPendingTask("task-2"))
+				job.MinAvailable = 2
+				return job
+			},
+			expected: true,
+		},
+		{
+			name: "pending task with only volcano scheduling gate is not genuinely unschedulable",
+			job: func() *JobInfo {
+				task := newPendingTask("task-1")
+				task.SchGated = true
+				task.Pod = &v1.Pod{
+					Spec: v1.PodSpec{
+						SchedulingGates: []v1.PodSchedulingGate{{Name: schedulingv2.QueueAllocationGateKey}},
+					},
+				}
+				job := NewJobInfo("job-1", task, newPendingTask("task-2"))
+				job.MinAvailable = 2
+				return job
+			},
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
