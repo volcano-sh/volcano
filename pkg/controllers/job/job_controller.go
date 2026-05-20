@@ -90,6 +90,8 @@ type delayAction struct {
 }
 
 type retryKey struct {
+	// retryKey identifies one retry budget bucket for a request/action pair under the same job.
+	// It separates retries across pod/task/partition/event/action to avoid cross-request interference.
 	jobKey      string
 	podName     string
 	taskName    string
@@ -98,6 +100,8 @@ type retryKey struct {
 	action      busv1alpha1.Action
 }
 
+// jobRetryError wraps a request processing error with the action that failed so retry logic
+// can apply limits and terminal handling on the exact failed action.
 type jobRetryError struct {
 	err    error
 	action busv1alpha1.Action
