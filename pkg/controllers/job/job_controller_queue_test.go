@@ -127,6 +127,21 @@ func TestHandleJobError_OverBudgetTerminatesWholeJob(t *testing.T) {
 	}
 }
 
+func TestJobRetryError_Unwrap(t *testing.T) {
+	baseErr := errors.New("boom")
+	err := &jobRetryError{
+		err:    baseErr,
+		action: bus.RestartJobAction,
+	}
+
+	if !errors.Is(err, baseErr) {
+		t.Fatalf("expected errors.Is to match wrapped error")
+	}
+	if errors.Unwrap(err) != baseErr {
+		t.Fatalf("expected errors.Unwrap to return wrapped error")
+	}
+}
+
 func TestDeleteJob_ClearsPendingAndRetryState(t *testing.T) {
 	controller := newController()
 	job := &batch.Job{
@@ -199,6 +214,15 @@ func TestAddDelayActionForJob_ReplayRequestWithMaterializedAction(t *testing.T) 
 		Event:       bus.PodPendingEvent,
 	}
 	key := "default/job-a"
+	replayedKeyCh := make(chan string, 1)
+
+	go func() {
+		gotKey, shutdown := controller.queue.Get()
+		if shutdown {
+			return
+		}
+		replayedKeyCh <- gotKey
+	}()
 
 	controller.AddDelayActionForJob(req, &delayAction{
 		jobKey:    key,
@@ -207,28 +231,32 @@ func TestAddDelayActionForJob_ReplayRequestWithMaterializedAction(t *testing.T) 
 		partition: req.PartitionID,
 		event:     req.Event,
 		action:    bus.RestartTaskAction,
-		delay:     10 * time.Millisecond,
+		delay:     0,
 	})
 
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		controller.pendingMu.Lock()
-		got := append([]apis.Request(nil), controller.pendingRequests[key]...)
-		controller.pendingMu.Unlock()
-		if len(got) > 0 {
-			replayed := got[len(got)-1]
-			if replayed.Action != bus.RestartTaskAction {
-				t.Fatalf("expected replayed action %s, got %s", bus.RestartTaskAction, replayed.Action)
-			}
-			if replayed.TaskName != req.TaskName || replayed.PodName != req.PodName || replayed.PartitionID != req.PartitionID {
-				t.Fatalf("expected replayed request to preserve task/pod/partition, got %+v", replayed)
-			}
-			return
+	select {
+	case replayedKey := <-replayedKeyCh:
+		controller.queue.Done(replayedKey)
+		if replayedKey != key {
+			t.Fatalf("expected replayed key %s, got %s", key, replayedKey)
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for replayed delayed action")
-		}
-		time.Sleep(10 * time.Millisecond)
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for replayed delayed action")
+	}
+
+	controller.pendingMu.Lock()
+	got := append([]apis.Request(nil), controller.pendingRequests[key]...)
+	controller.pendingMu.Unlock()
+	if len(got) == 0 {
+		t.Fatalf("expected replayed request to be enqueued")
+	}
+
+	replayed := got[len(got)-1]
+	if replayed.Action != bus.RestartTaskAction {
+		t.Fatalf("expected replayed action %s, got %s", bus.RestartTaskAction, replayed.Action)
+	}
+	if replayed.TaskName != req.TaskName || replayed.PodName != req.PodName || replayed.PartitionID != req.PartitionID {
+		t.Fatalf("expected replayed request to preserve task/pod/partition, got %+v", replayed)
 	}
 }
 

@@ -18,6 +18,7 @@ package job
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -109,6 +110,10 @@ type jobRetryError struct {
 
 func (e *jobRetryError) Error() string {
 	return e.err.Error()
+}
+
+func (e *jobRetryError) Unwrap() error {
+	return e.err
 }
 
 // jobcontroller the Job jobcontroller type.
@@ -475,7 +480,8 @@ func (cc *jobcontroller) processNextJob() bool {
 
 	for reqIdx, req := range reqs {
 		if err := cc.processOneRequest(req, key); err != nil {
-			if retryErr, ok := err.(*jobRetryError); ok {
+			var retryErr *jobRetryError
+			if errors.As(err, &retryErr) {
 				jobInfo, getErr := cc.cache.Get(key)
 				if getErr != nil {
 					klog.Errorf("Failed to get job by <%v> from cache while handling request error: %v", key, getErr)
@@ -491,7 +497,7 @@ func (cc *jobcontroller) processNextJob() bool {
 					cc.queue.Forget(key)
 					return true
 				}
-				if cc.handleJobError(key, req, st, retryErr.err, retryErr.action) {
+				if cc.handleJobError(key, req, st, retryErr.Unwrap(), retryErr.action) {
 					cc.requeueToHead(key, reqs[reqIdx:])
 					// In dense event storms, pushRequest's immediate Add(key) can mark this key dirty
 					// while in-flight and effectively short-circuit this retry rate-limit delay.
