@@ -32,6 +32,8 @@ import (
 	resourcev1 "k8s.io/api/resource/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
@@ -5734,4 +5736,296 @@ func BenchmarkHyperNodeGradientFnPerformance(b *testing.B) {
 		testStruct.Run([]framework.Action{action})
 		testStruct.Close()
 	}
+}
+
+// newPendingTask builds a minimal Pending task with optional NominatedNodeName.
+func newPendingTask(jobID api.JobID, name, nominatedNodeName string, milliCPU float64) *api.TaskInfo {
+	res := (&api.Resource{MilliCPU: milliCPU}).Clone()
+	return &api.TaskInfo{
+		UID:        api.TaskID(name),
+		Job:        jobID,
+		Name:       name,
+		Namespace:  "ns",
+		Resreq:     res.Clone(),
+		InitResreq: res.Clone(),
+		Pod: &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: name, Namespace: "ns", UID: types.UID(name),
+			},
+			Status: v1.PodStatus{NominatedNodeName: nominatedNodeName},
+		},
+		NumaInfo:           &api.TopologyInfo{ResMap: map[int]v1.ResourceList{}},
+		TransactionContext: api.TransactionContext{Status: api.Pending},
+	}
+}
+
+// newMinimalNode builds a NodeInfo carrying only the fields the nomination
+// quick-path reads from -- name, idle milli-CPU, releasing, pipelined.
+func newMinimalNode(name string, idleMilliCPU float64) *api.NodeInfo {
+	n := api.NewNodeInfo(nil)
+	n.Name = name
+	n.Idle = (&api.Resource{MilliCPU: idleMilliCPU}).Clone()
+	n.Releasing = api.EmptyResource()
+	n.Pipelined = api.EmptyResource()
+	return n
+}
+
+// newSubJobWorksheet wraps tasks in a SubJobWorksheet using an arbitrary
+// order
+func newSubJobWorksheet(tasks ...*api.TaskInfo) *SubJobWorksheet {
+	q := util.NewPriorityQueue(func(_, _ interface{}) bool { return false })
+	for _, t := range tasks {
+		q.Push(t)
+	}
+	return &SubJobWorksheet{tasks: q}
+}
+
+// newMinimalSession assembles the smallest framework.Session shape needed
+// by allocateFromNomination / validateNomination: Jobs, Queues, Nodes,
+// RealNodesList (single hyperNode entry), and an empty HyperNodes map.
+func newMinimalSession(jobID api.JobID, job *api.JobInfo, queue *api.QueueInfo, nodes map[string]*api.NodeInfo, hyperNode string) *framework.Session {
+	leaves := make([]*api.NodeInfo, 0, len(nodes))
+	for _, n := range nodes {
+		leaves = append(leaves, n)
+	}
+	return &framework.Session{
+		UID: "test-ssn",
+		Jobs: map[api.JobID]*api.JobInfo{
+			jobID: job,
+		},
+		Queues: map[api.QueueID]*api.QueueInfo{
+			queue.UID: queue,
+		},
+		Nodes:         nodes,
+		RealNodesList: map[string][]*api.NodeInfo{hyperNode: leaves},
+		HyperNodes:    api.HyperNodeInfoMap{},
+	}
+}
+
+// TestInvalidateSubJobNomination covers both the nil-worksheet early return
+// and the worksheet-iteration branch.
+func TestInvalidateSubJobNomination(t *testing.T) {
+	t.Run("nil worksheet only clears NominatedHyperNode", func(t *testing.T) {
+		subJob := &api.SubJobInfo{NominatedHyperNode: "hn-1"}
+		assert.NotPanics(t, func() {
+			invalidateSubJobNomination(subJob, nil)
+		})
+		assert.Equal(t, "", subJob.NominatedHyperNode)
+	})
+
+	t.Run("clears Pod.Status.NominatedNodeName on every pending task", func(t *testing.T) {
+		jobID := api.JobID("ns/job-invalidate")
+		t1 := newPendingTask(jobID, "t1", "n1", 1000)
+		t2 := newPendingTask(jobID, "t2", "n2", 1000)
+		// A nil-Pod task must not panic (defense-in-depth branch).
+		t3 := newPendingTask(jobID, "t3", "", 1000)
+		t3.Pod = nil
+
+		subJob := &api.SubJobInfo{NominatedHyperNode: "hn-1"}
+		ws := newSubJobWorksheet(t1, t2, t3)
+
+		invalidateSubJobNomination(subJob, ws)
+
+		assert.Equal(t, "", subJob.NominatedHyperNode)
+		assert.Equal(t, "", t1.Pod.Status.NominatedNodeName)
+		assert.Equal(t, "", t2.Pod.Status.NominatedNodeName)
+	})
+}
+
+// TestAllocateFromNomination_FallsBackWhenHyperNodeMissing: pinned hyperNode
+// no longer in topology => fall back and nomination cleared.
+func TestAllocateFromNomination_FallsBackWhenHyperNodeMissing(t *testing.T) {
+	jobID := api.JobID("ns/job-missing-hn")
+	task := newPendingTask(jobID, "t1", "n1", 1000)
+	job := api.NewJobInfo(jobID, task)
+	job.Queue = "q1"
+	queue := &api.QueueInfo{UID: "q1", Name: "q1"}
+
+	subJob := &api.SubJobInfo{
+		UID: api.SubJobID("sub-1"), Job: jobID,
+		NominatedHyperNode: "hn-pinned",
+	}
+	ws := newSubJobWorksheet(task)
+
+	// Build a session where RealNodesList has *no* entry for the pinned hyperNode.
+	ssn := newMinimalSession(jobID, job, queue, map[string]*api.NodeInfo{}, "hn-other")
+
+	alloc := New()
+	alloc.session = ssn
+	alloc.recorder = NewRecorder()
+
+	stmt, score, ok := alloc.allocateFromNomination(subJob, ws, &api.HyperNodeInfo{Name: "hn-job"})
+	assert.False(t, ok)
+	assert.Nil(t, stmt)
+	assert.Equal(t, float64(0), score)
+	// defer invalidate cleared both the subJob-level and per-task nominations.
+	assert.Equal(t, "", subJob.NominatedHyperNode)
+	assert.Equal(t, "", task.Pod.Status.NominatedNodeName)
+}
+
+// TestValidateNomination_MissBranches covers negative cases of validateNomination.
+func TestValidateNomination_MissBranches(t *testing.T) {
+	cases := []struct {
+		name string
+		// taskNominatedNodeName is the value placed on task.Pod.Status.NominatedNodeName.
+		taskNominatedNodeName string
+		// nodes populates ssn.Nodes.
+		nodes map[string]*api.NodeInfo
+		// leafNodeName decides which node lives in the pinned hyperNode's
+		// RealNodesList entry. The node may or may not also exist in ssn.Nodes
+		// (the "not in ssn.Nodes" case relies on the asymmetry).
+		leafNodeName string
+		// taskResMilliCPU is the task's requested resource.
+		taskResMilliCPU float64
+		// leafIdleMilliCPU is the leaf node's idle capacity used both in
+		// ssn.Nodes and the leaf set entry.
+		leafIdleMilliCPU float64
+	}{
+		{
+			name:                  "task missing NominatedNodeName",
+			taskNominatedNodeName: "",
+			leafNodeName:          "n1",
+			taskResMilliCPU:       1000,
+			leafIdleMilliCPU:      4000,
+		},
+		{
+			name:                  "task NominatedNodeName outside leaf set",
+			taskNominatedNodeName: "n-outside",
+			leafNodeName:          "n1",
+			taskResMilliCPU:       1000,
+			leafIdleMilliCPU:      4000,
+		},
+		{
+			name:                  "task NominatedNodeName not in ssn.Nodes",
+			taskNominatedNodeName: "n-ghost",
+			leafNodeName:          "n-ghost",
+			taskResMilliCPU:       1000,
+			leafIdleMilliCPU:      4000,
+		},
+		{
+			name:                  "Predicate fails (task asks more than node FutureIdle)",
+			taskNominatedNodeName: "n1",
+			leafNodeName:          "n1",
+			taskResMilliCPU:       1000,
+			leafIdleMilliCPU:      500,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			jobID := api.JobID("ns/job-vn")
+			task := newPendingTask(jobID, "t1", tc.taskNominatedNodeName, tc.taskResMilliCPU)
+			job := api.NewJobInfo(jobID, task)
+			job.Queue = "q1"
+			queue := &api.QueueInfo{UID: "q1", Name: "q1"}
+
+			subJob := &api.SubJobInfo{
+				UID: api.SubJobID("sub-vn"), Job: jobID,
+				NominatedHyperNode: "hn-pinned",
+			}
+			ws := newSubJobWorksheet(task)
+
+			// Populate ssn.Nodes per the case and an extra "n-outside" sibling so
+			// the "outside leaf set" case can assert membership semantics.
+			nodes := map[string]*api.NodeInfo{}
+			if tc.name != "task NominatedNodeName not in ssn.Nodes" {
+				nodes[tc.leafNodeName] = newMinimalNode(tc.leafNodeName, tc.leafIdleMilliCPU)
+			}
+			if tc.name == "task NominatedNodeName outside leaf set" {
+				nodes["n-outside"] = newMinimalNode("n-outside", 4000)
+			}
+
+			leaf := []*api.NodeInfo{newMinimalNode(tc.leafNodeName, tc.leafIdleMilliCPU)}
+
+			ssn := &framework.Session{
+				UID:           "test-ssn",
+				Jobs:          map[api.JobID]*api.JobInfo{jobID: job},
+				Queues:        map[api.QueueID]*api.QueueInfo{queue.UID: queue},
+				Nodes:         nodes,
+				RealNodesList: map[string][]*api.NodeInfo{"hn-pinned": leaf},
+				HyperNodes:    api.HyperNodeInfoMap{},
+			}
+
+			alloc := New()
+			alloc.session = ssn
+			alloc.recorder = NewRecorder()
+
+			stmt, score, ok := alloc.allocateFromNomination(subJob, ws, &api.HyperNodeInfo{Name: "hn-job"})
+			assert.False(t, ok, "expected fallback")
+			assert.Nil(t, stmt)
+			assert.Equal(t, float64(0), score)
+			assert.Equal(t, "", subJob.NominatedHyperNode, "subJob nomination must be cleared on fallback")
+			assert.Equal(t, "", task.Pod.Status.NominatedNodeName, "per-task nomination must be cleared on fallback")
+		})
+	}
+}
+
+// TestAllocateFromNomination_HappyPath tests the happy path of allocateFromNomination.
+func TestAllocateFromNomination_HappyPath(t *testing.T) {
+	jobID := api.JobID("ns/job-quickpath")
+	task := newPendingTask(jobID, "t1", "n1", 1000)
+	job := api.NewJobInfo(jobID, task)
+	job.Queue = "q1"
+	queue := &api.QueueInfo{UID: "q1", Name: "q1"}
+
+	subJob := &api.SubJobInfo{
+		UID: api.SubJobID("sub-happy"), Job: jobID,
+		NominatedHyperNode: "hn-pinned",
+	}
+	ws := newSubJobWorksheet(task)
+
+	node := newMinimalNode("n1", 4000)
+	ssn := newMinimalSession(jobID, job, queue, map[string]*api.NodeInfo{node.Name: node}, "hn-pinned")
+
+	alloc := New()
+	alloc.session = ssn
+	alloc.recorder = NewRecorder()
+
+	hyperNodeForJob := &api.HyperNodeInfo{Name: "hn-job"}
+	stmt, score, ok := alloc.allocateFromNomination(subJob, ws, hyperNodeForJob)
+	assert.True(t, ok)
+	assert.NotNil(t, stmt)
+	assert.Equal(t, float64(0), score)
+	assert.True(t, ws.Empty(), "worksheet must be drained on success")
+	// LCA("", "hn-pinned") == "hn-pinned"
+	assert.Equal(t, "hn-pinned", subJob.AllocatedHyperNode)
+	// recorder gets the new AllocatedHyperNode under (job, hyperNodeForJob, subJob).
+	got := alloc.recorder.subJobDecisions[jobID][hyperNodeForJob.Name][subJob.UID]
+	assert.Equal(t, "hn-pinned", got)
+}
+
+// TestAllocateFromNomination_AllocateErrorFallsBack: allocateResourcesForTask
+// returns non-nil (because the node already has the task's PodKey, so
+// node.AddTask errors) => stmt.Discard + fall back.
+func TestAllocateFromNomination_AllocateErrorFallsBack(t *testing.T) {
+	jobID := api.JobID("ns/job-quickpath-allocate-err")
+	task := newPendingTask(jobID, "t1", "n1", 1000)
+	job := api.NewJobInfo(jobID, task)
+	job.Queue = "q1"
+	queue := &api.QueueInfo{UID: "q1", Name: "q1"}
+
+	subJob := &api.SubJobInfo{
+		UID: api.SubJobID("sub-err"), Job: jobID,
+		NominatedHyperNode: "hn-pinned",
+	}
+	ws := newSubJobWorksheet(task)
+
+	node := newMinimalNode("n1", 4000)
+	// Pre-load the same PodKey on the node so node.AddTask fails.
+	node.Tasks = map[api.TaskID]*api.TaskInfo{api.PodKey(task.Pod): task.Clone()}
+
+	ssn := newMinimalSession(jobID, job, queue, map[string]*api.NodeInfo{node.Name: node}, "hn-pinned")
+
+	alloc := New()
+	alloc.session = ssn
+	alloc.recorder = NewRecorder()
+
+	stmt, score, ok := alloc.allocateFromNomination(subJob, ws, &api.HyperNodeInfo{Name: "hn-job"})
+	assert.False(t, ok, "allocate error must fall back")
+	assert.Nil(t, stmt)
+	assert.Equal(t, float64(0), score)
+	// Defer invalidates the nomination on every failure path.
+	assert.Equal(t, "", subJob.NominatedHyperNode)
+	assert.Equal(t, "", task.Pod.Status.NominatedNodeName)
 }

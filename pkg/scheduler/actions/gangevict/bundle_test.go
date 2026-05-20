@@ -238,3 +238,205 @@ func TestSortBundlesForReclaim_DeterministicTieBreaker(t *testing.T) {
 	assert.Equal(t, api.TaskID("a"), bundles[0].Tasks[0].UID)
 	assert.Equal(t, api.TaskID("b"), bundles[1].Tasks[0].UID)
 }
+
+// addRunningTaskToSubJob wires a Running task into both the job-level indexes
+// and the named sub-job. It also records the task -> sub-job mapping so the
+// CreateJobBundles sub-job gate can resolve the task's sub-job.
+func addRunningTaskToSubJob(job *api.JobInfo, sj *api.SubJobInfo, uid api.TaskID, role string, priority int32) *api.TaskInfo {
+	task := &api.TaskInfo{
+		UID:      uid,
+		TaskRole: role,
+		Resreq:   (&api.Resource{MilliCPU: 1000}).Clone(),
+		Priority: priority,
+	}
+	if job.TaskStatusIndex[api.Running] == nil {
+		job.TaskStatusIndex[api.Running] = api.TasksMap{}
+	}
+	job.TaskStatusIndex[api.Running][task.UID] = task
+	job.Tasks[task.UID] = task
+	job.TaskToSubJob[task.UID] = sj.UID
+	if sj.TaskStatusIndex[api.Running] == nil {
+		sj.TaskStatusIndex[api.Running] = api.TasksMap{}
+	}
+	sj.TaskStatusIndex[api.Running][task.UID] = task
+	sj.Tasks[task.UID] = task
+	return task
+}
+
+func newSubJob(gid api.SubJobGID, uid api.SubJobID, minAvailable int32) *api.SubJobInfo {
+	return &api.SubJobInfo{
+		GID:             gid,
+		UID:             uid,
+		MinAvailable:    minAvailable,
+		Tasks:           map[api.TaskID]*api.TaskInfo{},
+		TaskStatusIndex: map[api.TaskStatus]api.TasksMap{},
+	}
+}
+
+func newJobForSubJobBundling(jobMinAvailable int32, minSubJobs map[api.SubJobGID]int32) *api.JobInfo {
+	return &api.JobInfo{
+		MinAvailable:    jobMinAvailable,
+		MinSubJobs:      minSubJobs,
+		TaskStatusIndex: map[api.TaskStatus]api.TasksMap{},
+		Tasks:           map[api.TaskID]*api.TaskInfo{},
+		SubJobs:         map[api.SubJobID]*api.SubJobInfo{},
+		TaskToSubJob:    map[api.TaskID]api.SubJobID{},
+	}
+}
+
+// Group slack (1) caps safe evictions even when jobSurplus (2) would allow more.
+func TestCreateJobBundles_SubJobGroupSlackCapsSafe(t *testing.T) {
+	const gid = api.SubJobGID("g")
+	job := newJobForSubJobBundling(4, map[api.SubJobGID]int32{gid: 2})
+
+	sj1 := newSubJob(gid, "sj1", 2)
+	sj2 := newSubJob(gid, "sj2", 2)
+	sj3 := newSubJob(gid, "sj3", 2)
+	job.SubJobs["sj1"] = sj1
+	job.SubJobs["sj2"] = sj2
+	job.SubJobs["sj3"] = sj3
+
+	addRunningTaskToSubJob(job, sj1, "t1a", "worker", 100)
+	addRunningTaskToSubJob(job, sj1, "t1b", "worker", 101)
+	addRunningTaskToSubJob(job, sj2, "t2a", "worker", 102)
+	addRunningTaskToSubJob(job, sj2, "t2b", "worker", 103)
+	addRunningTaskToSubJob(job, sj3, "t3a", "worker", 104)
+	addRunningTaskToSubJob(job, sj3, "t3b", "worker", 105)
+
+	local := []*api.TaskInfo{
+		job.Tasks["t1a"], job.Tasks["t2a"], job.Tasks["t3a"],
+	}
+
+	bundles := CreateJobBundles(job, local)
+	assert.Len(t, bundles, 2)
+	assert.Equal(t, BundleSafe, bundles[0].Type)
+	assert.Len(t, bundles[0].Tasks, 1)
+	assert.Equal(t, api.TaskID("t1a"), bundles[0].Tasks[0].UID, "lowest-priority task should be the single safe eviction")
+	assert.Equal(t, BundleWhole, bundles[1].Type)
+	assert.Len(t, bundles[1].Tasks, 2)
+}
+
+// Role gate and sub-job gate compose: master (no role min) goes safe on m-g
+// slack; worker (role-tight, sj_w1 broken) is rejected by role gate alone.
+func TestCreateJobBundles_MixedLegacyAndSubJobBothEnforced(t *testing.T) {
+	const mg = api.SubJobGID("m-g")
+	const wg = api.SubJobGID("w-g")
+	job := newJobForSubJobBundling(5, map[api.SubJobGID]int32{mg: 1, wg: 2})
+	job.TaskMinAvailable = map[string]int32{"worker": 5}
+	job.TaskMinAvailableTotal = 5
+
+	sjM1 := newSubJob(mg, "sj_m1", 1)
+	sjM2 := newSubJob(mg, "sj_m2", 1)
+	sjW1 := newSubJob(wg, "sj_w1", 2)
+	sjW2 := newSubJob(wg, "sj_w2", 2)
+	sjW3 := newSubJob(wg, "sj_w3", 2)
+	job.SubJobs["sj_m1"] = sjM1
+	job.SubJobs["sj_m2"] = sjM2
+	job.SubJobs["sj_w1"] = sjW1
+	job.SubJobs["sj_w2"] = sjW2
+	job.SubJobs["sj_w3"] = sjW3
+
+	addRunningTaskToSubJob(job, sjM1, "m1", "master", 0)
+	addRunningTaskToSubJob(job, sjM2, "m2", "master", 10)
+	addRunningTaskToSubJob(job, sjW1, "w1a", "worker", 1)
+	addRunningTaskToSubJob(job, sjW2, "w2a", "worker", 11)
+	addRunningTaskToSubJob(job, sjW2, "w2b", "worker", 12)
+	addRunningTaskToSubJob(job, sjW3, "w3a", "worker", 13)
+	addRunningTaskToSubJob(job, sjW3, "w3b", "worker", 14)
+
+	local := []*api.TaskInfo{job.Tasks["m1"], job.Tasks["w1a"]}
+
+	bundles := CreateJobBundles(job, local)
+	assert.Len(t, bundles, 2)
+	assert.Equal(t, BundleSafe, bundles[0].Type)
+	assert.Len(t, bundles[0].Tasks, 1)
+	assert.Equal(t, api.TaskID("m1"), bundles[0].Tasks[0].UID)
+	assert.Equal(t, BundleWhole, bundles[1].Type)
+	assert.Len(t, bundles[1].Tasks, 1)
+	assert.Equal(t, api.TaskID("w1a"), bundles[1].Tasks[0].UID)
+}
+
+// Already-broken sub-job stays evictable even when group slack is 0; ready
+// sub-jobs in the same group are not.
+func TestCreateJobBundles_AlreadyBrokenSubJobIsSubjectToFurtherEviction(t *testing.T) {
+	const gid = api.SubJobGID("g")
+	job := newJobForSubJobBundling(3, map[api.SubJobGID]int32{gid: 2})
+
+	sj1 := newSubJob(gid, "sj1", 2)
+	sj2 := newSubJob(gid, "sj2", 2)
+	sj3 := newSubJob(gid, "sj3", 2)
+	job.SubJobs["sj1"] = sj1
+	job.SubJobs["sj2"] = sj2
+	job.SubJobs["sj3"] = sj3
+
+	addRunningTaskToSubJob(job, sj1, "sj1a", "worker", 1)
+	addRunningTaskToSubJob(job, sj2, "sj2a", "worker", 2)
+	addRunningTaskToSubJob(job, sj2, "sj2b", "worker", 3)
+	addRunningTaskToSubJob(job, sj3, "sj3a", "worker", 4)
+	addRunningTaskToSubJob(job, sj3, "sj3b", "worker", 5)
+
+	local := []*api.TaskInfo{job.Tasks["sj1a"], job.Tasks["sj2a"], job.Tasks["sj3a"]}
+
+	bundles := CreateJobBundles(job, local)
+	assert.Len(t, bundles, 2)
+	assert.Equal(t, BundleSafe, bundles[0].Type)
+	assert.Len(t, bundles[0].Tasks, 1)
+	assert.Equal(t, api.TaskID("sj1a"), bundles[0].Tasks[0].UID)
+	assert.Equal(t, BundleWhole, bundles[1].Type)
+	assert.Len(t, bundles[1].Tasks, 2)
+	wholeUIDs := []api.TaskID{bundles[1].Tasks[0].UID, bundles[1].Tasks[1].UID}
+	assert.Contains(t, wholeUIDs, api.TaskID("sj2a"))
+	assert.Contains(t, wholeUIDs, api.TaskID("sj3a"))
+}
+
+// Job already not gang-ready (jobSurplus < 0): every local task goes safe
+// regardless of role / sub-job state.
+func TestCreateJobBundles_JobNotReadyShortCircuitsAllSafe(t *testing.T) {
+	const gid = api.SubJobGID("g")
+	job := newJobForSubJobBundling(10, map[api.SubJobGID]int32{gid: 2})
+
+	sj1 := newSubJob(gid, "sj1", 3)
+	job.SubJobs["sj1"] = sj1
+	addRunningTaskToSubJob(job, sj1, "a", "worker", 0)
+	addRunningTaskToSubJob(job, sj1, "b", "worker", 1)
+
+	local := []*api.TaskInfo{job.Tasks["a"], job.Tasks["b"]}
+	bundles := CreateJobBundles(job, local)
+	assert.Len(t, bundles, 1)
+	assert.Equal(t, BundleSafe, bundles[0].Type)
+	assert.Len(t, bundles[0].Tasks, 2)
+}
+
+// No TaskMinAvailable entries: role gate is vacuously true, tasks are not
+// misrejected on a zero-valued lookup for an unmapped role key.
+func TestCreateJobBundles_NoTaskMinAvailableTreatsAllRolesAsUnconstrained(t *testing.T) {
+	job := &api.JobInfo{
+		MinAvailable: 2,
+		TaskStatusIndex: map[api.TaskStatus]api.TasksMap{
+			api.Running: {},
+		},
+		Tasks: map[api.TaskID]*api.TaskInfo{},
+	}
+
+	local := make([]*api.TaskInfo, 0, 4)
+	for i := 0; i < 4; i++ {
+		task := &api.TaskInfo{
+			UID:      api.TaskID(string(rune('a' + i))),
+			TaskRole: "worker",
+			Resreq:   (&api.Resource{MilliCPU: 1000}).Clone(),
+			Priority: int32(i),
+		}
+		job.TaskStatusIndex[api.Running][task.UID] = task
+		job.Tasks[task.UID] = task
+		local = append(local, task)
+	}
+
+	// ReadyTaskNum=4, MinAvailable=2 -> jobSurplus=2. No role mins, no sub-jobs:
+	// 2 lowest-priority tasks go safe, remaining 2 go whole.
+	bundles := CreateJobBundles(job, local)
+	assert.Len(t, bundles, 2)
+	assert.Equal(t, BundleSafe, bundles[0].Type)
+	assert.Len(t, bundles[0].Tasks, 2)
+	assert.Equal(t, BundleWhole, bundles[1].Type)
+	assert.Len(t, bundles[1].Tasks, 2)
+}

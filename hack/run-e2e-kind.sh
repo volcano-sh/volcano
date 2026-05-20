@@ -450,6 +450,7 @@ case ${E2E_TYPE} in
 "SHARDINGCONTROLLER")
     echo "Running sharding controller e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/shardingcontroller/
+    ;;
 "GANGEVICT")
     echo "Creating 4 kwok nodes for gang eviction topology tests"
     install-kwok-nodes 4

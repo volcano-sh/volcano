@@ -590,14 +590,14 @@ func (alloc *Action) allocateFromNomination(subJob *api.SubJobInfo, subJobWorksh
 			"subJob", subJob.UID, "nominatedHyperNode", pinned)
 		return nil, 0, false
 	}
-	leafByName := make(map[string]*api.NodeInfo, len(leafNodes))
+	leafNodeNames := sets.New[string]()
 	for _, n := range leafNodes {
 		if n != nil {
-			leafByName[n.Name] = n
+			leafNodeNames.Insert(n.Name)
 		}
 	}
 
-	plan, validated := alloc.validateNomination(subJob, subJobWorksheet, queue, leafByName)
+	plan, validated := alloc.validateNomination(subJob, subJobWorksheet, queue, leafNodeNames)
 	if !validated {
 		return nil, 0, false
 	}
@@ -636,7 +636,7 @@ func (alloc *Action) allocateFromNomination(subJob *api.SubJobInfo, subJobWorksh
 // TODO: the per-task check sequence overlaps with allocateResourcesForTasks's
 // pre-bind path; consider unifying once we are ready to touch the regular
 // allocate path.
-func (alloc *Action) validateNomination(subJob *api.SubJobInfo, subJobWorksheet *SubJobWorksheet, queue *api.QueueInfo, leafByName map[string]*api.NodeInfo) ([]nominationPlanEntry, bool) {
+func (alloc *Action) validateNomination(subJob *api.SubJobInfo, subJobWorksheet *SubJobWorksheet, queue *api.QueueInfo, leafNodeNames sets.Set[string]) ([]nominationPlanEntry, bool) {
 	ssn := alloc.session
 	pinned := subJob.NominatedHyperNode
 	ph := util.NewPredicateHelper()
@@ -655,10 +655,15 @@ func (alloc *Action) validateNomination(subJob *api.SubJobInfo, subJobWorksheet 
 				"subJob", subJob.UID, "task", task.UID, "nominatedHyperNode", pinned)
 			return nil, false
 		}
-		nodeInfo, ok := leafByName[nominated]
-		if !ok {
+		if !leafNodeNames.Has(nominated) {
 			klog.V(3).InfoS("Task NominatedNodeName outside NominatedHyperNode leaf set, falling back",
 				"subJob", subJob.UID, "task", task.UID, "nominated", nominated, "nominatedHyperNode", pinned)
+			return nil, false
+		}
+		nodeInfo, ok := ssn.Nodes[nominated]
+		if !ok || nodeInfo == nil {
+			klog.V(3).InfoS("NominatedNodeName not found in session nodes, falling back",
+				"subJob", subJob.UID, "task", task.UID, "nominated", nominated)
 			return nil, false
 		}
 		if err := ssn.PrePredicateFn(task); err != nil {

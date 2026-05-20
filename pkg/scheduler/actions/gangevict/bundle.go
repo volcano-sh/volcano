@@ -39,6 +39,17 @@ type Bundle struct {
 }
 
 // CreateJobBundles splits local candidate tasks into safe/whole bundles at job level.
+//
+// A task is "safe" iff evicting it does not flip the job from gang-ready to
+// not-ready. Gang readiness is the conjunction of three checks (mirroring the
+// gang plugin):
+//
+//   - jobSurplus     = ReadyTaskNum() - MinAvailable           (mirrors IsReady)
+//   - roleSurplus[r] = allocated(r)   - TaskMinAvailable[r]    (mirrors CheckTaskReady)
+//   - groupSurplus[g] + subJobBroken                           (mirrors CheckSubJobReady)
+//
+// Sub-job tracking assumes the controller contract sj.MinAvailable == len(sj.Tasks),
+// so a sub-job is either ready (all pods ready) or broken (at least one missing).
 func CreateJobBundles(job *api.JobInfo, localTasks []*api.TaskInfo) []*Bundle {
 	if job == nil || len(localTasks) == 0 {
 		return nil
@@ -51,32 +62,110 @@ func CreateJobBundles(job *api.JobInfo, localTasks []*api.TaskInfo) []*Bundle {
 		return localTasks[i].UID < localTasks[j].UID
 	})
 
-	globalSurplus := job.ReadyTaskNum() - job.MinAvailable
+	jobSurplus := job.ReadyTaskNum() - job.MinAvailable
+	// Job is already not gang-ready; further eviction cannot make it more broken.
+	if jobSurplus < 0 {
+		return []*Bundle{{
+			Type:      BundleSafe,
+			Job:       job,
+			Tasks:     localTasks,
+			LocalRes:  sumTasks(localTasks),
+			GlobalRes: api.EmptyResource(),
+		}}
+	}
+
+	// Initialize role-based surplus (unit: tasks). roleSurplus[r] is the number
+	// of extra tasks role r can lose before falling below TaskMinAvailable[r].
+	// Mirrors CheckTaskReady's own bypass when MinAvailable < TaskMinAvailableTotal.
 	enforceRoles := job.MinAvailable >= job.TaskMinAvailableTotal
 	roleSurplus := map[string]int32{}
 	if enforceRoles {
+		roleReady := map[string]int32{}
+		for status, tasks := range job.TaskStatusIndex {
+			switch {
+			case api.AllocatedStatus(status) || status == api.Succeeded:
+				for _, t := range tasks {
+					roleReady[t.TaskRole]++
+				}
+			case status == api.Pending:
+				for _, t := range tasks {
+					if t.InitResreq.IsEmpty() {
+						roleReady[t.TaskRole]++
+					}
+				}
+			}
+		}
 		for role, min := range job.TaskMinAvailable {
-			roleSurplus[role] = readyByRole(job, role) - min
+			roleSurplus[role] = roleReady[role] - min
+		}
+	}
+
+	// Initialize subJobGroup-based surplus (unit: sub-jobs). groupSurplus[g] is
+	// the number of extra ready sub-jobs group g can lose before falling below
+	// MinSubJobs[g]; subJobBroken tracks sub-jobs already missing a pod.
+	enforceSubJobs := len(job.MinSubJobs) > 0
+	// subJobBroken records sub-jobs that have already lost at least one pod and
+	// so no longer count toward groupSurplus.
+	subJobBroken := map[api.SubJobID]bool{}
+	// groupSurplus is the per-group count of ready sub-jobs minus MinSubJobs[g].
+	groupSurplus := map[api.SubJobGID]int32{}
+	if enforceSubJobs {
+		for _, sj := range job.SubJobs {
+			if sj.IsReady() {
+				groupSurplus[sj.GID]++
+			} else {
+				subJobBroken[sj.UID] = true
+			}
+		}
+		for gid, minSJ := range job.MinSubJobs {
+			groupSurplus[gid] -= minSJ
 		}
 	}
 
 	safeTasks := make([]*api.TaskInfo, 0, len(localTasks))
 	wholeTasks := make([]*api.TaskInfo, 0, len(localTasks))
 
-	if globalSurplus < 0 {
-		safeTasks = append(safeTasks, localTasks...)
-	} else {
-		for _, task := range localTasks {
-			roleSafe := !enforceRoles || roleSurplus[task.TaskRole] > 0
-			if globalSurplus > 0 && roleSafe {
-				safeTasks = append(safeTasks, task)
-				globalSurplus--
-				if enforceRoles {
-					roleSurplus[task.TaskRole]--
-				}
-			} else {
-				wholeTasks = append(wholeTasks, task)
+	for _, task := range localTasks {
+		// roleSafe: after removing this task, is the role still at or above
+		// TaskMinAvailable? Defaults to true when the role has no min.
+		roleSafe := true
+		hasRoleMin := false
+		if enforceRoles {
+			if _, ok := job.TaskMinAvailable[task.TaskRole]; ok {
+				hasRoleMin = true
+				roleSafe = roleSurplus[task.TaskRole] > 0
 			}
+		}
+
+		var sj *api.SubJobInfo
+		// subJobGroupSafe: after removing this task, is the number of ready
+		// sub-jobs in the same group still at or above MinSubJobs[g]?
+		subJobGroupSafe := true
+		if enforceSubJobs {
+			sj = job.SubJobs[job.TaskToSubJob[task.UID]]
+			if sj == nil {
+				// Orphan task: bookkeeping bug; route to whole defensively.
+				subJobGroupSafe = false
+			} else {
+				// Safe if sj is already broken (no further gang cost) or the
+				// group has a ready sub-job to spare.
+				subJobGroupSafe = subJobBroken[sj.UID] || groupSurplus[sj.GID] > 0
+			}
+		}
+
+		if jobSurplus > 0 && roleSafe && subJobGroupSafe {
+			safeTasks = append(safeTasks, task)
+			jobSurplus--
+			if hasRoleMin {
+				roleSurplus[task.TaskRole]--
+			}
+			if enforceSubJobs && sj != nil && !subJobBroken[sj.UID] {
+				// First eviction breaks sj; costs the group one ready sub-job.
+				subJobBroken[sj.UID] = true
+				groupSurplus[sj.GID]--
+			}
+		} else {
+			wholeTasks = append(wholeTasks, task)
 		}
 	}
 
@@ -244,21 +333,6 @@ func sumJobTasks(job *api.JobInfo) *api.Resource {
 		r.Add(t.Resreq)
 	}
 	return r
-}
-
-func readyByRole(job *api.JobInfo, role string) int32 {
-	var n int32
-	for status, tasks := range job.TaskStatusIndex {
-		if !api.AllocatedStatus(status) && status != api.Succeeded {
-			continue
-		}
-		for _, t := range tasks {
-			if t.TaskRole == role {
-				n++
-			}
-		}
-	}
-	return n
 }
 
 func stableBundleLess(l, r *Bundle) bool {

@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/tools/record"
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -3767,6 +3768,8 @@ func TestHyperNodeGradientForSubJobFn_NoSubJobPolicyRespectsHardTopology(t *test
 		Queues:            map[api.QueueID]*api.QueueInfo{},
 		HyperNodesInfo:    api.NewHyperNodesInfo(nil),
 		InUseNodesInShard: sets.Set[string]{},
+		StatusUpdater:     &util.FakeStatusUpdater{},
+		Recorder:          record.NewFakeRecorder(100),
 	}
 	ssn := framework.OpenSession(schedulerCache, nil, nil)
 	defer framework.CloseSession(ssn)
@@ -3806,10 +3809,10 @@ func TestHyperNodeGradientForSubJobFn_NoSubJobPolicyRespectsHardTopology(t *test
 	root.Children = sets.New[string](region.Name)
 
 	ssn.HyperNodes = map[string]*api.HyperNodeInfo{
-		zoneA.Name: zoneA,
-		zoneD.Name: zoneD,
+		zoneA.Name:  zoneA,
+		zoneD.Name:  zoneD,
 		region.Name: region,
-		rootName:   root,
+		rootName:    root,
 	}
 	ssn.HyperNodesSetByTier = map[int]sets.Set[string]{
 		1: sets.New[string](zoneA.Name, zoneD.Name),
@@ -3818,16 +3821,16 @@ func TestHyperNodeGradientForSubJobFn_NoSubJobPolicyRespectsHardTopology(t *test
 	}
 	ssn.HyperNodesTiers = []int{1, 2, 3}
 	ssn.RealNodesSet = map[string]sets.Set[string]{
-		zoneA.Name: sets.New[string](nodeA1.Name, nodeA2.Name),
-		zoneD.Name: sets.New[string](nodeD1.Name, nodeD2.Name),
+		zoneA.Name:  sets.New[string](nodeA1.Name, nodeA2.Name),
+		zoneD.Name:  sets.New[string](nodeD1.Name, nodeD2.Name),
 		region.Name: sets.New[string](nodeA1.Name, nodeA2.Name, nodeD1.Name, nodeD2.Name),
-		rootName:   sets.New[string](nodeA1.Name, nodeA2.Name, nodeD1.Name, nodeD2.Name),
+		rootName:    sets.New[string](nodeA1.Name, nodeA2.Name, nodeD1.Name, nodeD2.Name),
 	}
 	ssn.RealNodesList = map[string][]*api.NodeInfo{
-		zoneA.Name: {nodeA1, nodeA2},
-		zoneD.Name: {nodeD1, nodeD2},
+		zoneA.Name:  {nodeA1, nodeA2},
+		zoneD.Name:  {nodeD1, nodeD2},
 		region.Name: allNodes,
-		rootName:   allNodes,
+		rootName:    allNodes,
 	}
 
 	highestTierAllowed := 1

@@ -113,6 +113,117 @@ func createGangJob(ctx *e2eutil.TestContext, name, queue, pri string, req v1.Res
 	return e2eutil.CreateJob(ctx, spec)
 }
 
+// roleSpec describes one role of a multi-role gang job. minAvailable is the
+// per-role min that propagates through to PodGroup.Spec.MinTaskMember[name],
+// which in turn becomes JobInfo.TaskMinAvailable[name] in the scheduler.
+type roleSpec struct {
+	name         string
+	replicas     int32
+	minAvailable int32
+}
+
+// createMultiRoleGangJob creates a gang job with multiple roles. The
+// job-level MinAvailable is set to jobMinAvail (caller-chosen), and each
+// role gets its own TaskSpec.MinAvailable so that TaskMinAvailable[role]
+// can be lower than the role's replica count -- the only way to exercise
+// the role surplus gate (which requires jobMinAvail >= sum(role mins) AND
+// some role to have replicas > minAvailable).
+func createMultiRoleGangJob(ctx *e2eutil.TestContext, name, queue, pri string, req v1.ResourceList, roles []roleSpec, jobMinAvail int32, preemptable bool) *batchv1alpha1.Job {
+	labels := map[string]string{}
+	if preemptable {
+		labels[schedulingv1beta1.PodPreemptable] = "true"
+	}
+	tasks := make([]e2eutil.TaskSpec, 0, len(roles))
+	for _, r := range roles {
+		tasks = append(tasks, e2eutil.TaskSpec{
+			Name:         r.name,
+			Img:          e2eutil.DefaultNginxImage,
+			Req:          req,
+			Min:          r.replicas,
+			Rep:          r.replicas,
+			MinAvailable: ptr.To(r.minAvailable),
+			Labels:       labels,
+		})
+	}
+	spec := &e2eutil.JobSpec{
+		Name:  name,
+		Queue: queue,
+		Pri:   pri,
+		Min:   jobMinAvail,
+		Tasks: tasks,
+	}
+	return e2eutil.CreateJob(ctx, spec)
+}
+
+// createSubGroupTopologyGangJob creates a single-task-spec gang job whose pods
+// are partitioned into sub-groups via PartitionPolicy and attached to a
+// NetworkTopology so the scheduler routes the job through the hard-topology
+// allocate path. The PodGroup ends up with
+// SubGroupPolicy{SubGroupSize: partitionSize, MinSubGroups: minPartitions},
+// which becomes MinSubJobs[gid]=minPartitions plus one SubJobInfo per
+// partition with SubJobInfo.MinAvailable=partitionSize on the scheduler side.
+// The CRD requires totalPartitions*partitionSize == replicas.
+//
+// The hard-topology attachment is a workaround for a known scheduler bug:
+// without NetworkTopology, allocate.go falls into the "no-hard-topology"
+// branch which requires a default (unpartitioned) sub-job, but every pod
+// in a PartitionPolicy'd job carries a partition-id label and goes into a
+// partitioned sub-job -- the default bucket is empty and allocate logs
+// "Can not find default subJob or tasks for job" and never allocates.
+// Hard tier 2 spans the whole cluster in the test topology (see
+// setupTopoHyperNodes), so it imposes no real spatial constraint.
+func createSubGroupTopologyGangJob(ctx *e2eutil.TestContext, name, queue, pri string, req v1.ResourceList, jobMinAvail, totalPartitions, partitionSize, minPartitions int32, preemptable bool, topo *batchv1alpha1.NetworkTopologySpec) *batchv1alpha1.Job {
+	labels := map[string]string{}
+	if preemptable {
+		labels[schedulingv1beta1.PodPreemptable] = "true"
+	}
+	rep := totalPartitions * partitionSize
+	spec := &e2eutil.JobSpec{
+		Name:            name,
+		Queue:           queue,
+		Pri:             pri,
+		Min:             jobMinAvail,
+		NetworkTopology: topo,
+		Tasks: []e2eutil.TaskSpec{
+			{
+				Img:         e2eutil.DefaultNginxImage,
+				Req:         req,
+				Min:         rep,
+				Rep:         rep,
+				Labels:      labels,
+				Tolerations: kwokTolerations,
+				PartitionPolicy: &batchv1alpha1.PartitionPolicySpec{
+					TotalPartitions: totalPartitions,
+					PartitionSize:   partitionSize,
+					MinPartitions:   minPartitions,
+				},
+			},
+		},
+	}
+	return e2eutil.CreateJob(ctx, spec)
+}
+
+// countReadyTasksByRole returns running/succeeded pod counts grouped by
+// the volcano task-spec label (set by the job controller to TaskSpec.Name).
+// Used to assert per-role survival after preempt/reclaim, which is the
+// observable signal that the role surplus gate respected role minimums.
+func countReadyTasksByRole(ctx *e2eutil.TestContext, job *batchv1alpha1.Job) map[string]int {
+	pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	counts := map[string]int{}
+	for _, pod := range pods.Items {
+		if !metav1.IsControlledBy(&pod, job) {
+			continue
+		}
+		if pod.Status.Phase != v1.PodRunning && pod.Status.Phase != v1.PodSucceeded {
+			continue
+		}
+		role := pod.Labels[batchv1alpha1.TaskSpecKey]
+		counts[role]++
+	}
+	return counts
+}
+
 // deservedCPU builds a ResourceList with just CPU (in cores) plus matching memory.
 func deservedCPU(cpuCores int64) v1.ResourceList {
 	return v1.ResourceList{
@@ -581,6 +692,91 @@ var _ = Describe("GangPreempt E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	Context("with per-role minimums", func() {
+		// GP-R1: role-tight ps (min=1) must survive; surplus worker is evicted.
+		It("GP-R1: per-role surplus gate keeps role-tight tasks safe", func() {
+			ctx = e2eutil.InitTestContext(e2eutil.Options{
+				Queues:             []string{gpQueue},
+				NodesNumLimit:      4,
+				NodesResourceLimit: e2eutil.CPU1Mem1,
+				DeservedResource: map[string]v1.ResourceList{
+					gpQueue: deservedCPU(4),
+				},
+				PriorityClasses: map[string]int32{
+					gpHighPri: gpHighPriVal,
+					gpLowPri:  gpLowPriVal,
+				},
+			})
+
+			By("Creating low-pri victim with ps (1 rep, min=1) + worker (3 reps, min=2), jobMin=3")
+			victim := createMultiRoleGangJob(ctx, "victim-gpr1", gpQueue, gpLowPri, e2eutil.CPU1Mem1,
+				[]roleSpec{
+					{name: "ps", replicas: 1, minAvailable: 1},
+					{name: "worker", replicas: 3, minAvailable: 2},
+				}, 3, true)
+			err := e2eutil.WaitTasksReady(ctx, victim, 4)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Creating high-pri preemptor (1 task, 1 CPU)")
+			preemptor := createGangJob(ctx, "preemptor-gpr1", gpQueue, gpHighPri, e2eutil.CPU1Mem1, 1, 1, false)
+
+			By("Expecting preemptor to run")
+			err = e2eutil.WaitTasksReady(ctx, preemptor, 1)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Expecting victim to retain >= 3 tasks (gang preserved at jobMin=3)")
+			err = e2eutil.WaitTasksReady(ctx, victim, 3)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying ps survived (role min=1) and worker count respected role min=2")
+			counts := countReadyTasksByRole(ctx, victim)
+			Expect(counts["ps"]).To(Equal(1), "ps task should not have been evicted (role min=1)")
+			Expect(counts["worker"]).To(BeNumerically(">=", 2), "worker count should respect role min=2")
+		})
+	})
+
+	Context("with sub-group policy", func() {
+		// GP-S1: 2 evictions are confined to a single sub-group (group slack=1);
+		// the other sub-group stays ready so MinPartitions=1 holds.
+		It("GP-S1: sub-group group-slack caps safe, gang preserved", func() {
+			ctx = e2eutil.InitTestContext(e2eutil.Options{
+				Queues: []string{gpQueue},
+				DeservedResource: map[string]v1.ResourceList{
+					gpQueue: deservedCPU(4),
+				},
+				PriorityClasses: map[string]int32{
+					gpHighPri: gpHighPriVal,
+					gpLowPri:  gpLowPriVal,
+				},
+			})
+			setupTopoHyperNodes(ctx, "gps1")
+
+			By("Creating low-pri victim (2 sub-groups x size 2 = 4 tasks, MinPartitions=1, jobMin=2, hard tier 2)")
+			victim := createSubGroupTopologyGangJob(ctx, "victim-gps1", gpQueue, gpLowPri, e2eutil.CPU1Mem1, 2, 2, 2, 1, true,
+				&batchv1alpha1.NetworkTopologySpec{
+					Mode:               batchv1alpha1.HardNetworkTopologyMode,
+					HighestTierAllowed: ptr.To(2),
+				})
+			err := e2eutil.WaitTasksReady(ctx, victim, 4)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Creating high-pri preemptor (2 tasks, hard tier 2)")
+			preemptor := createTopologyGangJob(ctx, "preemptor-gps1", gpQueue, gpHighPri, e2eutil.CPU1Mem1, 2, 2, false,
+				&batchv1alpha1.NetworkTopologySpec{
+					Mode:               batchv1alpha1.HardNetworkTopologyMode,
+					HighestTierAllowed: ptr.To(2),
+				})
+
+			By("Expecting preemptor to run")
+			err = e2eutil.WaitTasksReady(ctx, preemptor, 2)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Expecting victim to retain >= 2 tasks (1 sub-group intact, MinPartitions=1 satisfied)")
+			err = e2eutil.WaitTasksReady(ctx, victim, 2)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
 	// ── gangpreempt + network topology ─────────────────────────────────
 
 	Context("with network topology constraints", func() {
@@ -1025,6 +1221,95 @@ var _ = Describe("GangReclaim E2E Test", func() {
 
 		By("Expecting reclaimer to NOT run (q1 is overused, skipped as reclaimer)")
 		waitTasksNotReady(ctx, reclaimer, 2, "overused queue should be skipped as reclaimer")
+	})
+
+	Context("with per-role minimums", func() {
+		// GR-R1: reclaim-side mirror of GP-R1 -- role-tight ps survives, surplus worker is reclaimed.
+		It("GR-R1: per-role surplus gate keeps role-tight tasks safe", func() {
+			q1 := "grr1-q1"
+			q2 := "grr1-q2"
+			ctx = e2eutil.InitTestContext(e2eutil.Options{
+				Queues:             []string{q1, q2},
+				NodesNumLimit:      4,
+				NodesResourceLimit: e2eutil.CPU1Mem1,
+				DeservedResource: map[string]v1.ResourceList{
+					q1: deservedCPU(1),
+					q2: deservedCPU(3),
+				},
+				PriorityClasses: map[string]int32{
+					grLowPri: grLowPriVal,
+				},
+			})
+
+			By("Filling q2 (overusing) with multi-role victim (ps min=1, worker min=2, jobMin=3)")
+			victim := createMultiRoleGangJob(ctx, "victim-grr1", q2, grLowPri, e2eutil.CPU1Mem1,
+				[]roleSpec{
+					{name: "ps", replicas: 1, minAvailable: 1},
+					{name: "worker", replicas: 3, minAvailable: 2},
+				}, 3, true)
+			err := e2eutil.WaitTasksReady(ctx, victim, 4)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Submitting 1-task reclaimer to q1")
+			reclaimer := createGangJob(ctx, "reclaimer-grr1", q1, grLowPri, e2eutil.CPU1Mem1, 1, 1, false)
+
+			By("Expecting reclaimer to run")
+			err = e2eutil.WaitTasksReady(ctx, reclaimer, 1)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Expecting victim to retain >= 3 tasks (gang preserved at jobMin=3)")
+			err = e2eutil.WaitTasksReady(ctx, victim, 3)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying ps survived (role min=1) and worker count respected role min=2")
+			counts := countReadyTasksByRole(ctx, victim)
+			Expect(counts["ps"]).To(Equal(1), "ps task should not have been reclaimed (role min=1)")
+			Expect(counts["worker"]).To(BeNumerically(">=", 2), "worker count should respect role min=2")
+		})
+	})
+
+	Context("with sub-group policy", func() {
+		// GR-S1: reclaim-side mirror of GP-S1 -- the 2-task reclaimer drains one sub-group,
+		// the other sub-group stays ready so MinPartitions=1 holds.
+		It("GR-S1: sub-group group-slack caps safe, gang preserved", func() {
+			q1 := "grs1-q1"
+			q2 := "grs1-q2"
+			ctx = e2eutil.InitTestContext(e2eutil.Options{
+				Queues: []string{q1, q2},
+				DeservedResource: map[string]v1.ResourceList{
+					q1: deservedCPU(2),
+					q2: deservedCPU(2),
+				},
+				PriorityClasses: map[string]int32{
+					grLowPri: grLowPriVal,
+				},
+			})
+			setupTopoHyperNodes(ctx, "grs1")
+
+			By("Filling q2 (overusing) with sub-group victim (2 sub-groups x size 2, MinPartitions=1, jobMin=2, hard tier 2)")
+			victim := createSubGroupTopologyGangJob(ctx, "victim-grs1", q2, grLowPri, e2eutil.CPU1Mem1, 2, 2, 2, 1, true,
+				&batchv1alpha1.NetworkTopologySpec{
+					Mode:               batchv1alpha1.HardNetworkTopologyMode,
+					HighestTierAllowed: ptr.To(2),
+				})
+			err := e2eutil.WaitTasksReady(ctx, victim, 4)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Submitting 2-task reclaimer to q1 (hard tier 2)")
+			reclaimer := createTopologyGangJob(ctx, "reclaimer-grs1", q1, grLowPri, e2eutil.CPU1Mem1, 2, 2, false,
+				&batchv1alpha1.NetworkTopologySpec{
+					Mode:               batchv1alpha1.HardNetworkTopologyMode,
+					HighestTierAllowed: ptr.To(2),
+				})
+
+			By("Expecting reclaimer to run")
+			err = e2eutil.WaitTasksReady(ctx, reclaimer, 2)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Expecting victim to retain >= 2 tasks (1 sub-group intact, MinPartitions=1 satisfied)")
+			err = e2eutil.WaitTasksReady(ctx, victim, 2)
+			Expect(err).NotTo(HaveOccurred())
+		})
 	})
 
 	// ── gangreclaim + network topology ─────────────────────────────────
