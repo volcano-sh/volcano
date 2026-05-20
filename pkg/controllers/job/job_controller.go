@@ -390,7 +390,7 @@ func (cc *jobcontroller) clearPendingAndRetryByJobKey(key string) {
 	cc.requestRetryMu.Unlock()
 }
 
-func (cc *jobcontroller) processOneRequest(st state.State, req apis.Request, key string) error {
+func (cc *jobcontroller) processOneRequest(req apis.Request, key string) error {
 	klog.V(3).Infof("Try to handle request <%v>", req)
 
 	cc.CleanPodDelayActionsIfNeed(req)
@@ -399,6 +399,13 @@ func (cc *jobcontroller) processOneRequest(st state.State, req apis.Request, key
 	if err != nil {
 		// TODO(k82cn): ignore not-ready error.
 		return err
+	}
+
+	st := state.NewState(jobInfo)
+	if st == nil {
+		klog.Errorf("Invalid state <%s> of Job <%v/%v>",
+			jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
+		return nil
 	}
 
 	delayAct := applyPolicies(jobInfo.Job, &req)
@@ -455,25 +462,31 @@ func (cc *jobcontroller) processNextJob() bool {
 		return true
 	}
 
-	jobInfo, err := cc.cache.Get(key)
-	if err != nil {
+	if _, err := cc.cache.Get(key); err != nil {
 		klog.Errorf("Failed to get job by <%v> from cache: %v", key, err)
 		cc.clearPendingAndRetryByJobKey(key)
 		cc.queue.Forget(key)
 		return true
 	}
 
-	st := state.NewState(jobInfo)
-	if st == nil {
-		klog.Errorf("Invalid state <%s> of Job <%v/%v>",
-			jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
-		cc.queue.Forget(key)
-		return true
-	}
-
 	for reqIdx, req := range reqs {
-		if err := cc.processOneRequest(st, req, key); err != nil {
+		if err := cc.processOneRequest(req, key); err != nil {
 			if retryErr, ok := err.(*jobRetryError); ok {
+				jobInfo, getErr := cc.cache.Get(key)
+				if getErr != nil {
+					klog.Errorf("Failed to get job by <%v> from cache while handling request error: %v", key, getErr)
+					cc.clearPendingAndRetryByJobKey(key)
+					cc.queue.Forget(key)
+					return true
+				}
+				st := state.NewState(jobInfo)
+				if st == nil {
+					klog.Errorf("Invalid state <%s> of Job <%v/%v> while handling request error",
+						jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
+					cc.clearPendingAndRetryByJobKey(key)
+					cc.queue.Forget(key)
+					return true
+				}
 				if cc.handleJobError(key, req, st, retryErr.err, retryErr.action) {
 					cc.requeueToHead(key, reqs[reqIdx:])
 					// In dense event storms, pushRequest's immediate Add(key) can mark this key dirty
@@ -571,7 +584,9 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 
 		klog.V(4).Infof("Job<%s/%s>'s delayed action %s is expired, execute it", req.Namespace, req.JobName, delayAct.action)
 		cc.cleanupDelayActions(delayAct)
-		cc.pushRequest(req)
+		replayedReq := req
+		replayedReq.Action = delayAct.action
+		cc.pushRequest(replayedReq)
 	}()
 }
 

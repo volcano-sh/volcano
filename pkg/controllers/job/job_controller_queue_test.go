@@ -19,7 +19,9 @@ package job
 import (
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -183,5 +185,90 @@ func TestProcessNextJob_CacheMissClearsPendingAndRetryState(t *testing.T) {
 		if retryKey.jobKey == key {
 			t.Fatalf("expected retry counter entries to be cleared for cache miss key %s", key)
 		}
+	}
+}
+
+func TestAddDelayActionForJob_ReplayRequestWithMaterializedAction(t *testing.T) {
+	controller := newController()
+	req := apis.Request{
+		Namespace:   "default",
+		JobName:     "job-a",
+		TaskName:    "task-a",
+		PodName:     "pod-a",
+		PartitionID: "p0",
+		Event:       bus.PodPendingEvent,
+	}
+	key := "default/job-a"
+
+	controller.AddDelayActionForJob(req, &delayAction{
+		jobKey:    key,
+		taskName:  req.TaskName,
+		podName:   req.PodName,
+		partition: req.PartitionID,
+		event:     req.Event,
+		action:    bus.RestartTaskAction,
+		delay:     10 * time.Millisecond,
+	})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		controller.pendingMu.Lock()
+		got := append([]apis.Request(nil), controller.pendingRequests[key]...)
+		controller.pendingMu.Unlock()
+		if len(got) > 0 {
+			replayed := got[len(got)-1]
+			if replayed.Action != bus.RestartTaskAction {
+				t.Fatalf("expected replayed action %s, got %s", bus.RestartTaskAction, replayed.Action)
+			}
+			if replayed.TaskName != req.TaskName || replayed.PodName != req.PodName || replayed.PartitionID != req.PartitionID {
+				t.Fatalf("expected replayed request to preserve task/pod/partition, got %+v", replayed)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for replayed delayed action")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestProcessNextJob_CreatesStatePerRequest(t *testing.T) {
+	controller := newController()
+	job := &batch.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "job-a",
+		},
+	}
+
+	if err := controller.cache.Add(job); err != nil {
+		t.Fatalf("failed to add job into cache: %v", err)
+	}
+
+	controller.pushRequest(apis.Request{
+		Namespace: "default",
+		JobName:   "job-a",
+		PodName:   "pod-a",
+		Action:    bus.SyncJobAction,
+	})
+	controller.pushRequest(apis.Request{
+		Namespace: "default",
+		JobName:   "job-a",
+		PodName:   "pod-b",
+		Action:    bus.SyncJobAction,
+	})
+
+	newStateCount := 0
+	patches := gomonkey.ApplyFunc(state.NewState, func(*apis.JobInfo) state.State {
+		newStateCount++
+		return &fakeState{}
+	})
+	defer patches.Reset()
+
+	if !controller.processNextJob() {
+		t.Fatalf("expected processNextJob to keep worker loop running")
+	}
+	if newStateCount != 2 {
+		t.Fatalf("expected NewState to be called per request, got %d", newStateCount)
 	}
 }
