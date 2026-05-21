@@ -104,7 +104,7 @@ func generateCPUTopologyHints(availableCPUs cpuset.CPUSet, CPUDetails topology.C
 }
 
 // getPhysicalCoresNum return the number of physical cores.
-// The resourc-exporter reports core ids only unique in each socket,
+// The resource-exporter reports core IDs only unique in each socket,
 // we use the platform unique form to get all physical cores.
 func getPhysicalCoresNum(CPUDetails topology.CPUDetails) int {
 	uniques := make(map[string]struct{})
