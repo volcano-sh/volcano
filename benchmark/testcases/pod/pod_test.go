@@ -41,12 +41,14 @@ const (
 
 // PodConfig defines the configuration for benchmark pods.
 type PodConfig struct {
-	Name          string `json:"name"`
-	Namespace     string `json:"namespace,omitempty"`
-	SchedulerName string `json:"schedulerName,omitempty"`
-	Image         string `json:"image,omitempty"`
-	CPU           string `json:"cpu"`
-	Memory        string `json:"memory"`
+	Name               string            `json:"name"`
+	Namespace          string            `json:"namespace,omitempty"`
+	SchedulerName      string            `json:"schedulerName,omitempty"`
+	Image              string            `json:"image,omitempty"`
+	CPU                string            `json:"cpu"`
+	Memory             string            `json:"memory"`
+	EnableNodeSelector bool              `json:"enableNodeSelector,omitempty"`
+	NodeSelector       map[string]string `json:"nodeSelector,omitempty"`
 }
 
 // BenchmarkProfile defines the structure of the YAML configuration for pod scheduling benchmarks.
