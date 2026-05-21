@@ -99,6 +99,66 @@ func TestHAMICoreFactory_AddPodDistinctUIDsAccumulate(t *testing.T) {
 	}
 }
 
+func TestHAMICoreFactory_AddPodRejectsCoreOverLimit(t *testing.T) {
+	// Reproduces a bug where AddPod had no capacity validation, allowing
+	// multiple pods each requesting 100% GPU cores to share the same physical
+	// GPU. This can happen when pod annotations are persisted across
+	// dry-run → Discard → RecoverOperations cycles in subGroup scheduling.
+	gd := newHAMITestDevice()
+	f := HAMICoreFactory{}
+
+	// First pod requesting 100% cores should succeed.
+	if err := f.AddPod(gd, 8192, 100, "pod-1", gd.UUID); err != nil {
+		t.Fatalf("AddPod(pod-1) should succeed: %v", err)
+	}
+	if gd.UsedCore != 100 {
+		t.Fatalf("UsedCore after pod-1: got %d, want 100", gd.UsedCore)
+	}
+
+	// Second pod also requesting 100% cores should fail — 200% > 100%.
+	if err := f.AddPod(gd, 8192, 100, "pod-2", gd.UUID); err == nil {
+		t.Fatalf("AddPod(pod-2) with cores=100 should have failed (UsedCore=%d)", gd.UsedCore)
+	}
+	// Counters must not change after a failed AddPod.
+	if gd.UsedCore != 100 || gd.UsedNum != 1 {
+		t.Errorf("state changed after failed AddPod: UsedNum=%d UsedCore=%d", gd.UsedNum, gd.UsedCore)
+	}
+}
+
+func TestHAMICoreFactory_AddPodRejectsMemoryOverLimit(t *testing.T) {
+	gd := newHAMITestDevice()
+	gd.Memory = 8192
+	f := HAMICoreFactory{}
+
+	// First pod uses all memory.
+	if err := f.AddPod(gd, 8192, 50, "pod-1", gd.UUID); err != nil {
+		t.Fatalf("AddPod(pod-1) should succeed: %v", err)
+	}
+
+	// Second pod should fail — memory exhausted.
+	if err := f.AddPod(gd, 1, 10, "pod-2", gd.UUID); err == nil {
+		t.Fatalf("AddPod(pod-2) should have failed: memory %d + 1 > total %d", gd.UsedMem, gd.Memory)
+	}
+}
+
+func TestHAMICoreFactory_AddPodRejectsNumOverLimit(t *testing.T) {
+	gd := newHAMITestDevice()
+	gd.Number = 2
+	f := HAMICoreFactory{}
+
+	if err := f.AddPod(gd, 1024, 25, "pod-1", gd.UUID); err != nil {
+		t.Fatalf("AddPod(pod-1): %v", err)
+	}
+	if err := f.AddPod(gd, 1024, 25, "pod-2", gd.UUID); err != nil {
+		t.Fatalf("AddPod(pod-2): %v", err)
+	}
+
+	// Third pod exceeds Number limit.
+	if err := f.AddPod(gd, 1024, 25, "pod-3", gd.UUID); err == nil {
+		t.Fatalf("AddPod(pod-3) should have failed: UsedNum=%d >= Number=%d", gd.UsedNum, gd.Number)
+	}
+}
+
 func TestHAMICoreFactory_SubPodRemovesEntry(t *testing.T) {
 	const podUID = "pod-a"
 	f := HAMICoreFactory{}

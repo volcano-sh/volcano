@@ -201,7 +201,7 @@ func (gs *GPUDevices) addResource(annotations map[string]string, pod *v1.Pod) {
 						}
 						gs.AddPodMetrics(index, string(pod.UID), pod.Name)
 					} else {
-						klog.ErrorS(err, "add resource failed")
+						klog.ErrorS(err, "add resource failed", "pod", pod.Name)
 					}
 					break
 				}
@@ -299,9 +299,18 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 	if VGPUEnable {
 		klog.V(4).Infoln("hami-vgpu DeviceSharing:Into AllocateToPod", pod.Name)
 		if alreadyAssignedOnNode(pod, gs.Name) {
-			klog.V(4).InfoS("hami-vgpu DeviceSharing: skip duplicate AllocateToPod",
+			if gs.isPodTrackedOnNode(pod) {
+				klog.V(4).InfoS("hami-vgpu DeviceSharing: skip duplicate AllocateToPod",
+					"pod", pod.Name, "namespace", pod.Namespace, "node", gs.Name)
+				return nil
+			}
+			// Pod has stale device annotations from a rolled-back dry-run
+			// allocation (e.g. subGroup scheduling Discard). Clear them and
+			// fall through to re-validate capacity normally instead of
+			// returning an error which would leave the pod permanently pending.
+			klog.V(3).InfoS("hami-vgpu DeviceSharing: clearing stale annotations, will re-validate",
 				"pod", pod.Name, "namespace", pod.Namespace, "node", gs.Name)
-			return nil
+			clearPodDeviceAnnotations(pod)
 		}
 		fit, device, _, err := checkNodeGPUSharingPredicateAndScore(pod, gs, false, SchedulePolicy)
 		if err != nil || !fit {
@@ -403,4 +412,25 @@ func alreadyAssignedOnNode(pod *v1.Pod, nodeName string) bool {
 
 	return pod.Annotations[AssignedNodeAnnotations] == nodeName &&
 		pod.Annotations[AssignedIDsAnnotations] != ""
+}
+
+// isPodTrackedOnNode returns true if the pod is already tracked in any GPU's PodMap on this node.
+func (gs *GPUDevices) isPodTrackedOnNode(pod *v1.Pod) bool {
+	podUID := string(pod.UID)
+	for _, device := range gs.Device {
+		if _, ok := device.PodMap[podUID]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// clearPodDeviceAnnotations removes stale device-assignment annotations from a pod.
+func clearPodDeviceAnnotations(pod *v1.Pod) {
+	delete(pod.Annotations, AssignedNodeAnnotations)
+	delete(pod.Annotations, AssignedIDsAnnotations)
+	delete(pod.Annotations, AssignedIDsToAllocateAnnotations)
+	delete(pod.Annotations, AssignedTimeAnnotations)
+	delete(pod.Annotations, DeviceBindPhase)
+	delete(pod.Annotations, BindTimeAnnotations)
 }

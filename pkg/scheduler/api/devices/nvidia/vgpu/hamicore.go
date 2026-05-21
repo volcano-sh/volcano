@@ -40,6 +40,18 @@ func (f HAMICoreFactory) AddPod(gd *GPUDevice, mem uint, core uint, podUID strin
 	if _, ok := gd.PodMap[podUID]; ok {
 		return nil
 	}
+	// Validate capacity before mutating state. This prevents over-subscription
+	// when stale pod annotations from rolled-back dry-run allocations cause
+	// alreadyAssignedOnNode to skip validation in Allocate.
+	if gd.UsedCore+core > 100 {
+		return fmt.Errorf("device %s: used core %d + requested %d exceeds 100%%", gd.UUID, gd.UsedCore, core)
+	}
+	if gd.Number > 0 && gd.Number <= gd.UsedNum {
+		return fmt.Errorf("device %s: used num %d >= max %d", gd.UUID, gd.UsedNum, gd.Number)
+	}
+	if gd.Memory > 0 && gd.UsedMem+mem > gd.Memory {
+		return fmt.Errorf("device %s: used memory %d + requested %d exceeds total %d", gd.UUID, gd.UsedMem, mem, gd.Memory)
+	}
 	gd.PodMap[podUID] = &GPUUsage{
 		UsedMem:  0,
 		UsedCore: 0,
