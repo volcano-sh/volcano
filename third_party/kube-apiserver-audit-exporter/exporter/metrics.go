@@ -89,11 +89,12 @@ func (p *Exporter) updateMetrics(clusterLabel string, event auditv1.Event) {
 						ns,
 						user,
 					).Observe(0)
-					p.podCreationTimes[target] = nil
+					delete(p.podCreationTimes, target)
 					return
 				}
 
 				if createTime == nil {
+					delete(p.podCreationTimes, target)
 					return
 				}
 				latency := event.StageTimestamp.Sub(*createTime).Seconds()
@@ -104,7 +105,7 @@ func (p *Exporter) updateMetrics(clusterLabel string, event auditv1.Event) {
 					ns,
 					user,
 				).Observe(latency)
-				p.podCreationTimes[target] = nil
+				delete(p.podCreationTimes, target)
 
 			} else {
 				if event.Verb == "create" {
@@ -122,7 +123,7 @@ func (p *Exporter) updateMetrics(clusterLabel string, event auditv1.Event) {
 					if pod.Spec.NodeName == "" {
 						p.podCreationTimes[target] = &event.StageTimestamp.Time
 					} else {
-						p.podCreationTimes[target] = nil
+						delete(p.podCreationTimes, target)
 					}
 				} else if event.Verb == "delete" && event.ResponseObject != nil {
 					target := buildTarget(event.ObjectRef)

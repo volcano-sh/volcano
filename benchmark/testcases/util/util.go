@@ -18,6 +18,7 @@ package util
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -199,16 +200,17 @@ func CleanupVCJobs(ctx context.Context, namespace string) error {
 
 	// Delete jobs
 	propagationPolicy := metav1.DeletePropagationBackground
+	var errs []error
 	for i := range jobs.Items {
 		err := VCClient.BatchV1alpha1().Jobs(namespace).Delete(ctx, jobs.Items[i].Name, metav1.DeleteOptions{
 			PropagationPolicy: &propagationPolicy,
 		})
 		if err != nil {
-			return fmt.Errorf("deleting vcjob %s: %w", jobs.Items[i].Name, err)
+			errs = append(errs, fmt.Errorf("deleting vcjob %s: %w", jobs.Items[i].Name, err))
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // CleanupPods deletes all pods matching the benchmark label selector in the namespace.
@@ -270,20 +272,28 @@ func SetupTestLifecycle(t *testing.T, namespace string, cleanupFn CleanupFunc) {
 
 	// Signal handler: cleanup on SIGINT/SIGTERM
 	c := make(chan os.Signal, 1)
+	done := make(chan struct{})
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		<-c
-		t.Logf("\nReceived interrupt signal. Cleaning up in namespace %s...", namespace)
+		select {
+		case <-c:
+		case <-done:
+			return
+		}
+		fmt.Fprintf(os.Stderr, "\nReceived interrupt signal. Cleaning up in namespace %s...\n", namespace)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
 		if err := cleanupFn(ctx, namespace); err != nil {
-			t.Logf("Warning: cleanup after interrupt failed: %v", err)
+			fmt.Fprintf(os.Stderr, "Warning: cleanup after interrupt failed: %v\n", err)
 		}
 		os.Exit(1)
 	}()
 
 	// t.Cleanup: cleanup after test finishes normally
 	t.Cleanup(func() {
+		signal.Stop(c)
+		close(done)
+
 		t.Logf("Cleaning up benchmark resources in namespace %s...", namespace)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()

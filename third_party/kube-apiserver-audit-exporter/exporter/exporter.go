@@ -78,7 +78,6 @@ func (p *Exporter) Run() {
 
 	for range ticker.C {
 		p.handleFileEvent(p.file)
-		ticker.Reset(time.Second)
 	}
 }
 

@@ -89,7 +89,7 @@ func withDefaults(data *podTemplateData) {
 		data.Image = util.DefaultImage
 	}
 	if data.Image == util.DefaultImage && len(data.Command) == 0 {
-		data.Command = util.DefaultCommand
+		data.Command = util.DefaultCommand()
 	}
 }
 

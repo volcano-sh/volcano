@@ -19,7 +19,7 @@ source "$(dirname "$0")/common.sh"
 require_cmd kubectl jq
 
 NAMESPACE="default"
-LABEL_SELECTOR="${BenchmarkLabel:-volcano.sh/benchmark}=true"
+LABEL_SELECTOR="volcano.sh/benchmark=true"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in

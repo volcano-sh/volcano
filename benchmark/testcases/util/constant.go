@@ -21,4 +21,9 @@ const (
 	BenchmarkLabel = "volcano.sh/benchmark"
 )
 
-var DefaultCommand = []string{"/bin/sh", "-c", "sleep 30"}
+var defaultCommand = []string{"/bin/sh", "-c", "sleep 30"}
+
+// DefaultCommand returns a fresh copy of the default command.
+func DefaultCommand() []string {
+	return append([]string(nil), defaultCommand...)
+}

@@ -108,7 +108,7 @@ func withDefaultConfig(data *jobTemplateData) {
 		}
 		// Apply default command only if image is busybox and command is empty
 		if data.Tasks[i].Image == util.DefaultImage && len(data.Tasks[i].Command) == 0 {
-			data.Tasks[i].Command = util.DefaultCommand
+			data.Tasks[i].Command = util.DefaultCommand()
 		}
 	}
 }
