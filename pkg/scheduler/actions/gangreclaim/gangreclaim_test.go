@@ -26,7 +26,7 @@ import (
 	schedulingapi "volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
-	"volcano.sh/volcano/pkg/scheduler/actions/gangevict"
+	"volcano.sh/volcano/pkg/scheduler/actions/utils"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -44,12 +44,12 @@ func TestPickDomainsFromGradients_MaxDomainsAndDedup(t *testing.T) {
 		},
 	}
 
-	domains := gangevict.PickDomainsFromGradients(gradients, 3, "")
+	domains := utils.PickDomainsFromGradients(gradients, 3, "")
 	assert.Equal(t, []string{"d1", "d2", "d3"}, domains)
 }
 
 func TestPickDomainsFromGradients_Fallback(t *testing.T) {
-	domains := gangevict.PickDomainsFromGradients([][]*api.HyperNodeInfo{}, 8, "<cluster-top-hypernode>")
+	domains := utils.PickDomainsFromGradients([][]*api.HyperNodeInfo{}, 8, "<cluster-top-hypernode>")
 	assert.Equal(t, []string{"<cluster-top-hypernode>"}, domains)
 }
 
@@ -156,7 +156,7 @@ func TestSelectDomainVictims_ReclaimableCrossQueueOnly(t *testing.T) {
 
 	action := New()
 	action.allowWholeBundle = true
-	victims := gangevict.FlattenBundles(action.selectDomainBundles(ssn, nil, reclaimerJob, []*api.TaskInfo{reclaimer}, "d1"))
+	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, nil, reclaimerJob, []*api.TaskInfo{reclaimer}, "d1"))
 	assert.Len(t, victims, 1)
 	assert.Equal(t, api.TaskID(victim.UID), victims[0].UID)
 }
@@ -218,7 +218,7 @@ func TestSelectDomainVictims_RespectVictimJobPreemptable(t *testing.T) {
 
 	action := New()
 	action.allowWholeBundle = true
-	victims := gangevict.FlattenBundles(action.selectDomainBundles(ssn, nil, reclaimerJob, []*api.TaskInfo{reclaimer}, "d1"))
+	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, nil, reclaimerJob, []*api.TaskInfo{reclaimer}, "d1"))
 	assert.Len(t, victims, 0)
 }
 
@@ -274,7 +274,7 @@ func TestSelectDomainVictims_AllowVictimJobWhenPreemptableUnset(t *testing.T) {
 
 	action := New()
 	action.allowWholeBundle = true
-	victims := gangevict.FlattenBundles(action.selectDomainBundles(ssn, nil, reclaimerJob, []*api.TaskInfo{reclaimer}, "d1"))
+	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, nil, reclaimerJob, []*api.TaskInfo{reclaimer}, "d1"))
 	assert.Len(t, victims, 1)
 	assert.Equal(t, api.TaskID(victim.UID), victims[0].UID)
 }

@@ -19,7 +19,7 @@ package gangreclaim
 import (
 	"k8s.io/klog/v2"
 
-	"volcano.sh/volcano/pkg/scheduler/actions/gangevict"
+	"volcano.sh/volcano/pkg/scheduler/actions/utils"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -119,7 +119,7 @@ func (gr *Action) Execute(ssn *framework.Session) {
 			// Mirror legacy commit behavior: commit only when the job becomes pipelined.
 			if ssn.JobPipelined(job) {
 				stmt.Commit()
-				gangevict.ApplySubJobNominations(job, subJobHyperNodes)
+				utils.ApplySubJobNominations(job, subJobHyperNodes)
 			} else {
 				stmt.Discard()
 			}
@@ -130,7 +130,7 @@ func (gr *Action) Execute(ssn *framework.Session) {
 func (gr *Action) UnInitialize() {}
 
 func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.Statement, queue *api.QueueInfo, job *api.JobInfo) map[api.SubJobID]string {
-	pending := gangevict.CollectPendingTasksForGangEviction(ssn, job, ssn.SubJobOrderFn, ssn.TaskOrderFn)
+	pending := utils.CollectPendingTasksForGangEviction(ssn, job, ssn.SubJobOrderFn, ssn.TaskOrderFn)
 	if len(pending) == 0 {
 		return nil
 	}
@@ -138,8 +138,8 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 		klog.V(3).Infof("Queue <%s> cannot reclaim for job <%s/%s>, skip", queue.Name, job.Namespace, job.Name)
 		return nil
 	}
-	jobNeed := gangevict.SumInitResreq(pending)
-	domains := gangevict.GetCandidateDomains(ssn, job, gr.maxDomains)
+	jobNeed := utils.SumInitResreq(pending)
+	domains := utils.GetCandidateDomains(ssn, job, gr.maxDomains)
 	for _, domain := range domains {
 		if !ssn.JobStarving(job) {
 			break
@@ -152,12 +152,12 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 		if len(domainBundles) == 0 {
 			continue
 		}
-		domainIdle := gangevict.SumIdleAndReleasing(nodes)
+		domainIdle := utils.SumIdleAndReleasing(nodes)
 		selectedVictims := make([]*api.TaskInfo, 0)
 		for _, bundle := range domainBundles {
 			selectedVictims = append(selectedVictims, bundle.Tasks...)
 			available := domainIdle.Clone()
-			available.Add(gangevict.SumResreq(selectedVictims))
+			available.Add(utils.SumResreq(selectedVictims))
 			if !jobNeed.LessEqual(available, api.Zero) {
 				continue
 			}
@@ -173,7 +173,7 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 			} else {
 				jobHN = &api.HyperNodeInfo{Name: domain}
 			}
-			plan, subJobHyperNodes, ok := gangevict.BuildNominationPlanInDomain(ssn, queue, job, jobHN, attemptVictims, gangevict.ReasonGangReclaim)
+			plan, subJobHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, attemptVictims, utils.ReasonGangReclaim)
 			if !ok {
 				continue
 			}
@@ -186,12 +186,12 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 	return nil
 }
 
-func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l, r *api.QueueInfo) bool, reclaimerJob *api.JobInfo, pendingTasks []*api.TaskInfo, domain string) []*gangevict.Bundle {
+func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l, r *api.QueueInfo) bool, reclaimerJob *api.JobInfo, pendingTasks []*api.TaskInfo, domain string) []*utils.Bundle {
 	domainNodes := ssn.RealNodesList[domain]
 	if len(domainNodes) == 0 || len(pendingTasks) == 0 {
 		return nil
 	}
-	jobNeed := gangevict.SumInitResreq(pendingTasks)
+	jobNeed := utils.SumInitResreq(pendingTasks)
 
 	candidatesByJob := map[api.JobID][]*api.TaskInfo{}
 	for _, n := range domainNodes {
@@ -203,7 +203,7 @@ func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l
 			if !found || victimJob.Queue == reclaimerJob.Queue {
 				continue
 			}
-			if !gangevict.IsJobPreemptableForGangEviction(victimJob) {
+			if !utils.IsJobPreemptableForGangEviction(victimJob) {
 				continue
 			}
 			q := ssn.Queues[victimJob.Queue]
@@ -214,22 +214,22 @@ func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l
 		}
 	}
 
-	bundles := make([]*gangevict.Bundle, 0)
+	bundles := make([]*utils.Bundle, 0)
 	for jobID, tasks := range candidatesByJob {
 		victimJob := ssn.Jobs[jobID]
-		bundles = append(bundles, gangevict.CreateJobBundles(victimJob, tasks)...)
+		bundles = append(bundles, utils.CreateJobBundles(victimJob, tasks)...)
 	}
 	if len(bundles) == 0 {
 		return nil
 	}
-	gangevict.SortBundlesForReclaim(bundles, jobNeed, lessQueueFn, ssn.Queues)
+	utils.SortBundlesForReclaim(bundles, jobNeed, lessQueueFn, ssn.Queues)
 
 	evictCtx := &api.EvictionContext{
 		Kind:      api.EvictionKindGangReclaim,
 		Job:       reclaimerJob,
 		HyperNode: domain,
 	}
-	orderedCandidates := gangevict.FlattenBundles(bundles)
+	orderedCandidates := utils.FlattenBundles(bundles)
 	allowed := ssn.UnifiedEvictable(evictCtx, orderedCandidates)
 	if len(allowed) == 0 {
 		return nil
@@ -238,14 +238,14 @@ func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l
 	for _, t := range allowed {
 		allowedSet[t.UID] = struct{}{}
 	}
-	valid := gangevict.ApplyAllowedTasks(bundles, allowedSet)
+	valid := utils.ApplyAllowedTasks(bundles, allowedSet)
 	if len(valid) == 0 {
 		return nil
 	}
-	gangevict.SortBundlesForReclaim(valid, jobNeed, lessQueueFn, ssn.Queues)
-	selected := make([]*gangevict.Bundle, 0, len(valid))
+	utils.SortBundlesForReclaim(valid, jobNeed, lessQueueFn, ssn.Queues)
+	selected := make([]*utils.Bundle, 0, len(valid))
 	for _, bundle := range valid {
-		if bundle.Type == gangevict.BundleWhole && !gr.allowWholeBundle {
+		if bundle.Type == utils.BundleWhole && !gr.allowWholeBundle {
 			continue
 		}
 		selected = append(selected, bundle)

@@ -26,7 +26,7 @@ import (
 	schedulingapi "volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
-	"volcano.sh/volcano/pkg/scheduler/actions/gangevict"
+	"volcano.sh/volcano/pkg/scheduler/actions/utils"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -44,12 +44,12 @@ func TestPickDomainsFromGradients_MaxDomainsAndDedup(t *testing.T) {
 		},
 	}
 
-	domains := gangevict.PickDomainsFromGradients(gradients, 2, "")
+	domains := utils.PickDomainsFromGradients(gradients, 2, "")
 	assert.Equal(t, []string{"d1", "d2"}, domains)
 }
 
 func TestPickDomainsFromGradients_Fallback(t *testing.T) {
-	domains := gangevict.PickDomainsFromGradients(nil, 8, "<cluster-top-hypernode>")
+	domains := utils.PickDomainsFromGradients(nil, 8, "<cluster-top-hypernode>")
 	assert.Equal(t, []string{"<cluster-top-hypernode>"}, domains)
 }
 
@@ -142,11 +142,11 @@ func TestSelectDomainVictims_RespectAllowWholeBundle(t *testing.T) {
 	action := New()
 
 	action.allowWholeBundle = false
-	victimsNoWhole := gangevict.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, []*api.TaskInfo{preemptor}, "d1"))
+	victimsNoWhole := utils.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, []*api.TaskInfo{preemptor}, "d1"))
 	assert.Len(t, victimsNoWhole, 0)
 
 	action.allowWholeBundle = true
-	victimsWhole := gangevict.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, []*api.TaskInfo{preemptor}, "d1"))
+	victimsWhole := utils.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, []*api.TaskInfo{preemptor}, "d1"))
 	assert.Len(t, victimsWhole, 1)
 	assert.Equal(t, api.TaskID(victim.UID), victimsWhole[0].UID)
 }
@@ -203,7 +203,7 @@ func TestSelectDomainVictims_RespectVictimJobPreemptable(t *testing.T) {
 	action := New()
 	action.allowWholeBundle = true
 
-	victims := gangevict.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, []*api.TaskInfo{preemptor}, "d1"))
+	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, []*api.TaskInfo{preemptor}, "d1"))
 	assert.Len(t, victims, 0)
 }
 
@@ -254,7 +254,7 @@ func TestSelectDomainVictims_AllowVictimJobWhenPreemptableUnset(t *testing.T) {
 	action := New()
 	action.allowWholeBundle = true
 
-	victims := gangevict.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, []*api.TaskInfo{preemptor}, "d1"))
+	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, []*api.TaskInfo{preemptor}, "d1"))
 	assert.Len(t, victims, 1)
 	assert.Equal(t, api.TaskID(victim.UID), victims[0].UID)
 }

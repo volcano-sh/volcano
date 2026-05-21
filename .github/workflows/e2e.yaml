@@ -27,6 +27,10 @@ jobs:
     needs: build-images
     uses: ./.github/workflows/e2e_dra.yml
 
+  e2e-gangevict:
+    needs: build-images
+    uses: ./.github/workflows/e2e_gangevict.yaml
+
   e2e-hypernode:
     needs: build-images
     uses: ./.github/workflows/e2e_hypernode.yaml
