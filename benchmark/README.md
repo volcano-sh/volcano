@@ -570,12 +570,17 @@ Volcano version with the metrics instrumented.
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `volcano_e2e_scheduling_latency_milliseconds` | Histogram | — | E2E scheduling latency (scheduling algorithm + binding) |
-| `volcano_e2e_job_scheduling_latency_milliseconds` | Histogram | — | E2E job scheduling latency |
-| `volcano_e2e_job_scheduling_duration` | Gauge | `job_name`, `queue`, `job_namespace` | E2E job scheduling duration |
+| `volcano_e2e_scheduling_latency_milliseconds` | Histogram | — | Duration of one scheduling session execution |
+| `volcano_open_session_duration_milliseconds` | Histogram | — | Duration of opening a scheduling session |
+| `volcano_e2e_job_scheduling_latency_milliseconds` | Histogram | — | Per-job duration from creation to last task assumed |
+| `volcano_e2e_job_scheduling_duration` | Gauge | `job_name`, `queue`, `job_namespace` | Per-job duration from creation to last task assumed |
 | `volcano_plugin_scheduling_latency_milliseconds` | Histogram | `plugin`, `OnSession` | Plugin execution latency |
 | `volcano_action_scheduling_latency_milliseconds` | Histogram | `action` | Action (allocate/reclaim/preempt) latency |
-| `volcano_task_scheduling_latency_milliseconds` | Histogram | — | Task scheduling latency |
+| `volcano_task_scheduling_latency_milliseconds` | Histogram | `stage` | Task latency from creation to `Watched`, `Assumed`, `PreBound`, or `Bound` |
+| `volcano_scheduling_stage_duration_milliseconds` | Histogram | `stage` | Per-task processing time for `Predicate`, `Scoring`, `PreBind`, or `Bind` |
+| `volcano_worker_scheduling_cycle_duration_milliseconds` | Histogram | — | Duration of one agent worker scheduling cycle |
+| `volcano_update_snapshot_duration_milliseconds` | Histogram | — | Duration of updating the agent scheduling snapshot from cache |
+| `volcano_controller_job_to_pod_creation_latency_milliseconds` | Histogram | — | Latency from VCJob creation to pod creation |
 | `volcano_schedule_attempts_total` | Counter | `result` | Number of attempts to schedule pods |
 
 ### Variables
