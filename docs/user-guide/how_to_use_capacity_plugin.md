@@ -49,6 +49,48 @@ data:
       - name: binpack
 ```
 
+## Configure ancestor reclaim level
+
+When hierarchical queue mode is enabled in the capacity plugin, reclaim scope can be controlled with plugin argument `ancestorReclaimLevel`:
+
+- `0`: no ancestor restriction. This is the default behavior.
+- `1`: add parent-level deserved checks for cross-parent reclaim.
+- `2`: also add grandparent-level deserved checks when queues diverge at that level.
+- `N`: check deeper ancestor levels in the same way.
+
+Example configuration:
+
+```yaml
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: volcano-scheduler-configmap
+  namespace: volcano-system
+data:
+  volcano-scheduler.conf: |
+    actions: "enqueue, allocate, backfill, reclaim" # add reclaim action.
+    tiers:
+    - plugins:
+      - name: priority
+      - name: gang
+        enablePreemptable: false
+      - name: conformance
+    - plugins:
+      - name: drf
+        enablePreemptable: false
+      - name: predicates
+      - name: capacity # add this field and remove proportion plugin.
+        enableHierarchy: true
+        arguments:
+          # Controls how far reclaim can cross queue hierarchy boundaries.
+          # 0: no ancestor restriction (default behavior)
+          # 1: adds parent-level deserved checks for cross-parent reclaim
+          # 2: adds grandparent-level deserved checks, and so on for larger levels
+          ancestorReclaimLevel: 1
+      - name: nodeorder
+      - name: binpack
+```
+
 ## Config queue's deserved resources
 
 Assume there are two nodes and two queues named queue1 and queue2 in your kubernetes cluster, and each node has 4 CPU and 16Gi memory, then there will be total 8 CPU and 32Gi memory in your cluster.

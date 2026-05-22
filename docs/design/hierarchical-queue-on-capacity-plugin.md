@@ -129,44 +129,14 @@ When job A performs reclaim or preempt actions, the system should first consider
 
 ### Reclaim scope control
 
-When hierarchical queue mode is enabled in the capacity plugin, reclaim scope can be controlled with plugin argument `ancestorReclaimLevel`:
+When hierarchical queue mode is enabled in the capacity plugin, reclaim scope can be controlled with plugin argument `ancestorReclaimLevel`. See [Capacity Plugin User Guide](../user-guide/how_to_use_capacity_plugin.md#configure-ancestor-reclaim-level) for the user-facing configuration guide.
 
 - `0`: no ancestor restriction (existing behavior).
 - `1`: parent-level deserved checks are added for cross-parent reclaim.
 - `2`: grandparent-level deserved checks are also added when queues diverge at that level.
 - `N`: deeper ancestor levels are checked in the same way.
 
-An example configuration:
-```yaml
-kind: ConfigMap
-apiVersion: v1
-metadata:
-  name: volcano-scheduler-configmap
-  namespace: volcano-system
-data:
-  volcano-scheduler.conf: |
-    actions: "enqueue, allocate, backfill, reclaim" # add reclaim action.
-    tiers:
-    - plugins:
-      - name: priority
-      - name: gang
-        enablePreemptable: false
-      - name: conformance
-    - plugins:
-      - name: drf
-        enablePreemptable: false
-      - name: predicates
-      - name: capacity # add this field and remove proportion plugin.
-        enableHierarchy: true
-        arguments:
-          # Controls how far reclaim can cross queue hierarchy boundaries.
-          # 0: no ancestor restriction (default behavior)
-          # 1: adds parent-level deserved checks for cross-parent reclaim
-          # 2: adds grandparent-level deserved checks (and so on for larger levels)
-          ancestorReclaimLevel: 1
-      - name: nodeorder
-      - name: binpack
-```
+For example, setting `ancestorReclaimLevel: 1` adds parent-level deserved checks for cross-parent reclaim, while `ancestorReclaimLevel: 2` also considers the grandparent level when queues diverge there.
 
 When hierarchy is enabled for the capacity plugin, `ancestorReclaimLevel` controls reclaim scope:
 
@@ -179,7 +149,7 @@ In reclaim when hierarchy is enabled, victims are processed by `BuildVictimsPrio
 
 #### Interaction examples in a hierarchy:
 
-- Siblings (same direct parent): reclaim is decided solely by leaf-queue checks. Even when `ancestorReclaimLevel >= 1`, no additional parent-level deserved checks are applied because the reclaimer and reclaimee already share the same parent ancestor at that level.
+- Siblings (same direct parent): ancestor-level checks are skipped for the shared parent because the reclaimer and reclaimee already share that ancestor. Reclaim can still be blocked by the leaf-level contention-avoidance gate when both leaf queues have no relevant deserved signal for the requested resources.
 - Cousins (different parents, same grandparent): with `ancestorReclaimLevel=1`, reclaim requires both leaf-level and parent-level deserved exceedance; with `ancestorReclaimLevel=2`, grandparent-level checks are also enforced when applicable.
 - Second cousins (different grandparents, same higher ancestor): higher `ancestorReclaimLevel` values add the corresponding ancestor-level deserved checks before reclaim is allowed.
 
@@ -352,7 +322,7 @@ graph TD
 
 - Workloads: `p-victim` running in `queue-deep` (`cpu=2, mem=2Gi`), `p-reclaimer` pending in `queue-shallow` (`cpu=2, mem=2Gi`).
 - Level: `ancestorReclaimLevel=2`.
-- Expected: no eviction and no pipeline.
+- Expected: no eviction and no pipeline. Although `grand` is over deserved, the victim leaf and reclaimer leaf both have no relevant deserved resources for the requested `cpu`/`memory`. Because the queues share `grand` within `ancestorReclaimLevel=2`, the leaf-level contention-avoidance gate skips reclaim before the grandparent deserved check can make the victim eligible.
 
 **case11: unbalanced level2 blocks reclaim when depth-2 ancestor is not over deserved**
 
