@@ -119,7 +119,7 @@ func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *agentapi.PodS
 	binder.recordsMutex.Lock()
 	defer binder.recordsMutex.Unlock()
 	binder.nodeBindRecords[node.Name] = nodeBindGeneration
-	metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
+	metrics.UpdateTaskScheduleDuration(metrics.TaskStageAssumed, metrics.Duration(task.Pod.CreationTimestamp.Time))
 }
 
 // FindNonConflictingNode return node if version of candidate node is newer than the version of node used in last bind

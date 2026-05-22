@@ -40,7 +40,9 @@ import (
 	"volcano.sh/volcano/pkg/filewatcher"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
-	"volcano.sh/volcano/pkg/scheduler/metrics"
+	schedulermetrics "volcano.sh/volcano/pkg/scheduler/metrics"
+
+	agentmetrics "volcano.sh/volcano/pkg/agentscheduler/metrics"
 )
 
 // Scheduler represents a "Volcano Agent Scheduler".
@@ -148,10 +150,12 @@ func (worker *Worker) runOnce() {
 
 	// Update snapshot from cache before scheduling
 	snapshot := worker.framework.GetSnapshot()
+	snapshotStart := time.Now()
 	if err := worker.framework.Cache.UpdateSnapshot(snapshot); err != nil {
 		klog.Errorf("Failed to update snapshot in worker %d: %v, skip this scheduling cycle", worker.index, err)
 		return
 	}
+	agentmetrics.UpdateUpdateSnapshotDuration(time.Since(snapshotStart))
 
 	worker.framework.Cache.OnWorkerStartSchedulingCycle(worker.index, schedCtx)
 
@@ -159,7 +163,7 @@ func (worker *Worker) runOnce() {
 	// worker.framework.OnCycleStart()
 
 	defer func() {
-		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
+		agentmetrics.UpdateWorkerSchedulingCycleDuration(schedulermetrics.Duration(scheduleStartTime))
 		// TODO: Call OnCycleEnd for all plugins
 		// worker.framework.OnCycleEnd()
 		worker.framework.Cache.OnWorkerEndSchedulingCycle(worker.index)
@@ -169,7 +173,7 @@ func (worker *Worker) runOnce() {
 	for _, action := range worker.framework.Actions {
 		actionStartTime := time.Now()
 		action.Execute(worker.framework, schedCtx)
-		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
+		schedulermetrics.UpdateActionDuration(action.Name(), schedulermetrics.Duration(actionStartTime))
 	}
 }
 

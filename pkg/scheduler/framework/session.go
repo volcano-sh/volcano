@@ -50,7 +50,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/gate"
-	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -501,6 +500,8 @@ func updateQueueStatus(ssn *Session) {
 	rootQueue := api.QueueID("root")
 	// calculate allocated resources on each queue
 	var allocatedResources = make(map[api.QueueID]*api.Resource, len(ssn.Queues))
+	var allocatedDRAResources = make(map[api.QueueID]map[string]*api.DRAResource, len(ssn.Queues))
+	var allocatedDRAClaimRefs = make(map[api.QueueID]map[string]int, len(ssn.Queues))
 	for queueID := range ssn.Queues {
 		allocatedResources[queueID] = &api.Resource{}
 	}
@@ -510,6 +511,7 @@ func updateQueueStatus(ssn *Session) {
 				for _, task := range tasks {
 					addNodeSharableDeviceUsage(ssn, task)
 					allocatedResources[job.Queue].Add(task.Resreq)
+					addTaskDRAAllocatedByQueue(allocatedDRAResources, allocatedDRAClaimRefs, job.Queue, task)
 					// recursively updates the allocated resources of parent queues
 					queue := ssn.Queues[job.Queue].Queue
 					// compatibility unit testing
@@ -519,6 +521,7 @@ func updateQueueStatus(ssn *Session) {
 							parent = queue.Spec.Parent
 						}
 						allocatedResources[api.QueueID(parent)].Add(task.Resreq)
+						addTaskDRAAllocatedByQueue(allocatedDRAResources, allocatedDRAClaimRefs, api.QueueID(parent), task)
 
 						if parent == string(rootQueue) {
 							break
@@ -534,6 +537,7 @@ func updateQueueStatus(ssn *Session) {
 	for queueID := range ssn.Queues {
 		// convert api.Resource to v1.ResourceList
 		var queueStatus = util.ConvertRes2ResList(allocatedResources[queueID]).DeepCopy()
+		queueStatus = mergeDRAAllocatedIntoResourceList(queueStatus, allocatedDRAResources[queueID])
 
 		if equality.Semantic.DeepEqual(ssn.Queues[queueID].Queue.Status.Allocated, queueStatus) {
 			klog.V(5).Infof("Queue <%s> allocated resource keeps equal, no need to update queue status <%v>.",
@@ -810,7 +814,6 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 		return fmt.Errorf("failed to find job %s", task.Job)
 	}
 
-	metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
 	return nil
 }
 
