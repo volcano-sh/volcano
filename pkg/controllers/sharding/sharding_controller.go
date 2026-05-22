@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -16,6 +16,7 @@ package sharding
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -332,37 +333,34 @@ func (sc *ShardingController) refreshNodeMetrics() {
 func (sc *ShardingController) parseSchedulerConfigsFromOptions() {
 	sc.schedulerConfigs = make([]SchedulerConfig, 0, len(sc.controllerOptions.SchedulerConfigs))
 
-	for _, configSpec := range sc.controllerOptions.SchedulerConfigs {
-		config := SchedulerConfig{
-			Name: configSpec.Name,
-			Type: configSpec.Type,
-			ShardStrategy: ShardStrategy{
-				CPUUtilizationRange: struct {
-					Min float64
-					Max float64
-				}{
-					Min: configSpec.CPUUtilizationMin,
-					Max: configSpec.CPUUtilizationMax,
-				},
-				PreferWarmupNodes: configSpec.PreferWarmupNodes,
-				MinNodes:          configSpec.MinNodes,
-				MaxNodes:          configSpec.MaxNodes,
-			},
+	for i, configSpec := range sc.controllerOptions.SchedulerConfigs {
+		applyPolicyDefaults(&configSpec)
+		if err := validatePolicies(i, configSpec.Name, configSpec.Policies); err != nil {
+			klog.Errorf("Invalid scheduler config: %v", err)
+			continue
 		}
 
-		sc.schedulerConfigs = append(sc.schedulerConfigs, config)
-		klog.Infof("Added scheduler config: %s", config.Name)
+		sc.schedulerConfigs = append(sc.schedulerConfigs, schedulerConfigFromSpec(configSpec))
+		klog.Infof("Added scheduler config: %s with %d policies", configSpec.Name, len(configSpec.Policies))
 	}
 
 	klog.Infof("Initialized with %d scheduler configurations", len(sc.schedulerConfigs))
 	for _, config := range sc.schedulerConfigs {
-		klog.Infof("  Scheduler %s (%s): CPU range [%.2f, %.2f], warmup=%v, nodes=[%d,%d]",
-			config.Name, config.Type,
-			config.ShardStrategy.CPUUtilizationRange.Min,
-			config.ShardStrategy.CPUUtilizationRange.Max,
-			config.ShardStrategy.PreferWarmupNodes,
-			config.ShardStrategy.MinNodes,
-			config.ShardStrategy.MaxNodes)
+		klog.Infof("  Scheduler %s (%s): policies=%v",
+			config.Name, config.Type, summarizePolicies(config.Policies))
+	}
+}
+
+// schedulerConfigFromSpec converts the user-facing SchedulerConfigSpec into
+// the internal SchedulerConfig. Both code paths (CLI options and ConfigMap)
+// funnel through here so the conversion stays consistent.
+func schedulerConfigFromSpec(spec SchedulerConfigSpec) SchedulerConfig {
+	return SchedulerConfig{
+		Name:     spec.Name,
+		Type:     spec.Type,
+		Policies: toPolicyRefs(spec.Policies),
+		MinNodes: spec.MinNodes,
+		MaxNodes: spec.MaxNodes,
 	}
 }
 
@@ -866,22 +864,8 @@ func (sc *ShardingController) loadConfigFromConfigMap() (bool, error) {
 func (sc *ShardingController) applyShardingConfig(cfg *ShardingConfig) {
 	newConfigs := make([]SchedulerConfig, 0, len(cfg.SchedulerConfigs))
 	for _, spec := range cfg.SchedulerConfigs {
-		newConfigs = append(newConfigs, SchedulerConfig{
-			Name: spec.Name,
-			Type: spec.Type,
-			ShardStrategy: ShardStrategy{
-				CPUUtilizationRange: struct {
-					Min float64
-					Max float64
-				}{
-					Min: spec.CPUUtilizationMin,
-					Max: spec.CPUUtilizationMax,
-				},
-				PreferWarmupNodes: spec.PreferWarmupNodes,
-				MinNodes:          spec.MinNodes,
-				MaxNodes:          spec.MaxNodes,
-			},
-		})
+		applyPolicyDefaults(&spec)
+		newConfigs = append(newConfigs, schedulerConfigFromSpec(spec))
 	}
 
 	periodChanged := false
@@ -914,14 +898,42 @@ func (sc *ShardingController) applyShardingConfig(cfg *ShardingConfig) {
 
 	klog.Infof("ShardingController: applied %d scheduler configs from ConfigMap:", len(newConfigs))
 	for _, c := range newConfigs {
-		klog.Infof("  %s (%s): CPU [%.2f, %.2f], warmup=%v, nodes=[%d,%d]",
-			c.Name, c.Type,
-			c.ShardStrategy.CPUUtilizationRange.Min,
-			c.ShardStrategy.CPUUtilizationRange.Max,
-			c.ShardStrategy.PreferWarmupNodes,
-			c.ShardStrategy.MinNodes,
-			c.ShardStrategy.MaxNodes)
+		klog.Infof("  %s (%s): policies=%v, nodes=[%d,%d]",
+			c.Name, c.Type, summarizePolicies(c.Policies), c.MinNodes, c.MaxNodes)
 	}
+}
+
+// toPolicyRefs converts the YAML-shaped PolicySpec list into the internal
+// PolicyRef list. Defaults Weight to 1 when omitted.
+func toPolicyRefs(specs []PolicySpec) []PolicyRef {
+	if len(specs) == 0 {
+		return nil
+	}
+	refs := make([]PolicyRef, 0, len(specs))
+	for _, s := range specs {
+		w := s.Weight
+		if w == 0 {
+			w = 1
+		}
+		refs = append(refs, PolicyRef{
+			Name:      s.Name,
+			Weight:    w,
+			Arguments: s.Arguments,
+		})
+	}
+	return refs
+}
+
+// summarizePolicies renders a one-line list for log messages.
+func summarizePolicies(refs []PolicyRef) string {
+	if len(refs) == 0 {
+		return "[]"
+	}
+	parts := make([]string, 0, len(refs))
+	for _, r := range refs {
+		parts = append(parts, fmt.Sprintf("%s(w=%d)", r.Name, r.Weight))
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
 }
 
 func (sc *ShardingController) getShardSyncPeriod() time.Duration {

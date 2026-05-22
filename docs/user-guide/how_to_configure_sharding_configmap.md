@@ -27,8 +27,20 @@ The controller is told which ConfigMap to watch via two flags:
 
 ## ConfigMap Format
 
-The configuration is stored under the `sharding.yaml` key inside the
-ConfigMap. The format is:
+Each scheduler declares an ordered list of policies. The framework runs
+`filter → sort → select` per scheduler, dispatching to whichever interface
+each policy implements:
+
+1. **filter** — every Filterer runs; a node passes only when *every* Filterer accepts it (AND-intersection).
+2. **sort** — every Scorer runs; the framework combines scores via
+   `final = Σ (policy.weight × policy.Score(node))` and stable-sorts
+   descending.
+3. **select** — every Selector runs in config order; each receives the
+   previous's output. The built-in `node-limit` Selector truncates to
+   `maxNodes`. `minNodes` is informational only (the framework cannot
+   synthesize nodes that don't exist). Deprecated scheduler-level
+   `minNodes` / `maxNodes` still synthesize `node-limit` for compatibility
+   and emit a warning; new configuration should add `node-limit` explicitly.
 
 ```yaml
 apiVersion: v1
@@ -39,23 +51,65 @@ metadata:
 data:
   sharding.yaml: |
     schedulerConfigs:
-      - name: agent-scheduler
-        type: agent
-        cpuUtilizationMin: 0.7
-        cpuUtilizationMax: 1.0
-        preferWarmupNodes: true
-        minNodes: 1
-        maxNodes: 100
       - name: volcano
         type: volcano
-        cpuUtilizationMin: 0.0
-        cpuUtilizationMax: 0.69
-        preferWarmupNodes: false
-        minNodes: 1
-        maxNodes: 100
+        policies:
+          - name: allocation-rate
+            weight: 1
+            arguments:
+              minCPUUtil: 0.0
+              maxCPUUtil: 0.6
+          - name: warmup
+            weight: 2          # higher weight, prefer warmup nodes first
+            arguments:
+              warmupLabel: "node.volcano.sh/warmup"
+              warmupLabelValue: "true"
+          - name: node-limit
+            arguments:
+              minNodes: 2
+              maxNodes: 100
+
+      - name: agent-scheduler
+        type: agent
+        policies:
+          - name: allocation-rate
+            weight: 1
+            arguments:
+              minCPUUtil: 0.7
+              maxCPUUtil: 1.0
+          - name: warmup
+            weight: 5          # very strong warmup preference for agent shard
+          - name: node-limit
+            arguments:
+              minNodes: 2
+              maxNodes: 50
     shardSyncPeriod: "60s"
     enableNodeEventTrigger: true
 ```
+
+### policies entry reference
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | yes | Registered policy name (`allocation-rate`, `warmup`, `node-limit`). |
+| `weight` | int | no (default 1) | Scales the policy's `Score` contribution. Only meaningful for policies that implement Scorer. |
+| `arguments` | map | no | Policy-specific arguments. Use the `node-limit` policy for `minNodes`/`maxNodes`. |
+
+### Built-in policies
+
+- **`allocation-rate`** — implements Filterer + Scorer. Filter rejects nodes
+  outside `[minCPUUtil, maxCPUUtil]` or with missing metrics. Score normalizes
+  CPU utilization within the configured range to `[0, 1]`, so workloads pack
+  onto already-busy nodes.
+- **`warmup`** — implements Scorer only. Returns `1.0` if the node carries
+  the configured warmup label/value, else `0.0`. Combined with `weight: N`,
+  warmup-labeled nodes get a `+N` boost in the weighted sort.
+- **`node-limit`** — implements Selector only. Applies `minNodes` /
+  `maxNodes` from its `arguments`; `maxNodes` truncates the selected nodes,
+  while `minNodes` is informational only.
+
+See `pkg/controllers/sharding/policy/README.md` for the full policy
+framework reference and how to add a custom policy.
 
 ## Parameter Reference
 
@@ -68,11 +122,9 @@ that participates in node sharding. At least one entry is required.
 |-----------|------|----------|-------------|
 | `name` | string | yes | Scheduler name. Must match the `schedulerName` field in NodeShard CRDs. |
 | `type` | string | yes | Scheduler type, e.g. `"volcano"` or `"agent"`. |
-| `cpuUtilizationMin` | float | yes | Lower bound (inclusive) of the CPU utilisation range `[0.0, 1.0]` that makes a node eligible for this scheduler's shard. |
-| `cpuUtilizationMax` | float | yes | Upper bound (inclusive) of the CPU utilisation range. Must be >= `cpuUtilizationMin`. |
-| `preferWarmupNodes` | bool | yes | When `true`, warmup nodes (label: `node.volcano.sh/warmup=true`) are sorted first when selecting shard members. |
-| `minNodes` | int | yes | Minimum number of nodes the shard must contain. Must be >= 0. |
-| `maxNodes` | int | yes | Maximum number of nodes the shard may contain. Must be >= `minNodes`. |
+| `policies` | list | yes | Ordered policy chain. See the ConfigMap Format section above. |
+| `minNodes` | int | no | Deprecated. Still synthesizes `node-limit` for compatibility and logs a warning; use `policies[].arguments.minNodes` on the `node-limit` policy instead. |
+| `maxNodes` | int | no | Deprecated. Still synthesizes `node-limit` for compatibility and logs a warning; use `policies[].arguments.maxNodes` on the `node-limit` policy instead. |
 
 ### Top-level Options
 
@@ -100,20 +152,32 @@ custom:
   sharding_configmap_enable: true
   sharding_configmap_data: |
     schedulerConfigs:
-      - name: agent-scheduler
-        type: agent
-        cpuUtilizationMin: 0.7
-        cpuUtilizationMax: 1.0
-        preferWarmupNodes: true
-        minNodes: 1
-        maxNodes: 100
       - name: volcano
         type: volcano
-        cpuUtilizationMin: 0.0
-        cpuUtilizationMax: 0.69
-        preferWarmupNodes: false
-        minNodes: 1
-        maxNodes: 100
+        policies:
+          - name: allocation-rate
+            weight: 1
+            arguments:
+              minCPUUtil: 0.0
+              maxCPUUtil: 0.6
+          - name: node-limit
+            arguments:
+              minNodes: 1
+              maxNodes: 100
+      - name: agent-scheduler
+        type: agent
+        policies:
+          - name: allocation-rate
+            weight: 1
+            arguments:
+              minCPUUtil: 0.7
+              maxCPUUtil: 1.0
+          - name: warmup
+            weight: 2
+          - name: node-limit
+            arguments:
+              minNodes: 1
+              maxNodes: 100
     shardSyncPeriod: "60s"
     enableNodeEventTrigger: true
 ```
@@ -124,10 +188,12 @@ The controller validates the ConfigMap contents on every load/reload:
 
 1. `schedulerConfigs` must contain at least one entry.
 2. Each entry must have a non-empty `name`.
-3. `cpuUtilizationMin` and `cpuUtilizationMax` must be in `[0.0, 1.0]`.
-4. `cpuUtilizationMin` must be <= `cpuUtilizationMax`.
-5. `minNodes` must be >= 0.
-6. `maxNodes` must be >= `minNodes`.
+3. Deprecated scheduler-level `minNodes` must be >= 0 and `maxNodes` must be
+   >= `minNodes` when present.
+4. Each `policies[].name` must be a registered policy.
+5. `policies[].weight` must be >= 0 (omit for default of 1).
+6. `policies[].arguments` may contain `minNodes` / `maxNodes` only for the
+   `node-limit` policy.
 
 If validation fails, the previous valid configuration is preserved and an
 error is logged.

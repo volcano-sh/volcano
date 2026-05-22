@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -155,17 +155,23 @@ func TestSchedulerConfigParsing(t *testing.T) {
 
 	agentConfig := controller.getSchedulerConfigByName("custom-agent")
 	assert.NotNil(t, agentConfig, "agent config should exist")
-	assert.Equal(t, 0.8, agentConfig.ShardStrategy.CPUUtilizationRange.Min, "agent min CPU should be 0.8")
-	assert.Equal(t, 1.0, agentConfig.ShardStrategy.CPUUtilizationRange.Max, "agent max CPU should be 1.0")
-	assert.True(t, agentConfig.ShardStrategy.PreferWarmupNodes, "agent should prefer warmup nodes")
-	assert.Equal(t, 2, agentConfig.ShardStrategy.MinNodes, "agent min nodes should be 2")
-	assert.Equal(t, 5, agentConfig.ShardStrategy.MaxNodes, "agent max nodes should be 5")
+	assert.Equal(t, 2, agentConfig.MinNodes, "agent min nodes should be 2")
+	assert.Equal(t, 5, agentConfig.MaxNodes, "agent max nodes should be 5")
+	// Deprecated scalar fields synthesize a Policies chain for compatibility.
+	assert.Equal(t, 3, len(agentConfig.Policies), "agent should have allocation-rate + warmup + node-limit")
+	assert.Equal(t, "allocation-rate", agentConfig.Policies[0].Name)
+	assert.Equal(t, 0.8, agentConfig.Policies[0].Arguments["minCPUUtil"])
+	assert.Equal(t, 1.0, agentConfig.Policies[0].Arguments["maxCPUUtil"])
+	assert.Equal(t, "warmup", agentConfig.Policies[1].Name)
+	assert.Equal(t, "node-limit", agentConfig.Policies[2].Name)
 
 	volcanoConfig := controller.getSchedulerConfigByName("custom-volcano")
 	assert.NotNil(t, volcanoConfig, "volcano config should exist")
-	assert.Equal(t, 0.0, volcanoConfig.ShardStrategy.CPUUtilizationRange.Min, "volcano min CPU should be 0.0")
-	assert.Equal(t, 0.4, volcanoConfig.ShardStrategy.CPUUtilizationRange.Max, "volcano max CPU should be 0.4")
-	assert.False(t, volcanoConfig.ShardStrategy.PreferWarmupNodes, "volcano should not prefer warmup nodes")
-	assert.Equal(t, 1, volcanoConfig.ShardStrategy.MinNodes, "volcano min nodes should be 1")
-	assert.Equal(t, 10, volcanoConfig.ShardStrategy.MaxNodes, "volcano max nodes should be 10")
+	assert.Equal(t, 1, volcanoConfig.MinNodes, "volcano min nodes should be 1")
+	assert.Equal(t, 10, volcanoConfig.MaxNodes, "volcano max nodes should be 10")
+	assert.Equal(t, 2, len(volcanoConfig.Policies), "volcano should have allocation-rate + node-limit")
+	assert.Equal(t, "allocation-rate", volcanoConfig.Policies[0].Name)
+	assert.Equal(t, 0.0, volcanoConfig.Policies[0].Arguments["minCPUUtil"])
+	assert.Equal(t, 0.4, volcanoConfig.Policies[0].Arguments["maxCPUUtil"])
+	assert.Equal(t, "node-limit", volcanoConfig.Policies[1].Name)
 }
