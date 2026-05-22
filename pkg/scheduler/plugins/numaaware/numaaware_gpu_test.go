@@ -103,11 +103,11 @@ func Test_getNodeNumaNumForTask_gpu_scoring(t *testing.T) {
 
 	resAssignMap := map[string]api.ResNumaSets{
 		"node-a": {
-			"cpu": cpuset.New(0, 1),
+			"cpu":                                cpuset.New(0, 1),
 			string(gpumanager.NvidiaGPUResource): cpuset.New(0, 1),
 		},
 		"node-b": {
-			"cpu": cpuset.New(0, 1),
+			"cpu":                                cpuset.New(0, 1),
 			string(gpumanager.NvidiaGPUResource): cpuset.New(0, 1),
 		},
 	}
@@ -143,7 +143,7 @@ func Test_getNodeNumaNumForTask_mixed_cpu_gpu(t *testing.T) {
 
 	resAssignMap := map[string]api.ResNumaSets{
 		"node-mixed": {
-			"cpu": cpuset.New(0, 1),
+			"cpu":                                cpuset.New(0, 1),
 			string(gpumanager.NvidiaGPUResource): cpuset.New(0, 1),
 		},
 	}
@@ -170,7 +170,7 @@ func Test_getNodeNumaNumForTask_no_gpu_detail(t *testing.T) {
 
 	resAssignMap := map[string]api.ResNumaSets{
 		"node-no-gpu": {
-			"cpu": cpuset.New(0, 1),
+			"cpu":                                cpuset.New(0, 1),
 			string(gpumanager.NvidiaGPUResource): cpuset.New(0, 1),
 		},
 	}
@@ -260,7 +260,7 @@ func Test_getNodeNumaNumForTask_four_numa(t *testing.T) {
 		t.Run(testcase.name, func(t *testing.T) {
 			resAssignMap := map[string]api.ResNumaSets{
 				"dgx-node": {
-					"cpu": testcase.cpus,
+					"cpu":                                testcase.cpus,
 					string(gpumanager.NvidiaGPUResource): testcase.gpus,
 				},
 			}

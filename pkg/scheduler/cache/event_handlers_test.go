@@ -1612,8 +1612,8 @@ func TestGetNumaInfo_GPUDetail(t *testing.T) {
 			srcInfo: &nodeinfov1alpha1.Numatopology{
 				Spec: nodeinfov1alpha1.NumatopoSpec{
 					GPUDetail: map[string]nodeinfov1alpha1.GPUInfo{
-						"0":       {NUMANodeID: 0},
-						"badkey":  {NUMANodeID: 1},
+						"0":      {NUMANodeID: 0},
+						"badkey": {NUMANodeID: 1},
 					},
 				},
 			},
