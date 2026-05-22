@@ -17,6 +17,7 @@ limitations under the License.
 package local
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -46,9 +47,54 @@ func TestMemoryWorkingSet(t *testing.T) {
 
 func TestParseMemoryStatKey(t *testing.T) {
 	content := "total_rss 100\ntotal_inactive_file 60\n"
-	got, ok := parseMemoryStatKey(content, inactiveFileKeyV1)
-	if !ok || got != 60 {
-		t.Fatalf("parseMemoryStatKey() = %d, %v, want 60, true", got, ok)
+	got, err := parseMemoryStatKey(content, inactiveFileKeyV1)
+	if err != nil || got != 60 {
+		t.Fatalf("parseMemoryStatKey() = %d, %v, want 60, nil", got, err)
+	}
+}
+
+func TestParseMemoryStatKeyNotFound(t *testing.T) {
+	_, err := parseMemoryStatKey("total_rss 100\n", inactiveFileKeyV1)
+	if !errors.Is(err, errMemoryStatKeyNotFound) {
+		t.Fatalf("parseMemoryStatKey() err = %v, want errMemoryStatKeyNotFound", err)
+	}
+}
+
+func TestGetMemoryUsageMissingInactiveFileV1(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, memoryUsageInBytesV1), []byte("500000000\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stat := "total_cache 100\ntotal_rss 200\n"
+	if err := os.WriteFile(filepath.Join(dir, cgroup.MemoryUsageFile), []byte(stat), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := getMemoryUsage(dir, cgroup.CgroupV1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 500_000_000 {
+		t.Fatalf("getMemoryUsage(v1) = %d, want 500000000 when inactive file key is absent", got)
+	}
+}
+
+func TestGetMemoryUsageMissingInactiveFileV2(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, memoryCurrentV2), []byte("500000000\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stat := "anon 200000000\nfile 100000000\n"
+	if err := os.WriteFile(filepath.Join(dir, cgroup.MemoryUsageFileV2), []byte(stat), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := getMemoryUsage(dir, cgroup.CgroupV2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 500_000_000 {
+		t.Fatalf("getMemoryUsage(v2) = %d, want 500000000 when inactive_file is absent", got)
 	}
 }
 

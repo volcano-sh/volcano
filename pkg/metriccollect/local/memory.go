@@ -17,6 +17,7 @@ limitations under the License.
 package local
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,6 +43,8 @@ const (
 	inactiveFileKeyV1 = "total_inactive_file"
 	inactiveFileKeyV2 = "inactive_file"
 )
+
+var errMemoryStatKeyNotFound = errors.New("memory stat key not found")
 
 type MemoryResourceCollector struct {
 	cgroupManager cgroup.CgroupManager
@@ -140,14 +143,18 @@ func readMemoryStatValue(statPath, key string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	value, ok := parseMemoryStatKey(string(data), key)
-	if !ok {
-		return 0, fmt.Errorf("memory stat key %q not found in %s", key, statPath)
+	value, err := parseMemoryStatKey(string(data), key)
+	if err == nil {
+		return value, nil
 	}
-	return value, nil
+	if errors.Is(err, errMemoryStatKeyNotFound) {
+		// Match kubelet/cAdvisor: missing inactive file stat means 0.
+		return 0, nil
+	}
+	return 0, fmt.Errorf("read memory stat %s: %w", statPath, err)
 }
 
-func parseMemoryStatKey(content, key string) (int64, bool) {
+func parseMemoryStatKey(content, key string) (int64, error) {
 	for _, line := range strings.Split(content, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 || fields[0] != key {
@@ -155,11 +162,11 @@ func parseMemoryStatKey(content, key string) (int64, bool) {
 		}
 		value, err := strconv.ParseInt(fields[1], 10, 64)
 		if err != nil {
-			return 0, false
+			return 0, fmt.Errorf("parse value for key %q: %w", key, err)
 		}
-		return value, true
+		return value, nil
 	}
-	return 0, false
+	return 0, errMemoryStatKeyNotFound
 }
 
 func nodeMemoryUsage() (int64, error) {
