@@ -224,6 +224,16 @@ func TestSession_adjustNetworkTopologySpec(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			for _, job := range test.jobs {
+				if job.PodGroup != nil && job.NetworkTopology == nil {
+					job.NetworkTopology = job.PodGroup.Spec.NetworkTopology.DeepCopy()
+				}
+			}
+			for _, job := range test.expectedJobs {
+				if job.PodGroup != nil && job.NetworkTopology == nil {
+					job.NetworkTopology = job.PodGroup.Spec.NetworkTopology.DeepCopy()
+				}
+			}
 			ssn := &Session{
 				Jobs:                 test.jobs,
 				HyperNodeTierNameMap: test.nameMap,
@@ -231,16 +241,10 @@ func TestSession_adjustNetworkTopologySpec(t *testing.T) {
 			ssn.adjustNetworkTopologySpec()
 			for jobID, expectedJob := range test.expectedJobs {
 				gotJob := ssn.Jobs[jobID]
-				assert.Equal(t, expectedJob.PodGroup.Spec.NetworkTopology.HighestTierName,
-					gotJob.PodGroup.Spec.NetworkTopology.HighestTierName, "job highestTierName should be equal")
-				assert.Equal(t, expectedJob.PodGroup.Spec.NetworkTopology.HighestTierAllowed,
-					gotJob.PodGroup.Spec.NetworkTopology.HighestTierAllowed, "job highestTierAllowed should be equal")
-				for index := range expectedJob.PodGroup.Spec.SubGroupPolicy {
-					assert.Equal(t, expectedJob.PodGroup.Spec.SubGroupPolicy[index].NetworkTopology.HighestTierName,
-						gotJob.PodGroup.Spec.SubGroupPolicy[index].NetworkTopology.HighestTierName, "subGroupPolicy highestTierName should be equal")
-					assert.Equal(t, expectedJob.PodGroup.Spec.SubGroupPolicy[index].NetworkTopology.HighestTierAllowed,
-						gotJob.PodGroup.Spec.SubGroupPolicy[index].NetworkTopology.HighestTierAllowed, "subGroupPolicy highestTierAllowed should be equal")
-				}
+				assert.Equal(t, expectedJob.NetworkTopology.HighestTierName,
+					gotJob.NetworkTopology.HighestTierName, "job highestTierName should be equal")
+				assert.Equal(t, expectedJob.NetworkTopology.HighestTierAllowed,
+					gotJob.NetworkTopology.HighestTierAllowed, "job highestTierAllowed should be equal")
 				for subJobID := range expectedJob.SubJobs {
 					assert.Equal(t, expectedJob.SubJobs[subJobID].NetworkTopology.HighestTierName,
 						gotJob.SubJobs[subJobID].NetworkTopology.HighestTierName, "subJob highestTierName should be equal")
@@ -250,6 +254,59 @@ func TestSession_adjustNetworkTopologySpec(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAdjustNetworkTopologySpec_DoesNotMutatePodGroupSpec(t *testing.T) {
+	maxTier := 4
+	topHn := &topologyv1alpha1.HyperNode{}
+	topHn.Name = ClusterTopHyperNode
+	topHn.Spec.Tier = maxTier
+
+	job := api.NewJobInfo("test-job")
+	pg := &api.PodGroup{
+		PodGroup: scheduling.PodGroup{
+			Spec: scheduling.PodGroupSpec{
+				MinMember: 4,
+				NetworkTopology: &scheduling.NetworkTopologySpec{
+					Mode:            scheduling.SoftNetworkTopologyMode,
+					HighestTierName: "volcano.sh/hypercluster",
+				},
+				SubGroupPolicy: []scheduling.SubGroupPolicySpec{
+					{
+						Name:         "worker",
+						SubGroupSize: ptr.To(int32(4)),
+						NetworkTopology: &scheduling.NetworkTopologySpec{
+							Mode:            scheduling.SoftNetworkTopologyMode,
+							HighestTierName: "volcano.sh/hypernode",
+						},
+					},
+				},
+			},
+		},
+	}
+	job.SetPodGroup(pg)
+	job.SubJobs["test-job/worker/0"] = api.NewSubJobInfo("test-job/worker", "test-job/worker/0", job.UID, &pg.Spec.SubGroupPolicy[0], []string{"0"})
+
+	originalJobTopology := job.PodGroup.Spec.NetworkTopology.DeepCopy()
+	originalSubGroupTopology := job.PodGroup.Spec.SubGroupPolicy[0].NetworkTopology.DeepCopy()
+
+	ssn := &Session{
+		Jobs: map[api.JobID]*api.JobInfo{
+			job.UID: job,
+		},
+		HyperNodeTierNameMap: api.HyperNodeTierNameMap{
+			"volcano.sh/hypernode":    1,
+			"volcano.sh/hypercluster": 2,
+		},
+		HyperNodes: api.HyperNodeInfoMap{
+			ClusterTopHyperNode: api.NewHyperNodeInfo(topHn),
+		},
+	}
+
+	ssn.adjustNetworkTopologySpec()
+
+	assert.Equal(t, originalJobTopology, job.PodGroup.Spec.NetworkTopology)
+	assert.Equal(t, originalSubGroupTopology, job.PodGroup.Spec.SubGroupPolicy[0].NetworkTopology)
 }
 
 func TestConvertSoftToHardTopology(t *testing.T) {
@@ -465,30 +522,31 @@ func TestConvertSoftToHardTopology(t *testing.T) {
 
 			// Verify job-level NetworkTopology
 			if tt.jobNetworkTopology != nil {
-				assert.NotNil(t, job.PodGroup.Spec.NetworkTopology)
-				assert.Equal(t, tt.wantJobMode, job.PodGroup.Spec.NetworkTopology.Mode,
+				assert.NotNil(t, job.NetworkTopology)
+				assert.Equal(t, tt.wantJobMode, job.NetworkTopology.Mode,
 					"job-level mode mismatch")
 				if tt.wantJobTier != nil {
-					assert.NotNil(t, job.PodGroup.Spec.NetworkTopology.HighestTierAllowed)
-					assert.Equal(t, *tt.wantJobTier, *job.PodGroup.Spec.NetworkTopology.HighestTierAllowed,
+					assert.NotNil(t, job.NetworkTopology.HighestTierAllowed)
+					assert.Equal(t, *tt.wantJobTier, *job.NetworkTopology.HighestTierAllowed,
 						"job-level tier mismatch")
 				}
 			} else {
-				assert.Nil(t, job.PodGroup.Spec.NetworkTopology,
+				assert.Nil(t, job.NetworkTopology,
 					"job-level topology should remain nil")
 			}
 
-			// Verify SubGroupPolicy-level NetworkTopology
-			for i, policy := range job.PodGroup.Spec.SubGroupPolicy {
-				if i < len(tt.wantSubGroupPolicyModes) {
-					if policy.NetworkTopology != nil {
-						assert.Equal(t, tt.wantSubGroupPolicyModes[i], policy.NetworkTopology.Mode,
-							"SubGroupPolicy[%d] mode mismatch", i)
-						if tt.wantSubGroupPolicyTiers[i] != nil {
-							assert.NotNil(t, policy.NetworkTopology.HighestTierAllowed)
-							assert.Equal(t, *tt.wantSubGroupPolicyTiers[i], *policy.NetworkTopology.HighestTierAllowed,
-								"SubGroupPolicy[%d] tier mismatch", i)
-						}
+			// Verify SubJob-level NetworkTopology derived from SubGroupPolicy.
+			for i, policy := range tt.subGroupPolicies {
+				if i < len(tt.wantSubGroupPolicyModes) && policy.NetworkTopology != nil {
+					subJobID := api.SubJobID(fmt.Sprintf("test-job/%s/0", policy.Name))
+					subJob := job.SubJobs[subJobID]
+					assert.NotNil(t, subJob)
+					assert.Equal(t, tt.wantSubGroupPolicyModes[i], subJob.NetworkTopology.Mode,
+						"SubJob derived from SubGroupPolicy[%d] mode mismatch", i)
+					if tt.wantSubGroupPolicyTiers[i] != nil {
+						assert.NotNil(t, subJob.NetworkTopology.HighestTierAllowed)
+						assert.Equal(t, *tt.wantSubGroupPolicyTiers[i], *subJob.NetworkTopology.HighestTierAllowed,
+							"SubJob derived from SubGroupPolicy[%d] tier mismatch", i)
 					}
 				}
 			}
@@ -619,6 +677,11 @@ func TestAdjustNetworkTopologySpec_SoftToHardConversion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			for _, job := range tt.jobs {
+				if job.PodGroup != nil && job.NetworkTopology == nil {
+					job.NetworkTopology = job.PodGroup.Spec.NetworkTopology.DeepCopy()
+				}
+			}
 			ssn := &Session{
 				Jobs:                 tt.jobs,
 				HyperNodeTierNameMap: tt.nameMap,
@@ -627,8 +690,8 @@ func TestAdjustNetworkTopologySpec_SoftToHardConversion(t *testing.T) {
 			ssn.adjustNetworkTopologySpec()
 
 			gotJob := ssn.Jobs["test-uid"]
-			assert.Equal(t, tt.wantJobMode, gotJob.PodGroup.Spec.NetworkTopology.Mode, "job mode mismatch")
-			assert.Equal(t, tt.wantJobTier, gotJob.PodGroup.Spec.NetworkTopology.HighestTierAllowed, "job tier mismatch")
+			assert.Equal(t, tt.wantJobMode, gotJob.NetworkTopology.Mode, "job mode mismatch")
+			assert.Equal(t, tt.wantJobTier, gotJob.NetworkTopology.HighestTierAllowed, "job tier mismatch")
 		})
 	}
 }
