@@ -20,14 +20,10 @@ package v1alpha1
 // GPUInfoApplyConfiguration represents a declarative configuration of the GPUInfo type for use
 // with apply.
 //
-// GPUInfo contains the NUMA topology information for a single GPU device,
-// including its NUMA node affinity, PCI bus ID, and device model.
+// GPUInfo is the gpu topology detail
 type GPUInfoApplyConfiguration struct {
-	// NUMANodeID is the NUMA node to which this GPU is attached.
-	NUMANodeID *int `json:"numa,omitempty"`
-	// BusID is the PCI Bus-Device-Function address (e.g. "0000:3b:00.0").
-	BusID *string `json:"busID,omitempty"`
-	// DeviceModel is the human-readable GPU model name or PCI vendor:device ID.
+	NUMANodeID  *int    `json:"numa,omitempty"`
+	BusID       *string `json:"busID,omitempty"`
 	DeviceModel *string `json:"deviceModel,omitempty"`
 }
 
