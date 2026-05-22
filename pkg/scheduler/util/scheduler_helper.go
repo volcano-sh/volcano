@@ -29,6 +29,7 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -39,6 +40,7 @@ import (
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 const (
@@ -100,6 +102,7 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 		nodeOrderScoreMap[node.Name] = orderScore
 		workerLock.Unlock()
 	}
+	scoreStart := time.Now()
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), scoreNode)
 	reduceScores, err := reduceFn(task, pluginNodeScoreMap)
 	if err != nil {
@@ -112,6 +115,7 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 		klog.Errorf("Error in Calculating batch Priority for the node, err %v", err)
 		return nodeScores
 	}
+	metrics.UpdateSchedulingStageDuration(metrics.SchedulingStageScoring, time.Since(scoreStart))
 
 	nodeScoreMap := map[string]float64{}
 	for _, node := range nodes {

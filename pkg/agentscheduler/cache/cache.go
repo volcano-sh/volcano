@@ -66,6 +66,7 @@ import (
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/features"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 	"volcano.sh/volcano/pkg/util"
@@ -653,6 +654,7 @@ func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*agentapi.Bin
 		task := bindContext.SchedCtx.Task
 		if reason, ok := errMsg[task.UID]; !ok {
 			sc.Recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", task.Namespace, task.Name, task.NodeName)
+			metrics.UpdateTaskScheduleDuration(metrics.TaskStageBound, metrics.Duration(task.Pod.CreationTimestamp.Time))
 		} else {
 			unschedulableMsg := fmt.Sprintf("failed to bind to node %s: %s", task.NodeName, reason)
 			if err := sc.TaskUnschedulable(task, schedulingapi.PodReasonSchedulerError, unschedulableMsg); err != nil {
@@ -920,6 +922,9 @@ func (sc *SchedulerCache) executePreBind(ctx context.Context, bindContext *agent
 				}
 			}
 			return err
+		}
+		if bindContext.SchedCtx.Task != nil && bindContext.SchedCtx.Task.Pod != nil {
+			metrics.UpdateTaskScheduleDuration(metrics.TaskStagePreBound, metrics.Duration(bindContext.SchedCtx.Task.Pod.CreationTimestamp.Time))
 		}
 		executedPreBinders = append(executedPreBinders, preBinder)
 	}
