@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,8 +28,10 @@ import (
 
 	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -75,7 +78,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 	"volcano.sh/volcano/pkg/util"
-	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 const (
@@ -195,6 +197,8 @@ type SchedulerCache struct {
 
 	// timeout on waiting for handlers handle initial resource synchronization before starting scheduling, 0 will skip waiting
 	resourceSyncTimeout time.Duration
+	// resourceClaimCache is a cache for ResourceClaims, used for DRA
+	resourceClaimCache *assumecache.AssumeCache
 }
 
 type multiSchedulerInfo struct {
@@ -586,7 +590,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
-	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName(sc.schedulerNames)})
+	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: util.GenerateComponentName(sc.schedulerNames)})
 
 	// set concurrency configuration when binding
 	sc.setBatchBindParallel()
@@ -814,7 +818,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	sc.hyperNodesInitialEventTracker = schedulercache.NewQueueHandlerTracker(handlerRegistration)
 	handlers["hypernode"] = sc.hyperNodesInitialEventTracker
 
-	if options.ServerOpts.ShardingMode == commonutil.HardShardingMode || options.ServerOpts.ShardingMode == commonutil.SoftShardingMode {
+	if options.ServerOpts.ShardingMode == util.HardShardingMode || options.ServerOpts.ShardingMode == util.SoftShardingMode {
 		sc.nodeShardInformer = sc.vcInformerFactory.Shard().V1alpha1().NodeShards()
 		handlerRegistration, _ = sc.nodeShardInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddNodeShard,
@@ -828,7 +832,7 @@ func (sc *SchedulerCache) addEventHandler() {
 		ctx := context.TODO()
 		logger := klog.FromContext(ctx)
 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
-		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+		sc.resourceClaimCache = assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
 			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
 			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
@@ -844,7 +848,7 @@ func (sc *SchedulerCache) addEventHandler() {
 		if err != nil {
 			klog.V(3).Infof("couldn't start resource slice tracker: %v", err)
 		}
-		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, resourceSliceTracker, informerFactory)
+		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, sc.resourceClaimCache, resourceSliceTracker, informerFactory)
 	}
 	sc.registeredHandlers = handlers
 }
@@ -1829,4 +1833,151 @@ func (sc *SchedulerCache) OnSessionClose() {
 		sc.shardUpdateCoordinator.IsSessionRunning.Store(false)
 		sc.notifySessionEnd()
 	}
+}
+
+func resolvePodClaimName(pod *v1.Pod, podClaim v1.PodResourceClaim) string {
+	if podClaim.ResourceClaimName != nil {
+		return *podClaim.ResourceClaimName
+	}
+	for _, status := range pod.Status.ResourceClaimStatuses {
+		if status.Name == podClaim.Name && status.ResourceClaimName != nil {
+			return *status.ResourceClaimName
+		}
+	}
+	return ""
+}
+
+type pendingDRAResourceClaimError struct {
+	err error
+}
+
+func (e *pendingDRAResourceClaimError) Error() string {
+	return e.err.Error()
+}
+
+func isPendingDRAResourceClaimError(err error) bool {
+	_, ok := err.(*pendingDRAResourceClaimError)
+	return ok
+}
+
+func addDRAResource(dst map[string]*schedulingapi.DRAResource, deviceClass string, count int64, capacity map[string]resource.Quantity) {
+	if dst[deviceClass] == nil {
+		dst[deviceClass] = &schedulingapi.DRAResource{}
+		if len(capacity) > 0 {
+			dst[deviceClass].Capacity = make(map[string]resource.Quantity)
+		}
+	}
+	dst[deviceClass].Count += count
+	for dim, reqQty := range capacity {
+		totalQty := reqQty.DeepCopy()
+		for i := int64(1); i < count; i++ {
+			totalQty.Add(reqQty)
+		}
+		capQty := dst[deviceClass].Capacity[dim]
+		capQty.Add(totalQty)
+		dst[deviceClass].Capacity[dim] = capQty
+	}
+}
+
+// buildTaskDRAInfo builds aggregated and per-claim DRA resource requests from Pod ResourceClaims.
+func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulingapi.DRAResource, map[string]map[string]*schedulingapi.DRAResource, []string, error) {
+	if !utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) || len(pod.Spec.ResourceClaims) == 0 || sc.resourceClaimCache == nil {
+		return nil, nil, nil, nil
+	}
+
+	result := make(map[string]*schedulingapi.DRAResource)
+	claimResources := make(map[string]map[string]*schedulingapi.DRAResource)
+	consumableCapacityEnabled := utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRAConsumableCapacity)
+
+	for _, podClaim := range pod.Spec.ResourceClaims {
+		templateClaim := podClaim.ResourceClaimTemplateName != nil
+		claimName := resolvePodClaimName(pod, podClaim)
+		if claimName == "" {
+			if templateClaim {
+				return nil, nil, nil, &pendingDRAResourceClaimError{
+					err: fmt.Errorf("ResourceClaim for pod claim %s in pod %s/%s is not resolved yet", podClaim.Name, pod.Namespace, pod.Name),
+				}
+			}
+			return nil, nil, nil, fmt.Errorf("failed to resolve ResourceClaim name for pod claim %s in pod %s/%s", podClaim.Name, pod.Namespace, pod.Name)
+		}
+		claimKey := pod.Namespace + "/" + claimName
+		if _, exists := claimResources[claimKey]; exists {
+			continue
+		}
+
+		obj, err := sc.resourceClaimCache.Get(claimKey)
+		if err != nil || obj == nil {
+			if templateClaim {
+				if err != nil {
+					return nil, nil, nil, &pendingDRAResourceClaimError{
+						err: fmt.Errorf("ResourceClaim %s for pod %s/%s is not synced yet: %w", claimKey, pod.Namespace, pod.Name, err),
+					}
+				}
+				return nil, nil, nil, &pendingDRAResourceClaimError{
+					err: fmt.Errorf("ResourceClaim %s for pod %s/%s is not synced yet", claimKey, pod.Namespace, pod.Name),
+				}
+			}
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("failed to get ResourceClaim %s: %w", claimKey, err)
+			}
+			return nil, nil, nil, fmt.Errorf("failed to get ResourceClaim %s: cache returned nil object", claimKey)
+		}
+		claim, ok := obj.(*resourcev1.ResourceClaim)
+		if !ok {
+			return nil, nil, nil, fmt.Errorf("ResourceClaim cache entry %s has unexpected type %T", claimKey, obj)
+		}
+
+		perClaim := make(map[string]*schedulingapi.DRAResource)
+		for _, req := range claim.Spec.Devices.Requests {
+			if req.FirstAvailable != nil {
+				klog.Warningf("ResourceClaim %s uses FirstAvailable; DRA quota tracking is skipped for request %s", claimKey, req.Name)
+				continue
+			}
+			// Check Exactly field
+			if req.Exactly == nil {
+				continue
+			}
+			if req.Exactly.AllocationMode == resourcev1.DeviceAllocationModeAll {
+				klog.Warningf("ResourceClaim %s uses allocationMode=All; DRA quota tracking is skipped for request %s", claimKey, req.Name)
+				continue
+			}
+			deviceClass := req.Exactly.DeviceClassName
+			if deviceClass == "" {
+				continue
+			}
+
+			count := req.Exactly.Count
+			// If AllocationMode is ExactCount and this field is not specified, the default is one.
+			if count == 0 {
+				count = 1
+			}
+
+			var capacity map[string]resource.Quantity
+			if consumableCapacityEnabled && req.Exactly.Capacity != nil && len(req.Exactly.Capacity.Requests) > 0 {
+				capacity = make(map[string]resource.Quantity, len(req.Exactly.Capacity.Requests))
+				for dim, reqQty := range req.Exactly.Capacity.Requests {
+					capacity[string(dim)] = reqQty.DeepCopy()
+				}
+			}
+			addDRAResource(perClaim, deviceClass, count, capacity)
+			addDRAResource(result, deviceClass, count, capacity)
+		}
+		if len(perClaim) > 0 {
+			claimResources[claimKey] = perClaim
+		}
+	}
+
+	if len(claimResources) == 0 {
+		return nil, nil, nil, nil
+	}
+	claimKeys := make([]string, 0, len(claimResources))
+	for claimKey := range claimResources {
+		claimKeys = append(claimKeys, claimKey)
+	}
+	sort.Strings(claimKeys)
+
+	if len(result) == 0 {
+		result = nil
+	}
+	return result, claimResources, claimKeys, nil
 }

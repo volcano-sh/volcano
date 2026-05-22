@@ -250,6 +250,13 @@ func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, err
 	}
 	// Update BestEffort because the InitResreq maybe changes
 	taskInfo.BestEffort = taskInfo.InitResreq.IsEmpty()
+	draResreq, claimDRAResreq, claimKeys, err := sc.buildTaskDRAInfo(pod)
+	if err != nil {
+		return taskInfo, err
+	}
+	taskInfo.DRAResreq = draResreq
+	taskInfo.ResourceClaimDRAResreq = claimDRAResreq
+	taskInfo.ResourceClaimKeys = claimKeys
 	return taskInfo, nil
 }
 
@@ -257,8 +264,17 @@ func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, err
 func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	pi, err := sc.NewTaskInfo(pod)
 	if err != nil {
+		if isPendingDRAResourceClaimError(err) {
+			klog.V(4).Infof("DRA ResourceClaim for pod <%s/%s> is not ready, add task to cache and retry: %v", pod.Namespace, pod.Name, err)
+			if addErr := sc.addTask(pi); addErr != nil {
+				return addErr
+			}
+			sc.resyncTask(pi)
+			return nil
+		}
 		klog.Errorf("generate taskInfo for pod(%s) failed: %v", pod.Name, err)
 		sc.resyncTask(pi)
+		return err
 	}
 
 	return sc.addTask(pi)

@@ -17,12 +17,18 @@ limitations under the License.
 package capacity
 
 import (
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -1178,5 +1184,424 @@ func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
 	cycle2 := uthelper.WaitForBinds(t, binder.Channel, 1, 5*time.Second)
 	if !cycle2["ns1/pB1"] {
 		t.Errorf("regression: pB1 not bound in cycle 2 (got %v) — capacity plugin double-counting inqueue resources for pgA with tasks in Binding", cycle2)
+	}
+}
+
+func TestCapacityPluginDRA(t *testing.T) {
+	if err := utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=true", kubefeatures.DynamicResourceAllocation)); err != nil {
+		t.Fatal(err)
+	}
+
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	trueValue := true
+	actions := []framework.Action{enqueue.New(), allocate.New()}
+
+	buildDRAQueue := func(name string, capability map[string]int64) *schedulingv1beta1.Queue {
+		queue := util.BuildQueueWithResourcesQuantity(name, nil, nil)
+		if capability != nil {
+			queue.Spec.Capability = make(corev1.ResourceList, len(capability))
+			for class, count := range capability {
+				queue.Spec.Capability[corev1.ResourceName(DeviceClassCountPrefix+class)] = resource.MustParse(fmt.Sprintf("%d", count))
+			}
+		}
+		return queue
+	}
+
+	buildDRAPodAndClaim := func(ns, name, queue, deviceClass string, count int64) (*corev1.Pod, *resourcev1.ResourceClaim, *schedulingv1beta1.PodGroup) {
+		claimName := name + "-claim"
+		claim := &resourcev1.ResourceClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      claimName,
+				Namespace: ns,
+			},
+			Spec: resourcev1.ResourceClaimSpec{
+				Devices: resourcev1.DeviceClaim{
+					Requests: []resourcev1.DeviceRequest{
+						{
+							Name: "req-1",
+							Exactly: &resourcev1.ExactDeviceRequest{
+								DeviceClassName: deviceClass,
+								Count:           count,
+							},
+						},
+					},
+				},
+			},
+		}
+
+		pod := util.BuildPod(ns, name, "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), name+"-pg", nil, nil)
+		pod.Spec.ResourceClaims = []corev1.PodResourceClaim{
+			{
+				Name:              "claim-1",
+				ResourceClaimName: &claimName,
+			},
+		}
+		pod.Annotations[batchv1alpha1.TaskSpecKey] = "worker"
+
+		pg := util.BuildPodGroup(name+"-pg", ns, queue, 1, nil, schedulingv1beta1.PodGroupInqueue)
+		pg.Spec.MinTaskMember = map[string]int32{"worker": 1}
+
+		return pod, claim, pg
+	}
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("10", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+
+	q1 := buildDRAQueue("q1", map[string]int64{"gpu.com": 2})
+	p1, c1, pg1 := buildDRAPodAndClaim("ns1", "p1", "q1", "gpu.com", 1)
+
+	q2 := buildDRAQueue("q2", map[string]int64{"gpu.com": 1})
+	p2, c2, pg2 := buildDRAPodAndClaim("ns1", "p2", "q2", "gpu.com", 2)
+
+	q3 := buildDRAQueue("q3", map[string]int64{"gpu.com": 1, "nic.com": 1})
+	p3_1, c3_1, pg3_1 := buildDRAPodAndClaim("ns1", "p3-1", "q3", "gpu.com", 1)
+	p3_2, c3_2, pg3_2 := buildDRAPodAndClaim("ns1", "p3-2", "q3", "nic.com", 1)
+	p3_3, c3_3, pg3_3 := buildDRAPodAndClaim("ns1", "p3-3", "q3", "gpu.com", 1)
+
+	q4 := buildDRAQueue("q4", map[string]int64{"gpu.com": 1})
+	p4_1, c4_1, pg4_1 := buildDRAPodAndClaim("ns1", "p4-1", "q4", "gpu.com", 1)
+	p4_2, c4_2, pg4_2 := buildDRAPodAndClaim("ns1", "p4-2", "q4", "nic.com", 100)
+
+	q5 := buildDRAQueue("q5", map[string]int64{"gpu.com": 1})
+	p5_1, c5_1, pg5_1 := buildDRAPodAndClaim("ns1", "p5-1", "q5", "gpu.com", 2)
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name:           "Case 1: DRA Request within quota",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg1},
+			Queues:         []*schedulingv1beta1.Queue{q1},
+			Nodes:          []*corev1.Node{n1},
+			ResourceClaims: []*resourcev1.ResourceClaim{c1},
+			ExpectBindsNum: 1,
+			ExpectBindMap:  map[string]string{"ns1/p1": "n1"},
+		},
+		{
+			Name:           "Case 2: DRA Request exceeds quota",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p2},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg2},
+			Queues:         []*schedulingv1beta1.Queue{q2},
+			Nodes:          []*corev1.Node{n1},
+			ResourceClaims: []*resourcev1.ResourceClaim{c2},
+			ExpectBindsNum: 0,
+		},
+		{
+			Name:           "Case 3: Multiple Device Classes and Mixed Success/Failure",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p3_1, p3_2, p3_3},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg3_1, pg3_2, pg3_3},
+			Queues:         []*schedulingv1beta1.Queue{q3},
+			Nodes:          []*corev1.Node{n1},
+			ResourceClaims: []*resourcev1.ResourceClaim{c3_1, c3_2, c3_3},
+			ExpectBindsNum: 2,
+			ExpectBindMap: map[string]string{
+				"ns1/p3-1": "n1",
+				"ns1/p3-2": "n1",
+			},
+		},
+		{
+			Name:           "Case 4: Pass-through for unconfigured DeviceClass",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p4_1, p4_2},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg4_1, pg4_2},
+			Queues:         []*schedulingv1beta1.Queue{q4},
+			Nodes:          []*corev1.Node{n1},
+			ResourceClaims: []*resourcev1.ResourceClaim{c4_1, c4_2},
+			ExpectBindsNum: 2,
+			ExpectBindMap: map[string]string{
+				"ns1/p4-1": "n1",
+				"ns1/p4-2": "n1",
+			},
+		},
+		{
+			Name:           "Case 5: Job Enqueue DRA Check rejects oversize job",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p5_1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg5_1},
+			Queues:         []*schedulingv1beta1.Queue{q5},
+			Nodes:          []*corev1.Node{n1},
+			ResourceClaims: []*resourcev1.ResourceClaim{c5_1},
+			ExpectBindsNum: 0,
+		},
+	}
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledJobEnqueued: &trueValue,
+					Arguments: framework.Arguments{
+						DynamicResourceAllocationEnable: true,
+					},
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run(actions)
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestParseDRAResourceListCombinesCountAndCapacity(t *testing.T) {
+	resources := corev1.ResourceList{
+		corev1.ResourceName(DeviceClassCountPrefix + "gpu.example.com"):            resource.MustParse("2"),
+		corev1.ResourceName("memory" + DeviceClassCapacitySep + "gpu.example.com"): resource.MustParse("120Gi"),
+	}
+
+	for i := 0; i < 100; i++ {
+		parsed := parseDRAResourceList(resources)
+		if parsed == nil || parsed["gpu.example.com"] == nil {
+			t.Fatalf("expected gpu.example.com DRA resource, got %#v", parsed)
+		}
+		if got := parsed["gpu.example.com"].Count; got != 2 {
+			t.Fatalf("expected count 2, got %d", got)
+		}
+		gotMemory, ok := parsed["gpu.example.com"].Capacity["memory"]
+		if !ok {
+			t.Fatalf("expected memory capacity to be parsed")
+		}
+		if gotMemory.Cmp(resource.MustParse("120Gi")) != 0 {
+			t.Fatalf("expected memory 120Gi, got %s", gotMemory.String())
+		}
+	}
+}
+
+func TestSharedResourceClaimIsChargedOnce(t *testing.T) {
+	queueID := api.QueueID("q1")
+	attr := &queueAttr{
+		allocated:      api.EmptyResource(),
+		realCapability: api.InfiniteResource(),
+		dra: &draQuotaAttr{
+			allocated: make(map[string]*api.DRAResource),
+			capability: map[string]*api.DRAResource{
+				"gpu.com": {Count: 1},
+			},
+		},
+		resourceClaimRefs: make(map[string]int),
+	}
+	cp := &capacityPlugin{
+		queueOpts:              map[api.QueueID]*queueAttr{queueID: attr},
+		queueGateReservedTasks: make(map[api.QueueID]map[api.TaskID]*api.TaskInfo),
+	}
+	taskA := &api.TaskInfo{
+		Resreq:            api.EmptyResource(),
+		ResourceClaimKeys: []string{"ns1/shared"},
+		ResourceClaimDRAResreq: map[string]map[string]*api.DRAResource{
+			"ns1/shared": {
+				"gpu.com": {Count: 1},
+			},
+		},
+		DRAResreq: map[string]*api.DRAResource{
+			"gpu.com": {Count: 1},
+		},
+	}
+	taskB := &api.TaskInfo{
+		Resreq:            api.EmptyResource(),
+		ResourceClaimKeys: []string{"ns1/shared"},
+		ResourceClaimDRAResreq: map[string]map[string]*api.DRAResource{
+			"ns1/shared": {
+				"gpu.com": {Count: 1},
+			},
+		},
+		DRAResreq: map[string]*api.DRAResource{
+			"gpu.com": {Count: 1},
+		},
+	}
+
+	addTaskDRAAllocated(attr, taskA)
+	addTaskDRAAllocated(attr, taskB)
+
+	if got := attr.dra.allocated["gpu.com"].Count; got != 1 {
+		t.Fatalf("shared claim should be counted once after two additions, got %d", got)
+	}
+
+	queue := &api.QueueInfo{UID: queueID, Name: "q1"}
+	if !cp.queueAllocatable(queue, taskA, true, false) {
+		t.Fatalf("shared claim should not consume additional DRA quota when the claim is already referenced by the queue")
+	}
+
+	distinctTask := &api.TaskInfo{
+		Name:              "distinct",
+		Resreq:            api.EmptyResource(),
+		ResourceClaimKeys: []string{"ns1/distinct"},
+		ResourceClaimDRAResreq: map[string]map[string]*api.DRAResource{
+			"ns1/distinct": {
+				"gpu.com": {Count: 1},
+			},
+		},
+		DRAResreq: map[string]*api.DRAResource{
+			"gpu.com": {Count: 1},
+		},
+	}
+	if cp.queueAllocatable(queue, distinctTask, true, false) {
+		t.Fatalf("distinct claim should still be rejected when it exceeds remaining DRA quota")
+	}
+
+	removeTaskDRAAllocated(attr, taskA)
+	if got := attr.dra.allocated["gpu.com"].Count; got != 1 {
+		t.Fatalf("shared claim should remain allocated until last reference is removed, got %d", got)
+	}
+
+	removeTaskDRAAllocated(attr, taskB)
+	if got := attr.dra.allocated["gpu.com"].Count; got != 0 {
+		t.Fatalf("shared claim should be released after last reference is removed, got %d", got)
+	}
+}
+
+func TestJobEnqueueableChecksDRAWithoutMinResources(t *testing.T) {
+	queueID := api.QueueID("q1")
+	cp := &capacityPlugin{
+		queueOpts: map[api.QueueID]*queueAttr{
+			queueID: {
+				allocated:         api.EmptyResource(),
+				inqueue:           api.EmptyResource(),
+				elastic:           api.EmptyResource(),
+				realCapability:    api.InfiniteResource(),
+				resourceClaimRefs: make(map[string]int),
+				dra: newDRAQuotaAttr(corev1.ResourceList{
+					corev1.ResourceName(DeviceClassCountPrefix + "gpu.com"): resource.MustParse("1"),
+				}, nil, nil),
+			},
+		},
+		dynamicResourceAllocationEnable: true,
+	}
+	queue := &api.QueueInfo{
+		UID:  queueID,
+		Name: "q1",
+		Queue: &scheduling.Queue{
+			ObjectMeta: metav1.ObjectMeta{Name: "q1"},
+			Spec:       scheduling.QueueSpec{},
+			Status:     scheduling.QueueStatus{State: scheduling.QueueStateOpen},
+		},
+	}
+	job := api.NewJobInfo(api.JobID("ns1/job1"))
+	job.Name = "job1"
+	job.Namespace = "ns1"
+	job.PodGroup = &api.PodGroup{
+		PodGroup: scheduling.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "ns1"},
+			Spec:       scheduling.PodGroupSpec{},
+		},
+	}
+	job.TaskMinAvailable["worker"] = 1
+	job.Tasks[api.TaskID("task1")] = &api.TaskInfo{
+		TaskRole: "worker",
+		DRAResreq: map[string]*api.DRAResource{
+			"gpu.com": {Count: 2},
+		},
+	}
+
+	enqueueable, reasons := cp.jobEnqueueable(queue, job)
+	if enqueueable {
+		t.Fatalf("expected DRA-only job to be rejected without MinResources when queue capability is insufficient")
+	}
+	if len(reasons) == 0 || reasons[len(reasons)-1] != "dra-resource-exceeded" {
+		t.Fatalf("expected dra-resource-exceeded reason, got %v", reasons)
+	}
+}
+
+func TestJobEnqueueableAccountsDRAInqueue(t *testing.T) {
+	queueID := api.QueueID("q1")
+	attr := &queueAttr{
+		allocated:         api.EmptyResource(),
+		inqueue:           api.EmptyResource(),
+		elastic:           api.EmptyResource(),
+		realCapability:    api.InfiniteResource(),
+		resourceClaimRefs: make(map[string]int),
+		dra: newDRAQuotaAttr(corev1.ResourceList{
+			corev1.ResourceName(DeviceClassCountPrefix + "gpu.com"):            resource.MustParse("2"),
+			corev1.ResourceName("memory" + DeviceClassCapacitySep + "gpu.com"): resource.MustParse("16Gi"),
+		}, nil, nil),
+	}
+	updateDRAInqueue(attr.dra, map[string]*api.DRAResource{
+		"gpu.com": {
+			Count: 1,
+			Capacity: map[string]resource.Quantity{
+				"memory": resource.MustParse("8Gi"),
+			},
+		},
+	})
+
+	cp := &capacityPlugin{
+		queueOpts:                       map[api.QueueID]*queueAttr{queueID: attr},
+		dynamicResourceAllocationEnable: true,
+		draConsumableCapacityEnable:     true,
+	}
+	queue := &api.QueueInfo{
+		UID:  queueID,
+		Name: "q1",
+	}
+	job := api.NewJobInfo(api.JobID("ns1/job1"))
+	job.Name = "job1"
+	job.Namespace = "ns1"
+	job.MinAvailable = 1
+	job.PodGroup = &api.PodGroup{
+		PodGroup: scheduling.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "ns1"},
+			Spec:       scheduling.PodGroupSpec{},
+		},
+	}
+	job.Tasks[api.TaskID("task1")] = &api.TaskInfo{
+		UID:       api.TaskID("task1"),
+		Namespace: "ns1",
+		Name:      "task1",
+		DRAResreq: map[string]*api.DRAResource{
+			"gpu.com": {
+				Count: 2,
+				Capacity: map[string]resource.Quantity{
+					"memory": resource.MustParse("16Gi"),
+				},
+			},
+		},
+	}
+
+	enqueueable, reasons := cp.jobEnqueueable(queue, job)
+	if enqueueable {
+		t.Fatalf("expected DRA inqueue resources to reserve queue capacity")
+	}
+	if len(reasons) == 0 || reasons[len(reasons)-1] != "dra-resource-exceeded" {
+		t.Fatalf("expected dra-resource-exceeded reason, got %v", reasons)
+	}
+}
+
+func TestDRAAllocatableIgnoresInqueue(t *testing.T) {
+	dra := newDRAQuotaAttr(corev1.ResourceList{
+		corev1.ResourceName(DeviceClassCountPrefix + "gpu.com"):            resource.MustParse("2"),
+		corev1.ResourceName("memory" + DeviceClassCapacitySep + "gpu.com"): resource.MustParse("16Gi"),
+	}, nil, nil)
+	updateDRAInqueue(dra, map[string]*api.DRAResource{
+		"gpu.com": {
+			Count: 1,
+			Capacity: map[string]resource.Quantity{
+				"memory": resource.MustParse("8Gi"),
+			},
+		},
+	})
+
+	request := map[string]*api.DRAResource{
+		"gpu.com": {
+			Count: 2,
+			Capacity: map[string]resource.Quantity{
+				"memory": resource.MustParse("16Gi"),
+			},
+		},
+	}
+
+	if !checkDRAAllocatable(dra, request, true, false) {
+		t.Fatalf("expected allocatable DRA check to ignore inqueue resources")
+	}
+	if checkDRAAllocatable(dra, request, true, true) {
+		t.Fatalf("expected enqueueable DRA check to account inqueue resources")
 	}
 }
