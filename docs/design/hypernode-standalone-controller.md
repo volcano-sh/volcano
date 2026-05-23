@@ -138,9 +138,20 @@ Configuration for discovery remains the same as today: ConfigMap named `{release
 
 ## RBAC and ServiceAccount
 
-The standalone binary needs API permissions equivalent to what the HyperNode controller used inside `vc-controller-manager` (HyperNode CR, Nodes, ConfigMaps, Secrets used by discoverers, etc.). The project’s default install manifests are oriented toward a single controller-manager Deployment; **if you deploy only `vc-hypernode-controller`**, create a `ServiceAccount`, `ClusterRole`, and `ClusterRoleBinding` that grant those permissions and attach the same ConfigMap/Secret wiring as your controller install.
+When you deploy **`vc-hypernode-controller`** via Helm, set:
 
-(Reuse or split the existing controller-manager RBAC in your distribution as appropriate—exact YAML is environment-specific.)
+```yaml
+custom:
+  hypernode_controller_standalone_enable: true
+```
+
+Helm will:
+
+- Create a dedicated `ServiceAccount`, `ClusterRole`, and `Deployment` for `vc-hypernode-controller`
+- Pass `--controllers=*,-sharding-controller,-hyperNode-controller` to `vc-controller-manager` **unless** you override `custom.controller_enabled_controllers` (in that case you must exclude `hyperNode-controller` yourself)
+- Reuse the existing `{release}-controller-configmap` when `custom.controller_enable` is true; if controller-manager is disabled, Helm renders the same ConfigMap when `custom.controller_config_override` is set
+
+For manual (non-Helm) installs, create RBAC equivalent to `installer/helm/chart/volcano/templates/hypernode_controller.yaml` and attach the same ConfigMap/Secret wiring as your controller install.
 
 ## Relationship to the scheduler
 

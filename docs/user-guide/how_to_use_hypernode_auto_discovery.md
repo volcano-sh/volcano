@@ -13,9 +13,10 @@ Please [Install Volcano](https://github.com/volcano-sh/volcano/tree/master?tab=r
 HyperNode auto-discovery is implemented in the **`volcano.sh/hypernode`** module. You can run it in either way:
 
 1. **Default (bundled)**: the `hyperNode-controller` runs inside **`vc-controller-manager`** together with other Volcano controllers. No extra component is required.
-2. **Standalone**: build and deploy **`vc-hypernode-controller`** only, if you do not want the full controller-manager binary. See the design doc [HyperNode standalone controller](../design/hypernode-standalone-controller.md) for build flags, leader-election defaults, and **how to avoid running two HyperNode controllers in the same cluster**.
+2. **Standalone (Helm)**: set `custom.hypernode_controller_standalone_enable: true` in the Volcano Helm chart. Helm deploys **`vc-hypernode-controller`** and disables `hyperNode-controller` in **`vc-controller-manager`** automatically.
+3. **Standalone (manual)**: build and deploy **`vc-hypernode-controller`** yourself. See the design doc [HyperNode standalone controller](../design/hypernode-standalone-controller.md) for build flags, leader-election defaults, and **how to avoid running two HyperNode controllers in the same cluster**.
 
-If you use the standalone binary, **disable** HyperNode in controller-manager (for example via `--controllers=-hyperNode-controller`) so only one controller reconciles HyperNodes.
+If you use the manual standalone binary (not Helm), **disable** HyperNode in controller-manager (for example via `--controllers=-hyperNode-controller`) so only one controller reconciles HyperNodes.
 
 ## Configuration
 

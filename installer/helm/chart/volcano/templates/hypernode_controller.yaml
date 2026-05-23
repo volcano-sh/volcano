@@ -1,0 +1,174 @@
+{{- if .Values.custom.hypernode_controller_standalone_enable }}
+{{ $hypernode_affinity := or .Values.custom.hypernode_controller_affinity .Values.custom.default_affinity }}
+{{ $hypernode_tolerations := or .Values.custom.hypernode_controller_tolerations .Values.custom.default_tolerations }}
+{{ $hypernode_sc := or .Values.custom.hypernode_controller_sc .Values.custom.default_sc }}
+{{ $hypernode_main_csc := or .Values.custom.hypernode_controller_main_csc .Values.custom.default_csc }}
+{{ $hypernode_ns := or .Values.custom.hypernode_controller_ns .Values.custom.default_ns }}
+{{- if not .Values.custom.controller_enable }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-controller-configmap
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+data:
+  volcano-controller.conf: |
+  {{- if .Values.custom.controller_config_override }}
+  {{ toYaml .Values.custom.controller_config_override | nindent 4 }}
+  {{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-hypernode-controller
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Release.Name }}-hypernode-controller
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["topology.volcano.sh"]
+    resources: ["hypernodes", "hypernodes/status"]
+    verbs: ["list", "watch", "get", "create", "delete", "update", "patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "watch"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Release.Name }}-hypernode-controller-role
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-hypernode-controller
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-hypernode-controller
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: {{ .Release.Name }}-hypernode-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: volcano-hypernode-controller
+    {{- if or (.Values.custom.hypernode_controller_labels) (.Values.custom.common_labels) }}
+    {{- mustMerge (.Values.custom.hypernode_controller_labels | default (dict)) (.Values.custom.common_labels | default (dict)) | toYaml | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.custom.hypernode_controller_replicas }}
+  selector:
+    matchLabels:
+      app: volcano-hypernode-controller
+  template:
+    metadata:
+      labels:
+        app: volcano-hypernode-controller
+        {{- if or (.Values.custom.hypernode_controller_podLabels) (.Values.custom.common_labels) }}
+        {{- mustMerge (.Values.custom.hypernode_controller_podLabels | default (dict)) (.Values.custom.common_labels | default (dict)) | toYaml | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if $hypernode_tolerations }}
+      tolerations: {{- toYaml $hypernode_tolerations | nindent 8 }}
+      {{- end }}
+      {{- if $hypernode_ns }}
+      nodeSelector: {{- toYaml $hypernode_ns | nindent 8 }}
+      {{- end }}
+      {{- if $hypernode_affinity }}
+      affinity:
+        {{- toYaml $hypernode_affinity | nindent 8 }}
+      {{- end }}
+      {{- if $hypernode_sc }}
+      securityContext:
+        {{- toYaml $hypernode_sc | nindent 8 }}
+      {{- end }}
+      serviceAccount: {{ .Release.Name }}-hypernode-controller
+      priorityClassName: system-cluster-critical
+      {{- if .Values.basic.image_pull_secret }}
+      imagePullSecrets:
+        - name: {{ .Values.basic.image_pull_secret }}
+      {{- end }}
+      containers:
+        - name: {{ .Release.Name }}-hypernode-controller
+          {{- if .Values.custom.hypernode_controller_resources }}
+          resources:
+            {{- toYaml .Values.custom.hypernode_controller_resources | nindent 12 }}
+          {{- end }}
+          image: {{ .Values.basic.image_registry }}/{{ .Values.basic.hypernode_controller_image_name }}:{{ .Values.basic.hypernode_controller_image_tag_version | default .Values.basic.image_tag_version }}
+          args:
+            - --logtostderr
+            - --enable-healthz=true
+            - --leader-elect=true
+            - --leader-elect-resource-namespace={{ .Release.Namespace }}
+            {{- if .Values.custom.hypernode_controller_kube_api_qps }}
+            - --kube-api-qps={{ .Values.custom.hypernode_controller_kube_api_qps }}
+            {{- end }}
+            {{- if .Values.custom.hypernode_controller_kube_api_burst }}
+            - --kube-api-burst={{ .Values.custom.hypernode_controller_kube_api_burst }}
+            {{- end }}
+            - -v={{ .Values.custom.hypernode_controller_log_level }}
+            - 2>&1
+          imagePullPolicy: {{ .Values.basic.image_pull_policy }}
+          {{- if $hypernode_main_csc }}
+          securityContext:
+            {{- toYaml $hypernode_main_csc | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 11252
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 11252
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          env:
+            - name: KUBE_POD_NAMESPACE
+              value: {{ .Release.Namespace }}
+            - name: HELM_RELEASE_NAME
+              value: {{ .Release.Name }}
+          {{- if .Values.custom.go_memlimit_enable }}
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.memory
+                  divisor: "1"
+          {{- end }}
+{{- end }}
