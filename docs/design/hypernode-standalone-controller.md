@@ -1,5 +1,7 @@
 # HyperNode Controller: Standalone Module and Deployment
 
+> Part of [#5133](https://github.com/volcano-sh/volcano/issues/5133) (controller decoupling). This track covers **HyperNode extraction only**; PodGroup decoupling is tracked separately.
+
 ## Introduction
 
 The HyperNode controller (network topology discovery, HyperNode CR reconciliation, and `NodeCount` status) is implemented as an independent Go module under the Volcano repository:
@@ -24,6 +26,7 @@ staging/src/volcano.sh/hypernode/
 ├── go.mod                    # module volcano.sh/hypernode; replace volcano.sh/apis => ../apis
 ├── cmd/hypernode-controller/ # standalone entrypoint (flags, leader election, healthz)
 ├── pkg/
+│   ├── kube/                 # REST config (in-cluster / kubeconfig)
 │   ├── api/                  # discovery config types, discoverer registry
 │   ├── config/               # ConfigMap loader
 │   ├── discovery/            # manager, label/ufm/... discoverers

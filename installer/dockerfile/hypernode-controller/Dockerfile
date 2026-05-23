@@ -21,6 +21,6 @@ RUN go mod download
 ADD . volcano
 RUN cd volcano && make vc-hypernode-controller
 
-FROM alpine:latest
+FROM alpine:3.21
 COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-hypernode-controller /vc-hypernode-controller
 ENTRYPOINT ["/vc-hypernode-controller"]

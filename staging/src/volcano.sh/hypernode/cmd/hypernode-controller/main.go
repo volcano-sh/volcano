@@ -25,6 +25,7 @@ import (
 	_ "go.uber.org/automaxprocs"
 	cliflag "k8s.io/component-base/cli/flag"
 	componentbaseoptions "k8s.io/component-base/config/options"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/hypernode/cmd/hypernode-controller/app"
@@ -43,27 +44,26 @@ func main() {
 
 	cliflag.InitFlags()
 
-	if err := s.CheckOptionOrDie(); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
-	}
-
 	if s.PrintVersion {
 		fmt.Println("vc-hypernode-controller (volcano.sh/hypernode)")
 		os.Exit(0)
 	}
 
-	if s.CaCertFile != "" && s.CertFile != "" && s.KeyFile != "" {
-		if err := s.ReadCAFiles(); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to read TLS files: %v\n", err)
-			os.Exit(1)
-		}
+	if err := s.CheckOptionOrDie(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	if err := s.ReadCAFiles(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to read TLS files: %v\n", err)
+		os.Exit(1)
 	}
 
 	klog.StartFlushDaemon(*logFlushFreq)
 	defer klog.Flush()
 
 	if err := app.Run(s); err != nil {
-		klog.InfoS("HyperNode controller exited", "err", err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
 	}
 }

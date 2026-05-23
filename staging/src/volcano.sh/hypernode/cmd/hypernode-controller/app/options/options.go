@@ -109,16 +109,25 @@ func (s *ServerOption) CheckOptionOrDie() error {
 		&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate(); err != nil {
 		allErrors = append(allErrors, err)
 	}
+	if err := s.validateTLSFileFlags(); err != nil {
+		allErrors = append(allErrors, err)
+	}
 	return errors.NewAggregate(allErrors)
+}
+
+func (s *ServerOption) validateTLSFileFlags() error {
+	hasAny := s.CaCertFile != "" || s.CertFile != "" || s.KeyFile != ""
+	hasAll := s.CaCertFile != "" && s.CertFile != "" && s.KeyFile != ""
+	if hasAny && !hasAll {
+		return fmt.Errorf("ca-cert-file, tls-cert-file, and tls-private-key-file must be set together")
+	}
+	return nil
 }
 
 // ReadCAFiles loads TLS material from paths set via flags.
 func (s *ServerOption) ReadCAFiles() error {
 	if s.CaCertFile == "" && s.CertFile == "" && s.KeyFile == "" {
 		return nil
-	}
-	if s.CaCertFile == "" || s.CertFile == "" || s.KeyFile == "" {
-		return fmt.Errorf("ca-cert-file, tls-cert-file, and tls-private-key-file must be set together")
 	}
 	var err error
 	s.CaCertData, err = os.ReadFile(s.CaCertFile)

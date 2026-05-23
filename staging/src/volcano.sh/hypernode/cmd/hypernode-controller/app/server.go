@@ -28,7 +28,6 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
@@ -39,12 +38,18 @@ import (
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/hypernode/cmd/hypernode-controller/app/options"
 	hnctrl "volcano.sh/hypernode/pkg/hypernode"
+	hnkube "volcano.sh/hypernode/pkg/kube"
 	"volcano.sh/hypernode/pkg/signals"
 )
 
 // Run starts the standalone HyperNode controller with optional leader election.
 func Run(opt *options.ServerOption) error {
-	config, err := buildRESTConfig(opt)
+	config, err := hnkube.BuildConfig(hnkube.ClientOptions{
+		Master:     opt.KubeClientOptions.Master,
+		KubeConfig: opt.KubeClientOptions.KubeConfig,
+		QPS:        opt.KubeClientOptions.QPS,
+		Burst:      opt.KubeClientOptions.Burst,
+	})
 	if err != nil {
 		return err
 	}
@@ -60,6 +65,9 @@ func Run(opt *options.ServerOption) error {
 
 	if !opt.LeaderElection.LeaderElect {
 		run(ctx)
+		if ctx.Err() != nil {
+			return nil
+		}
 		return fmt.Errorf("finished without leader elect")
 	}
 
@@ -106,26 +114,10 @@ func Run(opt *options.ServerOption) error {
 			},
 		},
 	})
+	if ctx.Err() != nil {
+		return nil
+	}
 	return fmt.Errorf("lost lease")
-}
-
-func buildRESTConfig(opt *options.ServerOption) (*rest.Config, error) {
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if opt.KubeClientOptions.KubeConfig != "" {
-		loadingRules.ExplicitPath = opt.KubeClientOptions.KubeConfig
-	}
-	overrides := &clientcmd.ConfigOverrides{}
-	if opt.KubeClientOptions.Master != "" {
-		overrides.ClusterInfo.Server = opt.KubeClientOptions.Master
-	}
-	cc := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
-	cfg, err := cc.ClientConfig()
-	if err != nil {
-		return nil, err
-	}
-	cfg.QPS = opt.KubeClientOptions.QPS
-	cfg.Burst = opt.KubeClientOptions.Burst
-	return cfg, nil
 }
 
 func startHyperNodeController(config *rest.Config) func(ctx context.Context) {

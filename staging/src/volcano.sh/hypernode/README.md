@@ -9,6 +9,7 @@ This code lives under Volcano’s monorepo at `staging/src/volcano.sh/hypernode/
 | Path | Purpose |
 |------|---------|
 | `cmd/hypernode-controller/` | Standalone process: flags, leader election, health server hookup |
+| `pkg/kube/` | Kubernetes client REST config (in-cluster and kubeconfig) |
 | `pkg/hypernode/` | Core `Controller` and Options |
 | `pkg/discovery/` | Discovery manager and source implementations (UFM, label, …) |
 | `pkg/config/` | Load `networkTopologyDiscovery` from the controller ConfigMap |
