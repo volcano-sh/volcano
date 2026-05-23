@@ -569,6 +569,67 @@ func TestDeletePodFunc(t *testing.T) {
 	}
 }
 
+func TestAddPodGroupFunc(t *testing.T) {
+	namespace := "test"
+	boolTrue := true
+
+	testCases := []struct {
+		Name        string
+		PodGroup    *scheduling.PodGroup
+		ExpectValue int
+		ExpectKey   string
+	}{
+		{
+			Name: "PodGroup with Job OwnerReference re-queues job",
+			PodGroup: &scheduling.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pg1-uid",
+					Namespace: namespace,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: helpers.JobKind.GroupVersion().String(),
+							Kind:       helpers.JobKind.Kind,
+							Name:       "job1",
+							Controller: &boolTrue,
+						},
+					},
+				},
+				Status: scheduling.PodGroupStatus{
+					Phase: scheduling.PodGroupInqueue,
+				},
+			},
+			ExpectValue: 1,
+			ExpectKey:   "test/job1",
+		},
+		{
+			Name: "PodGroup without OwnerReference uses PodGroup name",
+			PodGroup: &scheduling.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "legacy-pg",
+					Namespace: namespace,
+				},
+				Status: scheduling.PodGroupStatus{
+					Phase: scheduling.PodGroupPending,
+				},
+			},
+			ExpectValue: 1,
+			ExpectKey:   "test/legacy-pg",
+		},
+	}
+
+	for i, testcase := range testCases {
+		t.Run(testcase.Name, func(t *testing.T) {
+			controller := newController()
+			controller.addPodGroup(testcase.PodGroup)
+			queue := controller.getWorkerQueue(testcase.ExpectKey)
+			qLen := queue.Len()
+			if testcase.ExpectValue != qLen {
+				t.Errorf("case %d (%s): expected queue length: %v, got %v", i, testcase.Name, testcase.ExpectValue, qLen)
+			}
+		})
+	}
+}
+
 func TestUpdatePodGroupFunc(t *testing.T) {
 
 	namespace := "test"
