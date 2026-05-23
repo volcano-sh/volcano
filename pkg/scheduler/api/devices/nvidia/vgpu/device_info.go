@@ -98,14 +98,35 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	if !ok {
 		return nil
 	}
-	handshake, ok := node.Annotations[deviceconfig.VolcanoVGPUHandshake]
-	if !ok {
+
+	if node.Status.Allocatable != nil {
+		gpuNumberRes, gpuNumberExists := node.Status.Allocatable[v1.ResourceName(deviceconfig.VolcanoVGPUNumber)]
+		if !gpuNumberExists || gpuNumberRes.Value() == 0 {
+			klog.V(3).Infof("Node %s does not have allocatable %s resource or value is 0, returning nil", node.Name, deviceconfig.VolcanoVGPUNumber)
+			return nil
+		}
+
+		vgpuCoresRes, vgpuCoresExists := node.Status.Allocatable[v1.ResourceName(deviceconfig.VolcanoVGPUCores)]
+		if !vgpuCoresExists || vgpuCoresRes.Value() == 0 {
+			klog.V(3).Infof("Node %s does not have allocatable %s resource or value is 0, returning nil", node.Name, deviceconfig.VolcanoVGPUCores)
+			return nil
+		}
+
+		vgpuMemoryRes, vgpuMemoryExists := node.Status.Allocatable[v1.ResourceName(deviceconfig.VolcanoVGPUMemory)]
+		if !vgpuMemoryExists || vgpuMemoryRes.Value() == 0 {
+			klog.V(3).Infof("Node %s does not have allocatable %s resource or value is 0, returning nil", node.Name, deviceconfig.VolcanoVGPUMemory)
+			return nil
+		}
+	} else {
+		klog.V(3).Infof("Node %s does not have allocatable resources information, returning nil", node.Name)
 		return nil
 	}
+
 	nodedevices, sharingMode := decodeNodeDevices(name, annos)
 	if (nodedevices == nil) || len(nodedevices.Device) == 0 {
 		return nil
 	}
+
 	sharingHandler, _ := GetSharingHandler(sharingMode)
 	klog.V(3).Infoln("GPU sharing mode: ", sharingMode)
 	for _, val := range nodedevices.Device {
@@ -113,24 +134,6 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 		ResetDeviceMetrics(val.UUID, node.Name, float64(val.Memory))
 	}
 
-	// We have to handshake here in order to avoid time-inconsistency between scheduler and nodes
-	if strings.Contains(handshake, "Requesting") {
-		formertime, _ := time.Parse("2006.01.02 15:04:05", strings.Split(handshake, "_")[1])
-		if time.Now().After(formertime.Add(time.Second * 60)) {
-			klog.V(3).Infof("node %v device %s leave", node.Name, handshake)
-
-			tmppat := make(map[string]string)
-			tmppat[deviceconfig.VolcanoVGPUHandshake] = "Deleted_" + time.Now().Format("2006.01.02 15:04:05")
-			patchNodeAnnotations(node, tmppat)
-			return nil
-		}
-	} else if strings.Contains(handshake, "Deleted") {
-		return nil
-	} else {
-		tmppat := make(map[string]string)
-		tmppat[deviceconfig.VolcanoVGPUHandshake] = "Requesting_" + time.Now().Format("2006.01.02 15:04:05")
-		patchNodeAnnotations(node, tmppat)
-	}
 	nodedevices.Sharing = sharingHandler
 	return nodedevices
 }

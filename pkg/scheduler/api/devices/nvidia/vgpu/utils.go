@@ -420,30 +420,6 @@ func patchPodAnnotations(kubeClient kubernetes.Interface, pod *v1.Pod, annotatio
 	return err
 }
 
-func patchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
-	type patchMetadata struct {
-		Annotations map[string]string `json:"annotations,omitempty"`
-	}
-	type patchNode struct {
-		Metadata patchMetadata `json:"metadata"`
-		//Spec     patchSpec     `json:"spec,omitempty"`
-	}
-
-	p := patchNode{}
-	p.Metadata.Annotations = annotations
-
-	bytes, err := json.Marshal(p)
-	if err != nil {
-		return err
-	}
-	_, err = devices.GetClient().CoreV1().Nodes().
-		Patch(context.Background(), node.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
-	if err != nil {
-		klog.Errorf("patch node %v failed, %v", node.Name, err)
-	}
-	return err
-}
-
 func getConfig() config.NvidiaConfig {
 	if config.GetConfig() != nil {
 		return config.GetConfig().NvidiaConfig
