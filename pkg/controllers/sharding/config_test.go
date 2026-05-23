@@ -193,3 +193,141 @@ func TestNewShardingControllerOptions_Defaults(t *testing.T) {
 	assert.InDelta(t, 1.0, agent.CPUUtilizationMax, 1e-9)
 	assert.True(t, agent.PreferWarmupNodes)
 }
+
+func TestParseConfigOldFormat(t *testing.T) {
+	opts := &ShardingControllerOptions{
+		SchedulerConfigsRaw: []string{
+			"volcano:volcano:0.0:0.6:false:2:100",
+			"agent-scheduler:agent:0.7:1.0:true:2:100",
+		},
+	}
+
+	err := opts.ParseConfig()
+	if err != nil {
+		t.Fatalf("ParseConfig() error = %v", err)
+	}
+
+	if len(opts.SchedulerConfigs) != 2 {
+		t.Fatalf("ParseConfig() parsed %d configs, want 2", len(opts.SchedulerConfigs))
+	}
+
+	// Check first config
+	config1 := opts.SchedulerConfigs[0]
+	if config1.Name != "volcano" {
+		t.Errorf("config1.Name = %v, want volcano", config1.Name)
+	}
+	if config1.Type != "volcano" {
+		t.Errorf("config1.Type = %v, want volcano", config1.Type)
+	}
+	if len(config1.Policies) != 1 || config1.Policies[0].Name != "allocation-rate" {
+		t.Errorf("config1.Policies = %#v, want [allocation-rate]", config1.Policies)
+	}
+	if config1.Arguments["minCPUUtil"] != 0.0 {
+		t.Errorf("config1.Arguments[minCPUUtil] = %v, want 0.0", config1.Arguments["minCPUUtil"])
+	}
+	if config1.Arguments["maxCPUUtil"] != 0.6 {
+		t.Errorf("config1.Arguments[maxCPUUtil] = %v, want 0.6", config1.Arguments["maxCPUUtil"])
+	}
+	if _, ok := config1.Arguments["preferWarmupNodes"]; ok {
+		t.Errorf("config1.Arguments[preferWarmupNodes] should be absent for allocation-rate; "+
+			"got %v", config1.Arguments["preferWarmupNodes"])
+	}
+	if config1.MinNodes != 2 {
+		t.Errorf("config1.MinNodes = %v, want 2", config1.MinNodes)
+	}
+	if config1.MaxNodes != 100 {
+		t.Errorf("config1.MaxNodes = %v, want 100", config1.MaxNodes)
+	}
+
+	// Check second config
+	config2 := opts.SchedulerConfigs[1]
+	if config2.Name != "agent-scheduler" {
+		t.Errorf("config2.Name = %v, want agent-scheduler", config2.Name)
+	}
+	if len(config2.Policies) != 1 || config2.Policies[0].Name != "allocation-rate" {
+		t.Errorf("config2.Policies = %#v, want [allocation-rate]", config2.Policies)
+	}
+	if config2.Arguments["minCPUUtil"] != 0.7 {
+		t.Errorf("config2.Arguments[minCPUUtil] = %v, want 0.7", config2.Arguments["minCPUUtil"])
+	}
+	if _, ok := config2.Arguments["preferWarmupNodes"]; ok {
+		t.Errorf("config2.Arguments[preferWarmupNodes] should be absent for allocation-rate; "+
+			"got %v", config2.Arguments["preferWarmupNodes"])
+	}
+}
+
+func TestParseConfigRejectsNewFormat(t *testing.T) {
+	opts := &ShardingControllerOptions{
+		SchedulerConfigsRaw: []string{
+			"volcano:volcano:allocation-rate:2:100:minCPUUtil=0.0,maxCPUUtil=0.6,preferWarmupNodes=false",
+			"agent:agent:capability:2:50:maxCapacityPercent=0.30",
+			"warmup-sched:warmup:warmup:5:100:allowNonWarmup=true",
+		},
+	}
+
+	err := opts.ParseConfig()
+	if err == nil {
+		t.Fatalf("ParseConfig() expected error for new format, got nil")
+	}
+	assert.ErrorContains(t, err, "expected 7 colon-separated parts")
+}
+
+func TestParseConfigMixedFormatsRejected(t *testing.T) {
+	opts := &ShardingControllerOptions{
+		SchedulerConfigsRaw: []string{
+			"volcano:volcano:0.0:0.6:false:2:100",                 // Old format
+			"agent:agent:capability:2:50:maxCapacityPercent=0.30", // New format
+		},
+	}
+
+	err := opts.ParseConfig()
+	if err == nil {
+		t.Fatalf("ParseConfig() expected error for mixed formats, got nil")
+	}
+	assert.ErrorContains(t, err, "expected 7 colon-separated parts")
+}
+
+func TestParseConfigInvalidFormat(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string
+	}{
+		{
+			name:   "too few parts",
+			config: "volcano:volcano:0.0:0.6",
+		},
+		{
+			name:   "invalid min util",
+			config: "volcano:volcano:invalid:0.6:false:2:100",
+		},
+		{
+			name:   "invalid max util",
+			config: "volcano:volcano:0.0:invalid:false:2:100",
+		},
+		{
+			name:   "invalid prefer warmup",
+			config: "volcano:volcano:0.0:0.6:invalid:2:100",
+		},
+		{
+			name:   "invalid min nodes",
+			config: "volcano:volcano:0.0:0.6:false:invalid:100",
+		},
+		{
+			name:   "invalid max nodes",
+			config: "volcano:volcano:0.0:0.6:false:2:invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &ShardingControllerOptions{
+				SchedulerConfigsRaw: []string{tt.config},
+			}
+
+			err := opts.ParseConfig()
+			if err == nil {
+				t.Errorf("ParseConfig() expected error for %s, got nil", tt.name)
+			}
+		})
+	}
+}
