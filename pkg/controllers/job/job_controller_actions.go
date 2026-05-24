@@ -263,17 +263,21 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 		return e
 	}
 
-	// Delete PodGroup
-	pg, err := cc.getPodGroupByJob(job)
-	if err != nil && !apierrors.IsNotFound(err) {
-		klog.Errorf("Failed to find PodGroup of Job: %s/%s, error: %s", job.Namespace, job.Name, err.Error())
-		return err
-	}
-	if pg != nil {
-		if err := cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Delete(context.TODO(), pg.Name, metav1.DeleteOptions{}); err != nil {
-			if !apierrors.IsNotFound(err) {
-				klog.Errorf("Failed to delete PodGroup of Job %s/%s: %v", job.Namespace, job.Name, err)
-				return err
+	// Delete PodGroup only on full job kills; targeted pod restarts (RestartPodAction)
+	// must keep the PodGroup alive so the scheduler does not need to re-enqueue and
+	// re-schedule the job from scratch on every individual pod failure.
+	if target == nil {
+		pg, err := cc.getPodGroupByJob(job)
+		if err != nil && !apierrors.IsNotFound(err) {
+			klog.Errorf("Failed to find PodGroup of Job: %s/%s, error: %s", job.Namespace, job.Name, err.Error())
+			return err
+		}
+		if pg != nil {
+			if err := cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Delete(context.TODO(), pg.Name, metav1.DeleteOptions{}); err != nil {
+				if !apierrors.IsNotFound(err) {
+					klog.Errorf("Failed to delete PodGroup of Job %s/%s: %v", job.Namespace, job.Name, err)
+					return err
+				}
 			}
 		}
 	}
