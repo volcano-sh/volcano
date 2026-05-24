@@ -606,7 +606,8 @@ func (pmpt *Action) GetOffsetAndNumCandidates(numNodes int) (int, int) {
 func (pmpt *Action) DryRunPreemption(
 	preemptor *api.TaskInfo,
 	potentialNodes []*api.NodeInfo,
-	offset, numCandidates int,
+	offset int,
+	numCandidates int,
 	filter func(*api.TaskInfo) bool,
 	stmt *framework.Statement,
 ) ([]*candidate, map[string]api.Status, error) {
