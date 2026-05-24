@@ -511,7 +511,12 @@ func (pmpt *Action) topologyAwarePreempt(
 	return true, nil
 }
 
-func (pmpt *Action) findCandidates(preemptor *api.TaskInfo, filter func(*api.TaskInfo) bool, predicateNodes []*api.NodeInfo, stmt *framework.Statement) ([]*candidate, map[string]api.Status, error) {
+func (pmpt *Action) findCandidates(
+	preemptor *api.TaskInfo,
+	filter func(*api.TaskInfo) bool,
+	predicateNodes []*api.NodeInfo,
+	stmt *framework.Statement,
+) ([]*candidate, map[string]api.Status, error) {
 	if len(predicateNodes) == 0 {
 		klog.V(3).Infof("No nodes are eligible to preempt task %s/%s", preemptor.Namespace, preemptor.Name)
 		return nil, nil, nil
@@ -598,7 +603,13 @@ func (pmpt *Action) GetOffsetAndNumCandidates(numNodes int) (int, int) {
 	return rand.Intn(numNodes), pmpt.calculateNumCandidates(numNodes)
 }
 
-func (pmpt *Action) DryRunPreemption(preemptor *api.TaskInfo, potentialNodes []*api.NodeInfo, offset, numCandidates int, filter func(*api.TaskInfo) bool, stmt *framework.Statement) ([]*candidate, map[string]api.Status, error) {
+func (pmpt *Action) DryRunPreemption(
+	preemptor *api.TaskInfo,
+	potentialNodes []*api.NodeInfo,
+	offset, numCandidates int,
+	filter func(*api.TaskInfo) bool,
+	stmt *framework.Statement,
+) ([]*candidate, map[string]api.Status, error) {
 	candidates := newCandidateList(numCandidates)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
