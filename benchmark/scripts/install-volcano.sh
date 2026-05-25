@@ -54,6 +54,17 @@ fi
 
 # --- Install Volcano ---
 
+HELM_QPS_ARGS=(
+    --set custom.scheduler_kube_api_qps="${VOLCANO_SCHEDULER_KUBE_API_QPS}"
+    --set custom.scheduler_kube_api_burst="${VOLCANO_SCHEDULER_KUBE_API_BURST}"
+    --set custom.controller_kube_api_qps="${VOLCANO_CONTROLLER_KUBE_API_QPS}"
+    --set custom.controller_kube_api_burst="${VOLCANO_CONTROLLER_KUBE_API_BURST}"
+)
+
+log_info "Using Volcano kube API client limits:"
+log_info "  scheduler qps/burst: ${VOLCANO_SCHEDULER_KUBE_API_QPS}/${VOLCANO_SCHEDULER_KUBE_API_BURST}"
+log_info "  controller qps/burst: ${VOLCANO_CONTROLLER_KUBE_API_QPS}/${VOLCANO_CONTROLLER_KUBE_API_BURST}"
+
 if [[ "${INSTALL_MODE}" == "release" ]]; then
     log_info "Installing Volcano release ${VOLCANO_VERSION} from official Helm repo..."
 
@@ -67,6 +78,7 @@ if [[ "${INSTALL_MODE}" == "release" ]]; then
         --set basic.scheduler_config_file=volcano-scheduler-configmap \
         --set basic.image_pull_policy=IfNotPresent \
         --set custom.agent_scheduler_enable=true \
+        "${HELM_QPS_ARGS[@]}" \
         --wait --timeout 180s
 else
     log_info "Installing Volcano from local source..."
@@ -77,6 +89,7 @@ else
         --set basic.scheduler_config_file=volcano-scheduler-configmap \
         --set basic.image_pull_policy=IfNotPresent \
         --set custom.agent_scheduler_enable=true \
+        "${HELM_QPS_ARGS[@]}" \
         --wait --timeout 120s
 fi
 

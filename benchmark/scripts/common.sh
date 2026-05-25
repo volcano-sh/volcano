@@ -27,6 +27,11 @@ export TOPOLOGY_SPINES="${TOPOLOGY_SPINES:-2}"
 export KWOK_NODE_LABELS="${KWOK_NODE_LABELS:-}"
 # Audit exporter image (configurable for private registries)
 export AUDIT_EXPORTER_IMAGE="${AUDIT_EXPORTER_IMAGE:-volcanosh/kube-apiserver-audit-exporter:dev}"
+# Volcano client QPS settings used when this benchmark installs Volcano.
+export VOLCANO_SCHEDULER_KUBE_API_QPS="${VOLCANO_SCHEDULER_KUBE_API_QPS:-5000}"
+export VOLCANO_SCHEDULER_KUBE_API_BURST="${VOLCANO_SCHEDULER_KUBE_API_BURST:-10000}"
+export VOLCANO_CONTROLLER_KUBE_API_QPS="${VOLCANO_CONTROLLER_KUBE_API_QPS:-5000}"
+export VOLCANO_CONTROLLER_KUBE_API_BURST="${VOLCANO_CONTROLLER_KUBE_API_BURST:-10000}"
 
 # Project paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

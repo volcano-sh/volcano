@@ -6,60 +6,19 @@
   "links": [],
   "panels": [
     {
-      "id": 23,
-      "title": "Audit Exporter",
+      "id": 1,
+      "title": "Volcano Batch Scheduler",
       "type": "row",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "collapsed": false,
       "panels": []
     },
     {
-      "id": 1,
-      "title": "Pod E2E Scheduling Latency (s)",
-      "description": "Pod created to bind request completed, measured from apiserver audit logs.",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "fieldConfig": {
-        "defaults": { "unit": "s", "custom": { "lineWidth": 2, "fillOpacity": 10 } }
-      },
-      "targets": [
-        { "expr": "histogram_quantile(0.5, sum by (le) (rate(pod_scheduling_latency_seconds_bucket{namespace=\"default\"}[1m])))", "legendFormat": "P50", "refId": "A" },
-        { "expr": "histogram_quantile(0.9, sum by (le) (rate(pod_scheduling_latency_seconds_bucket{namespace=\"default\"}[1m])))", "legendFormat": "P90", "refId": "B" },
-        { "expr": "histogram_quantile(0.99, sum by (le) (rate(pod_scheduling_latency_seconds_bucket{namespace=\"default\"}[1m])))", "legendFormat": "P99", "refId": "C" }
-      ],
-      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
-    },
-    {
       "id": 2,
-      "title": "Pod Scheduling Events",
-      "description": "Pods bound in recent Prometheus windows. Values are counter deltas, not final report throughput.",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 30 } }
-      },
-      "targets": [
-        { "expr": "sum(clamp_min(max_over_time(pod_scheduling_latency_seconds_count{namespace=\"default\"}[30s]) - min_over_time(pod_scheduling_latency_seconds_count{namespace=\"default\"}[30s]), 0))", "legendFormat": "last 30s", "refId": "A" },
-        { "expr": "sum(clamp_min(max_over_time(pod_scheduling_latency_seconds_count{namespace=\"default\"}[1m]) - min_over_time(pod_scheduling_latency_seconds_count{namespace=\"default\"}[1m]), 0))", "legendFormat": "last 1m", "refId": "B" }
-      ],
-      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
-    },
-    {
-      "id": 19,
-      "title": "Volcano Batch Scheduler",
-      "type": "row",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
-      "collapsed": false,
-      "panels": []
-    },
-    {
-      "id": 3,
       "title": "Session Duration (ms)",
       "description": "One full scheduling session, from opening the session through running actions.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 10 } }
@@ -71,11 +30,11 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
     },
     {
-      "id": 4,
+      "id": 3,
       "title": "Open Session Duration (ms)",
       "description": "Time spent preparing a scheduling session before actions run.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 10 } }
@@ -87,11 +46,11 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
     },
     {
-      "id": 5,
+      "id": 4,
       "title": "Job Scheduling Duration (ms)",
       "description": "Per-job time from VCJob creation until the last task is assumed in scheduler cache.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 5, "drawStyle": "line", "showPoints": "always", "pointSize": 6 } }
@@ -102,11 +61,11 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
     },
     {
-      "id": 7,
+      "id": 5,
       "title": "Task Stage Latency P50 (ms)",
       "description": "Median pod time from creation to each scheduler stage: watched, assumed, pre-bound, and bound.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 5 } }
@@ -120,11 +79,11 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
     },
     {
-      "id": 8,
+      "id": 6,
       "title": "Task Stage Latency P99 (ms)",
       "description": "Tail pod time from creation to each scheduler stage.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 5 } }
@@ -138,11 +97,11 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
     },
     {
-      "id": 9,
+      "id": 7,
       "title": "Stage Processing Time (ms)",
       "description": "Time spent inside each scheduler stage: predicate, scoring, pre-bind, and bind.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 5 } }
@@ -154,11 +113,11 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
     },
     {
-      "id": 10,
+      "id": 8,
       "title": "Action Duration (ms)",
       "description": "Time spent running scheduler actions such as allocate, preempt, reclaim, and backfill.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 34 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 5 } }
@@ -170,19 +129,19 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
     },
     {
-      "id": 22,
+      "id": 9,
       "title": "Volcano Controller Manager",
       "type": "row",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
       "collapsed": false,
       "panels": []
     },
     {
-      "id": 6,
+      "id": 10,
       "title": "Controller: Job -> Pod Creation Latency (ms)",
       "description": "Time from VCJob creation until its pod is created by controller-manager.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 43 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 10 } }
@@ -194,19 +153,19 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
     },
     {
-      "id": 20,
+      "id": 11,
       "title": "Volcano Agent Scheduler",
       "type": "row",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 51 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 },
       "collapsed": false,
       "panels": []
     },
     {
-      "id": 11,
+      "id": 12,
       "title": "Agent Worker Scheduling Cycle Duration (ms)",
       "description": "Time spent by an agent worker in one scheduling cycle.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 43 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 10 } }
@@ -218,11 +177,11 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
     },
     {
-      "id": 12,
+      "id": 13,
       "title": "Agent Update Snapshot Duration (ms)",
       "description": "Time spent updating the agent scheduler snapshot from cache.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 43 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 10 } }
@@ -234,19 +193,19 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
     },
     {
-      "id": 21,
+      "id": 14,
       "title": "Kubernetes Client and API Server",
       "type": "row",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 60 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 51 },
       "collapsed": false,
       "panels": []
     },
     {
-      "id": 13,
+      "id": 15,
       "title": "Scheduler Client QPS (by verb & code)",
       "description": "Requests from volcano-scheduler to kube-apiserver, grouped by verb and status code.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 61 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10, "stacking": { "mode": "normal" } } }
@@ -257,11 +216,11 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
     },
     {
-      "id": 14,
+      "id": 16,
       "title": "Scheduler Client Latency P99 (s)",
       "description": "P99 latency of volcano-scheduler requests to kube-apiserver.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 61 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "s", "custom": { "lineWidth": 2, "fillOpacity": 5 } }
@@ -272,11 +231,11 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
     },
     {
-      "id": 15,
+      "id": 17,
       "title": "Controller Client QPS (by verb & code)",
       "description": "Requests from volcano-controller-manager to kube-apiserver, grouped by verb and status code.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 69 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 60 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10, "stacking": { "mode": "normal" } } }
@@ -287,11 +246,11 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
     },
     {
-      "id": 16,
+      "id": 18,
       "title": "Controller Client Latency P99 (s)",
       "description": "P99 latency of volcano-controller-manager requests to kube-apiserver.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 69 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 60 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "s", "custom": { "lineWidth": 2, "fillOpacity": 5 } }
@@ -302,11 +261,11 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
     },
     {
-      "id": 17,
+      "id": 19,
       "title": "kube-apiserver QPS (top 20 verb×resource)",
       "description": "Highest kube-apiserver request rates by verb and resource.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 77 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 68 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10 } }
@@ -317,11 +276,11 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
     },
     {
-      "id": 18,
+      "id": 20,
       "title": "kube-apiserver Latency P99 (top 10 verb×resource)",
       "description": "Slowest kube-apiserver request paths by P99 latency. WATCH is excluded.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 77 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 68 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": { "unit": "s", "custom": { "lineWidth": 2, "fillOpacity": 5 } }

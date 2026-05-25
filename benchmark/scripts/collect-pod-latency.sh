@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# collect-pod-latency.sh - Collect scheduling latency from pod timestamps
+# collect-pod-latency.sh - Fallback/debug latency collection from pod timestamps
 #
 # Computes per-pod scheduling latency from CreationTimestamp to the
 # PodScheduled condition's LastTransitionTime. Works on any cluster
 # without apiserver audit logging, but only has second-level precision
-# (metav1.Time).
+# (metav1.Time). For Volcano benchmarks, prefer Prometheus scheduler
+# metrics or audit-exporter metrics as the primary report source.
 #
 # Prerequisites:
 #   - Benchmark pods must still exist (use DRY_RUN=true when running tests)

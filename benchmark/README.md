@@ -170,7 +170,7 @@ For details on YAML profile parameters, see `testcases/<scenario>/cases/comprehe
 Test results are automatically collected after each run:
 
 - Audit-exporter report: `results/report-<timestamp>.json` (generated when Prometheus is available)
-- Pod-timestamp report: `results/pod-latency-<timestamp>.json` (generated via `make collect-pod-latency`)
+- Pod-timestamp fallback/debug report: `results/pod-latency-<timestamp>.json` (generated via `make collect-pod-latency`)
 - Test log: `results/test-<scenario>-<timestamp>.log`
 - Grafana dashboard: `http://localhost:30004/d/volcano-benchmark`
 
@@ -187,7 +187,7 @@ make cleanup-all   # remove everything including the cluster
 # Dry run (skip post-test cleanup, useful for debugging)
 DRY_RUN=true make test-gang-env JOBS=10 REPLICAS=10 MIN_AVAILABLE=10
 
-# Collect scheduling latency from pod timestamps (requires DRY_RUN, no audit-exporter needed)
+# Collect fallback/debug latency from pod timestamps (requires DRY_RUN, no audit-exporter needed)
 make collect-pod-latency
 
 # Run test using a yaml profile
@@ -378,7 +378,7 @@ If Prometheus is not reachable, the audit-exporter report is skipped and tests s
 **Without audit-exporter (pod-timestamp fallback):**
 
 If you did not set up audit-exporter, use `DRY_RUN=true` to keep pods alive after the test,
-then collect latency from pod timestamps:
+then collect fallback/debug latency from pod timestamps:
 
 ```bash
 DRY_RUN=true make test-gang-env JOBS=10 REPLICAS=100 MIN_AVAILABLE=100
@@ -459,11 +459,13 @@ On existing clusters, you need to:
 1. Enable apiserver audit logging, see [Enabling Apiserver Audit Logging](#enabling-apiserver-audit-logging)
 2. Build and push the audit-exporter image, see [Existing Cluster Step 3](#3-build-and-deploy-audit-exporter-optional)
 
-#### Fallback: pod timestamps (second precision)
+#### Fallback/debug: pod timestamps (second precision)
 
 If audit logging is not enabled and you do not want to modify the apiserver configuration,
 you can collect scheduling latency from pod object timestamps (`CreationTimestamp` to
-`PodScheduled` condition's `LastTransitionTime`).
+`PodScheduled` condition's `LastTransitionTime`). This is not the primary report source
+for Volcano benchmarks; prefer Prometheus scheduler metrics or audit-exporter metrics
+when they are available.
 
 Limitations:
 - **Second-level precision only** (`metav1.Time`), sub-second latencies show as 0ms
@@ -601,6 +603,10 @@ Volcano version with the metrics instrumented.
 | `MEMORY_PER_NODE` | `256Gi` | Memory per KWOK node |
 | `KWOK_VERSION` | `v0.7.0` | KWOK controller version |
 | `VOLCANO_VERSION` | _(empty)_ | Release tag (e.g. `v1.14.0`) to install from Helm repo |
+| `VOLCANO_SCHEDULER_KUBE_API_QPS` | `5000` | Volcano scheduler Kubernetes client QPS used when installing Volcano |
+| `VOLCANO_SCHEDULER_KUBE_API_BURST` | `10000` | Volcano scheduler Kubernetes client burst used when installing Volcano |
+| `VOLCANO_CONTROLLER_KUBE_API_QPS` | `5000` | Volcano controller-manager Kubernetes client QPS used when installing Volcano |
+| `VOLCANO_CONTROLLER_KUBE_API_BURST` | `10000` | Volcano controller-manager Kubernetes client burst used when installing Volcano |
 | `PROM_URL` | `http://localhost:30003` | Prometheus URL for metrics collection |
 | `DRY_RUN` | `false` | Skip post-test cleanup (useful for debugging or pod-timestamp collection) |
 

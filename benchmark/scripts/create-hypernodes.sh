@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# create-hypernodes.sh — Create HyperNode CRDs for topology-aware scheduling
+# create-hypernodes.sh — Create HyperNode CRs for topology-aware scheduling
 #
 # MUST be run AFTER Volcano is installed (the HyperNode CRD comes from Volcano).
 #
@@ -35,7 +35,7 @@ function verify_crd() {
     fi
 }
 
-# Create HyperNode CRDs for topology-aware scheduling
+# Create HyperNode CRs for topology-aware scheduling
 function create_hypernode_topology() {
     local racks_per_spine=$(( TOPOLOGY_RACKS / TOPOLOGY_SPINES ))
 

@@ -9,18 +9,14 @@ nodes:
       extraArgs:
         node-monitor-grace-period: "7200s"
         node-monitor-period: "3600s"
-        kube-api-qps: "1000"
-        kube-api-burst: "1000"
+        kube-api-qps: "5000"
+        kube-api-burst: "10000"
     etcd:
       local:
         extraArgs:
           quota-backend-bytes: "8589934592"
           auto-compaction-mode: revision
           auto-compaction-retention: "1000"
-    scheduler:
-      extraArgs:
-        kube-api-qps: "1000"
-        kube-api-burst: "1000"
     apiServer:
       # Audit logging is enabled so the audit-exporter
       # (third_party/kube-apiserver-audit-exporter) has data to read.

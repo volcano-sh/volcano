@@ -1,6 +1,6 @@
 module volcano.sh/volcano
 
-go 1.25.7
+go 1.25.0
 
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6
@@ -50,7 +50,7 @@ require (
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
 	sigs.k8s.io/controller-runtime v0.23.3
-	sigs.k8s.io/e2e-framework v0.7.0
+	sigs.k8s.io/e2e-framework v0.6.0
 	sigs.k8s.io/yaml v1.6.0
 	stathat.com/c/consistent v1.0.0
 	volcano.sh/apis v0.0.0
