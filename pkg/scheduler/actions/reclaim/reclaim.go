@@ -275,7 +275,6 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		}
 		stmt.Merge(nodeStmt)
 		return evictionOccurred, false
-		break
 	}
 	return false, deferredWithoutReclaimees
 }
