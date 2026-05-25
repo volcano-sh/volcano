@@ -141,12 +141,15 @@ func TestSelectDomainVictims_RespectAllowWholeBundle(t *testing.T) {
 	}
 	action := New()
 
+	pending := []*api.TaskInfo{preemptor}
+	jobNeed := utils.SumInitResreq(pending)
+
 	action.allowWholeBundle = false
-	victimsNoWhole := utils.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, []*api.TaskInfo{preemptor}, "d1"))
+	victimsNoWhole := utils.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, pending, jobNeed, "d1"))
 	assert.Len(t, victimsNoWhole, 0)
 
 	action.allowWholeBundle = true
-	victimsWhole := utils.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, []*api.TaskInfo{preemptor}, "d1"))
+	victimsWhole := utils.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, pending, jobNeed, "d1"))
 	assert.Len(t, victimsWhole, 1)
 	assert.Equal(t, api.TaskID(victim.UID), victimsWhole[0].UID)
 }
@@ -203,7 +206,9 @@ func TestSelectDomainVictims_RespectVictimJobPreemptable(t *testing.T) {
 	action := New()
 	action.allowWholeBundle = true
 
-	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, []*api.TaskInfo{preemptor}, "d1"))
+	pending := []*api.TaskInfo{preemptor}
+	jobNeed := utils.SumInitResreq(pending)
+	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, pending, jobNeed, "d1"))
 	assert.Len(t, victims, 0)
 }
 
@@ -254,7 +259,9 @@ func TestSelectDomainVictims_AllowVictimJobWhenPreemptableUnset(t *testing.T) {
 	action := New()
 	action.allowWholeBundle = true
 
-	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, []*api.TaskInfo{preemptor}, "d1"))
+	pending := []*api.TaskInfo{preemptor}
+	jobNeed := utils.SumInitResreq(pending)
+	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, preemptorJob, pending, jobNeed, "d1"))
 	assert.Len(t, victims, 1)
 	assert.Equal(t, api.TaskID(victim.UID), victims[0].UID)
 }

@@ -21,6 +21,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/actions/utils"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -41,6 +42,8 @@ type Action struct {
 	maxDomains int
 	// allowWholeBundle permits selecting whole-job victim bundles when true.
 	allowWholeBundle bool
+	// configured flag for predicate error cache
+	enablePredicateErrorCache bool
 }
 
 func New() *Action {
@@ -65,6 +68,11 @@ func (gr *Action) parseArguments(ssn *framework.Session) {
 		gr.maxDomains = defaultMaxDomains
 	}
 	arguments.GetBool(&gr.allowWholeBundle, AllowWholeBundleKey)
+
+	// Honor allocate's predicateErrorCacheEnable for the per-sub-job simulation, defaulting to
+	// enabled when allocate is not configured.
+	gr.enablePredicateErrorCache = true
+	framework.GetArgOfActionFromConf(ssn.Configurations, "allocate").GetBool(&gr.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
 }
 
 func (gr *Action) Execute(ssn *framework.Session) {
@@ -141,14 +149,11 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 	jobNeed := utils.SumInitResreq(pending)
 	domains := utils.GetCandidateDomains(ssn, job, gr.maxDomains)
 	for _, domain := range domains {
-		if !ssn.JobStarving(job) {
-			break
-		}
 		nodes := ssn.RealNodesList[domain]
 		if len(nodes) == 0 {
 			continue
 		}
-		domainBundles := gr.selectDomainBundles(ssn, queueLessFn(ssn, job.Queue), job, pending, domain)
+		domainBundles := gr.selectDomainBundles(ssn, queueLessFn(ssn, job.Queue), job, pending, jobNeed, domain)
 		if len(domainBundles) == 0 {
 			continue
 		}
@@ -164,16 +169,11 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 
 			attemptVictims := append([]*api.TaskInfo(nil), selectedVictims...)
 
-			var jobHN *api.HyperNodeInfo
-			if ssn.HyperNodes != nil {
-				jobHN = ssn.HyperNodes[domain]
-				if jobHN == nil {
-					jobHN = ssn.HyperNodes[framework.ClusterTopHyperNode]
-				}
-			} else {
-				jobHN = &api.HyperNodeInfo{Name: domain}
+			jobHN := ssn.HyperNodes[domain]
+			if jobHN == nil {
+				jobHN = ssn.HyperNodes[framework.ClusterTopHyperNode]
 			}
-			plan, subJobHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, attemptVictims, utils.ReasonGangReclaim)
+			plan, subJobHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, attemptVictims, utils.ReasonGangReclaim, gr.enablePredicateErrorCache)
 			if !ok {
 				continue
 			}
@@ -186,12 +186,11 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 	return nil
 }
 
-func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l, r *api.QueueInfo) bool, reclaimerJob *api.JobInfo, pendingTasks []*api.TaskInfo, domain string) []*utils.Bundle {
+func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l, r *api.QueueInfo) bool, reclaimerJob *api.JobInfo, pendingTasks []*api.TaskInfo, jobNeed *api.Resource, domain string) []*utils.Bundle {
 	domainNodes := ssn.RealNodesList[domain]
 	if len(domainNodes) == 0 || len(pendingTasks) == 0 {
 		return nil
 	}
-	jobNeed := utils.SumInitResreq(pendingTasks)
 
 	candidatesByJob := map[api.JobID][]*api.TaskInfo{}
 	for _, n := range domainNodes {

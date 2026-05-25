@@ -40,7 +40,7 @@ func testDomainHyperNode(ssn *framework.Session, name string, nodes []*api.NodeI
 }
 
 func TestBuildNominationPlanInDomain_Guards(t *testing.T) {
-	plan, _, ok := BuildNominationPlanInDomain(nil, nil, nil, nil, nil, "x")
+	plan, _, ok := BuildNominationPlanInDomain(nil, nil, nil, nil, nil, "x", true)
 	assert.False(t, ok)
 	assert.Nil(t, plan)
 
@@ -56,7 +56,7 @@ func TestBuildNominationPlanInDomain_Guards(t *testing.T) {
 		Jobs:  map[api.JobID]*api.JobInfo{jobID: job},
 		Nodes: map[string]*api.NodeInfo{node.Name: node},
 	}
-	plan, _, ok = BuildNominationPlanInDomain(ssn, nil, job, nil, nil, "x")
+	plan, _, ok = BuildNominationPlanInDomain(ssn, nil, job, nil, nil, "x", true)
 	assert.False(t, ok)
 	assert.Nil(t, plan)
 }
@@ -208,7 +208,7 @@ func TestBuildNominationPlanInDomain_Success(t *testing.T) {
 		Nodes: map[string]*api.NodeInfo{node.Name: node},
 	}
 	hn := testDomainHyperNode(ssn, framework.ClusterTopHyperNode, []*api.NodeInfo{node})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test")
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 	assert.Equal(t, 1, len(plan.Operations()))
@@ -241,7 +241,7 @@ func TestBuildNominationPlanInDomain_WithVictimIncludesEvictAndPipeline(t *testi
 		Nodes: map[string]*api.NodeInfo{node.Name: node},
 	}
 	hn := testDomainHyperNode(ssn, framework.ClusterTopHyperNode, []*api.NodeInfo{node})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, []*api.TaskInfo{victim}, "test")
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, []*api.TaskInfo{victim}, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 	assert.Equal(t, 2, len(plan.Operations()))
@@ -263,7 +263,7 @@ func TestBuildNominationPlanInDomain_NoFeasibleNode(t *testing.T) {
 		Nodes: map[string]*api.NodeInfo{node.Name: node},
 	}
 	hn := testDomainHyperNode(ssn, framework.ClusterTopHyperNode, []*api.NodeInfo{node})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test")
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
 	assert.False(t, ok)
 	assert.Nil(t, plan)
 }
@@ -303,7 +303,7 @@ func TestBuildNominationPlanInDomain_PipelineFailureRollsBackEviction(t *testing
 		Nodes: map[string]*api.NodeInfo{node.Name: node},
 	}
 	hn := testDomainHyperNode(ssn, "sim-domain", []*api.NodeInfo{ghostNode})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, []*api.TaskInfo{victim}, "test")
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, []*api.TaskInfo{victim}, "test", true)
 	assert.False(t, ok)
 	assert.Nil(t, plan)
 
@@ -348,7 +348,7 @@ func TestBuildNominationPlanInDomain_PrefersIdleNodeOverFutureIdle(t *testing.T)
 	}
 
 	hn := testDomainHyperNode(ssn, "sim-domain", []*api.NodeInfo{futureNode, idleNode})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test")
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 
@@ -393,7 +393,7 @@ func TestBuildNominationPlanInDomain_NominatedHintDoesNotShortCircuitPredicate(t
 	}
 
 	hn := testDomainHyperNode(ssn, "sim-domain", []*api.NodeInfo{other, nominated})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test")
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 	stmt := framework.NewStatement(ssn)
@@ -438,7 +438,7 @@ func TestBuildNominationPlanInDomain_IgnoresNominatedNodeOutsideDomain(t *testin
 	}
 
 	hn := testDomainHyperNode(ssn, "sim-domain", []*api.NodeInfo{inDomain})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test")
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 	stmt := framework.NewStatement(ssn)
@@ -475,7 +475,7 @@ func TestBuildNominationPlanInDomain_FallbackWhenNominatedMissing(t *testing.T) 
 	}
 
 	hn := testDomainHyperNode(ssn, framework.ClusterTopHyperNode, []*api.NodeInfo{node})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test")
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 }
@@ -512,7 +512,7 @@ func TestBuildNominationPlanInDomain_FallbackWhenNominatedInfeasible(t *testing.
 	}
 
 	hn := testDomainHyperNode(ssn, "sim-domain", []*api.NodeInfo{nominated, other})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test")
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 	stmt := framework.NewStatement(ssn)

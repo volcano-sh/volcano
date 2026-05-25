@@ -586,7 +586,7 @@ func (alloc *Action) allocateFromNomination(subJob *api.SubJobInfo, subJobWorksh
 
 	leafNodes, exist := ssn.RealNodesList[pinned]
 	if !exist || len(leafNodes) == 0 {
-		klog.V(3).InfoS("NominatedHyperNode no longer in topology, falling back",
+		klog.V(3).InfoS("NominatedHyperNode no longer in topology, falling back to normal allocation process",
 			"subJob", subJob.UID, "nominatedHyperNode", pinned)
 		return nil, 0, false
 	}
@@ -608,7 +608,7 @@ func (alloc *Action) allocateFromNomination(subJob *api.SubJobInfo, subJobWorksh
 			p.task.JobAllocatedHyperNode = pinned
 		}
 		if err := alloc.allocateResourcesForTask(stmt, p.task, p.node, job); err != nil {
-			klog.ErrorS(err, "Allocate from nomination fail, falling back",
+			klog.ErrorS(err, "Allocate from nomination fail, falling back to normal allocation process",
 				"subJob", subJob.UID, "task", p.task.UID, "node", p.node.Name)
 			stmt.Discard()
 			return nil, 0, false
@@ -645,35 +645,35 @@ func (alloc *Action) validateNomination(subJob *api.SubJobInfo, subJobWorksheet 
 	for !preview.Empty() {
 		task := preview.Pop().(*api.TaskInfo)
 		if !ssn.Allocatable(queue, task) {
-			klog.V(3).InfoS("Queue overused vs nominated bind, falling back",
+			klog.V(3).InfoS("Task with nominated node is not allocatable, falling back to normal allocation process",
 				"queue", queue.Name, "subJob", subJob.UID, "task", task.UID)
 			return nil, false
 		}
 		nominated := task.Pod.Status.NominatedNodeName
 		if nominated == "" {
-			klog.V(3).InfoS("Task missing NominatedNodeName under NominatedHyperNode, falling back",
+			klog.V(3).InfoS("Task missing NominatedNodeName under NominatedHyperNode, falling back to normal allocation process",
 				"subJob", subJob.UID, "task", task.UID, "nominatedHyperNode", pinned)
 			return nil, false
 		}
 		if !leafNodeNames.Has(nominated) {
-			klog.V(3).InfoS("Task NominatedNodeName outside NominatedHyperNode leaf set, falling back",
+			klog.V(3).InfoS("Task NominatedNodeName outside NominatedHyperNode leaf set, falling back to normal allocation process",
 				"subJob", subJob.UID, "task", task.UID, "nominated", nominated, "nominatedHyperNode", pinned)
 			return nil, false
 		}
 		nodeInfo, ok := ssn.Nodes[nominated]
 		if !ok || nodeInfo == nil {
-			klog.V(3).InfoS("NominatedNodeName not found in session nodes, falling back",
+			klog.V(3).InfoS("NominatedNodeName not found in session nodes, falling back to normal allocation process",
 				"subJob", subJob.UID, "task", task.UID, "nominated", nominated)
 			return nil, false
 		}
 		if err := ssn.PrePredicateFn(task); err != nil {
-			klog.V(3).InfoS("PrePredicate failed against nominated node, falling back",
+			klog.V(3).InfoS("PrePredicate failed against nominated node, falling back to normal allocation process",
 				"subJob", subJob.UID, "task", task.UID, "node", nominated, "err", err)
 			return nil, false
 		}
 		predicateNodes, _ := ph.PredicateNodes(task, []*api.NodeInfo{nodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
 		if len(predicateNodes) == 0 {
-			klog.V(3).InfoS("Predicate failed against nominated node, falling back",
+			klog.V(3).InfoS("Predicate failed against nominated node, falling back to normal allocation process",
 				"subJob", subJob.UID, "task", task.UID, "node", nominated)
 			return nil, false
 		}

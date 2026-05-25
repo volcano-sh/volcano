@@ -156,7 +156,9 @@ func TestSelectDomainVictims_ReclaimableCrossQueueOnly(t *testing.T) {
 
 	action := New()
 	action.allowWholeBundle = true
-	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, nil, reclaimerJob, []*api.TaskInfo{reclaimer}, "d1"))
+	pending := []*api.TaskInfo{reclaimer}
+	jobNeed := utils.SumInitResreq(pending)
+	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, nil, reclaimerJob, pending, jobNeed, "d1"))
 	assert.Len(t, victims, 1)
 	assert.Equal(t, api.TaskID(victim.UID), victims[0].UID)
 }
@@ -218,7 +220,9 @@ func TestSelectDomainVictims_RespectVictimJobPreemptable(t *testing.T) {
 
 	action := New()
 	action.allowWholeBundle = true
-	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, nil, reclaimerJob, []*api.TaskInfo{reclaimer}, "d1"))
+	pending := []*api.TaskInfo{reclaimer}
+	jobNeed := utils.SumInitResreq(pending)
+	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, nil, reclaimerJob, pending, jobNeed, "d1"))
 	assert.Len(t, victims, 0)
 }
 
@@ -274,7 +278,9 @@ func TestSelectDomainVictims_AllowVictimJobWhenPreemptableUnset(t *testing.T) {
 
 	action := New()
 	action.allowWholeBundle = true
-	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, nil, reclaimerJob, []*api.TaskInfo{reclaimer}, "d1"))
+	pending := []*api.TaskInfo{reclaimer}
+	jobNeed := utils.SumInitResreq(pending)
+	victims := utils.FlattenBundles(action.selectDomainBundles(ssn, nil, reclaimerJob, pending, jobNeed, "d1"))
 	assert.Len(t, victims, 1)
 	assert.Equal(t, api.TaskID(victim.UID), victims[0].UID)
 }

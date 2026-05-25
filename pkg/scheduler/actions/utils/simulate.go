@@ -24,7 +24,6 @@ import (
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
 	commonutil "volcano.sh/volcano/pkg/util"
@@ -38,7 +37,7 @@ const (
 // BuildNominationPlanInDomain dry-runs eviction + placement in jobDomainHyperNode and returns a
 // fresh plan Statement only when the target job reaches JobPipelined. session is clean on return;
 // callers must RecoverOperations(plan) to commit, or may drop the plan if not proceeding.
-func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo, jobDomainHyperNode *api.HyperNodeInfo, victims []*api.TaskInfo, reason string) (*framework.Statement, map[api.SubJobID]string, bool) {
+func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo, jobDomainHyperNode *api.HyperNodeInfo, victims []*api.TaskInfo, reason string, enablePredCache bool) (*framework.Statement, map[api.SubJobID]string, bool) {
 	if ssn == nil || job == nil || jobDomainHyperNode == nil {
 		return nil, nil, false
 	}
@@ -47,38 +46,35 @@ func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, j
 		return nil, nil, false
 	}
 
+	worksheet := organizeEvictionWorksheet(ssn, job)
+	if worksheet.Empty() {
+		// TODO: Worksheet is empty while allocate may still have eligible pending (e.g. SchGated /
+		// empty-resreq filtered here only, pending tasks missing from SubJobs maps with fallback
+		// ordering in allocate, or subjob index skew). Model those paths before returning a plan.
+		return nil, nil, false
+	}
+
 	jobWasReady := ssn.JobReady(job)
+	victimsPresent := len(victims) > 0
 
 	// Statement chain: one victimStmt (if any victims) plus one per successfully pipelined
 	// sub-job, each kept applied to session so subsequent trials see the cumulative state. Failed
-	// gradient trials Discard themselves. On success the chain is Saved into the returned plan
-	// and then Discarded; on failure the chain is Discarded outright.
+	// gradient trials Discard themselves. On success SaveOperations clones the chain into the
+	// returned plan before the deferred discard runs, leaving session clean either way.
 	var chain []*framework.Statement
 	discardChain := func() {
 		for i := len(chain) - 1; i >= 0; i-- {
 			chain[i].Discard()
 		}
 	}
+	defer discardChain()
 
-	if len(victims) > 0 {
+	if victimsPresent {
 		victimStmt := framework.NewStatement(ssn)
 		for _, victim := range victims {
 			victimStmt.Evict(victim, reason)
 		}
 		chain = append(chain, victimStmt)
-	}
-
-	victimsPresent := len(victims) > 0
-	enablePredCache := true
-	framework.GetArgOfActionFromConf(ssn.Configurations, "allocate").GetBool(&enablePredCache, conf.EnablePredicateErrCacheKey)
-
-	worksheet := organizeEvictionWorksheet(ssn, job)
-	if worksheet.Empty() {
-		// TODO: Worksheet is empty while allocate may still have eligible pending (e.g. SchGated /
-		// empty-resreq filtered here only, pending tasks missing from SubJobs maps with fallback
-		// ordering in allocate, or subjob index skew). Model those paths before returning a plan.
-		discardChain()
-		return nil, nil, false
 	}
 
 	subJobHyperNodes := make(map[api.SubJobID]string)
@@ -116,7 +112,6 @@ func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, j
 			}
 		}
 		if winnerStmt == nil {
-			discardChain()
 			return nil, nil, false
 		}
 
@@ -133,14 +128,9 @@ func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, j
 	}
 
 	if !jobPipelinedAfterLastSubJob {
-		discardChain()
 		return nil, nil, false
 	}
-	// Even on success, the chain is discarded so session is clean for the caller. SaveOperations
-	// clones the ops into the returned plan first; callers replay via RecoverOperations to
-	// actually commit (or ignore the plan, which is safe since session was already cleaned here).
 	plan := framework.SaveOperations(chain...)
-	discardChain()
 	return plan, subJobHyperNodes, true
 }
 
