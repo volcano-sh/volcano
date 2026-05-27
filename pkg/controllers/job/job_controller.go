@@ -18,8 +18,8 @@ package job
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"hash/fnv"
 	"sync"
 	"time"
 
@@ -90,6 +90,32 @@ type delayAction struct {
 	cancel context.CancelFunc
 }
 
+type retryKey struct {
+	// retryKey identifies one retry budget bucket for a request/action pair under the same job.
+	// It separates retries across pod/task/partition/event/action to avoid cross-request interference.
+	jobKey      string
+	podName     string
+	taskName    string
+	partitionID string
+	event       busv1alpha1.Event
+	action      busv1alpha1.Action
+}
+
+// jobRetryError wraps a request processing error with the action that failed so retry logic
+// can apply limits and terminal handling on the exact failed action.
+type jobRetryError struct {
+	err    error
+	action busv1alpha1.Action
+}
+
+func (e *jobRetryError) Error() string {
+	return e.err.Error()
+}
+
+func (e *jobRetryError) Unwrap() error {
+	return e.err
+}
+
 // jobcontroller the Job jobcontroller type.
 type jobcontroller struct {
 	kubeClient kubernetes.Interface
@@ -135,8 +161,9 @@ type jobcontroller struct {
 	queueLister schedulinglisters.QueueLister
 	queueSynced func() bool
 
-	// queue that need to sync up
-	queueList    []workqueue.TypedRateLimitingInterface[any]
+	// queue that need to sync up.
+	queue workqueue.TypedRateLimitingInterface[string]
+	// commandQueue is a dedicated pre-delete queue for Command CRs and still stores *busv1alpha1.Command.
 	commandQueue workqueue.TypedRateLimitingInterface[any]
 	cache        jobcache.Cache
 	// Job Event recorder
@@ -145,6 +172,12 @@ type jobcontroller struct {
 	errTasks      workqueue.TypedRateLimitingInterface[any]
 	workers       uint32
 	maxRequeueNum int
+
+	pendingMu       sync.Mutex
+	pendingRequests map[string][]apis.Request
+
+	requestRetryMu      sync.Mutex
+	requestRetryCounter map[retryKey]int
 
 	delayActionMapLock sync.RWMutex
 	// delayActionMap stores delayed actions for jobs, where outer map key is job key (namespace/name),
@@ -170,7 +203,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
 
 	cc.informerFactory = sharedInformers
-	cc.queueList = make([]workqueue.TypedRateLimitingInterface[any], workers)
+	cc.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
 	cc.commandQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 	cc.cache = jobcache.New()
 	cc.errTasks = newRateLimitingQueue()
@@ -181,10 +214,8 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 		cc.maxRequeueNum = -1
 	}
 
-	var i uint32
-	for i = 0; i < workers; i++ {
-		cc.queueList[i] = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
-	}
+	cc.pendingRequests = make(map[string][]apis.Request)
+	cc.requestRetryCounter = make(map[retryKey]int)
 
 	factory := opt.VCSharedInformerFactory
 	cc.vcInformerFactory = factory
@@ -313,46 +344,62 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 func (cc *jobcontroller) worker(i uint32) {
 	klog.Infof("worker %d start ...... ", i)
 
-	for cc.processNextReq(i) {
+	for cc.processNextJob() {
 	}
 }
 
-func (cc *jobcontroller) belongsToThisRoutine(key string, count uint32) bool {
-	val := cc.genHash(key)
-	return val%cc.workers == count
-}
-
-func (cc *jobcontroller) getWorkerQueue(key string) workqueue.TypedRateLimitingInterface[any] {
-	val := cc.genHash(key)
-	queue := cc.queueList[val%cc.workers]
-	return queue
-}
-
-func (cc *jobcontroller) genHash(key string) uint32 {
-	hashVal := fnv.New32()
-	hashVal.Write([]byte(key))
-	return hashVal.Sum32()
-}
-
-func (cc *jobcontroller) processNextReq(count uint32) bool {
-	queue := cc.queueList[count]
-	obj, shutdown := queue.Get()
-	if shutdown {
-		klog.Errorf("Fail to pop item from queue")
-		return false
+func (cc *jobcontroller) retryKeyByRequest(jobKey string, req apis.Request, action busv1alpha1.Action) retryKey {
+	return retryKey{
+		jobKey:      jobKey,
+		podName:     req.PodName,
+		taskName:    req.TaskName,
+		partitionID: req.PartitionID,
+		event:       req.Event,
+		action:      action,
 	}
+}
 
-	req := obj.(apis.Request)
-	defer queue.Done(req)
-
+func (cc *jobcontroller) pushRequest(req apis.Request) {
 	key := jobcache.JobKeyByReq(&req)
-	if !cc.belongsToThisRoutine(key, count) {
-		klog.Errorf("should not occur The job does not belongs to this routine key:%s, worker:%d...... ", key, count)
-		queueLocal := cc.getWorkerQueue(key)
-		queueLocal.Add(req)
-		return true
-	}
+	cc.pendingMu.Lock()
+	cc.pendingRequests[key] = append(cc.pendingRequests[key], req)
+	cc.pendingMu.Unlock()
+	cc.queue.Add(key)
+}
 
+func (cc *jobcontroller) popAllRequests(key string) []apis.Request {
+	cc.pendingMu.Lock()
+	defer cc.pendingMu.Unlock()
+
+	reqs := cc.pendingRequests[key]
+	delete(cc.pendingRequests, key)
+	return reqs
+}
+
+func (cc *jobcontroller) requeueToHead(key string, reqs []apis.Request) {
+	if len(reqs) == 0 {
+		return
+	}
+	cc.pendingMu.Lock()
+	cc.pendingRequests[key] = append(reqs, cc.pendingRequests[key]...)
+	cc.pendingMu.Unlock()
+}
+
+func (cc *jobcontroller) clearPendingAndRetryByJobKey(key string) {
+	cc.pendingMu.Lock()
+	delete(cc.pendingRequests, key)
+	cc.pendingMu.Unlock()
+
+	cc.requestRetryMu.Lock()
+	for currentKey := range cc.requestRetryCounter {
+		if currentKey.jobKey == key {
+			delete(cc.requestRetryCounter, currentKey)
+		}
+	}
+	cc.requestRetryMu.Unlock()
+}
+
+func (cc *jobcontroller) processOneRequest(req apis.Request, key string) error {
 	klog.V(3).Infof("Try to handle request <%v>", req)
 
 	cc.CleanPodDelayActionsIfNeed(req)
@@ -360,15 +407,14 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	jobInfo, err := cc.cache.Get(key)
 	if err != nil {
 		// TODO(k82cn): ignore not-ready error.
-		klog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
-		return true
+		return err
 	}
 
 	st := state.NewState(jobInfo)
 	if st == nil {
 		klog.Errorf("Invalid state <%s> of Job <%v/%v>",
 			jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
-		return true
+		return nil
 	}
 
 	delayAct := applyPolicies(jobInfo.Job, &req)
@@ -379,7 +425,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, batchv1alpha1.ExecuteAction, fmt.Sprintf(
 			"Execute action %s after %s", delayAct.action, delayAct.delay.String()))
 		cc.AddDelayActionForJob(req, delayAct)
-		return true
+		return nil
 	}
 
 	klog.V(3).Infof("Execute <%v> on Job <%s/%s> in <%s> by <%T>.",
@@ -393,18 +439,82 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	action := GetStateAction(delayAct)
 
 	if err := st.Execute(action); err != nil {
-		cc.handleJobError(queue, req, st, err, delayAct.action)
-		return true
+		return &jobRetryError{
+			err:    err,
+			action: delayAct.action,
+		}
 	}
 
-	// If no error, forget it.
-	queue.Forget(req)
+	cc.requestRetryMu.Lock()
+	delete(cc.requestRetryCounter, cc.retryKeyByRequest(key, req, delayAct.action))
+	cc.requestRetryMu.Unlock()
 
 	// If the action is not an internal action, cancel all delayed actions
 	if !isInternalAction(delayAct.action) {
 		cc.cleanupDelayActions(delayAct)
 	}
 
+	return nil
+}
+
+func (cc *jobcontroller) processNextJob() bool {
+	key, shutdown := cc.queue.Get()
+	if shutdown {
+		klog.Errorf("Fail to pop item from queue.")
+		return false
+	}
+	defer cc.queue.Done(key)
+
+	reqs := cc.popAllRequests(key)
+	if len(reqs) == 0 {
+		cc.queue.Forget(key)
+		return true
+	}
+
+	if _, err := cc.cache.Get(key); err != nil {
+		klog.Errorf("Failed to get job by <%v> from cache: %v", key, err)
+		cc.clearPendingAndRetryByJobKey(key)
+		cc.queue.Forget(key)
+		return true
+	}
+
+	for reqIdx, req := range reqs {
+		if err := cc.processOneRequest(req, key); err != nil {
+			var retryErr *jobRetryError
+			if errors.As(err, &retryErr) {
+				jobInfo, getErr := cc.cache.Get(key)
+				if getErr != nil {
+					klog.Errorf("Failed to get job by <%v> from cache while handling request error: %v", key, getErr)
+					cc.clearPendingAndRetryByJobKey(key)
+					cc.queue.Forget(key)
+					return true
+				}
+				st := state.NewState(jobInfo)
+				if st == nil {
+					klog.Errorf("Invalid state <%s> of Job <%v/%v> while handling request error",
+						jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
+					cc.clearPendingAndRetryByJobKey(key)
+					cc.queue.Forget(key)
+					return true
+				}
+				if cc.handleJobError(key, req, st, retryErr.Unwrap(), retryErr.action) {
+					cc.requeueToHead(key, reqs[reqIdx:])
+					// In dense event storms, pushRequest's immediate Add(key) can mark this key dirty
+					// while in-flight and effectively short-circuit this retry rate-limit delay.
+					// This is a known workqueue behavior and accepted for this cleanup scope.
+					cc.queue.AddRateLimited(key)
+				} else {
+					cc.clearPendingAndRetryByJobKey(key)
+					cc.queue.Forget(key)
+				}
+				return true
+			}
+
+			klog.Errorf("Failed to process request <%v>: %v", req, err)
+		}
+	}
+
+	cc.queue.Forget(key)
 	return true
 }
 
@@ -483,38 +593,26 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 		}
 
 		klog.V(4).Infof("Job<%s/%s>'s delayed action %s is expired, execute it", req.Namespace, req.JobName, delayAct.action)
-
-		jobInfo, err := cc.cache.Get(delayAct.jobKey)
-		if err != nil {
-			klog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
-			return
-		}
-
-		st := state.NewState(jobInfo)
-		if st == nil {
-			klog.Errorf("Invalid state <%s> of Job <%v/%v>",
-				jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
-			return
-		}
-		queue := cc.getWorkerQueue(delayAct.jobKey)
-
-		if err := st.Execute(GetStateAction(delayAct)); err != nil {
-			cc.handleJobError(queue, req, st, err, delayAct.action)
-		}
-
-		queue.Forget(req)
-
 		cc.cleanupDelayActions(delayAct)
+		replayedReq := req
+		replayedReq.Action = delayAct.action
+		cc.pushRequest(replayedReq)
 	}()
 }
 
-func (cc *jobcontroller) handleJobError(queue workqueue.TypedRateLimitingInterface[any], req apis.Request, st state.State, err error, action busv1alpha1.Action) {
-	if cc.maxRequeueNum == -1 || queue.NumRequeues(req) < cc.maxRequeueNum {
+func (cc *jobcontroller) handleJobError(jobKey string, req apis.Request, st state.State, err error, action busv1alpha1.Action) bool {
+	retryCounterKey := cc.retryKeyByRequest(jobKey, req, action)
+	cc.requestRetryMu.Lock()
+	retryCount := cc.requestRetryCounter[retryCounterKey]
+	if cc.maxRequeueNum == -1 || retryCount < cc.maxRequeueNum {
+		cc.requestRetryCounter[retryCounterKey] = retryCount + 1
+		cc.requestRetryMu.Unlock()
 		klog.V(2).Infof("Failed to handle Job <%s/%s>: %v",
 			req.Namespace, req.JobName, err)
-		queue.AddRateLimited(req)
-		return
+		return true
 	}
+	delete(cc.requestRetryCounter, retryCounterKey)
+	cc.requestRetryMu.Unlock()
 
 	cc.recordJobEvent(req.Namespace, req.JobName, batchv1alpha1.ExecuteAction,
 		fmt.Sprintf("Job failed on action %s for retry limit reached", action))
@@ -525,6 +623,7 @@ func (cc *jobcontroller) handleJobError(queue workqueue.TypedRateLimitingInterfa
 	}
 	klog.Warningf("Dropping job<%s/%s> out of the queue: %v because max retries has reached",
 		req.Namespace, req.JobName, err)
+	return false
 }
 
 // cleanupDelayActions cleans up delayed actions
