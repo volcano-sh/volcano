@@ -602,10 +602,10 @@ func TestAddPodGroupFunc(t *testing.T) {
 			ExpectKey:   "test/job1",
 		},
 		{
-			Name: "PodGroup without OwnerReference uses PodGroup name",
+			Name: "PodGroup without Job OwnerReference falls back to PodGroup name",
 			PodGroup: &scheduling.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "legacy-pg",
+					Name:      "deploy-pg",
 					Namespace: namespace,
 				},
 				Status: scheduling.PodGroupStatus{
@@ -613,7 +613,7 @@ func TestAddPodGroupFunc(t *testing.T) {
 				},
 			},
 			ExpectValue: 1,
-			ExpectKey:   "test/legacy-pg",
+			ExpectKey:   "test/deploy-pg",
 		},
 	}
 
@@ -628,6 +628,57 @@ func TestAddPodGroupFunc(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestAddPodGroupRequiredForPreSetPhase proves that AddFunc is the only
+// enqueue path when the informer first observes a PodGroup whose phase is
+// already set (e.g. Inqueue). updatePodGroup only enqueues on phase
+// transitions, so without AddFunc the job would never be reconciled.
+func TestAddPodGroupRequiredForPreSetPhase(t *testing.T) {
+	namespace := "test"
+	boolTrue := true
+
+	pg := &scheduling.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pg-preset",
+			Namespace: namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: helpers.JobKind.GroupVersion().String(),
+					Kind:       helpers.JobKind.Kind,
+					Name:       "job-preset",
+					Controller: &boolTrue,
+				},
+			},
+		},
+		Status: scheduling.PodGroupStatus{
+			Phase: scheduling.PodGroupInqueue,
+		},
+	}
+
+	controller := newController()
+	key := "test/job-preset"
+
+	// Step 1: addPodGroup enqueues OutOfSyncEvent for the owning job.
+	controller.addPodGroup(pg)
+	queue := controller.getWorkerQueue(key)
+	if queue.Len() != 1 {
+		t.Fatalf("step 1: expected queue length 1 after addPodGroup, got %d", queue.Len())
+	}
+
+	// Drain the queue so we can observe step 2 cleanly.
+	item, _ := queue.Get()
+	queue.Done(item)
+
+	// Step 2: updatePodGroup with identical phase does NOT enqueue.
+	controller.updatePodGroup(pg, pg)
+	if queue.Len() != 0 {
+		t.Fatalf("step 2: expected queue length 0 after same-phase updatePodGroup, got %d", queue.Len())
+	}
+
+	// Step 3 (assertion): without AddFunc, step 1 would not exist and step 2
+	// produces nothing, so the job would never be reconciled. The fact that
+	// step 1 enqueued proves AddFunc is the required trigger.
 }
 
 func TestUpdatePodGroupFunc(t *testing.T) {
