@@ -345,7 +345,7 @@ const (
 	// NodedNodeHealtyStatuskey  is the key of node healthy status from configmap data of noded
 	NodedNodeHealtyStatuskey = "nodedNodeHealtyStatus"
 	// NodeSubHealthy means there is some fault on the node which is reported by nodeD, but will not immediately
-	// make node unhealthy, this status will prevent new task schduled on this node and reschedule will not consider
+	// make node unhealthy, this status will prevent new tasks from being scheduled on this node and rescheduling will not consider
 	// this node
 	NodeSubHealthy = "SubHealthy"
 	// NodeUnHealthyByNodeD is the node unhealthy status reported by nodeD configmap,

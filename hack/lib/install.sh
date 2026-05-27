@@ -19,7 +19,7 @@ function kind-up-cluster {
   check-kind
 
   echo "Running kind: [kind create cluster ${CLUSTER_CONTEXT[*]} ${KIND_OPT}]"
-  kind create cluster "${CLUSTER_CONTEXT[@]}" ${KIND_OPT}
+  kind create cluster "${CLUSTER_CONTEXT[@]}" ${KIND_OPT} || exit 1
 
   echo
   check-images
@@ -33,6 +33,32 @@ function kind-up-cluster {
   if [[ "${E2E_TYPE}" == "AGENTSCHEDULER" ]]; then
     kind load docker-image ${IMAGE_PREFIX}/vc-agent-scheduler:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
   fi
+  if [[ "${E2E_TYPE}" == "DRA" || "${E2E_TYPE}" == "ALL" ]]; then
+    ensure-dra-test-images
+  fi
+}
+
+function ensure-dra-test-images {
+  local dra_images=(
+    "nginx:1.29.3-alpine"
+    "registry.k8s.io/kwok/kwok:v0.7.0"
+    "registry.k8s.io/sig-storage/hostpathplugin:v1.16.1"
+  )
+
+  echo
+  echo "Ensuring DRA test images are available locally"
+  for image in "${dra_images[@]}"; do
+    if ! docker image inspect "${image}" >/dev/null 2>&1; then
+      echo "Pulling image ${image} ..."
+      docker pull "${image}" >/dev/null || exit 1
+    fi
+  done
+
+  echo
+  echo "Loading DRA test images into kind cluster"
+  for image in "${dra_images[@]}"; do
+    kind load docker-image "${image}" "${CLUSTER_CONTEXT[@]}" || exit 1
+  done
 }
 
 # check if the required images exist
@@ -81,6 +107,17 @@ function check-kind {
   if [[ $? -ne 0 ]]; then
     echo "Installing kind ..."
     GOOS=${OS} go install sigs.k8s.io/kind@v0.31.0
+    local bin_path
+    bin_path=$(go env GOBIN)
+    if [[ -z "${bin_path}" ]]; then
+      bin_path="$(go env GOPATH)/bin"
+    fi
+    export PATH="${bin_path}:${PATH}"
+    if ! command -v kind >/dev/null 2>&1; then
+      echo -e "\033[31mERROR\033[0m: kind installation completed but the binary is still not available on PATH"
+      exit 1
+    fi
+    echo -n "Using kind, version: " && kind version
   else
     echo -n "Found kind, version: " && kind version
   fi

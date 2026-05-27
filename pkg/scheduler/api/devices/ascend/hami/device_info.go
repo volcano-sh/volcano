@@ -335,6 +335,38 @@ func (ads *AscendDevices) GetStatus() string {
 	return ""
 }
 
+// DeepCopy returns a deep copy of AscendDevices for use in dry-run simulation.
+func (ads *AscendDevices) DeepCopy() interface{} {
+	if ads == nil {
+		return nil
+	}
+	cp := &AscendDevices{
+		NodeName: ads.NodeName,
+		Type:     ads.Type,
+		Policy:   ads.Policy,
+		Devices:  make(map[string]*AscendDevice, len(ads.Devices)),
+	}
+	for id, dev := range ads.Devices {
+		newUsage := &devices.DeviceUsage{
+			Used:      dev.DeviceUsage.Used,
+			Usedmem:   dev.DeviceUsage.Usedmem,
+			Usedcores: dev.DeviceUsage.Usedcores,
+		}
+		newDev := &AscendDevice{
+			config:           dev.config,
+			nodeRegisterAnno: dev.nodeRegisterAnno,
+			useUUIDAnno:      dev.useUUIDAnno,
+			noUseUUIDAnno:    dev.noUseUUIDAnno,
+			handshakeAnno:    dev.handshakeAnno,
+			DeviceInfo:       dev.DeviceInfo,
+			DeviceUsage:      newUsage,
+			Score:            dev.Score,
+		}
+		cp.Devices[id] = newDev
+	}
+	return cp
+}
+
 func (ads *AscendDevices) selectDevices(pod *v1.Pod, schedulePolicy string) (devices.PodSingleDevice, error) {
 	dupDevs := getDeviceSnapshot(ads)
 	if len(dupDevs) == 0 {

@@ -610,11 +610,40 @@ func TestHasTopologyHardConstrain(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.jobInfo.PodGroup != nil {
+				tt.jobInfo.NetworkTopology = cloneNetworkTopology(tt.jobInfo.PodGroup.Spec.NetworkTopology)
+			}
 			hasHard, tier := tt.jobInfo.IsHardTopologyMode()
 			assert.Equal(t, tt.expectedHasHard, hasHard)
 			assert.Equal(t, tt.expectedTier, tier)
 		})
 	}
+}
+
+func TestSetPodGroupDeepCopiesNetworkTopology(t *testing.T) {
+	tier := 2
+	pg := &PodGroup{
+		PodGroup: scheduling.PodGroup{
+			Spec: scheduling.PodGroupSpec{
+				NetworkTopology: &scheduling.NetworkTopologySpec{
+					Mode:               scheduling.SoftNetworkTopologyMode,
+					HighestTierAllowed: &tier,
+					HighestTierName:    "volcano.sh/hypercluster",
+				},
+			},
+		},
+	}
+
+	job := NewJobInfo("job")
+	job.SetPodGroup(pg)
+
+	assert.NotSame(t, job.PodGroup.Spec.NetworkTopology, job.NetworkTopology)
+
+	job.NetworkTopology.Mode = scheduling.HardNetworkTopologyMode
+	job.NetworkTopology.HighestTierName = ""
+
+	assert.Equal(t, scheduling.SoftNetworkTopologyMode, job.PodGroup.Spec.NetworkTopology.Mode)
+	assert.Equal(t, "volcano.sh/hypercluster", job.PodGroup.Spec.NetworkTopology.HighestTierName)
 }
 
 func TestParseMinMemberInfoChanged(t *testing.T) {
@@ -717,4 +746,71 @@ func TestParseMinMemberInfoChanged(t *testing.T) {
 			assert.Equal(t, tt.expectedTaskMinAvailableTotal, jobInfo.TaskMinAvailableTotal)
 		})
 	}
+}
+
+func TestGetMinDRAResourcesIdempotent(t *testing.T) {
+	job := NewJobInfo("test-job")
+	job.TaskMinAvailable["worker"] = 2
+	job.Tasks[TaskID("worker-0")] = &TaskInfo{
+		UID:      TaskID("worker-0"),
+		Name:     "worker-0",
+		TaskRole: "worker",
+		DRAResreq: map[string]*DRAResource{
+			"gpu.com": {
+				Count: 1,
+				Capacity: map[string]resource.Quantity{
+					"memory": resource.MustParse("8Gi"),
+				},
+			},
+		},
+	}
+
+	expected := map[string]*DRAResource{
+		"gpu.com": {
+			Count: 2,
+			Capacity: map[string]resource.Quantity{
+				"memory": resource.MustParse("16Gi"),
+			},
+		},
+	}
+
+	assert.Equal(t, expected, job.GetMinDRAResources())
+	assert.Equal(t, expected, job.GetMinDRAResources())
+	assert.Equal(t, map[string]int32{"worker": 2}, job.TaskMinAvailable)
+}
+
+func TestGetMinDRAResourcesFallbackWithoutTaskMinAvailable(t *testing.T) {
+	job := NewJobInfo("test-job")
+	job.MinAvailable = 2
+	job.Tasks[TaskID("task-b")] = &TaskInfo{
+		UID:       TaskID("task-b"),
+		Namespace: "ns",
+		Name:      "task-b",
+		DRAResreq: map[string]*DRAResource{
+			"gpu.com": {Count: 1},
+		},
+	}
+	job.Tasks[TaskID("task-a")] = &TaskInfo{
+		UID:       TaskID("task-a"),
+		Namespace: "ns",
+		Name:      "task-a",
+		DRAResreq: map[string]*DRAResource{
+			"gpu.com": {Count: 2},
+		},
+	}
+	job.Tasks[TaskID("task-c")] = &TaskInfo{
+		UID:       TaskID("task-c"),
+		Namespace: "ns",
+		Name:      "task-c",
+		DRAResreq: map[string]*DRAResource{
+			"gpu.com": {Count: 4},
+		},
+	}
+
+	assert.Equal(t, map[string]*DRAResource{
+		"gpu.com": {
+			Count:    3,
+			Capacity: map[string]resource.Quantity{},
+		},
+	}, job.GetMinDRAResources())
 }

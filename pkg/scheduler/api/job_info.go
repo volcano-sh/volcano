@@ -34,6 +34,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -126,6 +127,12 @@ type TaskInfo struct {
 	Resreq *Resource
 	// InitResreq is the resource that used to launch a task.
 	InitResreq *Resource
+	// DRAResreq aggregates DRA resource requests per DeviceClass
+	DRAResreq map[string]*DRAResource
+	// ResourceClaimKeys lists namespaced ResourceClaims referenced by this task.
+	ResourceClaimKeys []string
+	// ResourceClaimDRAResreq stores per-claim DRA resources for shared-claim deduplication.
+	ResourceClaimDRAResreq map[string]map[string]*DRAResource
 
 	TransactionContext
 	// LastTransaction holds the context of last scheduling transaction
@@ -280,7 +287,7 @@ func (ti *TaskInfo) UnsetPodResourceDecision() {
 
 // Clone is used for cloning a task
 func (ti *TaskInfo) Clone() *TaskInfo {
-	return &TaskInfo{
+	res := &TaskInfo{
 		UID:                         ti.UID,
 		Job:                         ti.Job,
 		Name:                        ti.Name,
@@ -303,6 +310,21 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		},
 		LastTransaction: ti.LastTransaction.Clone(),
 	}
+
+	if ti.DRAResreq != nil {
+		res.DRAResreq = make(map[string]*DRAResource, len(ti.DRAResreq))
+		for k, v := range ti.DRAResreq {
+			res.DRAResreq[k] = v.Clone()
+		}
+	}
+	if len(ti.ResourceClaimKeys) > 0 {
+		res.ResourceClaimKeys = append([]string(nil), ti.ResourceClaimKeys...)
+	}
+	if ti.ResourceClaimDRAResreq != nil {
+		res.ResourceClaimDRAResreq = cloneResourceClaimDRAResreq(ti.ResourceClaimDRAResreq)
+	}
+
+	return res
 }
 
 // hasRestartableInitContainer returns whether pod has restartable container.
@@ -357,6 +379,7 @@ type JobInfo struct {
 	NodesFitErrors map[TaskID]*FitErrors
 
 	AllocatedHyperNode string
+	NetworkTopology    *scheduling.NetworkTopologySpec
 	SubJobs            map[SubJobID]*SubJobInfo
 	TaskToSubJob       map[TaskID]SubJobID
 	MinSubJobs         map[SubJobGID]int32 // key is name of "PodGroup.Spec.SubGroupPolicy", value is minSubGroups
@@ -408,9 +431,17 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 	return job
 }
 
+func cloneNetworkTopology(spec *scheduling.NetworkTopologySpec) *scheduling.NetworkTopologySpec {
+	if spec == nil {
+		return nil
+	}
+	return spec.DeepCopy()
+}
+
 // UnsetPodGroup removes podGroup details from a job
 func (ji *JobInfo) UnsetPodGroup() {
 	ji.PodGroup = nil
+	ji.NetworkTopology = nil
 
 	clear(ji.SubJobs)
 	for _, task := range ji.Tasks {
@@ -451,6 +482,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	oldPG := ji.PodGroup
 	ji.PgUID = pg.UID
 	ji.PodGroup = pg
+	ji.NetworkTopology = cloneNetworkTopology(pg.Spec.NetworkTopology)
 
 	if oldPG == nil || !equality.Semantic.DeepEqual(oldPG.Spec.SubGroupPolicy, pg.Spec.SubGroupPolicy) {
 		clear(ji.SubJobs)
@@ -575,10 +607,17 @@ func (ji *JobInfo) GetMinResources() *Resource {
 
 // Get the total resources of tasks whose pod is scheduling gated
 // By definition, if a pod is scheduling gated, it's status is Pending
+// Note: Tasks that are only Volcano scheduling gated (scheduling.volcano.sh/queue-allocation-gate)
+// are excluded from this calculation, as they should be counted in inqueue resources.
 func (ji *JobInfo) GetSchGatedPodResources() *Resource {
 	res := EmptyResource()
 	for _, task := range ji.Tasks {
 		if task.SchGated {
+			// Exclude tasks that are only Volcano scheduling gated
+			// These should be counted in inqueue resources, not deducted
+			if HasOnlyVolcanoSchedulingGate(task.Pod) {
+				continue
+			}
 			res.Add(task.Resreq)
 		}
 	}
@@ -705,6 +744,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		RevocableZone:         ji.RevocableZone,
 		Budget:                ji.Budget.Clone(),
 		AllocatedHyperNode:    ji.AllocatedHyperNode,
+		NetworkTopology:       cloneNetworkTopology(ji.NetworkTopology),
 		SubJobs:               map[SubJobID]*SubJobInfo{},
 		TaskToSubJob:          map[TaskID]SubJobID{},
 		MinSubJobs:            maps.Clone(ji.MinSubJobs),
@@ -1185,24 +1225,24 @@ func (ji *JobInfo) HasPendingTasks() bool {
 
 // IsHardTopologyMode return whether the job's network topology mode is hard and also return the highest allowed tier
 func (ji *JobInfo) IsHardTopologyMode() (bool, int) {
-	if ji.PodGroup == nil || ji.PodGroup.Spec.NetworkTopology == nil || ji.PodGroup.Spec.NetworkTopology.HighestTierAllowed == nil {
+	if ji.NetworkTopology == nil || ji.NetworkTopology.HighestTierAllowed == nil {
 		return false, 0
 	}
 
-	return ji.PodGroup.Spec.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode, *ji.PodGroup.Spec.NetworkTopology.HighestTierAllowed
+	return ji.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode, *ji.NetworkTopology.HighestTierAllowed
 }
 
 // IsSoftTopologyMode returns whether the job has configured network topologies with soft mode.
 func (ji *JobInfo) IsSoftTopologyMode() bool {
-	if ji.PodGroup == nil || ji.PodGroup.Spec.NetworkTopology == nil {
+	if ji.NetworkTopology == nil {
 		return false
 	}
-	return ji.PodGroup.Spec.NetworkTopology.Mode == scheduling.SoftNetworkTopologyMode
+	return ji.NetworkTopology.Mode == scheduling.SoftNetworkTopologyMode
 }
 
 // WithNetworkTopology returns whether the job has configured network topologies
 func (ji *JobInfo) WithNetworkTopology() bool {
-	return ji.PodGroup != nil && ji.PodGroup.Spec.NetworkTopology != nil
+	return ji.NetworkTopology != nil
 }
 
 // ResetFitErr will set job and node fit err to nil.
@@ -1234,8 +1274,8 @@ func (ji *JobInfo) getOrCreateDefaultSubJob() *SubJobInfo {
 		if !ji.ContainsSubJobPolicy() {
 			policy.SubGroupSize = ptr.To(ji.MinAvailable)
 		}
-		if ji.PodGroup != nil && ji.PodGroup.Spec.NetworkTopology != nil {
-			policy.NetworkTopology = ji.PodGroup.Spec.NetworkTopology.DeepCopy()
+		if ji.NetworkTopology != nil {
+			policy.NetworkTopology = cloneNetworkTopology(ji.NetworkTopology)
 		}
 		ji.SubJobs[defaultSubJob] = NewSubJobInfo(defaultSubJobGID, defaultSubJob, ji.UID, policy, nil)
 	}
@@ -1287,13 +1327,8 @@ func (ji *JobInfo) ContainsSubJobPolicy() bool {
 
 // ContainsHardTopologyInSubJob returns whether the subJobs in the job contain hard network topology
 func (ji *JobInfo) ContainsHardTopologyInSubJob() bool {
-	if ji.PodGroup == nil {
-		return false
-	}
-
-	for _, policy := range ji.PodGroup.Spec.SubGroupPolicy {
-		if policy.NetworkTopology != nil && policy.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode &&
-			policy.NetworkTopology.HighestTierAllowed != nil {
+	for _, subJob := range ji.SubJobs {
+		if hard, _ := subJob.IsHardTopologyMode(); hard {
 			return true
 		}
 	}
@@ -1310,12 +1345,8 @@ func (ji *JobInfo) ContainsHardTopology() bool {
 
 // ContainsNetworkTopologyInSubJob returns whether the subJobs in the job contain network topology
 func (ji *JobInfo) ContainsNetworkTopologyInSubJob() bool {
-	if ji.PodGroup == nil {
-		return false
-	}
-
-	for _, policy := range ji.PodGroup.Spec.SubGroupPolicy {
-		if policy.NetworkTopology != nil {
+	for _, subJob := range ji.SubJobs {
+		if subJob.WithNetworkTopology() {
 			return true
 		}
 	}
@@ -1325,4 +1356,182 @@ func (ji *JobInfo) ContainsNetworkTopologyInSubJob() bool {
 // ContainsNetworkTopology returns whether the job and the subJobs in the job contain network topology
 func (ji *JobInfo) ContainsNetworkTopology() bool {
 	return ji.WithNetworkTopology() || ji.ContainsNetworkTopologyInSubJob()
+}
+
+// DRAResource represents aggregated DRA resource request for a single DeviceClass
+type DRAResource struct {
+	// Count is the total number of devices requested
+	Count int64
+	// Capacity maps dimension name to total requested quantity
+	Capacity map[string]resource.Quantity
+}
+
+func cloneResourceClaimDRAResreq(in map[string]map[string]*DRAResource) map[string]map[string]*DRAResource {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]map[string]*DRAResource, len(in))
+	for claimKey, resources := range in {
+		out[claimKey] = make(map[string]*DRAResource, len(resources))
+		for deviceClass, res := range resources {
+			out[claimKey][deviceClass] = res.Clone()
+		}
+	}
+	return out
+}
+
+// Clone returns a deep copy of DRAResource
+func (d *DRAResource) Clone() *DRAResource {
+	if d == nil {
+		return nil
+	}
+	out := &DRAResource{
+		Count: d.Count,
+	}
+	if d.Capacity != nil {
+		out.Capacity = make(map[string]resource.Quantity, len(d.Capacity))
+		for k, v := range d.Capacity {
+			out.Capacity[k] = v.DeepCopy()
+		}
+	}
+	return out
+}
+
+// Add adds another DRAResource into this one
+func (d *DRAResource) Add(other *DRAResource) {
+	if other == nil {
+		return
+	}
+	d.Count += other.Count
+	if other.Capacity != nil {
+		if d.Capacity == nil {
+			d.Capacity = make(map[string]resource.Quantity)
+		}
+		for k, v := range other.Capacity {
+			if existing, ok := d.Capacity[k]; ok {
+				existing.Add(v)
+				d.Capacity[k] = existing
+			} else {
+				d.Capacity[k] = v.DeepCopy()
+			}
+		}
+	}
+}
+
+// Sub subtracts another DRAResource from this one, ensuring values do not drop below zero
+func (d *DRAResource) Sub(other *DRAResource) {
+	if other == nil {
+		return
+	}
+	d.Count -= other.Count
+	if d.Count < 0 {
+		d.Count = 0
+	}
+	if other.Capacity != nil && d.Capacity != nil {
+		zeroQuantity := resource.MustParse("0")
+		for k, v := range other.Capacity {
+			if existing, ok := d.Capacity[k]; ok {
+				existing.Sub(v)
+				if existing.Cmp(zeroQuantity) < 0 {
+					existing = zeroQuantity.DeepCopy()
+				}
+				d.Capacity[k] = existing
+			}
+		}
+	}
+}
+
+// GetMinDRAResources returns the minimum DRA resources required by the job based on TaskMinAvailable
+func (ji *JobInfo) GetMinDRAResources() map[string]*DRAResource {
+	if len(ji.Tasks) == 0 {
+		return nil
+	}
+
+	result := make(map[string]*DRAResource)
+	addResource := func(res map[string]*DRAResource, times int32) {
+		for deviceClass, request := range res {
+			if _, exists := result[deviceClass]; !exists {
+				result[deviceClass] = &DRAResource{
+					Count:    0,
+					Capacity: make(map[string]resource.Quantity),
+				}
+			}
+
+			result[deviceClass].Count += request.Count * int64(times)
+			for dim, cap := range request.Capacity {
+				totalCap := cap.DeepCopy()
+				for i := int32(0); i < times-1; i++ {
+					totalCap.Add(cap)
+				}
+
+				if existing, exists := result[deviceClass].Capacity[dim]; exists {
+					existing.Add(totalCap)
+					result[deviceClass].Capacity[dim] = existing
+				} else {
+					result[deviceClass].Capacity[dim] = totalCap
+				}
+			}
+		}
+	}
+
+	if len(ji.TaskMinAvailable) == 0 {
+		minAvailable := ji.MinAvailable
+		if minAvailable <= 0 {
+			return nil
+		}
+
+		tasks := make([]*TaskInfo, 0, len(ji.Tasks))
+		for _, task := range ji.Tasks {
+			if task.DRAResreq != nil {
+				tasks = append(tasks, task)
+			}
+		}
+		sort.Slice(tasks, func(i, j int) bool {
+			if tasks[i].Namespace != tasks[j].Namespace {
+				return tasks[i].Namespace < tasks[j].Namespace
+			}
+			if tasks[i].Name != tasks[j].Name {
+				return tasks[i].Name < tasks[j].Name
+			}
+			return tasks[i].UID < tasks[j].UID
+		})
+
+		for i, task := range tasks {
+			if int32(i) >= minAvailable {
+				break
+			}
+			addResource(task.DRAResreq, 1)
+		}
+
+		if len(result) == 0 {
+			return nil
+		}
+		return result
+	}
+
+	// Since DRA requests can vary per task/pod, we aggregate them based on TaskMinAvailable
+	processedRoles := make(map[string]struct{})
+	for _, task := range ji.Tasks {
+		if task.DRAResreq == nil {
+			continue
+		}
+
+		// Calculate how many times this task type needs to run
+		taskType := task.TaskRole
+		minNum, ok := ji.TaskMinAvailable[taskType]
+		if !ok || minNum <= 0 {
+			continue
+		}
+		if _, seen := processedRoles[taskType]; seen {
+			continue
+		}
+		processedRoles[taskType] = struct{}{}
+
+		addResource(task.DRAResreq, minNum)
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }

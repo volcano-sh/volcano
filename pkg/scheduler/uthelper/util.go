@@ -16,6 +16,11 @@ limitations under the License.
 
 package uthelper
 
+import (
+	"testing"
+	"time"
+)
+
 // Contains compares a key in a slice and returns true if exist in it
 func Contains[T comparable](elements []T, key T) bool {
 	for _, v := range elements {
@@ -24,4 +29,22 @@ func Contains[T comparable](elements []T, key T) bool {
 		}
 	}
 	return false
+}
+
+// WaitForBinds reads exactly n items from ch within timeout and returns them.
+// It fails the test if fewer than n items arrive within the timeout.
+func WaitForBinds(t *testing.T, ch <-chan string, n int, timeout time.Duration) map[string]bool {
+	t.Helper()
+	got := make(map[string]bool, n)
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for i := 0; i < n; i++ {
+		select {
+		case bind := <-ch:
+			got[bind] = true
+		case <-timer.C:
+			t.Fatalf("timeout waiting for bind #%d/%d (got so far: %v)", i+1, n, got)
+		}
+	}
+	return got
 }

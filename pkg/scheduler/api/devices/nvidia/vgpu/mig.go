@@ -34,13 +34,24 @@ func init() {
 }
 
 func (f MIGFactory) TryAddPod(gd *GPUDevice, mem uint, core uint) (bool, string) {
-	found, dev, usedMem := findMatch(gd.UUID, mem, gd.MigUsage, gd.MigTemplate)
+	requestMemory := mem
+	memoryFactor := getConfig().GPUMemoryFactor
+	if memoryFactor > 1 {
+		requestMemory = requestMemory * memoryFactor
+		klog.V(5).Infof("rawRequestMemory: %d, realRequestMemory: %d, memoryFactor: %d", mem, requestMemory, memoryFactor)
+	}
+	found, dev, usedMem := findMatch(gd.UUID, requestMemory, gd.MigUsage, gd.MigTemplate)
 	if !found {
 		return false, ""
 	}
+	realMem := usedMem
+	if memoryFactor > 1 {
+		realMem = usedMem / memoryFactor
+		klog.V(5).Infof("rawUsedMemory: %d, realUsedMemory: %d, memoryFactor: %d", usedMem, realMem, memoryFactor)
+	}
 
 	gd.UsedNum++
-	gd.UsedMem += usedMem
+	gd.UsedMem += realMem
 	gd.UsedCore += core
 	return true, dev
 }
@@ -62,14 +73,20 @@ func (f MIGFactory) AddPod(gd *GPUDevice, mem uint, core uint, podUID string, de
 		return nil
 	}
 	usedMem := addMigUsed(gd, group, index)
+	realMem := usedMem
+	memoryFactor := getConfig().GPUMemoryFactor
+	if memoryFactor > 1 {
+		realMem = usedMem / memoryFactor
+		klog.V(5).Infof("rawUsedMemory: %d, realUsedMemory: %d, memoryFactor: %d", usedMem, realMem, memoryFactor)
+	}
 	gd.UsedNum++
-	gd.UsedMem += usedMem
+	gd.UsedMem += realMem
 	gd.UsedCore += core
 
-	gd.PodMap[podUID].UsedMem += usedMem
+	gd.PodMap[podUID].UsedMem += realMem
 	gd.PodMap[podUID].UsedCore += core
 
-	klog.V(4).Infoln("add Pod: ", podUID, usedMem, gd.PodMap[podUID].UsedMem, gd.PodMap[podUID].UsedCore)
+	klog.V(4).Infoln("add Pod: ", podUID, realMem, gd.PodMap[podUID].UsedMem, gd.PodMap[podUID].UsedCore)
 	return nil
 }
 
@@ -85,14 +102,18 @@ func (f MIGFactory) SubPod(gd *GPUDevice, mem uint, core uint, podUID string, de
 	}
 
 	usedMem := subMigUsed(gd, groupName, index)
+	realMem := usedMem
+	memoryFactor := getConfig().GPUMemoryFactor
+	if memoryFactor > 1 {
+		realMem = usedMem / memoryFactor
+		klog.V(5).Infof("rawUsedMemory: %d, realUsedMemory: %d, memoryFactor: %d", usedMem, realMem, memoryFactor)
+	}
 	gd.UsedNum--
-	gd.UsedMem -= mem
+	gd.UsedMem -= realMem
 	gd.UsedCore -= core
 
-	gd.PodMap[podUID].UsedMem -= usedMem
-	gd.PodMap[podUID].UsedCore -= core
-
-	klog.V(4).Infoln("sub Pod: ", podUID, usedMem, gd.PodMap[podUID].UsedMem, gd.PodMap[podUID].UsedCore)
+	klog.V(4).Infoln("sub Pod: ", podUID, realMem)
+	delete(gd.PodMap, podUID)
 	return nil
 }
 

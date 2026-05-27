@@ -205,6 +205,9 @@ e2e-test-schedulingbase: images
 e2e-test-schedulingaction: images
 	E2E_TYPE=SCHEDULINGACTION ./hack/run-e2e-kind.sh
 
+e2e-test-schedulinggates: images
+	E2E_TYPE=SCHEDULINGGATES FEATURE_GATES="SchedulingGatesQueueAdmission=true" ./hack/run-e2e-kind.sh
+
 e2e-test-jobp: images
 	E2E_TYPE=JOBP ./hack/run-e2e-kind.sh
 
@@ -221,7 +224,7 @@ e2e-test-cronjob: images
 	E2E_TYPE=CRONJOB ./hack/run-e2e-kind.sh
 
 e2e-test-dra: images
-	E2E_TYPE=DRA FEATURE_GATES="DynamicResourceAllocation=true" ./hack/run-e2e-kind.sh
+	E2E_TYPE=DRA FEATURE_GATES="DynamicResourceAllocation=true,DRAConsumableCapacity=true" ./hack/run-e2e-kind.sh
 
 e2e-test-hypernode: images
 	E2E_TYPE=HYPERNODE ./hack/run-e2e-kind.sh
@@ -234,6 +237,9 @@ e2e-test-admission-policy: images
 
 e2e-test-agentscheduler: images
 	E2E_TYPE=AGENTSCHEDULER ./hack/run-e2e-kind.sh
+
+e2e-test-shardingcontroller: images
+	E2E_TYPE=SHARDINGCONTROLLER ./hack/run-e2e-kind.sh
 
 generate-yaml: init manifests
 	./hack/generate-yaml.sh CRD_VERSION=${CRD_VERSION}

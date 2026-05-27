@@ -4,10 +4,22 @@ on:
   workflow_call:
 
 jobs:
-  e2e_agent_scheduler:
+  e2e:
     runs-on: ubuntu-24.04
-    name: E2E Agent Scheduler
+    name: ${{ matrix.name }}
     timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: E2E Agent Scheduler
+            target: e2e-test-agentscheduler
+            logs_dir: e2e-agent-scheduler-logs
+            artifact: volcano_e2e_agent_scheduler_logs
+          - name: E2E Sharding Controller
+            target: e2e-test-shardingcontroller
+            logs_dir: e2e-sharding-controller-logs
+            artifact: volcano_e2e_sharding_controller_logs
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -50,12 +62,12 @@ jobs:
 
       - name: Run E2E Tests
         run: |
-          export ARTIFACTS_PATH=${{ github.workspace }}/e2e-agent-scheduler-logs
-          make e2e-test-agentscheduler FORCE_REBUILD=false
+          export ARTIFACTS_PATH=${{ github.workspace }}/${{ matrix.logs_dir }}
+          make ${{ matrix.target }} FORCE_REBUILD=false
 
-      - name: Upload e2e agent scheduler logs
+      - name: Upload e2e logs
         if: '!success()'
         uses: actions/upload-artifact@v4
         with:
-          name: volcano_e2e_agent_scheduler_logs
-          path: ${{ github.workspace }}/e2e-agent-scheduler-logs
+          name: ${{ matrix.artifact }}
+          path: ${{ github.workspace }}/${{ matrix.logs_dir }}

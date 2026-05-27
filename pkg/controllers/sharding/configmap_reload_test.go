@@ -91,9 +91,9 @@ schedulerConfigs:
 
 	require.Len(t, configs, 3, "should have 3 scheduler configs after reload")
 	assert.Equal(t, "volcano", configs[0].Name)
-	assert.InDelta(t, 0.5, configs[0].ShardStrategy.CPUUtilizationRange.Max, 1e-9)
+	assert.InDelta(t, 0.5, configs[0].Policies[0].Arguments["maxCPUUtil"], 1e-9)
 	assert.Equal(t, "agent-scheduler", configs[1].Name)
-	assert.InDelta(t, 0.6, configs[1].ShardStrategy.CPUUtilizationRange.Min, 1e-9)
+	assert.InDelta(t, 0.6, configs[1].Policies[0].Arguments["minCPUUtil"], 1e-9)
 	assert.Equal(t, "batch-scheduler", configs[2].Name)
 	assert.Equal(t, "batch", configs[2].Type)
 }
@@ -563,11 +563,11 @@ func TestRun_FallsBackToFlagDefaultsWhenConfigMapAbsent(t *testing.T) {
 		assert.Equal(t, expected.Name, configs[i].Name,
 			"scheduler config[%d] name should match flag default", i)
 		assert.InDelta(t, expected.CPUUtilizationMin,
-			configs[i].ShardStrategy.CPUUtilizationRange.Min, 1e-9,
-			"scheduler config[%d] CPUUtilizationMin should match flag default", i)
+			configs[i].Policies[0].Arguments["minCPUUtil"], 1e-9,
+			"scheduler config[%d] minCPUUtil should match flag default", i)
 		assert.InDelta(t, expected.CPUUtilizationMax,
-			configs[i].ShardStrategy.CPUUtilizationRange.Max, 1e-9,
-			"scheduler config[%d] CPUUtilizationMax should match flag default", i)
+			configs[i].Policies[0].Arguments["maxCPUUtil"], 1e-9,
+			"scheduler config[%d] maxCPUUtil should match flag default", i)
 	}
 
 	// The controller should still be functional: syncShards should create

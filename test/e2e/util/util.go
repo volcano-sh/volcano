@@ -129,18 +129,20 @@ type TestContext struct {
 	Kubeclient *kubernetes.Clientset
 	Vcclient   *vcclient.Clientset
 
-	Namespace        string
-	Queues           []string
-	DeservedResource map[string]v1.ResourceList
-	QueueParent      map[string]string
-	PriorityClasses  map[string]int32
-	UsingPlaceHolder bool
+	Namespace          string
+	Queues             []string
+	DeservedResource   map[string]v1.ResourceList
+	CapabilityResource map[string]v1.ResourceList
+	QueueParent        map[string]string
+	PriorityClasses    map[string]int32
+	UsingPlaceHolder   bool
 }
 
 type Options struct {
 	Namespace          string
 	Queues             []string
 	DeservedResource   map[string]v1.ResourceList
+	CapabilityResource map[string]v1.ResourceList
 	QueueParent        map[string]string
 	PriorityClasses    map[string]int32
 	NodesNumLimit      int
@@ -157,14 +159,15 @@ func InitTestContext(o Options) *TestContext {
 		o.Namespace = helpers.GenRandomStr(8)
 	}
 	ctx := &TestContext{
-		Namespace:        o.Namespace,
-		Queues:           o.Queues,
-		DeservedResource: o.DeservedResource,
-		QueueParent:      o.QueueParent,
-		PriorityClasses:  o.PriorityClasses,
-		Vcclient:         VcClient,
-		Kubeclient:       KubeClient,
-		UsingPlaceHolder: false,
+		Namespace:          o.Namespace,
+		Queues:             o.Queues,
+		DeservedResource:   o.DeservedResource,
+		CapabilityResource: o.CapabilityResource,
+		QueueParent:        o.QueueParent,
+		PriorityClasses:    o.PriorityClasses,
+		Vcclient:           VcClient,
+		Kubeclient:         KubeClient,
+		UsingPlaceHolder:   false,
 	}
 
 	_, err := ctx.Kubeclient.CoreV1().Namespaces().Create(context.TODO(),

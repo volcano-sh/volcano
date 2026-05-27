@@ -178,6 +178,29 @@ func (gs *GPUDevices) GetStatus() string {
 	return ""
 }
 
+// DeepCopy returns a deep copy of GPUDevices for use in dry-run simulation.
+func (gs *GPUDevices) DeepCopy() interface{} {
+	if gs == nil {
+		return nil
+	}
+	cp := &GPUDevices{
+		Name:   gs.Name,
+		Device: make(map[int]*GPUDevice, len(gs.Device)),
+	}
+	for id, dev := range gs.Device {
+		newDev := &GPUDevice{
+			ID:     dev.ID,
+			Memory: dev.Memory,
+			PodMap: make(map[string]*v1.Pod, len(dev.PodMap)),
+		}
+		for uid, pod := range dev.PodMap {
+			newDev.PodMap[uid] = pod
+		}
+		cp.Device[id] = newDev
+	}
+	return cp
+}
+
 func (gs *GPUDevices) ScoreNode(pod *v1.Pod, schedulePolicy string) float64 {
 	return 0
 }

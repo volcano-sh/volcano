@@ -107,10 +107,10 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 		nodeSelectorLabels: make(map[string]sets.Empty),
 		imageStates:        make(map[string]*imageState),
 		taskCache:          NewTaskCache(),
-
-		NodeList:       []string{},
-		binderRegistry: NewBinderRegistry(),
-		resyncPeriod:   0,
+		NodesInBinder:      make(map[string]int),
+		NodeList:           []string{},
+		binderRegistry:     NewBinderRegistry(),
+		resyncPeriod:       0,
 	}
 	if options.ServerOpts != nil && len(options.ServerOpts.NodeSelector) > 0 {
 		msc.updateNodeSelectors(options.ServerOpts.NodeSelector)

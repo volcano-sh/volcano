@@ -17,11 +17,18 @@ limitations under the License.
 package capacity
 
 import (
+	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -30,10 +37,12 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
 	"volcano.sh/volcano/pkg/scheduler/actions/reclaim"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
+	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -827,6 +836,359 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	}
 }
 
+func Test_capacityPlugin_AncestorReclaimScenarios(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{
+		PluginName:            New,
+		predicates.PluginName: predicates.New,
+		gang.PluginName:       gang.New,
+		priority.PluginName:   priority.New,
+	}
+	actions := []framework.Action{enqueue.New(), reclaim.New(), allocate.New()}
+
+	type scenario struct {
+		name            string
+		level           int
+		includePriority bool
+		build           func(t *testing.T) (nodes []*corev1.Node, pods []*corev1.Pod, pgs []*schedulingv1beta1.PodGroup, queues []*schedulingv1beta1.Queue)
+		expectPipeLined map[string][]string
+		expectEvicted   []string
+		expectEvictNum  int
+		expectBindsNum  int
+		expectBindMap   map[string]string
+	}
+
+	buildTier := func(level int, includePriority bool) []conf.Tier {
+		trueValue := true
+		plugins := []conf.PluginOption{
+			{
+				Name:               PluginName,
+				EnabledAllocatable: &trueValue,
+				EnablePreemptive:   &trueValue,
+				EnabledReclaimable: &trueValue,
+				EnabledQueueOrder:  &trueValue,
+				EnabledHierarchy:   &trueValue,
+				EnabledJobEnqueued: &trueValue,
+				Arguments: framework.Arguments{
+					"ancestorReclaimLevel": level,
+				},
+			},
+			{
+				Name:             predicates.PluginName,
+				EnabledPredicate: &trueValue,
+			},
+			{
+				Name:               gang.PluginName,
+				EnabledJobStarving: &trueValue,
+			},
+		}
+		if includePriority {
+			plugins = append(plugins, conf.PluginOption{
+				Name:             priority.PluginName,
+				EnabledJobOrder:  &trueValue,
+				EnabledTaskOrder: &trueValue,
+			})
+		}
+		return []conf.Tier{{Plugins: plugins}}
+	}
+
+	buildProjectQueueTree := func() (*schedulingv1beta1.Queue, *schedulingv1beta1.Queue, *schedulingv1beta1.Queue, *schedulingv1beta1.Queue, *schedulingv1beta1.Queue, *schedulingv1beta1.Queue, *schedulingv1beta1.Queue) {
+		root := buildQueueWithParents("root", "", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "4"}, {Name: "rdma", Value: "1000"}}...), nil)
+		project1RootQueue := buildQueueWithParents("project1_root", "root", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}}...), api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}}...))
+		project1NonPreemptableQueue := buildQueueWithParents("project1_non-preemptable", "project1_root", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}}...), api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}}...))
+		project1PreemptableQueue := buildQueueWithParents("project1_preemptable", "project1_root", nil, nil)
+		project2RootQueue := buildQueueWithParents("project2_root", "root", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "3"}}...), api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "4"}}...))
+		project2NonPreemptableQueue := buildQueueWithParents("project2_non-preemptable", "project2_root", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "3"}}...), api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "3"}}...))
+		project2PreemptableQueue := buildQueueWithParents("project2_preemptable", "project2_root", nil, nil)
+		return root, project1RootQueue, project1NonPreemptableQueue, project1PreemptableQueue, project2RootQueue, project2NonPreemptableQueue, project2PreemptableQueue
+	}
+
+	buildLevelSemanticsTree := func() (*schedulingv1beta1.Queue, *schedulingv1beta1.Queue, *schedulingv1beta1.Queue, *schedulingv1beta1.Queue, *schedulingv1beta1.Queue, *schedulingv1beta1.Queue, *schedulingv1beta1.Queue) {
+		root := buildQueueWithParents("root", "", nil, nil)
+		grandA := buildQueueWithParents("grand-a", "root", api.BuildResourceList("2", "2Gi"), api.BuildResourceList("4", "4Gi"))
+		parentA := buildQueueWithParents("parent-a", "grand-a", api.BuildResourceList("2", "2Gi"), api.BuildResourceList("2", "2Gi"))
+		queueA := buildQueueWithParents("queue-a", "parent-a", api.BuildResourceList("2", "2Gi"), api.BuildResourceList("2", "2Gi"))
+		grandB := buildQueueWithParents("grand-b", "root", api.BuildResourceList("3", "3Gi"), api.BuildResourceList("4", "4Gi"))
+		parentB := buildQueueWithParents("parent-b", "grand-b", api.BuildResourceList("1", "1Gi"), api.BuildResourceList("2", "2Gi"))
+		queueB := buildQueueWithParents("queue-b", "parent-b", api.BuildResourceList("1", "1Gi"), api.BuildResourceList("2", "2Gi"))
+		return root, grandA, parentA, queueA, grandB, parentB, queueB
+	}
+
+	scenarios := []scenario{
+		{
+			name:            "case1: Can reclaim based on parent deserved when ancestorReclaimLevel is 1",
+			level:           1,
+			includePriority: true,
+			build: func(t *testing.T) (nodes []*corev1.Node, pods []*corev1.Pod, pgs []*schedulingv1beta1.PodGroup, queues []*schedulingv1beta1.Queue) {
+				n1 := util.BuildNode("n1", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "4"}, {Name: "rdma/hca", Value: "1001"}, {Name: "pods", Value: "11"}}...), map[string]string{})
+
+				root := buildQueueWithParents("root", "", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "4"}, {Name: "rdma", Value: "1000"}}...), nil)
+				case1Queue1 := buildQueueWithParents("case1_queue1", "root", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}}...), nil)
+				case1Queue11 := buildQueueWithParents("case1_queue11", "case1_queue1", nil, nil)
+				case1Queue2 := buildQueueWithParents("case1_queue2", "root", nil, nil)
+
+				pg1 := util.BuildPodGroup("pg1", "ns1", "case1_queue2", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pg2 := util.BuildPodGroup("pg2", "ns1", "case1_queue11", 1, nil, schedulingv1beta1.PodGroupInqueue)
+
+				p1 := util.BuildPod("ns1", "p1", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "4"}, {Name: "rdma/hca", Value: "1"}}...), "pg1", map[string]string{}, map[string]string{})
+				p2 := util.BuildPod("ns1", "p2", "", corev1.PodPending, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg2", map[string]string{}, map[string]string{})
+
+				return []*corev1.Node{n1}, []*corev1.Pod{p1, p2}, []*schedulingv1beta1.PodGroup{pg1, pg2}, []*schedulingv1beta1.Queue{root, case1Queue1, case1Queue11, case1Queue2}
+			},
+			expectPipeLined: map[string][]string{"ns1/pg2": {"n1"}},
+			expectEvicted:   []string{"ns1/p1"},
+			expectEvictNum:  1,
+		},
+		{
+			name:            "case2: Cross-parent reclaim pipelines project1 pending job when project2 child and parent are both over deserved",
+			level:           1,
+			includePriority: true,
+			build: func(t *testing.T) (nodes []*corev1.Node, pods []*corev1.Pod, pgs []*schedulingv1beta1.PodGroup, queues []*schedulingv1beta1.Queue) {
+				n1 := util.BuildNode("n1", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "4"}, {Name: "rdma/hca", Value: "1001"}, {Name: "pods", Value: "11"}}...), map[string]string{})
+
+				root, project1RootQueue, project1NonPreemptableQueue, project1PreemptableQueue, project2RootQueue, project2NonPreemptableQueue, project2PreemptableQueue := buildProjectQueueTree()
+
+				pg1 := util.BuildPodGroup("pg1", "ns1", "project2_preemptable", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pg2 := util.BuildPodGroup("pg2", "ns1", "project2_preemptable", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pg3 := util.BuildPodGroup("pg3", "ns1", "project2_preemptable", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pg4 := util.BuildPodGroup("pg4", "ns1", "project2_preemptable", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pg5 := util.BuildPodGroup("pg5", "ns1", "project1_preemptable", 1, nil, schedulingv1beta1.PodGroupPending)
+
+				priority1, priority2 := int32(1), int32(2)
+				p1 := util.BuildPodWithPriority("ns1", "p1", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg1", map[string]string{}, map[string]string{}, &priority2)
+				p2 := util.BuildPodWithPriority("ns1", "p2", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg2", map[string]string{}, map[string]string{}, &priority2)
+				p3 := util.BuildPodWithPriority("ns1", "p3", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg3", map[string]string{}, map[string]string{}, &priority2)
+				p4 := util.BuildPodWithPriority("ns1", "p4", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg4", map[string]string{}, map[string]string{}, &priority1)
+				p5 := util.BuildPod("ns1", "p5", "", corev1.PodPending, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg5", map[string]string{}, map[string]string{})
+
+				return []*corev1.Node{n1}, []*corev1.Pod{p1, p2, p3, p4, p5}, []*schedulingv1beta1.PodGroup{pg1, pg2, pg3, pg4, pg5}, []*schedulingv1beta1.Queue{root, project1RootQueue, project1NonPreemptableQueue, project1PreemptableQueue, project2RootQueue, project2NonPreemptableQueue, project2PreemptableQueue}
+			},
+			expectPipeLined: map[string][]string{"ns1/pg5": {"n1"}},
+			expectEvicted:   []string{"ns1/p4"},
+			expectEvictNum:  1,
+		},
+		{
+			name:            "case3: Cross-parent reclaim can evict sibling-queue victim first",
+			level:           1,
+			includePriority: true,
+			build: func(t *testing.T) (nodes []*corev1.Node, pods []*corev1.Pod, pgs []*schedulingv1beta1.PodGroup, queues []*schedulingv1beta1.Queue) {
+				n1 := util.BuildNode("n1", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "4"}, {Name: "rdma/hca", Value: "1001"}, {Name: "pods", Value: "11"}}...), map[string]string{})
+
+				root, project1RootQueue, project1NonPreemptableQueue, project1PreemptableQueue, project2RootQueue, project2NonPreemptableQueue, project2PreemptableQueue := buildProjectQueueTree()
+
+				pg1 := util.BuildPodGroup("pg1", "ns1", "project2_preemptable", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pg2 := util.BuildPodGroup("pg2", "ns1", "project2_preemptable", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pg3 := util.BuildPodGroup("pg3", "ns1", "project2_preemptable", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pg4Reclaimed := util.BuildPodGroup("pg4_reclaimed", "ns1", "project2_preemptable", 1, nil, schedulingv1beta1.PodGroupInqueue)
+				pg5Pipelined := util.BuildPodGroup("pg5_pipelined", "ns1", "project1_preemptable", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pg6 := util.BuildPodGroup("pg6", "ns1", "project2_non-preemptable", 1, nil, schedulingv1beta1.PodGroupPending)
+
+				priority2 := int32(2)
+				p1 := util.BuildPodWithPriority("ns1", "p1", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg1", map[string]string{}, map[string]string{}, &priority2)
+				p2 := util.BuildPodWithPriority("ns1", "p2", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg2", map[string]string{}, map[string]string{}, &priority2)
+				p3 := util.BuildPodWithPriority("ns1", "p3", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg3", map[string]string{}, map[string]string{}, &priority2)
+				p4Reclaimed := util.BuildPod("ns1", "p4", "", corev1.PodPending, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg4_reclaimed", map[string]string{}, map[string]string{})
+				p5Pipelined := util.BuildPod("ns1", "p5", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg5_pipelined", map[string]string{}, map[string]string{})
+				p6 := util.BuildPod("ns1", "p6", "", corev1.PodPending, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg6", map[string]string{}, map[string]string{})
+
+				return []*corev1.Node{n1}, []*corev1.Pod{p1, p2, p3, p4Reclaimed, p5Pipelined, p6}, []*schedulingv1beta1.PodGroup{pg1, pg2, pg3, pg4Reclaimed, pg5Pipelined, pg6}, []*schedulingv1beta1.Queue{root, project1RootQueue, project1NonPreemptableQueue, project1PreemptableQueue, project2RootQueue, project2NonPreemptableQueue, project2PreemptableQueue}
+			},
+			expectPipeLined: map[string][]string{"ns1/pg6": {"n1"}},
+			expectEvicted:   []string{"ns1/p3"},
+			expectEvictNum:  1,
+		},
+		{
+			name:            "case4: Cross-parent reclaim is blocked when victim child is not over deserved",
+			level:           1,
+			includePriority: true,
+			build: func(t *testing.T) (nodes []*corev1.Node, pods []*corev1.Pod, pgs []*schedulingv1beta1.PodGroup, queues []*schedulingv1beta1.Queue) {
+				n1 := util.BuildNode("n1", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1001"}, {Name: "pods", Value: "11"}}...), map[string]string{})
+
+				root := buildQueueWithParents("root", "", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "4"}, {Name: "rdma", Value: "1000"}}...), nil)
+				case4Parent1 := buildQueueWithParents("case4_parent1", "root", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}}...), nil)
+				case4Child1 := buildQueueWithParents("case4_child1", "case4_parent1", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}}...), nil)
+				case4Child1Sibling := buildQueueWithParents("case4_child1_sibling", "case4_parent1", nil, nil)
+				case4Parent2 := buildQueueWithParents("case4_parent2", "root", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}}...), nil)
+				case4Child2 := buildQueueWithParents("case4_child2", "case4_parent2", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}}...), nil)
+
+				pg1 := util.BuildPodGroup("pg1", "ns1", "case4_child1", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pg2 := util.BuildPodGroup("pg2", "ns1", "case4_child2", 1, nil, schedulingv1beta1.PodGroupPending)
+				pg3 := util.BuildPodGroup("pg3", "ns1", "case4_child1_sibling", 1, nil, schedulingv1beta1.PodGroupRunning)
+
+				p1 := util.BuildPod("ns1", "p1", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg1", map[string]string{}, map[string]string{})
+				p2 := util.BuildPod("ns1", "p2", "", corev1.PodPending, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg2", map[string]string{}, map[string]string{})
+				p3 := util.BuildPod("ns1", "p3", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg3", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, map[string]string{})
+
+				return []*corev1.Node{n1}, []*corev1.Pod{p1, p2, p3}, []*schedulingv1beta1.PodGroup{pg1, pg2, pg3}, []*schedulingv1beta1.Queue{root, case4Parent1, case4Child1, case4Child1Sibling, case4Parent2, case4Child2}
+			},
+			expectPipeLined: map[string][]string{},
+			expectEvicted:   []string{},
+			expectEvictNum:  0,
+		},
+		{
+			name:            "case5: level 0 allows reclaim based on leaf-level deserved checks",
+			level:           0,
+			includePriority: false,
+			build: func(t *testing.T) (nodes []*corev1.Node, pods []*corev1.Pod, pgs []*schedulingv1beta1.PodGroup, queues []*schedulingv1beta1.Queue) {
+				n1 := util.BuildNode("n1", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+				root, grandA, parentA, queueA, grandB, parentB, queueB := buildLevelSemanticsTree()
+				pVictim := util.BuildPod("ns1", "p-victim", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg-victim", nil, nil)
+				pReclaimer := util.BuildPod("ns1", "p-reclaimer", "", corev1.PodPending, api.BuildResourceList("2", "2Gi"), "pg-reclaimer", nil, nil)
+				pgVictim := util.BuildPodGroup("pg-victim", "ns1", "queue-b", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pgReclaimer := util.BuildPodGroup("pg-reclaimer", "ns1", "queue-a", 1, nil, schedulingv1beta1.PodGroupInqueue)
+				return []*corev1.Node{n1}, []*corev1.Pod{pVictim, pReclaimer}, []*schedulingv1beta1.PodGroup{pgVictim, pgReclaimer}, []*schedulingv1beta1.Queue{root, grandA, parentA, queueA, grandB, parentB, queueB}
+			},
+			expectPipeLined: map[string][]string{"ns1/pg-reclaimer": {"n1"}},
+			expectEvicted:   []string{"ns1/p-victim"},
+			expectEvictNum:  1,
+		},
+		{
+			name:            "case6: level 1 allows reclaim when parent-level check passes",
+			level:           1,
+			includePriority: false,
+			build: func(t *testing.T) (nodes []*corev1.Node, pods []*corev1.Pod, pgs []*schedulingv1beta1.PodGroup, queues []*schedulingv1beta1.Queue) {
+				n1 := util.BuildNode("n1", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+				root, grandA, parentA, queueA, grandB, parentB, queueB := buildLevelSemanticsTree()
+				pVictim := util.BuildPod("ns1", "p-victim", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg-victim", nil, nil)
+				pReclaimer := util.BuildPod("ns1", "p-reclaimer", "", corev1.PodPending, api.BuildResourceList("2", "2Gi"), "pg-reclaimer", nil, nil)
+				pgVictim := util.BuildPodGroup("pg-victim", "ns1", "queue-b", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pgReclaimer := util.BuildPodGroup("pg-reclaimer", "ns1", "queue-a", 1, nil, schedulingv1beta1.PodGroupInqueue)
+				return []*corev1.Node{n1}, []*corev1.Pod{pVictim, pReclaimer}, []*schedulingv1beta1.PodGroup{pgVictim, pgReclaimer}, []*schedulingv1beta1.Queue{root, grandA, parentA, queueA, grandB, parentB, queueB}
+			},
+			expectPipeLined: map[string][]string{"ns1/pg-reclaimer": {"n1"}},
+			expectEvicted:   []string{"ns1/p-victim"},
+			expectEvictNum:  1,
+		},
+		{
+			name:            "case7: level 2 blocks reclaim when grandparent-level check fails",
+			level:           2,
+			includePriority: false,
+			build: func(t *testing.T) (nodes []*corev1.Node, pods []*corev1.Pod, pgs []*schedulingv1beta1.PodGroup, queues []*schedulingv1beta1.Queue) {
+				n1 := util.BuildNode("n1", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+				root, grandA, parentA, queueA, grandB, parentB, queueB := buildLevelSemanticsTree()
+				pVictim := util.BuildPod("ns1", "p-victim", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg-victim", nil, nil)
+				pReclaimer := util.BuildPod("ns1", "p-reclaimer", "", corev1.PodPending, api.BuildResourceList("2", "2Gi"), "pg-reclaimer", nil, nil)
+				pgVictim := util.BuildPodGroup("pg-victim", "ns1", "queue-b", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pgReclaimer := util.BuildPodGroup("pg-reclaimer", "ns1", "queue-a", 1, nil, schedulingv1beta1.PodGroupInqueue)
+				return []*corev1.Node{n1}, []*corev1.Pod{pVictim, pReclaimer}, []*schedulingv1beta1.PodGroup{pgVictim, pgReclaimer}, []*schedulingv1beta1.Queue{root, grandA, parentA, queueA, grandB, parentB, queueB}
+			},
+			expectPipeLined: map[string][]string{},
+			expectEvicted:   []string{},
+			expectEvictNum:  0,
+		},
+		{
+			name:            "case8: level 1 blocks sibling reclaim when leaf deserved is unset and no ancestor gate applies",
+			level:           1,
+			includePriority: false,
+			build: func(t *testing.T) (nodes []*corev1.Node, pods []*corev1.Pod, pgs []*schedulingv1beta1.PodGroup, queues []*schedulingv1beta1.Queue) {
+				n1 := util.BuildNode("n1", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+				root := buildQueueWithParents("root", "", nil, nil)
+				parent := buildQueueWithParents("parent", "root", api.BuildResourceList("4", "4Gi"), api.BuildResourceList("4", "4Gi"))
+				queueA := buildQueueWithParents("queue-a", "parent", nil, nil)
+				queueB := buildQueueWithParents("queue-b", "parent", nil, nil)
+				pVictim := util.BuildPod("ns1", "p-victim", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg-victim", nil, nil)
+				pReclaimer := util.BuildPod("ns1", "p-reclaimer", "", corev1.PodPending, api.BuildResourceList("2", "2Gi"), "pg-reclaimer", nil, nil)
+				pgVictim := util.BuildPodGroup("pg-victim", "ns1", "queue-b", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pgReclaimer := util.BuildPodGroup("pg-reclaimer", "ns1", "queue-a", 1, nil, schedulingv1beta1.PodGroupInqueue)
+				return []*corev1.Node{n1}, []*corev1.Pod{pVictim, pReclaimer}, []*schedulingv1beta1.PodGroup{pgVictim, pgReclaimer}, []*schedulingv1beta1.Queue{root, parent, queueA, queueB}
+			},
+			expectPipeLined: map[string][]string{},
+			expectEvicted:   []string{},
+			expectEvictNum:  0,
+		},
+		{
+			name:            "case9: level 2 blocks reclaim when leaf deserved is unset and queues share grandparent",
+			level:           2,
+			includePriority: false,
+			build: func(t *testing.T) (nodes []*corev1.Node, pods []*corev1.Pod, pgs []*schedulingv1beta1.PodGroup, queues []*schedulingv1beta1.Queue) {
+				n1 := util.BuildNode("n1", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+				root := buildQueueWithParents("root", "", nil, nil)
+				grand := buildQueueWithParents("grand", "root", api.BuildResourceList("2", "2Gi"), api.BuildResourceList("2", "2Gi"))
+				parentA := buildQueueWithParents("parent-a", "grand", nil, nil)
+				queueA := buildQueueWithParents("queue-a", "parent-a", nil, nil)
+				parentB := buildQueueWithParents("parent-b", "grand", nil, nil)
+				queueB := buildQueueWithParents("queue-b", "parent-b", nil, nil)
+				pVictim := util.BuildPod("ns1", "p-victim", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg-victim", nil, nil)
+				pReclaimer := util.BuildPod("ns1", "p-reclaimer", "", corev1.PodPending, api.BuildResourceList("2", "2Gi"), "pg-reclaimer", nil, nil)
+				pgVictim := util.BuildPodGroup("pg-victim", "ns1", "queue-b", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pgReclaimer := util.BuildPodGroup("pg-reclaimer", "ns1", "queue-a", 1, nil, schedulingv1beta1.PodGroupInqueue)
+				return []*corev1.Node{n1}, []*corev1.Pod{pVictim, pReclaimer}, []*schedulingv1beta1.PodGroup{pgVictim, pgReclaimer}, []*schedulingv1beta1.Queue{root, grand, parentA, queueA, parentB, queueB}
+			},
+			expectPipeLined: map[string][]string{},
+			expectEvicted:   []string{},
+			expectEvictNum:  0,
+		},
+		{
+			name:            "case10: level 2 blocks reclaim in unbalanced shared-grandparent tree when leaf deserved is unset",
+			level:           2,
+			includePriority: false,
+			build: func(t *testing.T) (nodes []*corev1.Node, pods []*corev1.Pod, pgs []*schedulingv1beta1.PodGroup, queues []*schedulingv1beta1.Queue) {
+				n1 := util.BuildNode("n1", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+				root := buildQueueWithParents("root", "", nil, nil)
+				grand := buildQueueWithParents("grand", "root", api.BuildResourceList("1", "1Gi"), api.BuildResourceList("2", "2Gi"))
+				parentDeep := buildQueueWithParents("parent-deep", "grand", api.BuildResourceList("1", "1Gi"), api.BuildResourceList("2", "2Gi"))
+				queueDeep := buildQueueWithParents("queue-deep", "parent-deep", nil, nil)
+				queueShallow := buildQueueWithParents("queue-shallow", "grand", nil, nil)
+				pVictim := util.BuildPod("ns1", "p-victim", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg-victim", nil, nil)
+				pReclaimer := util.BuildPod("ns1", "p-reclaimer", "", corev1.PodPending, api.BuildResourceList("2", "2Gi"), "pg-reclaimer", nil, nil)
+				pgVictim := util.BuildPodGroup("pg-victim", "ns1", "queue-deep", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pgReclaimer := util.BuildPodGroup("pg-reclaimer", "ns1", "queue-shallow", 1, nil, schedulingv1beta1.PodGroupInqueue)
+				return []*corev1.Node{n1}, []*corev1.Pod{pVictim, pReclaimer}, []*schedulingv1beta1.PodGroup{pgVictim, pgReclaimer}, []*schedulingv1beta1.Queue{root, grand, parentDeep, queueDeep, queueShallow}
+			},
+			expectPipeLined: map[string][]string{},
+			expectEvicted:   []string{},
+			expectEvictNum:  0,
+		},
+		{
+			name:            "case11: unbalanced level2 blocks reclaim when depth-2 ancestor is not over deserved",
+			level:           2,
+			includePriority: false,
+			build: func(t *testing.T) (nodes []*corev1.Node, pods []*corev1.Pod, pgs []*schedulingv1beta1.PodGroup, queues []*schedulingv1beta1.Queue) {
+				n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}, {Name: "nvidia.com/a100", Value: "2"}}...), map[string]string{})
+				root := buildQueueWithParents("root", "", nil, nil)
+				shallowParent := buildQueueWithParents("shallow-parent", "root", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}}...), nil)
+				queueShallow := buildQueueWithParents("queue-shallow", "shallow-parent", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}}...), nil)
+				deepGrand := buildQueueWithParents("deep-grand", "root", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}}...), nil)
+				deepParent := buildQueueWithParents("deep-parent", "deep-grand", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}}...), nil)
+				queueDeep := buildQueueWithParents("queue-deep", "deep-parent", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}}...), nil)
+				pVictim := util.BuildPod("ns1", "p-victim", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}}...), "pg-victim", nil, nil)
+				pReclaimer := util.BuildPod("ns1", "p-reclaimer", "", corev1.PodPending, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "1"}}...), "pg-reclaimer", nil, nil)
+				pgVictim := util.BuildPodGroup("pg-victim", "ns1", "queue-deep", 1, nil, schedulingv1beta1.PodGroupRunning)
+				pgReclaimer := util.BuildPodGroup("pg-reclaimer", "ns1", "queue-shallow", 1, nil, schedulingv1beta1.PodGroupInqueue)
+				return []*corev1.Node{n1}, []*corev1.Pod{pVictim, pReclaimer}, []*schedulingv1beta1.PodGroup{pgVictim, pgReclaimer}, []*schedulingv1beta1.Queue{root, shallowParent, queueShallow, deepGrand, deepParent, queueDeep}
+			},
+			expectPipeLined: map[string][]string{},
+			expectEvicted:   []string{},
+			expectEvictNum:  0,
+		},
+	}
+
+	for i, sc := range scenarios {
+		t.Run(sc.name, func(t *testing.T) {
+			nodes, pods, pgs, queues := sc.build(t)
+			test := uthelper.TestCommonStruct{
+				Name:            sc.name,
+				Plugins:         plugins,
+				Nodes:           nodes,
+				Pods:            pods,
+				PodGroups:       pgs,
+				Queues:          queues,
+				ExpectPipeLined: sc.expectPipeLined,
+				ExpectEvicted:   sc.expectEvicted,
+				ExpectEvictNum:  sc.expectEvictNum,
+				ExpectBindsNum:  sc.expectBindsNum,
+				ExpectBindMap:   sc.expectBindMap,
+			}
+			tiers := buildTier(sc.level, sc.includePriority)
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run(actions)
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func buildQueueWithParents(name string, parent string, deserved corev1.ResourceList, cap corev1.ResourceList) *schedulingv1beta1.Queue {
 	queue := util.BuildQueueWithResourcesQuantity(name, deserved, cap)
 	queue.Spec.Parent = parent
@@ -1069,5 +1431,531 @@ func Test_buildHierarchicalQueueAttrs_nilSafety(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// TestNoDoubleCountingForInqueueJobWithBindingTasks is a regression test for a
+// double-counting bug in the capacity plugin.
+//
+// The bug: when jobA's tasks move to Binding after an allocate cycle, they are
+// tracked in attr.allocated (Binding ∈ AllocatedStatus). But the PodGroup stays
+// Inqueue because Binding ∉ ScheduledStatus, so buildQueueAttrs adds the full
+// minResources to attr.inqueue on top of what's already in attr.allocated.
+// Queue looks over-capacity, jobB gets rejected even though there's room.
+//
+// This test exercises the real Binding window by running two scheduler cycles:
+// cycle 1 allocates jobA's tasks (leaving them in Binding), then cycle 2
+// enqueues + allocates jobB. With the fix, jobB binds correctly.
+func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
+	options.Default()
+
+	prevEnabledActionMap := conf.EnabledActionMap
+	conf.EnabledActionMap = map[string]bool{"enqueue": true}
+	defer func() { conf.EnabledActionMap = prevEnabledActionMap }()
+
+	trueValue := true
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	uthelper.RegisterPlugins(plugins)
+	defer framework.CleanupPluginBuilders()
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledOverused:    &trueValue,
+					EnabledJobEnqueued: &trueValue,
+				},
+			},
+		},
+	}
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+
+	res1cpu := api.BuildResourceList("1", "1Gi")
+	minRes3cpu := api.BuildResourceList("3", "3Gi")
+	minRes1cpu := api.BuildResourceList("1", "1Gi")
+
+	// jobA: 3 pending tasks, PodGroup already Inqueue. Cycle 1 will allocate these,
+	// moving them to Binding in the cache while pgA stays Inqueue.
+	pgA := util.BuildPodGroup("pgA", "ns1", "q1", 3, nil, schedulingv1beta1.PodGroupInqueue)
+	pgA.Spec.MinResources = &minRes3cpu
+	pA1 := util.BuildPod("ns1", "pA1", "", corev1.PodPending, res1cpu, "pgA", nil, nil)
+	pA2 := util.BuildPod("ns1", "pA2", "", corev1.PodPending, res1cpu, "pgA", nil, nil)
+	pA3 := util.BuildPod("ns1", "pA3", "", corev1.PodPending, res1cpu, "pgA", nil, nil)
+
+	// jobB: 1 pending task. 1 CPU is free after jobA takes 3, so it should be
+	// enqueued and bound in cycle 2. The double-counting bug makes the queue appear
+	// at 6/4 CPU and rejects it.
+	pgB := util.BuildPodGroup("pgB", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+	pgB.Spec.MinResources = &minRes1cpu
+	pB1 := util.BuildPod("ns1", "pB1", "", corev1.PodPending, res1cpu, "pgB", nil, nil)
+
+	q1 := util.BuildQueueWithResourcesQuantity("q1", nil, api.BuildResourceList("4", "8Gi"))
+
+	binder := util.NewFakeBinder(10)
+	evictor := util.NewFakeEvictor(0)
+	statusUpdater := &util.FakeStatusUpdater{}
+	stop := make(chan struct{})
+	defer close(stop)
+
+	sc := cache.NewCustomMockSchedulerCache("test-capacity", binder, evictor, statusUpdater, nil, nil)
+	sc.Run(stop)
+	sc.AddOrUpdateNode(n1)
+	// Only jobA in cache for cycle 1 so jobB can't accidentally get scheduled early.
+	sc.AddPod(pA1)
+	sc.AddPod(pA2)
+	sc.AddPod(pA3)
+	sc.AddPodGroupV1beta1(pgA)
+	sc.AddQueueV1beta1(q1)
+
+	// Cycle 1: allocate jobA. After this pA1/pA2/pA3 are Binding in cache,
+	// pgA stays Inqueue (Binding ∉ ScheduledStatus).
+	ssn1 := framework.OpenSession(sc, tiers, nil)
+	allocate.New().Execute(ssn1)
+	framework.CloseSession(ssn1)
+
+	cycle1 := uthelper.WaitForBinds(t, binder.Channel, 3, 5*time.Second)
+	for _, pod := range []string{"ns1/pA1", "ns1/pA2", "ns1/pA3"} {
+		if !cycle1[pod] {
+			t.Errorf("expected %s bound in cycle 1, got %v", pod, cycle1)
+		}
+	}
+
+	// Now add jobB. Cache state: pA1/pA2/pA3 Binding, pgA Inqueue, 1 CPU free.
+	sc.AddPod(pB1)
+	sc.AddPodGroupV1beta1(pgB)
+
+	// Cycle 2: enqueue + allocate.
+	// Correct (fix applied):  allocated=3CPU, inqueue=max(0,3-3)=0 → 1+3+0=4 ≤ 4 → jobB bound.
+	// Buggy (pre-fix):        allocated=3CPU, inqueue=3CPU         → 1+3+3=7 > 4 → jobB rejected.
+	ssn2 := framework.OpenSession(sc, tiers, nil)
+	enqueue.New().Execute(ssn2)
+	allocate.New().Execute(ssn2)
+	framework.CloseSession(ssn2)
+
+	cycle2 := uthelper.WaitForBinds(t, binder.Channel, 1, 5*time.Second)
+	if !cycle2["ns1/pB1"] {
+		t.Errorf("regression: pB1 not bound in cycle 2 (got %v) — capacity plugin double-counting inqueue resources for pgA with tasks in Binding", cycle2)
+	}
+}
+
+func TestCapacityPluginDRA(t *testing.T) {
+	if err := utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=true", kubefeatures.DynamicResourceAllocation)); err != nil {
+		t.Fatal(err)
+	}
+
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	trueValue := true
+	actions := []framework.Action{enqueue.New(), allocate.New()}
+
+	buildDRAQueue := func(name string, capability map[string]int64) *schedulingv1beta1.Queue {
+		queue := util.BuildQueueWithResourcesQuantity(name, nil, nil)
+		if capability != nil {
+			queue.Spec.Capability = make(corev1.ResourceList, len(capability))
+			for class, count := range capability {
+				queue.Spec.Capability[corev1.ResourceName(DeviceClassCountPrefix+class)] = resource.MustParse(fmt.Sprintf("%d", count))
+			}
+		}
+		return queue
+	}
+
+	buildDRAPodAndClaim := func(ns, name, queue, deviceClass string, count int64) (*corev1.Pod, *resourcev1.ResourceClaim, *schedulingv1beta1.PodGroup) {
+		claimName := name + "-claim"
+		claim := &resourcev1.ResourceClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      claimName,
+				Namespace: ns,
+			},
+			Spec: resourcev1.ResourceClaimSpec{
+				Devices: resourcev1.DeviceClaim{
+					Requests: []resourcev1.DeviceRequest{
+						{
+							Name: "req-1",
+							Exactly: &resourcev1.ExactDeviceRequest{
+								DeviceClassName: deviceClass,
+								Count:           count,
+							},
+						},
+					},
+				},
+			},
+		}
+
+		pod := util.BuildPod(ns, name, "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), name+"-pg", nil, nil)
+		pod.Spec.ResourceClaims = []corev1.PodResourceClaim{
+			{
+				Name:              "claim-1",
+				ResourceClaimName: &claimName,
+			},
+		}
+		pod.Annotations[batchv1alpha1.TaskSpecKey] = "worker"
+
+		pg := util.BuildPodGroup(name+"-pg", ns, queue, 1, nil, schedulingv1beta1.PodGroupInqueue)
+		pg.Spec.MinTaskMember = map[string]int32{"worker": 1}
+
+		return pod, claim, pg
+	}
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("10", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+
+	q1 := buildDRAQueue("q1", map[string]int64{"gpu.com": 2})
+	p1, c1, pg1 := buildDRAPodAndClaim("ns1", "p1", "q1", "gpu.com", 1)
+
+	q2 := buildDRAQueue("q2", map[string]int64{"gpu.com": 1})
+	p2, c2, pg2 := buildDRAPodAndClaim("ns1", "p2", "q2", "gpu.com", 2)
+
+	q3 := buildDRAQueue("q3", map[string]int64{"gpu.com": 1, "nic.com": 1})
+	p3_1, c3_1, pg3_1 := buildDRAPodAndClaim("ns1", "p3-1", "q3", "gpu.com", 1)
+	p3_2, c3_2, pg3_2 := buildDRAPodAndClaim("ns1", "p3-2", "q3", "nic.com", 1)
+	p3_3, c3_3, pg3_3 := buildDRAPodAndClaim("ns1", "p3-3", "q3", "gpu.com", 1)
+
+	q4 := buildDRAQueue("q4", map[string]int64{"gpu.com": 1})
+	p4_1, c4_1, pg4_1 := buildDRAPodAndClaim("ns1", "p4-1", "q4", "gpu.com", 1)
+	p4_2, c4_2, pg4_2 := buildDRAPodAndClaim("ns1", "p4-2", "q4", "nic.com", 100)
+
+	q5 := buildDRAQueue("q5", map[string]int64{"gpu.com": 1})
+	p5_1, c5_1, pg5_1 := buildDRAPodAndClaim("ns1", "p5-1", "q5", "gpu.com", 2)
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name:           "Case 1: DRA Request within quota",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg1},
+			Queues:         []*schedulingv1beta1.Queue{q1},
+			Nodes:          []*corev1.Node{n1},
+			ResourceClaims: []*resourcev1.ResourceClaim{c1},
+			ExpectBindsNum: 1,
+			ExpectBindMap:  map[string]string{"ns1/p1": "n1"},
+		},
+		{
+			Name:           "Case 2: DRA Request exceeds quota",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p2},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg2},
+			Queues:         []*schedulingv1beta1.Queue{q2},
+			Nodes:          []*corev1.Node{n1},
+			ResourceClaims: []*resourcev1.ResourceClaim{c2},
+			ExpectBindsNum: 0,
+		},
+		{
+			Name:           "Case 3: Multiple Device Classes and Mixed Success/Failure",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p3_1, p3_2, p3_3},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg3_1, pg3_2, pg3_3},
+			Queues:         []*schedulingv1beta1.Queue{q3},
+			Nodes:          []*corev1.Node{n1},
+			ResourceClaims: []*resourcev1.ResourceClaim{c3_1, c3_2, c3_3},
+			ExpectBindsNum: 2,
+			ExpectBindMap: map[string]string{
+				"ns1/p3-1": "n1",
+				"ns1/p3-2": "n1",
+			},
+		},
+		{
+			Name:           "Case 4: Pass-through for unconfigured DeviceClass",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p4_1, p4_2},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg4_1, pg4_2},
+			Queues:         []*schedulingv1beta1.Queue{q4},
+			Nodes:          []*corev1.Node{n1},
+			ResourceClaims: []*resourcev1.ResourceClaim{c4_1, c4_2},
+			ExpectBindsNum: 2,
+			ExpectBindMap: map[string]string{
+				"ns1/p4-1": "n1",
+				"ns1/p4-2": "n1",
+			},
+		},
+		{
+			Name:           "Case 5: Job Enqueue DRA Check rejects oversize job",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p5_1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg5_1},
+			Queues:         []*schedulingv1beta1.Queue{q5},
+			Nodes:          []*corev1.Node{n1},
+			ResourceClaims: []*resourcev1.ResourceClaim{c5_1},
+			ExpectBindsNum: 0,
+		},
+	}
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledJobEnqueued: &trueValue,
+					Arguments: framework.Arguments{
+						DynamicResourceAllocationEnable: true,
+					},
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run(actions)
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestParseDRAResourceListCombinesCountAndCapacity(t *testing.T) {
+	resources := corev1.ResourceList{
+		corev1.ResourceName(DeviceClassCountPrefix + "gpu.example.com"):            resource.MustParse("2"),
+		corev1.ResourceName("memory" + DeviceClassCapacitySep + "gpu.example.com"): resource.MustParse("120Gi"),
+	}
+
+	for i := 0; i < 100; i++ {
+		parsed := parseDRAResourceList(resources)
+		if parsed == nil || parsed["gpu.example.com"] == nil {
+			t.Fatalf("expected gpu.example.com DRA resource, got %#v", parsed)
+		}
+		if got := parsed["gpu.example.com"].Count; got != 2 {
+			t.Fatalf("expected count 2, got %d", got)
+		}
+		gotMemory, ok := parsed["gpu.example.com"].Capacity["memory"]
+		if !ok {
+			t.Fatalf("expected memory capacity to be parsed")
+		}
+		if gotMemory.Cmp(resource.MustParse("120Gi")) != 0 {
+			t.Fatalf("expected memory 120Gi, got %s", gotMemory.String())
+		}
+	}
+}
+
+func TestSharedResourceClaimIsChargedOnce(t *testing.T) {
+	queueID := api.QueueID("q1")
+	attr := &queueAttr{
+		allocated:      api.EmptyResource(),
+		realCapability: api.InfiniteResource(),
+		dra: &draQuotaAttr{
+			allocated: make(map[string]*api.DRAResource),
+			capability: map[string]*api.DRAResource{
+				"gpu.com": {Count: 1},
+			},
+		},
+		resourceClaimRefs: make(map[string]int),
+	}
+	cp := &capacityPlugin{
+		queueOpts:              map[api.QueueID]*queueAttr{queueID: attr},
+		queueGateReservedTasks: make(map[api.QueueID]map[api.TaskID]*api.TaskInfo),
+	}
+	taskA := &api.TaskInfo{
+		Resreq:            api.EmptyResource(),
+		ResourceClaimKeys: []string{"ns1/shared"},
+		ResourceClaimDRAResreq: map[string]map[string]*api.DRAResource{
+			"ns1/shared": {
+				"gpu.com": {Count: 1},
+			},
+		},
+		DRAResreq: map[string]*api.DRAResource{
+			"gpu.com": {Count: 1},
+		},
+	}
+	taskB := &api.TaskInfo{
+		Resreq:            api.EmptyResource(),
+		ResourceClaimKeys: []string{"ns1/shared"},
+		ResourceClaimDRAResreq: map[string]map[string]*api.DRAResource{
+			"ns1/shared": {
+				"gpu.com": {Count: 1},
+			},
+		},
+		DRAResreq: map[string]*api.DRAResource{
+			"gpu.com": {Count: 1},
+		},
+	}
+
+	addTaskDRAAllocated(attr, taskA)
+	addTaskDRAAllocated(attr, taskB)
+
+	if got := attr.dra.allocated["gpu.com"].Count; got != 1 {
+		t.Fatalf("shared claim should be counted once after two additions, got %d", got)
+	}
+
+	queue := &api.QueueInfo{UID: queueID, Name: "q1"}
+	if !cp.queueAllocatable(queue, taskA, true, false) {
+		t.Fatalf("shared claim should not consume additional DRA quota when the claim is already referenced by the queue")
+	}
+
+	distinctTask := &api.TaskInfo{
+		Name:              "distinct",
+		Resreq:            api.EmptyResource(),
+		ResourceClaimKeys: []string{"ns1/distinct"},
+		ResourceClaimDRAResreq: map[string]map[string]*api.DRAResource{
+			"ns1/distinct": {
+				"gpu.com": {Count: 1},
+			},
+		},
+		DRAResreq: map[string]*api.DRAResource{
+			"gpu.com": {Count: 1},
+		},
+	}
+	if cp.queueAllocatable(queue, distinctTask, true, false) {
+		t.Fatalf("distinct claim should still be rejected when it exceeds remaining DRA quota")
+	}
+
+	removeTaskDRAAllocated(attr, taskA)
+	if got := attr.dra.allocated["gpu.com"].Count; got != 1 {
+		t.Fatalf("shared claim should remain allocated until last reference is removed, got %d", got)
+	}
+
+	removeTaskDRAAllocated(attr, taskB)
+	if got := attr.dra.allocated["gpu.com"].Count; got != 0 {
+		t.Fatalf("shared claim should be released after last reference is removed, got %d", got)
+	}
+}
+
+func TestJobEnqueueableChecksDRAWithoutMinResources(t *testing.T) {
+	queueID := api.QueueID("q1")
+	cp := &capacityPlugin{
+		queueOpts: map[api.QueueID]*queueAttr{
+			queueID: {
+				allocated:         api.EmptyResource(),
+				inqueue:           api.EmptyResource(),
+				elastic:           api.EmptyResource(),
+				realCapability:    api.InfiniteResource(),
+				resourceClaimRefs: make(map[string]int),
+				dra: newDRAQuotaAttr(corev1.ResourceList{
+					corev1.ResourceName(DeviceClassCountPrefix + "gpu.com"): resource.MustParse("1"),
+				}, nil, nil),
+			},
+		},
+		dynamicResourceAllocationEnable: true,
+	}
+	queue := &api.QueueInfo{
+		UID:  queueID,
+		Name: "q1",
+		Queue: &scheduling.Queue{
+			ObjectMeta: metav1.ObjectMeta{Name: "q1"},
+			Spec:       scheduling.QueueSpec{},
+			Status:     scheduling.QueueStatus{State: scheduling.QueueStateOpen},
+		},
+	}
+	job := api.NewJobInfo(api.JobID("ns1/job1"))
+	job.Name = "job1"
+	job.Namespace = "ns1"
+	job.PodGroup = &api.PodGroup{
+		PodGroup: scheduling.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "ns1"},
+			Spec:       scheduling.PodGroupSpec{},
+		},
+	}
+	job.TaskMinAvailable["worker"] = 1
+	job.Tasks[api.TaskID("task1")] = &api.TaskInfo{
+		TaskRole: "worker",
+		DRAResreq: map[string]*api.DRAResource{
+			"gpu.com": {Count: 2},
+		},
+	}
+
+	enqueueable, reasons := cp.jobEnqueueable(queue, job)
+	if enqueueable {
+		t.Fatalf("expected DRA-only job to be rejected without MinResources when queue capability is insufficient")
+	}
+	if len(reasons) == 0 || reasons[len(reasons)-1] != "dra-resource-exceeded" {
+		t.Fatalf("expected dra-resource-exceeded reason, got %v", reasons)
+	}
+}
+
+func TestJobEnqueueableAccountsDRAInqueue(t *testing.T) {
+	queueID := api.QueueID("q1")
+	attr := &queueAttr{
+		allocated:         api.EmptyResource(),
+		inqueue:           api.EmptyResource(),
+		elastic:           api.EmptyResource(),
+		realCapability:    api.InfiniteResource(),
+		resourceClaimRefs: make(map[string]int),
+		dra: newDRAQuotaAttr(corev1.ResourceList{
+			corev1.ResourceName(DeviceClassCountPrefix + "gpu.com"):            resource.MustParse("2"),
+			corev1.ResourceName("memory" + DeviceClassCapacitySep + "gpu.com"): resource.MustParse("16Gi"),
+		}, nil, nil),
+	}
+	updateDRAInqueue(attr.dra, map[string]*api.DRAResource{
+		"gpu.com": {
+			Count: 1,
+			Capacity: map[string]resource.Quantity{
+				"memory": resource.MustParse("8Gi"),
+			},
+		},
+	})
+
+	cp := &capacityPlugin{
+		queueOpts:                       map[api.QueueID]*queueAttr{queueID: attr},
+		dynamicResourceAllocationEnable: true,
+		draConsumableCapacityEnable:     true,
+	}
+	queue := &api.QueueInfo{
+		UID:  queueID,
+		Name: "q1",
+	}
+	job := api.NewJobInfo(api.JobID("ns1/job1"))
+	job.Name = "job1"
+	job.Namespace = "ns1"
+	job.MinAvailable = 1
+	job.PodGroup = &api.PodGroup{
+		PodGroup: scheduling.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{Name: "job1", Namespace: "ns1"},
+			Spec:       scheduling.PodGroupSpec{},
+		},
+	}
+	job.Tasks[api.TaskID("task1")] = &api.TaskInfo{
+		UID:       api.TaskID("task1"),
+		Namespace: "ns1",
+		Name:      "task1",
+		DRAResreq: map[string]*api.DRAResource{
+			"gpu.com": {
+				Count: 2,
+				Capacity: map[string]resource.Quantity{
+					"memory": resource.MustParse("16Gi"),
+				},
+			},
+		},
+	}
+
+	enqueueable, reasons := cp.jobEnqueueable(queue, job)
+	if enqueueable {
+		t.Fatalf("expected DRA inqueue resources to reserve queue capacity")
+	}
+	if len(reasons) == 0 || reasons[len(reasons)-1] != "dra-resource-exceeded" {
+		t.Fatalf("expected dra-resource-exceeded reason, got %v", reasons)
+	}
+}
+
+func TestDRAAllocatableIgnoresInqueue(t *testing.T) {
+	dra := newDRAQuotaAttr(corev1.ResourceList{
+		corev1.ResourceName(DeviceClassCountPrefix + "gpu.com"):            resource.MustParse("2"),
+		corev1.ResourceName("memory" + DeviceClassCapacitySep + "gpu.com"): resource.MustParse("16Gi"),
+	}, nil, nil)
+	updateDRAInqueue(dra, map[string]*api.DRAResource{
+		"gpu.com": {
+			Count: 1,
+			Capacity: map[string]resource.Quantity{
+				"memory": resource.MustParse("8Gi"),
+			},
+		},
+	})
+
+	request := map[string]*api.DRAResource{
+		"gpu.com": {
+			Count: 2,
+			Capacity: map[string]resource.Quantity{
+				"memory": resource.MustParse("16Gi"),
+			},
+		},
+	}
+
+	if !checkDRAAllocatable(dra, request, true, false) {
+		t.Fatalf("expected allocatable DRA check to ignore inqueue resources")
+	}
+	if checkDRAAllocatable(dra, request, true, true) {
+		t.Fatalf("expected enqueueable DRA check to account inqueue resources")
 	}
 }

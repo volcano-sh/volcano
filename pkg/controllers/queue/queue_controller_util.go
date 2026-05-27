@@ -29,7 +29,7 @@ const (
 type patchOperation struct {
 	Op    string      `json:"op"`
 	Path  string      `json:"path"`
-	Value interface{} `json:"value,omitempty"`
+	Value interface{} `json:"value"`
 }
 
 // IsQueueReference return if ownerReference is Queue Kind.

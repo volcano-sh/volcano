@@ -178,6 +178,176 @@ func TestNumFeasibleNodesToFind(t *testing.T) {
 	}
 }
 
+func TestSelectBestNodes(t *testing.T) {
+	tests := []struct {
+		name          string
+		nodeScores    map[float64][]*api.NodeInfo
+		count         int
+		nodesInBinder map[string]int
+		expected      []*api.NodeInfo
+	}{
+		{
+			name:       "empty nodeScores returns empty",
+			nodeScores: map[float64][]*api.NodeInfo{},
+			count:      3,
+			expected:   []*api.NodeInfo{},
+		},
+		{
+			name: "count is zero returns empty",
+			nodeScores: map[float64][]*api.NodeInfo{
+				1.0: {{Name: "node1"}},
+			},
+			count:    0,
+			expected: []*api.NodeInfo{},
+		},
+		{
+			name: "no downgrade: nodeCount <= count, all nodes included in score order",
+			nodeScores: map[float64][]*api.NodeInfo{
+				3.0: {{Name: "node3"}},
+				2.0: {{Name: "node2"}},
+				1.0: {{Name: "node1"}},
+			},
+			count: 5,
+			nodesInBinder: map[string]int{
+				"node1": 1,
+			},
+			expected: []*api.NodeInfo{
+				{Name: "node3"},
+				{Name: "node2"},
+				{Name: "node1"},
+			},
+		},
+		{
+			name: "no downgrade: nodeCount > count, binder empty, top N by score",
+			nodeScores: map[float64][]*api.NodeInfo{
+				3.0: {{Name: "node3"}},
+				2.0: {{Name: "node2"}},
+				1.0: {{Name: "node1"}},
+			},
+			count:         2,
+			nodesInBinder: map[string]int{},
+			expected: []*api.NodeInfo{
+				{Name: "node3"},
+				{Name: "node2"},
+			},
+		},
+		{
+			name: "downgrade: binder node skipped, lower-score non-binder selected instead",
+			nodeScores: map[float64][]*api.NodeInfo{
+				3.0: {{Name: "node3"}},
+				2.0: {{Name: "node2_binder"}},
+				1.0: {{Name: "node1"}},
+			},
+			count: 2,
+			nodesInBinder: map[string]int{
+				"node2_binder": 1,
+			},
+			expected: []*api.NodeInfo{
+				{Name: "node3"},
+				{Name: "node1"},
+			},
+		},
+		{
+			name: "downgrade: binder node at highest score skipped in favor of lower non-binder nodes",
+			nodeScores: map[float64][]*api.NodeInfo{
+				3.0: {{Name: "node3_binder"}},
+				2.0: {{Name: "node2"}},
+				1.0: {{Name: "node1"}},
+			},
+			count: 2,
+			nodesInBinder: map[string]int{
+				"node3_binder": 1,
+			},
+			expected: []*api.NodeInfo{
+				{Name: "node2"},
+				{Name: "node1"},
+			},
+		},
+		{
+			name: "downgrade: insufficient non-binder nodes, binder nodes as fallback at end",
+			nodeScores: map[float64][]*api.NodeInfo{
+				3.0: {{Name: "node3_binder"}},
+				2.0: {{Name: "node2_binder"}},
+				1.0: {{Name: "node1"}},
+			},
+			count: 2,
+			nodesInBinder: map[string]int{
+				"node3_binder": 1,
+				"node2_binder": 1,
+			},
+			expected: []*api.NodeInfo{
+				{Name: "node1"},
+				{Name: "node3_binder"}, // node1 (score 1.0) + highest-score binder fallback (3.0)
+			},
+		},
+		{
+			name: "downgrade: all nodes in binder, no free nodes, all selected from binder in score order",
+			nodeScores: map[float64][]*api.NodeInfo{
+				3.0: {{Name: "node3"}},
+				2.0: {{Name: "node2"}},
+				1.0: {{Name: "node1"}},
+			},
+			count: 2,
+			nodesInBinder: map[string]int{
+				"node3": 1,
+				"node2": 1,
+				"node1": 1,
+			},
+			expected: []*api.NodeInfo{
+				{Name: "node3"},
+				{Name: "node2"},
+			},
+		},
+		{
+			name: "no downgrade: binder node with count=0 is treated as free",
+			nodeScores: map[float64][]*api.NodeInfo{
+				3.0: {{Name: "node3"}},
+				2.0: {{Name: "node2_binder"}},
+				1.0: {{Name: "node1"}},
+			},
+			count: 2,
+			nodesInBinder: map[string]int{
+				"node2_binder": 0,
+			},
+			expected: []*api.NodeInfo{
+				{Name: "node3"},
+				{Name: "node2_binder"},
+			},
+		},
+		{
+			name: "downgrade within same score tier: binder node skipped, free node at same score selected",
+			nodeScores: map[float64][]*api.NodeInfo{
+				2.0: {{Name: "node2_binder"}, {Name: "node2_free"}},
+				1.0: {{Name: "node1"}},
+			},
+			count: 2,
+			nodesInBinder: map[string]int{
+				"node2_binder": 1,
+			},
+			expected: []*api.NodeInfo{
+				{Name: "node2_free"},
+				{Name: "node1"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := SelectBestNodes(tt.nodeScores, tt.count, tt.nodesInBinder)
+
+			if len(result) != len(tt.expected) {
+				t.Errorf("expected %d nodes, got %d", len(tt.expected), len(result))
+				return
+			}
+			for i, node := range tt.expected {
+				if result[i].Name != node.Name {
+					t.Errorf("position %d: expected %s, got %s", i, node.Name, result[i].Name)
+				}
+			}
+		})
+	}
+}
+
 func TestGetHyperNodeList(t *testing.T) {
 	testCases := []struct {
 		name       string

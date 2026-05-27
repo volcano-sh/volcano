@@ -47,6 +47,10 @@ const VolcanoGroupMinResourcesAnnotationKey = GroupName + "/group-min-resources"
 // which queue it belongs to.
 const QueueNameAnnotationKey = GroupName + "/queue-name"
 
+// QueueAllocationGateKey is the annotation key to opt-in to queue capacity
+// gate management and the name of the scheduling gate that controls queue admission.
+const QueueAllocationGateKey = GroupName + "/queue-allocation-gate"
+
 // PodPreemptable is the key of preemptable
 const PodPreemptable = "volcano.sh/preemptable"
 

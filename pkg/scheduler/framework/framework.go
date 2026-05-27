@@ -32,6 +32,7 @@ import (
 
 // OpenSession start the session
 func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration) *Session {
+	openStart := time.Now()
 	ssn := openSession(cache)
 	ssn.Tiers = tiers
 	ssn.Configurations = configurations
@@ -53,6 +54,7 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Con
 	}
 
 	ssn.InitCycleState()
+	metrics.UpdateOpenSessionDuration(time.Since(openStart))
 
 	return ssn
 }

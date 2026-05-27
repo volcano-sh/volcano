@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -22,27 +22,30 @@ import (
 	shardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 )
 
-// ShardStrategy defines hard boundaries for node assignment
-type ShardStrategy struct {
-	// CPUUtilizationRange specifies inclusive range [min, max] for CPU utilization
-	CPUUtilizationRange struct {
-		Min float64
-		Max float64
-	}
-
-	// PreferWarmupNodes indicates preference for warmup nodes
-	PreferWarmupNodes bool
-
-	// MinNodes and MaxNodes define node count constraints
-	MinNodes int
-	MaxNodes int
+// PolicyRef is one entry in a scheduler's policy chain. Multiple PolicyRefs
+// drive the multi-policy pipeline: each Filterer contributes to the filter
+// phase (OR-union) and each Scorer to the score phase (weighted sum).
+type PolicyRef struct {
+	Name      string                 // registered policy name (e.g. "allocation-rate")
+	Weight    int                    // applied to Score output; default 1; only meaningful for Scorers
+	Arguments map[string]interface{} // policy-specific arguments
 }
 
-// SchedulerConfig defines the configuration for a scheduler
+// SchedulerConfig defines the configuration for a scheduler.
 type SchedulerConfig struct {
-	Name          string
-	Type          string // "volcano" or "agent"
-	ShardStrategy ShardStrategy
+	Name string
+	Type string // "volcano" or "agent"
+
+	// Policies is the per-scheduler policy chain. Filterers contribute to
+	// filter (OR-union); Scorers to score (weighted sum). Empty means no
+	// policy participation in those phases.
+	Policies []PolicyRef
+
+	// MinNodes and MaxNodes are common (non-policy-specific) bounds on the
+	// number of nodes assigned to this scheduler. The sharding controller
+	// clamps the policy output to this range; policies do not see them.
+	MinNodes int
+	MaxNodes int
 }
 
 // AssignmentCache stores the result of shard assignments with version control
@@ -97,13 +100,11 @@ type NodeResourceInfo struct {
 	Annotations       map[string]string
 }
 
-// ShardAssignment represents assignment for a single scheduler
+// ShardAssignment represents assignment for a single scheduler.
 type ShardAssignment struct {
 	SchedulerName string
 	NodesDesired  []string
-	StrategyUsed  string
 	Version       string
-	Reason        string
 }
 
 // AssignmentChangeEvent represents a change in assignment

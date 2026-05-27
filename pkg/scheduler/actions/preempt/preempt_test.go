@@ -35,6 +35,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/capacity"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
@@ -330,6 +331,50 @@ func TestPreempt(t *testing.T) {
 			ExpectEvictNum: 1,
 			ExpectEvicted:  []string{"c1/preemptee2"},
 		},
+		{
+			// Regression test for the preemptorTasks overwrite issue in multi-queue preemption.
+			//
+			// Instead of:
+			//    intraJobPreemptors := util.NewPriorityQueue(ssn.TaskOrderFn)
+			// We have used:
+			//    preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
+			// in the "Preemption between Task within Job" loop, which caused preemptorTasks to be overwritten/drained across queues.
+			// This test verifies that the preemptorTasks for pg3 (high-priority preemptor in q2) is not overwritten/drained when processing q1, so that pg3 can successfully preempt pg2.
+			//
+			// Scenario:
+			// - q1 has a running non-starving job (pg1) and no preemptor.
+			// - q2 has a low-priority running victim (pg2) and a high-priority starving
+			//   preemptor job (pg3).
+			// - underRequest is shared across queues.
+			//
+			// Buggy behavior:
+			// - While processing q1, the intra-job pass overwrites/drains
+			//   preemptorTasks[pg3], so q2 later sees no preemptor and skips eviction.
+			//
+			// Why this was flaky:
+			// - Queue iteration order came from a Go map, so the run usually passed when
+			//   q2 was visited first, but failed when q1 was visited first.
+			Name: "multi-queue: preemptorTasks must not be overwritten by intra-job preemption of another queue",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroup("pg1", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 0, map[string]int32{}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg3", "c1", "q2", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "q1-runner1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "q2-preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg2", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "q2-preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg3", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, nil),
+				util.BuildQueue("q2", 1, api.BuildResourceList("4", "4G")),
+			},
+			ExpectEvicted:  []string{"c1/q2-preemptee1"},
+			ExpectEvictNum: 1,
+		},
 	}
 
 	trueValue := true
@@ -381,6 +426,7 @@ func TestPreempt(t *testing.T) {
 
 func TestTopologyAwarePreempt(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{
+		capacity.PluginName:    capacity.New,
 		conformance.PluginName: conformance.New,
 		gang.PluginName:        gang.New,
 		priority.PluginName:    priority.New,
@@ -619,6 +665,28 @@ func TestTopologyAwarePreempt(t *testing.T) {
 			ExpectEvictNum: 1,
 			ExpectEvicted:  []string{"c1/preemptee2"},
 		},
+		{
+			Name: "preemption with priority queues",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg3", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupRunning, "high-priority"),
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg3", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPodWithPreemptionPolicy("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string), v1.PreemptLowerPriority),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "2"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueueWithPriorityAndResourcesQuantity("q1", 1, api.BuildResourceList("1", "1G"), api.BuildResourceList("1", "1G")),
+				util.BuildQueueWithPriorityAndResourcesQuantity("q2", 10, api.BuildResourceList("1", "1G"), api.BuildResourceList("1", "1G")),
+			},
+			ExpectEvictNum: 1,
+			ExpectEvicted:  []string{"c1/preemptee1"},
+		},
 	}
 
 	trueValue := true
@@ -654,6 +722,10 @@ func TestTopologyAwarePreempt(t *testing.T) {
 					Name:               predicates.PluginName,
 					EnabledPreemptable: &trueValue,
 					EnabledPredicate:   &trueValue,
+				},
+				{
+					Name:              capacity.PluginName,
+					EnabledQueueOrder: &trueValue,
 				},
 			},
 		}}

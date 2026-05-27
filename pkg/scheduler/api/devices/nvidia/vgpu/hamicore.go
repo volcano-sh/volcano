@@ -37,12 +37,12 @@ func (f HAMICoreFactory) TryAddPod(gd *GPUDevice, mem uint, core uint) (bool, st
 }
 
 func (f HAMICoreFactory) AddPod(gd *GPUDevice, mem uint, core uint, podUID string, devID string) error {
-	_, ok := gd.PodMap[podUID]
-	if !ok {
-		gd.PodMap[podUID] = &GPUUsage{
-			UsedMem:  0,
-			UsedCore: 0,
-		}
+	if _, ok := gd.PodMap[podUID]; ok {
+		return nil
+	}
+	gd.PodMap[podUID] = &GPUUsage{
+		UsedMem:  0,
+		UsedCore: 0,
 	}
 	gd.UsedNum++
 	gd.UsedMem += mem
@@ -64,8 +64,7 @@ func (f HAMICoreFactory) SubPod(gd *GPUDevice, mem uint, core uint, podUID strin
 	gd.UsedNum--
 	gd.UsedMem -= mem
 	gd.UsedCore -= core
-	gd.PodMap[podUID].UsedMem -= mem
-	gd.PodMap[podUID].UsedCore -= core
-	klog.V(4).Infoln("sub Pod: ", podUID, mem, gd.PodMap[podUID].UsedMem, gd.PodMap[podUID].UsedCore)
+	klog.V(4).Infoln("sub Pod: ", podUID, mem)
+	delete(gd.PodMap, podUID)
 	return nil
 }

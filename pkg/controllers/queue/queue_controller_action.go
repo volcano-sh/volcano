@@ -311,9 +311,9 @@ func (c *queuecontroller) updateQueueAnnotation(queue *schedulingv1beta1.Queue, 
 	}
 
 	var patch []patchOperation
-	if len(queue.Annotations) == 0 {
+	if queue.Annotations == nil {
 		patch = append(patch, patchOperation{
-			Op:   "replace",
+			Op:   "add",
 			Path: "/metadata/annotations",
 			Value: map[string]string{
 				key: value,
@@ -321,7 +321,7 @@ func (c *queuecontroller) updateQueueAnnotation(queue *schedulingv1beta1.Queue, 
 		})
 	} else {
 		patch = append(patch, patchOperation{
-			Op:    "replace",
+			Op:    "add",
 			Path:  fmt.Sprintf("/metadata/annotations/%s", strings.ReplaceAll(key, "/", "~1")),
 			Value: value,
 		})
