@@ -61,57 +61,6 @@ func TestBuildNominationPlanInDomain_Guards(t *testing.T) {
 	assert.Nil(t, plan)
 }
 
-func TestCollectPendingTasks_SubJobAwareOrder(t *testing.T) {
-	jobID := api.JobID("ns/job1")
-	t1 := makeTask(jobID, "t1")
-	t2 := makeTask(jobID, "t2")
-	t3 := makeTask(jobID, "t3")
-	job := api.NewJobInfo(jobID, t1, t2, t3)
-	job.SubJobs = map[api.SubJobID]*api.SubJobInfo{
-		"sj-late": {
-			UID:        "sj-late",
-			MatchIndex: 2,
-			TaskStatusIndex: map[api.TaskStatus]api.TasksMap{
-				api.Pending: {t1.UID: t1},
-			},
-		},
-		"sj-early": {
-			UID:        "sj-early",
-			MatchIndex: 1,
-			TaskStatusIndex: map[api.TaskStatus]api.TasksMap{
-				api.Pending: {t3.UID: t3, t2.UID: t2},
-			},
-		},
-	}
-
-	out := collectPendingTasks(job, nil, nil)
-	assert.Equal(t, 3, len(out))
-	assert.Equal(t, api.TaskID("t2"), out[0].UID)
-	assert.Equal(t, api.TaskID("t3"), out[1].UID)
-	assert.Equal(t, api.TaskID("t1"), out[2].UID)
-}
-
-func TestCollectPendingTasks_FallbackIncludesPendingOutsideSubJobs(t *testing.T) {
-	jobID := api.JobID("ns/job-fallback")
-	t1 := makeTask(jobID, "t1")
-	t2 := makeTask(jobID, "t2")
-	job := api.NewJobInfo(jobID, t1, t2)
-	job.SubJobs = map[api.SubJobID]*api.SubJobInfo{
-		"sj-only-t1": {
-			UID:        "sj-only-t1",
-			MatchIndex: 1,
-			TaskStatusIndex: map[api.TaskStatus]api.TasksMap{
-				api.Pending: {t1.UID: t1},
-			},
-		},
-	}
-
-	out := collectPendingTasks(job, nil, nil)
-	assert.Equal(t, 2, len(out))
-	assert.Equal(t, api.TaskID("t1"), out[0].UID)
-	assert.ElementsMatch(t, []api.TaskID{"t1", "t2"}, []api.TaskID{out[0].UID, out[1].UID})
-}
-
 func TestCollectPendingTasksForJobStartup_WorksheetOrder(t *testing.T) {
 	jobID := api.JobID("ns/startup-pending")
 	t1 := makeTask(jobID, "t1")
@@ -176,20 +125,6 @@ func TestCollectPendingTasksForJobStartup_EmptyWorksheetReturnsNil(t *testing.T)
 	job := api.NewJobInfo(jobID)
 	ssn := &framework.Session{}
 	assert.Nil(t, collectPendingTasksForJobStartup(ssn, job))
-}
-
-func TestCollectPendingTasks_FiltersGatedAndBestEffort(t *testing.T) {
-	jobID := api.JobID("ns/job-filter")
-	gated := makeTask(jobID, "gated")
-	gated.SchGated = true
-	bestEffort := makeTask(jobID, "be")
-	bestEffort.Resreq = api.EmptyResource()
-	normal := makeTask(jobID, "normal")
-	job := api.NewJobInfo(jobID, gated, bestEffort, normal)
-
-	out := collectPendingTasks(job, nil, nil)
-	assert.Equal(t, 1, len(out))
-	assert.Equal(t, api.TaskID("normal"), out[0].UID)
 }
 
 func TestBuildNominationPlanInDomain_Success(t *testing.T) {
@@ -556,77 +491,6 @@ func TestPickBestNodeForTask_FallsBackFutureIdleGroup(t *testing.T) {
 	if assert.NotNil(t, best) {
 		assert.Equal(t, "n-future", best.Name)
 	}
-}
-
-func TestCollectPendingTasks_UsesProvidedOrderFns(t *testing.T) {
-	jobID := api.JobID("ns/job-order")
-	t1 := makeTask(jobID, "t1")
-	t2 := makeTask(jobID, "t2")
-	t3 := makeTask(jobID, "t3")
-	job := api.NewJobInfo(jobID, t1, t2, t3)
-	job.SubJobs = map[api.SubJobID]*api.SubJobInfo{
-		"sj-a": {
-			UID: "sj-a",
-			TaskStatusIndex: map[api.TaskStatus]api.TasksMap{
-				api.Pending: {t1.UID: t1},
-			},
-		},
-		"sj-b": {
-			UID: "sj-b",
-			TaskStatusIndex: map[api.TaskStatus]api.TasksMap{
-				api.Pending: {t2.UID: t2, t3.UID: t3},
-			},
-		},
-	}
-	subJobLess := func(l, r interface{}) bool {
-		return l.(*api.SubJobInfo).UID > r.(*api.SubJobInfo).UID
-	}
-	taskLess := func(l, r interface{}) bool {
-		return l.(*api.TaskInfo).UID > r.(*api.TaskInfo).UID
-	}
-
-	out := collectPendingTasks(job, subJobLess, taskLess)
-	assert.Equal(t, 3, len(out))
-	assert.Equal(t, api.TaskID("t3"), out[0].UID)
-	assert.Equal(t, api.TaskID("t2"), out[1].UID)
-	assert.Equal(t, api.TaskID("t1"), out[2].UID)
-}
-
-func TestCollectPendingTasks_DedupsBetweenSubJobsAndFallback(t *testing.T) {
-	jobID := api.JobID("ns/job-dedup")
-	t1 := makeTask(jobID, "t1")
-	t2 := makeTask(jobID, "t2")
-	job := api.NewJobInfo(jobID, t1, t2)
-	job.SubJobs = map[api.SubJobID]*api.SubJobInfo{
-		"sj-a": {
-			UID: "sj-a",
-			TaskStatusIndex: map[api.TaskStatus]api.TasksMap{
-				api.Pending: {t1.UID: t1, t2.UID: t2},
-			},
-		},
-	}
-
-	out := collectPendingTasks(job, nil, nil)
-	assert.Equal(t, 2, len(out))
-	assert.ElementsMatch(t, []api.TaskID{"t1", "t2"}, []api.TaskID{out[0].UID, out[1].UID})
-}
-
-func TestCollectPendingTasks_NoSubJobsUsesTaskOrder(t *testing.T) {
-	jobID := api.JobID("ns/job-no-subjobs")
-	t1 := makeTask(jobID, "a")
-	t2 := makeTask(jobID, "b")
-	t3 := makeTask(jobID, "c")
-	job := api.NewJobInfo(jobID, t1, t2, t3)
-	job.SubJobs = map[api.SubJobID]*api.SubJobInfo{}
-
-	taskLess := func(l, r interface{}) bool {
-		return l.(*api.TaskInfo).UID > r.(*api.TaskInfo).UID
-	}
-	out := collectPendingTasks(job, nil, taskLess)
-	assert.Equal(t, 3, len(out))
-	assert.Equal(t, api.TaskID("c"), out[0].UID)
-	assert.Equal(t, api.TaskID("b"), out[1].UID)
-	assert.Equal(t, api.TaskID("a"), out[2].UID)
 }
 
 func makeTask(jobID api.JobID, name string) *api.TaskInfo {

@@ -138,7 +138,7 @@ func (gr *Action) Execute(ssn *framework.Session) {
 func (gr *Action) UnInitialize() {}
 
 func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.Statement, queue *api.QueueInfo, job *api.JobInfo) map[api.SubJobID]string {
-	pending := utils.CollectPendingTasksForGangEviction(ssn, job, ssn.SubJobOrderFn, ssn.TaskOrderFn)
+	pending := utils.CollectPendingTasksForGangEviction(ssn, job)
 	if len(pending) == 0 {
 		return nil
 	}

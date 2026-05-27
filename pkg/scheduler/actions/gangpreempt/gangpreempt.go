@@ -136,7 +136,7 @@ func (gp *Action) Execute(ssn *framework.Session) {
 func (gp *Action) UnInitialize() {}
 
 func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.Statement, queue *api.QueueInfo, preemptorJob *api.JobInfo) map[api.SubJobID]string {
-	pending := utils.CollectPendingTasksForGangEviction(ssn, preemptorJob, ssn.SubJobOrderFn, ssn.TaskOrderFn)
+	pending := utils.CollectPendingTasksForGangEviction(ssn, preemptorJob)
 	if len(pending) == 0 {
 		return nil
 	}

@@ -370,7 +370,7 @@ func prioritizeNodesForSimulate(ssn *framework.Session, task *api.TaskInfo, pred
 
 // CollectPendingTasksForGangEviction returns pending tasks for gang preempt/reclaim (demand + policyTask).
 // If JobReady: first worksheet subJob with pending; else: all worksheet pending; nil if none.
-func CollectPendingTasksForGangEviction(ssn *framework.Session, job *api.JobInfo, subJobLessFn func(l, r interface{}) bool, taskLessFn api.LessFn) []*api.TaskInfo {
+func CollectPendingTasksForGangEviction(ssn *framework.Session, job *api.JobInfo) []*api.TaskInfo {
 	if ssn == nil || job == nil {
 		return nil
 	}
@@ -421,101 +421,4 @@ func collectPendingTasksForRunningJob(ssn *framework.Session, job *api.JobInfo) 
 		return out
 	}
 	return nil
-}
-
-func collectPendingTasks(job *api.JobInfo, subJobLessFn func(l, r interface{}) bool, taskLessFn api.LessFn) []*api.TaskInfo {
-	tasks := make([]*api.TaskInfo, 0, len(job.TaskStatusIndex[api.Pending]))
-	seen := make(map[api.TaskID]struct{}, len(job.TaskStatusIndex[api.Pending]))
-	for _, task := range collectSubJobOrderedPendingTasks(job, subJobLessFn, taskLessFn) {
-		if _, ok := seen[task.UID]; ok {
-			continue
-		}
-		seen[task.UID] = struct{}{}
-		tasks = append(tasks, task)
-	}
-	fallback := make([]*api.TaskInfo, 0)
-	for _, task := range job.TaskStatusIndex[api.Pending] {
-		if task.SchGated || task.Resreq.IsEmpty() {
-			continue
-		}
-		if _, ok := seen[task.UID]; ok {
-			continue
-		}
-		fallback = append(fallback, task)
-	}
-	sortPendingByLessFn(fallback, taskLessFn)
-	for _, task := range fallback {
-		seen[task.UID] = struct{}{}
-		tasks = append(tasks, task)
-	}
-	return tasks
-}
-
-func sortPendingByLessFn(fallback []*api.TaskInfo, taskLessFn api.LessFn) {
-	slices.SortStableFunc(fallback, func(a, b *api.TaskInfo) int {
-		if taskLessFn != nil {
-			if taskLessFn(a, b) {
-				return -1
-			}
-			if taskLessFn(b, a) {
-				return 1
-			}
-			return 0
-		}
-		if a.UID < b.UID {
-			return -1
-		}
-		if a.UID > b.UID {
-			return 1
-		}
-		return 0
-	})
-}
-
-func collectSubJobOrderedPendingTasks(job *api.JobInfo, subJobLessFn func(l, r interface{}) bool, taskLessFn api.LessFn) []*api.TaskInfo {
-	if len(job.SubJobs) == 0 {
-		return nil
-	}
-	subJobs := make([]*api.SubJobInfo, 0, len(job.SubJobs))
-	for _, subJob := range job.SubJobs {
-		subJobs = append(subJobs, subJob)
-	}
-	slices.SortStableFunc(subJobs, func(a, b *api.SubJobInfo) int {
-		if subJobLessFn != nil {
-			if subJobLessFn(a, b) {
-				return -1
-			}
-			if subJobLessFn(b, a) {
-				return 1
-			}
-			return 0
-		}
-		if a.MatchIndex != b.MatchIndex {
-			if a.MatchIndex < b.MatchIndex {
-				return -1
-			}
-			return 1
-		}
-		if a.UID < b.UID {
-			return -1
-		}
-		if a.UID > b.UID {
-			return 1
-		}
-		return 0
-	})
-
-	ordered := make([]*api.TaskInfo, 0)
-	for _, subJob := range subJobs {
-		pending := make([]*api.TaskInfo, 0, len(subJob.TaskStatusIndex[api.Pending]))
-		for _, task := range subJob.TaskStatusIndex[api.Pending] {
-			if task.SchGated || task.Resreq.IsEmpty() {
-				continue
-			}
-			pending = append(pending, task)
-		}
-		sortPendingByLessFn(pending, taskLessFn)
-		ordered = append(ordered, pending...)
-	}
-	return ordered
 }

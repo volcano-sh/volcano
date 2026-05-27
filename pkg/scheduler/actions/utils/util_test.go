@@ -74,15 +74,9 @@ func TestGetCandidateDomains_EmptyGradient_HardTopologyNoFallback(t *testing.T) 
 
 	highestTierAllowed := 1
 	job := &api.JobInfo{
-		PodGroup: &api.PodGroup{
-			PodGroup: scheduling.PodGroup{
-				Spec: scheduling.PodGroupSpec{
-					NetworkTopology: &scheduling.NetworkTopologySpec{
-						Mode:               scheduling.HardNetworkTopologyMode,
-						HighestTierAllowed: &highestTierAllowed,
-					},
-				},
-			},
+		NetworkTopology: &scheduling.NetworkTopologySpec{
+			Mode:               scheduling.HardNetworkTopologyMode,
+			HighestTierAllowed: &highestTierAllowed,
 		},
 	}
 
