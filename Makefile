@@ -241,6 +241,9 @@ e2e-test-agentscheduler: images
 e2e-test-shardingcontroller: images
 	E2E_TYPE=SHARDINGCONTROLLER ./hack/run-e2e-kind.sh
 
+e2e-test-gangevict: images
+	E2E_TYPE=GANGEVICT ./hack/run-e2e-kind.sh
+
 generate-yaml: init manifests
 	./hack/generate-yaml.sh CRD_VERSION=${CRD_VERSION}
 

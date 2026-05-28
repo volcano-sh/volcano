@@ -26,6 +26,7 @@ import (
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -135,4 +136,182 @@ func TestFilterOutPreemptMayNotHelpNodes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUnifiedEvictable_TierWalkAndIntersection(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	taskB := &api.TaskInfo{UID: "b"}
+	taskC := &api.TaskInfo{UID: "c"}
+	candidates := []*api.TaskInfo{taskA, taskB, taskC}
+	ctx := &api.EvictionContext{Kind: api.EvictionKindGangPreempt}
+
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{
+				Plugins: []conf.PluginOption{
+					{Name: "p1"},
+					{Name: "p2"},
+				},
+			},
+		},
+		unifiedEvictableFns: map[string]api.UnifiedEvictableFn{},
+	}
+
+	ssn.AddUnifiedEvictableFn("p1", func(_ *api.EvictionContext, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA, taskB}, 1
+	})
+	ssn.AddUnifiedEvictableFn("p2", func(_ *api.EvictionContext, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskB, taskC}, 1
+	})
+
+	result := ssn.UnifiedEvictable(ctx, candidates)
+	assert.Len(t, result, 1)
+	assert.Equal(t, api.TaskID("b"), result[0].UID)
+}
+
+func TestUnifiedEvictable_AbstainSkipped(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	ctx := &api.EvictionContext{Kind: api.EvictionKindGangPreempt}
+
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{
+				Plugins: []conf.PluginOption{
+					{Name: "abstainer"},
+					{Name: "permitter"},
+				},
+			},
+		},
+		unifiedEvictableFns: map[string]api.UnifiedEvictableFn{},
+	}
+
+	ssn.AddUnifiedEvictableFn("abstainer", func(_ *api.EvictionContext, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return nil, 0
+	})
+	ssn.AddUnifiedEvictableFn("permitter", func(_ *api.EvictionContext, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+
+	result := ssn.UnifiedEvictable(ctx, []*api.TaskInfo{taskA})
+	assert.Len(t, result, 1)
+	assert.Equal(t, api.TaskID("a"), result[0].UID)
+}
+
+func TestUnifiedEvictable_EmptyCandidatesBlocksTier(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	ctx := &api.EvictionContext{Kind: api.EvictionKindGangReclaim}
+
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{
+				Plugins: []conf.PluginOption{
+					{Name: "blocker"},
+					{Name: "permitter"},
+				},
+			},
+			{
+				Plugins: []conf.PluginOption{
+					{Name: "fallback"},
+				},
+			},
+		},
+		unifiedEvictableFns: map[string]api.UnifiedEvictableFn{},
+	}
+
+	ssn.AddUnifiedEvictableFn("blocker", func(_ *api.EvictionContext, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{}, 1 // non-abstain + empty => block
+	})
+	ssn.AddUnifiedEvictableFn("permitter", func(_ *api.EvictionContext, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	ssn.AddUnifiedEvictableFn("fallback", func(_ *api.EvictionContext, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+
+	result := ssn.UnifiedEvictable(ctx, []*api.TaskInfo{taskA})
+	// blocker in tier 0 returns empty with Permit, which sets victims=nil and breaks.
+	// victims is nil after the tier-0 loop so tier 1 is tried and fallback returns taskA.
+	assert.Len(t, result, 1)
+	assert.Equal(t, api.TaskID("a"), result[0].UID)
+}
+
+func TestUnifiedEvictable_NoPluginsReturnsNil(t *testing.T) {
+	ctx := &api.EvictionContext{Kind: api.EvictionKindGangPreempt}
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{Plugins: []conf.PluginOption{{Name: "noop"}}},
+		},
+		unifiedEvictableFns: map[string]api.UnifiedEvictableFn{},
+	}
+
+	result := ssn.UnifiedEvictable(ctx, []*api.TaskInfo{{UID: "a"}})
+	assert.Nil(t, result)
+}
+
+func TestUnifiedEvictable_ContextPassedThrough(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	job := &api.JobInfo{UID: "job1", Priority: 42}
+	ctx := &api.EvictionContext{
+		Kind:      api.EvictionKindGangReclaim,
+		Job:       job,
+		HyperNode: "hn1",
+	}
+
+	var receivedCtx *api.EvictionContext
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{Plugins: []conf.PluginOption{{Name: "spy"}}},
+		},
+		unifiedEvictableFns: map[string]api.UnifiedEvictableFn{},
+	}
+	ssn.AddUnifiedEvictableFn("spy", func(c *api.EvictionContext, candidates []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		receivedCtx = c
+		return candidates, 1
+	})
+
+	ssn.UnifiedEvictable(ctx, []*api.TaskInfo{taskA})
+	assert.Equal(t, api.EvictionKindGangReclaim, receivedCtx.Kind)
+	assert.Equal(t, api.JobID("job1"), receivedCtx.Job.UID)
+	assert.Equal(t, "hn1", receivedCtx.HyperNode)
+}
+
+func TestHyperNodeGradientForJobFn_ForwardsPurposeAndKeepsWinnerTakesAll(t *testing.T) {
+	enabled := true
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{
+				Plugins: []conf.PluginOption{
+					{Name: "p1", EnabledHyperNodeGradient: &enabled},
+					{Name: "p2", EnabledHyperNodeGradient: &enabled},
+				},
+			},
+		},
+		hyperNodeGradientForJobFns: map[string]api.HyperNodeGradientForJobFn{},
+	}
+
+	root := &api.HyperNodeInfo{Name: "root"}
+	hn1 := &api.HyperNodeInfo{Name: "hn1"}
+	hn2 := &api.HyperNodeInfo{Name: "hn2"}
+
+	var gotPurpose api.SearchPurpose
+	ssn.AddHyperNodeGradientForJobFn("p1", func(job *api.JobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
+		gotPurpose = purpose
+		return [][]*api.HyperNodeInfo{{hn1}}
+	})
+	ssn.AddHyperNodeGradientForJobFn("p2", func(job *api.JobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
+		return [][]*api.HyperNodeInfo{{hn2}}
+	})
+
+	result := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
+	assert.Equal(t, api.PurposeEvict, gotPurpose)
+	assert.Equal(t, [][]*api.HyperNodeInfo{{hn1}}, result)
+}
+
+func TestHyperNodeGradientForJobFn_NoPluginKeepsCurrentFallback(t *testing.T) {
+	ssn := &Session{
+		hyperNodeGradientForJobFns: map[string]api.HyperNodeGradientForJobFn{},
+	}
+	root := &api.HyperNodeInfo{Name: "root"}
+	result := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
+	assert.Equal(t, [][]*api.HyperNodeInfo{{root}}, result)
 }

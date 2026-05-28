@@ -58,6 +58,10 @@ type TaskSpec struct {
 	SchGates              []v1.PodSchedulingGate
 	PartitionPolicy       *batchv1alpha1.PartitionPolicySpec
 	ResourceClaims        []v1.PodResourceClaim
+	// MinAvailable overrides the per-role minimum that the volcano-job controller
+	// would otherwise default to task.Replicas. Use this to construct jobs that
+	// exercise per-role surplus (TaskMinAvailable < Replicas).
+	MinAvailable *int32
 }
 
 type JobSpec struct {
@@ -127,6 +131,7 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 		ts := batchv1alpha1.TaskSpec{
 			Name:            name,
 			Replicas:        task.Rep,
+			MinAvailable:    task.MinAvailable,
 			Policies:        task.Policies,
 			MaxRetry:        task.MaxRetry,
 			PartitionPolicy: task.PartitionPolicy,
@@ -236,6 +241,7 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 		ts := batchv1alpha1.TaskSpec{
 			Name:            name,
 			Replicas:        task.Rep,
+			MinAvailable:    task.MinAvailable,
 			Policies:        task.Policies,
 			MaxRetry:        maxRetry,
 			PartitionPolicy: task.PartitionPolicy,

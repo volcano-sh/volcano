@@ -602,38 +602,86 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims, util.Permit
 	})
 
-	ssn.AddPreemptiveFn(cp.Name(), func(obj interface{}, candidate interface{}) bool {
+	// Currently handles GangReclaim and GangPreempt only.
+	// Support for legacy task-level preempt/reclaim will be added in the future.
+	ssn.AddUnifiedEvictableFn(cp.Name(), func(evictCtx *api.EvictionContext, candidates []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		if evictCtx.Kind == api.EvictionKindGangPreempt {
+			// Capacity does not filter victims for preemption (same as legacy preempt
+			// where no PreemptableFn is registered). Permit all candidates.
+			return candidates, util.Permit
+		}
+		// GangReclaim path: apply guarantee and deserved checks per victim queue.
+		// Unlike legacy task-level reclaim, shouldSkipReclaimee is not called here
+		// because the chance of a gang having zero intersecting resource dimensions
+		// with a victim is low. Can be added later if needed.
+		if !readyToSchedule {
+			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
+			return nil, util.Reject
+		}
+		var victims []*api.TaskInfo
+		allocations := map[api.QueueID]*api.Resource{}
+		for _, reclaimee := range candidates {
+			job := ssn.Jobs[reclaimee.Job]
+			attr := cp.queueOpts[job.Queue]
+			if _, found := allocations[job.Queue]; !found {
+				allocations[job.Queue] = attr.allocated.Clone()
+			}
+			allocated := allocations[job.Queue]
+			if satisfies, _ := cp.checkGuaranteeConstraint(allocated, reclaimee, attr.guarantee); !satisfies {
+				continue
+			}
+			if isVictim, _ := cp.isImmediateVictim(reclaimee, attr.deserved); isVictim {
+				allocated.Sub(reclaimee.Resreq)
+				victims = append(victims, reclaimee)
+				continue
+			}
+			reclaimable, _ := allocated.GreaterPartlyWithRelevantDimensions(attr.deserved, reclaimee.Resreq)
+			if reclaimable {
+				allocated.Sub(reclaimee.Resreq)
+				victims = append(victims, reclaimee)
+			}
+		}
+		klog.V(4).Infof("[capacity] Victims from capacity UnifiedEvictableFn: victims=%+v", victims)
+		return victims, util.Permit
+	})
+
+	ssn.AddPreemptiveFn(cp.Name(), func(obj interface{}, candidates []*api.TaskInfo) bool {
 		if !readyToSchedule {
 			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
 			return false
 		}
 
 		queue := obj.(*api.QueueInfo)
-		task := candidate.(*api.TaskInfo)
 		if queue.Queue.Status.State != scheduling.QueueStateOpen {
-			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, can not reclaim for <%s>.",
-				queue.Name, queue.Queue.Status.State, task.Name)
+			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, can not reclaim for tasks.",
+				queue.Name, queue.Queue.Status.State)
 			return false
 		}
 
 		attr := cp.queueOpts[queue.UID]
-		futureUsed := attr.allocated.Clone().Add(task.Resreq)
+		totalReq := api.EmptyResource()
+		for _, task := range candidates {
+			if task != nil {
+				totalReq.Add(task.Resreq)
+			}
+		}
+		futureUsed := attr.allocated.Clone().Add(totalReq)
 
-		if allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, task.Resreq); !allocatable {
-			klog.V(3).Infof("Queue <%v> cannot reclaim for <%s/%s> because futureUsed <%v> exceeds realCapability <%v>.",
-				queue.Name, task.Namespace, task.Name, futureUsed, attr.realCapability)
+		if allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, totalReq); !allocatable {
+			klog.V(3).Infof("Queue <%v> cannot reclaim because futureUsed <%v> exceeds realCapability <%v>.",
+				queue.Name, futureUsed, attr.realCapability)
 			return false
 		}
 
-		// If there is a single dimension whose deserved is greater than allocated, current task can reclaim by preempt others.
-		isPreemptive, resourceNames := futureUsed.LessEqualPartlyWithDimensionZeroFiltered(attr.deserved, task.Resreq)
+		// If there is a single dimension whose deserved is greater than allocated, current tasks can reclaim by preempting others.
+		isPreemptive, resourceNames := futureUsed.LessEqualPartlyWithDimensionZeroFiltered(attr.deserved, totalReq)
 		if isPreemptive {
 			klog.V(3).Infof("Queue <%v> can reclaim on resource dimensions: %v. "+
-				"The futureUsed: %v, deserved: %v, allocated: %v, task requested: %v",
-				queue.Name, resourceNames, futureUsed, attr.deserved, attr.allocated, task.Resreq)
+				"The futureUsed: %v, deserved: %v, allocated: %v, tasks requested: %v",
+				queue.Name, resourceNames, futureUsed, attr.deserved, attr.allocated, totalReq)
 		} else {
 			klog.V(4).Infof("Queue <%v> itself can not reclaim, futureUsed: %v, deserved: %v, requested: %v",
-				queue.Name, futureUsed, attr.deserved, task.Resreq)
+				queue.Name, futureUsed, attr.deserved, totalReq)
 			if hierarchyEnabled && cp.ancestorReclaimLevel > 0 {
 				for level := 1; level <= cp.ancestorReclaimLevel; level++ {
 					ancestorID, found := queueAncestorAtDepth(attr, level)
@@ -645,24 +693,24 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 						continue
 					}
 
-					futureUsedAncestor := ancestorAttr.allocated.Clone().Add(task.Resreq)
-					isPreemptive, resourceNames = futureUsedAncestor.LessEqualPartlyWithDimensionZeroFiltered(ancestorAttr.deserved, task.Resreq)
+					futureUsedAncestor := ancestorAttr.allocated.Clone().Add(totalReq)
+					isPreemptive, resourceNames = futureUsedAncestor.LessEqualPartlyWithDimensionZeroFiltered(ancestorAttr.deserved, totalReq)
 					if isPreemptive {
 						klog.V(3).Infof("Queue's ancestor <%v> can reclaim on resource dimensions: %v. "+
 							"The futureUsedAncestor: %v, deserved: %v, allocated: %v, task requested: %v",
-							ancestorAttr.name, resourceNames, futureUsedAncestor, ancestorAttr.deserved, ancestorAttr.allocated, task.Resreq)
+							ancestorAttr.name, resourceNames, futureUsedAncestor, ancestorAttr.deserved, ancestorAttr.allocated, totalReq)
 						break
 					}
 				}
 			}
 			if !isPreemptive {
 				klog.V(4).Infof("Queue <%v> and its ancestors can not reclaim. futureUsed: %v, deserved: %v, requested: %v",
-					queue.Name, futureUsed, attr.deserved, task.Resreq)
+					queue.Name, futureUsed, attr.deserved, totalReq)
 			}
 		}
 
 		// PreemptiveFn is the opposite of OverusedFn in proportion plugin cause as long as there is a one-dimensional
-		// resource whose deserved is greater than allocated, current task can reclaim by preempt others.
+		// resource whose deserved is greater than allocated, current tasks can reclaim by preempt others.
 		return isPreemptive
 	})
 
