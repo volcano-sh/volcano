@@ -4,3 +4,18 @@ Your release is named {{ .Release.Name }}.
 
 For more information on volcano, visit:
 https://volcano.sh/
+
+{{- if .Values.custom.hypernode_controller_standalone_enable }}
+
+HyperNode standalone controller is enabled (vc-hypernode-controller).
+hyperNode-controller is disabled in vc-controller-manager to avoid duplicate reconciliation.
+{{- if .Values.custom.controller_enabled_controllers }}
+NOTE: You set custom.controller_enabled_controllers; ensure hyperNode-controller stays disabled
+      while standalone mode is on (e.g. include -hyperNode-controller in the gate list).
+{{- end }}
+{{- if and (not .Values.custom.controller_enable) (not .Values.custom.controller_config_override) }}
+NOTE: custom.controller_enable is false and no controller_config_override is set.
+      Configure HyperNode discovery via custom.controller_config_override or create
+      {{ .Release.Name }}-controller-configmap manually.
+{{- end }}
+{{- end }}

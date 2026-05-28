@@ -204,8 +204,8 @@ spec:
             - --sharding-configmap={{ .Release.Name }}-sharding-configmap
             - --sharding-configmap-namespace={{ .Release.Namespace }}
               {{- end }}
-              {{- if .Values.custom.controller_enabled_controllers }}
-            - --controllers={{.Values.custom.controller_enabled_controllers}}
+              {{- if include "volcano.controllerGates" . }}
+            - --controllers={{ include "volcano.controllerGates" . }}
               {{- end }}
             - -v={{.Values.custom.controller_log_level}}
             - 2>&1

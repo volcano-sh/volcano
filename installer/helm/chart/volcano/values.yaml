@@ -2,6 +2,7 @@ basic:
   controller_image_name: "volcanosh/vc-controller-manager"
   scheduler_image_name: "volcanosh/vc-scheduler"
   agent_scheduler_image_name: "volcanosh/vc-agent-scheduler"
+  hypernode_controller_image_name: "volcanosh/vc-hypernode-controller"
   admission_image_name: "volcanosh/vc-webhook-manager"
   agent_image_name: "volcanosh/vc-agent"
   admission_secret_name: "volcano-admission-secret"
@@ -16,6 +17,7 @@ basic:
   controller_image_tag_version: ""
   scheduler_image_tag_version: ""
   agent_scheduler_image_tag_version: ""
+  hypernode_controller_image_tag_version: ""
   admission_image_tag_version: ""
   agent_image_tag_version: ""
   admission_port: 8443
@@ -30,6 +32,10 @@ custom:
   controller_metrics_enable: true
   scheduler_enable: true
   agent_scheduler_enable: false
+  # Deploy vc-hypernode-controller as a separate Deployment. When true, Helm disables
+  # hyperNode-controller in vc-controller-manager to avoid duplicate reconciliation.
+  hypernode_controller_standalone_enable: false
+  hypernode_controller_replicas: 1
   agent_scheduler_replicas: 1
   agent_scheduler_name: "agent-scheduler"
   scheduler_replicas: 1
@@ -44,6 +50,9 @@ custom:
   map_enable: false
   controller_kube_api_qps: 50
   controller_kube_api_burst: 100
+  hypernode_controller_kube_api_qps: 50
+  hypernode_controller_kube_api_burst: 100
+  hypernode_controller_log_level: 4
   controller_worker_threads: 3
   controller_worker_threads_for_gc: 5
   controller_worker_threads_for_podgroup: 5

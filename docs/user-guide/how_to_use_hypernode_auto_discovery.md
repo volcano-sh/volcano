@@ -8,6 +8,16 @@ This document describes how to use the HyperNode network topology auto-discovery
 
 Please [Install Volcano](https://github.com/volcano-sh/volcano/tree/master?tab=readme-ov-file#quick-start-guide) with version >= v1.12.0 first.
 
+## Where the HyperNode controller runs
+
+HyperNode auto-discovery is implemented in the **`volcano.sh/hypernode`** module. You can run it in either way:
+
+1. **Default (bundled)**: the `hyperNode-controller` runs inside **`vc-controller-manager`** together with other Volcano controllers. No extra component is required.
+2. **Standalone (Helm)**: set `custom.hypernode_controller_standalone_enable: true` in the Volcano Helm chart. Helm deploys **`vc-hypernode-controller`** and disables `hyperNode-controller` in **`vc-controller-manager`** automatically.
+3. **Standalone (manual)**: build and deploy **`vc-hypernode-controller`** yourself. See the design doc [HyperNode standalone controller](../design/hypernode-standalone-controller.md) for build flags, leader-election defaults, and **how to avoid running two HyperNode controllers in the same cluster**.
+
+If you use the manual standalone binary (not Helm), **disable** HyperNode in controller-manager (for example via `--controllers=-hyperNode-controller`) so only one controller reconciles HyperNodes.
+
 ## Configuration
 
 The HyperNode network topology discovery feature is configured via a ConfigMap. The ConfigMap contains the configuration for the discovery sources, such as UFM, RoCE, and label, you can modify the configuration according to your own cluster environments.
@@ -127,10 +137,18 @@ data:
 
 ## Verification
 
-1.  Check the Volcano controller logs to ensure that the discovery sources are started successfully.
+1.  Check the controller logs to ensure that the discovery sources are started successfully.
+
+**Bundled controller-manager:**
 
 ```bash
-kubectl logs -n volcano-system -l app=volcano-controllers -c volcano-controllers | grep "Successfully started all network topology discoverers"
+kubectl logs -n volcano-system -l app=volcano-controllers -c volcano-controllers | grep "Network topology discovery manager started"
+```
+
+**Standalone `vc-hypernode-controller`** (adjust labels/selectors to match your Deployment):
+
+```bash
+kubectl logs -n volcano-system -l app=vc-hypernode-controller | grep "Network topology discovery manager started"
 ```
 
 2.  Check the created HyperNode resources.
