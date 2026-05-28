@@ -46,14 +46,7 @@ const (
 type podRequest struct {
 	podName      string
 	podNamespace string
-}
-
-type metadataForMergePatch struct {
-	Metadata annotationForMergePatch `json:"metadata"`
-}
-
-type annotationForMergePatch struct {
-	Annotations map[string]string `json:"annotations"`
+	podUID       types.UID
 }
 
 func (pg *pgcontroller) addPod(obj interface{}) {
@@ -66,6 +59,7 @@ func (pg *pgcontroller) addPod(obj interface{}) {
 	req := podRequest{
 		podName:      pod.Name,
 		podNamespace: pod.Namespace,
+		podUID:       pod.UID,
 	}
 
 	pg.queue.Add(req)
@@ -187,36 +181,60 @@ func (pg *pgcontroller) updateStatefulSet(oldObj, newObj interface{}) {
 }
 
 func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
-	if pod.Annotations == nil {
-		pod.Annotations = make(map[string]string)
+	// UID test keeps this patch from hitting a recreated pod with the same namespace/name.
+	patch := []map[string]any{
+		{
+			"op":    "test",
+			"path":  "/metadata/uid",
+			"value": string(pod.UID),
+		},
 	}
-	if pod.Annotations[scheduling.KubeGroupNameAnnotationKey] == "" {
-		patch := metadataForMergePatch{
-			Metadata: annotationForMergePatch{
-				Annotations: map[string]string{
-					scheduling.KubeGroupNameAnnotationKey: pgName,
-				},
+	if len(pod.Annotations) == 0 {
+		if pod.ResourceVersion != "" {
+			patch = append(patch, map[string]any{
+				"op":    "test",
+				"path":  "/metadata/resourceVersion",
+				"value": pod.ResourceVersion,
+			})
+		}
+		patch = append(patch, map[string]any{
+			"op":   "add",
+			"path": "/metadata/annotations",
+			"value": map[string]string{
+				scheduling.KubeGroupNameAnnotationKey: pgName,
 			},
-		}
-
-		patchBytes, err := json.Marshal(&patch)
-		if err != nil {
-			klog.Errorf("Failed to json.Marshal pod annotation: %v", err)
-			return err
-		}
-
-		if _, err := pg.kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}); err != nil {
-			klog.Errorf("Failed to update pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
-			return err
-		}
-		klog.V(4).Infof("Bound Pod <%s/%s> to PodGroup <%s/%s>", pod.Namespace, pod.Name, pod.Namespace, pgName)
+		})
+	} else if pod.Annotations[scheduling.KubeGroupNameAnnotationKey] == "" {
+		patch = append(patch, map[string]any{
+			"op":    "add",
+			"path":  "/metadata/annotations/" + escapeJSONPointer(scheduling.KubeGroupNameAnnotationKey),
+			"value": pgName,
+		})
 	} else {
 		if pod.Annotations[scheduling.KubeGroupNameAnnotationKey] != pgName {
 			klog.Errorf("normal pod %s/%s annotations %s value is not %s, but %s", pod.Namespace, pod.Name,
 				scheduling.KubeGroupNameAnnotationKey, pgName, pod.Annotations[scheduling.KubeGroupNameAnnotationKey])
 		}
+		return nil
 	}
+	patchBytes, err := json.Marshal(&patch)
+	if err != nil {
+		klog.Errorf("Failed to json.Marshal pod annotation: %v", err)
+		return err
+	}
+
+	if _, err := pg.kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, patchBytes, metav1.PatchOptions{}); err != nil {
+		klog.Errorf("Failed to update pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
+		return err
+	}
+	klog.V(4).Infof("Bound Pod <%s/%s> to PodGroup <%s/%s>", pod.Namespace, pod.Name, pod.Namespace, pgName)
 	return nil
+}
+
+func escapeJSONPointer(s string) string {
+	s = strings.ReplaceAll(s, "~", "~0")
+	s = strings.ReplaceAll(s, "/", "~1")
+	return s
 }
 
 func (pg *pgcontroller) getAnnotationsFromUpperRes(pod *v1.Pod) map[string]string {

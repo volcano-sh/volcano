@@ -18,6 +18,7 @@ package podgroup
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"testing"
@@ -29,9 +30,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/ptr"
 
@@ -91,6 +94,7 @@ func TestAddPodGroup(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pod1",
 						Namespace: namespace,
+						UID:       types.UID("pod-uid-1"),
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								APIVersion: "app/v1",
@@ -216,6 +220,7 @@ func TestAddPodGroup(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pod1",
 						Namespace: namespace,
+						UID:       types.UID("pod-uid-1"),
 						Labels: map[string]string{
 							"app": "rs1",
 						},
@@ -250,6 +255,7 @@ func TestAddPodGroup(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pod2",
 						Namespace: namespace,
+						UID:       types.UID("pod-uid-2"),
 						Labels: map[string]string{
 							"app": "rs1",
 						},
@@ -512,6 +518,7 @@ func Test_createOrUpdateNormalPodPG(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pod1",
 				Namespace: namespace,
+				UID:       types.UID("pod-uid-1"),
 				Labels: map[string]string{
 					"app": "sts1",
 				},
@@ -651,6 +658,7 @@ func Test_createOrUpdateNormalPodPG(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pod1",
 				Namespace: namespace,
+				UID:       types.UID("pod-uid-1"),
 				Labels: map[string]string{
 					"app": "sts1",
 				},
@@ -1414,4 +1422,103 @@ func TestNoPodGroupCreatedForWhenKubeGroupNameAnnotationExists(t *testing.T) {
 		}
 		assert.Equal(t, 1, len(pgList.Items), "Expected 1 PodGroup, found %d: %v", len(pgList.Items), names)
 	})
+}
+
+func TestProcessNextReqSkipsRecreatedPod(t *testing.T) {
+	c := newFakeController()
+	namespace := "test"
+	podName := "recreated-pod"
+
+	oldPod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName,
+			Namespace: namespace,
+			UID:       types.UID("old-pod-uid"),
+		},
+		Spec: v1.PodSpec{
+			SchedulerName: "volcano",
+		},
+	}
+	newPod := oldPod.DeepCopy()
+	newPod.UID = types.UID("new-pod-uid")
+
+	c.addPod(oldPod)
+	err := c.podInformer.Informer().GetIndexer().Add(newPod)
+	assert.NoError(t, err)
+
+	c.processNextReq()
+
+	pgList, err := c.vcClient.SchedulingV1beta1().PodGroups(namespace).List(context.TODO(), metav1.ListOptions{})
+	assert.NoError(t, err)
+	assert.Empty(t, pgList.Items)
+	assert.Equal(t, 0, c.queue.Len())
+
+	for _, action := range c.kubeClient.(*kubeclient.Clientset).Actions() {
+		assert.False(t, action.Matches("patch", "pods"))
+	}
+}
+
+func TestUpdatePodAnnotationsUsesUIDTest(t *testing.T) {
+	c := newFakeController()
+	namespace := "test"
+	pgName := "podgroup-test"
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "pod1",
+			Namespace:       namespace,
+			UID:             types.UID("pod-uid"),
+			ResourceVersion: "123",
+			Annotations:     map[string]string{},
+		},
+	}
+
+	_, err := c.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	assert.NoError(t, err)
+	c.kubeClient.(*kubeclient.Clientset).Fake.PrependReactor("patch", "pods",
+		func(action k8stesting.Action) (bool, runtime.Object, error) {
+			return true, pod, nil
+		})
+
+	err = c.updatePodAnnotations(pod, pgName)
+	assert.NoError(t, err)
+
+	var patchAction k8stesting.PatchAction
+	found := false
+	for _, action := range c.kubeClient.(*kubeclient.Clientset).Actions() {
+		if action.Matches("patch", "pods") {
+			patchAction = action.(k8stesting.PatchAction)
+			found = true
+			break
+		}
+	}
+	if !assert.True(t, found) {
+		return
+	}
+	assert.Equal(t, types.JSONPatchType, patchAction.GetPatchType())
+
+	var patch []map[string]any
+	err = json.Unmarshal(patchAction.GetPatch(), &patch)
+	assert.NoError(t, err)
+	assert.Len(t, patch, 3)
+	assert.Equal(t, map[string]any{
+		"op":    "test",
+		"path":  "/metadata/uid",
+		"value": string(pod.UID),
+	}, patch[0])
+	assert.Equal(t, map[string]any{
+		"op":    "test",
+		"path":  "/metadata/resourceVersion",
+		"value": pod.ResourceVersion,
+	}, patch[1])
+	assert.Equal(t, "add", patch[2]["op"])
+	assert.Equal(t, "/metadata/annotations", patch[2]["path"])
+
+	annotations, ok := patch[2]["value"].(map[string]any)
+	assert.True(t, ok)
+	assert.Equal(t, pgName, annotations[scheduling.KubeGroupNameAnnotationKey])
+}
+
+func TestEscapeJSONPointer(t *testing.T) {
+	assert.Equal(t, "scheduling.k8s.io~1group-name", escapeJSONPointer(scheduling.KubeGroupNameAnnotationKey))
+	assert.Equal(t, "a~0b~1c", escapeJSONPointer("a~b/c"))
 }
