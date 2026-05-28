@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# install-volcano.sh — Install Volcano
+#
+# Usage:
+#   ./scripts/install-volcano.sh                    # Default: install from local source
+#   ./scripts/install-volcano.sh --local             # Explicitly install from local source
+#   ./scripts/install-volcano.sh --release v1.10.0   # Install a specific release version
+
+source "$(dirname "$0")/common.sh"
+require_cmd kubectl helm
+
+# --- Parse arguments ---
+INSTALL_MODE="local"
+VOLCANO_VERSION=""
+SCHEDULER_CONFIG=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --local)
+            INSTALL_MODE="local"
+            shift
+            ;;
+        --release)
+            INSTALL_MODE="release"
+            VOLCANO_VERSION="${2:?ERROR: --release requires a version argument (e.g. v1.10.0)}"
+            shift 2
+            ;;
+        --scheduler-config)
+            SCHEDULER_CONFIG="${2:?ERROR: --scheduler-config requires a file path}"
+            shift 2
+            ;;
+        *)
+            log_error "Unknown argument: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# --- Clean up any pre-existing Volcano installation ---
+
+log_info "Cleaning up any pre-existing Volcano CRDs..."
+VOLCANO_CRDS=$(kubectl get crd -o name 2>/dev/null | grep 'volcano\.sh' || true)
+if [[ -n "${VOLCANO_CRDS}" ]]; then
+    echo "${VOLCANO_CRDS}" | while read -r crd; do
+        log_info "  Deleting $crd"
+        kubectl delete "$crd" --ignore-not-found
+    done
+fi
+
+if helm status volcano -n volcano-system &>/dev/null; then
+    log_info "Removing previous Volcano Helm release..."
+    helm uninstall volcano -n volcano-system --wait
+fi
+
+# --- Install Volcano ---
+
+HELM_QPS_ARGS=(
+    --set custom.scheduler_kube_api_qps="${VOLCANO_SCHEDULER_KUBE_API_QPS}"
+    --set custom.scheduler_kube_api_burst="${VOLCANO_SCHEDULER_KUBE_API_BURST}"
+    --set custom.controller_kube_api_qps="${VOLCANO_CONTROLLER_KUBE_API_QPS}"
+    --set custom.controller_kube_api_burst="${VOLCANO_CONTROLLER_KUBE_API_BURST}"
+)
+
+log_info "Using Volcano kube API client limits:"
+log_info "  scheduler qps/burst: ${VOLCANO_SCHEDULER_KUBE_API_QPS}/${VOLCANO_SCHEDULER_KUBE_API_BURST}"
+log_info "  controller qps/burst: ${VOLCANO_CONTROLLER_KUBE_API_QPS}/${VOLCANO_CONTROLLER_KUBE_API_BURST}"
+
+if [[ "${INSTALL_MODE}" == "release" ]]; then
+    log_info "Installing Volcano release ${VOLCANO_VERSION} from official Helm repo..."
+
+    helm repo add volcano-sh https://volcano-sh.github.io/volcano 2>/dev/null || true
+    helm repo update volcano-sh
+
+    helm install volcano volcano-sh/volcano \
+        --version "${VOLCANO_VERSION}" \
+        --namespace volcano-system \
+        --create-namespace \
+        --set basic.scheduler_config_file=volcano-scheduler-configmap \
+        --set basic.image_pull_policy=IfNotPresent \
+        --set custom.agent_scheduler_enable=true \
+        "${HELM_QPS_ARGS[@]}" \
+        --wait --timeout 180s
+else
+    log_info "Installing Volcano from local source..."
+
+    helm install volcano "${VOLCANO_ROOT}/installer/helm/chart/volcano" \
+        --namespace volcano-system \
+        --create-namespace \
+        --set basic.scheduler_config_file=volcano-scheduler-configmap \
+        --set basic.image_pull_policy=IfNotPresent \
+        --set custom.agent_scheduler_enable=true \
+        "${HELM_QPS_ARGS[@]}" \
+        --wait --timeout 120s
+fi
+
+# --- Post-install configuration (optional, only when --scheduler-config is provided) ---
+
+if [[ -n "${SCHEDULER_CONFIG}" ]]; then
+    log_info "Applying scheduler configuration from ${SCHEDULER_CONFIG}..."
+    kubectl apply -f "${SCHEDULER_CONFIG}"
+
+    log_info "Restarting volcano-scheduler to load new configuration..."
+    kubectl rollout restart deployment/volcano-scheduler -n volcano-system
+    kubectl rollout status deployment/volcano-scheduler -n volcano-system --timeout=120s
+fi
+
+log_info "Volcano installation complete (mode=${INSTALL_MODE})"
+kubectl get pods -n volcano-system

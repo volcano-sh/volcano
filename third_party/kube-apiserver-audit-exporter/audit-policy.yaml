@@ -1,0 +1,28 @@
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitManagedFields: True
+omitStages:
+- RequestReceived
+- ResponseStarted
+rules:
+- level: RequestResponse
+  resources:
+  - group: ""
+    resources:
+    - pods
+    - pods/binding
+    - pods/status
+  - group: batch
+    resources:
+    - jobs
+    - jobs/status
+  - group: batch.volcano.sh
+    resources:
+    - jobs
+    - jobs/status
+  verbs:
+  - create
+  - patch
+  - update
+  - delete
+- level: None

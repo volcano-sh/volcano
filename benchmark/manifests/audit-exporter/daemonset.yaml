@@ -1,0 +1,100 @@
+# Tails /var/log/kubernetes/kube-apiserver-audit.log (written by the apiserver,
+# mounted into the kind node by benchmark/config/kind-config.yaml) and exposes
+# the metrics on :8080/metrics. Runs only on the control-plane node, since
+# that's where the audit log lives. Deployed into the volcano-monitoring
+# namespace so Prometheus picks it up via the kubernetes-service-endpoints
+# scrape job already shipped in installer/volcano-monitoring.yaml.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-apiserver-audit-exporter
+  namespace: volcano-monitoring
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kube-apiserver-audit-exporter
+  namespace: volcano-monitoring
+  labels:
+    app: kube-apiserver-audit-exporter
+spec:
+  selector:
+    matchLabels:
+      app: kube-apiserver-audit-exporter
+  template:
+    metadata:
+      labels:
+        app: kube-apiserver-audit-exporter
+    spec:
+      serviceAccountName: kube-apiserver-audit-exporter
+      hostNetwork: false
+      # Only schedule on the control-plane (where the apiserver / audit log lives).
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: audit-exporter
+        image: volcanosh/kube-apiserver-audit-exporter:dev
+        imagePullPolicy: IfNotPresent
+        args:
+        - --audit-log-path=/var/log/kubernetes/kube-apiserver-audit.log
+        - --address=:8080
+        - --cluster-label=$(NODE_NAME)
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        ports:
+        - name: metrics
+          containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: metrics
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        volumeMounts:
+        - name: audit-log
+          mountPath: /var/log/kubernetes
+          readOnly: true
+      volumes:
+      - name: audit-log
+        hostPath:
+          path: /var/log/kubernetes
+          type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-apiserver-audit-exporter
+  namespace: volcano-monitoring
+  labels:
+    app: kube-apiserver-audit-exporter
+  annotations:
+    # Picked up by the kubernetes-service-endpoints scrape job in
+    # installer/volcano-monitoring.yaml — no Prometheus config change needed.
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: kube-apiserver-audit-exporter
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: metrics

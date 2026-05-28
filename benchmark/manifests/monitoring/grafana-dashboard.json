@@ -1,0 +1,304 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Volcano Batch Scheduler",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "title": "Session Duration (ms)",
+      "description": "One full scheduling session, from opening the session through running actions.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 10 } }
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(volcano_e2e_scheduling_latency_milliseconds_bucket[1m])))", "legendFormat": "P50", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(volcano_e2e_scheduling_latency_milliseconds_bucket[1m])))", "legendFormat": "P99", "refId": "B" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "id": 3,
+      "title": "Open Session Duration (ms)",
+      "description": "Time spent preparing a scheduling session before actions run.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 10 } }
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(volcano_open_session_duration_milliseconds_bucket[1m])))", "legendFormat": "P50", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(volcano_open_session_duration_milliseconds_bucket[1m])))", "legendFormat": "P99", "refId": "B" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "id": 4,
+      "title": "Job Scheduling Duration (ms)",
+      "description": "Per-job time from VCJob creation until the last task is assumed in scheduler cache.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 5, "drawStyle": "line", "showPoints": "always", "pointSize": 6 } }
+      },
+      "targets": [
+        { "expr": "volcano_e2e_job_scheduling_duration{job_namespace=\"default\"}", "legendFormat": "{{job_name}}", "refId": "A" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
+    },
+    {
+      "id": 5,
+      "title": "Task Stage Latency P50 (ms)",
+      "description": "Median pod time from creation to each scheduler stage: watched, assumed, pre-bound, and bound.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 5 } }
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(volcano_task_scheduling_latency_milliseconds_bucket{stage=\"Watched\"}[1m])))", "legendFormat": "Watched", "refId": "A" },
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(volcano_task_scheduling_latency_milliseconds_bucket{stage=\"Assumed\"}[1m])))", "legendFormat": "Assumed", "refId": "B" },
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(volcano_task_scheduling_latency_milliseconds_bucket{stage=\"PreBound\"}[1m])))", "legendFormat": "PreBound", "refId": "C" },
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(volcano_task_scheduling_latency_milliseconds_bucket{stage=\"Bound\"}[1m])))", "legendFormat": "Bound", "refId": "D" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
+    },
+    {
+      "id": 6,
+      "title": "Task Stage Latency P99 (ms)",
+      "description": "Tail pod time from creation to each scheduler stage.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 5 } }
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(volcano_task_scheduling_latency_milliseconds_bucket{stage=\"Watched\"}[1m])))", "legendFormat": "Watched", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(volcano_task_scheduling_latency_milliseconds_bucket{stage=\"Assumed\"}[1m])))", "legendFormat": "Assumed", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(volcano_task_scheduling_latency_milliseconds_bucket{stage=\"PreBound\"}[1m])))", "legendFormat": "PreBound", "refId": "C" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(volcano_task_scheduling_latency_milliseconds_bucket{stage=\"Bound\"}[1m])))", "legendFormat": "Bound", "refId": "D" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
+    },
+    {
+      "id": 7,
+      "title": "Stage Processing Time (ms)",
+      "description": "Time spent inside each scheduler stage: predicate, scoring, pre-bind, and bind.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 5 } }
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (stage, le) (rate(volcano_scheduling_stage_duration_milliseconds_bucket[1m])))", "legendFormat": "{{stage}} P50", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by (stage, le) (rate(volcano_scheduling_stage_duration_milliseconds_bucket[1m])))", "legendFormat": "{{stage}} P99", "refId": "B" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
+    },
+    {
+      "id": 8,
+      "title": "Action Duration (ms)",
+      "description": "Time spent running scheduler actions such as allocate, preempt, reclaim, and backfill.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 5 } }
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (action, le) (rate(volcano_action_scheduling_latency_milliseconds_bucket[1m])))", "legendFormat": "{{action}} P50", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by (action, le) (rate(volcano_action_scheduling_latency_milliseconds_bucket[1m])))", "legendFormat": "{{action}} P99", "refId": "B" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
+    },
+    {
+      "id": 9,
+      "title": "Volcano Controller Manager",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "title": "Controller: Job -> Pod Creation Latency (ms)",
+      "description": "Time from VCJob creation until its pod is created by controller-manager.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 10 } }
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(volcano_controller_job_to_pod_creation_latency_milliseconds_bucket[1m])))", "legendFormat": "P50", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(volcano_controller_job_to_pod_creation_latency_milliseconds_bucket[1m])))", "legendFormat": "P99", "refId": "B" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "id": 11,
+      "title": "Volcano Agent Scheduler",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 12,
+      "title": "Agent Worker Scheduling Cycle Duration (ms)",
+      "description": "Time spent by an agent worker in one scheduling cycle.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 43 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 10 } }
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(volcano_worker_scheduling_cycle_duration_milliseconds_bucket[1m])))", "legendFormat": "P50", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(volcano_worker_scheduling_cycle_duration_milliseconds_bucket[1m])))", "legendFormat": "P99", "refId": "B" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "id": 13,
+      "title": "Agent Update Snapshot Duration (ms)",
+      "description": "Time spent updating the agent scheduler snapshot from cache.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 43 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 10 } }
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(volcano_update_snapshot_duration_milliseconds_bucket[1m])))", "legendFormat": "P50", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(volcano_update_snapshot_duration_milliseconds_bucket[1m])))", "legendFormat": "P99", "refId": "B" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "id": 14,
+      "title": "Kubernetes Client and API Server",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 51 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 15,
+      "title": "Scheduler Client QPS (by verb & code)",
+      "description": "Requests from volcano-scheduler to kube-apiserver, grouped by verb and status code.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10, "stacking": { "mode": "normal" } } }
+      },
+      "targets": [
+        { "expr": "sum by (verb, code) (rate(rest_client_requests_total{kubernetes_name=\"volcano-scheduler-service\"}[1m]))", "legendFormat": "{{verb}} {{code}}", "refId": "A" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
+    },
+    {
+      "id": 16,
+      "title": "Scheduler Client Latency P99 (s)",
+      "description": "P99 latency of volcano-scheduler requests to kube-apiserver.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "lineWidth": 2, "fillOpacity": 5 } }
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum by (verb, le) (rate(rest_client_request_duration_seconds_bucket{kubernetes_name=\"volcano-scheduler-service\"}[1m])))", "legendFormat": "{{verb}}", "refId": "A" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
+    },
+    {
+      "id": 17,
+      "title": "Controller Client QPS (by verb & code)",
+      "description": "Requests from volcano-controller-manager to kube-apiserver, grouped by verb and status code.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 60 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10, "stacking": { "mode": "normal" } } }
+      },
+      "targets": [
+        { "expr": "sum by (verb, code) (rate(rest_client_requests_total{kubernetes_name=\"volcano-controllers-service\"}[1m]))", "legendFormat": "{{verb}} {{code}}", "refId": "A" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
+    },
+    {
+      "id": 18,
+      "title": "Controller Client Latency P99 (s)",
+      "description": "P99 latency of volcano-controller-manager requests to kube-apiserver.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 60 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "lineWidth": 2, "fillOpacity": 5 } }
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum by (verb, le) (rate(rest_client_request_duration_seconds_bucket{kubernetes_name=\"volcano-controllers-service\"}[1m])))", "legendFormat": "{{verb}}", "refId": "A" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
+    },
+    {
+      "id": 19,
+      "title": "kube-apiserver QPS (top 20 verb×resource)",
+      "description": "Highest kube-apiserver request rates by verb and resource.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 68 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10 } }
+      },
+      "targets": [
+        { "expr": "topk(20, sum by (verb, resource) (rate(apiserver_request_total{job=\"kubernetes-apiservers\"}[1m])) > 0)", "legendFormat": "{{verb}} {{resource}}", "refId": "A" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
+    },
+    {
+      "id": 20,
+      "title": "kube-apiserver Latency P99 (top 10 verb×resource)",
+      "description": "Slowest kube-apiserver request paths by P99 latency. WATCH is excluded.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 68 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "lineWidth": 2, "fillOpacity": 5 } }
+      },
+      "targets": [
+        { "expr": "topk(10, histogram_quantile(0.99, sum by (verb, resource, le) (rate(apiserver_request_duration_seconds_bucket{job=\"kubernetes-apiservers\",verb!=\"WATCH\"}[1m]))))", "legendFormat": "{{verb}} {{resource}}", "refId": "A" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } }
+    }
+  ],
+  "refresh": "1s",
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      { "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" }, "hide": 0, "includeAll": false, "name": "DS_PROMETHEUS", "query": "prometheus", "type": "datasource" }
+    ]
+  },
+  "time": { "from": "now-5m", "to": "now" },
+  "title": "Volcano Benchmark",
+  "uid": "volcano-benchmark"
+}

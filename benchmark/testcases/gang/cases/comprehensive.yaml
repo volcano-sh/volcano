@@ -1,0 +1,35 @@
+# Volcano Benchmark Profile: Comprehensive Gang Scheduling
+# This profile demonstrates all available parameters for a Volcano Job.
+# You can select the necessary parameters based on your testing requirements to build your test cases
+jobs: 5
+
+jobTemplate:
+  name: gang-comprehensive
+  minAvailable: 10
+  queue: default
+  # job level network topology configuration
+  enableNetworkTopology: false
+  networkTopologyMode: hard
+  tasks:
+    # There is no limit to the number of tasks. For a complete list of parameters, please refer to the worker configuration below.
+    - name: master
+      replicas: 1
+      image: busybox:1.36
+      cpu: 100m
+      memory: 100Mi
+      enableNodeSelector: false
+    - name: worker
+      replicas: 10
+      image: busybox:1.36 # default image for a task
+      command: ["/bin/sh", "-c", "sleep 30"] # default command for busybox image
+      cpu: 50m
+      memory: 50Mi
+      # Task-level partition policy for topological grouping
+      enablePartitionPolicy: false
+      partitionTotalPartitions: 2
+      partitionSize: 5
+      # Task-level network topology configuration
+      enablePartitionNetworkTopology: false
+      partitionNetworkMode: soft
+      # Node selector configuration
+      enableNodeSelector: false

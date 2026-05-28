@@ -1,0 +1,61 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  kubeadmConfigPatches:
+  - |-
+    kind: ClusterConfiguration
+    controllerManager:
+      extraArgs:
+        node-monitor-grace-period: "7200s"
+        node-monitor-period: "3600s"
+        kube-api-qps: "5000"
+        kube-api-burst: "10000"
+    etcd:
+      local:
+        extraArgs:
+          quota-backend-bytes: "8589934592"
+          auto-compaction-mode: revision
+          auto-compaction-retention: "1000"
+    apiServer:
+      # Audit logging is enabled so the audit-exporter
+      # (third_party/kube-apiserver-audit-exporter) has data to read.
+      extraArgs:
+        max-mutating-requests-inflight: "20000"
+        max-requests-inflight: "20000"
+        audit-policy-file: /etc/kubernetes/policies/audit-policy.yaml
+        audit-log-path: /var/log/kubernetes/kube-apiserver-audit.log
+        audit-log-maxsize: "10240"
+        audit-log-maxage: "7"
+        audit-log-maxbackup: "3"
+      # extraVolumes mounts paths from the kind node container into the
+      # apiserver static pod (paired with the node-level extraMounts below).
+      extraVolumes:
+      - name: audit-policies
+        hostPath: /etc/kubernetes/policies
+        mountPath: /etc/kubernetes/policies
+        readOnly: true
+        pathType: DirectoryOrCreate
+      - name: audit-logs
+        hostPath: /var/log/kubernetes
+        mountPath: /var/log/kubernetes
+        readOnly: false
+        pathType: DirectoryOrCreate
+  # extraMounts maps host paths into the kind node container. kind requires
+  # these to be absolute, so __VOLCANO_ROOT__ is rewritten to the repo's
+  # absolute path by scripts/create-cluster.sh before kind starts.
+  # DO NOT replace __VOLCANO_ROOT__ by hand.
+  extraMounts:
+  - hostPath: __VOLCANO_ROOT__/third_party/kube-apiserver-audit-exporter/audit-policy.yaml
+    containerPath: /etc/kubernetes/policies/audit-policy.yaml
+    readOnly: true
+  - hostPath: __VOLCANO_ROOT__/benchmark/logs
+    containerPath: /var/log/kubernetes
+    readOnly: false
+  extraPortMappings:
+  - containerPort: 30003
+    hostPort: 30003
+    protocol: TCP
+  - containerPort: 30004
+    hostPort: 30004
+    protocol: TCP
