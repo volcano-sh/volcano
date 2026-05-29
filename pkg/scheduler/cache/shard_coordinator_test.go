@@ -256,6 +256,30 @@ func buildShard(name string, desired []string, inuse []string) *nodeshardv1alpha
 	}
 }
 
+func TestGenerateNodeShardWithStatusRecordsTransitionNodes(t *testing.T) {
+	shard := schedulingapi.NewNodeShardInfo(buildShard("test-shard", []string{"node-new"}, []string{"node-old"}))
+	sc := &SchedulerCache{
+		NodeShards: map[string]*api.NodeShardInfo{
+			"test-shard": shard,
+		},
+		InUseNodesInShard: sets.New("node-old"),
+	}
+
+	updatedShard := sc.generateNodeShardWithStatus("test-shard")
+	if updatedShard == nil {
+		t.Fatal("expected NodeShard status update")
+	}
+	if !sets.New(updatedShard.Status.NodesInUse...).Equal(sets.New("node-old")) {
+		t.Errorf("expected nodesInUse to keep old node, got %v", updatedShard.Status.NodesInUse)
+	}
+	if !sets.New(updatedShard.Status.NodesToAdd...).Equal(sets.New("node-new")) {
+		t.Errorf("expected nodesToAdd to contain new node, got %v", updatedShard.Status.NodesToAdd)
+	}
+	if !sets.New(updatedShard.Status.NodesToRemove...).Equal(sets.New("node-old")) {
+		t.Errorf("expected nodesToRemove to contain old node, got %v", updatedShard.Status.NodesToRemove)
+	}
+}
+
 func TestRefreshNodeShards_ShardNotFound(t *testing.T) {
 	// Setup mock server options
 	originalOpts := options.ServerOpts

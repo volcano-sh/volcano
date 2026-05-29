@@ -51,9 +51,19 @@ func RegisterAdmission(service *AdmissionService) error {
 }
 
 func ForEachAdmission(config *options.Config, handler func(*AdmissionService) error) error {
-	admissions := strings.Split(strings.TrimSpace(config.EnabledAdmission), ",")
+	enabledAdmission := strings.TrimSpace(config.EnabledAdmission)
+	if enabledAdmission == "" {
+		klog.V(3).Infof("No admissions enabled")
+		return nil
+	}
+
+	admissions := strings.Split(enabledAdmission, ",")
 	klog.V(3).Infof("Enabled admissions are: %v, registered map are: %v", admissions, admissionMap)
 	for _, admission := range admissions {
+		admission = strings.TrimSpace(admission)
+		if admission == "" {
+			continue
+		}
 		if service, found := admissionMap[admission]; found {
 			if err := handler(service); err != nil {
 				return err

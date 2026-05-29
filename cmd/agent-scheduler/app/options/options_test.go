@@ -101,3 +101,25 @@ func TestAddFlags(t *testing.T) {
 		assert.Equal(t, v, utilfeature.DefaultFeatureGate.Enabled(k))
 	}
 }
+
+func TestCheckOptionOrDieSyncsAgentShardingOptions(t *testing.T) {
+	fs := pflag.NewFlagSet("shardingtest", pflag.ExitOnError)
+	s := NewServerOption()
+	commonutil.LeaderElectionDefault(&s.LeaderElection)
+	componentbaseoptions.BindLeaderElectionFlags(&s.LeaderElection, fs)
+	s.AddFlags(fs)
+	s.LeaderElection.ResourceName = commonutil.GenerateComponentName([]string{s.SchedulerName})
+
+	err := fs.Parse([]string{
+		"--scheduler-sharding-mode=hard",
+		"--scheduler-sharding-name=agent-scheduler",
+	})
+	assert.NoError(t, err)
+
+	err = s.CheckOptionOrDie()
+	assert.NoError(t, err)
+	assert.Equal(t, commonutil.HardShardingMode, s.ShardingMode)
+	assert.Equal(t, defaultShardName, s.ShardName)
+	assert.Equal(t, commonutil.HardShardingMode, s.ServerOption.ShardingMode)
+	assert.Equal(t, defaultShardName, s.ServerOption.ShardName)
+}

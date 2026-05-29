@@ -34,6 +34,11 @@ func TestNodeLimitInitialize(t *testing.T) {
 			expectErr: false,
 		},
 		{
+			name:      "valid bounds from YAML decoded numbers",
+			args:      policy.Arguments{"minNodes": float64(2), "maxNodes": float64(10)},
+			expectErr: false,
+		},
+		{
 			name:      "max only",
 			args:      policy.Arguments{"maxNodes": 5},
 			expectErr: false,
@@ -112,6 +117,12 @@ func TestNodeLimitSelect(t *testing.T) {
 		{
 			name:       "len > max truncates",
 			args:       policy.Arguments{"maxNodes": 2},
+			input:      []*corev1.Node{node("a"), node("b"), node("c"), node("d")},
+			expectKeep: 2,
+		},
+		{
+			name:       "YAML decoded max truncates",
+			args:       policy.Arguments{"maxNodes": float64(2)},
 			input:      []*corev1.Node{node("a"), node("b"), node("c"), node("d")},
 			expectKeep: 2,
 		},

@@ -30,7 +30,7 @@ function kind-up-cluster {
   kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
   kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG}          "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
   kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG}    "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
-  if [[ "${E2E_TYPE}" == "AGENTSCHEDULER" ]]; then
+  if [[ "${E2E_TYPE}" == AGENTSCHEDULER* ]]; then
     kind load docker-image ${IMAGE_PREFIX}/vc-agent-scheduler:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
   fi
   if [[ "${E2E_TYPE}" == "DRA" || "${E2E_TYPE}" == "ALL" ]]; then
@@ -79,7 +79,7 @@ function check-images {
     echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-webhook-manager:${TAG} does not exist"
     exit 1
   fi
-  if [[ "${E2E_TYPE}" == "AGENTSCHEDULER" ]]; then
+  if [[ "${E2E_TYPE}" == AGENTSCHEDULER* ]]; then
     docker image inspect "${IMAGE_PREFIX}/vc-agent-scheduler:${TAG}" > /dev/null
     if [[ $? -ne 0 ]]; then
       echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-agent-scheduler:${TAG} does not exist"
