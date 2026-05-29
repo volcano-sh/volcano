@@ -159,8 +159,8 @@ func DeleteQueue(ctx *TestContext, q string) {
 	Expect(err).NotTo(HaveOccurred(), "failed to delete queue %s", q)
 
 	// Wait until the queue is actually deleted.
-	err = wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
-		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
+	err = wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
+		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(pollCtx, q, metav1.GetOptions{})
 		if errors.IsNotFound(err) {
 			return true, nil
 		}
@@ -169,10 +169,12 @@ func DeleteQueue(ctx *TestContext, q string) {
 		}
 		return false, nil
 	})
-	Expect(err).NotTo(HaveOccurred(), "failed waiting queue %s deleted", q)
+	Expect(err).NotTo(HaveOccurred(), "failed waiting for queue %s to be deleted", q)
 }
 
-// deleteQueues deletes Queues specified in the test context
+// deleteQueues deletes Queues specified in the test context.
+// For hierarchical queues, list children before parents in ctx.Queues; admission
+// rejects deleting a parent that still has child queues.
 func deleteQueues(ctx *TestContext) {
 	for _, q := range ctx.Queues {
 		DeleteQueue(ctx, q)
