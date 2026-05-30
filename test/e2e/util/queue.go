@@ -151,17 +151,30 @@ func DeleteQueue(ctx *TestContext, q string) {
 		return nil
 	})
 	Expect(retryErr).NotTo(HaveOccurred(), "failed to update status of queue %s", q)
-	err = wait.Poll(100*time.Millisecond, FiveMinute, queueClosedAndNoPod(ctx, q))
-	Expect(err).NotTo(HaveOccurred(), "failed to wait queue %s closed", q)
 
 	err = ctx.Vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), q,
 		metav1.DeleteOptions{
 			PropagationPolicy: &foreground,
 		})
 	Expect(err).NotTo(HaveOccurred(), "failed to delete queue %s", q)
+
+	// Wait until the queue is actually deleted.
+	err = wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
+		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(pollCtx, q, metav1.GetOptions{})
+		if errors.IsNotFound(err) {
+			return true, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return false, nil
+	})
+	Expect(err).NotTo(HaveOccurred(), "failed waiting for queue %s to be deleted", q)
 }
 
-// deleteQueues deletes Queues specified in the test context
+// deleteQueues deletes Queues specified in the test context.
+// For hierarchical queues, list children before parents in ctx.Queues; admission
+// rejects deleting a parent that still has child queues.
 func deleteQueues(ctx *TestContext) {
 	for _, q := range ctx.Queues {
 		DeleteQueue(ctx, q)
@@ -193,24 +206,4 @@ func SetQueueReclaimable(ctx *TestContext, queues []string, reclaimable bool) {
 
 func WaitQueueStatus(condition func() (bool, error)) error {
 	return wait.Poll(100*time.Millisecond, TenMinute, condition)
-}
-
-// queueClosedAndNoPod returns whether the Queue is closed
-func queueClosedAndNoPod(ctx *TestContext, name string) wait.ConditionFunc {
-	return func() (bool, error) {
-		queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-
-		if queue.Status.State != schedulingv1beta1.QueueStateClosed {
-			return false, nil
-		}
-
-		if allocated, ok := queue.Status.Allocated[v1.ResourcePods]; ok && !allocated.IsZero() {
-			return false, nil
-		}
-
-		return true, nil
-	}
 }
