@@ -60,7 +60,9 @@ func TestAddFlags(t *testing.T) {
 		HealthzBindAddress:            defaultHealthzAddress,
 		EnableQueueAllocatedPodsCheck: false,
 		MaxQueueDepth:                 defaultMaxQueueDepth,
-		EnableRootQueueProtection:     true,
+		EnableRootQueueProtection:            true,
+		EnableCascadeChildQueueClose:         false,
+		EnableQueueClosedBeforeDeleteCheck:   false,
 	}
 
 	if !equality.Semantic.DeepEqual(expected, s) {

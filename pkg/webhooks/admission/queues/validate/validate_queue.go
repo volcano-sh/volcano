@@ -17,17 +17,21 @@ limitations under the License.
 package validate
 
 import (
+	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	k8score "k8s.io/kubernetes/pkg/apis/core"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
@@ -38,6 +42,11 @@ import (
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
+)
+
+const (
+	closedByParentAnnotationKey       = "volcano.sh/closed-by-parent"
+	closedByParentAnnotationTrueValue = "true"
 )
 
 func init() {
@@ -110,6 +119,13 @@ func AdmitQueues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse 
 
 		if needsValidateHierarchicalQueue(queue, oldQueue, ar.Request.Operation) {
 			err = validateHierarchicalQueueResources(queue)
+			if err != nil {
+				return util.ToAdmissionResponse(err)
+			}
+		}
+
+		if config.EnableCascadeChildQueueClose && ar.Request.Operation == admissionv1.Update && oldQueue != nil {
+			err = validateHierarchicalQueueStateTransition(queue, oldQueue)
 			if err != nil {
 				return util.ToAdmissionResponse(err)
 			}
@@ -314,6 +330,10 @@ func validateQueueDeleting(queueName string) error {
 		}
 	}
 
+	if config.EnableQueueClosedBeforeDeleteCheck && queue.Status.State == schedulingv1beta1.QueueStateOpen {
+		return fmt.Errorf("queue %s cannot be deleted while its state is Open; close the queue first", queue.Name)
+	}
+
 	childQueueNames, err := listQueueChild(queueName)
 	if err != nil {
 		return fmt.Errorf("failed to list child queues: %v", err)
@@ -327,6 +347,114 @@ func validateQueueDeleting(queueName string) error {
 	klog.V(3).Infof("Validation passed for deleting hierarchical queue %s", queue.Name)
 
 	return nil
+}
+
+func isQueueClosedOrClosing(state schedulingv1beta1.QueueState) bool {
+	return state == schedulingv1beta1.QueueStateClosed || state == schedulingv1beta1.QueueStateClosing
+}
+
+func validateHierarchicalQueueStateTransition(queue, oldQueue *schedulingv1beta1.Queue) error {
+	if queue.Status.State == schedulingv1beta1.QueueStateOpen && oldQueue.Status.State != schedulingv1beta1.QueueStateOpen {
+		if queue.Spec.Parent != "" && queue.Spec.Parent != "root" {
+			parentQueue, err := config.QueueLister.Get(queue.Spec.Parent)
+			if err != nil {
+				return fmt.Errorf("failed to get parent queue %s of queue %s: %v", queue.Spec.Parent, queue.Name, err)
+			}
+			if isQueueClosedOrClosing(parentQueue.Status.State) {
+				return fmt.Errorf("failed to open queue %s because its parent queue %s is closing or closed. Open the parent queue first", queue.Name, queue.Spec.Parent)
+			}
+		}
+	}
+
+	if isQueueClosedOrClosing(queue.Status.State) && !isQueueClosedOrClosing(oldQueue.Status.State) {
+		return cascadeCloseDescendants(queue)
+	}
+
+	return nil
+}
+
+func cascadeCloseDescendants(parent *schedulingv1beta1.Queue) error {
+	if config.VolcanoClient == nil {
+		return fmt.Errorf("volcano client is not configured")
+	}
+
+	descendants, err := collectDescendants(parent.Name)
+	if err != nil {
+		return err
+	}
+
+	sort.Slice(descendants, func(i, j int) bool {
+		return queueDepth(descendants[i]) > queueDepth(descendants[j])
+	})
+
+	for _, descendant := range descendants {
+		if isQueueClosedOrClosing(descendant.Status.State) {
+			continue
+		}
+		if err := closeQueueByAdmission(descendant.Name); err != nil {
+			return fmt.Errorf("failed to cascade close queue %s: %v", descendant.Name, err)
+		}
+	}
+
+	return nil
+}
+
+func collectDescendants(parentName string) ([]*schedulingv1beta1.Queue, error) {
+	children, err := config.GetQueuesByParent(parentName)
+	if err != nil {
+		return nil, err
+	}
+
+	descendants := make([]*schedulingv1beta1.Queue, 0)
+	for _, child := range children {
+		descendants = append(descendants, child)
+		subDescendants, err := collectDescendants(child.Name)
+		if err != nil {
+			return nil, err
+		}
+		descendants = append(descendants, subDescendants...)
+	}
+
+	return descendants, nil
+}
+
+func queueDepth(queue *schedulingv1beta1.Queue) int {
+	depth := 1
+	parent := queue.Spec.Parent
+	for parent != "" && parent != "root" {
+		depth++
+		parentQueue, err := config.QueueLister.Get(parent)
+		if err != nil {
+			break
+		}
+		parent = parentQueue.Spec.Parent
+	}
+	return depth
+}
+
+func closeQueueByAdmission(queueName string) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		if isQueueClosedOrClosing(queue.Status.State) {
+			return nil
+		}
+
+		if queue.Annotations == nil {
+			queue.Annotations = make(map[string]string)
+		}
+		queue.Annotations[closedByParentAnnotationKey] = closedByParentAnnotationTrueValue
+		queue, err = config.VolcanoClient.SchedulingV1beta1().Queues().Update(context.TODO(), queue, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+
+		queue.Status.State = schedulingv1beta1.QueueStateClosed
+		_, err = config.VolcanoClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), queue, metav1.UpdateOptions{})
+		return err
+	})
 }
 
 // needsValidateHierarchicalQueue determines if hierarchy resource validation is necessary
