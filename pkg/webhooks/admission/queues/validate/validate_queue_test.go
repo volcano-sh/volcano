@@ -38,6 +38,7 @@ import (
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 	schedulingv1beta1informers "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
@@ -2690,10 +2691,10 @@ func searchSubstring(s, substr string) bool {
 }
 
 func TestValidateHierarchicalQueueStateTransition(t *testing.T) {
+	savedConfig := saveQueueValidateTestConfig()
+	defer savedConfig.restore()
+
 	config.EnableCascadeChildQueueClose = true
-	defer func() {
-		config.EnableCascadeChildQueueClose = false
-	}()
 
 	parentQueue := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{Name: "parent-queue"},
@@ -2740,6 +2741,29 @@ func TestValidateHierarchicalQueueStateTransition(t *testing.T) {
 		}
 	})
 
+	t.Run("skip cascade when queue is closed by parent", func(t *testing.T) {
+		oldChild := childQueue.DeepCopy()
+		oldChild.Status.State = schedulingv1beta1.QueueStateOpen
+		newChild := childQueue.DeepCopy()
+		newChild.Status.State = schedulingv1beta1.QueueStateClosed
+		if newChild.Annotations == nil {
+			newChild.Annotations = make(map[string]string)
+		}
+		newChild.Annotations[closedByParentAnnotationKey] = closedByParentAnnotationTrueValue
+
+		if err := validateHierarchicalQueueStateTransition(newChild, oldChild); err != nil {
+			t.Fatalf("expected no error when skipping cascade for parent-closed child: %v", err)
+		}
+
+		updatedGrandchild, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), grandchildQueue.Name, metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("failed to get grandchild queue: %v", err)
+		}
+		if updatedGrandchild.Status.State != schedulingv1beta1.QueueStateOpen {
+			t.Fatalf("expected grandchild to remain open when cascade is skipped, got %s", updatedGrandchild.Status.State)
+		}
+	})
+
 	t.Run("cascade close descendants when parent closes", func(t *testing.T) {
 		oldParent := parentQueue.DeepCopy()
 		oldParent.Status.State = schedulingv1beta1.QueueStateOpen
@@ -2764,10 +2788,10 @@ func TestValidateHierarchicalQueueStateTransition(t *testing.T) {
 }
 
 func TestValidateQueueDeletingClosedBeforeDeleteCheck(t *testing.T) {
+	savedConfig := saveQueueValidateTestConfig()
+	defer savedConfig.restore()
+
 	config.EnableQueueClosedBeforeDeleteCheck = true
-	defer func() {
-		config.EnableQueueClosedBeforeDeleteCheck = false
-	}()
 
 	openQueue := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{Name: "open-queue"},
@@ -2804,4 +2828,30 @@ func TestValidateQueueDeletingClosedBeforeDeleteCheck(t *testing.T) {
 	if err := validateQueueDeleting(closedQueue.Name); err != nil {
 		t.Fatalf("expected delete of closed queue to succeed, got %v", err)
 	}
+}
+
+type queueValidateTestConfig struct {
+	enableCascadeChildQueueClose       bool
+	enableQueueClosedBeforeDeleteCheck bool
+	volcanoClient                      volcanoversioned.Interface
+	queueInformer                      cache.SharedIndexInformer
+	queueLister                        schedulinglister.QueueLister
+}
+
+func saveQueueValidateTestConfig() queueValidateTestConfig {
+	return queueValidateTestConfig{
+		enableCascadeChildQueueClose:       config.EnableCascadeChildQueueClose,
+		enableQueueClosedBeforeDeleteCheck: config.EnableQueueClosedBeforeDeleteCheck,
+		volcanoClient:                      config.VolcanoClient,
+		queueInformer:                      config.QueueInformer,
+		queueLister:                        config.QueueLister,
+	}
+}
+
+func (c queueValidateTestConfig) restore() {
+	config.EnableCascadeChildQueueClose = c.enableCascadeChildQueueClose
+	config.EnableQueueClosedBeforeDeleteCheck = c.enableQueueClosedBeforeDeleteCheck
+	config.VolcanoClient = c.volcanoClient
+	config.QueueInformer = c.queueInformer
+	config.QueueLister = c.queueLister
 }

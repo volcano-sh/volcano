@@ -367,10 +367,17 @@ func validateHierarchicalQueueStateTransition(queue, oldQueue *schedulingv1beta1
 	}
 
 	if isQueueClosedOrClosing(queue.Status.State) && !isQueueClosedOrClosing(oldQueue.Status.State) {
+		if isClosedByParentCascade(queue) {
+			return nil
+		}
 		return cascadeCloseDescendants(queue)
 	}
 
 	return nil
+}
+
+func isClosedByParentCascade(queue *schedulingv1beta1.Queue) bool {
+	return queue.Annotations != nil && queue.Annotations[closedByParentAnnotationKey] == closedByParentAnnotationTrueValue
 }
 
 func cascadeCloseDescendants(parent *schedulingv1beta1.Queue) error {
@@ -383,8 +390,12 @@ func cascadeCloseDescendants(parent *schedulingv1beta1.Queue) error {
 		return err
 	}
 
+	depths := make(map[string]int, len(descendants))
+	for _, descendant := range descendants {
+		depths[descendant.Name] = queueDepth(descendant)
+	}
 	sort.Slice(descendants, func(i, j int) bool {
-		return queueDepth(descendants[i]) > queueDepth(descendants[j])
+		return depths[descendants[i].Name] > depths[descendants[j].Name]
 	})
 
 	for _, descendant := range descendants {
@@ -421,7 +432,12 @@ func collectDescendants(parentName string) ([]*schedulingv1beta1.Queue, error) {
 func queueDepth(queue *schedulingv1beta1.Queue) int {
 	depth := 1
 	parent := queue.Spec.Parent
+	visited := map[string]bool{queue.Name: true}
 	for parent != "" && parent != "root" {
+		if visited[parent] {
+			break
+		}
+		visited[parent] = true
 		depth++
 		parentQueue, err := config.QueueLister.Get(parent)
 		if err != nil {
