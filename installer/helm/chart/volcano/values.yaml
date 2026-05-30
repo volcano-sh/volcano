@@ -12,7 +12,7 @@ basic:
   image_pull_policy: "Always"
   # Common image tag when a per-component tag below is unset or empty.
   # Per-component keys override this only when set to a non-empty string.
-  image_tag_version: "latest"
+  image_tag_version: "v1.15.0"
   controller_image_tag_version: ""
   scheduler_image_tag_version: ""
   agent_scheduler_image_tag_version: ""
