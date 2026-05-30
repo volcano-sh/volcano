@@ -228,6 +228,7 @@ func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) map[string]fwk.Node
 	for _, node := range nodes {
 		nodeInfo := k8sframework.NewNodeInfo(node.Pods()...)
 		nodeInfo.SetNode(node.Node)
+		nodeInfo.ImageStates = node.CloneImageSummary()
 		nodeMap[node.Name] = nodeInfo
 	}
 	return nodeMap
