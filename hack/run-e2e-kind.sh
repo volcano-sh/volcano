@@ -194,11 +194,17 @@ custom:
   ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
   ;;
-"AGENTSCHEDULER")
-  echo "Install volcano chart with crd version $crd_version, sharding controller and agent scheduler enabled"
-  helm-install-volcano '  controller_log_level: 5
-  controller_enabled_controllers: "*"
+"AGENTSCHEDULER"|"AGENTSCHEDULER_NONE"|"AGENTSCHEDULER_SOFT"|"AGENTSCHEDULER_HARD")
+  agent_scheduler_sharding_mode="${E2E_TYPE#AGENTSCHEDULER_}"
+  if [[ "${agent_scheduler_sharding_mode}" == "AGENTSCHEDULER" ]]; then
+    agent_scheduler_sharding_mode="NONE"
+  fi
+  agent_scheduler_sharding_mode=$(echo "${agent_scheduler_sharding_mode}" | tr '[:upper:]' '[:lower:]')
+  echo "Install volcano chart with crd version $crd_version, sharding controller and agent scheduler ${agent_scheduler_sharding_mode} mode enabled"
+  helm-install-volcano "  controller_log_level: 5
+  controller_enabled_controllers: \"*\"
   agent_scheduler_enable: true
+  agent_scheduler_sharding_mode: ${agent_scheduler_sharding_mode}
   agent_scheduler_worker_count: 2
   agent_scheduler_tolerations:
     - key: "node-role.kubernetes.io/control-plane"
@@ -209,20 +215,27 @@ EOF
       effect: "NoSchedule"
   sharding_configmap_data: |
     schedulerConfigs:
-      - name: volcano
-        type: volcano
-        cpuUtilizationMin: 0.0
-        cpuUtilizationMax: 0.6
-        minNodes: 1
-        maxNodes: 100
       - name: agent-scheduler
         type: agent
-        cpuUtilizationMin: 0.7
-        cpuUtilizationMax: 1.0
-        minNodes: 1
-        maxNodes: 100
+        policies:
+          - name: allocation-rate
+            weight: 1
+            arguments:
+              minCPUUtil: 0.0
+              maxCPUUtil: 0.6
+          - name: node-limit
+            arguments:
+              minNodes: 1
+              maxNodes: 1
+      - name: volcano
+        type: volcano
+        policies:
+          - name: node-limit
+            arguments:
+              minNodes: 1
+              maxNodes: 100
     shardSyncPeriod: "30s"
-    enableNodeEventTrigger: true'
+    enableNodeEventTrigger: true"
   ;;
 "SHARDINGCONTROLLER")
   echo "Install volcano chart with crd version $crd_version and sharding controller enabled"
@@ -232,20 +245,66 @@ EOF
     schedulerConfigs:
       - name: volcano
         type: volcano
-        cpuUtilizationMin: 0.0
-        cpuUtilizationMax: 0.6
-        preferWarmupNodes: false
-        minNodes: 2
-        maxNodes: 100
+        policies:
+          - name: allocation-rate
+            weight: 1
+            arguments:
+              minCPUUtil: 0.0
+              maxCPUUtil: 0.6
+          - name: node-limit
+            arguments:
+              minNodes: 2
+              maxNodes: 100
       - name: agent-scheduler
         type: agent
-        cpuUtilizationMin: 0.7
-        cpuUtilizationMax: 1.0
-        preferWarmupNodes: true
-        minNodes: 2
-        maxNodes: 100
+        policies:
+          - name: allocation-rate
+            weight: 1
+            arguments:
+              minCPUUtil: 0.7
+              maxCPUUtil: 1.0
+          - name: warmup
+            weight: 1
+          - name: node-limit
+            arguments:
+              minNodes: 2
+              maxNodes: 100
     shardSyncPeriod: "60s"
     enableNodeEventTrigger: true'
+  ;;
+"SCHEDULERSHARDING"|"SCHEDULERSHARDING_NONE"|"SCHEDULERSHARDING_SOFT"|"SCHEDULERSHARDING_HARD")
+  scheduler_sharding_mode="${E2E_TYPE#SCHEDULERSHARDING_}"
+  if [[ "${scheduler_sharding_mode}" == "SCHEDULERSHARDING" ]]; then
+    scheduler_sharding_mode="HARD"
+  fi
+  scheduler_sharding_mode=$(echo "${scheduler_sharding_mode}" | tr '[:upper:]' '[:lower:]')
+  echo "Install volcano chart with crd version $crd_version and scheduler sharding ${scheduler_sharding_mode} mode enabled"
+  helm-install-volcano "  controller_log_level: 5
+  controller_enabled_controllers: \"*\"
+  scheduler_sharding_mode: ${scheduler_sharding_mode}
+  sharding_configmap_data: |
+    schedulerConfigs:
+      - name: volcano
+        type: volcano
+        policies:
+          - name: allocation-rate
+            weight: 1
+            arguments:
+              minCPUUtil: 0.0
+              maxCPUUtil: 0.6
+          - name: node-limit
+            arguments:
+              minNodes: 1
+              maxNodes: 1
+      - name: agent-scheduler
+        type: agent
+        policies:
+          - name: node-limit
+            arguments:
+              minNodes: 1
+              maxNodes: 100
+    shardSyncPeriod: "30s"
+    enableNodeEventTrigger: true"
   ;;
 *)
   echo "Install volcano chart with crd version $crd_version"
@@ -312,7 +371,9 @@ custom:
   enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
   ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
+  local helm_status=${PIPESTATUS[1]}
   [[ -n "${extra_values_flag}" ]] && rm -f "${tmpfile}"
+  return "${helm_status}"
 }
 
 function uninstall-volcano {
@@ -443,9 +504,14 @@ case ${E2E_TYPE} in
     echo "Running cronjob e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/cronjob/
     ;;
-"AGENTSCHEDULER")
-    echo "Running agent scheduler e2e suite..."
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/agentscheduler/
+"AGENTSCHEDULER"|"AGENTSCHEDULER_NONE"|"AGENTSCHEDULER_SOFT"|"AGENTSCHEDULER_HARD")
+    agent_scheduler_sharding_mode="${E2E_TYPE#AGENTSCHEDULER_}"
+    if [[ "${agent_scheduler_sharding_mode}" == "AGENTSCHEDULER" ]]; then
+      agent_scheduler_sharding_mode="NONE"
+    fi
+    agent_scheduler_sharding_mode=$(echo "${agent_scheduler_sharding_mode}" | tr '[:upper:]' '[:lower:]')
+    echo "Running agent scheduler ${agent_scheduler_sharding_mode} e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo --label-filter="${agent_scheduler_sharding_mode}" -v -r --slow-spec-threshold='30s' --progress ./test/e2e/agentscheduler/
     ;;
 "SHARDINGCONTROLLER")
     echo "Running sharding controller e2e suite..."
@@ -456,6 +522,15 @@ case ${E2E_TYPE} in
     install-kwok-nodes 4
     echo "Running gang eviction e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/gangevict/
+    ;;
+"SCHEDULERSHARDING"|"SCHEDULERSHARDING_NONE"|"SCHEDULERSHARDING_SOFT"|"SCHEDULERSHARDING_HARD")
+    scheduler_sharding_mode="${E2E_TYPE#SCHEDULERSHARDING_}"
+    if [[ "${scheduler_sharding_mode}" == "SCHEDULERSHARDING" ]]; then
+      scheduler_sharding_mode="HARD"
+    fi
+    scheduler_sharding_mode=$(echo "${scheduler_sharding_mode}" | tr '[:upper:]' '[:lower:]')
+    echo "Running scheduler sharding ${scheduler_sharding_mode} e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo --label-filter="${scheduler_sharding_mode}" -v -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulersharding/
     ;;
 esac
 

@@ -12,14 +12,41 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: E2E Agent Scheduler
+          - name: E2E Agent Scheduler None
             target: e2e-test-agentscheduler
-            logs_dir: e2e-agent-scheduler-logs
-            artifact: volcano_e2e_agent_scheduler_logs
+            mode: none
+            logs_dir: e2e-agent-scheduler-none-logs
+            artifact: volcano_e2e_agent_scheduler_none_logs
+          - name: E2E Agent Scheduler Soft
+            target: e2e-test-agentscheduler
+            mode: soft
+            logs_dir: e2e-agent-scheduler-soft-logs
+            artifact: volcano_e2e_agent_scheduler_soft_logs
+          - name: E2E Agent Scheduler Hard
+            target: e2e-test-agentscheduler
+            mode: hard
+            logs_dir: e2e-agent-scheduler-hard-logs
+            artifact: volcano_e2e_agent_scheduler_hard_logs
           - name: E2E Sharding Controller
             target: e2e-test-shardingcontroller
+            mode: ""
             logs_dir: e2e-sharding-controller-logs
             artifact: volcano_e2e_sharding_controller_logs
+          - name: E2E Scheduler Sharding None
+            target: e2e-test-schedulersharding
+            mode: none
+            logs_dir: e2e-scheduler-sharding-none-logs
+            artifact: volcano_e2e_scheduler_sharding_none_logs
+          - name: E2E Scheduler Sharding Soft
+            target: e2e-test-schedulersharding
+            mode: soft
+            logs_dir: e2e-scheduler-sharding-soft-logs
+            artifact: volcano_e2e_scheduler_sharding_soft_logs
+          - name: E2E Scheduler Sharding Hard
+            target: e2e-test-schedulersharding
+            mode: hard
+            logs_dir: e2e-scheduler-sharding-hard-logs
+            artifact: volcano_e2e_scheduler_sharding_hard_logs
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -63,7 +90,7 @@ jobs:
       - name: Run E2E Tests
         run: |
           export ARTIFACTS_PATH=${{ github.workspace }}/${{ matrix.logs_dir }}
-          make ${{ matrix.target }} FORCE_REBUILD=false
+          make ${{ matrix.target }} SHARDING_MODE=${{ matrix.mode }} FORCE_REBUILD=false
 
       - name: Upload e2e logs
         if: '!success()'

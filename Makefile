@@ -236,13 +236,16 @@ e2e-test-admission-policy: images
 	E2E_TYPE=ADMISSION_POLICY ./hack/run-e2e-kind.sh
 
 e2e-test-agentscheduler: images
-	E2E_TYPE=AGENTSCHEDULER ./hack/run-e2e-kind.sh
+	E2E_TYPE=AGENTSCHEDULER$(if $(SHARDING_MODE),_$(shell echo $(SHARDING_MODE) | tr '[:lower:]' '[:upper:]'),) ./hack/run-e2e-kind.sh
 
 e2e-test-shardingcontroller: images
 	E2E_TYPE=SHARDINGCONTROLLER ./hack/run-e2e-kind.sh
 
 e2e-test-gangevict: images
 	E2E_TYPE=GANGEVICT ./hack/run-e2e-kind.sh
+
+e2e-test-schedulersharding: images
+	E2E_TYPE=SCHEDULERSHARDING$(if $(SHARDING_MODE),_$(shell echo $(SHARDING_MODE) | tr '[:lower:]' '[:upper:]'),) ./hack/run-e2e-kind.sh
 
 generate-yaml: init manifests
 	./hack/generate-yaml.sh CRD_VERSION=${CRD_VERSION}

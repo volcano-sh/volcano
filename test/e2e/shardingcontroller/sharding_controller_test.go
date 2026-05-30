@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"volcano.sh/volcano/pkg/controllers/sharding"
+	"volcano.sh/volcano/pkg/controllers/sharding/policy"
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
@@ -72,24 +73,11 @@ var _ = Describe("ShardingController E2E Test", func() {
 
 	waitForNodeShardsCreated := func(cfg *sharding.ShardingConfig) {
 		By("Waiting for ShardingController to create NodeShards")
-		expected := make(map[string]struct{}, len(cfg.SchedulerConfigs))
+		names := make([]string, 0, len(cfg.SchedulerConfigs))
 		for _, sc := range cfg.SchedulerConfigs {
-			expected[sc.Name] = struct{}{}
+			names = append(names, sc.Name)
 		}
-		err := wait.PollUntilContextTimeout(context.TODO(), pollInterval, shardCreationTimeout, true,
-			func(c context.Context) (bool, error) {
-				shards, err := e2eutil.ListNodeShards(ctx)
-				if err != nil {
-					return false, nil
-				}
-				found := 0
-				for _, shard := range shards.Items {
-					if _, ok := expected[shard.Name]; ok {
-						found++
-					}
-				}
-				return found == len(expected), nil
-			})
+		err := e2eutil.WaitForNodeShardsCreated(ctx, names)
 		Expect(err).NotTo(HaveOccurred(), "NodeShards should be created for all configured schedulers")
 	}
 
@@ -103,10 +91,12 @@ var _ = Describe("ShardingController E2E Test", func() {
 	}
 
 	isLowUtil := func(s *sharding.SchedulerConfigSpec) bool {
-		return s.CPUUtilizationMin == 0.0
+		minCPU, _, ok := allocationRateRange(s)
+		return ok && minCPU == 0.0
 	}
 	isHighUtil := func(s *sharding.SchedulerConfigSpec) bool {
-		return s.CPUUtilizationMax >= 1.0 && s.CPUUtilizationMin > 0
+		minCPU, maxCPU, ok := allocationRateRange(s)
+		return ok && maxCPU >= 1.0 && minCPU > 0
 	}
 
 	Describe("Shard Creation", func() {
@@ -196,8 +186,10 @@ var _ = Describe("ShardingController E2E Test", func() {
 
 			lowUtil := findScheduler(cfg, isLowUtil)
 			highUtil := findScheduler(cfg, isHighUtil)
-			Expect(lowUtil).NotTo(BeNil(), "ConfigMap should have a low-utilization scheduler (cpuUtilizationMin=0)")
-			Expect(highUtil).NotTo(BeNil(), "ConfigMap should have a high-utilization scheduler (cpuUtilizationMax>=1.0, min>0)")
+			Expect(lowUtil).NotTo(BeNil(), "ConfigMap should have a low-utilization scheduler (allocation-rate minCPUUtil=0)")
+			Expect(highUtil).NotTo(BeNil(), "ConfigMap should have a high-utilization scheduler (allocation-rate maxCPUUtil>=1.0, minCPUUtil>0)")
+			highMinCPU, highMaxCPU, ok := allocationRateRange(highUtil)
+			Expect(ok).To(BeTrue(), "high-utilization scheduler should have allocation-rate CPU bounds")
 
 			nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
@@ -210,7 +202,7 @@ var _ = Describe("ShardingController E2E Test", func() {
 				"node should start in low-util shard")
 
 			cpuCapacity := targetNode.Status.Capacity.Cpu().MilliValue()
-			targetUtil := (highUtil.CPUUtilizationMin + highUtil.CPUUtilizationMax) / 2
+			targetUtil := (highMinCPU + highMaxCPU) / 2
 			cpuRequestMillis := int64(float64(cpuCapacity) * targetUtil)
 			Expect(cpuRequestMillis).To(BeNumerically(">", 0))
 
@@ -252,8 +244,13 @@ var _ = Describe("ShardingController E2E Test", func() {
 						continue
 					}
 					a, b := cfg.SchedulerConfigs[i], cfg.SchedulerConfigs[j]
-					if a.CPUUtilizationMax < b.CPUUtilizationMin {
-						g := gap{lo: a.CPUUtilizationMax, hi: b.CPUUtilizationMin}
+					_, aMaxCPU, aOK := allocationRateRange(&a)
+					bMinCPU, _, bOK := allocationRateRange(&b)
+					if !aOK || !bOK {
+						continue
+					}
+					if aMaxCPU < bMinCPU {
+						g := gap{lo: aMaxCPU, hi: bMinCPU}
 						if chosen == nil || (g.hi-g.lo) > (chosen.hi-chosen.lo) {
 							chosen = &g
 						}
@@ -315,14 +312,18 @@ var _ = Describe("ShardingController E2E Test", func() {
 				shard, err := e2eutil.GetNodeShard(ctx, sc.Name)
 				Expect(err).NotTo(HaveOccurred(), "failed to get NodeShard %s", sc.Name)
 				count := len(shard.Spec.NodesDesired)
+				minNodes, maxNodes, ok := nodeLimitBounds(&sc)
+				Expect(ok).To(BeTrue(), "scheduler %q should configure node-limit policy", sc.Name)
 
 				// MinNodes is best-effort: only enforce when the shard has any eligible node.
 				if count > 0 {
-					Expect(count).To(BeNumerically(">=", sc.MinNodes),
-						fmt.Sprintf("shard %q has %d nodes < MinNodes=%d", sc.Name, count, sc.MinNodes))
+					Expect(count).To(BeNumerically(">=", minNodes),
+						fmt.Sprintf("shard %q has %d nodes < MinNodes=%d", sc.Name, count, minNodes))
 				}
-				Expect(count).To(BeNumerically("<=", sc.MaxNodes),
-					fmt.Sprintf("shard %q has %d nodes > MaxNodes=%d", sc.Name, count, sc.MaxNodes))
+				if maxNodes > 0 {
+					Expect(count).To(BeNumerically("<=", maxNodes),
+						fmt.Sprintf("shard %q has %d nodes > MaxNodes=%d", sc.Name, count, maxNodes))
+				}
 			}
 		})
 	})
@@ -422,8 +423,7 @@ var _ = Describe("ShardingController E2E Test", func() {
 			newCfg.SchedulerConfigs = append([]sharding.SchedulerConfigSpec(nil), cfg.SchedulerConfigs...)
 			for i := range newCfg.SchedulerConfigs {
 				if newCfg.SchedulerConfigs[i].Name == targetSchedulerName {
-					newCfg.SchedulerConfigs[i].MinNodes = 1
-					newCfg.SchedulerConfigs[i].MaxNodes = 1
+					setNodeLimitBounds(&newCfg.SchedulerConfigs[i], 1, 1)
 				}
 			}
 			newYAML, err := yaml.Marshal(&newCfg)
@@ -486,6 +486,67 @@ var _ = Describe("ShardingController E2E Test", func() {
 })
 
 // Helpers
+
+const (
+	allocationRatePolicyName = "allocation-rate"
+	nodeLimitPolicyName      = "node-limit"
+	minCPUUtilArg            = "minCPUUtil"
+	maxCPUUtilArg            = "maxCPUUtil"
+	minNodesArg              = "minNodes"
+	maxNodesArg              = "maxNodes"
+)
+
+func allocationRateRange(sc *sharding.SchedulerConfigSpec) (float64, float64, bool) {
+	for _, p := range sc.Policies {
+		if p.Name != allocationRatePolicyName {
+			continue
+		}
+		args := policy.Arguments(p.Arguments)
+		var minCPU, maxCPU float64
+		args.GetFloat64(&minCPU, minCPUUtilArg)
+		args.GetFloat64(&maxCPU, maxCPUUtilArg)
+		return minCPU, maxCPU, true
+	}
+
+	return 0, 0, false
+}
+
+func nodeLimitBounds(sc *sharding.SchedulerConfigSpec) (int, int, bool) {
+	for _, p := range sc.Policies {
+		if p.Name != nodeLimitPolicyName {
+			continue
+		}
+		args := policy.Arguments(p.Arguments)
+		var minNodes, maxNodes int
+		args.GetInt(&minNodes, minNodesArg)
+		args.GetInt(&maxNodes, maxNodesArg)
+		return minNodes, maxNodes, true
+	}
+
+	return 0, 0, false
+}
+
+func setNodeLimitBounds(sc *sharding.SchedulerConfigSpec, minNodes, maxNodes int) {
+	for i := range sc.Policies {
+		if sc.Policies[i].Name != nodeLimitPolicyName {
+			continue
+		}
+		if sc.Policies[i].Arguments == nil {
+			sc.Policies[i].Arguments = make(map[string]interface{})
+		}
+		sc.Policies[i].Arguments[minNodesArg] = minNodes
+		sc.Policies[i].Arguments[maxNodesArg] = maxNodes
+		return
+	}
+
+	sc.Policies = append(sc.Policies, sharding.PolicySpec{
+		Name: nodeLimitPolicyName,
+		Arguments: map[string]interface{}{
+			minNodesArg: minNodes,
+			maxNodesArg: maxNodes,
+		},
+	})
+}
 
 func filterWorkerNodes(nodes []corev1.Node) []corev1.Node {
 	var workers []corev1.Node

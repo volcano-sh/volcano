@@ -15,7 +15,8 @@ package policy
 
 import "k8s.io/klog/v2"
 
-// GetInt retrieves an integer value from arguments.
+// GetInt retrieves an integer value from arguments. YAML/JSON decoded numbers
+// arrive as float64; Go map literals in tests pass int directly.
 func (a Arguments) GetInt(ptr *int, key string) {
 	if ptr == nil {
 		return
@@ -26,13 +27,14 @@ func (a Arguments) GetInt(ptr *int, key string) {
 		return
 	}
 
-	value, ok := argv.(int)
-	if !ok {
+	switch value := argv.(type) {
+	case int:
+		*ptr = value
+	case float64:
+		*ptr = int(value)
+	default:
 		klog.Warningf("Could not parse argument: %v for key %s to int", argv, key)
-		return
 	}
-
-	*ptr = value
 }
 
 // GetFloat64 retrieves a float64 value from arguments

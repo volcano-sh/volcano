@@ -19,6 +19,7 @@ package agentscheduler
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -36,10 +37,16 @@ import (
 
 const (
 	AgentSchedulerName = "agent-scheduler"
+	VolcanoShardName   = "volcano"
 
 	pollInterval      = 500 * time.Millisecond
 	deploymentTimeout = 5 * time.Minute
 	volcanoSystemNS   = "volcano-system"
+
+	agentSchedulerNodeLabel  = "volcano.sh/e2e-agent-scheduler-sharding"
+	agentSchedulerNodeValue  = "preferred"
+	shardingConfigMapName    = "integration-sharding-configmap"
+	shardingConfigMapDataKey = "sharding.yaml"
 )
 
 var _ = Describe("Agent Scheduler E2E Test", func() {
@@ -59,7 +66,69 @@ var _ = Describe("Agent Scheduler E2E Test", func() {
 		}
 	})
 
-	Describe("Agent Scheduler Deployment", func() {
+	waitForNodeShardsCreated := func() {
+		By("Waiting for ShardingController to create NodeShards")
+		err := e2eutil.WaitForNodeShardsCreated(ctx, []string{AgentSchedulerName, VolcanoShardName})
+		Expect(err).NotTo(HaveOccurred(), "NodeShards should be created by ShardingController")
+	}
+
+	getAgentShardPartition := func() ([]string, []string) {
+		waitForNodeShardsCreated()
+
+		agentShard, err := e2eutil.GetNodeShard(ctx, AgentSchedulerName)
+		Expect(err).NotTo(HaveOccurred())
+		volcanoShard, err := e2eutil.GetNodeShard(ctx, VolcanoShardName)
+		Expect(err).NotTo(HaveOccurred())
+
+		agentNodes := filterWorkerNodeNames(ctx, agentShard.Spec.NodesDesired)
+		if len(agentNodes) == 0 {
+			agentNodes = append([]string(nil), agentShard.Spec.NodesDesired...)
+		}
+		agentNodeSet := stringSet(agentNodes)
+		volcanoOnlyNodes := make([]string, 0, len(volcanoShard.Spec.NodesDesired))
+		for _, n := range volcanoShard.Spec.NodesDesired {
+			if _, ok := agentNodeSet[n]; !ok && !isControlPlaneNode(ctx, n) {
+				volcanoOnlyNodes = append(volcanoOnlyNodes, n)
+			}
+		}
+
+		GinkgoWriter.Printf("Agent shard nodes: %v\n", agentNodes)
+		GinkgoWriter.Printf("Volcano-only shard nodes: %v\n", volcanoOnlyNodes)
+		Expect(agentNodes).NotTo(BeEmpty(), "agent-scheduler shard must have nodes")
+		Expect(volcanoOnlyNodes).NotTo(BeEmpty(),
+			"volcano shard must have nodes outside the agent shard for sharding verification")
+		return agentNodes, volcanoOnlyNodes
+	}
+
+	prepareSingleAgentWorkerShard := func() (string, []string, func()) {
+		waitForNodeShardsCreated()
+		workers := workerNodeNames(ctx)
+		Expect(len(workers)).To(BeNumerically(">=", 2), "agent scheduler sharding tests need at least two worker nodes")
+		agentNode := workers[0]
+		volcanoOnlyNodes := append([]string(nil), workers[1:]...)
+
+		cleanupWarmupLabel := addNodeLabel(ctx, agentNode, agentSchedulerNodeLabel, agentSchedulerNodeValue)
+		originalConfig := updateShardingConfigMap(ctx, preferredAgentNodeShardingConfig())
+		restored := false
+		restore := func() {
+			if restored {
+				return
+			}
+			restoreShardingConfigMap(ctx, originalConfig)
+			cleanupWarmupLabel()
+			restored = true
+		}
+
+		err := waitForNodeShardSpec(ctx, AgentSchedulerName, []string{agentNode})
+		Expect(err).NotTo(HaveOccurred(), "agent NodeShard spec should use the pinned worker shard")
+		if !currentSpecHasLabel("none") {
+			err = waitForNodeShardStatus(ctx, AgentSchedulerName, []string{agentNode})
+			Expect(err).NotTo(HaveOccurred(), "agent scheduler should observe the pinned worker shard")
+		}
+		return agentNode, volcanoOnlyNodes, restore
+	}
+
+	Describe("Agent Scheduler Deployment", Label("hard", "soft", "none"), func() {
 		It("agent-scheduler deployment should be ready", func() {
 			By("Checking agent-scheduler deployment in volcano-system namespace")
 			var deploy *appsv1.Deployment
@@ -90,7 +159,7 @@ var _ = Describe("Agent Scheduler E2E Test", func() {
 		})
 	})
 
-	Describe("Pod Scheduling", func() {
+	Describe("Pod Scheduling", Label("hard", "soft", "none"), func() {
 		It("should schedule a single pod with agent-scheduler", func() {
 			By("Creating a pod with schedulerName=agent-scheduler")
 			pod := createAgentPod(ctx.Namespace, "agent-single-pod", "100m")
@@ -117,7 +186,7 @@ var _ = Describe("Agent Scheduler E2E Test", func() {
 			Expect(err).NotTo(HaveOccurred(), "pod should reach Running phase")
 		})
 
-		It("should schedule multiple pods concurrently", func() {
+		It("should schedule multiple pods", func() {
 			podCount := 5
 
 			By(fmt.Sprintf("Creating %d pods with schedulerName=agent-scheduler", podCount))
@@ -129,11 +198,9 @@ var _ = Describe("Agent Scheduler E2E Test", func() {
 				_, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(
 					context.TODO(), pod, metav1.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred(), "failed to create pod %s", podName)
-			}
 
-			By("Waiting for all pods to be scheduled and running")
-			for _, podName := range podNames {
-				err := e2eutil.WaitPodScheduled(ctx, ctx.Namespace, podName)
+				By(fmt.Sprintf("Waiting for pod %s to be scheduled", podName))
+				err = e2eutil.WaitPodScheduled(ctx, ctx.Namespace, podName)
 				Expect(err).NotTo(HaveOccurred(), "pod %s should be scheduled", podName)
 			}
 
@@ -189,7 +256,114 @@ var _ = Describe("Agent Scheduler E2E Test", func() {
 		})
 	})
 
-	Describe("Unschedulable Pods", func() {
+	Describe("Agent Scheduler Sharding Modes", func() {
+		It("hard and soft modes should schedule pods onto agent shard nodes while shard capacity is available", Label("hard", "soft"), func() {
+			agentNode, volcanoOnlyNodes, restore := prepareSingleAgentWorkerShard()
+			defer restore()
+			err := waitForNodeShardStatus(ctx, AgentSchedulerName, []string{agentNode})
+			Expect(err).NotTo(HaveOccurred(), "agent scheduler should observe the test worker shard")
+			agentNodes := []string{agentNode}
+			volcanoOnlySet := stringSet(volcanoOnlyNodes)
+
+			By("Creating an agent-scheduler pod")
+			pod := createAgentPod(ctx.Namespace, "agent-shard-pod", "100m")
+			createdPod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(
+				context.TODO(), pod, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to create agent pod")
+
+			By("Waiting for the pod to be scheduled")
+			err = e2eutil.WaitPodScheduled(ctx, ctx.Namespace, createdPod.Name)
+			Expect(err).NotTo(HaveOccurred(), "pod should be scheduled by agent-scheduler")
+
+			By("Verifying pod is scheduled onto an agent shard node")
+			scheduledPod := getPod(ctx, createdPod.Name)
+			Expect(volcanoOnlySet).NotTo(HaveKey(scheduledPod.Spec.NodeName),
+				"pod should not use volcano-only nodes while agent shard capacity is available")
+			expectPodOnNodes(scheduledPod, stringSet(agentNodes))
+		})
+
+		It("soft mode should prefer the agent shard when shard and outside nodes are both feasible", Label("soft"), func() {
+			agentNode, _, restore := prepareSingleAgentWorkerShard()
+			defer restore()
+			err := waitForNodeShardStatus(ctx, AgentSchedulerName, []string{agentNode})
+			Expect(err).NotTo(HaveOccurred(), "agent scheduler should observe the test worker shard")
+
+			By("Creating an agent-scheduler pod that can fit on either shard or outside-shard nodes")
+			pod := createAgentPod(ctx.Namespace, "agent-soft-prefer-pod", "100m")
+			createdPod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(
+				context.TODO(), pod, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to create agent pod")
+			err = e2eutil.WaitPodScheduled(ctx, ctx.Namespace, createdPod.Name)
+			Expect(err).NotTo(HaveOccurred(), "pod should be scheduled")
+			expectPodOnNodes(getPod(ctx, createdPod.Name), stringSet([]string{agentNode}))
+		})
+
+		It("soft mode should schedule outside the agent shard when in-shard resources are exhausted", Label("soft"), func() {
+			agentNode, volcanoOnlyNodes, restore := prepareSingleAgentWorkerShard()
+			defer restore()
+			err := waitForNodeShardStatus(ctx, AgentSchedulerName, []string{agentNode})
+			Expect(err).NotTo(HaveOccurred(), "agent scheduler should observe the test worker shard")
+			createBoundPlaceholderPod(ctx, "agent-soft-fill-shard-node", agentNode, allocatableCPU(ctx, agentNode))
+
+			By("Creating an agent-scheduler pod that should fall back outside the agent shard")
+			secondPod := createAgentPod(ctx.Namespace, "agent-soft-fallback-pod", "100m")
+			createdSecondPod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(
+				context.TODO(), secondPod, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to create second agent pod")
+			err = e2eutil.WaitPodScheduled(ctx, ctx.Namespace, createdSecondPod.Name)
+			Expect(err).NotTo(HaveOccurred(), "second pod should fall back outside the agent shard")
+			expectPodOnNodes(getPod(ctx, createdSecondPod.Name), stringSet(volcanoOnlyNodes))
+		})
+
+		It("none mode should not force placement onto the agent shard", Label("none"), func() {
+			agentNode, volcanoOnlyNodes, restore := prepareSingleAgentWorkerShard()
+			defer restore()
+			createBoundPlaceholderPod(ctx, "agent-none-make-shard-less-preferred", agentNode, fractionOfAllocatableCPU(ctx, agentNode, 2))
+
+			By("Creating an agent-scheduler pod that can fit on the shard but has better outside-shard scores")
+			pod := createAgentPod(ctx.Namespace, "agent-none-score-outside-pod", "100m")
+			createdPod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(
+				context.TODO(), pod, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to create agent pod")
+			err = e2eutil.WaitPodScheduled(ctx, ctx.Namespace, createdPod.Name)
+			Expect(err).NotTo(HaveOccurred(), "pod should be scheduled")
+			expectPodOnNodes(getPod(ctx, createdPod.Name), stringSet(volcanoOnlyNodes))
+		})
+
+		It("none mode should schedule outside the agent shard when in-shard resources are exhausted", Label("none"), func() {
+			agentNode, volcanoOnlyNodes, restore := prepareSingleAgentWorkerShard()
+			defer restore()
+			createBoundPlaceholderPod(ctx, "agent-none-fill-shard-node", agentNode, allocatableCPU(ctx, agentNode))
+
+			By("Creating an agent-scheduler pod that should use outside-shard capacity")
+			pod := createAgentPod(ctx.Namespace, "agent-none-fallback-pod", "100m")
+			createdPod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(
+				context.TODO(), pod, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to create agent pod")
+			err = e2eutil.WaitPodScheduled(ctx, ctx.Namespace, createdPod.Name)
+			Expect(err).NotTo(HaveOccurred(), "pod should fall back outside the agent shard")
+			expectPodOnNodes(getPod(ctx, createdPod.Name), stringSet(volcanoOnlyNodes))
+		})
+
+		It("hard mode should not fall back outside the agent shard when in-shard resources are exhausted", Label("hard"), func() {
+			agentNode, _, restore := prepareSingleAgentWorkerShard()
+			defer restore()
+			err := waitForNodeShardStatus(ctx, AgentSchedulerName, []string{agentNode})
+			Expect(err).NotTo(HaveOccurred(), "agent scheduler should observe the test worker shard")
+			createBoundPlaceholderPod(ctx, "agent-hard-fill-shard-node", agentNode, allocatableCPU(ctx, agentNode))
+
+			By("Creating an agent-scheduler pod that should stay unschedulable in hard mode")
+			secondPod := createAgentPod(ctx.Namespace, "agent-hard-pod", "100m")
+			createdSecondPod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(
+				context.TODO(), secondPod, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to create second agent pod")
+			err = e2eutil.WaitPodUnschedulable(ctx, ctx.Namespace, createdSecondPod.Name, 1*time.Minute)
+			Expect(err).NotTo(HaveOccurred(), "hard mode should not fall back outside the agent shard")
+			Expect(getPod(ctx, createdSecondPod.Name).Spec.NodeName).To(BeEmpty())
+		})
+	})
+
+	Describe("Unschedulable Pods", Label("hard", "soft", "none"), func() {
 		It("should leave a pod Unschedulable when no node has enough CPU", func() {
 			By("Creating a pod requesting more CPU than any node has")
 			pod := createAgentPod(ctx.Namespace, "agent-insufficient-cpu", "1000")
@@ -240,11 +414,8 @@ var _ = Describe("Agent Scheduler E2E Test", func() {
 			Expect(err).NotTo(HaveOccurred(), "pod should initially be Unschedulable")
 
 			By("Labeling a worker node to satisfy the nodeSelector")
-			nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(
-				context.TODO(), metav1.ListOptions{LabelSelector: "node-role.kubernetes.io/control-plane!="})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(nodes.Items).NotTo(BeEmpty(), "expected at least one worker node")
-			targetNode := nodes.Items[0].Name
+			agentNodes, _ := getAgentShardPartition()
+			targetNode := agentNodes[0]
 
 			patch := fmt.Sprintf(`{"metadata":{"labels":{%q:%q}}}`, labelKey, labelValue)
 			_, err = ctx.Kubeclient.CoreV1().Nodes().Patch(
@@ -276,7 +447,7 @@ var _ = Describe("Agent Scheduler E2E Test", func() {
 		})
 	})
 
-	Describe("Batch Scheduling", func() {
+	Describe("Batch Scheduling", Label("hard", "soft", "none"), func() {
 		It("should schedule a batch of pods", func() {
 			podCount := 10
 
@@ -306,7 +477,7 @@ var _ = Describe("Agent Scheduler E2E Test", func() {
 		})
 	})
 
-	Describe("NodeShard Verification", func() {
+	Describe("NodeShard Verification", Label("hard", "soft", "none"), func() {
 		It("NodeShards should exist when sharding controller is enabled", func() {
 			By("Waiting for NodeShards to be created")
 			err := wait.PollUntilContextTimeout(context.TODO(), pollInterval, 3*time.Minute, true,
@@ -340,6 +511,261 @@ var _ = Describe("Agent Scheduler E2E Test", func() {
 
 // Helper functions
 
+func stringSet(nodes []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(nodes))
+	for _, n := range nodes {
+		out[n] = struct{}{}
+	}
+	return out
+}
+
+func currentSpecHasLabel(label string) bool {
+	for _, l := range CurrentSpecReport().Labels() {
+		if l == label {
+			return true
+		}
+	}
+	return false
+}
+
+func workerNodeNames(ctx *e2eutil.TestContext) []string {
+	nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
+
+	workers := make([]string, 0, len(nodes.Items))
+	for _, node := range nodes.Items {
+		if _, ok := node.Labels["node-role.kubernetes.io/control-plane"]; ok {
+			continue
+		}
+		if _, ok := node.Labels["node-role.kubernetes.io/master"]; ok {
+			continue
+		}
+		workers = append(workers, node.Name)
+	}
+	sort.Strings(workers)
+	return workers
+}
+
+func filterWorkerNodeNames(ctx *e2eutil.TestContext, nodeNames []string) []string {
+	workerSet := stringSet(workerNodeNames(ctx))
+	workers := make([]string, 0, len(nodeNames))
+	for _, nodeName := range nodeNames {
+		if _, ok := workerSet[nodeName]; ok {
+			workers = append(workers, nodeName)
+		}
+	}
+	return workers
+}
+
+func isControlPlaneNode(ctx *e2eutil.TestContext, nodeName string) bool {
+	node, err := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to get node %s", nodeName)
+	_, isControlPlane := node.Labels["node-role.kubernetes.io/control-plane"]
+	_, isMaster := node.Labels["node-role.kubernetes.io/master"]
+	return isControlPlane || isMaster
+}
+
+func addNodeLabel(ctx *e2eutil.TestContext, nodeName, key, value string) func() {
+	node, err := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to get node %s", nodeName)
+
+	originalValue, hadOriginalValue := node.Labels[key]
+	nodeCopy := node.DeepCopy()
+	if nodeCopy.Labels == nil {
+		nodeCopy.Labels = make(map[string]string)
+	}
+	nodeCopy.Labels[key] = value
+	_, err = ctx.Kubeclient.CoreV1().Nodes().Update(context.TODO(), nodeCopy, metav1.UpdateOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to label node %s", nodeName)
+
+	return func() {
+		node, err := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+		if err != nil {
+			GinkgoWriter.Printf("warning: failed to get node %s for label cleanup: %v\n", nodeName, err)
+			return
+		}
+		nodeCopy := node.DeepCopy()
+		if hadOriginalValue {
+			nodeCopy.Labels[key] = originalValue
+		} else {
+			delete(nodeCopy.Labels, key)
+		}
+		if _, err := ctx.Kubeclient.CoreV1().Nodes().Update(context.TODO(), nodeCopy, metav1.UpdateOptions{}); err != nil {
+			GinkgoWriter.Printf("warning: failed to clean up label %s on node %s: %v\n", key, nodeName, err)
+		}
+	}
+}
+
+func updateShardingConfigMap(ctx *e2eutil.TestContext, data string) string {
+	cm, err := ctx.Kubeclient.CoreV1().ConfigMaps(volcanoSystemNS).Get(
+		context.TODO(), shardingConfigMapName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to get sharding ConfigMap")
+
+	originalData := cm.Data[shardingConfigMapDataKey]
+	cmCopy := cm.DeepCopy()
+	if cmCopy.Data == nil {
+		cmCopy.Data = make(map[string]string)
+	}
+	cmCopy.Data[shardingConfigMapDataKey] = data
+	_, err = ctx.Kubeclient.CoreV1().ConfigMaps(volcanoSystemNS).Update(
+		context.TODO(), cmCopy, metav1.UpdateOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to update sharding ConfigMap")
+	return originalData
+}
+
+func restoreShardingConfigMap(ctx *e2eutil.TestContext, data string) {
+	cm, err := ctx.Kubeclient.CoreV1().ConfigMaps(volcanoSystemNS).Get(
+		context.TODO(), shardingConfigMapName, metav1.GetOptions{})
+	if err != nil {
+		GinkgoWriter.Printf("warning: failed to get sharding ConfigMap for restore: %v\n", err)
+		return
+	}
+
+	cmCopy := cm.DeepCopy()
+	if cmCopy.Data == nil {
+		cmCopy.Data = make(map[string]string)
+	}
+	cmCopy.Data[shardingConfigMapDataKey] = data
+	if _, err := ctx.Kubeclient.CoreV1().ConfigMaps(volcanoSystemNS).Update(
+		context.TODO(), cmCopy, metav1.UpdateOptions{}); err != nil {
+		GinkgoWriter.Printf("warning: failed to restore sharding ConfigMap: %v\n", err)
+	}
+}
+
+func preferredAgentNodeShardingConfig() string {
+	return fmt.Sprintf(`schedulerConfigs:
+  - name: agent-scheduler
+    type: agent
+    policies:
+      - name: warmup
+        weight: 100
+        arguments:
+          warmupLabel: %s
+          warmupLabelValue: %s
+      - name: node-limit
+        arguments:
+          minNodes: 1
+          maxNodes: 1
+  - name: volcano
+    type: volcano
+    policies:
+      - name: node-limit
+        arguments:
+          minNodes: 1
+          maxNodes: 100
+shardSyncPeriod: "1s"
+enableNodeEventTrigger: true
+`, agentSchedulerNodeLabel, agentSchedulerNodeValue)
+}
+
+func createBoundPlaceholderPod(ctx *e2eutil.TestContext, name, nodeName string, req corev1.ResourceList) {
+	pod := e2eutil.CreatePod(ctx, e2eutil.PodSpec{
+		Name:          name,
+		Node:          nodeName,
+		Req:           req,
+		Tolerations:   controlPlaneTolerations(),
+		RestartPolicy: corev1.RestartPolicyNever,
+	})
+	err := e2eutil.WaitPodReady(ctx, pod)
+	Expect(err).NotTo(HaveOccurred(), "placeholder pod %s should run on %s", name, nodeName)
+}
+
+func allocatableCPU(ctx *e2eutil.TestContext, nodeName string) corev1.ResourceList {
+	return availableCPU(ctx, nodeName, 50)
+}
+
+func fractionOfAllocatableCPU(ctx *e2eutil.TestContext, nodeName string, divisor int64) corev1.ResourceList {
+	node, err := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to get node %s", nodeName)
+	milliCPU := node.Status.Allocatable.Cpu().MilliValue()
+	Expect(milliCPU).To(BeNumerically(">", 0), "node %s should report positive allocatable CPU", nodeName)
+	Expect(divisor).To(BeNumerically(">", 0), "CPU divisor should be positive")
+	requestMilliCPU := milliCPU / divisor
+	if requestMilliCPU < 1 {
+		requestMilliCPU = 1
+	}
+	return corev1.ResourceList{
+		corev1.ResourceCPU: resource.MustParse(fmt.Sprintf("%dm", requestMilliCPU)),
+	}
+}
+
+func availableCPU(ctx *e2eutil.TestContext, nodeName string, reserveMilliCPU int64) corev1.ResourceList {
+	node, err := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to get node %s", nodeName)
+	allocatableMilliCPU := node.Status.Allocatable.Cpu().MilliValue()
+
+	pods, err := ctx.Kubeclient.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{
+		FieldSelector: "spec.nodeName=" + nodeName,
+	})
+	Expect(err).NotTo(HaveOccurred(), "failed to list pods on node %s", nodeName)
+
+	var requestedMilliCPU int64
+	for _, pod := range pods.Items {
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			continue
+		}
+		for _, container := range pod.Spec.Containers {
+			requestedMilliCPU += container.Resources.Requests.Cpu().MilliValue()
+		}
+	}
+
+	requestMilliCPU := allocatableMilliCPU - requestedMilliCPU - reserveMilliCPU
+	Expect(requestMilliCPU).To(BeNumerically(">", 0),
+		"node %s should have allocatable CPU after existing requests and reserve", nodeName)
+	return corev1.ResourceList{
+		corev1.ResourceCPU: resource.MustParse(fmt.Sprintf("%dm", requestMilliCPU)),
+	}
+}
+
+func waitForNodeShardSpec(ctx *e2eutil.TestContext, shardName string, expectedNodesDesired []string) error {
+	expected := stringSet(expectedNodesDesired)
+	return wait.PollUntilContextTimeout(context.TODO(), pollInterval, 1*time.Minute, true,
+		func(c context.Context) (bool, error) {
+			shard, err := e2eutil.GetNodeShard(ctx, shardName)
+			if err != nil {
+				return false, nil
+			}
+			return sameStringSet(stringSet(shard.Spec.NodesDesired), expected), nil
+		})
+}
+
+func waitForNodeShardStatus(ctx *e2eutil.TestContext, shardName string, expectedNodesInUse []string) error {
+	expected := stringSet(expectedNodesInUse)
+	return wait.PollUntilContextTimeout(context.TODO(), pollInterval, 1*time.Minute, true,
+		func(c context.Context) (bool, error) {
+			shard, err := e2eutil.GetNodeShard(ctx, shardName)
+			if err != nil {
+				return false, nil
+			}
+			return sameStringSet(stringSet(shard.Status.NodesInUse), expected), nil
+		})
+}
+
+func sameStringSet(actual, expected map[string]struct{}) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+	for n := range expected {
+		if _, ok := actual[n]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func getPod(ctx *e2eutil.TestContext, name string) *corev1.Pod {
+	pod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to get pod %s", name)
+	return pod
+}
+
+func expectPodOnNodes(pod *corev1.Pod, allowedNodes map[string]struct{}) {
+	Expect(pod.Spec.NodeName).NotTo(BeEmpty(), "pod %s should be scheduled", pod.Name)
+	Expect(allowedNodes).To(HaveKey(pod.Spec.NodeName),
+		fmt.Sprintf("pod %s scheduled to node %q outside expected nodes %v",
+			pod.Name, pod.Spec.NodeName, allowedNodes))
+}
+
 func createAgentPod(namespace, name, cpuRequest string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -352,6 +778,7 @@ func createAgentPod(namespace, name, cpuRequest string) *corev1.Pod {
 		},
 		Spec: corev1.PodSpec{
 			SchedulerName: AgentSchedulerName,
+			Tolerations:   controlPlaneTolerations(),
 			Containers: []corev1.Container{
 				{
 					Name:    "busybox",
@@ -365,6 +792,21 @@ func createAgentPod(namespace, name, cpuRequest string) *corev1.Pod {
 				},
 			},
 			RestartPolicy: corev1.RestartPolicyNever,
+		},
+	}
+}
+
+func controlPlaneTolerations() []corev1.Toleration {
+	return []corev1.Toleration{
+		{
+			Key:      "node-role.kubernetes.io/control-plane",
+			Operator: corev1.TolerationOpExists,
+			Effect:   corev1.TaintEffectNoSchedule,
+		},
+		{
+			Key:      "node-role.kubernetes.io/master",
+			Operator: corev1.TolerationOpExists,
+			Effect:   corev1.TaintEffectNoSchedule,
 		},
 	}
 }

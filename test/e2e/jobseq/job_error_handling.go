@@ -170,10 +170,11 @@ var _ = Describe("Job Error Handling", func() {
 					Rep:  2,
 				},
 				{
-					Name:          "fail",
-					Img:           e2eutil.DefaultNginxImage,
-					Min:           2,
-					Rep:           2,
+					Name: "fail",
+					Img:  e2eutil.DefaultNginxImage,
+					// Keep one failing pod so RestartPod is tested without racing concurrent failures.
+					Min:           1,
+					Rep:           1,
 					Command:       "sleep 10s && xxx",
 					RestartPolicy: v1.RestartPolicyNever,
 				},
