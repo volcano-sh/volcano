@@ -32,6 +32,11 @@ custom:
   agent_scheduler_enable: false
   agent_scheduler_replicas: 1
   agent_scheduler_name: "agent-scheduler"
+  agent_scheduler_affinity: ~
+  agent_scheduler_tolerations: ~
+  agent_scheduler_sc: ~
+  agent_scheduler_ns: ~
+  agent_scheduler_main_csc: ~
   scheduler_replicas: 1
   scheduler_metrics_enable: true
   scheduler_pprof_enable: false
