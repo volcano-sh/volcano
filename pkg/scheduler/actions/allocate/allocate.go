@@ -82,10 +82,13 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	alloc.allocateResources(queues, jobsMap)
 }
 
+// 该函数用于筛选可参与调度的 Job，并按队列分组，为后续分配做准备。
 func (alloc *Action) pickUpQueuesAndJobs(queues *util.PriorityQueue, jobsMap map[api.QueueID]*util.PriorityQueue) {
 	ssn := alloc.session
 	for _, job := range ssn.Jobs {
 		// If not config enqueue action, change Pending pg into Inqueue state to avoid blocking job scheduling.
+		// 如果启用了 enqueue action：Pending 的 Job 跳过（由 enqueue 处理）
+		// 如果未启用 enqueue action：将 Pending 改为 Inqueue，允许参与分配
 		if job.IsPending() {
 			if conf.EnabledActionMap["enqueue"] {
 				klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: job status is pending.",
@@ -98,6 +101,7 @@ func (alloc *Action) pickUpQueuesAndJobs(queues *util.PriorityQueue, jobsMap map
 			}
 		}
 
+		// 检查 Job 是否有效
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
 			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
 			continue
@@ -124,6 +128,21 @@ func (alloc *Action) pickUpQueuesAndJobs(queues *util.PriorityQueue, jobsMap map
 // 2. allocates resources to these tasks. (this step is carried out by the allocateResourcesForTasks method.)
 func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[api.QueueID]*util.PriorityQueue) {
 	ssn := alloc.session
+	// 存储每个 Job 下所有 Pending 状态的任务
+	// 为啥要整这么个缓存？难道队列里还能 pop 出重复的 Job 吗？
+	// 是的，同一个 Job 会在同一调度周期内被多次处理，因此需要缓存。
+	// 在 allocateResources 中，如果任务没有全部分配完，Job 会被重新放回队列：
+	// 		} else {
+	//		stmt = alloc.allocateResourcesForTasks(tasks, job, queue, allNodes, "")
+	//		// There are still left tasks that need to be allocated when min available < replicas, put the job back
+	//		if tasks.Len() > 0 {
+	//			jobs.Push(job)
+	//		}
+	//	}
+	// 场景示例：
+	// Job 有 10 个 Pending 任务，minAvailable = 3
+	// 第 1 次：分配了 3 个任务，剩余 7 个 → Job 被放回队列
+	// 第 2 次：再次从队列取出同一个 Job，继续分配剩余任务
 	pendingTasks := map[api.JobID]*util.PriorityQueue{}
 
 	allNodes := ssn.NodeList
@@ -138,6 +157,7 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 
 		queue := queues.Pop().(*api.QueueInfo)
 
+		// 2.
 		if ssn.Overused(queue) {
 			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
 			continue
@@ -154,13 +174,17 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 		job := jobs.Pop().(*api.JobInfo)
 		if _, found = pendingTasks[job.UID]; !found {
 			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
+			// 拿到 job 下所有 Pending 状态的任务
 			for _, task := range job.TaskStatusIndex[api.Pending] {
 				// Skip tasks whose pod are scheduling gated
+				// 跳过调度门控的任务
+				// 外部控制：允许外部组件（如控制器）通过添加/移除 SchedulingGates 控制调度时机
 				if task.SchGated {
 					continue
 				}
 
 				// Skip BestEffort task in 'allocate' action.
+				// 跳过尽力而为任务
 				if task.Resreq.IsEmpty() {
 					klog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.",
 						task.Namespace, task.Name)
@@ -171,6 +195,7 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 			}
 			pendingTasks[job.UID] = tasks
 		}
+		// 拿到 job 下所有 Pending 状态的任务
 		tasks := pendingTasks[job.UID]
 
 		if tasks.Empty() {
@@ -182,7 +207,16 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 		klog.V(3).Infof("Try to allocate resource to %d tasks of Job <%v/%v>",
 			tasks.Len(), job.Namespace, job.Name)
 
+		// 判断网络拓扑模式
+		// Hard Mode：所有 Pod 必须在同一 HyperNode 内，不允许跨网络边界
+		// Soft Mode：允许跨 HyperNode，但优先同一 HyperNode
+		// 普通模式：无网络拓扑约束
+
+		// hardMode：是否为 Hard 模式
+		// highestAllowedTier：允许的最高层级（Hard 模式限制）
 		hardMode, highestAllowedTier := job.IsHardTopologyMode()
+
+		// Statement 是一个事务性的操作集合，用于记录调度决策，在 Commit 时统一执行。
 		var stmt *framework.Statement
 		var tasksQueue *util.PriorityQueue
 		if hardMode {
@@ -196,7 +230,18 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 				jobs.Push(job)
 				pendingTasks[job.UID] = tasksQueue
 			}
-		} else {
+		} else { // 普通模式：无网络拓扑约束
+			// 分配资源
+			// 流程：
+			// 遍历所有 pending 任务，逐个分配资源
+			// 1. 检查任务是否满足资源需求
+			// 2. 节点过滤（Predicate）
+			// 3. 节点评分与选择
+			// 4. 分配资源
+			// 5. 检查 Job 是否准备好继续分配
+			// 6. 如果 JobReady：返回 Statement（提交分配）
+			// 7. 如果 JobPipelined：保留 Statement（预分配，等待资源释放）
+			// 8. 否则：丢弃 Statement（返回 nil）
 			stmt = alloc.allocateResourcesForTasks(tasks, job, queue, allNodes, "")
 			// There are still left tasks that need to be allocated when min available < replicas, put the job back
 			if tasks.Len() > 0 {
@@ -353,6 +398,7 @@ func (alloc *Action) selectBestHyperNode(jobStmts map[string]*framework.Statemen
 	return finalStmt, bestHyperNodeName
 }
 
+// tasks：待分配的任务优先队列
 func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *api.JobInfo, queue *api.QueueInfo, allNodes []*api.NodeInfo, hyperNode string) *framework.Statement {
 	ssn := alloc.session
 	stmt := framework.NewStatement(ssn)
@@ -362,12 +408,14 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 
 	for !tasks.Empty() {
 		task := tasks.Pop().(*api.TaskInfo)
+		//
 		if !ssn.Allocatable(queue, task) {
 			klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
 			continue
 		}
 
 		// check if the task with its spec has already predicates failed
+		// 检查任务是否已有 Fit 错误
 		if job.TaskHasFitErrors(task) {
 			klog.V(5).Infof("Task %s with role spec %s has already predicated failed, skip", task.Name, task.TaskRole)
 			continue
@@ -375,6 +423,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 
 		klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>", len(ssn.Nodes), job.Namespace, job.Name)
 
+		// 预过滤：检查任务是否满足资源需求
 		if err := ssn.PrePredicateFn(task); err != nil {
 			klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
 			fitErrors := api.NewFitErrors()
@@ -385,6 +434,9 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			break
 		}
 
+		// 节点过滤（Predicate）
+		// 优先尝试 NominatedNode（抢占场景）
+		// 若无或不可用，遍历所有节点进行过滤
 		var predicateNodes []*api.NodeInfo
 		var fitErrors *api.FitErrors
 
@@ -423,6 +475,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			task.JobAllocatedHyperNode = jobNewAllocatedHyperNode
 		}
 
+		// 节点评分与选择
 		bestNode, highestScore := alloc.prioritizeNodes(ssn, task, predicateNodes)
 		if bestNode == nil {
 			continue
@@ -430,15 +483,55 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 
 		alloc.sumNodeScoresInHyperNode(string(job.UID), hyperNode, highestScore)
 
+		// 分配资源
 		if err := alloc.allocateResourcesForTask(stmt, task, bestNode, job); err == nil {
 			jobNewAllocatedHyperNode = getJobNewAllocatedHyperNode(ssn, bestNode.Name, job, jobNewAllocatedHyperNode)
 		}
 
+		// 分配资源成功后，检查 Job 是否准备好继续分配
+		// 以 Gang 调度检查举例
+		// 如果已满足且还有剩余任务，提前退出循环（为什么？）
 		if ssn.JobReady(job) && !tasks.Empty() {
 			break
 		}
 	}
 
+	// 如果 JobReady：返回 Statement（提交分配）
+	// 如果 JobPipelined：保留 Statement（预分配，等待资源释放）
+	// 否则：丢弃 Statement（返回 nil）
+
+	// Gang 调度的分配流程示例
+	// 假设一个 Job：
+	// minAvailable = 3
+	// 有 5 个 Pending 任务
+	// 第 1 次分配：
+	// 分配任务 1 → ReadyTaskNum = 1, IsReady() = false (1 < 3)
+	// 分配任务 2 → ReadyTaskNum = 2, IsReady() = false (2 < 3)
+	// 分配任务 3 → ReadyTaskNum = 3, IsReady() = true (3 >= 3) ✓
+	// → JobReady(job) = true && tasks.Empty() = false
+	// → break 退出循环
+	// → 返回 stmt（提交分配）
+	// 分配任务 1 → ReadyTaskNum = 1, IsReady() = false (1 < 3)分配任务 2 → ReadyTaskNum = 2, IsReady() = false (2 < 3)分配任务 3 → ReadyTaskNum = 3, IsReady() = true (3 >= 3) ✓→ JobReady(job) = true && tasks.Empty() = false→ break 退出循环→ 返回 stmt（提交分配）
+	//
+	// 第 2 次分配（剩余 2 个任务）：
+	// 分配任务 4 → ReadyTaskNum = 4
+	// 分配任务 5 → ReadyTaskNum = 5
+	// → tasks.Empty() = true
+	// → 循环结束
+	// → JobReady(job) = true
+	// → 返回 stmt（提交分配）
+	// 分配任务 4 → ReadyTaskNum = 4分配任务 5 → ReadyTaskNum = 5→ tasks.Empty() = true→ 循环结束→ JobReady(job) = true
+	//
+	// 资源不足时的处理
+	// 如果资源不足，无法满足 minAvailable：
+	// 分配任务 1 → ReadyTaskNum = 1
+	// 分配任务 2 → ReadyTaskNum = 2
+	// 任务 3 无法分配（无可用节点）
+	// → JobReady(job) = false
+	// → JobPipelined(job) = false（假设没有 Pipelined 任务）
+	// → stmt.Discard()（丢弃分配）
+	// → 返回 nil
+	// → Job 被放回队列，等待下次调度
 	if ssn.JobReady(job) {
 		klog.V(3).InfoS("Job ready, return statement", "jobName", job.UID)
 		updateJobAllocatedHyperNode(job, jobNewAllocatedHyperNode)
@@ -547,11 +640,14 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 
 func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo, job *api.JobInfo) (err error) {
 	// Allocate idle resource to the task.
+	// 当前空闲资源是否足够（idle 代表空闲）
 	if task.InitResreq.LessEqual(node.Idle, api.Zero) {
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
+		// task 分配到 node 上（只是更新到缓存，直到后续调用 stmt.Commit() 时才会真正分配到 node 上）
 		if err = stmt.Allocate(task, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 				task.UID, node.Name, alloc.session.UID, err)
+			// 如果分配失败，回滚任务
 			if rollbackErr := stmt.UnAllocate(task); rollbackErr != nil {
 				klog.Errorf("Failed to unallocate Task %v on %v in Session %v for %v.",
 					task.UID, node.Name, alloc.session.UID, rollbackErr)
@@ -567,6 +663,11 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 		task.Namespace, task.Name, node.Name)
 
 	// Allocate releasing resource to the task if any.
+	// 检查未来空闲资源是否足够（包括正在释放的资源）
+	// FutureIdle = Idle + Releasing - Pipelined
+	// Idle：当前空闲资源
+	// Releasing：正在释放的资源（Pod 正在被删除）
+	// Pipelined：已预分配的资源（已预订但未实际分配）
 	if task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 		klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 			task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)

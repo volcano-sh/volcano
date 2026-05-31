@@ -322,6 +322,7 @@ func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
 
 // CalcFirstCountResources return the first count tasks resource, sorted by priority
 func (p TasksPriority) CalcFirstCountResources(count int32) v1.ResourceList {
+	// 按照 task 的 priority 排序
 	sort.Sort(p)
 	minReq := v1.ResourceList{}
 

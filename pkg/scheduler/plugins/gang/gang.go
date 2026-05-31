@@ -58,6 +58,10 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		// 1. 检查每个任务是否有足够的有效 Pod
+		// 检查是否满足 TaskMinAvailable
+		// 比如 job.TaskMinAvailable = map[string]int32{"ps": 1, "worker": 1}
+		// 那么需要至少有一个 ps 和 一个 worker 的 pod 是有效的
 		if valid := job.CheckTaskValid(); !valid {
 			return &api.ValidateResult{
 				Pass:    false,
@@ -66,6 +70,9 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		// 2. 检查总的有效任务数是否满足 MinAvailable
+		// 比如 job.MinAvailable = 2
+		// 那么需要至少有两个有效的任务
 		vtn := job.ValidTaskNum()
 		if vtn < job.MinAvailable {
 			return &api.ValidateResult{

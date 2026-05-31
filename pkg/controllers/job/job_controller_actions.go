@@ -328,6 +328,8 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		}
 	} else {
 		// TODO: optimize this call it only when scale up/down
+		// 1. 创建/更新 podGroup
+		// 2. 执行 job plugin 的 jobUpdate 回调
 		if err = cc.initOnJobUpdate(job); err != nil {
 			return err
 		}
@@ -439,6 +441,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		}
 	}
 
+	// 并发创建 pod
 	for taskName, podToCreateEachTask := range podToCreate {
 		if len(podToCreateEachTask) == 0 {
 			continue
@@ -784,6 +787,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 		pgShouldUpdate = true
 	}
 
+	// 计算 job 需要的最小资源
 	minResources := cc.calcPGMinResources(job)
 	if pg.Spec.MinMember != job.Spec.MinAvailable || !equality.Semantic.DeepEqual(pg.Spec.MinResources, minResources) {
 		pg.Spec.MinMember = job.Spec.MinAvailable
@@ -866,6 +870,9 @@ func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 	// see docs https://github.com/volcano-sh/volcano/pull/2945
 	// 1. job.MinAvailable < sum(task.MinAvailable), regard podgroup's min resource as sum of the first minAvailable,
 	// according to https://github.com/volcano-sh/volcano/blob/c91eb07f2c300e4d5c826ff11a63b91781b3ac11/pkg/scheduler/api/job_info.go#L738-L740
+	//
+	// 什么情况会出现 job.Spec.MinAvailable < totalMinAvailable ?
+	// job 的 minAvailable 和每个 task 的 minAvailable 各代表什么？为什么要设置两种
 	if job.Spec.MinAvailable < totalMinAvailable {
 		minReq := tasksPriority.CalcFirstCountResources(job.Spec.MinAvailable)
 		return &minReq

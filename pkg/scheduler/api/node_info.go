@@ -104,6 +104,7 @@ type PodGroupOldState struct {
 //
 // That is current idle resources plus released resources minus pipelined resources.
 func (ni *NodeInfo) FutureIdle() *Resource {
+	// 未来空闲资源 = 当前空闲资源 + 正在释放的资源 - 预分配的资源
 	return ni.Idle.Clone().Add(ni.Releasing).SubWithoutAssert(ni.Pipelined)
 }
 

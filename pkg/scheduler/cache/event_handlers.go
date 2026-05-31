@@ -226,6 +226,7 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 		}
 	}
 
+	// 创建或获取 cache 中的 jobinfo map
 	job := sc.getOrCreateJob(pi)
 	if job != nil {
 		job.AddTaskInfo(pi)
@@ -235,6 +236,7 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 }
 
 func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, error) {
+	// taskInfo 里面有 pod 所属的 role（实际就是 pod.name，比如 ps、worker）
 	taskInfo := schedulingapi.NewTaskInfo(pod)
 	if err := sc.addPodCSIVolumesToTask(taskInfo); err != nil {
 		return taskInfo, err
@@ -255,6 +257,7 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	return sc.addTask(pi)
 }
 
+// TODO: 这个不知道干嘛的
 func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
 	newPod, err := sc.kubeClient.CoreV1().Pods(oldTask.Namespace).Get(context.TODO(), oldTask.Name, metav1.GetOptions{})
 	if err != nil {
@@ -307,6 +310,7 @@ func (sc *SchedulerCache) allocatedPodInCache(pod *v1.Pod) bool {
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 	//ignore the update event if pod is allocated in cache but not present in NodeName
+	// TODO: 为啥需要做这个判断？
 	if sc.allocatedPodInCache(newPod) && newPod.Spec.NodeName == "" {
 		klog.V(4).Infof("Pod <%s/%v> already in cache with allocated status, ignore the update event", newPod.Namespace, newPod.Name)
 		return nil

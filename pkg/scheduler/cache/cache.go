@@ -339,7 +339,7 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 
 // UpdateQueueStatus will update the status of queue
 func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
-	var newQueue = &vcv1beta1.Queue{}
+	newQueue := &vcv1beta1.Queue{}
 	if err := schedulingscheme.Scheme.Convert(queue.Queue, newQueue, nil); err != nil {
 		klog.Errorf("error occurred in converting scheduling.Queue to v1beta1.Queue: %s", err.Error())
 		return err
@@ -581,6 +581,9 @@ func (sc *SchedulerCache) addEventHandler() {
 	// even with no error returned.
 	// `Namespace` informer is used by `InterPodAffinity` plugin,
 	// `SelectorSpread` and `PodTopologySpread` plugins uses the following four so far.
+	//
+	// 调用 .Informer() 才会注册到 informerFactory 中
+	// 这里仅注册 informer，没有设置 event handlere，应该是只需要 lister 即可
 	informerFactory.Core().V1().Namespaces().Informer()
 	informerFactory.Core().V1().Services().Informer()
 	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
@@ -651,10 +654,21 @@ func (sc *SchedulerCache) addEventHandler() {
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
 				case *v1.Pod:
+					// mySchedulerPodName 是当前调度器实例的 Pod 名称，它标识了当前运行的调度器实例在 Kubernetes 集群中的唯一身份。
+					// 获取方式：
+					// func getMultiSchedulerInfo() (schedulerPodName string, c *consistent.Consistent) {
+					//     mySchedulerPodName := os.Getenv("SCHEDULER_POD_NAME")
+					//     // ...
+					// }
+					// c *consistent.Consistent 哈希环，多调度器场景下使用
+					// 使用一致性哈希算法确定 Pod 应该由哪个调度器实例处理
 					if !responsibleForPod(v, sc.schedulerNames, sc.schedulerPodName, sc.c) {
+						// TODO: 为啥需要做这两个判断？
+						// 如果 Pod 没有 NodeName，且当前调度器不负责，则过滤掉
 						if len(v.Spec.NodeName) == 0 {
 							return false
 						}
+						// 过滤已调度但不在当前调度器管理范围内的 Pod
 						if !responsibleForNode(v.Spec.NodeName, sc.schedulerPodName, sc.c) {
 							return false
 						}
@@ -820,7 +834,6 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	defer sc.Mutex.Unlock()
 
 	job, task, err := sc.findJobAndTask(taskInfo)
-
 	if err != nil {
 		return err
 	}

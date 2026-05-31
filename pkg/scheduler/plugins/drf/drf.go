@@ -194,6 +194,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
+					// t.Resreq 是 pod requests
 					attr.allocated.Add(t.Resreq)
 				}
 			}
@@ -211,6 +212,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
+	// 只有当抢占者的主导份额小于被抢占者时，才允许抢占：
 	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		var victims []*api.TaskInfo
 
@@ -318,6 +320,9 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		ssn.AddReclaimableFn(drf.Name(), reclaimFn)
 	}
 
+	// 优先调度主导份额最小的 Job
+	// 主导份额小的 Job 优先级更高
+	// 相等时优先级相同
 	jobOrderFn := func(l interface{}, r interface{}) int {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)

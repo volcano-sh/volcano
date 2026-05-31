@@ -172,12 +172,25 @@ const TaskPriorityAnnotation = "volcano.sh/task-priority"
 
 // NewTaskInfo creates new taskInfo object for a Pod
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
+	// 获取 pod 的资源请求总量，包括 init 容器
 	initResReq := GetPodResourceRequest(pod)
 	resReq := initResReq
 	bestEffort := initResReq.IsEmpty()
 	preemptable := GetPodPreemptable(pod)
 	revocableZone := GetPodRevocableZone(pod)
 	topologyInfo := GetPodTopologyInfo(pod)
+	// pod 对应的 task name
+	// 比如 yaml 中定义的 task name 是 worker
+	// spec:
+	//   tasks:
+	//   - name: worker
+	//     replicas: 1
+	//     template:
+	//       spec:
+	//         containers:
+	//         - name: worker
+	//           image: worker-img
+	// 那么这个 pod 的 task name 就是 worker
 	role := getTaskRole(pod)
 	hasRestartableInitContainer := hasRestartableInitContainer(pod)
 	// initialize pod scheduling gates info here since it will not change in a scheduling cycle
@@ -347,6 +360,8 @@ type JobInfo struct {
 	NodesFitErrors map[TaskID]*FitErrors
 
 	// All tasks of the Job.
+	// 从这里获取：
+	// func getTaskStatus(pod *v1.Pod) TaskStatus {
 	TaskStatusIndex       map[TaskStatus]tasksMap
 	Tasks                 tasksMap
 	TaskMinAvailable      map[string]int32 // key is value of "volcano.sh/task-spec", value is number
@@ -885,12 +900,19 @@ func (ji *JobInfo) NeedContinueAllocating() bool {
 }
 
 // getJobAllocatedRoles returns result records each role's allocated number
+// 统计每个任务角色（TaskRole）已经"占用"资源的任务数量。
 func (ji *JobInfo) getJobAllocatedRoles() map[string]int32 {
 	occupiedMap := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded {
 			for _, task := range tasks {
+				// TODO: 这里的 task.TaskRole 是什么？从哪来的？
+				// 好像就是 Yaml 中的 task.name
+				// spec:
+				//   tasks:
+				//   - name: worker    # 这个 name 就是 TaskRole
+
 				occupiedMap[task.TaskRole]++
 			}
 			continue
@@ -898,6 +920,9 @@ func (ji *JobInfo) getJobAllocatedRoles() map[string]int32 {
 
 		if status == Pending {
 			for _, task := range tasks {
+				// 任务状态为 Pending 且请求资源为空，代表尽力而为 BestEffort 任务（不占用实际资源）。
+				// TODO: InitResreq 是什么？
+				// InitResreq 是任务启动时需要的资源，通过 GetPodResourceRequest() 函数计算得出。
 				if task.InitResreq.IsEmpty() {
 					occupiedMap[task.TaskRole]++
 				}
@@ -910,12 +935,30 @@ func (ji *JobInfo) getJobAllocatedRoles() map[string]int32 {
 // CheckTaskValid returns whether each task of job is valid.
 func (ji *JobInfo) CheckTaskValid() bool {
 	// if job minAvailable is less than sum of(task minAvailable), skip this check
+	// 为什么？
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
 
 	actual := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
+		// Bound, Binding, Running, Allocated
+		// // AllocatedStatus 包括：
+		// - Bound: 已绑定到节点
+		// - Binding: 正在绑定
+		// - Running: 正在运行
+		// - Allocated: 已分配
+
+		// C. 为什么这些状态被认为是"有效的"？
+		// AllocatedStatus 状态：这些 Pod 已经获得了资源，可以参与 Gang 调度
+		// Succeeded：虽然已完成，但仍计入有效数量（避免重复调度）
+		// Pipelined：预分配了资源，可以参与 Gang 调度
+		// Pending：等待调度，可以参与 Gang 调度
+
+		// D. 哪些状态被认为是"无效的"？
+		// Failed：Pod 失败，不能参与调度
+		// Unknown：状态未知，不能参与调度
+		// Releasing：正在释放资源，不能参与调度
 		if AllocatedStatus(status) ||
 			status == Succeeded ||
 			status == Pipelined ||

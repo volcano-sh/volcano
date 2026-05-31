@@ -186,9 +186,18 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	factory := opt.VCSharedInformerFactory
 	cc.vcInformerFactory = factory
+	// 这里啥意思，为啥要整个开关？
+	// 这个开关默认就是打开的
+	// var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
+	//	VolcanoJobSupport: {Default: true, PreRelease: featuregate.Alpha},
+	//	//                  ^^^^^^^^^^^^^ 默认就是 true！
+	//}
 	if utilfeature.DefaultFeatureGate.Enabled(features.VolcanoJobSupport) {
 		cc.jobInformer = factory.Batch().V1alpha1().Jobs()
 		cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			// 对 key 进行哈希，然后取模 push 到对应的 queue 中
+			// 	queue := cc.getWorkerQueue(key)
+			//	queue.Add(req)
 			AddFunc:    cc.addJob,
 			UpdateFunc: cc.updateJob,
 			DeleteFunc: cc.deleteJob,
@@ -362,6 +371,8 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 		return true
 	}
 
+	// 根据 Job 状态构建出 state
+	// 这是一个接口类型，后续会调用它的 Execute 方法
 	st := state.NewState(jobInfo)
 	if st == nil {
 		klog.Errorf("Invalid state <%s> of Job <%v/%v>",
@@ -371,6 +382,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 
 	delayAct := applyPolicies(jobInfo.Job, &req)
 
+	// 延迟执行
 	if delayAct.delay != 0 {
 		klog.V(3).Infof("Execute <%v> on Job <%s/%s> after %s",
 			delayAct.action, req.Namespace, req.JobName, delayAct.delay.String())
@@ -388,6 +400,8 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 			"Start to execute action %s ", delayAct.action))
 	}
 
+	// 根据 delayAct.action 构建 state.Action
+	// 默认是 SyncJobAction
 	action := GetStateAction(delayAct)
 
 	if err := st.Execute(action); err != nil {
