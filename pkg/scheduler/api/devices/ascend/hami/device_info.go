@@ -60,6 +60,7 @@ type AscendDevice struct {
 	DeviceInfo       *devices.DeviceInfo
 	DeviceUsage      *devices.DeviceUsage
 	Score            float64
+	PodMap           map[string]*devices.DeviceUsage
 }
 
 type AscendDevices struct {
@@ -115,6 +116,7 @@ func NewAscendDevices(name string, node *v1.Node) map[string]*AscendDevices {
 					Usedmem:   0,
 					Usedcores: 0,
 				},
+				PodMap: make(map[string]*devices.DeviceUsage),
 			}
 			asDevices.Devices[nd.ID] = cur_dev
 			klog.V(5).Infof("add device. ID %s dev_info %+v", cur_dev.DeviceInfo.ID, cur_dev.DeviceInfo)
@@ -137,22 +139,14 @@ func GetAscendDeviceNames() []string {
 	return deviceNames
 }
 
-func (ads *AscendDevices) AddResourceUsage(id string, cores int32, mem int32) error {
-	dev, ok := ads.Devices[id]
-	if !ok {
-		return fmt.Errorf("ascend device %s not found", id)
-	}
+func (ads *AscendDevices) AddResourceUsage(dev *AscendDevice, cores int32, mem int32) error {
 	dev.DeviceUsage.Used++
 	dev.DeviceUsage.Usedcores += cores
 	dev.DeviceUsage.Usedmem += mem
 	return nil
 }
 
-func (ads *AscendDevices) SubResourceUsage(id string, cores int32, mem int32) error {
-	dev, ok := ads.Devices[id]
-	if !ok {
-		return fmt.Errorf("ascend device %s not found", id)
-	}
+func (ads *AscendDevices) SubResourceUsage(dev *AscendDevice, cores int32, mem int32) error {
 	dev.DeviceUsage.Used--
 	dev.DeviceUsage.Usedcores -= cores
 	dev.DeviceUsage.Usedmem -= mem
@@ -170,7 +164,7 @@ func (ads *AscendDevices) SubResource(pod *v1.Pod) {
 	if ads == nil {
 		return
 	}
-	ano_key := devices.InRequestDevices[ads.Type]
+	ano_key := devices.SupportDevices[ads.Type]
 	ano, ok := pod.Annotations[ano_key]
 	if !ok {
 		return
@@ -181,12 +175,21 @@ func (ads *AscendDevices) SubResource(pod *v1.Pod) {
 		return
 	}
 	for _, cono_dev := range con_devs {
-		ads.SubResourceUsage(cono_dev.UUID, cono_dev.Usedcores, cono_dev.Usedmem)
+		dev, ok := ads.Devices[cono_dev.UUID]
+		if !ok {
+			klog.Warningf("ascend device %s not found", cono_dev.UUID)
+			continue
+		}
+		if _, ok := dev.PodMap[string(pod.UID)]; ok {
+			delete(dev.PodMap, string(pod.UID))
+			ads.SubResourceUsage(dev, cono_dev.Usedcores, cono_dev.Usedmem)
+			klog.V(5).Infof("sub resource usage for pod %s. device %s usedmem %d", pod.Name, dev.DeviceInfo.ID, cono_dev.Usedmem)
+		}
 	}
 }
 
 func (ads *AscendDevices) addResource(annotations map[string]string, pod *v1.Pod) {
-	ano_key := devices.InRequestDevices[ads.Type]
+	ano_key := devices.SupportDevices[ads.Type]
 	ano, ok := annotations[ano_key]
 	if !ok {
 		return
@@ -197,7 +200,20 @@ func (ads *AscendDevices) addResource(annotations map[string]string, pod *v1.Pod
 		return
 	}
 	for _, cono_dev := range con_devs {
-		ads.AddResourceUsage(cono_dev.UUID, cono_dev.Usedcores, cono_dev.Usedmem)
+		dev, ok := ads.Devices[cono_dev.UUID]
+		if !ok {
+			klog.Warningf("ascend device %s not found", cono_dev.UUID)
+			continue
+		}
+		if _, ok := dev.PodMap[string(pod.UID)]; !ok {
+			dev.PodMap[string(pod.UID)] = &devices.DeviceUsage{
+				Used:      1,
+				Usedcores: cono_dev.Usedcores,
+				Usedmem:   cono_dev.Usedmem,
+			}
+			ads.AddResourceUsage(dev, cono_dev.Usedcores, cono_dev.Usedmem)
+			klog.V(5).Infof("add resource usage for pod %s. device %s usedmem %d", pod.Name, dev.DeviceInfo.ID, cono_dev.Usedmem)
+		}
 	}
 }
 
@@ -361,6 +377,14 @@ func (ads *AscendDevices) DeepCopy() interface{} {
 			DeviceInfo:       dev.DeviceInfo,
 			DeviceUsage:      newUsage,
 			Score:            dev.Score,
+			PodMap:           make(map[string]*devices.DeviceUsage),
+		}
+		for k, v := range dev.PodMap {
+			newDev.PodMap[k] = &devices.DeviceUsage{
+				Used:      v.Used,
+				Usedmem:   v.Usedmem,
+				Usedcores: v.Usedcores,
+			}
 		}
 		cp.Devices[id] = newDev
 	}
@@ -481,7 +505,7 @@ func fit(req *devices.ContainerDeviceRequest, dev *AscendDevice) bool {
 func getDeviceSnapshot(ads *AscendDevices) []*AscendDevice {
 	dupDevs := make([]*AscendDevice, 0, len(ads.Devices))
 	for _, dev := range ads.Devices {
-		dup_dev := &AscendDevice{
+		dupDev := &AscendDevice{
 			config:           dev.config,
 			nodeRegisterAnno: dev.nodeRegisterAnno,
 			useUUIDAnno:      dev.useUUIDAnno,
@@ -493,8 +517,16 @@ func getDeviceSnapshot(ads *AscendDevices) []*AscendDevice {
 				Usedmem:   dev.DeviceUsage.Usedmem,
 				Usedcores: dev.DeviceUsage.Usedcores,
 			},
+			PodMap: make(map[string]*devices.DeviceUsage),
 		}
-		dupDevs = append(dupDevs, dup_dev)
+		for k, v := range dev.PodMap {
+			dupDev.PodMap[k] = &devices.DeviceUsage{
+				Used:      v.Used,
+				Usedmem:   v.Usedmem,
+				Usedcores: v.Usedcores,
+			}
+		}
+		dupDevs = append(dupDevs, dupDev)
 	}
 	return dupDevs
 }
