@@ -24,6 +24,7 @@ package api
 
 import (
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -79,11 +80,14 @@ func (q *QueueInfo) Clone() *QueueInfo {
 // Reclaimable return whether queue is reclaimable
 func (q *QueueInfo) Reclaimable() bool {
 	if q == nil {
-		return false
+		klog.V(4).Infof("QueueInfo is nil, defaulting Reclaimable to true.")
+		return true
 	}
 
 	if q.Queue == nil {
-		return false
+		name := q.Name
+		klog.V(4).Infof("Queue object is nil for %s, defaulting Reclaimable to true.", name)
+		return true
 	}
 
 	if q.Queue.Spec.Reclaimable == nil {
@@ -91,4 +95,24 @@ func (q *QueueInfo) Reclaimable() bool {
 	}
 
 	return *q.Queue.Spec.Reclaimable
+}
+
+// Preemptable return whether queue is preemptable
+func (q *QueueInfo) Preemptable() bool {
+	if q == nil {
+		klog.V(4).Infof("QueueInfo is nil, defaulting Preemptable to true.")
+		return true
+	}
+
+	if q.Queue == nil {
+		name := q.Name
+		klog.V(4).Infof("Queue object is nil for %s, defaulting Preemptable to true.", name)
+		return true
+	}
+
+	if q.Queue.Spec.Preemptable == nil {
+		return true
+	}
+
+	return *q.Queue.Spec.Preemptable
 }

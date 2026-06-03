@@ -61,6 +61,9 @@ func TestPreempt(t *testing.T) {
 	highPrio := util.BuildPriorityClass("high-priority", 100000)
 	lowPrio := util.BuildPriorityClass("low-priority", 10)
 
+	trueValue := true
+	falseValue := false
+
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name: "do not preempt if there are enough idle resources",
@@ -375,9 +378,33 @@ func TestPreempt(t *testing.T) {
 			ExpectEvicted:  []string{"c1/q2-preemptee1"},
 			ExpectEvictNum: 1,
 		},
+		{
+			Name: "preemption should work when queue preemptable is nil in spec (backward compatibility)",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, map[string]int32{}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("3", "3G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("3", "3G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("12", "12G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "q1"},
+					Spec: schedulingv1beta1.QueueSpec{
+						Weight:     1,
+						Capability: api.BuildResourceList("4", "4G"),
+					},
+				},
+			},
+			ExpectEvicted:  []string{"c1/preemptee1"},
+			ExpectEvictNum: 1,
+		},
 	}
 
-	trueValue := true
 	tiers := []conf.Tier{
 		{
 			Plugins: []conf.PluginOption{
@@ -435,6 +462,9 @@ func TestTopologyAwarePreempt(t *testing.T) {
 	}
 	highPrio := util.BuildPriorityClass("high-priority", 100000)
 	lowPrio := util.BuildPriorityClass("low-priority", 10)
+
+	trueValue := true
+	falseValue := false
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -689,7 +719,6 @@ func TestTopologyAwarePreempt(t *testing.T) {
 		},
 	}
 
-	trueValue := true
 	tiers := []conf.Tier{
 		{
 			Plugins: []conf.PluginOption{
