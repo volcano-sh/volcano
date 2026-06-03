@@ -121,7 +121,7 @@ func TestQueueDepth(t *testing.T) {
 			queues:      []string{"a", "b"},
 			queueParent: map[string]string{"a": "b", "b": "a"},
 			queue:       "a",
-			want:        3, // len(queues)+1 = 3 iterations, depth incremented each time
+			want:        3, // len(queueParent)+1 = 3 iterations, depth incremented each time
 		},
 	}
 

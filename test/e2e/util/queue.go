@@ -144,10 +144,8 @@ func deleteQueues(ctx *TestContext) {
 		return
 	}
 
-	// 1. Clean up jobs in every queue before mutating queue state.
-	for _, q := range ctx.Queues {
-		deleteJobsInQueue(ctx, q)
-	}
+	// 1. Clean up jobs in every queue with a single list call.
+	deleteJobsInQueues(ctx, ctx.Queues)
 
 	// 2. Close only top-level queues; the controller cascades to descendants.
 	for _, q := range topLevelQueues(ctx) {
@@ -165,7 +163,7 @@ func deleteQueues(ctx *TestContext) {
 	}
 }
 
-// SeyQueueReclaimable sets the Queue to be reclaimable
+// SetQueueReclaimable sets the Queue to be reclaimable
 func SetQueueReclaimable(ctx *TestContext, queues []string, reclaimable bool) {
 	By("Setting Queue reclaimable")
 
@@ -175,7 +173,6 @@ func SetQueueReclaimable(ctx *TestContext, queues []string, reclaimable bool) {
 		retryErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 			queue, err = ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
 			if err != nil {
-				Expect(err).NotTo(HaveOccurred(), "failed to get queue %s", q)
 				return err
 			}
 			queue.Spec.Reclaimable = &reclaimable
@@ -195,6 +192,21 @@ func WaitQueueStatus(condition func() (bool, error)) error {
 // deleteJobsInQueue deletes every vcjob in ctx.Namespace whose Spec.Queue == q,
 // waiting for each to be gone before returning.
 func deleteJobsInQueue(ctx *TestContext, q string) {
+	deleteJobsInQueues(ctx, []string{q})
+}
+
+// deleteJobsInQueues deletes every vcjob in ctx.Namespace whose Spec.Queue is
+// any of queues, listing once and waiting per job. Use this for hierarchical
+// teardown to avoid N list calls.
+func deleteJobsInQueues(ctx *TestContext, queues []string) {
+	if len(queues) == 0 {
+		return
+	}
+	queueSet := make(map[string]struct{}, len(queues))
+	for _, q := range queues {
+		queueSet[q] = struct{}{}
+	}
+
 	foreground := metav1.DeletePropagationForeground
 
 	jobs, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
@@ -203,13 +215,13 @@ func deleteJobsInQueue(ctx *TestContext, q string) {
 	}
 
 	for _, job := range jobs.Items {
-		if job.Spec.Queue != q {
+		if _, ok := queueSet[job.Spec.Queue]; !ok {
 			continue
 		}
 		err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{
 			PropagationPolicy: &foreground,
 		})
-		Expect(err).NotTo(HaveOccurred(), "failed to delete vcjob %s in queue %s", job.Name, q)
+		Expect(err).NotTo(HaveOccurred(), "failed to delete vcjob %s in queue %s", job.Name, job.Spec.Queue)
 
 		delErr := wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
 			_, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(pollCtx, job.Name, metav1.GetOptions{})
@@ -226,14 +238,13 @@ func deleteJobsInQueue(ctx *TestContext, q string) {
 }
 
 // closeQueueStatus sets queue.Status.State to Closed with retry on conflict.
-// It fails the test if the queue cannot be fetched or updated.
+// Non-retryable errors propagate out as the retryErr the outer Expect handles.
 func closeQueueStatus(ctx *TestContext, q string) {
 	var queue *schedulingv1beta1.Queue
 	var err error
 	retryErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		queue, err = ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
 		if err != nil {
-			Expect(err).NotTo(HaveOccurred(), "failed to get queue %s", q)
 			return err
 		}
 		queue.Status.State = schedulingv1beta1.QueueStateClosed
@@ -328,12 +339,17 @@ func queueDepth(ctx *TestContext, q string) int {
 // queuesDeepestFirst returns ctx.Queues sorted by queueDepth descending. The
 // sort is stable so queues at the same depth retain their declared order. The
 // returned slice is always a fresh copy — callers may iterate it without
-// affecting ctx.Queues.
+// affecting ctx.Queues. Depths are precomputed once so the comparator does not
+// re-walk parent chains.
 func queuesDeepestFirst(ctx *TestContext) []string {
 	queues := make([]string, len(ctx.Queues))
 	copy(queues, ctx.Queues)
+	depths := make(map[string]int, len(queues))
+	for _, q := range queues {
+		depths[q] = queueDepth(ctx, q)
+	}
 	sort.SliceStable(queues, func(i, j int) bool {
-		return queueDepth(ctx, queues[i]) > queueDepth(ctx, queues[j])
+		return depths[queues[i]] > depths[queues[j]]
 	})
 	return queues
 }
