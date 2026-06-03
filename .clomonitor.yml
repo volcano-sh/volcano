@@ -1,0 +1,6 @@
+# CLOMonitor metadata
+# https://github.com/cncf/clomonitor/blob/main/docs/metadata/.clomonitor.yml
+
+licenseScanning:
+  # FOSSA analysis runs on PRs and master via .github/workflows/fossa.yml
+  url: https://github.com/volcano-sh/volcano/actions/workflows/fossa.yml?query=branch%3Amaster
