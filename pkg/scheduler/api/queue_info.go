@@ -80,14 +80,11 @@ func (q *QueueInfo) Clone() *QueueInfo {
 // Reclaimable return whether queue is reclaimable
 func (q *QueueInfo) Reclaimable() bool {
 	if q == nil {
-		klog.V(4).Infof("QueueInfo is nil, defaulting Reclaimable to true.")
-		return true
+		return false
 	}
 
 	if q.Queue == nil {
-		name := q.Name
-		klog.V(4).Infof("Queue object is nil for %s, defaulting Reclaimable to true.", name)
-		return true
+		return false
 	}
 
 	if q.Queue.Spec.Reclaimable == nil {
@@ -100,14 +97,11 @@ func (q *QueueInfo) Reclaimable() bool {
 // Preemptable return whether queue is preemptable
 func (q *QueueInfo) Preemptable() bool {
 	if q == nil {
-		klog.V(4).Infof("QueueInfo is nil, defaulting Preemptable to true.")
-		return true
+		return false
 	}
 
 	if q.Queue == nil {
-		name := q.Name
-		klog.V(4).Infof("Queue object is nil for %s, defaulting Preemptable to true.", name)
-		return true
+		return false
 	}
 
 	if q.Queue.Spec.Preemptable == nil {

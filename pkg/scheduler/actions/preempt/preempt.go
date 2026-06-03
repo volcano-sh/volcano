@@ -166,6 +166,10 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 		}
 
 		queue := queues.Pop().(*api.QueueInfo)
+		if queue == nil {
+			klog.V(3).Infof("Skipping preemption for nil queue.")
+			continue
+		}
 		if !queue.Preemptable() {
 			klog.V(3).Infof("Queue <%s> is not preemptable, skip preemption.", queue.Name)
 			continue

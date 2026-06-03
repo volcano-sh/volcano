@@ -112,6 +112,10 @@ func (gp *Action) Execute(ssn *framework.Session) {
 
 	for !queues.Empty() {
 		queue := queues.Pop().(*api.QueueInfo)
+		if queue == nil {
+			klog.V(3).Infof("Skipping gangpreemption for nil queue.")
+			continue
+		}
 		if !queue.Preemptable() {
 			klog.V(3).Infof("Queue <%s> is not preemptable, skip gangpreemption.", queue.Name)
 			continue
