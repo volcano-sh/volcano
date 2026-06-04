@@ -57,7 +57,7 @@ const (
            mem: 80
          request.weight: 1
          burst.weight: 0
-         threshold: 0.6
+         risk_threshold: 0.6
          risk_factor: 1.2
          be.cpu: 250m
          be.memory: 200Mi
@@ -78,7 +78,7 @@ type usagePlugin struct {
 	// Resource estimator parameters
 	requestWeight float64 // Request contribution weight, default 1.0
 	burstWeight   float64 // Burst contribution weight, default 0.0
-	threshold     float64 // Composite load threshold for risk factor, default 0.6
+	riskThreshold float64 // Composite load threshold for risk factor, default 0.6
 	riskFactor    float64 // Risk multiplier once threshold is reached, default 1.2
 	beCPU         float64 // BestEffort CPU estimate in milliCPU, default 250m
 	beMemory      float64 // BestEffort memory estimate in bytes, default 200Mi
@@ -102,7 +102,7 @@ func New(args framework.Arguments) framework.Plugin {
 		period:          source.NODE_METRICS_PERIOD,
 		requestWeight:   1.0,
 		burstWeight:     0.0,
-		threshold:       0.6,
+		riskThreshold:   0.6,
 		riskFactor:      1.2,
 		beCPU:           250,
 		beMemory:        float64(200 * 1024 * 1024),
@@ -134,7 +134,7 @@ func New(args framework.Arguments) framework.Plugin {
 
 	parseBoundedFloatArg(plugin.pluginArguments, "request.weight", &plugin.requestWeight, 0, 1)
 	parseBoundedFloatArg(plugin.pluginArguments, "burst.weight", &plugin.burstWeight, 0, 1)
-	parseBoundedFloatArg(plugin.pluginArguments, "threshold", &plugin.threshold, 0, 1)
+	parseBoundedFloatArg(plugin.pluginArguments, "risk_threshold", &plugin.riskThreshold, 0, 1)
 	parseMinFloatArg(plugin.pluginArguments, "risk_factor", &plugin.riskFactor, 1)
 	parseCPUQuantityArg(plugin.pluginArguments, "be.cpu", &plugin.beCPU)
 	parseMemoryQuantityArg(plugin.pluginArguments, "be.memory", &plugin.beMemory)
@@ -463,7 +463,7 @@ func (up *usagePlugin) calcAppliedRiskFactor(node *api.NodeInfo) float64 {
 	cpuComp := CalcCompositeUtilization(realCPU, cpuEst, node.Capacity.MilliCPU)
 	memComp := CalcCompositeUtilization(realMem, memEst, node.Capacity.Memory)
 	loadCompositePercentage := CalcLoadCompositePercentage(cpuComp, memComp, up.cpuWeight, up.memoryWeight)
-	return CalcAppliedRiskFactor(loadCompositePercentage, up.threshold, up.riskFactor)
+	return CalcAppliedRiskFactor(loadCompositePercentage, up.riskThreshold, up.riskFactor)
 }
 
 func (up *usagePlugin) estimateTaskResource(task *api.TaskInfo, appliedRiskFactor float64) (estCPU, estMem float64) {

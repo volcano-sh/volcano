@@ -106,7 +106,7 @@ memory_composite = (real_memory_load + shadow_memory_estimate) / node_memory_cap
 load_composite_percentage = weighted_average(cpu_composite, memory_composite, cpu.weight, memory.weight)
 ```
 
-When `load_composite_percentage >= threshold`, the estimate is multiplied by `risk_factor`; otherwise the multiplier is `1.0`.
+When `load_composite_percentage >= risk_threshold`, the estimate is multiplied by `risk_factor`; otherwise the multiplier is `1.0`.
 
 BestEffort pods do not use node-capacity ratios or density penalties. They use fixed configured estimates and are also affected by `risk_factor`:
 
@@ -120,7 +120,7 @@ Estimator configuration:
 ```
 request.weight: 1    # 0 <= request.weight <= 1
 burst.weight: 0      # 0 <= burst.weight <= 1
-threshold: 0.6       # composite load threshold, 0.6 means 60%
+risk_threshold: 0.6  # composite load threshold, 0.6 means 60%
 risk_factor: 1.2     # applied after the threshold is reached
 be.cpu: 250m         # fixed BestEffort CPU estimate
 be.memory: 200Mi     # fixed BestEffort memory estimate

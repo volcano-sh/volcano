@@ -67,8 +67,8 @@ func TestUsageEstimatorConfig(t *testing.T) {
 	if math.Abs(defaultPlugin.burstWeight-0.0) > eps {
 		t.Errorf("default burstWeight = %v, expected 0.0", defaultPlugin.burstWeight)
 	}
-	if math.Abs(defaultPlugin.threshold-0.6) > eps {
-		t.Errorf("default threshold = %v, expected 0.6", defaultPlugin.threshold)
+	if math.Abs(defaultPlugin.riskThreshold-0.6) > eps {
+		t.Errorf("default riskThreshold = %v, expected 0.6", defaultPlugin.riskThreshold)
 	}
 	if math.Abs(defaultPlugin.riskFactor-1.2) > eps {
 		t.Errorf("default riskFactor = %v, expected 1.2", defaultPlugin.riskFactor)
@@ -83,7 +83,7 @@ func TestUsageEstimatorConfig(t *testing.T) {
 	configuredPlugin := New(framework.Arguments{
 		"request.weight": 0.7,
 		"burst.weight":   0.3,
-		"threshold":      0.75,
+		"risk_threshold": 0.75,
 		"risk_factor":    1.5,
 		"be.cpu":         "500m",
 		"be.memory":      "300mi",
@@ -94,8 +94,8 @@ func TestUsageEstimatorConfig(t *testing.T) {
 	if math.Abs(configuredPlugin.burstWeight-0.3) > eps {
 		t.Errorf("configured burstWeight = %v, expected 0.3", configuredPlugin.burstWeight)
 	}
-	if math.Abs(configuredPlugin.threshold-0.75) > eps {
-		t.Errorf("configured threshold = %v, expected 0.75", configuredPlugin.threshold)
+	if math.Abs(configuredPlugin.riskThreshold-0.75) > eps {
+		t.Errorf("configured riskThreshold = %v, expected 0.75", configuredPlugin.riskThreshold)
 	}
 	if math.Abs(configuredPlugin.riskFactor-1.5) > eps {
 		t.Errorf("configured riskFactor = %v, expected 1.5", configuredPlugin.riskFactor)
@@ -110,7 +110,7 @@ func TestUsageEstimatorConfig(t *testing.T) {
 	invalidPlugin := New(framework.Arguments{
 		"request.weight": 1.5,
 		"burst.weight":   -0.1,
-		"threshold":      2.0,
+		"risk_threshold": 2.0,
 		"risk_factor":    0.5,
 		"be.cpu":         "-1",
 		"be.memory":      "bad",
@@ -121,8 +121,15 @@ func TestUsageEstimatorConfig(t *testing.T) {
 	if math.Abs(invalidPlugin.burstWeight-0.0) > eps {
 		t.Errorf("invalid burstWeight should keep default, got %v", invalidPlugin.burstWeight)
 	}
-	if math.Abs(invalidPlugin.threshold-0.6) > eps {
-		t.Errorf("invalid threshold should keep default, got %v", invalidPlugin.threshold)
+	if math.Abs(invalidPlugin.riskThreshold-0.6) > eps {
+		t.Errorf("invalid riskThreshold should keep default, got %v", invalidPlugin.riskThreshold)
+	}
+
+	legacyPlugin := New(framework.Arguments{
+		"threshold": 0.75,
+	}).(*usagePlugin)
+	if math.Abs(legacyPlugin.riskThreshold-0.6) > eps {
+		t.Errorf("legacy threshold should not configure riskThreshold, got %v", legacyPlugin.riskThreshold)
 	}
 	if math.Abs(invalidPlugin.riskFactor-1.2) > eps {
 		t.Errorf("invalid riskFactor should keep default, got %v", invalidPlugin.riskFactor)

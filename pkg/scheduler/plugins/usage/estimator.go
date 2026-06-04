@@ -33,13 +33,13 @@ func CalcLoadCompositePercentage(cpuComposite, memComposite float64, cpuWeight, 
 }
 
 // CalcAppliedRiskFactor returns riskFactor once the node composite load reaches
-// threshold. riskFactor values lower than 1.0 are ignored because the risk
+// riskThreshold. riskFactor values lower than 1.0 are ignored because the risk
 // multiplier should never make estimates less conservative under pressure.
-func CalcAppliedRiskFactor(loadCompositePercentage, threshold, riskFactor float64) float64 {
+func CalcAppliedRiskFactor(loadCompositePercentage, riskThreshold, riskFactor float64) float64 {
 	if riskFactor < 1.0 {
 		return 1.0
 	}
-	if loadCompositePercentage >= threshold {
+	if loadCompositePercentage >= riskThreshold {
 		return riskFactor
 	}
 	return 1.0

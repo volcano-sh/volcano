@@ -76,35 +76,35 @@ func TestCalcAppliedRiskFactor(t *testing.T) {
 	tests := []struct {
 		name                    string
 		loadCompositePercentage float64
-		threshold               float64
+		riskThreshold           float64
 		riskFactor              float64
 		expected                float64
 	}{
 		{
 			name:                    "below threshold",
 			loadCompositePercentage: 0.59,
-			threshold:               0.6,
+			riskThreshold:           0.6,
 			riskFactor:              1.2,
 			expected:                1.0,
 		},
 		{
 			name:                    "at threshold",
 			loadCompositePercentage: 0.6,
-			threshold:               0.6,
+			riskThreshold:           0.6,
 			riskFactor:              1.2,
 			expected:                1.2,
 		},
 		{
 			name:                    "above threshold",
 			loadCompositePercentage: 0.9,
-			threshold:               0.6,
+			riskThreshold:           0.6,
 			riskFactor:              1.2,
 			expected:                1.2,
 		},
 		{
 			name:                    "risk factor lower than one is ignored",
 			loadCompositePercentage: 0.9,
-			threshold:               0.6,
+			riskThreshold:           0.6,
 			riskFactor:              0.8,
 			expected:                1.0,
 		},
@@ -112,10 +112,10 @@ func TestCalcAppliedRiskFactor(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CalcAppliedRiskFactor(tt.loadCompositePercentage, tt.threshold, tt.riskFactor)
+			result := CalcAppliedRiskFactor(tt.loadCompositePercentage, tt.riskThreshold, tt.riskFactor)
 			if math.Abs(result-tt.expected) > testEps {
 				t.Errorf("CalcAppliedRiskFactor(%v, %v, %v) = %v, expected %v",
-					tt.loadCompositePercentage, tt.threshold, tt.riskFactor, result, tt.expected)
+					tt.loadCompositePercentage, tt.riskThreshold, tt.riskFactor, result, tt.expected)
 			}
 		})
 	}
