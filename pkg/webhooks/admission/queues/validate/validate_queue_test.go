@@ -2751,7 +2751,7 @@ func TestValidateHierarchicalQueueStateTransition(t *testing.T) {
 		if newChild.Annotations == nil {
 			newChild.Annotations = make(map[string]string)
 		}
-		newChild.Annotations[closedByParentAnnotationKey] = closedByParentAnnotationTrueValue
+		newChild.Annotations[schedulingv1beta1.QueueClosedByParentAnnotationKey] = schedulingv1beta1.QueueClosedByParentAnnotationTrueValue
 
 		if err := validateHierarchicalQueueStateTransition(newChild, oldChild); err != nil {
 			t.Fatalf("expected no error when skipping cascade for parent-closed child: %v", err)
@@ -2783,7 +2783,7 @@ func TestValidateHierarchicalQueueStateTransition(t *testing.T) {
 		if updatedGrandchild.Status.State != schedulingv1beta1.QueueStateClosed {
 			t.Fatalf("expected grandchild queue to be closed, got %s", updatedGrandchild.Status.State)
 		}
-		if updatedGrandchild.Annotations[closedByParentAnnotationKey] != closedByParentAnnotationTrueValue {
+		if updatedGrandchild.Annotations[schedulingv1beta1.QueueClosedByParentAnnotationKey] != schedulingv1beta1.QueueClosedByParentAnnotationTrueValue {
 			t.Fatalf("expected closed-by-parent annotation on grandchild queue")
 		}
 	})

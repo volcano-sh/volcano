@@ -57,6 +57,15 @@ const NodeGroupNameKey = AnnotationPrefix + "nodegroup-name"
 // NodeGroupResourceLimitsAnnotationKey is the annotation key of Queue to limit resources each nodegroup can allocate.
 const NodeGroupResourceLimitsAnnotationKey = AnnotationPrefix + "nodegroup-resource-limits"
 
+// QueueClosedByParentAnnotationKey marks that a queue was closed due to parent closure.
+const QueueClosedByParentAnnotationKey = "volcano.sh/closed-by-parent"
+
+// QueueClosedByParentAnnotationTrueValue is set on QueueClosedByParentAnnotationKey when closed by parent.
+const QueueClosedByParentAnnotationTrueValue = "true"
+
+// QueueClosedByParentAnnotationFalseValue is set on QueueClosedByParentAnnotationKey when reopened.
+const QueueClosedByParentAnnotationFalseValue = "false"
+
 // PodPreemptable is the key of preemptable
 const PodPreemptable = "volcano.sh/preemptable"
 
