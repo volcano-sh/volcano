@@ -17,66 +17,76 @@ limitations under the License.
 package usage
 
 import (
-	"math"
-
 	v1 "k8s.io/api/core/v1"
 	fwk "k8s.io/kube-scheduler/framework"
 )
 
-// CalcDynamicSigma computes the dynamic risk coefficient using a sigmoid function.
-// Formula: sigma = sigmaBase + (1 - sigmaBase) / (1 + exp(-k * (nodeUtilization - watermark)))
-// nodeUtilization is the weighted average real utilization of the node (0.0 - 1.0).
-func CalcDynamicSigma(sigmaBase, watermark, sensitivity, nodeUtilization float64) float64 {
-	exponent := -sensitivity * (nodeUtilization - watermark)
-	sigmoid := 1.0 / (1.0 + math.Exp(exponent))
-	return sigmaBase + (1.0-sigmaBase)*sigmoid
-}
-
-// CalcNodeRealUtilization computes the weighted average real utilization of a node.
-// U_node,cpu = realCPUPercent / 100
-// U_node,mem = realMemPercent / 100
-// U_node = (U_node,cpu * cpuWeight + U_node,mem * memWeight) / (cpuWeight + memWeight)
-func CalcNodeRealUtilization(realCPUPercent, realMemPercent float64, cpuWeight, memWeight int) float64 {
-	if cpuWeight+memWeight == 0 {
+// CalcLoadCompositePercentage computes the weighted composite node load from
+// CPU and memory composite utilization values. Inputs and output use the 0.0-1.0
+// range, where 0.6 means 60%.
+func CalcLoadCompositePercentage(cpuComposite, memComposite float64, cpuWeight, memWeight int) float64 {
+	totalWeight := cpuWeight + memWeight
+	if totalWeight == 0 {
 		return 0
 	}
-	cpuUtil := realCPUPercent / 100.0
-	memUtil := realMemPercent / 100.0
-	return (cpuUtil*float64(cpuWeight) + memUtil*float64(memWeight)) / float64(cpuWeight+memWeight)
+	return (cpuComposite*float64(cpuWeight) + memComposite*float64(memWeight)) / float64(totalWeight)
 }
 
-// EstimatePodResource estimates a single dimension (CPU or MEM) resource consumption for a pod.
-//
-// For pods with Request/Limit configured:
-//
-//	estimated = request + (limit - request) * sigmaDynamic
-//
-// For BestEffort pods (isBestEffort == true):
-//
-//	estimated = nodeCap * beRatio * bePenalty^bestEffortCount
-//
-// Parameters:
-//   - request: pod's resource request for this dimension (absolute value)
-//   - limit: pod's resource limit for this dimension (absolute value)
-//   - sigmaDynamic: pre-computed dynamic sigma via CalcDynamicSigma
-//   - nodeCap: node capacity for this dimension (absolute value, used only for BestEffort)
-//   - beRatio: BestEffort default resource ratio
-//   - bePenalty: BestEffort density penalty factor
-//   - bestEffortCount: number of BestEffort pods already on this node
-//   - isBestEffort: whether this pod is BestEffort
-func EstimatePodResource(request, limit, sigmaDynamic, nodeCap, beRatio, bePenalty float64,
-	bestEffortCount int, isBestEffort bool) float64 {
-	if isBestEffort {
-		// BestEffort: nodeCap * ratio * beta^n
-		return nodeCap * beRatio * math.Pow(bePenalty, float64(bestEffortCount))
+// CalcAppliedRiskFactor returns riskFactor once the node composite load reaches
+// threshold. riskFactor values lower than 1.0 are ignored because the risk
+// multiplier should never make estimates less conservative under pressure.
+func CalcAppliedRiskFactor(loadCompositePercentage, threshold, riskFactor float64) float64 {
+	if riskFactor < 1.0 {
+		return 1.0
 	}
-	// Guaranteed/Burstable: Request + (Limit - Request) * sigmaDynamic
-	if limit <= request {
-		// If limit <= request (e.g., Guaranteed QoS where limit == request),
-		// the estimated usage is simply the request value.
-		return request
+	if loadCompositePercentage >= threshold {
+		return riskFactor
 	}
-	return request + (limit-request)*sigmaDynamic
+	return 1.0
+}
+
+// EstimatePodResource estimates a single dimension (CPU or MEM) resource
+// consumption for a Guaranteed/Burstable pod.
+//
+// Formula:
+//
+//	estimated = (request*requestWeight + (limit-request)*burstWeight) * appliedRiskFactor
+//
+// The result is clamped to [0, effectiveLimit]. If limit is missing or lower
+// than request, request is used as the effective limit.
+func EstimatePodResource(request, limit, requestWeight, burstWeight, appliedRiskFactor float64) float64 {
+	if request < 0 {
+		request = 0
+	}
+	effectiveLimit := limit
+	if effectiveLimit <= 0 || effectiveLimit < request {
+		effectiveLimit = request
+	}
+	burst := effectiveLimit - request
+	if burst < 0 {
+		burst = 0
+	}
+	estimate := (request*requestWeight + burst*burstWeight) * appliedRiskFactor
+	return clampFloat64(estimate, 0, effectiveLimit)
+}
+
+// EstimateBestEffortResource estimates a BestEffort pod from the configured
+// fixed value. BestEffort pods are also affected by the node risk factor.
+func EstimateBestEffortResource(configuredValue, appliedRiskFactor float64) float64 {
+	if configuredValue < 0 {
+		configuredValue = 0
+	}
+	return configuredValue * appliedRiskFactor
+}
+
+func clampFloat64(value, min, max float64) float64 {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }
 
 // CalcCompositeUtilization computes the composite utilization for a single dimension (CPU or MEM).

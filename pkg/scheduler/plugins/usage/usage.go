@@ -17,10 +17,12 @@ limitations under the License.
 package usage
 
 import (
+	"strings"
 	"time"
 
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
 
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 
@@ -53,13 +55,12 @@ const (
          thresholds:
            cpu: 80
            mem: 80
-         # --- Dynamic Sigma parameters ---
-         dynamic.sigma_base: 0.15
-         dynamic.watermark: 0.5
-         dynamic.sensitivity: 12.0
-         # --- BestEffort Pod handling ---
-         be_default_ratio: 0.1
-         be_penalty_factor: 1.2
+         request.weight: 1
+         burst.weight: 0
+         threshold: 0.6
+         risk_factor: 1.2
+         be.cpu: 250m
+         be.memory: 200Mi
 */
 
 const AVG string = "average"
@@ -74,12 +75,13 @@ type usagePlugin struct {
 	memThresholds   float64
 	period          string
 
-	// Dynamic sigma estimator parameters
-	sigmaBase   float64 // Base risk floor, default 0.15
-	watermark   float64 // Utilization watermark for sigmoid, default 0.5
-	sensitivity float64 // Sigmoid sensitivity (k), default 12.0
-	beRatio     float64 // BestEffort default resource ratio, default 0.1
-	bePenalty   float64 // BestEffort density penalty factor, default 1.2
+	// Resource estimator parameters
+	requestWeight float64 // Request contribution weight, default 1.0
+	burstWeight   float64 // Burst contribution weight, default 0.0
+	threshold     float64 // Composite load threshold for risk factor, default 0.6
+	riskFactor    float64 // Risk multiplier once threshold is reached, default 1.2
+	beCPU         float64 // BestEffort CPU estimate in milliCPU, default 250m
+	beMemory      float64 // BestEffort memory estimate in bytes, default 200Mi
 
 	// Session-level shadow load cache
 	shadowCache *ShadowLoadCache
@@ -98,11 +100,12 @@ func New(args framework.Arguments) framework.Plugin {
 		cpuThresholds:   80,
 		memThresholds:   80,
 		period:          source.NODE_METRICS_PERIOD,
-		sigmaBase:       0.15,
-		watermark:       0.5,
-		sensitivity:     12.0,
-		beRatio:         0.1,
-		bePenalty:       1.2,
+		requestWeight:   1.0,
+		burstWeight:     0.0,
+		threshold:       0.6,
+		riskFactor:      1.2,
+		beCPU:           250,
+		beMemory:        float64(200 * 1024 * 1024),
 		metricsInterval: defaultMetricsInterval,
 	}
 	args.GetInt(&plugin.usageWeight, "usage.weight")
@@ -129,28 +132,151 @@ func New(args framework.Arguments) framework.Plugin {
 		}
 	}
 
-	// Parse dynamic sigma parameters
-	parseFloatArg(plugin.pluginArguments, "dynamic.sigma_base", &plugin.sigmaBase)
-	parseFloatArg(plugin.pluginArguments, "dynamic.watermark", &plugin.watermark)
-	parseFloatArg(plugin.pluginArguments, "dynamic.sensitivity", &plugin.sensitivity)
-	parseFloatArg(plugin.pluginArguments, "be_default_ratio", &plugin.beRatio)
-	parseFloatArg(plugin.pluginArguments, "be_penalty_factor", &plugin.bePenalty)
+	parseBoundedFloatArg(plugin.pluginArguments, "request.weight", &plugin.requestWeight, 0, 1)
+	parseBoundedFloatArg(plugin.pluginArguments, "burst.weight", &plugin.burstWeight, 0, 1)
+	parseBoundedFloatArg(plugin.pluginArguments, "threshold", &plugin.threshold, 0, 1)
+	parseMinFloatArg(plugin.pluginArguments, "risk_factor", &plugin.riskFactor, 1)
+	parseCPUQuantityArg(plugin.pluginArguments, "be.cpu", &plugin.beCPU)
+	parseMemoryQuantityArg(plugin.pluginArguments, "be.memory", &plugin.beMemory)
 
 	return plugin
 }
 
-// parseFloatArg parses a float64 argument from the plugin arguments map.
-func parseFloatArg(args framework.Arguments, key string, target *float64) {
+// parseBoundedFloatArg parses a float64 argument and keeps the existing value
+// when the input is outside [min, max].
+func parseBoundedFloatArg(args framework.Arguments, key string, target *float64, min, max float64) {
+	value, ok := getFloatArg(args, key)
+	if !ok {
+		return
+	}
+	if value < min || value > max {
+		klog.Warningf("Could not parse argument: %v for key %s, expected value in [%v, %v]", value, key, min, max)
+		return
+	}
+	*target = value
+}
+
+// parseMinFloatArg parses a float64 argument and keeps the existing value when
+// the input is lower than min.
+func parseMinFloatArg(args framework.Arguments, key string, target *float64, min float64) {
+	value, ok := getFloatArg(args, key)
+	if !ok {
+		return
+	}
+	if value < min {
+		klog.Warningf("Could not parse argument: %v for key %s, expected value >= %v", value, key, min)
+		return
+	}
+	*target = value
+}
+
+func getFloatArg(args framework.Arguments, key string) (float64, bool) {
 	if val, ok := args[key]; ok {
 		switch v := val.(type) {
 		case float64:
-			*target = v
+			return v, true
 		case int:
-			*target = float64(v)
+			return float64(v), true
 		case int64:
+			return float64(v), true
+		}
+		klog.Warningf("Could not parse argument: %v for key %s to float64", val, key)
+	}
+	return 0, false
+}
+
+func parseCPUQuantityArg(args framework.Arguments, key string, target *float64) {
+	if val, ok := args[key]; ok {
+		switch v := val.(type) {
+		case int:
+			if v < 0 {
+				klog.Warningf("Could not parse argument: %v for key %s, expected non-negative CPU millicores", val, key)
+				return
+			}
 			*target = float64(v)
+			return
+		case int64:
+			if v < 0 {
+				klog.Warningf("Could not parse argument: %v for key %s, expected non-negative CPU millicores", val, key)
+				return
+			}
+			*target = float64(v)
+			return
+		case float64:
+			if v < 0 {
+				klog.Warningf("Could not parse argument: %v for key %s, expected non-negative CPU millicores", val, key)
+				return
+			}
+			*target = v
+			return
 		}
 	}
+	quantity, ok := getQuantityArg(args, key)
+	if !ok {
+		return
+	}
+	value := float64(quantity.MilliValue())
+	if value < 0 {
+		klog.Warningf("Could not parse argument: %v for key %s, expected non-negative CPU quantity", args[key], key)
+		return
+	}
+	*target = value
+}
+
+func parseMemoryQuantityArg(args framework.Arguments, key string, target *float64) {
+	quantity, ok := getQuantityArg(args, key)
+	if !ok {
+		return
+	}
+	value := float64(quantity.Value())
+	if value < 0 {
+		klog.Warningf("Could not parse argument: %v for key %s, expected non-negative memory quantity", args[key], key)
+		return
+	}
+	*target = value
+}
+
+func getQuantityArg(args framework.Arguments, key string) (resource.Quantity, bool) {
+	val, ok := args[key]
+	if !ok {
+		return resource.Quantity{}, false
+	}
+	switch v := val.(type) {
+	case string:
+		quantity, err := resource.ParseQuantity(normalizeQuantitySuffix(v))
+		if err != nil {
+			klog.Warningf("Could not parse argument: %v for key %s to resource quantity", val, key)
+			return resource.Quantity{}, false
+		}
+		return quantity, true
+	case int:
+		return *resource.NewQuantity(int64(v), resource.DecimalSI), true
+	case int64:
+		return *resource.NewQuantity(v, resource.DecimalSI), true
+	case float64:
+		return *resource.NewMilliQuantity(int64(v*1000), resource.DecimalSI), true
+	default:
+		klog.Warningf("Could not parse argument: %v for key %s to resource quantity", val, key)
+		return resource.Quantity{}, false
+	}
+}
+
+func normalizeQuantitySuffix(value string) string {
+	replacements := map[string]string{
+		"ki": "Ki",
+		"mi": "Mi",
+		"gi": "Gi",
+		"ti": "Ti",
+		"pi": "Pi",
+		"ei": "Ei",
+	}
+	lowerValue := strings.ToLower(value)
+	for lowerSuffix, canonicalSuffix := range replacements {
+		if strings.HasSuffix(lowerValue, lowerSuffix) {
+			return value[:len(value)-len(lowerSuffix)] + canonicalSuffix
+		}
+	}
+	return value
 }
 
 func (up *usagePlugin) Name() string {
@@ -270,32 +396,18 @@ func (up *usagePlugin) OnSessionClose(ssn *framework.Session) {
 // with estimated resource consumption for pods that are in the monitoring blind spot.
 func (up *usagePlugin) warmUpShadowCache(ssn *framework.Session) {
 	for _, nodeInfo := range ssn.Nodes {
-		// Compute node real utilization once per node (for Sigmoid)
-		realCPU := getRealCPUPercent(nodeInfo, up.period)
-		realMem := getRealMemPercent(nodeInfo, up.period)
-		nodeRealUtil := CalcNodeRealUtilization(realCPU, realMem, up.cpuWeight, up.memoryWeight)
-		sigmaDynamic := CalcDynamicSigma(up.sigmaBase, up.watermark, up.sensitivity, nodeRealUtil)
-
 		for _, task := range nodeInfo.Tasks {
 			if !shouldAddToShadowCache(task, up.metricsInterval) {
 				continue
 			}
 
-			bestEffortCount := up.shadowCache.GetBestEffortCount(nodeInfo.Name)
-			cpuReq, cpuLim := getPodCPURequestLimit(task.Pod)
-			memReq, memLim := getPodMemRequestLimit(task.Pod)
+			appliedRiskFactor := up.calcAppliedRiskFactor(nodeInfo)
+			estCPU, estMem := up.estimateTaskResource(task, appliedRiskFactor)
 
-			estCPU := EstimatePodResource(cpuReq, cpuLim,
-				sigmaDynamic, nodeInfo.Capacity.MilliCPU, up.beRatio, up.bePenalty,
-				bestEffortCount, task.BestEffort)
-			estMem := EstimatePodResource(memReq, memLim,
-				sigmaDynamic, nodeInfo.Capacity.Memory, up.beRatio, up.bePenalty,
-				bestEffortCount, task.BestEffort)
+			up.shadowCache.AddEstimate(nodeInfo.Name, task.UID, estCPU, estMem)
 
-			up.shadowCache.AddEstimate(nodeInfo.Name, task.UID, estCPU, estMem, task.BestEffort)
-
-			klog.V(5).Infof("Shadow cache warm-up: task %s/%s on node %s, estCPU=%.2f, estMem=%.2f, bestEffort=%v",
-				task.Namespace, task.Name, nodeInfo.Name, estCPU, estMem, task.BestEffort)
+			klog.V(5).Infof("Shadow cache warm-up: task %s/%s on node %s, estCPU=%.2f, estMem=%.2f, riskFactor=%.2f, bestEffort=%v",
+				task.Namespace, task.Name, nodeInfo.Name, estCPU, estMem, appliedRiskFactor, task.BestEffort)
 		}
 	}
 }
@@ -309,28 +421,15 @@ func (up *usagePlugin) handleAllocate(ssn *framework.Session, event *framework.E
 		return
 	}
 
-	// Compute node real utilization → sigmaDynamic
-	realCPU := getRealCPUPercent(node, up.period)
-	realMem := getRealMemPercent(node, up.period)
-	nodeRealUtil := CalcNodeRealUtilization(realCPU, realMem, up.cpuWeight, up.memoryWeight)
-	sigmaDynamic := CalcDynamicSigma(up.sigmaBase, up.watermark, up.sensitivity, nodeRealUtil)
-
 	// Estimate pod resource consumption
-	bestEffortCount := up.shadowCache.GetBestEffortCount(nodeName)
-	cpuReq, cpuLim := getPodCPURequestLimit(task.Pod)
-	memReq, memLim := getPodMemRequestLimit(task.Pod)
-	estCPU := EstimatePodResource(cpuReq, cpuLim,
-		sigmaDynamic, node.Capacity.MilliCPU, up.beRatio, up.bePenalty,
-		bestEffortCount, task.BestEffort)
-	estMem := EstimatePodResource(memReq, memLim,
-		sigmaDynamic, node.Capacity.Memory, up.beRatio, up.bePenalty,
-		bestEffortCount, task.BestEffort)
+	appliedRiskFactor := up.calcAppliedRiskFactor(node)
+	estCPU, estMem := up.estimateTaskResource(task, appliedRiskFactor)
 
 	// Add to shadow cache with snapshot
-	up.shadowCache.AddEstimate(nodeName, task.UID, estCPU, estMem, task.BestEffort)
+	up.shadowCache.AddEstimate(nodeName, task.UID, estCPU, estMem)
 
-	klog.V(4).Infof("Usage plugin Allocate: task %s/%s to node %s, estCPU=%.2f, estMem=%.2f",
-		task.Namespace, task.Name, nodeName, estCPU, estMem)
+	klog.V(4).Infof("Usage plugin Allocate: task %s/%s to node %s, estCPU=%.2f, estMem=%.2f, riskFactor=%.2f",
+		task.Namespace, task.Name, nodeName, estCPU, estMem, appliedRiskFactor)
 }
 
 // handleDeallocate is called when a pod allocation is rolled back.
@@ -355,6 +454,27 @@ func (up *usagePlugin) calcNodeScore(node *api.NodeInfo) float64 {
 	klog.V(4).Infof("Node %s score: cpuComp=%.4f, memComp=%.4f, score=%.2f (max=%d)",
 		node.Name, cpuComp, memComp, score, fwk.MaxNodeScore)
 	return score
+}
+
+func (up *usagePlugin) calcAppliedRiskFactor(node *api.NodeInfo) float64 {
+	cpuEst, memEst := up.shadowCache.GetNodeEst(node.Name)
+	realCPU := getRealCPUPercent(node, up.period)
+	realMem := getRealMemPercent(node, up.period)
+	cpuComp := CalcCompositeUtilization(realCPU, cpuEst, node.Capacity.MilliCPU)
+	memComp := CalcCompositeUtilization(realMem, memEst, node.Capacity.Memory)
+	loadCompositePercentage := CalcLoadCompositePercentage(cpuComp, memComp, up.cpuWeight, up.memoryWeight)
+	return CalcAppliedRiskFactor(loadCompositePercentage, up.threshold, up.riskFactor)
+}
+
+func (up *usagePlugin) estimateTaskResource(task *api.TaskInfo, appliedRiskFactor float64) (estCPU, estMem float64) {
+	if task.BestEffort {
+		return EstimateBestEffortResource(up.beCPU, appliedRiskFactor),
+			EstimateBestEffortResource(up.beMemory, appliedRiskFactor)
+	}
+	cpuReq, cpuLim := getPodCPURequestLimit(task.Pod)
+	memReq, memLim := getPodMemRequestLimit(task.Pod)
+	return EstimatePodResource(cpuReq, cpuLim, up.requestWeight, up.burstWeight, appliedRiskFactor),
+		EstimatePodResource(memReq, memLim, up.requestWeight, up.burstWeight, appliedRiskFactor)
 }
 
 // isMetricsAvailable checks if the node's metrics data is available and fresh.

@@ -27,12 +27,12 @@ import (
 // PodEstSnapshot records the estimated resource consumption of a pod at the time
 // it was allocated. This snapshot is used during deallocation to ensure the exact
 // same value is subtracted, avoiding inconsistencies caused by re-calculation
-// (e.g., BestEffort count changes between allocate and deallocate).
+// when node pressure or estimator configuration changes between allocate and
+// deallocate.
 type PodEstSnapshot struct {
-	NodeName   string
-	CPUMillis  float64
-	MemBytes   float64
-	BestEffort bool
+	NodeName  string
+	CPUMillis float64
+	MemBytes  float64
 }
 
 // ShadowLoadCache is a session-level cache that tracks the estimated resource
@@ -54,10 +54,6 @@ type ShadowLoadCache struct {
 	// of all shadow pods on each node.
 	nodeMemEst map[string]float64
 
-	// BestEffortCounts stores the number of BestEffort pods on each node
-	// that are tracked in the shadow cache.
-	BestEffortCounts map[string]int
-
 	// podSnapshots stores the per-pod estimation snapshot, keyed by TaskID.
 	// This ensures that deallocation subtracts the exact value that was added.
 	podSnapshots map[api.TaskID]*PodEstSnapshot
@@ -66,10 +62,9 @@ type ShadowLoadCache struct {
 // NewShadowLoadCache creates a new empty ShadowLoadCache.
 func NewShadowLoadCache() *ShadowLoadCache {
 	return &ShadowLoadCache{
-		nodeCPUEst:       make(map[string]float64),
-		nodeMemEst:       make(map[string]float64),
-		BestEffortCounts: make(map[string]int),
-		podSnapshots:     make(map[api.TaskID]*PodEstSnapshot),
+		nodeCPUEst:   make(map[string]float64),
+		nodeMemEst:   make(map[string]float64),
+		podSnapshots: make(map[api.TaskID]*PodEstSnapshot),
 	}
 }
 
@@ -79,7 +74,6 @@ func (c *ShadowLoadCache) Reset() {
 	defer c.mu.Unlock()
 	c.nodeCPUEst = make(map[string]float64)
 	c.nodeMemEst = make(map[string]float64)
-	c.BestEffortCounts = make(map[string]int)
 	c.podSnapshots = make(map[api.TaskID]*PodEstSnapshot)
 }
 
@@ -87,28 +81,23 @@ func (c *ShadowLoadCache) Reset() {
 func (c *ShadowLoadCache) IsClean() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return len(c.nodeCPUEst) == 0 && len(c.nodeMemEst) == 0 &&
-		len(c.BestEffortCounts) == 0 && len(c.podSnapshots) == 0
+	return len(c.nodeCPUEst) == 0 && len(c.nodeMemEst) == 0 && len(c.podSnapshots) == 0
 }
 
 // AddEstimate adds a pod's estimated resource consumption to the specified node
 // and records a snapshot for later precise deallocation.
 // This is called when a pod is determined to be a shadow pod (during OnSessionOpen
 // initialization or when an Allocate event fires).
-func (c *ShadowLoadCache) AddEstimate(nodeName string, taskID api.TaskID, cpuMillis, memBytes float64, isBestEffort bool) {
+func (c *ShadowLoadCache) AddEstimate(nodeName string, taskID api.TaskID, cpuMillis, memBytes float64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.nodeCPUEst[nodeName] += cpuMillis
 	c.nodeMemEst[nodeName] += memBytes
-	if isBestEffort {
-		c.BestEffortCounts[nodeName]++
-	}
 	// Record snapshot for precise deallocation
 	c.podSnapshots[taskID] = &PodEstSnapshot{
-		NodeName:   nodeName,
-		CPUMillis:  cpuMillis,
-		MemBytes:   memBytes,
-		BestEffort: isBestEffort,
+		NodeName:  nodeName,
+		CPUMillis: cpuMillis,
+		MemBytes:  memBytes,
 	}
 }
 
@@ -132,12 +121,6 @@ func (c *ShadowLoadCache) SubEstimateBySnapshot(taskID api.TaskID) {
 	if c.nodeMemEst[snapshot.NodeName] < 0 {
 		c.nodeMemEst[snapshot.NodeName] = 0
 	}
-	if snapshot.BestEffort {
-		c.BestEffortCounts[snapshot.NodeName]--
-		if c.BestEffortCounts[snapshot.NodeName] < 0 {
-			c.BestEffortCounts[snapshot.NodeName] = 0
-		}
-	}
 	delete(c.podSnapshots, taskID)
 }
 
@@ -147,14 +130,6 @@ func (c *ShadowLoadCache) GetNodeEst(nodeName string) (cpuEst, memEst float64) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.nodeCPUEst[nodeName], c.nodeMemEst[nodeName]
-}
-
-// GetBestEffortCount returns the number of BestEffort pods tracked in the
-// shadow cache for the specified node.
-func (c *ShadowLoadCache) GetBestEffortCount(nodeName string) int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.BestEffortCounts[nodeName]
 }
 
 // GetSnapshot returns the estimation snapshot for a specific task.

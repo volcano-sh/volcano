@@ -26,165 +26,96 @@ import (
 
 const testEps = 1e-6
 
-func TestCalcDynamicSigma(t *testing.T) {
+func TestCalcLoadCompositePercentage(t *testing.T) {
 	tests := []struct {
-		name            string
-		sigmaBase       float64
-		watermark       float64
-		sensitivity     float64
-		nodeUtilization float64
-		expectedMin     float64
-		expectedMax     float64
+		name         string
+		cpuComposite float64
+		memComposite float64
+		cpuWeight    int
+		memWeight    int
+		expected     float64
 	}{
 		{
-			name:            "node completely idle - sigma near sigmaBase",
-			sigmaBase:       0.15,
-			watermark:       0.5,
-			sensitivity:     12.0,
-			nodeUtilization: 0.0,
-			expectedMin:     0.15,
-			expectedMax:     0.16, // very close to sigmaBase when far below watermark
+			name:         "equal weights",
+			cpuComposite: 0.4,
+			memComposite: 0.6,
+			cpuWeight:    1,
+			memWeight:    1,
+			expected:     0.5,
 		},
 		{
-			name:            "node at watermark - sigma at midpoint",
-			sigmaBase:       0.15,
-			watermark:       0.5,
-			sensitivity:     12.0,
-			nodeUtilization: 0.5,
-			expectedMin:     0.55, // sigmaBase + (1-sigmaBase)*0.5 = 0.15 + 0.425 = 0.575
-			expectedMax:     0.60,
+			name:         "cpu weight dominant",
+			cpuComposite: 0.8,
+			memComposite: 0.2,
+			cpuWeight:    3,
+			memWeight:    1,
+			expected:     0.65,
 		},
 		{
-			name:            "node fully loaded - sigma near 1.0",
-			sigmaBase:       0.15,
-			watermark:       0.5,
-			sensitivity:     12.0,
-			nodeUtilization: 1.0,
-			expectedMin:     0.99,
-			expectedMax:     1.0,
-		},
-		{
-			name:            "node at 30% utilization - sigma still relatively low",
-			sigmaBase:       0.15,
-			watermark:       0.5,
-			sensitivity:     12.0,
-			nodeUtilization: 0.3,
-			expectedMin:     0.15,
-			expectedMax:     0.25,
-		},
-		{
-			name:            "node at 70% utilization - sigma relatively high",
-			sigmaBase:       0.15,
-			watermark:       0.5,
-			sensitivity:     12.0,
-			nodeUtilization: 0.7,
-			expectedMin:     0.90,
-			expectedMax:     1.0,
-		},
-		{
-			name:            "low sensitivity - smoother transition",
-			sigmaBase:       0.15,
-			watermark:       0.5,
-			sensitivity:     2.0,
-			nodeUtilization: 0.5,
-			expectedMin:     0.55,
-			expectedMax:     0.60,
+			name:         "zero weights",
+			cpuComposite: 0.8,
+			memComposite: 0.2,
+			cpuWeight:    0,
+			memWeight:    0,
+			expected:     0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CalcDynamicSigma(tt.sigmaBase, tt.watermark, tt.sensitivity, tt.nodeUtilization)
-			if result < tt.expectedMin || result > tt.expectedMax {
-				t.Errorf("CalcDynamicSigma(%v, %v, %v, %v) = %v, expected in [%v, %v]",
-					tt.sigmaBase, tt.watermark, tt.sensitivity, tt.nodeUtilization,
-					result, tt.expectedMin, tt.expectedMax)
+			result := CalcLoadCompositePercentage(tt.cpuComposite, tt.memComposite, tt.cpuWeight, tt.memWeight)
+			if math.Abs(result-tt.expected) > testEps {
+				t.Errorf("CalcLoadCompositePercentage(%v, %v, %v, %v) = %v, expected %v",
+					tt.cpuComposite, tt.memComposite, tt.cpuWeight, tt.memWeight, result, tt.expected)
 			}
 		})
 	}
 }
 
-func TestCalcDynamicSigma_Monotonicity(t *testing.T) {
-	// Sigma should be monotonically increasing with node utilization
-	sigmaBase := 0.15
-	watermark := 0.5
-	sensitivity := 12.0
-
-	prevSigma := 0.0
-	for u := 0.0; u <= 1.0; u += 0.05 {
-		sigma := CalcDynamicSigma(sigmaBase, watermark, sensitivity, u)
-		if sigma < prevSigma-testEps {
-			t.Errorf("Sigma not monotonically increasing: at u=%v, sigma=%v < prevSigma=%v", u, sigma, prevSigma)
-		}
-		prevSigma = sigma
-	}
-}
-
-func TestCalcNodeRealUtilization(t *testing.T) {
+func TestCalcAppliedRiskFactor(t *testing.T) {
 	tests := []struct {
-		name           string
-		realCPUPercent float64
-		realMemPercent float64
-		cpuWeight      int
-		memWeight      int
-		expected       float64
+		name                    string
+		loadCompositePercentage float64
+		threshold               float64
+		riskFactor              float64
+		expected                float64
 	}{
 		{
-			name:           "equal weights, equal utilization",
-			realCPUPercent: 50,
-			realMemPercent: 50,
-			cpuWeight:      1,
-			memWeight:      1,
-			expected:       0.5,
+			name:                    "below threshold",
+			loadCompositePercentage: 0.59,
+			threshold:               0.6,
+			riskFactor:              1.2,
+			expected:                1.0,
 		},
 		{
-			name:           "equal weights, different utilization",
-			realCPUPercent: 60,
-			realMemPercent: 40,
-			cpuWeight:      1,
-			memWeight:      1,
-			expected:       0.5,
+			name:                    "at threshold",
+			loadCompositePercentage: 0.6,
+			threshold:               0.6,
+			riskFactor:              1.2,
+			expected:                1.2,
 		},
 		{
-			name:           "cpu weight dominant",
-			realCPUPercent: 80,
-			realMemPercent: 20,
-			cpuWeight:      3,
-			memWeight:      1,
-			expected:       0.65, // (0.8*3 + 0.2*1) / 4 = 2.6/4 = 0.65
+			name:                    "above threshold",
+			loadCompositePercentage: 0.9,
+			threshold:               0.6,
+			riskFactor:              1.2,
+			expected:                1.2,
 		},
 		{
-			name:           "zero weights",
-			realCPUPercent: 80,
-			realMemPercent: 20,
-			cpuWeight:      0,
-			memWeight:      0,
-			expected:       0,
-		},
-		{
-			name:           "zero utilization",
-			realCPUPercent: 0,
-			realMemPercent: 0,
-			cpuWeight:      1,
-			memWeight:      1,
-			expected:       0,
-		},
-		{
-			name:           "full utilization",
-			realCPUPercent: 100,
-			realMemPercent: 100,
-			cpuWeight:      1,
-			memWeight:      1,
-			expected:       1.0,
+			name:                    "risk factor lower than one is ignored",
+			loadCompositePercentage: 0.9,
+			threshold:               0.6,
+			riskFactor:              0.8,
+			expected:                1.0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CalcNodeRealUtilization(tt.realCPUPercent, tt.realMemPercent, tt.cpuWeight, tt.memWeight)
+			result := CalcAppliedRiskFactor(tt.loadCompositePercentage, tt.threshold, tt.riskFactor)
 			if math.Abs(result-tt.expected) > testEps {
-				t.Errorf("CalcNodeRealUtilization(%v, %v, %v, %v) = %v, expected %v",
-					tt.realCPUPercent, tt.realMemPercent, tt.cpuWeight, tt.memWeight, result, tt.expected)
+				t.Errorf("CalcAppliedRiskFactor(%v, %v, %v) = %v, expected %v",
+					tt.loadCompositePercentage, tt.threshold, tt.riskFactor, result, tt.expected)
 			}
 		})
 	}
@@ -192,97 +123,112 @@ func TestCalcNodeRealUtilization(t *testing.T) {
 
 func TestEstimatePodResource(t *testing.T) {
 	tests := []struct {
-		name            string
-		request         float64
-		limit           float64
-		sigmaDynamic    float64
-		nodeCap         float64
-		beRatio         float64
-		bePenalty       float64
-		bestEffortCount int
-		isBestEffort    bool
-		expected        float64
+		name              string
+		request           float64
+		limit             float64
+		requestWeight     float64
+		burstWeight       float64
+		appliedRiskFactor float64
+		expected          float64
 	}{
 		{
-			name:            "Guaranteed pod (limit == request), sigma=0.5",
-			request:         1000,
-			limit:           1000,
-			sigmaDynamic:    0.5,
-			nodeCap:         8000,
-			beRatio:         0.1,
-			bePenalty:       1.2,
-			bestEffortCount: 0,
-			isBestEffort:    false,
-			expected:        1000, // limit==request, so estimate = request (no burst possible)
+			name:              "default weights estimate request",
+			request:           500,
+			limit:             2000,
+			requestWeight:     1.0,
+			burstWeight:       0.0,
+			appliedRiskFactor: 1.0,
+			expected:          500,
 		},
 		{
-			name:            "Burstable pod (limit > request), sigma=0.3",
-			request:         500,
-			limit:           2000,
-			sigmaDynamic:    0.3,
-			nodeCap:         8000,
-			beRatio:         0.1,
-			bePenalty:       1.2,
-			bestEffortCount: 0,
-			isBestEffort:    false,
-			expected:        950, // 500 + (2000-500)*0.3 = 500 + 450 = 950
+			name:              "zero weights estimate zero",
+			request:           500,
+			limit:             2000,
+			requestWeight:     0.0,
+			burstWeight:       0.0,
+			appliedRiskFactor: 1.0,
+			expected:          0,
 		},
 		{
-			name:            "Burstable pod, sigma=1.0 (fully conservative)",
-			request:         500,
-			limit:           2000,
-			sigmaDynamic:    1.0,
-			nodeCap:         8000,
-			beRatio:         0.1,
-			bePenalty:       1.2,
-			bestEffortCount: 0,
-			isBestEffort:    false,
-			expected:        2000, // 500 + (2000-500)*1.0 = 2000
+			name:              "request and burst weights cover full limit",
+			request:           500,
+			limit:             2000,
+			requestWeight:     1.0,
+			burstWeight:       1.0,
+			appliedRiskFactor: 1.0,
+			expected:          2000,
 		},
 		{
-			name:            "BestEffort pod, first on node",
-			request:         0,
-			limit:           0,
-			sigmaDynamic:    0.5,
-			nodeCap:         8000,
-			beRatio:         0.1,
-			bePenalty:       1.2,
-			bestEffortCount: 0,
-			isBestEffort:    true,
-			expected:        800, // 8000 * 0.1 * 1.2^0 = 800
+			name:              "custom burst weight",
+			request:           500,
+			limit:             2000,
+			requestWeight:     0.5,
+			burstWeight:       0.2,
+			appliedRiskFactor: 1.0,
+			expected:          550, // 500*0.5 + (2000-500)*0.2
 		},
 		{
-			name:            "BestEffort pod, 3 already on node",
-			request:         0,
-			limit:           0,
-			sigmaDynamic:    0.5,
-			nodeCap:         8000,
-			beRatio:         0.1,
-			bePenalty:       1.2,
-			bestEffortCount: 3,
-			isBestEffort:    true,
-			expected:        8000 * 0.1 * math.Pow(1.2, 3), // 800 * 1.728 = 1382.4
+			name:              "risk factor applies and clamps to limit",
+			request:           500,
+			limit:             600,
+			requestWeight:     1.0,
+			burstWeight:       0.0,
+			appliedRiskFactor: 1.2,
+			expected:          600,
 		},
 		{
-			name:            "BestEffort pod, 10 already on node (exponential penalty)",
-			request:         0,
-			limit:           0,
-			sigmaDynamic:    0.5,
-			nodeCap:         8000,
-			beRatio:         0.1,
-			bePenalty:       1.2,
-			bestEffortCount: 10,
-			isBestEffort:    true,
-			expected:        8000 * 0.1 * math.Pow(1.2, 10),
+			name:              "missing limit uses request as effective limit",
+			request:           500,
+			limit:             0,
+			requestWeight:     1.0,
+			burstWeight:       1.0,
+			appliedRiskFactor: 1.2,
+			expected:          500,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EstimatePodResource(tt.request, tt.limit, tt.sigmaDynamic, tt.nodeCap,
-				tt.beRatio, tt.bePenalty, tt.bestEffortCount, tt.isBestEffort)
+			result := EstimatePodResource(tt.request, tt.limit, tt.requestWeight, tt.burstWeight, tt.appliedRiskFactor)
 			if math.Abs(result-tt.expected) > testEps {
 				t.Errorf("EstimatePodResource() = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestEstimateBestEffortResource(t *testing.T) {
+	tests := []struct {
+		name              string
+		configuredValue   float64
+		appliedRiskFactor float64
+		expected          float64
+	}{
+		{
+			name:              "base configured value",
+			configuredValue:   250,
+			appliedRiskFactor: 1.0,
+			expected:          250,
+		},
+		{
+			name:              "risk factor applies",
+			configuredValue:   250,
+			appliedRiskFactor: 1.2,
+			expected:          300,
+		},
+		{
+			name:              "negative configured value is clamped to zero",
+			configuredValue:   -1,
+			appliedRiskFactor: 1.2,
+			expected:          0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EstimateBestEffortResource(tt.configuredValue, tt.appliedRiskFactor)
+			if math.Abs(result-tt.expected) > testEps {
+				t.Errorf("EstimateBestEffortResource() = %v, expected %v", result, tt.expected)
 			}
 		})
 	}

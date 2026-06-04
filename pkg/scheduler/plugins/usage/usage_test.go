@@ -59,6 +59,82 @@ func updateNodeUsage(nodesInfo map[string]*api.NodeInfo, nodesUsage map[string]*
 	}
 }
 
+func TestUsageEstimatorConfig(t *testing.T) {
+	defaultPlugin := New(framework.Arguments{}).(*usagePlugin)
+	if math.Abs(defaultPlugin.requestWeight-1.0) > eps {
+		t.Errorf("default requestWeight = %v, expected 1.0", defaultPlugin.requestWeight)
+	}
+	if math.Abs(defaultPlugin.burstWeight-0.0) > eps {
+		t.Errorf("default burstWeight = %v, expected 0.0", defaultPlugin.burstWeight)
+	}
+	if math.Abs(defaultPlugin.threshold-0.6) > eps {
+		t.Errorf("default threshold = %v, expected 0.6", defaultPlugin.threshold)
+	}
+	if math.Abs(defaultPlugin.riskFactor-1.2) > eps {
+		t.Errorf("default riskFactor = %v, expected 1.2", defaultPlugin.riskFactor)
+	}
+	if math.Abs(defaultPlugin.beCPU-250) > eps {
+		t.Errorf("default beCPU = %v, expected 250", defaultPlugin.beCPU)
+	}
+	if math.Abs(defaultPlugin.beMemory-float64(200*1024*1024)) > eps {
+		t.Errorf("default beMemory = %v, expected 200Mi", defaultPlugin.beMemory)
+	}
+
+	configuredPlugin := New(framework.Arguments{
+		"request.weight": 0.7,
+		"burst.weight":   0.3,
+		"threshold":      0.75,
+		"risk_factor":    1.5,
+		"be.cpu":         "500m",
+		"be.memory":      "300mi",
+	}).(*usagePlugin)
+	if math.Abs(configuredPlugin.requestWeight-0.7) > eps {
+		t.Errorf("configured requestWeight = %v, expected 0.7", configuredPlugin.requestWeight)
+	}
+	if math.Abs(configuredPlugin.burstWeight-0.3) > eps {
+		t.Errorf("configured burstWeight = %v, expected 0.3", configuredPlugin.burstWeight)
+	}
+	if math.Abs(configuredPlugin.threshold-0.75) > eps {
+		t.Errorf("configured threshold = %v, expected 0.75", configuredPlugin.threshold)
+	}
+	if math.Abs(configuredPlugin.riskFactor-1.5) > eps {
+		t.Errorf("configured riskFactor = %v, expected 1.5", configuredPlugin.riskFactor)
+	}
+	if math.Abs(configuredPlugin.beCPU-500) > eps {
+		t.Errorf("configured beCPU = %v, expected 500", configuredPlugin.beCPU)
+	}
+	if math.Abs(configuredPlugin.beMemory-float64(300*1024*1024)) > eps {
+		t.Errorf("configured beMemory = %v, expected 300Mi", configuredPlugin.beMemory)
+	}
+
+	invalidPlugin := New(framework.Arguments{
+		"request.weight": 1.5,
+		"burst.weight":   -0.1,
+		"threshold":      2.0,
+		"risk_factor":    0.5,
+		"be.cpu":         "-1",
+		"be.memory":      "bad",
+	}).(*usagePlugin)
+	if math.Abs(invalidPlugin.requestWeight-1.0) > eps {
+		t.Errorf("invalid requestWeight should keep default, got %v", invalidPlugin.requestWeight)
+	}
+	if math.Abs(invalidPlugin.burstWeight-0.0) > eps {
+		t.Errorf("invalid burstWeight should keep default, got %v", invalidPlugin.burstWeight)
+	}
+	if math.Abs(invalidPlugin.threshold-0.6) > eps {
+		t.Errorf("invalid threshold should keep default, got %v", invalidPlugin.threshold)
+	}
+	if math.Abs(invalidPlugin.riskFactor-1.2) > eps {
+		t.Errorf("invalid riskFactor should keep default, got %v", invalidPlugin.riskFactor)
+	}
+	if math.Abs(invalidPlugin.beCPU-250) > eps {
+		t.Errorf("invalid beCPU should keep default, got %v", invalidPlugin.beCPU)
+	}
+	if math.Abs(invalidPlugin.beMemory-float64(200*1024*1024)) > eps {
+		t.Errorf("invalid beMemory should keep default, got %v", invalidPlugin.beMemory)
+	}
+}
+
 func TestUsage_predicateFn(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 
