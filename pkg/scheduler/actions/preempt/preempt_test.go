@@ -62,7 +62,6 @@ func TestPreempt(t *testing.T) {
 	lowPrio := util.BuildPriorityClass("low-priority", 10)
 
 	trueValue := true
-	falseValue := false
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -392,13 +391,7 @@ func TestPreempt(t *testing.T) {
 				util.BuildNode("n1", api.BuildResourceList("12", "12G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
 			},
 			Queues: []*schedulingv1beta1.Queue{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "q1"},
-					Spec: schedulingv1beta1.QueueSpec{
-						Weight:     1,
-						Capability: api.BuildResourceList("4", "4G"),
-					},
-				},
+				util.BuildQueue("q1", 1, api.BuildResourceList("4", "4G")),
 			},
 			ExpectEvicted:  []string{"c1/preemptee1"},
 			ExpectEvictNum: 1,
@@ -464,7 +457,6 @@ func TestTopologyAwarePreempt(t *testing.T) {
 	lowPrio := util.BuildPriorityClass("low-priority", 10)
 
 	trueValue := true
-	falseValue := false
 
 	tests := []uthelper.TestCommonStruct{
 		{

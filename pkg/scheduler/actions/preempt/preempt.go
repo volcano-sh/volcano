@@ -165,9 +165,15 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			break
 		}
 
-		queue := queues.Pop().(*api.QueueInfo)
-		if queue == nil {
+		value := queues.Pop()
+		if value == nil {
 			klog.V(3).Infof("Skipping preemption for nil queue.")
+			continue
+		}
+
+		queue, ok := value.(*api.QueueInfo)
+		if !ok || queue == nil {
+			klog.V(3).Infof("Skipping preemption for unexpected queue type.")
 			continue
 		}
 		if !queue.Preemptable() {

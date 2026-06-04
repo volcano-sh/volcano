@@ -24,7 +24,6 @@ package api
 
 import (
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
