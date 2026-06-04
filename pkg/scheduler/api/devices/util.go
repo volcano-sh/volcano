@@ -141,6 +141,39 @@ func PatchPodAnnotations(kubeClient kubernetes.Interface, pod *v1.Pod, annotatio
 	return err
 }
 
+func RemovePodAnnotations(kubeClient kubernetes.Interface, pod *v1.Pod, annotationsToRemove []string) error {
+	type patchMetadata struct {
+		Annotations map[string]interface{} `json:"annotations,omitempty"`
+	}
+	type patchPod struct {
+		Metadata patchMetadata `json:"metadata"`
+	}
+
+	patchData := make(map[string]interface{})
+	for _, key := range annotationsToRemove {
+		patchData[key] = nil
+	}
+
+	p := patchPod{
+		Metadata: patchMetadata{
+			Annotations: patchData,
+		},
+	}
+
+	bytes, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+
+	_, err = kubeClient.CoreV1().Pods(pod.Namespace).
+		Patch(context.Background(), pod.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
+	if err != nil {
+		klog.Errorf("remove annotations from pod %v failed, %v", pod.Name, err)
+	}
+
+	return err
+}
+
 func PatchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
 	type patchMetadata struct {
 		Annotations map[string]string `json:"annotations,omitempty"`

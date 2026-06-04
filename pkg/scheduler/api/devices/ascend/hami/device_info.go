@@ -139,14 +139,14 @@ func GetAscendDeviceNames() []string {
 	return deviceNames
 }
 
-func (ads *AscendDevices) AddResourceUsage(dev *AscendDevice, cores int32, mem int32) error {
+func (ads *AscendDevices) addResourceUsage(dev *AscendDevice, cores int32, mem int32) error {
 	dev.DeviceUsage.Used++
 	dev.DeviceUsage.Usedcores += cores
 	dev.DeviceUsage.Usedmem += mem
 	return nil
 }
 
-func (ads *AscendDevices) SubResourceUsage(dev *AscendDevice, cores int32, mem int32) error {
+func (ads *AscendDevices) subResourceUsage(dev *AscendDevice, cores int32, mem int32) error {
 	dev.DeviceUsage.Used--
 	dev.DeviceUsage.Usedcores -= cores
 	dev.DeviceUsage.Usedmem -= mem
@@ -182,7 +182,7 @@ func (ads *AscendDevices) SubResource(pod *v1.Pod) {
 		}
 		if _, ok := dev.PodMap[string(pod.UID)]; ok {
 			delete(dev.PodMap, string(pod.UID))
-			ads.SubResourceUsage(dev, cono_dev.Usedcores, cono_dev.Usedmem)
+			ads.subResourceUsage(dev, cono_dev.Usedcores, cono_dev.Usedmem)
 			klog.V(5).Infof("sub resource usage for pod %s. device %s usedmem %d", pod.Name, dev.DeviceInfo.ID, cono_dev.Usedmem)
 		}
 	}
@@ -211,7 +211,7 @@ func (ads *AscendDevices) addResource(annotations map[string]string, pod *v1.Pod
 				Usedcores: cono_dev.Usedcores,
 				Usedmem:   cono_dev.Usedmem,
 			}
-			ads.AddResourceUsage(dev, cono_dev.Usedcores, cono_dev.Usedmem)
+			ads.addResourceUsage(dev, cono_dev.Usedcores, cono_dev.Usedmem)
 			klog.V(5).Infof("add resource usage for pod %s. device %s usedmem %d", pod.Name, dev.DeviceInfo.ID, cono_dev.Usedmem)
 		}
 	}
@@ -315,7 +315,7 @@ func (ads *AscendDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod)
 	if err != nil {
 		return errors.Errorf("failed to select ascend devices for pod %s: %v", pod.Name, err)
 	}
-	annotations := ads.CreateAnnotations(pod, podDevs)
+	annotations := ads.createAnnotations(pod, podDevs)
 
 	ads.addResource(annotations, pod)
 	annotations[util.AssignedNodeAnnotations] = ads.NodeName
@@ -335,7 +335,8 @@ func (ads *AscendDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod)
 }
 
 func (ads *AscendDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	return nil
+	ads.SubResource(pod)
+	return ads.removeAnnotations(kubeClient, pod)
 }
 
 func (ads *AscendDevices) GetIgnoredDevices() []string {
@@ -659,7 +660,7 @@ func (dev *AscendDevice) ResourceReqs(pod *v1.Pod) []devices.ContainerDeviceRequ
 	return reqs
 }
 
-func (ads *AscendDevices) CreateAnnotations(pod *v1.Pod, devList devices.PodSingleDevice) map[string]string {
+func (ads *AscendDevices) createAnnotations(pod *v1.Pod, devList devices.PodSingleDevice) map[string]string {
 	annotations := make(map[string]string)
 	dev, err := ads.getFirstDevice()
 	if err != nil {
@@ -688,6 +689,22 @@ func (ads *AscendDevices) CreateAnnotations(pod *v1.Pod, devList devices.PodSing
 	annotations[allocateStr] = string(s)
 
 	return annotations
+}
+
+func (dev *AscendDevices) removeAnnotations(kubeClient kubernetes.Interface, pod *v1.Pod) error {
+	commonWord := dev.Type
+	annotations := []string{
+		devices.InRequestDevices[commonWord],
+		devices.SupportDevices[commonWord],
+		"predicate-time",
+		fmt.Sprintf("huawei.com/%s", commonWord),
+		util.AssignedNodeAnnotations,
+		util.AssignedTimeAnnotations,
+		util.DeviceBindPhase,
+		util.BindTimeAnnotations,
+	}
+
+	return devices.RemovePodAnnotations(kubeClient, pod, annotations)
 }
 
 func (dev *AscendDevice) GetResourceNames() devices.ResourceNames {
