@@ -39,12 +39,6 @@ import (
 	"volcano.sh/volcano/pkg/controllers/queue/state"
 )
 
-const (
-	ClosedByParentAnnotationKey        = "volcano.sh/closed-by-parent"
-	ClosedByParentAnnotationTrueValue  = "true"
-	ClosedByParentAnnotationFalseValue = "false"
-)
-
 func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
 	klog.V(4).Infof("Begin to sync queue %s.", queue.Name)
 	defer klog.V(4).Infof("End sync queue %s.", queue.Name)
@@ -138,7 +132,7 @@ func (c *queuecontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateF
 		}
 	}
 
-	_, err := c.updateQueueAnnotation(queue, ClosedByParentAnnotationKey, ClosedByParentAnnotationFalseValue)
+	_, err := c.updateQueueAnnotation(queue, schedulingv1beta1.QueueClosedByParentAnnotationKey, schedulingv1beta1.QueueClosedByParentAnnotationFalseValue)
 	return err
 }
 
@@ -188,7 +182,7 @@ func (c *queuecontroller) syncHierarchicalQueue(queue *schedulingv1beta1.Queue) 
 	case schedulingv1beta1.QueueStateClosed, schedulingv1beta1.QueueStateClosing:
 		// consider the case where the open queue is updated and the parent queue is in the closed/closing state.
 		if queue.Status.State != schedulingv1beta1.QueueStateClosed && queue.Status.State != schedulingv1beta1.QueueStateClosing {
-			_, err = c.updateQueueAnnotation(queue, ClosedByParentAnnotationKey, ClosedByParentAnnotationTrueValue)
+			_, err = c.updateQueueAnnotation(queue, schedulingv1beta1.QueueClosedByParentAnnotationKey, schedulingv1beta1.QueueClosedByParentAnnotationTrueValue)
 			if err != nil {
 				klog.Errorf("Failed to patch annotation of Queue %s: %v.", queue.Name, err)
 				return err
@@ -205,7 +199,7 @@ func (c *queuecontroller) syncHierarchicalQueue(queue *schedulingv1beta1.Queue) 
 	case schedulingv1beta1.QueueStateOpen:
 		if queue.Status.State == schedulingv1beta1.QueueStateClosed || queue.Status.State == schedulingv1beta1.QueueStateClosing {
 			// consider the scenario where the parent queue of a queue, which has transitioned to a closed or closing state due to the closure of its parent queue, is updated, and the state of the updated parent queue is open.
-			if queue.Annotations[ClosedByParentAnnotationKey] == ClosedByParentAnnotationTrueValue {
+			if queue.Annotations[schedulingv1beta1.QueueClosedByParentAnnotationKey] == schedulingv1beta1.QueueClosedByParentAnnotationTrueValue {
 				req := &apis.Request{
 					QueueName: queue.Name,
 					Action:    busv1alpha1.OpenQueueAction,
@@ -238,7 +232,7 @@ func (c *queuecontroller) openHierarchicalQueue(queue *schedulingv1beta1.Queue) 
 	}
 
 	for _, childQueue := range queueList {
-		if childQueue.Spec.Parent == queue.Name && len(childQueue.Annotations) > 0 && childQueue.Annotations[ClosedByParentAnnotationKey] == ClosedByParentAnnotationTrueValue {
+		if childQueue.Spec.Parent == queue.Name && len(childQueue.Annotations) > 0 && childQueue.Annotations[schedulingv1beta1.QueueClosedByParentAnnotationKey] == schedulingv1beta1.QueueClosedByParentAnnotationTrueValue {
 			req := &apis.Request{
 				QueueName: childQueue.Name,
 				Action:    busv1alpha1.OpenQueueAction,
@@ -267,7 +261,7 @@ func (c *queuecontroller) closeHierarchicalQueue(queue *schedulingv1beta1.Queue)
 			continue
 		}
 		if childQueue.Status.State != schedulingv1beta1.QueueStateClosed && childQueue.Status.State != schedulingv1beta1.QueueStateClosing {
-			_, err = c.updateQueueAnnotation(childQueue, ClosedByParentAnnotationKey, ClosedByParentAnnotationTrueValue)
+			_, err = c.updateQueueAnnotation(childQueue, schedulingv1beta1.QueueClosedByParentAnnotationKey, schedulingv1beta1.QueueClosedByParentAnnotationTrueValue)
 			if err != nil {
 				return false, fmt.Errorf("Failed to update annotations of queue %s: %v", childQueue.Name, err)
 			}

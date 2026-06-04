@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
@@ -44,10 +45,10 @@ import (
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
 
-const (
-	closedByParentAnnotationKey       = "volcano.sh/closed-by-parent"
-	closedByParentAnnotationTrueValue = "true"
-)
+func isClosedByParentCascade(queue *schedulingv1beta1.Queue) bool {
+	return queue.Annotations != nil &&
+		queue.Annotations[schedulingv1beta1.QueueClosedByParentAnnotationKey] == schedulingv1beta1.QueueClosedByParentAnnotationTrueValue
+}
 
 func init() {
 	router.RegisterAdmission(service)
@@ -376,10 +377,6 @@ func validateHierarchicalQueueStateTransition(queue, oldQueue *schedulingv1beta1
 	return nil
 }
 
-func isClosedByParentCascade(queue *schedulingv1beta1.Queue) bool {
-	return queue.Annotations != nil && queue.Annotations[closedByParentAnnotationKey] == closedByParentAnnotationTrueValue
-}
-
 func cascadeCloseDescendants(parent *schedulingv1beta1.Queue) error {
 	if config.VolcanoClient == nil {
 		return fmt.Errorf("volcano client is not configured")
@@ -398,16 +395,30 @@ func cascadeCloseDescendants(parent *schedulingv1beta1.Queue) error {
 		return depths[descendants[i].Name] > depths[descendants[j].Name]
 	})
 
+	var (
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		firstErr error
+	)
 	for _, descendant := range descendants {
 		if isQueueClosedOrClosing(descendant.Status.State) {
 			continue
 		}
-		if err := closeQueueByAdmission(descendant.Name); err != nil {
-			return fmt.Errorf("failed to cascade close queue %s: %v", descendant.Name, err)
-		}
+		wg.Add(1)
+		go func(queueName string) {
+			defer wg.Done()
+			if err := closeQueueByAdmission(queueName); err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = fmt.Errorf("failed to cascade close queue %s: %v", queueName, err)
+				}
+				mu.Unlock()
+			}
+		}(descendant.Name)
 	}
+	wg.Wait()
 
-	return nil
+	return firstErr
 }
 
 func collectDescendants(parentName string) ([]*schedulingv1beta1.Queue, error) {
@@ -461,7 +472,7 @@ func closeQueueByAdmission(queueName string) error {
 		if queue.Annotations == nil {
 			queue.Annotations = make(map[string]string)
 		}
-		queue.Annotations[closedByParentAnnotationKey] = closedByParentAnnotationTrueValue
+		queue.Annotations[schedulingv1beta1.QueueClosedByParentAnnotationKey] = schedulingv1beta1.QueueClosedByParentAnnotationTrueValue
 		queue, err = config.VolcanoClient.SchedulingV1beta1().Queues().Update(context.TODO(), queue, metav1.UpdateOptions{})
 		if err != nil {
 			return err

@@ -114,13 +114,11 @@ func DeleteQueue(ctx *TestContext, q string) {
 	deleteQueueObject(ctx, q)
 }
 
-// deleteQueues deletes all queues in ctx.Queues. For hierarchical queues it closes from
-// the topmost parent first, waits for the controller cascade to close children, then
-// deletes deepest-first so callers do not need to hand-order ctx.Queues.
+// deleteQueues deletes all queues in ctx.Queues. For hierarchical queues it closes
+// top-level parents first, waits until every queue is Closed, then deletes
+// deepest-first so callers do not need to hand-order ctx.Queues.
 func deleteQueues(ctx *TestContext) {
-	for _, q := range ctx.Queues {
-		deleteJobsInQueue(ctx, q)
-	}
+	deleteJobsInQueues(ctx, ctx.Queues)
 
 	for _, q := range topLevelQueues(ctx) {
 		closeQueueStatus(ctx, q)
@@ -143,7 +141,16 @@ func deleteQueues(ctx *TestContext) {
 }
 
 func deleteJobsInQueue(ctx *TestContext, q string) {
+	deleteJobsInQueues(ctx, []string{q})
+}
+
+func deleteJobsInQueues(ctx *TestContext, queues []string) {
 	foreground := metav1.DeletePropagationForeground
+
+	queueSet := make(map[string]struct{}, len(queues))
+	for _, q := range queues {
+		queueSet[q] = struct{}{}
+	}
 
 	jobs, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
@@ -151,24 +158,25 @@ func deleteJobsInQueue(ctx *TestContext, q string) {
 	}
 
 	for _, job := range jobs.Items {
-		if job.Spec.Queue == q {
-			err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{
-				PropagationPolicy: &foreground,
-			})
-			Expect(err).NotTo(HaveOccurred(), "failed to delete vcjob %s in queue %s", job.Name, q)
-
-			delErr := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
-				_, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
-				if errors.IsNotFound(err) {
-					return true, nil
-				}
-				if err != nil {
-					return false, err
-				}
-				return false, nil
-			})
-			Expect(delErr).NotTo(HaveOccurred(), "failed waiting vcjob %s deleted", job.Name)
+		if _, ok := queueSet[job.Spec.Queue]; !ok {
+			continue
 		}
+		err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{
+			PropagationPolicy: &foreground,
+		})
+		Expect(err).NotTo(HaveOccurred(), "failed to delete vcjob %s in queue %s", job.Name, job.Spec.Queue)
+
+		delErr := wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
+			_, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(pollCtx, job.Name, metav1.GetOptions{})
+			if errors.IsNotFound(err) {
+				return true, nil
+			}
+			if err != nil {
+				return false, err
+			}
+			return false, nil
+		})
+		Expect(delErr).NotTo(HaveOccurred(), "failed waiting vcjob %s deleted", job.Name)
 	}
 }
 

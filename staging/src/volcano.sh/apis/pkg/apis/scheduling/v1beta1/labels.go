@@ -51,6 +51,15 @@ const QueueNameAnnotationKey = GroupName + "/queue-name"
 // gate management and the name of the scheduling gate that controls queue admission.
 const QueueAllocationGateKey = GroupName + "/queue-allocation-gate"
 
+// QueueClosedByParentAnnotationKey marks that a queue was closed due to parent closure.
+const QueueClosedByParentAnnotationKey = "volcano.sh/closed-by-parent"
+
+// QueueClosedByParentAnnotationTrueValue is set on QueueClosedByParentAnnotationKey when closed by parent.
+const QueueClosedByParentAnnotationTrueValue = "true"
+
+// QueueClosedByParentAnnotationFalseValue is set on QueueClosedByParentAnnotationKey when reopened.
+const QueueClosedByParentAnnotationFalseValue = "false"
+
 // PodPreemptable is the key of preemptable
 const PodPreemptable = "volcano.sh/preemptable"
 
