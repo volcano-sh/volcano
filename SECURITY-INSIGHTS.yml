@@ -1,0 +1,76 @@
+header:
+  expiration-date: '2027-06-03T00:00:00.000Z'
+  project-url: 'https://github.com/volcano-sh/volcano'
+  schema-version: '1.0.0'
+  last-updated: '2026-06-03'
+  last-reviewed: '2026-06-03'
+  changelog: 'https://github.com/volcano-sh/volcano/blob/master/CHANGELOG.md'
+  license: 'https://github.com/volcano-sh/volcano/blob/master/LICENSE'
+
+project-lifecycle:
+  status: 'active'
+  bug-fixes-only: false
+  core-maintainers:
+    - 'https://github.com/volcano-sh/community/blob/master/MAINTAINERS.md'
+  roadmap: 'https://github.com/volcano-sh/community/blob/master/roadmap.md'
+  release-process: 'https://github.com/volcano-sh/community/blob/master/version-release.md'
+
+contribution-policy:
+  accepts-pull-requests: true
+  accepts-automated-pull-requests: true
+  automated-tools-list:
+    - automated-tool: 'dependabot'
+      action: 'allowed'
+      path:
+        - /
+  contributing-policy: 'https://github.com/volcano-sh/community/blob/master/contribute.md'
+  code-of-conduct: 'https://github.com/volcano-sh/community/blob/master/CODE_OF_CONDUCT.md'
+
+documentation:
+  - 'https://volcano.sh/'
+
+distribution-points:
+  - 'https://github.com/volcano-sh/volcano/releases'
+  - 'https://hub.docker.com/u/volcanosh'
+  - 'https://github.com/volcano-sh/helm-charts'
+
+security-testing:
+  - tool-type: 'sca'
+    tool-name: 'Dependabot'
+    tool-version: '2'
+    integration:
+      ad-hoc: false
+      ci: false
+      before-release: false
+    tool-rulesets:
+      - 'https://github.com/volcano-sh/volcano/blob/master/.github/dependabot.yml'
+    tool-url: 'https://github.com/dependabot'
+  - tool-type: 'sca'
+    tool-name: 'OpenSSF Scorecard'
+    integration:
+      ad-hoc: false
+      ci: true
+      before-release: false
+    tool-rulesets:
+      - 'https://github.com/volcano-sh/volcano/blob/master/.github/workflows/scorecards.yml'
+    tool-url: 'https://github.com/ossf/scorecard'
+
+security-contacts:
+  - type: 'email'
+    value: 'volcano-security@googlegroups.com'
+
+vulnerability-reporting:
+  accepts-vulnerability-reports: true
+  email-contact: 'volcano-security@googlegroups.com'
+  security-policy: 'https://github.com/volcano-sh/community/blob/master/SECURITY.md'
+
+dependencies:
+  dependencies-lists:
+    - 'https://github.com/volcano-sh/volcano/blob/master/go.mod'
+    - 'https://github.com/volcano-sh/volcano/blob/master/go.sum'
+    - 'https://github.com/volcano-sh/volcano/blob/master/staging/src/volcano.sh/apis/go.mod'
+    - 'https://github.com/volcano-sh/volcano/blob/master/staging/src/volcano.sh/apis/go.sum'
+  third-party-packages: true
+  sbom:
+    - sbom-file: 'https://github.com/volcano-sh/volcano/releases'
+      sbom-format: 'SPDX'
