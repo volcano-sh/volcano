@@ -127,9 +127,9 @@ func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource
 				inqueue.ScalarResources = make(map[v1.ResourceName]float64)
 			}
 			if allocatedMount, ok := allocated.ScalarResources[rName]; !ok {
-				inqueue.ScalarResources[rName] = float64(rQuantity.Value())
+				inqueue.ScalarResources[rName] = float64(rQuantity.MilliValue())
 			} else {
-				reservedScalarRes := float64(rQuantity.Value()) - allocatedMount
+				reservedScalarRes := float64(rQuantity.MilliValue()) - allocatedMount
 				if reservedScalarRes > 0 {
 					inqueue.ScalarResources[rName] = reservedScalarRes
 				}
