@@ -13,7 +13,8 @@
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/3012/badge)](https://bestpractices.coreinfrastructure.org/projects/3012)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/volcano-sh/volcano/badge)](https://scorecard.dev/viewer/?uri=github.com/volcano-sh/volcano)
 [![Gurubase](https://img.shields.io/badge/Gurubase-Ask%20Volcano%20Guru-006BFF)](https://gurubase.io/g/volcano)
-
+[![Contributing](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](contributing.md)
+[![Code of Conduct](https://img.shields.io/badge/Code%20of%20Conduct-v2.1-silver.svg)](code_of_conduct.md)
 
 
 [Volcano](https://volcano.sh/) is a Kubernetes-native batch scheduling system, extending and enhancing the capabilities of the standard kube-scheduler. It provides a comprehensive set of features specifically designed to manage and optimize various batch and elastic workloads, including Artificial Intelligence (AI) / machine learning (ML) / deep learning (DL), bioinformatics / genomics, and other "Big Data" applications.
