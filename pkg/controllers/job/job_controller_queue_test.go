@@ -237,6 +237,7 @@ func TestAddDelayActionForJob_ReplayRequestWithMaterializedAction(t *testing.T) 
 	select {
 	case replayedKey := <-replayedKeyCh:
 		controller.queue.Done(replayedKey)
+		controller.queue.Forget(replayedKey)
 		if replayedKey != key {
 			t.Fatalf("expected replayed key %s, got %s", key, replayedKey)
 		}
@@ -298,5 +299,42 @@ func TestProcessNextJob_CreatesStatePerRequest(t *testing.T) {
 	}
 	if newStateCount != 2 {
 		t.Fatalf("expected NewState to be called per request, got %d", newStateCount)
+	}
+}
+
+func TestProcessOneRequest_SuccessClearsRetryCounter(t *testing.T) {
+	controller := newController()
+	job := &batch.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "job-a",
+		},
+	}
+	req := apis.Request{
+		Namespace: "default",
+		JobName:   "job-a",
+		PodName:   "pod-a",
+		Action:    bus.RestartJobAction,
+		Event:     bus.PodFailedEvent,
+	}
+	key := "default/job-a"
+
+	if err := controller.cache.Add(job); err != nil {
+		t.Fatalf("failed to add job into cache: %v", err)
+	}
+
+	controller.requestRetryCounter[controller.retryKeyByRequest(key, req, req.Action)] = 1
+
+	patches := gomonkey.ApplyFunc(state.NewState, func(*apis.JobInfo) state.State {
+		return &fakeState{}
+	})
+	defer patches.Reset()
+
+	if err := controller.processOneRequest(req, key); err != nil {
+		t.Fatalf("expected request to succeed, got %v", err)
+	}
+
+	if _, exists := controller.requestRetryCounter[controller.retryKeyByRequest(key, req, req.Action)]; exists {
+		t.Fatalf("expected retry counter to be cleared after successful processing")
 	}
 }
