@@ -90,3 +90,30 @@ jobs:
         run: |
           docker logout
           docker logout ghcr.io
+
+  sbom:
+    if: startsWith(github.ref, 'refs/tags/v')
+    name: Release SBOM
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Generate SBOM
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          format: 'spdx'
+          output: 'sbom-volcano.spdx'
+          scan-ref: "${{ github.workspace }}/"
+
+      - name: Package SBOM
+        run: |
+          tar -zcf sbom.tar.gz *.spdx
+
+      - name: Upload SBOM
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            sbom.tar.gz

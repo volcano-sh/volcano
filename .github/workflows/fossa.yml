@@ -5,6 +5,9 @@ on:
   pull_request:
     branches: [master]
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,15 +17,14 @@ jobs:
         with:
           go-version: 1.25.x
       - run: go version
-      # Runs a set of commands to initialize and analyze with FOSSA
       - name: run FOSSA analysis
-        env:
-          # FOSSA Push-Only API Token
-          FOSSA_API_KEY: '1a92b8d8ee4304c0ad85a726b9e9acab'
-          BINDIR: /home/runner/work/volcano/volcano
-        run: |
-          export GOPATH=$HOME/go
-          export PATH=$PATH:$(go env GOPATH)/bin
-          curl -H 'Cache-Control: no-cache' https://raw.githubusercontent.com/fossas/fossa-cli/master/install.sh | bash -s -- -b /home/runner/work/volcano/volcano 
-          /home/runner/work/volcano/volcano/fossa init
-          /home/runner/work/volcano/volcano/fossa analyze
+        uses: fossas/fossa-action@v1.9.0
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
+
+      - name: run FOSSA policy test
+        uses: fossas/fossa-action@v1.9.0
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
+          run-tests: true
+          test-diff-revision: ${{ github.event.pull_request.base.sha }}
