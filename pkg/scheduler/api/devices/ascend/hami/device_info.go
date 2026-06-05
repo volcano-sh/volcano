@@ -180,6 +180,9 @@ func (ads *AscendDevices) SubResource(pod *v1.Pod) {
 			klog.Warningf("ascend device %s not found", cono_dev.UUID)
 			continue
 		}
+		if dev.PodMap == nil {
+			dev.PodMap = make(map[string]*devices.DeviceUsage)
+		}
 		if _, ok := dev.PodMap[string(pod.UID)]; ok {
 			delete(dev.PodMap, string(pod.UID))
 			ads.subResourceUsage(dev, cono_dev.Usedcores, cono_dev.Usedmem)
@@ -204,6 +207,9 @@ func (ads *AscendDevices) addResource(annotations map[string]string, pod *v1.Pod
 		if !ok {
 			klog.Warningf("ascend device %s not found", cono_dev.UUID)
 			continue
+		}
+		if dev.PodMap == nil {
+			dev.PodMap = make(map[string]*devices.DeviceUsage)
 		}
 		if _, ok := dev.PodMap[string(pod.UID)]; !ok {
 			dev.PodMap[string(pod.UID)] = &devices.DeviceUsage{
