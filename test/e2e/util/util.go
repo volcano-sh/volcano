@@ -219,16 +219,6 @@ func FileExist(name string) bool {
 func CleanupTestContext(ctx *TestContext) {
 	By("Cleaning up test context")
 
-	// Clean up hypernodes first
-	err := CleanupHyperNodes(ctx)
-	Expect(err).NotTo(HaveOccurred(), "failed to clean up hypernodes")
-
-	foreground := metav1.DeletePropagationForeground
-	err = ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(), ctx.Namespace, metav1.DeleteOptions{
-		PropagationPolicy: &foreground,
-	})
-	Expect(err).NotTo(HaveOccurred(), "failed to delete namespace")
-
 	deleteQueues(ctx)
 	deletePriorityClasses(ctx)
 
@@ -236,9 +226,18 @@ func CleanupTestContext(ctx *TestContext) {
 		deletePlaceHolder(ctx)
 	}
 
+	foreground := metav1.DeletePropagationForeground
+	err := ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(), ctx.Namespace, metav1.DeleteOptions{
+		PropagationPolicy: &foreground,
+	})
+	Expect(err).NotTo(HaveOccurred(), "failed to delete namespace")
+
 	// Wait for namespace deleted.
 	err = wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, FiveMinute, false, NamespaceNotExist(ctx))
 	Expect(err).NotTo(HaveOccurred(), "failed to wait for namespace deleted")
+
+	err = CleanupHyperNodes(ctx)
+	Expect(err).NotTo(HaveOccurred(), "failed to clean up hypernodes")
 }
 
 func createPriorityClasses(cxt *TestContext) {
