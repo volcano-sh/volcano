@@ -277,3 +277,85 @@ func TestParseDeviceConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestParseVNPUsNewWrapperFormat(t *testing.T) {
+	yamlStr := `
+vnpus:
+  hamiVnpuCore: false
+  configs:
+  - chipName: 910A
+    commonWord: Ascend910A
+    resourceName: huawei.com/Ascend910A
+    resourceMemoryName: huawei.com/Ascend910A-memory
+    memoryAllocatable: 32768
+    memoryCapacity: 32768
+    aiCore: 30
+    templates:
+      - name: vir02
+        memory: 2184
+        aiCore: 2
+`
+	var config Config
+	err := yaml.Unmarshal([]byte(yamlStr), &config)
+	assert.Nil(t, err)
+	assert.Equal(t, false, config.VNPUs.HamiVnpuCore)
+	assert.Equal(t, 1, len(config.VNPUs.Configs))
+	assert.Equal(t, "910A", config.VNPUs.Configs[0].ChipName)
+	assert.Equal(t, "Ascend910A", config.VNPUs.Configs[0].CommonWord)
+	assert.Equal(t, int64(32768), config.VNPUs.Configs[0].MemoryAllocatable)
+	assert.Equal(t, 1, len(config.VNPUs.Configs[0].Templates))
+	assert.Equal(t, "vir02", config.VNPUs.Configs[0].Templates[0].Name)
+}
+
+func TestParseVNPUsLegacyArrayFormat(t *testing.T) {
+	yamlStr := `
+vnpus:
+- chipName: 910A
+  commonWord: Ascend910A
+  resourceName: huawei.com/Ascend910A
+  resourceMemoryName: huawei.com/Ascend910A-memory
+  memoryAllocatable: 32768
+  memoryCapacity: 32768
+  aiCore: 30
+  templates:
+    - name: vir02
+      memory: 2184
+      aiCore: 2
+- chipName: 310P3
+  commonWord: Ascend310P
+  resourceName: huawei.com/Ascend310P
+  resourceMemoryName: huawei.com/Ascend310P-memory
+  memoryAllocatable: 21527
+  memoryCapacity: 24576
+  aiCore: 8
+  aiCPU: 7
+  templates:
+    - name: vir01
+      memory: 3072
+      aiCore: 1
+      aiCPU: 1
+`
+	var config Config
+	err := yaml.Unmarshal([]byte(yamlStr), &config)
+	assert.Nil(t, err)
+	assert.Equal(t, false, config.VNPUs.HamiVnpuCore)
+	assert.Equal(t, 2, len(config.VNPUs.Configs))
+	assert.Equal(t, "910A", config.VNPUs.Configs[0].ChipName)
+	assert.Equal(t, "Ascend910A", config.VNPUs.Configs[0].CommonWord)
+	assert.Equal(t, "310P3", config.VNPUs.Configs[1].ChipName)
+	assert.Equal(t, "Ascend310P", config.VNPUs.Configs[1].CommonWord)
+	assert.Equal(t, int64(21527), config.VNPUs.Configs[1].MemoryAllocatable)
+}
+
+func TestParseVNPUsWrapperWithEmptyConfigs(t *testing.T) {
+	yamlStr := `
+vnpus:
+  hamiVnpuCore: true
+  configs: []
+`
+	var config Config
+	err := yaml.Unmarshal([]byte(yamlStr), &config)
+	assert.Nil(t, err)
+	assert.Equal(t, true, config.VNPUs.HamiVnpuCore)
+	assert.Equal(t, 0, len(config.VNPUs.Configs))
+}

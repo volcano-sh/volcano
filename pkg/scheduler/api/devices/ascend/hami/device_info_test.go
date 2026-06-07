@@ -194,7 +194,7 @@ func Test_trimMemory(t *testing.T) {
 	conf, err := yamlStringToConfig(config_yaml)
 	assert.Nil(t, err)
 	dev := AscendDevice{
-		config: conf.VNPUs[len(conf.VNPUs)-1],
+		config: conf.VNPUs.Configs[len(conf.VNPUs.Configs)-1],
 	}
 	tests := []struct {
 		name     string
@@ -229,7 +229,7 @@ func Test_trimMemory(t *testing.T) {
 func Test_fit(t *testing.T) {
 	conf, err := yamlStringToConfig(config_yaml)
 	assert.Nil(t, err)
-	ascend310PConfig := conf.VNPUs[len(conf.VNPUs)-1]
+	ascend310PConfig := conf.VNPUs.Configs[len(conf.VNPUs.Configs)-1]
 	device_info := &devices.DeviceInfo{
 		ID:      "68496E64-20E05477-92C31323-6E78030A-BD003019",
 		Index:   0,
@@ -343,7 +343,7 @@ func Test_verifyReq(t *testing.T) {
 	conf, err := yamlStringToConfig(config_yaml)
 	assert.Nil(t, err)
 	dev := AscendDevice{
-		config: conf.VNPUs[len(conf.VNPUs)-1],
+		config: conf.VNPUs.Configs[len(conf.VNPUs.Configs)-1],
 	}
 	tests := []struct {
 		name string
