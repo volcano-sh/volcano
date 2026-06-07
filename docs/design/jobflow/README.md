@@ -134,7 +134,10 @@ The specification of cloud-native services defines service metadata, version lis
 | ----------------- | ------------------------------------ | -------- | ------------- | ------------------------------------------------------------ |
 | `name`       | `string` | Y        |               | JobTemplate name |
 | `dependsOn` | [`DependsOn`](#DependsOn)                             | Y        |               | JobTemplate dependencies |
+| `maxRetry` | `int`                          | N        | 1 | JobFlow maxRetry retry count.|
 | `patch` | [`Patch`](#Patch)                             | N        |               | Patch JobTemplate |
+
+* If `flows[0].MaxRetry` is defined, use this maxRetry count for JobFlowTemplate.
 
 <a id="DependsOn"></a>
 
@@ -264,9 +267,10 @@ metadata:
   name: test
   namespace: default
 spec:
-  jobRetainPolicy: delete  
+  jobRetainPolicy: delete
   flows:
   - name: a
+    maxRetry: 3
     patch: 
       spec:
         tasks:
@@ -383,6 +387,5 @@ https://www.bilibili.com/video/BV1c44y1Y7FX
 * `if` statements
 * `switch` statements
 * `for` statements
-* Support job failure retry in JobFlow
 * Integration with volcano-scheduler
 * Support for scheduling plugins at JobFlow level
