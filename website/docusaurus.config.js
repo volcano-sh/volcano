@@ -47,9 +47,7 @@ const config = {
         docs: {
           sidebarPath: './sidebars.js',
           // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/',
+          editUrl: 'https://github.com/volcano-sh/volcano/tree/master/website/',
         },
         blog: false,
         theme: {
@@ -94,8 +92,16 @@ const config = {
             title: 'Docs',
             items: [
               {
-                label: 'Introduction',
-                to: '/docs/intro',
+                label: 'Getting Started',
+                to: '/docs/getting-started',
+              },
+              {
+                label: 'User Guide',
+                to: '/docs/user-guide',
+              },
+              {
+                label: 'Design',
+                to: '/docs/design',
               },
             ],
           },
@@ -106,15 +112,6 @@ const config = {
                 label: 'Slack',
                 href: 'https://volcano-sh.slack.com',
               },
-              {
-                label: 'GitHub Discussions',
-                href: 'https://github.com/volcano-sh/volcano/discussions',
-              },
-            ],
-          },
-          {
-            title: 'More',
-            items: [
               {
                 label: 'GitHub',
                 href: 'https://github.com/volcano-sh/volcano',

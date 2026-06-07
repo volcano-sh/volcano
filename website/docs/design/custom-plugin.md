@@ -112,7 +112,7 @@ docker build -t volcanosh/vc-scheduler:magic-plugins .
 
 Or just use `pvc` to mount these plugins
 
-### 4. Specify deployment
+### 5. Specify deployment
 ```yaml
 ...
     containers:
@@ -128,7 +128,7 @@ Or just use `pvc` to mount these plugins
        - 2>&1
 ```
 
-### 5. Update volcano-scheduler-configmap
+### 6. Update volcano-scheduler-configmap
 
 Add your custom plugin name in configmap
 

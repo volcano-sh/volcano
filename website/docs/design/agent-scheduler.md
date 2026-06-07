@@ -126,7 +126,7 @@ spec:
   - node1
   - node2
   - node3
-status
+status:
   lastUpdateTime: "2025-12-08T06:00:00Z"
   nodesInUse: #Node being used by scheduler.
   - node0
@@ -146,7 +146,7 @@ spec:
   - node0
   - node4
   - node5
-status
+status:
   lastUpdateTime: "2025-12-08T06:00:00Z"
   nodesInUse: #Node being used by scheduler.
   - node4

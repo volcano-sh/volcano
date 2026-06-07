@@ -469,7 +469,7 @@ func (mp *mpiPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	volume := mp.hostfileVolume(job)
 	mount := mp.hostfileVolumeMount(job)
 	// add to pod and containers
-	pod.Spec.Volumes = append(pod.Spec.Volumes, vm)
+	pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
 	for i := range pod.Spec.Containers {
 		pod.Spec.Containers[i].VolumeMounts = append(pod.Spec.Containers[i].VolumeMounts, mount)
 		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{

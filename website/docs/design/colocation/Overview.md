@@ -63,9 +63,7 @@ This example will demonstrate how to use CPU burst and what benefit it can bring
 
 #### Enable cpu burst by set pod annotation
 
-Run a nginx deployment with cluster ip service exposed, pod with annotations `volcano.sh/enable-quota-burst: "true"` indicates pod cpu
-
-burst is enabled.
+Run a nginx deployment with cluster ip service exposed, pod with annotations `volcano.sh/enable-quota-burst: "true"` indicates pod cpu burst is enabled.
 
 ```yaml
 apiVersion: apps/v1

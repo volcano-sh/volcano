@@ -33,7 +33,7 @@ All above steps are run in `syncJob`, which is called when external events happe
 ### Volcano Job Scale Up/Down
 
 The Job's scale up and down correlates to reconciling of the resources the job owns, like PVC/PodGroup/Service/HostFile ConfigMap
-so the procedure is kind of similar to the [Job Initialization](#Job Initialization).
+so the procedure is kind of similar to the [Job Initialization](#job-initialization).
 
 The differences are:
 

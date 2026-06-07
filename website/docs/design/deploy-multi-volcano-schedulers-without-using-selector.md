@@ -8,7 +8,7 @@ Currently the single scheduler can not satisfy the high throughput requirement i
 Previously we use label to divide the cluster nodes to multiple sections and each volcano scheduler is responsible for one section and then specify the schedulerName in the Pod Spec and submit it. It is inconvenient in some conditions especially for large clusters. This doc provides a another option for user to deploy multiple scheduler which needs less modification for workload and nodes.
 A statefulset is used to deploy the volcano scheduler. The Job and Node are assigned to scheduler automatically based on the hash algorithm. 
 
-！[multi-scheduler-deployment](images/multi-volcano-schedulers-without-using-selector.png) 
+![multi-scheduler-deployment](images/multi-volcano-schedulers-without-using-selector.png) 
 
 ## How to deployment
 
