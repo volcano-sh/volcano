@@ -626,6 +626,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 func (sc *SchedulerCache) addEventHandler() {
 	handlers := make(map[string]cache.ResourceEventHandlerRegistration, 10)
 	var handlerRegistration cache.ResourceEventHandlerRegistration
+	var err error
 	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, sc.resyncPeriod)
 	sc.informerFactory = informerFactory
 
@@ -648,7 +649,7 @@ func (sc *SchedulerCache) addEventHandler() {
 
 	// create informer for node information
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
-	handlerRegistration, _ = sc.nodeInformer.Informer().AddEventHandler(
+	handlerRegistration, err = sc.nodeInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
@@ -673,6 +674,9 @@ func (sc *SchedulerCache) addEventHandler() {
 			},
 		},
 	)
+	if err != nil {
+		klog.Fatalf("Failed to add event handler for node informer: %v", err)
+	}
 	//real node sync is handled in queue instead of event handler, use tracker to track the handling status in node queue
 	sc.nodeInitialEventTracker = schedulercache.NewQueueHandlerTracker(handlerRegistration)
 	handlers["node"] = sc.nodeInitialEventTracker
@@ -686,13 +690,16 @@ func (sc *SchedulerCache) addEventHandler() {
 	sc.vaInformer = informerFactory.Storage().V1().VolumeAttachments()
 	sc.vaInformer.Informer()
 	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
-	handlerRegistration, _ = sc.csiNodeInformer.Informer().AddEventHandler(
+	handlerRegistration, err = sc.csiNodeInformer.Informer().AddEventHandler(
 		cache.ResourceEventHandlerDetailedFuncs{
 			AddFunc:    sc.AddOrUpdateCSINode,
 			UpdateFunc: sc.UpdateCSINode,
 			DeleteFunc: sc.DeleteCSINode,
 		},
 	)
+	if err != nil {
+		klog.Fatalf("Failed to add event handler for csiNode informer: %v", err)
+	}
 	handlers["csiNode"] = handlerRegistration
 
 	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
@@ -704,7 +711,7 @@ func (sc *SchedulerCache) addEventHandler() {
 
 	sc.podInformer = informerFactory.Core().V1().Pods()
 	// create informer for pod information
-	handlerRegistration, _ = sc.podInformer.Informer().AddEventHandler(
+	handlerRegistration, err = sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
@@ -735,25 +742,34 @@ func (sc *SchedulerCache) addEventHandler() {
 				DeleteFunc: sc.DeletePod,
 			},
 		})
+	if err != nil {
+		klog.Fatalf("Failed to add event handler for pod informer: %v", err)
+	}
 
 	handlers["pod"] = handlerRegistration
 
 	if options.ServerOpts != nil && options.ServerOpts.EnablePriorityClass && utilfeature.DefaultFeatureGate.Enabled(features.PriorityClass) {
 		sc.pcInformer = informerFactory.Scheduling().V1().PriorityClasses()
-		handlerRegistration, _ = sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		handlerRegistration, err = sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddPriorityClass,
 			UpdateFunc: sc.UpdatePriorityClass,
 			DeleteFunc: sc.DeletePriorityClass,
 		})
+		if err != nil {
+			klog.Fatalf("Failed to add event handler for priorityClass informer: %v", err)
+		}
 		handlers["pc"] = handlerRegistration
 	}
 
 	sc.quotaInformer = informerFactory.Core().V1().ResourceQuotas()
-	handlerRegistration, _ = sc.quotaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	handlerRegistration, err = sc.quotaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddResourceQuota,
 		UpdateFunc: sc.UpdateResourceQuota,
 		DeleteFunc: sc.DeleteResourceQuota,
 	})
+	if err != nil {
+		klog.Fatalf("Failed to add event handler for quota informer: %v", err)
+	}
 	handlers["quota"] = handlerRegistration
 
 	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, sc.resyncPeriod)
@@ -761,7 +777,7 @@ func (sc *SchedulerCache) addEventHandler() {
 
 	// create informer for PodGroup(v1beta1) information
 	sc.podGroupInformerV1beta1 = vcinformers.Scheduling().V1beta1().PodGroups()
-	handlerRegistration, _ = sc.podGroupInformerV1beta1.Informer().AddEventHandler(
+	handlerRegistration, err = sc.podGroupInformerV1beta1.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				var pg *vcv1beta1.PodGroup
@@ -787,44 +803,59 @@ func (sc *SchedulerCache) addEventHandler() {
 				DeleteFunc: sc.DeletePodGroupV1beta1,
 			},
 		})
+	if err != nil {
+		klog.Fatalf("Failed to add event handler for podGroup informer: %v", err)
+	}
 	handlers["podgroup"] = handlerRegistration
 
 	// create informer(v1beta1) for Queue information
 	sc.queueInformerV1beta1 = vcinformers.Scheduling().V1beta1().Queues()
-	handlerRegistration, _ = sc.queueInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	handlerRegistration, err = sc.queueInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddQueueV1beta1,
 		UpdateFunc: sc.UpdateQueueV1beta1,
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
+	if err != nil {
+		klog.Fatalf("Failed to add event handler for queue informer: %v", err)
+	}
 	handlers["queue"] = handlerRegistration
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.ResourceTopology) {
 		sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()
-		handlerRegistration, _ = sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		handlerRegistration, err = sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddNumaInfoV1alpha1,
 			UpdateFunc: sc.UpdateNumaInfoV1alpha1,
 			DeleteFunc: sc.DeleteNumaInfoV1alpha1,
 		})
+		if err != nil {
+			klog.Fatalf("Failed to add event handler for numaTopology informer: %v", err)
+		}
 		handlers["cpu"] = handlerRegistration
 	}
 
 	sc.hyperNodeInformer = sc.vcInformerFactory.Topology().V1alpha1().HyperNodes()
-	handlerRegistration, _ = sc.hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerDetailedFuncs{
+	handlerRegistration, err = sc.hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerDetailedFuncs{
 		AddFunc:    sc.AddHyperNode,
 		UpdateFunc: sc.UpdateHyperNode,
 		DeleteFunc: sc.DeleteHyperNode,
 	})
+	if err != nil {
+		klog.Fatalf("Failed to add event handler for hyperNode informer: %v", err)
+	}
 	//real hypernode sync is handled in queue instead of event handler, use tracker to track the handling status in hypenode queue
 	sc.hyperNodesInitialEventTracker = schedulercache.NewQueueHandlerTracker(handlerRegistration)
 	handlers["hypernode"] = sc.hyperNodesInitialEventTracker
 
 	if options.ServerOpts.ShardingMode == util.HardShardingMode || options.ServerOpts.ShardingMode == util.SoftShardingMode {
 		sc.nodeShardInformer = sc.vcInformerFactory.Shard().V1alpha1().NodeShards()
-		handlerRegistration, _ = sc.nodeShardInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		handlerRegistration, err = sc.nodeShardInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddNodeShard,
 			UpdateFunc: sc.UpdateNodeShard,
 			DeleteFunc: sc.DeleteNodeShard,
 		})
+		if err != nil {
+			klog.Fatalf("Failed to add event handler for nodeShard informer: %v", err)
+		}
 		handlers["nodeShard"] = handlerRegistration
 	}
 
