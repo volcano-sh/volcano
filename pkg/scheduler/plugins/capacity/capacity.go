@@ -1636,16 +1636,15 @@ func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidat
 			}
 		}
 	}
-	// Calculate total reserved resources directly from cache
+	// Calculate total reserved resources from cache. Reserved tasks are recorded
+	// under their leaf queue, but capacity is checked per queue across the whole
+	// ancestor chain (see checkQueueAllocatableHierarchically). When this queue is
+	// a non-leaf ancestor, its own bucket is empty, so we must also include the
+	// reserved tasks of every descendant queue; otherwise gate-admitted-but-not-yet
+	// -allocated tasks from sibling leaves are invisible to the ancestor's check and
+	// the subtree can be admitted past the ancestor's realCapability (quota bypass).
 	reserved := api.EmptyResource()
-	if queueGateReserved := cp.queueGateReservedTasks[queue.UID]; queueGateReserved != nil {
-		for _, task := range queueGateReserved {
-			if task.UID != candidate.UID {
-				// Skip candidate to avoid double-counting (it will be added in futureUsed below)
-				reserved.Add(task.Resreq)
-			}
-		}
-	}
+	cp.addReservedForSubtree(attr, candidate, reserved)
 
 	// Include reserved resources in capacity check
 	futureUsed := attr.allocated.Clone().Add(reserved).Add(candidate.Resreq)
@@ -1657,6 +1656,27 @@ func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidat
 	}
 
 	return allocatable
+}
+
+// addReservedForSubtree accumulates into reserved the Resreq of every gate-reserved
+// task recorded for attr's queue and all of its descendant queues, excluding the
+// candidate itself (it is accounted for separately in futureUsed). Reserved tasks
+// are stored per leaf queue, so summing over the subtree lets an ancestor's capacity
+// check account for the reserved tasks of all queues beneath it.
+func (cp *capacityPlugin) addReservedForSubtree(attr *queueAttr, candidate *api.TaskInfo, reserved *api.Resource) {
+	if attr == nil {
+		return
+	}
+	if queueGateReserved := cp.queueGateReservedTasks[attr.queueID]; queueGateReserved != nil {
+		for _, task := range queueGateReserved {
+			if task.UID != candidate.UID {
+				reserved.Add(task.Resreq)
+			}
+		}
+	}
+	for _, child := range attr.children {
+		cp.addReservedForSubtree(child, candidate, reserved)
+	}
 }
 
 func (cp *capacityPlugin) checkQueueAllocatableHierarchically(ssn *framework.Session, queue *api.QueueInfo, candidate *api.TaskInfo) bool {

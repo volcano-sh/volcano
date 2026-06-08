@@ -1959,3 +1959,94 @@ func TestDRAAllocatableIgnoresInqueue(t *testing.T) {
 		t.Fatalf("expected enqueueable DRA check to account inqueue resources")
 	}
 }
+
+// TestHierarchicalReservedTasksCountedAtAncestor verifies that gate-reserved tasks
+// recorded under a leaf queue are accounted for when the capacity check evaluates an
+// ancestor queue. Without subtree aggregation, two sibling leaves can each pass their
+// own check and the shared parent check (which sees reserved == 0), letting the subtree
+// be admitted past the parent's realCapability (queue-isolation / quota bypass).
+//
+// Topology: parent P (cpu 100) with leaves L1 and L2 (each cpu 100). L1 already holds a
+// gate-reserved task consuming cpu 80. A new candidate is considered for L2.
+func TestHierarchicalReservedTasksCountedAtAncestor(t *testing.T) {
+	const (
+		parentID api.QueueID = "p"
+		leaf1ID  api.QueueID = "l1"
+		leaf2ID  api.QueueID = "l2"
+	)
+
+	newAttr := func(id api.QueueID, ancestors []api.QueueID) *queueAttr {
+		return &queueAttr{
+			queueID:        id,
+			name:           string(id),
+			ancestors:      ancestors,
+			children:       make(map[api.QueueID]*queueAttr),
+			allocated:      api.EmptyResource(),
+			realCapability: &api.Resource{MilliCPU: 100000}, // cpu 100
+		}
+	}
+
+	parentAttr := newAttr(parentID, nil)
+	leaf1Attr := newAttr(leaf1ID, []api.QueueID{parentID})
+	leaf2Attr := newAttr(leaf2ID, []api.QueueID{parentID})
+	parentAttr.children[leaf1ID] = leaf1Attr
+	parentAttr.children[leaf2ID] = leaf2Attr
+
+	// L1 holds a gate-reserved task consuming cpu 80 (recorded under the leaf only).
+	reservedTask := &api.TaskInfo{
+		UID:    "reserved-on-l1",
+		Name:   "reserved-on-l1",
+		Resreq: &api.Resource{MilliCPU: 80000},
+	}
+
+	cp := &capacityPlugin{
+		queueOpts: map[api.QueueID]*queueAttr{
+			parentID: parentAttr,
+			leaf1ID:  leaf1Attr,
+			leaf2ID:  leaf2Attr,
+		},
+		queueGateReservedTasks: map[api.QueueID]map[api.TaskID]*api.TaskInfo{
+			leaf1ID: {reservedTask.UID: reservedTask},
+		},
+	}
+
+	ssn := &framework.Session{
+		Queues: map[api.QueueID]*api.QueueInfo{
+			parentID: {UID: parentID, Name: string(parentID)},
+			leaf1ID:  {UID: leaf1ID, Name: string(leaf1ID)},
+			leaf2ID:  {UID: leaf2ID, Name: string(leaf2ID)},
+		},
+	}
+
+	// candidate requesting cpu 20: parent sees 80 (reserved) + 20 = 100 <= 100 -> admit.
+	fitting := &api.TaskInfo{UID: "cand-fit", Name: "cand-fit", Resreq: &api.Resource{MilliCPU: 20000}}
+	// candidate requesting cpu 30: parent sees 80 (reserved) + 30 = 110 > 100 -> reject.
+	exceeding := &api.TaskInfo{UID: "cand-exceed", Name: "cand-exceed", Resreq: &api.Resource{MilliCPU: 30000}}
+
+	leaf2Queue := ssn.Queues[leaf2ID]
+	parentQueue := ssn.Queues[parentID]
+
+	// Leaf L2 in isolation has no reserved tasks, so both candidates fit its own quota.
+	// This is the state that previously let the exceeding candidate slip through, since
+	// the parent check ignored L1's reserved tasks.
+	if !cp.queueAllocatable(leaf2Queue, exceeding, false, false) {
+		t.Fatalf("leaf L2 alone should admit the candidate (its own reserved is empty)")
+	}
+
+	// The ancestor must now reject the exceeding candidate because L1's reserved task is
+	// part of the parent's subtree.
+	if cp.queueAllocatable(parentQueue, exceeding, false, false) {
+		t.Fatalf("parent P should reject candidate: 80 (L1 reserved) + 30 > 100 realCapability")
+	}
+	if !cp.queueAllocatable(parentQueue, fitting, false, false) {
+		t.Fatalf("parent P should admit candidate: 80 (L1 reserved) + 20 == 100 realCapability")
+	}
+
+	// Full hierarchical path (leaf + every ancestor), the actual call site in AllocatableFn.
+	if cp.checkQueueAllocatableHierarchically(ssn, leaf2Queue, exceeding) {
+		t.Fatalf("hierarchical check should reject the exceeding candidate due to L1's reserved tasks at parent P")
+	}
+	if !cp.checkQueueAllocatableHierarchically(ssn, leaf2Queue, fitting) {
+		t.Fatalf("hierarchical check should admit the fitting candidate")
+	}
+}
