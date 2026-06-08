@@ -52,11 +52,50 @@ type Resources struct {
 // CalculateExtendResources calculates pod and container that use extend resource level cgroup resource, include cpu and memory
 func CalculateExtendResources(pod *v1.Pod) []Resources {
 	containerRes := []Resources{}
-	cpuSharesTotal, cpuLimitsTotal, memoryLimitsTotal := int64(0), int64(0), int64(0)
+	appCpuSharesTotal, appCpuLimitsTotal, appMemoryLimitsTotal := int64(0), int64(0), int64(0)
+	initCpuSharesMax, initCpuLimitsMax, initMemoryLimitsMax := int64(0), int64(0), int64(0)
 	// track if limits were applied for each resource.
 	cpuLimitsDeclared := true
 	memoryLimitsDeclared := true
-	// TODO: support init containers.
+
+	// process init containers
+	for _, ic := range pod.Spec.InitContainers {
+		id := FindContainerIDByName(pod, ic.Name)
+		// set cpu share.
+		cpuReq, ok := ic.Resources.Requests[apis.GetExtendResourceCPU()]
+		if ok && !cpuReq.IsZero() {
+			cpuShares := int64(milliCPUToShares(cpuReq.Value()))
+			containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, ContainerID: id, SubPath: cgroup.CPUShareFileName, Value: cpuShares})
+			if cpuShares > initCpuSharesMax {
+				initCpuSharesMax = cpuShares
+			}
+		}
+
+		// set cpu quota.
+		cpuLimits, ok := ic.Resources.Limits[apis.GetExtendResourceCPU()]
+		if ok && !cpuLimits.IsZero() {
+			cpuQuota := milliCPUToQuota(cpuLimits.Value(), quotaPeriod)
+			containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, ContainerID: id, SubPath: cgroup.CPUQuotaTotalFile, Value: cpuQuota})
+			if cpuQuota > initCpuLimitsMax {
+				initCpuLimitsMax = cpuQuota
+			}
+		} else {
+			cpuLimitsDeclared = false
+		}
+
+		// set memory limit.
+		memoryLimit, ok := ic.Resources.Limits[apis.GetExtendResourceMemory()]
+		if ok && !memoryLimit.IsZero() {
+			containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, ContainerID: id, SubPath: cgroup.MemoryLimitFile, Value: memoryLimit.Value()})
+			if memoryLimit.Value() > initMemoryLimitsMax {
+				initMemoryLimitsMax = memoryLimit.Value()
+			}
+		} else {
+			memoryLimitsDeclared = false
+		}
+	}
+
+	// process app containers
 	for _, c := range pod.Spec.Containers {
 		id := FindContainerIDByName(pod, c.Name)
 		// set cpu share.
@@ -64,7 +103,7 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 		if ok && !cpuReq.IsZero() {
 			cpuShares := int64(milliCPUToShares(cpuReq.Value()))
 			containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, ContainerID: id, SubPath: cgroup.CPUShareFileName, Value: cpuShares})
-			cpuSharesTotal += cpuShares
+			appCpuSharesTotal += cpuShares
 		}
 
 		// set cpu quota.
@@ -72,7 +111,7 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 		if ok && !cpuLimits.IsZero() {
 			cpuQuota := milliCPUToQuota(cpuLimits.Value(), quotaPeriod)
 			containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, ContainerID: id, SubPath: cgroup.CPUQuotaTotalFile, Value: cpuQuota})
-			cpuLimitsTotal += cpuQuota
+			appCpuLimitsTotal += cpuQuota
 		} else {
 			cpuLimitsDeclared = false
 		}
@@ -81,7 +120,7 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 		memoryLimit, ok := c.Resources.Limits[apis.GetExtendResourceMemory()]
 		if ok && !memoryLimit.IsZero() {
 			containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, ContainerID: id, SubPath: cgroup.MemoryLimitFile, Value: memoryLimit.Value()})
-			memoryLimitsTotal += memoryLimit.Value()
+			appMemoryLimitsTotal += memoryLimit.Value()
 		} else {
 			memoryLimitsDeclared = false
 		}
@@ -92,6 +131,10 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 		return containerRes
 	}
 
+	cpuSharesTotal := appCpuSharesTotal
+	if initCpuSharesMax > cpuSharesTotal {
+		cpuSharesTotal = initCpuSharesMax
+	}
 	if cpuSharesTotal == 0 {
 		// Align with min cpu share value in kubelet.
 		cpuSharesTotal = minShares
@@ -101,10 +144,18 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 
 	// pod level should not set limit when exists one container has no cpu limit.
 	if cpuLimitsDeclared {
+		cpuLimitsTotal := appCpuLimitsTotal
+		if initCpuLimitsMax > cpuLimitsTotal {
+			cpuLimitsTotal = initCpuLimitsMax
+		}
 		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, SubPath: cgroup.CPUQuotaTotalFile, Value: cpuLimitsTotal})
 	}
 	// pod level should not set limit when exists one container has no memory limit.
 	if memoryLimitsDeclared {
+		memoryLimitsTotal := appMemoryLimitsTotal
+		if initMemoryLimitsMax > memoryLimitsTotal {
+			memoryLimitsTotal = initMemoryLimitsMax
+		}
 		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, SubPath: cgroup.MemoryLimitFile, Value: memoryLimitsTotal})
 	}
 	return containerRes
@@ -155,10 +206,115 @@ func milliCPUToShares(milliCPU int64) uint64 {
 
 func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 	containerRes := []Resources{}
-	cpuWeightTotal, cpuMaxTotal, memoryMaxTotal := int64(0), int64(0), int64(0)
+	appCpuWeightTotal, appCpuMaxTotal, appMemoryMaxTotal := int64(0), int64(0), int64(0)
+	initCpuWeightMax, initCpuMaxMax, initMemoryMaxMax := int64(0), int64(0), int64(0)
 	cpuLimitsDeclared := true
 	memoryLimitsDeclared := true
 
+	// process init containers
+	for _, ic := range pod.Spec.InitContainers {
+		id := FindContainerIDByName(pod, ic.Name)
+		cpuReq, ok := ic.Resources.Requests[apis.GetExtendResourceCPU()]
+		if ok && !cpuReq.IsZero() {
+			cpuWeight := int64(milliCPUToWeight(cpuReq.Value()))
+			containerRes = append(containerRes, Resources{
+				CgroupSubSystem: cgroup.CgroupCpuSubsystem,
+				ContainerID:     id,
+				SubPath:         cgroup.CPUWeightFileV2,
+				Value:           cpuWeight,
+			})
+			if cpuWeight > initCpuWeightMax {
+				initCpuWeightMax = cpuWeight
+			}
+		}
+
+		cpuLimits, ok := ic.Resources.Limits[apis.GetExtendResourceCPU()]
+		if ok {
+			// In cgroup v2, both zero and non-zero limits are meaningful
+			// Zero limit means unlimited, non-zero limit means specific quota
+			cpuMaxStr := milliCPUToMax(cpuLimits.Value(), quotaPeriod)
+			if cpuMaxStr == "max 100000" {
+				containerRes = append(containerRes, Resources{
+					CgroupSubSystem: cgroup.CgroupCpuSubsystem,
+					ContainerID:     id,
+					SubPath:         cgroup.CPUQuotaTotalFileV2,
+					Value:           -1,
+				})
+			} else {
+				// For cgroup v2, we need to write the full "quota period" string
+				// We'll use a special Value and handle it in resources.go
+				var cpuQuota, period int64
+				n, err := fmt.Sscanf(cpuMaxStr, "%d %d", &cpuQuota, &period)
+				if err != nil {
+					klog.ErrorS(err, "Failed to parse CPU max string",
+						"container", ic.Name,
+						"cpuMaxStr", cpuMaxStr)
+				} else if n != 2 {
+					klog.ErrorS(nil, "Incomplete CPU max string parsing",
+						"container", ic.Name,
+						"cpuMaxStr", cpuMaxStr,
+						"matchedCount", n)
+				} else {
+					// Validate and use the expected period
+					if period != quotaPeriod {
+						klog.ErrorS(nil, "Unexpected CPU period value, using default",
+							"container", ic.Name,
+							"expected", quotaPeriod,
+							"actual", period)
+						period = quotaPeriod
+					}
+					containerRes = append(containerRes, Resources{
+						CgroupSubSystem: cgroup.CgroupCpuSubsystem,
+						ContainerID:     id,
+						SubPath:         cgroup.CPUQuotaTotalFileV2,
+						Value:           cpuQuota,
+					})
+					if cpuQuota > initCpuMaxMax {
+						initCpuMaxMax = cpuQuota
+					}
+				}
+			}
+		} else {
+			cpuLimitsDeclared = false
+		}
+
+		memoryLimits, ok := ic.Resources.Limits[apis.GetExtendResourceMemory()]
+		if ok {
+			// In cgroup v2, both zero and non-zero limits are meaningful
+			// Zero limit means unlimited, non-zero limit means specific limit
+			memoryMaxStr := memoryLimitToMax(memoryLimits.Value())
+			if memoryMaxStr == "max" {
+				containerRes = append(containerRes, Resources{
+					CgroupSubSystem: cgroup.CgroupMemorySubsystem,
+					ContainerID:     id,
+					SubPath:         cgroup.MemoryMaxFileV2,
+					Value:           -1,
+				})
+			} else {
+				var memMax int64
+				memMax, err := strconv.ParseInt(memoryMaxStr, 10, 64)
+				if err == nil {
+					containerRes = append(containerRes, Resources{
+						CgroupSubSystem: cgroup.CgroupMemorySubsystem,
+						ContainerID:     id,
+						SubPath:         cgroup.MemoryMaxFileV2,
+						Value:           memMax,
+					})
+					if memMax > initMemoryMaxMax {
+						initMemoryMaxMax = memMax
+					}
+				} else {
+					klog.ErrorS(err, "Failed to parse memory limit",
+						"container", ic.Name,
+						"memoryMaxStr", memoryMaxStr)
+				}
+			}
+		} else {
+			memoryLimitsDeclared = false
+		}
+	}
+
+	// process app containers
 	for _, c := range pod.Spec.Containers {
 		id := FindContainerIDByName(pod, c.Name)
 		cpuReq, ok := c.Resources.Requests[apis.GetExtendResourceCPU()]
@@ -170,7 +326,7 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 				SubPath:         cgroup.CPUWeightFileV2,
 				Value:           cpuWeight,
 			})
-			cpuWeightTotal += cpuWeight
+			appCpuWeightTotal += cpuWeight
 		}
 
 		cpuLimits, ok := c.Resources.Limits[apis.GetExtendResourceCPU()]
@@ -214,7 +370,7 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 						SubPath:         cgroup.CPUQuotaTotalFileV2,
 						Value:           cpuQuota,
 					})
-					cpuMaxTotal += cpuQuota
+					appCpuMaxTotal += cpuQuota
 				}
 			}
 		} else {
@@ -243,7 +399,7 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 						SubPath:         cgroup.MemoryMaxFileV2,
 						Value:           memMax,
 					})
-					memoryMaxTotal += memMax
+					appMemoryMaxTotal += memMax
 				} else {
 					klog.ErrorS(err, "Failed to parse memory limit",
 						"container", c.Name,
@@ -260,6 +416,10 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 		return containerRes
 	}
 
+	cpuWeightTotal := appCpuWeightTotal
+	if initCpuWeightMax > cpuWeightTotal {
+		cpuWeightTotal = initCpuWeightMax
+	}
 	if cpuWeightTotal == 0 {
 		// Align with min cpu share value in kubelet.
 		cpuWeightTotal = 100
@@ -272,6 +432,10 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 	})
 
 	if cpuLimitsDeclared {
+		cpuMaxTotal := appCpuMaxTotal
+		if initCpuMaxMax > cpuMaxTotal {
+			cpuMaxTotal = initCpuMaxMax
+		}
 		if cpuMaxTotal == 0 {
 			containerRes = append(containerRes, Resources{
 				CgroupSubSystem: cgroup.CgroupCpuSubsystem,
@@ -288,6 +452,10 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 	}
 
 	if memoryLimitsDeclared {
+		memoryMaxTotal := appMemoryMaxTotal
+		if initMemoryMaxMax > memoryMaxTotal {
+			memoryMaxTotal = initMemoryMaxMax
+		}
 		if memoryMaxTotal == 0 {
 			containerRes = append(containerRes, Resources{
 				CgroupSubSystem: cgroup.CgroupMemorySubsystem,
