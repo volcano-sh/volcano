@@ -169,6 +169,11 @@ func FindContainerIDByName(pod *v1.Pod, name string) string {
 			return status.ContainerID
 		}
 	}
+	for _, status := range pod.Status.InitContainerStatuses {
+		if status.Name == name {
+			return status.ContainerID
+		}
+	}
 	return ""
 }
 
@@ -240,6 +245,7 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 					SubPath:         cgroup.CPUQuotaTotalFileV2,
 					Value:           -1,
 				})
+				initCpuMaxMax = -1
 			} else {
 				// For cgroup v2, we need to write the full "quota period" string
 				// We'll use a special Value and handle it in resources.go
@@ -269,7 +275,7 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 						SubPath:         cgroup.CPUQuotaTotalFileV2,
 						Value:           cpuQuota,
 					})
-					if cpuQuota > initCpuMaxMax {
+					if initCpuMaxMax != -1 && cpuQuota > initCpuMaxMax {
 						initCpuMaxMax = cpuQuota
 					}
 				}
@@ -290,6 +296,7 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 					SubPath:         cgroup.MemoryMaxFileV2,
 					Value:           -1,
 				})
+				initMemoryMaxMax = -1
 			} else {
 				var memMax int64
 				memMax, err := strconv.ParseInt(memoryMaxStr, 10, 64)
@@ -300,7 +307,7 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 						SubPath:         cgroup.MemoryMaxFileV2,
 						Value:           memMax,
 					})
-					if memMax > initMemoryMaxMax {
+					if initMemoryMaxMax != -1 && memMax > initMemoryMaxMax {
 						initMemoryMaxMax = memMax
 					}
 				} else {
@@ -433,7 +440,9 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 
 	if cpuLimitsDeclared {
 		cpuMaxTotal := appCpuMaxTotal
-		if initCpuMaxMax > cpuMaxTotal {
+		if initCpuMaxMax == -1 {
+			cpuMaxTotal = 0
+		} else if initCpuMaxMax > cpuMaxTotal {
 			cpuMaxTotal = initCpuMaxMax
 		}
 		if cpuMaxTotal == 0 {
@@ -453,7 +462,9 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 
 	if memoryLimitsDeclared {
 		memoryMaxTotal := appMemoryMaxTotal
-		if initMemoryMaxMax > memoryMaxTotal {
+		if initMemoryMaxMax == -1 {
+			memoryMaxTotal = 0
+		} else if initMemoryMaxMax > memoryMaxTotal {
 			memoryMaxTotal = initMemoryMaxMax
 		}
 		if memoryMaxTotal == 0 {

@@ -299,6 +299,62 @@ func TestCalculateExtendResources(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "init container ID found in InitContainerStatuses",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					InitContainers: []v1.Container{
+						{
+							Name: "init-container-1",
+							Resources: v1.ResourceRequirements{
+								Limits: map[v1.ResourceName]resource.Quantity{
+									"kubernetes.io/batch-cpu":    *resource.NewQuantity(1000, resource.DecimalSI),
+									"kubernetes.io/batch-memory": *resource.NewQuantity(100, resource.BinarySI),
+								},
+							},
+						},
+					},
+				},
+				Status: v1.PodStatus{
+					InitContainerStatuses: []v1.ContainerStatus{
+						{
+							Name:        "init-container-1",
+							ContainerID: "containerd://init-id-123",
+						},
+					},
+				},
+			},
+			want: []Resources{
+				{
+					CgroupSubSystem: "cpu",
+					ContainerID:     "containerd://init-id-123",
+					SubPath:         "cpu.cfs_quota_us",
+					Value:           100000,
+				},
+				{
+					CgroupSubSystem: "memory",
+					ContainerID:     "containerd://init-id-123",
+					SubPath:         "memory.limit_in_bytes",
+					Value:           100,
+				},
+				// pod level (no app containers, so pod level equals init max)
+				{
+					CgroupSubSystem: "cpu",
+					SubPath:         "cpu.shares",
+					Value:           2, // minShares
+				},
+				{
+					CgroupSubSystem: "cpu",
+					SubPath:         "cpu.cfs_quota_us",
+					Value:           100000,
+				},
+				{
+					CgroupSubSystem: "memory",
+					SubPath:         "memory.limit_in_bytes",
+					Value:           100,
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -417,6 +473,93 @@ func TestCalculateExtendResourcesV2(t *testing.T) {
 					CgroupSubSystem: "memory",
 					SubPath:         "memory.max",
 					Value:           400, // max(200, 400)
+				},
+			},
+		},
+		{
+			name: "init container with unlimited CPU and memory limits (value 0)",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					InitContainers: []v1.Container{
+						{
+							Name: "init-container-unlimited",
+							Resources: v1.ResourceRequirements{
+								Limits: map[v1.ResourceName]resource.Quantity{
+									"kubernetes.io/batch-cpu":    *resource.NewQuantity(0, resource.DecimalSI),
+									"kubernetes.io/batch-memory": *resource.NewQuantity(0, resource.BinarySI),
+								},
+							},
+						},
+					},
+					Containers: []v1.Container{
+						{
+							Name: "container-1",
+							Resources: v1.ResourceRequirements{
+								Limits: map[v1.ResourceName]resource.Quantity{
+									"kubernetes.io/batch-cpu":    *resource.NewQuantity(1000, resource.DecimalSI),
+									"kubernetes.io/batch-memory": *resource.NewQuantity(200, resource.BinarySI),
+								},
+							},
+						},
+					},
+				},
+				Status: v1.PodStatus{
+					ContainerStatuses: []v1.ContainerStatus{
+						{
+							Name:        "container-1",
+							ContainerID: "containerd://111",
+						},
+					},
+					InitContainerStatuses: []v1.ContainerStatus{
+						{
+							Name:        "init-container-unlimited",
+							ContainerID: "containerd://init-unlimited",
+						},
+					},
+				},
+			},
+			want: []Resources{
+				// init-container-unlimited
+				{
+					CgroupSubSystem: "cpu",
+					ContainerID:     "containerd://init-unlimited",
+					SubPath:         "cpu.max",
+					Value:           -1,
+				},
+				{
+					CgroupSubSystem: "memory",
+					ContainerID:     "containerd://init-unlimited",
+					SubPath:         "memory.max",
+					Value:           -1,
+				},
+				// container-1
+				{
+					CgroupSubSystem: "cpu",
+					ContainerID:     "containerd://111",
+					SubPath:         "cpu.max",
+					Value:           100000,
+				},
+				{
+					CgroupSubSystem: "memory",
+					ContainerID:     "containerd://111",
+					SubPath:         "memory.max",
+					Value:           200,
+				},
+				// pod level
+				{
+					CgroupSubSystem: "cpu",
+					SubPath:         "cpu.weight",
+					Value:           100, // minWeight
+				},
+				{
+					CgroupSubSystem: "cpu",
+					SubPath:         "cpu.max",
+					Value:           -1, // init is unlimited (-1) so pod-level is unlimited (-1)
+				},
+				{
+					CgroupSubSystem: "memory",
+					SubPath:         "memory.max",
+					Value:           -1, // init is unlimited (-1) so pod-level is unlimited (-1)
 				},
 			},
 		},
