@@ -95,16 +95,22 @@ func CalculateAllocatedTaskNum(job *api.JobInfo) int {
 
 // GetInqueueResource returns reserved resource for running job whose part of pods have not been allocated resource.
 func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource {
+	// Convert MinResources through api.NewResource so it shares the exact unit
+	// model of job.Allocated (also built via api.NewResource): CPU/ephemeral in
+	// milli, memory in bytes, extended/scalar resources (e.g. GPUs) in milli.
+	// This replaces hand-written Value()/MilliValue() conversions that previously
+	// mixed whole-unit MinResources with milli-unit allocated for scalars.
+	minResources := api.NewResource(*job.PodGroup.Spec.MinResources)
 	inqueue := &api.Resource{}
-	for rName, rQuantity := range *job.PodGroup.Spec.MinResources {
+	for rName := range *job.PodGroup.Spec.MinResources {
 		switch rName {
 		case v1.ResourceCPU:
-			reservedCPU := float64(rQuantity.MilliValue()) - allocated.MilliCPU
+			reservedCPU := minResources.MilliCPU - allocated.MilliCPU
 			if reservedCPU > 0 {
 				inqueue.MilliCPU = reservedCPU
 			}
 		case v1.ResourceMemory:
-			reservedMemory := float64(rQuantity.Value()) - allocated.Memory
+			reservedMemory := minResources.Memory - allocated.Memory
 			if reservedMemory > 0 {
 				inqueue.Memory = reservedMemory
 			}
@@ -126,10 +132,11 @@ func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource
 			if inqueue.ScalarResources == nil {
 				inqueue.ScalarResources = make(map[v1.ResourceName]float64)
 			}
+			reservedScalar := minResources.ScalarResources[rName]
 			if allocatedMount, ok := allocated.ScalarResources[rName]; !ok {
-				inqueue.ScalarResources[rName] = float64(rQuantity.MilliValue())
+				inqueue.ScalarResources[rName] = reservedScalar
 			} else {
-				reservedScalarRes := float64(rQuantity.MilliValue()) - allocatedMount
+				reservedScalarRes := reservedScalar - allocatedMount
 				if reservedScalarRes > 0 {
 					inqueue.ScalarResources[rName] = reservedScalarRes
 				}
