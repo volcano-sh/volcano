@@ -24,10 +24,10 @@ import (
 
 func TestNetworkPolicyStrategyFlag(t *testing.T) {
 	tests := []struct {
-		name                    string
-		params                  []string
-		networkPolicyStrategy   string
-		disableNetworkPolicy    bool
+		name                     string
+		params                   []string
+		networkPolicyStrategy    string
+		disableNetworkPolicy     bool
 		publishNotReadyAddresses bool
 	}{
 		{
