@@ -731,13 +731,13 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Queue:     ji.Queue,
 		Priority:  ji.Priority,
 
-		MinAvailable:   ji.MinAvailable,
-		WaitingTime:    ji.WaitingTime,
+		MinAvailable:        ji.MinAvailable,
+		WaitingTime:         ji.WaitingTime,
 		JobFitErrors:        ji.JobFitErrors,
 		UnschedulableReason: ji.UnschedulableReason,
 		NodesFitErrors:      make(map[TaskID]*FitErrors),
-		Allocated:      EmptyResource(),
-		TotalRequest:   EmptyResource(),
+		Allocated:           EmptyResource(),
+		TotalRequest:        EmptyResource(),
 
 		PodGroup: ji.PodGroup.Clone(),
 
