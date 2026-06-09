@@ -52,6 +52,8 @@ func TestGetInqueueResource(t *testing.T) {
 		minRes    v1.ResourceList
 		allocated *api.Resource
 		expected  *api.Resource
+		// absentScalars lists scalar resources that must NOT appear in the result.
+		absentScalars []v1.ResourceName
 	}{
 		{
 			name: "nothing allocated yet: full request reserved",
@@ -100,6 +102,25 @@ func TestGetInqueueResource(t *testing.T) {
 				ScalarResources: map[v1.ResourceName]float64{},
 			},
 		},
+		{
+			// "pods" is neither a count quota nor a scalar resource, so it is
+			// intentionally skipped (every pod implicitly requests one "pods").
+			// The remaining CPU must still be computed correctly, and "pods" must
+			// not leak into the reserved scalar resources.
+			name: "partial pods allocation: pods skipped, CPU remainder reserved",
+			minRes: v1.ResourceList{
+				v1.ResourceCPU:  resource.MustParse("4"),
+				v1.ResourcePods: resource.MustParse("10"),
+			},
+			allocated: &api.Resource{
+				MilliCPU:        1000,
+				ScalarResources: map[v1.ResourceName]float64{v1.ResourcePods: 4},
+			},
+			expected: &api.Resource{
+				MilliCPU: 3000,
+			},
+			absentScalars: []v1.ResourceName{v1.ResourcePods},
+		},
 	}
 
 	for _, test := range tests {
@@ -116,6 +137,11 @@ func TestGetInqueueResource(t *testing.T) {
 			for name, want := range test.expected.ScalarResources {
 				if got.ScalarResources[name] != want {
 					t.Errorf("ScalarResources[%s] = %v, expected %v", name, got.ScalarResources[name], want)
+				}
+			}
+			for _, name := range test.absentScalars {
+				if _, ok := got.ScalarResources[name]; ok {
+					t.Errorf("ScalarResources[%s] = %v, expected to be absent", name, got.ScalarResources[name])
 				}
 			}
 		})
