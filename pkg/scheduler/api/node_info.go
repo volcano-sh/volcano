@@ -365,6 +365,8 @@ func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 		if gpuDevices != nil {
 			ni.Others[gpushare.DeviceName] = gpuDevices
 			ignored_list = append(ignored_list, gpuDevices.GetIgnoredDevices()...)
+		} else {
+			delete(ni.Others, gpushare.DeviceName)
 		}
 	}
 	if vgpu.VGPUEnable {
@@ -372,6 +374,8 @@ func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 		if gpuDevices != nil {
 			ni.Others[vgpu.DeviceName] = gpuDevices
 			ignored_list = append(ignored_list, gpuDevices.GetIgnoredDevices()...)
+		} else {
+			delete(ni.Others, vgpu.DeviceName)
 		}
 	}
 	if vnpu.AscendMindClusterVNPUEnable {
