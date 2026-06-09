@@ -18,19 +18,14 @@ package config
 
 import "fmt"
 
-// VNPUsConfig wraps VNPUConfig entries and supports both the new HAMi wrapper
-// format (vnpus: {hamiVnpuCore: ..., configs: [...]}) and the legacy direct
-// array format (vnpus: [{chipName: ...}]).
 type VNPUsConfig struct {
 	HamiVnpuCore bool         `yaml:"hamiVnpuCore,omitempty"`
 	Configs      []VNPUConfig `yaml:"configs"`
 }
 
 func (v *VNPUsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	// Probe whether the YAML node is a map (new wrapper format) or array (legacy format).
 	var raw map[string]interface{}
 	if err := unmarshal(&raw); err == nil {
-		// YAML node is a map — parse as the new wrapper format.
 		type vnpusConfigAlias VNPUsConfig // alias prevents infinite recursion
 		var wrapper vnpusConfigAlias
 		if err := unmarshal(&wrapper); err != nil {
