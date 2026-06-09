@@ -21,9 +21,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 )
 
@@ -97,18 +95,6 @@ type ContainerDeviceRequests map[string]ContainerDeviceRequest
 type PodDeviceRequests []ContainerDeviceRequests
 type PodSingleDevice []ContainerDevices
 type PodDevices map[string]PodSingleDevice
-
-func CheckHealth(devType string, n *corev1.Node) (bool, bool) {
-	handshake := n.Annotations[HandshakeAnnos[devType]]
-	if strings.Contains(handshake, "Requesting") {
-		formertime, _ := time.Parse(time.DateTime, strings.Split(handshake, "_")[1])
-		return time.Now().Before(formertime.Add(time.Second * 60)), false
-	} else if strings.Contains(handshake, "Deleted") {
-		return true, false
-	} else {
-		return true, true
-	}
-}
 
 func UnMarshalNodeDevices(str string) ([]*DeviceInfo, error) {
 	var dlist []*DeviceInfo
