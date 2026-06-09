@@ -33,6 +33,21 @@ func nodeInfoEqual(l, r *NodeInfo) bool {
 	return reflect.DeepEqual(l, r)
 }
 
+func makeNodeOthers(nodeName string, node *v1.Node) map[string]interface{} {
+	others := make(map[string]interface{})
+
+	if d := gpushare.NewGPUDevices(nodeName, node); d != nil {
+		others[gpushare.DeviceName] = d
+	}
+	if d := vgpu.NewGPUDevices(nodeName, node); d != nil {
+		others[vgpu.DeviceName] = d
+	}
+	if d := vnpu.NewNPUDevices(nodeName, node); d != nil {
+		others[vnpu.DeviceName] = d
+	}
+	return others
+}
+
 func TestNodeInfo_AddPod(t *testing.T) {
 	// case1
 	case01Node := buildNode("n1", nil, BuildResourceList("8000m", "10G", []ScalarResource{{Name: "pods", Value: "20"}}...))
@@ -69,11 +84,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 					"c1/p1": NewTaskInfo(case01Pod1),
 					"c1/p2": NewTaskInfo(case01Pod2),
 				},
-				Others: map[string]interface{}{
-					gpushare.DeviceName: gpushare.NewGPUDevices("n1", case01Node),
-					vgpu.DeviceName:     vgpu.NewGPUDevices("n1", case01Node),
-					vnpu.DeviceName:     vnpu.NewNPUDevices("n1", case01Node),
-				},
+				Others:      makeNodeOthers("n1", case01Node),
 				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 		},
@@ -96,11 +107,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				Tasks: map[TaskID]*TaskInfo{
 					"c2/p1": NewTaskInfo(case02Pod1),
 				},
-				Others: map[string]interface{}{
-					gpushare.DeviceName: gpushare.NewGPUDevices("n2", case02Node),
-					vgpu.DeviceName:     vgpu.NewGPUDevices("n2", case02Node),
-					vnpu.DeviceName:     vnpu.NewNPUDevices("n2", case02Node),
-				},
+				Others:      makeNodeOthers("n2", case02Node),
 				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 			expectedFailure: false,
@@ -165,11 +172,7 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 					"c1/p1": NewTaskInfo(case01Pod1),
 					"c1/p3": NewTaskInfo(case01Pod3),
 				},
-				Others: map[string]interface{}{
-					gpushare.DeviceName: gpushare.NewGPUDevices("n1", case01Node),
-					vgpu.DeviceName:     vgpu.NewGPUDevices("n1", case01Node),
-					vnpu.DeviceName:     vnpu.NewNPUDevices("n1", case01Node),
-				},
+				Others:      makeNodeOthers("n1", case01Node),
 				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 		},
@@ -233,11 +236,7 @@ func TestNodeInfo_SetNode(t *testing.T) {
 					"c1/p2": NewTaskInfo(case01Pod2),
 					"c1/p3": NewTaskInfo(case01Pod3),
 				},
-				Others: map[string]interface{}{
-					gpushare.DeviceName: gpushare.NewGPUDevices("n1", case01Node1),
-					vgpu.DeviceName:     vgpu.NewGPUDevices("n1", case01Node1),
-					vnpu.DeviceName:     vnpu.NewNPUDevices("n1", case01Node1),
-				},
+				Others:      makeNodeOthers("n1", case01Node1),
 				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 			expected2: &NodeInfo{
@@ -257,11 +256,7 @@ func TestNodeInfo_SetNode(t *testing.T) {
 					"c1/p2": NewTaskInfo(case01Pod2),
 					"c1/p3": NewTaskInfo(case01Pod3),
 				},
-				Others: map[string]interface{}{
-					gpushare.DeviceName: gpushare.NewGPUDevices("n1", case01Node1),
-					vgpu.DeviceName:     vgpu.NewGPUDevices("n1", case01Node1),
-					vnpu.DeviceName:     vnpu.NewNPUDevices("n1", case01Node1),
-				},
+				Others:      makeNodeOthers("n1", case01Node1),
 				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 		},
