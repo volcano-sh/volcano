@@ -25,6 +25,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 var config_yaml = `
@@ -388,4 +391,282 @@ func Test_verifyReq(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAscendDevices_AddResource(t *testing.T) {
+	tests := []struct {
+		name          string
+		ascendDevices *AscendDevices
+		pod           *v1.Pod
+		expectedUsage map[string]*devices.DeviceUsage // device ID -> expected DeviceUsage
+	}{
+		{
+			name: "Successfully add single device resource",
+			ascendDevices: createTestAscendDevices("node1", "Ascend910", map[string]*AscendDevice{
+				"device-1": createTestAscendDevice("device-1", 100, 32000, 0, 0, 0, nil),
+			}),
+			pod: createTestPod("test-pod", "ns1", map[string]string{
+				devices.SupportDevices["Ascend910"]: "device-1,Ascend910,16000,50",
+			}),
+			expectedUsage: map[string]*devices.DeviceUsage{
+				"device-1": {
+					Used:      1,
+					Usedmem:   16000,
+					Usedcores: 50,
+				},
+			},
+		},
+		{
+			name: "Successfully add multiple device resources",
+			ascendDevices: createTestAscendDevices("node1", "Ascend910", map[string]*AscendDevice{
+				"device-1": createTestAscendDevice("device-1", 100, 32000, 0, 0, 0, nil),
+				"device-2": createTestAscendDevice("device-2", 100, 32000, 0, 0, 0, nil),
+			}),
+			pod: createTestPod("test-pod", "ns1", map[string]string{
+				devices.SupportDevices["Ascend910"]: "device-1,Ascend910,8000,25:device-2,Ascend910,8000,25",
+			}),
+			expectedUsage: map[string]*devices.DeviceUsage{
+				"device-1": {
+					Used:      1,
+					Usedmem:   8000,
+					Usedcores: 25,
+				},
+				"device-2": {
+					Used:      1,
+					Usedmem:   8000,
+					Usedcores: 25,
+				},
+			},
+		},
+		{
+			name: "Add resource to existing device usage - accumulate",
+			ascendDevices: func() *AscendDevices {
+				ads := createTestAscendDevices("node1", "Ascend910", map[string]*AscendDevice{
+					"device-1": createTestAscendDevice("device-1", 100, 32000, 1, 8000, 25, map[string]*devices.DeviceUsage{
+						"existing-pod": {Used: 1, Usedmem: 8000, Usedcores: 25},
+					}),
+				})
+				return ads
+			}(),
+			pod: createTestPod("new-pod", "ns1", map[string]string{
+				devices.SupportDevices["Ascend910"]: "device-1,Ascend910,8000,25",
+			}),
+			expectedUsage: map[string]*devices.DeviceUsage{
+				"device-1": {
+					Used:      2,     // Should increase from 1 to 2
+					Usedmem:   16000, // Should increase from 8000 to 16000
+					Usedcores: 50,    // Should increase from 25 to 50
+				},
+			},
+		},
+		{
+			name: "Add same pod multiple times - should not duplicate",
+			ascendDevices: createTestAscendDevices("node1", "Ascend910", map[string]*AscendDevice{
+				"device-1": createTestAscendDevice("device-1", 100, 32000, 0, 0, 0, nil),
+			}),
+			pod: createTestPod("test-pod", "ns1", map[string]string{
+				devices.SupportDevices["Ascend910"]: "device-1,Ascend910,16000,50",
+			}),
+			expectedUsage: map[string]*devices.DeviceUsage{
+				"device-1": {
+					Used:      1,
+					Usedmem:   16000,
+					Usedcores: 50,
+				},
+			},
+		},
+		{
+			name: "Pod has invalid annotation format",
+			ascendDevices: createTestAscendDevices("node1", "Ascend910", map[string]*AscendDevice{
+				"device-1": createTestAscendDevice("device-1", 100, 32000, 0, 0, 0, nil),
+			}),
+			pod: createTestPod("test-pod", "ns1", map[string]string{
+				devices.SupportDevices["Ascend910"]: "invalid format",
+			}),
+			expectedUsage: map[string]*devices.DeviceUsage{
+				"device-1": {
+					Used:      0,
+					Usedmem:   0,
+					Usedcores: 0,
+				},
+			},
+		},
+		{
+			name: "Pod missing required annotation",
+			ascendDevices: createTestAscendDevices("node1", "Ascend910", map[string]*AscendDevice{
+				"device-1": createTestAscendDevice("device-1", 100, 32000, 0, 0, 0, nil),
+			}),
+			pod: createTestPod("test-pod", "ns1", map[string]string{}),
+			expectedUsage: map[string]*devices.DeviceUsage{
+				"device-1": {
+					Used:      0,
+					Usedmem:   0,
+					Usedcores: 0,
+				},
+			},
+		},
+		{
+			name: "Device not found in devices map",
+			ascendDevices: createTestAscendDevices("node1", "Ascend910", map[string]*AscendDevice{
+				"device-1": createTestAscendDevice("device-1", 100, 32000, 0, 0, 0, nil),
+			}),
+			pod: createTestPod("test-pod", "ns1", map[string]string{
+				devices.SupportDevices["Ascend910"]: "non-existent-device,Ascend910,16000,50",
+			}),
+			expectedUsage: map[string]*devices.DeviceUsage{
+				"device-1": {
+					Used:      0,
+					Usedmem:   0,
+					Usedcores: 0,
+				},
+			},
+		},
+		{
+			name: "Multiple containers with different devices",
+			ascendDevices: createTestAscendDevices("node1", "Ascend910", map[string]*AscendDevice{
+				"device-1": createTestAscendDevice("device-1", 100, 32000, 0, 0, 0, nil),
+				"device-2": createTestAscendDevice("device-2", 100, 32000, 0, 0, 0, nil),
+				"device-3": createTestAscendDevice("device-3", 100, 32000, 0, 0, 0, nil),
+			}),
+			pod: createTestPod("test-pod", "ns1", map[string]string{
+				devices.SupportDevices["Ascend910"]: "device-1,Ascend910,4000,10:device-2,Ascend910,4000,10",
+			}),
+			expectedUsage: map[string]*devices.DeviceUsage{
+				"device-1": {
+					Used:      1,
+					Usedmem:   4000,
+					Usedcores: 10,
+				},
+				"device-2": {
+					Used:      1,
+					Usedmem:   4000,
+					Usedcores: 10,
+				},
+				"device-3": {
+					Used:      0,
+					Usedmem:   0,
+					Usedcores: 0,
+				},
+			},
+		},
+		{
+			name:          "Nil AscendDevices receiver",
+			ascendDevices: nil,
+			pod: createTestPod("test-pod", "ns1", map[string]string{
+				devices.SupportDevices["Ascend910"]: `[{"UUID":"device-1","Type":"Ascend910","Usedmem":16000,"Usedcores":50}]`,
+			}),
+			expectedUsage: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Handle nil receiver case separately
+			if tt.ascendDevices == nil {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("AddResource panicked with nil receiver: %v", r)
+					}
+				}()
+				tt.ascendDevices.AddResource(tt.pod)
+				return
+			}
+
+			// For test case where adding same pod twice
+			if tt.name == "Add same pod multiple times - should not duplicate" {
+				// First addition
+				tt.ascendDevices.AddResource(tt.pod)
+				// Second addition (should not duplicate)
+				tt.ascendDevices.AddResource(tt.pod)
+			} else {
+				tt.ascendDevices.AddResource(tt.pod)
+			}
+
+			// Verify resource usage for each device
+			for deviceID, expected := range tt.expectedUsage {
+				dev, exists := tt.ascendDevices.Devices[deviceID]
+				if !exists && expected.Used > 0 {
+					t.Errorf("Device %s not found in AscendDevices", deviceID)
+					continue
+				}
+				if dev != nil {
+					if dev.DeviceUsage.Used != expected.Used {
+						t.Errorf("Device %s: Expected Used=%d, got %d", deviceID, expected.Used, dev.DeviceUsage.Used)
+					}
+					if dev.DeviceUsage.Usedmem != expected.Usedmem {
+						t.Errorf("Device %s: Expected Usedmem=%d, got %d", deviceID, expected.Usedmem, dev.DeviceUsage.Usedmem)
+					}
+					if dev.DeviceUsage.Usedcores != expected.Usedcores {
+						t.Errorf("Device %s: Expected Usedcores=%d, got %d", deviceID, expected.Usedcores, dev.DeviceUsage.Usedcores)
+					}
+				}
+			}
+		})
+	}
+}
+
+func createTestAscendDevices(nodeName, deviceType string, devices map[string]*AscendDevice) *AscendDevices {
+	return &AscendDevices{
+		NodeName: nodeName,
+		Type:     deviceType,
+		Devices:  devices,
+		Policy:   binpackPolicy,
+	}
+}
+
+func createTestAscendDevice(id string, totalCores, totalMem int32, used, usedmem, usedcores int32, existingPods map[string]*devices.DeviceUsage) *AscendDevice {
+	device := &AscendDevice{
+		DeviceInfo: &devices.DeviceInfo{
+			ID:      id,
+			Devcore: totalCores,
+			Devmem:  totalMem,
+			Count:   1,
+		},
+		DeviceUsage: &devices.DeviceUsage{
+			Used:      used,
+			Usedmem:   usedmem,
+			Usedcores: usedcores,
+		},
+		PodMap: make(map[string]*devices.DeviceUsage),
+		config: config.VNPUConfig{
+			CommonWord:         "Ascend910",
+			ResourceName:       "huawei.com/Ascend910",
+			ResourceMemoryName: "huawei.com/Ascend910Memory",
+			MemoryCapacity:     32000,
+			MemoryAllocatable:  32000,
+		},
+	}
+
+	// Add existing pods to PodMap
+	for podUID, usage := range existingPods {
+		device.PodMap[podUID] = &devices.DeviceUsage{
+			Used:      usage.Used,
+			Usedmem:   usage.Usedmem,
+			Usedcores: usage.Usedcores,
+		}
+	}
+
+	return device
+}
+
+func createTestPod(name, namespace string, annotations map[string]string) *v1.Pod {
+	return &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Namespace:   namespace,
+			UID:         getTestUID(name),
+			Annotations: annotations,
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Name: "test-container",
+				},
+			},
+		},
+	}
+}
+
+func getTestUID(podName string) types.UID {
+	return types.UID(podName + "-uid-1234")
 }
