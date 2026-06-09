@@ -378,6 +378,10 @@ type JobInfo struct {
 	JobFitErrors   string
 	NodesFitErrors map[TaskID]*FitErrors
 
+	// UnschedulableReason is the PodGroup condition Reason when the job is unschedulable.
+	// When empty, gang plugin defaults to NotEnoughResources.
+	UnschedulableReason string
+
 	AllocatedHyperNode string
 	NetworkTopology    *scheduling.NetworkTopologySpec
 	SubJobs            map[SubJobID]*SubJobInfo
@@ -729,8 +733,9 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 		MinAvailable:   ji.MinAvailable,
 		WaitingTime:    ji.WaitingTime,
-		JobFitErrors:   ji.JobFitErrors,
-		NodesFitErrors: make(map[TaskID]*FitErrors),
+		JobFitErrors:        ji.JobFitErrors,
+		UnschedulableReason: ji.UnschedulableReason,
+		NodesFitErrors:      make(map[TaskID]*FitErrors),
 		Allocated:      EmptyResource(),
 		TotalRequest:   EmptyResource(),
 
