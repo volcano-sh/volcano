@@ -26,9 +26,6 @@ type VNPUsConfig struct {
 	Configs      []VNPUConfig `yaml:"configs"`
 }
 
-// UnmarshalYAML implements custom YAML unmarshaling for VNPUsConfig.
-// It probes the YAML node type to disambiguate between the two formats:
-// a map indicates the new wrapper format, an array indicates the legacy format.
 func (v *VNPUsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// Probe whether the YAML node is a map (new wrapper format) or array (legacy format).
 	var raw map[string]interface{}
