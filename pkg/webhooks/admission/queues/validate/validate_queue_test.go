@@ -1161,14 +1161,6 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 	config.QueueInformer = queueInformer
 	config.QueueLister = informerFactory.Scheduling().V1beta1().Queues().Lister()
 
-	stopCh := make(chan struct{})
-	informerFactory.Start(stopCh)
-	for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
-		if !ok {
-			panic(fmt.Errorf("failed to sync cache: %v", informerType))
-		}
-	}
-
 	queueWithJobs := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "queue-with-jobs",
@@ -1653,6 +1645,16 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &childQueueOfEmptyParent, metav1.CreateOptions{})
 	if err != nil {
 		t.Errorf("Create child queue of empty parent failed for %v.", err)
+	}
+
+	// Start informer and wait for cache sync after all queues are created,
+	// so the lister cache is fully populated before any test cases run.
+	stopCh := make(chan struct{})
+	informerFactory.Start(stopCh)
+	for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			panic(fmt.Errorf("failed to sync cache: %v", informerType))
+		}
 	}
 
 	// Update parent queue to have capability less than children (should FAIL)
