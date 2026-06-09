@@ -17,10 +17,13 @@ limitations under the License.
 package networkqos
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -30,9 +33,20 @@ import (
 	"volcano.sh/volcano/pkg/agent/apis"
 	"volcano.sh/volcano/pkg/agent/config/api"
 	"volcano.sh/volcano/pkg/agent/features"
+	"volcano.sh/volcano/pkg/agent/utils/cgroup"
 	"volcano.sh/volcano/pkg/agent/utils/exec"
 	"volcano.sh/volcano/pkg/config"
 	"volcano.sh/volcano/pkg/networkqos/utils"
+)
+
+const (
+	// defaultNetworkDevice is the default network interface managed by bwmcli in cgroup v2 mode.
+	defaultNetworkDevice = "eth0"
+
+	// chrootPrefix is the command prefix to execute commands on the host filesystem
+	// via chroot into /proc/1/root. This avoids the need for nsenter binary in the container.
+	// Requires hostPID: true and privileged: true (or SYS_CHROOT capability) in the agent Pod spec.
+	chrootPrefix = "chroot /proc/1/root"
 )
 
 type NetworkQoSManager interface {
@@ -47,31 +61,95 @@ var networkQoSManager NetworkQoSManager
 type NetworkQoSManagerImp struct {
 	config             *config.Configuration
 	flavorQuotaMinRate int64
+	flavorQuotaLock    sync.Mutex
+	// cgroupVersion indicates the cgroup version (v1 or v2) detected on the node.
+	cgroupVersion string
 }
 
-func NewNetworkQoSManager(config *config.Configuration) NetworkQoSManager {
+func NewNetworkQoSManager(config *config.Configuration, cgroupVersion string) NetworkQoSManager {
 	networkQoSManager = &NetworkQoSManagerImp{
-		config: config,
+		config:        config,
+		cgroupVersion: cgroupVersion,
 	}
 	return networkQoSManager
 }
 
-func GetNetworkQoSManager(config *config.Configuration) NetworkQoSManager {
+func GetNetworkQoSManager(config *config.Configuration, cgroupVersion string) NetworkQoSManager {
 	if networkQoSManager == nil {
-		return NewNetworkQoSManager(config)
+		return NewNetworkQoSManager(config, cgroupVersion)
+	}
+	if imp, ok := networkQoSManager.(*NetworkQoSManagerImp); ok && imp.cgroupVersion != cgroupVersion {
+		return NewNetworkQoSManager(config, cgroupVersion)
 	}
 	return networkQoSManager
 }
 
+// Init initializes the network QoS subsystem based on cgroup version.
+// For cgroup v1: installs bwm_tc.o and network-qos CNI plugin.
+// For cgroup v2: checks bwmcli availability on the host.
 func (m *NetworkQoSManagerImp) Init() error {
-	return InstallNetworkQoS()
+	switch m.cgroupVersion {
+	case cgroup.CgroupV2:
+		return m.initV2()
+	default:
+		return InstallNetworkQoS()
+	}
 }
 
+// initV2 checks that bwmcli (oncn-bwm) is available on the host via chroot.
+func (m *NetworkQoSManagerImp) initV2() error {
+	klog.InfoS("Initializing network QoS for cgroup v2 mode (oncn-bwm)")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := chrootPrefix + " sh -c 'command -v bwmcli'"
+	output, err := exec.GetExecutor().CommandContext(ctx, cmd)
+	if err != nil {
+		return fmt.Errorf("bwmcli not found on host, network QoS v2 requires oncn-bwm package: %v, output: %s", err, output)
+	}
+	klog.InfoS("bwmcli is available on host", "path", strings.TrimSpace(output))
+	return nil
+}
+
+// HealthCheck checks the health of network QoS subsystem based on cgroup version.
+// For cgroup v1: checks bwm_tc.o and network-qos binary existence.
+// For cgroup v2: queries bwmcli device status.
 func (m *NetworkQoSManagerImp) HealthCheck() error {
-	return CheckNetworkQoSStatus()
+	switch m.cgroupVersion {
+	case cgroup.CgroupV2:
+		return m.healthCheckV2()
+	default:
+		return CheckNetworkQoSStatus()
+	}
 }
 
+// healthCheckV2 checks bwmcli status by querying enabled devices.
+func (m *NetworkQoSManagerImp) healthCheckV2() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := chrootPrefix + " bwmcli -p devs"
+	output, err := exec.GetExecutor().CommandContext(ctx, cmd)
+	if err != nil {
+		return fmt.Errorf("bwmcli health check failed: %v, output: %s", err, output)
+	}
+	klog.V(5).InfoS("bwmcli health check passed", "output", strings.TrimSpace(output))
+	return nil
+}
+
+// EnableNetworkQoS enables network QoS based on cgroup version.
+// For cgroup v1: calls network-qos prepare to write eBPF map and register CNI plugin.
+// For cgroup v2: calls bwmcli to set bandwidth, waterline, and enable network device.
 func (m *NetworkQoSManagerImp) EnableNetworkQoS(qosConf *api.NetworkQos) error {
+	switch m.cgroupVersion {
+	case cgroup.CgroupV2:
+		return m.enableNetworkQoSV2(qosConf)
+	default:
+		return m.enableNetworkQoSV1(qosConf)
+	}
+}
+
+// enableNetworkQoSV1 is the original cgroup v1 implementation that uses network-qos prepare command
+// to write eBPF throttling config map and register CNI plugin.
+func (m *NetworkQoSManagerImp) enableNetworkQoSV1(qosConf *api.NetworkQos) error {
 	onlineBandwidthWatermark, offlineLowBandwidth, offlineHighBandwidth, err := m.GetBandwidthConfigs(qosConf)
 	if err != nil {
 		return fmt.Errorf("failed to get bandwidth configs: %v", err)
@@ -97,7 +175,70 @@ func (m *NetworkQoSManagerImp) EnableNetworkQoS(qosConf *api.NetworkQos) error {
 	return nil
 }
 
+// enableNetworkQoSV2 uses bwmcli (oncn-bwm) to configure network QoS on cgroup v2 systems.
+// It sets offline bandwidth range, online bandwidth waterline, and enables the network device.
+func (m *NetworkQoSManagerImp) enableNetworkQoSV2(qosConf *api.NetworkQos) error {
+	onlineBandwidthWatermark, offlineLowBandwidth, offlineHighBandwidth, err := m.GetBandwidthConfigs(qosConf)
+	if err != nil {
+		return fmt.Errorf("failed to get bandwidth configs: %v", err)
+	}
+
+	// Convert bandwidth format from "50Mbps" to "50mb" for bwmcli
+	watermark := convertBandwidthFormat(onlineBandwidthWatermark)
+	lowBw := convertBandwidthFormat(offlineLowBandwidth)
+	highBw := convertBandwidthFormat(offlineHighBandwidth)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Step 1: Set offline bandwidth range (lowBandwidth, highBandwidth)
+	cmd := fmt.Sprintf("%s bwmcli -s bandwidth %s,%s", chrootPrefix, lowBw, highBw)
+	output, err := exec.GetExecutor().CommandContext(ctx, cmd)
+	if err != nil {
+		return fmt.Errorf("failed to set bandwidth via bwmcli: %v, output: %s", err, output)
+	}
+	klog.InfoS("Successfully set bandwidth via bwmcli", "low", lowBw, "high", highBw)
+
+	// Step 2: Set online bandwidth waterline
+	cmd = fmt.Sprintf("%s bwmcli -s waterline %s", chrootPrefix, watermark)
+	output, err = exec.GetExecutor().CommandContext(ctx, cmd)
+	if err != nil {
+		return fmt.Errorf("failed to set waterline via bwmcli: %v, output: %s", err, output)
+	}
+	klog.InfoS("Successfully set waterline via bwmcli", "waterline", watermark)
+
+	// Step 3: Enable network device
+	dev := defaultNetworkDevice
+	if detectedDev, err := getDefaultGatewayInterface(); err == nil {
+		dev = detectedDev
+	} else {
+		klog.Warningf("Failed to detect default gateway interface, fallback to %s: %v", defaultNetworkDevice, err)
+	}
+
+	cmd = fmt.Sprintf("%s bwmcli -e %s", chrootPrefix, dev)
+	output, err = exec.GetExecutor().CommandContext(ctx, cmd)
+	if err != nil {
+		return fmt.Errorf("failed to enable network device via bwmcli: %v, output: %s", err, output)
+	}
+	klog.InfoS("Successfully enabled network device via bwmcli", "device", dev)
+
+	return nil
+}
+
+// DisableNetworkQoS disables network QoS based on cgroup version.
+// For cgroup v1: calls network-qos prepare --enable-network-qos=false.
+// For cgroup v2: calls bwmcli -d to disable the network device.
 func (m *NetworkQoSManagerImp) DisableNetworkQoS() error {
+	switch m.cgroupVersion {
+	case cgroup.CgroupV2:
+		return m.disableNetworkQoSV2()
+	default:
+		return m.disableNetworkQoSV1()
+	}
+}
+
+// disableNetworkQoSV1 is the original cgroup v1 implementation.
+func (m *NetworkQoSManagerImp) disableNetworkQoSV1() error {
 	cmdCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cmd := fmt.Sprintf(utils.NetWorkCmdFile+" prepare --%s=%s", utils.EnableNetworkQoS, "false")
@@ -108,32 +249,83 @@ func (m *NetworkQoSManagerImp) DisableNetworkQoS() error {
 	return nil
 }
 
+// disableNetworkQoSV2 disables oncn-bwm network QoS by disabling the network device.
+func (m *NetworkQoSManagerImp) disableNetworkQoSV2() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	dev := defaultNetworkDevice
+	if detectedDev, err := getDefaultGatewayInterface(); err == nil {
+		dev = detectedDev
+	} else {
+		klog.Warningf("Failed to detect default gateway interface, fallback to %s: %v", defaultNetworkDevice, err)
+	}
+
+	cmd := fmt.Sprintf("%s bwmcli -d %s", chrootPrefix, dev)
+	output, err := exec.GetExecutor().CommandContext(ctx, cmd)
+	if err != nil {
+		return fmt.Errorf("failed to disable network qos via bwmcli: %v, output: %s", err, output)
+	}
+	klog.InfoS("Successfully disabled network QoS via bwmcli", "device", dev)
+	return nil
+}
+
+// convertBandwidthFormat converts bandwidth string from Volcano format ("50Mbps") to bwmcli format ("50mb").
+func convertBandwidthFormat(bandwidth string) string {
+	if strings.HasSuffix(bandwidth, "Mbps") {
+		return strings.TrimSuffix(bandwidth, "Mbps") + "mb"
+	}
+	return bandwidth
+}
+
+func getDefaultGatewayInterface() (string, error) {
+	f, err := os.Open("/proc/1/net/route")
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) >= 2 && fields[1] == "00000000" {
+			return fields[0], nil
+		}
+	}
+	return "", fmt.Errorf("default route not found")
+}
+
 func (m *NetworkQoSManagerImp) GetBandwidthConfigs(qosConf *api.NetworkQos) (onlineBandwidthWatermark, offlineLowBandwidth, offlineHighBandwidth string, err error) {
+	m.flavorQuotaLock.Lock()
 	if m.flavorQuotaMinRate == 0 {
 		nodeName := m.config.GenericConfiguration.KubeNodeName
 		getCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		node, err := m.config.GenericConfiguration.KubeClient.CoreV1().Nodes().Get(getCtx, nodeName, metav1.GetOptions{})
 		if err != nil {
+			m.flavorQuotaLock.Unlock()
 			return "", "", "0", fmt.Errorf("failed to get k8s node(%s): %v", nodeName, err)
 		}
 		m.flavorQuotaMinRate, err = GetFlavorQuotaMinRate(node)
 		if err != nil {
+			m.flavorQuotaLock.Unlock()
 			return "", "", "", fmt.Errorf("failed to get flavor quota min rate, err: %v", err)
 		}
 	}
+	flavorQuotaMinRate := m.flavorQuotaMinRate
+	m.flavorQuotaLock.Unlock()
 
-	onlineBandwidthWatermark, err = GetOnlineBandwidthWatermark(m.flavorQuotaMinRate, qosConf)
+	onlineBandwidthWatermark, err = GetOnlineBandwidthWatermark(flavorQuotaMinRate, qosConf)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to get onlineBandwidthWatermark, err: %v", err)
 	}
 
-	offlineLowBandwidth, err = GetOfflineLowBandwidthPercent(m.flavorQuotaMinRate, qosConf)
+	offlineLowBandwidth, err = GetOfflineLowBandwidthPercent(flavorQuotaMinRate, qosConf)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to get offlineLowBandwidth, err: %v", err)
 	}
 
-	offlineHighBandwidth, err = GetOfflineHighBandwidthPercent(m.flavorQuotaMinRate, qosConf)
+	offlineHighBandwidth, err = GetOfflineHighBandwidthPercent(flavorQuotaMinRate, qosConf)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to get offlineHighBandwidth, err: %v", err)
 	}
@@ -187,6 +379,8 @@ func GetOfflineHighBandwidthPercent(serverRateQuota int64, qosConf *api.NetworkQ
 	return strconv.FormatInt(serverRateQuota*int64(offlineHighBandwidthPercent)/100, 10) + "Mbps", nil
 }
 
+// InstallNetworkQoS installs the network QoS components for cgroup v1 mode.
+// It copies bwm_tc.o eBPF program and network-qos CNI plugin to their expected paths.
 func InstallNetworkQoS() error {
 	checkErr := features.CheckNodeSupportNetworkQoS()
 	if checkErr != nil {
@@ -217,6 +411,7 @@ func InstallNetworkQoS() error {
 	return nil
 }
 
+// CheckNetworkQoSStatus checks if the cgroup v1 network QoS components are in place.
 func CheckNetworkQoSStatus() error {
 	_, err := os.Stat(utils.TCPROGPath)
 	if err != nil {
