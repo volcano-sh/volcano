@@ -90,7 +90,7 @@ func NewAscendDevices(name string, node *v1.Node) map[string]*AscendDevices {
 		klog.V(5).InfoS("cur config is null. call GetDefaultDevicesConfig")
 		curConfig = config.GetDefaultDevicesConfig()
 	}
-	devs := InitDevices(curConfig.VNPUs.Configs)
+	devs := InitDevices(curConfig.VNPUConfigs())
 	if node.Status.Allocatable == nil {
 		klog.V(3).Infof("Node %s does not have allocatable resources information", node.Name)
 		return ascendDevices
@@ -140,8 +140,8 @@ func GetAscendDeviceNames() []string {
 		klog.V(5).InfoS("cur config is null. call GetDefaultDevicesConfig")
 		curConfig = config.GetDefaultDevicesConfig()
 	}
-	deviceNames := make([]string, 0, len(curConfig.VNPUs.Configs))
-	for _, vnpu := range curConfig.VNPUs.Configs {
+	deviceNames := make([]string, 0, len(curConfig.VNPUConfigs()))
+	for _, vnpu := range curConfig.VNPUConfigs() {
 		deviceNames = append(deviceNames, vnpu.CommonWord)
 	}
 	return deviceNames
