@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ type servicePlugin struct {
 	// flag parse args
 	publishNotReadyAddresses bool
 	disableNetworkPolicy     bool
+	networkPolicyStrategy    string
 }
 
 // New creates service plugin.
@@ -65,6 +66,8 @@ func (sp *servicePlugin) addFlags() {
 		"set publishNotReadyAddresses of svc to true")
 	flagSet.BoolVar(&sp.disableNetworkPolicy, "disable-network-policy", sp.disableNetworkPolicy,
 		"set disableNetworkPolicy of svc to true")
+	flagSet.StringVar(&sp.networkPolicyStrategy, "network-policy-strategy", sp.networkPolicyStrategy,
+		"set OVN network policy strategy annotation on NetworkPolicy")
 
 	if err := flagSet.Parse(sp.pluginArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
@@ -256,14 +259,21 @@ func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *batch.Job) error {
 			return err
 		}
 
-		networkpolicy := &networkingv1.NetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: job.Namespace,
-				Name:      job.Name,
-				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(job, helpers.JobKind),
-				},
+		objectMeta := metav1.ObjectMeta{
+			Namespace: job.Namespace,
+			Name:      job.Name,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(job, helpers.JobKind),
 			},
+		}
+		if sp.networkPolicyStrategy != "" {
+			objectMeta.Annotations = map[string]string{
+				NetworkPolicyStrategyAnnotation: sp.networkPolicyStrategy,
+			}
+		}
+
+		networkpolicy := &networkingv1.NetworkPolicy{
+			ObjectMeta: objectMeta,
 			Spec: networkingv1.NetworkPolicySpec{
 				PodSelector: metav1.LabelSelector{
 					MatchLabels: map[string]string{

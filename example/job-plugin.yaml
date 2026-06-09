@@ -17,6 +17,7 @@ spec:
     # Provide network information: hosts file(under path `/etc/volcano/`), headless service, etc.
     # :param publish-not-ready-addresses: publish not ready addresses(false by default)
     # :param disable-network-policy: disable network policy of the job(false by default)
+    # :param network-policy-strategy: OVN network policy strategy(allow/allow-related/allow-stateless/drop/reject)
     svc: ["--publish-not-ready-addresses=false", "--disable-network-policy=false"]
   maxRetry: 5
   queue: default

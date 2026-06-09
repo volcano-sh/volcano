@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -148,5 +148,59 @@ func TestTopoSort(t *testing.T) {
 			t.Errorf("%s failed, expect sortedTasks: %v, got: %v, expected isDag: %v, got: %v",
 				testcase.name, testcase.sortedTasks, tasks, testcase.isDag, isDag)
 		}
+	}
+}
+
+func TestValidateSvcPlugin(t *testing.T) {
+	testCases := []struct {
+		name    string
+		plugins map[string][]string
+		wantErr bool
+	}{
+		{
+			name:    "no svc plugin",
+			plugins: map[string][]string{"env": {}},
+		},
+		{
+			name:    "valid network-policy-strategy",
+			plugins: map[string][]string{"svc": {"--network-policy-strategy=allow"}},
+		},
+		{
+			name:    "valid network-policy-strategy allow-related",
+			plugins: map[string][]string{"svc": {"--network-policy-strategy=allow-related"}},
+		},
+		{
+			name:    "invalid network-policy-strategy",
+			plugins: map[string][]string{"svc": {"--network-policy-strategy=invalid"}},
+			wantErr: true,
+		},
+		{
+			name:    "missing network-policy-strategy value",
+			plugins: map[string][]string{"svc": {"--network-policy-strategy"}},
+			wantErr: true,
+		},
+		{
+			name:    "empty network-policy-strategy value",
+			plugins: map[string][]string{"svc": {"--network-policy-strategy="}},
+			wantErr: true,
+		},
+		{
+			name:    "space-separated network-policy-strategy",
+			plugins: map[string][]string{"svc": {"--network-policy-strategy", "drop"}},
+			wantErr: true,
+		},
+		{
+			name:    "other svc args without network-policy-strategy",
+			plugins: map[string][]string{"svc": {"--disable-network-policy=true"}},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSvcPlugin(tc.plugins)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("validateSvcPlugin() error = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
 	}
 }

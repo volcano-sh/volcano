@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package validate
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/go-multierror"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -58,6 +59,20 @@ var policyActionMap = map[busv1alpha1.Action]bool{
 	busv1alpha1.OpenQueueAction:        false,
 	busv1alpha1.CloseQueueAction:       false,
 }
+
+var validNetworkPolicyStrategies = map[string]struct{}{
+	"allow":           {},
+	"allow-related":   {},
+	"allow-stateless": {},
+	"drop":            {},
+	"reject":          {},
+}
+
+const (
+	networkPolicyStrategyFlag       = "--network-policy-strategy"
+	invalidNetworkPolicyStrategyMsg = "invalid svc plugin network-policy-strategy, valid values are: allow, allow-related, allow-stateless, drop, reject"
+	missingNetworkPolicyStrategyMsg = "invalid svc plugin network-policy-strategy, value is missing"
+)
 
 func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.Path) error {
 	var err error
@@ -120,6 +135,30 @@ func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.P
 	}
 
 	return err
+}
+
+func validateSvcPlugin(plugins map[string][]string) error {
+	args, ok := plugins["svc"]
+	if !ok {
+		return nil
+	}
+
+	for _, arg := range args {
+		if arg == networkPolicyStrategyFlag {
+			return fmt.Errorf("%s", missingNetworkPolicyStrategyMsg)
+		}
+		if strings.HasPrefix(arg, networkPolicyStrategyFlag+"=") {
+			value := strings.TrimPrefix(arg, networkPolicyStrategyFlag+"=")
+			if value == "" {
+				return fmt.Errorf("%s", missingNetworkPolicyStrategyMsg)
+			}
+			if _, valid := validNetworkPolicyStrategies[value]; !valid {
+				return fmt.Errorf("%s", invalidNetworkPolicyStrategyMsg)
+			}
+		}
+	}
+
+	return nil
 }
 
 func getEventList(policy batchv1alpha1.LifecyclePolicy) []busv1alpha1.Event {
