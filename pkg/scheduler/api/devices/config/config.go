@@ -57,6 +57,11 @@ type Config struct {
 	VNPUs        VNPUsConfig  `yaml:"vnpus"`
 }
 
+// VNPUConfigs is a compatibility accessor for external consumers that used to access Config.VNPUs as a slice.
+func (c *Config) VNPUConfigs() []VNPUConfig {
+	return c.VNPUs.Configs
+}
+
 var (
 	configs *Config
 	once    sync.Once
