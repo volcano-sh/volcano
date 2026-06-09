@@ -95,11 +95,6 @@ func CalculateAllocatedTaskNum(job *api.JobInfo) int {
 
 // GetInqueueResource returns reserved resource for running job whose part of pods have not been allocated resource.
 func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource {
-	// Convert MinResources through api.NewResource so it shares the exact unit
-	// model of job.Allocated (also built via api.NewResource): CPU/ephemeral in
-	// milli, memory in bytes, extended/scalar resources (e.g. GPUs) in milli.
-	// This replaces hand-written Value()/MilliValue() conversions that previously
-	// mixed whole-unit MinResources with milli-unit allocated for scalars.
 	minResources := api.NewResource(*job.PodGroup.Spec.MinResources)
 	inqueue := &api.Resource{}
 	for rName := range *job.PodGroup.Spec.MinResources {
