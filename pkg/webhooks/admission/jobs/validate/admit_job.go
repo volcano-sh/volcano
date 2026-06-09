@@ -311,13 +311,17 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 func validatePartitionPolicy(task v1alpha1.TaskSpec, job *v1alpha1.Job) string {
 	var msg string
 	if task.PartitionPolicy != nil {
+		// Compute the products in int64 so large user-supplied partition counts
+		// cannot wrap the int32 product back onto a small Replicas/MinAvailable.
+		totalProduct := int64(task.PartitionPolicy.TotalPartitions) * int64(task.PartitionPolicy.PartitionSize)
+		minProduct := int64(task.PartitionPolicy.MinPartitions) * int64(task.PartitionPolicy.PartitionSize)
 		if task.PartitionPolicy.TotalPartitions <= 0 {
 			msg += fmt.Sprintf("'TotalPartitions' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
 		} else if task.PartitionPolicy.PartitionSize <= 0 {
 			msg += fmt.Sprintf("'PartitionSize' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
-		} else if task.Replicas != task.PartitionPolicy.TotalPartitions*task.PartitionPolicy.PartitionSize {
+		} else if int64(task.Replicas) != totalProduct {
 			msg += fmt.Sprintf("'Replicas' are not equal to TotalPartitions*PartitionSize in task: %s, job: %s", task.Name, job.Name)
-		} else if task.MinAvailable != nil && task.PartitionPolicy.MinPartitions*task.PartitionPolicy.PartitionSize != *task.MinAvailable {
+		} else if task.MinAvailable != nil && minProduct != int64(*task.MinAvailable) {
 			msg += fmt.Sprintf("'MinAvailable' is not equal to MinPartitions*PartitionSize in task: %s, job: %s", task.Name, job.Name)
 		}
 		msg += validateNetworkTopology(task.PartitionPolicy.NetworkTopology)
