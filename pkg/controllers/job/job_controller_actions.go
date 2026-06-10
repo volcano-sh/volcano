@@ -231,7 +231,7 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 		if updateStatus(&job.Status) {
 			job.Status.State.LastTransitionTime = metav1.Now()
 			jobCondition := newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
-			job.Status.Conditions = append(job.Status.Conditions, jobCondition)
+			job.Status.Conditions = appendJobCondition(job.Status.Conditions, jobCondition)
 		}
 	}
 
@@ -422,7 +422,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		}
 		job.Status.State.LastTransitionTime = metav1.Now()
 		jobCondition = newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
-		job.Status.Conditions = append(job.Status.Conditions, jobCondition)
+		job.Status.Conditions = appendJobCondition(job.Status.Conditions, jobCondition)
 		newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("Failed to update status of Job %v/%v: %v",
@@ -607,7 +607,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	job.Status = newStatus
 	job.Status.State.LastTransitionTime = metav1.Now()
 	jobCondition = newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
-	job.Status.Conditions = append(job.Status.Conditions, jobCondition)
+	job.Status.Conditions = appendJobCondition(job.Status.Conditions, jobCondition)
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Failed to update status of Job %v/%v: %v",
@@ -965,7 +965,7 @@ func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	job.Status.State.LastTransitionTime = metav1.Now()
 	job.Status.MinAvailable = job.Spec.MinAvailable
 	jobCondition := newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
-	job.Status.Conditions = append(job.Status.Conditions, jobCondition)
+	job.Status.Conditions = appendJobCondition(job.Status.Conditions, jobCondition)
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Failed to update status of Job %v/%v: %v",
@@ -1058,6 +1058,26 @@ func newCondition(status batch.JobPhase, lastTransitionTime *metav1.Time) batch.
 		Status:             status,
 		LastTransitionTime: lastTransitionTime,
 	}
+}
+
+// maxJobConditions is the upper bound on the number of conditions retained in
+// job.Status.Conditions.  Keeping the slice bounded prevents the etcd object
+// from growing without limit on long-running or frequently-restarted jobs.
+const maxJobConditions = 32
+
+// appendJobCondition appends c to conditions, but skips the append when the
+// incoming phase matches the most-recent entry (no-op transition).  If the
+// slice would exceed maxJobConditions the oldest entries are discarded so that
+// only the most recent maxJobConditions entries are kept.
+func appendJobCondition(conditions []batch.JobCondition, c batch.JobCondition) []batch.JobCondition {
+	if n := len(conditions); n > 0 && conditions[n-1].Status == c.Status {
+		return conditions
+	}
+	conditions = append(conditions, c)
+	if len(conditions) > maxJobConditions {
+		conditions = conditions[len(conditions)-maxJobConditions:]
+	}
+	return conditions
 }
 
 func setPgSubGroupPolicy(pg *scheduling.PodGroup, tasks []batch.TaskSpec) {
