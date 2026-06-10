@@ -710,7 +710,13 @@ func (dev *AscendDevices) removeAnnotations(kubeClient kubernetes.Interface, pod
 		util.BindTimeAnnotations,
 	}
 
-	return devices.RemovePodAnnotations(kubeClient, pod, annotations)
+	if err := devices.RemovePodAnnotations(kubeClient, pod, annotations); err != nil {
+		return err
+	}
+	for _, annoKey := range annotations {
+		delete(pod.Annotations, annoKey)
+	}
+	return nil
 }
 
 func (dev *AscendDevice) GetResourceNames() devices.ResourceNames {

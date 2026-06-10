@@ -361,12 +361,22 @@ func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 	}
 	ignored_list := []string{}
 	if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
-		ni.Others[gpushare.DeviceName] = gpushare.NewGPUDevices(ni.Name, node)
-		ignored_list = append(ignored_list, gpushare.NewGPUDevices(ni.Name, node).GetIgnoredDevices()...)
+		gpuDevices := gpushare.NewGPUDevices(ni.Name, node)
+		if gpuDevices != nil {
+			ni.Others[gpushare.DeviceName] = gpuDevices
+			ignored_list = append(ignored_list, gpuDevices.GetIgnoredDevices()...)
+		} else {
+			delete(ni.Others, gpushare.DeviceName)
+		}
 	}
 	if vgpu.VGPUEnable {
-		ni.Others[vgpu.DeviceName] = vgpu.NewGPUDevices(ni.Name, node)
-		ignored_list = append(ignored_list, vgpu.NewGPUDevices(ni.Name, node).GetIgnoredDevices()...)
+		gpuDevices := vgpu.NewGPUDevices(ni.Name, node)
+		if gpuDevices != nil {
+			ni.Others[vgpu.DeviceName] = gpuDevices
+			ignored_list = append(ignored_list, gpuDevices.GetIgnoredDevices()...)
+		} else {
+			delete(ni.Others, vgpu.DeviceName)
+		}
 	}
 	if vnpu.AscendMindClusterVNPUEnable {
 		ni.Others[vnpu.DeviceName] = vnpu.NewNPUDevices(ni.Name, node)

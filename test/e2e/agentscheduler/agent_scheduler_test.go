@@ -447,7 +447,9 @@ var _ = Describe("Agent Scheduler E2E Test", func() {
 		})
 	})
 
-	Describe("Batch Scheduling", Label("hard", "soft", "none"), func() {
+	// Batch throughput is validated in soft/none modes, where pods can spread
+	// across the volcano shard nodes in addition to the agent shard.
+	Describe("Batch Scheduling", Label("soft", "none"), func() {
 		It("should schedule a batch of pods", func() {
 			podCount := 10
 
