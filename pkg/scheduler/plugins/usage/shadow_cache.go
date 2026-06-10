@@ -92,6 +92,8 @@ func (c *ShadowLoadCache) AddEstimate(nodeName string, taskID api.TaskID, cpuMil
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if snapshot, ok := c.podSnapshots[taskID]; ok {
+		klog.V(5).Infof("ShadowLoadCache AddEstimate: replacing existing snapshot for task %s, oldNode=%s oldCPU=%.2f oldMem=%.2f newNode=%s newCPU=%.2f newMem=%.2f",
+			taskID, snapshot.NodeName, snapshot.CPUMillis, snapshot.MemBytes, nodeName, cpuMillis, memBytes)
 		c.subtractSnapshot(snapshot)
 	}
 	c.nodeCPUEst[nodeName] += cpuMillis
@@ -102,6 +104,8 @@ func (c *ShadowLoadCache) AddEstimate(nodeName string, taskID api.TaskID, cpuMil
 		CPUMillis: cpuMillis,
 		MemBytes:  memBytes,
 	}
+	klog.V(5).Infof("ShadowLoadCache AddEstimate: task=%s node=%s addedCPU=%.2f addedMem=%.2f nodeCPUEst=%.2f nodeMemEst=%.2f snapshot=%+v",
+		taskID, nodeName, cpuMillis, memBytes, c.nodeCPUEst[nodeName], c.nodeMemEst[nodeName], c.podSnapshots[taskID])
 }
 
 // SubEstimateBySnapshot subtracts a pod's estimated resource consumption using
@@ -118,6 +122,8 @@ func (c *ShadowLoadCache) SubEstimateBySnapshot(taskID api.TaskID) {
 	}
 	c.subtractSnapshot(snapshot)
 	delete(c.podSnapshots, taskID)
+	klog.V(5).Infof("ShadowLoadCache SubEstimateBySnapshot: task=%s node=%s subCPU=%.2f subMem=%.2f nodeCPUEst=%.2f nodeMemEst=%.2f",
+		taskID, snapshot.NodeName, snapshot.CPUMillis, snapshot.MemBytes, c.nodeCPUEst[snapshot.NodeName], c.nodeMemEst[snapshot.NodeName])
 }
 
 func (c *ShadowLoadCache) subtractSnapshot(snapshot *PodEstSnapshot) {

@@ -421,7 +421,10 @@ func (up *usagePlugin) OnSessionClose(ssn *framework.Session) {
 func (up *usagePlugin) warmUpShadowCache(ssn *framework.Session) {
 	for _, nodeInfo := range ssn.Nodes {
 		for _, task := range nodeInfo.Tasks {
-			if !shouldAddToShadowCache(task, up.metricsInterval) {
+			shouldAdd := shouldAddToShadowCache(task, up.metricsInterval)
+			klog.V(5).Infof("Shadow cache warm-up decision: task %s/%s uid=%s node=%s status=%s metricsDelay=%v add=%v",
+				task.Namespace, task.Name, task.UID, task.NodeName, task.Status, up.metricsInterval, shouldAdd)
+			if !shouldAdd {
 				continue
 			}
 
@@ -430,8 +433,10 @@ func (up *usagePlugin) warmUpShadowCache(ssn *framework.Session) {
 
 			up.shadowCache.AddEstimate(nodeInfo.Name, task.UID, estCPU, estMem)
 
-			klog.V(5).Infof("Shadow cache warm-up: task %s/%s on node %s, estCPU=%.2f, estMem=%.2f, riskFactor=%.2f, bestEffort=%v",
-				task.Namespace, task.Name, nodeInfo.Name, estCPU, estMem, appliedRiskFactor, task.BestEffort)
+			nodeCPUEst, nodeMemEst := up.shadowCache.GetNodeEst(nodeInfo.Name)
+			snapshot := up.shadowCache.GetSnapshot(task.UID)
+			klog.V(5).Infof("Shadow cache warm-up add: task %s/%s uid=%s node=%s status=%s estCPU=%.2f estMem=%.2f riskFactor=%.2f bestEffort=%v nodeShadowCPUEst=%.2f nodeShadowMemEst=%.2f snapshot=%+v",
+				task.Namespace, task.Name, task.UID, nodeInfo.Name, task.Status, estCPU, estMem, appliedRiskFactor, task.BestEffort, nodeCPUEst, nodeMemEst, snapshot)
 		}
 	}
 }
@@ -452,8 +457,10 @@ func (up *usagePlugin) handleAllocate(ssn *framework.Session, event *framework.E
 	// Add to shadow cache with snapshot
 	up.shadowCache.AddEstimate(nodeName, task.UID, estCPU, estMem)
 
-	klog.V(4).Infof("Usage plugin Allocate: task %s/%s to node %s, estCPU=%.2f, estMem=%.2f, riskFactor=%.2f",
-		task.Namespace, task.Name, nodeName, estCPU, estMem, appliedRiskFactor)
+	nodeCPUEst, nodeMemEst := up.shadowCache.GetNodeEst(nodeName)
+	snapshot := up.shadowCache.GetSnapshot(task.UID)
+	klog.V(4).Infof("Usage plugin Allocate: task %s/%s uid=%s to node %s status=%s estCPU=%.2f estMem=%.2f riskFactor=%.2f nodeShadowCPUEst=%.2f nodeShadowMemEst=%.2f snapshot=%+v",
+		task.Namespace, task.Name, task.UID, nodeName, task.Status, estCPU, estMem, appliedRiskFactor, nodeCPUEst, nodeMemEst, snapshot)
 }
 
 // handleDeallocate is called when a pod allocation is rolled back.
@@ -475,8 +482,8 @@ func (up *usagePlugin) calcNodeScore(node *api.NodeInfo) float64 {
 	cpuComp := CalcCompositeUtilization(realCPU, cpuEst, node.Capacity.MilliCPU)
 	memComp := CalcCompositeUtilization(realMem, memEst, node.Capacity.Memory)
 	score := CalcNodeScore(cpuComp, memComp, up.cpuWeight, up.memoryWeight, up.usageWeight)
-	klog.V(4).Infof("Node %s score: cpuComp=%.4f, memComp=%.4f, score=%.2f (max=%d)",
-		node.Name, cpuComp, memComp, score, fwk.MaxNodeScore)
+	klog.V(4).Infof("Node %s score: realCPU=%.2f realMem=%.2f shadowCPU=%.2f shadowMem=%.2f cpuCapacity=%.2f memCapacity=%.2f cpuComp=%.4f memComp=%.4f score=%.2f (max=%d)",
+		node.Name, realCPU, realMem, cpuEst, memEst, node.Capacity.MilliCPU, node.Capacity.Memory, cpuComp, memComp, score, fwk.MaxNodeScore)
 	return score
 }
 
@@ -487,17 +494,26 @@ func (up *usagePlugin) calcAppliedRiskFactor(node *api.NodeInfo) float64 {
 	cpuComp := CalcCompositeUtilization(realCPU, cpuEst, node.Capacity.MilliCPU)
 	memComp := CalcCompositeUtilization(realMem, memEst, node.Capacity.Memory)
 	loadCompositePercentage := CalcLoadCompositePercentage(cpuComp, memComp, up.cpuWeight, up.memoryWeight)
-	return CalcAppliedRiskFactor(loadCompositePercentage, up.riskThreshold, up.riskFactor)
+	appliedRiskFactor := CalcAppliedRiskFactor(loadCompositePercentage, up.riskThreshold, up.riskFactor)
+	klog.V(5).Infof("Usage risk factor: node=%s realCPU=%.2f realMem=%.2f shadowCPU=%.2f shadowMem=%.2f cpuCapacity=%.2f memCapacity=%.2f cpuComp=%.4f memComp=%.4f loadComposite=%.4f riskThreshold=%.4f configuredRiskFactor=%.2f appliedRiskFactor=%.2f",
+		node.Name, realCPU, realMem, cpuEst, memEst, node.Capacity.MilliCPU, node.Capacity.Memory, cpuComp, memComp, loadCompositePercentage, up.riskThreshold, up.riskFactor, appliedRiskFactor)
+	return appliedRiskFactor
 }
 
 func (up *usagePlugin) estimateTaskResource(task *api.TaskInfo, appliedRiskFactor float64) (estCPU, estMem float64) {
 	if task.BestEffort {
-		return EstimateBestEffortResource(up.beCPU, appliedRiskFactor),
-			EstimateBestEffortResource(up.beMemory, appliedRiskFactor)
+		estCPU = EstimateBestEffortResource(up.beCPU, appliedRiskFactor)
+		estMem = EstimateBestEffortResource(up.beMemory, appliedRiskFactor)
+		klog.V(5).Infof("Usage task estimate: task %s/%s uid=%s status=%s bestEffort=true beCPU=%.2f beMemory=%.2f riskFactor=%.2f estCPU=%.2f estMem=%.2f",
+			task.Namespace, task.Name, task.UID, task.Status, up.beCPU, up.beMemory, appliedRiskFactor, estCPU, estMem)
+		return estCPU, estMem
 	}
 	cpuReq, cpuLim, memReq, memLim := getPodResourceRequestLimit(task.Pod)
-	return EstimatePodResource(cpuReq, cpuLim, up.requestRatio, up.burstRatio, appliedRiskFactor),
-		EstimatePodResource(memReq, memLim, up.requestRatio, up.burstRatio, appliedRiskFactor)
+	estCPU = EstimatePodResource(cpuReq, cpuLim, up.requestRatio, up.burstRatio, appliedRiskFactor)
+	estMem = EstimatePodResource(memReq, memLim, up.requestRatio, up.burstRatio, appliedRiskFactor)
+	klog.V(5).Infof("Usage task estimate: task %s/%s uid=%s status=%s bestEffort=false cpuRequest=%.2f cpuLimit=%.2f memRequest=%.2f memLimit=%.2f requestRatio=%.2f burstRatio=%.2f riskFactor=%.2f estCPU=%.2f estMem=%.2f",
+		task.Namespace, task.Name, task.UID, task.Status, cpuReq, cpuLim, memReq, memLim, up.requestRatio, up.burstRatio, appliedRiskFactor, estCPU, estMem)
+	return estCPU, estMem
 }
 
 // isMetricsAvailable checks if the node's metrics data is available and fresh.
