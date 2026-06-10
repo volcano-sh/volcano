@@ -3,12 +3,12 @@ name: E2E Parallel Jobs
 on:
   workflow_call:
 
-permissions:
-  contents: read
-  actions: write
+permissions: read-all
 
 jobs:
   e2e_parallel_jobs:
+    permissions:
+      actions: write
     runs-on: ubuntu-24.04
     name: E2E about Parallel Jobs
     timeout-minutes: 40

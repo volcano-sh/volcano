@@ -3,6 +3,8 @@ name: E2E Admission
 on:
   workflow_call:
 
+permissions: read-all
+
 jobs:
   e2e_admission_policy:
     runs-on: ubuntu-24.04
