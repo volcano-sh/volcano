@@ -630,11 +630,14 @@ func (pp *PredicatesPlugin) InitPlugin() {
 
 		draWeight := 1
 		if w, ok := framework.Get[int](pp.pluginArguments, "dynamicresources.weight"); ok {
-			draWeight = w
+			if w < 1 {
+				klog.Warningf("Invalid dynamicresources.weight value %d, defaulting to 1", w)
+			} else {
+				draWeight = w
+			}
 		}
 		addScorePlugin(dynamicresources.Name, &scorePluginAdapter{
 			ScorePlugin: dynamicResourceAllocationPlugin,
-			enabled:     pp.enabledPredicates.dynamicResourceAllocationEnable,
 		}, draWeight)
 	}
 
@@ -934,13 +937,9 @@ func ResetVolumeBindingPluginForTest() {
 
 type scorePluginAdapter struct {
 	fwk.ScorePlugin
-	enabled bool
 }
 
 func (s *scorePluginAdapter) PreScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodes []fwk.NodeInfo) *fwk.Status {
-	if !s.enabled {
-		return fwk.NewStatus(fwk.Skip, "DRA scoring is disabled")
-	}
 	if p, ok := s.ScorePlugin.(fwk.PreScorePlugin); ok {
 		return p.PreScore(ctx, state, pod, nodes)
 	}
@@ -948,10 +947,16 @@ func (s *scorePluginAdapter) PreScore(ctx context.Context, state fwk.CycleState,
 }
 
 func (s *scorePluginAdapter) Score(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) (int64, *fwk.Status) {
-	if !s.enabled {
-		return 0, nil
+	nodeName := ""
+	if nodeInfo != nil && nodeInfo.Node() != nil {
+		nodeName = nodeInfo.Node().Name
 	}
-	klog.V(4).Infof("Scoring pod %s/%s on node %s using DRA", pod.Namespace, pod.Name, nodeInfo.Node().Name)
+	podNamespace, podName := "", ""
+	if pod != nil {
+		podNamespace = pod.Namespace
+		podName = pod.Name
+	}
+	klog.V(4).Infof("Scoring pod %s/%s on node %s using DRA", podNamespace, podName, nodeName)
 	return s.ScorePlugin.Score(ctx, state, pod, nodeInfo)
 }
 
@@ -963,9 +968,6 @@ func (s *scorePluginAdapter) ScoreExtensions() fwk.ScoreExtensions {
 }
 
 func (s *scorePluginAdapter) NormalizeScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, scores fwk.NodeScoreList) *fwk.Status {
-	if !s.enabled {
-		return nil
-	}
 	if se := s.ScorePlugin.ScoreExtensions(); se != nil {
 		return se.NormalizeScore(ctx, state, pod, scores)
 	}

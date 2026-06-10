@@ -31,7 +31,10 @@ import (
 func TestMain(m *testing.M) {
 	home := e2eutil.HomeDir()
 	configPath := e2eutil.KubeconfigPath(home)
-	config, _ := clientcmd.BuildConfigFromFlags(e2eutil.MasterURL(), configPath)
+	config, err := clientcmd.BuildConfigFromFlags(e2eutil.MasterURL(), configPath)
+	if err != nil {
+		panic(err)
+	}
 	e2eutil.VcClient = vcclient.NewForConfigOrDie(config)
 	e2eutil.KubeClient = kubernetes.NewForConfigOrDie(config)
 	os.Exit(m.Run())

@@ -167,22 +167,22 @@ func (m *mockPreScoreAndScorePlugin) PreScore(ctx context.Context, state fwk.Cyc
 }
 
 func TestScorePluginAdapter_PreScore(t *testing.T) {
-	t.Run("ScorePlugin without PreScorePlugin (enabled)", func(t *testing.T) {
+	t.Run("ScorePlugin without PreScorePlugin", func(t *testing.T) {
 		mock := &mockScorePlugin{name: "mock-plugin"}
-		adapter := &scorePluginAdapter{ScorePlugin: mock, enabled: true}
+		adapter := &scorePluginAdapter{ScorePlugin: mock}
 		status := adapter.PreScore(context.Background(), nil, nil, nil)
 		if status != nil {
 			t.Errorf("Expected nil status, got %v", status)
 		}
 	})
 
-	t.Run("ScorePlugin with PreScorePlugin (enabled)", func(t *testing.T) {
+	t.Run("ScorePlugin with PreScorePlugin", func(t *testing.T) {
 		expectedStatus := fwk.NewStatus(fwk.Success, "custom status")
 		mock := &mockPreScoreAndScorePlugin{
 			mockScorePlugin: &mockScorePlugin{name: "mock-prescore-plugin"},
 			preScoreStatus:  expectedStatus,
 		}
-		adapter := &scorePluginAdapter{ScorePlugin: mock, enabled: true}
+		adapter := &scorePluginAdapter{ScorePlugin: mock}
 		status := adapter.PreScore(context.Background(), nil, nil, nil)
 		if status != expectedStatus {
 			t.Errorf("Expected status %v, got %v", expectedStatus, status)
@@ -191,16 +191,66 @@ func TestScorePluginAdapter_PreScore(t *testing.T) {
 			t.Errorf("Expected PreScore to be called on the mock plugin")
 		}
 	})
+}
 
-	t.Run("ScorePlugin (disabled)", func(t *testing.T) {
+type mockScoreExtensions struct {
+	normalizeCalled bool
+}
+
+func (m *mockScoreExtensions) NormalizeScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, scores fwk.NodeScoreList) *fwk.Status {
+	m.normalizeCalled = true
+	return nil
+}
+
+type mockScorePluginWithExtensions struct {
+	*mockScorePlugin
+	ext *mockScoreExtensions
+}
+
+func (m *mockScorePluginWithExtensions) ScoreExtensions() fwk.ScoreExtensions {
+	return m.ext
+}
+
+func TestScorePluginAdapter_ScoreAndNormalize(t *testing.T) {
+	t.Run("Score delegation and nil-safety on NodeInfo", func(t *testing.T) {
 		mock := &mockScorePlugin{name: "mock-plugin"}
-		adapter := &scorePluginAdapter{ScorePlugin: mock, enabled: false}
-		status := adapter.PreScore(context.Background(), nil, nil, nil)
-		if status == nil {
-			t.Fatal("Expected non-nil status for disabled adapter")
+		adapter := &scorePluginAdapter{ScorePlugin: mock}
+
+		// Verify score delegation and nil safety on NodeInfo (nil nodeInfo)
+		score, status := adapter.Score(context.Background(), nil, nil, nil)
+		if score != 10 {
+			t.Errorf("Expected score 10, got %d", score)
 		}
-		if status.Code() != fwk.Skip {
-			t.Errorf("Expected status code %v, got %v", fwk.Skip, status.Code())
+		if status != nil {
+			t.Errorf("Expected nil status, got %v", status)
+		}
+
+		// Verify ScoreExtensions nil safety
+		if adapter.ScoreExtensions() != nil {
+			t.Errorf("Expected ScoreExtensions to be nil when not implemented")
+		}
+	})
+
+	t.Run("ScoreExtensions and Normalize delegation", func(t *testing.T) {
+		mock := &mockScorePlugin{name: "mock-plugin"}
+		ext := &mockScoreExtensions{}
+		mockWithExt := &mockScorePluginWithExtensions{
+			mockScorePlugin: mock,
+			ext:             ext,
+		}
+		adapter := &scorePluginAdapter{ScorePlugin: mockWithExt}
+
+		se := adapter.ScoreExtensions()
+		if se == nil {
+			t.Fatalf("Expected ScoreExtensions to be non-nil")
+		}
+
+		status := se.NormalizeScore(context.Background(), nil, nil, nil)
+		if status != nil {
+			t.Errorf("Expected nil status, got %v", status)
+		}
+		if !ext.normalizeCalled {
+			t.Errorf("Expected NormalizeScore to be called on mock extensions")
 		}
 	})
 }

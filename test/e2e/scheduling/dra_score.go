@@ -40,8 +40,11 @@ var _ = Describe("DRA Score E2E Test", func() {
 
 	driver := drautils.NewDriver(f, nodes, drautils.DriverResources(2))
 
+	var deviceClassName string
+
 	BeforeEach(func() {
-		ensureDeviceClass(driver.Name)
+		deviceClassName = "dra-score-class-" + f.Namespace.Name
+		ensureDeviceClass(driver.Name, deviceClassName)
 	})
 
 	It("schedules pods on prioritized nodes based on DRA scores", func(ctx context.Context) {
@@ -79,7 +82,7 @@ var _ = Describe("DRA Score E2E Test", func() {
 							{
 								Name: "req-1",
 								Exactly: &resourcev1.ExactDeviceRequest{
-									DeviceClassName: "dra-score-class",
+									DeviceClassName: deviceClassName,
 									Count:           1,
 									AllocationMode:  resourcev1.DeviceAllocationModeExactCount,
 								},
@@ -105,10 +108,10 @@ var _ = Describe("DRA Score E2E Test", func() {
 	})
 })
 
-func ensureDeviceClass(driverName string) {
+func ensureDeviceClass(driverName, className string) {
 	class := &resourcev1.DeviceClass{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "dra-score-class",
+			Name: className,
 		},
 		Spec: resourcev1.DeviceClassSpec{
 			Selectors: []resourcev1.DeviceSelector{{
@@ -119,13 +122,13 @@ func ensureDeviceClass(driverName string) {
 		},
 	}
 
-	_, err := e2eutil.KubeClient.ResourceV1().DeviceClasses().Create(context.TODO(), class, metav1.CreateOptions{})
+	_, err := e2eutil.KubeClient.ResourceV1().DeviceClasses().Create(context.Background(), class, metav1.CreateOptions{})
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		Expect(err).NotTo(HaveOccurred())
 	}
 
 	DeferCleanup(func() {
-		err := e2eutil.KubeClient.ResourceV1().DeviceClasses().Delete(context.TODO(), "dra-score-class", metav1.DeleteOptions{})
+		err := e2eutil.KubeClient.ResourceV1().DeviceClasses().Delete(context.Background(), className, metav1.DeleteOptions{})
 		if err != nil && !apierrors.IsNotFound(err) {
 			Expect(err).NotTo(HaveOccurred())
 		}
