@@ -67,7 +67,7 @@ func Run(config *options.Config) error {
 	if admissionConf == nil {
 		klog.Errorf("loadAdmissionConf failed.")
 	} else {
-		klog.V(2).Infof("loadAdmissionConf:%v", admissionConf.ResGroupsConfig)
+		klog.V(2).Infof("loadAdmissionConf:%v", admissionConf)
 	}
 
 	vClient := getVolcanoClient(restConfig)
