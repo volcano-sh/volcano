@@ -167,28 +167,40 @@ func (m *mockPreScoreAndScorePlugin) PreScore(ctx context.Context, state fwk.Cyc
 }
 
 func TestScorePluginAdapter_PreScore(t *testing.T) {
-	t.Run("ScorePlugin without PreScorePlugin", func(t *testing.T) {
+	t.Run("ScorePlugin without PreScorePlugin (enabled)", func(t *testing.T) {
 		mock := &mockScorePlugin{name: "mock-plugin"}
-		adapter := &scorePluginAdapter{ScorePlugin: mock}
+		adapter := &scorePluginAdapter{ScorePlugin: mock, enabled: true}
 		status := adapter.PreScore(context.Background(), nil, nil, nil)
 		if status != nil {
 			t.Errorf("Expected nil status, got %v", status)
 		}
 	})
 
-	t.Run("ScorePlugin with PreScorePlugin", func(t *testing.T) {
+	t.Run("ScorePlugin with PreScorePlugin (enabled)", func(t *testing.T) {
 		expectedStatus := fwk.NewStatus(fwk.Success, "custom status")
 		mock := &mockPreScoreAndScorePlugin{
 			mockScorePlugin: &mockScorePlugin{name: "mock-prescore-plugin"},
 			preScoreStatus:  expectedStatus,
 		}
-		adapter := &scorePluginAdapter{ScorePlugin: mock}
+		adapter := &scorePluginAdapter{ScorePlugin: mock, enabled: true}
 		status := adapter.PreScore(context.Background(), nil, nil, nil)
 		if status != expectedStatus {
 			t.Errorf("Expected status %v, got %v", expectedStatus, status)
 		}
 		if !mock.preScoreCalled {
 			t.Errorf("Expected PreScore to be called on the mock plugin")
+		}
+	})
+
+	t.Run("ScorePlugin (disabled)", func(t *testing.T) {
+		mock := &mockScorePlugin{name: "mock-plugin"}
+		adapter := &scorePluginAdapter{ScorePlugin: mock, enabled: false}
+		status := adapter.PreScore(context.Background(), nil, nil, nil)
+		if status == nil {
+			t.Fatal("Expected non-nil status for disabled adapter")
+		}
+		if status.Code() != fwk.Skip {
+			t.Errorf("Expected status code %v, got %v", fwk.Skip, status.Code())
 		}
 	})
 }

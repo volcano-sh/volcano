@@ -145,6 +145,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 	arguments.GetBool(&predicate.podTopologySpreadEnable, PodTopologySpreadEnable)
 	arguments.GetBool(&predicate.volumeBindingEnable, VolumeBindingEnable)
 	arguments.GetBool(&predicate.cacheEnable, CachePredicate)
+	arguments.GetBool(&predicate.dynamicResourceAllocationEnable, DynamicResourceAllocationEnable)
 
 	features := feature.Features{
 		EnableStorageCapacityScoring:                 utilFeature.DefaultFeatureGate.Enabled(features.StorageCapacityScoring),
@@ -631,7 +632,10 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		if w, ok := framework.Get[int](pp.pluginArguments, "dynamicresources.weight"); ok {
 			draWeight = w
 		}
-		addScorePlugin(dynamicresources.Name, &scorePluginAdapter{ScorePlugin: dynamicResourceAllocationPlugin}, draWeight)
+		addScorePlugin(dynamicresources.Name, &scorePluginAdapter{
+			ScorePlugin: dynamicResourceAllocationPlugin,
+			enabled:     pp.enabledPredicates.dynamicResourceAllocationEnable,
+		}, draWeight)
 	}
 
 	pp.FilterPlugins = filterPlugins
@@ -930,11 +934,40 @@ func ResetVolumeBindingPluginForTest() {
 
 type scorePluginAdapter struct {
 	fwk.ScorePlugin
+	enabled bool
 }
 
 func (s *scorePluginAdapter) PreScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodes []fwk.NodeInfo) *fwk.Status {
+	if !s.enabled {
+		return fwk.NewStatus(fwk.Skip, "DRA scoring is disabled")
+	}
 	if p, ok := s.ScorePlugin.(fwk.PreScorePlugin); ok {
 		return p.PreScore(ctx, state, pod, nodes)
+	}
+	return nil
+}
+
+func (s *scorePluginAdapter) Score(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) (int64, *fwk.Status) {
+	if !s.enabled {
+		return 0, nil
+	}
+	klog.V(4).Infof("Scoring pod %s/%s on node %s using DRA", pod.Namespace, pod.Name, nodeInfo.Node().Name)
+	return s.ScorePlugin.Score(ctx, state, pod, nodeInfo)
+}
+
+func (s *scorePluginAdapter) ScoreExtensions() fwk.ScoreExtensions {
+	if s.ScorePlugin.ScoreExtensions() == nil {
+		return nil
+	}
+	return s
+}
+
+func (s *scorePluginAdapter) NormalizeScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, scores fwk.NodeScoreList) *fwk.Status {
+	if !s.enabled {
+		return nil
+	}
+	if se := s.ScorePlugin.ScoreExtensions(); se != nil {
+		return se.NormalizeScore(ctx, state, pod, scores)
 	}
 	return nil
 }
