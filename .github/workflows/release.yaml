@@ -9,12 +9,13 @@ on:
       - "v*.*.*"
 
 
-permissions:
-  contents: read
-  packages: write
+permissions: read-all
 
 jobs:
   docker:
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     env:
       GOPATH: /home/runner/work/${{ github.repository }}
@@ -125,6 +126,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: write
     strategy:
       matrix:
         include:
@@ -177,6 +179,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     outputs:
       hashes: ${{ steps.hash.outputs.hashes }}
     steps:

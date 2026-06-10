@@ -9,8 +9,7 @@ on:
       - master
       - release-**
 
-permissions:
-  contents: read
+permissions: read-all
 
 jobs:
   approve:

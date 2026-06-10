@@ -17,6 +17,8 @@ on:
 env:
   APIS_REPO: volcano-sh/apis
 
+permissions: read-all
+
 jobs:
   sync-apis:
     runs-on: ubuntu-latest
