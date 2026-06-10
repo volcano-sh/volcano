@@ -23,7 +23,7 @@ contribution-policy:
       action: 'allowed'
       path:
         - /
-  contributing-policy: 'https://github.com/volcano-sh/community/blob/master/contribute.md'
+  contributing-policy: 'https://github.com/volcano-sh/community/blob/master/contributing.md'
   code-of-conduct: 'https://github.com/volcano-sh/community/blob/master/CODE_OF_CONDUCT.md'
 
 documentation:
