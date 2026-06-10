@@ -93,7 +93,7 @@ Finally, there should a model to balance multiple factors with weight and calcul
 The usage plugin keeps a session-level shadow cache for pods that have been assigned to a node but whose metrics are not visible yet. The estimated resource of a Guaranteed or Burstable pod is:
 
 ```
-pod_estimate = (request * request.weight + (limit - request) * burst.weight) * applied_risk_factor
+pod_estimate = (request * request_ratio + (limit - request) * burst_ratio) * applied_risk_factor
 ```
 
 The estimate is clamped to `[0, limit]`. If the pod has no limit for a resource, the request is used as the effective limit for that resource.
@@ -110,20 +110,18 @@ When `load_composite_percentage >= risk_threshold`, the estimate is multiplied b
 
 BestEffort pods do not use node-capacity ratios or density penalties. They use fixed configured estimates and are also affected by `risk_factor`:
 
-```
-be.cpu: 250m
-be.memory: 200Mi
-```
+BestEffort estimates are configured under `estimator.be_cpu` and `estimator.be_memory`.
 
 Estimator configuration:
 
 ```
-request.weight: 1    # 0 <= request.weight <= 1
-burst.weight: 0      # 0 <= burst.weight <= 1
-risk_threshold: 0.6  # composite load threshold, 0.6 means 60%
-risk_factor: 1.2     # applied after the threshold is reached
-be.cpu: 250m         # fixed BestEffort CPU estimate
-be.memory: 200Mi     # fixed BestEffort memory estimate
+estimator:
+  request_ratio: 0.7   # 0 <= request_ratio <= 1
+  burst_ratio: 0       # 0 <= burst_ratio <= 1
+  risk_threshold: 0.6  # composite load threshold, 0.6 means 60%
+  risk_factor: 1.2     # applied after the threshold is reached
+  be_cpu: 250m         # fixed BestEffort CPU estimate
+  be_memory: 200Mi     # fixed BestEffort memory estimate
 ```
 
 | factors                   | node1           | node2            |

@@ -34,6 +34,7 @@ const (
 	// PluginName indicates name of volcano scheduler plugin.
 	PluginName            = "usage"
 	thresholdSection      = "thresholds"
+	estimatorSection      = "estimator"
 	MetricsActiveTime     = 5 * time.Minute
 	NodeUsageCPUExtend    = "the CPU load of the node exceeds the upper limit."
 	NodeUsageMemoryExtend = "the memory load of the node exceeds the upper limit."
@@ -55,12 +56,13 @@ const (
          thresholds:
            cpu: 80
            mem: 80
-         request.weight: 1
-         burst.weight: 0
-         risk_threshold: 0.6
-         risk_factor: 1.2
-         be.cpu: 250m
-         be.memory: 200Mi
+         estimator:
+           request_ratio: 0.7
+           burst_ratio: 0
+           risk_threshold: 0.6
+           risk_factor: 1.2
+           be_cpu: 250m
+           be_memory: 200Mi
 */
 
 const AVG string = "average"
@@ -76,8 +78,8 @@ type usagePlugin struct {
 	period          string
 
 	// Resource estimator parameters
-	requestWeight float64 // Request contribution weight, default 1.0
-	burstWeight   float64 // Burst contribution weight, default 0.0
+	requestRatio  float64 // Request contribution ratio, default 0.7
+	burstRatio    float64 // Burst contribution ratio, default 0.0
 	riskThreshold float64 // Composite load threshold for risk factor, default 0.6
 	riskFactor    float64 // Risk multiplier once threshold is reached, default 1.2
 	beCPU         float64 // BestEffort CPU estimate in milliCPU, default 250m
@@ -100,8 +102,8 @@ func New(args framework.Arguments) framework.Plugin {
 		cpuThresholds:   80,
 		memThresholds:   80,
 		period:          source.NODE_METRICS_PERIOD,
-		requestWeight:   1.0,
-		burstWeight:     0.0,
+		requestRatio:    0.7,
+		burstRatio:      0.0,
 		riskThreshold:   0.6,
 		riskFactor:      1.2,
 		beCPU:           250,
@@ -132,14 +134,50 @@ func New(args framework.Arguments) framework.Plugin {
 		}
 	}
 
-	parseBoundedFloatArg(plugin.pluginArguments, "request.weight", &plugin.requestWeight, 0, 1)
-	parseBoundedFloatArg(plugin.pluginArguments, "burst.weight", &plugin.burstWeight, 0, 1)
-	parseBoundedFloatArg(plugin.pluginArguments, "risk_threshold", &plugin.riskThreshold, 0, 1)
-	parseMinFloatArg(plugin.pluginArguments, "risk_factor", &plugin.riskFactor, 1)
-	parseCPUQuantityArg(plugin.pluginArguments, "be.cpu", &plugin.beCPU)
-	parseMemoryQuantityArg(plugin.pluginArguments, "be.memory", &plugin.beMemory)
+	parseEstimatorArgs(plugin.pluginArguments, plugin)
 
 	return plugin
+}
+
+func parseEstimatorArgs(args framework.Arguments, plugin *usagePlugin) {
+	argsValue, ok := args[estimatorSection]
+	if !ok {
+		return
+	}
+
+	estimatorArgs, ok := toEstimatorArguments(argsValue)
+	if !ok {
+		klog.Errorf("Failed to convert the estimator information, estimator args values is %v", argsValue)
+		return
+	}
+
+	parseBoundedFloatArg(estimatorArgs, "request_ratio", &plugin.requestRatio, 0, 1)
+	parseBoundedFloatArg(estimatorArgs, "burst_ratio", &plugin.burstRatio, 0, 1)
+	parseBoundedFloatArg(estimatorArgs, "risk_threshold", &plugin.riskThreshold, 0, 1)
+	parseMinFloatArg(estimatorArgs, "risk_factor", &plugin.riskFactor, 1)
+	parseCPUQuantityArg(estimatorArgs, "be_cpu", &plugin.beCPU)
+	parseMemoryQuantityArg(estimatorArgs, "be_memory", &plugin.beMemory)
+}
+
+func toEstimatorArguments(value interface{}) (framework.Arguments, bool) {
+	switch args := value.(type) {
+	case framework.Arguments:
+		return args, true
+	case map[string]interface{}:
+		return framework.Arguments(args), true
+	case map[interface{}]interface{}:
+		estimatorArgs := framework.Arguments{}
+		for key, value := range args {
+			keyStr, ok := key.(string)
+			if !ok {
+				return nil, false
+			}
+			estimatorArgs[keyStr] = value
+		}
+		return estimatorArgs, true
+	default:
+		return nil, false
+	}
 }
 
 // parseBoundedFloatArg parses a float64 argument and keeps the existing value
@@ -458,8 +496,8 @@ func (up *usagePlugin) estimateTaskResource(task *api.TaskInfo, appliedRiskFacto
 			EstimateBestEffortResource(up.beMemory, appliedRiskFactor)
 	}
 	cpuReq, cpuLim, memReq, memLim := getPodResourceRequestLimit(task.Pod)
-	return EstimatePodResource(cpuReq, cpuLim, up.requestWeight, up.burstWeight, appliedRiskFactor),
-		EstimatePodResource(memReq, memLim, up.requestWeight, up.burstWeight, appliedRiskFactor)
+	return EstimatePodResource(cpuReq, cpuLim, up.requestRatio, up.burstRatio, appliedRiskFactor),
+		EstimatePodResource(memReq, memLim, up.requestRatio, up.burstRatio, appliedRiskFactor)
 }
 
 // isMetricsAvailable checks if the node's metrics data is available and fresh.

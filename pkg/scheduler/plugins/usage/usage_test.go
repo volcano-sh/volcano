@@ -62,11 +62,11 @@ func updateNodeUsage(nodesInfo map[string]*api.NodeInfo, nodesUsage map[string]*
 
 func TestUsageEstimatorConfig(t *testing.T) {
 	defaultPlugin := New(framework.Arguments{}).(*usagePlugin)
-	if math.Abs(defaultPlugin.requestWeight-1.0) > eps {
-		t.Errorf("default requestWeight = %v, expected 1.0", defaultPlugin.requestWeight)
+	if math.Abs(defaultPlugin.requestRatio-0.7) > eps {
+		t.Errorf("default requestRatio = %v, expected 0.7", defaultPlugin.requestRatio)
 	}
-	if math.Abs(defaultPlugin.burstWeight-0.0) > eps {
-		t.Errorf("default burstWeight = %v, expected 0.0", defaultPlugin.burstWeight)
+	if math.Abs(defaultPlugin.burstRatio-0.0) > eps {
+		t.Errorf("default burstRatio = %v, expected 0.0", defaultPlugin.burstRatio)
 	}
 	if math.Abs(defaultPlugin.riskThreshold-0.6) > eps {
 		t.Errorf("default riskThreshold = %v, expected 0.6", defaultPlugin.riskThreshold)
@@ -82,18 +82,20 @@ func TestUsageEstimatorConfig(t *testing.T) {
 	}
 
 	configuredPlugin := New(framework.Arguments{
-		"request.weight": 0.7,
-		"burst.weight":   0.3,
-		"risk_threshold": 0.75,
-		"risk_factor":    1.5,
-		"be.cpu":         "500m",
-		"be.memory":      "300mi",
+		"estimator": map[interface{}]interface{}{
+			"request_ratio":  0.8,
+			"burst_ratio":    0.3,
+			"risk_threshold": 0.75,
+			"risk_factor":    1.5,
+			"be_cpu":         "500m",
+			"be_memory":      "300mi",
+		},
 	}).(*usagePlugin)
-	if math.Abs(configuredPlugin.requestWeight-0.7) > eps {
-		t.Errorf("configured requestWeight = %v, expected 0.7", configuredPlugin.requestWeight)
+	if math.Abs(configuredPlugin.requestRatio-0.8) > eps {
+		t.Errorf("configured requestRatio = %v, expected 0.8", configuredPlugin.requestRatio)
 	}
-	if math.Abs(configuredPlugin.burstWeight-0.3) > eps {
-		t.Errorf("configured burstWeight = %v, expected 0.3", configuredPlugin.burstWeight)
+	if math.Abs(configuredPlugin.burstRatio-0.3) > eps {
+		t.Errorf("configured burstRatio = %v, expected 0.3", configuredPlugin.burstRatio)
 	}
 	if math.Abs(configuredPlugin.riskThreshold-0.75) > eps {
 		t.Errorf("configured riskThreshold = %v, expected 0.75", configuredPlugin.riskThreshold)
@@ -109,18 +111,20 @@ func TestUsageEstimatorConfig(t *testing.T) {
 	}
 
 	invalidPlugin := New(framework.Arguments{
-		"request.weight": 1.5,
-		"burst.weight":   -0.1,
-		"risk_threshold": 2.0,
-		"risk_factor":    0.5,
-		"be.cpu":         "-1",
-		"be.memory":      "bad",
+		"estimator": map[interface{}]interface{}{
+			"request_ratio":  1.5,
+			"burst_ratio":    -0.1,
+			"risk_threshold": 2.0,
+			"risk_factor":    0.5,
+			"be_cpu":         "-1",
+			"be_memory":      "bad",
+		},
 	}).(*usagePlugin)
-	if math.Abs(invalidPlugin.requestWeight-1.0) > eps {
-		t.Errorf("invalid requestWeight should keep default, got %v", invalidPlugin.requestWeight)
+	if math.Abs(invalidPlugin.requestRatio-0.7) > eps {
+		t.Errorf("invalid requestRatio should keep default, got %v", invalidPlugin.requestRatio)
 	}
-	if math.Abs(invalidPlugin.burstWeight-0.0) > eps {
-		t.Errorf("invalid burstWeight should keep default, got %v", invalidPlugin.burstWeight)
+	if math.Abs(invalidPlugin.burstRatio-0.0) > eps {
+		t.Errorf("invalid burstRatio should keep default, got %v", invalidPlugin.burstRatio)
 	}
 	if math.Abs(invalidPlugin.riskThreshold-0.6) > eps {
 		t.Errorf("invalid riskThreshold should keep default, got %v", invalidPlugin.riskThreshold)
@@ -132,6 +136,34 @@ func TestUsageEstimatorConfig(t *testing.T) {
 	if math.Abs(legacyPlugin.riskThreshold-0.6) > eps {
 		t.Errorf("legacy threshold should not configure riskThreshold, got %v", legacyPlugin.riskThreshold)
 	}
+
+	oldEstimatorKeysPlugin := New(framework.Arguments{
+		"request.weight": 0.2,
+		"burst.weight":   0.9,
+		"risk_threshold": 0.9,
+		"risk_factor":    2.0,
+		"be.cpu":         "900m",
+		"be.memory":      "900Mi",
+	}).(*usagePlugin)
+	if math.Abs(oldEstimatorKeysPlugin.requestRatio-0.7) > eps {
+		t.Errorf("old request.weight should not configure requestRatio, got %v", oldEstimatorKeysPlugin.requestRatio)
+	}
+	if math.Abs(oldEstimatorKeysPlugin.burstRatio-0.0) > eps {
+		t.Errorf("old burst.weight should not configure burstRatio, got %v", oldEstimatorKeysPlugin.burstRatio)
+	}
+	if math.Abs(oldEstimatorKeysPlugin.riskThreshold-0.6) > eps {
+		t.Errorf("old risk_threshold should not configure riskThreshold, got %v", oldEstimatorKeysPlugin.riskThreshold)
+	}
+	if math.Abs(oldEstimatorKeysPlugin.riskFactor-1.2) > eps {
+		t.Errorf("old risk_factor should not configure riskFactor, got %v", oldEstimatorKeysPlugin.riskFactor)
+	}
+	if math.Abs(oldEstimatorKeysPlugin.beCPU-250) > eps {
+		t.Errorf("old be.cpu should not configure beCPU, got %v", oldEstimatorKeysPlugin.beCPU)
+	}
+	if math.Abs(oldEstimatorKeysPlugin.beMemory-float64(200*1024*1024)) > eps {
+		t.Errorf("old be.memory should not configure beMemory, got %v", oldEstimatorKeysPlugin.beMemory)
+	}
+
 	if math.Abs(invalidPlugin.riskFactor-1.2) > eps {
 		t.Errorf("invalid riskFactor should keep default, got %v", invalidPlugin.riskFactor)
 	}
