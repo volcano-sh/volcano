@@ -1075,7 +1075,9 @@ func appendJobCondition(conditions []batch.JobCondition, c batch.JobCondition) [
 	}
 	conditions = append(conditions, c)
 	if len(conditions) > maxJobConditions {
-		conditions = conditions[len(conditions)-maxJobConditions:]
+		newConditions := make([]batch.JobCondition, maxJobConditions)
+		copy(newConditions, conditions[len(conditions)-maxJobConditions:])
+		return newConditions
 	}
 	return conditions
 }
