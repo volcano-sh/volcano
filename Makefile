@@ -100,7 +100,7 @@ vc-agent: init
 	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/network-qos ./cmd/network-qos
 
 vcctl: init
-	CC=${CC} CGO_ENABLED=0 GOOS=${OS} go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vcctl ./cmd/cli
+	CC=${CC} CGO_ENABLED=0 GOOS=$(if $(filter file,$(origin GOOS)),$(OS),$(GOOS)) GOARCH=$(GOARCH) go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vcctl ./cmd/cli
 
 image_bins: vc-scheduler vc-agent-scheduler vc-controller-manager vc-webhook-manager vc-agent
 

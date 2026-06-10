@@ -92,6 +92,7 @@ jobs:
           docker logout ghcr.io
 
   sbom:
+    needs: release
     if: startsWith(github.ref, 'refs/tags/v')
     name: Release SBOM
     runs-on: ubuntu-latest
@@ -117,3 +118,99 @@ jobs:
         with:
           files: |
             sbom.tar.gz
+
+  release-assets:
+    if: startsWith(github.ref, 'refs/tags/v')
+    name: Release vcctl CLI Assets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.x
+
+      - name: Build vcctl
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          RELEASE_VER: ${{ github.ref_name }}
+        run: make vcctl
+
+      - name: Package vcctl
+        run: |
+          PKG="vcctl-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          mkdir -p "_output/release/${PKG}"
+          cp "_output/bin/vcctl" "_output/release/${PKG}/"
+          cp LICENSE "_output/release/${PKG}/"
+          cd _output/release
+          tar -czf "${PKG}.tar.gz" "${PKG}/"
+          sha256sum "${PKG}.tar.gz" > "${PKG}.tar.gz.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcctl-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: _output/release/vcctl-*.tar.gz*
+
+  release:
+    needs: release-assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    name: Upload Release Assets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: vcctl-*
+
+      - name: Generate hashes for SLSA provenance
+        id: hash
+        run: |
+          mkdir -p _flat
+          cp artifacts/vcctl-*/*.tar.gz _flat/
+          cd _flat
+          echo "hashes=$(sha256sum *.tar.gz | base64 -w0)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: artifacts/vcctl-*/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  provenance:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    name: Generate SLSA Provenance
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: "${{ needs.release.outputs.hashes }}"
+      upload-assets: true
+      upload-tag-name: "${{ github.ref_name }}"
