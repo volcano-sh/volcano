@@ -1,0 +1,60 @@
+# Default: auto-detect text files and normalize them to LF in the repository.
+* text=auto eol=lf
+
+# Explicit text files.
+*.go          text eol=lf
+*.mod         text eol=lf
+*.sum         text eol=lf
+*.proto       text eol=lf
+*.json        text eol=lf
+*.yaml        text eol=lf
+*.yml         text eol=lf
+*.toml        text eol=lf
+*.xml         text eol=lf
+*.html        text eol=lf
+*.css         text eol=lf
+*.js          text eol=lf
+*.ts          text eol=lf
+*.md          text eol=lf
+*.txt         text eol=lf
+*.csv         text eol=lf
+*.sql         text eol=lf
+*.sh          text eol=lf
+*.bash        text eol=lf
+*.zsh         text eol=lf
+*.py          text eol=lf
+*.svg         text eol=lf
+Dockerfile*   text eol=lf
+Makefile*     text eol=lf
+*.conf        text eol=lf
+*.cfg         text eol=lf
+*.ini         text eol=lf
+*.env         text eol=lf
+*.properties  text eol=lf
+*.tpl         text eol=lf
+
+# Explicitly binary files: never normalize.
+*.png         binary
+*.jpg         binary
+*.jpeg        binary
+*.gif         binary
+*.ico         binary
+*.webp        binary
+*.woff        binary
+*.woff2       binary
+*.ttf         binary
+*.eot         binary
+*.otf         binary
+*.pdf         binary
+*.zip         binary
+*.tar         binary
+*.gz          binary
+*.tgz         binary
+*.bz2         binary
+*.xz          binary
+*.jar         binary
+*.exe         binary
+*.dll         binary
+*.so          binary
+*.dylib       binary
+*.a           binary
