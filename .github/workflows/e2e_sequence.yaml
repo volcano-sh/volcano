@@ -3,8 +3,12 @@ name: E2E Sequence Jobs
 on:
   workflow_call:
 
+
 jobs:
   e2e_sequence:
+    permissions:
+      contents: read
+      actions: write
     runs-on: ubuntu-24.04
     name: E2E about Sequence
     timeout-minutes: 50
