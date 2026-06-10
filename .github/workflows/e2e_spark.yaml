@@ -3,6 +3,8 @@ name: E2E Spark Integration Test
 on:
   workflow_call:
 
+permissions: read-all
+
 jobs:
   k8s-integration-tests:
     name: "E2E about Spark Integration test"

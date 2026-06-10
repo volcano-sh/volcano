@@ -3,6 +3,8 @@ name: E2E Hypernode
 on:
   workflow_call:
 
+permissions: read-all
+
 jobs:
   e2e_hypernode:
     runs-on: ubuntu-24.04

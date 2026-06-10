@@ -3,6 +3,8 @@ name: E2E Sequence Jobs
 on:
   workflow_call:
 
+permissions: read-all
+
 jobs:
   e2e_sequence:
     runs-on: ubuntu-24.04

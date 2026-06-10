@@ -3,6 +3,8 @@ name: Build Images
 on:
   workflow_call:
 
+permissions: read-all
+
 jobs:
   build-images:
     runs-on: ubuntu-24.04

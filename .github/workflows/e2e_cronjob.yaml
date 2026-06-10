@@ -3,12 +3,12 @@ name: E2E CRONJOB
 on:
   workflow_call:
 
-permissions:
-  contents: read
-  actions: write
+permissions: read-all
 
 jobs:
   cronjob:
+    permissions:
+      actions: write
     runs-on: ubuntu-24.04
     name: E2E about CRONJOB
     timeout-minutes: 70
