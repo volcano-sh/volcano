@@ -20,11 +20,11 @@ import (
 	"strings"
 	"time"
 
-	"volcano.sh/volcano/pkg/scheduler/metrics/source"
-
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
+
+	"volcano.sh/volcano/pkg/scheduler/metrics/source"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -368,22 +368,8 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		return up.calcNodeScore(node), nil
 	}
 
-	// Step 7: Register BatchNodeOrderFn - batch scores all candidate nodes
-	batchNodeOrderFn := func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
-		scores := make(map[string]float64, len(nodes))
-		for _, node := range nodes {
-			if !up.isMetricsAvailable(node) {
-				scores[node.Name] = 0
-				continue
-			}
-			scores[node.Name] = up.calcNodeScore(node)
-		}
-		return scores, nil
-	}
-
 	ssn.AddPredicateFn(up.Name(), predicateFn)
 	ssn.AddNodeOrderFn(up.Name(), nodeOrderFn)
-	ssn.AddBatchNodeOrderFn(up.Name(), batchNodeOrderFn)
 }
 
 func (up *usagePlugin) OnSessionClose(ssn *framework.Session) {
@@ -471,8 +457,7 @@ func (up *usagePlugin) estimateTaskResource(task *api.TaskInfo, appliedRiskFacto
 		return EstimateBestEffortResource(up.beCPU, appliedRiskFactor),
 			EstimateBestEffortResource(up.beMemory, appliedRiskFactor)
 	}
-	cpuReq, cpuLim := getPodCPURequestLimit(task.Pod)
-	memReq, memLim := getPodMemRequestLimit(task.Pod)
+	cpuReq, cpuLim, memReq, memLim := getPodResourceRequestLimit(task.Pod)
 	return EstimatePodResource(cpuReq, cpuLim, up.requestWeight, up.burstWeight, appliedRiskFactor),
 		EstimatePodResource(memReq, memLim, up.requestWeight, up.burstWeight, appliedRiskFactor)
 }
@@ -496,8 +481,7 @@ func shouldAddToShadowCache(task *api.TaskInfo, metricsDelay time.Duration) bool
 		return false
 	}
 	switch task.Status {
-	case api.Pending:
-		// Already assigned to a node but still Pending - scheduling decision from previous session
+	case api.Allocated, api.Binding, api.Bound:
 		return true
 	case api.Running:
 		// Running but started recently - metrics not yet collected
@@ -506,7 +490,7 @@ func shouldAddToShadowCache(task *api.TaskInfo, metricsDelay time.Duration) bool
 		}
 		return time.Since(task.Pod.Status.StartTime.Time) < metricsDelay
 	default:
-		// Succeeded, Failed, Unknown, Binding, Bound, etc. - do not add
+		// Pending, Succeeded, Failed, Unknown, etc. - do not add
 		return false
 	}
 }

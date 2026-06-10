@@ -79,6 +79,29 @@ func TestShadowLoadCache_AddEstimate(t *testing.T) {
 	}
 }
 
+func TestShadowLoadCache_AddEstimate_UpdateExistingTask(t *testing.T) {
+	cache := NewShadowLoadCache()
+
+	cache.AddEstimate("node1", "task1", 1000, 2048)
+	cache.AddEstimate("node2", "task1", 500, 1024)
+
+	cpuEst, memEst := cache.GetNodeEst("node1")
+	if math.Abs(cpuEst) > testEps || math.Abs(memEst) > testEps {
+		t.Errorf("Expected node1 estimate to be cleared after task update, got (%v, %v)", cpuEst, memEst)
+	}
+
+	cpuEst, memEst = cache.GetNodeEst("node2")
+	if math.Abs(cpuEst-500) > testEps || math.Abs(memEst-1024) > testEps {
+		t.Errorf("Expected node2 estimate to be updated to (500, 1024), got (%v, %v)", cpuEst, memEst)
+	}
+
+	cache.SubEstimateBySnapshot("task1")
+	cpuEst, memEst = cache.GetNodeEst("node2")
+	if math.Abs(cpuEst) > testEps || math.Abs(memEst) > testEps {
+		t.Errorf("Expected node2 estimate to be cleared after subtract, got (%v, %v)", cpuEst, memEst)
+	}
+}
+
 func TestShadowLoadCache_SubEstimateBySnapshot(t *testing.T) {
 	cache := NewShadowLoadCache()
 

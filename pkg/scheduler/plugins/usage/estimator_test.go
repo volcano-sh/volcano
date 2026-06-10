@@ -374,33 +374,39 @@ func TestCalcNodeScore(t *testing.T) {
 	}
 }
 
-func TestGetPodCPURequestLimit(t *testing.T) {
+func TestGetPodResourceRequestLimit(t *testing.T) {
 	tests := []struct {
-		name        string
-		pod         *v1.Pod
-		expectedReq float64
-		expectedLim float64
+		name           string
+		pod            *v1.Pod
+		expectedCPUReq float64
+		expectedCPULim float64
+		expectedMemReq float64
+		expectedMemLim float64
 	}{
 		{
-			name: "single container with request and limit",
+			name: "single container with cpu and memory request and limit",
 			pod: &v1.Pod{
 				Spec: v1.PodSpec{
 					Containers: []v1.Container{
 						{
 							Resources: v1.ResourceRequirements{
 								Requests: v1.ResourceList{
-									v1.ResourceCPU: resource.MustParse("500m"),
+									v1.ResourceCPU:    resource.MustParse("500m"),
+									v1.ResourceMemory: resource.MustParse("1Gi"),
 								},
 								Limits: v1.ResourceList{
-									v1.ResourceCPU: resource.MustParse("1000m"),
+									v1.ResourceCPU:    resource.MustParse("1000m"),
+									v1.ResourceMemory: resource.MustParse("2Gi"),
 								},
 							},
 						},
 					},
 				},
 			},
-			expectedReq: 500,
-			expectedLim: 1000,
+			expectedCPUReq: 500,
+			expectedCPULim: 1000,
+			expectedMemReq: 1073741824,
+			expectedMemLim: 2147483648,
 		},
 		{
 			name: "multiple containers - requests/limits summed",
@@ -409,21 +415,35 @@ func TestGetPodCPURequestLimit(t *testing.T) {
 					Containers: []v1.Container{
 						{
 							Resources: v1.ResourceRequirements{
-								Requests: v1.ResourceList{v1.ResourceCPU: resource.MustParse("200m")},
-								Limits:   v1.ResourceList{v1.ResourceCPU: resource.MustParse("500m")},
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("200m"),
+									v1.ResourceMemory: resource.MustParse("1Gi"),
+								},
+								Limits: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("500m"),
+									v1.ResourceMemory: resource.MustParse("2Gi"),
+								},
 							},
 						},
 						{
 							Resources: v1.ResourceRequirements{
-								Requests: v1.ResourceList{v1.ResourceCPU: resource.MustParse("300m")},
-								Limits:   v1.ResourceList{v1.ResourceCPU: resource.MustParse("700m")},
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("300m"),
+									v1.ResourceMemory: resource.MustParse("2Gi"),
+								},
+								Limits: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("700m"),
+									v1.ResourceMemory: resource.MustParse("3Gi"),
+								},
 							},
 						},
 					},
 				},
 			},
-			expectedReq: 500,
-			expectedLim: 1200,
+			expectedCPUReq: 500,
+			expectedCPULim: 1200,
+			expectedMemReq: 3221225472,
+			expectedMemLim: 5368709120,
 		},
 		{
 			name: "init container takes max",
@@ -432,71 +452,26 @@ func TestGetPodCPURequestLimit(t *testing.T) {
 					InitContainers: []v1.Container{
 						{
 							Resources: v1.ResourceRequirements{
-								Requests: v1.ResourceList{v1.ResourceCPU: resource.MustParse("2000m")},
-								Limits:   v1.ResourceList{v1.ResourceCPU: resource.MustParse("3000m")},
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("2000m"),
+									v1.ResourceMemory: resource.MustParse("4Gi"),
+								},
+								Limits: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("3000m"),
+									v1.ResourceMemory: resource.MustParse("5Gi"),
+								},
 							},
 						},
 					},
-					Containers: []v1.Container{
-						{
-							Resources: v1.ResourceRequirements{
-								Requests: v1.ResourceList{v1.ResourceCPU: resource.MustParse("500m")},
-								Limits:   v1.ResourceList{v1.ResourceCPU: resource.MustParse("1000m")},
-							},
-						},
-					},
-				},
-			},
-			expectedReq: 2000, // max(500, 2000)
-			expectedLim: 3000, // max(1000, 3000)
-		},
-		{
-			name: "no resources specified (BestEffort)",
-			pod: &v1.Pod{
-				Spec: v1.PodSpec{
-					Containers: []v1.Container{
-						{
-							Resources: v1.ResourceRequirements{},
-						},
-					},
-				},
-			},
-			expectedReq: 0,
-			expectedLim: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req, lim := getPodCPURequestLimit(tt.pod)
-			if math.Abs(req-tt.expectedReq) > testEps {
-				t.Errorf("getPodCPURequestLimit() request = %v, expected %v", req, tt.expectedReq)
-			}
-			if math.Abs(lim-tt.expectedLim) > testEps {
-				t.Errorf("getPodCPURequestLimit() limit = %v, expected %v", lim, tt.expectedLim)
-			}
-		})
-	}
-}
-
-func TestGetPodMemRequestLimit(t *testing.T) {
-	tests := []struct {
-		name        string
-		pod         *v1.Pod
-		expectedReq float64
-		expectedLim float64
-	}{
-		{
-			name: "single container with request and limit",
-			pod: &v1.Pod{
-				Spec: v1.PodSpec{
 					Containers: []v1.Container{
 						{
 							Resources: v1.ResourceRequirements{
 								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("500m"),
 									v1.ResourceMemory: resource.MustParse("1Gi"),
 								},
 								Limits: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("1000m"),
 									v1.ResourceMemory: resource.MustParse("2Gi"),
 								},
 							},
@@ -504,8 +479,10 @@ func TestGetPodMemRequestLimit(t *testing.T) {
 					},
 				},
 			},
-			expectedReq: 1073741824, // 1Gi in bytes
-			expectedLim: 2147483648, // 2Gi in bytes
+			expectedCPUReq: 2000,       // max(500, 2000)
+			expectedCPULim: 3000,       // max(1000, 3000)
+			expectedMemReq: 4294967296, // max(1Gi, 4Gi)
+			expectedMemLim: 5368709120, // max(2Gi, 5Gi)
 		},
 		{
 			name: "no resources specified (BestEffort)",
@@ -518,19 +495,27 @@ func TestGetPodMemRequestLimit(t *testing.T) {
 					},
 				},
 			},
-			expectedReq: 0,
-			expectedLim: 0,
+			expectedCPUReq: 0,
+			expectedCPULim: 0,
+			expectedMemReq: 0,
+			expectedMemLim: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, lim := getPodMemRequestLimit(tt.pod)
-			if math.Abs(req-tt.expectedReq) > testEps {
-				t.Errorf("getPodMemRequestLimit() request = %v, expected %v", req, tt.expectedReq)
+			cpuReq, cpuLim, memReq, memLim := getPodResourceRequestLimit(tt.pod)
+			if math.Abs(cpuReq-tt.expectedCPUReq) > testEps {
+				t.Errorf("getPodResourceRequestLimit() cpu request = %v, expected %v", cpuReq, tt.expectedCPUReq)
 			}
-			if math.Abs(lim-tt.expectedLim) > testEps {
-				t.Errorf("getPodMemRequestLimit() limit = %v, expected %v", lim, tt.expectedLim)
+			if math.Abs(cpuLim-tt.expectedCPULim) > testEps {
+				t.Errorf("getPodResourceRequestLimit() cpu limit = %v, expected %v", cpuLim, tt.expectedCPULim)
+			}
+			if math.Abs(memReq-tt.expectedMemReq) > testEps {
+				t.Errorf("getPodResourceRequestLimit() memory request = %v, expected %v", memReq, tt.expectedMemReq)
+			}
+			if math.Abs(memLim-tt.expectedMemLim) > testEps {
+				t.Errorf("getPodResourceRequestLimit() memory limit = %v, expected %v", memLim, tt.expectedMemLim)
 			}
 		})
 	}

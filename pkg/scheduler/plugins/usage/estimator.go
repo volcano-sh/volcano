@@ -132,52 +132,47 @@ func CalcNodeScore(cpuComp, memComp float64, cpuWeight, memWeight, usageWeight i
 	return score * float64(fwk.MaxNodeScore) * float64(usageWeight)
 }
 
-// getPodCPURequestLimit extracts the total CPU request and limit from a pod (in milliCPU).
-func getPodCPURequestLimit(pod *v1.Pod) (request, limit float64) {
+// getPodResourceRequestLimit extracts CPU (milliCPU) and memory (bytes) request/limit for a pod.
+func getPodResourceRequestLimit(pod *v1.Pod) (cpuRequest, cpuLimit, memRequest, memLimit float64) {
 	for _, c := range pod.Spec.Containers {
 		if req, ok := c.Resources.Requests[v1.ResourceCPU]; ok {
-			request += float64(req.MilliValue())
+			cpuRequest += float64(req.MilliValue())
 		}
 		if lim, ok := c.Resources.Limits[v1.ResourceCPU]; ok {
-			limit += float64(lim.MilliValue())
+			cpuLimit += float64(lim.MilliValue())
+		}
+		if req, ok := c.Resources.Requests[v1.ResourceMemory]; ok {
+			memRequest += float64(req.Value())
+		}
+		if lim, ok := c.Resources.Limits[v1.ResourceMemory]; ok {
+			memLimit += float64(lim.Value())
 		}
 	}
 	for _, c := range pod.Spec.InitContainers {
 		if req, ok := c.Resources.Requests[v1.ResourceCPU]; ok {
-			if float64(req.MilliValue()) > request {
-				request = float64(req.MilliValue())
+			value := float64(req.MilliValue())
+			if value > cpuRequest {
+				cpuRequest = value
 			}
 		}
 		if lim, ok := c.Resources.Limits[v1.ResourceCPU]; ok {
-			if float64(lim.MilliValue()) > limit {
-				limit = float64(lim.MilliValue())
+			value := float64(lim.MilliValue())
+			if value > cpuLimit {
+				cpuLimit = value
 			}
 		}
-	}
-	return request, limit
-}
-
-// getPodMemRequestLimit extracts the total Memory request and limit from a pod (in bytes).
-func getPodMemRequestLimit(pod *v1.Pod) (request, limit float64) {
-	for _, c := range pod.Spec.Containers {
 		if req, ok := c.Resources.Requests[v1.ResourceMemory]; ok {
-			request += float64(req.Value())
-		}
-		if lim, ok := c.Resources.Limits[v1.ResourceMemory]; ok {
-			limit += float64(lim.Value())
-		}
-	}
-	for _, c := range pod.Spec.InitContainers {
-		if req, ok := c.Resources.Requests[v1.ResourceMemory]; ok {
-			if float64(req.Value()) > request {
-				request = float64(req.Value())
+			value := float64(req.Value())
+			if value > memRequest {
+				memRequest = value
 			}
 		}
 		if lim, ok := c.Resources.Limits[v1.ResourceMemory]; ok {
-			if float64(lim.Value()) > limit {
-				limit = float64(lim.Value())
+			value := float64(lim.Value())
+			if value > memLimit {
+				memLimit = value
 			}
 		}
 	}
-	return request, limit
+	return cpuRequest, cpuLimit, memRequest, memLimit
 }

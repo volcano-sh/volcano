@@ -24,6 +24,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -533,6 +534,177 @@ func TestUsage_nodeOrderFn(t *testing.T) {
 						}
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestUsage_prioritizeNodesDoesNotDoubleCountNodeOrder(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+
+	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n2 := util.BuildNode("n2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	pg1 := util.BuildPodGroup("pg1", "c1", "q1", 0, nil, "")
+	queue1 := util.BuildQueue("q1", 1, nil)
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:             PluginName,
+					EnabledNodeOrder: &trueValue,
+					Arguments: framework.Arguments{
+						"usage.weight":  5,
+						"cpu.weight":    1,
+						"memory.weight": 1,
+					},
+				},
+			},
+		},
+	}
+
+	test := uthelper.TestCommonStruct{
+		Name:      "Usage score should be counted once in PrioritizeNodes.",
+		Plugins:   plugins,
+		PodGroups: []*schedulingv1.PodGroup{pg1},
+		Queues:    []*schedulingv1.Queue{queue1},
+		Pods:      []*v1.Pod{p1},
+		Nodes:     []*v1.Node{n1, n2},
+	}
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	updateNodeUsage(ssn.Nodes, map[string]*api.NodeUsage{
+		n1.Name: buildNodeUsage(map[string]float64{source.NODE_METRICS_PERIOD: 30}, map[string]float64{source.NODE_METRICS_PERIOD: 50}, time.Now()),
+		n2.Name: buildNodeUsage(map[string]float64{source.NODE_METRICS_PERIOD: 60}, map[string]float64{source.NODE_METRICS_PERIOD: 50}, time.Now()),
+	})
+
+	for _, job := range ssn.Jobs {
+		for _, task := range job.Tasks {
+			nodeScores := util.PrioritizeNodes(task, []*api.NodeInfo{ssn.Nodes[n1.Name], ssn.Nodes[n2.Name]}, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+			scoreByNode := map[string]float64{}
+			for score, nodes := range nodeScores {
+				for _, node := range nodes {
+					scoreByNode[node.Name] = score
+				}
+			}
+
+			expected := map[string]float64{
+				n1.Name: 300,
+				n2.Name: 225,
+			}
+			for nodeName, expectedScore := range expected {
+				if math.Abs(scoreByNode[nodeName]-expectedScore) > eps {
+					t.Errorf("PrioritizeNodes score for %s = %v, expected %v", nodeName, scoreByNode[nodeName], expectedScore)
+				}
+			}
+		}
+	}
+}
+
+func TestShouldAddToShadowCache(t *testing.T) {
+	recentStart := metav1.NewTime(time.Now().Add(-time.Minute))
+	oldStart := metav1.NewTime(time.Now().Add(-10 * time.Minute))
+
+	tests := []struct {
+		name     string
+		task     *api.TaskInfo
+		expected bool
+	}{
+		{
+			name: "pending without node is not tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status: api.Pending,
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "pending with node is not treated as allocated",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Pending,
+					NodeName: "node1",
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "allocated task is tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Allocated,
+					NodeName: "node1",
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "binding task is tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Binding,
+					NodeName: "node1",
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "bound task is tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Bound,
+					NodeName: "node1",
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "recent running task is tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Running,
+					NodeName: "node1",
+				},
+				Pod: &v1.Pod{
+					Status: v1.PodStatus{StartTime: &recentStart},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "old running task is not tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Running,
+					NodeName: "node1",
+				},
+				Pod: &v1.Pod{
+					Status: v1.PodStatus{StartTime: &oldStart},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "completed task is not tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Succeeded,
+					NodeName: "node1",
+				},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldAddToShadowCache(tt.task, 5*time.Minute)
+			if got != tt.expected {
+				t.Errorf("shouldAddToShadowCache() = %v, expected %v", got, tt.expected)
 			}
 		})
 	}

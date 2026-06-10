@@ -91,6 +91,9 @@ func (c *ShadowLoadCache) IsClean() bool {
 func (c *ShadowLoadCache) AddEstimate(nodeName string, taskID api.TaskID, cpuMillis, memBytes float64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if snapshot, ok := c.podSnapshots[taskID]; ok {
+		c.subtractSnapshot(snapshot)
+	}
 	c.nodeCPUEst[nodeName] += cpuMillis
 	c.nodeMemEst[nodeName] += memBytes
 	// Record snapshot for precise deallocation
@@ -113,6 +116,11 @@ func (c *ShadowLoadCache) SubEstimateBySnapshot(taskID api.TaskID) {
 		klog.V(5).Infof("ShadowLoadCache: no snapshot found for task %s, skipping SubEstimate", taskID)
 		return
 	}
+	c.subtractSnapshot(snapshot)
+	delete(c.podSnapshots, taskID)
+}
+
+func (c *ShadowLoadCache) subtractSnapshot(snapshot *PodEstSnapshot) {
 	c.nodeCPUEst[snapshot.NodeName] -= snapshot.CPUMillis
 	if c.nodeCPUEst[snapshot.NodeName] < 0 {
 		c.nodeCPUEst[snapshot.NodeName] = 0
@@ -121,7 +129,6 @@ func (c *ShadowLoadCache) SubEstimateBySnapshot(taskID api.TaskID) {
 	if c.nodeMemEst[snapshot.NodeName] < 0 {
 		c.nodeMemEst[snapshot.NodeName] = 0
 	}
-	delete(c.podSnapshots, taskID)
 }
 
 // GetNodeEst returns the total estimated CPU (milliCPU) and Memory (bytes)
