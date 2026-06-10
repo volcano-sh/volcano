@@ -56,12 +56,13 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 ## Ecosystem
 
 - [Spark Operator](https://www.kubeflow.org/docs/components/spark-operator/user-guide/volcano-integration/)
-- [Native Spark](https://spark.apache.org/docs/3.5.0/running-on-kubernetes.html#using-volcano-as-customized-scheduler-for-spark-on-kubernetes)
+- [Native Spark](https://spark.apache.org/docs/latest/running-on-kubernetes.html#using-volcano-as-customized-scheduler-for-spark-on-kubernetes)
 - [Flink](https://github.com/GoogleCloudPlatform/flink-on-k8s-operator/blob/master/docs/volcano_integration.md)
 - [KubeRay](https://docs.ray.io/en/master/cluster/kubernetes/k8s-ecosystem/volcano.html)
 - [PyTorch](https://github.com/volcano-sh/volcano/blob/master/docs/user-guide/how_to_use_pytorch_plugin.md)
 - [TensorFlow](https://github.com/volcano-sh/volcano/tree/master/example/integrations/tensorflow)
-- [kubeflow/training-operator](https://www.kubeflow.org/docs/components/training/user-guides/job-scheduling/)
+- [kubeflow/trainer (v2)](https://www.kubeflow.org/docs/components/trainer/operator-guides/job-scheduling/volcano/)
+- [kubeflow/training-operator (v1)](https://www.kubeflow.org/docs/components/trainer/legacy-v1/user-guides/job-scheduling/#volcano-scheduler)
 - [kubeflow/arena](https://github.com/kubeflow/arena/blob/master/docs/training/volcanojob/volcanojob.md)
 - [MPI](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mpi)
 - [Horovod](https://github.com/volcano-sh/volcano/blob/master/example/kubecon-2019-china/horovod-sample/lm-horovod-tf-mnist-v0.5.yaml)
@@ -71,6 +72,8 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 - [MXNet](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mxnet/train)
 - [Argo](https://github.com/volcano-sh/volcano/tree/master/example/integrations/argo)
 - [KubeGene](https://github.com/volcano-sh/kubegene)
+- [LeaderWorkerSet](https://github.com/kubernetes-sigs/lws/tree/main/docs/examples/sample/gang-scheduling#using-volcano-for-gang-scheduling)
+- [Kthena](https://github.com/volcano-sh/kthena/tree/main/examples)
 
 ## Use Cases
 - [Why Spark chooses Volcano as built-in batch scheduler on Kubernetes?](https://www.cncf.io/blog/2022/06/30/why-spark-chooses-volcano-as-built-in-batch-scheduler-on-kubernetes/)
