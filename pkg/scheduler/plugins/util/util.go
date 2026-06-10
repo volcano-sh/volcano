@@ -109,6 +109,18 @@ func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource
 			if reservedMemory > 0 {
 				inqueue.Memory = reservedMemory
 			}
+		case v1.ResourcePods:
+			// pods is stored in ScalarResources in whole units (see api.NewResource),
+			// unlike other scalars which are milli-units, so reserve it without conversion.
+			// It is also excluded from the generic scalar branch below because
+			// v1helper.IsScalarResourceName(pods) is false.
+			reservedPods := minResources.ScalarResources[rName] - allocated.ScalarResources[rName]
+			if reservedPods > 0 {
+				if inqueue.ScalarResources == nil {
+					inqueue.ScalarResources = make(map[v1.ResourceName]float64)
+				}
+				inqueue.ScalarResources[rName] = reservedPods
+			}
 		default:
 			if api.IsCountQuota(rName) || !v1helper.IsScalarResourceName(rName) {
 				continue
