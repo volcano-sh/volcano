@@ -17,12 +17,14 @@ limitations under the License.
 package vgpu
 
 import (
+	"context"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/fake"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 )
@@ -161,5 +163,80 @@ func TestAddResource(t *testing.T) {
 				t.Errorf("expected pod added: %v, got: %v", tc.wantAdded, found)
 			}
 		})
+	}
+}
+
+func podWithVGPUAnnotations(phase string) *v1.Pod {
+	return &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "worker-0",
+			Namespace: "default",
+			Annotations: map[string]string{
+				AssignedNodeAnnotations:          "node-a",
+				AssignedIDsAnnotations:           "GPU-aaaa,NVIDIA,80,0:",
+				AssignedIDsToAllocateAnnotations: "GPU-aaaa,NVIDIA,80,0:",
+				AssignedTimeAnnotations:          "1700000000",
+				BindTimeAnnotations:              "1700000000",
+				DeviceBindPhase:                  phase,
+				"keep-me":                        "yes",
+			},
+		},
+	}
+}
+
+// A discarded (speculative) allocation must have its device annotations removed so it
+// cannot survive onto a different node. Regression test for volcano-sh/volcano#5335.
+func TestReleaseCleansSpeculativeAnnotations(t *testing.T) {
+	pod := podWithVGPUAnnotations("allocating")
+	client := fake.NewSimpleClientset(pod)
+	gs := &GPUDevices{Name: "node-a"}
+
+	if err := gs.Release(client, pod); err != nil {
+		t.Fatalf("Release returned error: %v", err)
+	}
+
+	for _, k := range []string{
+		AssignedNodeAnnotations, AssignedIDsAnnotations,
+		AssignedIDsToAllocateAnnotations, DeviceBindPhase,
+	} {
+		if _, ok := pod.Annotations[k]; ok {
+			t.Errorf("in-memory annotation %s should have been removed", k)
+		}
+	}
+	if pod.Annotations["keep-me"] != "yes" {
+		t.Errorf("non-device annotation must be preserved in-memory")
+	}
+
+	got, err := client.CoreV1().Pods("default").Get(context.Background(), "worker-0", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get pod: %v", err)
+	}
+	if _, ok := got.Annotations[AssignedNodeAnnotations]; ok {
+		t.Errorf("apiserver annotation %s should have been removed", AssignedNodeAnnotations)
+	}
+	if _, ok := got.Annotations[AssignedIDsAnnotations]; ok {
+		t.Errorf("apiserver annotation %s should have been removed", AssignedIDsAnnotations)
+	}
+	if got.Annotations["keep-me"] != "yes" {
+		t.Errorf("non-device annotation must be preserved on apiserver")
+	}
+}
+
+// A committed/running pod (device plugin set bind-phase=success) must NOT be stripped,
+// even when deallocated (e.g. preemption), to avoid disrupting a running container.
+func TestReleaseKeepsCommittedAnnotations(t *testing.T) {
+	pod := podWithVGPUAnnotations("success")
+	client := fake.NewSimpleClientset(pod)
+	gs := &GPUDevices{Name: "node-a"}
+
+	if err := gs.Release(client, pod); err != nil {
+		t.Fatalf("Release returned error: %v", err)
+	}
+	if pod.Annotations[AssignedNodeAnnotations] != "node-a" {
+		t.Errorf("committed pod's vgpu-node must be preserved in-memory")
+	}
+	got, _ := client.CoreV1().Pods("default").Get(context.Background(), "worker-0", metav1.GetOptions{})
+	if got.Annotations[AssignedIDsAnnotations] == "" {
+		t.Errorf("committed pod's vgpu-ids-new must be preserved on apiserver")
 	}
 }

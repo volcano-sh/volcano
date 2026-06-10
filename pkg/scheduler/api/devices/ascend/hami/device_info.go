@@ -327,6 +327,33 @@ func (ads *AscendDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod)
 }
 
 func (ads *AscendDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
+	if ads == nil || pod == nil || pod.Annotations == nil {
+		return nil
+	}
+	ads.SubResource(pod)
+	if pod.Annotations[util.DeviceBindPhase] == DeviceBindSuccess {
+		return nil
+	}
+	keys := []string{
+		util.AssignedNodeAnnotations,
+		util.AssignedTimeAnnotations,
+		util.DeviceBindPhase,
+		util.BindTimeAnnotations,
+		"predicate-time",
+	}
+	for commonWord := range devices.InRequestDevices {
+		keys = append(keys,
+			devices.InRequestDevices[commonWord],
+			devices.SupportDevices[commonWord],
+			fmt.Sprintf("huawei.com/%s", commonWord),
+		)
+	}
+	if err := devices.RemovePodAnnotations(kubeClient, pod, keys); err != nil {
+		return err
+	}
+	for _, k := range keys {
+		delete(pod.Annotations, k)
+	}
 	return nil
 }
 
