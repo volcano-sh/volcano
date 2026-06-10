@@ -5,6 +5,7 @@ on:
     branches:
       - master
     tags:
+      - "*"
   pull_request:
 
 permissions: read-all

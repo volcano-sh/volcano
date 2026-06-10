@@ -5,8 +5,7 @@ on:
     tags:
       - "v*.*.*"
 
-permissions:
-  contents: read
+permissions: read-all
 
 jobs:
   release-charts:
