@@ -452,11 +452,11 @@ func TestInitPlugin(t *testing.T) {
 			expectInPrefilter:       []string{dynamicresources.Name},
 			expectInReserve:         []string{dynamicresources.Name},
 			expectInPreBind:         []string{dynamicresources.Name},
-			expectInScore:           []string{},
+			expectInScore:           []string{dynamicresources.Name},
 			expectNotInFilter:       []string{vbcap.Name},
 			expectNotInReserve:      []string{vbcap.Name},
 			expectNotInPreBind:      []string{vbcap.Name},
-			expectNotInScore:        []string{dynamicresources.Name, vbcap.Name},
+			expectNotInScore:        []string{vbcap.Name},
 		},
 		{
 			name:                    "both volume binding and dra enabled",
@@ -474,8 +474,8 @@ func TestInitPlugin(t *testing.T) {
 			expectInPrefilter:       []string{nodeports.Name, interpodaffinity.Name, podtopologyspread.Name, vbcap.Name, dynamicresources.Name},
 			expectInReserve:         []string{vbcap.Name, dynamicresources.Name},
 			expectInPreBind:         []string{vbcap.Name, dynamicresources.Name},
-			expectInScore:           []string{vbcap.Name},
-			expectNotInScore:        []string{dynamicresources.Name},
+			expectInScore:           []string{vbcap.Name, dynamicresources.Name},
+			expectNotInScore:        []string{},
 		},
 	}
 

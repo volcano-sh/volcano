@@ -626,6 +626,12 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		addPreFilterPlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addReservePlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addPreBindPlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
+
+		draWeight := 1
+		if w, ok := framework.Get[int](pp.pluginArguments, "dynamicresources.weight"); ok {
+			draWeight = w
+		}
+		addScorePlugin(dynamicresources.Name, &scorePluginAdapter{ScorePlugin: dynamicResourceAllocationPlugin}, draWeight)
 	}
 
 	pp.FilterPlugins = filterPlugins
@@ -761,7 +767,10 @@ func (pp *PredicatesPlugin) BatchNodeOrder(task *api.TaskInfo, nodes []fwk.NodeI
 			continue
 		}
 		// Get normalizer (most plugins don't need normalization, use EmptyNormalizer by default)
-		normalizer := &nodescore.EmptyNormalizer{}
+		var normalizer fwk.ScoreExtensions = &nodescore.EmptyNormalizer{}
+		if se := plugin.ScoreExtensions(); se != nil {
+			normalizer = se
+		}
 
 		// Get weight from ScoreWeights map, default to 1 if not set
 		weight := 1
@@ -917,4 +926,15 @@ func (pp *PredicatesPlugin) OnSessionClose(ssn *framework.Session) {}
 func ResetVolumeBindingPluginForTest() {
 	volumeBindingPluginInstance = nil
 	volumeBindingPluginOnce = sync.Once{}
+}
+
+type scorePluginAdapter struct {
+	fwk.ScorePlugin
+}
+
+func (s *scorePluginAdapter) PreScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodes []fwk.NodeInfo) *fwk.Status {
+	if p, ok := s.ScorePlugin.(fwk.PreScorePlugin); ok {
+		return p.PreScore(ctx, state, pod, nodes)
+	}
+	return nil
 }
