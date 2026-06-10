@@ -96,15 +96,15 @@ func NewAscendDevices(name string, node *v1.Node) map[string]*AscendDevices {
 		return ascendDevices
 	}
 	for _, dev := range devs {
-		nodeDevices, err := dev.GetNodeDevices(*node)
-		if err != nil {
-			klog.Warningf("Failed to get node devices. nodeName %s, deviceType %s, error %s", node.Name, dev.CommonWord(), err)
+		resourceName := dev.config.ResourceName
+		num, ok := node.Status.Allocatable[v1.ResourceName(resourceName)]
+		if !ok || num.IsZero() {
+			klog.V(3).Infof("Node %s does not have allocatable %s resource or value is 0", node.Name, resourceName)
 			continue
 		}
-		resourceName := fmt.Sprintf("huawei.com/%s", dev.CommonWord())
-		num, ok := node.Status.Allocatable[v1.ResourceName(resourceName)]
-		if !ok || num.Value() == 0 {
-			klog.V(3).Infof("Node %s does not have allocatable %s resource or value is 0", node.Name, resourceName)
+		nodeDevices, err := dev.GetNodeDevices(*node)
+		if err != nil {
+			klog.Warningf("Failed to get node devices. nodeName %s, deviceType %s, error %v", node.Name, dev.CommonWord(), err)
 			continue
 		}
 		asDevices := &AscendDevices{
