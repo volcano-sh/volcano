@@ -1151,6 +1151,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
+			metrics.UpdateQueueInqueue(attr.name, attr.inqueue.MilliCPU, attr.inqueue.Memory, attr.inqueue.ScalarResources)
 			if attr.capability != nil {
 				metrics.UpdateQueueCapacity(attr.name, attr.capability.MilliCPU, attr.capability.Memory, attr.capability.ScalarResources)
 			}
@@ -1167,6 +1168,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		metrics.UpdateQueueDeserved(queueInfo.Name, deservedCPU, deservedMem, scalarResources)
 		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
 		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
+		metrics.UpdateQueueInqueue(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
 		guarantee := api.EmptyResource()
 		if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
 			guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
@@ -1341,6 +1343,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
 		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
+		metrics.UpdateQueueInqueue(attr.name, attr.inqueue.MilliCPU, attr.inqueue.Memory, attr.inqueue.ScalarResources)
 		metrics.UpdateQueueCapacity(attr.name, attr.capability.MilliCPU, attr.capability.Memory, attr.capability.ScalarResources)
 		metrics.UpdateQueueRealCapacity(attr.name, attr.realCapability.MilliCPU, attr.realCapability.Memory, attr.realCapability.ScalarResources)
 	}
