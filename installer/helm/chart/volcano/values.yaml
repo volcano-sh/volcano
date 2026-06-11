@@ -23,6 +23,9 @@ basic:
 custom:
   go_memlimit_enable: false
   metrics_enable: false
+  # When true, renders only the Grafana dashboard ConfigMap independently of the metrics Deployment.
+  # The metrics Deployment remains controlled by custom.metrics_enable.
+  grafana_dashboard_enable: false
   admission_enable: true
   admission_replicas: 1
   controller_enable: true
