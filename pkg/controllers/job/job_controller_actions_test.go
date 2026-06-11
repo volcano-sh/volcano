@@ -1500,16 +1500,16 @@ func TestAppendJobCondition(t *testing.T) {
 			ExpectedPhase: v1alpha1.Pending,
 		},
 		{
-			Name: "Skip append if phase is same as last",
+			Name: "Replace existing condition with same phase",
 			Conditions: []v1alpha1.JobCondition{
 				{Status: v1alpha1.Pending},
 				{Status: v1alpha1.Running},
 			},
 			NewCondition: v1alpha1.JobCondition{
-				Status: v1alpha1.Running,
+				Status: v1alpha1.Pending,
 			},
 			ExpectedLen:   2,
-			ExpectedPhase: v1alpha1.Running,
+			ExpectedPhase: v1alpha1.Pending,
 		},
 		{
 			Name: "Append if phase is different",
@@ -1522,26 +1522,6 @@ func TestAppendJobCondition(t *testing.T) {
 			},
 			ExpectedLen:   3,
 			ExpectedPhase: v1alpha1.Completed,
-		},
-		{
-			Name: "Cap at maxJobConditions",
-			Conditions: func() []v1alpha1.JobCondition {
-				conds := make([]v1alpha1.JobCondition, maxJobConditions)
-				for i := range conds {
-					// alternate phases so they don't dedup
-					if i%2 == 0 {
-						conds[i] = v1alpha1.JobCondition{Status: v1alpha1.Running}
-					} else {
-						conds[i] = v1alpha1.JobCondition{Status: v1alpha1.Restarting}
-					}
-				}
-				return conds
-			}(),
-			NewCondition: v1alpha1.JobCondition{
-				Status: v1alpha1.Failed,
-			},
-			ExpectedLen:   maxJobConditions,
-			ExpectedPhase: v1alpha1.Failed, // oldest got truncated, newest appended
 		},
 	}
 

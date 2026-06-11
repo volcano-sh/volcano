@@ -1060,27 +1060,16 @@ func newCondition(status batch.JobPhase, lastTransitionTime *metav1.Time) batch.
 	}
 }
 
-// maxJobConditions is the upper bound on the number of conditions retained in
-// job.Status.Conditions.  Keeping the slice bounded prevents the etcd object
-// from growing without limit on long-running or frequently-restarted jobs.
-const maxJobConditions = 32
-
-// appendJobCondition appends c to conditions, but skips the append when the
-// incoming phase matches the most-recent entry (no-op transition).  If the
-// slice would exceed maxJobConditions the oldest entries are discarded so that
-// only the most recent maxJobConditions entries are kept.
+// appendJobCondition appends c to conditions. If a condition with the same
+// phase already exists, it is removed and the new condition is appended at the end.
 func appendJobCondition(conditions []batch.JobCondition, c batch.JobCondition) []batch.JobCondition {
-	if n := len(conditions); n > 0 && conditions[n-1].Status == c.Status {
-		conditions[n-1] = c
-		return conditions
+	res := make([]batch.JobCondition, 0, len(conditions))
+	for _, cond := range conditions {
+		if cond.Status != c.Status {
+			res = append(res, cond)
+		}
 	}
-	conditions = append(conditions, c)
-	if len(conditions) > maxJobConditions {
-		newConditions := make([]batch.JobCondition, maxJobConditions)
-		copy(newConditions, conditions[len(conditions)-maxJobConditions:])
-		return newConditions
-	}
-	return conditions
+	return append(res, c)
 }
 
 func setPgSubGroupPolicy(pg *scheduling.PodGroup, tasks []batch.TaskSpec) {
