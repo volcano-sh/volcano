@@ -26,7 +26,9 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
 
@@ -1356,6 +1358,98 @@ func TestPodsToKill(t *testing.T) {
 					t.Errorf("Test case %d (%s): expected pod %s to exist, but got error %v", i, testcase.Name, podName, err)
 				} else if !shouldExist && err == nil {
 					t.Errorf("Test case %d (%s): expected pod %s to be deleted, but still exists", i, testcase.Name, podName)
+				}
+			}
+		})
+	}
+}
+
+func TestKillPodsPodGroupDeletion(t *testing.T) {
+	namespace := "test"
+	jobUID := "e7f18111-1cec-11ea-b688-fa163ec79500"
+
+	testcases := []struct {
+		Name               string
+		Target             *state.Target
+		ExpectPodGroupGone bool
+	}{
+		{
+			Name:               "full job kill (target=nil) deletes PodGroup",
+			Target:             nil,
+			ExpectPodGroupGone: true,
+		},
+		{
+			Name: "targeted pod restart (target!=nil) keeps PodGroup",
+			Target: &state.Target{
+				Type:     state.TargetTypePod,
+				TaskName: "task1",
+				PodName:  "pod1",
+			},
+			ExpectPodGroupGone: false,
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(testcase.Name, func(t *testing.T) {
+			job := &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            "job1",
+					Namespace:       namespace,
+					UID:             types.UID(jobUID),
+					ResourceVersion: "100",
+				},
+			}
+			pgName := fmt.Sprintf("%s-%s", job.Name, jobUID)
+			pg := &schedulingapi.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      pgName,
+					Namespace: namespace,
+				},
+			}
+			jobInfo := &apis.JobInfo{
+				Namespace: namespace,
+				Name:      job.Name,
+				Job:       job,
+				Pods: map[string]map[string]*v1.Pod{
+					"task1": {
+						"pod1": buildPod(namespace, "pod1", v1.PodRunning, nil),
+					},
+				},
+			}
+
+			fakeController := newFakeController()
+
+			fakeController.pgInformer.Informer().GetIndexer().Add(pg)
+			_, err := fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
+			if err != nil {
+				t.Fatalf("Error creating PodGroup: %v", err)
+			}
+
+			_, err = fakeController.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), jobInfo.Pods["task1"]["pod1"], metav1.CreateOptions{})
+			if err != nil {
+				t.Fatalf("Error creating pod: %v", err)
+			}
+
+			_, err = fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+			if err != nil {
+				t.Fatalf("Error creating job: %v", err)
+			}
+			if err = fakeController.cache.Add(job); err != nil {
+				t.Fatalf("Error adding job to cache: %v", err)
+			}
+
+			err = fakeController.killPods(jobInfo, state.PodRetainPhaseNone, testcase.Target, nil)
+			if err != nil {
+				t.Fatalf("killPods returned unexpected error: %v", err)
+			}
+
+			_, pgErr := fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+			pgGone := pgErr != nil && apierrors.IsNotFound(pgErr)
+			if pgGone != testcase.ExpectPodGroupGone {
+				if testcase.ExpectPodGroupGone {
+					t.Errorf("expected PodGroup to be deleted, but it still exists")
+				} else {
+					t.Errorf("expected PodGroup to be kept, but it was deleted")
 				}
 			}
 		})
