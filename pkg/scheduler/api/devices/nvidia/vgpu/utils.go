@@ -134,11 +134,23 @@ func decodeContainerDevices(str string) ContainerDevices {
 	for _, val := range cd {
 		if strings.Contains(val, ",") {
 			tmpstr := strings.Split(val, ",")
+			if len(tmpstr) < 4 {
+				klog.Errorf("invalid container device %q: expected at least 4 fields", val)
+				continue
+			}
+			devmem, err := strconv.ParseUint(tmpstr[2], 10, 32)
+			if err != nil {
+				klog.Errorf("invalid used memory %q in container device %q: %v", tmpstr[2], val, err)
+				continue
+			}
+			devcores, err := strconv.ParseUint(tmpstr[3], 10, 32)
+			if err != nil {
+				klog.Errorf("invalid used cores %q in container device %q: %v", tmpstr[3], val, err)
+				continue
+			}
 			tmpdev.UUID = tmpstr[0]
 			tmpdev.Type = tmpstr[1]
-			devmem, _ := strconv.ParseInt(tmpstr[2], 10, 32)
 			tmpdev.Usedmem = uint(devmem)
-			devcores, _ := strconv.ParseInt(tmpstr[3], 10, 32)
 			tmpdev.Usedcores = uint(devcores)
 			contdev = append(contdev, tmpdev)
 		}

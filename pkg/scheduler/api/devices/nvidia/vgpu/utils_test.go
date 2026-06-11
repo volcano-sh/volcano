@@ -334,3 +334,56 @@ func TestBinpackStacksSequentialPods(t *testing.T) {
 		t.Errorf("binpack should stack 3 sequential pods on the same GPU, got: %v", uuids)
 	}
 }
+
+func TestDecodeContainerDevicesRejectsInvalidUsage(t *testing.T) {
+	tests := []struct {
+		name string
+		str  string
+		want ContainerDevices
+	}{
+		{
+			name: "valid entry",
+			str:  "GPU-0,NVIDIA,4096,30:",
+			want: ContainerDevices{{UUID: "GPU-0", Type: "NVIDIA", Usedmem: 4096, Usedcores: 30}},
+		},
+		{
+			name: "negative memory is skipped",
+			str:  "GPU-0,NVIDIA,-5,30:",
+			want: ContainerDevices{},
+		},
+		{
+			name: "negative cores is skipped",
+			str:  "GPU-0,NVIDIA,4096,-1:",
+			want: ContainerDevices{},
+		},
+		{
+			name: "non-numeric usage is skipped",
+			str:  "GPU-0,NVIDIA,abc,30:",
+			want: ContainerDevices{},
+		},
+		{
+			name: "entry with missing fields is skipped",
+			str:  "GPU-0,NVIDIA:",
+			want: ContainerDevices{},
+		},
+		{
+			name: "valid entry kept when mixed with invalid",
+			str:  "GPU-0,NVIDIA,-5,30:GPU-1,NVIDIA,2048,10:",
+			want: ContainerDevices{{UUID: "GPU-1", Type: "NVIDIA", Usedmem: 2048, Usedcores: 10}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := decodeContainerDevices(tt.str)
+			if len(got) != len(tt.want) {
+				t.Fatalf("decodeContainerDevices(%q) returned %d devices, want %d", tt.str, len(got), len(tt.want))
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("device %d = %+v, want %+v", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
