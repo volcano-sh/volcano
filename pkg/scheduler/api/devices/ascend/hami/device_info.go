@@ -56,7 +56,6 @@ type AscendDevice struct {
 	nodeRegisterAnno string
 	useUUIDAnno      string
 	noUseUUIDAnno    string
-	handshakeAnno    string
 	DeviceInfo       *devices.DeviceInfo
 	DeviceUsage      *devices.DeviceUsage
 	Score            float64
@@ -92,10 +91,20 @@ func NewAscendDevices(name string, node *v1.Node) map[string]*AscendDevices {
 		curConfig = config.GetDefaultDevicesConfig()
 	}
 	devs := InitDevices(curConfig.VNPUs)
+	if node.Status.Allocatable == nil {
+		klog.V(3).Infof("Node %s does not have allocatable resources information", node.Name)
+		return ascendDevices
+	}
 	for _, dev := range devs {
+		resourceName := dev.config.ResourceName
+		num, ok := node.Status.Allocatable[v1.ResourceName(resourceName)]
+		if !ok || num.IsZero() {
+			klog.V(3).Infof("Node %s does not have allocatable %s resource or value is 0", node.Name, resourceName)
+			continue
+		}
 		nodeDevices, err := dev.GetNodeDevices(*node)
 		if err != nil {
-			klog.Warningf("Failed to get node devices. nodeName %s, deviceType %s, error %s", node.Name, dev.CommonWord(), err)
+			klog.Warningf("Failed to get node devices. nodeName %s, deviceType %s, error %v", node.Name, dev.CommonWord(), err)
 			continue
 		}
 		asDevices := &AscendDevices{
@@ -109,7 +118,6 @@ func NewAscendDevices(name string, node *v1.Node) map[string]*AscendDevices {
 				nodeRegisterAnno: dev.nodeRegisterAnno,
 				useUUIDAnno:      dev.useUUIDAnno,
 				noUseUUIDAnno:    dev.noUseUUIDAnno,
-				handshakeAnno:    dev.handshakeAnno,
 				DeviceInfo:       nd,
 				DeviceUsage: &devices.DeviceUsage{
 					Used:      0,
@@ -373,7 +381,6 @@ func (ads *AscendDevices) DeepCopy() interface{} {
 			nodeRegisterAnno: dev.nodeRegisterAnno,
 			useUUIDAnno:      dev.useUUIDAnno,
 			noUseUUIDAnno:    dev.noUseUUIDAnno,
-			handshakeAnno:    dev.handshakeAnno,
 			DeviceInfo:       dev.DeviceInfo,
 			DeviceUsage:      newUsage,
 			Score:            dev.Score,
@@ -510,7 +517,6 @@ func getDeviceSnapshot(ads *AscendDevices) []*AscendDevice {
 			nodeRegisterAnno: dev.nodeRegisterAnno,
 			useUUIDAnno:      dev.useUUIDAnno,
 			noUseUUIDAnno:    dev.noUseUUIDAnno,
-			handshakeAnno:    dev.handshakeAnno,
 			DeviceInfo:       dev.DeviceInfo,
 			DeviceUsage: &devices.DeviceUsage{
 				Used:      dev.DeviceUsage.Used,
@@ -600,7 +606,6 @@ func InitDevices(config []config.VNPUConfig) []*AscendDevice {
 			nodeRegisterAnno: fmt.Sprintf("%s/node-register-%s", util.HAMiAnnotationsPrefix, commonWord),
 			useUUIDAnno:      fmt.Sprintf("%s/use-%s-uuid", util.HAMiAnnotationsPrefix, commonWord),
 			noUseUUIDAnno:    fmt.Sprintf("%s/no-use-%s-uuid", util.HAMiAnnotationsPrefix, commonWord),
-			handshakeAnno:    fmt.Sprintf("%s/node-handshake-%s", util.HAMiAnnotationsPrefix, commonWord),
 		}
 		sort.Slice(dev.config.Templates, func(i, j int) bool {
 			return dev.config.Templates[i].Memory < dev.config.Templates[j].Memory
@@ -609,7 +614,6 @@ func InitDevices(config []config.VNPUConfig) []*AscendDevice {
 		if !ok {
 			devices.InRequestDevices[commonWord] = fmt.Sprintf("%s/%s-devices-to-allocate", util.HAMiAnnotationsPrefix, commonWord)
 			devices.SupportDevices[commonWord] = fmt.Sprintf("%s/%s-devices-allocated", util.HAMiAnnotationsPrefix, commonWord)
-			// util.HandshakeAnnos[commonWord] = dev.handshakeAnno
 		}
 		devs = append(devs, dev)
 		klog.Infof("load ascend vnpu config %s: %v", commonWord, dev.config)
