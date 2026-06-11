@@ -141,6 +141,42 @@ func PatchPodAnnotations(kubeClient kubernetes.Interface, pod *v1.Pod, annotatio
 	return err
 }
 
+// RemovePodAnnotations deletes the given annotation keys from the Pod via an apiserver
+func RemovePodAnnotations(kubeClient kubernetes.Interface, pod *v1.Pod, keys []string) error {
+	if kubeClient == nil || pod == nil || pod.Annotations == nil {
+		return nil
+	}
+	present := false
+	for _, k := range keys {
+		if _, ok := pod.Annotations[k]; ok {
+			present = true
+			break
+		}
+	}
+	if !present {
+		return nil
+	}
+	annotations := make(map[string]interface{}, len(keys))
+	for _, k := range keys {
+		annotations[k] = nil
+	}
+	patch := map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"annotations": annotations,
+		},
+	}
+	bytes, err := json.Marshal(patch)
+	if err != nil {
+		return err
+	}
+	_, err = kubeClient.CoreV1().Pods(pod.Namespace).
+		Patch(context.Background(), pod.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
+	if err != nil {
+		klog.Errorf("remove device annotations on pod %v failed, %v", pod.Name, err)
+	}
+	return err
+}
+
 func PatchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
 	type patchMetadata struct {
 		Annotations map[string]string `json:"annotations,omitempty"`
