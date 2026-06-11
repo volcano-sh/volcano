@@ -44,6 +44,17 @@ type CPUInfo struct {
 	CoreID int `json:"core,omitempty" protobuf:"varint,3,opt,name=core"`
 }
 
+// GPUInfo is the gpu topology detail
+type GPUInfo struct {
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	NUMANodeID int `json:"numa,omitempty" protobuf:"varint,1,opt,name=numa"`
+	// +optional
+	BusID string `json:"busID,omitempty" protobuf:"bytes,2,opt,name=busID"`
+	// +optional
+	DeviceModel string `json:"deviceModel,omitempty" protobuf:"bytes,3,opt,name=deviceModel"`
+}
+
 // PolicyName is the policy name type
 // +kubebuilder:validation:Enum=CPUManagerPolicy;TopologyManagerPolicy
 type PolicyName string
@@ -75,6 +86,11 @@ type NumatopoSpec struct {
 	// Key is cpu id
 	// +optional
 	CPUDetail map[string]CPUInfo `json:"cpuDetail,omitempty" protobuf:"bytes,4,rep,name=cpuDetail"`
+
+	// Specifies the gpu topology info
+	// Key is gpu index (as string)
+	// +optional
+	GPUDetail map[string]GPUInfo `json:"gpuDetail,omitempty" protobuf:"bytes,5,rep,name=gpuDetail"`
 }
 
 // +genclient
