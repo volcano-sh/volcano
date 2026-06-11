@@ -1071,6 +1071,7 @@ const maxJobConditions = 32
 // only the most recent maxJobConditions entries are kept.
 func appendJobCondition(conditions []batch.JobCondition, c batch.JobCondition) []batch.JobCondition {
 	if n := len(conditions); n > 0 && conditions[n-1].Status == c.Status {
+		conditions[n-1] = c
 		return conditions
 	}
 	conditions = append(conditions, c)
