@@ -679,6 +679,11 @@ func (cc *jobcontroller) isDependsOnPodsReady(task string, job *batch.Job) bool 
 			continue
 		}
 
+		if pod.Status.Phase == v1.PodSucceeded {
+			runningPodCount++
+			continue
+		}
+
 		allContainerReady := true
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if !containerStatus.Ready {
