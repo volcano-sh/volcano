@@ -6029,3 +6029,99 @@ func TestAllocateFromNomination_AllocateErrorFallsBack(t *testing.T) {
 	assert.Equal(t, "", subJob.NominatedHyperNode)
 	assert.Equal(t, "", task.Pod.Status.NominatedNodeName)
 }
+
+// TestAllocate_FlatPathHonorsAndClearsNomination: flat branch must honor
+// subJob.NominatedHyperNode and clear it on commit.
+func TestAllocate_FlatPathHonorsAndClearsNomination(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{
+		drf.PluginName:        drf.New,
+		proportion.PluginName: proportion.New,
+		predicates.PluginName: predicates.New,
+		nodeorder.PluginName:  nodeorder.New,
+		gang.PluginName:       gang.New,
+	}
+
+	// Pod has NominatedNodeName mirroring what gangpreempt/gangreclaim would
+	// stamp on each pipelined victim's would-be replacement.
+	pod := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", nil, nil)
+	pod.Status.NominatedNodeName = "n1"
+
+	test := uthelper.TestCommonStruct{
+		Name:    "flat path honors and clears NominatedHyperNode",
+		Plugins: plugins,
+		PodGroups: []*schedulingv1.PodGroup{
+			util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+		},
+		Pods: []*v1.Pod{pod},
+		Nodes: []*v1.Node{
+			util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+		},
+		Queues: []*schedulingv1.Queue{
+			util.BuildQueue("c1", 1, nil),
+		},
+		ExpectBindMap:  map[string]string{"c1/p1": "n1"},
+		ExpectBindsNum: 1,
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:                gang.PluginName,
+					EnabledJobOrder:     &trueValue,
+					EnabledJobReady:     &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledJobStarving:  &trueValue,
+				},
+				{
+					Name:               drf.PluginName,
+					EnabledPreemptable: &trueValue,
+					EnabledJobOrder:    &trueValue,
+				},
+				{
+					Name:               proportion.PluginName,
+					EnabledQueueOrder:  &trueValue,
+					EnabledReclaimable: &trueValue,
+					EnabledAllocatable: &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:             nodeorder.PluginName,
+					EnabledNodeOrder: &trueValue,
+				},
+			},
+		},
+	}
+
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	// Mirror what gangpreempt/gangreclaim do after a successful dry-run:
+	// pin the default sub-job to a hyperNode. ClusterTopHyperNode is what
+	// these actions emit for jobs without hard topology.
+	job, ok := ssn.Jobs[api.JobID("c1/pg1")]
+	if !ok {
+		t.Fatalf("job c1/pg1 missing from session")
+	}
+	if job.ContainsHardTopology() || job.ContainsSubJobPolicy() {
+		t.Fatalf("test fixture must exercise the flat path; got hard topology=%v sub-job policy=%v",
+			job.ContainsHardTopology(), job.ContainsSubJobPolicy())
+	}
+	subJob, ok := job.SubJobs[job.DefaultSubJobID()]
+	if !ok {
+		t.Fatalf("default sub-job missing from job c1/pg1")
+	}
+	subJob.NominatedHyperNode = framework.ClusterTopHyperNode
+
+	test.Run([]framework.Action{New()})
+
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "", subJob.NominatedHyperNode,
+		"flat-path commit must clear subJob.NominatedHyperNode (regression: previously left stale)")
+}
