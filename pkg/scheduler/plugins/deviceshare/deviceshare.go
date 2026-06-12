@@ -139,9 +139,12 @@ func registerDevices() {
 			api.RegisterDevice(vnpu.DeviceName)
 		}
 		if hami.AscendHAMiVNPUEnable {
-			for _, vnpu := range config.GetConfig().VNPUs {
-				klog.V(3).Infof("register device %s", vnpu.CommonWord)
-				api.RegisterDevice(vnpu.CommonWord)
+			cfg := config.GetConfig()
+			if cfg != nil {
+				for _, vnpu := range cfg.VNPUConfigs() {
+					klog.V(3).Infof("register device %s", vnpu.CommonWord)
+					api.RegisterDevice(vnpu.CommonWord)
+				}
 			}
 		}
 	})

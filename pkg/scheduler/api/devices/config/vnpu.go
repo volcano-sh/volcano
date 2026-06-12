@@ -16,6 +16,35 @@ limitations under the License.
 
 package config
 
+import "fmt"
+
+type VNPUsConfig struct {
+	HamiVnpuCore bool         `yaml:"hamiVnpuCore,omitempty"`
+	Configs      []VNPUConfig `yaml:"configs"`
+}
+
+func (v *VNPUsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var raw map[string]interface{}
+	if err := unmarshal(&raw); err == nil {
+		type vnpusConfigAlias VNPUsConfig // alias prevents infinite recursion
+		var wrapper vnpusConfigAlias
+		if err := unmarshal(&wrapper); err != nil {
+			return fmt.Errorf("vnpus: failed to parse wrapper struct: %w", err)
+		}
+		*v = VNPUsConfig(wrapper)
+		return nil
+	}
+
+	// Fallback: YAML node is an array — parse as legacy direct array format.
+	var configs []VNPUConfig
+	if err := unmarshal(&configs); err != nil {
+		return fmt.Errorf("vnpus: failed to parse as either wrapper struct or direct array: %w", err)
+	}
+	v.Configs = configs
+	v.HamiVnpuCore = false
+	return nil
+}
+
 type Template struct {
 	Name   string `yaml:"name"`
 	Memory int64  `yaml:"memory"`
