@@ -1141,3 +1141,190 @@ func TestAppendJobCondition(t *testing.T) {
 		})
 	}
 }
+
+func TestIsDependsOnPodsReady(t *testing.T) {
+	namespace := "test"
+	jobName := "job1"
+
+	testcases := []struct {
+		Name          string
+		Task          string
+		Job           *v1alpha1.Job
+		Pods          []*v1.Pod
+		ExpectedReady bool
+	}{
+		{
+			Name: "DependsOn task has all pods succeeded",
+			Task: "task1",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      jobName,
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task1",
+							Replicas:     2,
+							MinAvailable: ptr.To[int32](2),
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name: "task1",
+								},
+							},
+						},
+						{
+							Name:     "task2",
+							Replicas: 1,
+							DependsOn: &v1alpha1.DependsOn{
+								Name: []string{"task1"},
+							},
+						},
+					},
+				},
+			},
+			Pods: []*v1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "job1-task1-0",
+						Namespace: namespace,
+					},
+					Status: v1.PodStatus{
+						Phase: v1.PodSucceeded,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "job1-task1-1",
+						Namespace: namespace,
+					},
+					Status: v1.PodStatus{
+						Phase: v1.PodSucceeded,
+					},
+				},
+			},
+			ExpectedReady: true,
+		},
+		{
+			Name: "DependsOn task has pods running and ready",
+			Task: "task1",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      jobName,
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task1",
+							Replicas:     1,
+							MinAvailable: ptr.To[int32](1),
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name: "task1",
+								},
+							},
+						},
+						{
+							Name:     "task2",
+							Replicas: 1,
+							DependsOn: &v1alpha1.DependsOn{
+								Name: []string{"task1"},
+							},
+						},
+					},
+				},
+			},
+			Pods: []*v1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "job1-task1-0",
+						Namespace: namespace,
+					},
+					Status: v1.PodStatus{
+						Phase: v1.PodRunning,
+						ContainerStatuses: []v1.ContainerStatus{
+							{Ready: true},
+						},
+					},
+				},
+			},
+			ExpectedReady: true,
+		},
+		{
+			Name: "DependsOn task has pods running but not ready",
+			Task: "task1",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      jobName,
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task1",
+							Replicas:     1,
+							MinAvailable: ptr.To[int32](1),
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name: "task1",
+								},
+							},
+						},
+						{
+							Name:     "task2",
+							Replicas: 1,
+							DependsOn: &v1alpha1.DependsOn{
+								Name: []string{"task1"},
+							},
+						},
+					},
+				},
+			},
+			Pods: []*v1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "job1-task1-0",
+						Namespace: namespace,
+					},
+					Status: v1.PodStatus{
+						Phase: v1.PodRunning,
+						ContainerStatuses: []v1.ContainerStatus{
+							{Ready: false},
+						},
+					},
+				},
+			},
+			ExpectedReady: false,
+		},
+	}
+
+	for i, tc := range testcases {
+		t.Run(tc.Name, func(t *testing.T) {
+			fakeController := newFakeController()
+
+			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), tc.Job, metav1.CreateOptions{})
+			if err != nil {
+				t.Fatalf("Failed to create job: %v", err)
+			}
+			err = fakeController.cache.Add(tc.Job)
+			if err != nil {
+				t.Fatalf("Failed to add job to cache: %v", err)
+			}
+			fakeController.jobInformer.Informer().GetIndexer().Add(tc.Job)
+
+			for _, pod := range tc.Pods {
+				_, err := fakeController.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+				if err != nil {
+					t.Fatalf("Failed to create pod: %v", err)
+				}
+				fakeController.podInformer.Informer().GetIndexer().Add(pod)
+			}
+
+			ready := fakeController.isDependsOnPodsReady(tc.Task, tc.Job)
+			if ready != tc.ExpectedReady {
+				t.Errorf("Case %d (%s): expected ready: %v, got: %v", i, tc.Name, tc.ExpectedReady, ready)
+			}
+		})
+	}
+}
