@@ -31,7 +31,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodelock"
 )
 
-
 type GPUUsage struct {
 	UsedMem  uint
 	UsedCore uint
