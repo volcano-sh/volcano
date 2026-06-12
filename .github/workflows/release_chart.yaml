@@ -5,6 +5,8 @@ on:
     tags:
       - "v*.*.*"
 
+permissions: read-all
+
 jobs:
   release-charts:
     runs-on: ubuntu-latest

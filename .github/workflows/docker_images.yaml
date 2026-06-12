@@ -3,8 +3,12 @@ name: Build Images
 on:
   workflow_call:
 
+
 jobs:
   build-images:
+    permissions:
+      contents: read
+      actions: write
     runs-on: ubuntu-24.04
     steps:
       - name: Free Disk Space

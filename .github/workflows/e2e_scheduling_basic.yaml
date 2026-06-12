@@ -3,8 +3,12 @@ name: Basic scheduling Jobs
 on:
   workflow_call:
 
+
 jobs:
   e2e_scheduling_basic:
+    permissions:
+      contents: read
+      actions: write
     runs-on: ubuntu-24.04
     name: E2E about Basic Scheduling
     timeout-minutes: 50
