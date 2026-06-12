@@ -223,14 +223,16 @@ func CleanupTestContext(ctx *TestContext) {
 	err := CleanupHyperNodes(ctx)
 	Expect(err).NotTo(HaveOccurred(), "failed to clean up hypernodes")
 
+	// Delete queues before the namespace enters Terminating so queue status can
+	// observe workload cleanup and allocated pods can drain to zero reliably.
+	deleteQueues(ctx)
+	deletePriorityClasses(ctx)
+
 	foreground := metav1.DeletePropagationForeground
 	err = ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(), ctx.Namespace, metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
 	Expect(err).NotTo(HaveOccurred(), "failed to delete namespace")
-
-	deleteQueues(ctx)
-	deletePriorityClasses(ctx)
 
 	if ctx.UsingPlaceHolder {
 		deletePlaceHolder(ctx)
