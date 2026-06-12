@@ -44,7 +44,7 @@
 - [#653](https://github.com/volcano-sh/volcano/pull/653) Gen install yaml without v1alpha queue and poggroup (@hzxuzhonghu)
 - [#654](https://github.com/volcano-sh/volcano/pull/654) Remove pdb support (@hzxuzhonghu, @k82cn)
 - [#652](https://github.com/volcano-sh/volcano/pull/652) Use relative path for doc. (@k82cn)
-- [#633](https://github.com/volcano-sh/volcano/pull/633) fix the the Getting started link in contribute.md (@ruiyinchen)
+- [#633](https://github.com/volcano-sh/volcano/pull/633) fix the the Getting started link in contributing.md (@ruiyinchen)
 - [#644](https://github.com/volcano-sh/volcano/pull/644) Refactor webhook org. (@k82cn)
 - [#642](https://github.com/volcano-sh/volcano/pull/642) Added cherry_pick_pull.sh (@k82cn)
 - [#643](https://github.com/volcano-sh/volcano/pull/643) Added Volcano Intro. (@k82cn)

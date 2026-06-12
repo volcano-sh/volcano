@@ -50,7 +50,7 @@ import (
   - `hack/` - Code generation scripts
   - `go.mod`, `go.sum` - Go module files
   - `README.md` - Basic documentation
-  - Community files: `code_of_conduct.md`, `community-membership.md`, `contribute.md`
+  - Community files: `code_of_conduct.md`, `community-membership.md`, `contributing.md`
 
 - **Maintained only in [volcano-sh/apis](https://github.com/volcano-sh/apis) repo:**
   - `.github/` - GitHub workflows, issue templates
