@@ -13,7 +13,7 @@
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/3012/badge)](https://bestpractices.coreinfrastructure.org/projects/3012)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/volcano-sh/volcano/badge)](https://scorecard.dev/viewer/?uri=github.com/volcano-sh/volcano)
 [![Gurubase](https://img.shields.io/badge/Gurubase-Ask%20Volcano%20Guru-006BFF)](https://gurubase.io/g/volcano)
-[![CLOMonitor](https://img.shields.io/endpoint?url=https://clomonitor.io/api/projects/cncf/volcano/badge.json)](https://clomonitor.io/projects/cncf/volcano)
+[![CLOMonitor](https://img.shields.io/endpoint?url=https://clomonitor.io/api/projects/cncf/volcano/badge)](https://clomonitor.io/projects/cncf/volcano)
 
 
 
