@@ -79,6 +79,75 @@ func TestInfiniteResource(t *testing.T) {
 	}
 }
 
+// TestResourceString verifies that Resource.String() formats sentinel values correctly.
+// Regression test for https://github.com/volcano-sh/volcano/issues/5148:
+// when MilliCPU, Memory, or a scalar resource holds math.MaxFloat64 (the sentinel used
+// by the capacity/proportion plugins to represent "no limit"), String() must return
+// "<unlimited>" instead of a 308-digit floating-point literal.
+func TestResourceString(t *testing.T) {
+	tests := []struct {
+		name     string
+		resource *Resource
+		expected string
+	}{
+		{
+			name: "normal cpu and memory values",
+			resource: &Resource{
+				MilliCPU: 2000,
+				Memory:   4096,
+			},
+			expected: "cpu 2000.00, memory 4096.00",
+		},
+		{
+			name: "normal values with scalar resources",
+			resource: &Resource{
+				MilliCPU: 1000,
+				Memory:   2048,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu": 4,
+				},
+			},
+			expected: "cpu 1000.00, memory 2048.00, nvidia.com/gpu 4.00",
+		},
+		{
+			// Regression: math.MaxFloat64 is the sentinel value assigned to capability
+			// and realCapability when no queue capacity limit is configured.
+			// It must NOT appear as a 308-digit number in log output.
+			name:     "MaxFloat64 sentinel for cpu and memory prints as <unlimited>",
+			resource: InfiniteResource(),
+			expected: "cpu <unlimited>, memory <unlimited>",
+		},
+		{
+			name: "mixed: finite cpu, MaxFloat64 memory",
+			resource: &Resource{
+				MilliCPU: 4000,
+				Memory:   math.MaxFloat64,
+			},
+			expected: "cpu 4000.00, memory <unlimited>",
+		},
+		{
+			name: "MaxFloat64 in scalar resource prints as <unlimited>",
+			resource: &Resource{
+				MilliCPU: 1000,
+				Memory:   2048,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu": math.MaxFloat64,
+				},
+			},
+			expected: "cpu 1000.00, memory 2048.00, nvidia.com/gpu <unlimited>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.resource.String()
+			if got != tt.expected {
+				t.Errorf("Resource.String() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestResourceAddScalar(t *testing.T) {
 	tests := []struct {
 		resource       *Resource

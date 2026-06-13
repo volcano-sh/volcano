@@ -44,6 +44,10 @@ const (
 
 const (
 	minResource float64 = 0.1
+
+	// unlimitedResourceStr is printed by Resource.String() when a field holds
+	// math.MaxFloat64, which is used as a sentinel meaning "no limit".
+	unlimitedResourceStr = "<unlimited>"
 )
 
 // DimensionDefaultValue means default value for black resource dimension
@@ -168,7 +172,7 @@ func (r *Resource) Clone() *Resource {
 
 // String returns resource details in string format
 func (r *Resource) String() string {
-	str := fmt.Sprintf("cpu %0.2f, memory %0.2f", r.MilliCPU, r.Memory)
+	str := fmt.Sprintf("cpu %s, memory %s", formatResourceValue(r.MilliCPU), formatResourceValue(r.Memory))
 	// Sort scalar resource names to ensure consistent string output
 	var resourceNames []string
 	for rName := range r.ScalarResources {
@@ -176,9 +180,21 @@ func (r *Resource) String() string {
 	}
 	sort.Strings(resourceNames)
 	for _, rName := range resourceNames {
-		str = fmt.Sprintf("%s, %s %0.2f", str, rName, r.ScalarResources[v1.ResourceName(rName)])
+		val := r.ScalarResources[v1.ResourceName(rName)]
+		str = fmt.Sprintf("%s, %s %s", str, rName, formatResourceValue(val))
 	}
 	return str
+}
+
+// formatResourceValue formats a resource quantity for human-readable output.
+// It returns unlimitedResourceStr when v equals math.MaxFloat64, which is used
+// throughout the scheduler as a sentinel value meaning "no resource limit".
+// Otherwise it returns the value formatted to two decimal places.
+func formatResourceValue(v float64) string {
+	if v == math.MaxFloat64 {
+		return unlimitedResourceStr
+	}
+	return fmt.Sprintf("%0.2f", v)
 }
 
 // ResourceNames returns all resource types
