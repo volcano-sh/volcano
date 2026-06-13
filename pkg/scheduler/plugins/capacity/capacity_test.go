@@ -1977,12 +1977,13 @@ func TestHierarchicalReservedTasksCountedAtAncestor(t *testing.T) {
 
 	newAttr := func(id api.QueueID, ancestors []api.QueueID) *queueAttr {
 		return &queueAttr{
-			queueID:        id,
-			name:           string(id),
-			ancestors:      ancestors,
-			children:       make(map[api.QueueID]*queueAttr),
-			allocated:      api.EmptyResource(),
-			realCapability: &api.Resource{MilliCPU: 100000}, // cpu 100
+			queueID:         id,
+			name:            string(id),
+			ancestors:       ancestors,
+			children:        make(map[api.QueueID]*queueAttr),
+			allocated:       api.EmptyResource(),
+			realCapability:  &api.Resource{MilliCPU: 100000}, // cpu 100
+			reservedSubtree: api.EmptyResource(),
 		}
 	}
 
@@ -2005,9 +2006,19 @@ func TestHierarchicalReservedTasksCountedAtAncestor(t *testing.T) {
 			leaf1ID:  leaf1Attr,
 			leaf2ID:  leaf2Attr,
 		},
-		queueGateReservedTasks: map[api.QueueID]map[api.TaskID]*api.TaskInfo{
-			leaf1ID: {reservedTask.UID: reservedTask},
-		},
+		queueGateReservedTasks: make(map[api.QueueID]map[api.TaskID]*api.TaskInfo),
+		reservedTaskQueue:      make(map[api.TaskID]api.QueueID),
+	}
+	// Reserve via the real API so the cache, reverse index, and the reservedSubtree
+	// aggregate (leaf + ancestors) are all populated exactly as in a live session.
+	cp.addTaskToReservedCache(leaf1ID, reservedTask)
+
+	// The aggregate must have propagated L1's reservation up to the parent's subtree.
+	if parentAttr.reservedSubtree.MilliCPU != 80000 {
+		t.Fatalf("parent reservedSubtree = %v, want cpu 80", parentAttr.reservedSubtree.MilliCPU)
+	}
+	if leaf2Attr.reservedSubtree.MilliCPU != 0 {
+		t.Fatalf("sibling L2 reservedSubtree = %v, want 0", leaf2Attr.reservedSubtree.MilliCPU)
 	}
 
 	ssn := &framework.Session{
@@ -2048,5 +2059,172 @@ func TestHierarchicalReservedTasksCountedAtAncestor(t *testing.T) {
 	}
 	if !cp.checkQueueAllocatableHierarchically(ssn, leaf2Queue, fitting) {
 		t.Fatalf("hierarchical check should admit the fitting candidate")
+	}
+}
+
+// newReservedTestPlugin builds a single parent P (cpu 100) with one leaf L (cpu 100),
+// returning the plugin plus the queue infos, ready for reservation-cache exercises.
+func newReservedTestPlugin() (*capacityPlugin, *api.QueueInfo, *api.QueueInfo) {
+	const (
+		parentID api.QueueID = "p"
+		leafID   api.QueueID = "l"
+	)
+	newAttr := func(id api.QueueID, ancestors []api.QueueID) *queueAttr {
+		return &queueAttr{
+			queueID:         id,
+			name:            string(id),
+			ancestors:       ancestors,
+			children:        make(map[api.QueueID]*queueAttr),
+			allocated:       api.EmptyResource(),
+			realCapability:  &api.Resource{MilliCPU: 100000},
+			reservedSubtree: api.EmptyResource(),
+		}
+	}
+	parentAttr := newAttr(parentID, nil)
+	leafAttr := newAttr(leafID, []api.QueueID{parentID})
+	parentAttr.children[leafID] = leafAttr
+
+	cp := &capacityPlugin{
+		queueOpts: map[api.QueueID]*queueAttr{
+			parentID: parentAttr,
+			leafID:   leafAttr,
+		},
+		queueGateReservedTasks: make(map[api.QueueID]map[api.TaskID]*api.TaskInfo),
+		reservedTaskQueue:      make(map[api.TaskID]api.QueueID),
+	}
+	parentQueue := &api.QueueInfo{UID: parentID, Name: string(parentID)}
+	leafQueue := &api.QueueInfo{UID: leafID, Name: string(leafID)}
+	return cp, parentQueue, leafQueue
+}
+
+// TestReservedCandidateNotDoubleCounted verifies that a task already present in the
+// reserved cache (e.g. admitted in a prior cycle and rebuilt at session open) is not
+// counted twice when it is itself re-evaluated as the allocation candidate.
+func TestReservedCandidateNotDoubleCounted(t *testing.T) {
+	cp, parentQueue, leafQueue := newReservedTestPlugin()
+
+	// A cpu-80 task is reserved on the leaf and is also the candidate being re-evaluated.
+	task := &api.TaskInfo{UID: "t", Name: "t", Resreq: &api.Resource{MilliCPU: 80000}}
+	cp.addTaskToReservedCache(leafQueue.UID, task)
+
+	// futureUsed = allocated(0) + reserved(80 - candidate 80) + candidate(80) = 80 <= 100.
+	// Without candidate exclusion this would be 160 > 100 and wrongly reject, livelocking
+	// the task (it can never allocate against its own reservation).
+	if !cp.queueAllocatable(leafQueue, task, false, false) {
+		t.Fatalf("leaf should admit the reserved candidate (its own reservation must not be double counted)")
+	}
+	if !cp.queueAllocatable(parentQueue, task, false, false) {
+		t.Fatalf("ancestor should admit the reserved candidate (its own reservation must not be double counted)")
+	}
+}
+
+// TestAddTaskToReservedCacheIdempotent verifies that admitting the same task multiple
+// times within a cycle (multiple node attempts / rollback re-add) increments the
+// reservedSubtree aggregate exactly once.
+func TestAddTaskToReservedCacheIdempotent(t *testing.T) {
+	cp, parentQueue, leafQueue := newReservedTestPlugin()
+	task := &api.TaskInfo{UID: "t", Name: "t", Resreq: &api.Resource{MilliCPU: 30000}}
+
+	cp.addTaskToReservedCache(leafQueue.UID, task)
+	cp.addTaskToReservedCache(leafQueue.UID, task)
+	cp.addTaskToReservedCache(leafQueue.UID, task)
+
+	if got := cp.queueOpts[leafQueue.UID].reservedSubtree.MilliCPU; got != 30000 {
+		t.Fatalf("leaf reservedSubtree = %v after repeated adds, want cpu 30", got)
+	}
+	if got := cp.queueOpts[parentQueue.UID].reservedSubtree.MilliCPU; got != 30000 {
+		t.Fatalf("parent reservedSubtree = %v after repeated adds, want cpu 30", got)
+	}
+}
+
+// TestReservedCacheAddRemoveRoundTrip verifies that add -> remove -> add (the
+// admit / allocate / rollback lifecycle) leaves the leaf and every ancestor aggregate
+// holding exactly one reservation, and that a full removal zeroes the aggregate.
+func TestReservedCacheAddRemoveRoundTrip(t *testing.T) {
+	cp, parentQueue, leafQueue := newReservedTestPlugin()
+	task := &api.TaskInfo{UID: "t", Name: "t", Resreq: &api.Resource{MilliCPU: 40000}}
+
+	cp.addTaskToReservedCache(leafQueue.UID, task) // admit
+	cp.removeTaskFromReservedCache(task.UID)       // allocate
+	cp.addTaskToReservedCache(leafQueue.UID, task) // rollback re-add
+
+	if got := cp.queueOpts[leafQueue.UID].reservedSubtree.MilliCPU; got != 40000 {
+		t.Fatalf("leaf reservedSubtree = %v after round trip, want cpu 40", got)
+	}
+	if got := cp.queueOpts[parentQueue.UID].reservedSubtree.MilliCPU; got != 40000 {
+		t.Fatalf("parent reservedSubtree = %v after round trip, want cpu 40", got)
+	}
+
+	cp.removeTaskFromReservedCache(task.UID)
+	if got := cp.queueOpts[leafQueue.UID].reservedSubtree.MilliCPU; got != 0 {
+		t.Fatalf("leaf reservedSubtree = %v after final remove, want 0", got)
+	}
+	if got := cp.queueOpts[parentQueue.UID].reservedSubtree.MilliCPU; got != 0 {
+		t.Fatalf("parent reservedSubtree = %v after final remove, want 0", got)
+	}
+	if _, ok := cp.reservedTaskQueue[task.UID]; ok {
+		t.Fatalf("reverse index still references removed task")
+	}
+	if _, ok := cp.queueGateReservedTasks[leafQueue.UID]; ok {
+		t.Fatalf("empty leaf bucket should have been pruned from the cache")
+	}
+}
+
+// TestReservedExclusionDoesNotPanicOnUnderflow guards Blocker 1: if membership says the
+// candidate is reserved but the reserved-subtree amount does not cover it (an invariant
+// violation that a consistent snapshot prevents, but which must never crash the scheduler),
+// queueAllocatableWithReserved must skip the exclusion instead of panicking in Resource.Sub.
+func TestReservedExclusionDoesNotPanicOnUnderflow(t *testing.T) {
+	attr := &queueAttr{
+		queueID:         "l",
+		name:            "l",
+		allocated:       api.EmptyResource(),
+		realCapability:  &api.Resource{MilliCPU: 100000}, // cpu 100
+		reservedSubtree: &api.Resource{MilliCPU: 10000},  // cpu 10 (does not cover candidate)
+	}
+	cp := &capacityPlugin{
+		queueOpts:         map[api.QueueID]*queueAttr{"l": attr},
+		reservedTaskQueue: make(map[api.TaskID]api.QueueID),
+	}
+	queue := &api.QueueInfo{UID: "l", Name: "l"}
+	candidate := &api.TaskInfo{UID: "c", Name: "c", Resreq: &api.Resource{MilliCPU: 50000}} // cpu 50
+
+	// Membership claims the candidate is reserved, but reservedSubtree (cpu 10) < candidate
+	// (cpu 50). Exclusion must be skipped (no panic). futureUsed = 0 + 10 + 50 = 60 <= 100.
+	membership := map[api.TaskID]api.QueueID{candidate.UID: "l"}
+	if !cp.queueAllocatableWithReserved(attr, candidate, queue, false, false, membership) {
+		t.Fatalf("expected allocatable with conservative over-count (60 <= 100) and no panic")
+	}
+}
+
+// TestReservedExclusionUsesPassedMembership guards Blocker 2: candidate exclusion must read
+// membership from the map passed in (the per-task capacityState snapshot on the simulate
+// path), NOT from the live cp.reservedTaskQueue. Here the live index is empty while the passed
+// snapshot marks the candidate reserved; the result must follow the snapshot.
+func TestReservedExclusionUsesPassedMembership(t *testing.T) {
+	attr := &queueAttr{
+		queueID:         "l",
+		name:            "l",
+		allocated:       api.EmptyResource(),
+		realCapability:  &api.Resource{MilliCPU: 80000}, // cpu 80 (tight)
+		reservedSubtree: &api.Resource{MilliCPU: 50000}, // cpu 50 reserved in subtree
+	}
+	cp := &capacityPlugin{
+		queueOpts:         map[api.QueueID]*queueAttr{"l": attr},
+		reservedTaskQueue: make(map[api.TaskID]api.QueueID), // live index is empty
+	}
+	queue := &api.QueueInfo{UID: "l", Name: "l"}
+	candidate := &api.TaskInfo{UID: "c", Name: "c", Resreq: &api.Resource{MilliCPU: 50000}} // cpu 50
+
+	// Snapshot says candidate IS reserved -> exclude it: futureUsed = 0 + (50-50) + 50 = 50 <= 80.
+	snapshotReserved := map[api.TaskID]api.QueueID{candidate.UID: "l"}
+	if !cp.queueAllocatableWithReserved(attr, candidate, queue, false, false, snapshotReserved) {
+		t.Fatalf("with snapshot membership the candidate must be excluded (50 <= 80)")
+	}
+
+	// Same call but membership empty (matching the live index) -> no exclusion:
+	// futureUsed = 0 + 50 + 50 = 100 > 80. This proves the live index was not consulted above.
+	if cp.queueAllocatableWithReserved(attr, candidate, queue, false, false, map[api.TaskID]api.QueueID{}) {
+		t.Fatalf("without membership the candidate must be double-counted (100 > 80)")
 	}
 }
