@@ -775,6 +775,26 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return util.Reject
 		}
 
+		return util.Permit
+	})
+
+	// JobEnqueuedFn is the commit hook: it runs only after the aggregate JobEnqueueable
+	// verdict is Permit (a later plugin's Reject short-circuits JobEnqueueable before this
+	// is called). Updating inqueue here, rather than inside the JobEnqueueableFn predicate,
+	// avoids leaving a phantom inqueue reservation on the queue (and every ancestor queue)
+	// when another enqueue plugin rejects the job after capacity has already voted Permit.
+	ssn.AddJobEnqueuedFn(cp.Name(), func(obj interface{}) {
+		job := obj.(*api.JobInfo)
+		attr := cp.queueOpts[job.Queue]
+		if attr == nil || attr.realCapability == nil {
+			return
+		}
+		// Mirror the JobEnqueueableFn early return: nothing is reserved when the job has
+		// neither MinResources nor DRA min resources.
+		if job.PodGroup.Spec.MinResources == nil && !(cp.dynamicResourceAllocationEnable && attr.dra != nil && job.GetMinDRAResources() != nil) {
+			return
+		}
+
 		// job enqueued
 		deductedResources := job.DeductSchGatedResources(job.GetMinResources())
 		attr.inqueue.Add(deductedResources)
@@ -796,7 +816,6 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 		klog.V(5).Infof("job <%s/%s> enqueued", job.Namespace, job.Name)
-		return util.Permit
 	})
 
 	ssn.AddPrePredicateFn(cp.Name(), func(task *api.TaskInfo) error {
