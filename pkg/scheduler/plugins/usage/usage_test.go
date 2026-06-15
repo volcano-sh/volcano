@@ -130,40 +130,6 @@ func TestUsageEstimatorConfig(t *testing.T) {
 		t.Errorf("invalid riskThreshold should keep default, got %v", invalidPlugin.riskThreshold)
 	}
 
-	legacyPlugin := New(framework.Arguments{
-		"threshold": 0.75,
-	}).(*usagePlugin)
-	if math.Abs(legacyPlugin.riskThreshold-0.6) > eps {
-		t.Errorf("legacy threshold should not configure riskThreshold, got %v", legacyPlugin.riskThreshold)
-	}
-
-	oldEstimatorKeysPlugin := New(framework.Arguments{
-		"request.weight": 0.2,
-		"burst.weight":   0.9,
-		"risk_threshold": 0.9,
-		"risk_factor":    2.0,
-		"be.cpu":         "900m",
-		"be.memory":      "900Mi",
-	}).(*usagePlugin)
-	if math.Abs(oldEstimatorKeysPlugin.requestRatio-0.7) > eps {
-		t.Errorf("old request.weight should not configure requestRatio, got %v", oldEstimatorKeysPlugin.requestRatio)
-	}
-	if math.Abs(oldEstimatorKeysPlugin.burstRatio-0.0) > eps {
-		t.Errorf("old burst.weight should not configure burstRatio, got %v", oldEstimatorKeysPlugin.burstRatio)
-	}
-	if math.Abs(oldEstimatorKeysPlugin.riskThreshold-0.6) > eps {
-		t.Errorf("old risk_threshold should not configure riskThreshold, got %v", oldEstimatorKeysPlugin.riskThreshold)
-	}
-	if math.Abs(oldEstimatorKeysPlugin.riskFactor-1.2) > eps {
-		t.Errorf("old risk_factor should not configure riskFactor, got %v", oldEstimatorKeysPlugin.riskFactor)
-	}
-	if math.Abs(oldEstimatorKeysPlugin.beCPU-250) > eps {
-		t.Errorf("old be.cpu should not configure beCPU, got %v", oldEstimatorKeysPlugin.beCPU)
-	}
-	if math.Abs(oldEstimatorKeysPlugin.beMemory-float64(200*1024*1024)) > eps {
-		t.Errorf("old be.memory should not configure beMemory, got %v", oldEstimatorKeysPlugin.beMemory)
-	}
-
 	if math.Abs(invalidPlugin.riskFactor-1.2) > eps {
 		t.Errorf("invalid riskFactor should keep default, got %v", invalidPlugin.riskFactor)
 	}
@@ -172,6 +138,51 @@ func TestUsageEstimatorConfig(t *testing.T) {
 	}
 	if math.Abs(invalidPlugin.beMemory-float64(200*1024*1024)) > eps {
 		t.Errorf("invalid beMemory should keep default, got %v", invalidPlugin.beMemory)
+	}
+}
+
+func TestUsageConfigParsesStringValues(t *testing.T) {
+	plugin := New(framework.Arguments{
+		"usage.weight":  "7",
+		"cpu.weight":    "2",
+		"memory.weight": "3",
+		"thresholds": map[interface{}]interface{}{
+			"cpu": "85",
+			"mem": "75",
+		},
+		"estimator": map[interface{}]interface{}{
+			"request_ratio":  "0.8",
+			"burst_ratio":    "0.3",
+			"risk_threshold": "0.75",
+			"risk_factor":    "1.5",
+			"be_cpu":         "500m",
+			"be_memory":      "300Mi",
+		},
+	}).(*usagePlugin)
+
+	if plugin.usageWeight != 7 || plugin.cpuWeight != 2 || plugin.memoryWeight != 3 {
+		t.Fatalf("unexpected weights: usage=%d cpu=%d memory=%d", plugin.usageWeight, plugin.cpuWeight, plugin.memoryWeight)
+	}
+	if math.Abs(plugin.cpuThresholds-85) > eps || math.Abs(plugin.memThresholds-75) > eps {
+		t.Fatalf("unexpected thresholds: cpu=%v mem=%v", plugin.cpuThresholds, plugin.memThresholds)
+	}
+	if math.Abs(plugin.requestRatio-0.8) > eps {
+		t.Fatalf("unexpected requestRatio: %v", plugin.requestRatio)
+	}
+	if math.Abs(plugin.burstRatio-0.3) > eps {
+		t.Fatalf("unexpected burstRatio: %v", plugin.burstRatio)
+	}
+	if math.Abs(plugin.riskThreshold-0.75) > eps {
+		t.Fatalf("unexpected riskThreshold: %v", plugin.riskThreshold)
+	}
+	if math.Abs(plugin.riskFactor-1.5) > eps {
+		t.Fatalf("unexpected riskFactor: %v", plugin.riskFactor)
+	}
+	if math.Abs(plugin.beCPU-500) > eps {
+		t.Fatalf("unexpected beCPU: %v", plugin.beCPU)
+	}
+	if math.Abs(plugin.beMemory-float64(300*1024*1024)) > eps {
+		t.Fatalf("unexpected beMemory: %v", plugin.beMemory)
 	}
 }
 

@@ -17,6 +17,7 @@ limitations under the License.
 package usage
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -110,33 +111,32 @@ func New(args framework.Arguments) framework.Plugin {
 		beMemory:        float64(200 * 1024 * 1024),
 		metricsInterval: defaultMetricsInterval,
 	}
-	args.GetInt(&plugin.usageWeight, "usage.weight")
-	args.GetInt(&plugin.cpuWeight, "cpu.weight")
-	args.GetInt(&plugin.memoryWeight, "memory.weight")
+	parseIntArg(args, "usage.weight", &plugin.usageWeight)
+	parseIntArg(args, "cpu.weight", &plugin.cpuWeight)
+	parseIntArg(args, "memory.weight", &plugin.memoryWeight)
 
 	// Parse threshold configuration
-	argsValue, ok := plugin.pluginArguments[thresholdSection]
-	if ok {
-		thresholdArgs, ok := argsValue.(map[interface{}]interface{})
-		if ok {
-			for resourceName, threshold := range thresholdArgs {
-				resource, _ := resourceName.(string)
-				value, _ := threshold.(int)
-				switch resource {
-				case "cpu":
-					plugin.cpuThresholds = float64(value)
-				case "mem":
-					plugin.memThresholds = float64(value)
-				}
-			}
-		} else {
-			klog.Errorf("Failed to convert the thresholds information, thresholds args values is %v", argsValue)
-		}
-	}
+	parseThresholdArgs(plugin.pluginArguments, plugin)
 
 	parseEstimatorArgs(plugin.pluginArguments, plugin)
 
 	return plugin
+}
+
+func parseThresholdArgs(args framework.Arguments, plugin *usagePlugin) {
+	argsValue, ok := args[thresholdSection]
+	if !ok {
+		return
+	}
+
+	thresholdArgs, ok := toConfigArguments(argsValue)
+	if !ok {
+		klog.Errorf("Failed to convert the thresholds information, thresholds args values is %v", argsValue)
+		return
+	}
+
+	parseFloatArg(thresholdArgs, "cpu", &plugin.cpuThresholds)
+	parseFloatArg(thresholdArgs, "mem", &plugin.memThresholds)
 }
 
 func parseEstimatorArgs(args framework.Arguments, plugin *usagePlugin) {
@@ -145,7 +145,7 @@ func parseEstimatorArgs(args framework.Arguments, plugin *usagePlugin) {
 		return
 	}
 
-	estimatorArgs, ok := toEstimatorArguments(argsValue)
+	estimatorArgs, ok := toConfigArguments(argsValue)
 	if !ok {
 		klog.Errorf("Failed to convert the estimator information, estimator args values is %v", argsValue)
 		return
@@ -159,24 +159,61 @@ func parseEstimatorArgs(args framework.Arguments, plugin *usagePlugin) {
 	parseMemoryQuantityArg(estimatorArgs, "be_memory", &plugin.beMemory)
 }
 
-func toEstimatorArguments(value interface{}) (framework.Arguments, bool) {
+func toConfigArguments(value interface{}) (framework.Arguments, bool) {
 	switch args := value.(type) {
 	case framework.Arguments:
 		return args, true
 	case map[string]interface{}:
 		return framework.Arguments(args), true
 	case map[interface{}]interface{}:
-		estimatorArgs := framework.Arguments{}
+		configArgs := framework.Arguments{}
 		for key, value := range args {
 			keyStr, ok := key.(string)
 			if !ok {
 				return nil, false
 			}
-			estimatorArgs[keyStr] = value
+			configArgs[keyStr] = value
 		}
-		return estimatorArgs, true
+		return configArgs, true
 	default:
 		return nil, false
+	}
+}
+
+func parseIntArg(args framework.Arguments, key string, target *int) {
+	value, ok := getIntArg(args, key)
+	if !ok {
+		return
+	}
+	*target = value
+}
+
+func getIntArg(args framework.Arguments, key string) (int, bool) {
+	val, ok := args[key]
+	if !ok {
+		return 0, false
+	}
+	switch v := val.(type) {
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
+	case float64:
+		if v != float64(int(v)) {
+			klog.Warningf("Could not parse argument: %v for key %s to int", val, key)
+			return 0, false
+		}
+		return int(v), true
+	case string:
+		value, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			klog.Warningf("Could not parse argument: %v for key %s to int", val, key)
+			return 0, false
+		}
+		return value, true
+	default:
+		klog.Warningf("Could not parse argument: %v for key %s to int", val, key)
+		return 0, false
 	}
 }
 
@@ -208,6 +245,14 @@ func parseMinFloatArg(args framework.Arguments, key string, target *float64, min
 	*target = value
 }
 
+func parseFloatArg(args framework.Arguments, key string, target *float64) {
+	value, ok := getFloatArg(args, key)
+	if !ok {
+		return
+	}
+	*target = value
+}
+
 func getFloatArg(args framework.Arguments, key string) (float64, bool) {
 	if val, ok := args[key]; ok {
 		switch v := val.(type) {
@@ -217,6 +262,13 @@ func getFloatArg(args framework.Arguments, key string) (float64, bool) {
 			return float64(v), true
 		case int64:
 			return float64(v), true
+		case string:
+			value, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+			if err != nil {
+				klog.Warningf("Could not parse argument: %v for key %s to float64", val, key)
+				return 0, false
+			}
+			return value, true
 		}
 		klog.Warningf("Could not parse argument: %v for key %s to float64", val, key)
 	}
