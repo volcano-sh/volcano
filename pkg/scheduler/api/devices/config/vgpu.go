@@ -27,8 +27,6 @@ const (
 	VolcanoVGPUNumber = "volcano.sh/vgpu-number"
 	// VolcanoVGPURegister virtual gpu information registered from device-plugin to scheduler
 	VolcanoVGPURegister = "volcano.sh/node-vgpu-register"
-	// VolcanoVGPUHandshake for vgpu
-	VolcanoVGPUHandshake = "volcano.sh/node-vgpu-handshake"
 )
 
 // MigTemplate is the template for a certain mig instance
