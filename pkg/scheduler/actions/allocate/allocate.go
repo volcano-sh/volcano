@@ -324,10 +324,7 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 		} else {
 			subJob, sjExist := job.SubJobs[job.DefaultSubJobID()]
 			tasks, tasksExist := actx.tasksNoHardTopology[job.UID]
-			if !sjExist || !tasksExist {
-				klog.ErrorS(nil, "Can not find default subJob or tasks for job", "job", job.UID,
-					"subJobExist", sjExist, "tasksExist", tasksExist)
-			} else {
+			if sjExist && tasksExist {
 				klog.V(3).InfoS("Try to allocate resource", "queue", queue.Name, "job", job.UID,
 					"nominatedHyperNode", subJob.NominatedHyperNode, "taskNum", tasks.Len())
 
@@ -358,6 +355,9 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 						jobs.Push(job)
 					}
 				}
+			} else {
+				klog.ErrorS(nil, "Can not find default subJob or tasks for job", "job", job.UID,
+					"subJobExist", sjExist, "tasksExist", tasksExist)
 			}
 		}
 
