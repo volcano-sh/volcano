@@ -2135,6 +2135,9 @@ func TestAddTaskToReservedCacheIdempotent(t *testing.T) {
 	if got := cp.queueOpts[parentQueue.UID].reservedSubtree.MilliCPU; got != 30000 {
 		t.Fatalf("parent reservedSubtree = %v after repeated adds, want cpu 30", got)
 	}
+	if got := len(cp.queueGateReservedTasks[leafQueue.UID]); got != 1 {
+		t.Fatalf("task map has %d entries, want 1", got)
+	}
 }
 
 // TestReservedCacheAddRemoveRoundTrip verifies that add -> remove -> add (the

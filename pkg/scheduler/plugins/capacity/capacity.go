@@ -1738,11 +1738,8 @@ func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidat
 	if attr.reservedSubtree != nil {
 		reserved = attr.reservedSubtree.Clone()
 	}
-	// Exclude the candidate if it is itself currently reserved (admitted in a prior cycle
-	// and rebuilt into the cache); it is added separately via futureUsed below. In every
-	// real call site attr is on the candidate's leaf->root path, so a reserved candidate is
-	// always counted in attr.reservedSubtree and must be subtracted exactly once. Membership
-	// and amount come from the same snapshot (see the reservedTasks contract above).
+	// Exclude the candidate from reserved if already counted (avoids double-counting
+	// since it's added separately in futureUsed).
 	if _, ok := reservedTasks[candidate.UID]; ok {
 		if candidate.Resreq.LessEqual(reserved, api.Zero) {
 			reserved.Sub(candidate.Resreq)
