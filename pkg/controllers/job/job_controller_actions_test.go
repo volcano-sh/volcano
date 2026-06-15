@@ -1575,3 +1575,61 @@ func TestGetSubGroupPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestAppendJobCondition(t *testing.T) {
+	testcases := []struct {
+		Name          string
+		Conditions    []v1alpha1.JobCondition
+		NewCondition  v1alpha1.JobCondition
+		ExpectedLen   int
+		ExpectedPhase v1alpha1.JobPhase
+	}{
+		{
+			Name:       "Append to empty conditions",
+			Conditions: []v1alpha1.JobCondition{},
+			NewCondition: v1alpha1.JobCondition{
+				Status: v1alpha1.Pending,
+			},
+			ExpectedLen:   1,
+			ExpectedPhase: v1alpha1.Pending,
+		},
+		{
+			Name: "Replace existing condition with same phase",
+			Conditions: []v1alpha1.JobCondition{
+				{Status: v1alpha1.Pending},
+				{Status: v1alpha1.Running},
+			},
+			NewCondition: v1alpha1.JobCondition{
+				Status: v1alpha1.Pending,
+			},
+			ExpectedLen:   2,
+			ExpectedPhase: v1alpha1.Pending,
+		},
+		{
+			Name: "Append if phase is different",
+			Conditions: []v1alpha1.JobCondition{
+				{Status: v1alpha1.Pending},
+				{Status: v1alpha1.Running},
+			},
+			NewCondition: v1alpha1.JobCondition{
+				Status: v1alpha1.Completed,
+			},
+			ExpectedLen:   3,
+			ExpectedPhase: v1alpha1.Completed,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.Name, func(t *testing.T) {
+			result := appendJobCondition(tc.Conditions, tc.NewCondition)
+
+			if len(result) != tc.ExpectedLen {
+				t.Errorf("Expected length %d, got %d", tc.ExpectedLen, len(result))
+			}
+
+			if result[len(result)-1].Status != tc.ExpectedPhase {
+				t.Errorf("Expected last phase %v, got %v", tc.ExpectedPhase, result[len(result)-1].Status)
+			}
+		})
+	}
+}
