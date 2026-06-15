@@ -25,7 +25,7 @@ with support for more chip types to come
 
 **Description**:
 
-This mode is developed by a third-party community 'HAMi', which is the developer of [volcano-vgpu](./how_to_use_volcano_vgpu.md) feature. It supports vNPU feature for both Ascend 310 and Ascend 910. It also supports managing heterogeneous Ascend cluster(Cluster with multiple Ascend types, i.e. 910A,910B2,910B3,310P)
+This mode is developed by a third-party community 'HAMi', which is the developer of [volcano-vgpu](./how_to_use_volcano_vgpu.md) feature. It supports vNPU feature for both Ascend 310 and Ascend 910. It also supports managing heterogeneous Ascend cluster(Cluster with multiple Ascend types, i.e. 910A,910B2,910B3,310P). Starting with version 1.16, we support soft device partitioning through [hami-vnpu-core](https://github.com/Project-HAMi/hami-vnpu-core). This feature is known as the `hami-core` mode.
 
 **Use case**:
 
@@ -43,7 +43,7 @@ To enable vNPU scheduling, the following components must be set up based on the 
 **Prerequisites**:
 
 Kubernetes >= 1.16  
-Volcano >= 1.14  
+Volcano >= 1.14 (1.16 for `hami-core` mode)  
 [ascend-docker-runtime](https://gitcode.com/Ascend/mind-cluster/tree/master/component/ascend-docker-runtime) (for HAMi Mode)
 
 ### Install Volcano:
@@ -115,19 +115,21 @@ data:
 
 #### HAMi mode
 
-##### Label the Node with `ascend=on`
+##### Template vNPU mode
+
+###### Label the Node with `ascend=on`
 
 ```
 kubectl label node {ascend-node} ascend=on
 ```
 
-##### Deploy `hami-scheduler-device` ConfigMap
+###### Deploy `hami-scheduler-device` ConfigMap
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/Project-HAMi/ascend-device-plugin/refs/heads/main/ascend-device-configmap.yaml
 ```
 
-##### Deploy ascend-device-plugin
+###### Deploy ascend-device-plugin
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/Project-HAMi/ascend-device-plugin/refs/heads/main/ascend-device-plugin.yaml
@@ -135,7 +137,76 @@ kubectl apply -f https://raw.githubusercontent.com/Project-HAMi/ascend-device-pl
 
 For more information, refer to the [ascend-device-plugin documentation](https://github.com/Project-HAMi/ascend-device-plugin).
 
-##### Scheduler Config Update
+###### Update Scheduler Config
+```yaml
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: volcano-scheduler-configmap
+  namespace: volcano-system
+data:
+  volcano-scheduler.conf: |
+    actions: "enqueue, allocate, backfill"
+    tiers:
+    - plugins:
+      - name: predicates
+      - name: deviceshare
+        arguments:
+          deviceshare.AscendHAMiVNPUEnable: true   # enable ascend vnpu
+          deviceshare.SchedulePolicy: binpack  # scheduling policy. binpack / spread
+          deviceshare.KnownGeometriesCMNamespace: kube-system
+          deviceshare.KnownGeometriesCMName: hami-scheduler-device
+```
+
+  **Note:** You may notice that, 'volcano-vgpu' has its own GeometriesCMName and GeometriesCMNamespace, which means if you want to use both vNPU and vGPU in a same volcano cluster, you need to merge the configMap from both sides and set it here.
+
+##### `hami-core` mode
+
+###### Label the Node with `ascend=on`
+
+```
+kubectl label node {ascend-node} ascend=on
+```
+
+###### Deploy `hami-scheduler-device` ConfigMap
+
+1. Download file
+```
+curl -O https://github.com/Project-HAMi/ascend-device-plugin/blob/main/ascend-device-configmap.yaml
+```
+2. Set `hamiVnpuCore` to `true`
+3. Deploy the yaml
+
+```
+kubectl apply -f ascend-device-configmap.yaml
+```
+
+###### Deploy `hami-device-node-config` ConfigMap
+1. Download file
+```
+curl -O https://raw.githubusercontent.com/Project-HAMi/ascend-device-plugin/main/ascend-device-node-configmap.yaml
+```
+2. Set the `name` field under the `nodes` block to the actual node name.
+3. Deploy the yaml
+```
+kubectl apply -f ascend-device-node-configmap.yaml
+```
+
+###### Deploy ascend-device-plugin
+
+```
+kubectl apply -f https://raw.githubusercontent.com/Project-HAMi/ascend-device-plugin/refs/heads/main/ascend-device-plugin.yaml
+```
+
+###### Upgrade volcano-adminssion
+```
+helm upgrade [RELEASE_NAME] [CHART_PATH] --set custom.device_mutator_enable=true \
+    --set custom.enabled_admissions='/jobs/mutate\,/jobs/validate\,/podgroups/validate\,/queues/mutate\,/queues/validate\,/hypernodes/validate\,/cronjobs/validate\,/pods/mutate'
+kubectl rollout restart deployment -n [VOLCANO_NAMESPACE] volcano-admission
+```
+**Note**: If you deployed Volcano using a Deployment YAML, you need to either generate a new YAML with Helm using the parameters above and deploy it, or uninstall the existing Volcano and redeploy it with Helm.
+
+###### Update Scheduler Config
 ```yaml
 kind: ConfigMap
 apiVersion: v1
@@ -262,6 +333,8 @@ For detailed information, please consult the official [Ascend MindCluster docume
 
 ### HAMi mode
 
+#### Template vNPU mode
+
 ```yaml
 apiVersion: v1
 kind: Pod
@@ -289,6 +362,7 @@ The supported Ascend chips and their `ResourceNames` are shown in the following 
 | 910B3 | huawei.com/Ascend910B3 | huawei.com/Ascend910B3-memory |
 | 910B4 | huawei.com/Ascend910B4 | huawei.com/Ascend910B4-memory |
 | 910B4-1 | huawei.com/Ascend910B4-1 | huawei.com/Ascend910B4-1-memory |
+| 910C | huawei.com/Ascend910C | huawei.com/Ascend910C-memory |
 | 310P3 | huawei.com/Ascend310P | huawei.com/Ascend310P-memory |
 
 #### Hami vNPU scene memory allocation restrictions
@@ -299,3 +373,39 @@ The supported Ascend chips and their `ResourceNames` are shown in the following 
     - Pod requests 1 vNPU device with a requested memory of 20480, resulting in an actual allocated memory of 32768
 
 - When a Pod requests multiple vNPU devices, the memory resource request can be left unspecified or filled with the maximum value, The memory allocated to Pod is the actual memory of the entire card
+
+#### `hami-core` mode
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ascend-pod
+  annotations:
+    huawei.com/vnpu-mode: hami-core
+spec:
+  schedulerName: volcano
+  containers:
+    - name: ubuntu-container
+      image: quay.io/ascend/vllm-ascend:v0.18.0-310p
+      command: ["sleep"]
+      args: ["100000"]
+      resources:
+        limits:
+          huawei.com/Ascend310P: "1"
+          huawei.com/Ascend310P-memory: "4096"
+          huawei.com/Ascend310P-core: "90"
+```
+The supported Ascend chips and their `ResourceNames` are shown in the following table:
+
+| ChipName | ResourceName | ResourceMemoryName | ResourceCoreName
+|-------|-------|-------|
+| 910A | huawei.com/Ascend910A | huawei.com/Ascend910A-memory | huawei.com/Ascend910A-core |
+| 910B2 | huawei.com/Ascend910B2 | huawei.com/Ascend910B2-memory | huawei.com/Ascend910B2-core |
+| 910B3 | huawei.com/Ascend910B3 | huawei.com/Ascend910B3-memory | huawei.com/Ascend910B3-core |
+| 910B4 | huawei.com/Ascend910B4 | huawei.com/Ascend910B4-memory | huawei.com/Ascend910B4-core |
+| 910B4-1 | huawei.com/Ascend910B4-1 | huawei.com/Ascend910B4-1-memory | huawei.com/Ascend910B4-1-core |
+| 910C | huawei.com/Ascend910C | huawei.com/Ascend910C-memory | huawei.com/Ascend910C-core |
+| 310P3 | huawei.com/Ascend310P | huawei.com/Ascend310P-memory | huawei.com/Ascend310P-core |
+
+**Note**: If the pod's annotations do not specify `hami-core`, the device will be allocated in the template vNPU mode even if the `hami-core` feature is enabled in the configuration file.

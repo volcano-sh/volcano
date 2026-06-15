@@ -121,7 +121,7 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 	}
 
 	if config.ConfigData.DeviceMutatorConf.Enable {
-		patch = append(patch, patchDeviceMutation(pod, config.ConfigData.DeviceMutatorConf)...)
+		patch = append(patch, patchDeviceMutation(pod)...)
 	}
 
 	for _, resourceGroup := range config.ConfigData.ResGroupsConfig {
@@ -265,15 +265,14 @@ func patchSchedulerName(resGroupConfig wkconfig.ResGroupConfig) *patchOperation 
 	return &patchOperation{Op: "add", Path: "/spec/schedulerName", Value: resGroupConfig.SchedulerName}
 }
 
-func patchDeviceMutation(pod *v1.Pod, deviceMutatorConf wkconfig.DeviceMutatorConfig) []patchOperation {
+func patchDeviceMutation(pod *v1.Pod) []patchOperation {
 	var patch []patchOperation
 	for _, mutator := range registeredDeviceMutators {
-		patches := mutator.MutateAdmission(pod, deviceMutatorConf)
+		patches := mutator.MutateAdmission(pod)
 		if len(patches) == 0 {
 			continue
 		}
 		patch = append(patch, patches...)
-
 	}
 	return patch
 }

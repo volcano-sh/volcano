@@ -21,20 +21,19 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
+
+	hami "volcano.sh/volcano/pkg/scheduler/api/devices/ascend/hami"
 	devconfig "volcano.sh/volcano/pkg/scheduler/api/devices/config"
-	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
 )
 
 const (
 	ascendHAMiMutatorName = "ascend"
 	jsonPatchOpAdd        = "add"
-	VNPUModeAnnotation    = "huawei.com/vnpu-mode"
-	VNPUModeHamiCore      = "hami-core"
 )
 
 type DeviceMutator interface {
 	Name() string
-	MutateAdmission(pod *v1.Pod, deviceMutatorConfig wkconfig.DeviceMutatorConfig) []patchOperation
+	MutateAdmission(pod *v1.Pod) []patchOperation
 }
 
 var registeredDeviceMutators = []DeviceMutator{
@@ -51,15 +50,14 @@ func (m *AscendMutator) Name() string {
 	return ascendHAMiMutatorName
 }
 
-func (m *AscendMutator) MutateAdmission(pod *v1.Pod, deviceMutatorConfig wkconfig.DeviceMutatorConfig) []patchOperation {
+func (m *AscendMutator) MutateAdmission(pod *v1.Pod) []patchOperation {
 	if pod == nil || pod.Annotations == nil {
 		return nil
 	}
-	if vnpuMode, ok := pod.Annotations[VNPUModeAnnotation]; !ok || vnpuMode != VNPUModeHamiCore {
+	if vnpuMode, ok := pod.Annotations[hami.VNPUModeAnnotation]; !ok || vnpuMode != hami.VNPUModeHamiCore {
 		return nil
 	}
 	klog.V(5).Infof("the hami-core annotation exists in pod %s/%s", pod.Namespace, pod.Name)
-	devconfig.InitDevicesConfig(deviceMutatorConfig.KnownGeometriesCMName, deviceMutatorConfig.KnownGeometriesCMNamespace)
 	config := devconfig.GetConfig()
 	if config == nil {
 		klog.V(5).Infof("device configuration is empty.")
@@ -68,16 +66,16 @@ func (m *AscendMutator) MutateAdmission(pod *v1.Pod, deviceMutatorConfig wkconfi
 	var patch []patchOperation
 	for idx, container := range pod.Spec.Containers {
 		if container.Lifecycle != nil && container.Lifecycle.PostStart != nil {
+			klog.V(5).Infof("container %s already has a postStart lifecycle handler, skipping hami-vnpu-core injection", container.Name)
 			continue
 		}
 		hasAscendResource := false
-		for _, vnpuConfig := range config.VNPUs {
-			if val, ok := container.Resources.Limits[v1.ResourceName(vnpuConfig.ResourceName)]; ok && !val.IsZero() {
-				hasAscendResource = true
-				break
-			}
-			if val, ok := container.Resources.Requests[v1.ResourceName(vnpuConfig.ResourceName)]; ok && !val.IsZero() {
-				hasAscendResource = true
+		for _, vnpuConfig := range config.VNPUs.Configs {
+			if checkResource(container.Resources, vnpuConfig.ResourceName) {
+				resourceCoreName := fmt.Sprintf("%s-core", vnpuConfig.ResourceName)
+				if checkResource(container.Resources, vnpuConfig.ResourceMemoryName) && checkResource(container.Resources, resourceCoreName) {
+					hasAscendResource = true
+				}
 				break
 			}
 		}
@@ -88,7 +86,7 @@ func (m *AscendMutator) MutateAdmission(pod *v1.Pod, deviceMutatorConfig wkconfi
 		handler := v1.LifecycleHandler{
 			Exec: &v1.ExecAction{
 				Command: []string{
-					"bash",
+					"/bin/sh",
 					"-c",
 					"export RUST_LOG=info\n/hami-vnpu-core/limiter > /tmp/limiter_manager.log 2>&1 &",
 				},
@@ -113,4 +111,14 @@ func (m *AscendMutator) MutateAdmission(pod *v1.Pod, deviceMutatorConfig wkconfi
 	}
 
 	return patch
+}
+
+func checkResource(req v1.ResourceRequirements, resourceName string) bool {
+	if val, ok := req.Limits[v1.ResourceName(resourceName)]; ok && !val.IsZero() {
+		return true
+	}
+	if val, ok := req.Requests[v1.ResourceName(resourceName)]; ok && !val.IsZero() {
+		return true
+	}
+	return false
 }

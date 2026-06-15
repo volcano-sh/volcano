@@ -60,6 +60,7 @@ type AscendDevice struct {
 	DeviceUsage      *devices.DeviceUsage
 	Score            float64
 	PodMap           map[string]*devices.DeviceUsage
+	hamiVnpuCore     bool
 }
 
 type AscendDevices struct {
@@ -70,8 +71,10 @@ type AscendDevices struct {
 }
 
 type RuntimeInfo struct {
-	UUID string `json:"UUID,omitempty"`
-	Temp string `json:"temp,omitempty"`
+	UUID   string `json:"UUID,omitempty"`
+	Temp   string `json:"temp,omitempty"`
+	Memory int64  `json:"memory,omitempty"`
+	Core   int32  `json:"core,omitempty"`
 }
 
 var (
@@ -102,7 +105,7 @@ func NewAscendDevices(name string, node *v1.Node) map[string]*AscendDevices {
 			klog.V(3).Infof("Node %s does not have allocatable %s resource or value is 0", node.Name, resourceName)
 			continue
 		}
-		nodeDevices, err := dev.GetNodeDevices(*node)
+		nodeDevices, nodeSupportHamiCore, err := dev.getNodeDevices(node, curConfig.VNPUs)
 		if err != nil {
 			klog.Warningf("Failed to get node devices. nodeName %s, deviceType %s, error %v", node.Name, dev.CommonWord(), err)
 			continue
@@ -124,7 +127,8 @@ func NewAscendDevices(name string, node *v1.Node) map[string]*AscendDevices {
 					Usedmem:   0,
 					Usedcores: 0,
 				},
-				PodMap: make(map[string]*devices.DeviceUsage),
+				PodMap:       make(map[string]*devices.DeviceUsage),
+				hamiVnpuCore: nodeSupportHamiCore,
 			}
 			asDevices.Devices[nd.ID] = cur_dev
 			klog.V(5).Infof("add device. ID %s dev_info %+v", cur_dev.DeviceInfo.ID, cur_dev.DeviceInfo)
@@ -191,7 +195,7 @@ func (ads *AscendDevices) SubResource(pod *v1.Pod) {
 		if _, ok := dev.PodMap[string(pod.UID)]; ok {
 			delete(dev.PodMap, string(pod.UID))
 			ads.SubResourceUsage(dev, cono_dev.Usedcores, cono_dev.Usedmem)
-			klog.V(5).Infof("sub resource usage for pod %s. device %s usedmem %d", pod.Name, dev.DeviceInfo.ID, cono_dev.Usedmem)
+			klog.V(5).Infof("sub resource usage for pod %s. device %s usedmem %d usedcore %d", pod.Name, dev.DeviceInfo.ID, cono_dev.Usedmem, cono_dev.Usedcores)
 		}
 	}
 }
@@ -220,7 +224,7 @@ func (ads *AscendDevices) addResource(annotations map[string]string, pod *v1.Pod
 				Usedmem:   cono_dev.Usedmem,
 			}
 			ads.AddResourceUsage(dev, cono_dev.Usedcores, cono_dev.Usedmem)
-			klog.V(5).Infof("add resource usage for pod %s. device %s usedmem %d", pod.Name, dev.DeviceInfo.ID, cono_dev.Usedmem)
+			klog.V(5).Infof("add resource usage for pod %s. device %s usedmem %d usedcore %d", pod.Name, dev.DeviceInfo.ID, cono_dev.Usedmem, cono_dev.Usedcores)
 		}
 	}
 }
@@ -379,7 +383,7 @@ func (ads *AscendDevices) GetIgnoredDevices() []string {
 		return []string{""}
 	}
 	vnpuConfig := randDev.config
-	return []string{vnpuConfig.ResourceMemoryName}
+	return []string{vnpuConfig.ResourceMemoryName, fmt.Sprintf("%s-core", vnpuConfig.ResourceName)}
 }
 
 func (ads *AscendDevices) GetStatus() string {
@@ -412,6 +416,7 @@ func (ads *AscendDevices) DeepCopy() interface{} {
 			DeviceUsage:      newUsage,
 			Score:            dev.Score,
 			PodMap:           make(map[string]*devices.DeviceUsage),
+			hamiVnpuCore:     dev.hamiVnpuCore,
 		}
 		for k, v := range dev.PodMap {
 			newDev.PodMap[k] = &devices.DeviceUsage{
@@ -446,10 +451,13 @@ func (ads *AscendDevices) selectDevices(pod *v1.Pod, schedulePolicy string) (dev
 	usedDevs := make([]*AscendDevice, 0)
 	for _, req := range reqs {
 		klog.V(5).Infof("req %+v", req)
-		err := verifyReq(req, dupDevs[0])
-		if err != nil {
-			return nil, err
+		if !isHAMiCoreMode(pod) {
+			err := verifyReq(req, dupDevs[0])
+			if err != nil {
+				return nil, err
+			}
 		}
+
 		availableDevs := make([]*AscendDevice, 0)
 		for _, dev := range dupDevs {
 			selected := false
@@ -467,7 +475,7 @@ func (ads *AscendDevices) selectDevices(pod *v1.Pod, schedulePolicy string) (dev
 		selectedDevs := make([]*AscendDevice, 0)
 		for _, dev := range availableDevs {
 			klog.V(5).Infof("check fit. req %+v dev_info %+v dev_usage %+v", req, dev.DeviceInfo, dev.DeviceUsage)
-			if !fit(&req, dev) {
+			if !fit(&req, dev, isHAMiCoreMode(pod)) {
 				klog.V(5).Infof("fit false. dev ID %s", dev.DeviceInfo.ID)
 				continue
 			}
@@ -512,8 +520,11 @@ func hasNetworkID(devices []*AscendDevice) bool {
 	return true
 }
 
-func fit(req *devices.ContainerDeviceRequest, dev *AscendDevice) bool {
+func fit(req *devices.ContainerDeviceRequest, dev *AscendDevice, isHAMiCore bool) bool {
 	if req.Type != dev.config.CommonWord {
+		return false
+	}
+	if isHAMiCore && !dev.hamiVnpuCore {
 		return false
 	}
 	deviceUsage := dev.DeviceUsage
@@ -524,13 +535,17 @@ func fit(req *devices.ContainerDeviceRequest, dev *AscendDevice) bool {
 	if deviceInfo.Devmem-deviceUsage.Usedmem < req.Memreq {
 		return false
 	}
-	if deviceInfo.Devcore-deviceUsage.Usedcores < req.Coresreq {
+	effectiveTotalCore := dev.DeviceInfo.Devcore
+	if isHAMiCore {
+		effectiveTotalCore = 100
+	}
+	if effectiveTotalCore-deviceUsage.Usedcores < req.Coresreq {
 		return false
 	}
-	if deviceInfo.Devcore == 100 && req.Coresreq == 100 && deviceUsage.Used > 0 {
+	if effectiveTotalCore == 100 && req.Coresreq == 100 && deviceUsage.Used > 0 {
 		return false
 	}
-	if deviceInfo.Devcore != 0 && deviceUsage.Usedcores == deviceInfo.Devcore && req.Coresreq == 0 {
+	if effectiveTotalCore != 0 && deviceUsage.Usedcores == effectiveTotalCore && req.Coresreq == 0 {
 		return false
 	}
 	return true
@@ -550,7 +565,8 @@ func getDeviceSnapshot(ads *AscendDevices) []*AscendDevice {
 				Usedmem:   dev.DeviceUsage.Usedmem,
 				Usedcores: dev.DeviceUsage.Usedcores,
 			},
-			PodMap: make(map[string]*devices.DeviceUsage),
+			PodMap:       make(map[string]*devices.DeviceUsage),
+			hamiVnpuCore: dev.hamiVnpuCore,
 		}
 		for k, v := range dev.PodMap {
 			dupDev.PodMap[k] = &devices.DeviceUsage{
@@ -656,32 +672,42 @@ func (dev *AscendDevice) CommonWord() string {
 	return dev.config.CommonWord
 }
 
-func (dev *AscendDevice) GetNodeDevices(n v1.Node) ([]*devices.DeviceInfo, error) {
+func (dev *AscendDevice) getNodeDevices(n *v1.Node, conf config.VNPUsConfig) ([]*devices.DeviceInfo, bool, error) {
+	nodeSupportHamiCore := conf.HamiVnpuCore
+	if val, ok := n.Annotations[VNPUNodeSelectorAnnotation]; ok {
+		klog.V(5).Infof("hami-vnpu-core is %s in node %s annotation", val, n.Name)
+		if val == "true" {
+			nodeSupportHamiCore = true
+		} else {
+			nodeSupportHamiCore = false
+		}
+	}
 	anno, ok := n.Annotations[dev.nodeRegisterAnno]
 	if !ok {
-		return []*devices.DeviceInfo{}, fmt.Errorf("annos not found %s", dev.nodeRegisterAnno)
+		return []*devices.DeviceInfo{}, nodeSupportHamiCore, fmt.Errorf("annos not found %s", dev.nodeRegisterAnno)
 	}
 	nodeDevices, err := devices.UnMarshalNodeDevices(anno)
 	if err != nil {
 		klog.ErrorS(err, "failed to unmarshal node devices", "node", n.Name, "device annotation", anno)
-		return []*devices.DeviceInfo{}, err
+		return []*devices.DeviceInfo{}, nodeSupportHamiCore, err
 	}
 	if len(nodeDevices) == 0 {
 		klog.InfoS("no ascend device found", "node", n.Name, "device annotation", anno)
-		return []*devices.DeviceInfo{}, errors.New("no device found on node")
+		return []*devices.DeviceInfo{}, nodeSupportHamiCore, errors.New("no device found on node")
 	}
-	return nodeDevices, nil
+	return nodeDevices, nodeSupportHamiCore, nil
 }
 
 func (dev *AscendDevice) ResourceReqs(pod *v1.Pod) []devices.ContainerDeviceRequest {
-	reqs := devices.ExtractResourceRequest(pod, dev.CommonWord(), dev.config.ResourceName, dev.config.ResourceMemoryName, "", "")
+	resourceCoreName := fmt.Sprintf("%s-core", dev.config.ResourceName)
+	reqs := devices.ExtractResourceRequest(pod, dev.CommonWord(), dev.config.ResourceName, dev.config.ResourceMemoryName, "", resourceCoreName)
 	for i := range reqs {
 		req := &reqs[i]
 		if req.Memreq == 0 && req.MemPercentagereq != 0 {
 			req.Memreq = int32(dev.DeviceInfo.Devmem * req.MemPercentagereq / 100)
 			klog.V(5).Infof("new memreq %d totalmem %d mempercentage %d", req.Memreq, dev.DeviceInfo.Devmem, req.MemPercentagereq)
 		}
-		if req.Memreq > 0 {
+		if req.Memreq > 0 && !isHAMiCoreMode(pod) {
 			m, _ := dev.trimMemory(int64(req.Memreq))
 			klog.V(5).Infof("raw mem %d, trimed mem %d", req.Memreq, m)
 			req.Memreq = int32(m)
@@ -705,11 +731,15 @@ func (ads *AscendDevices) CreateAnnotations(pod *v1.Pod, devList devices.PodSing
 	var rtInfo []RuntimeInfo
 	for _, dp := range devList {
 		for _, val := range dp {
-			_, temp := dev.trimMemory(int64(val.Usedmem))
-			rtInfo = append(rtInfo, RuntimeInfo{
-				UUID: val.UUID,
-				Temp: temp,
-			})
+			info := RuntimeInfo{UUID: val.UUID}
+			if isHAMiCoreMode(pod) {
+				info.Memory = int64(val.Usedmem)
+				info.Core = val.Usedcores
+			} else {
+				_, temp := dev.trimMemory(int64(val.Usedmem))
+				info.Temp = temp
+			}
+			rtInfo = append(rtInfo, info)
 		}
 	}
 	s, err := json.Marshal(rtInfo)
@@ -753,4 +783,11 @@ func verifyReq(req devices.ContainerDeviceRequest, dev *AscendDevice) error {
 		}
 	}
 	return nil
+}
+
+func isHAMiCoreMode(pod *v1.Pod) bool {
+	if pod == nil {
+		return false
+	}
+	return pod.Annotations[VNPUModeAnnotation] == VNPUModeHamiCore
 }
