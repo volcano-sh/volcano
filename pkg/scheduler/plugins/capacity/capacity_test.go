@@ -17,6 +17,7 @@ limitations under the License.
 package capacity
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -27,12 +28,14 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
 	"volcano.sh/volcano/pkg/scheduler/actions/reclaim"
@@ -2008,6 +2011,7 @@ func TestHierarchicalReservedTasksCountedAtAncestor(t *testing.T) {
 		},
 		queueGateReservedTasks: make(map[api.QueueID]map[api.TaskID]*api.TaskInfo),
 		reservedTaskQueue:      make(map[api.TaskID]api.QueueID),
+		hierarchyEnabled:       true,
 	}
 	// Reserve via the real API so the cache, reverse index, and the reservedSubtree
 	// aggregate (leaf + ancestors) are all populated exactly as in a live session.
@@ -2091,6 +2095,7 @@ func newReservedTestPlugin() (*capacityPlugin, *api.QueueInfo, *api.QueueInfo) {
 		},
 		queueGateReservedTasks: make(map[api.QueueID]map[api.TaskID]*api.TaskInfo),
 		reservedTaskQueue:      make(map[api.TaskID]api.QueueID),
+		hierarchyEnabled:       true,
 	}
 	parentQueue := &api.QueueInfo{UID: parentID, Name: string(parentID)}
 	leafQueue := &api.QueueInfo{UID: leafID, Name: string(leafID)}
@@ -2115,6 +2120,46 @@ func TestReservedCandidateNotDoubleCounted(t *testing.T) {
 	}
 	if !cp.queueAllocatable(parentQueue, task, false, false) {
 		t.Fatalf("ancestor should admit the reserved candidate (its own reservation must not be double counted)")
+	}
+}
+
+// TestNonHierarchicalReservedUsesDirectCache verifies that without hierarchy the reserved
+// amount is read straight from the per-queue cache (the pre-redesign behavior) and the
+// reservedSubtree aggregate is never touched.
+func TestNonHierarchicalReservedUsesDirectCache(t *testing.T) {
+	const queueID api.QueueID = "q"
+	attr := &queueAttr{
+		queueID:         queueID,
+		name:            string(queueID),
+		allocated:       api.EmptyResource(),
+		realCapability:  &api.Resource{MilliCPU: 100000}, // cpu 100
+		reservedSubtree: api.EmptyResource(),
+	}
+	cp := &capacityPlugin{
+		queueOpts:              map[api.QueueID]*queueAttr{queueID: attr},
+		queueGateReservedTasks: make(map[api.QueueID]map[api.TaskID]*api.TaskInfo),
+		reservedTaskQueue:      make(map[api.TaskID]api.QueueID),
+		hierarchyEnabled:       false,
+	}
+	queue := &api.QueueInfo{UID: queueID, Name: string(queueID)}
+
+	reservedTask := &api.TaskInfo{UID: "r", Name: "r", Resreq: &api.Resource{MilliCPU: 80000}}
+	cp.addTaskToReservedCache(queueID, reservedTask)
+
+	// reservedSubtree stays empty in non-hierarchical mode.
+	if got := attr.reservedSubtree.MilliCPU; got != 0 {
+		t.Fatalf("reservedSubtree = %v in non-hierarchical mode, want 0", got)
+	}
+
+	// The reservation is still accounted via the direct cache read: 80 + 30 > 100 -> reject.
+	exceeding := &api.TaskInfo{UID: "c1", Name: "c1", Resreq: &api.Resource{MilliCPU: 30000}}
+	if cp.queueAllocatable(queue, exceeding, false, false) {
+		t.Fatalf("queue should reject candidate: 80 (reserved) + 30 > 100")
+	}
+	// 80 + 20 == 100 -> admit.
+	fitting := &api.TaskInfo{UID: "c2", Name: "c2", Resreq: &api.Resource{MilliCPU: 20000}}
+	if !cp.queueAllocatable(queue, fitting, false, false) {
+		t.Fatalf("queue should admit candidate: 80 (reserved) + 20 == 100")
 	}
 }
 
@@ -2188,6 +2233,7 @@ func TestReservedExclusionDoesNotPanicOnUnderflow(t *testing.T) {
 	cp := &capacityPlugin{
 		queueOpts:         map[api.QueueID]*queueAttr{"l": attr},
 		reservedTaskQueue: make(map[api.TaskID]api.QueueID),
+		hierarchyEnabled:  true,
 	}
 	queue := &api.QueueInfo{UID: "l", Name: "l"}
 	candidate := &api.TaskInfo{UID: "c", Name: "c", Resreq: &api.Resource{MilliCPU: 50000}} // cpu 50
@@ -2215,6 +2261,7 @@ func TestReservedExclusionUsesPassedMembership(t *testing.T) {
 	cp := &capacityPlugin{
 		queueOpts:         map[api.QueueID]*queueAttr{"l": attr},
 		reservedTaskQueue: make(map[api.TaskID]api.QueueID), // live index is empty
+		hierarchyEnabled:  true,
 	}
 	queue := &api.QueueInfo{UID: "l", Name: "l"}
 	candidate := &api.TaskInfo{UID: "c", Name: "c", Resreq: &api.Resource{MilliCPU: 50000}} // cpu 50
@@ -2229,5 +2276,94 @@ func TestReservedExclusionUsesPassedMembership(t *testing.T) {
 	// futureUsed = 0 + 50 + 50 = 100 > 80. This proves the live index was not consulted above.
 	if cp.queueAllocatableWithReserved(attr, candidate, queue, false, false, map[api.TaskID]api.QueueID{}) {
 		t.Fatalf("without membership the candidate must be double-counted (100 > 80)")
+	}
+}
+
+// TestSimulateRemoveFreesAllocatedVictim guards preemption: the queue allocation gate annotation
+// persists on running pods, so a victim still carries it. SimulateRemoveTaskFn must free the
+// victim's capacity for the preemptor and must not re-count it as reserved.
+func TestSimulateRemoveFreesAllocatedVictim(t *testing.T) {
+	options.Default()
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SchedulingGatesQueueAdmission, true)
+
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	uthelper.RegisterPlugins(plugins)
+	defer framework.CleanupPluginBuilders()
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{Name: PluginName, EnabledAllocatable: &trueValue, EnabledHierarchy: &trueValue, EnabledPredicate: &trueValue},
+			},
+		},
+	}
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+	cpu4 := api.BuildResourceList("4", "4Gi")
+
+	// Running victim in leaf q11, carrying the persistent gate annotation.
+	victim := util.BuildPod("ns1", "victim", "n1", corev1.PodRunning, cpu4, "pg-victim", map[string]string{}, map[string]string{})
+	victim.Annotations[schedulingv1beta1.QueueAllocationGateKey] = "true"
+	pgVictim := util.BuildPodGroup("pg-victim", "ns1", "q11", 1, nil, schedulingv1beta1.PodGroupRunning)
+
+	// Pending preemptor in the same leaf, no annotation (not gate-reserved).
+	preemptorPod := util.BuildPod("ns1", "preemptor", "", corev1.PodPending, cpu4, "pg-preemptor", map[string]string{}, map[string]string{})
+	pgPreemptor := util.BuildPodGroup("pg-preemptor", "ns1", "q11", 1, nil, schedulingv1beta1.PodGroupInqueue)
+
+	root := buildQueueWithParents("root", "", nil, cpu4)
+	q1 := buildQueueWithParents("q1", "root", nil, cpu4)
+	q11 := buildQueueWithParents("q11", "q1", nil, cpu4)
+
+	binder := util.NewFakeBinder(1)
+	evictor := util.NewFakeEvictor(0)
+	statusUpdater := &util.FakeStatusUpdater{}
+	stop := make(chan struct{})
+	defer close(stop)
+
+	sc := cache.NewCustomMockSchedulerCache("test-capacity-preempt", binder, evictor, statusUpdater, nil, nil)
+	sc.Run(stop)
+	sc.AddOrUpdateNode(n1)
+	sc.AddPod(victim)
+	sc.AddPod(preemptorPod)
+	sc.AddPodGroupV1beta1(pgVictim)
+	sc.AddPodGroupV1beta1(pgPreemptor)
+	sc.AddQueueV1beta1(root)
+	sc.AddQueueV1beta1(q1)
+	sc.AddQueueV1beta1(q11)
+
+	ssn := framework.OpenSession(sc, tiers, nil)
+	defer framework.CloseSession(ssn)
+
+	findTask := func(name string) *api.TaskInfo {
+		for _, job := range ssn.Jobs {
+			for _, task := range job.Tasks {
+				if task.Name == name {
+					return task
+				}
+			}
+		}
+		return nil
+	}
+	victimTask := findTask("victim")
+	preemptorTask := findTask("preemptor")
+	if victimTask == nil || preemptorTask == nil {
+		t.Fatalf("victim or preemptor task not found in session")
+	}
+
+	if err := ssn.PrePredicateFn(preemptorTask); err != nil {
+		t.Fatalf("PrePredicateFn: %v", err)
+	}
+	cycleState := ssn.GetCycleState(preemptorTask.UID)
+	ctx := context.TODO()
+
+	if err := ssn.SimulateRemoveTaskFn(ctx, cycleState, preemptorTask, victimTask, ssn.Nodes["n1"]); err != nil {
+		t.Fatalf("SimulateRemoveTaskFn: %v", err)
+	}
+
+	// Removing the cpu-4 victim empties the leaf and its ancestors, so the cpu-4 preemptor fits.
+	// If the victim were re-counted as reserved, the ancestor check would see 0+4+4 > 4 and reject.
+	if !ssn.SimulateAllocatableFn(ctx, cycleState, ssn.Queues["q11"], preemptorTask) {
+		t.Fatalf("preemptor must be allocatable after removing the annotated victim (reserved double-counting regression)")
 	}
 }

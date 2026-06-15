@@ -67,15 +67,12 @@ type capacityPlugin struct {
 	queueOpts map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
-	// queueGateReservedTasks tracks tasks that passed capacity checks but cannot be scheduled
-	// These tasks reserve queue capacity to prevent other tasks from consuming it
-	// Rebuilt fresh at the start of each scheduling cycle in OnSessionOpen
+	// queueGateReservedTasks tracks gate-reserved tasks (admitted but not yet allocated) per queue.
 	queueGateReservedTasks map[api.QueueID]map[api.TaskID]*api.TaskInfo
-	// reservedTaskQueue is a reverse index from a reserved task to its (leaf) queue.
-	// It gives O(1) membership tests for candidate exclusion and turns
-	// removeTaskFromReservedCache from an O(queues) scan into an O(1) lookup.
-	// Rebuilt together with queueGateReservedTasks in buildQueueReservedTasksCache.
+	// reservedTaskQueue is a reverse index from a reserved task to its leaf queue.
 	reservedTaskQueue map[api.TaskID]api.QueueID
+	// hierarchyEnabled reflects whether hierarchical queues are enabled this session.
+	hierarchyEnabled bool
 
 	// dynamicResourceAllocationEnable controls whether DRA quota is enforced
 	dynamicResourceAllocationEnable bool
@@ -103,10 +100,7 @@ type queueAttr struct {
 	guarantee         *api.Resource
 	dra               *draQuotaAttr
 	resourceClaimRefs map[string]int
-	// reservedSubtree is the aggregate Resreq of gate-reserved (admitted but not yet
-	// allocated) tasks in this queue AND every descendant queue. It is maintained
-	// incrementally up the ancestor chain, mirroring how `allocated` is propagated, so
-	// hierarchical capacity checks can read it in O(1) instead of walking the subtree.
+	// reservedSubtree is the aggregate Resreq of gate-reserved tasks in this queue and its descendants.
 	reservedSubtree *api.Resource
 }
 
@@ -459,6 +453,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	hierarchyEnabled := ssn.HierarchyEnabled(cp.Name())
+	cp.hierarchyEnabled = hierarchyEnabled
 	readyToSchedule := true
 	if hierarchyEnabled {
 		readyToSchedule = cp.buildHierarchicalQueueAttrs(ssn)
@@ -467,10 +462,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		cp.buildQueueAttrs(ssn)
 	}
 
-	// Seed each queue's reservedSubtree aggregate from the reserved cache. This must run
-	// after the queue attrs (and their ancestor/children links) are built so reservations
-	// recorded under a leaf queue propagate to every ancestor's subtree total.
-	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) {
+	// Subtree aggregation only applies to hierarchical queues.
+	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) && hierarchyEnabled {
 		cp.aggregateReservedSubtree()
 	}
 
@@ -826,9 +819,6 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		for _, queue := range cp.queueOpts {
 			state.queueAttrs[queue.queueID] = queue.Clone()
 		}
-		// Snapshot reservation membership together with the per-queue reservedSubtree amounts
-		// (cloned just above) so simulate-time capacity checks read both from this frozen
-		// snapshot rather than mixing it with live plugin state that mutates later this cycle.
 		for taskID, queueID := range cp.reservedTaskQueue {
 			state.reservedTaskQueue[taskID] = queueID
 		}
@@ -915,8 +905,6 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		simulateQueueAllocatable := func(state *capacityState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 			attr := state.queueAttrs[queue.UID]
-			// Simulate path: attr is the per-task clone, so membership must come from the
-			// snapshot taken alongside it (state.reservedTaskQueue), not the live plugin index.
 			return cp.queueAllocatableWithReserved(attr, candidate, queue, cp.dynamicResourceAllocationEnable, cp.draConsumableCapacityEnable, state.reservedTaskQueue)
 		}
 
@@ -1601,32 +1589,27 @@ func (cp *capacityPlugin) isLeafQueue(queueID api.QueueID) bool {
 
 func (cp *capacityPlugin) queueAllocatable(queue *api.QueueInfo, candidate *api.TaskInfo, draEnabled bool, consumableCapacityEnabled bool) bool {
 	attr := cp.queueOpts[queue.UID]
-	// Live path: attr is a live queueOpts entry, so its reservedSubtree and the membership
-	// index cp.reservedTaskQueue share the same (live) source and stay consistent.
 	return cp.queueAllocatableWithReserved(attr, candidate, queue, draEnabled, consumableCapacityEnabled, cp.reservedTaskQueue)
 }
 
-// addTaskToReservedCache adds a task to the reserved cache
-// This should be called when a task passes capacity checks
+// addTaskToReservedCache adds a task to the reserved cache.
 func (cp *capacityPlugin) addTaskToReservedCache(queueID api.QueueID, task *api.TaskInfo) {
 	if cp.queueGateReservedTasks[queueID] == nil {
 		cp.queueGateReservedTasks[queueID] = make(map[api.TaskID]*api.TaskInfo)
 	}
-	// Adding to a map is idempotent, but adding to the reservedSubtree aggregate is not.
-	// AllocatableFn may admit the same candidate more than once within a cycle (multiple
-	// node attempts) and the rollback path re-adds it, so guard against double counting.
+	// Map insertion is idempotent, but the reservedSubtree aggregate is not.
 	if _, exists := cp.queueGateReservedTasks[queueID][task.UID]; exists {
 		return
 	}
 	cp.queueGateReservedTasks[queueID][task.UID] = task
 	cp.reservedTaskQueue[task.UID] = queueID
-	cp.addReservedSubtree(queueID, task.Resreq)
+	if cp.hierarchyEnabled {
+		addReservedSubtree(cp.queueOpts, queueID, task.Resreq)
+	}
 	klog.V(4).Infof("Added task <%s/%s> to reserved cache for queue <%s>", task.Namespace, task.Name, queueID)
 }
 
-// RemoveTaskFromReservedCache removes a specific task from the reserved cache
-// This should be called when a task becomes allocated (no longer needs reservation)
-// It searches across all queues to find and remove the task
+// removeTaskFromReservedCache removes a task from the reserved cache.
 func (cp *capacityPlugin) removeTaskFromReservedCache(taskID api.TaskID) {
 	queueID, ok := cp.reservedTaskQueue[taskID]
 	if !ok {
@@ -1635,30 +1618,23 @@ func (cp *capacityPlugin) removeTaskFromReservedCache(taskID api.TaskID) {
 	task := cp.queueGateReservedTasks[queueID][taskID]
 	delete(cp.queueGateReservedTasks[queueID], taskID)
 	delete(cp.reservedTaskQueue, taskID)
-	if task != nil {
-		cp.subReservedSubtree(queueID, task.Resreq)
+	if task != nil && cp.hierarchyEnabled {
+		subReservedSubtree(cp.queueOpts, queueID, task.Resreq)
 	}
-	// Clean up empty queue entries
 	if len(cp.queueGateReservedTasks[queueID]) == 0 {
 		delete(cp.queueGateReservedTasks, queueID)
 	}
 	klog.V(4).Infof("Removed task <%s> from reserved cache for queue <%s>", taskID, queueID)
 }
 
-// rebuildReservedCache clears and rebuilds the reserved tasks cache for this scheduling cycle.
-// It scans all pending tasks and adds those that have passed capacity checks in previous cycles
-// but are not yet allocated. These are identified by:
-// - NO queue allocation scheduling gate (gate was removed after passing capacity)
-// - HAS queue allocation scheduling gate annotation (proof they opted-in and passed capacity check)
+// buildQueueReservedTasksCache rebuilds the reserved tasks cache for this scheduling cycle from
+// pending tasks that already passed capacity (no gate but carrying the gate annotation).
 func (cp *capacityPlugin) buildQueueReservedTasksCache(ssn *framework.Session) {
-	// Initialize the cache for this session
 	cp.queueGateReservedTasks = make(map[api.QueueID]map[api.TaskID]*api.TaskInfo)
 	cp.reservedTaskQueue = make(map[api.TaskID]api.QueueID)
 
-	// Scan all pending tasks and rebuild cache
 	for _, job := range ssn.Jobs {
 		for _, task := range job.TaskStatusIndex[api.Pending] {
-			// Tasks that passed capacity have: NO gate + HAS annotation + Pending status
 			if !task.SchGated && api.HasQueueAllocationGateAnnotation(task.Pod) {
 				if cp.queueGateReservedTasks[job.Queue] == nil {
 					cp.queueGateReservedTasks[job.Queue] = make(map[api.TaskID]*api.TaskInfo)
@@ -1672,52 +1648,42 @@ func (cp *capacityPlugin) buildQueueReservedTasksCache(ssn *framework.Session) {
 	}
 }
 
-// aggregateReservedSubtree seeds every queue's reservedSubtree aggregate from the freshly
-// built reserved-tasks cache. It MUST run after the queue attrs and their ancestor/children
-// links are built (buildHierarchicalQueueAttrs / buildQueueAttrs), so that reservations
-// recorded under a leaf queue are propagated to every ancestor's subtree total.
+// aggregateReservedSubtree seeds every queue's reservedSubtree from the reserved cache. It runs
+// after the queue attrs and their ancestor links are built.
 func (cp *capacityPlugin) aggregateReservedSubtree() {
 	for leafID, tasks := range cp.queueGateReservedTasks {
 		for _, task := range tasks {
-			cp.addReservedSubtree(leafID, task.Resreq)
+			addReservedSubtree(cp.queueOpts, leafID, task.Resreq)
 		}
 	}
 }
 
-// addReservedSubtree adds res to the reservedSubtree aggregate of the given leaf queue and
-// every one of its ancestors. This mirrors how `allocated` is propagated up the chain.
-func (cp *capacityPlugin) addReservedSubtree(leafID api.QueueID, res *api.Resource) {
-	leaf := cp.queueOpts[leafID]
+func addReservedSubtree(queueOpts map[api.QueueID]*queueAttr, leafID api.QueueID, res *api.Resource) {
+	leaf := queueOpts[leafID]
 	if leaf == nil {
 		return
 	}
 	leaf.reservedSubtree.Add(res)
 	for _, ancestorID := range leaf.ancestors {
-		if ancestor := cp.queueOpts[ancestorID]; ancestor != nil {
+		if ancestor := queueOpts[ancestorID]; ancestor != nil {
 			ancestor.reservedSubtree.Add(res)
 		}
 	}
 }
 
-// subReservedSubtree subtracts res from the reservedSubtree aggregate of the given leaf
-// queue and every one of its ancestors.
-func (cp *capacityPlugin) subReservedSubtree(leafID api.QueueID, res *api.Resource) {
-	leaf := cp.queueOpts[leafID]
+func subReservedSubtree(queueOpts map[api.QueueID]*queueAttr, leafID api.QueueID, res *api.Resource) {
+	leaf := queueOpts[leafID]
 	if leaf == nil {
 		return
 	}
 	leaf.reservedSubtree.Sub(res)
 	for _, ancestorID := range leaf.ancestors {
-		if ancestor := cp.queueOpts[ancestorID]; ancestor != nil {
+		if ancestor := queueOpts[ancestorID]; ancestor != nil {
 			ancestor.reservedSubtree.Sub(res)
 		}
 	}
 }
 
-// reservedTasks is the membership index used for candidate exclusion. It MUST originate from
-// the same snapshot as attr.reservedSubtree: the live cp.reservedTaskQueue when attr is a live
-// queueOpts entry, or the capacityState snapshot when attr is a cloned simulate attr. Mixing
-// the two sources lets membership and amount drift and can underflow the reserved subtraction.
 func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo, draEnabled bool, consumableCapacityEnabled bool, reservedTasks map[api.TaskID]api.QueueID) bool {
 	if draEnabled && attr.dra != nil {
 		candidateDRA := incrementalTaskDRA(attr, candidate)
@@ -1728,27 +1694,26 @@ func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidat
 			}
 		}
 	}
-	// Reserved (gate-admitted but not yet allocated) tasks are recorded under their leaf
-	// queue, but capacity is checked per queue across the whole ancestor chain (see
-	// checkQueueAllocatableHierarchically). attr.reservedSubtree is the precomputed sum of
-	// reservations in this queue's whole subtree, so an ancestor's check accounts for the
-	// reservations of every descendant leaf; otherwise sibling leaves could collectively
-	// reserve past the ancestor's realCapability (quota bypass).
 	reserved := api.EmptyResource()
-	if attr.reservedSubtree != nil {
-		reserved = attr.reservedSubtree.Clone()
-	}
-	// Exclude the candidate from reserved if already counted (avoids double-counting
-	// since it's added separately in futureUsed).
-	if _, ok := reservedTasks[candidate.UID]; ok {
-		if candidate.Resreq.LessEqual(reserved, api.Zero) {
-			reserved.Sub(candidate.Resreq)
-		} else {
-			// A consistent snapshot guarantees reserved >= candidate here. If that invariant
-			// is ever violated, skip the exclusion (conservatively over-counting the candidate)
-			// rather than panic in the assertive Resource.Sub or under-count and bypass quota.
-			klog.Warningf("[capacity] queue <%v>: reserved subtree <%v> does not cover reserved candidate <%v> request <%v>; skipping candidate exclusion",
-				queue.Name, reserved, candidate.Name, candidate.Resreq)
+	if cp.hierarchyEnabled {
+		if attr.reservedSubtree != nil {
+			reserved = attr.reservedSubtree.Clone()
+		}
+		// Exclude the candidate from reserved if already counted (it is added in futureUsed below).
+		if _, ok := reservedTasks[candidate.UID]; ok {
+			if candidate.Resreq.LessEqual(reserved, api.Zero) {
+				reserved.Sub(candidate.Resreq)
+			} else {
+				// Skip exclusion on the (snapshot-prevented) underflow rather than panic in Resource.Sub.
+				klog.Warningf("[capacity] queue <%v>: reserved subtree <%v> does not cover reserved candidate <%v> request <%v>; skipping candidate exclusion",
+					queue.Name, reserved, candidate.Name, candidate.Resreq)
+			}
+		}
+	} else if queueGateReserved := cp.queueGateReservedTasks[queue.UID]; queueGateReserved != nil {
+		for _, task := range queueGateReserved {
+			if task.UID != candidate.UID {
+				reserved.Add(task.Resreq)
+			}
 		}
 	}
 
@@ -1847,11 +1812,7 @@ func getCapacityState(cycleState fwk.CycleState) (*capacityState, error) {
 
 type capacityState struct {
 	queueAttrs map[api.QueueID]*queueAttr
-	// reservedTaskQueue is a snapshot of the plugin's reserved-task reverse index taken at
-	// the same instant as queueAttrs. It is the membership source for candidate exclusion in
-	// queueAllocatableWithReserved, so that the reserved AMOUNT (queueAttrs[*].reservedSubtree)
-	// and the reserved MEMBERSHIP always come from the same snapshot and cannot drift from
-	// the live plugin state mutated later in the session.
+	// reservedTaskQueue is a per-cycle snapshot of the reserved-task reverse index.
 	reservedTaskQueue map[api.TaskID]api.QueueID
 }
 
