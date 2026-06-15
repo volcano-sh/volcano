@@ -163,3 +163,85 @@ func TestAddResource(t *testing.T) {
 		})
 	}
 }
+
+func TestNewGPUDevicesChecksAllocatableResources(t *testing.T) {
+	registerAnno := "GPU-1234,10,16384,NVIDIA,true,hami-core:"
+
+	testCases := []struct {
+		name        string
+		allocatable v1.ResourceList
+		wantNil     bool
+	}{
+		{
+			name:        "Nil Allocatable",
+			allocatable: nil,
+			wantNil:     true,
+		},
+		{
+			name: "Missing vgpu-number",
+			allocatable: v1.ResourceList{
+				v1.ResourceName(config.VolcanoVGPUCores):  resource.MustParse("100"),
+				v1.ResourceName(config.VolcanoVGPUMemory): resource.MustParse("16000"),
+			},
+			wantNil: true,
+		},
+		{
+			name: "Zero vgpu-number",
+			allocatable: v1.ResourceList{
+				v1.ResourceName(config.VolcanoVGPUNumber): resource.MustParse("0"),
+				v1.ResourceName(config.VolcanoVGPUCores):  resource.MustParse("100"),
+				v1.ResourceName(config.VolcanoVGPUMemory): resource.MustParse("16000"),
+			},
+			wantNil: true,
+		},
+		{
+			name: "Missing vgpu-cores",
+			allocatable: v1.ResourceList{
+				v1.ResourceName(config.VolcanoVGPUNumber): resource.MustParse("1"),
+				v1.ResourceName(config.VolcanoVGPUMemory): resource.MustParse("16000"),
+			},
+			wantNil: true,
+		},
+		{
+			name: "Missing vgpu-memory",
+			allocatable: v1.ResourceList{
+				v1.ResourceName(config.VolcanoVGPUNumber): resource.MustParse("1"),
+				v1.ResourceName(config.VolcanoVGPUCores):  resource.MustParse("100"),
+			},
+			wantNil: true,
+		},
+		{
+			name: "All allocatable resources present",
+			allocatable: v1.ResourceList{
+				v1.ResourceName(config.VolcanoVGPUNumber): resource.MustParse("1"),
+				v1.ResourceName(config.VolcanoVGPUCores):  resource.MustParse("100"),
+				v1.ResourceName(config.VolcanoVGPUMemory): resource.MustParse("16000"),
+			},
+			wantNil: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			node := &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-a",
+					Annotations: map[string]string{
+						config.VolcanoVGPURegister: registerAnno,
+					},
+				},
+				Status: v1.NodeStatus{
+					Allocatable: tc.allocatable,
+				},
+			}
+
+			got := NewGPUDevices("node-a", node)
+			if tc.wantNil && got != nil {
+				t.Fatalf("expected nil GPUDevices, got %+v", got)
+			}
+			if !tc.wantNil && got == nil {
+				t.Fatal("expected non-nil GPUDevices")
+			}
+		})
+	}
+}
