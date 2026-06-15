@@ -170,7 +170,15 @@ func (info *NumatopoInfo) AddTask(ti *TaskInfo) {
 
 	for numaID, resList := range numaInfo {
 		for resName, quantity := range resList {
-			info.NumaResMap[string(resName)].UsedPerNuma[numaID] += ResQuantity2Float64(resName, quantity)
+			resInfo, ok := info.NumaResMap[string(resName)]
+			if !ok {
+				continue
+			}
+			used := ResQuantity2Float64(resName, quantity)
+			if used < 0 {
+				continue
+			}
+			resInfo.UsedPerNuma[numaID] += used
 		}
 	}
 }
@@ -184,7 +192,15 @@ func (info *NumatopoInfo) RemoveTask(ti *TaskInfo) {
 
 	for numaID, resList := range ti.NumaInfo.ResMap {
 		for resName, quantity := range resList {
-			info.NumaResMap[string(resName)].UsedPerNuma[numaID] -= ResQuantity2Float64(resName, quantity)
+			resInfo, ok := info.NumaResMap[string(resName)]
+			if !ok {
+				continue
+			}
+			used := ResQuantity2Float64(resName, quantity)
+			if used < 0 {
+				continue
+			}
+			resInfo.UsedPerNuma[numaID] -= used
 		}
 	}
 }
