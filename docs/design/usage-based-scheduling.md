@@ -110,7 +110,7 @@ When `load_composite_percentage >= risk_threshold`, the estimate is multiplied b
 
 BestEffort pods do not use node-capacity ratios or density penalties. They use fixed configured estimates and are also affected by `risk_factor`:
 
-BestEffort estimates are configured under `estimator.be_cpu` and `estimator.be_memory`.
+BestEffort estimates are configured under `estimator.be_cpu` and `estimator.be_mem`.
 
 Estimator configuration:
 
@@ -121,7 +121,7 @@ estimator:
   risk_threshold: 0.6  # composite load threshold, 0.6 means 60%
   risk_factor: 1.2     # applied after the threshold is reached
   be_cpu: 250m         # fixed BestEffort CPU estimate
-  be_memory: 200Mi     # fixed BestEffort memory estimate
+  be_mem: 200Mi        # fixed BestEffort memory estimate
 ```
 
 | factors                   | node1           | node2            |

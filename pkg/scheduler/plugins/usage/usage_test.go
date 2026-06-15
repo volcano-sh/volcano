@@ -88,7 +88,7 @@ func TestUsageEstimatorConfig(t *testing.T) {
 			"risk_threshold": 0.75,
 			"risk_factor":    1.5,
 			"be_cpu":         "500m",
-			"be_memory":      "300mi",
+			"be_mem":         "300mi",
 		},
 	}).(*usagePlugin)
 	if math.Abs(configuredPlugin.requestRatio-0.8) > eps {
@@ -117,7 +117,7 @@ func TestUsageEstimatorConfig(t *testing.T) {
 			"risk_threshold": 2.0,
 			"risk_factor":    0.5,
 			"be_cpu":         "-1",
-			"be_memory":      "bad",
+			"be_mem":         "bad",
 		},
 	}).(*usagePlugin)
 	if math.Abs(invalidPlugin.requestRatio-0.7) > eps {
@@ -156,7 +156,7 @@ func TestUsageConfigParsesStringValues(t *testing.T) {
 			"risk_threshold": "0.75",
 			"risk_factor":    "1.5",
 			"be_cpu":         "500m",
-			"be_memory":      "300Mi",
+			"be_mem":         "300Mi",
 		},
 	}).(*usagePlugin)
 

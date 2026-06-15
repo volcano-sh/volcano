@@ -63,7 +63,7 @@ const (
            risk_threshold: 0.6
            risk_factor: 1.2
            be_cpu: 250m
-           be_memory: 200Mi
+           be_mem: 200Mi
 */
 
 const AVG string = "average"
@@ -156,7 +156,7 @@ func parseEstimatorArgs(args framework.Arguments, plugin *usagePlugin) {
 	parseBoundedFloatArg(estimatorArgs, "risk_threshold", &plugin.riskThreshold, 0, 1)
 	parseMinFloatArg(estimatorArgs, "risk_factor", &plugin.riskFactor, 1)
 	parseCPUQuantityArg(estimatorArgs, "be_cpu", &plugin.beCPU)
-	parseMemoryQuantityArg(estimatorArgs, "be_memory", &plugin.beMemory)
+	parseMemoryQuantityArg(estimatorArgs, "be_mem", &plugin.beMemory)
 }
 
 func toConfigArguments(value interface{}) (framework.Arguments, bool) {
