@@ -325,10 +325,30 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 			subJob, sjExist := job.SubJobs[job.DefaultSubJobID()]
 			tasks, tasksExist := actx.tasksNoHardTopology[job.UID]
 			if sjExist && tasksExist {
-				klog.V(3).InfoS("Try to allocate resource", "queue", queue.Name, "job", job.UID, "taskNum", tasks.Len())
-				stmt := alloc.allocateResourcesForTasks(subJob, tasks, framework.ClusterTopHyperNode)
+				klog.V(3).InfoS("Try to allocate resource", "queue", queue.Name, "job", job.UID,
+					"nominatedHyperNode", subJob.NominatedHyperNode, "taskNum", tasks.Len())
+
+				// Honor gangpreempt/gangreclaim's pin via the nomination fast path; fall back on miss.
+				var stmt *framework.Statement
+				if subJob.NominatedHyperNode != "" {
+					sjWorksheet := actx.jobWorksheet[job.UID].subJobWorksheets[job.DefaultSubJobID()]
+					if s, _, ok := alloc.allocateFromNomination(subJob, sjWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode]); ok {
+						stmt = s
+					}
+				}
+				if stmt == nil {
+					stmt = alloc.allocateResourcesForTasks(subJob, tasks, framework.ClusterTopHyperNode)
+				}
+
 				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
 					stmt.Commit()
+
+					// Mirror recorder.UpdateDecisionToJob: clear the redeemed nomination.
+					if subJob.NominatedHyperNode != "" {
+						klog.V(3).InfoS("clear nominated hyperNode for committed subJob",
+							"subJob", subJob.UID, "old", subJob.NominatedHyperNode)
+						subJob.NominatedHyperNode = ""
+					}
 
 					// There are still left tasks that need to be allocated when min available < replicas, put the job back
 					if tasks.Len() > 0 {
