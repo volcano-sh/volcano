@@ -204,7 +204,11 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string, job *v1alpha1.Job) *
 
 		if tasks[index].MinAvailable == nil {
 			patched = true
-			if tasks[index].PartitionPolicy != nil {
+			// Only derive minAvailable from the partition policy when minPartitions is
+			// explicitly set (> 0). Otherwise minPartitions defaults to 0, which would
+			// make minAvailable 0 and silently drop the task's gang guarantee, so fall
+			// back to replicas just like a task without a partition policy.
+			if tasks[index].PartitionPolicy != nil && tasks[index].PartitionPolicy.MinPartitions > 0 {
 				minAvailable := tasks[index].PartitionPolicy.MinPartitions * tasks[index].PartitionPolicy.PartitionSize
 				tasks[index].MinAvailable = &minAvailable
 			} else {

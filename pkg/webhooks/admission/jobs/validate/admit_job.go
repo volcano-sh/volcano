@@ -320,7 +320,10 @@ func validatePartitionPolicy(task v1alpha1.TaskSpec, job *v1alpha1.Job) string {
 			msg += fmt.Sprintf("'PartitionSize' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
 		} else if task.Replicas != task.PartitionPolicy.TotalPartitions*task.PartitionPolicy.PartitionSize {
 			msg += fmt.Sprintf("'Replicas' are not equal to TotalPartitions*PartitionSize in task: %s, job: %s", task.Name, job.Name)
-		} else if task.MinAvailable != nil && task.PartitionPolicy.MinPartitions*task.PartitionPolicy.PartitionSize != *task.MinAvailable {
+		} else if task.MinAvailable != nil && task.PartitionPolicy.MinPartitions > 0 && task.PartitionPolicy.MinPartitions*task.PartitionPolicy.PartitionSize != *task.MinAvailable {
+			// Only enforce the minAvailable == minPartitions*partitionSize relationship
+			// when minPartitions is explicitly set (> 0). When minPartitions is omitted
+			// (defaults to 0), minAvailable falls back to replicas, so skip this check.
 			msg += fmt.Sprintf("'MinAvailable' is not equal to MinPartitions*PartitionSize in task: %s, job: %s", task.Name, job.Name)
 		}
 		msg += validateNetworkTopology(task.PartitionPolicy.NetworkTopology)
