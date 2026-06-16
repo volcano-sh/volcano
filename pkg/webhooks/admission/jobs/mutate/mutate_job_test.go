@@ -197,9 +197,10 @@ func TestCreatePatchExecution(t *testing.T) {
 					},
 				},
 				{
-					Name:         v1alpha1.DefaultTaskSpec + "3",
-					Replicas:     1,
-					MinAvailable: ptr.To(int32(0)),
+					Name:     v1alpha1.DefaultTaskSpec + "3",
+					Replicas: 1,
+					// MinPartitions omitted (0) -> minAvailable falls back to Replicas (see issue #5401)
+					MinAvailable: ptr.To(int32(1)),
 					PartitionPolicy: &v1alpha1.PartitionPolicySpec{
 						TotalPartitions: 1,
 						PartitionSize:   1,
@@ -320,6 +321,51 @@ func TestMutateSpecPartitionPolicyDefaults(t *testing.T) {
 			},
 			ShouldMutate: true,
 			Description:  "MinAvailable should be set to MinPartitions * PartitionSize",
+		},
+		{
+			// Regression test for issue #5401: PartitionPolicy is set but minPartitions
+			// is omitted (defaults to 0). MinAvailable must fall back to Replicas instead
+			// of becoming 0, otherwise the task loses its gang guarantee.
+			Name: "MinAvailable falls back to Replicas when PartitionPolicy is set but MinPartitions is omitted",
+			InputTasks: []v1alpha1.TaskSpec{
+				{
+					Name:     "task-1",
+					Replicas: 4,
+					PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+						TotalPartitions: 2,
+						PartitionSize:   2,
+						// MinPartitions omitted -> 0
+					},
+					Template: v1.PodTemplateSpec{
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{Name: "test", Image: "busybox:1.24"},
+							},
+						},
+					},
+				},
+			},
+			ExpectedTasks: []v1alpha1.TaskSpec{
+				{
+					Name:     "task-1",
+					Replicas: 4,
+					PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+						TotalPartitions: 2,
+						PartitionSize:   2,
+					},
+					MinAvailable: ptr.To(int32(4)), // Should equal Replicas, not 0
+					MaxRetry:     defaultMaxRetry,
+					Template: v1.PodTemplateSpec{
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{Name: "test", Image: "busybox:1.24"},
+							},
+						},
+					},
+				},
+			},
+			ShouldMutate: true,
+			Description:  "MinAvailable should fall back to Replicas when MinPartitions is omitted",
 		},
 		{
 			Name: "MinAvailable is set to Replicas when no PartitionPolicy",
