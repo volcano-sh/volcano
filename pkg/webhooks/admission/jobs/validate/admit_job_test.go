@@ -1290,6 +1290,90 @@ func TestValidateJobCreate(t *testing.T) {
 			ret:            "'Replicas' are not equal to TotalPartitions*PartitionSize in task: task-1, job: task-with-invalid-PartitionPolicy",
 			ExpectErr:      true,
 		},
+		// task-with-overflow-PartitionPolicy: TotalPartitions*PartitionSize wraps in int32 to equal Replicas
+		{
+			Name:                     "task-with-overflow-PartitionPolicy",
+			PodLevelResourcesEnabled: false,
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task-with-overflow-PartitionPolicy",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 2,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   3,
+								TotalPartitions: 1431655766,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "'Replicas' are not equal to TotalPartitions*PartitionSize in task: task-1, job: task-with-overflow-PartitionPolicy",
+			ExpectErr:      true,
+		},
+		// task-with-overflow-MinAvailable-PartitionPolicy: MinPartitions*PartitionSize wraps in int32 to equal MinAvailable
+		{
+			Name:                     "task-with-overflow-MinAvailable-PartitionPolicy",
+			PodLevelResourcesEnabled: false,
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task-with-overflow-MinAvailable-PartitionPolicy",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							MinAvailable: &minAvailable,
+							Replicas:     8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   4,
+								TotalPartitions: 2,
+								MinPartitions:   1073741825,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "'MinAvailable' is not equal to MinPartitions*PartitionSize in task: task-1, job: task-with-overflow-MinAvailable-PartitionPolicy",
+			ExpectErr:      true,
+		},
 		// task-with-valid-PartitionPolicy: replicas equal to TotalPartitions*PartitionSize
 		{
 			Name:                     "task-with-valid-PartitionPolicy",
