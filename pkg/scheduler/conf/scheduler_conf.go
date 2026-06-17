@@ -27,12 +27,12 @@ var EnabledActionMap map[string]bool
 // SchedulerConfiguration defines the configuration of scheduler.
 type SchedulerConfiguration struct {
 	// Actions defines the actions list of scheduler in order
-	Actions interface{} `yaml:"actions" json:"actions,omitempty"`
+	Actions string `yaml:"actions" json:"actions,omitempty"`
 	// Tiers defines plugins in different tiers
 	Tiers []Tier `yaml:"tiers" json:"tiers,omitempty"`
 	// Configurations is configuration for actions
-	Configurations       interface{} `yaml:"configurations" json:"configurations,omitempty"`
-	MetricsConfiguration interface{} `yaml:"metrics" json:"metrics,omitempty"`
+	Configurations       []Configuration   `yaml:"configurations" json:"configurations,omitempty"`
+	MetricsConfiguration map[string]string `yaml:"metrics" json:"metrics,omitempty"`
 }
 
 // Tier defines plugin tier
