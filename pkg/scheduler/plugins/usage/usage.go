@@ -245,14 +245,6 @@ func parseMinFloatArg(args framework.Arguments, key string, target *float64, min
 	*target = value
 }
 
-func parseFloatArg(args framework.Arguments, key string, target *float64) {
-	value, ok := getFloatArg(args, key)
-	if !ok {
-		return
-	}
-	*target = value
-}
-
 func getFloatArg(args framework.Arguments, key string) (float64, bool) {
 	if val, ok := args[key]; ok {
 		switch v := val.(type) {
