@@ -186,6 +186,22 @@ func TestUsageConfigParsesStringValues(t *testing.T) {
 	}
 }
 
+func TestUsageThresholdsKeepDefaultWhenOutOfRange(t *testing.T) {
+	plugin := New(framework.Arguments{
+		"thresholds": map[interface{}]interface{}{
+			"cpu": -1,
+			"mem": 101,
+		},
+	}).(*usagePlugin)
+
+	if math.Abs(plugin.cpuThresholds-80) > eps {
+		t.Fatalf("invalid cpu threshold should keep default, got %v", plugin.cpuThresholds)
+	}
+	if math.Abs(plugin.memThresholds-80) > eps {
+		t.Fatalf("invalid mem threshold should keep default, got %v", plugin.memThresholds)
+	}
+}
+
 func TestUsage_predicateFn(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 

@@ -135,8 +135,8 @@ func parseThresholdArgs(args framework.Arguments, plugin *usagePlugin) {
 		return
 	}
 
-	parseFloatArg(thresholdArgs, "cpu", &plugin.cpuThresholds)
-	parseFloatArg(thresholdArgs, "mem", &plugin.memThresholds)
+	parseBoundedFloatArg(thresholdArgs, "cpu", &plugin.cpuThresholds, 0, 100)
+	parseBoundedFloatArg(thresholdArgs, "mem", &plugin.memThresholds, 0, 100)
 }
 
 func parseEstimatorArgs(args framework.Arguments, plugin *usagePlugin) {
