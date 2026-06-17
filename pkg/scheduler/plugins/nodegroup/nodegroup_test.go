@@ -17,6 +17,7 @@ limitations under the License.
 package nodegroup
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -45,16 +46,16 @@ func TestNodeGroup(t *testing.T) {
 	p6 := util.BuildPod("c1", "p6", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg6", nil, nil)
 
 	n1 := util.BuildNode("n1", api.BuildResourceList("2", "4Gi"), map[string]string{
-		NodeGroupNameKey: "group1",
+		schedulingv1.NodeGroupNameKey: "group1",
 	})
 	n2 := util.BuildNode("n2", api.BuildResourceList("4", "16Gi"), map[string]string{
-		NodeGroupNameKey: "group2",
+		schedulingv1.NodeGroupNameKey: "group2",
 	})
 	n3 := util.BuildNode("n3", api.BuildResourceList("4", "16Gi"), map[string]string{
-		NodeGroupNameKey: "group3",
+		schedulingv1.NodeGroupNameKey: "group3",
 	})
 	n4 := util.BuildNode("n4", api.BuildResourceList("4", "16Gi"), map[string]string{
-		NodeGroupNameKey: "group4",
+		schedulingv1.NodeGroupNameKey: "group4",
 	})
 	n5 := util.BuildNode("n5", api.BuildResourceList("4", "16Gi"), make(map[string]string))
 
@@ -381,4 +382,277 @@ func TestNodeGroup(t *testing.T) {
 		})
 	}
 
+}
+
+func TestNodeGroupResourceLimits(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:             PluginName,
+					EnabledNodeOrder: &trueValue,
+					EnabledPredicate: &trueValue,
+				},
+			},
+		},
+	}
+
+	nodeResource := api.BuildResourceList("16", "64Gi", api.ScalarResource{Name: string(v1.ResourcePods), Value: "32"})
+	n1 := util.BuildNode("n1", nodeResource, map[string]string{
+		schedulingv1.NodeGroupNameKey: "group1",
+	})
+	n2 := util.BuildNode("n2", nodeResource, map[string]string{
+		schedulingv1.NodeGroupNameKey: "group2",
+	})
+
+	affinity := &schedulingv1.Affinity{
+		NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution:  []string{"group1", "group2"},
+			PreferredDuringSchedulingIgnoredDuringExecution: []string{"group1"},
+		},
+	}
+
+	tests := []struct {
+		name           string
+		queue          *schedulingv1.Queue
+		pods           []*v1.Pod
+		podGroups      []*schedulingv1.PodGroup
+		targetTaskName string
+		expectedStatus map[string]int
+	}{
+		{
+			name: "no annotation keeps existing behavior",
+			queue: util.MakeQueue("q-no-limit").
+				Affinity(affinity).
+				Obj(),
+			pods: []*v1.Pod{
+				util.BuildPod("limit", "pending", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg-pending", nil, nil),
+			},
+			podGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg-pending", "limit", "q-no-limit", 0, nil, ""),
+			},
+			targetTaskName: "pending",
+			expectedStatus: map[string]int{
+				"n1": api.Success,
+				"n2": api.Success,
+			},
+		},
+		{
+			name: "under nodegroup limit permits preferred nodegroup",
+			queue: util.MakeQueue("q-under-limit").
+				Affinity(affinity).
+				Annotations(map[string]string{
+					schedulingv1.NodeGroupResourceLimitsAnnotationKey: `{"group1":{"cpu":"3","memory":"8Gi"}}`,
+				}).
+				Obj(),
+			pods: []*v1.Pod{
+				util.BuildPod("limit", "pending", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg-pending", nil, nil),
+			},
+			podGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg-pending", "limit", "q-under-limit", 0, nil, ""),
+			},
+			targetTaskName: "pending",
+			expectedStatus: map[string]int{
+				"n1": api.Success,
+				"n2": api.Success,
+			},
+		},
+		{
+			name: "omitted resource dimension is unlimited",
+			queue: util.MakeQueue("q-cpu-only-limit").
+				Affinity(affinity).
+				Annotations(map[string]string{
+					schedulingv1.NodeGroupResourceLimitsAnnotationKey: `{"group1":{"cpu":"3"}}`,
+				}).
+				Obj(),
+			pods: []*v1.Pod{
+				util.BuildPod("limit", "pending", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg-pending", nil, nil),
+			},
+			podGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg-pending", "limit", "q-cpu-only-limit", 0, nil, ""),
+			},
+			targetTaskName: "pending",
+			expectedStatus: map[string]int{
+				"n1": api.Success,
+				"n2": api.Success,
+			},
+		},
+		{
+			name: "specified resource dimension is enforced",
+			queue: util.MakeQueue("q-cpu-only-over-limit").
+				Affinity(affinity).
+				Annotations(map[string]string{
+					schedulingv1.NodeGroupResourceLimitsAnnotationKey: `{"group1":{"cpu":"1"}}`,
+				}).
+				Obj(),
+			pods: []*v1.Pod{
+				util.BuildPod("limit", "pending", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg-pending", nil, nil),
+			},
+			podGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg-pending", "limit", "q-cpu-only-over-limit", 0, nil, ""),
+			},
+			targetTaskName: "pending",
+			expectedStatus: map[string]int{
+				"n1": api.UnschedulableAndUnresolvable,
+				"n2": api.Success,
+			},
+		},
+		{
+			name: "over nodegroup limit rejects preferred nodegroup and permits fallback",
+			queue: util.MakeQueue("q-over-limit").
+				Affinity(affinity).
+				Annotations(map[string]string{
+					schedulingv1.NodeGroupResourceLimitsAnnotationKey: `{"group1":{"cpu":"3","memory":"8Gi"}}`,
+				}).
+				Obj(),
+			pods: []*v1.Pod{
+				util.BuildPod("limit", "used", "n1", v1.PodRunning, api.BuildResourceList("2", "4Gi"), "pg-used", nil, nil),
+				util.BuildPod("limit", "pending", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg-pending", nil, nil),
+			},
+			podGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg-used", "limit", "q-over-limit", 0, nil, schedulingv1.PodGroupRunning),
+				util.BuildPodGroup("pg-pending", "limit", "q-over-limit", 0, nil, ""),
+			},
+			targetTaskName: "pending",
+			expectedStatus: map[string]int{
+				"n1": api.UnschedulableAndUnresolvable,
+				"n2": api.Success,
+			},
+		},
+		{
+			name: "invalid annotation rejects queue tasks",
+			queue: util.MakeQueue("q-invalid-limit").
+				Affinity(affinity).
+				Annotations(map[string]string{
+					schedulingv1.NodeGroupResourceLimitsAnnotationKey: `{"group1":{"cpu":`,
+				}).
+				Obj(),
+			pods: []*v1.Pod{
+				util.BuildPod("limit", "pending", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg-pending", nil, nil),
+			},
+			podGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg-pending", "limit", "q-invalid-limit", 0, nil, ""),
+			},
+			targetTaskName: "pending",
+			expectedStatus: map[string]int{
+				"n1": api.UnschedulableAndUnresolvable,
+				"n2": api.UnschedulableAndUnresolvable,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			common := uthelper.TestCommonStruct{
+				Name:      test.name,
+				PodGroups: test.podGroups,
+				Queues:    []*schedulingv1.Queue{test.queue},
+				Pods:      test.pods,
+				Nodes:     []*v1.Node{n1, n2},
+				Plugins:   plugins,
+			}
+			ssn := common.RegisterSession(tiers, nil)
+			defer common.Close()
+
+			var targetTask *api.TaskInfo
+		findTargetTask:
+			for _, job := range ssn.Jobs {
+				for _, task := range job.Tasks {
+					if task.Name == test.targetTaskName {
+						targetTask = task
+						break findTargetTask
+					}
+				}
+			}
+			if targetTask == nil {
+				t.Fatalf("target task %s not found", test.targetTaskName)
+			}
+
+			for _, node := range ssn.Nodes {
+				err := ssn.PredicateFn(targetTask, node)
+				code := fitErrorCode(t, err)
+				if expect := test.expectedStatus[node.Name]; expect != code {
+					t.Errorf("task %s on node %s expect status code %v, but got %v", targetTask.Name, node.Name, expect, code)
+				}
+			}
+		})
+	}
+}
+
+func fitErrorCode(t *testing.T, err error) int {
+	t.Helper()
+	if err == nil {
+		return api.Success
+	}
+	var fitErr *api.FitError
+	if !errors.As(err, &fitErr) {
+		t.Fatalf("expected *api.FitError, got %T: %v", err, err)
+	}
+	if len(fitErr.Status) == 0 {
+		t.Fatalf("expected *api.FitError with status, got empty status: %v", err)
+	}
+	return fitErr.Status[0].Code
+}
+
+func TestNodeGroupResourceLimitAllocationEvent(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:             PluginName,
+					EnabledNodeOrder: &trueValue,
+					EnabledPredicate: &trueValue,
+				},
+			},
+		},
+	}
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("16", "64Gi", api.ScalarResource{Name: string(v1.ResourcePods), Value: "32"}), map[string]string{
+		schedulingv1.NodeGroupNameKey: "group1",
+	})
+	queue := util.MakeQueue("q-event-limit").
+		Affinity(&schedulingv1.Affinity{
+			NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []string{"group1"},
+			},
+		}).
+		Annotations(map[string]string{
+			schedulingv1.NodeGroupResourceLimitsAnnotationKey: `{"group1":{"cpu":"3","memory":"8Gi"}}`,
+		}).
+		Obj()
+
+	p1 := util.BuildPod("limit", "pending-1", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg-1", nil, nil)
+	p2 := util.BuildPod("limit", "pending-2", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg-2", nil, nil)
+
+	common := uthelper.TestCommonStruct{
+		Name: "allocation event updates nodegroup usage",
+		PodGroups: []*schedulingv1.PodGroup{
+			util.BuildPodGroup("pg-1", "limit", "q-event-limit", 0, nil, ""),
+			util.BuildPodGroup("pg-2", "limit", "q-event-limit", 0, nil, ""),
+		},
+		Queues:  []*schedulingv1.Queue{queue},
+		Pods:    []*v1.Pod{p1, p2},
+		Nodes:   []*v1.Node{n1},
+		Plugins: plugins,
+	}
+	ssn := common.RegisterSession(tiers, nil)
+	defer common.Close()
+
+	task1 := ssn.Jobs[api.JobID("limit/pg-1")].Tasks[api.TaskID("limit-pending-1")]
+	task2 := ssn.Jobs[api.JobID("limit/pg-2")].Tasks[api.TaskID("limit-pending-2")]
+	node := ssn.Nodes["n1"]
+
+	if err := ssn.PredicateFn(task1, node); err != nil {
+		t.Fatalf("first task should fit before allocation event, got %v", err)
+	}
+	if err := ssn.Allocate(task1, node); err != nil {
+		t.Fatalf("allocate first task: %v", err)
+	}
+	if err := ssn.PredicateFn(task2, node); err == nil {
+		t.Fatalf("second task should exceed nodegroup resource limit after allocation event")
+	}
 }

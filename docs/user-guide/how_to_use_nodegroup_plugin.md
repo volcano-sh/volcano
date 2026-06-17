@@ -35,6 +35,48 @@ Create queue and bind nodegroup to it.
            preferredDuringSchedulingIgnoredDuringExecution:
            - <groupname>
    ```
+
+### Configure queue resource limits for each nodegroup
+
+Use the `volcano.sh/nodegroup-resource-limits` annotation to limit how many resources a queue can allocate from each nodegroup.
+
+```yaml
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: default
+  annotations:
+    volcano.sh/nodegroup-resource-limits: |
+      {
+        "groupname1": {"cpu": "100", "memory": "200Gi"},
+        "groupname2": {"cpu": "50"}
+      }
+spec:
+  reclaimable: true
+  weight: 1
+  affinity:
+    nodeGroupAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - groupname1
+      - groupname2
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - groupname1
+```
+
+For a task from queue `Q` scheduled to a node in nodegroup `G`, the plugin checks:
+
+```text
+allocated(Q, G) + task request <= limit(Q, G)
+```
+
+If the future usage exceeds the configured limit, the node is rejected for that task. Other allowed nodegroups remain schedulable, so the queue can prefer `groupname1` and overflow to `groupname2` when the logical limit for `groupname1` is reached.
+
+Only resource dimensions explicitly listed for a nodegroup are limited. For example, `{"groupname2": {"cpu": "50"}}` limits CPU usage in `groupname2` and does not add a memory limit for that nodegroup.
+
+If this annotation is absent, existing nodegroup behavior is unchanged. If a nodegroup is not listed in the annotation, that nodegroup has no extra limit from this feature.
+
+The annotation is not inherited by child queues when hierarchical nodegroup affinity is enabled. Each queue that needs per-nodegroup limits must define its own annotation.
+
 ### submit a vcjob
 
 submit vcjob job-1 to default queue.
