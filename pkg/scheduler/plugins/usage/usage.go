@@ -379,6 +379,15 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(5).Infof("Leaving usage plugin ...")
 	}()
 
+	estimatorArgs := framework.Arguments{}
+	if argsValue, ok := up.pluginArguments[estimatorSection]; ok {
+		if args, ok := toConfigArguments(argsValue); ok {
+			estimatorArgs = args
+		}
+	}
+	klog.Infof("Usage estimator config: requestRatio=%.2f burstRatio=%.2f riskThreshold=%.2f riskFactor=%.2f beCPU=%.2f beMemory=%.2f estimatorArgs=%v",
+		up.requestRatio, up.burstRatio, up.riskThreshold, up.riskFactor, up.beCPU, up.beMemory, estimatorArgs)
+
 	// Step 1: Initialize ShadowLoadCache
 	if up.shadowCache != nil && !up.shadowCache.IsClean() {
 		up.shadowCache.Reset()
