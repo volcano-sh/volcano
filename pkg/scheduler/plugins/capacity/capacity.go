@@ -1604,7 +1604,7 @@ func (cp *capacityPlugin) addTaskToReservedCache(queueID api.QueueID, task *api.
 	cp.queueGateReservedTasks[queueID][task.UID] = task
 	cp.reservedTaskQueue[task.UID] = queueID
 	if cp.hierarchyEnabled {
-		addReservedSubtree(cp.queueOpts, queueID, task.Resreq)
+		cp.addReservedSubtree(queueID, task.Resreq)
 	}
 	klog.V(4).Infof("Added task <%s/%s> to reserved cache for queue <%s>", task.Namespace, task.Name, queueID)
 }
@@ -1619,7 +1619,7 @@ func (cp *capacityPlugin) removeTaskFromReservedCache(taskID api.TaskID) {
 	delete(cp.queueGateReservedTasks[queueID], taskID)
 	delete(cp.reservedTaskQueue, taskID)
 	if task != nil && cp.hierarchyEnabled {
-		subReservedSubtree(cp.queueOpts, queueID, task.Resreq)
+		cp.subReservedSubtree(queueID, task.Resreq)
 	}
 	if len(cp.queueGateReservedTasks[queueID]) == 0 {
 		delete(cp.queueGateReservedTasks, queueID)
@@ -1653,32 +1653,32 @@ func (cp *capacityPlugin) buildQueueReservedTasksCache(ssn *framework.Session) {
 func (cp *capacityPlugin) aggregateReservedSubtree() {
 	for leafID, tasks := range cp.queueGateReservedTasks {
 		for _, task := range tasks {
-			addReservedSubtree(cp.queueOpts, leafID, task.Resreq)
+			cp.addReservedSubtree(leafID, task.Resreq)
 		}
 	}
 }
 
-func addReservedSubtree(queueOpts map[api.QueueID]*queueAttr, leafID api.QueueID, res *api.Resource) {
-	leaf := queueOpts[leafID]
+func (cp *capacityPlugin) addReservedSubtree(leafID api.QueueID, res *api.Resource) {
+	leaf := cp.queueOpts[leafID]
 	if leaf == nil {
 		return
 	}
 	leaf.reservedSubtree.Add(res)
 	for _, ancestorID := range leaf.ancestors {
-		if ancestor := queueOpts[ancestorID]; ancestor != nil {
+		if ancestor := cp.queueOpts[ancestorID]; ancestor != nil {
 			ancestor.reservedSubtree.Add(res)
 		}
 	}
 }
 
-func subReservedSubtree(queueOpts map[api.QueueID]*queueAttr, leafID api.QueueID, res *api.Resource) {
-	leaf := queueOpts[leafID]
+func (cp *capacityPlugin) subReservedSubtree(leafID api.QueueID, res *api.Resource) {
+	leaf := cp.queueOpts[leafID]
 	if leaf == nil {
 		return
 	}
 	leaf.reservedSubtree.Sub(res)
 	for _, ancestorID := range leaf.ancestors {
-		if ancestor := queueOpts[ancestorID]; ancestor != nil {
+		if ancestor := cp.queueOpts[ancestorID]; ancestor != nil {
 			ancestor.reservedSubtree.Sub(res)
 		}
 	}
@@ -1836,10 +1836,7 @@ func (qa *queueAttr) Clone() *queueAttr {
 		guarantee:         qa.guarantee.Clone(),
 		resourceClaimRefs: make(map[string]int, len(qa.resourceClaimRefs)),
 		children:          make(map[api.QueueID]*queueAttr),
-		reservedSubtree:   api.EmptyResource(),
-	}
-	if qa.reservedSubtree != nil {
-		cloned.reservedSubtree = qa.reservedSubtree.Clone()
+		reservedSubtree:   qa.reservedSubtree.Clone(),
 	}
 
 	if len(qa.ancestors) > 0 {
