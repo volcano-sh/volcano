@@ -219,6 +219,59 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		Expect(err).To(HaveOccurred())
 	})
 
+	It("Test SVC Plugin with injectHostsEnv disabled", func() {
+		jobName := "svc-without-hosts-env"
+		taskName := "task"
+
+		_, rep := e2eutil.ComputeNode(testCtx, e2eutil.OneCPU)
+		Expect(rep).NotTo(Equal(0))
+
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
+			Namespace: testCtx.Namespace,
+			Name:      jobName,
+			Plugins: map[string][]string{
+				"svc": {"--inject-hosts-env=false"},
+			},
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img:  e2eutil.DefaultNginxImage,
+					Req:  e2eutil.OneCPU,
+					Min:  1,
+					Rep:  rep,
+					Name: taskName,
+				},
+			},
+		})
+
+		err := e2eutil.WaitJobReady(testCtx, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		pluginName := fmt.Sprintf("%s-svc", jobName)
+		_, err = testCtx.Kubeclient.CoreV1().ConfigMaps(testCtx.Namespace).Get(context.TODO(),
+			pluginName, v1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		pod, err := testCtx.Kubeclient.CoreV1().Pods(testCtx.Namespace).Get(context.TODO(),
+			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		envNames := []string{
+			fmt.Sprintf(svc.EnvTaskHostFmt, strings.ToUpper(taskName)),
+			fmt.Sprintf(svc.EnvHostNumFmt, strings.ToUpper(taskName)),
+		}
+
+		containers := pod.Spec.Containers
+		containers = append(containers, pod.Spec.InitContainers...)
+		for _, container := range containers {
+			for _, name := range envNames {
+				for _, envi := range container.Env {
+					Expect(envi.Name).NotTo(Equal(name),
+						fmt.Sprintf("container: %s, env name: %s should not be injected", container.Name, name))
+				}
+			}
+		}
+	})
+
 	It("Check Functionality of all plugins", func() {
 		jobName := "job-with-all-plugin"
 		taskName := "task"

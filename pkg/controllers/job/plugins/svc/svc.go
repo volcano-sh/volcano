@@ -44,11 +44,12 @@ type servicePlugin struct {
 	// flag parse args
 	publishNotReadyAddresses bool
 	disableNetworkPolicy     bool
+	injectHostsEnv           bool
 }
 
 // New creates service plugin.
 func New(client pluginsinterface.PluginClientset, arguments []string) pluginsinterface.PluginInterface {
-	servicePlugin := servicePlugin{pluginArguments: arguments, Clientset: client}
+	servicePlugin := servicePlugin{pluginArguments: arguments, Clientset: client, injectHostsEnv: true}
 
 	servicePlugin.addFlags()
 
@@ -65,6 +66,7 @@ func (sp *servicePlugin) addFlags() {
 		"set publishNotReadyAddresses of svc to true")
 	flagSet.BoolVar(&sp.disableNetworkPolicy, "disable-network-policy", sp.disableNetworkPolicy,
 		"set disableNetworkPolicy of svc to true")
+	flagSet.BoolVar(&sp.injectHostsEnv, "inject-hosts-env", sp.injectHostsEnv, "set injectHostsEnv of svc to false")
 
 	if err := flagSet.Parse(sp.pluginArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
@@ -90,32 +92,37 @@ func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 		pod.Spec.Subdomain = job.Name
 	}
 
-	var hostEnv []v1.EnvVar
-	var envNames []string
+	// The flag `inject-hosts-env` is used to control whether to inject the hosts and host number of each task as environment variables into the pod.
+	// This is to prevent the situation where the number of tasks is too large, resulting in the environment variable exceeding the maximum length limit.
+	// If the flag is set to true (by default), the hosts and host number of each task will be injected as environment variables into the pod.
+	if sp.injectHostsEnv {
+		var hostEnv []v1.EnvVar
+		var envNames []string
 
-	for _, ts := range job.Spec.Tasks {
-		// TODO(k82cn): The splitter and the prefix of env should be configurable.
-		formateENVKey := strings.Replace(ts.Name, "-", "_", -1)
-		envNames = append(envNames, fmt.Sprintf(EnvTaskHostFmt, strings.ToUpper(formateENVKey)), fmt.Sprintf(EnvHostNumFmt, strings.ToUpper(formateENVKey)))
-	}
+		for _, ts := range job.Spec.Tasks {
+			// TODO(k82cn): The splitter and the prefix of env should be configurable.
+			formateENVKey := strings.Replace(ts.Name, "-", "_", -1)
+			envNames = append(envNames, fmt.Sprintf(EnvTaskHostFmt, strings.ToUpper(formateENVKey)), fmt.Sprintf(EnvHostNumFmt, strings.ToUpper(formateENVKey)))
+		}
 
-	for _, name := range envNames {
-		hostEnv = append(hostEnv, v1.EnvVar{
-			Name: name,
-			ValueFrom: &v1.EnvVarSource{
-				ConfigMapKeyRef: &v1.ConfigMapKeySelector{
-					LocalObjectReference: v1.LocalObjectReference{Name: sp.cmName(job)},
-					Key:                  name,
-				}}},
-		)
-	}
+		for _, name := range envNames {
+			hostEnv = append(hostEnv, v1.EnvVar{
+				Name: name,
+				ValueFrom: &v1.EnvVarSource{
+					ConfigMapKeyRef: &v1.ConfigMapKeySelector{
+						LocalObjectReference: v1.LocalObjectReference{Name: sp.cmName(job)},
+						Key:                  name,
+					}}},
+			)
+		}
 
-	for i := range pod.Spec.Containers {
-		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, hostEnv...)
-	}
+		for i := range pod.Spec.Containers {
+			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, hostEnv...)
+		}
 
-	for i := range pod.Spec.InitContainers {
-		pod.Spec.InitContainers[i].Env = append(pod.Spec.InitContainers[i].Env, hostEnv...)
+		for i := range pod.Spec.InitContainers {
+			pod.Spec.InitContainers[i].Env = append(pod.Spec.InitContainers[i].Env, hostEnv...)
+		}
 	}
 
 	sp.mountConfigmap(pod, job)

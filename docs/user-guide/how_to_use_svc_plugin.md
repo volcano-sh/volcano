@@ -12,11 +12,11 @@ all pods under the job automatically. Namely, `pod.spec.hostname` is `pod.metada
 * Once `svc` plugin is configured, value of field `subdomain` under `spec` will be filled out to be **the job name** for
 all pods under the job automatically. Namely, `pod.spec.subdomain` is `job.metadata.name`.
 * Once `svc` plugin is configured, environment variables `VC_%s_NUM` will be registered to all the containers(including
-initContainers) under the job automatically. `%s` will be replaced by the **task name** which the pod belongs to. The value
+initContainers) under the job automatically, unless the flag `inject-hosts-env` is set to `false`. `%s` will be replaced by the **task name** which the pod belongs to. The value
 of the environment variable is the **task replicas**. The number of the environment variables depends on the number of tasks,
 which is usually `2` for most AI and Big Data jobs contains 2 roles. For example, a Spark job contains `driver` and `executor`.
 * Once `svc` plugin is configured, environment variables `VC_%s_HOSTS` will be registered to all the containers(including 
-initContainers) under the job automatically. `%s` will be replaced by the **task name** which the pod belongs to. The value
+initContainers) under the job automatically, unless the flag `inject-hosts-env` is set to `false`. `%s` will be replaced by the **task name** which the pod belongs to. The value
 of the environment variable are the domains of all the pods under the task. The number of the environment variables depends
 on the number of tasks, which is usually `2` for most AI and Big Data jobs contains 2 roles. For example, a TensorFlow job
 contains `ps` and `worker`.
@@ -26,12 +26,15 @@ host files under the directory `/etc/volcano/`.
 * A headless service whose name is the same with job will be created.
 * If `disable-network-policy` is set to be false, a `NetworkPolicy` object with the type `Ingress` will be created for
 the job.
+* If `inject-hosts-env` is set to be false, hosts env variables including `VC_%s_HOSTS` and `VC_%s_NUM` will not be injected
+into pod containers; hosts information will still be accessible via the mounted ConfigMap files under `/etc/volcano/`.
 
 ## Arguments
-| ID  | Name                          | Value           | Default Value | Required | Description                                          | Example                                       |
-|-----|-------------------------------|-----------------|---------------|----------|------------------------------------------------------|-----------------------------------------------|
-| 1   | `publish-not-ready-addresses` | `true`/`false`  | `false`       | N        | whether publish the pod address when it is not ready | svc: ["--publish-not-ready-addresses=true"]   |
-| 2   | `disable-network-policy`      | `true`/`false`  | `false`       | N        | whether disable network policy for the job           | svc: ["--disable-network-policy=true"]        |
+| ID | Name                          | Value           | Default Value | Required | Description                                           | Example                                     |
+|----|-------------------------------|-----------------|---------------|----------|-------------------------------------------------------|---------------------------------------------|
+| 1  | `publish-not-ready-addresses` | `true`/`false`  | `false`       | N        | whether publish the pod address when it is not ready  | svc: ["--publish-not-ready-addresses=true"] |
+| 2  | `disable-network-policy`      | `true`/`false`  | `false`       | N        | whether disable network policy for the job            | svc: ["--disable-network-policy=true"]      |
+| 3  | `inject-hosts-env`            | `true`/`false`  | `true`        | N        | whether inject the hosts environment variables        | svc: ["--inject-hosts-env=true"]            |
 
 ## Examples
 ```yaml
@@ -44,7 +47,7 @@ spec:
   schedulerName: volcano
   plugins:
     env: []
-    svc: ["--publish-not-ready-addresses=false", "--disable-network-policy=false"]  ## SVC plugin register
+    svc: ["--publish-not-ready-addresses=false", "--disable-network-policy=false", "--inject-hosts-env=true"]  ## SVC plugin register
   policies:
     - event: PodEvicted
       action: RestartJob
