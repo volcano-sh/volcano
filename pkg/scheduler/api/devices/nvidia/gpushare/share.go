@@ -34,7 +34,15 @@ func getDevicesIdleGPUMemory(gs *GPUDevices) map[int]uint {
 	res := map[int]uint{}
 	for id, allMemory := range devicesAllGPUMemory {
 		if usedMemory, found := devicesUsedGPUMemory[id]; found {
-			res[id] = allMemory - usedMemory
+			// usedMemory is summed from the pods accounted to this card, which can
+			// exceed the card capacity (for example a pod that sets volcano.sh/gpu-index
+			// itself). Clamp instead of subtracting so the unsigned result does not wrap
+			// around and make a full card look almost empty.
+			if usedMemory >= allMemory {
+				res[id] = 0
+			} else {
+				res[id] = allMemory - usedMemory
+			}
 		} else {
 			res[id] = allMemory
 		}
