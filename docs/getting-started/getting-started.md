@@ -11,12 +11,11 @@ These types of applications typically run on generalized domain
 frameworks like TensorFlow, Spark, Ray, PyTorch, MPI, etc, which Volcano integrates with.
 
 ### Why Volcano?
-- // TODO better to add separate md file & Link
-- Learn about Volcano [here](https://github.com/volcano-sh/volcano/blob/master/README.md)
+- Learn about Volcano in the [project README](../../README.md)
 
 ### First Steps
 To get the most out of Volcano, start by reviewing a few introductory topics:
-- [perepare-for-development](../development/prepare-for-development.md) - preoaration for development
+- [Prepare for development](../development/prepare-for-development.md) - Set up your development environment
 - [Setup](../development/development.md) - Install Volcano
 - [Contributing](https://github.com/volcano-sh/volcano/blob/master/contributing.md) - Contribute to Volcano
 - [Troubleshooting](../troubleshooting/troubleshooting.md) - Troubleshoot commonly occurring issues. GitHub issues are [here](https://github.com/volcano-sh/volcano/issues)
