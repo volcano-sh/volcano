@@ -21,6 +21,6 @@ RUN go mod download
 ADD . volcano
 RUN cd volcano && make vc-scheduler
 
-FROM alpine:latest@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4
+FROM alpine:3.24.0@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4
 COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-scheduler /vc-scheduler
 ENTRYPOINT ["/vc-scheduler"]
