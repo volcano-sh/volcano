@@ -117,8 +117,11 @@ func New(args framework.Arguments) framework.Plugin {
 
 	// Parse threshold configuration
 	parseThresholdArgs(plugin.pluginArguments, plugin)
-
 	parseEstimatorArgs(plugin.pluginArguments, plugin)
+
+	klog.V(4).Infof("Usage estimator config: requestRatio=%.2f burstRatio=%.2f riskThreshold=%.2f riskFactor=%.2f beCPU=%.2f beMemory=%.2f",
+		plugin.requestRatio, plugin.burstRatio, plugin.riskThreshold, plugin.riskFactor, plugin.beCPU, plugin.beMemory)
+	klog.V(4).Infof("Usage threshold config: cpuThreshold=%.2f memThreshold=%.2f", plugin.cpuThresholds, plugin.memThresholds)
 
 	return plugin
 }
@@ -370,15 +373,6 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 	defer func() {
 		klog.V(5).Infof("Leaving usage plugin ...")
 	}()
-
-	estimatorArgs := framework.Arguments{}
-	if argsValue, ok := up.pluginArguments[estimatorSection]; ok {
-		if args, ok := toConfigArguments(argsValue); ok {
-			estimatorArgs = args
-		}
-	}
-	klog.V(4).Infof("Usage estimator config: requestRatio=%.2f burstRatio=%.2f riskThreshold=%.2f riskFactor=%.2f beCPU=%.2f beMemory=%.2f estimatorArgs=%v",
-		up.requestRatio, up.burstRatio, up.riskThreshold, up.riskFactor, up.beCPU, up.beMemory, estimatorArgs)
 
 	// Step 1: Initialize ShadowLoadCache
 	if up.shadowCache != nil && !up.shadowCache.IsClean() {
