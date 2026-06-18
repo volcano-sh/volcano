@@ -37,6 +37,7 @@ import (
 func TestValidateJobCreate(t *testing.T) {
 	var policyExitCode int32 = -1
 	var minAvailable int32 = 4
+	var minAvailableReplicas int32 = 4
 	namespace := "test"
 	privileged := true
 	highestTierAllowed := 1
@@ -1487,6 +1488,50 @@ func TestValidateJobCreate(t *testing.T) {
 								PartitionSize:   2,
 								TotalPartitions: 4,
 								MinPartitions:   2,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
+		// Regression test for issue #5401: PartitionPolicy set with MinPartitions omitted (0).
+		// The mutate webhook defaults MinAvailable to Replicas, so validation must accept it and
+		// must NOT enforce MinAvailable == MinPartitions*PartitionSize (which would be 0 != 4).
+		{
+			Name: "task-with-PartitionPolicy-MinPartitions-omitted",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task-with-PartitionPolicy-MinPartitions-omitted",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 4,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							MinAvailable: &minAvailableReplicas, // defaulted to Replicas by mutate webhook
+							Replicas:     4,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   2,
+								TotalPartitions: 2,
+								// MinPartitions omitted -> 0
 							},
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
