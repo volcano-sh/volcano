@@ -377,7 +377,7 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 			estimatorArgs = args
 		}
 	}
-	klog.Infof("Usage estimator config: requestRatio=%.2f burstRatio=%.2f riskThreshold=%.2f riskFactor=%.2f beCPU=%.2f beMemory=%.2f estimatorArgs=%v",
+	klog.V(4).Infof("Usage estimator config: requestRatio=%.2f burstRatio=%.2f riskThreshold=%.2f riskFactor=%.2f beCPU=%.2f beMemory=%.2f estimatorArgs=%v",
 		up.requestRatio, up.burstRatio, up.riskThreshold, up.riskFactor, up.beCPU, up.beMemory, estimatorArgs)
 
 	// Step 1: Initialize ShadowLoadCache
