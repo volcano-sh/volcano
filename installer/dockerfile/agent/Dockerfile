@@ -30,7 +30,7 @@ RUN yum install -y cpio && \
     yum install -y --downloadonly --destdir=./ oncn-bwm && \
     rpm2cpio $(ls | grep oncn-bwm) | cpio -div
 
-FROM alpine:latest
+FROM alpine:latest@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4
 RUN apk add sudo libcap
 COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-agent /vc-agent
 COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/network-qos \

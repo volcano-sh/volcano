@@ -21,7 +21,7 @@ RUN go mod download
 ADD . volcano
 RUN cd volcano && make vc-webhook-manager
 
-FROM alpine:latest
+FROM alpine:latest@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4
 ARG KUBE_VERSION="1.35.0"
 ARG TARGETARCH
 ARG APK_MIRROR
