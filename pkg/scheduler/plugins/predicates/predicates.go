@@ -29,6 +29,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/features"
@@ -107,7 +108,7 @@ type PredicatesPlugin struct {
 	PreFilterPlugins    map[string]fwk.PreFilterPlugin
 	ReservePlugins      map[string]fwk.ReservePlugin
 	PreBindPlugins      map[string]fwk.PreBindPlugin
-	ScorePlugins        map[string]nodescore.BaseScorePlugin
+	ScorePlugins        map[string]fwk.ScorePlugin
 	ScoreWeights        map[string]int // Weight for each score plugin
 	FilterOrder         []string
 	StableFilterOrder   []string
@@ -470,7 +471,7 @@ func (pp *PredicatesPlugin) InitPlugin() {
 	stableFilterPlugins := map[string]fwk.FilterPlugin{} // Subset for cache-stable filters
 	prefilterPlugins := map[string]fwk.PreFilterPlugin{}
 	reservePlugins := map[string]fwk.ReservePlugin{}
-	scorePlugins := map[string]nodescore.BaseScorePlugin{}
+	scorePlugins := map[string]fwk.ScorePlugin{}
 	preBindPlugins := map[string]fwk.PreBindPlugin{}
 	scoreWeights := map[string]int{} // Weight for each score plugin
 	var filterOrder []string
@@ -500,7 +501,7 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		preBindPlugins[name] = plugin
 		preBindOrder = append(preBindOrder, name)
 	}
-	addScorePlugin := func(name string, plugin nodescore.BaseScorePlugin, weight int) {
+	addScorePlugin := func(name string, plugin fwk.ScorePlugin, weight int) {
 		scorePlugins[name] = plugin
 		scoreOrder = append(scoreOrder, name)
 		scoreWeights[name] = weight
@@ -628,17 +629,8 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		addReservePlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addPreBindPlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 
-		draWeight := 1
-		if w, ok := framework.Get[int](pp.pluginArguments, "dynamicresources.weight"); ok {
-			if w < 1 {
-				klog.Warningf("Invalid dynamicresources.weight value %d, defaulting to 1", w)
-			} else {
-				draWeight = w
-			}
-		}
-		addScorePlugin(dynamicresources.Name, &scorePluginAdapter{
-			ScorePlugin: dynamicResourceAllocationPlugin,
-		}, draWeight)
+		draWeight := getDRAPluginWeight(pp.pluginArguments)
+		addScorePlugin(dynamicresources.Name, dynamicResourceAllocationPlugin, draWeight)
 	}
 
 	pp.FilterPlugins = filterPlugins
@@ -785,8 +777,8 @@ func (pp *PredicatesPlugin) BatchNodeOrder(task *api.TaskInfo, nodes []fwk.NodeI
 			weight = w
 		}
 
-		// Calculate score using the helper function
-		pluginScores, err := nodescore.CalculatePluginScore(name, plugin, normalizer, state, task.Pod, nodes, weight)
+		// Calculate score using our adapter-less helper function
+		pluginScores, err := pp.calculatePluginScore(name, plugin, normalizer, state, task.Pod, nodes, weight)
 		if err != nil {
 			return nil, err
 		}
@@ -799,6 +791,82 @@ func (pp *PredicatesPlugin) BatchNodeOrder(task *api.TaskInfo, nodes []fwk.NodeI
 	}
 
 	klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)
+	return nodeScores, nil
+}
+
+func (pp *PredicatesPlugin) calculatePluginScore(
+	pluginName string,
+	plugin fwk.ScorePlugin,
+	normalizer fwk.ScoreExtensions,
+	cycleState fwk.CycleState,
+	pod *v1.Pod,
+	nodeInfos []fwk.NodeInfo,
+	weight int,
+) (map[string]float64, error) {
+	if preScorePlugin, ok := plugin.(fwk.PreScorePlugin); ok {
+		preScoreStatus := preScorePlugin.PreScore(context.TODO(), cycleState, pod, nodeInfos)
+		if preScoreStatus.IsSkip() {
+			// Skip Score
+			return map[string]float64{}, nil
+		}
+		if !preScoreStatus.IsSuccess() {
+			return nil, preScoreStatus.AsError()
+		}
+	}
+
+	nodeScoreList := make(fwk.NodeScoreList, len(nodeInfos))
+	// The default parallelization worker number is 16.
+	workerNum := 16
+	errCh := make(chan error, workerNum)
+	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
+	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodeInfos), func(index int) {
+		nodeInfo := nodeInfos[index]
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		if pluginName == dynamicresources.Name {
+			nodeName := ""
+			if nodeInfo != nil && nodeInfo.Node() != nil {
+				nodeName = nodeInfo.Node().Name
+			}
+			podNamespace, podName := "", ""
+			if pod != nil {
+				podNamespace = pod.Namespace
+				podName = pod.Name
+			}
+			klog.V(4).Infof("Scoring pod %s/%s on node %s using DRA", podNamespace, podName, nodeName)
+		}
+
+		s, status := plugin.Score(ctx, cycleState, pod, nodeInfo)
+		if !status.IsSuccess() {
+			parallelizeCancel()
+			errCh <- fmt.Errorf("calculate %s priority failed %v", pluginName, status.Message())
+			return
+		}
+		nodeScoreList[index] = fwk.NodeScore{
+			Name:  nodeInfo.Node().Name,
+			Score: s,
+		}
+	})
+
+	select {
+	case err := <-errCh:
+		return nil, err
+	default:
+	}
+
+	if normalizer != nil {
+		normalizer.NormalizeScore(context.TODO(), cycleState, pod, nodeScoreList)
+	}
+
+	nodeScores := make(map[string]float64, len(nodeInfos))
+	for _, nodeScore := range nodeScoreList {
+		if nodeScore.Score > fwk.MaxNodeScore || nodeScore.Score < fwk.MinNodeScore {
+			return nil, fmt.Errorf("%s returns an invalid score %v for node %s", pluginName, nodeScore.Score, nodeScore.Name)
+		}
+		nodeScores[nodeScore.Name] = float64(nodeScore.Score) * float64(weight)
+	}
+
 	return nodeScores, nil
 }
 
@@ -933,43 +1001,4 @@ func (pp *PredicatesPlugin) OnSessionClose(ssn *framework.Session) {}
 func ResetVolumeBindingPluginForTest() {
 	volumeBindingPluginInstance = nil
 	volumeBindingPluginOnce = sync.Once{}
-}
-
-type scorePluginAdapter struct {
-	fwk.ScorePlugin
-}
-
-func (s *scorePluginAdapter) PreScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodes []fwk.NodeInfo) *fwk.Status {
-	if p, ok := s.ScorePlugin.(fwk.PreScorePlugin); ok {
-		return p.PreScore(ctx, state, pod, nodes)
-	}
-	return nil
-}
-
-func (s *scorePluginAdapter) Score(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) (int64, *fwk.Status) {
-	nodeName := ""
-	if nodeInfo != nil && nodeInfo.Node() != nil {
-		nodeName = nodeInfo.Node().Name
-	}
-	podNamespace, podName := "", ""
-	if pod != nil {
-		podNamespace = pod.Namespace
-		podName = pod.Name
-	}
-	klog.V(4).Infof("Scoring pod %s/%s on node %s using DRA", podNamespace, podName, nodeName)
-	return s.ScorePlugin.Score(ctx, state, pod, nodeInfo)
-}
-
-func (s *scorePluginAdapter) ScoreExtensions() fwk.ScoreExtensions {
-	if s.ScorePlugin.ScoreExtensions() == nil {
-		return nil
-	}
-	return s
-}
-
-func (s *scorePluginAdapter) NormalizeScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, scores fwk.NodeScoreList) *fwk.Status {
-	if se := s.ScorePlugin.ScoreExtensions(); se != nil {
-		return se.NormalizeScore(ctx, state, pod, scores)
-	}
-	return nil
 }

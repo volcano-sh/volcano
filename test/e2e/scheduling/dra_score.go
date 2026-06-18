@@ -14,6 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// This test is synchronized/adapted from upstream Kubernetes:
+// https://github.com/kubernetes/kubernetes/blob/master/test/e2e/scheduling/v1alpha3/dynamic_resource_allocation.go
+
 package scheduling
 
 import (
