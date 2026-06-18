@@ -73,6 +73,45 @@ spec:
                   Specifies the numa info for the resource
                   Key is resource name
                 type: object
+              podAllocations:
+                description: Specifies the per-pod numa resource allocation of the
+                  node
+                items:
+                  description: PodAllocation records the numa resource allocation
+                    for all containers in a pod
+                  properties:
+                    containerAllocations:
+                      description: Specifies the per-container numa resource allocation
+                        of the pod
+                      items:
+                        description: ContainerAllocation records the numa resource
+                          allocation for a single container
+                        properties:
+                          allocations:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Specifies the numa resource allocations of the container
+                              Key is resource name, e.g., "cpu", "memory", "nvidia.com/gpu"
+                              For "cpu", the value is a cpuset string, e.g., "0,2-4"
+                              For other resources, the value is a quantity string, e.g., "2", "4Gi"
+                            type: object
+                          name:
+                            description: Specifies the name of the container
+                            type: string
+                        type: object
+                      type: array
+                    name:
+                      description: Specifies the name of the pod
+                      type: string
+                    namespace:
+                      description: Specifies the namespace of the pod
+                      type: string
+                    uid:
+                      description: Specifies the uid of the pod
+                      type: string
+                  type: object
+                type: array
               policies:
                 additionalProperties:
                   type: string

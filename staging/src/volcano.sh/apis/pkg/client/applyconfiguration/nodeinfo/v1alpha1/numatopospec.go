@@ -37,6 +37,8 @@ type NumatopoSpecApplyConfiguration struct {
 	// Specifies the cpu topology info
 	// Key is cpu id
 	CPUDetail map[string]CPUInfoApplyConfiguration `json:"cpuDetail,omitempty"`
+	// Specifies the per-pod numa resource allocation of the node
+	PodAllocations []PodAllocationApplyConfiguration `json:"podAllocations,omitempty"`
 }
 
 // NumatopoSpecApplyConfiguration constructs a declarative configuration of the NumatopoSpec type for use with
@@ -97,6 +99,19 @@ func (b *NumatopoSpecApplyConfiguration) WithCPUDetail(entries map[string]CPUInf
 	}
 	for k, v := range entries {
 		b.CPUDetail[k] = v
+	}
+	return b
+}
+
+// WithPodAllocations adds the given value to the PodAllocations field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the PodAllocations field.
+func (b *NumatopoSpecApplyConfiguration) WithPodAllocations(values ...*PodAllocationApplyConfiguration) *NumatopoSpecApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithPodAllocations")
+		}
+		b.PodAllocations = append(b.PodAllocations, *values[i])
 	}
 	return b
 }

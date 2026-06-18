@@ -151,12 +151,16 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationflowv1alpha1.TcpSocketApplyConfiguration{}
 
 		// Group=nodeinfo.volcano.sh, Version=v1alpha1
+	case nodeinfov1alpha1.SchemeGroupVersion.WithKind("ContainerAllocation"):
+		return &applyconfigurationnodeinfov1alpha1.ContainerAllocationApplyConfiguration{}
 	case nodeinfov1alpha1.SchemeGroupVersion.WithKind("CPUInfo"):
 		return &applyconfigurationnodeinfov1alpha1.CPUInfoApplyConfiguration{}
 	case nodeinfov1alpha1.SchemeGroupVersion.WithKind("Numatopology"):
 		return &applyconfigurationnodeinfov1alpha1.NumatopologyApplyConfiguration{}
 	case nodeinfov1alpha1.SchemeGroupVersion.WithKind("NumatopoSpec"):
 		return &applyconfigurationnodeinfov1alpha1.NumatopoSpecApplyConfiguration{}
+	case nodeinfov1alpha1.SchemeGroupVersion.WithKind("PodAllocation"):
+		return &applyconfigurationnodeinfov1alpha1.PodAllocationApplyConfiguration{}
 	case nodeinfov1alpha1.SchemeGroupVersion.WithKind("ResourceInfo"):
 		return &applyconfigurationnodeinfov1alpha1.ResourceInfoApplyConfiguration{}
 
