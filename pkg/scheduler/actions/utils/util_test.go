@@ -118,3 +118,68 @@ func TestGetCandidateDomains_EmptyGradient_NonHardTopologyFallbackToRoot(t *test
 }
 
 func boolPtr(v bool) *bool { return &v }
+
+// TestApplySubJobNominations_SetsNominationAndMarksJobDirty asserts the helper
+// both pins each SubJob's NominatedHyperNode and marks the job dirty so the
+// cache writeback path persists the pin into the next scheduling cycle.
+func TestApplySubJobNominations_SetsNominationAndMarksJobDirty(t *testing.T) {
+	jobID := api.JobID("ns/job")
+	subA := api.SubJobID("sub-a")
+	subB := api.SubJobID("sub-b")
+	job := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subA: {UID: subA, Job: jobID},
+			subB: {UID: subB, Job: jobID},
+		},
+	}
+	ssn := &framework.Session{DirtyJobs: sets.New[api.JobID]()}
+
+	ApplySubJobNominations(ssn, job, map[api.SubJobID]string{
+		subA: "hn-a",
+		subB: "hn-b",
+	})
+
+	assert.Equal(t, "hn-a", job.SubJobs[subA].NominatedHyperNode)
+	assert.Equal(t, "hn-b", job.SubJobs[subB].NominatedHyperNode)
+	assert.True(t, ssn.DirtyJobs.Has(jobID),
+		"job must be marked dirty so cache.updateJobInfo propagates NominatedHyperNode")
+}
+
+// TestApplySubJobNominations_EmptyHyperNodeSkipped ensures empty entries do
+// not overwrite an existing pin or mark the job dirty by themselves.
+func TestApplySubJobNominations_EmptyHyperNodeSkipped(t *testing.T) {
+	jobID := api.JobID("ns/job")
+	sub := api.SubJobID("sub-a")
+	job := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			sub: {UID: sub, Job: jobID, NominatedHyperNode: "existing"},
+		},
+	}
+	ssn := &framework.Session{DirtyJobs: sets.New[api.JobID]()}
+
+	ApplySubJobNominations(ssn, job, map[api.SubJobID]string{sub: ""})
+
+	assert.Equal(t, "existing", job.SubJobs[sub].NominatedHyperNode,
+		"empty hyperNode entry must not overwrite an existing nomination")
+	assert.False(t, ssn.DirtyJobs.Has(jobID),
+		"no-op application must not mark the job dirty")
+}
+
+// TestApplySubJobNominations_NilSessionDoesNotPanic guards the helper from
+// callers (e.g. legacy tests) that don't pass a session.
+func TestApplySubJobNominations_NilSessionDoesNotPanic(t *testing.T) {
+	jobID := api.JobID("ns/job")
+	sub := api.SubJobID("sub-a")
+	job := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			sub: {UID: sub, Job: jobID},
+		},
+	}
+	assert.NotPanics(t, func() {
+		ApplySubJobNominations(nil, job, map[api.SubJobID]string{sub: "hn"})
+	})
+	assert.Equal(t, "hn", job.SubJobs[sub].NominatedHyperNode)
+}
