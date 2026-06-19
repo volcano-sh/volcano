@@ -209,6 +209,11 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 		if hasNominatedHyperNode(job) {
 			queues, jobsByQueue = actx.queuesNominated, actx.jobsByQueueNominated
 			pass = "nominated"
+			// allocateFromNomination either redeems the pin and clears it post-commit
+			// or invalidates it on a validate/predicate miss; both paths must reach
+			// SchedulerCache, otherwise the stale NominatedHyperNode is retried next
+			// cycle.
+			ssn.MarkJobDirty(job.UID)
 		}
 		if _, found := jobsByQueue[job.Queue]; !found {
 			jobsByQueue[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
