@@ -47,7 +47,7 @@ EXT_APIS_PKG="$4"
 GROUPS_WITH_VERSIONS="$5"
 shift 5
 
-go install k8s.io/code-generator/cmd/{defaulter-gen,conversion-gen,client-gen,lister-gen,informer-gen,deepcopy-gen,openapi-gen}@v0.34.1
+go install k8s.io/code-generator/cmd/{defaulter-gen,conversion-gen,client-gen,lister-gen,informer-gen,deepcopy-gen,openapi-gen}@v0.35.3
 
 # Go installs the above commands to get installed in $GOBIN if defined, and $GOPATH/bin otherwise:
 GOBIN="$(go env GOBIN)"

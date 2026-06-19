@@ -18,7 +18,7 @@
 # Build context must be the Volcano repo root so the build stage can see
 # third_party/, the top-level go.mod, and staging/.
 
-FROM golang:1.25.0 AS builder
+FROM golang:1.25.0@sha256:5502b0e56fca23feba76dbc5387ba59c593c02ccc2f0f7355871ea9a0852cebe AS builder
 WORKDIR /go/src/volcano.sh/
 COPY go.mod go.sum ./
 COPY staging/ ./staging/

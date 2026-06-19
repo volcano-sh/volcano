@@ -108,7 +108,7 @@ function kube::codegen::gen_helpers() {
             defaulter-gen
         )
         # shellcheck disable=2046 # printf word-splitting is intentional
-        GO111MODULE=on go install $(printf "k8s.io/code-generator/cmd/%s " "${BINS[@]}")
+        GO111MODULE=on go install $(printf "k8s.io/code-generator/cmd/%s@v0.35.3 " "${BINS[@]}")
     )
     # Go installs in $GOBIN if defined, and $GOPATH/bin otherwise
     gobin="${GOBIN:-$(go env GOPATH)/bin}"
@@ -327,7 +327,7 @@ function kube::codegen::gen_openapi() {
             openapi-gen
         )
         # shellcheck disable=2046 # printf word-splitting is intentional
-        GO111MODULE=on go install $(printf "k8s.io/kube-openapi/cmd/%s " "${BINS[@]}")
+        GO111MODULE=on go install $(printf "k8s.io/kube-openapi/cmd/%s@v0.0.0-20250910181357-589584f1c912 " "${BINS[@]}")
     )
     # Go installs in $GOBIN if defined, and $GOPATH/bin otherwise
     gobin="${GOBIN:-$(go env GOPATH)/bin}"
@@ -549,7 +549,7 @@ function kube::codegen::gen_client() {
             lister-gen
         )
         # shellcheck disable=2046 # printf word-splitting is intentional
-        GO111MODULE=on go install $(printf "k8s.io/code-generator/cmd/%s " "${BINS[@]}")
+        GO111MODULE=on go install $(printf "k8s.io/code-generator/cmd/%s@v0.35.3 " "${BINS[@]}")
     )
     # Go installs in $GOBIN if defined, and $GOPATH/bin otherwise
     gobin="${GOBIN:-$(go env GOPATH)/bin}"
@@ -720,7 +720,7 @@ function kube::codegen::gen_register() {
             register-gen
         )
         # shellcheck disable=2046 # printf word-splitting is intentional
-        GO111MODULE=on go install $(printf "k8s.io/code-generator/cmd/%s " "${BINS[@]}")
+        GO111MODULE=on go install $(printf "k8s.io/code-generator/cmd/%s@v0.35.3 " "${BINS[@]}")
     )
     # Go installs in $GOBIN if defined, and $GOPATH/bin otherwise
     gobin="${GOBIN:-$(go env GOPATH)/bin}"

@@ -18,6 +18,8 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+GOPATH="${GOPATH:-$(go env GOPATH)}"
+
 # generate-internal-groups generates everything for a project with internal types, e.g. an
 # user-provided API server based on k8s.io/apiserver.
 

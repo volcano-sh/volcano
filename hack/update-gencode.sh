@@ -34,6 +34,6 @@ bash hack/generate-groups.sh "deepcopy,client,informer,lister" \
 bash hack/generate-internal-groups.sh "deepcopy,conversion" \
   volcano.sh/apis/pkg/apis/ volcano.sh/apis/pkg/apis volcano.sh/apis/pkg/apis\
   "scheduling:v1beta1"   \
-  --output-base "$(dirname "${BASH_SOURCE[0]}")/../../.." \
+  --output-base "${SCRIPT_ROOT}/_tmp" \
   --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
 

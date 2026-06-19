@@ -50,8 +50,8 @@ shift 4
   # To support running this script from anywhere, first cd into this directory,
   # and then install with forced module mode on and fully qualified name.
   cd "$(dirname "${0}")"
-  GO111MODULE=on GOOS=${OS} go get k8s.io/code-generator/cmd/{defaulter-gen,client-gen,lister-gen,informer-gen,deepcopy-gen}
-  GO111MODULE=on GOOS=${OS} go install k8s.io/code-generator/cmd/{defaulter-gen,client-gen,lister-gen,informer-gen,deepcopy-gen}
+  GO111MODULE=on GOOS=${OS} go get k8s.io/code-generator/cmd/{defaulter-gen,client-gen,lister-gen,informer-gen,deepcopy-gen}@v0.35.3
+  GO111MODULE=on GOOS=${OS} go install k8s.io/code-generator/cmd/{defaulter-gen,client-gen,lister-gen,informer-gen,deepcopy-gen}@v0.35.3
 )
 # Go installs the above commands to get installed in $GOBIN if defined, and $GOPATH/bin otherwise:
 GOBIN="$(go env GOBIN)"

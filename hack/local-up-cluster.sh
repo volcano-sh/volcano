@@ -38,7 +38,7 @@ function install_tools {
         mkdir -p ${VC_HOME}/volcano/$d
     done
 
-    go get -u github.com/cloudflare/cfssl/cmd/...
+    go install github.com/cloudflare/cfssl/cmd/...@v1.6.4
 }
 
 function build_binaries {

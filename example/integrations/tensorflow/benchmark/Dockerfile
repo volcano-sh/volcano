@@ -9,5 +9,5 @@ RUN  apt-get update --fix-missing \
 && apt-get install -y git \
 && apt-get clean \
 && rm -rf /var/lib/apt/lists/*
-RUN pip install tf-nightly-gpu \
+RUN pip install tf-nightly-gpu==1.15.0.dev20190827 \
 && git clone https://github.com/tensorflow/benchmarks.git /opt/tf-benchmarks
