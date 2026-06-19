@@ -126,15 +126,27 @@ func TestResourceString(t *testing.T) {
 			expected: "cpu 4000.00, memory <unlimited>",
 		},
 		{
-			name: "MaxFloat64 in scalar resource prints as <unlimited>",
+			name: "MaxInt64 in scalar resource prints as <unlimited>",
 			resource: &Resource{
 				MilliCPU: 1000,
 				Memory:   2048,
 				ScalarResources: map[v1.ResourceName]float64{
-					"nvidia.com/gpu": math.MaxFloat64,
+					"nvidia.com/gpu": float64(math.MaxInt64),
 				},
 			},
 			expected: "cpu 1000.00, memory 2048.00, nvidia.com/gpu <unlimited>",
+		},
+		{
+			name: "mixed finite and both sentinel types",
+			resource: &Resource{
+				MilliCPU: math.MaxFloat64,
+				Memory:   4096,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu": float64(math.MaxInt64),
+					"pods":           float64(math.MaxInt64),
+				},
+			},
+			expected: "cpu <unlimited>, memory 4096.00, nvidia.com/gpu <unlimited>, pods <unlimited>",
 		},
 	}
 

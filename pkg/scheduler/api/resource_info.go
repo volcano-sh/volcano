@@ -50,6 +50,13 @@ const (
 	unlimitedResourceStr = "<unlimited>"
 )
 
+// IsUnlimited reports whether v is one of the scheduler's "no limit" sentinels:
+// math.MaxFloat64 (used for cpu/memory, see InfiniteResource) or
+// float64(math.MaxInt64) (used for scalar resources, see capacity.go).
+func IsUnlimited(v float64) bool {
+	return v == math.MaxFloat64 || v == float64(math.MaxInt64)
+}
+
 // DimensionDefaultValue means default value for black resource dimension
 type DimensionDefaultValue int
 
@@ -185,13 +192,11 @@ func (r *Resource) String() string {
 	}
 	return str
 }
-
 // formatResourceValue formats a resource quantity for human-readable output.
-// It returns unlimitedResourceStr when v equals math.MaxFloat64, which is used
-// throughout the scheduler as a sentinel value meaning "no resource limit".
-// Otherwise it returns the value formatted to two decimal places.
+// It returns unlimitedResourceStr when v is one of the scheduler's "unlimited"
+// sentinel values. Otherwise it returns the value formatted to two decimal places.
 func formatResourceValue(v float64) string {
-	if v == math.MaxFloat64 {
+	if IsUnlimited(v) {
 		return unlimitedResourceStr
 	}
 	return fmt.Sprintf("%0.2f", v)
