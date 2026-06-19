@@ -3,12 +3,10 @@ name: E2E Admission
 on:
   workflow_call:
 
+permissions: read-all
 
 jobs:
   e2e_admission_policy:
-    permissions:
-      contents: read
-      actions: write
     runs-on: ubuntu-24.04
     name: E2E about Admission Policy
     timeout-minutes: 50
@@ -64,9 +62,6 @@ jobs:
           path: ${{ github.workspace }}/e2e-admission-logs
 
   e2e_admission_webhook:
-    permissions:
-      contents: read
-      actions: write
     runs-on: ubuntu-24.04
     name: E2E about Admission Webhook
     timeout-minutes: 50

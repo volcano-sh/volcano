@@ -3,12 +3,10 @@ name: Scheduling Gates
 on:
   workflow_call:
 
+permissions: read-all
 
 jobs:
   e2e_scheduling_gates:
-    permissions:
-      contents: read
-      actions: write
     runs-on: ubuntu-24.04
     name: E2E about Scheduling Gates
     timeout-minutes: 40
