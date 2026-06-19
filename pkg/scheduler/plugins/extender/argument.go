@@ -73,6 +73,12 @@ type JobEnqueueableResponse struct {
 	Status int `json:"status"`
 }
 
+type JobEnqueuedRequest struct {
+	Job *api.JobInfo `json:"job"`
+}
+
+type JobEnqueuedResponse struct{}
+
 type QueueOverusedRequest struct {
 	Queue *api.QueueInfo `json:"queue"`
 }

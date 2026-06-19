@@ -775,7 +775,22 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return util.Reject
 		}
 
-		// job enqueued
+		return util.Permit
+	})
+
+	ssn.AddJobEnqueuedFn(cp.Name(), func(obj interface{}) {
+		job, ok := obj.(*api.JobInfo)
+		if !ok || job == nil || job.PodGroup == nil {
+			return
+		}
+		queueID := job.Queue
+		attr := cp.queueOpts[queueID]
+		if attr == nil {
+			return
+		}
+		if job.PodGroup.Spec.MinResources == nil && !(cp.dynamicResourceAllocationEnable && attr.dra != nil && job.GetMinDRAResources() != nil) {
+			return
+		}
 		deductedResources := job.DeductSchGatedResources(job.GetMinResources())
 		attr.inqueue.Add(deductedResources)
 		var minDRAReq map[string]*api.DRAResource
@@ -796,7 +811,6 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 		klog.V(5).Infof("job <%s/%s> enqueued", job.Namespace, job.Name)
-		return util.Permit
 	})
 
 	ssn.AddPrePredicateFn(cp.Name(), func(task *api.TaskInfo) error {

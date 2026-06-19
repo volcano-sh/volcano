@@ -58,6 +58,8 @@ const (
 	ExtenderQueueOverusedVerb = "extender.queueOverusedVerb"
 	// ExtenderJobEnqueueableVerb is the verb of JobEnqueueable method
 	ExtenderJobEnqueueableVerb = "extender.jobEnqueueableVerb"
+	// ExtenderJobEnqueuedVerb is the verb of JobEnqueued method
+	ExtenderJobEnqueuedVerb = "extender.jobEnqueuedVerb"
 	// ExtenderJobReadyVerb is the verb of JobReady method
 	ExtenderJobReadyVerb = "extender.jobReadyVerb"
 	// ExtenderAllocateFuncVerb is the verb of AllocateFunc method
@@ -84,6 +86,7 @@ type extenderConfig struct {
 	reclaimableVerb    string
 	queueOverusedVerb  string
 	jobEnqueueableVerb string
+	jobEnqueuedVerb    string
 	jobReadyVerb       string
 	allocateFuncVerb   string
 	deallocateFuncVerb string
@@ -136,6 +139,7 @@ func parseExtenderConfig(arguments framework.Arguments) *extenderConfig {
 	ec.reclaimableVerb, _ = arguments[ExtenderReclaimableVerb].(string)
 	ec.queueOverusedVerb, _ = arguments[ExtenderQueueOverusedVerb].(string)
 	ec.jobEnqueueableVerb, _ = arguments[ExtenderJobEnqueueableVerb].(string)
+	ec.jobEnqueuedVerb, _ = arguments[ExtenderJobEnqueuedVerb].(string)
 	ec.jobReadyVerb, _ = arguments[ExtenderJobReadyVerb].(string)
 	ec.allocateFuncVerb, _ = arguments[ExtenderAllocateFuncVerb].(string)
 	ec.deallocateFuncVerb, _ = arguments[ExtenderDeallocateFuncVerb].(string)
@@ -293,6 +297,16 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			return resp.Status
+		})
+	}
+
+	if ep.config.jobEnqueuedVerb != "" {
+		ssn.AddJobEnqueuedFn(ep.Name(), func(obj interface{}) {
+			job := obj.(*api.JobInfo)
+			resp := &JobEnqueuedResponse{}
+			if err := ep.send(ep.config.jobEnqueuedVerb, &JobEnqueuedRequest{Job: job}, resp); err != nil {
+				klog.Warningf("JobEnqueued failed with error %v", err)
+			}
 		})
 	}
 

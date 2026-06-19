@@ -91,11 +91,21 @@ func (rq *resourceQuotaPlugin) OnSessionOpen(ssn *framework.Session) {
 				return util.Reject
 			}
 		}
+		return util.Permit
+	})
+
+	ssn.AddJobEnqueuedFn(rq.Name(), func(obj interface{}) {
+		job, ok := obj.(*api.JobInfo)
+		if !ok || job == nil || job.PodGroup == nil || job.PodGroup.Spec.MinResources == nil {
+			return
+		}
+		if ssn.NamespaceInfo[api.NamespaceName(job.Namespace)] == nil {
+			return
+		}
 		if _, found := pendingResources[job.Namespace]; !found {
 			pendingResources[job.Namespace] = v1.ResourceList{}
 		}
-		pendingResources[job.Namespace] = quotav1.Add(pendingResources[job.Namespace], *resourcesRequests)
-		return util.Permit
+		pendingResources[job.Namespace] = quotav1.Add(pendingResources[job.Namespace], *job.PodGroup.Spec.MinResources)
 	})
 }
 
