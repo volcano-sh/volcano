@@ -1740,6 +1740,7 @@ func (sc *SchedulerCache) updateJobInfo(job *schedulingapi.JobInfo) {
 		for subJobID, subJobInCache := range jobInCache.SubJobs {
 			if subJob, found := job.SubJobs[subJobID]; found {
 				subJobInCache.AllocatedHyperNode = subJob.AllocatedHyperNode
+				subJobInCache.NominatedHyperNode = subJob.NominatedHyperNode
 			}
 		}
 	}

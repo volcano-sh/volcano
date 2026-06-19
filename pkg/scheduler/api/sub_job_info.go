@@ -53,7 +53,8 @@ type SubJobInfo struct {
 	AllocatedHyperNode string
 	// NominatedHyperNode is the hyperNode chosen by gangpreempt/gangreclaim
 	// for this subJob. allocate honors it via a per-subJob fast path and
-	// clears it on commit. In-memory only; not persisted across restarts.
+	// clears it on commit. Held in the in-memory SchedulerCache; not persisted
+	// across restarts.
 	NominatedHyperNode string
 
 	NetworkTopology *scheduling.NetworkTopologySpec

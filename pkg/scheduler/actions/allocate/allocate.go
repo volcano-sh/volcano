@@ -39,10 +39,24 @@ import (
 )
 
 type allocateContext struct {
-	queues              *util.PriorityQueue                 // queue of *api.QueueInfo
-	jobsByQueue         map[api.QueueID]*util.PriorityQueue // queue of *api.JobInfo
-	jobWorksheet        map[api.JobID]*JobWorksheet
-	tasksNoHardTopology map[api.JobID]*util.PriorityQueue // queue of *api.TaskInfo, job without any hard network topology policy use this queue
+	queuesNominated      *util.PriorityQueue                 // queue of *api.QueueInfo for jobs with NominatedHyperNode
+	queuesRegular        *util.PriorityQueue                 // queue of *api.QueueInfo for jobs without NominatedHyperNode
+	jobsByQueueNominated map[api.QueueID]*util.PriorityQueue // queue of *api.JobInfo for jobs with NominatedHyperNode
+	jobsByQueueRegular   map[api.QueueID]*util.PriorityQueue // queue of *api.JobInfo for jobs without NominatedHyperNode
+	jobWorksheet         map[api.JobID]*JobWorksheet
+	tasksNoHardTopology  map[api.JobID]*util.PriorityQueue // queue of *api.TaskInfo, job without any hard network topology policy use this queue
+}
+
+func hasNominatedHyperNode(job *api.JobInfo) bool {
+	if job == nil {
+		return false
+	}
+	for _, subJob := range job.SubJobs {
+		if subJob != nil && subJob.NominatedHyperNode != "" {
+			return true
+		}
+	}
+	return false
 }
 
 type JobWorksheet struct {
@@ -135,7 +149,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	alloc.session = ssn
 	alloc.recorder = NewRecorder()
 	actx := alloc.buildAllocateContext()
-	klog.V(3).Infof("Try to allocate resource to %d Queues", actx.queues.Len())
+	klog.V(3).Infof("Try to allocate resource: %d Queues with nominated jobs, %d Queues with regular jobs",
+		actx.queuesNominated.Len(), actx.queuesRegular.Len())
+
 	alloc.allocateResources(actx)
 }
 
@@ -143,10 +159,12 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 	ssn := alloc.session
 
 	actx := &allocateContext{
-		queues:              util.NewPriorityQueue(ssn.QueueOrderFn), // queues sort queues by QueueOrderFn.
-		jobsByQueue:         make(map[api.QueueID]*util.PriorityQueue),
-		jobWorksheet:        make(map[api.JobID]*JobWorksheet),
-		tasksNoHardTopology: make(map[api.JobID]*util.PriorityQueue),
+		queuesNominated:      util.NewPriorityQueue(ssn.QueueOrderFn), // queues sort queues by QueueOrderFn.
+		queuesRegular:        util.NewPriorityQueue(ssn.QueueOrderFn),
+		jobsByQueueNominated: make(map[api.QueueID]*util.PriorityQueue),
+		jobsByQueueRegular:   make(map[api.QueueID]*util.PriorityQueue),
+		jobWorksheet:         make(map[api.JobID]*JobWorksheet),
+		tasksNoHardTopology:  make(map[api.JobID]*util.PriorityQueue),
 	}
 
 	for _, job := range ssn.Jobs {
@@ -185,13 +203,20 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 			continue
 		}
 
-		if _, found := actx.jobsByQueue[job.Queue]; !found {
-			actx.jobsByQueue[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
-			actx.queues.Push(ssn.Queues[job.Queue])
+		// jobs with NominatedHyperNode go into the nominated pass; everything else into the regular pass.
+		queues, jobsByQueue := actx.queuesRegular, actx.jobsByQueueRegular
+		pass := "regular"
+		if hasNominatedHyperNode(job) {
+			queues, jobsByQueue = actx.queuesNominated, actx.jobsByQueueNominated
+			pass = "nominated"
+		}
+		if _, found := jobsByQueue[job.Queue]; !found {
+			jobsByQueue[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+			queues.Push(ssn.Queues[job.Queue])
 		}
 
-		klog.V(4).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
-		actx.jobsByQueue[job.Queue].Push(job)
+		klog.V(4).Infof("Added Job <%s/%s> into Queue <%s> in %s pass", job.Namespace, job.Name, job.Queue, pass)
+		jobsByQueue[job.Queue].Push(job)
 		actx.jobWorksheet[job.UID] = worksheet
 
 		// job without any hard network topology policy use actx.tasksNoHardTopology
@@ -281,9 +306,23 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 }
 
 func (alloc *Action) allocateResources(actx *allocateContext) {
+	if !actx.queuesNominated.Empty() {
+		klog.V(3).InfoS("Allocate pass 1: prioritize jobs with NominatedHyperNode",
+			"queues", actx.queuesNominated.Len())
+		alloc.allocateResourcesForQueues(actx.queuesNominated, actx.jobsByQueueNominated, actx)
+	}
+	if !actx.queuesRegular.Empty() {
+		klog.V(3).InfoS("Allocate pass 2: regular allocation",
+			"queues", actx.queuesRegular.Len())
+		alloc.allocateResourcesForQueues(actx.queuesRegular, actx.jobsByQueueRegular, actx)
+	}
+}
+
+// allocateResourcesForQueues allocates resources for jobs in the given queues and jobsByQueue.
+// Can be run in two passes, one for jobs with NominatedHyperNode and one for everything else.
+func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobsByQueue map[api.QueueID]*util.PriorityQueue, actx *allocateContext) {
 	ssn := alloc.session
 
-	queues := actx.queues
 	for {
 		if queues.Empty() {
 			break
@@ -296,7 +335,7 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 			continue
 		}
 
-		jobs, found := actx.jobsByQueue[queue.UID]
+		jobs, found := jobsByQueue[queue.UID]
 		if !found || jobs.Empty() {
 			klog.V(4).Infof("Can not find jobs for queue %s.", queue.Name)
 			continue
