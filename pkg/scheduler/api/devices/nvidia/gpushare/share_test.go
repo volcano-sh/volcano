@@ -1,5 +1,5 @@
 /*
-Copyright 2023 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-func gpuMemPod(uid string, mem int64) *v1.Pod {
+func gpuMemPod(mem int64) *v1.Pod {
 	return &v1.Pod{
 		Spec: v1.PodSpec{
 			Containers: []v1.Container{
@@ -39,14 +39,10 @@ func gpuMemPod(uid string, mem int64) *v1.Pod {
 	}
 }
 
-func TestGetDevicesIdleGPUMemoryOverSubscribed(t *testing.T) {
-	// A card with 1000 memory whose accounted usage exceeds its capacity, e.g.
-	// because a pod set volcano.sh/gpu-index itself and was bound directly to the
-	// node, must report 0 idle memory rather than a wrapped-around uint that makes
-	// the full card look almost empty.
-	pod := gpuMemPod("p1", 3000)
+func oversubscribedGPUDevices() *GPUDevices {
+	pod := gpuMemPod(3000)
 	pod.UID = "p1"
-	gs := &GPUDevices{
+	return &GPUDevices{
 		Name: "n1",
 		Device: map[int]*GPUDevice{
 			0: {
@@ -56,14 +52,21 @@ func TestGetDevicesIdleGPUMemoryOverSubscribed(t *testing.T) {
 			},
 		},
 	}
+}
+
+func TestGetDevicesIdleGPUMemory_OverSubscribedCardReportsZero(t *testing.T) {
+	gs := oversubscribedGPUDevices()
 
 	idle := getDevicesIdleGPUMemory(gs)
 	if idle[0] != 0 {
 		t.Errorf("idle memory of over-subscribed card: want 0, got %d", idle[0])
 	}
+}
 
-	// the predicate must not offer the full card to another pod.
-	newPod := gpuMemPod("p2", 500)
+func TestPredicateGPUbyMemory_OverSubscribedCardNotOffered(t *testing.T) {
+	gs := oversubscribedGPUDevices()
+
+	newPod := gpuMemPod(500)
 	newPod.UID = "p2"
 	if ids := predicateGPUbyMemory(newPod, gs); len(ids) != 0 {
 		t.Errorf("over-subscribed card offered for allocation: %v", ids)
