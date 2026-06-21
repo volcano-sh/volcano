@@ -126,10 +126,15 @@ func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource
 			if inqueue.ScalarResources == nil {
 				inqueue.ScalarResources = make(map[v1.ResourceName]float64)
 			}
+			// Scalar resources are stored in milli-units throughout api.Resource
+			// (see NewResource, which uses MilliValue() for scalar resources), so
+			// allocated.ScalarResources is in milli-units. Use MilliValue() here as
+			// well to keep units consistent; otherwise scalar (e.g. GPU/hugepages)
+			// inqueue accounting is off by 1000x.
 			if allocatedMount, ok := allocated.ScalarResources[rName]; !ok {
-				inqueue.ScalarResources[rName] = float64(rQuantity.Value())
+				inqueue.ScalarResources[rName] = float64(rQuantity.MilliValue())
 			} else {
-				reservedScalarRes := float64(rQuantity.Value()) - allocatedMount
+				reservedScalarRes := float64(rQuantity.MilliValue()) - allocatedMount
 				if reservedScalarRes > 0 {
 					inqueue.ScalarResources[rName] = reservedScalarRes
 				}
