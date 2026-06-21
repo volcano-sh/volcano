@@ -98,8 +98,12 @@ func RunJob(ctx context.Context) error {
 		job = constructLaunchJobFlagsJob(launchJobFlags, req, limit)
 	}
 
+	if job.Namespace == "" {
+		job.Namespace = launchJobFlags.Namespace
+	}
+
 	jobClient := versioned.NewForConfigOrDie(config)
-	newJob, err := jobClient.BatchV1alpha1().Jobs(launchJobFlags.Namespace).Create(ctx, job, metav1.CreateOptions{})
+	newJob, err := jobClient.BatchV1alpha1().Jobs(job.Namespace).Create(ctx, job, metav1.CreateOptions{})
 	if err != nil {
 		return err
 	}

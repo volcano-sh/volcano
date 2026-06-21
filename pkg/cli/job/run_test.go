@@ -33,8 +33,10 @@ import (
 
 func TestCreateJob(t *testing.T) {
 	response := v1alpha1.Job{}
+	requestPath := ""
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
 		val, err := json.Marshal(response)
 		if err == nil {
@@ -47,7 +49,9 @@ func TestCreateJob(t *testing.T) {
 	defer server.Close()
 
 	fileName := time.Now().Format("20060102150405999") + "testCreateJob.yaml"
-	val, err := json.Marshal(response)
+	fileJob := v1alpha1.Job{}
+	fileJob.Namespace = "file-ns"
+	val, err := json.Marshal(fileJob)
 	if err != nil {
 		panic(err)
 	}
@@ -61,19 +65,23 @@ func TestCreateJob(t *testing.T) {
 		Name        string
 		ExpectValue error
 		FileName    string
+		ExpectPath  string
 	}{
 		{
 			Name:        "CreateJob",
 			ExpectValue: nil,
+			ExpectPath:  "/apis/batch.volcano.sh/v1alpha1/namespaces/test/jobs",
 		},
 		{
 			Name:        "CreateJobWithFile",
 			FileName:    fileName,
 			ExpectValue: nil,
+			ExpectPath:  "/apis/batch.volcano.sh/v1alpha1/namespaces/file-ns/jobs",
 		},
 	}
 
 	for i, testcase := range testCases {
+		requestPath = ""
 		launchJobFlags = &runFlags{
 			CommonFlags: util.CommonFlags{
 				Master: server.URL,
@@ -81,11 +89,15 @@ func TestCreateJob(t *testing.T) {
 			Name:      "test",
 			Namespace: "test",
 			Requests:  "cpu=1000m,memory=100Mi",
+			FileName:  testcase.FileName,
 		}
 
 		err := RunJob(context.TODO())
 		if err != nil {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
+		}
+		if requestPath != testcase.ExpectPath {
+			t.Errorf("case %d (%s): expected path: %v, got %v ", i, testcase.Name, testcase.ExpectPath, requestPath)
 		}
 	}
 
