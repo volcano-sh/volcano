@@ -53,6 +53,7 @@ type numaPlugin struct {
 	assignRes       map[api.TaskID]map[string]api.ResNumaSets // map[taskUID]map[nodename][resourceName]cpuset.CPUSet
 	nodeResSets     map[string]api.ResNumaSets                // map[nodename][resourceName]cpuset.CPUSet
 	taskBindNodeMap map[api.TaskID]string
+	taskPodMetaMap  map[api.TaskID]api.PodMeta
 }
 
 // New function returns prioritize plugin object.
@@ -61,6 +62,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 		pluginArguments: arguments,
 		assignRes:       make(map[api.TaskID]map[string]api.ResNumaSets),
 		taskBindNodeMap: make(map[api.TaskID]string),
+		taskPodMetaMap:  make(map[api.TaskID]api.PodMeta),
 	}
 
 	plugin.hintProviders = append(plugin.hintProviders, cpumanager.NewProvider())
@@ -96,6 +98,7 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			node.Allocate(resNumaSets)
 			pp.taskBindNodeMap[event.Task.UID] = event.Task.NodeName
+			pp.taskPodMetaMap[event.Task.UID] = api.PodMeta{UID: event.Task.Pod.UID, Name: event.Task.Pod.Name, Namespace: event.Task.Pod.Namespace}
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			node := pp.nodeResSets[event.Task.NodeName]
@@ -108,8 +111,9 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 
-			delete(pp.taskBindNodeMap, event.Task.UID)
 			node.Release(resNumaSets)
+			delete(pp.taskBindNodeMap, event.Task.UID)
+			delete(pp.taskPodMetaMap, event.Task.UID)
 		},
 	})
 
@@ -261,30 +265,28 @@ func (pp *numaPlugin) OnSessionClose(ssn *framework.Session) {
 		return
 	}
 
-	allocatedResSet := make(map[string]api.ResNumaSets)
+	allocatedSets := make(map[api.PodMeta]map[string]api.ResNumaSets)
 	for taskID, nodeName := range pp.taskBindNodeMap {
-		if _, existed := pp.assignRes[taskID]; !existed {
+		var resSets api.ResNumaSets
+		var existed bool
+
+		if _, existed = pp.assignRes[taskID]; !existed {
+			klog.Warningf("plugin %s failed to find assignment decision for task id %s, skip adding it to the unassigned numa pods of node %s", PluginName, taskID, nodeName)
 			continue
 		}
 
-		if _, existed := pp.assignRes[taskID][nodeName]; !existed {
+		if resSets, existed = pp.assignRes[taskID][nodeName]; !existed {
+			klog.Warningf("plugin %s failed to find assignment decision for task id %s, skip adding it to the unassigned numa pods of node %s", PluginName, taskID, nodeName)
 			continue
 		}
 
-		if _, existed := allocatedResSet[nodeName]; !existed {
-			allocatedResSet[nodeName] = make(api.ResNumaSets)
-		}
-
-		resSet := pp.assignRes[taskID][nodeName]
-		for resName, set := range resSet {
-			if _, existed := allocatedResSet[nodeName][resName]; !existed {
-				allocatedResSet[nodeName][resName] = cpuset.New()
-			}
-
-			allocatedResSet[nodeName][resName] = allocatedResSet[nodeName][resName].Union(set)
+		if podMeta, ok := pp.taskPodMetaMap[taskID]; ok {
+			allocatedSets[podMeta] = map[string]api.ResNumaSets{nodeName: resSets}
+		} else {
+			klog.Warningf("plugin %s failed to find pod meta for task id %s, skip adding it to the unassigned numa pods of node %s", PluginName, taskID, nodeName)
 		}
 	}
 
-	klog.V(4).Infof("[numaPlugin]allocatedResSet: %v", allocatedResSet)
-	ssn.UpdateSchedulerNumaInfo(allocatedResSet)
+	klog.V(3).Infof("plugin %s submits assignment decisions: %v", PluginName, allocatedSets)
+	ssn.AddUnassignedNumaPods(allocatedSets)
 }
