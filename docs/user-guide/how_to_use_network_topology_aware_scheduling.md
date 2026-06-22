@@ -45,7 +45,8 @@ In Volcano Jobs, the `NetworkTopology` field can be configured to describe the n
 - `mode`: Supports `hard` and `soft` modes.
   - `hard`: Hard constraint, tasks within the job must be deployed within the same HyperNode.
   - `soft`: Soft constraint, tasks are deployed within the same HyperNode as much as possible.
-- `highestTierAllowed`: Used with hard mode, indicating the highest tier of HyperNode allowed for job deployment. This field is not required when mode is soft.
+- `highestTierAllowed`: Used with hard mode, indicating the highest numerical tier level (integer) of HyperNode allowed for job deployment. This field is not required when mode is soft.
+- `highestTierName`: Used with hard mode, indicating the highest tier name (string) of HyperNode allowed for job deployment (e.g., `zone`, `rack`). Note that `highestTierAllowed` and `highestTierName` cannot be set simultaneously, and the value must match an existing `HyperNode.spec.tierName` in the cluster.
 
 For example, the following configuration means the job can only be deployed within HyperNodes of tier 2 or lower, such as s4 and s5, and their child nodes s0, s1, s2, s3. Otherwise, the job will remain in the Pending state:
 
@@ -54,6 +55,15 @@ spec:
   networkTopology:
     mode: hard
     highestTierAllowed: 2
+```
+
+Alternatively, you can specify the boundary constraint using a tier name:
+
+```yaml
+spec:
+  networkTopology:
+    mode: hard
+    highestTierName: zone
 ```
 
 By configuring this scheduling constraint, users can precisely control the network topology constraints of the job, ensuring that the job runs in the best performance domain that meets the conditions, thereby significantly improving training efficiency.
@@ -149,7 +159,7 @@ data:
           hypernode.binpack.resources.nvidia.com/gpu: 2                # HyperNode-Level bin packing weight for "nvidia.com/gpu" resources
           hypernode.binpack.resources.example.com/foo: 3               # HyperNode-Level bin packing weight for "example.com/foo" resources
           hypernode.binpack.normal-pod.enable: true                    # Whether or not to enable HyperNode-level bin packing for normal pods
-          hypernode.binpack.normal-pod.fading: 0.8                     # Parameter to control the weights of hypernodes of different tiers, i.e., the weights of hypernodes of tier `i` are math.Pow(fading, i-1) 
+          hypernode.binpack.normal-pod.fading: 0.8                     # Parameter to control the weights of hypernodes of different tiers, i.e., the weights of hypernodes of tier `i` are math.Pow(fading, i-1)
 ```
 
 ### 3.2 Building Network Topology

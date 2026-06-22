@@ -287,6 +287,39 @@ spec:
                   cpu: "4"
 ```
 
+## Topology Tier Selection
+
+A topology tier represents a performance domain within the cluster network hierarchy. In complex data center networks, switches and nodes are connected in a tree-like hierarchical structure. The latency and bandwidth characteristics differ between different levels of the network tree.
+
+A typical topology hierarchy is defined as follows:
+
+```text
+region
+ └── zone
+      └── rack
+           └── host
+```
+
+In this tree, the parent-child relationship dictates the topology levels. Real performance domains (such as switches or TORs) are represented by `HyperNode` CRDs, each categorized under a specific `tier` (an integer value) or `tierName` (a string identifier).
+
+To configure topology-aware scheduling affinity levels, Volcano supports selecting the scheduling boundary using either the tier level or name. The `highestTierName` field allows users to specify the highest network topology tier name the job or partition is permitted to span during scheduling.
+
+How the scheduler limits topology awareness according to the selected tier name:
+
+- If `highestTierName` is configured, Volcano looks up the name in the cluster's HyperNode tier name map (built from `HyperNode.spec.tierName` fields) at scheduling session initialization and translates it into the corresponding numerical `highestTierAllowed`. The value must match an existing `HyperNode.spec.tierName` defined in the cluster's HyperNodes. If no HyperNode in the cluster has a matching `spec.tierName`, the translation is skipped and no tier constraint is applied for that job.
+- Once translated, the scheduler limits topology awareness such that the job or partition is only scheduled within HyperNodes at or below the numerical tier representing that name.
+
+Examples:
+
+- **`highestTierName: zone`**: The scheduler limits topology constraints to the `zone` level (meaning scheduling considers topology up to the zone level and permits spanning multiple racks within a zone, but not across zones).
+- **`highestTierName: rack`**: The scheduler limits topology constraints to the `rack` level (meaning scheduling considers topology up to the rack level, and does not permit spanning across different racks).
+
+Default Behavior:
+
+- If `networkTopology` is not configured, no topology-aware scheduling is applied.
+- If `mode: soft` is configured, topology affinity is preferred but no hard boundary is enforced.
+- If `mode: hard` is configured, `highestTierAllowed` or `highestTierName` can be used to define the scheduling boundary.
+
 # Implementation
 
 ## Overview
@@ -596,9 +629,9 @@ Add admission for hyperNode for two aspects validation
      subGroupPolicy:
        - name: "task0" # Taken from jobSpec.tasks[].name
          subGroupSize: 3 # Taken from jobSpec.tasks[].partitionPolicy.partitionSize
-         labelSelector: 
-           matchLabels: 
-             volcano.sh/task-spec: task0   # The label is automatically added to VCJob pods upon creation to indicate their task information.
+         labelSelector:
+           matchLabels:
+             volcano.sh/task-spec: task0 # The label is automatically added to VCJob pods upon creation to indicate their task information.
          matchLabelKeys:
            - volcano.sh/partition-id
          networkTopology: # Taken from jobSpec.tasks[].partitionPolicy.networkTopology
@@ -606,9 +639,9 @@ Add admission for hyperNode for two aspects validation
            highestTierAllowed: 1
        - name: "task1" # Taken from jobSpec.tasks[].name
          subGroupSize: 2 # Taken from jobSpec.tasks[].partitionPolicy.partitionSize
-         labelSelector: 
-           matchLabels: 
-             volcano.sh/task-spec: task1   # The label is automatically added to VCJob pods upon creation to indicate their task information.
+         labelSelector:
+           matchLabels:
+             volcano.sh/task-spec: task1 # The label is automatically added to VCJob pods upon creation to indicate their task information.
          matchLabelKeys:
            - volcano.sh/partition-id
          networkTopology: # Taken from jobSpec.tasks[].partitionPolicy.networkTopology
@@ -693,8 +726,8 @@ type JobInfo struct {
   ```yaml
   subGroupPolicy:
     - name: "task0"
-      labelSelector: 
-        matchLabels: 
+      labelSelector:
+        matchLabels:
           volcano.sh/task-spec: task0
       matchLabelKeys:
         - volcano.sh/partition-id
