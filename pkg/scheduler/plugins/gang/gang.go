@@ -248,6 +248,9 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				return num + job.ReadyTaskNum()
 			}
 			unreadyTaskCount = job.MinAvailable - schedulableTaskNum()
+			if unreadyTaskCount < 0 {
+				unreadyTaskCount = 0
+			}
 			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 				unreadyTaskCount, len(job.Tasks), job.FitError())
 

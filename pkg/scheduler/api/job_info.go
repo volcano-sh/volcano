@@ -1200,11 +1200,42 @@ func (ji *JobInfo) CheckSubJobPipelined() bool {
 }
 
 func (ji *JobInfo) IsReady() bool {
-	return ji.ReadyTaskNum()+ji.PendingBestEffortTaskNum() >= ji.MinAvailable
+	if ji.ReadyTaskNum()+ji.PendingBestEffortTaskNum() < ji.MinAvailable {
+		return false
+	}
+	if ji.PodGroup == nil || ji.PodGroup.Spec.MinResources == nil {
+		return true
+	}
+	minRes := ji.GetMinResources()
+	if minRes.IsEmpty() || minRes.LessEqual(ji.Allocated, Zero) {
+		return true
+	}
+	readyRes := ji.Allocated.Clone()
+	for _, task := range ji.TaskStatusIndex[Succeeded] {
+		readyRes.Add(task.Resreq)
+	}
+	return minRes.LessEqual(readyRes, Zero)
 }
 
 func (ji *JobInfo) IsPipelined() bool {
-	return ji.WaitingTaskNum()+ji.ReadyTaskNum()+ji.PendingBestEffortTaskNum() >= ji.MinAvailable
+	if ji.WaitingTaskNum()+ji.ReadyTaskNum()+ji.PendingBestEffortTaskNum() < ji.MinAvailable {
+		return false
+	}
+	if ji.PodGroup == nil || ji.PodGroup.Spec.MinResources == nil {
+		return true
+	}
+	minRes := ji.GetMinResources()
+	if minRes.IsEmpty() {
+		return true
+	}
+	res := ji.Allocated.Clone()
+	for _, task := range ji.TaskStatusIndex[Succeeded] {
+		res.Add(task.Resreq)
+	}
+	for _, task := range ji.TaskStatusIndex[Pipelined] {
+		res.Add(task.Resreq)
+	}
+	return minRes.LessEqual(res, Zero)
 }
 
 func (ji *JobInfo) IsStarving() bool {
