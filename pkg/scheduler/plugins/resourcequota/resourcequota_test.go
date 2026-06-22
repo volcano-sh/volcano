@@ -24,6 +24,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -114,5 +115,62 @@ func TestResourceQuotaPlugin(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestJobEnqueuedOnOtherPluginsReject verifies that the resourcequota plugin
+// adds to a namespace's pending usage only when a job is fully admitted by all plugins
+// in the tier. A job rejected by a co-tier plugin must not consume namespace quota,
+// leaving room for subsequent jobs that fit within the hard limit.
+func TestJobEnqueuedOnOtherPluginsReject(t *testing.T) {
+	trueValue := true
+	res1CPU := api.BuildResourceList("1", "1G")
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+
+	// Namespace quota: exactly 1 CPU — only one job can be admitted per session.
+	rq1 := util.BuildResourceQuota("rq1", "ns1", res1CPU)
+
+	podA := util.BuildPod("ns1", "podA", "", v1.PodPending, res1CPU, "pgA", nil, nil)
+	podB := util.BuildPod("ns1", "podB", "", v1.PodPending, res1CPU, "pgB", nil, nil)
+
+	pgA := util.BuildPodGroup("pgA", "ns1", "q1", 1, nil, schedulingv1.PodGroupPending)
+	pgB := util.BuildPodGroup("pgB", "ns1", "q1", 1, nil, schedulingv1.PodGroupPending)
+	pgA.Spec.MinResources = &res1CPU
+	pgB.Spec.MinResources = &res1CPU
+
+	queue1 := util.BuildQueue("q1", 1, nil)
+
+	const rejecterName = "test-rejecter"
+	plugins := map[string]framework.PluginBuilder{
+		PluginName:   New,
+		rejecterName: func(_ framework.Arguments) framework.Plugin { return &uthelper.RejecterPlugin{RejectJob: "pgA"} },
+	}
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{Name: PluginName, EnabledJobEnqueued: &trueValue},
+				{Name: rejecterName, EnabledJobEnqueued: &trueValue},
+			},
+		},
+	}
+
+	test := uthelper.TestCommonStruct{
+		Name:           "pgA rejected by co-tier plugin must not consume ns1 quota; pgB must be admitted",
+		Plugins:        plugins,
+		Pods:           []*v1.Pod{podA, podB},
+		Nodes:          []*v1.Node{n1},
+		PodGroups:      []*schedulingv1.PodGroup{pgA, pgB},
+		Queues:         []*schedulingv1.Queue{queue1},
+		ResourceQuotas: []*v1.ResourceQuota{rq1},
+		ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+			"ns1/pgB": scheduling.PodGroupInqueue,
+		},
+	}
+	test.RegisterSession(tiers, nil)
+	defer test.Close()
+	test.Run([]framework.Action{enqueue.New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
 	}
 }

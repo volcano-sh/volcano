@@ -32,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
@@ -625,5 +626,62 @@ func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
 	if !cycle2["ns1/pB1"] {
 		t.Errorf("regression: pB1 was not bound in cycle 2 (got %v) — proportion plugin "+
 			"is double-counting inqueue resources for pgA whose tasks are in Binding state", cycle2)
+	}
+}
+
+// TestJobEnqueuedOnOtherPluginsReject verifies that proportion's inqueue
+// accounting is updated only after all plugins in the tier admit a job. A job
+// rejected by a co-tier plugin must not consume queue capacity, leaving room for
+// subsequent jobs that fit within the queue's limit.
+func TestJobEnqueuedOnOtherPluginsReject(t *testing.T) {
+	trueValue := true
+
+	// Queue q1 holds 1 CPU. The rejecter blocks pgA while proportion sees it as
+	// fitting; pgB must still be admitted because pgA never consumed any capacity.
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+
+	res1CPU := api.BuildResourceList("1", "1G")
+	podA := util.BuildPod("ns1", "podA", "", apiv1.PodPending, res1CPU, "pgA", nil, nil)
+	podB := util.BuildPod("ns1", "podB", "", apiv1.PodPending, res1CPU, "pgB", nil, nil)
+
+	pgA := util.BuildPodGroup("pgA", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+	pgB := util.BuildPodGroup("pgB", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+	pgA.Spec.MinResources = &res1CPU
+	pgB.Spec.MinResources = &res1CPU
+
+	// Queue capacity: exactly 1 CPU — only one job can be admitted per session.
+	queue1 := util.BuildQueue("q1", 1, api.BuildResourceList("1", "4G"))
+
+	const rejecterName = "test-rejecter"
+	plugins := map[string]framework.PluginBuilder{
+		PluginName:   New,
+		rejecterName: func(_ framework.Arguments) framework.Plugin { return &uthelper.RejecterPlugin{RejectJob: "pgA"} },
+	}
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{Name: PluginName, EnabledJobEnqueued: &trueValue},
+				{Name: rejecterName, EnabledJobEnqueued: &trueValue},
+			},
+		},
+	}
+
+	test := uthelper.TestCommonStruct{
+		Name:      "phantom inqueue reservation: rejecter blocks pgA, pgB must still be admitted",
+		Plugins:   plugins,
+		Pods:      []*apiv1.Pod{podA, podB},
+		Nodes:     []*apiv1.Node{n1},
+		PodGroups: []*schedulingv1beta1.PodGroup{pgA, pgB},
+		Queues:    []*schedulingv1beta1.Queue{queue1},
+		// pgB must be enqueued; pgA stays Pending (blocked by the rejecter, not proportion).
+		ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+			"ns1/pgB": scheduling.PodGroupInqueue,
+		},
+	}
+	test.RegisterSession(tiers, nil)
+	defer test.Close()
+	test.Run([]framework.Action{enqueue.New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -432,13 +432,24 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		inqueue, resourceNames := r.LessEqualWithDimensionAndResourcesName(attr.realCapability, minReq)
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
 		if inqueue {
-			// deduct the resources of scheduling gated tasks in a job when calculating inqueued resources
-			// so that it will not block other jobs from being inqueued.
-			attr.inqueue.Add(job.DeductSchGatedResources(minReq))
 			return util.Permit
 		}
 		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), util.FormatResourceNames("queue resource quota insufficient", "insufficient", resourceNames))
 		return util.Reject
+	})
+
+	ssn.AddJobEnqueuedFn(pp.Name(), func(obj interface{}) {
+		job := obj.(*api.JobInfo)
+		if job.PodGroup.Spec.MinResources == nil {
+			return
+		}
+		attr := pp.queueOpts[job.Queue]
+		if attr == nil {
+			return
+		}
+		// deduct the resources of scheduling gated tasks in a job when calculating inqueued resources
+		// so that it will not block other jobs from being inqueued.
+		attr.inqueue.Add(job.DeductSchGatedResources(job.GetMinResources()))
 	})
 
 	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {

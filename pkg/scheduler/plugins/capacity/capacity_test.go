@@ -1959,3 +1959,123 @@ func TestDRAAllocatableIgnoresInqueue(t *testing.T) {
 		t.Fatalf("expected enqueueable DRA check to account inqueue resources")
 	}
 }
+
+// TestJobEnqueuedOnOtherPluginsReject verifies that the capacity plugin updates
+// a queue's inqueue accounting only when a job is fully admitted by all plugins in
+// the tier. A job rejected by a co-tier plugin must not consume queue capacity,
+// leaving room for subsequent jobs that fit within the queue's limit.
+func TestJobEnqueuedOnOtherPluginsReject(t *testing.T) {
+	trueValue := true
+	res1CPU := api.BuildResourceList("1", "1G")
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+	podA := util.BuildPod("ns1", "podA", "", corev1.PodPending, res1CPU, "pgA", nil, nil)
+	podB := util.BuildPod("ns1", "podB", "", corev1.PodPending, res1CPU, "pgB", nil, nil)
+
+	pgA := util.BuildPodGroup("pgA", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+	pgB := util.BuildPodGroup("pgB", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+	pgA.Spec.MinResources = &res1CPU
+	pgB.Spec.MinResources = &res1CPU
+
+	// Queue with exactly 1 CPU capability — only one job can be admitted per session.
+	queue1 := util.BuildQueueWithResourcesQuantity("q1", api.BuildResourceList("1", "4G"), api.BuildResourceList("1", "4G"))
+
+	const rejecterName = "test-rejecter"
+	plugins := map[string]framework.PluginBuilder{
+		PluginName:   New,
+		rejecterName: func(_ framework.Arguments) framework.Plugin { return &uthelper.RejecterPlugin{RejectJob: "pgA"} },
+	}
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{Name: PluginName, EnabledJobEnqueued: &trueValue},
+				{Name: rejecterName, EnabledJobEnqueued: &trueValue},
+			},
+		},
+	}
+
+	test := uthelper.TestCommonStruct{
+		Name:      "pgA rejected by co-tier plugin must not consume q1 capacity; pgB must be admitted",
+		Plugins:   plugins,
+		Pods:      []*corev1.Pod{podA, podB},
+		Nodes:     []*corev1.Node{n1},
+		PodGroups: []*schedulingv1beta1.PodGroup{pgA, pgB},
+		Queues:    []*schedulingv1beta1.Queue{queue1},
+		ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+			"ns1/pgB": scheduling.PodGroupInqueue,
+		},
+	}
+	test.RegisterSession(tiers, nil)
+	defer test.Close()
+	test.Run([]framework.Action{enqueue.New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestJobEnqueuedUpdatesDRAInqueueForDRAOnlyJob verifies that JobEnqueuedFn correctly
+// updates DRA inqueue accounting for jobs that have no scalar MinResources but do have
+// DRA resource requests. The early return guard must not skip DRA-only jobs.
+func TestJobEnqueuedUpdatesDRAInqueueForDRAOnlyJob(t *testing.T) {
+	if err := utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=true", kubefeatures.DynamicResourceAllocation)); err != nil {
+		t.Fatal(err)
+	}
+
+	const deviceClass = "gpu.com"
+	const claimName = "dra-job-claim"
+
+	// Queue: DRA capability 4 GPUs, no scalar capability.
+	queue1 := util.BuildQueueWithResourcesQuantity("q1", nil, nil)
+	queue1.Spec.Capability = corev1.ResourceList{
+		corev1.ResourceName(DeviceClassCountPrefix + deviceClass): resource.MustParse("4"),
+	}
+
+	// DRA-only job: MinResources == nil, requests 2 GPUs via ResourceClaim.
+	claim := &resourcev1.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: claimName, Namespace: "ns1"},
+		Spec: resourcev1.ResourceClaimSpec{
+			Devices: resourcev1.DeviceClaim{
+				Requests: []resourcev1.DeviceRequest{{
+					Name: "req-1",
+					Exactly: &resourcev1.ExactDeviceRequest{
+						DeviceClassName: deviceClass,
+						Count:           2,
+					},
+				}},
+			},
+		},
+	}
+	pod := util.BuildPod("ns1", "dra-pod", "", corev1.PodPending, api.BuildResourceList("0", "0"), "dra-pg", nil, nil)
+	pod.Spec.ResourceClaims = []corev1.PodResourceClaim{{
+		Name:              "claim-1",
+		ResourceClaimName: &[]string{claimName}[0],
+	}}
+	pod.Annotations[batchv1alpha1.TaskSpecKey] = "worker"
+
+	pg := util.BuildPodGroup("dra-pg", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+	pg.Spec.MinTaskMember = map[string]int32{"worker": 1}
+	// MinResources intentionally left nil — DRA-only job.
+
+	trueValue := true
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{{
+		Name: PluginName, EnabledJobEnqueued: &trueValue,
+	}}}}
+
+	test := uthelper.TestCommonStruct{
+		Name:           "DRA-only job (MinResources==nil) must update DRA inqueue accounting on enqueue",
+		Plugins:        map[string]framework.PluginBuilder{PluginName: New},
+		Pods:           []*corev1.Pod{pod},
+		PodGroups:      []*schedulingv1beta1.PodGroup{pg},
+		Queues:         []*schedulingv1beta1.Queue{queue1},
+		ResourceClaims: []*resourcev1.ResourceClaim{claim},
+		ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+			"ns1/dra-pg": scheduling.PodGroupInqueue,
+		},
+	}
+	test.RegisterSession(tiers, nil)
+	defer test.Close()
+	test.Run([]framework.Action{enqueue.New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+}
