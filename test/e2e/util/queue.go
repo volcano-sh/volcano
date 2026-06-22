@@ -198,14 +198,14 @@ func deleteJobsInQueues(ctx *TestContext, queues []string) {
 		})
 		Expect(err).NotTo(HaveOccurred(), "failed to delete vcjob %s in queue %s", job.Name, job.Spec.Queue)
 
-		delErr := wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
+		delErr := wait.PollUntilContextTimeout(context.TODO(), time.Second, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
 			_, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(pollCtx, job.Name, metav1.GetOptions{})
 			if errors.IsNotFound(err) {
 				return true, nil
 			}
-			if err != nil {
-				return false, err
-			}
+			// Any other error (including transient client-side rate limiting
+			// while a whole hierarchy is torn down at once) is not fatal here;
+			// keep polling until the job is gone or the timeout fires.
 			return false, nil
 		})
 		Expect(delErr).NotTo(HaveOccurred(), "failed waiting vcjob %s deleted", job.Name)
@@ -235,13 +235,16 @@ func closeQueueStatus(ctx *TestContext, q string) {
 // Closed (already deleted by an earlier iteration, an overlapping cleanup, or
 // manual intervention) still satisfies the wait's intent.
 func waitQueueClosed(ctx *TestContext, q string) {
-	err := wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(context.TODO(), time.Second, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
 		queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(pollCtx, q, metav1.GetOptions{})
 		if errors.IsNotFound(err) {
 			return true, nil
 		}
 		if err != nil {
-			return false, err
+			// Transient client/API errors (notably client-side rate limiting
+			// when a whole hierarchy is torn down at once) must not abort
+			// cleanup; keep polling until the queue is Closed/gone or timeout.
+			return false, nil
 		}
 		return queue.Status.State == schedulingv1beta1.QueueStateClosed, nil
 	})
@@ -261,14 +264,14 @@ func deleteQueueAndWait(ctx *TestContext, q string) {
 	}
 	Expect(err).NotTo(HaveOccurred(), "failed to delete queue %s", q)
 
-	err = wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.TODO(), time.Second, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
 		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(pollCtx, q, metav1.GetOptions{})
 		if errors.IsNotFound(err) {
 			return true, nil
 		}
-		if err != nil {
-			return false, err
-		}
+		// Any other error (including transient client-side rate limiting while
+		// a whole hierarchy is torn down at once) is not fatal here; keep
+		// polling until the queue is gone or the timeout fires.
 		return false, nil
 	})
 	Expect(err).NotTo(HaveOccurred(), "failed waiting for queue %s to be deleted", q)
