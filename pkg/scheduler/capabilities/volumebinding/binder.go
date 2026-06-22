@@ -288,6 +288,9 @@ func NewVolumeBinder(
 // for the given pod and node. If the node does not fit, conflict reasons are
 // returned.
 func (b *volumeBinder) FindPodVolumes(logger klog.Logger, pod *v1.Pod, podVolumeClaims *PodVolumeClaims, node *v1.Node) (podVolumes *PodVolumes, reasons ConflictReasons, err error) {
+	if podVolumeClaims == nil {
+		return nil, nil, nil
+	}
 	podVolumes = &PodVolumes{}
 
 	// Warning: Below log needs high verbosity as it can be printed several times (#60933).
