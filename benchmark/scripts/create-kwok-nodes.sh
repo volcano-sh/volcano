@@ -24,6 +24,8 @@
 #                       Useful when pairing with hypernode-controller auto-discovery: the controller
 #                       watches node labels and automatically builds HyperNodes without manual CRD creation.
 #                       Example: KWOK_NODE_LABELS="topology-rack=rack-0,topology-spine=spine-0,gpu=A100"
+#   EXCLUDE_SYSTEM_DAEMONSETS_FROM_KWOK
+#                     - Patch common system DaemonSets so they do not run on KWOK nodes (default: true).
 #
 # Topology layout (when ENABLE_TOPOLOGY=true, TOPOLOGY_RACKS=4, TOPOLOGY_SPINES=2):
 #   spine-0 (tier 2)
@@ -83,6 +85,7 @@ function compute_nodes_per_rack() {
 
 # Parse KWOK_NODE_LABELS into YAML label lines (cached, computed once)
 KWOK_NODE_LABELS="${KWOK_NODE_LABELS:-}"
+EXCLUDE_SYSTEM_DAEMONSETS_FROM_KWOK="${EXCLUDE_SYSTEM_DAEMONSETS_FROM_KWOK:-true}"
 function _parse_custom_labels() {
     local result=""
     if [[ -n "${KWOK_NODE_LABELS}" ]]; then
@@ -97,6 +100,104 @@ function _parse_custom_labels() {
     echo "${result}"
 }
 CUSTOM_LABEL_YAML="$(_parse_custom_labels)"
+
+# Kind installs kindnet and kube-proxy as DaemonSets. They tolerate broad node
+# taints, so the KWOK taint alone does not prevent one pod per simulated node.
+function patch_daemonset_exclude_kwok_nodes() {
+    local namespace="$1"
+    local name="$2"
+
+    if ! kubectl -n "${namespace}" get daemonset "${name}" >/dev/null 2>&1; then
+        log_warn "DaemonSet ${namespace}/${name} not found, skipping KWOK exclusion patch"
+        return
+    fi
+
+    log_info "Patching DaemonSet ${namespace}/${name} to exclude KWOK nodes..."
+    kubectl -n "${namespace}" patch daemonset "${name}" --type=merge -p '{
+      "spec": {
+        "template": {
+          "spec": {
+            "affinity": {
+              "nodeAffinity": {
+                "requiredDuringSchedulingIgnoredDuringExecution": {
+                  "nodeSelectorTerms": [
+                    {
+                      "matchExpressions": [
+                        {
+                          "key": "type",
+                          "operator": "NotIn",
+                          "values": ["kwok"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }' >/dev/null
+}
+
+function delete_daemonset_pods_on_kwok_nodes() {
+    local namespace="$1"
+    local label_selector="$2"
+    local names
+
+    names=$(kubectl -n "${namespace}" get pods -l "${label_selector}" \
+        -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.nodeName}{"\n"}{end}' 2>/dev/null \
+        | awk '$2 ~ /^kwok-node-/ {print $1}')
+
+    if [[ -z "${names}" ]]; then
+        return
+    fi
+
+    log_info "Deleting existing ${namespace} pods matching '${label_selector}' from KWOK nodes..."
+    echo "${names}" | xargs -r -n 100 kubectl -n "${namespace}" delete pod --ignore-not-found --wait=false
+}
+
+function exclude_system_daemonsets_from_kwok_nodes() {
+    if [[ "${EXCLUDE_SYSTEM_DAEMONSETS_FROM_KWOK}" != "true" ]]; then
+        log_info "Skipping system DaemonSet KWOK exclusion (EXCLUDE_SYSTEM_DAEMONSETS_FROM_KWOK=false)"
+        return
+    fi
+
+    patch_daemonset_exclude_kwok_nodes kube-system kindnet
+    patch_daemonset_exclude_kwok_nodes kube-system kube-proxy
+}
+
+function cleanup_system_daemonset_pods_on_kwok_nodes() {
+    if [[ "${EXCLUDE_SYSTEM_DAEMONSETS_FROM_KWOK}" != "true" ]]; then
+        return
+    fi
+
+    delete_daemonset_pods_on_kwok_nodes kube-system 'app=kindnet'
+    delete_daemonset_pods_on_kwok_nodes kube-system 'k8s-app=kube-proxy'
+}
+
+function wait_for_kwok_nodes_ready() {
+    local timeout="${1:-120}"
+    local deadline=$((SECONDS + timeout))
+    local total
+    local ready
+
+    log_info "Waiting for KWOK nodes to be ready (timeout ${timeout}s)..."
+    while (( SECONDS < deadline )); do
+        total=$(kubectl get nodes -l type=kwok --no-headers 2>/dev/null | wc -l | tr -d ' ')
+        ready=$(kubectl get nodes -l type=kwok --no-headers 2>/dev/null | awk '$2 == "Ready" {count++} END {print count + 0}')
+
+        if [[ "${total}" != "0" && "${ready}" == "${total}" ]]; then
+            log_info "All KWOK nodes are ready (${ready}/${total})."
+            return
+        fi
+
+        sleep 2
+    done
+
+    log_error "Timed out waiting for KWOK nodes to be ready (${ready:-0}/${total:-0})."
+    return 1
+}
 
 # Create a single KWOK node with optional topology labels
 # Args: $1=node_index, $2=rack_label (optional), $3=spine_label (optional)
@@ -208,16 +309,17 @@ function create_kwok_nodes_with_topology() {
 
 # Main execution
 install_kwok_if_needed
+exclude_system_daemonsets_from_kwok_nodes
 
 if [[ "${ENABLE_TOPOLOGY}" == "true" ]]; then
     create_kwok_nodes_with_topology
-    log_info "Waiting for all KWOK nodes to be ready..."
-    kubectl wait --for=condition=Ready node -l type=kwok --timeout=120s
+    wait_for_kwok_nodes_ready 120
 else
     create_kwok_nodes_flat
-    log_info "Waiting for all KWOK nodes to be ready..."
-    kubectl wait --for=condition=Ready node -l type=kwok --timeout=120s
+    wait_for_kwok_nodes_ready 120
 fi
+
+cleanup_system_daemonset_pods_on_kwok_nodes
 
 local_node_count=$(kubectl get nodes -l type=kwok --no-headers | wc -l | tr -d ' ')
 log_info "KWOK node creation complete, ${local_node_count} nodes total"
