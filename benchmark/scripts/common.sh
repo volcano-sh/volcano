@@ -25,6 +25,8 @@ export TOPOLOGY_RACKS="${TOPOLOGY_RACKS:-4}"
 export TOPOLOGY_SPINES="${TOPOLOGY_SPINES:-2}"
 # Custom labels applied to all KWOK nodes (comma-separated key=value pairs)
 export KWOK_NODE_LABELS="${KWOK_NODE_LABELS:-}"
+# Keep common system DaemonSets such as kindnet and kube-proxy off KWOK nodes by default.
+export EXCLUDE_SYSTEM_DAEMONSETS_FROM_KWOK="${EXCLUDE_SYSTEM_DAEMONSETS_FROM_KWOK:-true}"
 # Audit exporter image (configurable for private registries)
 export AUDIT_EXPORTER_IMAGE="${AUDIT_EXPORTER_IMAGE:-volcanosh/kube-apiserver-audit-exporter:dev}"
 # Volcano client QPS settings used when this benchmark installs Volcano.
