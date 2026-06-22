@@ -70,6 +70,7 @@ func TestAddFlags(t *testing.T) {
 		},
 		DefaultQueue:  defaultQueue,
 		ListenAddress: defaultListenAddress,
+		PprofAddress:  defaultPprofAddress,
 		KubeClientOptions: kube.ClientOptions{
 			Master:     "",
 			KubeConfig: "",
@@ -99,5 +100,58 @@ func TestAddFlags(t *testing.T) {
 	}
 	for k, v := range expectedFeatureGates {
 		assert.Equal(t, v, utilfeature.DefaultFeatureGate.Enabled(k))
+	}
+}
+
+func TestValidatePprofAddress(t *testing.T) {
+	tests := []struct {
+		name    string
+		address string
+		wantErr bool
+	}{
+		{
+			name:    "loopback ipv4",
+			address: "127.0.0.1:6060",
+		},
+		{
+			name:    "loopback ipv6",
+			address: "[::1]:6060",
+		},
+		{
+			name:    "localhost",
+			address: "localhost:6060",
+			wantErr: true,
+		},
+		{
+			name:    "wildcard ipv4",
+			address: "0.0.0.0:6060",
+			wantErr: true,
+		},
+		{
+			name:    "wildcard shorthand",
+			address: ":6060",
+			wantErr: true,
+		},
+		{
+			name:    "pod network address",
+			address: "10.244.0.10:6060",
+			wantErr: true,
+		},
+		{
+			name:    "missing port",
+			address: "127.0.0.1",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePprofAddress(tt.address)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
 	}
 }

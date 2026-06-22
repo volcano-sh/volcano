@@ -80,8 +80,11 @@ func Run(opt *options.ServerOption) error {
 	// k8smetrics.Goroutines which is used by Kubernetes scheduler framework plugins
 	metrics.InitKubeSchedulerRelatedMetrics()
 
-	if opt.EnableMetrics || opt.EnablePprof {
+	if opt.EnableMetrics {
 		go startMetricsServer(opt)
+	}
+	if opt.EnablePprof {
+		go startPprofServer(opt)
 	}
 
 	if opt.EnableHealthz {
@@ -154,17 +157,7 @@ func Run(opt *options.ServerOption) error {
 func startMetricsServer(opt *options.ServerOption) {
 	mux := http.NewServeMux()
 
-	if opt.EnableMetrics {
-		mux.Handle("/metrics", commonutil.PromHandler())
-	}
-
-	if opt.EnablePprof {
-		mux.HandleFunc("/debug/pprof/", pprof.Index)
-		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	}
+	mux.Handle("/metrics", commonutil.PromHandler())
 
 	server := &http.Server{
 		Addr:              opt.ListenAddress,
@@ -175,6 +168,28 @@ func startMetricsServer(opt *options.ServerOption) {
 	}
 
 	if err := server.ListenAndServe(); err != nil {
-		klog.Errorf("start metrics/pprof http server failed: %v", err)
+		klog.Errorf("start metrics http server failed: %v", err)
+	}
+}
+
+func startPprofServer(opt *options.ServerOption) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+	server := &http.Server{
+		Addr:              opt.PprofAddress,
+		Handler:           mux,
+		ReadHeaderTimeout: helpers.DefaultReadHeaderTimeout,
+		ReadTimeout:       helpers.DefaultReadTimeout,
+		WriteTimeout:      helpers.DefaultWriteTimeout,
+	}
+
+	klog.Infof("Starting pprof http server on %s", opt.PprofAddress)
+	if err := server.ListenAndServe(); err != nil {
+		klog.Errorf("start pprof http server failed: %v", err)
 	}
 }

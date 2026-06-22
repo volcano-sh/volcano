@@ -35,6 +35,7 @@ custom:
   scheduler_replicas: 1
   scheduler_metrics_enable: true
   scheduler_pprof_enable: false
+  scheduler_pprof_address: "127.0.0.1:6060"
   scheduler_plugins_dir: ""
   scheduler_name: ~
   leader_elect_enable: false
