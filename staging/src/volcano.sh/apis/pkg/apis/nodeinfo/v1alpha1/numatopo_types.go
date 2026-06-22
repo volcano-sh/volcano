@@ -55,6 +55,39 @@ const (
 	TopologyManagerPolicy PolicyName = "TopologyManagerPolicy"
 )
 
+// ContainerAllocation records the numa resource allocation for a single container
+type ContainerAllocation struct {
+	// Specifies the name of the container
+	// +optional
+	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
+
+	// Specifies the numa resource allocations of the container
+	// Key is resource name, e.g., "cpu", "memory", "nvidia.com/gpu"
+	// For "cpu", the value is a cpuset string, e.g., "0,2-4"
+	// For other resources, the value is a quantity string, e.g., "2", "4Gi"
+	// +optional
+	Allocations map[string]string `json:"allocations,omitempty" protobuf:"bytes,2,rep,name=allocations"`
+}
+
+// PodAllocation records the numa resource allocation for all containers in a pod
+type PodAllocation struct {
+	// Specifies the uid of the pod
+	// +optional
+	UID string `json:"uid,omitempty" protobuf:"bytes,1,opt,name=uid"`
+
+	// Specifies the name of the pod
+	// +optional
+	Name string `json:"name,omitempty" protobuf:"bytes,2,opt,name=name"`
+
+	// Specifies the namespace of the pod
+	// +optional
+	Namespace string `json:"namespace,omitempty" protobuf:"bytes,3,opt,name=namespace"`
+
+	// Specifies the per-container numa resource allocation of the pod
+	// +optional
+	ContainerAllocations []ContainerAllocation `json:"containerAllocations,omitempty" protobuf:"bytes,4,rep,name=containerAllocations"`
+}
+
 // NumatopoSpec defines the desired state of Numatopology
 type NumatopoSpec struct {
 	// Specifies the policy of the manager
@@ -75,6 +108,10 @@ type NumatopoSpec struct {
 	// Key is cpu id
 	// +optional
 	CPUDetail map[string]CPUInfo `json:"cpuDetail,omitempty" protobuf:"bytes,4,rep,name=cpuDetail"`
+
+	// Specifies the per-pod numa resource allocation of the node
+	// +optional
+	PodAllocations []PodAllocation `json:"podAllocations,omitempty" protobuf:"bytes,5,rep,name=podAllocations"`
 }
 
 // +genclient
