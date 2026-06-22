@@ -32,6 +32,8 @@ This metrics describe internal state of volcano.
 |----------------------------------------|-----------------|-------------------------------------------------------------------|-----------------------------------------------|
 | `pod_preemption_victims`               | Gauge           | None                                                              | The number of selected preemption victims     |
 | `total_preemption_attempts`            | Counter         | None                                                              | Total preemption attempts in the cluster      |
+| `pod_reclaim_victims`                  | Histogram       | None                                                              | Distribution of reclaim victims actually evicted per successful task reclaim |
+| `total_reclaim_attempts`               | Counter         | None                                                              | Total task-level reclaim attempts by this scheduler instance since start |
 | `unschedule_task_count`                | Gauge           | `job_id`=&lt;job_id&gt;                                           | The number of tasks failed to schedule        |
 | `unschedule_job_counts`                | Gauge           | None                                                              | The number of jobs could not be scheduled     |
 | `queue_allocated_milli_cpu`            | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Allocated CPU count for one queue             |
