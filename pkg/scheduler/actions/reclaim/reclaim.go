@@ -122,6 +122,8 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			}
 			job := jobsQ.Pop().(*api.JobInfo)
 			stmt := framework.NewStatement(ssn)
+			reclaimedInTransaction := false
+			var deferredTasks []*api.TaskInfo
 
 			for {
 				// If job is not request more resource, then stop reclaiming.
@@ -156,7 +158,25 @@ func (ra *Action) Execute(ssn *framework.Session) {
 					continue
 				}
 
-				ra.reclaimForTask(ssn, stmt, task, job)
+				reclaimed, deferred := ra.reclaimForTask(ssn, stmt, task, job, reclaimedInTransaction)
+				if reclaimed {
+					reclaimedInTransaction = true
+				}
+				if deferred {
+					deferredTasks = append(deferredTasks, task)
+				}
+			}
+
+			for ssn.JobStarving(job) && reclaimedInTransaction && len(deferredTasks) > 0 {
+				task := deferredTasks[0]
+				deferredTasks = deferredTasks[1:]
+
+				if err := ssn.PrePredicateFn(task); err != nil {
+					klog.V(3).Infof("PrePredicate failed for deferred task %s/%s: %v", task.Namespace, task.Name, err)
+					continue
+				}
+
+				ra.reclaimForTask(ssn, stmt, task, job, true)
 			}
 
 			if ssn.JobPipelined(job) {
@@ -172,7 +192,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 	}
 }
 
-func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Statement, task *api.TaskInfo, job *api.JobInfo) {
+func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Statement, task *api.TaskInfo, job *api.JobInfo, allowPipelineWithoutReclaim bool) (bool, bool) {
 	totalNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
 	predicateHelper := util.NewPredicateHelper()
 	predicateNodes, _ := predicateHelper.PredicateNodes(task, totalNodes, ssn.PredicateForPreemptAction, ra.enablePredicateErrorCache, ssn.NodesInShard)
@@ -181,6 +201,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 	for _, nodes := range predicateNodesByShard {
 		predicateNodesByShardFlattened = append(predicateNodesByShardFlattened, nodes...)
 	}
+	deferredWithoutReclaimees := false
 	for _, n := range predicateNodesByShardFlattened {
 		klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.", task.Namespace, task.Name, n.Name)
 
@@ -201,8 +222,10 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			}
 		}
 
-		if len(reclaimees) == 0 {
-			klog.V(4).Infof("No reclaimees on Node <%s>.", n.Name)
+		if len(reclaimees) == 0 && !allowPipelineWithoutReclaim {
+			deferredWithoutReclaimees = true
+			klog.V(4).Infof("No reclaimees on Node <%s>, defer Task <%s/%s> for possible gang completion.",
+				n.Name, task.Namespace, task.Name)
 			continue
 		}
 
@@ -251,8 +274,9 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			continue
 		}
 		stmt.Merge(nodeStmt)
-		break
+		return evictionOccurred, false
 	}
+	return false, deferredWithoutReclaimees
 }
 
 func (ra *Action) UnInitialize() {
