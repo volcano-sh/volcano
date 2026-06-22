@@ -41,7 +41,9 @@ type AdmissionServiceConfig struct {
 	ConfigData                    *config.AdmissionConfiguration
 	EnableQueueAllocatedPodsCheck bool
 	MaxQueueDepth                 int
-	EnableRootQueueProtection     bool
+	EnableRootQueueProtection          bool
+	EnableCascadeChildQueueClose       bool
+	EnableQueueClosedBeforeDeleteCheck bool
 }
 
 type AdmissionService struct {
