@@ -151,8 +151,7 @@ func InitDevicesConfig(cmName, cmNamespace string) {
 		var err error
 		configs, err = loadConfigFromCM(devices.GetClient(), cmName, cmNamespace)
 		if err != nil {
-			klog.V(3).InfoS("Volcano device config not found in namespace kube-system, using default config",
-				"name", cmName)
+			klog.V(3).InfoS("Volcano device config not found, using default config", "name", cmName, "namespace", cmNamespace, "error", err)
 			configs = GetDefaultDevicesConfig()
 		}
 		klog.V(3).InfoS("Initializing volcano device config", "device-configs", configs)
