@@ -208,6 +208,18 @@ func (ns *NPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 }
 
 func (ns *NPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
+	if ns == nil || pod == nil || pod.Annotations == nil {
+		return nil
+	}
+	ns.SubResource(pod)
+
+	keys := []string{PodPredicateTime, AscendNPUCore}
+	if err := devices.RemovePodAnnotations(kubeClient, pod, keys); err != nil {
+		return err
+	}
+	for _, k := range keys {
+		delete(pod.Annotations, k)
+	}
 	return nil
 }
 
