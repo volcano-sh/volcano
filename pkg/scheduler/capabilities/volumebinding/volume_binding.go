@@ -88,7 +88,7 @@ var _ fwk.PreBindPlugin = &VolumeBinding{}
 var _ fwk.PreScorePlugin = &VolumeBinding{}
 var _ fwk.ScorePlugin = &VolumeBinding{}
 var _ fwk.EnqueueExtensions = &VolumeBinding{}
-var _ fwk.SignPlugin = &VolumeBinding{}
+
 
 // Name is the name of the plugin used in Registry and configurations.
 const Name = names.VolumeBinding
