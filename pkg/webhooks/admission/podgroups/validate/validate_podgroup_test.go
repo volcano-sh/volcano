@@ -37,6 +37,10 @@ func TestValidatePodGroup(t *testing.T) {
 		podGroup    *schedulingv1beta1.PodGroup
 		queue       *schedulingv1beta1.Queue
 		expectError bool
+		// msgContains lists substrings that must all be present in the
+		// rejection message, used to assert that multiple validation errors
+		// are reported and properly separated.
+		msgContains []string
 	}{
 		{
 			name: "valid podgroup with open queue",
@@ -209,6 +213,29 @@ func TestValidatePodGroup(t *testing.T) {
 			queue:       &schedulingv1beta1.Queue{},
 			expectError: true,
 		},
+		{
+			name: "invalid podgroup failing both queue and networkTopology checks reports a separated message",
+			podGroup: &schedulingv1beta1.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "PodGroup",
+					APIVersion: "scheduling.volcano.sh/v1beta1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-podgroup",
+				},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					Queue: "test-queue",
+					NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+						Mode:               schedulingv1beta1.HardNetworkTopologyMode,
+						HighestTierAllowed: &highestTierAllowed,
+						HighestTierName:    "volcano.sh/hypernode",
+					},
+				},
+			},
+			queue:       &schedulingv1beta1.Queue{},
+			expectError: true,
+			msgContains: []string{"unable to find queue", "; ", "must not specify 'highestTierAllowed' and 'highestTierName'"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -249,6 +276,10 @@ func TestValidatePodGroup(t *testing.T) {
 				t.Errorf("Expected error but got allowed response")
 			} else if !tt.expectError && !response.Allowed {
 				t.Errorf("Expected allowed response but got error: %v", response.Result.Message)
+			}
+
+			for _, want := range tt.msgContains {
+				assert.Contains(t, response.Result.Message, want)
 			}
 		})
 	}
