@@ -90,12 +90,16 @@ func Validate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 
 // validatePodGroup validates a PodGroup when it's being created
 func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
-	var errMsg string
+	var errs []string
 
-	errMsg += checkQueueState(pg.Spec.Queue)
-	errMsg += validateNetworkTopology(pg.Spec.NetworkTopology, pg.Spec.SubGroupPolicy)
+	if msg := checkQueueState(pg.Spec.Queue); msg != "" {
+		errs = append(errs, msg)
+	}
+	if msg := validateNetworkTopology(pg.Spec.NetworkTopology, pg.Spec.SubGroupPolicy); msg != "" {
+		errs = append(errs, msg)
+	}
 
-	return errMsg
+	return strings.Join(errs, "; ")
 }
 
 // checkQueueState verifies if the queue exists and is in the open state
