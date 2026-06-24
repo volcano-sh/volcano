@@ -750,6 +750,8 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 
 // Allocate the task to the node in the session
 func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
+	// Clone the task defensively to avoid mutating shared pointers from ShallowClone.
+	task = task.Clone()
 	hostname := nodeInfo.Name
 	task.Pod.Spec.NodeName = hostname
 
