@@ -1,4 +1,4 @@
-FROM mxnet/python:1.4.0_cpu_mkl_py3
+FROM mxnet/python:1.9.1_cpu_py3@sha256:aad3f8fa3658601c7d7ddc33fadc8ec92f5aa9edd47673b8d619a13e4da8e2ba
 
 RUN apt-get update \
     && apt-get install -y git
