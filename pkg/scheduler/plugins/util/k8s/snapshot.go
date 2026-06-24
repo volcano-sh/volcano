@@ -135,7 +135,7 @@ func (s *Snapshot) addOrUpdateNode(nodeInfo *api.NodeInfo) {
 	// TaskInfo values are treated as read-only by the agent scheduler snapshot,
 	// and NodeInfo methods clone tasks before storing mutable entries.
 	volcanoNodeInfo := nodeInfo.ShallowClone()
-	nodeName := volcanoNodeInfo.Node.Name
+	nodeName := volcanoNodeInfo.Name
 	// Create k8s NodeInfo from vcNodeInfo
 	fwkNodeInfo := framework.NewNodeInfo(volcanoNodeInfo.Pods()...)
 	fwkNodeInfo.SetNode(volcanoNodeInfo.Node)

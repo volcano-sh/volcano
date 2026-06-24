@@ -70,6 +70,9 @@ func (s *Statement) Operations() []operation {
 
 // Evict the pod
 func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) {
+	// Clone the task defensively to avoid mutating shared pointers from ShallowClone.
+	reclaimee = reclaimee.Clone()
+
 	// Update status in session
 	if job, found := s.ssn.Jobs[reclaimee.Job]; found {
 		job.UpdateTaskStatus(reclaimee, api.Releasing)
@@ -138,6 +141,8 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 
 // Pipeline the task for the node
 func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurred bool) (err error) {
+	// Clone the task defensively to avoid mutating shared pointers from ShallowClone.
+	task = task.Clone()
 	defer func() {
 		if err == nil {
 			return
@@ -244,6 +249,9 @@ func (s *Statement) unPipeline(task *api.TaskInfo) error {
 
 // Allocate the task to node
 func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
+	// Clone the task defensively to avoid mutating shared pointers from ShallowClone.
+	task = task.Clone()
+
 	defer func() {
 		if err != nil {
 			if rollbackErr := s.unallocate(task); rollbackErr != nil {

@@ -781,6 +781,15 @@ func (ji *JobInfo) Clone() *JobInfo {
 // (Allocated, TotalRequest) are rebuilt from the shared task pointers, so the
 // cloned JobInfo is consistent and self-contained.
 func (ji *JobInfo) ShallowClone() *JobInfo {
+	var pg *PodGroup
+	if ji.PodGroup != nil {
+		pg = ji.PodGroup.Clone()
+	}
+	var budget *DisruptionBudget
+	if ji.Budget != nil {
+		budget = ji.Budget.Clone()
+	}
+
 	info := &JobInfo{
 		UID:       ji.UID,
 		PgUID:     ji.PgUID,
@@ -796,7 +805,7 @@ func (ji *JobInfo) ShallowClone() *JobInfo {
 		Allocated:      EmptyResource(),
 		TotalRequest:   EmptyResource(),
 
-		PodGroup: ji.PodGroup.Clone(),
+		PodGroup: pg,
 
 		TaskStatusIndex:       map[TaskStatus]TasksMap{},
 		TaskMinAvailable:      make(map[string]int32, len(ji.TaskMinAvailable)),
@@ -804,7 +813,7 @@ func (ji *JobInfo) ShallowClone() *JobInfo {
 		Tasks:                 TasksMap{},
 		Preemptable:           ji.Preemptable,
 		RevocableZone:         ji.RevocableZone,
-		Budget:                ji.Budget.Clone(),
+		Budget:                budget,
 		AllocatedHyperNode:    ji.AllocatedHyperNode,
 		NetworkTopology:       cloneNetworkTopology(ji.NetworkTopology),
 		SubJobs:               map[SubJobID]*SubJobInfo{},
