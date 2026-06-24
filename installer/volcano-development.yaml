@@ -234,12 +234,13 @@ metadata:
   namespace: volcano-system
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-delete-policy": before-hook-creation
     "helm.sh/hook-weight": "5" # set a higher weight to reserve buffers.
   labels:
     app: volcano-admission-init
 spec:
   backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
   template:
     spec:
       securityContext:

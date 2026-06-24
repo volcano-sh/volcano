@@ -69,7 +69,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-delete-policy": before-hook-creation
     "helm.sh/hook-weight": "5" # set a higher weight to reserve buffers.
   labels:
     app: volcano-admission-init
@@ -78,6 +78,7 @@ metadata:
     {{- end }}
 spec:
   backoffLimit: 3
+  ttlSecondsAfterFinished: {{ .Values.custom.admission_init_ttl | default 3600 }}
   template:
     spec:
       {{- if $admission_tolerations }}
