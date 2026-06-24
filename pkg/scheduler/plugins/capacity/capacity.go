@@ -1480,7 +1480,16 @@ func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.S
 	}
 
 	cp.queueOpts[parentInfo.UID].children[queue.UID] = cp.queueOpts[queue.UID]
-	cp.queueOpts[queue.UID].ancestors = append(cp.queueOpts[parentInfo.UID].ancestors, parentInfo.UID)
+	// Build a fresh backing array instead of append-ing onto the parent's
+	// ancestors slice. append would reuse the parent's backing array whenever it
+	// has spare capacity, causing sibling subtrees' ancestors slices to alias the
+	// same memory and overwrite each other in deep hierarchies, which corrupts the
+	// ancestor chain used for hierarchical quota enforcement.
+	parentAncestors := cp.queueOpts[parentInfo.UID].ancestors
+	ancestors := make([]api.QueueID, len(parentAncestors)+1)
+	copy(ancestors, parentAncestors)
+	ancestors[len(ancestors)-1] = parentInfo.UID
+	cp.queueOpts[queue.UID].ancestors = ancestors
 	return nil
 }
 
@@ -1678,7 +1687,12 @@ func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidat
 
 func (cp *capacityPlugin) checkQueueAllocatableHierarchically(ssn *framework.Session, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 	// If hierarchical queue is not enabled, list will only contain the queue itself.
-	list := append(cp.queueOpts[queue.UID].ancestors, queue.UID)
+	// Do not append onto the stored ancestors slice: that could mutate its shared
+	// backing array. Copy into a fresh slice instead.
+	ancestors := cp.queueOpts[queue.UID].ancestors
+	list := make([]api.QueueID, 0, len(ancestors)+1)
+	list = append(list, ancestors...)
+	list = append(list, queue.UID)
 	// Check whether the candidate task can be allocated to the queue and all its ancestors.
 	for i := len(list) - 1; i >= 0; i-- {
 		if !cp.queueAllocatable(ssn.Queues[list[i]], candidate, cp.dynamicResourceAllocationEnable, cp.draConsumableCapacityEnable) {
@@ -1724,7 +1738,12 @@ func (cp *capacityPlugin) jobEnqueueable(queue *api.QueueInfo, job *api.JobInfo)
 
 func (cp *capacityPlugin) checkJobEnqueueableHierarchically(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo) bool {
 	// If hierarchical queue is not enabled, list will only contain the queue itself.
-	list := append(cp.queueOpts[queue.UID].ancestors, queue.UID)
+	// Do not append onto the stored ancestors slice: that could mutate its shared
+	// backing array. Copy into a fresh slice instead.
+	ancestors := cp.queueOpts[queue.UID].ancestors
+	list := make([]api.QueueID, 0, len(ancestors)+1)
+	list = append(list, ancestors...)
+	list = append(list, queue.UID)
 	// Check whether the job can be enqueued to the queue and all its ancestors.
 	for i := len(list) - 1; i >= 0; i-- {
 		if inqueue, resourceNames := cp.jobEnqueueable(ssn.Queues[list[i]], job); !inqueue {
