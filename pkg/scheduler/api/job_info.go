@@ -844,7 +844,6 @@ func (ji *JobInfo) ShallowClone() *JobInfo {
 	return info
 }
 
-
 func (ji JobInfo) String() string {
 	res := ""
 
