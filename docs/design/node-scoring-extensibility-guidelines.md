@@ -15,7 +15,7 @@ The `PrioritizeNodes` phase in Volcano calculates the optimal placement for task
 
 ### BatchNodeOrderFn
 - **Primary Use Case:** When a plugin requires evaluating aggregated state across the *entire* node list simultaneously before scoring (similar to PreScore semantics) or when performing operations that benefit from I/O consolidation (such as Extender webhooks).
-- **Concurrency Model:** Managed by the plugin. Unlike `NodeOrderFn`, the framework passes the entire node slice to the plugin in a single execution thread. 
+- **Concurrency Model:** Managed by the plugin. Unlike `NodeOrderFn`, the framework passes the entire node slice to the plugin in a single goroutine. 
 - **Guideline:** Do **not** use sequential/serial `for _, node := range nodes` loops for CPU-bound evaluations in `BatchNodeOrderFn`, as this will serialize the scoring process and bottleneck the entire scheduler. Plugin developers **must** utilize `workqueue.ParallelizeUntil` to evaluate node scores concurrently if they iterate through nodes within this function.
 
 ## 2. Lock-Free Map Execution

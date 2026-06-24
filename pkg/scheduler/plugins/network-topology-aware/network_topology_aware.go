@@ -36,7 +36,13 @@ import (
 
 const (
 	// PluginName indicates name of volcano scheduler plugin.
-	PluginName            = "network-topology-aware"
+	PluginName = "network-topology-aware"
+
+	// batchNodeOrderFnWorkers is the number of concurrent goroutines used during node scoring
+	batchNodeOrderFnWorkers = 16
+)
+
+const (
 	FullScore             = 1.0
 	ZeroScore             = 0.0
 	NetworkTopologyWeight = "weight"
@@ -500,7 +506,7 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFnForNormalPods(ssn *framew
 	}
 
 	nodeScoresList := make([]float64, len(nodes))
-	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), func(index int) {
+	workqueue.ParallelizeUntil(context.TODO(), batchNodeOrderFnWorkers, len(nodes), func(index int) {
 		node := nodes[index]
 		totalScore := 0.0
 		for tier := nta.hyperNodesTier.minTier; tier <= nta.hyperNodesTier.maxTier; tier++ {
@@ -571,33 +577,46 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFnForNetworkAwarePods(ssn *
 	if allocatedHyperNode == "" {
 		return nodeScores, nil
 	}
+
+	// Pre-build node to hypernode map to avoid O(N) lookup inside the parallel loops.
+	nodeToHyperNode := make(map[string]string)
+	if len(ssn.HyperNodesTiers) > 0 {
+		lowestTier := ssn.HyperNodesTiers[0]
+		for hyperNodeName := range ssn.HyperNodesSetByTier[lowestTier] {
+			for _, node := range ssn.RealNodesList[hyperNodeName] {
+				nodeToHyperNode[node.Name] = hyperNodeName
+			}
+		}
+	}
+
 	// Calculate score based on LCAHyperNode tier.
 	nodeScoresList := make([]float64, len(nodes))
-	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), func(index int) {
+	workqueue.ParallelizeUntil(context.TODO(), batchNodeOrderFnWorkers, len(nodes), func(index int) {
 		node := nodes[index]
-		hyperNode := util.FindHyperNodeForNode(node.Name, ssn.RealNodesList, ssn.HyperNodesTiers, ssn.HyperNodesSetByTier)
+		hyperNode := nodeToHyperNode[node.Name]
 		score := nta.networkTopologyAwareScore(hyperNode, allocatedHyperNode, ssn.HyperNodes)
 		nodeScoresList[index] = score
 	})
 
 	var maxScore float64 = -1
-	scoreToNodes := map[float64][]string{}
+	var candidateNodes []string
 	for i, node := range nodes {
 		score := nodeScoresList[i]
 		nodeScores[node.Name] = score
-		if score >= maxScore {
+		if score > maxScore {
 			maxScore = score
-			scoreToNodes[maxScore] = append(scoreToNodes[maxScore], node.Name)
+			candidateNodes = []string{node.Name}
+		} else if score == maxScore {
+			candidateNodes = append(candidateNodes, node.Name)
 		}
 	}
 
 	// Calculate score based on the number of tasks scheduled for the subjob when max score of node has more than one.
-	if len(scoreToNodes[maxScore]) > 1 {
-		candidateNodes := scoreToNodes[maxScore]
+	if len(candidateNodes) > 1 {
 		candidateScores := make([]float64, len(candidateNodes))
-		workqueue.ParallelizeUntil(context.TODO(), 16, len(candidateNodes), func(index int) {
+		workqueue.ParallelizeUntil(context.TODO(), batchNodeOrderFnWorkers, len(candidateNodes), func(index int) {
 			node := candidateNodes[index]
-			hyperNode := util.FindHyperNodeForNode(node, ssn.RealNodesList, ssn.HyperNodesTiers, ssn.HyperNodesSetByTier)
+			hyperNode := nodeToHyperNode[node]
 			candidateScores[index] = nta.scoreWithTaskNum(hyperNode, subJob.Tasks, ssn.RealNodesList)
 		})
 		for i, node := range candidateNodes {
