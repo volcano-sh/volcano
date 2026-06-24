@@ -188,7 +188,7 @@ func (pp *NodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddBatchNodeOrderFn(pp.Name(), func(task *api.TaskInfo, nodeInfo []*api.NodeInfo) (map[string]float64, error) {
 		state := k8sframework.NewCycleState()
-		return pp.BatchNodeOrderFn(task, nodeInfo, state)
+		return pp.BatchNodeOrderFn(task, nodeInfo, nodeMap, state)
 	})
 }
 
@@ -329,13 +329,15 @@ func (pp *NodeOrderPlugin) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo, k
 	return nodeScore, nil
 }
 
-func (pp *NodeOrderPlugin) BatchNodeOrderFn(task *api.TaskInfo, nodeInfo []*api.NodeInfo, state *k8sframework.CycleState) (map[string]float64, error) {
+func (pp *NodeOrderPlugin) BatchNodeOrderFn(task *api.TaskInfo, nodeInfo []*api.NodeInfo, nodeMap map[string]fwk.NodeInfo, state *k8sframework.CycleState) (map[string]float64, error) {
 	nodeInfos := make([]fwk.NodeInfo, 0, len(nodeInfo))
 	nodes := make([]*v1.Node, 0, len(nodeInfo))
 	for _, node := range nodeInfo {
-		newNodeInfo := &k8sframework.NodeInfo{}
-		newNodeInfo.SetNode(node.Node)
-		nodeInfos = append(nodeInfos, newNodeInfo)
+		info, ok := nodeMap[node.Name]
+		if !ok {
+			continue
+		}
+		nodeInfos = append(nodeInfos, info)
 		nodes = append(nodes, node.Node)
 	}
 	nodeScores := make(map[string]float64, len(nodes))
