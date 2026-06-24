@@ -95,18 +95,31 @@ func CalculateAllocatedTaskNum(job *api.JobInfo) int {
 
 // GetInqueueResource returns reserved resource for running job whose part of pods have not been allocated resource.
 func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource {
+	minResources := api.NewResource(*job.PodGroup.Spec.MinResources)
 	inqueue := &api.Resource{}
-	for rName, rQuantity := range *job.PodGroup.Spec.MinResources {
+	for rName := range *job.PodGroup.Spec.MinResources {
 		switch rName {
 		case v1.ResourceCPU:
-			reservedCPU := float64(rQuantity.MilliValue()) - allocated.MilliCPU
+			reservedCPU := minResources.MilliCPU - allocated.MilliCPU
 			if reservedCPU > 0 {
 				inqueue.MilliCPU = reservedCPU
 			}
 		case v1.ResourceMemory:
-			reservedMemory := float64(rQuantity.Value()) - allocated.Memory
+			reservedMemory := minResources.Memory - allocated.Memory
 			if reservedMemory > 0 {
 				inqueue.Memory = reservedMemory
+			}
+		case v1.ResourcePods:
+			// pods is stored in ScalarResources in whole units (see api.NewResource),
+			// unlike other scalars which are milli-units, so reserve it without conversion.
+			// It is also excluded from the generic scalar branch below because
+			// v1helper.IsScalarResourceName(pods) is false.
+			reservedPods := minResources.ScalarResources[rName] - allocated.ScalarResources[rName]
+			if reservedPods > 0 {
+				if inqueue.ScalarResources == nil {
+					inqueue.ScalarResources = make(map[v1.ResourceName]float64)
+				}
+				inqueue.ScalarResources[rName] = reservedPods
 			}
 		default:
 			if api.IsCountQuota(rName) || !v1helper.IsScalarResourceName(rName) {
@@ -126,10 +139,11 @@ func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource
 			if inqueue.ScalarResources == nil {
 				inqueue.ScalarResources = make(map[v1.ResourceName]float64)
 			}
+			reservedScalar := minResources.ScalarResources[rName]
 			if allocatedMount, ok := allocated.ScalarResources[rName]; !ok {
-				inqueue.ScalarResources[rName] = float64(rQuantity.Value())
+				inqueue.ScalarResources[rName] = reservedScalar
 			} else {
-				reservedScalarRes := float64(rQuantity.Value()) - allocatedMount
+				reservedScalarRes := reservedScalar - allocatedMount
 				if reservedScalarRes > 0 {
 					inqueue.ScalarResources[rName] = reservedScalarRes
 				}
