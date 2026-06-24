@@ -162,7 +162,10 @@ func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.St
 				continue
 			}
 
-			attemptVictims := append([]*api.TaskInfo(nil), selectedVictims...)
+			attemptVictims := make([]*api.TaskInfo, 0, len(selectedVictims))
+			for _, victim := range selectedVictims {
+				attemptVictims = append(attemptVictims, victim.Clone())
+			}
 
 			jobHN := ssn.HyperNodes[domain]
 			if jobHN == nil {
@@ -206,7 +209,7 @@ func (gp *Action) selectDomainBundles(ssn *framework.Session, preemptorJob *api.
 			if preemptorJob.Priority <= victimJob.Priority || task.Job == preemptorJob.UID {
 				continue
 			}
-			candidatesByJob[task.Job] = append(candidatesByJob[task.Job], task.Clone())
+			candidatesByJob[task.Job] = append(candidatesByJob[task.Job], task)
 		}
 	}
 

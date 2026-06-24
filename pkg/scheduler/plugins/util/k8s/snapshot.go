@@ -131,8 +131,10 @@ func (s *Snapshot) AddOrUpdateNodes(nodes []*api.NodeInfo) {
 
 // addOrUpdateNode adds or updates node information in both fwkInfo and volcanoInfo.
 func (s *Snapshot) addOrUpdateNode(nodeInfo *api.NodeInfo) {
-	// Create Volcano NodeInfo
-	volcanoNodeInfo := nodeInfo.Clone()
+	// Snapshot node resources and metadata without deep-copying every task.
+	// TaskInfo values are treated as read-only by the agent scheduler snapshot,
+	// and NodeInfo methods clone tasks before storing mutable entries.
+	volcanoNodeInfo := nodeInfo.ShallowClone()
 	nodeName := volcanoNodeInfo.Node.Name
 	// Create k8s NodeInfo from vcNodeInfo
 	fwkNodeInfo := framework.NewNodeInfo(volcanoNodeInfo.Pods()...)

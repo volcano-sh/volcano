@@ -353,9 +353,9 @@ func (pmpt *Action) normalPreempt(
 		var preemptees []*api.TaskInfo
 		for _, task := range node.Tasks {
 			if filter == nil {
-				preemptees = append(preemptees, task.Clone())
+				preemptees = append(preemptees, task)
 			} else if filter(task) {
-				preemptees = append(preemptees, task.Clone())
+				preemptees = append(preemptees, task)
 			}
 		}
 		victims := ssn.Preemptable(preemptor, preemptees)
@@ -390,7 +390,7 @@ func (pmpt *Action) normalPreempt(
 			if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 				break
 			}
-			preemptee := victimsQueue.Pop().(*api.TaskInfo)
+			preemptee := victimsQueue.Pop().(*api.TaskInfo).Clone()
 			klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
 				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
 			nodeStmt.Evict(preemptee, "preempt")

@@ -17,6 +17,7 @@
 package api
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -31,6 +32,33 @@ import (
 
 func nodeInfoEqual(l, r *NodeInfo) bool {
 	return reflect.DeepEqual(l, r)
+}
+
+func BenchmarkNodeInfoClone(b *testing.B) {
+	const tasksPerNode = 100
+	node := NewNodeInfo(buildNode("benchmark-node", nil, BuildResourceList("100", "400Gi", []ScalarResource{{Name: "pods", Value: "200"}}...)))
+	for i := 0; i < tasksPerNode; i++ {
+		pod := buildPod("benchmark", fmt.Sprintf("pod-%d", i), "benchmark-node", v1.PodRunning, BuildResourceList("100m", "128Mi"), nil, nil)
+		task := NewTaskInfo(pod)
+		task.Status = Running
+		if err := node.AddTask(task); err != nil {
+			b.Fatalf("failed to add task: %v", err)
+		}
+	}
+
+	b.Run("deep", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			_ = node.Clone()
+		}
+	})
+
+	b.Run("shallow", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			_ = node.ShallowClone()
+		}
+	})
 }
 
 func makeNodeOthers(nodeName string, node *v1.Node) map[string]interface{} {
