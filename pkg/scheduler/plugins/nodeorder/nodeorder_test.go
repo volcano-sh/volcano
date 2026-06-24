@@ -362,20 +362,26 @@ func TestInitPlugin(t *testing.T) {
 			name:   "default weights",
 			weight: calculateWeight(nil),
 			expectNodeOrderKeys: []string{
-				noderesources.Name + "_LeastAllocated",
-				noderesources.BalancedAllocationName,
-				nodeaffinity.Name,
 				imagelocality.Name,
 			},
 			expectNoNodeOrderKeys: []string{
+				noderesources.Name + "_LeastAllocated",
 				noderesources.Name + "_MostAllocated",
+				noderesources.BalancedAllocationName,
+				nodeaffinity.Name,
 			},
 			expectScorePlugins: []string{
+				noderesources.Name + "_LeastAllocated",
+				noderesources.BalancedAllocationName,
+				nodeaffinity.Name,
 				interpodaffinity.Name,
 				tainttoleration.Name,
 				podtopologyspread.Name,
 			},
-			expectNotInScorePlugins: []string{},
+			expectNotInScorePlugins: []string{
+				noderesources.Name + "_MostAllocated",
+				imagelocality.Name,
+			},
 		},
 		{
 			name:                  "all weights zero",
@@ -384,6 +390,10 @@ func TestInitPlugin(t *testing.T) {
 			expectNoNodeOrderKeys: []string{noderesources.Name + "_LeastAllocated", noderesources.Name + "_MostAllocated", noderesources.BalancedAllocationName, nodeaffinity.Name, imagelocality.Name},
 			expectScorePlugins:    []string{},
 			expectNotInScorePlugins: []string{
+				noderesources.Name + "_LeastAllocated",
+				noderesources.Name + "_MostAllocated",
+				noderesources.BalancedAllocationName,
+				nodeaffinity.Name,
 				interpodaffinity.Name,
 				tainttoleration.Name,
 				podtopologyspread.Name,
