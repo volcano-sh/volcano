@@ -272,6 +272,28 @@ func (gs *GPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
 }
 
 func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
+	if gs == nil || pod == nil || pod.Annotations == nil {
+		return nil
+	}
+
+	if pod.Annotations[DeviceBindPhase] == "success" {
+		return nil
+	}
+
+	keys := []string{
+		AssignedNodeAnnotations,          // volcano.sh/vgpu-node
+		AssignedIDsAnnotations,           // volcano.sh/vgpu-ids-new
+		AssignedIDsToAllocateAnnotations, // volcano.sh/devices-to-allocate
+		AssignedTimeAnnotations,          // volcano.sh/vgpu-time
+		BindTimeAnnotations,              // volcano.sh/bind-time
+		DeviceBindPhase,                  // volcano.sh/bind-phase
+	}
+	if err := devices.RemovePodAnnotations(kubeClient, pod, keys); err != nil {
+		return err
+	}
+	for _, k := range keys {
+		delete(pod.Annotations, k)
+	}
 	return nil
 }
 

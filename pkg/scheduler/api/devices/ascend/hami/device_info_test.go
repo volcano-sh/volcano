@@ -17,14 +17,19 @@ limitations under the License.
 package hami
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
+	"volcano.sh/volcano/third_party/hami/util"
 
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 var config_yaml = `
@@ -387,5 +392,111 @@ func Test_verifyReq(t *testing.T) {
 				assert.Error(t, err)
 			}
 		})
+	}
+}
+
+const (
+	testInRequestKey = "hami.io/Ascend910A-devices-to-allocate"
+	testSupportKey   = "hami.io/Ascend910A-devices-allocated"
+	testHuaweiKey    = "huawei.com/Ascend910A"
+)
+
+// setupReleaseTestKeys populates the global device key maps needed by Release and
+// returns a cleanup function to restore them.  This avoids leaking state across
+// tests via init().
+func setupReleaseTestKeys() func() {
+	prevInReq, prevSup := devices.InRequestDevices["Ascend910A"], devices.SupportDevices["Ascend910A"]
+	devices.InRequestDevices["Ascend910A"] = testInRequestKey
+	devices.SupportDevices["Ascend910A"] = testSupportKey
+	return func() {
+		if prevInReq == "" {
+			delete(devices.InRequestDevices, "Ascend910A")
+		} else {
+			devices.InRequestDevices["Ascend910A"] = prevInReq
+		}
+		if prevSup == "" {
+			delete(devices.SupportDevices, "Ascend910A")
+		} else {
+			devices.SupportDevices["Ascend910A"] = prevSup
+		}
+	}
+}
+
+func hamiPodWithAnnotations(phase string) *v1.Pod {
+	return &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "worker-0",
+			Namespace: "default",
+			Annotations: map[string]string{
+				util.AssignedNodeAnnotations: "node-a",
+				util.AssignedTimeAnnotations: "1700000000",
+				util.DeviceBindPhase:         phase,
+				util.BindTimeAnnotations:     "1700000000",
+				"predicate-time":             "1700000000",
+				testInRequestKey:             "GPU-aaaa,Ascend910A,4096,0",
+				testSupportKey:               "GPU-aaaa,Ascend910A,4096,0",
+				testHuaweiKey:                `[{"UUID":"GPU-aaaa","Temp":"vir04"}]`,
+				"keep-me":                    "yes",
+			},
+		},
+	}
+}
+
+func TestHAMiReleaseCleansSpeculativeAnnotations(t *testing.T) {
+	cleanup := setupReleaseTestKeys()
+	defer cleanup()
+
+	pod := hamiPodWithAnnotations("allocating")
+	client := fake.NewSimpleClientset(pod)
+	ads := &AscendDevices{NodeName: "node-a"}
+
+	if err := ads.Release(client, pod); err != nil {
+		t.Fatalf("Release returned error: %v", err)
+	}
+
+	for _, k := range []string{
+		util.AssignedNodeAnnotations,
+		util.DeviceBindPhase,
+		"predicate-time",
+		testInRequestKey,
+		testSupportKey,
+		testHuaweiKey,
+	} {
+		if _, ok := pod.Annotations[k]; ok {
+			t.Errorf("in-memory annotation %s should have been removed", k)
+		}
+	}
+	if pod.Annotations["keep-me"] != "yes" {
+		t.Errorf("non-device annotation must be preserved in-memory")
+	}
+
+	got, err := client.CoreV1().Pods("default").Get(context.Background(), "worker-0", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get pod: %v", err)
+	}
+	if _, ok := got.Annotations[util.AssignedNodeAnnotations]; ok {
+		t.Errorf("apiserver annotation %s should have been removed", util.AssignedNodeAnnotations)
+	}
+	if got.Annotations["keep-me"] != "yes" {
+		t.Errorf("non-device annotation must be preserved on apiserver")
+	}
+}
+
+func TestHAMiReleaseKeepsCommittedAnnotations(t *testing.T) {
+	cleanup := setupReleaseTestKeys()
+	defer cleanup()
+
+	pod := hamiPodWithAnnotations("success")
+	client := fake.NewSimpleClientset(pod)
+	ads := &AscendDevices{NodeName: "node-a"}
+
+	if err := ads.Release(client, pod); err != nil {
+		t.Fatalf("Release returned error: %v", err)
+	}
+	if pod.Annotations[util.AssignedNodeAnnotations] != "node-a" {
+		t.Errorf("committed pod's vgpu-node must be preserved")
+	}
+	if pod.Annotations[util.DeviceBindPhase] != "success" {
+		t.Errorf("committed pod's bind-phase must be preserved")
 	}
 }
