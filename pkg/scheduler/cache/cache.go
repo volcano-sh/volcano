@@ -1508,8 +1508,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		if !value.Ready() {
 			continue
 		}
-
-		snapshot.Nodes[value.Name] = value.ShallowClone()
+		snapshot.Nodes[value.Name] = value.Clone()
 
 		if value.RevocableZone != "" {
 			snapshot.RevocableNodes[value.Name] = snapshot.Nodes[value.Name]
@@ -1546,7 +1545,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 				value.Namespace, value.Name, priName, value.Priority)
 		}
 
-		clonedJob := value.ShallowClone()
+		clonedJob := value.Clone()
 
 		cloneJobLock.Lock()
 		snapshot.Jobs[value.UID] = clonedJob

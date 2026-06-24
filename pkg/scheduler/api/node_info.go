@@ -249,9 +249,9 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 // the original. This is safe for read-only scheduling snapshots where the
 // caller does not mutate task fields (Status, NodeName, Resreq, etc.).
 //
-// Callers that evict or pipeline a task must clone the task themselves before
-// calling Statement.Evict / Statement.Pipeline, because those operations
-// mutate the task's TransactionContext in-place.
+// IMPORTANT: Any code path that mutates a task (e.g. status transitions during
+// preemption/reclaim/allocate) must first operate on a cloned *TaskInfo to avoid
+// mutating the shared pointers retained by ShallowClone snapshots.
 //
 // Resource counters (Idle, Used, Releasing, Pipelined) are copied (they are
 // exclusive to the NodeInfo wrapper and not shared with any task), so the

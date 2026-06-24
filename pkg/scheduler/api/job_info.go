@@ -772,10 +772,12 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 // ShallowClone clones a JobInfo but shallow-copies task pointers instead of
 // deep-copying each task. The returned JobInfo shares *TaskInfo pointers with
-// the original. This is safe for read-only scheduling snapshots: plugins only
-// read task fields during filtering and ordering. Mutations happen through the
-// Statement mechanism (Evict/Allocate/Pipeline), and those callers are
-// responsible for cloning the task before mutating it.
+// the original. This is safe for read-only scheduling snapshots where the
+// caller does not mutate task fields (Status, NodeName, Resreq, etc.).
+//
+// IMPORTANT: Any code path that mutates a task (e.g. status transitions during
+// preemption/reclaim/allocate) must first operate on a cloned *TaskInfo to avoid
+// mutating the shared pointers retained by ShallowClone snapshots.
 //
 // Indexes (TaskStatusIndex, SubJobs, TaskToSubJob) and resource counters
 // (Allocated, TotalRequest) are rebuilt from the shared task pointers, so the
