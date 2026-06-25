@@ -952,10 +952,10 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 	// Allocate idle resource to the task.
 	if task.InitResreq.LessEqual(node.Idle, api.Zero) {
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
-			// Clone the task before mutation to avoid corrupting the cache when tasks
-			// come from shallow-cloned snapshots (shared *TaskInfo pointers).
-			taskClone := task.Clone()
-			if err = stmt.Allocate(taskClone, node); err != nil {
+		// Clone the task before mutation to avoid corrupting the cache when tasks
+		// come from shallow-cloned snapshots (shared *TaskInfo pointers).
+		taskClone := task.Clone()
+		if err = stmt.Allocate(taskClone, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 				task.UID, node.Name, alloc.session.UID, err)
 		} else {
@@ -972,10 +972,10 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 	if task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 		klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 			task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
-			// Clone the task before mutation to avoid corrupting the cache when tasks
-			// come from shallow-cloned snapshots (shared *TaskInfo pointers).
-			taskClone := task.Clone()
-			if err = stmt.Pipeline(taskClone, node.Name, false); err != nil {
+		// Clone the task before mutation to avoid corrupting the cache when tasks
+		// come from shallow-cloned snapshots (shared *TaskInfo pointers).
+		taskClone := task.Clone()
+		if err = stmt.Pipeline(taskClone, node.Name, false); err != nil {
 			klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 				task.UID, node.Name, alloc.session.UID, err)
 		} else {
