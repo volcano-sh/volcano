@@ -25,7 +25,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -120,7 +119,7 @@ func AdmitJobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 
 func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionResponse) string {
 	var b strings.Builder
-	taskNames := map[string]string{}
+	taskNames := map[string]struct{}{}
 	var totalReplicas int32
 
 	// Note: Basic validations like minAvailable >= 0, maxRetry >= 0, TTLSecondsAfterFinished >= 0,
@@ -163,7 +162,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 			fmt.Fprintf(&b, " duplicated task name %s;", task.Name)
 			break
 		} else {
-			taskNames[task.Name] = task.Name
+			taskNames[task.Name] = struct{}{}
 		}
 		if err := validatePolicies(task.Policies, field.NewPath("spec.tasks.policies")); err != nil {
 			b.WriteString(err.Error())
@@ -213,15 +212,9 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		if queue.Name == "root" {
 			b.WriteString(" can not submit job to root queue;")
 		} else {
-			queueList, err := config.QueueLister.List(labels.Everything())
+			childQueues, err := config.GetQueuesByParent(queue.Name)
 			if err != nil {
-				fmt.Fprintf(&b, "failed to get list queues: %v;", err)
-			}
-			childQueues := make([]*schedulingv1beta1.Queue, 0)
-			for _, childQueue := range queueList {
-				if childQueue.Spec.Parent == queue.Name {
-					childQueues = append(childQueues, childQueue)
-				}
+				fmt.Fprintf(&b, "failed to get child queues for queue %s: %v;", queue.Name, err)
 			}
 			if len(childQueues) > 0 {
 				fmt.Fprintf(&b, " can only submit job to leaf queue, "+"queue `%s` has %d child queues;", queue.Name, len(childQueues))
@@ -405,7 +398,7 @@ func validateTaskTopoPolicy(task v1alpha1.TaskSpec, index int) string {
 	for id, container := range append(template.Spec.Containers, template.Spec.InitContainers...) {
 		requestNum := guaranteedCPUs(container)
 		if requestNum == 0 {
-			return fmt.Sprintf("the cpu request isn't  an integer in spec.task[%d] container[%d].",
+			return fmt.Sprintf("the cpu request isn't an integer in spec.task[%d] container[%d].",
 				index, id)
 		}
 	}
