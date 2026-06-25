@@ -1508,7 +1508,10 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		if !value.Ready() {
 			continue
 		}
-		snapshot.Nodes[value.Name] = value.Clone()
+		// Use ShallowClone instead of Clone to avoid deep-copying task structures
+		// during snapshot creation. TaskInfo pointers are treated as read-only during
+		// scheduling and mutations happen through Statement/Session methods that clone tasks.
+		snapshot.Nodes[value.Name] = value.ShallowClone()
 
 		if value.RevocableZone != "" {
 			snapshot.RevocableNodes[value.Name] = snapshot.Nodes[value.Name]
@@ -1545,7 +1548,9 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 				value.Namespace, value.Name, priName, value.Priority)
 		}
 
-		clonedJob := value.Clone()
+		// Use ShallowClone instead of Clone to improve performance during job snapshot.
+		// Mutations to tasks are handled through defensive cloning in Statement/Session methods.
+		clonedJob := value.ShallowClone()
 
 		cloneJobLock.Lock()
 		snapshot.Jobs[value.UID] = clonedJob
