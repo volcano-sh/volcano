@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.25.0 AS builder
+FROM golang:1.25.0@sha256:5502b0e56fca23feba76dbc5387ba59c593c02ccc2f0f7355871ea9a0852cebe AS builder
 WORKDIR /go/src/volcano.sh/
 COPY go.mod go.sum ./
 # Copy staging directory before go mod download since go.mod has replace directive
@@ -21,6 +21,6 @@ RUN go mod download
 ADD . volcano
 RUN cd volcano && make vc-scheduler
 
-FROM alpine:latest
+FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-scheduler /vc-scheduler
 ENTRYPOINT ["/vc-scheduler"]

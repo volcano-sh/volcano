@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG OPEN_EULER_IMAGE_TAG
+ARG OPEN_EULER_IMAGE_TAG=22.03-lts-sp2@sha256:e8c56d3579a10fedd43c5e123db1143b6dcbe4cb59a6e45d6b0b2cf9b13a0c3b
 ARG BWM_RPM_NAME
 
-FROM golang:1.25.0 AS builder
+FROM golang:1.25.0@sha256:5502b0e56fca23feba76dbc5387ba59c593c02ccc2f0f7355871ea9a0852cebe AS builder
 WORKDIR /go/src/volcano.sh/
 COPY go.mod go.sum ./
 # Copy staging directory before go mod download since go.mod has replace directive
@@ -30,7 +30,7 @@ RUN yum install -y cpio && \
     yum install -y --downloadonly --destdir=./ oncn-bwm && \
     rpm2cpio $(ls | grep oncn-bwm) | cpio -div
 
-FROM alpine:latest
+FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 RUN apk add sudo libcap
 COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-agent /vc-agent
 COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/network-qos \

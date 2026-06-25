@@ -51,7 +51,14 @@ shift 5
   # To support running this script from anywhere, first cd into this directory,
   # and then install with forced module mode on and fully qualified name.
   cd "$(dirname "${0}")"
-  GO111MODULE=on GOOS=${OS} go install k8s.io/code-generator/cmd/{defaulter-gen@release-1.29,conversion-gen@release-1.29,client-gen@release-1.29,lister-gen@release-1.29,informer-gen@release-1.29,deepcopy-gen@release-1.29,openapi-gen@release-1.29}
+  GO111MODULE=on GOOS=${OS} go install \
+    k8s.io/code-generator/cmd/defaulter-gen@3f91291add4375b42d0f8c4d6d041bb6ed440d97 \
+    k8s.io/code-generator/cmd/conversion-gen@3f91291add4375b42d0f8c4d6d041bb6ed440d97 \
+    k8s.io/code-generator/cmd/client-gen@3f91291add4375b42d0f8c4d6d041bb6ed440d97 \
+    k8s.io/code-generator/cmd/lister-gen@3f91291add4375b42d0f8c4d6d041bb6ed440d97 \
+    k8s.io/code-generator/cmd/informer-gen@3f91291add4375b42d0f8c4d6d041bb6ed440d97 \
+    k8s.io/code-generator/cmd/deepcopy-gen@3f91291add4375b42d0f8c4d6d041bb6ed440d97 \
+    k8s.io/code-generator/cmd/openapi-gen@3f91291add4375b42d0f8c4d6d041bb6ed440d97
 )
 
 function codegen::join() { local IFS="$1"; shift; echo "$*"; }
