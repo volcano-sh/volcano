@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -191,6 +191,9 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 			if _, found := plugins.GetPluginBuilder(name); !found {
 				msg += fmt.Sprintf(" unable to find job plugin: %s;", name)
 			}
+		}
+		if err := validateSvcPlugin(job.Spec.Plugins); err != nil {
+			msg += " " + err.Error() + ";"
 		}
 	}
 

@@ -26,12 +26,16 @@ host files under the directory `/etc/volcano/`.
 * A headless service whose name is the same with job will be created.
 * If `disable-network-policy` is set to be false, a `NetworkPolicy` object with the type `Ingress` will be created for
 the job.
+* If `network-policy-strategy` is specified, the created `NetworkPolicy` will include annotation
+`ovn.kubernetes.io/network_policy_strategy` with the specified value. This annotation is used by OVN-Kubernetes to
+control network policy enforcement strategy.
 
 ## Arguments
-| ID  | Name                          | Value           | Default Value | Required | Description                                          | Example                                       |
-|-----|-------------------------------|-----------------|---------------|----------|------------------------------------------------------|-----------------------------------------------|
-| 1   | `publish-not-ready-addresses` | `true`/`false`  | `false`       | N        | whether publish the pod address when it is not ready | svc: ["--publish-not-ready-addresses=true"]   |
-| 2   | `disable-network-policy`      | `true`/`false`  | `false`       | N        | whether disable network policy for the job           | svc: ["--disable-network-policy=true"]        |
+| ID  | Name                          | Value                                                                 | Default Value | Required | Description                                          | Example                                       |
+|-----|-------------------------------|-----------------------------------------------------------------------|---------------|----------|------------------------------------------------------|-----------------------------------------------|
+| 1   | `publish-not-ready-addresses` | `true`/`false`                                                        | `false`       | N        | whether publish the pod address when it is not ready | svc: ["--publish-not-ready-addresses=true"]   |
+| 2   | `disable-network-policy`      | `true`/`false`                                                        | `false`       | N        | whether disable network policy for the job           | svc: ["--disable-network-policy=true"]        |
+| 3   | `network-policy-strategy`     | `allow`/`allow-related`/`allow-stateless`/`drop`/`reject`             | `""`          | N        | OVN network policy strategy for the job              | svc: ["--network-policy-strategy=allow-related"] |
 
 ## Examples
 ```yaml
@@ -327,6 +331,33 @@ spec:
   policyTypes:
   - Ingress
 ```
+* When `network-policy-strategy` is specified (e.g. `svc: ["--network-policy-strategy=allow-related"]`), the generated
+`NetworkPolicy` will include annotation `ovn.kubernetes.io/network_policy_strategy` with the specified value:
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    ovn.kubernetes.io/network_policy_strategy: allow-related
+  name: tensorflow-dist-mnist
+  namespace: default
+spec:
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          volcano.sh/job-name: tensorflow-dist-mnist
+          volcano.sh/job-namespace: default
+  podSelector:
+    matchLabels:
+      volcano.sh/job-name: tensorflow-dist-mnist
+      volcano.sh/job-namespace: default
+  policyTypes:
+  - Ingress
+```
 ## Note
 * DNS plugin is required in your Kubernetes cluster such as `corndns`.
 * Kubernetes version >= v1.14
+* Valid values for `network-policy-strategy` are `allow`, `allow-related`, `allow-stateless`, `drop`, and `reject`.
+The value must be specified using the `--network-policy-strategy=<value>` format. Space-separated arguments are not supported.
+Invalid or missing values will be rejected by ValidatingAdmissionPolicy when VAP is enabled, or by the job validating webhook otherwise.

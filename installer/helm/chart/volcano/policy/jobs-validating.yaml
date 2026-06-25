@@ -49,6 +49,10 @@ spec:
     - name: validActions
       expression: |
         ["AbortJob", "RestartJob", "RestartTask", "RestartPod", "TerminateJob", "CompleteJob", "ResumeJob"]
+    # Valid svc plugin network-policy-strategy values
+    - name: validNetworkPolicyStrategies
+      expression: |
+        ["allow", "allow-related", "allow-stateless", "drop", "reject"]
   validations:
     # Basic job validations
     # Validate minAvailable >= 0
@@ -237,6 +241,18 @@ spec:
       messageExpression: |
         has(object.metadata) && has(object.metadata.name) && format.qualifiedName().validate(object.metadata.name).hasValue() ?
         'job name errors: ' + format.qualifiedName().validate(object.metadata.name).orValue([]).join('; ') : ''
+      reason: Invalid
+    # Validate svc plugin network-policy-strategy argument
+    - expression: |
+        !has(object.spec) || !has(object.spec.plugins) || !has(object.spec.plugins.svc) ||
+        (
+          object.spec.plugins.svc.all(arg, arg != "--network-policy-strategy") &&
+          object.spec.plugins.svc.all(arg,
+            !arg.startsWith("--network-policy-strategy=") ||
+            arg.replace("--network-policy-strategy=", "") in variables.validNetworkPolicyStrategies
+          )
+        )
+      message: "invalid svc plugin network-policy-strategy, valid values are: allow, allow-related, allow-stateless, drop, reject"
       reason: Invalid
 
 ---

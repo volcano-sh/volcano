@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,9 @@ limitations under the License.
 package svc
 
 const (
+	// NetworkPolicyStrategyAnnotation is the OVN annotation key for network policy strategy.
+	NetworkPolicyStrategyAnnotation = "ovn.kubernetes.io/network_policy_strategy"
+
 	// ConfigMapTaskHostFmt key in config map
 	ConfigMapTaskHostFmt = "%s.host"
 	// EnvTaskHostFmt is the key for host list in environment
