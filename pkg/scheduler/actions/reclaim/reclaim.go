@@ -244,7 +244,8 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			continue
 		}
 
-		if err := nodeStmt.Pipeline(task, n.Name, evictionOccurred); err != nil {
+		taskClone := task.Clone()
+		if err := nodeStmt.Pipeline(taskClone, n.Name, evictionOccurred); err != nil {
 			klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 				task.Namespace, task.Name, n.Name)
 			nodeStmt.Discard()

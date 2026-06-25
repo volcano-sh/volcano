@@ -408,7 +408,8 @@ func (pmpt *Action) normalPreempt(
 
 		// If preemptor's queue is not allocatable, it means preemptor cannot be allocated. So no need care about the node idle resource
 		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
-			if err := nodeStmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
+			preemptorClone := preemptor.Clone()
+			if err := nodeStmt.Pipeline(preemptorClone, node.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
 				// Pipeline failed: discard all evictions for this node and try the next one.
@@ -498,7 +499,8 @@ func (pmpt *Action) topologyAwarePreempt(
 	tmpStmt := framework.NewStatement(ssn)
 
 	prepareCandidate(bestCandidate, preemptor.Pod, tmpStmt)
-	if err := tmpStmt.Pipeline(preemptor, bestCandidate.Name(), true); err != nil {
+	// Clone preemptor before Pipeline to avoid mutating the shared task pointer
+	if err := tmpStmt.Pipeline(preemptor.Clone(), bestCandidate.Name(), true); err != nil {
 		klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 			preemptor.Namespace, preemptor.Name, bestCandidate.Name())
 		// Pipeline failed: discard all evictions to prevent side effects.
