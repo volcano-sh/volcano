@@ -530,6 +530,7 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		if plugin, err := nodevolumelimits.NewCSI(context.TODO(), nil, pp.Handle, pp.features); err == nil {
 			nodeVolumeLimitsCSIFilter := plugin.(*nodevolumelimits.CSILimits)
 			addFilterPlugin(nodevolumelimits.CSIName, nodeVolumeLimitsCSIFilter)
+			addPreFilterPlugin(nodevolumelimits.CSIName, nodeVolumeLimitsCSIFilter)
 		} else {
 			klog.Errorf("Failed to init %s plugin %v", nodevolumelimits.CSIName, err)
 		}
