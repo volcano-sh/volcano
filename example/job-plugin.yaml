@@ -17,7 +17,8 @@ spec:
     # Provide network information: hosts file(under path `/etc/volcano/`), headless service, etc.
     # :param publish-not-ready-addresses: publish not ready addresses(false by default)
     # :param disable-network-policy: disable network policy of the job(false by default)
-    svc: ["--publish-not-ready-addresses=false", "--disable-network-policy=false"]
+    # :param inject-hosts-env: inject host environment variables into pod containers(true by default)
+    svc: ["--publish-not-ready-addresses=false", "--disable-network-policy=false", "--inject-hosts-env=true"]
   maxRetry: 5
   queue: default
   tasks:
