@@ -35,6 +35,8 @@ var (
 	EvictingCPULowWatermarkHigherThanHighWatermark               = "cpu evicting low watermark is higher than high watermark"
 	EvictingMemoryLowWatermarkHigherThanHighWatermark            = "memory evicting low watermark is higher than high watermark"
 	IllegalOverSubscriptionTypes                                 = "overSubscriptionType(%s) is not supported, only supports cpu/memory"
+	IllegalMonitorInterval                                       = "monitorInterval must be a positive number"
+	IllegalHighUsageCountLimit                                   = "highUsageCountLimit must be a positive number"
 	IllegalCPUThrottlingThreshold                                = "cpuThrottlingThreshold must be a positive number between 1 and 100"
 	IllegalCPUJitterLimitPercent                                 = "cpuJitterLimitPercent must be a non-negative number between 1 and 100"
 	IllegalCPURecoverLimitPercent                                = "cpuRecoverLimitPercent must be a positive number between 1 and 100"
@@ -128,6 +130,12 @@ func (e *Evicting) Validate() []error {
 	}
 	if e.EvictingMemoryLowWatermark != nil && e.EvictingMemoryHighWatermark != nil && (*e.EvictingMemoryLowWatermark > *e.EvictingMemoryHighWatermark) {
 		errs = append(errs, errors.New(EvictingMemoryLowWatermarkHigherThanHighWatermark))
+	}
+	if e.MonitorInterval != nil && *e.MonitorInterval <= 0 {
+		errs = append(errs, errors.New(IllegalMonitorInterval))
+	}
+	if e.HighUsageCountLimit != nil && *e.HighUsageCountLimit <= 0 {
+		errs = append(errs, errors.New(IllegalHighUsageCountLimit))
 	}
 	return errs
 }
