@@ -26,6 +26,8 @@
 #                       Example: KWOK_NODE_LABELS="topology-rack=rack-0,topology-spine=spine-0,gpu=A100"
 #   EXCLUDE_SYSTEM_DAEMONSETS_FROM_KWOK
 #                     - Patch common system DaemonSets so they do not run on KWOK nodes (default: true).
+#   DISABLE_KWOK_POD_COMPLETE
+#                     - Delete KWOK's pod-complete stage so benchmark pods stay Running (default: true).
 #
 # Topology layout (when ENABLE_TOPOLOGY=true, TOPOLOGY_RACKS=4, TOPOLOGY_SPINES=2):
 #   spine-0 (tier 2)
@@ -72,6 +74,16 @@ function install_kwok_if_needed() {
 
     log_info "Waiting for KWOK controller to be ready..."
     kubectl wait --for=condition=Available deployment/kwok-controller -n kube-system --timeout=120s
+}
+
+function disable_kwok_pod_complete_stage() {
+    if [[ "${DISABLE_KWOK_POD_COMPLETE}" != "true" ]]; then
+        log_info "Keeping KWOK pod-complete stage (DISABLE_KWOK_POD_COMPLETE=false)"
+        return
+    fi
+
+    log_info "Deleting KWOK pod-complete stage so benchmark pods stay Running..."
+    kubectl delete stage pod-complete --ignore-not-found=true
 }
 
 # Compute nodes per rack when topology is enabled
@@ -309,6 +321,7 @@ function create_kwok_nodes_with_topology() {
 
 # Main execution
 install_kwok_if_needed
+disable_kwok_pod_complete_stage
 exclude_system_daemonsets_from_kwok_nodes
 
 if [[ "${ENABLE_TOPOLOGY}" == "true" ]]; then
