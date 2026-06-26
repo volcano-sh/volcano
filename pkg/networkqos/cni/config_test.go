@@ -139,6 +139,85 @@ var fileWithNewNetworkQoS = `{
     ]
 }`
 
+var fileWithNetworkQoSTypeOnly = `{
+    "cniVersion": "0.3.1",
+    "name": "default-network",
+    "plugins": [
+        {
+            "args": {
+                "phynet": "phy_net1",
+                "secret_name": "canal-secret",
+                "tenant_id": "",
+                "vpc_id": "00a6a77c-83c8-405f-b7e8-d8648adfafa7"
+            },
+            "capabilities": {
+                "bandwidth": true
+            },
+            "ipam": {
+                "subnet": "172.16.0.0/16"
+            },
+            "name": "default-network",
+            "type": "vpc-router"
+        },
+        {
+            "capabilities": {
+                "portMappings": true
+            },
+            "externalSetMarkChain": "KUBE-MARK-MASQ",
+            "type": "portmap"
+        },
+        {
+            "args": {
+                "colocation": "true",
+                "offline-high-bandwidth": "50MB",
+                "offline-low-bandwidth": "20MB",
+                "online-bandwidth-watermark": "50MB"
+            },
+            "type": "network-qos"
+        }
+    ]
+}`
+
+var fileWithNetworkQoSNamedDifferently = `{
+    "cniVersion": "0.3.1",
+    "name": "default-network",
+    "plugins": [
+        {
+            "args": {
+                "phynet": "phy_net1",
+                "secret_name": "canal-secret",
+                "tenant_id": "",
+                "vpc_id": "00a6a77c-83c8-405f-b7e8-d8648adfafa7"
+            },
+            "capabilities": {
+                "bandwidth": true
+            },
+            "ipam": {
+                "subnet": "172.16.0.0/16"
+            },
+            "name": "default-network",
+            "type": "vpc-router"
+        },
+        {
+            "capabilities": {
+                "portMappings": true
+            },
+            "externalSetMarkChain": "KUBE-MARK-MASQ",
+            "type": "portmap"
+        },
+        {
+            "args": {
+                "colocation": "true",
+                "offline-high-bandwidth": "50MB",
+                "offline-low-bandwidth": "20MB",
+                "online-bandwidth-watermark": "50MB"
+            },
+            "name": "old-network-qos",
+            "type": "network-qos"
+        }
+    ]
+}`
+
 var fileWithoutPlugins = `{
     "cniVersion": "0.3.1",
     "name": "default-network"
@@ -208,6 +287,40 @@ func TestAddOrUpdateCniPluginToConfList(t *testing.T) {
 				},
 			},
 			fileContent:         fileWithNetworkQoS,
+			expectedFileContent: fileWithNewNetworkQoS,
+			expectedError:       false,
+		},
+
+		{
+			name: "cni-plugin-update-by-type",
+			plugin: map[string]interface{}{
+				"name": "network-qos",
+				"type": "network-qos",
+				"args": map[string]string{
+					utils.NodeColocationEnable:        "true",
+					utils.OnlineBandwidthWatermarkKey: "100MB",
+					utils.OfflineLowBandwidthKey:      "20MB",
+					utils.OfflineHighBandwidthKey:     "100MB",
+				},
+			},
+			fileContent:         fileWithNetworkQoSTypeOnly,
+			expectedFileContent: fileWithNewNetworkQoS,
+			expectedError:       false,
+		},
+
+		{
+			name: "cni-plugin-update-by-type-with-different-name",
+			plugin: map[string]interface{}{
+				"name": "network-qos",
+				"type": "network-qos",
+				"args": map[string]string{
+					utils.NodeColocationEnable:        "true",
+					utils.OnlineBandwidthWatermarkKey: "100MB",
+					utils.OfflineLowBandwidthKey:      "20MB",
+					utils.OfflineHighBandwidthKey:     "100MB",
+				},
+			},
+			fileContent:         fileWithNetworkQoSNamedDifferently,
 			expectedFileContent: fileWithNewNetworkQoS,
 			expectedError:       false,
 		},
@@ -366,6 +479,20 @@ func TestDeleteCniPluginFromConfList(t *testing.T) {
 		{
 			name:                "cni-plugin-delete",
 			fileContent:         fileWithNetworkQoS,
+			expectedFileContent: fileWithoutNetworkQoS,
+			expectedError:       false,
+		},
+
+		{
+			name:                "cni-plugin-delete-by-type",
+			fileContent:         fileWithNetworkQoSTypeOnly,
+			expectedFileContent: fileWithoutNetworkQoS,
+			expectedError:       false,
+		},
+
+		{
+			name:                "cni-plugin-delete-by-type-with-different-name",
+			fileContent:         fileWithNetworkQoSNamedDifferently,
 			expectedFileContent: fileWithoutNetworkQoS,
 			expectedError:       false,
 		},
