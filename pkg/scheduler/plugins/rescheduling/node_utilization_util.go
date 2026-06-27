@@ -58,16 +58,22 @@ func groupNodesByUtilization(nodeUtilizationList []*NodeUtilization, lowThreshol
 func getNodeUtilization() []*NodeUtilization {
 	nodeUtilizationList := make([]*NodeUtilization, 0)
 	for _, nodeInfo := range Session.Nodes {
+		pods := nodeInfo.Pods()
+		podUtilization := 0.0
+		if maxPods := nodeInfo.Node.Status.Allocatable[v1.ResourcePods]; maxPods.Value() > 0 {
+			podUtilization = float64(len(pods)) / float64(maxPods.Value()) * 100
+		}
 		nodeUtilization := &NodeUtilization{
 			nodeInfo: nodeInfo.Node,
 			utilization: map[v1.ResourceName]float64{
 				v1.ResourceCPU:    nodeInfo.ResourceUsage.CPUUsageAvg[MetricsPeriod],
 				v1.ResourceMemory: nodeInfo.ResourceUsage.MEMUsageAvg[MetricsPeriod],
+				v1.ResourcePods:   podUtilization,
 			},
-			pods: nodeInfo.Pods(),
+			pods: pods,
 		}
 		nodeUtilizationList = append(nodeUtilizationList, nodeUtilization)
-		klog.V(4).Infof("node: %s, cpu: %v, memory: %v\n", nodeUtilization.nodeInfo.Name, nodeUtilization.utilization[v1.ResourceCPU], nodeUtilization.utilization[v1.ResourceMemory])
+		klog.V(4).Infof("node: %s, cpu: %v, memory: %v, pods: %v\n", nodeUtilization.nodeInfo.Name, nodeUtilization.utilization[v1.ResourceCPU], nodeUtilization.utilization[v1.ResourceMemory], nodeUtilization.utilization[v1.ResourcePods])
 	}
 	return nodeUtilizationList
 }

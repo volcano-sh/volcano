@@ -99,9 +99,9 @@ func parseThreshold(thresholdsConfig map[string]int, lnuc *LowNodeUtilizationCon
 		if ok {
 			config["memory"] = float64(memoryThreshold)
 		}
-		podThreshold, ok := thresholdsConfig["pod"]
+		podThreshold, ok := thresholdsConfig["pods"]
 		if ok {
-			config["pod"] = float64(podThreshold)
+			config["pods"] = float64(podThreshold)
 		}
 	}
 }
@@ -186,6 +186,10 @@ func highThresholdFilter(usage *NodeUtilization, config interface{}) bool {
 func isContinueEvictPods(usage *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, config interface{}) bool {
 	var isNodeOverused bool
 	utilizationConfig := parseArgToConfig(config)
+	if utilizationConfig == nil {
+		klog.V(4).Infof("lack of LowNodeUtilizationConf pointer parameter")
+		return false
+	}
 	for rName, usage := range usage.utilization {
 		if threshold, ok := utilizationConfig.TargetThresholds[string(rName)]; ok {
 			if usage >= threshold {
