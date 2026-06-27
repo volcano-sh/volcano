@@ -1529,27 +1529,36 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		snapshot.Queues[value.UID] = value.Clone()
 	}
 
+	// Capture priority data under the lock so that each cloneJob goroutine
+	// reads from local variables instead of the shared cache fields, and so
+	// that priority is stamped onto the cloned snapshot object rather than
+	// mutating the original JobInfo stored in the cache.
+	defaultPriority := sc.defaultPriority
+	priorityClassValues := make(map[string]int32, len(sc.PriorityClasses))
+	for name, pc := range sc.PriorityClasses {
+		priorityClassValues[name] = pc.Value
+	}
+
 	var cloneJobLock sync.Mutex
 	var wg sync.WaitGroup
 
 	cloneJob := func(value *schedulingapi.JobInfo) {
 		defer wg.Done()
-		if value.PodGroup != nil {
-			value.Priority = sc.defaultPriority
+		clonedJob := value.Clone()
+		if clonedJob.PodGroup != nil {
+			clonedJob.Priority = defaultPriority
 
-			priName := value.PodGroup.Spec.PriorityClassName
-			if priorityClass, found := sc.PriorityClasses[priName]; found {
-				value.Priority = priorityClass.Value
+			priName := clonedJob.PodGroup.Spec.PriorityClassName
+			if pv, found := priorityClassValues[priName]; found {
+				clonedJob.Priority = pv
 			}
 
 			klog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
-				value.Namespace, value.Name, priName, value.Priority)
+				clonedJob.Namespace, clonedJob.Name, priName, clonedJob.Priority)
 		}
 
-		clonedJob := value.Clone()
-
 		cloneJobLock.Lock()
-		snapshot.Jobs[value.UID] = clonedJob
+		snapshot.Jobs[clonedJob.UID] = clonedJob
 		cloneJobLock.Unlock()
 	}
 
