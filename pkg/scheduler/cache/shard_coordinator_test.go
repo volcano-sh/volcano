@@ -200,9 +200,9 @@ func TestRefreshNodeShards_AvailableNodesCalculation(t *testing.T) {
 
 			// Make refresh calls - use multipleCalls as the actual call count
 			for i := 0; i < tt.multipleCalls; i++ {
-				sc.Mutex.Lock()
+				sc.RWMutex.Lock()
 				sc.RefreshNodeShards()
-				sc.Mutex.Unlock()
+				sc.RWMutex.Unlock()
 			}
 			// Give some time for goroutines to execute
 			time.Sleep(10 * time.Millisecond)
