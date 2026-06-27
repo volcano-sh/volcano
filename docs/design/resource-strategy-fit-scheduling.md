@@ -10,7 +10,7 @@ At present, there are few scheduling strategies for resource types. When users w
 
 - **sra**: In a cluster where GPU nodes and CPU nodes are deployed together, there is a risk that a task submitted to the cluster, which does not require GPU resources, may be scheduled to a GPU node. This can lead to inefficient resource utilization, as a job requiring both CPU and GPU resources might be pending due to insufficient CPU resources on the GPU node. This scenario is not ideal, as it can result in under utilization of resources and potential delays in job execution. Therefore, sra is proposed to avoid nodes with critical resources (such as GPUs) for certain CPU jobs and to improve overall resource utilization.
 
-- **proportional**: In a cluster where CPU tasks and GPU tasks are mixed, sometimes some CPU tasks are scheduled to GPU nodes, resulting in some GPU tasks being in a long-term Pending state due to lack of CPU resources. In this regard, we may specify a 'primary' resource(e.g., GPU in deep learning), and preserve the amount of associated 'secondary' resources by a pre-set proportion. This policy will play a role in the predicate stage, and is committed to ensuring that the idle resources of the node will meet the secondary resources required by the scare resources of the node according to the proportion.
+- **proportional**: In a cluster where CPU tasks and GPU tasks are mixed, sometimes some CPU tasks are scheduled to GPU nodes, resulting in some GPU tasks being in a long-term Pending state due to lack of CPU resources. In this regard, we may specify a 'primary' resource(e.g., GPU in deep learning), and preserve the amount of associated 'secondary' resources by a pre-set proportion. This policy will play a role in the predicate stage, and is committed to ensuring that the idle resources of the node will meet the secondary resources required by the scarce resources of the node according to the proportion.
 
 ### Goals
 
@@ -29,7 +29,7 @@ At present, there are few scheduling strategies for resource types. When users w
 Extend one plugin (ResourceStrategyFit) to meet the above needs
 - **ResourceStrategyFit**: Provide users with **MostAllocated** and **LeastAllocated** these two ways to facilitate the user to decide whether the task should be distributed or aggregated according to the different needs of the task.
 
-- **sra**: Provide users with a weighted way for each resource, avoid scheduling common tasks to scarce resource nodes, thereby improving the utilization of scare resources.
+- **sra**: Provide users with a weighted way for each resource, avoid scheduling common tasks to scarce resource nodes, thereby improving the utilization of scarce resources.
 
 - **proportional**: Provide users with the way of proportion to avoid common task being scheduled to the presence of scare resource nodes, thereby improving the utilization of scare resources.
 
@@ -93,7 +93,7 @@ finalScoreNode = [(weight1 * resource1) + (weight2 * resource2) + … + (weightN
 ### Scarce Resource Avoidance (SRA)
 #### Policy Description
 - `sra`: Give each scarce resource a weight. Higher weight means more scarce. Jobs that don’t need the scarce resource will try to stay off nodes that have it, so the scarce resource can be retained.
-> **Notes**: The `sra` policy is different from the `proportional` policy, because the `proportional` policy is a "**hard**" policy by setting the proportion of secondary resources to prevent task scheduling to nodes that do not meet the proportion of resources, while the `sra` policy is a "**soft**" policy by setting weights to important resources to try to guide task scheduling to nodes that do not have scare resources.
+> **Notes**: The `sra` policy is different from the `proportional` policy, because the `proportional` policy is a "**hard**" policy by setting the proportion of secondary resources to prevent task scheduling to nodes that do not meet the proportion of resources, while the `sra` policy is a "**soft**" policy by setting weights to important resources to try to guide task scheduling to nodes that do not have scarce resources.
 
 #### Solution
 1. In sra policy, arguments `sra.resources` is provided to configure important resources in the cluster.
