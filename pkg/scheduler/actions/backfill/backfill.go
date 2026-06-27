@@ -104,6 +104,9 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 		// Clone the task before mutation to avoid corrupting the cache when tasks
 		// come from shallow-cloned snapshots (shared *TaskInfo pointers).
 		taskClone := task.Clone()
+		if taskClone.Pod != nil {
+ 			taskClone.Pod = taskClone.Pod.DeepCopy()
+ 		}
 		if err := ssn.Allocate(taskClone, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v", task.UID, node.Name, ssn.UID)
 			fe.SetNodeError(node.Name, err)
