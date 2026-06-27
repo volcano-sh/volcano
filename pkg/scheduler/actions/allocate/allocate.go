@@ -955,6 +955,9 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 		// Clone the task before mutation to avoid corrupting the cache when tasks
 		// come from shallow-cloned snapshots (shared *TaskInfo pointers).
 		taskClone := task.Clone()
+		if taskClone.Pod != nil {
+			taskClone.Pod = taskClone.Pod.DeepCopy()
+		}
 		if err = stmt.Allocate(taskClone, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 				task.UID, node.Name, alloc.session.UID, err)
