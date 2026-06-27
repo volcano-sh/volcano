@@ -202,6 +202,17 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		}
 
 		if len(reclaimees) == 0 {
+			if task.InitResreq.LessEqual(n.FutureIdle(), api.Zero) {
+				nodeStmt := framework.NewStatement(ssn)
+				if err := nodeStmt.Pipeline(task, n.Name, false); err != nil {
+					klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
+						task.Namespace, task.Name, n.Name)
+					nodeStmt.Discard()
+					continue
+				}
+				stmt.Merge(nodeStmt)
+				return
+			}
 			klog.V(4).Infof("No reclaimees on Node <%s>.", n.Name)
 			continue
 		}
