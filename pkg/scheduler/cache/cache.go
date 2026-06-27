@@ -107,7 +107,7 @@ func New(config *rest.Config, schedulerNames []string, defaultQueue string, node
 
 // SchedulerCache cache for the kube batch
 type SchedulerCache struct {
-	sync.Mutex
+	sync.RWMutex
 
 	kubeClient   kubernetes.Interface
 	restConfig   *rest.Config
@@ -936,9 +936,8 @@ func (sc *SchedulerCache) findJobAndTask(taskInfo *schedulingapi.TaskInfo) (*sch
 //
 // If error occurs both task and job are guaranteed to be in the original state.
 func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 	job, task, err := sc.findJobAndTask(taskInfo)
 	if err != nil {
 		return err
@@ -1051,8 +1050,8 @@ func (sc *SchedulerCache) SetSharedInformerFactory(factory informers.SharedInfor
 
 // UpdateSchedulerNumaInfo used to update scheduler node cache NumaSchedulerInfo
 func (sc *SchedulerCache) UpdateSchedulerNumaInfo(AllocatedSets map[string]schedulingapi.ResNumaSets) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	for nodeName, sets := range AllocatedSets {
 		if _, found := sc.Nodes[nodeName]; !found {
@@ -1146,8 +1145,8 @@ func (sc *SchedulerCache) processCleanupJob() {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	currJob, found := sc.Jobs[schedulingapi.JobID(jobUID)]
 	if !found {
@@ -1174,8 +1173,8 @@ func (sc *SchedulerCache) processCleanupJob() {
 }
 
 func (sc *SchedulerCache) IsJobTerminated(jobId schedulingapi.JobID) bool {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.RLock()
+	defer sc.RWMutex.RUnlock()
 	job, exists := sc.Jobs[jobId]
 	if !exists || job == nil {
 		return true
@@ -1228,8 +1227,8 @@ func (sc *SchedulerCache) parseErrTaskKey(key string) (*schedulingapi.TaskInfo, 
 	jobUID := key[:i]
 	taskUID := key[i+1:]
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.RLock()
+	defer sc.RWMutex.RUnlock()
 
 	job, found := sc.Jobs[schedulingapi.JobID(jobUID)]
 	if !found {
@@ -1341,8 +1340,8 @@ func (sc *SchedulerCache) processSyncHyperNode() {
 // AddBindTask add task to be bind to a cache which consumes by go runtime
 func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	klog.V(5).Infof("add bind task %v/%v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name)
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 	job, task, err := sc.findJobAndTask(bindContext.TaskInfo)
 	if err != nil {
 		return err
@@ -1476,8 +1475,39 @@ func (sc *SchedulerCache) BindTask() {
 
 // Snapshot returns the complete snapshot of the cluster from cache
 func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.RLock()
+
+	// Create a snapshot of the scheduler cache.
+	nodes := make([]*schedulingapi.NodeInfo, 0, len(sc.Nodes))
+	for _, value := range sc.Nodes {
+		value.RefreshNumaSchedulerInfoByCrd()
+		nodes = append(nodes, value)
+	}
+	csiStatuses := make([]*schedulingapi.CSINodeStatusInfo, 0, len(sc.CSINodesStatus))
+	for _, value := range sc.CSINodesStatus {
+		csiStatuses = append(csiStatuses, value)
+	}
+	queues := make([]*schedulingapi.QueueInfo, 0, len(sc.Queues))
+	for _, value := range sc.Queues {
+		queues = append(queues, value)
+	}
+	jobs := make([]*schedulingapi.JobInfo, 0, len(sc.Jobs))
+	for _, value := range sc.Jobs {
+		jobs = append(jobs, value)
+	}
+	nsCollections := make([]*schedulingapi.NamespaceCollection, 0, len(sc.NamespaceCollection))
+	for _, value := range sc.NamespaceCollection {
+		nsCollections = append(nsCollections, value)
+	}
+	nodeList := make([]string, len(sc.NodeList))
+	copy(nodeList, sc.NodeList)
+	nodesInShard := sc.InUseNodesInShard.Clone()
+	defaultPriority := sc.defaultPriority
+	priorityClasses := make(map[string]*schedulingv1.PriorityClass, len(sc.PriorityClasses))
+	for name, pc := range sc.PriorityClasses {
+		priorityClasses[name] = pc
+	}
+	sc.RWMutex.RUnlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
 		Nodes:                make(map[string]*schedulingapi.NodeInfo),
@@ -1489,22 +1519,16 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		Queues:               make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		NamespaceInfo:        make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
 		RevocableNodes:       make(map[string]*schedulingapi.NodeInfo),
-		NodeList:             make([]string, len(sc.NodeList)),
+		NodeList:             nodeList,
 		CSINodesStatus:       make(map[string]*schedulingapi.CSINodeStatusInfo),
-		NodesInShard:         sets.Set[string]{},
+		NodesInShard:         nodesInShard,
 	}
 
-	copy(snapshot.NodeList, sc.NodeList)
-	snapshot.NodesInShard = sc.InUseNodesInShard.Clone()
-	for _, value := range sc.Nodes {
-		value.RefreshNumaSchedulerInfoByCrd()
-	}
-
-	for _, value := range sc.CSINodesStatus {
+	for _, value := range csiStatuses {
 		snapshot.CSINodesStatus[value.CSINodeName] = value.Clone()
 	}
 
-	for _, value := range sc.Nodes {
+	for _, value := range nodes {
 		if !value.Ready() {
 			continue
 		}
@@ -1525,7 +1549,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	snapshot.HyperNodesReadyToSchedule = sc.HyperNodesInfo.Ready()
 	sc.HyperNodesInfo.Unlock()
 
-	for _, value := range sc.Queues {
+	for _, value := range queues {
 		snapshot.Queues[value.UID] = value.Clone()
 	}
 
@@ -1535,10 +1559,10 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	cloneJob := func(value *schedulingapi.JobInfo) {
 		defer wg.Done()
 		if value.PodGroup != nil {
-			value.Priority = sc.defaultPriority
+			value.Priority = defaultPriority
 
 			priName := value.PodGroup.Spec.PriorityClassName
-			if priorityClass, found := sc.PriorityClasses[priName]; found {
+			if priorityClass, found := priorityClasses[priName]; found {
 				value.Priority = priorityClass.Value
 			}
 
@@ -1553,12 +1577,12 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		cloneJobLock.Unlock()
 	}
 
-	for _, value := range sc.NamespaceCollection {
+	for _, value := range nsCollections {
 		info := value.Snapshot()
 		snapshot.NamespaceInfo[info.Name] = info
 	}
 
-	for _, value := range sc.Jobs {
+	for _, value := range jobs {
 		// If no scheduling spec, does not handle it.
 		if value.PodGroup == nil {
 			klog.V(4).Infof("The scheduling spec of Job <%v:%s/%s> is nil, ignore it.",
@@ -1592,14 +1616,27 @@ func (sc *SchedulerCache) SharedDRAManager() fwk.SharedDRAManager {
 
 // String returns information about the cache in a string format
 func (sc *SchedulerCache) String() string {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.RLock()
+	nodes := make([]*schedulingapi.NodeInfo, 0, len(sc.Nodes))
+	for _, n := range sc.Nodes {
+		nodes = append(nodes, n)
+	}
+	jobs := make([]*schedulingapi.JobInfo, 0, len(sc.Jobs))
+	for _, j := range sc.Jobs {
+		jobs = append(jobs, j)
+	}
+	nsCollections := make([]*schedulingapi.NamespaceCollection, 0, len(sc.NamespaceCollection))
+	for _, ns := range sc.NamespaceCollection {
+		nsCollections = append(nsCollections, ns)
+	}
+	nodeList := append([]string(nil), sc.NodeList...)
+	sc.RWMutex.RUnlock()
 
 	str := "Cache:\n"
 
-	if len(sc.Nodes) != 0 {
+	if len(nodes) != 0 {
 		str += "Nodes:\n"
-		for _, n := range sc.Nodes {
+		for _, n := range nodes {
 			str += fmt.Sprintf("\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
 				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Tasks))
 
@@ -1611,23 +1648,23 @@ func (sc *SchedulerCache) String() string {
 		}
 	}
 
-	if len(sc.Jobs) != 0 {
+	if len(jobs) != 0 {
 		str += "Jobs:\n"
-		for _, job := range sc.Jobs {
+		for _, job := range jobs {
 			str += fmt.Sprintf("\t %s\n", job)
 		}
 	}
 
-	if len(sc.NamespaceCollection) != 0 {
+	if len(nsCollections) != 0 {
 		str += "Namespaces:\n"
-		for _, ns := range sc.NamespaceCollection {
+		for _, ns := range nsCollections {
 			info := ns.Snapshot()
 			str += fmt.Sprintf("\t Namespace(%s)\n", info.Name)
 		}
 	}
 
-	if len(sc.NodeList) != 0 {
-		str += fmt.Sprintf("NodeList: %v\n", sc.NodeList)
+	if len(nodeList) != 0 {
+		str += fmt.Sprintf("NodeList: %v\n", nodeList)
 	}
 
 	return str
@@ -1708,8 +1745,8 @@ func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePGSt
 }
 
 func (sc *SchedulerCache) updateJobAnnotations(job *schedulingapi.JobInfo) {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	if jobInCache, ok := sc.Jobs[job.UID]; ok {
 		jobInCache.PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode] = job.PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode]
@@ -1717,8 +1754,8 @@ func (sc *SchedulerCache) updateJobAnnotations(job *schedulingapi.JobInfo) {
 }
 
 func (sc *SchedulerCache) updateJobInfo(job *schedulingapi.JobInfo) {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	if jobInCache, ok := sc.Jobs[job.UID]; ok {
 		jobInCache.AllocatedHyperNode = job.AllocatedHyperNode
@@ -1768,12 +1805,12 @@ func (sc *SchedulerCache) GetMetricsData() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 	defer cancel()
 	nodeMetricsMap := make(map[string]*source.NodeMetrics, len(sc.NodeList))
-	sc.Mutex.Lock()
+	sc.RWMutex.RLock()
 
 	for _, nodeName := range sc.NodeList {
 		nodeMetricsMap[nodeName] = &source.NodeMetrics{}
 	}
-	sc.Mutex.Unlock()
+	sc.RWMutex.RUnlock()
 
 	err = client.NodesMetricsAvg(ctx, nodeMetricsMap)
 	if err != nil {
@@ -1785,8 +1822,8 @@ func (sc *SchedulerCache) GetMetricsData() {
 }
 
 func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*source.NodeMetrics) {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	for nodeName, nodeMetric := range usageInfo {
 		nodeUsage := &schedulingapi.NodeUsage{

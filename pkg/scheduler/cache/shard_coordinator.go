@@ -108,8 +108,8 @@ func (sc *SchedulerCache) UpdateNodeShardStatus(nodeShardName string) error {
 
 // generateNodeShardWithStatus generate nodeshard with updated status. return nil if no status change
 func (sc *SchedulerCache) generateNodeShardWithStatus(nodeShardName string) *nodeshardv1alpha1.NodeShard {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 	nodeShard, exist := sc.NodeShards[nodeShardName]
 	if !exist {
 		klog.Warningf("NodeShard %s does not exist in cache, skip status generation", nodeShardName)
