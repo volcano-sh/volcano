@@ -357,6 +357,7 @@ type JobInfo struct {
 	NodesFitErrors map[TaskID]*FitErrors
 
 	AllocatedHyperNode string
+	NetworkTopology    *scheduling.NetworkTopologySpec
 	SubJobs            map[SubJobID]*SubJobInfo
 	TaskToSubJob       map[TaskID]SubJobID
 	MinSubJobs         map[SubJobGID]int32 // key is name of "PodGroup.Spec.SubGroupPolicy", value is minSubGroups
@@ -408,9 +409,17 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 	return job
 }
 
+func cloneNetworkTopology(spec *scheduling.NetworkTopologySpec) *scheduling.NetworkTopologySpec {
+	if spec == nil {
+		return nil
+	}
+	return spec.DeepCopy()
+}
+
 // UnsetPodGroup removes podGroup details from a job
 func (ji *JobInfo) UnsetPodGroup() {
 	ji.PodGroup = nil
+	ji.NetworkTopology = nil
 
 	clear(ji.SubJobs)
 	for _, task := range ji.Tasks {
@@ -451,6 +460,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	oldPG := ji.PodGroup
 	ji.PgUID = pg.UID
 	ji.PodGroup = pg
+	ji.NetworkTopology = cloneNetworkTopology(pg.Spec.NetworkTopology)
 
 	if oldPG == nil || !equality.Semantic.DeepEqual(oldPG.Spec.SubGroupPolicy, pg.Spec.SubGroupPolicy) {
 		clear(ji.SubJobs)
@@ -715,6 +725,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		RevocableZone:         ji.RevocableZone,
 		Budget:                ji.Budget.Clone(),
 		AllocatedHyperNode:    ji.AllocatedHyperNode,
+		NetworkTopology:       cloneNetworkTopology(ji.NetworkTopology),
 		SubJobs:               map[SubJobID]*SubJobInfo{},
 		TaskToSubJob:          map[TaskID]SubJobID{},
 		MinSubJobs:            maps.Clone(ji.MinSubJobs),
@@ -1195,24 +1206,24 @@ func (ji *JobInfo) HasPendingTasks() bool {
 
 // IsHardTopologyMode return whether the job's network topology mode is hard and also return the highest allowed tier
 func (ji *JobInfo) IsHardTopologyMode() (bool, int) {
-	if ji.PodGroup == nil || ji.PodGroup.Spec.NetworkTopology == nil || ji.PodGroup.Spec.NetworkTopology.HighestTierAllowed == nil {
+	if ji.NetworkTopology == nil || ji.NetworkTopology.HighestTierAllowed == nil {
 		return false, 0
 	}
 
-	return ji.PodGroup.Spec.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode, *ji.PodGroup.Spec.NetworkTopology.HighestTierAllowed
+	return ji.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode, *ji.NetworkTopology.HighestTierAllowed
 }
 
 // IsSoftTopologyMode returns whether the job has configured network topologies with soft mode.
 func (ji *JobInfo) IsSoftTopologyMode() bool {
-	if ji.PodGroup == nil || ji.PodGroup.Spec.NetworkTopology == nil {
+	if ji.NetworkTopology == nil {
 		return false
 	}
-	return ji.PodGroup.Spec.NetworkTopology.Mode == scheduling.SoftNetworkTopologyMode
+	return ji.NetworkTopology.Mode == scheduling.SoftNetworkTopologyMode
 }
 
 // WithNetworkTopology returns whether the job has configured network topologies
 func (ji *JobInfo) WithNetworkTopology() bool {
-	return ji.PodGroup != nil && ji.PodGroup.Spec.NetworkTopology != nil
+	return ji.NetworkTopology != nil
 }
 
 // ResetFitErr will set job and node fit err to nil.
@@ -1244,8 +1255,8 @@ func (ji *JobInfo) getOrCreateDefaultSubJob() *SubJobInfo {
 		if !ji.ContainsSubJobPolicy() {
 			policy.SubGroupSize = ptr.To(ji.MinAvailable)
 		}
-		if ji.PodGroup != nil && ji.PodGroup.Spec.NetworkTopology != nil {
-			policy.NetworkTopology = ji.PodGroup.Spec.NetworkTopology.DeepCopy()
+		if ji.NetworkTopology != nil {
+			policy.NetworkTopology = cloneNetworkTopology(ji.NetworkTopology)
 		}
 		ji.SubJobs[defaultSubJob] = NewSubJobInfo(defaultSubJobGID, defaultSubJob, ji.UID, policy, nil)
 	}
@@ -1297,13 +1308,8 @@ func (ji *JobInfo) ContainsSubJobPolicy() bool {
 
 // ContainsHardTopologyInSubJob returns whether the subJobs in the job contain hard network topology
 func (ji *JobInfo) ContainsHardTopologyInSubJob() bool {
-	if ji.PodGroup == nil {
-		return false
-	}
-
-	for _, policy := range ji.PodGroup.Spec.SubGroupPolicy {
-		if policy.NetworkTopology != nil && policy.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode &&
-			policy.NetworkTopology.HighestTierAllowed != nil {
+	for _, subJob := range ji.SubJobs {
+		if hard, _ := subJob.IsHardTopologyMode(); hard {
 			return true
 		}
 	}
@@ -1320,12 +1326,8 @@ func (ji *JobInfo) ContainsHardTopology() bool {
 
 // ContainsNetworkTopologyInSubJob returns whether the subJobs in the job contain network topology
 func (ji *JobInfo) ContainsNetworkTopologyInSubJob() bool {
-	if ji.PodGroup == nil {
-		return false
-	}
-
-	for _, policy := range ji.PodGroup.Spec.SubGroupPolicy {
-		if policy.NetworkTopology != nil {
+	for _, subJob := range ji.SubJobs {
+		if subJob.WithNetworkTopology() {
 			return true
 		}
 	}
