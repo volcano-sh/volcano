@@ -813,6 +813,34 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(5).Infof("job <%s/%s> enqueued", job.Namespace, job.Name)
 	})
 
+	ssn.AddJobInqueueEvictedFn(cp.Name(), func(obj interface{}) {
+		job, ok := obj.(*api.JobInfo)
+		if !ok || job == nil || job.PodGroup == nil {
+			return
+		}
+		queueID := job.Queue
+		attr := cp.queueOpts[queueID]
+		if attr == nil {
+			return
+		}
+		if job.PodGroup.Spec.MinResources == nil && !(cp.dynamicResourceAllocationEnable && attr.dra != nil && job.GetMinDRAResources() != nil) {
+			return
+		}
+		deductedResources := job.DeductSchGatedResources(job.GetMinResources())
+		attr.inqueue.Sub(deductedResources)
+		// If enable hierarchy, update the inqueue resource for all ancestors queues
+		if hierarchyEnabled {
+			for _, ancestorID := range attr.ancestors {
+				ancestorAttr := cp.queueOpts[ancestorID]
+				if ancestorAttr == nil {
+					continue
+				}
+				ancestorAttr.inqueue.Sub(deductedResources)
+			}
+		}
+		klog.V(4).Infof("job <%s/%s> inqueue quota released after timeout eviction", job.Namespace, job.Name)
+	})
+
 	ssn.AddPrePredicateFn(cp.Name(), func(task *api.TaskInfo) error {
 		state := &capacityState{
 			queueAttrs: make(map[api.QueueID]*queueAttr),
