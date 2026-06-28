@@ -783,7 +783,11 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 				fitErrors.SetNodeError(ni.Name, err)
 			}
 			job.NodesFitErrors[task.UID] = fitErrors
-			break
+			if job.NeedContinueAllocating(subJob.UID) {
+				continue
+			} else {
+				break
+			}
 		}
 
 		var predicateNodes []*api.NodeInfo
