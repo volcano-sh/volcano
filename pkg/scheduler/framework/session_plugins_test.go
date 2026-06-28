@@ -315,3 +315,196 @@ func TestHyperNodeGradientForJobFn_NoPluginKeepsCurrentFallback(t *testing.T) {
 	result := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
 	assert.Equal(t, [][]*api.HyperNodeInfo{{root}}, result)
 }
+
+func boolPtr(v bool) *bool { return &v }
+
+func TestReclaimable_NoMatchingPlugin(t *testing.T) {
+	ssn := &Session{
+		Tiers:          []conf.Tier{{Plugins: []conf.PluginOption{{Name: "p1", EnabledReclaimable: boolPtr(true)}}}},
+		reclaimableFns: map[string]api.EvictableFn{},
+	}
+	result := ssn.Reclaimable(&api.TaskInfo{}, []*api.TaskInfo{{UID: "a"}})
+	assert.Nil(t, result)
+}
+
+func TestReclaimable_SinglePlugin(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	taskB := &api.TaskInfo{UID: "b"}
+	ssn := &Session{
+		Tiers:          []conf.Tier{{Plugins: []conf.PluginOption{{Name: "p1", EnabledReclaimable: boolPtr(true)}}}},
+		reclaimableFns: map[string]api.EvictableFn{},
+	}
+	ssn.AddReclaimableFn("p1", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA, taskB}, 1
+	})
+	result := ssn.Reclaimable(&api.TaskInfo{}, []*api.TaskInfo{taskA, taskB})
+	assert.Equal(t, []*api.TaskInfo{taskA, taskB}, result)
+}
+
+func TestReclaimable_TwoPlugins_Intersection(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	taskB := &api.TaskInfo{UID: "b"}
+	taskC := &api.TaskInfo{UID: "c"}
+	ssn := &Session{
+		Tiers: []conf.Tier{{Plugins: []conf.PluginOption{
+			{Name: "p1", EnabledReclaimable: boolPtr(true)},
+			{Name: "p2", EnabledReclaimable: boolPtr(true)},
+		}}},
+		reclaimableFns: map[string]api.EvictableFn{},
+	}
+	ssn.AddReclaimableFn("p1", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA, taskB}, 1
+	})
+	ssn.AddReclaimableFn("p2", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskB, taskC}, 1
+	})
+	result := ssn.Reclaimable(&api.TaskInfo{}, []*api.TaskInfo{taskA, taskB, taskC})
+	assert.Equal(t, []*api.TaskInfo{taskB}, result)
+}
+
+func TestReclaimable_OrderingFollowsVictims(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	taskB := &api.TaskInfo{UID: "b"}
+	taskC := &api.TaskInfo{UID: "c"}
+	ssn := &Session{
+		Tiers: []conf.Tier{{Plugins: []conf.PluginOption{
+			{Name: "p1", EnabledReclaimable: boolPtr(true)},
+			{Name: "p2", EnabledReclaimable: boolPtr(true)},
+		}}},
+		reclaimableFns: map[string]api.EvictableFn{},
+	}
+	// p1 returns C,B,A order; p2 returns A,B,C order
+	ssn.AddReclaimableFn("p1", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskC, taskB, taskA}, 1
+	})
+	ssn.AddReclaimableFn("p2", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA, taskB, taskC}, 1
+	})
+	result := ssn.Reclaimable(&api.TaskInfo{}, []*api.TaskInfo{taskA, taskB, taskC})
+	// output must follow victims (p1) ordering: C,B,A
+	assert.Equal(t, []*api.TaskInfo{taskC, taskB, taskA}, result)
+}
+
+func TestReclaimable_EmptyResultBlocksTier(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{Plugins: []conf.PluginOption{
+				{Name: "p1", EnabledReclaimable: boolPtr(true)},
+				{Name: "blocker", EnabledReclaimable: boolPtr(true)},
+			}},
+			{Plugins: []conf.PluginOption{
+				{Name: "fallback", EnabledReclaimable: boolPtr(true)},
+			}},
+		},
+		reclaimableFns: map[string]api.EvictableFn{},
+	}
+	ssn.AddReclaimableFn("p1", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	ssn.AddReclaimableFn("blocker", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{}, 1
+	})
+	ssn.AddReclaimableFn("fallback", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	result := ssn.Reclaimable(&api.TaskInfo{}, []*api.TaskInfo{taskA})
+	assert.Equal(t, []*api.TaskInfo{taskA}, result)
+}
+
+func TestReclaimable_AbstainSkipped(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	ssn := &Session{
+		Tiers: []conf.Tier{{Plugins: []conf.PluginOption{
+			{Name: "abstainer", EnabledReclaimable: boolPtr(true)},
+			{Name: "permitter", EnabledReclaimable: boolPtr(true)},
+		}}},
+		reclaimableFns: map[string]api.EvictableFn{},
+	}
+	ssn.AddReclaimableFn("abstainer", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return nil, 0
+	})
+	ssn.AddReclaimableFn("permitter", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	result := ssn.Reclaimable(&api.TaskInfo{}, []*api.TaskInfo{taskA})
+	assert.Equal(t, []*api.TaskInfo{taskA}, result)
+}
+
+func TestPreemptable_TwoPlugins_Intersection(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	taskB := &api.TaskInfo{UID: "b"}
+	taskC := &api.TaskInfo{UID: "c"}
+	ssn := &Session{
+		Tiers: []conf.Tier{{Plugins: []conf.PluginOption{
+			{Name: "p1", EnabledPreemptable: boolPtr(true)},
+			{Name: "p2", EnabledPreemptable: boolPtr(true)},
+		}}},
+		preemptableFns: map[string]api.EvictableFn{},
+	}
+	ssn.AddPreemptableFn("p1", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA, taskB}, 1
+	})
+	ssn.AddPreemptableFn("p2", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskB, taskC}, 1
+	})
+	result := ssn.Preemptable(&api.TaskInfo{}, []*api.TaskInfo{taskA, taskB, taskC})
+	assert.Equal(t, []*api.TaskInfo{taskB}, result)
+}
+
+func TestPreemptable_OrderingFollowsVictims(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	taskB := &api.TaskInfo{UID: "b"}
+	taskC := &api.TaskInfo{UID: "c"}
+	ssn := &Session{
+		Tiers: []conf.Tier{{Plugins: []conf.PluginOption{
+			{Name: "p1", EnabledPreemptable: boolPtr(true)},
+			{Name: "p2", EnabledPreemptable: boolPtr(true)},
+		}}},
+		preemptableFns: map[string]api.EvictableFn{},
+	}
+	ssn.AddPreemptableFn("p1", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskC, taskB, taskA}, 1
+	})
+	ssn.AddPreemptableFn("p2", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA, taskB, taskC}, 1
+	})
+	result := ssn.Preemptable(&api.TaskInfo{}, []*api.TaskInfo{taskA, taskB, taskC})
+	assert.Equal(t, []*api.TaskInfo{taskC, taskB, taskA}, result)
+}
+
+func TestPreemptable_EmptyResultBlocksTier(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{Plugins: []conf.PluginOption{
+				{Name: "p1", EnabledPreemptable: boolPtr(true)},
+				{Name: "blocker", EnabledPreemptable: boolPtr(true)},
+			}},
+			{Plugins: []conf.PluginOption{
+				{Name: "fallback", EnabledPreemptable: boolPtr(true)},
+			}},
+		},
+		preemptableFns: map[string]api.EvictableFn{},
+	}
+	ssn.AddPreemptableFn("p1", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	ssn.AddPreemptableFn("blocker", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{}, 1
+	})
+	ssn.AddPreemptableFn("fallback", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	result := ssn.Preemptable(&api.TaskInfo{}, []*api.TaskInfo{taskA})
+	assert.Equal(t, []*api.TaskInfo{taskA}, result)
+}
+
+func TestPreemptable_NoMatchingPlugin(t *testing.T) {
+	ssn := &Session{
+		Tiers:          []conf.Tier{{Plugins: []conf.PluginOption{{Name: "p1", EnabledPreemptable: boolPtr(true)}}}},
+		preemptableFns: map[string]api.EvictableFn{},
+	}
+	result := ssn.Preemptable(&api.TaskInfo{}, []*api.TaskInfo{{UID: "a"}})
+	assert.Nil(t, result)
+}
