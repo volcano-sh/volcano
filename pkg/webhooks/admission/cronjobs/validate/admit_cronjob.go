@@ -105,21 +105,41 @@ func AdmitCronjobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionRespons
 	return &reviewResponse
 }
 func validateCronJobCreate(cronjob *v1alpha1.CronJob, reviewResponse *admissionv1.AdmissionResponse) string {
-	msg := validateCronjobSpec(&cronjob.Spec, cronjob.Namespace)
-	msg += validateCronJobName(cronjob.Name)
+	msg := joinCronJobErrs(cronjob)
 	if msg != "" {
 		reviewResponse.Allowed = false
 	}
 	return msg
 }
 func validateCronJobUpdate(new *v1alpha1.CronJob) error {
-	msg := validateCronjobSpec(&new.Spec, new.Namespace)
-	msg += validateCronJobName(new.Name)
-
+	msg := joinCronJobErrs(new)
 	if msg != "" {
 		return errors.New(msg)
 	}
 	return nil
+}
+
+// joinCronJobErrs collects the non-empty messages from each CronJob validator.
+// When only one check fails, its message is returned verbatim so single-error
+// responses stay byte-for-byte identical to the previous behaviour. When more
+// than one check fails at once, the messages are trimmed and joined with "; "
+// so they are reported as distinct, readable items instead of running together
+// mid-sentence.
+func joinCronJobErrs(cronjob *v1alpha1.CronJob) string {
+	var errs []string
+	if msg := validateCronjobSpec(&cronjob.Spec, cronjob.Namespace); msg != "" {
+		errs = append(errs, msg)
+	}
+	if msg := validateCronJobName(cronjob.Name); msg != "" {
+		errs = append(errs, msg)
+	}
+	if len(errs) == 1 {
+		return errs[0]
+	}
+	for i := range errs {
+		errs[i] = strings.TrimSpace(errs[i])
+	}
+	return strings.Join(errs, "; ")
 }
 func validateCronjobSpec(spec *v1alpha1.CronJobSpec, nameSpace string) string {
 	var msg string
