@@ -13,54 +13,27 @@ containerdConfigPatches:
 nodes:
   # the control plane node config
   - role: control-plane
+    image: kindest/node:v1.36.0
     kubeadmConfigPatches:
       - |
         apiVersion: kubelet.config.k8s.io/v1beta1
         kind: KubeletConfiguration
         containerLogMaxSize: "50Mi"
-        featureGates:
-          DynamicResourceAllocation: true
-          DRAConsumableCapacity: true
       - |
         kind: ClusterConfiguration
+        apiVersion: kubeadm.k8s.io/v1beta4
         apiServer:
           extraArgs:
-            runtime-config: "admissionregistration.k8s.io/v1beta1"
-            enable-admission-plugins: "MutatingAdmissionPolicy"
-            feature-gates: "MutatingAdmissionPolicy=true,DynamicResourceAllocation=true,DRAConsumableCapacity=true"
-        controllerManager:
-          extraArgs:
-            feature-gates: "MutatingAdmissionPolicy=true,DynamicResourceAllocation=true,DRAConsumableCapacity=true"
+            - name: runtime-config
+              value: "admissionregistration.k8s.io/v1beta1"
+            - name: enable-admission-plugins
+              value: "MutatingAdmissionPolicy"
   # the four workers
   - role: worker
-    kubeadmConfigPatches:
-      - |
-        apiVersion: kubelet.config.k8s.io/v1beta1
-        kind: KubeletConfiguration
-        featureGates:
-          DynamicResourceAllocation: true
-          DRAConsumableCapacity: true
+    image: kindest/node:v1.36.0
   - role: worker
-    kubeadmConfigPatches:
-      - |
-        apiVersion: kubelet.config.k8s.io/v1beta1
-        kind: KubeletConfiguration
-        featureGates:
-          DynamicResourceAllocation: true
-          DRAConsumableCapacity: true
+    image: kindest/node:v1.36.0
   - role: worker
-    kubeadmConfigPatches:
-      - |
-        apiVersion: kubelet.config.k8s.io/v1beta1
-        kind: KubeletConfiguration
-        featureGates:
-          DynamicResourceAllocation: true
-          DRAConsumableCapacity: true
+    image: kindest/node:v1.36.0
   - role: worker
-    kubeadmConfigPatches:
-      - |
-        apiVersion: kubelet.config.k8s.io/v1beta1
-        kind: KubeletConfiguration
-        featureGates:
-          DynamicResourceAllocation: true
-          DRAConsumableCapacity: true
+    image: kindest/node:v1.36.0

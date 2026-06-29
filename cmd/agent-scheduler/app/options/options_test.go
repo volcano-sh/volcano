@@ -66,7 +66,8 @@ func TestAddFlags(t *testing.T) {
 			ResourceLock:      resourcelock.LeasesResourceLock,
 			ResourceNamespace: defaultLockObjectNamespace,
 		},
-		ListenAddress: defaultListenAddress,
+		ListenAddress:    defaultListenAddress,
+		EnableCSIStorage: true,
 		KubeClientOptions: kube.ClientOptions{
 			Master:     "",
 			KubeConfig: "",
