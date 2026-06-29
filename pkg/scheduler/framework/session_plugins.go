@@ -251,7 +251,7 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 				for _, c := range candidates {
 					candidateSet[c.UID] = struct{}{}
 				}
-				var intersection []*api.TaskInfo
+				intersection := make([]*api.TaskInfo, 0, len(victims))
 				for _, v := range victims {
 					if _, ok := candidateSet[v.UID]; ok {
 						intersection = append(intersection, v)
@@ -300,7 +300,7 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 				for _, c := range candidates {
 					candidateSet[c.UID] = struct{}{}
 				}
-				var intersection []*api.TaskInfo
+				intersection := make([]*api.TaskInfo, 0, len(victims))
 				for _, v := range victims {
 					if _, ok := candidateSet[v.UID]; ok {
 						intersection = append(intersection, v)
@@ -344,7 +344,7 @@ func (ssn *Session) UnifiedEvictable(ctx *api.EvictionContext, candidates []*api
 				for _, c := range result {
 					resultSet[c.UID] = struct{}{}
 				}
-				var intersection []*api.TaskInfo
+				intersection := make([]*api.TaskInfo, 0, len(victims))
 				for _, v := range victims {
 					if _, ok := resultSet[v.UID]; ok {
 						intersection = append(intersection, v)
