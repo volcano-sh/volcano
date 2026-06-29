@@ -985,7 +985,7 @@ func (ssn *Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reaso
 		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
 		return
 	}
-	ssn.recorder.Eventf(pg, eventType, reason, msg)
+	ssn.recorder.Eventf(pg, eventType, reason, "%s", msg)
 }
 
 // SharedDRAManager returns the shared DRAManager from cache

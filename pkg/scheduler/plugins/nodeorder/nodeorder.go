@@ -197,8 +197,10 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 	nodeOrderScorePlugins := map[string]ScorePluginWithWeight{}
 
 	fts := feature.Features{
-		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
-		EnableMatchLabelKeysInPodTopologySpread:      utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
+		EnableNodeInclusionPolicyInPodTopologySpread:  utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
+		EnableMatchLabelKeysInPodTopologySpread:       utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
+		EnablePodLevelResources:                       utilFeature.DefaultFeatureGate.Enabled(features.PodLevelResources),
+		EnableInPlacePodLevelResourcesVerticalScaling: utilFeature.DefaultFeatureGate.Enabled(features.InPlacePodLevelResourcesVerticalScaling),
 	}
 
 	if pp.weight.leastReqWeight != 0 {

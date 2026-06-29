@@ -106,7 +106,7 @@ function check-kind {
   which kind >/dev/null 2>&1
   if [[ $? -ne 0 ]]; then
     echo "Installing kind ..."
-    GOOS=${OS} go install sigs.k8s.io/kind@v0.31.0
+    GOOS=${OS} go install sigs.k8s.io/kind@v0.32.0
     local bin_path
     bin_path=$(go env GOBIN)
     if [[ -z "${bin_path}" ]]; then
