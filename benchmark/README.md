@@ -66,6 +66,8 @@ this step when using real cluster nodes.
 | `TOPOLOGY_RACKS` | `4` | Number of rack-level domains (tier 1) |
 | `TOPOLOGY_SPINES` | `2` | Number of spine-level domains (tier 2) |
 | `KWOK_NODE_LABELS` | *(empty)* | Comma-separated `key=value` labels for all nodes (e.g. auto-discovery) |
+| `EXCLUDE_SYSTEM_DAEMONSETS_FROM_KWOK` | `true` | Patch common system DaemonSets such as `kindnet` and `kube-proxy` so they do not create pods on KWOK nodes |
+| `DISABLE_KWOK_POD_COMPLETE` | `true` | Delete KWOK's `pod-complete` stage so scheduling benchmarks keep pods in `Running` instead of completing during the scheduling window |
 
 Override example: `make create-nodes KWOK_NODE_COUNT=200 CPU_PER_NODE=64`
 
@@ -602,6 +604,8 @@ Volcano version with the metrics instrumented.
 | `CPU_PER_NODE` | `32` | CPU per KWOK node |
 | `MEMORY_PER_NODE` | `256Gi` | Memory per KWOK node |
 | `KWOK_VERSION` | `v0.7.0` | KWOK controller version |
+| `EXCLUDE_SYSTEM_DAEMONSETS_FROM_KWOK` | `true` | Keep common system DaemonSets such as `kindnet` and `kube-proxy` off KWOK nodes |
+| `DISABLE_KWOK_POD_COMPLETE` | `true` | Delete KWOK's `pod-complete` stage so benchmark pods stay `Running` during scheduling latency tests |
 | `VOLCANO_VERSION` | _(empty)_ | Release tag (e.g. `v1.14.0`) to install from Helm repo |
 | `VOLCANO_SCHEDULER_KUBE_API_QPS` | `5000` | Volcano scheduler Kubernetes client QPS used when installing Volcano |
 | `VOLCANO_SCHEDULER_KUBE_API_BURST` | `10000` | Volcano scheduler Kubernetes client burst used when installing Volcano |
