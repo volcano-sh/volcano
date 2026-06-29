@@ -8,9 +8,9 @@ Volcano is a CNCF incubating Kubernetes-native batch scheduling system for AI/ML
 
 - **Language:** Go 1.25.0
 - **Module:** `volcano.sh/volcano`
-- **Kubernetes:** v0.35.3
+- **Kubernetes:** k8s.io/\* v0.35.3 (k8s.io/kubernetes v1.35.3)
 - **Frameworks:** controller-runtime, cobra/pflag, Ginkgo/Gomega (e2e)
-- **Linting:** golangci-lint v2
+- **Linting:** golangci-lint
 - **Build:** Makefile, docker buildx (multi-arch: linux/amd64, linux/arm64)
 
 ## Directory Layout
@@ -27,7 +27,7 @@ cmd/                  # Entry points (7 binaries)
 pkg/                  # Core library
   scheduler/          #   Scheduling framework (actions/ + plugins/)
   controllers/        #   Controllers (job, queue, podgroup, cronjob, etc.)
-  apis/               #   Internal API types
+  webhooks/           #   Shared webhook logic (admission, router, schema)
 staging/src/volcano.sh/apis/  # CRD types (batch, scheduling, flow, bus, etc.)
 config/crd/           # Generated CRD YAML manifests
 installer/            # Helm chart, Dockerfiles, all-in-one YAML
@@ -37,14 +37,14 @@ test/                 # E2E test suites
 
 ## Key Binaries
 
-| Binary | Path | Purpose |
-|---|---|---|
-| `vc-scheduler` | `cmd/scheduler/` | Core batch scheduler with 8 actions + 20+ plugins |
-| `vc-controller-manager` | `cmd/controller-manager/` | Manages all controllers (job, queue, podgroup, cronjob, jobflow, ...) |
-| `vc-webhook-manager` | `cmd/webhook-manager/` | Admission webhooks for all CRDs |
-| `vc-agent` | `cmd/agent/` | Node-level colocation agent + network-qos CNI |
-| `vc-agent-scheduler` | `cmd/agent-scheduler/` | Agent-side scheduling for colocation |
-| `vcctl` | `cmd/cli/` | CLI with subcommands (vcancel, vresume, vsuspend, vjobs, vqueues, vsub) |
+| Binary                  | Path                      | Purpose                                                                 |
+| ----------------------- | ------------------------- | ----------------------------------------------------------------------- |
+| `vc-scheduler`          | `cmd/scheduler/`          | Core batch scheduler with 8 actions + 20+ plugins                       |
+| `vc-controller-manager` | `cmd/controller-manager/` | Manages all controllers (job, queue, podgroup, cronjob, jobflow, ...)   |
+| `vc-webhook-manager`    | `cmd/webhook-manager/`    | Admission webhooks for all CRDs                                         |
+| `vc-agent`              | `cmd/agent/`              | Node-level colocation agent + network-qos CNI                           |
+| `vc-agent-scheduler`    | `cmd/agent-scheduler/`    | Agent-side scheduling for colocation                                    |
+| `vcctl`                 | `cmd/cli/`                | CLI with subcommands (vcancel, vresume, vsuspend, vjobs, vqueues, vsub) |
 
 ## Architecture
 
@@ -69,11 +69,13 @@ test/                 # E2E test suites
 ```
 
 ### Scheduler Architecture (`pkg/scheduler/`)
+
 - **Actions** (8): allocate, preempt, reclaim, backfill, enqueue, gangpreempt, gangreclaim, shuffle
 - **Plugins** (20+): binpack, capacity, cdp, conformance, deviceshare, drf, extender, gang, numaaware, overcommit, predicates, priority, proportion, rescheduling, sla, tdm, usage, and more
 - **Framework:** Session management, event hooks, statement management
 
 ### Controllers (`pkg/controllers/`)
+
 - job (state machine: pending→running→terminating→...), queue, podgroup, cronjob, jobflow/jobtemplate, sharding, hypernode, colocationconfig, garbagecollector
 
 ## Development Commands
@@ -95,7 +97,7 @@ make clean                  # Clean build output
 ## Code Conventions
 
 - **License header:** Apache 2.0 header on every Go file (see existing files for template).
-- **Naming:** camelCase Go conventions.  Exported types PascalCase.
+- **Naming:** camelCase Go conventions. Exported types PascalCase.
 - **Error handling:** Return errors, prefer `fmt.Errorf("...: %w", err)` for wrapping.
 - **Testing:** Use standard `testing` package for unit tests (`*_test.go` alongside source). E2E uses Ginkgo/Gomega.
 - **Logging:** Use `k8s.io/klog/v2`.
@@ -113,29 +115,35 @@ make clean                  # Clean build output
 ## Code Quality
 
 ### Linting (`make lint`)
-- Run `make lint` which invokes `golangci-lint` v2.
+
+- Run `make lint` which invokes `golangci-lint`.
 - **Enabled linters:** `govet`, `depguard`, `ineffassign`, `staticcheck`, `unused`, `whitespace`.
 - **Formatters:** `gofmt`, `goimports` (with `volcano.sh` as local prefix for import grouping).
 - **Excluded paths:** vendor, test, example, third_party.
-- Disabled staticcheck rules include SA1019 (deprecation), ST1000/ST1003/ST1005 (comment/naming style), and QF1xxx (opinionated quickfix).
+- Disabled/enabled staticcheck checks are configured in `.golangci.yml` under `linters.settings.staticcheck.checks`.
 
 ### Import Ordering
+
 Imports must be grouped and sorted: standard library → third-party → `volcano.sh/` internal packages, separated by blank lines. `goimports` with `local-prefixes: volcano.sh` enforces this.
 
 ### Formatting
+
 - All Go files must be formatted with `gofmt`. Enforced via `make verify` (`hack/verify-gofmt.sh`).
 - No trailing whitespace; enforced by `whitespace` linter.
 
 ### Deprecation Checks (`depguard`)
+
 - `k8s.io/klog` is blocked — use `k8s.io/klog/v2` instead.
 - `io/ioutil` is blocked — use `io` or `os` packages instead (deprecated since Go 1.16).
 
 ### License Compliance
+
 - License linting via `make lint-licenses` using `config/license-lint.yaml`.
 - **Allowed licenses:** Apache-2.0, MIT, BSD, ISC, and others listed in the config. GPL-family licenses are restricted.
 - `make mirror-licenses` mirrors all third-party licenses into `licenses/` directory.
 
 ### Security
+
 - CodeQL analysis in CI (`.github/workflows/codeql-analysis.yml`).
 - OpenSSF Scorecard tracking (`.github/workflows/scorecards.yml`).
 - Dependabot configured for Go modules and GitHub Actions.
@@ -149,6 +157,7 @@ Imports must be grouped and sorted: standard library → third-party → `volcan
 ## CI/CD
 
 GitHub Actions in `.github/workflows/` (25 workflows):
+
 - Code verification, CodeQL, license linting
 - 14 E2E test workflows
 - Docker image build + multi-arch push
@@ -158,6 +167,7 @@ GitHub Actions in `.github/workflows/` (25 workflows):
 ## Common Tasks
 
 ### Adding a new API type
+
 1. Define types in `staging/src/volcano.sh/apis/pkg/apis/<group>/<version>/`
 2. Register with scheme in `staging/src/volcano.sh/apis/pkg/apis/<group>/<version>/register.go`
 3. Run `make generate-code && make manifests`
@@ -165,11 +175,13 @@ GitHub Actions in `.github/workflows/` (25 workflows):
 5. Add webhook validation in `cmd/webhook-manager/`
 
 ### Adding a new scheduler plugin
+
 1. Create plugin in `pkg/scheduler/plugins/<name>/`
 2. Implement `framework.Plugin` interface
 3. Register in `pkg/scheduler/plugins/` imports
 
 ### Adding a new scheduler action
+
 1. Create action in `pkg/scheduler/actions/<name>/`
 2. Implement `framework.Action` interface
 3. Register in `pkg/scheduler/actions/` imports
