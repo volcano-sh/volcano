@@ -1595,43 +1595,44 @@ func (sc *SchedulerCache) SharedDRAManager() fwk.SharedDRAManager {
 func (sc *SchedulerCache) String() string {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
+	var b strings.Builder
 
-	str := "Cache:\n"
+	b.WriteString("Cache:\n")
 
-	if len(sc.Nodes) != 0 {
-		str += "Nodes:\n"
+	if len(sc.Nodes) > 0 {
+		b.WriteString("Nodes:\n")
 		for _, n := range sc.Nodes {
-			str += fmt.Sprintf("\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
+			fmt.Fprintf(&b, "\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
 				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Tasks))
 
 			i := 0
 			for _, p := range n.Tasks {
-				str += fmt.Sprintf("\t\t %d: %v\n", i, p)
+				fmt.Fprintf(&b, "\t\t %d: %v\n", i, p)
 				i++
 			}
 		}
 	}
 
-	if len(sc.Jobs) != 0 {
-		str += "Jobs:\n"
+	if len(sc.Jobs) > 0 {
+		b.WriteString("Jobs:\n")
 		for _, job := range sc.Jobs {
-			str += fmt.Sprintf("\t %s\n", job)
+			fmt.Fprintf(&b, "\t %s\n", job)
 		}
 	}
 
-	if len(sc.NamespaceCollection) != 0 {
-		str += "Namespaces:\n"
+	if len(sc.NamespaceCollection) > 0 {
+		b.WriteString("Namespaces:\n")
 		for _, ns := range sc.NamespaceCollection {
 			info := ns.Snapshot()
-			str += fmt.Sprintf("\t Namespace(%s)\n", info.Name)
+			fmt.Fprintf(&b, "\t Namespace(%s)\n", info.Name)
 		}
 	}
 
-	if len(sc.NodeList) != 0 {
-		str += fmt.Sprintf("NodeList: %v\n", sc.NodeList)
+	if len(sc.NodeList) > 0 {
+		fmt.Fprintf(&b, "NodeList: %v\n", sc.NodeList)
 	}
 
-	return str
+	return b.String()
 }
 
 // RecordJobStatusEvent records related events according to job status.

@@ -19,6 +19,7 @@ package api
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -612,17 +613,17 @@ func (ni *NodeInfo) UpdateTask(ti *TaskInfo) {
 
 // String returns nodeInfo details in string format
 func (ni NodeInfo) String() string {
-	tasks := ""
+	var b strings.Builder
 
 	i := 0
 	for _, task := range ni.Tasks {
-		tasks += fmt.Sprintf("\n\t %d: %v", i, task)
+		fmt.Fprintf(&b, "\n\t %d: %v", i, task)
 		i++
 	}
 
 	return fmt.Sprintf("Node (%s): allocatable<%v> idle <%v>, used <%v>, releasing <%v>, oversubscribution <%v>, "+
 		"state <phase %s, reaseon %s>, oversubscributionNode <%v>, offlineJobEvicting <%v>,taints <%v>%s, imageStates %v",
-		ni.Name, ni.Allocatable, ni.Idle, ni.Used, ni.Releasing, ni.OversubscriptionResource, ni.State.Phase, ni.State.Reason, ni.OversubscriptionNode, ni.OfflineJobEvicting, ni.Node.Spec.Taints, tasks, ni.ImageStates)
+		ni.Name, ni.Allocatable, ni.Idle, ni.Used, ni.Releasing, ni.OversubscriptionResource, ni.State.Phase, ni.State.Reason, ni.OversubscriptionNode, ni.OfflineJobEvicting, ni.Node.Spec.Taints, b.String(), ni.ImageStates)
 }
 
 // Pods returns all pods running in that node

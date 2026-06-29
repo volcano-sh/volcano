@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"maps"
 	"sort"
+	"strings"
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
@@ -1012,17 +1013,18 @@ func (ssn *Session) MarkJobDirty(jobID api.JobID) {
 
 // String return nodes and jobs information in the session
 func (ssn *Session) String() string {
-	msg := fmt.Sprintf("Session %v: \n", ssn.UID)
+	var b strings.Builder
+	fmt.Fprintf(&b, "Session %v: \n", ssn.UID)
 
 	for _, job := range ssn.Jobs {
-		msg = fmt.Sprintf("%s%v\n", msg, job)
+		fmt.Fprintf(&b, "%v\n", job)
 	}
 
 	for _, node := range ssn.Nodes {
-		msg = fmt.Sprintf("%s%v\n", msg, node)
+		fmt.Fprintf(&b, "%v\n", node)
 	}
 
-	return msg
+	return b.String()
 }
 
 func (ssn *Session) IsJobTerminated(jobId api.JobID) bool {

@@ -119,7 +119,7 @@ func AdmitJobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 }
 
 func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionResponse) string {
-	var msg string
+	var b strings.Builder
 	taskNames := map[string]string{}
 	var totalReplicas int32
 
@@ -141,7 +141,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		}
 	}
 
-	msg += validateNetworkTopology(job.Spec.NetworkTopology)
+	b.WriteString(validateNetworkTopology(job.Spec.NetworkTopology))
 	hasDependenciesBetweenTasks := false
 	for index, task := range job.Spec.Tasks {
 		if task.DependsOn != nil {
@@ -152,7 +152,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		// This validation is not covered by CRD schema or VAP, so it remains in webhook.
 		if task.MinAvailable != nil {
 			if *task.MinAvailable > task.Replicas {
-				msg += fmt.Sprintf(" 'minAvailable' is greater than 'replicas' in task: %s, job: %s;", task.Name, job.Name)
+				fmt.Fprintf(&b, " 'minAvailable' is greater than 'replicas' in task: %s, job: %s;", task.Name, job.Name)
 			}
 		}
 		// count replicas
@@ -160,28 +160,30 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 
 		// duplicate task name
 		if _, found := taskNames[task.Name]; found {
-			msg += fmt.Sprintf(" duplicated task name %s;", task.Name)
+			fmt.Fprintf(&b, " duplicated task name %s;", task.Name)
 			break
 		} else {
 			taskNames[task.Name] = task.Name
 		}
 		if err := validatePolicies(task.Policies, field.NewPath("spec.tasks.policies")); err != nil {
-			msg += err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v;",
+			b.WriteString(err.Error())
+			fmt.Fprintf(&b, " valid events are %v, valid actions are %v;",
 				getValidEvents(), getValidActions())
 		}
 		podName := jobhelpers.MakePodName(job.Name, task.Name, index)
-		msg += validateK8sPodNameLength(podName)
-		msg += validateTaskTemplate(task, job, index)
-		msg += validatePartitionPolicy(task, job)
+		b.WriteString(validateK8sPodNameLength(podName))
+		b.WriteString(validateTaskTemplate(task, job, index))
+		b.WriteString(validatePartitionPolicy(task, job))
 	}
 
-	msg += validateJobName(job)
+	b.WriteString(validateJobName(job))
 
 	if totalReplicas < job.Spec.MinAvailable {
-		msg += " job 'minAvailable' should not be greater than total replicas in tasks;"
+		b.WriteString(" job 'minAvailable' should not be greater than total replicas in tasks;")
 	}
 	if err := validatePolicies(job.Spec.Policies, field.NewPath("spec.policies")); err != nil {
-		msg = msg + err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v;",
+		b.WriteString(err.Error())
+		fmt.Fprintf(&b, " valid events are %v, valid actions are %v;",
 			getValidEvents(), getValidActions())
 	}
 
@@ -189,31 +191,31 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	if len(job.Spec.Plugins) != 0 {
 		for name := range job.Spec.Plugins {
 			if _, found := plugins.GetPluginBuilder(name); !found {
-				msg += fmt.Sprintf(" unable to find job plugin: %s;", name)
+				fmt.Fprintf(&b, " unable to find job plugin: %s;", name)
 			}
 		}
 	}
 
 	if err := validateIO(job.Spec.Volumes); err != nil {
-		msg += err.Error()
+		b.WriteString(err.Error())
 	}
 
 	queue, err := config.QueueLister.Get(job.Spec.Queue)
 	if err != nil {
-		msg += fmt.Sprintf(" unable to find job queue: %v;", err)
+		fmt.Fprintf(&b, " unable to find job queue: %v;", err)
 	} else {
 		if queue.Status.State != schedulingv1beta1.QueueStateOpen {
-			msg += fmt.Sprintf(" can only submit job to queue with state `Open`, "+
+			fmt.Fprintf(&b, " can only submit job to queue with state `Open`, "+
 				"queue `%s` status is `%s`;", queue.Name, queue.Status.State)
 		}
 
 		// validate hierarchical queue
 		if queue.Name == "root" {
-			msg += " can not submit job to root queue;"
+			b.WriteString(" can not submit job to root queue;")
 		} else {
 			queueList, err := config.QueueLister.List(labels.Everything())
 			if err != nil {
-				msg += fmt.Sprintf("failed to get list queues: %v;", err)
+				fmt.Fprintf(&b, "failed to get list queues: %v;", err)
 			}
 			childQueues := make([]*schedulingv1beta1.Queue, 0)
 			for _, childQueue := range queueList {
@@ -222,7 +224,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 				}
 			}
 			if len(childQueues) > 0 {
-				msg += fmt.Sprintf(" can only submit job to leaf queue, "+"queue `%s` has %d child queues;", queue.Name, len(childQueues))
+				fmt.Fprintf(&b, " can only submit job to leaf queue, "+"queue `%s` has %d child queues;", queue.Name, len(childQueues))
 			}
 		}
 	}
@@ -230,15 +232,15 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	if hasDependenciesBetweenTasks {
 		_, isDag := topoSort(job)
 		if !isDag {
-			msg += " job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG);"
+			b.WriteString(" job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG);")
 		}
 	}
 
-	if msg != "" {
+	if b.Len() > 0 {
 		reviewResponse.Allowed = false
 	}
 
-	return msg
+	return b.String()
 }
 
 func validateJobUpdate(old, new *v1alpha1.Job) error {
