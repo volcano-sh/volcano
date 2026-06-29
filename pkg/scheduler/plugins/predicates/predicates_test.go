@@ -26,6 +26,7 @@ import (
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8sframework "k8s.io/kube-scheduler/framework"
@@ -68,6 +69,20 @@ func (p *fakeFilterPlugin) Name() string {
 
 func (p *fakeFilterPlugin) Filter(_ context.Context, _ k8sframework.CycleState, _ *apiv1.Pod, _ k8sframework.NodeInfo) *k8sframework.Status {
 	return k8sframework.NewStatus(k8sframework.Unschedulable, p.message)
+}
+
+type fakeTrackingFilterPlugin struct {
+	name      string
+	callCount int
+}
+
+func (p *fakeTrackingFilterPlugin) Name() string {
+	return p.name
+}
+
+func (p *fakeTrackingFilterPlugin) Filter(_ context.Context, _ k8sframework.CycleState, _ *apiv1.Pod, _ k8sframework.NodeInfo) *k8sframework.Status {
+	p.callCount++
+	return k8sframework.NewStatus(k8sframework.Success)
 }
 
 type fakeReservePlugin struct {
@@ -638,6 +653,61 @@ func TestPredicateFailureReasonAggregationOrderStable(t *testing.T) {
 			t.Fatalf("expected *api.FitError, got %T", err)
 		}
 		assert.Equal(t, expected, fitErr.Reasons())
+	}
+}
+
+func TestPredicateByStablefilterSkipsPluginInSkipSet(t *testing.T) {
+	pp := New(nil).(*PredicatesPlugin)
+	pp.enabledPredicates = predicateEnable{
+		nodeAffinityEnable: true,
+	}
+
+	skippedPlugin := &fakeTrackingFilterPlugin{name: nodeaffinity.Name}
+	normalPlugin := &fakeTrackingFilterPlugin{name: tainttoleration.Name}
+
+	pp.StableFilterPlugins = map[string]k8sframework.FilterPlugin{
+		nodeaffinity.Name:    skippedPlugin,
+		tainttoleration.Name: normalPlugin,
+	}
+	pp.StableFilterOrder = []string{nodeaffinity.Name, tainttoleration.Name}
+	pp.FilterPlugins = map[string]k8sframework.FilterPlugin{}
+	pp.FilterOrder = []string{}
+
+	node := &apiv1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-1"},
+		Status: apiv1.NodeStatus{
+			Capacity: apiv1.ResourceList{
+				apiv1.ResourceCPU:    resource.MustParse("4"),
+				apiv1.ResourceMemory: resource.MustParse("8Gi"),
+				apiv1.ResourcePods:   resource.MustParse("100"),
+			},
+			Allocatable: apiv1.ResourceList{
+				apiv1.ResourceCPU:    resource.MustParse("4"),
+				apiv1.ResourceMemory: resource.MustParse("8Gi"),
+				apiv1.ResourcePods:   resource.MustParse("100"),
+			},
+		},
+	}
+	k8sNodeInfo := schedframework.NewNodeInfo()
+	k8sNodeInfo.SetNode(node)
+	pp.Handle = k8s.NewFramework(map[string]k8sframework.NodeInfo{"node-1": k8sNodeInfo})
+
+	task := api.NewTaskInfo(util.BuildPod("ns", "p1", "", apiv1.PodPending, nil, "pg", nil, nil))
+	volcanoNode := api.NewNodeInfo(node)
+
+	// Populate the skip set to simulate nodeaffinity.PreFilter returning Skip.
+	state := schedframework.NewCycleState()
+	state.SetSkipFilterPlugins(sets.New[string](nodeaffinity.Name))
+
+	err := pp.Predicate(task, volcanoNode, state)
+	if err != nil {
+		t.Fatalf("expected scheduling success, got: %v", err)
+	}
+	if skippedPlugin.callCount != 0 {
+		t.Fatalf("expected skipped plugin Filter() to not be called, got %d", skippedPlugin.callCount)
+	}
+	if normalPlugin.callCount != 1 {
+		t.Fatalf("expected non-skipped plugin Filter() to be called exactly once, got %d", normalPlugin.callCount)
 	}
 }
 
