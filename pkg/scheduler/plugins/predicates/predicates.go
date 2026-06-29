@@ -647,6 +647,9 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 			if !exists {
 				continue
 			}
+			if handleSkipPredicatePlugin(state, name) {
+				continue
+			}
 			status := plugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
 			filterStatus := api.ConvertPredicateStatus(status)
 			if filterStatus.Code != api.Success {
