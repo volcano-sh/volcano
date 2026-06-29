@@ -1003,8 +1003,8 @@ func (cc *jobcontroller) recordPodGroupEvent(job *batch.Job, podGroup *schedulin
 	// If the latest condition is not scheduled, then a warning event is recorded
 	if latestCondition != nil && latestCondition.Type != scheduling.PodGroupScheduled {
 		cc.recorder.Eventf(job, v1.EventTypeWarning, string(batch.PodGroupPending),
-			fmt.Sprintf("PodGroup %s:%s %s, reason: %s", job.Namespace, job.Name,
-				strings.ToLower(string(latestCondition.Type)), latestCondition.Message))
+			"PodGroup %s:%s %s, reason: %s", job.Namespace, job.Name,
+			strings.ToLower(string(latestCondition.Type)), latestCondition.Message)
 	}
 }
 

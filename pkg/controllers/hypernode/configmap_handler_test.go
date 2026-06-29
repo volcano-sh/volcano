@@ -102,8 +102,10 @@ func TestSetupConfigMapInformer(t *testing.T) {
 	controller.setupConfigMapInformer()
 	assert.NotNil(t, controller.configMapInformer)
 
-	controller.informerFactory.Start(nil)
-	synced := controller.informerFactory.WaitForCacheSync(nil)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	controller.informerFactory.Start(stopCh)
+	synced := controller.informerFactory.WaitForCacheSync(stopCh)
 	for informerType, ok := range synced {
 		assert.True(t, ok, "Failed to sync informer: %v", informerType)
 	}
@@ -242,16 +244,21 @@ func TestIntegrationConfigMapHandling(t *testing.T) {
 		},
 	}
 
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	controller.informerFactory.Start(stopCh)
+	synced := controller.informerFactory.WaitForCacheSync(stopCh)
+	for informerType, ok := range synced {
+		assert.True(t, ok, "Failed to sync informer: %v", informerType)
+	}
+
 	_, err := controller.kubeClient.CoreV1().ConfigMaps("test-namespace").Create(
 		context.Background(), configMap, metav1.CreateOptions{})
 	assert.NoError(t, err)
 
-	controller.informerFactory.Start(nil)
-	synced := controller.informerFactory.WaitForCacheSync(nil)
-	for informerType, ok := range synced {
-		assert.True(t, ok, "Failed to sync informer: %v", informerType)
-	}
-	assert.Equal(t, 1, controller.configMapQueue.Len())
+	assert.Eventually(t, func() bool {
+		return controller.configMapQueue.Len() == 1
+	}, 5*time.Second, 10*time.Millisecond, "expected ConfigMap add to enqueue one key")
 
 	// Process the queue
 	key, _ := controller.configMapQueue.Get()
