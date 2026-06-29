@@ -25,6 +25,8 @@ import (
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 type BaseScorePlugin interface {
@@ -38,6 +40,19 @@ type EmptyNormalizer struct{}
 
 func (e *EmptyNormalizer) NormalizeScore(ctx context.Context, state fwk.CycleState, p *v1.Pod, scores k8sframework.NodeScoreList) *fwk.Status {
 	return nil
+}
+
+func NodeInfosForCandidateNodes(nodes []*api.NodeInfo, nodeMap map[string]fwk.NodeInfo) []fwk.NodeInfo {
+	nodeInfos := make([]fwk.NodeInfo, 0, len(nodes))
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		if nodeInfo, ok := nodeMap[node.Name]; ok {
+			nodeInfos = append(nodeInfos, nodeInfo)
+		}
+	}
+	return nodeInfos
 }
 
 func CalculatePluginScore(
