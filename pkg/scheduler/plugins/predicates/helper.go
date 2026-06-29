@@ -21,6 +21,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 
@@ -34,6 +35,7 @@ const (
 	defaultBindTimeoutSeconds      = 600
 	draFilterTimeoutSecondsKey     = "dynamicresources.filterTimeoutSeconds"
 	defaultDRAFilterTimeout        = 10 * time.Second
+	DefaultDRAPluginWeight         = "dynamicresources.weight"
 )
 
 type wrapVolumeBindingArgs struct {
@@ -116,7 +118,7 @@ func defaultDynamicResourcesArgs() *wrapDynamicResourcesArgs {
 	}
 }
 
-// setUp DynamicResourcesArg populates args from volcano framework arguments.
+// setUpDynamicResourcesArgs populates args from volcano framework arguments.
 //
 //	Supported override:
 //	 - dynamicresources.filterTimeoutSeconds: integer seconds (e.g., 15)
@@ -130,4 +132,17 @@ func setUpDynamicResourcesArgs(dra *wrapDynamicResourcesArgs, rawArgs framework.
 			dra.FilterTimeout = &metav1.Duration{Duration: time.Duration(secs) * time.Second}
 		}
 	}
+}
+
+// getDRAPluginWeight retrieves the DRA plugin weight from scheduler configuration.
+func getDRAPluginWeight(rawArgs framework.Arguments) int {
+	draWeight := 1
+	if w, ok := framework.Get[int](rawArgs, DefaultDRAPluginWeight); ok {
+		if w < 1 {
+			klog.Warningf("Invalid %s value %d, defaulting to 1", DefaultDRAPluginWeight, w)
+		} else {
+			draWeight = w
+		}
+	}
+	return draWeight
 }
