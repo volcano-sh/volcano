@@ -132,34 +132,81 @@ func TestAddConfigMap(t *testing.T) {
 }
 
 func TestUpdateConfigMap(t *testing.T) {
-	controller := newFakeConfigMapController()
-
-	oldConfigMap := &v1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-configmap",
-			Namespace: "test-namespace",
+	testCases := []struct {
+		name        string
+		oldData     map[string]string
+		newData     map[string]string
+		expectedLen int
+	}{
+		{
+			name: "topology config changed enqueues",
+			oldData: map[string]string{
+				config.DefaultConfigKey: "old-topology-config",
+			},
+			newData: map[string]string{
+				config.DefaultConfigKey: "new-topology-config",
+			},
+			expectedLen: 1,
 		},
-		Data: map[string]string{
-			"key1": "value1",
+		{
+			name: "topology config unchanged skips enqueue",
+			oldData: map[string]string{
+				config.DefaultConfigKey: "same-topology-config",
+				"other-key":             "value1",
+			},
+			newData: map[string]string{
+				config.DefaultConfigKey: "same-topology-config",
+				"other-key":             "value2",
+			},
+			expectedLen: 0,
 		},
 	}
 
-	newConfigMap := oldConfigMap.DeepCopy()
-	newConfigMap.Data["key2"] = "value2"
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			controller := newFakeConfigMapController()
 
-	controller.updateConfigMap(oldConfigMap, newConfigMap)
+			oldConfigMap := &v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: "test-namespace",
+				},
+				Data: tc.oldData,
+			}
+			newConfigMap := &v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: "test-namespace",
+				},
+				Data: tc.newData,
+			}
 
-	// Verify the ConfigMap was added to the queue
-	assert.Equal(t, 1, controller.configMapQueue.Len())
-
-	// Test invalid object (non-ConfigMap)
-	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-pod",
-		},
+			controller.updateConfigMap(oldConfigMap, newConfigMap)
+			assert.Equal(t, tc.expectedLen, controller.configMapQueue.Len())
+		})
 	}
-	controller.updateConfigMap(oldConfigMap, pod)
-	assert.Equal(t, 1, controller.configMapQueue.Len())
+
+	// Test invalid new object (non-ConfigMap)
+	t.Run("invalid new object skips enqueue", func(t *testing.T) {
+		controller := newFakeConfigMapController()
+		oldConfigMap := &v1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-configmap", Namespace: "test-namespace"},
+		}
+		pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "test-pod"}}
+		controller.updateConfigMap(oldConfigMap, pod)
+		assert.Equal(t, 0, controller.configMapQueue.Len())
+	})
+
+	// Test invalid old object (non-ConfigMap)
+	t.Run("invalid old object skips enqueue", func(t *testing.T) {
+		controller := newFakeConfigMapController()
+		newConfigMap := &v1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-configmap", Namespace: "test-namespace"},
+		}
+		pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "test-pod"}}
+		controller.updateConfigMap(pod, newConfigMap)
+		assert.Equal(t, 0, controller.configMapQueue.Len())
+	})
 }
 
 func TestDeleteConfigMap(t *testing.T) {
@@ -238,7 +285,7 @@ func TestIntegrationConfigMapHandling(t *testing.T) {
 			Namespace: "test-namespace",
 		},
 		Data: map[string]string{
-			"config": "initial",
+			config.DefaultConfigKey: "initial",
 		},
 	}
 
@@ -258,7 +305,7 @@ func TestIntegrationConfigMapHandling(t *testing.T) {
 	controller.configMapQueue.Done(key)
 
 	updatedConfigMap := configMap.DeepCopy()
-	updatedConfigMap.Data["config"] = "updated"
+	updatedConfigMap.Data[config.DefaultConfigKey] = "updated"
 
 	_, err = controller.kubeClient.CoreV1().ConfigMaps("test-namespace").Update(
 		context.Background(), updatedConfigMap, metav1.UpdateOptions{})
