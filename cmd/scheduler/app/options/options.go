@@ -80,8 +80,8 @@ type ServerOption struct {
 	EnablePprof         bool
 	ListenAddress       string
 	EnablePriorityClass bool
-	// EnableCSIStorage registers CSIDriver and CSIStorageCapacity informers on the scheduler cache
-	// when the CSIStorage feature gate is also enabled. It does not change upstream VolumeBinding behavior.
+	// EnableCSIStorage registers CSIDriver and CSIStorageCapacity informers on the scheduler cache.
+	// It does not change upstream VolumeBinding behavior (kube VolumeBinding uses the shared informer factory separately).
 	EnableCSIStorage bool
 	// vc-scheduler will load (not activate) custom plugins which are in this directory
 	PluginsDir    string
@@ -171,7 +171,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 
 	fs.StringVar(&s.PluginsDir, "plugins-dir", defaultPluginsDir, "vc-scheduler will load custom plugins which are in this directory")
 	fs.BoolVar(&s.EnableCSIStorage, "csi-storage", true,
-		"When true (default) and the CSIStorage feature gate is enabled, register CSIDriver and CSIStorageCapacity informers on the scheduler cache; set false to reduce API watches. Does not disable kube VolumeBinding capacity checks.")
+		"When true (default), register CSIDriver and CSIStorageCapacity informers on the scheduler cache; set false to reduce API watches. Does not disable kube VolumeBinding capacity checks.")
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
 	fs.BoolVar(&s.EnablePprof, "enable-pprof", false, "Enable the pprof endpoint; it is false by default")

@@ -272,7 +272,7 @@ func (de *defaultEvictor) Evict(p *v1.Pod, reason string) error {
 	evictMsg := fmt.Sprintf("Pod is evicted, because of %v", reason)
 	annotations := map[string]string{}
 	// record that we are evicting the pod
-	de.recorder.AnnotatedEventf(p, annotations, v1.EventTypeWarning, "Evict", evictMsg)
+	de.recorder.AnnotatedEventf(p, annotations, v1.EventTypeWarning, "Evict", "%s", evictMsg)
 
 	pod := p.DeepCopy()
 	condition := &v1.PodCondition{
@@ -674,7 +674,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	)
 	//real node sync is handled in queue instead of event handler, use tracker to track the handling status in node queue
 	sc.nodeInitialEventTracker = schedulercache.NewQueueHandlerTracker(handlerRegistration)
-	handlers["node"] = sc.nodeInitialEventTracker
+	handlers["node"] = schedulercache.NewInitialEventHandlerRegistration(handlerRegistration, sc.nodeInitialEventTracker)
 
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
 	sc.pvcInformer.Informer()
@@ -694,7 +694,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	)
 	handlers["csiNode"] = handlerRegistration
 
-	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
+	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage {
 		sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
 		sc.csiDriverInformer.Informer()
 		sc.csiStorageCapacityInformer = informerFactory.Storage().V1().CSIStorageCapacities()
@@ -815,7 +815,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	})
 	//real hypernode sync is handled in queue instead of event handler, use tracker to track the handling status in hypenode queue
 	sc.hyperNodesInitialEventTracker = schedulercache.NewQueueHandlerTracker(handlerRegistration)
-	handlers["hypernode"] = sc.hyperNodesInitialEventTracker
+	handlers["hypernode"] = schedulercache.NewInitialEventHandlerRegistration(handlerRegistration, sc.hyperNodesInitialEventTracker)
 
 	if options.ServerOpts.ShardingMode == util.HardShardingMode || options.ServerOpts.ShardingMode == util.SoftShardingMode {
 		sc.nodeShardInformer = sc.vcInformerFactory.Shard().V1alpha1().NodeShards()
@@ -833,14 +833,14 @@ func (sc *SchedulerCache) addEventHandler() {
 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
 		sc.resourceClaimCache = assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
-			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
+			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaintRules),
 			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
 			KubeClient:             sc.kubeClient,
 		}
 		// If device taints are disabled, the additional informers are not needed and
 		// the tracker turns into a simple wrapper around the slice informer.
 		if resourceSliceTrackerOpts.EnableDeviceTaintRules {
-			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
+			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1beta2().DeviceTaintRules()
 			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
 		}
 		resourceSliceTracker, err := resourceslicetracker.StartTracker(ctx, resourceSliceTrackerOpts)
@@ -975,7 +975,7 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 		}
 	}()
 
-	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", reason)
+	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", "%s", reason)
 	return nil
 }
 
@@ -1110,7 +1110,7 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 		// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
 		// k8s core, so using the same string here.
 		// The reason field in PodCondition can be "Unschedulable"
-		sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", message)
+		sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", "%s", message)
 		if _, err := sc.StatusUpdater.UpdatePodStatus(pod); err != nil {
 			return err
 		}
@@ -1744,7 +1744,7 @@ func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, 
 		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
 		return
 	}
-	sc.Recorder.Eventf(pg, eventType, reason, msg)
+	sc.Recorder.Eventf(pg, eventType, reason, "%s", msg)
 }
 
 func (sc *SchedulerCache) SetMetricsConf(conf map[string]string) {

@@ -442,7 +442,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	informerFactory.Core().V1().PersistentVolumes().Informer()
 	informerFactory.Storage().V1().StorageClasses().Informer()
 	informerFactory.Storage().V1().CSINodes().Informer()
-	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
+	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage {
 		informerFactory.Storage().V1().CSIDrivers().Informer()
 		informerFactory.Storage().V1().CSIStorageCapacities().Informer()
 	}
@@ -476,7 +476,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	)
 	//real node sync is handled in queue instead of event handler, use tracker to track the handling status in node queue
 	sc.nodeInitialEventTracker = schedulercache.NewQueueHandlerTracker(handlerRegistration)
-	handlers["node"] = sc.nodeInitialEventTracker
+	handlers["node"] = schedulercache.NewInitialEventHandlerRegistration(handlerRegistration, sc.nodeInitialEventTracker)
 
 	sc.podInformer = informerFactory.Core().V1().Pods()
 	// 1. Pods already scheduled, refresh its state in cache
@@ -559,14 +559,14 @@ func (sc *SchedulerCache) addEventHandler() {
 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
 		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
-			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
+			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaintRules),
 			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
 			KubeClient:             sc.kubeClient,
 		}
 		// If device taints are disabled, the additional informers are not needed and
 		// the tracker turns into a simple wrapper around the slice informer.
 		if resourceSliceTrackerOpts.EnableDeviceTaintRules {
-			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
+			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1beta2().DeviceTaintRules()
 			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
 		}
 		resourceSliceTracker, err := resourceslicetracker.StartTracker(ctx, resourceSliceTrackerOpts)
@@ -756,7 +756,7 @@ func (sc *SchedulerCache) TaskUnschedulable(task *schedulingapi.TaskInfo, reason
 		// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
 		// k8s core, so using the same string here.
 		// The reason field in PodCondition can be "Unschedulable"
-		sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", message)
+		sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", "%s", message)
 		if _, err := sc.StatusUpdater.UpdatePodStatus(pod); err != nil {
 			return err
 		}
