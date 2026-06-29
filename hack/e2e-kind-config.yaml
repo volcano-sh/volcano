@@ -13,7 +13,7 @@ containerdConfigPatches:
 nodes:
   # the control plane node config
   - role: control-plane
-    image: kindest/node:v1.36.0
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
     kubeadmConfigPatches:
       - |
         apiVersion: kubelet.config.k8s.io/v1beta1
@@ -30,10 +30,10 @@ nodes:
               value: "MutatingAdmissionPolicy"
   # the four workers
   - role: worker
-    image: kindest/node:v1.36.0
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
   - role: worker
-    image: kindest/node:v1.36.0
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
   - role: worker
-    image: kindest/node:v1.36.0
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
   - role: worker
-    image: kindest/node:v1.36.0
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5

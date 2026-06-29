@@ -50,7 +50,7 @@ shift 4
 # v0.36+ generators take API packages as positional args (pflag.Args()), not --bounding-dirs/--input-dirs.
 # Install binaries into _output/bin with GOFLAGS=-mod=mod: "go run" from the main module with vendor
 # can mis-build or mis-forward argv so pflag sees no flags (everything becomes "packages").
-CODEGEN_VERSION="${CODEGEN_VERSION:-v0.36.0}"
+CODEGEN_VERSION="${CODEGEN_VERSION:-v0.36.1}"
 SCRIPT_ROOT="$(cd "$(dirname "${0}")/.." && pwd)"
 CODEGEN_BINDIR="${SCRIPT_ROOT}/_output/bin"
 

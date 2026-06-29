@@ -22,7 +22,7 @@ ADD . volcano
 RUN cd volcano && make vc-webhook-manager
 
 FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
-ARG KUBE_VERSION="1.36.0"
+ARG KUBE_VERSION="1.36.1"
 ARG TARGETARCH
 ARG APK_MIRROR
 RUN if [[ -n "$APK_MIRROR" ]]; then sed -i "s@https://dl-cdn.alpinelinux.org@${APK_MIRROR}@g" /etc/apk/repositories ; fi && \

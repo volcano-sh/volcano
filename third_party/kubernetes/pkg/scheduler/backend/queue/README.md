@@ -11,7 +11,7 @@ Rather than reinventing the wheel, Volcano adopts this mature queue logic and co
 ## Source
 
 - **Repository**: `https://github.com/kubernetes/kubernetes`
-- **Version**: `v1.36`
+- **Version**: `v1.34`
 - **Source Package**: `pkg/scheduler/backend/queue`
 - **Copied Files**:
     - `scheduling_queue.go` - Main scheduling queue implementation

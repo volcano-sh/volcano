@@ -177,17 +177,13 @@ func (f *Framework) RejectWaitingPod(uid types.UID) bool {
 	panic("implement me")
 }
 
-func (f *Framework) AddPodInPreBind(uid types.UID, cancel context.CancelCauseFunc) {
-	panic("implement me")
-}
+func (f *Framework) AddPodInPreBind(uid types.UID, cancel context.CancelCauseFunc) {}
 
 func (f *Framework) GetPodInPreBind(uid types.UID) fwk.PodInPreBind {
-	panic("implement me")
+	return nil
 }
 
-func (f *Framework) RemovePodInPreBind(uid types.UID) {
-	panic("implement me")
-}
+func (f *Framework) RemovePodInPreBind(uid types.UID) {}
 
 func (f *Framework) KubeConfig() *rest.Config {
 	panic("implement me")
@@ -230,7 +226,7 @@ func (f *Framework) SharedCSIManager() fwk.CSIManager {
 }
 
 func (f *Framework) PodGroupManager() fwk.PodGroupManager {
-	panic("implement me")
+	return nil
 }
 
 func (f *Framework) SignPod(ctx context.Context, pod *v1.Pod) fwk.PodSignature {

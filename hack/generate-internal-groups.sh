@@ -67,7 +67,7 @@ while (($#)); do
 done
 set -- "${EXTRA_ARGS[@]}"
 
-CODEGEN_VERSION="${CODEGEN_VERSION:-v0.36.0}"
+CODEGEN_VERSION="${CODEGEN_VERSION:-v0.36.1}"
 SCRIPT_ROOT="$(cd "$(dirname "${0}")/.." && pwd)"
 CODEGEN_BINDIR="${SCRIPT_ROOT}/_output/bin"
 
