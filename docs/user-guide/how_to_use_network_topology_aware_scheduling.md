@@ -271,7 +271,7 @@ Based on the following network topology, this chapter will demonstrate how workl
    network-topology-job-t0-6   1/1     Running   0          5s    192.168.0.16   node6
    network-topology-job-t0-7   1/1     Running   0          5s    192.168.0.17   node7
    ```
-   In this example, the entire Job is scheduled to HyperNode2 (Node0~Node7). The first partition (Pod0~Pod3) is scheduled to HyperNode0 (Node0~Node3), the second partitions (Pod4~Pod7) is scheduled to HyperNode1 (Node4~Node7), and each partition satisfies its own network topology constraints.
+   In this example, the entire Job is scheduled to HyperNode2 (Node0~~Node7). The first partition (Pod0~~Pod3) is scheduled to HyperNode0 (Node0~~Node3), the second partitions (Pod4~~Pod7) is scheduled to HyperNode1 (Node4~Node7), and each partition satisfies its own network topology constraints.
 
 #### 3.3.3 Deploying Using Volcano Job Without Network Topology Constraints
 

@@ -105,15 +105,15 @@ name: s0
 spec:
   tier: 1
   members:
-  - name: node0
-    name: node1
+    - name: node0
+      name: node1
 ---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: s1
 spec:
-   tier: 1
-   members:
+  tier: 1
+  members:
     name: node2
     name: node3
 ---
@@ -121,8 +121,8 @@ version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: s2
 spec:
-   tier: 1
-   members:
+  tier: 1
+  members:
     name: node4
     name: node5
 ---
@@ -130,8 +130,8 @@ version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: s3
 spec:
-   tier: 1
-   members:
+  tier: 1
+  members:
     name: node6
     name: node7
 ---
@@ -139,16 +139,16 @@ version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: s4
 spec:
-   tier: 2
-   members:
+  tier: 2
+  members:
     name: s0
     name: s1
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: s5
 spec:
-   tier: 2
-   members:
+  tier: 2
+  members:
     name: s2
     name: s3
 ---
@@ -156,11 +156,10 @@ version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: s6
 spec:
-   tier: 3
-   members:
+  tier: 3
+  members:
     name: s4
     name: s5
-
 ```
 
 Example 2:  
@@ -302,7 +301,24 @@ region
 
 In this tree, the parent-child relationship dictates the topology levels. Real performance domains (such as switches or TORs) are represented by `HyperNode` CRDs, each categorized under a specific `tier` (an integer value) or `tierName` (a string identifier).
 
-To configure topology-aware scheduling affinity levels, Volcano supports selecting the scheduling boundary using either the tier level or name. The `highestTierName` field allows users to specify the highest network topology tier name the job or partition is permitted to span during scheduling.
+To configure topology-aware scheduling affinity levels, Volcano supports selecting the scheduling boundary using either the numerical tier level or the tier name. These two fields are mutually exclusive and cannot be set simultaneously.
+
+### Tier Number (`highestTierAllowed`)
+
+The `highestTierAllowed` field allows users to specify the highest network topology tier as an integer. The scheduler limits topology awareness such that the job or partition is only scheduled within HyperNodes at or below the specified numerical tier.
+
+How the scheduler limits topology awareness according to the selected tier number:
+
+- If `highestTierAllowed` is configured, the scheduler directly uses the integer value to constrain scheduling. The job or partition is only placed on HyperNodes whose `tier` is less than or equal to `highestTierAllowed`.
+
+Examples:
+
+- **`highestTierAllowed: 1`**: The scheduler limits topology constraints to tier 1 (the lowest tier, closest to the nodes), meaning all pods must be co-located within a single leaf HyperNode.
+- **`highestTierAllowed: 2`**: The scheduler allows scheduling across HyperNodes up to tier 2, permitting pods to span racks within a zone but not across zones.
+
+### Tier Name (`highestTierName`)
+
+The `highestTierName` field allows users to specify the highest network topology tier as a human-readable string identifier (e.g., `zone`, `rack`). This is useful when cluster administrators assign meaningful names to topology tiers via `HyperNode.spec.tierName`.
 
 How the scheduler limits topology awareness according to the selected tier name:
 
@@ -314,7 +330,7 @@ Examples:
 - **`highestTierName: zone`**: The scheduler limits topology constraints to the `zone` level (meaning scheduling considers topology up to the zone level and permits spanning multiple racks within a zone, but not across zones).
 - **`highestTierName: rack`**: The scheduler limits topology constraints to the `rack` level (meaning scheduling considers topology up to the rack level, and does not permit spanning across different racks).
 
-Default Behavior:
+### Default Behavior
 
 - If `networkTopology` is not configured, no topology-aware scheduling is applied.
 - If `mode: soft` is configured, topology affinity is preferred but no hard boundary is enforced.
