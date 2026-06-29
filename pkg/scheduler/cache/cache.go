@@ -1359,6 +1359,7 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 
 	err = bindContext.TaskInfo.SetPodResourceDecision()
 	if err != nil {
+		job.UpdateTaskStatus(task, originalStatus)
 		return fmt.Errorf("set task %v/%v resource decision failed, err %v", task.Namespace, task.Name, err)
 	}
 	task.NumaInfo = bindContext.TaskInfo.NumaInfo.Clone()
