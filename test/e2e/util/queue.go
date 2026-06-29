@@ -116,8 +116,11 @@ func DeleteQueue(ctx *TestContext, q string) {
 // relationships declared via ctx.QueueParent:
 //
 //  1. Clean vcjobs in every queue (single List call).
-//  2. UpdateStatus(Closed) only on top-level queues; the controller
-//     cascade-closes descendants.
+//  2. UpdateStatus(Closed) on every queue directly. The controller's
+//     hierarchical cascade only fires for CloseQueueAction routed through
+//     the bus Command API (see closeHierarchicalQueue); a direct
+//     UpdateStatus on a parent does not enqueue child closes, so we close
+//     each queue explicitly.
 //  3. Wait for every queue we own to reach Closed.
 //  4. Delete deepest-first so a parent is never deleted before its children.
 //
@@ -129,7 +132,7 @@ func deleteQueues(ctx *TestContext) {
 
 	deleteJobsInQueues(ctx, ctx.Queues)
 
-	for _, q := range topLevelQueues(ctx) {
+	for _, q := range ctx.Queues {
 		closeQueueStatus(ctx, q)
 	}
 
@@ -275,29 +278,6 @@ func deleteQueueAndWait(ctx *TestContext, q string) {
 		return false, nil
 	})
 	Expect(err).NotTo(HaveOccurred(), "failed waiting for queue %s to be deleted", q)
-}
-
-// topLevelQueues returns the queues a caller would close to trigger a cascade
-// across the whole sub-hierarchy this test owns: parent is "" / "root", or
-// parent is some external queue that lives outside ctx.Queues.
-func topLevelQueues(ctx *TestContext) []string {
-	queueSet := make(map[string]struct{}, len(ctx.Queues))
-	for _, q := range ctx.Queues {
-		queueSet[q] = struct{}{}
-	}
-
-	top := make([]string, 0, len(ctx.Queues))
-	for _, q := range ctx.Queues {
-		parent := ctx.QueueParent[q]
-		if parent == "" || parent == "root" {
-			top = append(top, q)
-			continue
-		}
-		if _, ok := queueSet[parent]; !ok {
-			top = append(top, q)
-		}
-	}
-	return top
 }
 
 // queueDepth walks parent links up to a root-equivalent ancestor. We cap
