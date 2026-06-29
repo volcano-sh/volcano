@@ -525,6 +525,7 @@ func (pp *PredicatesPlugin) InitPlugin() {
 			nodeAffinityFilter := plugin.(*nodeaffinity.NodeAffinity)
 			addFilterPlugin(nodeaffinity.Name, nodeAffinityFilter)
 			addStableFilterPlugin(nodeaffinity.Name, nodeAffinityFilter)
+			addPreFilterPlugin(nodeaffinity.Name, nodeAffinityFilter)
 		} else {
 			klog.Errorf("Failed to init %s plugin %v", nodeaffinity.Name, err)
 		}
@@ -565,6 +566,7 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		if plugin, err := nodevolumelimits.NewCSI(context.TODO(), nil, pp.Handle, pp.features); err == nil {
 			nodeVolumeLimitsCSIFilter := plugin.(*nodevolumelimits.CSILimits)
 			addFilterPlugin(nodevolumelimits.CSIName, nodeVolumeLimitsCSIFilter)
+			addPreFilterPlugin(nodevolumelimits.CSIName, nodeVolumeLimitsCSIFilter)
 		} else {
 			klog.Errorf("Failed to init %s plugin %v", nodevolumelimits.CSIName, err)
 		}
@@ -574,6 +576,7 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		if plugin, err := volumezone.New(context.TODO(), nil, pp.Handle, pp.features); err == nil {
 			volumeZoneFilter := plugin.(*volumezone.VolumeZone)
 			addFilterPlugin(volumezone.Name, volumeZoneFilter)
+			addPreFilterPlugin(volumezone.Name, volumeZoneFilter)
 		} else {
 			klog.Errorf("Failed to init %s plugin %v", volumezone.Name, err)
 		}
