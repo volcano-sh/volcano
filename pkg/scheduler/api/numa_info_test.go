@@ -79,3 +79,19 @@ func TestAddTaskValidUsage(t *testing.T) {
 		t.Errorf("cpu UsedPerNuma[0] = %v, want 2000", got)
 	}
 }
+
+// RemoveTask must walk the decoded decision, the same source AddTask folds in.
+// A task can carry the topology-decision annotation while NumaInfo is unset, so
+// reading ti.NumaInfo.ResMap there would dereference a nil and panic.
+func TestRemoveTaskNilNumaInfo(t *testing.T) {
+	info := newNumatopoInfoForTest()
+	info.NumaResMap["cpu"].UsedPerNuma[0] = 2000
+
+	ti := taskWithTopologyDecision(`{"numa":{"0":{"cpu":"2"}}}`)
+	ti.NumaInfo = nil
+	info.RemoveTask(ti)
+
+	if got := info.NumaResMap["cpu"].UsedPerNuma[0]; got != 0 {
+		t.Errorf("cpu UsedPerNuma[0] = %v, want 0", got)
+	}
+}

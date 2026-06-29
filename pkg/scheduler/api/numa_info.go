@@ -190,7 +190,7 @@ func (info *NumatopoInfo) RemoveTask(ti *TaskInfo) {
 		return
 	}
 
-	for numaID, resList := range ti.NumaInfo.ResMap {
+	for numaID, resList := range decision {
 		for resName, quantity := range resList {
 			resInfo, ok := info.NumaResMap[string(resName)]
 			if !ok {
