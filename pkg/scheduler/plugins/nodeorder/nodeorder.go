@@ -75,8 +75,8 @@ type NodeOrderPlugin struct {
 	NodeOrderScorePlugins map[string]ScorePluginWithWeight
 }
 
-// scorePluginEntry contains the plugin that both have PreScore and Score extension points, and the weight of the plugin,
-// if all the plugins have both PreScore/Score in the future, we can remove ScorePluginWithWeight and use the scorePluginEntry instead.
+// scorePluginEntry contains a plugin that has both PreScore and Score extension points.
+// If all score plugins support PreScore in the future, ScorePluginWithWeight can be replaced by scorePluginEntry.
 type scorePluginEntry struct {
 	plugin     nodescore.BaseScorePlugin
 	normalizer fwk.ScoreExtensions // If the plugin implements ScoreExtensions, normalizer is the plugin itself; otherwise, it can be EmptyNormalizer.
@@ -367,12 +367,7 @@ func (pp *NodeOrderPlugin) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo, k
 
 // BatchNodeOrderFn scores all candidate nodes for the given task in one call.
 func (pp *NodeOrderPlugin) BatchNodeOrderFn(task *api.TaskInfo, nodes []*api.NodeInfo, nodeMap map[string]fwk.NodeInfo, state *k8sframework.CycleState) (map[string]float64, error) {
-	nodeInfos := make([]fwk.NodeInfo, 0, len(nodes))
-	for _, node := range nodes {
-		if info, ok := nodeMap[node.Name]; ok {
-			nodeInfos = append(nodeInfos, info)
-		}
-	}
+	nodeInfos := nodescore.NodeInfosForCandidateNodes(nodes, nodeMap)
 	nodeScores := make(map[string]float64, len(nodes))
 
 	for name, entry := range pp.ScorePlugins {
