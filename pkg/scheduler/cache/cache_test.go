@@ -25,11 +25,13 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -37,6 +39,7 @@ import (
 	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclientfake "volcano.sh/apis/pkg/client/clientset/versioned/fake"
@@ -669,4 +672,129 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_CompletesAfterDone(t
 	assert.True(t, tracker.HasSynced(), "InitialEventAsyncHandlerTracker should report HasSynced=true after all objects are Done")
 	assert.Less(t, elapsed, 2*time.Second, "WaitForHandlerSync should return after all pending objects are processed")
 	assert.GreaterOrEqual(t, elapsed, 100*time.Millisecond, "WaitForHandlerSync should wait until Done is called")
+}
+
+// buildMinimalCache returns a SchedulerCache with enough fields populated to
+// run Snapshot() without panicking. Nodes and NamespaceCollection are empty.
+func buildMinimalCache(jobs map[api.JobID]*api.JobInfo, queues map[api.QueueID]*api.QueueInfo, pcs map[string]*schedulingv1.PriorityClass) *SchedulerCache {
+	ready := new(atomic.Bool)
+	ready.Store(true)
+	return &SchedulerCache{
+		Jobs:                jobs,
+		Nodes:               make(map[string]*api.NodeInfo),
+		Queues:              queues,
+		PriorityClasses:     pcs,
+		defaultPriority:     0,
+		NamespaceCollection: make(map[string]*api.NamespaceCollection),
+		CSINodesStatus:      make(map[string]*api.CSINodeStatusInfo),
+		NodeList:            []string{},
+		HyperNodesInfo: api.NewHyperNodesInfoWithCache(
+			make(api.HyperNodeInfoMap),
+			make(map[int]sets.Set[string]),
+			make(map[string]sets.Set[string]),
+			ready,
+		),
+	}
+}
+
+// buildJobWithPodGroup creates a fully initialised JobInfo by calling SetPodGroup so
+// that all dependent fields (Budget, WaitingTime, Queue, …) are populated.
+func buildJobWithPodGroup(jobID api.JobID, queueName, priClassName string) *api.JobInfo {
+	pg := &api.PodGroup{
+		PodGroup: scheduling.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      string(jobID),
+				Namespace: "test-ns",
+			},
+			Spec: scheduling.PodGroupSpec{
+				Queue:             queueName,
+				PriorityClassName: priClassName,
+			},
+		},
+	}
+	job := api.NewJobInfo(jobID)
+	job.SetPodGroup(pg)
+	job.Priority = 0 // reset after SetPodGroup in case it was touched
+	return job
+}
+
+// TestSnapshot_JobPriorityAppliedToClone verifies that Snapshot() correctly
+// resolves the PriorityClass value and stamps it onto the cloned JobInfo
+// that is placed in the snapshot, leaving the original JobInfo unmodified.
+func TestSnapshot_JobPriorityAppliedToClone(t *testing.T) {
+	const (
+		queueName    = "test-queue"
+		priClassName = "high-priority"
+	)
+	priValue := int32(100)
+
+	queueUID := api.QueueID(queueName)
+	queue := &api.QueueInfo{
+		UID:  queueUID,
+		Name: queueName,
+		Queue: &scheduling.Queue{
+			ObjectMeta: metav1.ObjectMeta{Name: queueName},
+		},
+	}
+
+	jobID := api.JobID("test-ns/test-job")
+	job := buildJobWithPodGroup(jobID, queueName, priClassName)
+
+	pc := &schedulingv1.PriorityClass{
+		ObjectMeta: metav1.ObjectMeta{Name: priClassName},
+		Value:      priValue,
+	}
+
+	sc := buildMinimalCache(
+		map[api.JobID]*api.JobInfo{jobID: job},
+		map[api.QueueID]*api.QueueInfo{queueUID: queue},
+		map[string]*schedulingv1.PriorityClass{priClassName: pc},
+	)
+
+	snapshot := sc.Snapshot()
+
+	snapshotJob, found := snapshot.Jobs[jobID]
+	if !found {
+		t.Fatalf("job %s not found in snapshot", jobID)
+	}
+	assert.Equal(t, priValue, snapshotJob.Priority, "snapshot job must carry the PriorityClass value")
+	assert.Equal(t, int32(0), job.Priority, "Snapshot() must not mutate the original job's Priority field")
+}
+
+// TestSnapshot_DefaultPriorityUsedWhenNoClass verifies that when a job's
+// PriorityClassName does not match any known PriorityClass, the snapshot job
+// receives the cache's defaultPriority without modifying the original.
+func TestSnapshot_DefaultPriorityUsedWhenNoClass(t *testing.T) {
+	const (
+		queueName = "default"
+	)
+	defaultPri := int32(42)
+
+	queueUID := api.QueueID(queueName)
+	queue := &api.QueueInfo{
+		UID:  queueUID,
+		Name: queueName,
+		Queue: &scheduling.Queue{
+			ObjectMeta: metav1.ObjectMeta{Name: queueName},
+		},
+	}
+
+	jobID := api.JobID("ns/job")
+	job := buildJobWithPodGroup(jobID, queueName, "non-existent-class")
+
+	sc := buildMinimalCache(
+		map[api.JobID]*api.JobInfo{jobID: job},
+		map[api.QueueID]*api.QueueInfo{queueUID: queue},
+		make(map[string]*schedulingv1.PriorityClass),
+	)
+	sc.defaultPriority = defaultPri
+
+	snapshot := sc.Snapshot()
+
+	snapshotJob, found := snapshot.Jobs[jobID]
+	if !found {
+		t.Fatalf("job %s not found in snapshot", jobID)
+	}
+	assert.Equal(t, defaultPri, snapshotJob.Priority, "snapshot job must use defaultPriority when class is absent")
+	assert.Equal(t, int32(0), job.Priority, "Snapshot() must not mutate the original job's Priority field")
 }
