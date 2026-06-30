@@ -245,6 +245,73 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	return res
 }
 
+// ShallowClone clones a NodeInfo but shallow-copies task pointers instead of
+// deep-copying each task. The returned NodeInfo shares *TaskInfo pointers with
+// the original. This is safe for read-only scheduling snapshots where the
+// caller does not mutate task fields (Status, NodeName, Resreq, etc.).
+//
+// IMPORTANT: Any code path that mutates a task (e.g. status transitions during
+// preemption/reclaim/allocate) must first operate on a cloned *TaskInfo to avoid
+// mutating the shared pointers retained by ShallowClone snapshots.
+//
+// Resource counters (Idle, Used, Releasing, Pipelined) are copied (they are
+// exclusive to the NodeInfo wrapper and not shared with any task), so the
+// cloned node has accurate resource accounting.
+func (ni *NodeInfo) ShallowClone() *NodeInfo {
+	res := &NodeInfo{
+		Name:  ni.Name,
+		Node:  ni.Node, // shared pointer – v1.Node is never mutated by NodeInfo methods
+		State: ni.State,
+
+		// Resource scalars are exclusive to the NodeInfo wrapper – clone them.
+		Releasing: ni.Releasing.Clone(),
+		Pipelined: ni.Pipelined.Clone(),
+		Idle:      ni.Idle.Clone(),
+		Used:      ni.Used.Clone(),
+
+		Allocatable:              ni.Allocatable.Clone(),
+		Capacity:                 ni.Capacity.Clone(),
+		OversubscriptionResource: ni.OversubscriptionResource.Clone(),
+
+		OversubscriptionNode: ni.OversubscriptionNode,
+		OfflineJobEvicting:   ni.OfflineJobEvicting,
+		RevocableZone:        ni.RevocableZone,
+
+		NumaChgFlag:    ni.NumaChgFlag,
+		BindGeneration: ni.BindGeneration,
+		Generation:     ni.Generation,
+
+		// Shallow-copy the Tasks map: keys and *TaskInfo pointer values are shared.
+		Tasks: make(map[TaskID]*TaskInfo, len(ni.Tasks)),
+	}
+
+	for k, v := range ni.Tasks {
+		res.Tasks[k] = v
+	}
+
+	// ResourceUsage is a small struct – deep-copy to avoid shared metric state.
+	if ni.ResourceUsage != nil {
+		res.ResourceUsage = ni.ResourceUsage.DeepCopy()
+	} else {
+		res.ResourceUsage = &NodeUsage{}
+	}
+
+	// NumaInfo and NumaSchedulerInfo are deep-copied because NUMA-aware plugins
+	// may call RefreshNumaSchedulerInfoByCrd which mutates NumaSchedulerInfo.
+	if ni.NumaInfo != nil {
+		res.NumaInfo = ni.NumaInfo.DeepCopy()
+	}
+	if ni.NumaSchedulerInfo != nil {
+		res.NumaSchedulerInfo = ni.NumaSchedulerInfo.DeepCopy()
+	}
+
+	// Others (device plugins) and ImageStates are deep/shallow-copied by existing helpers.
+	res.Others = ni.CloneOthers()
+	res.ImageStates = ni.CloneImageSummary()
+
+	return res
+}
+
 // Ready returns whether node is ready for scheduling
 func (ni *NodeInfo) Ready() bool {
 	return ni.State.Phase == Ready

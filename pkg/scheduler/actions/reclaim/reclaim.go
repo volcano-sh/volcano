@@ -197,7 +197,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 				if !q.Reclaimable() {
 					continue
 				}
-				reclaimees = append(reclaimees, taskOnNode.Clone())
+				reclaimees = append(reclaimees, taskOnNode)
 			}
 		}
 
@@ -228,7 +228,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			if resreq.LessEqual(availableResources, api.Zero) {
 				break
 			}
-			reclaimee := victimsQueue.Pop().(*api.TaskInfo)
+			reclaimee := victimsQueue.Pop().(*api.TaskInfo).Clone()
 			klog.V(3).Infof("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
 				reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
 			nodeStmt.Evict(reclaimee, "reclaim")
@@ -244,7 +244,8 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			continue
 		}
 
-		if err := nodeStmt.Pipeline(task, n.Name, evictionOccurred); err != nil {
+		taskClone := task.Clone()
+		if err := nodeStmt.Pipeline(taskClone, n.Name, evictionOccurred); err != nil {
 			klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 				task.Namespace, task.Name, n.Name)
 			nodeStmt.Discard()

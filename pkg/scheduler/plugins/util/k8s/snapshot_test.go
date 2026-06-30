@@ -352,6 +352,97 @@ func TestSnapshot_AddOrUpdateNodes(t *testing.T) {
 	}
 }
 
+func TestSnapshot_AddOrUpdateNodesShallowCopiesTasks(t *testing.T) {
+	snapshot := NewEmptySnapshot()
+	node := api.NewNodeInfo(&v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node-1",
+		},
+		Status: v1.NodeStatus{
+			Capacity: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("4"),
+				v1.ResourceMemory: resource.MustParse("8Gi"),
+			},
+			Allocatable: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("4"),
+				v1.ResourceMemory: resource.MustParse("8Gi"),
+			},
+		},
+	})
+	pod := util.BuildPod("default", "pod-1", "node-1", v1.PodRunning,
+		api.BuildResourceList("1", "1Gi"), "pg1", nil, nil)
+	task := api.NewTaskInfo(pod)
+	task.Status = api.Running
+	if err := node.AddTask(task); err != nil {
+		t.Fatalf("failed to add task: %v", err)
+	}
+
+	snapshot.AddOrUpdateNodes([]*api.NodeInfo{node})
+
+	snapshotNode, err := snapshot.GetVolcanoNodeInfo("node-1")
+	if err != nil {
+		t.Fatalf("failed to get snapshot node: %v", err)
+	}
+
+	taskKey := api.PodKey(pod)
+	if snapshotNode.Tasks[taskKey] != node.Tasks[taskKey] {
+		t.Fatalf("expected snapshot to reuse node task pointer")
+	}
+
+	snapshotNode.Idle.MilliCPU = 0
+	if node.Idle.MilliCPU == 0 {
+		t.Fatalf("expected snapshot resource counters to be independent")
+	}
+}
+
+func BenchmarkSnapshotAddOrUpdateNodes(b *testing.B) {
+	const (
+		nodeCount     = 1000
+		tasksPerNode  = 50
+		cpuPerNode    = "100"
+		memoryPerNode = "400Gi"
+	)
+
+	nodes := make([]*api.NodeInfo, 0, nodeCount)
+	for i := 0; i < nodeCount; i++ {
+		nodeName := fmt.Sprintf("node-%d", i)
+		node := api.NewNodeInfo(&v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName,
+			},
+			Status: v1.NodeStatus{
+				Capacity: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse(cpuPerNode),
+					v1.ResourceMemory: resource.MustParse(memoryPerNode),
+				},
+				Allocatable: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse(cpuPerNode),
+					v1.ResourceMemory: resource.MustParse(memoryPerNode),
+				},
+			},
+		})
+
+		for j := 0; j < tasksPerNode; j++ {
+			pod := util.BuildPod("benchmark", fmt.Sprintf("pod-%d-%d", i, j), nodeName, v1.PodRunning,
+				api.BuildResourceList("100m", "128Mi"), "pg1", nil, nil)
+			task := api.NewTaskInfo(pod)
+			task.Status = api.Running
+			if err := node.AddTask(task); err != nil {
+				b.Fatalf("failed to add task: %v", err)
+			}
+		}
+
+		nodes = append(nodes, node)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		snapshot := NewEmptySnapshot()
+		snapshot.AddOrUpdateNodes(nodes)
+	}
+}
+
 func TestSnapshot_DeleteNode(t *testing.T) {
 	tests := []struct {
 		name        string

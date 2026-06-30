@@ -458,8 +458,7 @@ func (sc *SchedulerCache) SyncNode(nodeName string) error {
 	if !sc.nodeCanAddCache(node) {
 		return nil
 	}
-	nodeCopy := node.DeepCopy()
-	return sc.AddOrUpdateNode(nodeCopy)
+	return sc.AddOrUpdateNode(node)
 }
 
 func (sc *SchedulerCache) nodeCanAddCache(node *v1.Node) bool {

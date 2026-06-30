@@ -167,7 +167,10 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 				continue
 			}
 
-			attemptVictims := append([]*api.TaskInfo(nil), selectedVictims...)
+			attemptVictims := make([]*api.TaskInfo, 0, len(selectedVictims))
+			for _, victim := range selectedVictims {
+				attemptVictims = append(attemptVictims, victim.Clone())
+			}
 
 			jobHN := ssn.HyperNodes[domain]
 			if jobHN == nil {
@@ -209,7 +212,7 @@ func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l
 			if q == nil || !q.Reclaimable() {
 				continue
 			}
-			candidatesByJob[taskOnNode.Job] = append(candidatesByJob[taskOnNode.Job], taskOnNode.Clone())
+			candidatesByJob[taskOnNode.Job] = append(candidatesByJob[taskOnNode.Job], taskOnNode)
 		}
 	}
 

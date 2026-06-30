@@ -770,7 +770,82 @@ func (ji *JobInfo) Clone() *JobInfo {
 	return info
 }
 
-// String returns a jobInfo object in string format
+// ShallowClone clones a JobInfo but shallow-copies task pointers instead of
+// deep-copying each task. The returned JobInfo shares *TaskInfo pointers with
+// the original. This is safe for read-only scheduling snapshots where the
+// caller does not mutate task fields (Status, NodeName, Resreq, etc.).
+//
+// IMPORTANT: Any code path that mutates a task (e.g. status transitions during
+// preemption/reclaim/allocate) must first operate on a cloned *TaskInfo to avoid
+// mutating the shared pointers retained by ShallowClone snapshots.
+//
+// Indexes (TaskStatusIndex, SubJobs, TaskToSubJob) and resource counters
+// (Allocated, TotalRequest) are rebuilt from the shared task pointers, so the
+// cloned JobInfo is consistent and self-contained.
+func (ji *JobInfo) ShallowClone() *JobInfo {
+	var pg *PodGroup
+	if ji.PodGroup != nil {
+		pg = ji.PodGroup.Clone()
+	}
+	var budget *DisruptionBudget
+	if ji.Budget != nil {
+		budget = ji.Budget.Clone()
+	}
+
+	info := &JobInfo{
+		UID:       ji.UID,
+		PgUID:     ji.PgUID,
+		Name:      ji.Name,
+		Namespace: ji.Namespace,
+		Queue:     ji.Queue,
+		Priority:  ji.Priority,
+
+		MinAvailable:   ji.MinAvailable,
+		WaitingTime:    ji.WaitingTime,
+		JobFitErrors:   ji.JobFitErrors,
+		NodesFitErrors: make(map[TaskID]*FitErrors),
+		Allocated:      EmptyResource(),
+		TotalRequest:   EmptyResource(),
+
+		PodGroup: pg,
+
+		TaskStatusIndex:       map[TaskStatus]TasksMap{},
+		TaskMinAvailable:      make(map[string]int32, len(ji.TaskMinAvailable)),
+		TaskMinAvailableTotal: ji.TaskMinAvailableTotal,
+		Tasks:                 TasksMap{},
+		Preemptable:           ji.Preemptable,
+		RevocableZone:         ji.RevocableZone,
+		Budget:                budget,
+		AllocatedHyperNode:    ji.AllocatedHyperNode,
+		NetworkTopology:       cloneNetworkTopology(ji.NetworkTopology),
+		SubJobs:               map[SubJobID]*SubJobInfo{},
+		TaskToSubJob:          map[TaskID]SubJobID{},
+		MinSubJobs:            maps.Clone(ji.MinSubJobs),
+	}
+
+	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
+
+	for task, minAvailable := range ji.TaskMinAvailable {
+		info.TaskMinAvailable[task] = minAvailable
+	}
+
+	// Shallow-copy: reuse the *TaskInfo pointer directly (no task.Clone()).
+	// AddTaskInfo builds indexes and accumulates resource counters correctly.
+	for _, task := range ji.Tasks {
+		info.AddTaskInfo(task)
+	}
+
+	for subJobID, subJob := range ji.SubJobs {
+		if sji, found := info.SubJobs[subJobID]; found {
+			sji.CloneStatusFrom(subJob)
+		} else {
+			klog.Errorf("Failed to shallow-clone subJob %s for job %s", subJob.UID, ji.UID)
+		}
+	}
+
+	return info
+}
+
 func (ji JobInfo) String() string {
 	res := ""
 
