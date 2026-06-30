@@ -390,12 +390,12 @@ func validateHierarchicalQueue(queue *schedulingv1beta1.Queue) error {
 		return fmt.Errorf("failed to get parent queue of queue %s: %v", queue.Name, err)
 	}
 
-	childQueueNames, err := listQueueChild(parentQueue.Name)
+	childQueues, err := config.GetQueuesByParent(parentQueue.Name)
 	if err != nil {
 		return fmt.Errorf("failed to list child queues of queue %s: %v", parentQueue.Name, err)
 	}
 
-	if len(childQueueNames) == 0 {
+	if len(childQueues) == 0 {
 		if allocated, ok := parentQueue.Status.Allocated[v1.ResourcePods]; ok && !allocated.IsZero() {
 			return fmt.Errorf("queue %s cannot be the parent queue of queue %s because it has allocated Pods: %d",
 				parentQueue.Name, queue.Name, allocated.Value())
@@ -408,16 +408,13 @@ func validateHierarchicalQueue(queue *schedulingv1beta1.Queue) error {
 }
 
 func listQueueChild(parentQueueName string) ([]string, error) {
-	queueList, err := config.QueueLister.List(labels.Everything())
+	childQueues, err := config.GetQueuesByParent(parentQueueName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list queues: %v", err)
+		return nil, fmt.Errorf("failed to get child queues for queue %s: %v", parentQueueName, err)
 	}
 
-	childQueueNames := make([]string, 0)
-	for _, childQueue := range queueList {
-		if childQueue.Spec.Parent != parentQueueName {
-			continue
-		}
+	childQueueNames := make([]string, 0, len(childQueues))
+	for _, childQueue := range childQueues {
 		childQueueNames = append(childQueueNames, childQueue.Name)
 	}
 
@@ -470,19 +467,18 @@ func findSubtreeMaxCapability(q *schedulingv1beta1.Queue, rname v1.ResourceName)
 		}
 	}
 
-	children, _ := listQueueChild(q.Name)
 	maxV := float64(0)
-	for _, cname := range children {
-		cq, err := config.QueueLister.Get(cname)
-		if err != nil {
-			continue
-		}
-		v := findSubtreeMaxCapability(cq, rname)
-		if v > maxV {
-			maxV = v
+	children, err := config.GetQueuesByParent(q.Name)
+	if err != nil {
+		klog.V(5).Infof("Failed to get child queues for queue %s: %v", q.Name, err)
+	} else {
+		for _, cq := range children {
+			v := findSubtreeMaxCapability(cq, rname)
+			if v > maxV {
+				maxV = v
+			}
 		}
 	}
-
 	return maxV
 }
 
