@@ -394,13 +394,9 @@ func (gs *GPUDevices) DeepCopy() interface{} {
 			UsedNum:  dev.UsedNum,
 			UsedMem:  dev.UsedMem,
 			UsedCore: dev.UsedCore,
-			MigUsage: deviceconfig.MigInUse{
-				Index:     dev.MigUsage.Index,
-				UsageList: make(deviceconfig.MIGS, len(dev.MigUsage.UsageList)),
-			},
-			PodMap: make(map[string]*GPUUsage, len(dev.PodMap)),
+			MigUsage: deepCopyMigInUse(dev.MigUsage),
+			PodMap:   make(map[string]*GPUUsage, len(dev.PodMap)),
 		}
-		copy(newDev.MigUsage.UsageList, dev.MigUsage.UsageList)
 		if len(dev.MigTemplate) > 0 {
 			newDev.MigTemplate = make([]deviceconfig.Geometry, len(dev.MigTemplate))
 			for i, g := range dev.MigTemplate {
