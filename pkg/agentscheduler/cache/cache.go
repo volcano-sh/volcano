@@ -423,6 +423,7 @@ func buildQueueingHintMap() k8sschedulingqueue.QueueingHintMap {
 func (sc *SchedulerCache) addEventHandler() {
 	handlers := make(map[string]cache.ResourceEventHandlerRegistration, 10)
 	var handlerRegistration cache.ResourceEventHandlerRegistration
+	var err error
 	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, sc.resyncPeriod)
 	sc.informerFactory = informerFactory
 
@@ -449,7 +450,7 @@ func (sc *SchedulerCache) addEventHandler() {
 
 	// create informer for node information
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
-	handlerRegistration, _ = sc.nodeInformer.Informer().AddEventHandler(
+	handlerRegistration, err = sc.nodeInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
@@ -474,13 +475,16 @@ func (sc *SchedulerCache) addEventHandler() {
 			},
 		},
 	)
+	if err != nil {
+		klog.Fatalf("Failed to add event handler for node informer: %v", err)
+	}
 	//real node sync is handled in queue instead of event handler, use tracker to track the handling status in node queue
 	sc.nodeInitialEventTracker = schedulercache.NewQueueHandlerTracker(handlerRegistration)
 	handlers["node"] = sc.nodeInitialEventTracker
 
 	sc.podInformer = informerFactory.Core().V1().Pods()
 	// 1. Pods already scheduled, refresh its state in cache
-	handlerRegistration, _ = sc.podInformer.Informer().AddEventHandler(
+	handlerRegistration, err = sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
@@ -507,10 +511,13 @@ func (sc *SchedulerCache) addEventHandler() {
 				DeleteFunc: sc.DeletePodFromCache,
 			},
 		})
+	if err != nil {
+		klog.Fatalf("Failed to add event handler for pod cache informer: %v", err)
+	}
 	handlers["pod-cache"] = handlerRegistration
 
 	// 2. Pods not scheduled yet, and needed to be scheduled by agent scheduler, add them to scheduling queue
-	handlerRegistration, _ = sc.podInformer.Informer().AddEventHandler(
+	handlerRegistration, err = sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
@@ -538,17 +545,23 @@ func (sc *SchedulerCache) addEventHandler() {
 				DeleteFunc: sc.DeletePodFromSchedulingQueue,
 			},
 		})
+	if err != nil {
+		klog.Fatalf("Failed to add event handler for pod scheduling queue informer: %v", err)
+	}
 	handlers["pod-queue"] = handlerRegistration
 
 	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, sc.resyncPeriod)
 	sc.vcInformerFactory = vcinformers
 	if sc.shardingMode == util.HardShardingMode || sc.shardingMode == util.SoftShardingMode {
 		sc.nodeShardInformer = sc.vcInformerFactory.Shard().V1alpha1().NodeShards()
-		handlerRegistration, _ = sc.nodeShardInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		handlerRegistration, err = sc.nodeShardInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddNodeShard,
 			UpdateFunc: sc.UpdateNodeShard,
 			DeleteFunc: sc.DeleteNodeShard,
 		})
+		if err != nil {
+			klog.Fatalf("Failed to add event handler for nodeShard informer: %v", err)
+		}
 		sc.nodeShardLister = sc.vcInformerFactory.Shard().V1alpha1().NodeShards().Lister()
 		handlers["nodeShard"] = handlerRegistration
 	}
