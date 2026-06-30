@@ -17,10 +17,13 @@ limitations under the License.
 package networkqos
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
 	"strconv"
+	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -36,9 +39,15 @@ import (
 	"volcano.sh/volcano/pkg/agent/features"
 	"volcano.sh/volcano/pkg/agent/utils"
 	"volcano.sh/volcano/pkg/agent/utils/cgroup"
+	"volcano.sh/volcano/pkg/agent/utils/exec"
 	"volcano.sh/volcano/pkg/config"
 	"volcano.sh/volcano/pkg/metriccollect"
 	"volcano.sh/volcano/pkg/networkqos"
+)
+
+const (
+	// bwmcliCmdTimeout is the timeout for bwmcli command execution.
+	bwmcliCmdTimeout = 5 * time.Second
 )
 
 func init() {
@@ -60,7 +69,7 @@ func NewNetworkQoSHandle(config *config.Configuration, mgr *metriccollect.Metric
 			Config: config,
 		},
 		cgroupMgr:     cgroupMgr,
-		networkqosMgr: networkqos.GetNetworkQoSManager(config),
+		networkqosMgr: networkqos.GetNetworkQoSManager(config, cgroupMgr.GetCgroupVersion()),
 		poLister:      config.InformerFactory.K8SInformerFactory.Core().V1().Pods().Lister(),
 		recorder:      config.GenericConfiguration.Recorder,
 	}
@@ -90,6 +99,19 @@ func (h *NetworkQoSHandle) Handle(event interface{}) error {
 		return nil
 	}
 
+	cgroupVersion := h.cgroupMgr.GetCgroupVersion()
+	switch cgroupVersion {
+	case cgroup.CgroupV2:
+		klog.V(2).InfoS("Detected cgroup version v2 for network qos handling. Network QoS will use oncn-bwm mode.")
+		return h.handleV2(podEvent)
+	default:
+		klog.V(2).InfoS("Detected cgroup version v1 for network qos handling. Falling back to legacy net_cls mode.")
+		return h.handleV1(podEvent)
+	}
+}
+
+// handleV1 sets the network QoS level for a pod using cgroup v1 net_cls.classid file.
+func (h *NetworkQoSHandle) handleV1(podEvent framework.PodEvent) error {
 	cgroupPath, err := h.cgroupMgr.GetPodCgroupPath(podEvent.QoSClass, cgroup.CgroupNetCLSSubsystem, podEvent.UID)
 	if err != nil {
 		return fmt.Errorf("failed to get pod cgroup file(%s), error: %v", podEvent.UID, err)
@@ -105,6 +127,52 @@ func (h *NetworkQoSHandle) Handle(event interface{}) error {
 		return nil
 	}
 	klog.InfoS("Successfully set network qos level to cgroup file", "qosLevel", string(qosLevel), "cgroupFile", qosLevelFile)
+	return nil
+}
+
+// handleV2 sets the network QoS level for a pod using bwmcli command with cgroup v2 unified path.
+// In cgroup v2, the net_cls controller is not available. Instead, we use bwmcli (oncn-bwm) to set
+// the network priority directly via the cgroup path:
+//
+//	bwmcli -s <cgroup-path> <priority>
+//
+// where priority is 0 for online pods and -1 for offline pods.
+//
+// Since bwmcli is installed on the host (not in the agent container), we use chroot /proc/1/root
+// to execute the command on the host filesystem. The cgroup path from CgroupManager may contain a
+// "/host" prefix (because the agent container mounts the host filesystem at /host), which must
+// be stripped when running in the host namespace.
+func (h *NetworkQoSHandle) handleV2(podEvent framework.PodEvent) error {
+	// In cgroup v2, all controllers share a unified hierarchy, so we can use any subsystem
+	// (e.g., cpu) to get the correct unified cgroup path.
+	cgroupPath, err := h.cgroupMgr.GetPodCgroupPath(podEvent.QoSClass, cgroup.CgroupCpuSubsystem, podEvent.UID)
+	if err != nil {
+		return fmt.Errorf("failed to get pod cgroup path(%s), error: %v", podEvent.UID, err)
+	}
+
+	// Strip the "/host" prefix from the cgroup path if present, because bwmcli runs on the host
+	// via chroot /proc/1/root and sees the native host filesystem paths (e.g., /sys/fs/cgroup/...).
+	hostCgroupPath := cgroupPath
+	if strings.HasPrefix(cgroupPath, "/host/") {
+		hostCgroupPath = strings.TrimPrefix(cgroupPath, "/host")
+	}
+
+	qosLevel := extension.NormalizeQosLevel(podEvent.QoSLevel)
+
+	cmdCtx, cancel := context.WithTimeout(context.Background(), bwmcliCmdTimeout)
+	defer cancel()
+	// Use chroot /proc/1/root to execute bwmcli on the host filesystem.
+	// bwmcli is a host-installed tool (oncn-bwm package) and is not available inside the agent container.
+	// Running via chroot ensures bwmcli and all its shared library dependencies (e.g., libbpf.so.1)
+	// are loaded from the host's native filesystem. Requires hostPID: true and privileged: true.
+	cmd := fmt.Sprintf("chroot /proc/1/root bwmcli -s %s %d", hostCgroupPath, qosLevel)
+	output, err := exec.GetExecutor().CommandContext(cmdCtx, cmd)
+	if err != nil {
+		return fmt.Errorf("failed to set network qos via bwmcli, path=%s, level=%d, error: %v, output: %s",
+			hostCgroupPath, qosLevel, err, output)
+	}
+
+	klog.InfoS("Successfully set network qos level via bwmcli", "qosLevel", qosLevel, "cgroupPath", hostCgroupPath)
 	return nil
 }
 
