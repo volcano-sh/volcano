@@ -401,6 +401,12 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 				if stmt != nil && len(stmt.Operations()) > 0 {
 					stmtList = append(stmtList, stmt)
 					subJobsAllocationScore += allocationScore
+					// Propagate this subJob's anchor to the job so subsequent subJobs use it
+					// for node scoring. RecoverSubJobStatus will reset job.AllocatedHyperNode
+					// after each hyperNode dry-run, keeping iterations isolated.
+					if subJob.AllocatedHyperNode != "" {
+						job.AllocatedHyperNode = ssn.HyperNodes.GetLCAHyperNode(job.AllocatedHyperNode, subJob.AllocatedHyperNode)
+					}
 					// push back when subJob is ready and remain pending task
 					if !subJobWorksheet.Empty() {
 						jobWorksheetCopy.subJobs.Push(subJob)
@@ -738,6 +744,9 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 	ph := util.NewPredicateHelper()
 
 	allocatedHyperNode := subJob.AllocatedHyperNode
+	if allocatedHyperNode == "" {
+		allocatedHyperNode = job.AllocatedHyperNode
+	}
 
 	for !tasks.Empty() {
 		task := tasks.Pop().(*api.TaskInfo)

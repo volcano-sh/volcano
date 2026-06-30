@@ -5547,6 +5547,86 @@ func TestAllocateWithPartitionPolicyNetworkTopology(t *testing.T) {
 			ExpectBindsNum:   2,
 			MinimalBindCheck: true,
 		},
+		{
+			// Regression test for issue #5514: when both job and subGroup use soft topology the
+			// job-level anchor (AllocatedHyperNode) must be propagated to subsequent subJob
+			// gradient lookups so that workers are scored relative to where the master landed.
+			//
+			// Topology: s0(n1,n2) and s1(n3,n4) under root s2.  Each node holds exactly one
+			// 4-CPU pod.  The master subJob (size 1) and worker subJob (size 3) both set
+			// highestTierAllowed=1 (soft), so the job-level soft constraint (tier 2) drives
+			// allocation to s2 after Tier-1 candidates fail capacity checks.  Under s2 the
+			// anchor propagated from the master placement guides worker node scoring.
+			Name: "podgroup soft network topology and subGroup soft network topology, job falls to root tier, can allocate all pods",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "q1", 4, nil, schedulingv1.PodGroupInqueue, "soft", 2,
+					[]schedulingv1.SubGroupPolicySpec{
+						util.BuildSubGroupPolicyWithSubGroupSize("master", []string{"volcano.sh/task-spec"}, "soft", 1, 1),
+						util.BuildSubGroupPolicyWithSubGroupSize("worker", []string{"volcano.sh/task-instance"}, "soft", 1, 3),
+					}),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("4", "8G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("4", "8G"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("4", "8G"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("4", "8G"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("s0-n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s0-n2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n3", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n4", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
+			HyperNodes: map[string]sets.Set[string]{
+				"s0": sets.New[string]("s0-n1", "s0-n2"),
+				"s1": sets.New[string]("s1-n3", "s1-n4"),
+				"s2": sets.New[string]("s0-n1", "s0-n2", "s1-n3", "s1-n4"),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			MinimalBindCheck: true,
+			ExpectBindsNum:   4,
+		},
 	}
 
 	trueValue := true
