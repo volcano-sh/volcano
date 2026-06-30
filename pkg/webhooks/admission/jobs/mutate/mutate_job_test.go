@@ -480,3 +480,64 @@ func TestMutateSpecPartitionPolicyDefaults(t *testing.T) {
 		})
 	}
 }
+
+func TestPatchDefaultQueue(t *testing.T) {
+	tests := []struct {
+		name           string
+		configDefault  string
+		jobQueue       string
+		wantPatch      bool
+		wantQueueValue string
+	}{
+		{
+			name:           "custom default queue is applied when queue is empty",
+			configDefault:  "test",
+			jobQueue:       "",
+			wantPatch:      true,
+			wantQueueValue: "test",
+		},
+		{
+			name:           "falls back to default when no default configured",
+			configDefault:  "",
+			jobQueue:       "",
+			wantPatch:      true,
+			wantQueueValue: DefaultQueue,
+		},
+		{
+			name:           "explicit queue is left untouched",
+			configDefault:  "test",
+			jobQueue:       "my-queue",
+			wantPatch:      false,
+			wantQueueValue: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			prev := config.DefaultQueue
+			config.DefaultQueue = tc.configDefault
+			defer func() { config.DefaultQueue = prev }()
+
+			job := &v1alpha1.Job{
+				Spec: v1alpha1.JobSpec{Queue: tc.jobQueue},
+			}
+
+			patch := patchDefaultQueue(job)
+			if !tc.wantPatch {
+				if patch != nil {
+					t.Fatalf("expected no patch, got %+v", patch)
+				}
+				return
+			}
+			if patch == nil {
+				t.Fatalf("expected a patch, got nil")
+			}
+			if patch.Path != "/spec/queue" || patch.Op != "add" {
+				t.Fatalf("unexpected patch op/path: %+v", patch)
+			}
+			if patch.Value != tc.wantQueueValue {
+				t.Errorf("expected queue %q, got %v", tc.wantQueueValue, patch.Value)
+			}
+		})
+	}
+}
