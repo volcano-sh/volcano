@@ -247,17 +247,16 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 			if victims == nil {
 				victims = candidates
 			} else {
-				var intersection []*api.TaskInfo
-				// Get intersection of victims and candidates.
+				candidateSet := make(map[api.TaskID]struct{}, len(candidates))
+				for _, c := range candidates {
+					candidateSet[c.UID] = struct{}{}
+				}
+				intersection := make([]*api.TaskInfo, 0, len(victims))
 				for _, v := range victims {
-					for _, c := range candidates {
-						if v.UID == c.UID {
-							intersection = append(intersection, v)
-						}
+					if _, ok := candidateSet[v.UID]; ok {
+						intersection = append(intersection, v)
 					}
 				}
-
-				// Update victims to intersection
 				victims = intersection
 			}
 		}
@@ -297,17 +296,16 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 			if victims == nil {
 				victims = candidates
 			} else {
-				var intersection []*api.TaskInfo
-				// Get intersection of victims and candidates.
+				candidateSet := make(map[api.TaskID]struct{}, len(candidates))
+				for _, c := range candidates {
+					candidateSet[c.UID] = struct{}{}
+				}
+				intersection := make([]*api.TaskInfo, 0, len(victims))
 				for _, v := range victims {
-					for _, c := range candidates {
-						if v.UID == c.UID {
-							intersection = append(intersection, v)
-						}
+					if _, ok := candidateSet[v.UID]; ok {
+						intersection = append(intersection, v)
 					}
 				}
-
-				// Update victims to intersection
 				victims = intersection
 			}
 		}
@@ -342,12 +340,14 @@ func (ssn *Session) UnifiedEvictable(ctx *api.EvictionContext, candidates []*api
 			if victims == nil {
 				victims = result
 			} else {
-				var intersection []*api.TaskInfo
+				resultSet := make(map[api.TaskID]struct{}, len(result))
+				for _, c := range result {
+					resultSet[c.UID] = struct{}{}
+				}
+				intersection := make([]*api.TaskInfo, 0, len(victims))
 				for _, v := range victims {
-					for _, c := range result {
-						if v.UID == c.UID {
-							intersection = append(intersection, v)
-						}
+					if _, ok := resultSet[v.UID]; ok {
+						intersection = append(intersection, v)
 					}
 				}
 				victims = intersection
