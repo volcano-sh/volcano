@@ -1145,6 +1145,7 @@ func TestAppendJobCondition(t *testing.T) {
 func TestIsDependsOnPodsReady(t *testing.T) {
 	namespace := "test"
 	jobName := "job1"
+	int32Ptr := func(n int32) *int32 { return &n }
 
 	testcases := []struct {
 		Name          string
@@ -1166,7 +1167,7 @@ func TestIsDependsOnPodsReady(t *testing.T) {
 						{
 							Name:         "task1",
 							Replicas:     2,
-							MinAvailable: ptr.To[int32](2),
+							MinAvailable: int32Ptr(2),
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
 									Name: "task1",
@@ -1218,7 +1219,7 @@ func TestIsDependsOnPodsReady(t *testing.T) {
 						{
 							Name:         "task1",
 							Replicas:     1,
-							MinAvailable: ptr.To[int32](1),
+							MinAvailable: int32Ptr(1),
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
 									Name: "task1",
@@ -1264,7 +1265,7 @@ func TestIsDependsOnPodsReady(t *testing.T) {
 						{
 							Name:         "task1",
 							Replicas:     1,
-							MinAvailable: ptr.To[int32](1),
+							MinAvailable: int32Ptr(1),
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
 									Name: "task1",
