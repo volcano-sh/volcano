@@ -106,7 +106,7 @@ spec:
   tier: 1
   members:
     - name: node0
-      name: node1
+    - name: node1
 ---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
@@ -114,8 +114,8 @@ name: s1
 spec:
   tier: 1
   members:
-    name: node2
-    name: node3
+    - name: node2
+    - name: node3
 ---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
@@ -123,8 +123,8 @@ name: s2
 spec:
   tier: 1
   members:
-    name: node4
-    name: node5
+    - name: node4
+    - name: node5
 ---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
@@ -132,8 +132,8 @@ name: s3
 spec:
   tier: 1
   members:
-    name: node6
-    name: node7
+    - name: node6
+    - name: node7
 ---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
@@ -141,16 +141,17 @@ name: s4
 spec:
   tier: 2
   members:
-    name: s0
-    name: s1
+    - name: s0
+    - name: s1
+---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: s5
 spec:
   tier: 2
   members:
-    name: s2
-    name: s3
+    - name: s2
+    - name: s3
 ---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
@@ -158,8 +159,8 @@ name: s6
 spec:
   tier: 3
   members:
-    name: s4
-    name: s5
+    - name: s4
+    - name: s5
 ```
 
 Example 2:  
@@ -171,12 +172,12 @@ version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: roce-network0
 spec:
-tier: 2
+  tier: 2
   members:
-  - name: nvlink-network0
-    type: HyperNode
-  - name: nvlink-network1
-    type: HyperNode
+    - name: nvlink-network0
+      type: HyperNode
+    - name: nvlink-network1
+      type: HyperNode
 ---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
@@ -184,10 +185,10 @@ name: roce-network1
 spec:
   tier: 2
   members:
-  - name: nvlink-network2
-    type: HyperNode
-  - name: nvlink-network3
-    type: HyperNode
+    - name: nvlink-network2
+      type: HyperNode
+    - name: nvlink-network3
+      type: HyperNode
 ---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
@@ -195,10 +196,10 @@ name: nvlink_network-0
 spec:
   tier: 1
   members:
-  - name: node1
-    type: Node
-    name: node2
-    type: Node
+    - name: node1
+      type: Node
+    - name: node2
+      type: Node
 ---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
@@ -206,10 +207,10 @@ name: nvlink_network-1
 spec:
   tier: 1
   members:
-  - name: node3
-    type: Node
-    name: node4
-    type: Node
+    - name: node3
+      type: Node
+    - name: node4
+      type: Node
 ---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
@@ -217,10 +218,10 @@ name: nvlink_network-2
 spec:
   tier: 1
   members:
-  - name: node5
-    type: Node
-    name: node6
-    type: Node
+    - name: node5
+      type: Node
+    - name: node6
+      type: Node
 ---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
@@ -228,10 +229,10 @@ name: nvlink_network-3
 spec:
   tier: 1
   members:
-  - name: node7
-    type: Node
-    name: node8
-    type: Node
+    - name: node7
+      type: Node
+    - name: node8
+      type: Node
 ```
 
 ### network topology generation and update
