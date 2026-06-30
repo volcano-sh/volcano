@@ -1724,6 +1724,7 @@ func (sc *SchedulerCache) updateJobInfo(job *schedulingapi.JobInfo) {
 
 	if jobInCache, ok := sc.Jobs[job.UID]; ok {
 		jobInCache.AllocatedHyperNode = job.AllocatedHyperNode
+		jobInCache.EnqueueTimestamp = job.EnqueueTimestamp
 		for subJobID, subJobInCache := range jobInCache.SubJobs {
 			if subJob, found := job.SubJobs[subJobID]; found {
 				subJobInCache.AllocatedHyperNode = subJob.AllocatedHyperNode

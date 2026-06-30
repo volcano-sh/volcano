@@ -160,6 +160,11 @@ func (ssn *Session) AddJobEnqueuedFn(name string, fn api.JobEnqueuedFn) {
 	ssn.jobEnqueuedFns[name] = fn
 }
 
+// AddJobInqueueEvictedFn add jobInqueueEvicted function
+func (ssn *Session) AddJobInqueueEvictedFn(name string, fn api.JobInqueueEvictedFn) {
+	ssn.jobInqueueEvictedFns[name] = fn
+}
+
 // AddTargetJobFn add targetjob function
 func (ssn *Session) AddTargetJobFn(name string, fn api.TargetJobFn) {
 	ssn.targetJobFns[name] = fn
@@ -617,6 +622,20 @@ func (ssn *Session) JobEnqueued(obj interface{}) {
 				continue
 			}
 			fn, found := ssn.jobEnqueuedFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			fn(obj)
+		}
+	}
+}
+
+// JobInqueueEvicted invoke jobInqueueEvictedFns function of the plugins
+func (ssn *Session) JobInqueueEvicted(obj interface{}) {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			fn, found := ssn.jobInqueueEvictedFns[plugin.Name]
 			if !found {
 				continue
 			}

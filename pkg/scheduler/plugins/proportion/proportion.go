@@ -452,6 +452,23 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		attr.inqueue.Add(job.DeductSchGatedResources(job.GetMinResources()))
 	})
 
+	ssn.AddJobInqueueEvictedFn(pp.Name(), func(obj interface{}) {
+		job, ok := obj.(*api.JobInfo)
+		if !ok || job == nil || job.PodGroup == nil {
+			return
+		}
+		if job.PodGroup.Spec.MinResources == nil {
+			return
+		}
+		attr := pp.queueOpts[job.Queue]
+		if attr == nil {
+			return
+		}
+		attr.inqueue.Sub(job.DeductSchGatedResources(job.GetMinResources()))
+		klog.V(4).Infof("%s:%s/%s inqueue quota released after timeout eviction",
+			pp.Name(), job.Namespace, job.Name)
+	})
+
 	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 		state, err := getProportionState(cycleState)
 		if err != nil {
