@@ -493,6 +493,13 @@ func BuildQueueWithState(qname string, weight int32, cap v1.ResourceList, state 
 	}
 }
 
+// BuildQueueWithDequeueStrategy returns a Queue with the given dequeue strategy.
+func BuildQueueWithDequeueStrategy(qname string, weight int32, cap v1.ResourceList, strategy schedulingv1beta1.DequeueStrategy) *schedulingv1beta1.Queue {
+	queue := BuildQueue(qname, weight, cap)
+	queue.Spec.DequeueStrategy = strategy
+	return queue
+}
+
 // BuildQueueWithAnnos return a Queue with annotations
 func BuildQueueWithAnnos(qname string, weight int32, cap v1.ResourceList, annos map[string]string) *schedulingv1beta1.Queue {
 	queue := BuildQueue(qname, weight, cap)
