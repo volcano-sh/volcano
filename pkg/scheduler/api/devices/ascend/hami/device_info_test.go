@@ -779,3 +779,72 @@ func TestHAMiReleaseKeepsCommittedAnnotations(t *testing.T) {
 		t.Errorf("committed pod's bind-phase must be preserved")
 	}
 }
+
+func TestCalScore(t *testing.T) {
+	tests := []struct {
+		name   string
+		policy string
+		usage  *devices.DeviceUsage
+		info   *devices.DeviceInfo
+		want   float64
+	}{
+		{
+			name:   "spread rewards idle device",
+			policy: spreadPolicy,
+			usage:  &devices.DeviceUsage{Used: 0},
+			info:   &devices.DeviceInfo{Devmem: 32768},
+			want:   spreadMultiplier,
+		},
+		{
+			name:   "devmem is zero",
+			policy: spreadPolicy,
+			usage:  &devices.DeviceUsage{Used: 0},
+			info:   &devices.DeviceInfo{Devmem: 0},
+			want:   0,
+		},
+		{
+			name:   "binpack devmem is zero",
+			policy: binpackPolicy,
+			usage:  &devices.DeviceUsage{Used: 0},
+			info:   &devices.DeviceInfo{Devmem: 0},
+			want:   0,
+		},
+		{
+			name:   "spread does not reward shared device",
+			policy: spreadPolicy,
+			usage:  &devices.DeviceUsage{Used: 1},
+			info:   &devices.DeviceInfo{Devmem: 32768},
+			want:   0,
+		},
+		{
+			name:   "binpack rewards full device most",
+			policy: binpackPolicy,
+			usage:  &devices.DeviceUsage{Usedmem: 32768},
+			info:   &devices.DeviceInfo{Devmem: 32768},
+			want:   binpackMultiplier,
+		},
+		{
+			name:   "binpack does not reward idle device",
+			policy: binpackPolicy,
+			usage:  &devices.DeviceUsage{Usedmem: 0},
+			info:   &devices.DeviceInfo{Devmem: 32768},
+			want:   0,
+		},
+		{
+			name:   "binpack scales with memory usage",
+			policy: binpackPolicy,
+			usage:  &devices.DeviceUsage{Usedmem: 16384},
+			info:   &devices.DeviceInfo{Devmem: 32768},
+			want:   50,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalScore(tt.policy, tt.usage, tt.info)
+			if got != tt.want {
+				t.Fatalf("CalScore(%s) = %v, want %v", tt.policy, got, tt.want)
+			}
+		})
+	}
+}
