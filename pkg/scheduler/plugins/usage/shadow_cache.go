@@ -72,9 +72,9 @@ func NewShadowLoadCache() *ShadowLoadCache {
 func (c *ShadowLoadCache) Reset() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.nodeCPUEst = make(map[string]float64)
-	c.nodeMemEst = make(map[string]float64)
-	c.podSnapshots = make(map[api.TaskID]*PodEstSnapshot)
+	clear(c.nodeCPUEst)
+	clear(c.nodeMemEst)
+	clear(c.podSnapshots)
 }
 
 // IsClean returns true if the cache contains no data.

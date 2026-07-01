@@ -19,6 +19,7 @@ package usage
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -242,6 +243,27 @@ func TestShadowLoadCache_Reset(t *testing.T) {
 	}
 	if cache.GetSnapshot("t1") != nil {
 		t.Error("After reset, snapshots should be nil")
+	}
+}
+
+func TestShadowLoadCache_ResetReusesMaps(t *testing.T) {
+	cache := NewShadowLoadCache()
+	cache.AddEstimate("node1", "t1", 1000, 2000)
+
+	cpuMapPtr := reflect.ValueOf(cache.nodeCPUEst).Pointer()
+	memMapPtr := reflect.ValueOf(cache.nodeMemEst).Pointer()
+	snapshotMapPtr := reflect.ValueOf(cache.podSnapshots).Pointer()
+
+	cache.Reset()
+
+	if reflect.ValueOf(cache.nodeCPUEst).Pointer() != cpuMapPtr {
+		t.Fatal("Reset should reuse node CPU estimate map")
+	}
+	if reflect.ValueOf(cache.nodeMemEst).Pointer() != memMapPtr {
+		t.Fatal("Reset should reuse node memory estimate map")
+	}
+	if reflect.ValueOf(cache.podSnapshots).Pointer() != snapshotMapPtr {
+		t.Fatal("Reset should reuse pod snapshot map")
 	}
 }
 

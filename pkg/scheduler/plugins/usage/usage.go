@@ -212,10 +212,11 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 	}()
 
 	// Step 1: Initialize ShadowLoadCache
-	if up.shadowCache != nil && !up.shadowCache.IsClean() {
+	if up.shadowCache == nil {
+		up.shadowCache = NewShadowLoadCache()
+	} else {
 		up.shadowCache.Reset()
 	}
-	up.shadowCache = NewShadowLoadCache()
 
 	// Step 2: Read metricsInterval from scheduler configmap (metrics.interval)
 	metricsConf := ssn.GetMetricsConf()
