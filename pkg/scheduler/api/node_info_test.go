@@ -17,6 +17,7 @@
 package api
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -282,6 +283,32 @@ func TestNodeInfo_SetNode(t *testing.T) {
 		if !nodeInfoEqual(ni, test.expected2) {
 			t.Errorf("recovered %d: \n expected\t%v, \n got\t\t%v \n",
 				i, test.expected2, ni)
+		}
+	}
+}
+
+func BenchmarkSetNode(b *testing.B) {
+	node1 := buildNode("n1", nil, BuildResourceList("16", "32G", []ScalarResource{{Name: "pods", Value: "110"}}...))
+	node2 := buildNode("n1", nil, BuildResourceList("16", "32G", []ScalarResource{{Name: "pods", Value: "110"}}...))
+
+	pods := make([]*v1.Pod, 20)
+	for i := range pods {
+		pods[i] = buildPod("default", fmt.Sprintf("p%d", i), "n1", v1.PodRunning,
+			BuildResourceList("100m", "128Mi"), []metav1.OwnerReference{}, make(map[string]string))
+	}
+
+	ni := NewNodeInfo(node1)
+	for _, pod := range pods {
+		_ = ni.AddTask(NewTaskInfo(pod))
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if i%2 == 0 {
+			ni.SetNode(node2)
+		} else {
+			ni.SetNode(node1)
 		}
 	}
 }
