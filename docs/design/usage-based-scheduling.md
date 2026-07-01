@@ -119,7 +119,7 @@ estimator:
   request_ratio: 0.7   # 0 <= request_ratio <= 1
   burst_ratio: 0       # 0 <= burst_ratio <= 1
   risk_threshold: 0.6  # composite load threshold, 0.6 means 60%
-  risk_factor: 1.2     # applied after the threshold is reached
+  risk_factor: 1.2     # applied after the threshold is reached, must be >= 1.0; values lower than 1.0 are ignored or rejected
   be_cpu: 250m         # fixed BestEffort CPU estimate
   be_mem: 200Mi        # fixed BestEffort memory estimate
 ```
