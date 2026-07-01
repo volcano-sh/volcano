@@ -3888,3 +3888,36 @@ func TestHyperNodeGradientForSubJobFn_NoSubJobPolicyRespectsHardTopology(t *test
 	gradients := ssn.HyperNodeGradientForSubJobFn(subJob, ssn.HyperNodes[rootName], api.PurposeEvict)
 	assert.Empty(t, gradients, "hard topology without feasible tier-1 domain should not fallback to root")
 }
+
+func TestBatchNodeOrderFnForNetworkAwarePods(t *testing.T) {
+	plugin := &networkTopologyAwarePlugin{
+		weight: getPriorityWeight(framework.Arguments{}),
+		hyperNodesTier: &hyperNodesTier{
+			minTier: 1,
+			maxTier: 2,
+		},
+	}
+	ssn := &framework.Session{
+		RealNodesList: map[string][]*api.NodeInfo{
+			"hn1": {{Name: "node1"}},
+			"hn2": {{Name: "node2"}},
+		},
+		HyperNodesTiers: []int{1, 2},
+		HyperNodesSetByTier: map[int]sets.Set[string]{
+			1: sets.New[string]("hn1", "hn2"),
+		},
+		HyperNodes: api.HyperNodeInfoMap{
+			"hn1": api.NewHyperNodeInfo(api.BuildHyperNode("hn1", 1, nil)),
+			"hn2": api.NewHyperNodeInfo(api.BuildHyperNode("hn2", 1, nil)),
+		},
+	}
+	task := &api.TaskInfo{TransactionContext: api.TransactionContext{JobAllocatedHyperNode: "hn1"}}
+	subJob := &api.SubJobInfo{Tasks: map[api.TaskID]*api.TaskInfo{"task1": task}}
+	nodes := []*api.NodeInfo{{Name: "node1"}, {Name: "node2"}}
+
+	scores, err := plugin.batchNodeOrderFnForNetworkAwarePods(ssn, task, subJob, nodes)
+	assert.NoError(t, err)
+	assert.Contains(t, scores, "node1")
+	assert.Contains(t, scores, "node2")
+	assert.GreaterOrEqual(t, scores["node1"], scores["node2"])
+}
