@@ -323,11 +323,9 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Therefore, a BatchNodeOrder extension point needs to be added in here, as volumebinding involves PreScore and Score extension points
 	ssn.AddBatchNodeOrderFn(pp.Name(), func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
 		state := ssn.GetCycleState(task.UID)
-		nodeInfoList, err := pp.Handle.SnapshotSharedLister().NodeInfos().List()
-		if err != nil {
-			klog.Errorf("Failed to list nodes from snapshot: %v", err)
-			return nil, err
-		}
+		// The candidate nodes have already been selected by PredicateNodes.
+		// Reusing them here avoids expanding BatchNodeOrder back to the full scheduler snapshot.
+		nodeInfoList := nodescore.NodeInfosForCandidateNodes(nodes, nodeMap)
 		return pp.BatchNodeOrder(task, nodeInfoList, state)
 	})
 
