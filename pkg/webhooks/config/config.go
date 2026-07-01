@@ -45,10 +45,17 @@ type ResGroupConfig struct {
 	Affinity      string            `yaml:"affinity"`
 }
 
+type DeviceMutatorConfig struct {
+	Enable                     bool   `yaml:"enable"`
+	KnownGeometriesCMName      string `yaml:"knownGeometriesCMName"`
+	KnownGeometriesCMNamespace string `yaml:"knownGeometriesCMNamespace"`
+}
+
 // AdmissionConfiguration defines the configuration of admission.
 type AdmissionConfiguration struct {
 	sync.Mutex
-	ResGroupsConfig []ResGroupConfig `yaml:"resourceGroups"`
+	DeviceMutatorConf DeviceMutatorConfig `yaml:"deviceMutator"`
+	ResGroupsConfig   []ResGroupConfig    `yaml:"resourceGroups"`
 }
 
 var admissionConf AdmissionConfiguration
@@ -73,6 +80,7 @@ func LoadAdmissionConf(confPath string) *AdmissionConfiguration {
 
 	admissionConf.Lock()
 	admissionConf.ResGroupsConfig = data.ResGroupsConfig
+	admissionConf.DeviceMutatorConf = data.DeviceMutatorConf
 	admissionConf.Unlock()
 	return &admissionConf
 }

@@ -230,7 +230,7 @@ func Test_fit(t *testing.T) {
 	conf, err := yamlStringToConfig(config_yaml)
 	assert.Nil(t, err)
 	ascend310PConfig := conf.VNPUConfigs()[len(conf.VNPUConfigs())-1]
-	device_info := &devices.DeviceInfo{
+	deviceInfo := &devices.DeviceInfo{
 		ID:      "68496E64-20E05477-92C31323-6E78030A-BD003019",
 		Index:   0,
 		Count:   7,
@@ -238,103 +238,217 @@ func Test_fit(t *testing.T) {
 		Devmem:  21527,
 	}
 	tests := []struct {
-		name   string
-		req    *devices.ContainerDeviceRequest
-		dev    *AscendDevice
-		result bool
+		name       string
+		req        *devices.ContainerDeviceRequest
+		dev        *AscendDevice
+		isHAMiCore bool
+		result     bool
 	}{
 		{
-			"test1",
-			&devices.ContainerDeviceRequest{
+			name: "test1",
+			req: &devices.ContainerDeviceRequest{
 				Nums:   1,
 				Type:   "Ascend310P",
 				Memreq: 1024,
 			},
-			&AscendDevice{
+			dev: &AscendDevice{
 				config:     ascend310PConfig,
-				DeviceInfo: device_info,
+				DeviceInfo: deviceInfo,
 				DeviceUsage: &devices.DeviceUsage{
 					Used:    1,
 					Usedmem: 3072,
 				},
 			},
-			true,
+			isHAMiCore: false,
+			result:     true,
 		},
 		{
-			"test2",
-			&devices.ContainerDeviceRequest{
+			name: "test2",
+			req: &devices.ContainerDeviceRequest{
 				Nums:   1,
 				Type:   "Ascend310P",
 				Memreq: 21527,
 			},
-			&AscendDevice{
+			dev: &AscendDevice{
 				config:     ascend310PConfig,
-				DeviceInfo: device_info,
+				DeviceInfo: deviceInfo,
 				DeviceUsage: &devices.DeviceUsage{
 					Used:    1,
 					Usedmem: 3072,
 				},
 			},
-			false,
+			isHAMiCore: false,
+			result:     false,
 		},
 		{
-			"test3",
-			&devices.ContainerDeviceRequest{
+			name: "test3",
+			req: &devices.ContainerDeviceRequest{
 				Nums:   1,
 				Type:   "Ascend310P",
 				Memreq: 6144,
 			},
-			&AscendDevice{
+			dev: &AscendDevice{
 				config:     ascend310PConfig,
-				DeviceInfo: device_info,
+				DeviceInfo: deviceInfo,
 				DeviceUsage: &devices.DeviceUsage{
 					Used:    1,
 					Usedmem: 12288,
 				},
 			},
-			true,
+			isHAMiCore: false,
+			result:     true,
 		},
 		{
-			"test4",
-			&devices.ContainerDeviceRequest{
+			name: "test4",
+			req: &devices.ContainerDeviceRequest{
 				Nums:   1,
 				Type:   "Ascend310P",
 				Memreq: 24576,
 			},
-			&AscendDevice{
+			dev: &AscendDevice{
 				config:     ascend310PConfig,
-				DeviceInfo: device_info,
+				DeviceInfo: deviceInfo,
 				DeviceUsage: &devices.DeviceUsage{
 					Used:    0,
 					Usedmem: 0,
 				},
 			},
-			false,
+			isHAMiCore: false,
+			result:     false,
 		},
 		{
-			"test5_core",
-			&devices.ContainerDeviceRequest{
+			name: "test5_core",
+			req: &devices.ContainerDeviceRequest{
 				Nums:     1,
 				Type:     "Ascend310P",
 				Memreq:   6144,
 				Coresreq: 4,
 			},
-			&AscendDevice{
+			dev: &AscendDevice{
 				config:     ascend310PConfig,
-				DeviceInfo: device_info,
+				DeviceInfo: deviceInfo,
 				DeviceUsage: &devices.DeviceUsage{
 					Used:      1,
 					Usedmem:   12288,
 					Usedcores: 6,
 				},
 			},
-			false,
+			isHAMiCore: false,
+			result:     false,
+		},
+		{
+			name: "hami_core_mode_should_fail_when_node_not_support_hami_vnpu_core",
+			req: &devices.ContainerDeviceRequest{
+				Nums:     1,
+				Type:     "Ascend310P",
+				Memreq:   1024,
+				Coresreq: 20,
+			},
+			dev: &AscendDevice{
+				config:       ascend310PConfig,
+				DeviceInfo:   deviceInfo,
+				DeviceUsage:  &devices.DeviceUsage{},
+				hamiVnpuCore: false,
+			},
+			isHAMiCore: true,
+			result:     false,
+		},
+		{
+			name: "hami_core_mode_should_fail_when_core_is_insufficient",
+			req: &devices.ContainerDeviceRequest{
+				Nums:     1,
+				Type:     "Ascend310P",
+				Memreq:   1024,
+				Coresreq: 20,
+			},
+			dev: &AscendDevice{
+				config:     ascend310PConfig,
+				DeviceInfo: deviceInfo,
+				DeviceUsage: &devices.DeviceUsage{
+					Usedcores: 90,
+				},
+				hamiVnpuCore: true,
+			},
+			isHAMiCore: true,
+			result:     false,
+		},
+		{
+			name: "hami_core_mode_should_pass_when_node_support_hami_vnpu_core",
+			req: &devices.ContainerDeviceRequest{
+				Nums:     1,
+				Type:     "Ascend310P",
+				Memreq:   1024,
+				Coresreq: 20,
+			},
+			dev: &AscendDevice{
+				config:       ascend310PConfig,
+				DeviceInfo:   deviceInfo,
+				DeviceUsage:  &devices.DeviceUsage{},
+				hamiVnpuCore: true,
+			},
+			isHAMiCore: true,
+			result:     true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ret := fit(tt.req, tt.dev)
+			ret := fit(tt.req, tt.dev, tt.isHAMiCore)
 			assert.Equal(t, tt.result, ret)
+		})
+	}
+}
+
+func TestAscendDevice_GetNodeDevices_HAMiVnpuCore(t *testing.T) {
+	deviceRegisterAnno := fmt.Sprintf("%s/node-register-%s", util.HAMiAnnotationsPrefix, "Ascend910A")
+	testNodeDevicesJSON := `[{"id":"dev-1","index":0,"count":1,"devmem":32768,"devcore":30}]`
+	dev := &AscendDevice{
+		nodeRegisterAnno: deviceRegisterAnno,
+	}
+	var conf config.VNPUsConfig
+
+	tests := []struct {
+		name          string
+		annotations   map[string]string
+		expectSupport bool
+	}{
+		{
+			name: "node_support_hami_vnpu_core",
+			annotations: map[string]string{
+				deviceRegisterAnno:         testNodeDevicesJSON,
+				VNPUNodeSelectorAnnotation: "true",
+			},
+			expectSupport: true,
+		},
+		{
+			name: "node_not_support_hami_vnpu_core",
+			annotations: map[string]string{
+				deviceRegisterAnno:         testNodeDevicesJSON,
+				VNPUNodeSelectorAnnotation: "false",
+			},
+			expectSupport: false,
+		},
+		{
+			name: "node_without_hami_vnpu_core_annotation",
+			annotations: map[string]string{
+				deviceRegisterAnno: testNodeDevicesJSON,
+			},
+			expectSupport: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test-node",
+					Annotations: tt.annotations,
+				},
+			}
+
+			nodeDevices, nodeSupportHamiCore, err := dev.getNodeDevices(&node, conf)
+			assert.NoError(t, err)
+			assert.Len(t, nodeDevices, 1)
+			assert.Equal(t, tt.expectSupport, nodeSupportHamiCore)
 		})
 	}
 }

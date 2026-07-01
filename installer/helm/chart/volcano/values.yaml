@@ -69,6 +69,10 @@ custom:
   agent_extend_resource_memory_name: ~
   agent_kube_cgroup_root: ~
 
+  device_mutator_enable: false
+  known_geometries_cm_namespace: "kube-system"
+  known_geometries_cm_name: "hami-scheduler-device"
+
 # Override the configuration for admission, controller or scheduler.
 # For example:
 #
