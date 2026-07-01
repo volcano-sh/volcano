@@ -321,9 +321,9 @@ func (pp *NodeOrderPlugin) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo, k
 			return 0, status.AsError()
 		}
 
-		// If imageLocalityWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
+		// Score from each plugin is multiplied by its configured weight before being added to the total.
 		nodeScore += float64(score) * float64(p.weight)
-		klog.V(5).Infof("Node: %s, task<%s/%s> %s weight %d, score: %f", node.Name, task.Namespace, task.Name, name, pp.weight.imageLocalityWeight, float64(score)*float64(p.weight))
+		klog.V(5).Infof("Node: %s, task<%s/%s> %s weight %d, score: %f", node.Name, task.Namespace, task.Name, name, p.weight, float64(score)*float64(p.weight))
 	}
 	klog.V(4).Infof("Nodeorder Total Score for task<%s/%s> on node %s is: %f", task.Namespace, task.Name, node.Name, nodeScore)
 	return nodeScore, nil
