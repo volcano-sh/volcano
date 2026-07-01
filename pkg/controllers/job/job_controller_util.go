@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -241,7 +242,7 @@ func applyPolicies(job *batch.Job, req *apis.Request) (delayAct *delayAction) {
 					}
 
 					// 0 is not an error code, is prevented in validation admission controller
-					if policy.ExitCode != nil && *policy.ExitCode == req.ExitCode {
+					if policy.ExitCode != nil && matchExitCode(req, *policy.ExitCode) {
 						delayAct.action = policy.Action
 						if policy.Timeout != nil {
 							delayAct.delay = policy.Timeout.Duration
@@ -271,7 +272,7 @@ func applyPolicies(job *batch.Job, req *apis.Request) (delayAct *delayAction) {
 		}
 
 		// 0 is not an error code, is prevented in validation admission controller
-		if policy.ExitCode != nil && *policy.ExitCode == req.ExitCode {
+		if policy.ExitCode != nil && matchExitCode(req, *policy.ExitCode) {
 			delayAct.action = policy.Action
 			if policy.Timeout != nil {
 				delayAct.delay = policy.Timeout.Duration
@@ -281,6 +282,16 @@ func applyPolicies(job *batch.Job, req *apis.Request) (delayAct *delayAction) {
 	}
 
 	return
+}
+
+func matchExitCode(req *apis.Request, exitCode int32) bool {
+	if exitCode == 0 {
+		return false
+	}
+	if len(req.ExitCodes) != 0 {
+		return strings.Contains(","+req.ExitCodes, fmt.Sprintf(",%d,", exitCode))
+	}
+	return req.ExitCode == exitCode
 }
 
 func shouldConfigureTimeout(event v1alpha1.Event) bool {
