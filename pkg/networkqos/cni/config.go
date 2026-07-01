@@ -76,17 +76,7 @@ func (p *ConfHandler) AddOrUpdateCniPluginToConfList(configPath, name string, pl
 			return fmt.Errorf("failed to get cni from cni conflist")
 		}
 
-		pluginName, ok := existedPlugin["name"]
-		if !ok {
-			continue
-		}
-
-		pluginNameInStr, ok := pluginName.(string)
-		if !ok {
-			continue
-		}
-
-		if pluginNameInStr == name {
+		if isCNIPluginMatched(existedPlugin, name) {
 			break
 		}
 	}
@@ -131,12 +121,8 @@ func (p *ConfHandler) DeleteCniPluginFromConfList(configPath, name string) (err 
 		if !ok {
 			return fmt.Errorf("failed to get cni from cni conflist")
 		}
-		pluginName, ok := pl["name"].(string)
-		if !ok {
-			continue
-		}
 
-		if pluginName == name {
+		if isCNIPluginMatched(pl, name) {
 			break
 		}
 	}
@@ -155,4 +141,14 @@ func (p *ConfHandler) DeleteCniPluginFromConfList(configPath, name string) (err 
 	err = os.WriteFile(configPath, newCniConf, 0750)
 	klog.InfoS("Delete cni plugin successfully", "cni-conf", string(newCniConf))
 	return err
+}
+
+func isCNIPluginMatched(plugin map[string]interface{}, name string) bool {
+	pluginName, ok := plugin["name"].(string)
+	if ok && pluginName == name {
+		return true
+	}
+
+	pluginType, ok := plugin["type"].(string)
+	return ok && pluginType == name
 }
