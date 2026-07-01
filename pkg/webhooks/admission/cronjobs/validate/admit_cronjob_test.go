@@ -412,3 +412,90 @@ func TestValidateCronJobName(t *testing.T) {
 		})
 	}
 }
+
+// TestJoinCronJobErrsSeparatesMultipleErrors checks that when a CronJob fails
+// more than one validation at once (here an invalid schedule and a too-long
+// name), the messages are reported as distinct items joined by "; " rather than
+// running together mid-sentence.
+func TestJoinCronJobErrsSeparatesMultipleErrors(t *testing.T) {
+	cronjob := &v1alpha1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      strings.Repeat("a", 53),
+			Namespace: metav1.NamespaceDefault,
+		},
+		Spec: v1alpha1.CronJobSpec{
+			Schedule:          "error schedule",
+			ConcurrencyPolicy: v1alpha1.AllowConcurrent,
+			JobTemplate: v1alpha1.JobTemplateSpec{
+				Spec: getJobTemplate(),
+			},
+		},
+	}
+
+	msg := joinCronJobErrs(cronjob)
+
+	for _, want := range []string{"schedule is not a valid cron expression", "; ", "must be no more than 52 characters"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("Expected %q in error, got %q", want, msg)
+		}
+	}
+}
+
+// TestJoinCronJobErrsSingleErrorUnchanged checks that when only one validator
+// fails, joinCronJobErrs returns that validator's message verbatim (including any
+// leading space) and does not introduce a "; " separator, so single-error
+// admission responses stay byte-for-byte identical to the previous behaviour.
+func TestJoinCronJobErrsSingleErrorUnchanged(t *testing.T) {
+	tests := []struct {
+		name    string
+		cronjob *v1alpha1.CronJob
+		want    string
+	}{
+		{
+			name: "only spec error keeps leading space",
+			cronjob: &v1alpha1.CronJob{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "valid-cronjob",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: v1alpha1.CronJobSpec{
+					Schedule:          "",
+					ConcurrencyPolicy: v1alpha1.AllowConcurrent,
+					JobTemplate: v1alpha1.JobTemplateSpec{
+						Spec: getJobTemplate(),
+					},
+				},
+			},
+			want: " schedule is required, but got empty",
+		},
+		{
+			name: "only name error",
+			cronjob: &v1alpha1.CronJob{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      strings.Repeat("a", 53),
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: v1alpha1.CronJobSpec{
+					Schedule:          "* * * * *",
+					ConcurrencyPolicy: v1alpha1.AllowConcurrent,
+					JobTemplate: v1alpha1.JobTemplateSpec{
+						Spec: getJobTemplate(),
+					},
+				},
+			},
+			want: validateCronJobName(strings.Repeat("a", 53)),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := joinCronJobErrs(tt.cronjob)
+			if got != tt.want {
+				t.Errorf("joinCronJobErrs() = %q, want %q", got, tt.want)
+			}
+			if strings.Contains(got, "; ") {
+				t.Errorf("single-error message should not contain the %q separator, got %q", "; ", got)
+			}
+		})
+	}
+}
