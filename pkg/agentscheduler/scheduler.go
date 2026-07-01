@@ -63,9 +63,12 @@ type Scheduler struct {
 	disableDefaultConf bool
 	workerCount        int
 	shardingMode       string
+	workers            []*Worker
+	configApplied      bool
 }
 
 type Worker struct {
+	mutex     sync.RWMutex
 	framework *framework.Framework
 	index     int
 }
@@ -99,19 +102,14 @@ func NewAgentScheduler(config *rest.Config, opt *options.ServerOption) (*Schedul
 // initializes the cache, and begins the scheduling process.
 func (sched *Scheduler) Run(stopCh <-chan struct{}) {
 	sched.loadSchedulerConf()
-	go sched.watchSchedulerConf(stopCh)
 	// Start cache for policy.
-	sched.cache.SetMetricsConf(sched.metricsConf)
+	sched.cache.SetMetricsConf(sched.getMetricsConf())
 	sched.cache.Run(stopCh)
-
-	for _, action := range sched.actions {
-		action.OnActionInit(sched.configurations)
-	}
 
 	klog.V(2).Infof("Scheduler completes Initialization and start to run %d workers", sched.workerCount)
 	for i := range sched.workerCount {
-		worker := &Worker{index: i}
-		worker.framework = framework.NewFramework(sched.actions, sched.tiers, sched.cache, sched.configurations)
+		worker := sched.newWorker(i)
+		sched.addWorker(worker)
 		go func() {
 			for {
 				select {
@@ -123,6 +121,7 @@ func (sched *Scheduler) Run(stopCh <-chan struct{}) {
 			}
 		}()
 	}
+	go sched.watchSchedulerConf(stopCh)
 	if options.ServerOpts.EnableCacheDumper {
 		sched.dumper.ListenForSignal(stopCh)
 	}
@@ -146,47 +145,93 @@ func (worker *Worker) runOnce() {
 		return
 	}
 
+	worker.mutex.RLock()
+	defer worker.mutex.RUnlock()
+	if worker.framework == nil {
+		klog.Errorf("Framework is not initialized in worker %d", worker.index)
+		return
+	}
+	fwk := worker.framework
+
 	scheduleStartTime := time.Now()
 
 	// Update snapshot from cache before scheduling
-	snapshot := worker.framework.GetSnapshot()
+	snapshot := fwk.GetSnapshot()
 	snapshotStart := time.Now()
-	if err := worker.framework.Cache.UpdateSnapshot(snapshot); err != nil {
+	if err := fwk.Cache.UpdateSnapshot(snapshot); err != nil {
 		klog.Errorf("Failed to update snapshot in worker %d: %v, skip this scheduling cycle", worker.index, err)
 		return
 	}
 	agentmetrics.UpdateUpdateSnapshotDuration(time.Since(snapshotStart))
 
-	worker.framework.Cache.OnWorkerStartSchedulingCycle(worker.index, schedCtx)
+	fwk.Cache.OnWorkerStartSchedulingCycle(worker.index, schedCtx)
 
 	// TODO: Call OnCycleStart for all plugins
-	// worker.framework.OnCycleStart()
+	// fwk.OnCycleStart()
 
 	defer func() {
 		agentmetrics.UpdateWorkerSchedulingCycleDuration(schedulermetrics.Duration(scheduleStartTime))
 		// TODO: Call OnCycleEnd for all plugins
-		// worker.framework.OnCycleEnd()
-		worker.framework.Cache.OnWorkerEndSchedulingCycle(worker.index)
-		worker.framework.ClearCycleState()
+		// fwk.OnCycleEnd()
+		fwk.Cache.OnWorkerEndSchedulingCycle(worker.index)
+		fwk.ClearCycleState()
 	}()
 
-	for _, action := range worker.framework.Actions {
+	for _, action := range fwk.Actions {
 		actionStartTime := time.Now()
-		action.Execute(worker.framework, schedCtx)
+		action.Execute(fwk, schedCtx)
 		schedulermetrics.UpdateActionDuration(action.Name(), schedulermetrics.Duration(actionStartTime))
 	}
 }
 
+func (sched *Scheduler) newWorker(index int) *Worker {
+	actions, tiers, configurations := sched.getFrameworkConfig()
+	return &Worker{
+		index:     index,
+		framework: framework.NewFramework(actions, tiers, sched.cache, configurations),
+	}
+}
+
+func (sched *Scheduler) addWorker(worker *Worker) {
+	sched.mutex.Lock()
+	defer sched.mutex.Unlock()
+	sched.workers = append(sched.workers, worker)
+}
+
+func (sched *Scheduler) getFrameworkConfig() ([]framework.Action, []conf.Tier, []conf.Configuration) {
+	sched.mutex.Lock()
+	defer sched.mutex.Unlock()
+	return sched.actions, sched.tiers, sched.configurations
+}
+
+func (sched *Scheduler) getMetricsConf() map[string]string {
+	sched.mutex.Lock()
+	defer sched.mutex.Unlock()
+	return sched.metricsConf
+}
+
+func (sched *Scheduler) getWorkers() []*Worker {
+	sched.mutex.Lock()
+	defer sched.mutex.Unlock()
+	workers := make([]*Worker, len(sched.workers))
+	copy(workers, sched.workers)
+	return workers
+}
+
 // generateNextSchedulingContext generates a new scheduling context for the next task to be scheduled.
 func (worker *Worker) generateNextSchedulingContext() (*agentapi.SchedulingContext, error) {
-	if worker.framework == nil {
+	worker.mutex.RLock()
+	var cache schedcache.Cache
+	if worker.framework != nil {
+		cache = worker.framework.Cache
+	}
+	worker.mutex.RUnlock()
+
+	if cache == nil {
 		return nil, fmt.Errorf("framework is not initialized")
 	}
-	if worker.framework.Cache == nil {
-		return nil, fmt.Errorf("cache is not initialized")
-	}
 
-	queue := worker.framework.Cache.SchedulingQueue()
+	queue := cache.SchedulingQueue()
 	if queue == nil {
 		return nil, fmt.Errorf("scheduling queue is not initialized")
 	}
@@ -195,8 +240,11 @@ func (worker *Worker) generateNextSchedulingContext() (*agentapi.SchedulingConte
 	if err != nil {
 		return nil, fmt.Errorf("failed to pop scheduling task: %w", err)
 	}
+	if podInfo == nil || podInfo.Pod == nil {
+		return nil, nil
+	}
 
-	task, exist := worker.framework.Cache.GetTaskInfo(schedulingapi.TaskID(podInfo.Pod.UID))
+	task, exist := cache.GetTaskInfo(schedulingapi.TaskID(podInfo.Pod.UID))
 	if !exist {
 		klog.Warningf("Task %s/%s not found in cache, skip scheduling", podInfo.Pod.Namespace, podInfo.Pod.Name)
 		return nil, nil
@@ -227,6 +275,10 @@ func (sched *Scheduler) loadSchedulerConf() {
 				klog.Fatalf("Invalid default configuration: unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
 			}
 		})
+		if len(sched.schedulerConf) == 0 {
+			sched.applySchedulerConf(sched.actions, sched.tiers, sched.configurations, sched.metricsConf)
+			return
+		}
 	}
 
 	var config string
@@ -238,6 +290,7 @@ func (sched *Scheduler) loadSchedulerConf() {
 			}
 			klog.Errorf("Failed to read the Scheduler config in '%s', using previous configuration: %v",
 				sched.schedulerConf, err)
+			sched.applyDefaultConfIfNeeded()
 			return
 		}
 		config = strings.TrimSpace(string(confData))
@@ -249,7 +302,41 @@ func (sched *Scheduler) loadSchedulerConf() {
 			klog.Fatalf("Invalid scheduler configuration and default configuration fallback is disabled")
 		}
 		klog.Errorf("Scheduler config %s is invalid: %v", config, err)
+		sched.applyDefaultConfIfNeeded()
 		return
+	}
+
+	sched.applySchedulerConf(actions, tiers, configurations, metricsConf)
+}
+
+func (sched *Scheduler) applyDefaultConfIfNeeded() {
+	sched.mutex.Lock()
+	applied := sched.configApplied
+	actions := sched.actions
+	tiers := sched.tiers
+	configurations := sched.configurations
+	metricsConf := sched.metricsConf
+	sched.mutex.Unlock()
+
+	if applied || len(actions) == 0 {
+		return
+	}
+	sched.applySchedulerConf(actions, tiers, configurations, metricsConf)
+}
+
+func (sched *Scheduler) applySchedulerConf(actions []framework.Action, tiers []conf.Tier, configurations []conf.Configuration, metricsConf map[string]string) {
+	workers := sched.getWorkers()
+	for _, worker := range workers {
+		worker.mutex.Lock()
+	}
+	defer func() {
+		for i := len(workers) - 1; i >= 0; i-- {
+			workers[i].mutex.Unlock()
+		}
+	}()
+
+	for _, action := range actions {
+		action.OnActionInit(configurations)
 	}
 
 	sched.mutex.Lock()
@@ -257,10 +344,18 @@ func (sched *Scheduler) loadSchedulerConf() {
 	sched.tiers = tiers
 	sched.configurations = configurations
 	sched.metricsConf = metricsConf
-	defer sched.mutex.Unlock()
+	sched.configApplied = true
+	sched.mutex.Unlock()
+
+	for _, worker := range workers {
+		worker.framework = framework.NewFramework(actions, tiers, sched.cache, configurations)
+	}
 }
 
 func (sched *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
+	sched.mutex.Lock()
+	defer sched.mutex.Unlock()
+
 	for _, action := range sched.actions {
 		actions = append(actions, action.Name())
 	}
@@ -276,6 +371,7 @@ func (sched *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
 	if sched.fileWatcher == nil {
 		return
 	}
+	defer sched.fileWatcher.Close()
 	eventCh := sched.fileWatcher.Events()
 	errCh := sched.fileWatcher.Errors()
 	for {
@@ -287,7 +383,7 @@ func (sched *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
 			klog.V(4).Infof("watch %s event: %v", sched.schedulerConf, event)
 			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
 				sched.loadSchedulerConf()
-				sched.cache.SetMetricsConf(sched.metricsConf)
+				sched.cache.SetMetricsConf(sched.getMetricsConf())
 			}
 		case err, ok := <-errCh:
 			if !ok {

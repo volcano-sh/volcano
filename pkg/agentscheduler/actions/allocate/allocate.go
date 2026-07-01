@@ -24,6 +24,7 @@ import (
 
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
+	agentcache "volcano.sh/volcano/pkg/agentscheduler/cache"
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	vcache "volcano.sh/volcano/pkg/scheduler/cache"
@@ -57,6 +58,8 @@ func (alloc *Action) Name() string {
 
 // OnActionInit initializes the plugin. It is called once when the framework is created.
 func (alloc *Action) OnActionInit(configurations []conf.Configuration) {
+	alloc.enablePredicateErrorCache = true
+	alloc.candidateNodeCount = DefaultCandidateNodeCount
 	alloc.parseArguments(configurations)
 }
 
@@ -216,9 +219,13 @@ func (alloc *Action) CreateBindContext(fwk *framework.Framework, schedCtx *agent
 	bindContext := &agentapi.BindContext{
 		SchedCtx:   schedCtx,
 		Extensions: make(map[string]vcache.BindContextExtension),
+		PreBinders: make(map[string]interface{}),
 	}
 
 	for _, plugin := range fwk.Plugins {
+		if preBinder, ok := plugin.(agentcache.PreBinder); ok {
+			bindContext.PreBinders[plugin.Name()] = preBinder
+		}
 		// If the plugin implements the BindContextHandler interface, call the SetupBindContextExtension method.
 		if handler, ok := plugin.(framework.BindContextHandler); ok {
 			state := fwk.CurrentCycleState

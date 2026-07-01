@@ -79,6 +79,44 @@ func TestEnqueueScheduleResult(t *testing.T) {
 	}
 }
 
+type recordingPreBinder struct {
+	preBindCalls  int
+	rollbackCalls int
+}
+
+func (p *recordingPreBinder) PreBind(_ context.Context, _ *agentapi.BindContext) error {
+	p.preBindCalls++
+	return nil
+}
+
+func (p *recordingPreBinder) PreBindRollBack(_ context.Context, _ *agentapi.BindContext) {
+	p.rollbackCalls++
+}
+
+func TestExecutePreBindUsesBindContextPreBinders(t *testing.T) {
+	sc := &SchedulerCache{binderRegistry: NewBinderRegistry()}
+	stalePreBinder := &recordingPreBinder{}
+	currentPreBinder := &recordingPreBinder{}
+
+	sc.binderRegistry.Register("stale", stalePreBinder)
+	bindContext := &agentapi.BindContext{
+		SchedCtx: &agentapi.SchedulingContext{},
+		PreBinders: map[string]interface{}{
+			"current": currentPreBinder,
+		},
+	}
+
+	if err := sc.executePreBind(context.Background(), bindContext); err != nil {
+		t.Fatalf("executePreBind failed: %v", err)
+	}
+	if stalePreBinder.preBindCalls != 0 {
+		t.Fatalf("expected stale registry preBinder not to be called, got %d calls", stalePreBinder.preBindCalls)
+	}
+	if currentPreBinder.preBindCalls != 1 {
+		t.Fatalf("expected bind context preBinder to be called once, got %d calls", currentPreBinder.preBindCalls)
+	}
+}
+
 // TestFindNonConflictingNode_NoConflict tests finding non-conflicting node when no previous records exist
 func TestFindNonConflictingNode_NoConflict(t *testing.T) {
 	binder := &ConflictAwareBinder{

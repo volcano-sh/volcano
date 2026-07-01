@@ -17,6 +17,7 @@ limitations under the License.
 package allocate
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -31,9 +32,21 @@ import (
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
 	agentuthelper "volcano.sh/volcano/pkg/agentscheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
+
+type testPreBindPlugin struct{}
+
+func (p *testPreBindPlugin) Name() string                        { return "test-prebind" }
+func (p *testPreBindPlugin) OnPluginInit(_ *framework.Framework) {}
+func (p *testPreBindPlugin) OnCycleStart(_ *framework.Framework) {}
+func (p *testPreBindPlugin) OnCycleEnd(_ *framework.Framework)   {}
+func (p *testPreBindPlugin) PreBind(_ context.Context, _ *agentapi.BindContext) error {
+	return nil
+}
+func (p *testPreBindPlugin) PreBindRollBack(_ context.Context, _ *agentapi.BindContext) {}
 
 // TestConcurrentMultiWorkerScheduling verifies that multiple workers can concurrently
 // schedule different pods without data races or scheduling conflicts.
@@ -174,5 +187,45 @@ func TestConcurrentMultiWorkerScheduling(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestActionReloadRestoresDefaultArguments(t *testing.T) {
+	action := New()
+
+	action.OnActionInit([]conf.Configuration{{
+		Name: action.Name(),
+		Arguments: map[string]interface{}{
+			CandidateNodeCountKey:           10,
+			conf.EnablePredicateErrCacheKey: false,
+		},
+	}})
+	if action.candidateNodeCount != 10 {
+		t.Fatalf("expected candidateNodeCount to be 10, got %d", action.candidateNodeCount)
+	}
+	if action.enablePredicateErrorCache {
+		t.Fatal("expected predicate error cache to be disabled")
+	}
+
+	action.OnActionInit(nil)
+	if action.candidateNodeCount != DefaultCandidateNodeCount {
+		t.Fatalf("expected candidateNodeCount to be reset to %d, got %d", DefaultCandidateNodeCount, action.candidateNodeCount)
+	}
+	if !action.enablePredicateErrorCache {
+		t.Fatal("expected predicate error cache to be reset to enabled")
+	}
+}
+
+func TestCreateBindContextCapturesPreBinders(t *testing.T) {
+	plugin := &testPreBindPlugin{}
+	fwk := &framework.Framework{
+		Plugins: map[string]framework.Plugin{
+			plugin.Name(): plugin,
+		},
+	}
+
+	bindContext := New().CreateBindContext(fwk, &agentapi.SchedulingContext{})
+	if _, ok := bindContext.PreBinders[plugin.Name()]; !ok {
+		t.Fatalf("expected bind context to capture %s preBinder", plugin.Name())
 	}
 }

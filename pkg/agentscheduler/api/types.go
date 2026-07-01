@@ -39,6 +39,8 @@ type BindContext struct {
 	SchedCtx *SchedulingContext
 	// Extensions stores extra bind context information of each plugin
 	Extensions map[string]cache.BindContextExtension
+	// PreBinders stores the pre-bind plugin instances used by the framework that created this bind context.
+	PreBinders map[string]interface{}
 }
 
 // PodScheduleResult contains the scheduling result for a pod

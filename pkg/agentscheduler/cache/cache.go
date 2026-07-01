@@ -637,7 +637,7 @@ func (sc *SchedulerCache) WaitForHandlerSync(stopCh <-chan struct{}) {
 }
 
 // Bind binds task to the target host.
-func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*agentapi.BindContext, preBinders map[string]PreBinder) {
+func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*agentapi.BindContext) {
 	readyToBindTasks := make([]*schedulingapi.TaskInfo, len(bindContexts))
 	for index := range readyToBindTasks {
 		readyToBindTasks[index] = bindContexts[index].SchedCtx.Task
@@ -661,9 +661,9 @@ func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*agentapi.Bin
 				klog.ErrorS(err, "Failed to update pod status when bind task error", "task", task.Name)
 			}
 
-			for _, preBinder := range preBinders {
-				if preBinder != nil {
-					preBinder.PreBindRollBack(ctx, bindContext)
+			for _, preBinder := range bindContext.PreBinders {
+				if pb, ok := preBinder.(PreBinder); ok && pb != nil {
+					pb.PreBindRollBack(ctx, bindContext)
 				}
 			}
 
@@ -907,14 +907,15 @@ func (sc *SchedulerCache) processBindTask() {
 }
 
 // executePreBind executes PreBind for one bindContext
-func (sc *SchedulerCache) executePreBind(ctx context.Context, bindContext *agentapi.BindContext, preBinders map[string]PreBinder) error {
-	executedPreBinders := make([]PreBinder, 0, len(preBinders))
-	for _, preBinder := range preBinders {
-		if preBinder == nil {
+func (sc *SchedulerCache) executePreBind(ctx context.Context, bindContext *agentapi.BindContext) error {
+	executedPreBinders := make([]PreBinder, 0, len(bindContext.PreBinders))
+	for _, preBinder := range bindContext.PreBinders {
+		pb, ok := preBinder.(PreBinder)
+		if !ok || pb == nil {
 			continue
 		}
 
-		if err := preBinder.PreBind(ctx, bindContext); err != nil {
+		if err := pb.PreBind(ctx, bindContext); err != nil {
 			// If PreBind fails, rollback the executed PreBinders
 			for i := len(executedPreBinders) - 1; i >= 0; i-- {
 				if executedPreBinders[i] != nil {
@@ -926,19 +927,19 @@ func (sc *SchedulerCache) executePreBind(ctx context.Context, bindContext *agent
 		if bindContext.SchedCtx.Task != nil && bindContext.SchedCtx.Task.Pod != nil {
 			metrics.UpdateTaskScheduleDuration(metrics.TaskStagePreBound, metrics.Duration(bindContext.SchedCtx.Task.Pod.CreationTimestamp.Time))
 		}
-		executedPreBinders = append(executedPreBinders, preBinder)
+		executedPreBinders = append(executedPreBinders, pb)
 	}
 
 	return nil
 }
 
 // executePreBinds executes PreBind for a list of bindContexts
-func (sc *SchedulerCache) executePreBinds(ctx context.Context, bindContexts []*agentapi.BindContext, preBinders map[string]PreBinder) []*agentapi.BindContext {
+func (sc *SchedulerCache) executePreBinds(ctx context.Context, bindContexts []*agentapi.BindContext) []*agentapi.BindContext {
 	logger := klog.FromContext(ctx)
 	successfulBindContexts := make([]*agentapi.BindContext, 0, len(bindContexts))
 
 	for _, bindContext := range bindContexts {
-		if err := sc.executePreBind(ctx, bindContext, preBinders); err != nil {
+		if err := sc.executePreBind(ctx, bindContext); err != nil {
 			task := bindContext.SchedCtx.Task
 			reason := fmt.Sprintf("execute preBind for pod %s failed: %v, resync the task", klog.KObj(task.Pod), err)
 			klog.Error(reason)
@@ -967,9 +968,8 @@ func (sc *SchedulerCache) BindTask() {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		preBinders := sc.binderRegistry.getRegisteredPreBinders()
-		successfulPreBindContexts := sc.executePreBinds(cancelCtx, bindContexts, preBinders)
-		sc.Bind(ctx, successfulPreBindContexts, preBinders)
+		successfulPreBindContexts := sc.executePreBinds(cancelCtx, bindContexts)
+		sc.Bind(ctx, successfulPreBindContexts)
 	}(tmpBindCache)
 
 	// The slice here needs to point to a new underlying array, otherwise bindCache may not be able to trigger garbage collection immediately
