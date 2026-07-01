@@ -147,7 +147,14 @@ func validateIntPercentageStr(key, value string) error {
 		}
 		return nil
 	case intstr.String:
-		s := strings.Replace(tmp.StrVal, "%", "", -1)
+		if !strings.Contains(tmp.StrVal, "%") {
+			_, err := strconv.Atoi(tmp.StrVal)
+			return fmt.Errorf("invalid value %v for %v", err, key)
+		}
+		if strings.Count(tmp.StrVal, "%") != 1 || !strings.HasSuffix(tmp.StrVal, "%") {
+			return fmt.Errorf("invalid value <%q> for %v, it must be a valid percentage which between 1%% ~ 99%%", tmp.StrVal, key)
+		}
+		s := strings.TrimSuffix(tmp.StrVal, "%")
 		v, err := strconv.Atoi(s)
 		if err != nil {
 			return fmt.Errorf("invalid value %v for %v", err, key)
