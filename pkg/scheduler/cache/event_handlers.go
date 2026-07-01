@@ -286,6 +286,7 @@ func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
 		if errors.IsNotFound(err) {
 			sc.Mutex.Lock()
 			defer sc.Mutex.Unlock()
+			sc.clearUnassignedNumaTask(oldTask)
 			err := sc.deleteTask(oldTask)
 			if err != nil {
 				klog.Errorf("Failed to delete Pod <%v/%v> and remove from cache: %s", oldTask.Namespace, oldTask.Name, err.Error())
@@ -347,6 +348,19 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 	return sc.addPod(newPod)
 }
 
+func (sc *SchedulerCache) clearUnassignedNumaTask(ti *schedulingapi.TaskInfo) {
+	if len(ti.NodeName) != 0 {
+		node := sc.Nodes[ti.NodeName]
+		if node != nil {
+			podMeta := schedulingapi.PodMeta{UID: ti.Pod.UID, Name: ti.Pod.Name, Namespace: ti.Pod.Namespace}
+			if resSets, ok := node.UnassignedNumaPods[podMeta]; ok {
+				delete(node.UnassignedNumaPods, podMeta)
+				klog.V(3).Infof("deleted unassigned pod %v with resourceSet %v on node %s", podMeta, resSets, node.Name)
+			}
+		}
+	}
+}
+
 func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 	if len(ti.Job) != 0 {
 		if job, found := sc.Jobs[ti.Job]; found {
@@ -372,6 +386,19 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 	}
 
 	return nil
+}
+
+func (sc *SchedulerCache) clearUnassignedNumaPod(pod *v1.Pod) {
+	pi := schedulingapi.NewTaskInfo(pod)
+
+	task := pi
+	if job, found := sc.Jobs[pi.Job]; found {
+		if t, found := job.Tasks[pi.UID]; found {
+			task = t
+		}
+	}
+
+	sc.clearUnassignedNumaTask(task)
 }
 
 // Assumes that lock is already acquired.
@@ -467,12 +494,12 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
+	sc.clearUnassignedNumaPod(pod)
 	err := sc.deletePod(pod)
 	if err != nil {
 		klog.Errorf("Failed to delete pod %v from cache: %v", pod.Name, err)
 		return
 	}
-
 	klog.V(3).Infof("Deleted pod <%s/%v> from cache.", pod.Namespace, pod.Name)
 }
 
@@ -1188,12 +1215,13 @@ func (sc *SchedulerCache) AddResourceQuota(obj interface{}) {
 
 func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopology) *schedulingapi.NumatopoInfo {
 	numaInfo := &schedulingapi.NumatopoInfo{
-		Namespace:   srcInfo.Namespace,
-		Name:        srcInfo.Name,
-		Policies:    make(map[nodeinfov1alpha1.PolicyName]string),
-		NumaResMap:  make(map[string]*schedulingapi.ResourceInfo),
-		CPUDetail:   topology.CPUDetails{},
-		ResReserved: make(v1.ResourceList),
+		Namespace:      srcInfo.Namespace,
+		Name:           srcInfo.Name,
+		Policies:       make(map[nodeinfov1alpha1.PolicyName]string),
+		NumaResMap:     make(map[string]*schedulingapi.ResourceInfo),
+		CPUDetail:      topology.CPUDetails{},
+		ResReserved:    make(v1.ResourceList),
+		PodAllocations: make([]nodeinfov1alpha1.PodAllocation, 0, len(srcInfo.Spec.PodAllocations)),
 	}
 
 	policies := srcInfo.Spec.Policies
@@ -1230,6 +1258,11 @@ func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopology) *schedulingapi.Numatopo
 		numaInfo.ResReserved = resReserved
 	}
 
+	podAllocations := srcInfo.Spec.PodAllocations
+	for _, podAllocation := range podAllocations {
+		numaInfo.PodAllocations = append(numaInfo.PodAllocations, *podAllocation.DeepCopy())
+	}
+
 	return numaInfo
 }
 
@@ -1240,26 +1273,12 @@ func (sc *SchedulerCache) addNumaInfo(info *nodeinfov1alpha1.Numatopology) error
 		sc.Nodes[info.Name].Name = info.Name
 	}
 
-	if sc.Nodes[info.Name].NumaInfo == nil {
-		sc.Nodes[info.Name].NumaInfo = getNumaInfo(info)
-		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoMoreFlag
-	} else {
-		newLocalInfo := getNumaInfo(info)
-		if sc.Nodes[info.Name].NumaInfo.Compare(newLocalInfo) {
-			sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoMoreFlag
-		} else {
-			sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoLessFlag
-		}
-
-		sc.Nodes[info.Name].NumaInfo = newLocalInfo
-	}
-
+	sc.Nodes[info.Name].NumaInfo = getNumaInfo(info)
 	for resName, NumaResInfo := range sc.Nodes[info.Name].NumaInfo.NumaResMap {
 		klog.V(3).Infof("resource %s Allocatable %v on node[%s] into cache", resName, NumaResInfo, info.Name)
 	}
-
-	klog.V(3).Infof("Policies %v on node[%s] into cache, change= %v",
-		sc.Nodes[info.Name].NumaInfo.Policies, info.Name, sc.Nodes[info.Name].NumaChgFlag)
+	klog.V(3).Infof("Policies %v on node[%s] into cache", sc.Nodes[info.Name].NumaInfo.Policies, info.Name)
+	klog.V(5).Infof("pod allocations %v on node[%s] into cache", sc.Nodes[info.Name].NumaInfo.PodAllocations, info.Name)
 	return nil
 }
 
@@ -1267,7 +1286,6 @@ func (sc *SchedulerCache) addNumaInfo(info *nodeinfov1alpha1.Numatopology) error
 func (sc *SchedulerCache) deleteNumaInfo(info *nodeinfov1alpha1.Numatopology) {
 	if sc.Nodes[info.Name] != nil {
 		sc.Nodes[info.Name].NumaInfo = nil
-		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoResetFlag
 		klog.V(3).Infof("delete numainfo in cache for node<%s>", info.Name)
 	}
 }

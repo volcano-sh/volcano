@@ -1049,22 +1049,24 @@ func (sc *SchedulerCache) SetSharedInformerFactory(factory informers.SharedInfor
 	sc.informerFactory = factory
 }
 
-// UpdateSchedulerNumaInfo used to update scheduler node cache NumaSchedulerInfo
-func (sc *SchedulerCache) UpdateSchedulerNumaInfo(AllocatedSets map[string]schedulingapi.ResNumaSets) error {
+// AddUnassignedNumaPods adds the pods that are newly-scheduled but has not been allocated resources to nodes' UnassignedNumaPods
+func (sc *SchedulerCache) AddUnassignedNumaPods(allocatedSets map[schedulingapi.PodMeta]map[string]schedulingapi.ResNumaSets) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	for nodeName, sets := range AllocatedSets {
-		if _, found := sc.Nodes[nodeName]; !found {
-			continue
+	for podMeta, podAlloc := range allocatedSets {
+		for nodeName, resSets := range podAlloc {
+			node, found := sc.Nodes[nodeName]
+			if !found || node == nil {
+				klog.Warningf("failed to find node %s, skip adding unassigned pod %v with resourceSet %v to it", nodeName, podMeta, resSets)
+				continue
+			}
+			if node.UnassignedNumaPods == nil {
+				node.UnassignedNumaPods = make(map[schedulingapi.PodMeta]schedulingapi.ResNumaSets)
+			}
+			node.UnassignedNumaPods[podMeta] = resSets
+			klog.V(3).Infof("added pod %v with resourceSet %v to the unassigned numa pods of node %s", podMeta, resSets, nodeName)
 		}
-
-		numaInfo := sc.Nodes[nodeName].NumaSchedulerInfo
-		if numaInfo == nil {
-			continue
-		}
-
-		numaInfo.Allocate(sets)
 	}
 	return nil
 }

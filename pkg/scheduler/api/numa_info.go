@@ -20,22 +20,14 @@ import (
 	"encoding/json"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
 	"k8s.io/utils/cpuset"
 
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 )
 
-// NumaChgFlag indicate node numainfo changed status
-type NumaChgFlag int
-
 const (
-	// NumaInfoResetFlag indicate reset operate
-	NumaInfoResetFlag NumaChgFlag = 0b00
-	// NumaInfoMoreFlag indicate the received allocatable resource is getting more
-	NumaInfoMoreFlag NumaChgFlag = 0b11
-	// NumaInfoLessFlag indicate the received allocatable resource is getting less
-	NumaInfoLessFlag NumaChgFlag = 0b10
 	// DefaultMaxNodeScore indicates the default max node score
 	DefaultMaxNodeScore = 100
 )
@@ -49,31 +41,31 @@ type PodResourceDecision struct {
 
 // ResourceInfo is the allocatable information for the resource
 type ResourceInfo struct {
-	Allocatable        cpuset.CPUSet
-	Capacity           int
-	AllocatablePerNuma map[int]float64 // key: NUMA ID
-	UsedPerNuma        map[int]float64 // key: NUMA ID
+	Allocatable cpuset.CPUSet
+	Capacity    int
 }
 
 // NumatopoInfo is the information about topology manager on the node
 type NumatopoInfo struct {
-	Namespace   string
-	Name        string
-	Policies    map[nodeinfov1alpha1.PolicyName]string
-	NumaResMap  map[string]*ResourceInfo
-	CPUDetail   topology.CPUDetails
-	ResReserved v1.ResourceList
+	Namespace      string
+	Name           string
+	Policies       map[nodeinfov1alpha1.PolicyName]string
+	NumaResMap     map[string]*ResourceInfo
+	CPUDetail      topology.CPUDetails
+	ResReserved    v1.ResourceList
+	PodAllocations []nodeinfov1alpha1.PodAllocation
 }
 
 // DeepCopy used to copy NumatopoInfo
 func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 	numaInfo := &NumatopoInfo{
-		Namespace:   info.Namespace,
-		Name:        info.Name,
-		Policies:    make(map[nodeinfov1alpha1.PolicyName]string),
-		NumaResMap:  make(map[string]*ResourceInfo),
-		CPUDetail:   topology.CPUDetails{},
-		ResReserved: make(v1.ResourceList),
+		Namespace:      info.Namespace,
+		Name:           info.Name,
+		Policies:       make(map[nodeinfov1alpha1.PolicyName]string),
+		NumaResMap:     make(map[string]*ResourceInfo),
+		CPUDetail:      topology.CPUDetails{},
+		ResReserved:    make(v1.ResourceList),
+		PodAllocations: make([]nodeinfov1alpha1.PodAllocation, 0, len(info.PodAllocations)),
 	}
 
 	policies := info.Policies
@@ -82,22 +74,10 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 	}
 
 	for resName, resInfo := range info.NumaResMap {
-		tmpInfo := &ResourceInfo{
-			AllocatablePerNuma: make(map[int]float64),
-			UsedPerNuma:        make(map[int]float64),
+		numaInfo.NumaResMap[resName] = &ResourceInfo{
+			Capacity:    resInfo.Capacity,
+			Allocatable: resInfo.Allocatable.Clone(),
 		}
-		tmpInfo.Capacity = resInfo.Capacity
-		tmpInfo.Allocatable = resInfo.Allocatable.Clone()
-
-		for numaID, data := range resInfo.AllocatablePerNuma {
-			tmpInfo.AllocatablePerNuma[numaID] = data
-		}
-
-		for numaID, data := range resInfo.UsedPerNuma {
-			tmpInfo.UsedPerNuma[numaID] = data
-		}
-
-		numaInfo.NumaResMap[resName] = tmpInfo
 	}
 
 	cpuDetail := info.CPUDetail
@@ -110,23 +90,12 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 		numaInfo.ResReserved[resName] = res
 	}
 
-	return numaInfo
-}
-
-// Compare is the function to show the change of the resource on kubelet
-// return val:
-// - true : the resource on kubelet is getting more or no change
-// - false :  the resource on kubelet is getting less
-func (info *NumatopoInfo) Compare(newInfo *NumatopoInfo) bool {
-	for resName := range info.NumaResMap {
-		oldSize := info.NumaResMap[resName].Allocatable.Size()
-		newSize := newInfo.NumaResMap[resName].Allocatable.Size()
-		if oldSize <= newSize {
-			return true
-		}
+	podAllocations := info.PodAllocations
+	for _, podAllocation := range podAllocations {
+		numaInfo.PodAllocations = append(numaInfo.PodAllocations, *podAllocation.DeepCopy())
 	}
 
-	return false
+	return numaInfo
 }
 
 // Allocate is the function to remove the allocated resource
@@ -140,52 +109,6 @@ func (info *NumatopoInfo) Allocate(resSets ResNumaSets) {
 func (info *NumatopoInfo) Release(resSets ResNumaSets) {
 	for resName := range resSets {
 		info.NumaResMap[resName].Allocatable = info.NumaResMap[resName].Allocatable.Union(resSets[resName])
-	}
-}
-
-func GetPodResourceNumaInfo(ti *TaskInfo) map[int]v1.ResourceList {
-	if ti.NumaInfo != nil && len(ti.NumaInfo.ResMap) > 0 {
-		return ti.NumaInfo.ResMap
-	}
-
-	if _, ok := ti.Pod.Annotations[topologyDecisionAnnotation]; !ok {
-		return nil
-	}
-
-	decision := PodResourceDecision{}
-	err := json.Unmarshal([]byte(ti.Pod.Annotations[topologyDecisionAnnotation]), &decision)
-	if err != nil {
-		return nil
-	}
-
-	return decision.NUMAResources
-}
-
-// AddTask is the function to update the used resource of per numa node
-func (info *NumatopoInfo) AddTask(ti *TaskInfo) {
-	numaInfo := GetPodResourceNumaInfo(ti)
-	if numaInfo == nil {
-		return
-	}
-
-	for numaID, resList := range numaInfo {
-		for resName, quantity := range resList {
-			info.NumaResMap[string(resName)].UsedPerNuma[numaID] += ResQuantity2Float64(resName, quantity)
-		}
-	}
-}
-
-// RemoveTask is the function to update the used resource of per numa node
-func (info *NumatopoInfo) RemoveTask(ti *TaskInfo) {
-	decision := GetPodResourceNumaInfo(ti)
-	if decision == nil {
-		return
-	}
-
-	for numaID, resList := range ti.NumaInfo.ResMap {
-		for resName, quantity := range resList {
-			info.NumaResMap[string(resName)].UsedPerNuma[numaID] -= ResQuantity2Float64(resName, quantity)
-		}
 	}
 }
 
@@ -260,4 +183,34 @@ func (resSets ResNumaSets) Clone() ResNumaSets {
 type ScoredNode struct {
 	NodeName string
 	Score    int64
+}
+
+type PodMeta struct {
+	UID       types.UID `json:"uid"`
+	Name      string    `json:"name"`
+	Namespace string    `json:"namespace"`
+}
+
+// MarshalText encodes PodMeta as a compact JSON object so it can be used as a
+// map key by encoding/json, which requires map key types to be strings,
+// integer types, or implement encoding.TextMarshaler.
+func (p PodMeta) MarshalText() ([]byte, error) {
+	return json.Marshal(p)
+}
+
+// UnmarshalText reverses MarshalText.
+func (p *PodMeta) UnmarshalText(data []byte) error {
+	return json.Unmarshal(data, p)
+}
+
+// CheckNumaPodAssigned returns true if the specified pod has been assigned numa resources, returns false otherwise.
+// Both UID and the (Namespace, Name) pair are matched because the resource-exporter uses
+// UID when reading cpu_manager_state, and Namespace+Name when querying the PodResources API.
+func (info *NumatopoInfo) CheckNumaPodAssigned(podMeta PodMeta) bool {
+	for _, podAlloc := range info.PodAllocations {
+		if types.UID(podAlloc.UID) == podMeta.UID || (podAlloc.Name == podMeta.Name && podAlloc.Namespace == podMeta.Namespace) {
+			return true
+		}
+	}
+	return false
 }

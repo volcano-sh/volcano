@@ -70,11 +70,11 @@ type NodeInfo struct {
 	Capacity      *Resource
 	ResourceUsage *NodeUsage
 
-	Tasks             map[TaskID]*TaskInfo
-	NumaInfo          *NumatopoInfo
-	NumaChgFlag       NumaChgFlag
-	NumaSchedulerInfo *NumatopoInfo
-	RevocableZone     string
+	Tasks              map[TaskID]*TaskInfo
+	NumaInfo           *NumatopoInfo
+	UnassignedNumaPods map[PodMeta]ResNumaSets
+	NumaSchedulerInfo  *NumatopoInfo
+	RevocableZone      string
 
 	// Used to store custom information
 	Others map[string]interface{}
@@ -184,33 +184,35 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 	return nodeInfo
 }
 
-// RefreshNumaSchedulerInfoByCrd used to update scheduler numa information based the CRD numatopo
+// RefreshNumaSchedulerInfoByCrd used to update scheduler numa information based the numatopo CRD
 func (ni *NodeInfo) RefreshNumaSchedulerInfoByCrd() {
 	if ni.NumaInfo == nil {
 		ni.NumaSchedulerInfo = nil
+		klog.V(5).Infof("set numa scheduler info of node %s to nil", ni.Name)
 		return
 	}
+	klog.V(5).Infof("numa info of node %s is %v", ni.Name, ni.NumaInfo)
 
-	tmp := ni.NumaInfo.DeepCopy()
-	if ni.NumaSchedulerInfo == nil || ni.NumaChgFlag == NumaInfoMoreFlag {
-		ni.NumaSchedulerInfo = tmp
-	} else if ni.NumaChgFlag == NumaInfoLessFlag {
-		numaResMap := ni.NumaSchedulerInfo.NumaResMap
-		for resName, resInfo := range tmp.NumaResMap {
-			if resourceInfo, ok := numaResMap[resName]; ok {
-				klog.V(5).Infof("resource %s Allocatable : current %v new %v on node %s",
-					resName, resourceInfo, resInfo, ni.Name)
-				if resourceInfo.Allocatable.Size() >= resInfo.Allocatable.Size() {
-					resourceInfo.Allocatable = resInfo.Allocatable.Clone()
-					resourceInfo.Capacity = resInfo.Capacity
-				}
-			} else {
-				numaResMap[resName] = resInfo
-			}
+	unassignedNumber := 0
+	for podMeta, resSets := range ni.UnassignedNumaPods {
+		if !ni.NumaInfo.CheckNumaPodAssigned(podMeta) {
+			klog.V(3).Infof("pod %v is scheduled to node %s, but has not been assigned numa resources, will pre-occupy resources %v", podMeta, ni.Name, resSets)
+			unassignedNumber++
 		}
 	}
 
-	ni.NumaChgFlag = NumaInfoResetFlag
+	tmp := ni.NumaInfo.DeepCopy()
+	// Only clear UnassignedNumaPods when every entry has been assigned, because volcano's allocation decision may differ from kubelet's.
+	// Otherwise, volcano may lose some allocation info and dispatch a pod that kubelet rejects with TopologyAffinityError.
+	if unassignedNumber == 0 {
+		ni.UnassignedNumaPods = nil
+	} else {
+		for podMeta, resSets := range ni.UnassignedNumaPods {
+			klog.V(3).Infof("because of the presence of unassigned %d pods, pod %v still pre-occupies resources %v on node %s", unassignedNumber, podMeta, resSets, ni.Name)
+			tmp.Allocate(resSets)
+		}
+	}
+	ni.NumaSchedulerInfo = tmp
 }
 
 // Clone used to clone nodeInfo Object
@@ -227,6 +229,12 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 		res.ResourceUsage = ni.ResourceUsage.DeepCopy()
 	}
 
+	if ni.UnassignedNumaPods != nil {
+		res.UnassignedNumaPods = make(map[PodMeta]ResNumaSets, len(ni.UnassignedNumaPods))
+		for podMeta, resSets := range ni.UnassignedNumaPods {
+			res.UnassignedNumaPods[podMeta] = resSets.Clone()
+		}
+	}
 	if ni.NumaSchedulerInfo != nil {
 		res.NumaSchedulerInfo = ni.NumaSchedulerInfo.DeepCopy()
 		klog.V(5).Infof("node[%s]", ni.Name)
@@ -482,10 +490,6 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 		}
 	}
 
-	if ni.NumaInfo != nil {
-		ni.NumaInfo.AddTask(ti)
-	}
-
 	// Update task node name upon successful task addition.
 	task.NodeName = ni.Name
 	ti.NodeName = ni.Name
@@ -518,10 +522,6 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) {
 			ni.Used.Sub(task.Resreq)
 			ni.subResource(ti.Pod)
 		}
-	}
-
-	if ni.NumaInfo != nil {
-		ni.NumaInfo.RemoveTask(ti)
 	}
 
 	delete(ni.Tasks, key)
