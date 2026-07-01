@@ -24,6 +24,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -56,6 +57,168 @@ func updateNodeUsage(nodesInfo map[string]*api.NodeInfo, nodesUsage map[string]*
 		if nodeUsage, ok := nodesUsage[nodeName]; ok {
 			nodeInfo.ResourceUsage = nodeUsage
 		}
+	}
+}
+
+func TestUsageEstimatorConfig(t *testing.T) {
+	defaultPlugin := New(framework.Arguments{}).(*usagePlugin)
+	if math.Abs(defaultPlugin.requestRatio-0.7) > eps {
+		t.Errorf("default requestRatio = %v, expected 0.7", defaultPlugin.requestRatio)
+	}
+	if math.Abs(defaultPlugin.burstRatio-0.0) > eps {
+		t.Errorf("default burstRatio = %v, expected 0.0", defaultPlugin.burstRatio)
+	}
+	if math.Abs(defaultPlugin.riskThreshold-0.6) > eps {
+		t.Errorf("default riskThreshold = %v, expected 0.6", defaultPlugin.riskThreshold)
+	}
+	if math.Abs(defaultPlugin.riskFactor-1.2) > eps {
+		t.Errorf("default riskFactor = %v, expected 1.2", defaultPlugin.riskFactor)
+	}
+	if math.Abs(defaultPlugin.beCPU-250) > eps {
+		t.Errorf("default beCPU = %v, expected 250", defaultPlugin.beCPU)
+	}
+	if math.Abs(defaultPlugin.beMemory-float64(200*1024*1024)) > eps {
+		t.Errorf("default beMemory = %v, expected 200Mi", defaultPlugin.beMemory)
+	}
+
+	configuredPlugin := New(framework.Arguments{
+		"estimator": map[interface{}]interface{}{
+			"request_ratio":  0.8,
+			"burst_ratio":    0.3,
+			"risk_threshold": 0.75,
+			"risk_factor":    1.5,
+			"be_cpu":         "500m",
+			"be_mem":         "300mi",
+		},
+	}).(*usagePlugin)
+	if math.Abs(configuredPlugin.requestRatio-0.8) > eps {
+		t.Errorf("configured requestRatio = %v, expected 0.8", configuredPlugin.requestRatio)
+	}
+	if math.Abs(configuredPlugin.burstRatio-0.3) > eps {
+		t.Errorf("configured burstRatio = %v, expected 0.3", configuredPlugin.burstRatio)
+	}
+	if math.Abs(configuredPlugin.riskThreshold-0.75) > eps {
+		t.Errorf("configured riskThreshold = %v, expected 0.75", configuredPlugin.riskThreshold)
+	}
+	if math.Abs(configuredPlugin.riskFactor-1.5) > eps {
+		t.Errorf("configured riskFactor = %v, expected 1.5", configuredPlugin.riskFactor)
+	}
+	if math.Abs(configuredPlugin.beCPU-500) > eps {
+		t.Errorf("configured beCPU = %v, expected 500", configuredPlugin.beCPU)
+	}
+	if math.Abs(configuredPlugin.beMemory-float64(300*1024*1024)) > eps {
+		t.Errorf("configured beMemory = %v, expected 300Mi", configuredPlugin.beMemory)
+	}
+
+	invalidPlugin := New(framework.Arguments{
+		"estimator": map[interface{}]interface{}{
+			"request_ratio":  1.5,
+			"burst_ratio":    -0.1,
+			"risk_threshold": 2.0,
+			"risk_factor":    0.5,
+			"be_cpu":         "-1",
+			"be_mem":         "bad",
+		},
+	}).(*usagePlugin)
+	if math.Abs(invalidPlugin.requestRatio-0.7) > eps {
+		t.Errorf("invalid requestRatio should keep default, got %v", invalidPlugin.requestRatio)
+	}
+	if math.Abs(invalidPlugin.burstRatio-0.0) > eps {
+		t.Errorf("invalid burstRatio should keep default, got %v", invalidPlugin.burstRatio)
+	}
+	if math.Abs(invalidPlugin.riskThreshold-0.6) > eps {
+		t.Errorf("invalid riskThreshold should keep default, got %v", invalidPlugin.riskThreshold)
+	}
+
+	if math.Abs(invalidPlugin.riskFactor-1.2) > eps {
+		t.Errorf("invalid riskFactor should keep default, got %v", invalidPlugin.riskFactor)
+	}
+	if math.Abs(invalidPlugin.beCPU-250) > eps {
+		t.Errorf("invalid beCPU should keep default, got %v", invalidPlugin.beCPU)
+	}
+	if math.Abs(invalidPlugin.beMemory-float64(200*1024*1024)) > eps {
+		t.Errorf("invalid beMemory should keep default, got %v", invalidPlugin.beMemory)
+	}
+}
+
+func TestUsageConfigParsesStringValues(t *testing.T) {
+	plugin := New(framework.Arguments{
+		"usage.weight":  "7",
+		"cpu.weight":    "2",
+		"memory.weight": "3",
+		"thresholds": map[interface{}]interface{}{
+			"cpu": "85",
+			"mem": "75",
+		},
+		"estimator": map[interface{}]interface{}{
+			"request_ratio":  "0.8",
+			"burst_ratio":    "0.3",
+			"risk_threshold": "0.75",
+			"risk_factor":    "1.5",
+			"be_cpu":         "500m",
+			"be_mem":         "300Mi",
+		},
+	}).(*usagePlugin)
+
+	if plugin.usageWeight != 7 || plugin.cpuWeight != 2 || plugin.memoryWeight != 3 {
+		t.Fatalf("unexpected weights: usage=%d cpu=%d memory=%d", plugin.usageWeight, plugin.cpuWeight, plugin.memoryWeight)
+	}
+	if math.Abs(plugin.cpuThresholds-85) > eps || math.Abs(plugin.memThresholds-75) > eps {
+		t.Fatalf("unexpected thresholds: cpu=%v mem=%v", plugin.cpuThresholds, plugin.memThresholds)
+	}
+	if math.Abs(plugin.requestRatio-0.8) > eps {
+		t.Fatalf("unexpected requestRatio: %v", plugin.requestRatio)
+	}
+	if math.Abs(plugin.burstRatio-0.3) > eps {
+		t.Fatalf("unexpected burstRatio: %v", plugin.burstRatio)
+	}
+	if math.Abs(plugin.riskThreshold-0.75) > eps {
+		t.Fatalf("unexpected riskThreshold: %v", plugin.riskThreshold)
+	}
+	if math.Abs(plugin.riskFactor-1.5) > eps {
+		t.Fatalf("unexpected riskFactor: %v", plugin.riskFactor)
+	}
+	if math.Abs(plugin.beCPU-500) > eps {
+		t.Fatalf("unexpected beCPU: %v", plugin.beCPU)
+	}
+	if math.Abs(plugin.beMemory-float64(300*1024*1024)) > eps {
+		t.Fatalf("unexpected beMemory: %v", plugin.beMemory)
+	}
+}
+
+func TestUsageConfigParsesBestEffortCPUQuantity(t *testing.T) {
+	stringPlugin := New(framework.Arguments{
+		"estimator": map[interface{}]interface{}{
+			"be_cpu": "500m",
+		},
+	}).(*usagePlugin)
+	if math.Abs(stringPlugin.beCPU-500) > eps {
+		t.Fatalf("string be_cpu should be parsed as milliCPU, got %v", stringPlugin.beCPU)
+	}
+
+	numericPlugin := New(framework.Arguments{
+		"estimator": map[interface{}]interface{}{
+			"be_cpu": 500,
+		},
+	}).(*usagePlugin)
+	if math.Abs(numericPlugin.beCPU-500000) > eps {
+		t.Fatalf("numeric be_cpu should be parsed as CPU cores, got %v", numericPlugin.beCPU)
+	}
+}
+
+func TestUsageThresholdsKeepDefaultWhenOutOfRange(t *testing.T) {
+	plugin := New(framework.Arguments{
+		"thresholds": map[interface{}]interface{}{
+			"cpu": -1,
+			"mem": 101,
+		},
+	}).(*usagePlugin)
+
+	if math.Abs(plugin.cpuThresholds-80) > eps {
+		t.Fatalf("invalid cpu threshold should keep default, got %v", plugin.cpuThresholds)
+	}
+	if math.Abs(plugin.memThresholds-80) > eps {
+		t.Fatalf("invalid mem threshold should keep default, got %v", plugin.memThresholds)
 	}
 }
 
@@ -450,6 +613,177 @@ func TestUsage_nodeOrderFn(t *testing.T) {
 						}
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestUsage_prioritizeNodesDoesNotDoubleCountNodeOrder(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+
+	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n2 := util.BuildNode("n2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	pg1 := util.BuildPodGroup("pg1", "c1", "q1", 0, nil, "")
+	queue1 := util.BuildQueue("q1", 1, nil)
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:             PluginName,
+					EnabledNodeOrder: &trueValue,
+					Arguments: framework.Arguments{
+						"usage.weight":  5,
+						"cpu.weight":    1,
+						"memory.weight": 1,
+					},
+				},
+			},
+		},
+	}
+
+	test := uthelper.TestCommonStruct{
+		Name:      "Usage score should be counted once in PrioritizeNodes.",
+		Plugins:   plugins,
+		PodGroups: []*schedulingv1.PodGroup{pg1},
+		Queues:    []*schedulingv1.Queue{queue1},
+		Pods:      []*v1.Pod{p1},
+		Nodes:     []*v1.Node{n1, n2},
+	}
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	updateNodeUsage(ssn.Nodes, map[string]*api.NodeUsage{
+		n1.Name: buildNodeUsage(map[string]float64{source.NODE_METRICS_PERIOD: 30}, map[string]float64{source.NODE_METRICS_PERIOD: 50}, time.Now()),
+		n2.Name: buildNodeUsage(map[string]float64{source.NODE_METRICS_PERIOD: 60}, map[string]float64{source.NODE_METRICS_PERIOD: 50}, time.Now()),
+	})
+
+	for _, job := range ssn.Jobs {
+		for _, task := range job.Tasks {
+			nodeScores := util.PrioritizeNodes(task, []*api.NodeInfo{ssn.Nodes[n1.Name], ssn.Nodes[n2.Name]}, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+			scoreByNode := map[string]float64{}
+			for score, nodes := range nodeScores {
+				for _, node := range nodes {
+					scoreByNode[node.Name] = score
+				}
+			}
+
+			expected := map[string]float64{
+				n1.Name: 300,
+				n2.Name: 225,
+			}
+			for nodeName, expectedScore := range expected {
+				if math.Abs(scoreByNode[nodeName]-expectedScore) > eps {
+					t.Errorf("PrioritizeNodes score for %s = %v, expected %v", nodeName, scoreByNode[nodeName], expectedScore)
+				}
+			}
+		}
+	}
+}
+
+func TestShouldAddToShadowCache(t *testing.T) {
+	recentStart := metav1.NewTime(time.Now().Add(-time.Minute))
+	oldStart := metav1.NewTime(time.Now().Add(-10 * time.Minute))
+
+	tests := []struct {
+		name     string
+		task     *api.TaskInfo
+		expected bool
+	}{
+		{
+			name: "pending without node is not tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status: api.Pending,
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "pending with node is not treated as allocated",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Pending,
+					NodeName: "node1",
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "allocated task is tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Allocated,
+					NodeName: "node1",
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "binding task is tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Binding,
+					NodeName: "node1",
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "bound task is tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Bound,
+					NodeName: "node1",
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "recent running task is tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Running,
+					NodeName: "node1",
+				},
+				Pod: &v1.Pod{
+					Status: v1.PodStatus{StartTime: &recentStart},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "old running task is not tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Running,
+					NodeName: "node1",
+				},
+				Pod: &v1.Pod{
+					Status: v1.PodStatus{StartTime: &oldStart},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "completed task is not tracked",
+			task: &api.TaskInfo{
+				TransactionContext: api.TransactionContext{
+					Status:   api.Succeeded,
+					NodeName: "node1",
+				},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldAddToShadowCache(tt.task, 5*time.Minute)
+			if got != tt.expected {
+				t.Errorf("shouldAddToShadowCache() = %v, expected %v", got, tt.expected)
 			}
 		})
 	}

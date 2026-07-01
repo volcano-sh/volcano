@@ -24,8 +24,10 @@ package framework
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/mitchellh/mapstructure"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -34,48 +36,82 @@ import (
 // Arguments map
 type Arguments map[string]interface{}
 
-// GetInt get the integer value from string
-func (a Arguments) GetInt(ptr *int, key string) {
+// GetInt get the integer value from arguments.
+func (a Arguments) GetInt(ptr *int, key string) bool {
 	if ptr == nil {
-		return
+		return false
 	}
 
 	argv, ok := a[key]
 	if !ok {
-		return
+		return false
 	}
 
-	value, ok := argv.(int)
-	if !ok {
+	switch value := argv.(type) {
+	case int:
+		*ptr = value
+		return true
+	case int64:
+		if int64(int(value)) != value {
+			klog.Warningf("Could not parse argument: %v for key %s to int", argv, key)
+			return false
+		}
+		*ptr = int(value)
+		return true
+	case float64:
+		if value != float64(int(value)) {
+			klog.Warningf("Could not parse argument: %v for key %s to int", argv, key)
+			return false
+		}
+		*ptr = int(value)
+		return true
+	case string:
+		parsed, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil {
+			klog.Warningf("Could not parse argument: %v for key %s to int", argv, key)
+			return false
+		}
+		*ptr = parsed
+		return true
+	default:
 		klog.Warningf("Could not parse argument: %v for key %s to int", argv, key)
-		return
+		return false
 	}
-
-	*ptr = value
 }
 
-// GetFloat64 get the float64 value from string
-func (a Arguments) GetFloat64(ptr *float64, key string) {
+// GetFloat64 get the float64 value from arguments.
+func (a Arguments) GetFloat64(ptr *float64, key string) bool {
 	if ptr == nil {
-		return
+		return false
 	}
 
 	argv, ok := a[key]
 	if !ok {
-		return
+		return false
 	}
 
-	value, ok := argv.(float64)
-	if !ok {
-		if intVal, ok := argv.(int); ok {
-			*ptr = float64(intVal)
-			return
+	switch value := argv.(type) {
+	case float64:
+		*ptr = value
+		return true
+	case int:
+		*ptr = float64(value)
+		return true
+	case int64:
+		*ptr = float64(value)
+		return true
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil {
+			klog.Warningf("Could not parse argument: %v for key %s to float64", argv, key)
+			return false
 		}
+		*ptr = parsed
+		return true
+	default:
 		klog.Warningf("Could not parse argument: %v for key %s to float64", argv, key)
-		return
+		return false
 	}
-
-	*ptr = value
 }
 
 // GetBool get the bool value from string
@@ -125,6 +161,80 @@ func (a Arguments) GetString(ptr *string, key string) {
 	}
 
 	*ptr = value
+}
+
+// GetArguments returns a nested Arguments value from arguments.
+func (a Arguments) GetArguments(key string) (Arguments, bool) {
+	argv, ok := a[key]
+	if !ok {
+		return nil, false
+	}
+
+	switch value := argv.(type) {
+	case Arguments:
+		return value, true
+	case map[string]interface{}:
+		return Arguments(value), true
+	case map[interface{}]interface{}:
+		result := Arguments{}
+		for k, v := range value {
+			keyStr, ok := k.(string)
+			if !ok {
+				klog.Warningf("Could not parse argument: %v for key %s to Arguments", argv, key)
+				return nil, false
+			}
+			result[keyStr] = v
+		}
+		return result, true
+	default:
+		klog.Warningf("Could not parse argument: %v for key %s to Arguments", argv, key)
+		return nil, false
+	}
+}
+
+// GetQuantity returns a Kubernetes resource.Quantity from arguments.
+func (a Arguments) GetQuantity(key string) (resource.Quantity, bool) {
+	argv, ok := a[key]
+	if !ok {
+		return resource.Quantity{}, false
+	}
+
+	switch value := argv.(type) {
+	case string:
+		quantity, err := resource.ParseQuantity(normalizeQuantitySuffix(strings.TrimSpace(value)))
+		if err != nil {
+			klog.Warningf("Could not parse argument: %v for key %s to resource quantity", argv, key)
+			return resource.Quantity{}, false
+		}
+		return quantity, true
+	case int:
+		return *resource.NewQuantity(int64(value), resource.DecimalSI), true
+	case int64:
+		return *resource.NewQuantity(value, resource.DecimalSI), true
+	case float64:
+		return *resource.NewMilliQuantity(int64(value*1000), resource.DecimalSI), true
+	default:
+		klog.Warningf("Could not parse argument: %v for key %s to resource quantity", argv, key)
+		return resource.Quantity{}, false
+	}
+}
+
+func normalizeQuantitySuffix(value string) string {
+	replacements := map[string]string{
+		"ki": "Ki",
+		"mi": "Mi",
+		"gi": "Gi",
+		"ti": "Ti",
+		"pi": "Pi",
+		"ei": "Ei",
+	}
+	lowerValue := strings.ToLower(value)
+	for lowerSuffix, canonicalSuffix := range replacements {
+		if strings.HasSuffix(lowerValue, lowerSuffix) {
+			return value[:len(value)-len(lowerSuffix)] + canonicalSuffix
+		}
+	}
+	return value
 }
 
 // Get can automatically convert parameters according to the passed generic T type.

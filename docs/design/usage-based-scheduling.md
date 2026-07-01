@@ -89,6 +89,41 @@ The third factor identified is the resource dimension. Take the below table as e
 
 Finally, there should a model to balance multiple factors with weight and calculate the final score for nodes. Only the cpu usage factor will be considered in the alpha version.
 
+### Resource estimation for monitoring delay
+The usage plugin keeps a session-level shadow cache for pods that have been assigned to a node but whose metrics are not visible yet. The estimated resource of a Guaranteed or Burstable pod is:
+
+```
+pod_estimate = (request * request_ratio + (limit - request) * burst_ratio) * applied_risk_factor
+```
+
+The estimate is clamped to `[0, limit]`. If the pod has no limit for a resource, the request is used as the effective limit for that resource.
+
+`applied_risk_factor` is selected from the node composite load:
+
+```
+cpu_composite = (real_cpu_load + shadow_cpu_estimate) / node_cpu_capacity
+memory_composite = (real_memory_load + shadow_memory_estimate) / node_memory_capacity
+load_composite_percentage = weighted_average(cpu_composite, memory_composite, cpu.weight, memory.weight)
+```
+
+When `load_composite_percentage >= risk_threshold`, the estimate is multiplied by `risk_factor`; otherwise the multiplier is `1.0`.
+
+BestEffort pods do not use node-capacity ratios or density penalties. They use fixed configured estimates and are also affected by `risk_factor`:
+
+BestEffort estimates are configured under `estimator.be_cpu` and `estimator.be_mem`.
+
+Estimator configuration:
+
+```
+estimator:
+  request_ratio: 0.7   # 0 <= request_ratio <= 1
+  burst_ratio: 0       # 0 <= burst_ratio <= 1
+  risk_threshold: 0.6  # composite load threshold, 0.6 means 60%
+  risk_factor: 1.2     # applied after the threshold is reached, must be >= 1.0; values lower than 1.0 are ignored or rejected
+  be_cpu: 250m         # fixed BestEffort CPU estimate
+  be_mem: 200Mi        # fixed BestEffort memory estimate
+```
+
 | factors                   | node1           | node2            |
 | ----                      | ----            | ---              |
 | usage                     | cpu 80%         | cpu 78%          |

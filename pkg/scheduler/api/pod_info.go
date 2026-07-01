@@ -71,6 +71,13 @@ func GetPodResourceRequest(pod *v1.Pod) *Resource {
 	return result
 }
 
+// GetPodResourceLimit returns all the resource limits for that pod.
+func GetPodResourceLimit(pod *v1.Pod) *Resource {
+	result := aggregateAllContainerResourceLimits(pod)
+	amendResourceLimitAccordingToPodFeatures(result, pod)
+	return result
+}
+
 // aggregateAllContainerResourceRequests returns the total resource requests of all the containers within the pod.
 func aggregateAllContainerResourceRequests(pod *v1.Pod) *Resource {
 	result := aggregateRegularContainerResourceRequests(pod)
@@ -118,6 +125,50 @@ func aggregateAllContainerResourceRequests(pod *v1.Pod) *Resource {
 	result.SetMaxResource(initContainerReqs)
 	result.AddScalar(v1.ResourcePods, 1)
 
+	return result
+}
+
+func aggregateAllContainerResourceLimits(pod *v1.Pod) *Resource {
+	result := aggregateRegularContainerResourceLimits(pod)
+
+	inPlacePodVerticalScalingEnabled := utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling)
+	var initContainerStatuses map[string]*v1.ContainerStatus
+	if inPlacePodVerticalScalingEnabled {
+		initContainerStatuses = make(map[string]*v1.ContainerStatus, len(pod.Status.InitContainerStatuses))
+		for i := range pod.Status.InitContainerStatuses {
+			initContainerStatuses[pod.Status.InitContainerStatuses[i].Name] = &pod.Status.InitContainerStatuses[i]
+		}
+	}
+
+	restartableInitContainerLimits := EmptyResource()
+	initContainerLimits := EmptyResource()
+	for _, container := range pod.Spec.InitContainers {
+		curContainerLimit := container.Resources.Limits
+		if inPlacePodVerticalScalingEnabled {
+			if container.RestartPolicy != nil && *container.RestartPolicy == v1.ContainerRestartPolicyAlways {
+				cs, found := initContainerStatuses[container.Name]
+				if found && cs.Resources != nil {
+					curContainerLimit = maxFn(container.Resources.Limits, cs.Resources.Limits)
+				}
+			}
+		}
+
+		containerLimit := NewResource(curContainerLimit)
+
+		if container.RestartPolicy != nil && *container.RestartPolicy == v1.ContainerRestartPolicyAlways {
+			result.Add(containerLimit)
+			restartableInitContainerLimits.Add(containerLimit)
+			containerLimit = restartableInitContainerLimits
+		} else {
+			tmp := EmptyResource()
+			tmp.Add(containerLimit)
+			tmp.Add(restartableInitContainerLimits)
+			containerLimit = tmp
+		}
+		initContainerLimits.SetMaxResource(containerLimit)
+	}
+
+	result.SetMaxResource(initContainerLimits)
 	return result
 }
 
@@ -228,6 +279,33 @@ func aggregateRegularContainerResourceRequests(pod *v1.Pod) *Resource {
 	return result
 }
 
+func aggregateRegularContainerResourceLimits(pod *v1.Pod) *Resource {
+	result := EmptyResource()
+
+	inPlacePodVerticalScalingEnabled := utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling)
+
+	var containerStatuses map[string]*v1.ContainerStatus
+	if inPlacePodVerticalScalingEnabled {
+		containerStatuses = make(map[string]*v1.ContainerStatus, len(pod.Status.ContainerStatuses))
+		for i := range pod.Status.ContainerStatuses {
+			containerStatuses[pod.Status.ContainerStatuses[i].Name] = &pod.Status.ContainerStatuses[i]
+		}
+	}
+
+	for _, container := range pod.Spec.Containers {
+		containerLimits := container.Resources.Limits
+		if inPlacePodVerticalScalingEnabled {
+			cs, found := containerStatuses[container.Name]
+			if found && cs.Resources != nil {
+				containerLimits = maxFn(container.Resources.Limits, cs.Resources.Limits)
+			}
+		}
+		result.Add(NewResource(containerLimits))
+	}
+
+	return result
+}
+
 // amendResourceAccordingToPodFeatures amends the resource to the value that the pod actually requires, taking its pod-level resource and overhead settings into account.
 func amendResourceAccordingToPodFeatures(resource *Resource, pod *v1.Pod) {
 	if resource == nil || pod == nil {
@@ -257,6 +335,47 @@ func amendResourceAccordingToPodFeatures(resource *Resource, pod *v1.Pod) {
 	// if PodOverhead feature is supported, add overhead for running a pod
 	if pod.Spec.Overhead != nil {
 		resource.Add(NewResource(pod.Spec.Overhead))
+	}
+}
+
+func amendResourceLimitAccordingToPodFeatures(resource *Resource, pod *v1.Pod) {
+	if resource == nil || pod == nil {
+		return
+	}
+
+	if resource.ScalarResources == nil {
+		resource.ScalarResources = make(map[v1.ResourceName]float64)
+	}
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.PodLevelResources) && helpers.IsPodLevelLimitsSet(pod) {
+		podLevelResource := NewResource(pod.Spec.Resources.Limits)
+		for rName := range pod.Spec.Resources.Limits {
+			if helpers.IsSupportedPodLevelResource(rName) {
+				switch rName {
+				case v1.ResourceCPU:
+					resource.MilliCPU = podLevelResource.MilliCPU
+				case v1.ResourceMemory:
+					resource.Memory = podLevelResource.Memory
+				default:
+					resource.ScalarResources[rName] = podLevelResource.ScalarResources[rName]
+				}
+			}
+		}
+	}
+
+	if pod.Spec.Overhead != nil {
+		overhead := NewResource(pod.Spec.Overhead)
+		if resource.MilliCPU != 0 {
+			resource.MilliCPU += overhead.MilliCPU
+		}
+		if resource.Memory != 0 {
+			resource.Memory += overhead.Memory
+		}
+		for name, quantity := range overhead.ScalarResources {
+			if resource.ScalarResources[name] != 0 {
+				resource.ScalarResources[name] += quantity
+			}
+		}
 	}
 }
 

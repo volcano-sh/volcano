@@ -395,6 +395,58 @@ func TestGetPodResourceRequest(t *testing.T) {
 	}
 }
 
+func TestGetPodResourceLimit(t *testing.T) {
+	restartAlways := v1.ContainerRestartPolicyAlways
+
+	pod := &v1.Pod{
+		Spec: v1.PodSpec{
+			InitContainers: []v1.Container{
+				{
+					Name:          "restartable-init",
+					RestartPolicy: &restartAlways,
+					Resources: v1.ResourceRequirements{
+						Limits: BuildResourceList("1", "1Gi"),
+					},
+				},
+			},
+			Containers: []v1.Container{
+				{
+					Name: "container",
+					Resources: v1.ResourceRequirements{
+						Limits: BuildResourceList("1", "2Gi"),
+					},
+				},
+			},
+		},
+	}
+
+	limit := GetPodResourceLimit(pod)
+	expected := buildResource("2", "3Gi", nil, 0)
+	if !equality.Semantic.DeepEqual(limit, expected) {
+		t.Fatalf("expected pod resource limit %v, got %v", expected, limit)
+	}
+
+	podWithOverhead := &v1.Pod{
+		Spec: v1.PodSpec{
+			Overhead: BuildResourceList("100m", "128Mi"),
+			Containers: []v1.Container{
+				{
+					Name: "container",
+					Resources: v1.ResourceRequirements{
+						Limits: BuildResourceList("1", ""),
+					},
+				},
+			},
+		},
+	}
+
+	limit = GetPodResourceLimit(podWithOverhead)
+	expected = buildResource("1100m", "0", nil, 0)
+	if !equality.Semantic.DeepEqual(limit, expected) {
+		t.Fatalf("expected pod resource limit with overhead %v, got %v", expected, limit)
+	}
+}
+
 func TestGetPodResourceWithoutInitContainers(t *testing.T) {
 	tests := []struct {
 		name                     string
