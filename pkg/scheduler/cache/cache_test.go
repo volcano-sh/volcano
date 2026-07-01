@@ -670,3 +670,74 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_CompletesAfterDone(t
 	assert.Less(t, elapsed, 2*time.Second, "WaitForHandlerSync should return after all pending objects are processed")
 	assert.GreaterOrEqual(t, elapsed, 100*time.Millisecond, "WaitForHandlerSync should wait until Done is called")
 }
+
+// TestUpdateJobInfo_PropagatesNominatedHyperNode locks in the cache writeback
+// for gangpreempt/gangreclaim's NominatedHyperNode pin. Without this
+// propagation the pin is wiped by the next Snapshot+CloneStatusFrom, defeating
+// the per-subJob fast path in allocate.
+func TestUpdateJobInfo_PropagatesNominatedHyperNode(t *testing.T) {
+	jobID := api.JobID("ns/job")
+	subID := api.SubJobID("sub-1")
+
+	cached := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subID: {UID: subID, Job: jobID},
+		},
+	}
+	sc := &SchedulerCache{
+		Jobs: map[api.JobID]*api.JobInfo{jobID: cached},
+	}
+
+	// Session-side copy carries the gangpreempt/gangreclaim decision.
+	sessionView := &api.JobInfo{
+		UID:                jobID,
+		AllocatedHyperNode: "hn-allocated",
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subID: {
+				UID:                subID,
+				Job:                jobID,
+				AllocatedHyperNode: "hn-allocated",
+				NominatedHyperNode: "hn-nominated",
+			},
+		},
+	}
+
+	sc.updateJobInfo(sessionView)
+
+	assert.Equal(t, "hn-allocated", cached.AllocatedHyperNode)
+	assert.Equal(t, "hn-allocated", cached.SubJobs[subID].AllocatedHyperNode)
+	assert.Equal(t, "hn-nominated", cached.SubJobs[subID].NominatedHyperNode,
+		"cache must persist NominatedHyperNode so the next cycle honors the gang-eviction pin")
+}
+
+// TestUpdateJobInfo_PropagatesNominationClear ensures that when allocate
+// clears NominatedHyperNode after consuming the pin, the empty value also
+// makes it back into the cache so the next session does not retry the stale
+// pin via the fast path.
+func TestUpdateJobInfo_PropagatesNominationClear(t *testing.T) {
+	jobID := api.JobID("ns/job")
+	subID := api.SubJobID("sub-1")
+
+	cached := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subID: {UID: subID, Job: jobID, NominatedHyperNode: "hn-nominated"},
+		},
+	}
+	sc := &SchedulerCache{
+		Jobs: map[api.JobID]*api.JobInfo{jobID: cached},
+	}
+
+	sessionView := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subID: {UID: subID, Job: jobID, NominatedHyperNode: ""},
+		},
+	}
+
+	sc.updateJobInfo(sessionView)
+
+	assert.Equal(t, "", cached.SubJobs[subID].NominatedHyperNode,
+		"cache must mirror allocate's clear-on-commit so the next cycle does not retry the consumed nomination")
+}
