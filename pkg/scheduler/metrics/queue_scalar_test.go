@@ -7,6 +7,50 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
+func TestUpdateQueueGuarantee_ScalarResource(t *testing.T) {
+	queueGuaranteeScalarResource.Reset()
+	knownScalarResourcesLock.Lock()
+	knownScalarResources = make(map[string]map[string]struct{})
+	knownScalarResourcesLock.Unlock()
+
+	queueName := "testqueue-guarantee"
+	resourceA := v1.ResourceName("nvidia.com/gpu")
+	resourceB := v1.ResourceName("amd.com/gpu")
+
+	// 1. Set resourceA to 8, resourceB to 16
+	UpdateQueueGuarantee(queueName, 0, 0, map[v1.ResourceName]float64{resourceA: 8, resourceB: 16})
+	if got := testutil.ToFloat64(queueGuaranteeScalarResource.WithLabelValues(queueName, string(resourceA))); got != 8 {
+		t.Errorf("expected %s to be 8, got %v", resourceA, got)
+	}
+	if got := testutil.ToFloat64(queueGuaranteeScalarResource.WithLabelValues(queueName, string(resourceB))); got != 16 {
+		t.Errorf("expected %s to be 16, got %v", resourceB, got)
+	}
+
+	// 2. Update with only resourceA; resourceB should be zeroed
+	UpdateQueueGuarantee(queueName, 0, 0, map[v1.ResourceName]float64{resourceA: 4})
+	if got := testutil.ToFloat64(queueGuaranteeScalarResource.WithLabelValues(queueName, string(resourceA))); got != 4 {
+		t.Errorf("expected %s to be 4, got %v", resourceA, got)
+	}
+	if got := testutil.ToFloat64(queueGuaranteeScalarResource.WithLabelValues(queueName, string(resourceB))); got != 0 {
+		t.Errorf("expected %s to be 0 after missing in update, got %v", resourceB, got)
+	}
+
+	// 3. Update with nil (queue has no guarantee configured); all known resources should be zeroed
+	UpdateQueueGuarantee(queueName, 0, 0, nil)
+	if got := testutil.ToFloat64(queueGuaranteeScalarResource.WithLabelValues(queueName, string(resourceA))); got != 0 {
+		t.Errorf("expected %s to be 0 after nil update, got %v", resourceA, got)
+	}
+	if got := testutil.ToFloat64(queueGuaranteeScalarResource.WithLabelValues(queueName, string(resourceB))); got != 0 {
+		t.Errorf("expected %s to be 0 after nil update, got %v", resourceB, got)
+	}
+
+	// 4. Delete metrics and ensure they are gone
+	DeleteQueueMetrics(queueName)
+	if count := testutil.CollectAndCount(queueGuaranteeScalarResource); count != 0 {
+		t.Errorf("expected no metrics for queueGuaranteeScalarResource after delete, got %d", count)
+	}
+}
+
 func TestUpdateScalarResourceMetrics_ZeroAndCleanup(t *testing.T) {
 	// Reset global state for this test to ensure isolation.
 	queueAllocatedScalarResource.Reset()
