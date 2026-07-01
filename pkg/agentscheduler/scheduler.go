@@ -153,6 +153,11 @@ func (worker *Worker) runOnce() {
 	snapshotStart := time.Now()
 	if err := worker.framework.Cache.UpdateSnapshot(snapshot); err != nil {
 		klog.Errorf("Failed to update snapshot in worker %d: %v, skip this scheduling cycle", worker.index, err)
+		queue := worker.framework.Cache.SchedulingQueue()
+		if err := queue.AddUnschedulableIfNotPresent(klog.Background(), schedCtx.QueuedPodInfo, queue.SchedulingCycle()); err != nil {
+			klog.ErrorS(err, "Failed to add pod back to scheduling queue",
+				"pod", klog.KObj(schedCtx.QueuedPodInfo.Pod))
+		}
 		return
 	}
 	agentmetrics.UpdateUpdateSnapshotDuration(time.Since(snapshotStart))
@@ -199,6 +204,7 @@ func (worker *Worker) generateNextSchedulingContext() (*agentapi.SchedulingConte
 	task, exist := worker.framework.Cache.GetTaskInfo(schedulingapi.TaskID(podInfo.Pod.UID))
 	if !exist {
 		klog.Warningf("Task %s/%s not found in cache, skip scheduling", podInfo.Pod.Namespace, podInfo.Pod.Name)
+		queue.Done(podInfo.Pod.UID)
 		return nil, nil
 	}
 
