@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	"volcano.sh/volcano/pkg/scheduler/conf"
 )
@@ -54,6 +55,38 @@ func TestArgumentsGetInt(t *testing.T) {
 			key:         key1,
 			baseValue:   11,
 			expectValue: 11,
+		},
+		{
+			arg: Arguments{
+				key1: "15",
+			},
+			key:         key1,
+			baseValue:   10,
+			expectValue: 15,
+		},
+		{
+			arg: Arguments{
+				key1: int64(15),
+			},
+			key:         key1,
+			baseValue:   10,
+			expectValue: 15,
+		},
+		{
+			arg: Arguments{
+				key1: float64(15),
+			},
+			key:         key1,
+			baseValue:   10,
+			expectValue: 15,
+		},
+		{
+			arg: Arguments{
+				key1: 15.5,
+			},
+			key:         key1,
+			baseValue:   10,
+			expectValue: 10,
 		},
 		{
 			arg: Arguments{
@@ -130,6 +163,24 @@ func TestArgumentsGetFloat64(t *testing.T) {
 			baseValue:   1.2,
 			expectValue: 15,
 		},
+		{
+			name: "int64 value",
+			arg: Arguments{
+				key1: int64(15),
+			},
+			key:         key1,
+			baseValue:   1.2,
+			expectValue: 15,
+		},
+		{
+			name: "string value",
+			arg: Arguments{
+				key1: "15.5",
+			},
+			key:         key1,
+			baseValue:   1.2,
+			expectValue: 15.5,
+		},
 	}
 
 	for index, c := range cases {
@@ -138,6 +189,120 @@ func TestArgumentsGetFloat64(t *testing.T) {
 		if baseValue != c.expectValue {
 			t.Errorf("index %d, case %s, value should be %v, but not %v", index, c.name, c.expectValue, baseValue)
 		}
+	}
+}
+
+func TestArgumentsGetArguments(t *testing.T) {
+	tests := []struct {
+		name     string
+		arg      Arguments
+		key      string
+		expected Arguments
+		ok       bool
+	}{
+		{
+			name: "framework arguments",
+			arg: Arguments{
+				"section": Arguments{"key": "value"},
+			},
+			key:      "section",
+			expected: Arguments{"key": "value"},
+			ok:       true,
+		},
+		{
+			name: "string interface map",
+			arg: Arguments{
+				"section": map[string]interface{}{"key": "value"},
+			},
+			key:      "section",
+			expected: Arguments{"key": "value"},
+			ok:       true,
+		},
+		{
+			name: "interface map with string keys",
+			arg: Arguments{
+				"section": map[interface{}]interface{}{"key": "value"},
+			},
+			key:      "section",
+			expected: Arguments{"key": "value"},
+			ok:       true,
+		},
+		{
+			name: "interface map with non-string key",
+			arg: Arguments{
+				"section": map[interface{}]interface{}{1: "value"},
+			},
+			key: "section",
+			ok:  false,
+		},
+		{
+			name: "missing key",
+			arg:  Arguments{},
+			key:  "section",
+			ok:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := tt.arg.GetArguments(tt.key)
+			if ok != tt.ok {
+				t.Fatalf("GetArguments() ok = %v, expected %v", ok, tt.ok)
+			}
+			if !equality.Semantic.DeepEqual(got, tt.expected) {
+				t.Fatalf("GetArguments() = %v, expected %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestArgumentsGetQuantity(t *testing.T) {
+	tests := []struct {
+		name     string
+		arg      Arguments
+		key      string
+		expected resource.Quantity
+		ok       bool
+	}{
+		{
+			name:     "cpu milli string",
+			arg:      Arguments{"quantity": "500m"},
+			key:      "quantity",
+			expected: resource.MustParse("500m"),
+			ok:       true,
+		},
+		{
+			name:     "memory lowercase binary suffix",
+			arg:      Arguments{"quantity": "300mi"},
+			key:      "quantity",
+			expected: resource.MustParse("300Mi"),
+			ok:       true,
+		},
+		{
+			name:     "numeric value",
+			arg:      Arguments{"quantity": 500},
+			key:      "quantity",
+			expected: resource.MustParse("500"),
+			ok:       true,
+		},
+		{
+			name: "invalid string",
+			arg:  Arguments{"quantity": "bad"},
+			key:  "quantity",
+			ok:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := tt.arg.GetQuantity(tt.key)
+			if ok != tt.ok {
+				t.Fatalf("GetQuantity() ok = %v, expected %v", ok, tt.ok)
+			}
+			if ok && got.Cmp(tt.expected) != 0 {
+				t.Fatalf("GetQuantity() = %v, expected %v", got.String(), tt.expected.String())
+			}
+		})
 	}
 }
 

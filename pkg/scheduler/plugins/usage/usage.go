@@ -17,11 +17,8 @@ limitations under the License.
 package usage
 
 import (
-	"strconv"
-	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 
@@ -111,9 +108,9 @@ func New(args framework.Arguments) framework.Plugin {
 		beMemory:        float64(200 * 1024 * 1024),
 		metricsInterval: defaultMetricsInterval,
 	}
-	parseIntArg(args, "usage.weight", &plugin.usageWeight)
-	parseIntArg(args, "cpu.weight", &plugin.cpuWeight)
-	parseIntArg(args, "memory.weight", &plugin.memoryWeight)
+	args.GetInt(&plugin.usageWeight, "usage.weight")
+	args.GetInt(&plugin.cpuWeight, "cpu.weight")
+	args.GetInt(&plugin.memoryWeight, "memory.weight")
 
 	// Parse threshold configuration
 	parseThresholdArgs(plugin.pluginArguments, plugin)
@@ -127,14 +124,8 @@ func New(args framework.Arguments) framework.Plugin {
 }
 
 func parseThresholdArgs(args framework.Arguments, plugin *usagePlugin) {
-	argsValue, ok := args[thresholdSection]
+	thresholdArgs, ok := args.GetArguments(thresholdSection)
 	if !ok {
-		return
-	}
-
-	thresholdArgs, ok := toConfigArguments(argsValue)
-	if !ok {
-		klog.Errorf("Failed to convert the thresholds information, thresholds args values is %v", argsValue)
 		return
 	}
 
@@ -143,14 +134,8 @@ func parseThresholdArgs(args framework.Arguments, plugin *usagePlugin) {
 }
 
 func parseEstimatorArgs(args framework.Arguments, plugin *usagePlugin) {
-	argsValue, ok := args[estimatorSection]
+	estimatorArgs, ok := args.GetArguments(estimatorSection)
 	if !ok {
-		return
-	}
-
-	estimatorArgs, ok := toConfigArguments(argsValue)
-	if !ok {
-		klog.Errorf("Failed to convert the estimator information, estimator args values is %v", argsValue)
 		return
 	}
 
@@ -162,69 +147,11 @@ func parseEstimatorArgs(args framework.Arguments, plugin *usagePlugin) {
 	parseMemoryQuantityArg(estimatorArgs, "be_mem", &plugin.beMemory)
 }
 
-func toConfigArguments(value interface{}) (framework.Arguments, bool) {
-	switch args := value.(type) {
-	case framework.Arguments:
-		return args, true
-	case map[string]interface{}:
-		return framework.Arguments(args), true
-	case map[interface{}]interface{}:
-		configArgs := framework.Arguments{}
-		for key, value := range args {
-			keyStr, ok := key.(string)
-			if !ok {
-				return nil, false
-			}
-			configArgs[keyStr] = value
-		}
-		return configArgs, true
-	default:
-		return nil, false
-	}
-}
-
-func parseIntArg(args framework.Arguments, key string, target *int) {
-	value, ok := getIntArg(args, key)
-	if !ok {
-		return
-	}
-	*target = value
-}
-
-func getIntArg(args framework.Arguments, key string) (int, bool) {
-	val, ok := args[key]
-	if !ok {
-		return 0, false
-	}
-	switch v := val.(type) {
-	case int:
-		return v, true
-	case int64:
-		return int(v), true
-	case float64:
-		if v != float64(int(v)) {
-			klog.Warningf("Could not parse argument: %v for key %s to int", val, key)
-			return 0, false
-		}
-		return int(v), true
-	case string:
-		value, err := strconv.Atoi(strings.TrimSpace(v))
-		if err != nil {
-			klog.Warningf("Could not parse argument: %v for key %s to int", val, key)
-			return 0, false
-		}
-		return value, true
-	default:
-		klog.Warningf("Could not parse argument: %v for key %s to int", val, key)
-		return 0, false
-	}
-}
-
 // parseBoundedFloatArg parses a float64 argument and keeps the existing value
 // when the input is outside [min, max].
 func parseBoundedFloatArg(args framework.Arguments, key string, target *float64, min, max float64) {
-	value, ok := getFloatArg(args, key)
-	if !ok {
+	var value float64
+	if !args.GetFloat64(&value, key) {
 		return
 	}
 	if value < min || value > max {
@@ -237,8 +164,8 @@ func parseBoundedFloatArg(args framework.Arguments, key string, target *float64,
 // parseMinFloatArg parses a float64 argument and keeps the existing value when
 // the input is lower than min.
 func parseMinFloatArg(args framework.Arguments, key string, target *float64, min float64) {
-	value, ok := getFloatArg(args, key)
-	if !ok {
+	var value float64
+	if !args.GetFloat64(&value, key) {
 		return
 	}
 	if value < min {
@@ -248,55 +175,8 @@ func parseMinFloatArg(args framework.Arguments, key string, target *float64, min
 	*target = value
 }
 
-func getFloatArg(args framework.Arguments, key string) (float64, bool) {
-	if val, ok := args[key]; ok {
-		switch v := val.(type) {
-		case float64:
-			return v, true
-		case int:
-			return float64(v), true
-		case int64:
-			return float64(v), true
-		case string:
-			value, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
-			if err != nil {
-				klog.Warningf("Could not parse argument: %v for key %s to float64", val, key)
-				return 0, false
-			}
-			return value, true
-		}
-		klog.Warningf("Could not parse argument: %v for key %s to float64", val, key)
-	}
-	return 0, false
-}
-
 func parseCPUQuantityArg(args framework.Arguments, key string, target *float64) {
-	if val, ok := args[key]; ok {
-		switch v := val.(type) {
-		case int:
-			if v < 0 {
-				klog.Warningf("Could not parse argument: %v for key %s, expected non-negative CPU millicores", val, key)
-				return
-			}
-			*target = float64(v)
-			return
-		case int64:
-			if v < 0 {
-				klog.Warningf("Could not parse argument: %v for key %s, expected non-negative CPU millicores", val, key)
-				return
-			}
-			*target = float64(v)
-			return
-		case float64:
-			if v < 0 {
-				klog.Warningf("Could not parse argument: %v for key %s, expected non-negative CPU millicores", val, key)
-				return
-			}
-			*target = v
-			return
-		}
-	}
-	quantity, ok := getQuantityArg(args, key)
+	quantity, ok := args.GetQuantity(key)
 	if !ok {
 		return
 	}
@@ -309,7 +189,7 @@ func parseCPUQuantityArg(args framework.Arguments, key string, target *float64) 
 }
 
 func parseMemoryQuantityArg(args framework.Arguments, key string, target *float64) {
-	quantity, ok := getQuantityArg(args, key)
+	quantity, ok := args.GetQuantity(key)
 	if !ok {
 		return
 	}
@@ -319,49 +199,6 @@ func parseMemoryQuantityArg(args framework.Arguments, key string, target *float6
 		return
 	}
 	*target = value
-}
-
-func getQuantityArg(args framework.Arguments, key string) (resource.Quantity, bool) {
-	val, ok := args[key]
-	if !ok {
-		return resource.Quantity{}, false
-	}
-	switch v := val.(type) {
-	case string:
-		quantity, err := resource.ParseQuantity(normalizeQuantitySuffix(v))
-		if err != nil {
-			klog.Warningf("Could not parse argument: %v for key %s to resource quantity", val, key)
-			return resource.Quantity{}, false
-		}
-		return quantity, true
-	case int:
-		return *resource.NewQuantity(int64(v), resource.DecimalSI), true
-	case int64:
-		return *resource.NewQuantity(v, resource.DecimalSI), true
-	case float64:
-		return *resource.NewMilliQuantity(int64(v*1000), resource.DecimalSI), true
-	default:
-		klog.Warningf("Could not parse argument: %v for key %s to resource quantity", val, key)
-		return resource.Quantity{}, false
-	}
-}
-
-func normalizeQuantitySuffix(value string) string {
-	replacements := map[string]string{
-		"ki": "Ki",
-		"mi": "Mi",
-		"gi": "Gi",
-		"ti": "Ti",
-		"pi": "Pi",
-		"ei": "Ei",
-	}
-	lowerValue := strings.ToLower(value)
-	for lowerSuffix, canonicalSuffix := range replacements {
-		if strings.HasSuffix(lowerValue, lowerSuffix) {
-			return value[:len(value)-len(lowerSuffix)] + canonicalSuffix
-		}
-	}
-	return value
 }
 
 func (up *usagePlugin) Name() string {

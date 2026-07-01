@@ -186,6 +186,26 @@ func TestUsageConfigParsesStringValues(t *testing.T) {
 	}
 }
 
+func TestUsageConfigParsesBestEffortCPUQuantity(t *testing.T) {
+	stringPlugin := New(framework.Arguments{
+		"estimator": map[interface{}]interface{}{
+			"be_cpu": "500m",
+		},
+	}).(*usagePlugin)
+	if math.Abs(stringPlugin.beCPU-500) > eps {
+		t.Fatalf("string be_cpu should be parsed as milliCPU, got %v", stringPlugin.beCPU)
+	}
+
+	numericPlugin := New(framework.Arguments{
+		"estimator": map[interface{}]interface{}{
+			"be_cpu": 500,
+		},
+	}).(*usagePlugin)
+	if math.Abs(numericPlugin.beCPU-500000) > eps {
+		t.Fatalf("numeric be_cpu should be parsed as CPU cores, got %v", numericPlugin.beCPU)
+	}
+}
+
 func TestUsageThresholdsKeepDefaultWhenOutOfRange(t *testing.T) {
 	plugin := New(framework.Arguments{
 		"thresholds": map[interface{}]interface{}{
