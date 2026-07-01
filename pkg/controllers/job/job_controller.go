@@ -19,7 +19,6 @@ package job
 import (
 	"context"
 	"fmt"
-	"hash/fnv"
 	"sync"
 	"time"
 
@@ -135,8 +134,8 @@ type jobcontroller struct {
 	queueLister schedulinglisters.QueueLister
 	queueSynced func() bool
 
-	// queue that need to sync up
-	queueList    []workqueue.TypedRateLimitingInterface[any]
+	// Single shared queue for all workers
+	queue        workqueue.TypedRateLimitingInterface[any]
 	commandQueue workqueue.TypedRateLimitingInterface[any]
 	cache        jobcache.Cache
 	// Job Event recorder
@@ -170,7 +169,9 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
 
 	cc.informerFactory = sharedInformers
-	cc.queueList = make([]workqueue.TypedRateLimitingInterface[any], workers)
+
+	// Create single shared queue instead of multiple queues
+	cc.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 	cc.commandQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 	cc.cache = jobcache.New()
 	cc.errTasks = newRateLimitingQueue()
@@ -179,11 +180,6 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.maxRequeueNum = opt.MaxRequeueNum
 	if cc.maxRequeueNum < 0 {
 		cc.maxRequeueNum = -1
-	}
-
-	var i uint32
-	for i = 0; i < workers; i++ {
-		cc.queueList[i] = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 	}
 
 	factory := opt.VCSharedInformerFactory
@@ -290,6 +286,8 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 	}
 
 	go wait.Until(cc.handleCommands, 0, stopCh)
+
+	// Start multiple workers, all reading from the same queue
 	var i uint32
 	for i = 0; i < cc.workers; i++ {
 		go func(num uint32) {
@@ -317,41 +315,18 @@ func (cc *jobcontroller) worker(i uint32) {
 	}
 }
 
-func (cc *jobcontroller) belongsToThisRoutine(key string, count uint32) bool {
-	val := cc.genHash(key)
-	return val%cc.workers == count
-}
-
-func (cc *jobcontroller) getWorkerQueue(key string) workqueue.TypedRateLimitingInterface[any] {
-	val := cc.genHash(key)
-	queue := cc.queueList[val%cc.workers]
-	return queue
-}
-
-func (cc *jobcontroller) genHash(key string) uint32 {
-	hashVal := fnv.New32()
-	hashVal.Write([]byte(key))
-	return hashVal.Sum32()
-}
-
 func (cc *jobcontroller) processNextReq(count uint32) bool {
-	queue := cc.queueList[count]
-	obj, shutdown := queue.Get()
+	// All workers read from the same shared queue
+	obj, shutdown := cc.queue.Get()
 	if shutdown {
 		klog.Errorf("Fail to pop item from queue")
 		return false
 	}
 
 	req := obj.(apis.Request)
-	defer queue.Done(req)
+	defer cc.queue.Done(req)
 
 	key := jobcache.JobKeyByReq(&req)
-	if !cc.belongsToThisRoutine(key, count) {
-		klog.Errorf("should not occur The job does not belongs to this routine key:%s, worker:%d...... ", key, count)
-		queueLocal := cc.getWorkerQueue(key)
-		queueLocal.Add(req)
-		return true
-	}
 
 	klog.V(3).Infof("Try to handle request <%v>", req)
 
@@ -393,12 +368,12 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	action := GetStateAction(delayAct)
 
 	if err := st.Execute(action); err != nil {
-		cc.handleJobError(queue, req, st, err, delayAct.action)
+		cc.handleJobError(cc.queue, req, st, err, delayAct.action)
 		return true
 	}
 
 	// If no error, forget it.
-	queue.Forget(req)
+	cc.queue.Forget(req)
 
 	// If the action is not an internal action, cancel all delayed actions
 	if !isInternalAction(delayAct.action) {
@@ -442,7 +417,8 @@ func (cc *jobcontroller) CleanPodDelayActionsIfNeed(req apis.Request) {
 				}
 
 				if shouldCancel {
-					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> because of event <%s> of Job <%s>", delayAct.action, req.PodName, req.Event, delayAct.jobKey)
+					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> because of event <%s> of Job <%s>",
+						delayAct.action, req.PodName, req.Event, delayAct.jobKey)
 					delayAct.cancel()
 					delete(taskMap, req.PodName)
 				}
@@ -478,11 +454,13 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 	go func() {
 		<-ctx.Done()
 		if ctx.Err() == context.Canceled {
-			klog.V(4).Infof("Job<%s/%s>'s delayed action %s is canceled", req.Namespace, req.JobName, delayAct.action)
+			klog.V(4).Infof("Job<%s/%s>'s delayed action %s is canceled",
+				req.Namespace, req.JobName, delayAct.action)
 			return
 		}
 
-		klog.V(4).Infof("Job<%s/%s>'s delayed action %s is expired, execute it", req.Namespace, req.JobName, delayAct.action)
+		klog.V(4).Infof("Job<%s/%s>'s delayed action %s is expired, execute it",
+			req.Namespace, req.JobName, delayAct.action)
 
 		jobInfo, err := cc.cache.Get(delayAct.jobKey)
 		if err != nil {
@@ -496,14 +474,12 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 				jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
 			return
 		}
-		queue := cc.getWorkerQueue(delayAct.jobKey)
 
 		if err := st.Execute(GetStateAction(delayAct)); err != nil {
-			cc.handleJobError(queue, req, st, err, delayAct.action)
+			cc.handleJobError(cc.queue, req, st, err, delayAct.action)
 		}
 
-		queue.Forget(req)
-
+		cc.queue.Forget(req)
 		cc.cleanupDelayActions(delayAct)
 	}()
 }
@@ -518,10 +494,12 @@ func (cc *jobcontroller) handleJobError(queue workqueue.TypedRateLimitingInterfa
 
 	cc.recordJobEvent(req.Namespace, req.JobName, batchv1alpha1.ExecuteAction,
 		fmt.Sprintf("Job failed on action %s for retry limit reached", action))
-	klog.Warningf("Terminating Job <%s/%s> and releasing resources", req.Namespace, req.JobName)
+	klog.Warningf("Terminating Job <%s/%s> and releasing resources",
+		req.Namespace, req.JobName)
 
 	if err = st.Execute(state.Action{Action: busv1alpha1.TerminateJobAction}); err != nil {
-		klog.Errorf("Failed to terminate Job<%s/%s>: %v", req.Namespace, req.JobName, err)
+		klog.Errorf("Failed to terminate Job<%s/%s>: %v",
+			req.Namespace, req.JobName, err)
 	}
 	klog.Warningf("Dropping job<%s/%s> out of the queue: %v because max retries has reached",
 		req.Namespace, req.JobName, err)
@@ -562,7 +540,8 @@ func (cc *jobcontroller) cleanupDelayActions(currentDelayAction *delayAction) {
 				}
 
 				if delayAct.cancel != nil {
-					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> because of event <%s> and action <%s> of Job <%s>", delayAct.action, delayAct.podName, currentDelayAction.event, currentDelayAction.action, delayAct.jobKey)
+					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> because of event <%s> and action <%s> of Job <%s>",
+						delayAct.action, delayAct.podName, currentDelayAction.event, currentDelayAction.action, delayAct.jobKey)
 					delayAct.cancel()
 				}
 				delete(m, delayAct.podName)
