@@ -331,5 +331,5 @@ spec:
   - Ingress
 ```
 ## Note
-* DNS plugin is required in your Kubernetes cluster such as `corndns`.
+* DNS plugin is required in your Kubernetes cluster such as `coredns`.
 * Kubernetes version >= v1.14
