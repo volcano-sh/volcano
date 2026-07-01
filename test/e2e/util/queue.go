@@ -18,6 +18,7 @@ package util
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -74,7 +75,6 @@ func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
 	time.Sleep(3 * time.Second)
 }
 
-// CreateQueue creates Queue with the specified name
 func CreateQueue(ctx *TestContext, q string, deservedResource, capabilityResource v1.ResourceList, parent string) {
 	_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
 	if err != nil {
@@ -93,7 +93,6 @@ func CreateQueue(ctx *TestContext, q string, deservedResource, capabilityResourc
 	}
 }
 
-// CreateQueues create Queues specified in the test context
 func CreateQueues(ctx *TestContext) {
 	By("Creating Queues")
 
@@ -105,83 +104,47 @@ func CreateQueues(ctx *TestContext) {
 	time.Sleep(3 * time.Second)
 }
 
-// DeleteQueue deletes Queue with the specified name
+// DeleteQueue is the single-queue path. For hierarchical teardown use
+// deleteQueues, which closes from the topmost parent and deletes deepest-first.
 func DeleteQueue(ctx *TestContext, q string) {
-	foreground := metav1.DeletePropagationForeground
-
-	jobs, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		Expect(err).NotTo(HaveOccurred(), "failed to list vcjobs")
-	}
-
-	for _, job := range jobs.Items {
-		if job.Spec.Queue == q {
-			//Delete all VcJobs in the queue
-			err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{
-				PropagationPolicy: &foreground,
-			})
-			Expect(err).NotTo(HaveOccurred(), "failed to delete vcjob %s in queue %s", job.Name, q)
-
-			// Wait until the job is deleted
-			delErr := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
-				_, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
-				if errors.IsNotFound(err) {
-					return true, nil
-				}
-				if err != nil {
-					return false, err
-				}
-				return false, nil
-			})
-			Expect(delErr).NotTo(HaveOccurred(), "failed waiting vcjob %s deleted", job.Name)
-		}
-	}
-
-	var queue *schedulingv1beta1.Queue
-	retryErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		queue, err = ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
-		if err != nil {
-			Expect(err).NotTo(HaveOccurred(), "failed to get queue %s", q)
-			return err
-		}
-		queue.Status.State = schedulingv1beta1.QueueStateClosed
-		if _, err = ctx.Vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), queue, metav1.UpdateOptions{}); err != nil {
-			return err
-		}
-		return nil
-	})
-	Expect(retryErr).NotTo(HaveOccurred(), "failed to update status of queue %s", q)
-
-	err = ctx.Vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), q,
-		metav1.DeleteOptions{
-			PropagationPolicy: &foreground,
-		})
-	Expect(err).NotTo(HaveOccurred(), "failed to delete queue %s", q)
-
-	// Wait until the queue is actually deleted.
-	err = wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
-		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(pollCtx, q, metav1.GetOptions{})
-		if errors.IsNotFound(err) {
-			return true, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		return false, nil
-	})
-	Expect(err).NotTo(HaveOccurred(), "failed waiting for queue %s to be deleted", q)
+	deleteJobsInQueue(ctx, q)
+	closeQueueStatus(ctx, q)
+	deleteQueueAndWait(ctx, q)
 }
 
-// deleteQueues deletes Queues specified in the test context.
-// For hierarchical queues, list children before parents in ctx.Queues; admission
-// rejects deleting a parent that still has child queues.
+// deleteQueues tears down ctx.Queues respecting hierarchical parent/child
+// relationships declared via ctx.QueueParent:
+//
+//  1. Clean vcjobs in every queue (single List call).
+//  2. UpdateStatus(Closed) on every queue directly. The controller's
+//     hierarchical cascade only fires for CloseQueueAction routed through
+//     the bus Command API (see closeHierarchicalQueue); a direct
+//     UpdateStatus on a parent does not enqueue child closes, so we close
+//     each queue explicitly.
+//  3. Wait for every queue we own to reach Closed.
+//  4. Delete deepest-first so a parent is never deleted before its children.
+//
+// Callers no longer need to hand-order ctx.Queues children-before-parents.
 func deleteQueues(ctx *TestContext) {
+	if len(ctx.Queues) == 0 {
+		return
+	}
+
+	deleteJobsInQueues(ctx, ctx.Queues)
+
 	for _, q := range ctx.Queues {
-		DeleteQueue(ctx, q)
+		closeQueueStatus(ctx, q)
+	}
+
+	for _, q := range ctx.Queues {
+		waitQueueClosed(ctx, q)
+	}
+
+	for _, q := range queuesDeepestFirst(ctx) {
+		deleteQueueAndWait(ctx, q)
 	}
 }
 
-// SeyQueueReclaimable sets the Queue to be reclaimable
 func SetQueueReclaimable(ctx *TestContext, queues []string, reclaimable bool) {
 	By("Setting Queue reclaimable")
 
@@ -191,7 +154,6 @@ func SetQueueReclaimable(ctx *TestContext, queues []string, reclaimable bool) {
 		retryErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 			queue, err = ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
 			if err != nil {
-				Expect(err).NotTo(HaveOccurred(), "failed to get queue %s", q)
 				return err
 			}
 			queue.Spec.Reclaimable = &reclaimable
@@ -206,4 +168,141 @@ func SetQueueReclaimable(ctx *TestContext, queues []string, reclaimable bool) {
 
 func WaitQueueStatus(condition func() (bool, error)) error {
 	return wait.Poll(100*time.Millisecond, TenMinute, condition)
+}
+
+func deleteJobsInQueue(ctx *TestContext, q string) {
+	deleteJobsInQueues(ctx, []string{q})
+}
+
+// deleteJobsInQueues lists vcjobs once and deletes those whose Spec.Queue is in
+// queues, so hierarchical teardown does not pay an extra List per queue.
+func deleteJobsInQueues(ctx *TestContext, queues []string) {
+	if len(queues) == 0 {
+		return
+	}
+	queueSet := make(map[string]struct{}, len(queues))
+	for _, q := range queues {
+		queueSet[q] = struct{}{}
+	}
+
+	foreground := metav1.DeletePropagationForeground
+
+	jobs, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		Expect(err).NotTo(HaveOccurred(), "failed to list vcjobs")
+	}
+
+	for _, job := range jobs.Items {
+		if _, ok := queueSet[job.Spec.Queue]; !ok {
+			continue
+		}
+		err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{
+			PropagationPolicy: &foreground,
+		})
+		Expect(err).NotTo(HaveOccurred(), "failed to delete vcjob %s in queue %s", job.Name, job.Spec.Queue)
+
+		delErr := wait.PollUntilContextTimeout(context.TODO(), time.Second, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
+			_, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(pollCtx, job.Name, metav1.GetOptions{})
+			if errors.IsNotFound(err) {
+				return true, nil
+			}
+			// Any other error (including transient client-side rate limiting
+			// while a whole hierarchy is torn down at once) is not fatal here;
+			// keep polling until the job is gone or the timeout fires.
+			return false, nil
+		})
+		Expect(delErr).NotTo(HaveOccurred(), "failed waiting vcjob %s deleted", job.Name)
+	}
+}
+
+// closeQueueStatus retries on conflict; non-retryable errors propagate out as
+// retryErr so the outer Expect surfaces them.
+func closeQueueStatus(ctx *TestContext, q string) {
+	var queue *schedulingv1beta1.Queue
+	var err error
+	retryErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		queue, err = ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		queue.Status.State = schedulingv1beta1.QueueStateClosed
+		if _, err = ctx.Vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), queue, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
+		return nil
+	})
+	Expect(retryErr).NotTo(HaveOccurred(), "failed to update status of queue %s", q)
+}
+
+// waitQueueClosed treats NotFound as success — a queue further along than
+// Closed (already deleted by an earlier iteration, an overlapping cleanup, or
+// manual intervention) still satisfies the wait's intent.
+func waitQueueClosed(ctx *TestContext, q string) {
+	err := wait.PollUntilContextTimeout(context.TODO(), time.Second, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
+		queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(pollCtx, q, metav1.GetOptions{})
+		if errors.IsNotFound(err) {
+			return true, nil
+		}
+		if err != nil {
+			// Transient client/API errors (notably client-side rate limiting
+			// when a whole hierarchy is torn down at once) must not abort
+			// cleanup; keep polling until the queue is Closed/gone or timeout.
+			return false, nil
+		}
+		return queue.Status.State == schedulingv1beta1.QueueStateClosed, nil
+	})
+	Expect(err).NotTo(HaveOccurred(), "failed waiting for queue %s to be closed", q)
+}
+
+// deleteQueueAndWait treats an already-gone queue as success so partial-cleanup
+// re-runs don't fail spuriously.
+func deleteQueueAndWait(ctx *TestContext, q string) {
+	foreground := metav1.DeletePropagationForeground
+
+	err := ctx.Vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), q, metav1.DeleteOptions{
+		PropagationPolicy: &foreground,
+	})
+	if errors.IsNotFound(err) {
+		return
+	}
+	Expect(err).NotTo(HaveOccurred(), "failed to delete queue %s", q)
+
+	err = wait.PollUntilContextTimeout(context.TODO(), time.Second, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
+		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(pollCtx, q, metav1.GetOptions{})
+		if errors.IsNotFound(err) {
+			return true, nil
+		}
+		// Any other error (including transient client-side rate limiting while
+		// a whole hierarchy is torn down at once) is not fatal here; keep
+		// polling until the queue is gone or the timeout fires.
+		return false, nil
+	})
+	Expect(err).NotTo(HaveOccurred(), "failed waiting for queue %s to be deleted", q)
+}
+
+// queueDepth walks parent links up to a root-equivalent ancestor. We cap
+// iterations at len(ctx.QueueParent)+1 so a misconfigured ctx.QueueParent
+// (cycle) can't hang the helper.
+func queueDepth(ctx *TestContext, q string) int {
+	maxIter := len(ctx.QueueParent) + 1
+	depth := 0
+	cur := q
+	for i := 0; i < maxIter; i++ {
+		parent, ok := ctx.QueueParent[cur]
+		if !ok || parent == "" || parent == "root" {
+			return depth
+		}
+		cur = parent
+		depth++
+	}
+	return depth
+}
+
+func queuesDeepestFirst(ctx *TestContext) []string {
+	queues := make([]string, len(ctx.Queues))
+	copy(queues, ctx.Queues)
+	sort.Slice(queues, func(i, j int) bool {
+		return queueDepth(ctx, queues[i]) > queueDepth(ctx, queues[j])
+	})
+	return queues
 }
