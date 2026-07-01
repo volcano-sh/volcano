@@ -19,6 +19,8 @@ package usage
 import (
 	v1 "k8s.io/api/core/v1"
 	fwk "k8s.io/kube-scheduler/framework"
+
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 // CalcLoadCompositePercentage computes the weighted composite node load from
@@ -134,45 +136,7 @@ func CalcNodeScore(cpuComp, memComp float64, cpuWeight, memWeight, usageWeight i
 
 // getPodResourceRequestLimit extracts CPU (milliCPU) and memory (bytes) request/limit for a pod.
 func getPodResourceRequestLimit(pod *v1.Pod) (cpuRequest, cpuLimit, memRequest, memLimit float64) {
-	for _, c := range pod.Spec.Containers {
-		if req, ok := c.Resources.Requests[v1.ResourceCPU]; ok {
-			cpuRequest += float64(req.MilliValue())
-		}
-		if lim, ok := c.Resources.Limits[v1.ResourceCPU]; ok {
-			cpuLimit += float64(lim.MilliValue())
-		}
-		if req, ok := c.Resources.Requests[v1.ResourceMemory]; ok {
-			memRequest += float64(req.Value())
-		}
-		if lim, ok := c.Resources.Limits[v1.ResourceMemory]; ok {
-			memLimit += float64(lim.Value())
-		}
-	}
-	for _, c := range pod.Spec.InitContainers {
-		if req, ok := c.Resources.Requests[v1.ResourceCPU]; ok {
-			value := float64(req.MilliValue())
-			if value > cpuRequest {
-				cpuRequest = value
-			}
-		}
-		if lim, ok := c.Resources.Limits[v1.ResourceCPU]; ok {
-			value := float64(lim.MilliValue())
-			if value > cpuLimit {
-				cpuLimit = value
-			}
-		}
-		if req, ok := c.Resources.Requests[v1.ResourceMemory]; ok {
-			value := float64(req.Value())
-			if value > memRequest {
-				memRequest = value
-			}
-		}
-		if lim, ok := c.Resources.Limits[v1.ResourceMemory]; ok {
-			value := float64(lim.Value())
-			if value > memLimit {
-				memLimit = value
-			}
-		}
-	}
-	return cpuRequest, cpuLimit, memRequest, memLimit
+	request := api.GetPodResourceRequest(pod)
+	limit := api.GetPodResourceLimit(pod)
+	return request.MilliCPU, limit.MilliCPU, request.Memory, limit.Memory
 }

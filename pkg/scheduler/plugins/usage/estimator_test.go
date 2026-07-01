@@ -375,6 +375,8 @@ func TestCalcNodeScore(t *testing.T) {
 }
 
 func TestGetPodResourceRequestLimit(t *testing.T) {
+	restartAlways := v1.ContainerRestartPolicyAlways
+
 	tests := []struct {
 		name           string
 		pod            *v1.Pod
@@ -483,6 +485,46 @@ func TestGetPodResourceRequestLimit(t *testing.T) {
 			expectedCPULim: 3000,       // max(1000, 3000)
 			expectedMemReq: 4294967296, // max(1Gi, 4Gi)
 			expectedMemLim: 5368709120, // max(2Gi, 5Gi)
+		},
+		{
+			name: "restartable init container is added as sidecar",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					InitContainers: []v1.Container{
+						{
+							RestartPolicy: &restartAlways,
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("1000m"),
+									v1.ResourceMemory: resource.MustParse("1Gi"),
+								},
+								Limits: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("2000m"),
+									v1.ResourceMemory: resource.MustParse("2Gi"),
+								},
+							},
+						},
+					},
+					Containers: []v1.Container{
+						{
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("1000m"),
+									v1.ResourceMemory: resource.MustParse("2Gi"),
+								},
+								Limits: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("2000m"),
+									v1.ResourceMemory: resource.MustParse("3Gi"),
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedCPUReq: 2000,
+			expectedCPULim: 4000,
+			expectedMemReq: 3221225472,
+			expectedMemLim: 5368709120,
 		},
 		{
 			name: "no resources specified (BestEffort)",
