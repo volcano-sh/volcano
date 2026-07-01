@@ -18,21 +18,23 @@ package nodegroup
 
 import (
 	"container/list"
+	"encoding/json"
 	"errors"
 	"fmt"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
 const (
 	// PluginName indicates name of volcano scheduler plugin.
-	PluginName       = "nodegroup"
-	NodeGroupNameKey = "volcano.sh/nodegroup-name"
-	rootQueueID      = "root"
+	PluginName  = "nodegroup"
+	rootQueueID = "root"
 
 	BaseScore = 100
 )
@@ -76,9 +78,17 @@ func (np *nodeGroupPlugin) Name() string {
 }
 
 type queueAttr struct {
-	queueID   api.QueueID
-	ancestors *list.List
-	affinity  *queueGroupAffinity
+	queueID                 api.QueueID
+	ancestors               *list.List
+	affinity                *queueGroupAffinity
+	nodeGroupResourceLimits map[string]*nodeGroupResourceLimit
+	nodeGroupAllocated      map[string]*api.Resource
+	resourceLimitErr        error
+}
+
+type nodeGroupResourceLimit struct {
+	resource *api.Resource
+	names    sets.Set[v1.ResourceName]
 }
 
 type queueGroupAffinity struct {
@@ -90,11 +100,43 @@ type queueGroupAffinity struct {
 }
 
 func newQueueAttr(queue *api.QueueInfo) *queueAttr {
+	limits, err := parseNodeGroupResourceLimits(queue)
 	return &queueAttr{
-		queueID:   queue.UID,
-		ancestors: list.New(),
-		affinity:  newQueueGroupAffinity(queue),
+		queueID:                 queue.UID,
+		ancestors:               list.New(),
+		affinity:                newQueueGroupAffinity(queue),
+		nodeGroupResourceLimits: limits,
+		nodeGroupAllocated:      make(map[string]*api.Resource),
+		resourceLimitErr:        err,
 	}
+}
+
+func parseNodeGroupResourceLimits(queue *api.QueueInfo) (map[string]*nodeGroupResourceLimit, error) {
+	if queue == nil || queue.Queue == nil || len(queue.Queue.Annotations) == 0 {
+		return nil, nil
+	}
+	raw := queue.Queue.Annotations[schedulingv1.NodeGroupResourceLimitsAnnotationKey]
+	if raw == "" {
+		return nil, nil
+	}
+
+	resourceLists := map[string]v1.ResourceList{}
+	if err := json.Unmarshal([]byte(raw), &resourceLists); err != nil {
+		return nil, fmt.Errorf("parse annotation %s: %w", schedulingv1.NodeGroupResourceLimitsAnnotationKey, err)
+	}
+
+	limits := make(map[string]*nodeGroupResourceLimit, len(resourceLists))
+	for group, resourceList := range resourceLists {
+		limit := &nodeGroupResourceLimit{
+			resource: api.NewResource(resourceList),
+			names:    sets.New[v1.ResourceName](),
+		}
+		for name := range resourceList {
+			limit.names.Insert(name)
+		}
+		limits[group] = limit
+	}
+	return limits, nil
 }
 
 func newQueueGroupAffinity(queue *api.QueueInfo) *queueGroupAffinity {
@@ -257,13 +299,123 @@ func (np *nodeGroupPlugin) updateAffinityFromAncestor(attr *queueAttr) {
 	}
 }
 
+func (np *nodeGroupPlugin) initNodeGroupAllocated(ssn *framework.Session) {
+	for _, job := range ssn.Jobs {
+		attr := np.queueAttrs[job.Queue]
+		if attr == nil {
+			continue
+		}
+		for status, tasks := range job.TaskStatusIndex {
+			if !api.AllocatedStatus(status) {
+				continue
+			}
+			for _, task := range tasks {
+				np.addNodeGroupAllocated(ssn, attr, task)
+			}
+		}
+	}
+}
+
+func (np *nodeGroupPlugin) addNodeGroupAllocated(ssn *framework.Session, attr *queueAttr, task *api.TaskInfo) {
+	group, ok := np.taskNodeGroup(ssn, task)
+	if !ok {
+		return
+	}
+	allocated := attr.nodeGroupAllocated[group]
+	if allocated == nil {
+		allocated = api.EmptyResource()
+		attr.nodeGroupAllocated[group] = allocated
+	}
+	allocated.Add(task.Resreq)
+}
+
+func (np *nodeGroupPlugin) subNodeGroupAllocated(ssn *framework.Session, attr *queueAttr, task *api.TaskInfo) {
+	group, ok := np.taskNodeGroup(ssn, task)
+	if !ok {
+		return
+	}
+	allocated := attr.nodeGroupAllocated[group]
+	if allocated == nil {
+		return
+	}
+	allocated.Sub(task.Resreq)
+}
+
+func (np *nodeGroupPlugin) taskNodeGroup(ssn *framework.Session, task *api.TaskInfo) (string, bool) {
+	if task == nil || task.NodeName == "" {
+		return "", false
+	}
+	node := ssn.Nodes[task.NodeName]
+	if node == nil || node.Node == nil || node.Node.Labels == nil {
+		return "", false
+	}
+	group, ok := node.Node.Labels[schedulingv1.NodeGroupNameKey]
+	return group, ok
+}
+
+func (np *nodeGroupPlugin) checkNodeGroupResourceLimit(task *api.TaskInfo, group string, attr *queueAttr) error {
+	if attr.resourceLimitErr != nil {
+		return attr.resourceLimitErr
+	}
+	if len(attr.nodeGroupResourceLimits) == 0 {
+		return nil
+	}
+	limit := attr.nodeGroupResourceLimits[group]
+	if limit == nil {
+		return nil
+	}
+
+	allocated := attr.nodeGroupAllocated[group]
+	if allocated == nil {
+		allocated = api.EmptyResource()
+	}
+	futureUsed := allocated.Clone().Add(task.Resreq)
+	if resourceNames := limitedResourceExceededNames(futureUsed, limit); len(resourceNames) > 0 {
+		return fmt.Errorf("nodegroup %s resource limit exceeded, insufficient resources: %v", group, resourceNames)
+	}
+	return nil
+}
+
+func limitedResourceExceededNames(used *api.Resource, limit *nodeGroupResourceLimit) []string {
+	if used == nil || limit == nil || limit.resource == nil || limit.names.Len() == 0 {
+		return nil
+	}
+
+	var resourceNames []string
+	if limit.names.Has(v1.ResourceCPU) && greaterThanResourceLimit(used.MilliCPU, limit.resource.MilliCPU) {
+		resourceNames = append(resourceNames, string(v1.ResourceCPU))
+	}
+	if limit.names.Has(v1.ResourceMemory) && greaterThanResourceLimit(used.Memory, limit.resource.Memory) {
+		resourceNames = append(resourceNames, string(v1.ResourceMemory))
+	}
+
+	for name := range limit.names {
+		switch name {
+		case v1.ResourceCPU, v1.ResourceMemory:
+			continue
+		}
+		if greaterThanResourceLimit(used.Get(name), limit.resource.Get(name)) {
+			resourceNames = append(resourceNames, string(name))
+		}
+	}
+	return resourceNames
+}
+
+func greaterThanResourceLimit(used, limit float64) bool {
+	return used > limit && used-limit >= api.GetMinResource()
+}
+
 func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 	np.initQueueAttrs(ssn)
+	np.initNodeGroupAllocated(ssn)
 	for id, attr := range np.queueAttrs {
 		if attr.affinity != nil {
 			klog.V(4).Infof("queue <%v> affinity: anti-required %v, anti-preferred %v, required %v, preferred %v",
 				id, attr.affinity.queueGroupAntiAffinityRequired.UnsortedList(), attr.affinity.queueGroupAntiAffinityPreferred.UnsortedList(),
 				attr.affinity.queueGroupAffinityRequired.UnsortedList(), attr.affinity.queueGroupAffinityPreferred.UnsortedList())
+		}
+		if attr.resourceLimitErr != nil {
+			klog.Errorf("queue <%v> has invalid %s annotation: %v", id, schedulingv1.NodeGroupResourceLimitsAnnotationKey, attr.resourceLimitErr)
 		}
 	}
 
@@ -272,7 +424,7 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 		if node.Node.Labels == nil {
 			return score, nil
 		}
-		group, exist := node.Node.Labels[NodeGroupNameKey]
+		group, exist := node.Node.Labels[schedulingv1.NodeGroupNameKey]
 		if !exist {
 			return score, nil
 		}
@@ -300,6 +452,9 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 			return fmt.Errorf("job %s not found in session", task.Job)
 		}
 		attr := np.queueAttrs[job.Queue]
+		if attr != nil && attr.resourceLimitErr != nil {
+			return newFitErr(task, node, errNodeGroupResourceLimitInvalid)
+		}
 
 		// Check if the queue has any node group affinity rules
 		unsetAffinity := attr == nil || attr.affinity == nil ||
@@ -310,7 +465,7 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		group, exist := "", false
 		if node.Node.Labels != nil {
-			group, exist = node.Node.Labels[NodeGroupNameKey]
+			group, exist = node.Node.Labels[schedulingv1.NodeGroupNameKey]
 		}
 
 		if !exist {
@@ -331,12 +486,42 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 		if err := attr.affinity.predicate(group); err != nil {
 			return newFitErr(task, node, errNodeUnsatisfied)
 		}
+		if err := np.checkNodeGroupResourceLimit(task, group, attr); err != nil {
+			klog.V(3).Infof("task <%s>/<%s> queue %s on nodegroup %s rejected by nodegroup resource limit: %v", task.Namespace, task.Name, job.Queue, group, err)
+			return newFitErr(task, node, errNodeGroupResourceLimitExceeded)
+		}
 		klog.V(4).Infof("task <%s>/<%s> queue %s on node %s of nodegroup %v", task.Namespace, task.Name, job.Queue, node.Name, group)
 		return nil
 	}
 
 	ssn.AddPredicateFn(np.Name(), predicateFn)
+
+	ssn.AddEventHandler(&framework.EventHandler{
+		AllocateFunc: func(event *framework.Event) {
+			job := ssn.Jobs[event.Task.Job]
+			if job == nil {
+				return
+			}
+			attr := np.queueAttrs[job.Queue]
+			if attr == nil {
+				return
+			}
+			np.addNodeGroupAllocated(ssn, attr, event.Task)
+		},
+		DeallocateFunc: func(event *framework.Event) {
+			job := ssn.Jobs[event.Task.Job]
+			if job == nil {
+				return
+			}
+			attr := np.queueAttrs[job.Queue]
+			if attr == nil {
+				return
+			}
+			np.subNodeGroupAllocated(ssn, attr, event.Task)
+		},
+	})
 }
 
 func (np *nodeGroupPlugin) OnSessionClose(ssn *framework.Session) {
+	np.queueAttrs = nil
 }

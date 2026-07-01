@@ -25,6 +25,10 @@ const (
 	errNodeGroupLabelNotFound = "node group label not found"
 	// errNodeUnsatisfied is returned when the node does not satisfy the node group affinity.
 	errNodeUnsatisfied = "node does not satisfy the node group affinity"
+	// errNodeGroupResourceLimitInvalid is returned when queue nodegroup resource limit annotation is invalid.
+	errNodeGroupResourceLimitInvalid = "node group resource limit annotation invalid"
+	// errNodeGroupResourceLimitExceeded is returned when the queue exceeds the nodegroup resource limit.
+	errNodeGroupResourceLimitExceeded = "node group resource limit exceeded"
 )
 
 func newFitErr(task *api.TaskInfo, node *api.NodeInfo, reason string) error {

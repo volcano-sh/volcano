@@ -51,6 +51,12 @@ const QueueNameAnnotationKey = GroupName + "/queue-name"
 // gate management and the name of the scheduling gate that controls queue admission.
 const QueueAllocationGateKey = GroupName + "/queue-allocation-gate"
 
+// NodeGroupNameKey is the label key of Node to identify which nodegroup it belongs to.
+const NodeGroupNameKey = AnnotationPrefix + "nodegroup-name"
+
+// NodeGroupResourceLimitsAnnotationKey is the annotation key of Queue to limit resources each nodegroup can allocate.
+const NodeGroupResourceLimitsAnnotationKey = AnnotationPrefix + "nodegroup-resource-limits"
+
 // PodPreemptable is the key of preemptable
 const PodPreemptable = "volcano.sh/preemptable"
 
