@@ -78,8 +78,8 @@ func InitListFlags(cmd *cobra.Command) {
 
 	cmd.Flags().StringVarP(&listPodFlags.QueueName, "queue", "q", "", "list pod with specified queue name")
 	cmd.Flags().StringVarP(&listPodFlags.JobName, "job", "j", "", "list pod with specified job name")
-	cmd.Flags().StringVarP(&listPodFlags.Namespace, "namespace", "n", "default", "the namespace of job")
-	cmd.Flags().BoolVarP(&listPodFlags.allNamespace, "all-namespaces", "", false, "list jobs in all namespaces")
+	cmd.Flags().StringVarP(&listPodFlags.Namespace, "namespace", "n", "default", "the namespace of pod")
+	cmd.Flags().BoolVarP(&listPodFlags.allNamespace, "all-namespaces", "", false, "list pods in all namespaces")
 }
 
 // ListPods lists all pods details created by vcjob
