@@ -730,12 +730,15 @@ func (dev *AscendDevice) GetResourceNames() devices.ResourceNames {
 }
 
 func CalScore(schedulePolicy string, dev_usage *devices.DeviceUsage, dev_info *devices.DeviceInfo) float64 {
+	if dev_info.Devmem == 0 {
+		return 0
+	}
 	var score float64
 	switch schedulePolicy {
 	case binpackPolicy:
 		score = binpackMultiplier * (float64(dev_usage.Usedmem) / float64(dev_info.Devmem))
 	case spreadPolicy:
-		if dev_usage.Used == 1 {
+		if dev_usage.Used == 0 {
 			score = spreadMultiplier
 		}
 	default:
