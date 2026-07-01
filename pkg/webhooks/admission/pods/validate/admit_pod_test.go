@@ -132,3 +132,9 @@ func TestValidatePod(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateIntPercentageStr(t *testing.T) {
+	if err := validateIntPercentageStr(vcschedulingv1.JDBMinAvailable, "50%%"); err == nil {
+		t.Errorf("expect invalid percentage error")
+	}
+}
