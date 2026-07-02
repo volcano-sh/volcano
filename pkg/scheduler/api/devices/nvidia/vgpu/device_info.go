@@ -291,6 +291,9 @@ func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) erro
 
 	keys := []string{
 		AssignedNodeAnnotations,          // volcano.sh/vgpu-node
+		AssignedPodNameAnnotations,       // volcano.sh/vgpu-pod-name
+		AssignedPodNamespaceAnnotations,  // volcano.sh/vgpu-pod-namespace
+		AssignedPodUIDAnnotations,        // volcano.sh/vgpu-pod-uid
 		AssignedIDsAnnotations,           // volcano.sh/vgpu-ids-new
 		AssignedIDsToAllocateAnnotations, // volcano.sh/devices-to-allocate
 		AssignedTimeAnnotations,          // volcano.sh/vgpu-time
@@ -324,6 +327,16 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 	if VGPUEnable {
 		klog.V(4).Infoln("hami-vgpu DeviceSharing:Into AllocateToPod", pod.Name)
 		if alreadyAssignedOnNode(pod, gs.Name) {
+			identityAnnotations := podIdentityAnnotations(pod)
+			if err := patchPodAnnotations(kubeClient, pod, identityAnnotations); err != nil {
+				return err
+			}
+			if pod.Annotations == nil {
+				pod.Annotations = map[string]string{}
+			}
+			for k, v := range identityAnnotations {
+				pod.Annotations[k] = v
+			}
 			klog.V(4).InfoS("hami-vgpu DeviceSharing: skip duplicate AllocateToPod",
 				"pod", pod.Name, "namespace", pod.Namespace, "node", gs.Name)
 			return nil
@@ -343,6 +356,9 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 
 		annotations := make(map[string]string)
 		annotations[AssignedNodeAnnotations] = gs.Name
+		for k, v := range podIdentityAnnotations(pod) {
+			annotations[k] = v
+		}
 		annotations[AssignedTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
 		annotations[AssignedIDsAnnotations] = encodePodDevices(device)
 		annotations[AssignedIDsToAllocateAnnotations] = annotations[AssignedIDsAnnotations]
@@ -424,4 +440,12 @@ func alreadyAssignedOnNode(pod *v1.Pod, nodeName string) bool {
 
 	return pod.Annotations[AssignedNodeAnnotations] == nodeName &&
 		pod.Annotations[AssignedIDsAnnotations] != ""
+}
+
+func podIdentityAnnotations(pod *v1.Pod) map[string]string {
+	return map[string]string{
+		AssignedPodNameAnnotations:      pod.Name,
+		AssignedPodNamespaceAnnotations: pod.Namespace,
+		AssignedPodUIDAnnotations:       string(pod.UID),
+	}
 }
