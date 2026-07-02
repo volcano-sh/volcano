@@ -1712,6 +1712,19 @@ func (sc *SchedulerCache) updateJobAnnotations(job *schedulingapi.JobInfo) {
 	defer sc.Mutex.Unlock()
 
 	if jobInCache, ok := sc.Jobs[job.UID]; ok {
+		if jobInCache.PodGroup == nil {
+			klog.Warningf("Failed to update job annotations: PodGroup is nil for job %s/%s", jobInCache.Namespace, jobInCache.Name)
+			return
+		}
+
+		if job.PodGroup == nil {
+			klog.Warningf("Failed to update job annotations: PodGroup is nil for job %s/%s", job.Namespace, job.Name)
+			return
+		}
+
+		if jobInCache.PodGroup.GetAnnotations() == nil {
+			jobInCache.PodGroup.SetAnnotations(map[string]string{})
+		}
 		jobInCache.PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode] = job.PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode]
 	}
 }
