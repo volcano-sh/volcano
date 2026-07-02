@@ -576,7 +576,7 @@ func (ji *JobInfo) ParseMinMemberInfo(pg *PodGroup) {
 
 // GetMinResources return the min resources of podgroup.
 func (ji *JobInfo) GetMinResources() *Resource {
-	if ji.PodGroup.Spec.MinResources == nil {
+	if ji.PodGroup == nil || ji.PodGroup.Spec.MinResources == nil {
 		return EmptyResource()
 	}
 
@@ -715,7 +715,12 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Allocated:      EmptyResource(),
 		TotalRequest:   EmptyResource(),
 
-		PodGroup: ji.PodGroup.Clone(),
+		PodGroup: func() *PodGroup {
+			if ji.PodGroup != nil {
+				return ji.PodGroup.Clone()
+			}
+			return nil
+		}(),
 
 		TaskStatusIndex:       map[TaskStatus]TasksMap{},
 		TaskMinAvailable:      make(map[string]int32, len(ji.TaskMinAvailable)),
@@ -723,12 +728,19 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Tasks:                 TasksMap{},
 		Preemptable:           ji.Preemptable,
 		RevocableZone:         ji.RevocableZone,
-		Budget:                ji.Budget.Clone(),
-		AllocatedHyperNode:    ji.AllocatedHyperNode,
-		NetworkTopology:       cloneNetworkTopology(ji.NetworkTopology),
-		SubJobs:               map[SubJobID]*SubJobInfo{},
-		TaskToSubJob:          map[TaskID]SubJobID{},
-		MinSubJobs:            maps.Clone(ji.MinSubJobs),
+
+		Budget: func() *DisruptionBudget {
+			if ji.Budget != nil {
+				return ji.Budget.Clone()
+			}
+			return nil
+		}(),
+
+		AllocatedHyperNode: ji.AllocatedHyperNode,
+		NetworkTopology:    cloneNetworkTopology(ji.NetworkTopology),
+		SubJobs:            map[SubJobID]*SubJobInfo{},
+		TaskToSubJob:       map[TaskID]SubJobID{},
+		MinSubJobs:         maps.Clone(ji.MinSubJobs),
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
@@ -761,8 +773,8 @@ func (ji JobInfo) String() string {
 		i++
 	}
 
-	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v, preemptable %+v, revocableZone %+v, minAvailable %+v, maxAvailable %+v",
-		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.RevocableZone, ji.Budget.MinAvailable, ji.Budget.MaxUnavailable) + res
+	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v, preemptable %+v, revocableZone %+v, budget %+v",
+		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.RevocableZone, ji.Budget) + res
 }
 
 // FitError returns detailed information on why a job's task failed to fit on
