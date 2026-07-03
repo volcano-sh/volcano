@@ -71,8 +71,16 @@ type NodeOrderPlugin struct {
 	pluginArguments       framework.Arguments
 	weight                priorityWeight
 	Handle                fwk.Handle
-	ScorePlugins          map[string]nodescore.BaseScorePlugin
+	ScorePlugins          map[string]scorePluginEntry
 	NodeOrderScorePlugins map[string]ScorePluginWithWeight
+}
+
+// scorePluginEntry contains a plugin that has both PreScore and Score extension points.
+// If all score plugins support PreScore in the future, ScorePluginWithWeight can be replaced by scorePluginEntry.
+type scorePluginEntry struct {
+	plugin     nodescore.BaseScorePlugin
+	normalizer fwk.ScoreExtensions // If the plugin implements ScoreExtensions, normalizer is the plugin itself; otherwise, it can be EmptyNormalizer.
+	weight     int
 }
 
 type ScorePluginWithWeight struct {
@@ -186,14 +194,14 @@ func (pp *NodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		return pp.NodeOrderFn(task, node, nodeInfo, state)
 	})
 
-	ssn.AddBatchNodeOrderFn(pp.Name(), func(task *api.TaskInfo, nodeInfo []*api.NodeInfo) (map[string]float64, error) {
+	ssn.AddBatchNodeOrderFn(pp.Name(), func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
 		state := k8sframework.NewCycleState()
-		return pp.BatchNodeOrderFn(task, nodeInfo, state)
+		return pp.BatchNodeOrderFn(task, nodes, nodeMap, state)
 	})
 }
 
 func (pp *NodeOrderPlugin) InitPlugin() {
-	scorePlugins := map[string]nodescore.BaseScorePlugin{}
+	scorePlugins := map[string]scorePluginEntry{}
 	nodeOrderScorePlugins := map[string]ScorePluginWithWeight{}
 
 	fts := feature.Features{
@@ -211,7 +219,11 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 		}
 		if p, err := noderesources.NewFit(context.TODO(), leastAllocatedArgs, pp.Handle, fts); err == nil {
 			leastAllocated := p.(*noderesources.Fit)
-			nodeOrderScorePlugins[leastAllocated.Name()+"_LeastAllocated"] = ScorePluginWithWeight{leastAllocated, pp.weight.leastReqWeight}
+			scorePlugins[leastAllocated.Name()+"_LeastAllocated"] = scorePluginEntry{
+				plugin:     leastAllocated,
+				normalizer: &nodescore.EmptyNormalizer{},
+				weight:     pp.weight.leastReqWeight,
+			}
 		} else {
 			klog.Errorf("Failed to init Least Allocated plugin %v", err)
 		}
@@ -227,7 +239,11 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 		}
 		if p, err := noderesources.NewFit(context.TODO(), mostAllocatedArgs, pp.Handle, fts); err == nil {
 			mostAllocation := p.(*noderesources.Fit)
-			nodeOrderScorePlugins[mostAllocation.Name()+"_MostAllocated"] = ScorePluginWithWeight{mostAllocation, pp.weight.mostReqWeight}
+			scorePlugins[mostAllocation.Name()+"_MostAllocated"] = scorePluginEntry{
+				plugin:     mostAllocation,
+				normalizer: &nodescore.EmptyNormalizer{},
+				weight:     pp.weight.mostReqWeight,
+			}
 		} else {
 			klog.Errorf("Failed to init Most Allocated plugin %v", err)
 		}
@@ -244,7 +260,11 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 		}
 		if p, err := noderesources.NewBalancedAllocation(context.TODO(), blArgs, pp.Handle, fts); err == nil {
 			balancedAllocation := p.(*noderesources.BalancedAllocation)
-			nodeOrderScorePlugins[balancedAllocation.Name()] = ScorePluginWithWeight{balancedAllocation, pp.weight.balancedResourceWeight}
+			scorePlugins[balancedAllocation.Name()] = scorePluginEntry{
+				plugin:     balancedAllocation,
+				normalizer: &nodescore.EmptyNormalizer{},
+				weight:     pp.weight.balancedResourceWeight,
+			}
 		} else {
 			klog.Errorf("Failed to init Balanced Resource Allocation plugin %v", err)
 		}
@@ -257,7 +277,11 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 		}
 		if p, err := nodeaffinity.New(context.TODO(), naArgs, pp.Handle, fts); err == nil {
 			nodeAffinity := p.(*nodeaffinity.NodeAffinity)
-			nodeOrderScorePlugins[nodeAffinity.Name()] = ScorePluginWithWeight{nodeAffinity, pp.weight.nodeAffinityWeight}
+			scorePlugins[nodeAffinity.Name()] = scorePluginEntry{
+				plugin:     nodeAffinity,
+				normalizer: nodeAffinity,
+				weight:     pp.weight.nodeAffinityWeight,
+			}
 		} else {
 			klog.Errorf("Failed to init Node Affinity plugin %v", err)
 		}
@@ -278,7 +302,11 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 		plArgs := &config.InterPodAffinityArgs{}
 		if p, err := interpodaffinity.New(context.TODO(), plArgs, pp.Handle, fts); err == nil {
 			interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
-			scorePlugins[interpodaffinity.Name] = interPodAffinity
+			scorePlugins[interpodaffinity.Name] = scorePluginEntry{
+				plugin:     interPodAffinity,
+				normalizer: interPodAffinity,
+				weight:     pp.weight.podAffinityWeight,
+			}
 		} else {
 			klog.Errorf("Failed to init InterPodAffinity plugin %v", err)
 		}
@@ -288,7 +316,11 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 	if pp.weight.taintTolerationWeight != 0 {
 		if p, err := tainttoleration.New(context.TODO(), nil, pp.Handle, fts); err == nil {
 			taintToleration := p.(*tainttoleration.TaintToleration)
-			scorePlugins[tainttoleration.Name] = taintToleration
+			scorePlugins[tainttoleration.Name] = scorePluginEntry{
+				plugin:     taintToleration,
+				normalizer: taintToleration,
+				weight:     pp.weight.taintTolerationWeight,
+			}
 		} else {
 			klog.Errorf("Failed to init TaintToleration plugin %v", err)
 		}
@@ -301,7 +333,11 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 		}
 		if p, err := podtopologyspread.New(context.TODO(), ptsArgs, pp.Handle, fts); err == nil {
 			podTopologySpread := p.(*podtopologyspread.PodTopologySpread)
-			scorePlugins[podtopologyspread.Name] = podTopologySpread
+			scorePlugins[podtopologyspread.Name] = scorePluginEntry{
+				plugin:     podTopologySpread,
+				normalizer: podTopologySpread,
+				weight:     pp.weight.podTopologySpreadWeight,
+			}
 		} else {
 			klog.Errorf("Failed to init PodTopologySpread plugin %v", err)
 		}
@@ -329,91 +365,23 @@ func (pp *NodeOrderPlugin) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo, k
 	return nodeScore, nil
 }
 
-func (pp *NodeOrderPlugin) BatchNodeOrderFn(task *api.TaskInfo, nodeInfo []*api.NodeInfo, state *k8sframework.CycleState) (map[string]float64, error) {
-	nodeInfos := make([]fwk.NodeInfo, 0, len(nodeInfo))
-	nodes := make([]*v1.Node, 0, len(nodeInfo))
-	for _, node := range nodeInfo {
-		newNodeInfo := &k8sframework.NodeInfo{}
-		newNodeInfo.SetNode(node.Node)
-		nodeInfos = append(nodeInfos, newNodeInfo)
-		nodes = append(nodes, node.Node)
-	}
+// BatchNodeOrderFn scores all candidate nodes for the given task in one call.
+func (pp *NodeOrderPlugin) BatchNodeOrderFn(task *api.TaskInfo, nodes []*api.NodeInfo, nodeMap map[string]fwk.NodeInfo, state *k8sframework.CycleState) (map[string]float64, error) {
+	nodeInfos := nodescore.NodeInfosForCandidateNodes(nodes, nodeMap)
 	nodeScores := make(map[string]float64, len(nodes))
 
-	var podAffinityScores map[string]float64
-	var err error
-	if pp.ScorePlugins[interpodaffinity.Name] != nil {
-		podAffinityScores, err = interPodAffinityScore(pp.ScorePlugins[interpodaffinity.Name].(*interpodaffinity.InterPodAffinity), state, task.Pod, nodeInfos, pp.weight.podAffinityWeight)
+	for name, entry := range pp.ScorePlugins {
+		scores, err := nodescore.CalculatePluginScore(name, entry.plugin, entry.normalizer, state, task.Pod, nodeInfos, entry.weight)
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	var nodeTolerationScores map[string]float64
-	if pp.ScorePlugins[tainttoleration.Name] != nil {
-		nodeTolerationScores, err = taintTolerationScore(pp.ScorePlugins[tainttoleration.Name].(*tainttoleration.TaintToleration), state, task.Pod, nodeInfos, pp.weight.taintTolerationWeight)
-		if err != nil {
-			return nil, err
+		for n, s := range scores {
+			nodeScores[n] += s
 		}
-	}
-
-	var podTopologySpreadScores map[string]float64
-	if pp.ScorePlugins[podtopologyspread.Name] != nil {
-		podTopologySpreadScores, err = podTopologySpreadScore(pp.ScorePlugins[podtopologyspread.Name].(*podtopologyspread.PodTopologySpread), state, task.Pod, nodeInfos, pp.weight.podTopologySpreadWeight)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	for _, node := range nodes {
-		score := 0.0
-		if podAffinityScores != nil {
-			score += podAffinityScores[node.Name]
-		}
-		if nodeTolerationScores != nil {
-			score += nodeTolerationScores[node.Name]
-		}
-		if podTopologySpreadScores != nil {
-			score += podTopologySpreadScores[node.Name]
-		}
-		nodeScores[node.Name] = score
 	}
 
 	klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)
 	return nodeScores, nil
-}
-
-func interPodAffinityScore(
-	interPodAffinity *interpodaffinity.InterPodAffinity,
-	state fwk.CycleState,
-	pod *v1.Pod,
-	nodeInfos []fwk.NodeInfo,
-	podAffinityWeight int,
-) (map[string]float64, error) {
-	return nodescore.CalculatePluginScore(interPodAffinity.Name(), interPodAffinity, interPodAffinity,
-		state, pod, nodeInfos, podAffinityWeight)
-}
-
-func taintTolerationScore(
-	taintToleration *tainttoleration.TaintToleration,
-	cycleState fwk.CycleState,
-	pod *v1.Pod,
-	nodeInfos []fwk.NodeInfo,
-	taintTolerationWeight int,
-) (map[string]float64, error) {
-	return nodescore.CalculatePluginScore(taintToleration.Name(), taintToleration, taintToleration,
-		cycleState, pod, nodeInfos, taintTolerationWeight)
-}
-
-func podTopologySpreadScore(
-	podTopologySpread *podtopologyspread.PodTopologySpread,
-	cycleState fwk.CycleState,
-	pod *v1.Pod,
-	nodeInfos []fwk.NodeInfo,
-	podTopologySpreadWeight int,
-) (map[string]float64, error) {
-	return nodescore.CalculatePluginScore(podTopologySpread.Name(), podTopologySpread, podTopologySpread,
-		cycleState, pod, nodeInfos, podTopologySpreadWeight)
 }
 
 func (pp *NodeOrderPlugin) OnSessionClose(ssn *framework.Session) {
