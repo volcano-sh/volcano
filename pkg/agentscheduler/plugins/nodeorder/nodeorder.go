@@ -64,7 +64,7 @@ func (np *nodeOrderPlugin) OnPluginInit(fwk *framework.Framework) {
 
 	fwk.AddBatchNodeOrderFn(np.Name(), func(task *api.TaskInfo, nodeInfo []*api.NodeInfo) (map[string]float64, error) {
 		state := k8sframework.NewCycleState()
-		return np.BatchNodeOrderFn(task, nodeInfo, state)
+		return np.BatchNodeOrderFn(task, nodeInfo, fwk.GetSnapshot().GetFwkNodeInfoMap(), state)
 	})
 }
 

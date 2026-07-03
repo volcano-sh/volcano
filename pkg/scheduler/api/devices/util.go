@@ -67,17 +67,22 @@ const (
 	Skip
 )
 
-var kubeClient *kubernetes.Clientset
+var kubeClient kubernetes.Interface
 
 func GetClient() kubernetes.Interface {
-	var err error
 	if kubeClient == nil {
-		kubeClient, err = NewClient()
+		client, err := NewClient()
 		if err != nil {
 			klog.ErrorS(err, "deviceshare initClient failed")
+		} else {
+			kubeClient = client
 		}
 	}
 	return kubeClient
+}
+
+func SetClient(client kubernetes.Interface) {
+	kubeClient = client
 }
 
 // NewClient connects to an API server
