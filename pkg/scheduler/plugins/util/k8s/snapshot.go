@@ -137,6 +137,7 @@ func (s *Snapshot) addOrUpdateNode(nodeInfo *api.NodeInfo) {
 	// Create k8s NodeInfo from vcNodeInfo
 	fwkNodeInfo := framework.NewNodeInfo(volcanoNodeInfo.Pods()...)
 	fwkNodeInfo.SetNode(volcanoNodeInfo.Node)
+	fwkNodeInfo.ImageStates = volcanoNodeInfo.CloneImageSummary()
 
 	idx, exists := s.nodeNameToIndex[nodeName]
 	if exists {
