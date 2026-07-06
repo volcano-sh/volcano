@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -51,6 +51,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&PodGroupList{},
 		&Queue{},
 		&QueueList{},
+		&NamespaceQueue{},
+		&NamespaceQueueList{},
 	)
 
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)

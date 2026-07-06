@@ -78,6 +78,14 @@ type NamespaceQueue struct {
 
 `NamespaceQueueSpec` defines the desired state of a `NamespaceQueue`.
 
+The optional `state` field is the desired lifecycle state. It accepts
+`Open` and `Closed`; `Closing` is controller-observed state and cannot be
+requested directly. An omitted value is treated as `Open` for compatibility
+with objects created before the field was introduced. The controller reports
+the observed lifecycle in `status.state` and transitions a requested `Closed`
+queue through `Closing` until workload counters and scheduler-owned runtime
+resources are drained.
+
 
 ```go
 // NamespaceQueueSpec defines the desired state of a NamespaceQueue.
@@ -123,6 +131,14 @@ type NamespaceQueueSpec struct {
 	// +kubebuilder:default:=traverse
 	// +kubebuilder:validation:Enum=fifo;traverse
 	DequeueStrategy DequeueStrategy `json:"dequeueStrategy,omitempty"`
+
+	// State specifies the desired lifecycle state. Closing is an observed
+	// state and cannot be requested directly.
+	//
+	// +optional
+	// +kubebuilder:default:=Open
+	// +kubebuilder:validation:Enum=Open;Closed
+	State QueueState `json:"state,omitempty"`
 }
 ```
 
@@ -364,6 +380,8 @@ When authorization is restored, the controller revalidates the complete subtree.
 
 Changes to a cluster parent, local parent, or sibling that affect authorization, hierarchy, or resource constraints requeue the affected subtree. A NamespaceQueue with a missing parent remains persisted with `Ready=False` and is reconsidered when the parent becomes available.
 
+NamespaceQueue hierarchy depth is configured independently from the existing cluster Queue depth limit. The first NamespaceQueue attached to a cluster Queue has depth one; each NamespaceQueue parent adds one level. Cluster Queue ancestors are not included. The controller and admission webhook receive the same `--max-namespacequeue-depth` value and apply the same counting rule.
+
 #### 3.4.3 Dynamic Validation and Resource Constraints
 
 A NamespaceQueue fails dynamic validation if any of the following conditions apply:
@@ -449,7 +467,9 @@ root
 
 #### 3.4.5 Lifecycle, Status, and Deletion
 
-The Controller initializes each NamespaceQueue in `Open` state and sets `Ready=True` only after parent, authorization, hierarchy, resource, and plugin checks pass. Explicit close operations set `State=Closing` and `Ready=False`; closed queues do not admit or schedule new workloads, while running workloads are not forcefully evicted.
+The Controller treats an omitted `spec.state` as `Open` and initializes each NamespaceQueue in `Open` state. Setting `spec.state=Closed` initiates a declarative close operation: the observed status transitions to `Closing` while active workloads or scheduler-owned runtime resources remain, and to `Closed` after the queue is drained. Setting `spec.state=Open` reopens the queue after the normal parent, authorization, hierarchy, resource, and plugin checks pass. `Closing` is an observed state and cannot be requested directly.
+
+When `spec.state` is `Closed`, the queue is immediately ineligible for new admission and scheduling as soon as consumers observe the desired state; the controller also sets `Ready=False`. Running workloads are not forcefully evicted, and pending workloads are preserved but are not scheduled.
 
 Authorization state and lifecycle state are independent. If the Controller observes an authorization failure despite admission protection, it updates `Authorized` and `Ready` without changing `status.state`.
 
@@ -542,6 +562,37 @@ Job, PodGroup, and the existing `scheduling.volcano.sh/queue-name` annotation us
 
 The webhook validates the reference grammar and performs a best-effort existence and authorization check. The Scheduler repeats resolution and performs the authoritative readiness check at the scheduling boundary. The workload API schema must accept both `<name>` and `namespace/<name>` forms, and malformed or cross-namespace references must be rejected.
 
-## 4. Open Questions
+## 4. Optimization Roadmap
 
-- Whether deletion protection requires a controller finalizer in addition to admission-time validation.
+The initial implementation keeps the existing Volcano mechanisms: a
+namespaced `NamespaceQueue` CRD, the NamespaceQueue controller, the shared
+`QueueInfo` scheduler model, and the scheduler as the final readiness gate.
+The following optimizations are intentionally separated from the core API and
+are applied incrementally.
+
+### 5.1 Implemented in the initial controller hardening
+
+- A NamespaceQueue parent can change only after the old queue is `Closed` and
+  fully drained. Equivalent references, such as an empty parent and
+  `cluster/default`, are treated as the same parent.
+- Feature Gate disablement keeps the existing NamespaceQueue controller in
+  cleanup-only mode so deleting objects can release their finalizers.
+- Changes to a NamespaceQueue, its parent, or its cluster Queue requeue the
+  affected old and new subtrees through informer indexes.
+- DeletionTimestamp transitions are queued immediately.
+- `Authorized` and `Ready` condition changes emit Events only when their
+  status, reason, or message changes.
+
+### 5.2 Next-stage validation and optimization
+
+The following items require cluster-level verification and remain outside the
+current implementation:
+
+- NamespaceQueue E2E coverage for authorization, hierarchy, parent changes,
+  close-and-drain, deletion, scheduler accounting, and Feature Gate rollback.
+- Controller readiness reporting when informer cache synchronization fails.
+- Metrics and load testing for descendant propagation and high-frequency
+  PodGroup updates before adding event batching.
+- Evaluation of a selector-based authorization API or a richer stop policy.
+  These are not part of the current compatibility contract and should not be
+  introduced without a separate API proposal.

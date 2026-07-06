@@ -1,5 +1,5 @@
 /*
- Copyright 2023 The Volcano Authors.
+ Copyright 2026 The Volcano Authors.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -53,6 +53,10 @@ const (
 	// capacity, preventing cluster autoscalers from triggering unnecessary
 	// scale-ups for pods that are simply waiting for queue admission.
 	SchedulingGatesQueueAdmission featuregate.Feature = "SchedulingGatesQueueAdmission"
+
+	// NamespaceQueue enables namespace-scoped queues and namespace-first
+	// PodGroup queue resolution.
+	NamespaceQueue featuregate.Feature = "NamespaceQueue"
 )
 
 func init() {
@@ -60,6 +64,7 @@ func init() {
 }
 
 var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
+	NamespaceQueue:              {Default: false, PreRelease: featuregate.Alpha},
 	WorkLoadSupport:             {Default: true, PreRelease: featuregate.Alpha},
 	VolcanoJobSupport:           {Default: true, PreRelease: featuregate.Alpha},
 	PodDisruptionBudgetsSupport: {Default: true, PreRelease: featuregate.Alpha},
