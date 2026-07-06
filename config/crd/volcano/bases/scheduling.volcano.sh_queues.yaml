@@ -82,6 +82,21 @@ spec:
                         type: array
                     type: object
                 type: object
+              allowedNamespaces:
+                description: |-
+                  AllowedNamespaces lists the namespaces whose NamespaceQueues may use
+                  this Queue as their cluster-scoped parent.
+                  An empty or omitted list denies attachment.
+                  The literal "*" allows all namespaces and must be the only entry when present.
+                items:
+                  maxLength: 63
+                  pattern: ^(\*|[a-z0-9]([-a-z0-9]*[a-z0-9])?)$
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
+                x-kubernetes-validations:
+                - message: the wildcard '*' must be the only entry
+                  rule: '!self.exists(x, x == ''*'') || size(self) == 1'
               capability:
                 additionalProperties:
                   anyOf:

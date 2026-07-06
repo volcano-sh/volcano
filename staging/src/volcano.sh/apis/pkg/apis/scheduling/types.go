@@ -333,6 +333,91 @@ type Queue struct {
 	Status QueueStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// NamespaceQueue is a namespace-scoped queue abstraction in Volcano scheduling.
+type NamespaceQueue struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	// +optional
+	Spec NamespaceQueueSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+
+	// +optional
+	Status NamespaceQueueStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
+}
+
+// NamespaceQueueSpec represents the desired behavior of NamespaceQueue.
+type NamespaceQueueSpec struct {
+	// Parent can be a cluster Queue or another NamespaceQueue in the same namespace.
+	// "cluster/<name>" refers to a cluster-scoped Queue.
+	// An unprefixed value refers to a NamespaceQueue in the same namespace.
+	Parent string `json:"parent,omitempty" protobuf:"bytes,1,opt,name=parent"`
+
+	// +optional
+	Capability v1.ResourceList `json:"capability,omitempty" protobuf:"bytes,3,opt,name=capability"`
+
+	// +optional
+	Reclaimable *bool `json:"reclaimable,omitempty" protobuf:"bytes,5,opt,name=reclaimable"`
+
+	// +optional
+	Guarantee Guarantee `json:"guarantee,omitempty" protobuf:"bytes,4,opt,name=guarantee"`
+
+	// +optional
+	Deserved v1.ResourceList `json:"deserved,omitempty" protobuf:"bytes,7,opt,name=deserved"`
+
+	// +optional
+	Priority int32 `json:"priority,omitempty" protobuf:"varint,8,opt,name=priority"`
+
+	// +optional
+	DequeueStrategy DequeueStrategy `json:"dequeueStrategy,omitempty" protobuf:"bytes,9,opt,name=dequeueStrategy"`
+}
+
+// NamespaceQueueStatus represents the current status of NamespaceQueue.
+type NamespaceQueueStatus struct {
+	// +optional
+	State QueueState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state"`
+
+	// +optional
+	Unknown int32 `json:"unknown,omitempty" protobuf:"varint,2,opt,name=unknown"`
+
+	// +optional
+	Pending int32 `json:"pending,omitempty" protobuf:"varint,3,opt,name=pending"`
+
+	// +optional
+	Running int32 `json:"running,omitempty" protobuf:"varint,4,opt,name=running"`
+
+	// +optional
+	Inqueue int32 `json:"inqueue,omitempty" protobuf:"varint,5,opt,name=inqueue"`
+
+	// +optional
+	Completed int32 `json:"completed,omitempty" protobuf:"varint,6,opt,name=completed"`
+
+	// +optional
+	Reservation Reservation `json:"reservation,omitempty" protobuf:"bytes,7,opt,name=reservation"`
+
+	// +optional
+	Allocated v1.ResourceList `json:"allocated,omitempty" protobuf:"bytes,8,opt,name=allocated"`
+
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty" protobuf:"bytes,9,rep,name=conditions"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// NamespaceQueueList is a collection of namespace queues.
+type NamespaceQueueList struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// +optional
+	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	Items []NamespaceQueue `json:"items" protobuf:"bytes,2,rep,name=items"`
+}
+
 // Guarantee represents configuration of queue resource reservation
 type Guarantee struct {
 	// The amount of cluster resource reserved for queue. Just set either `percentage` or `resource`
@@ -451,6 +536,11 @@ type QueueSpec struct {
 	// DequeueStrategy defines the dequeue strategy of queue
 	// +optional
 	DequeueStrategy DequeueStrategy `json:"dequeueStrategy,omitempty" protobuf:"bytes,11,opt,name=dequeueStrategy"`
+
+	// AllowedNamespaces lists the namespaces whose NamespaceQueues are permitted
+	// to set this Queue as their spec.parent. Empty means deny by default.
+	// +optional
+	AllowedNamespaces []string `json:"allowedNamespaces,omitempty" protobuf:"bytes,12,rep,name=allowedNamespaces"`
 }
 
 type DequeueStrategy string
