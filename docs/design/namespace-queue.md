@@ -78,6 +78,12 @@ type NamespaceQueue struct {
 
 `NamespaceQueueSpec` defines the desired state of a `NamespaceQueue`.
 
+The controller reports the observed lifecycle in `status.state`. A queue is
+open for scheduling after its parent authorization and readiness conditions
+are true. When a queue is deleted, the controller transitions it through
+`Closing` until workload counters and scheduler-owned runtime resources are
+drained.
+
 
 ```go
 // NamespaceQueueSpec defines the desired state of a NamespaceQueue.
@@ -123,6 +129,7 @@ type NamespaceQueueSpec struct {
 	// +kubebuilder:default:=traverse
 	// +kubebuilder:validation:Enum=fifo;traverse
 	DequeueStrategy DequeueStrategy `json:"dequeueStrategy,omitempty"`
+
 }
 ```
 
@@ -195,7 +202,16 @@ type QueueSpec struct {
 }
 ```
 
-An empty or omitted list denies NamespaceQueue attachment. A literal `*` allows NamespaceQueues from every namespace and must not be combined with namespace names. Each non-wildcard entry must be a valid Kubernetes namespace name. Regular-expression and other pattern matching are out of scope for this design. The cluster-scoped `default` Queue is initialized with `allowedNamespaces: ["*"]`, so it permits NamespaceQueue attachment from all namespaces by default.
+An empty or omitted list denies NamespaceQueue attachment. A literal `*` allows NamespaceQueues from every namespace and must not be combined with namespace names. Each non-wildcard entry must be a valid Kubernetes namespace name. Regular-expression and other pattern matching are out of scope for this design. A newly created cluster-scoped `default` Queue is initialized with `allowedNamespaces: ["*"]` when the NamespaceQueue feature gate is enabled. Existing Queue objects are not modified automatically by the scheduler.
+
+When upgrading from a Volcano version without NamespaceQueue support, an existing `default` Queue may not contain `spec.allowedNamespaces`. The scheduler preserves that existing configuration. If the administrator wants NamespaceQueues to use `cluster/default`, the administrator must explicitly configure the authorization:
+
+```bash
+kubectl patch queue default --type=merge \\
+  -p '{"spec":{"allowedNamespaces":["*"]}}'
+```
+
+An administrator may authorize only selected namespaces by listing them in `allowedNamespaces`. An empty or omitted list remains a deny-all policy.
 
 For example:
 
@@ -212,7 +228,7 @@ spec:
 
 A NamespaceQueue in `team-a` may use `cluster/research` as its parent, while a NamespaceQueue in `team-c` may not unless `team-c` is listed in `research.spec.allowedNamespaces`. A Queue with `allowedNamespaces: ["*"]`, including the initialized `cluster/default` Queue, permits attachment from any namespace.
 
-A NamespaceQueue has a cluster-scoped effective parent when its `spec.parent` resolves to `cluster/<queue-name>`. An update to `Queue.spec.allowedNamespaces` must be rejected if the resulting value would make an existing NamespaceQueue with that effective parent unauthorized. An administrator must first update each affected NamespaceQueue to use another valid parent, or close it and allow its admitted workloads to complete, before removing the namespace from `allowedNamespaces`.
+A NamespaceQueue has a cluster-scoped effective parent when its `spec.parent` resolves to `cluster/<queue-name>`. An update to `Queue.spec.allowedNamespaces` must be rejected if the resulting value would make an existing NamespaceQueue with that effective parent unauthorized. An administrator must first update each affected NamespaceQueue to use another valid parent before removing the namespace from `allowedNamespaces`.
 
 #### 3.2.6 NamespaceQueueStatus
 
@@ -364,6 +380,8 @@ When authorization is restored, the controller revalidates the complete subtree.
 
 Changes to a cluster parent, local parent, or sibling that affect authorization, hierarchy, or resource constraints requeue the affected subtree. A NamespaceQueue with a missing parent remains persisted with `Ready=False` and is reconsidered when the parent becomes available.
 
+NamespaceQueue hierarchy depth is configured independently from the existing cluster Queue depth limit. The first NamespaceQueue attached to a cluster Queue has depth one; each NamespaceQueue parent adds one level. Cluster Queue ancestors are not included. The controller and admission webhook receive the same `--max-namespacequeue-depth` value and apply the same counting rule.
+
 #### 3.4.3 Dynamic Validation and Resource Constraints
 
 A NamespaceQueue fails dynamic validation if any of the following conditions apply:
@@ -449,13 +467,13 @@ root
 
 #### 3.4.5 Lifecycle, Status, and Deletion
 
-The Controller initializes each NamespaceQueue in `Open` state and sets `Ready=True` only after parent, authorization, hierarchy, resource, and plugin checks pass. Explicit close operations set `State=Closing` and `Ready=False`; closed queues do not admit or schedule new workloads, while running workloads are not forcefully evicted.
+NamespaceQueues are open for scheduling when their parent, authorization, hierarchy, resource, and readiness checks pass. The controller reports the observed lifecycle in `status.state`.
 
 Authorization state and lifecycle state are independent. If the Controller observes an authorization failure despite admission protection, it updates `Authorized` and `Ready` without changing `status.state`.
 
-To detach a namespace from a cluster-scoped Queue, an administrator must first update each affected NamespaceQueue to use another valid parent, or close it and allow its admitted workloads to complete. The namespace may be removed from `allowedNamespaces` only after no existing NamespaceQueue with that effective parent would become unauthorized.
+To detach a namespace from a cluster-scoped Queue, an administrator must first update each affected NamespaceQueue to use another valid parent. The namespace may be removed from `allowedNamespaces` only after no existing NamespaceQueue with that effective parent would become unauthorized.
 
-When a NamespaceQueue is closing or closed, new workloads are not admitted and pending workloads are preserved but are not scheduled. Pending workloads may be reconsidered after the NamespaceQueue returns to an eligible state.
+When a NamespaceQueue is closing or closed, new workloads are not admitted and pending workloads are preserved but are not scheduled. A NamespaceQueue enters `Closing` when it is deleted and remains there until workloads and scheduler-owned runtime resources are drained, then transitions to `Closed` before its finalizer is removed.
 
 The Controller owns lifecycle state, conditions, and workload counters derived from PodGroups. The Scheduler owns runtime allocation and reservation fields. Both components update only their owned status fields.
 
@@ -542,6 +560,39 @@ Job, PodGroup, and the existing `scheduling.volcano.sh/queue-name` annotation us
 
 The webhook validates the reference grammar and performs a best-effort existence and authorization check. The Scheduler repeats resolution and performs the authoritative readiness check at the scheduling boundary. The workload API schema must accept both `<name>` and `namespace/<name>` forms, and malformed or cross-namespace references must be rejected.
 
-## 4. Open Questions
+## 4. Optimization Roadmap
 
-- Whether deletion protection requires a controller finalizer in addition to admission-time validation.
+The initial implementation keeps the existing Volcano mechanisms: a
+namespaced `NamespaceQueue` CRD, the NamespaceQueue controller, the shared
+`QueueInfo` scheduler model, and the scheduler as the final readiness gate.
+The following optimizations are intentionally separated from the core API and
+are applied incrementally.
+
+### 5.1 Implemented in the initial controller hardening
+
+- A NamespaceQueue parent can change only after the old queue is `Closed` and
+  fully drained. Equivalent references, such as an empty parent and
+  `cluster/default`, are treated as the same parent.
+- The NamespaceQueue feature gate controls controller startup. NamespaceQueue
+  resources must be closed, drained, deleted, and fully finalized before the
+  feature gate is disabled; the controller does not provide a cleanup-only
+  mode after disablement.
+- Changes to a NamespaceQueue, its parent, or its cluster Queue requeue the
+  affected old and new subtrees through informer indexes.
+- DeletionTimestamp transitions are queued immediately.
+- `Authorized` and `Ready` condition changes emit Events only when their
+  status, reason, or message changes.
+
+### 5.2 Next-stage validation and optimization
+
+The following items require cluster-level verification and remain outside the
+current implementation:
+
+- NamespaceQueue E2E coverage for authorization, hierarchy, parent changes,
+  close-and-drain, deletion, scheduler accounting, and Feature Gate rollback.
+- Controller readiness reporting when informer cache synchronization fails.
+- Metrics and load testing for descendant propagation and high-frequency
+  PodGroup updates before adding event batching.
+- Evaluation of a selector-based authorization API or a richer stop policy.
+  These are not part of the current compatibility contract and should not be
+  introduced without a separate API proposal.

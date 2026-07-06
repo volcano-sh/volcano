@@ -89,7 +89,7 @@ type JobSpec struct {
 	// Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
 	// +kubebuilder:default:="default"
 	// +kubebuilder:validation:MaxLength=253
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+	// +kubebuilder:validation:Pattern=`^(namespace/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	// +optional
 	Queue string `json:"queue,omitempty" protobuf:"bytes,8,opt,name=queue"`
 

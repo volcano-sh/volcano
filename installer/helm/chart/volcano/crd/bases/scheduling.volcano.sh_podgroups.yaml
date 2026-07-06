@@ -132,7 +132,7 @@ spec:
                   Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
                   the PodGroup will not be scheduled. Defaults to `default` Queue with the lowest weight.
                 maxLength: 253
-                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                pattern: ^(namespace/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               subGroupPolicy:
                 description: |-
