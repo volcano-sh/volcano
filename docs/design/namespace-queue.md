@@ -62,8 +62,9 @@ namespaces may reference the same cluster `Queue`, and a namespace may host
 - Replacing or wrapping the cluster-scoped `Queue`. `NamespaceQueue` is
   **additive**; the current model is unchanged for clusters that do not opt in.
 - Introducing new tenant-isolation semantics.
-- Changing the meaning of `guarantee`, `deserved`, or `capability`. This proposal
-  does **not** alter how resource fields are defined or interpreted today.
+- Changing the meaning of `guarantee`, `capability`, or `weight`. The fields
+  `NamespaceQueueSpec` carries over from `Queue` keep their current definition and
+  interpretation; this proposal does not alter existing resource semantics.
 
 ## User Stories
 
@@ -89,50 +90,116 @@ exactly as before if I don't enable this feature.
 
 ### The `NamespaceQueue` CRD
 
-`NamespaceQueue` is namespace-scoped and **reuses the existing `QueueSpec`**, so
-`weight`, `capability`, `guarantee`, `deserved`, `reclaimable`, `priority`,
-`dequeueStrategy`, and `parent` keep identical semantics. This directly satisfies
-the non-goal of not changing resource-field meaning.
+`NamespaceQueue` is namespace-scoped and defines its own **`NamespaceQueueSpec`** —
+a curated subset of the cluster `Queue` surface (`parent`, `weight`, `capability`,
+`guarantee`). Each reused field keeps the same meaning it has on `Queue` today; the
+fields not carried over (`deserved`, `reclaimable`, `priority`, `dequeueStrategy`)
+are intentionally out of the v1 surface.
+
+Access control is **not** a field on `NamespaceQueueSpec`. Whether a namespace may
+parent its queues under a given cluster `Queue` is governed by a new
+`allowedNamespaces` field on the cluster `Queue` itself (see
+[Parent-queue ownership enforcement](#parent-queue-ownership-enforcement) below) —
+the authorization must be owned by the admin who owns the `Queue`, not declared by
+the tenant who is requesting to bind to it.
 
 ```go
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,shortName=nq
+// +kubebuilder:resource:path=namespacequeues,scope=Namespaced,shortName=nq
 
-// NamespaceQueue is the namespace-scoped counterpart of Queue.
+// NamespaceQueue is a namespace-scoped queue abstraction in Volcano scheduling.
 type NamespaceQueue struct {
     metav1.TypeMeta   `json:",inline"`
     metav1.ObjectMeta `json:"metadata,omitempty"`
 
-    // Spec reuses QueueSpec; spec.parent references either a NamespaceQueue in
-    // the same namespace or a cluster Queue (resolution is namespace-first).
-    Spec   QueueSpec            `json:"spec,omitempty"`
+    Spec   NamespaceQueueSpec   `json:"spec,omitempty"`
     Status NamespaceQueueStatus `json:"status,omitempty"`
+}
+
+type NamespaceQueueSpec struct {
+    // ===== 1. hierarchy (core) =====
+    // parent can be a cluster Queue or another NamespaceQueue
+    // (resolution is namespace-first).
+    Parent string `json:"parent"`
+
+    // ===== 2. scheduling policy =====
+    // queue weight used in fair sharing / DRF
+    Weight int32 `json:"weight,omitempty"`
+
+    // ===== 3. resource policy (optional) =====
+    // max resources this queue can use
+    Capability corev1.ResourceList `json:"capability,omitempty"`
+    // guaranteed resources
+    Guarantee corev1.ResourceList `json:"guarantee,omitempty"`
 }
 ```
 
-`NamespaceQueueStatus` extends the existing `QueueStatus` fields (State, the
-PodGroup counters, `Reservation`, `Allocated`) with a readiness gate the
-scheduler keys on:
+`NamespaceQueueStatus` is a purpose-built, trimmed status: a readiness gate the
+scheduler keys on, a human-readable failure reason, the scheduler-reported
+allocation, and the resolved child list for hierarchy introspection.
 
 ```go
 type NamespaceQueueStatus struct {
-    QueueStatus `json:",inline"`
+    // ===== 1. scheduler gate =====
+    // only Ready=true queues can enter the scheduling tree
+    Ready bool `json:"ready"`
 
-    // Ready reports whether cross-resource validation passed and the queue may
-    // enter the scheduler hierarchy tree. The scheduler ignores queues that are
-    // not Ready.
-    // +optional
-    Ready bool `json:"ready,omitempty"`
+    // failure reason for debugging (why the queue is not Ready)
+    Reason string `json:"reason,omitempty"`
 
-    // Conditions carries the validation result (parent existence, hierarchy
-    // validity, binding), so tenants can see *why* a queue is not Ready.
-    // +optional
-    Conditions []metav1.Condition `json:"conditions,omitempty"`
+    // ===== 2. runtime allocation =====
+    // actual allocated resources from the scheduler
+    Allocated corev1.ResourceList `json:"allocated,omitempty"`
+
 }
 ```
+
+### Parent-queue ownership enforcement
+
+Cluster `Queue`s are partitioned by cluster admins, who own the cluster-level
+quotas. Once tenants can freely set `NamespaceQueue.spec.parent`, nothing stops a
+tenant assigned to `queue-a` from creating a `NamespaceQueue` with
+`spec.parent: queue-b` and drawing from another team's slice. The authorization to
+attach under a cluster `Queue` must therefore live on the **`Queue`** side — owned
+by the admin who owns the `Queue` — never on the tenant-authored `NamespaceQueue`.
+
+We add a new field to the existing cluster **`QueueSpec`** (following the
+`AllowedRoutes` pattern from the Gateway API, where the infrastructure-owned
+`Gateway` — not the app-owned `Route` — declares which namespaces may attach):
+
+```go
+// QueueSpec (cluster-scoped Queue) — new field
+type QueueSpec struct {
+    // ... existing fields (weight, capability, deserved, guarantee, parent, ...)
+
+    // AllowedNamespaces lists the namespaces whose NamespaceQueues are permitted
+    // to set this Queue as their spec.parent. It is set by the cluster admin who
+    // owns this Queue. An empty/unset list means no namespace may parent under
+    // this Queue (deny by default), never "all namespaces".
+    // +optional
+    AllowedNamespaces []string `json:"allowedNamespaces,omitempty"`
+}
+```
+
+Enforcement happens in the `NamespaceQueue` **validating webhook** at admission:
+
+```
+On NamespaceQueue admit/update, if spec.parent resolves to a cluster Queue Q:
+    reject unless NamespaceQueue.metadata.namespace ∈ Q.spec.allowedNamespaces
+When spec.parent resolves to a same-namespace NamespaceQueue:
+    no cross-tenant check needed (both objects are tenant-owned in one namespace)
+```
+
+Because a tenant cannot edit the cluster-scoped `Queue` object (RBAC forbids it),
+a tenant cannot add its own namespace to `Q.spec.allowedNamespaces`, so it cannot
+grant itself access — the webhook denies `parent: queue-b` for an unlisted
+namespace. This is the concrete answer to the ownership question: the deny/allow
+decision is authored by the resource owner (admin) and merely *checked* against the
+requester (tenant). A future revision may replace the static list with a
+`namespaceSelector` for larger fleets.
 
 > `TODO(mentors)`: how should `spec.parent` distinguish "same-namespace
 > NamespaceQueue" from "cluster Queue"? Options:
@@ -200,13 +267,17 @@ A new controller under `pkg/controllers/namespacequeue/` mirrors
 `pkg/controllers/queue/` (controller + handler + state machine + actions):
 
 - **Cross-resource validation** reconciled into `status`: parent exists (same-ns
-  NamespaceQueue or cluster Queue), no cycles, child `deserved`/`guarantee` sums
-  ≤ parent, child `capability` ≤ parent — the same rules the capacity plugin
-  enforces, surfaced early. On success it sets `status.Ready = true` and a
-  `Validated` condition; on failure it sets `Ready = false` with a reason.
-- **Usage write-back**: watches `PodGroup`s in its namespace and populates the
-  inherited `QueueStatus` counters and `Allocated`, reusing the cluster queue
-  controller's logic.
+  NamespaceQueue or cluster Queue), no cycles, child `guarantee` sums ≤ parent,
+  child `capability` ≤ parent — the same rules the capacity plugin enforces,
+  surfaced early. (Parent-*ownership* — whether this namespace is allowed to
+  parent under the target cluster `Queue` — is enforced earlier, at admission, by
+  the validating webhook; see
+  [Parent-queue ownership enforcement](#parent-queue-ownership-enforcement).) On
+  success it sets `status.Ready = true`; on failure it sets `Ready = false` and
+  records `status.Reason`.
+- **Usage write-back**: watches `PodGroup`s in its namespace and populates
+  `status.Allocated`, reusing the cluster queue controller's allocation logic. It
+  also resolves and writes `status.Children` for hierarchy introspection.
 
 The scheduler continues to be the source of truth for the *global* tree; the
 controller provides fast, tenant-visible feedback and the readiness gate.
@@ -231,11 +302,17 @@ all apply unchanged to a mixed tree of cluster `Queue`s and `NamespaceQueue`s.
 
 - Validating/mutating webhooks for `NamespaceQueue` mirror
   `pkg/webhooks/admission/queues/` (basic spec checks + hierarchy annotation
-  prepend). Deep cross-resource validation lives in the controller/status, not
-  the webhook, to match how Volcano validates hierarchy today.
+  prepend). The webhook also enforces **parent-queue ownership**: when
+  `spec.parent` targets a cluster `Queue`, it rejects the object unless the
+  NamespaceQueue's namespace appears in that `Queue.spec.allowedNamespaces` (see
+  [Parent-queue ownership enforcement](#parent-queue-ownership-enforcement)).
+  Deeper cross-resource validation (cycles, resource sums) lives in the
+  controller/status, to match how Volcano validates hierarchy today.
 - A namespaced `Role` (+ optional aggregated `ClusterRole` label) grants tenants
   CRUD on `NamespaceQueue` in their own namespace — the concrete "no cluster
-  admin needed" mechanism.
+  admin needed" mechanism. Crucially, tenants get **no** write access to
+  cluster-scoped `Queue`, so they cannot edit `Queue.spec.allowedNamespaces` to
+  self-authorize.
 
 ## Feature gate
 
@@ -278,7 +355,11 @@ name-only against cluster `Queue`s, and the controller does not run.
 
 1. `spec.parent` disambiguation: convention (A) vs explicit `parentKind` (B).
 2. Mid-flight re-resolution when a shadowing NamespaceQueue appears.
-3. Whether `NamespaceQueueStatus` should embed `QueueStatus` or duplicate a
-   trimmed subset.
-4. RBAC packaging: ship a ready-made tenant `Role` in the Helm chart, or document
+3. `NamespaceQueueSpec` is a curated subset of `Queue` (`parent`, `weight`,
+   `capability`, `guarantee`) rather than a reuse of `QueueSpec`. Confirm the
+   dropped fields (`deserved`, `reclaimable`, `priority`, `dequeueStrategy`) are
+   acceptable to leave out of the v1 surface.
+4. `allowedNamespaces` model: is a static namespace list sufficient, or should it
+   support label selectors for larger multi-tenant fleets?
+5. RBAC packaging: ship a ready-made tenant `Role` in the Helm chart, or document
    only.
