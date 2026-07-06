@@ -531,14 +531,14 @@ func (sc *SchedulerCache) AddOrUpdateNode(node *v1.Node) error {
 	}
 	sc.addNodeImageStates(node, sc.Nodes[node.Name])
 
-	var nodeExisted bool
-	for _, name := range sc.NodeList {
-		if name == node.Name {
-			nodeExisted = true
-			break
+	if sc.nodeListIndex == nil {
+		sc.nodeListIndex = make(map[string]int, len(sc.NodeList)+1)
+		for i, name := range sc.NodeList {
+			sc.nodeListIndex[name] = i
 		}
 	}
-	if !nodeExisted {
+	if _, exists := sc.nodeListIndex[node.Name]; !exists {
+		sc.nodeListIndex[node.Name] = len(sc.NodeList)
 		sc.NodeList = append(sc.NodeList, node.Name)
 	}
 	return nil
@@ -549,11 +549,14 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	for i, name := range sc.NodeList {
-		if name == nodeName {
-			sc.NodeList = append(sc.NodeList[:i], sc.NodeList[i+1:]...)
-			break
+	if idx, exists := sc.nodeListIndex[nodeName]; exists {
+		last := len(sc.NodeList) - 1
+		if idx != last {
+			sc.NodeList[idx] = sc.NodeList[last]
+			sc.nodeListIndex[sc.NodeList[idx]] = idx
 		}
+		sc.NodeList = sc.NodeList[:last]
+		delete(sc.nodeListIndex, nodeName)
 	}
 	sc.removeNodeImageStates(nodeName)
 
