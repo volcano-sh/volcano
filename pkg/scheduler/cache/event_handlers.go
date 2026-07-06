@@ -549,12 +549,19 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
+	if sc.nodeListIndex == nil {
+		sc.nodeListIndex = make(map[string]int, len(sc.NodeList))
+		for i, name := range sc.NodeList {
+			sc.nodeListIndex[name] = i
+		}
+	}
 	if idx, exists := sc.nodeListIndex[nodeName]; exists {
 		last := len(sc.NodeList) - 1
 		if idx != last {
 			sc.NodeList[idx] = sc.NodeList[last]
 			sc.nodeListIndex[sc.NodeList[idx]] = idx
 		}
+		sc.NodeList[last] = ""
 		sc.NodeList = sc.NodeList[:last]
 		delete(sc.nodeListIndex, nodeName)
 	}

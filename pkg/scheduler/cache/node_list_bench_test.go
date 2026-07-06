@@ -37,35 +37,42 @@ func nodeName(i int) string {
 	return fmt.Sprintf("node-%04d", i)
 }
 
-func BenchmarkAddOrUpdateNode(b *testing.B) {
+// BenchmarkNodeListIndexAddOrUpdate measures only the NodeList/nodeListIndex membership
+// check and append path (no locking, no image states, no Nodes map writes).
+func BenchmarkNodeListIndexAddOrUpdate(b *testing.B) {
 	for _, n := range []int{100, 500, 2000} {
 		b.Run(fmt.Sprintf("nodes=%d", n), func(b *testing.B) {
-			nodes := make([]*nodeStub, n)
-			for i := range nodes {
-				nodes[i] = &nodeStub{name: nodeName(i)}
+			names := make([]string, n)
+			for i := range names {
+				names[i] = nodeName(i)
 			}
 			b.ResetTimer()
 			for iter := 0; iter < b.N; iter++ {
 				sc := makeCache(n)
-				for _, ns := range nodes {
-					sc.addOrUpdateNodeFast(ns.name)
+				for _, name := range names {
+					sc.addOrUpdateNodeFast(name)
 				}
 			}
 		})
 	}
 }
 
-func BenchmarkRemoveNode(b *testing.B) {
+// BenchmarkNodeListIndexRemove measures only the NodeList/nodeListIndex swap-delete path
+// (no locking, no NUMA cleanup). Setup is excluded from the timed region.
+func BenchmarkNodeListIndexRemove(b *testing.B) {
 	for _, n := range []int{100, 500, 2000} {
 		b.Run(fmt.Sprintf("nodes=%d", n), func(b *testing.B) {
 			b.ResetTimer()
 			for iter := 0; iter < b.N; iter++ {
+				b.StopTimer()
 				sc := makeCache(n)
 				for i := 0; i < n; i++ {
 					name := nodeName(i)
 					sc.nodeListIndex[name] = len(sc.NodeList)
 					sc.NodeList = append(sc.NodeList, name)
 				}
+				b.StartTimer()
+
 				for i := 0; i < n; i++ {
 					sc.removeNodeFast(nodeName(i))
 				}
@@ -73,8 +80,6 @@ func BenchmarkRemoveNode(b *testing.B) {
 		})
 	}
 }
-
-type nodeStub struct{ name string }
 
 // addOrUpdateNodeFast exercises only the NodeList/nodeListIndex logic (no locking, no image states).
 func (sc *SchedulerCache) addOrUpdateNodeFast(name string) {
@@ -92,6 +97,7 @@ func (sc *SchedulerCache) removeNodeFast(name string) {
 			sc.NodeList[idx] = sc.NodeList[last]
 			sc.nodeListIndex[sc.NodeList[idx]] = idx
 		}
+		sc.NodeList[last] = ""
 		sc.NodeList = sc.NodeList[:last]
 		delete(sc.nodeListIndex, name)
 	}
