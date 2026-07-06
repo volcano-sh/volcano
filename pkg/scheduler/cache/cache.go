@@ -1882,9 +1882,7 @@ func isPendingDRAResourceClaimError(err error) bool {
 func addDRAResource(dst map[string]*schedulingapi.DRAResource, deviceClass string, count int64, capacity map[string]resource.Quantity) {
 	if dst[deviceClass] == nil {
 		dst[deviceClass] = &schedulingapi.DRAResource{}
-		if len(capacity) > 0 {
-			dst[deviceClass].Capacity = make(map[string]resource.Quantity)
-		}
+		dst[deviceClass].Capacity = make(map[string]resource.Quantity)
 	}
 	dst[deviceClass].Count += count
 	for dim, reqQty := range capacity {

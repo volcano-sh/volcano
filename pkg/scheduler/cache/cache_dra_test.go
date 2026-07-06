@@ -89,7 +89,7 @@ func TestBuildTaskDRAResreq(t *testing.T) {
 				},
 			},
 			expectedResreq: map[string]*schedulingapi.DRAResource{
-				"gpu.com": {Count: 1},
+				"gpu.com": {Count: 1, Capacity: map[string]resource.Quantity{}},
 			},
 		},
 		{
@@ -138,7 +138,7 @@ func TestBuildTaskDRAResreq(t *testing.T) {
 				},
 			},
 			expectedResreq: map[string]*schedulingapi.DRAResource{
-				"gpu.com": {Count: 5},
+				"gpu.com": {Count: 5, Capacity: map[string]resource.Quantity{}},
 			},
 		},
 		{
@@ -219,8 +219,8 @@ func TestBuildTaskDRAResreq(t *testing.T) {
 				},
 			},
 			expectedResreq: map[string]*schedulingapi.DRAResource{
-				"gpu.com": {Count: 1},
-				"nic.com": {Count: 2},
+				"gpu.com": {Count: 1, Capacity: map[string]resource.Quantity{}},
+				"nic.com": {Count: 2, Capacity: map[string]resource.Quantity{}},
 			},
 		},
 		{
@@ -340,4 +340,166 @@ func TestAddPodWithUnresolvedResourceClaimTemplateCachesTaskForResync(t *testing
 
 func pointerString(s string) *string {
 	return &s
+}
+
+// TestAddDRAResourceNilCapacityOnly does not panic on a single call with
+// capacity=nil, since `for range nil map` is safe in Go.
+func TestAddDRAResourceNilCapacityOnly(t *testing.T) {
+	dst := make(map[string]*schedulingapi.DRAResource)
+	assert.NotPanics(t, func() {
+		addDRAResource(dst, "gpu.example.com", 5, nil)
+	})
+	if got := dst["gpu.example.com"]; got == nil || got.Count != 5 {
+		t.Fatalf("expected Count=5, got %+v", got)
+	}
+}
+
+// TestAddDRAResourceNilCapacityThenNonEmpty verifies that addDRAResource does not
+// panic when the same deviceClass is first added with capacity=nil  and then
+// added again with a non-empty capacity map.
+func TestAddDRAResourceNilCapacityThenNonEmpty(t *testing.T) {
+	dst := make(map[string]*schedulingapi.DRAResource)
+
+	// Same deviceClass and set capacity nil
+	addDRAResource(dst, "gpu.example.com", 2, nil)
+
+	first, ok := dst["gpu.example.com"]
+	if !ok {
+		t.Fatalf("expected entry for gpu.example.com after first call")
+	}
+	if first.Count != 2 {
+		t.Fatalf("expected Count=2 after first call, got %d", first.Count)
+	}
+
+	// Same deviceClass and set capacity 4Gi
+	memQty := resource.MustParse("4Gi")
+	secondCapacity := map[string]resource.Quantity{"memory": memQty}
+
+	assert.NotPanics(t, func() {
+		addDRAResource(dst, "gpu.example.com", 1, secondCapacity)
+	}, "addDRAResource must not panic when same deviceClass is added with nil capacity then non-nil capacity")
+
+	got, ok := dst["gpu.example.com"]
+	if !ok {
+		t.Fatalf("expected entry for gpu.example.com after second call")
+	}
+	if got.Count != 3 {
+		t.Errorf("expected Count=3 (2+1), got %d", got.Count)
+	}
+	// After both calls, Capacity must be non-nil and hold the second call's value.
+	if got.Capacity == nil {
+		t.Fatalf("expected Capacity map to be initialized after non-nil capacity call, got nil")
+	}
+	mem, ok := got.Capacity["memory"]
+	if !ok {
+		t.Fatalf("expected Capacity[\"memory\"] entry, got %v", got.Capacity)
+	}
+	if mem.Cmp(memQty) != 0 {
+		t.Errorf("expected memory=%s, got %s", memQty.String(), mem.String())
+	}
+}
+
+// TestBuildTaskDRAInfoMixedCapacityForSameDeviceClass verifies that the real
+// call path through buildTaskDRAInfo does not panic when a single
+// ResourceClaim has two DeviceRequests using the same deviceClass but with
+// different capacity settings (only one of them declares capacity).
+func TestBuildTaskDRAInfoMixedCapacityForSameDeviceClass(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, kubefeatures.DynamicResourceAllocation, true)
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, kubefeatures.DRAConsumableCapacity, true)
+
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "pod-mixed", Namespace: "default"},
+		Spec: v1.PodSpec{
+			ResourceClaims: []v1.PodResourceClaim{
+				{Name: "claim1", ResourceClaimName: pointerString("claim1-obj")},
+			},
+		},
+	}
+
+	// First request had no capacity
+	// Second request had capacityy
+	claims := []*resourcev1.ResourceClaim{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "claim1-obj", Namespace: "default"},
+			Spec: resourcev1.ResourceClaimSpec{
+				Devices: resourcev1.DeviceClaim{
+					Requests: []resourcev1.DeviceRequest{
+						{
+							Name: "req1",
+							Exactly: &resourcev1.ExactDeviceRequest{
+								DeviceClassName: "gpu.com",
+								Count:           2,
+							},
+						},
+						{
+							Name: "req2",
+							Exactly: &resourcev1.ExactDeviceRequest{
+								DeviceClassName: "gpu.com",
+								Count:           1,
+								Capacity: &resourcev1.CapacityRequirements{
+									Requests: map[resourcev1.QualifiedName]resource.Quantity{
+										"memory": resource.MustParse("4Gi"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	fakeClient := fake.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(fakeClient, 0)
+	claimInformer := informerFactory.Resource().V1().ResourceClaims()
+
+	sc := &SchedulerCache{
+		resourceClaimCache: assumecache.NewAssumeCache(klog.Background(), claimInformer.Informer(), "ResourceClaim", "", nil),
+	}
+	for _, claim := range claims {
+		_, err := fakeClient.ResourceV1().ResourceClaims(claim.Namespace).Create(context.Background(), claim, metav1.CreateOptions{})
+		assert.NoError(t, err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	informerFactory.Start(ctx.Done())
+	informerFactory.WaitForCacheSync(ctx.Done())
+
+	err := wait.Poll(100*time.Millisecond, 2*time.Second, func() (bool, error) {
+		for _, claim := range claims {
+			if _, err := sc.resourceClaimCache.Get(claim.Namespace + "/" + claim.Name); err != nil {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+	assert.NoError(t, err, "failed to wait for resource claim cache sync")
+
+	var resreq map[string]*schedulingapi.DRAResource
+	assert.NotPanics(t, func() {
+		resreq, _, _, _ = sc.buildTaskDRAInfo(pod)
+	}, "buildTaskDRAInfo must not panic when same deviceClass has mixed capacity declarations")
+
+	if resreq == nil {
+		t.Fatalf("expected resreq to be non-nil")
+	}
+	got, ok := resreq["gpu.com"]
+	if !ok {
+		t.Fatalf("expected resreq[\"gpu.com\"], got %+v", resreq)
+	}
+	if got.Count != 3 {
+		t.Errorf("expected Count=3 (2+1), got %d", got.Count)
+	}
+	if got.Capacity == nil {
+		t.Fatalf("expected Capacity map to be initialized, got nil")
+	}
+	mem, ok := got.Capacity["memory"]
+	if !ok {
+		t.Fatalf("expected Capacity[\"memory\"] entry, got %v", got.Capacity)
+	}
+	want := resource.MustParse("4Gi")
+	if mem.Cmp(want) != 0 {
+		t.Errorf("expected memory=%s, got %s", want.String(), mem.String())
+	}
 }
