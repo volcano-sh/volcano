@@ -136,11 +136,12 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		if _, found := preemptorsMap[job.Queue]; !found {
-			preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+		queue := ssn.Queues[job.Queue]
+		if _, found := preemptorsMap[queue.UID]; !found {
+			preemptorsMap[queue.UID] = util.NewPriorityQueue(ssn.JobOrderFn)
 		}
-		preemptorsMap[job.Queue].Push(job)
-		underRequestByQueue[job.Queue] = append(underRequestByQueue[job.Queue], job)
+		preemptorsMap[queue.UID].Push(job)
+		underRequestByQueue[queue.UID] = append(underRequestByQueue[queue.UID], job)
 		preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 		for _, task := range job.TaskStatusIndex[api.Pending] {
 			if task.SchGated {

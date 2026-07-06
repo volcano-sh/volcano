@@ -88,10 +88,11 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		}
 
 		if ssn.JobStarving(job) {
-			if _, found := preemptorsMap[job.Queue]; !found {
-				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+			queue := ssn.Queues[job.Queue]
+			if _, found := preemptorsMap[queue.UID]; !found {
+				preemptorsMap[queue.UID] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
-			preemptorsMap[job.Queue].Push(job)
+			preemptorsMap[queue.UID].Push(job)
 			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
 				if task.SchGated {
