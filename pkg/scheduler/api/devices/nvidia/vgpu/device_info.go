@@ -278,7 +278,16 @@ func (gs *GPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
 }
 
 func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	if gs == nil || pod == nil || pod.Annotations == nil {
+	if gs == nil || pod == nil {
+		return nil
+	}
+	if NodeLockEnable && kubeClient != nil {
+		_ = nodelock.UseClient(kubeClient)
+		if err := nodelock.ReleaseNodeLock(gs.Name, DeviceName); err != nil {
+			klog.ErrorS(err, "failed to release vgpu node lock", "node", gs.Name, "lock", DeviceName)
+		}
+	}
+	if pod.Annotations == nil {
 		return nil
 	}
 	// Release is required for rollback paths (e.g. UnPipeline) where NodeInfo
