@@ -130,7 +130,12 @@ func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName]int
 			// The PVC is required to proceed with
 			// scheduling of a new pod because it cannot
 			// run without it. Bail out immediately.
-			return volumes, fmt.Errorf("looking up PVC %s/%s: %v", pod.Namespace, pvcName, err)
+			//
+			// Wrap with %w so callers can distinguish
+			// "PVC not yet in informer" (not-found) from
+			// other lookup failures via errors.Is /
+			// apierrors.IsNotFound and recover accordingly.
+			return volumes, fmt.Errorf("looking up PVC %s/%s: %w", pod.Namespace, pvcName, err)
 		}
 		// The PVC for an ephemeral volume must be owned by the pod.
 		if isEphemeral {
@@ -266,6 +271,16 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	if err != nil {
 		if isPendingDRAResourceClaimError(err) {
 			klog.V(4).Infof("DRA ResourceClaim for pod <%s/%s> is not ready, add task to cache and retry: %v", pod.Namespace, pod.Name, err)
+			if addErr := sc.addTask(pi); addErr != nil {
+				return addErr
+			}
+			sc.resyncTask(pi)
+			return nil
+		}
+		// Recover from a Pod ADD that races ahead of its PVC ADD on
+		// the informers. Same pattern as the DRA branch above.
+		if errors.IsNotFound(err) {
+			klog.V(4).Infof("PVC for pod <%s/%s> not yet in informer cache, add task and retry: %v", pod.Namespace, pod.Name, err)
 			if addErr := sc.addTask(pi); addErr != nil {
 				return addErr
 			}
