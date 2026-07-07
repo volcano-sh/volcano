@@ -18,11 +18,13 @@ package validate
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -45,7 +47,7 @@ var service = &router.AdmissionService{
 			Name: "validatepodgroup.volcano.sh",
 			Rules: []whv1.RuleWithOperations{
 				{
-					Operations: []whv1.OperationType{whv1.Create},
+					Operations: []whv1.OperationType{whv1.Create, whv1.Update},
 					Rule: whv1.Rule{
 						APIGroups:   []string{schedulingv1beta1.SchemeGroupVersion.Group},
 						APIVersions: []string{schedulingv1beta1.SchemeGroupVersion.Version},
@@ -70,7 +72,7 @@ func Validate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 
 	var errMsg string
 	switch ar.Request.Operation {
-	case admissionv1.Create:
+	case admissionv1.Create, admissionv1.Update:
 		errMsg = validatePodGroup(podgroup)
 	default:
 		errMsg = fmt.Sprintf("unsupported operation %s", ar.Request.Operation)
@@ -88,7 +90,7 @@ func Validate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	}
 }
 
-// validatePodGroup validates a PodGroup when it's being created
+// validatePodGroup validates a PodGroup
 func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
 	var errs []string
 
@@ -98,8 +100,53 @@ func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
 	if msg := validateNetworkTopology(pg.Spec.NetworkTopology, pg.Spec.SubGroupPolicy); msg != "" {
 		errs = append(errs, strings.TrimSpace(msg))
 	}
+	if err := validateJDBAnnotations(pg.Annotations); err != nil {
+		errs = append(errs, err.Error())
+	}
 
 	return strings.Join(errs, "; ")
+}
+
+func validateJDBAnnotations(annotations map[string]string) error {
+	num := 0
+	keys := []string{
+		schedulingv1beta1.JDBMinAvailable,
+		schedulingv1beta1.JDBMaxUnavailable,
+	}
+	for _, key := range keys {
+		if value, found := annotations[key]; found {
+			num++
+			if err := validateIntPercentageStr(key, value); err != nil {
+				return err
+			}
+		}
+	}
+	if num > 1 {
+		return fmt.Errorf("not allow configure multiple annotations <%v> at same time", keys)
+	}
+	return nil
+}
+
+func validateIntPercentageStr(key, value string) error {
+	tmp := intstr.Parse(value)
+	switch tmp.Type {
+	case intstr.Int:
+		if tmp.IntValue() <= 0 {
+			return fmt.Errorf("invalid value <%q> for %v, it must be a positive integer", value, key)
+		}
+		return nil
+	case intstr.String:
+		s := strings.Replace(tmp.StrVal, "%", "", -1)
+		v, err := strconv.Atoi(s)
+		if err != nil {
+			return fmt.Errorf("invalid value %v for %v", err, key)
+		}
+		if v <= 0 || v >= 100 {
+			return fmt.Errorf("invalid value <%q> for %v, it must be a valid percentage which between 1%% ~ 99%%", tmp.StrVal, key)
+		}
+		return nil
+	}
+	return fmt.Errorf("invalid type: neither int nor percentage for %v", key)
 }
 
 // checkQueueState verifies if the queue exists and is in the open state
