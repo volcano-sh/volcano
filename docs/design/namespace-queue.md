@@ -1,6 +1,6 @@
 # Namespace-scoped Queues for Tenant-authored Hierarchies
 
-[@gitGurugu](https://github.com/gitGurugu); Jul 3, 2026
+[@gitGurugu](https://github.com/gitGurugu); Jul 8, 2026
 
 Tracking issue: [#5251](https://github.com/volcano-sh/volcano/issues/5251)
 
@@ -27,29 +27,33 @@ type NamespaceQueue struct {
 }
 
 type NamespaceQueueSpec struct {
-    // +kubebuilder:validation:Required 
+    // Parent points to either a local NamespaceQueue in the same Namespace
+    // or an authorized cluster-level Queue.
+    // +kubebuilder:validation:Required
     Parent string `json:"parent"`
 
+    // Deserved is the expected resource amount of this queue.
+    // Required when capacity plugin is used.
+    // +kubebuilder:validation:Required
+    Deserved corev1.ResourceList `json:"deserved"`
+
+    // Capability is the maximum resource limit this queue can use.
     // +optional
-	  // +kubebuilder:default:=1
-	  Weight int32 `json:"weight,omitempty"`
+    Capability corev1.ResourceList `json:"capability,omitempty"`
+
+    // Guarantee is the reserved resource for this queue.
+    // +optional
+    Guarantee volcanov1beta1.Guarantee `json:"guarantee,omitempty"`
 
     // +optional
-	  Capability corev1.ResourceList `json:"capability,omitempty"`
+    Priority int32 `json:"priority,omitempty"`
 
     // +optional
-	  Deserved corev1.ResourceList `json:"deserved,omitempty"`
+    DequeueStrategy DequeueStrategy `json:"dequeueStrategy,omitempty"`
 
+    // Deprecated: weight is only meaningful for proportion-style scheduling.
     // +optional
-	  Guarantee Guarantee `json:"guarantee,omitempty"`
-
-    // +optional
-	  Priority int32 `json:"priority,omitempty"`
-
-    // +optional
-	  // +kubebuilder:default:=fifo
-	  // +kubebuilder:validation:Enum=fifo;traverse
-	  DequeueStrategy DequeueStrategy `json:"dequeueStrategy,omitempty"`
+    Weight int32 `json:"weight,omitempty"`
 
 }
 ```
@@ -107,7 +111,7 @@ type NamespaceQueueList struct {
 
 ### Parent-queue ownership enforcement
 
-Cluster `Queue`s are partitioned by cluster admins, who own the cluster-level
+  Cluster `Queue`s are partitioned by cluster admins, who own the cluster-level
 quotas. Once tenants can freely set `NamespaceQueue.spec.parent`, nothing stops a
 tenant assigned to `queue-a` from creating a `NamespaceQueue` with
 `spec.parent: queue-b` and drawing from another team's slice. The authorization to
@@ -341,7 +345,7 @@ func (r *NamespaceQueueReconciler) buildVolcanoQueue(nsq *platformv1alpha1.Names
 			DequeueStrategy: volcanov1beta1.DequeueStrategy(nsq.Spec.DequeueStrategy),
 			
 			// Flattens the hierarchical relationship for backend volcano engine
-			Parent:          fmt.Sprintf("%s-%s", nsq.Namespace, nsq.Spec.Parent), 
+			Parent:          fmt.Sprintf("%s-%s", nsq.Namespace, nsq.Spec.Parent), //有问题
 		},
 	}
 }
