@@ -137,10 +137,10 @@ type QueueSpec struct {
 
 ### Control Plane
 
-Overview: The NamespaceQueue (NSQ) Controller operates as a background reconciliation loop (Reconcile Loop) based on the standard Kubernetes controller pattern. Its core mission is to act as a secure proxy and bridge between the tenant-facing NamespaceQueue (Namespaced-scoped) and the backend Volcano Queue (Cluster-scoped).
+Overview:
+The NamespaceQueue (NSQ) Controller follows the standard Kubernetes reconciliation pattern. It acts as a secure bridge between tenant-facing `NamespaceQueue` resources and backend cluster-level Volcano `Queue` resources.
 
-The controller watches both NamespaceQueue and backend Queue resources, driving the system toward the desired state through four sequential logical phases.
-
+The controller watches both resources and continuously reconciles them through four main phases to keep the backend state aligned with the tenant’s desired configuration.
 
 
 
@@ -392,5 +392,106 @@ func (r *NamespaceQueueReconciler) SetupWithManager(mgr ctrl.Manager) error {
 ```
 
 
+### Routing Plane Detailed Design
 
+
+Overview:
+The Routing Plane provides a simple abstraction for tenant queue routing. Tenants only need to specify a namespace-scoped queue name in `spec.queue` when submitting a workload, such as a `VolcanoJob`.
+
+Before the workload is stored, a Mutating Admission Webhook intercepts the request and rewrites the local queue name to the corresponding cluster-level physical Queue name. This keeps backend naming details hidden from tenants while ensuring the Volcano Scheduler receives the correct Queue identifier.
+
+
+Step 1: Admission Request Interception
+
+Logic Flow:
+
+- When a user submits a job through `kubectl apply`, the API Server forwards the request to the registered Mutating Webhook after authentication and authorization.
+
+- The webhook extracts the target object from the `AdmissionReview` request and performs basic validation.
+
+- If the request is a delete operation, or if the object is empty or invalid, the webhook allows the request to pass without mutation.
+
+
+```go
+func (h *VolcanoJobMutator) Handle(ctx context.Context, req admission.Request) admission.Response {
+	logger := log.FromContext(ctx)
+
+	// Intercept and decode the VolcanoJob object
+	job := &volcanov1alpha1.Job{}
+	err := h.decoder.Decode(req, job)
+	if err != nil {
+		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to decode AdmissionReview request: %v", err))
+	}
+
+	// Bypass mutations if the request is an eviction or not relevant to creation/update
+	if req.Operation != admissionv1.Create && req.Operation != admissionv1.Update {
+		return admission.Allowed("bypass mutation for non-write operations")
+	}
+
+	// ... (Proceed to Step 2)
+}
+```
+
+
+
+Step 2: Namespace Context Resolution & Field Mutation
+
+
+Design Intent:
+Use the Job namespace as the tenant context, then rewrite the local queue name to its mapped physical Queue name according to the platform’s queue mapping rule.
+
+
+Detailed Mutation Logic:
+
+- The webhook reads `req.Namespace` as the tenant context.
+
+- It then reads `job.Spec.Queue` as the local queue name. If this field is empty, the request is rejected because tenants must explicitly specify a valid `NamespaceQueue`.
+
+- If `job.Spec.Queue` is provided, the webhook rewrites it to the physical queue name using the rule: `[Namespace]-[LocalQueueName]`.
+
+- Finally, the webhook updates `job.Spec.Queue` in memory and returns the mutation result to the API Server. No YAML file is modified during this process.
+
+```go
+tenantNamespace := req.Namespace
+	localQueueName := job.Spec.Queue
+
+	if localQueueName == "" {
+		return admission.Denied(fmt.Sprintf(
+			"multi-tenancy policy violation: you must explicitly specify a 'spec.queue' in namespace '%s'", 
+			tenantNamespace,
+		))
+	}
+
+	globalQueueName := fmt.Sprintf("%s-%s", tenantNamespace, localQueueName)
+	job.Spec.Queue = globalQueueName
+```
+
+
+
+Step 3: JSON Patch Generation & Persistence
+
+Design Intent:Return the queue mutation as a Kubernetes JSON Patch, allowing the API Server to apply the change before persisting the object to etcd.
+
+Implementation Details:
+
+- The webhook compares the original Job object with the mutated object and generates a standard JSON Patch, such as replacing `/spec/queue` with the physical Queue name.
+
+- The patch is returned to the API Server through an `AdmissionResponse`.
+
+- After applying the patch, the API Server persists the final Job object to etcd.
+
+- The Volcano Scheduler then uses the rewritten `spec.queue` value to match the corresponding backend Queue and schedule the workload.
+
+```go
+// Marshall the mutated job into standard JSON bytes
+	marshaledJob, err := json.Marshal(job)
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError, err)
+	}
+
+	// Generate standard RFC 6902 JSON Patch response automatically
+	// API Server will apply this patch and persist the mutated Job into etcd database
+	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledJob)
+}
+```
 
