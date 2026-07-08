@@ -93,10 +93,10 @@ func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
 	var errs []string
 
 	if msg := checkQueueState(pg.Spec.Queue); msg != "" {
-		errs = append(errs, msg)
+		errs = append(errs, strings.TrimSpace(msg))
 	}
 	if msg := validateNetworkTopology(pg.Spec.NetworkTopology, pg.Spec.SubGroupPolicy); msg != "" {
-		errs = append(errs, msg)
+		errs = append(errs, strings.TrimSpace(msg))
 	}
 
 	return strings.Join(errs, "; ")

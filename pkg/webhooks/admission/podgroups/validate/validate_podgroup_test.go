@@ -278,8 +278,12 @@ func TestValidatePodGroup(t *testing.T) {
 				t.Errorf("Expected allowed response but got error: %v", response.Result.Message)
 			}
 
-			for _, want := range tt.msgContains {
-				assert.Contains(t, response.Result.Message, want)
+			if len(tt.msgContains) > 0 {
+				if assert.NotNil(t, response.Result) {
+					for _, want := range tt.msgContains {
+						assert.Contains(t, response.Result.Message, want)
+					}
+				}
 			}
 		})
 	}
