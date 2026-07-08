@@ -62,6 +62,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	v1beta1apply "volcano.sh/apis/pkg/client/applyconfiguration/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -75,6 +76,7 @@ import (
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
+	schedulerutil "volcano.sh/volcano/pkg/scheduler/util"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 	"volcano.sh/volcano/pkg/util"
 )
@@ -383,8 +385,15 @@ func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo
 		return err
 	}
 
-	_, err := su.vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{})
-	if err != nil {
+	// Use Server-Side Apply and own only .status.allocated with the
+	// scheduler's FieldManager. The queue-controller owns .status.state
+	// via its own FieldManager (see pkg/controllers/queue/…).
+	// UpdateStatus with a full-object body used to stomp the state field
+	// on every apply, forcing the queue controller to re-write it and
+	// producing a flap between the two writers.
+	queueStatusApply := v1beta1apply.QueueStatus().WithAllocated(newQueue.Status.Allocated)
+	queueApply := v1beta1apply.Queue(newQueue.Name).WithStatus(queueStatusApply)
+	if _, err := su.vcclient.SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: schedulerutil.DefaultComponentName, Force: true}); err != nil {
 		klog.Errorf("error occurred in updating Queue <%s>: %s", newQueue.Name, err.Error())
 		return err
 	}
