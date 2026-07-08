@@ -168,3 +168,88 @@ func configTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
 	klog.Fatal("tls: failed to find any tls config data")
 	return &tls.Config{}
 }
+
+// SyncAdmissionWebhooks reconciles Validating/Mutating webhook
+// configurations previously produced by this manager against
+// --enabled-admission. Configurations whose name matches the
+// "volcano-admission-service-*" prefix but that are not in the
+// enabled set are deleted, so operators can disable a webhook by
+// removing it from --enabled-admission without leaving orphaned
+// configurations behind.
+//
+// Only invoked when --reconcile-admission-webhook is set.
+func SyncAdmissionWebhooks(kubeClient kubernetes.Interface, enabledAdmission string) error {
+	enabledValidating := make(map[string]struct{})
+	enabledMutating := make(map[string]struct{})
+	for _, entry := range strings.Split(strings.TrimSpace(enabledAdmission), ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		// --enabled-admission entries have the shape "/jobs/validate";
+		// mirror addCaCertForWebhook's naming: prefix + path with "/"
+		// replaced by "-".
+		name := volcanoAdmissionPrefix + strings.ReplaceAll(entry, "/", "-")
+		if strings.HasSuffix(entry, "/validate") {
+			enabledValidating[name] = struct{}{}
+		} else if strings.HasSuffix(entry, "/mutate") {
+			enabledMutating[name] = struct{}{}
+		}
+	}
+
+	ctx := context.Background()
+	if err := deleteDisabledValidatingWebhooks(ctx, kubeClient, enabledValidating); err != nil {
+		return err
+	}
+	return deleteDisabledMutatingWebhooks(ctx, kubeClient, enabledMutating)
+}
+
+// deleteDisabledValidatingWebhooks lists ValidatingWebhookConfigurations
+// whose name has the volcano-admission-service- prefix and deletes any
+// that are not in the enabled set.
+func deleteDisabledValidatingWebhooks(ctx context.Context, kubeClient kubernetes.Interface, enabled map[string]struct{}) error {
+	client := kubeClient.AdmissionregistrationV1().ValidatingWebhookConfigurations()
+	list, err := client.List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list ValidatingWebhookConfigurations: %v", err)
+	}
+	for i := range list.Items {
+		name := list.Items[i].Name
+		if !strings.HasPrefix(name, volcanoAdmissionPrefix) {
+			continue
+		}
+		if _, ok := enabled[name]; ok {
+			continue
+		}
+		klog.V(2).Infof("Deleting disabled ValidatingWebhookConfiguration %q", name)
+		if err := client.Delete(ctx, name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete ValidatingWebhookConfiguration %q: %v", name, err)
+		}
+	}
+	return nil
+}
+
+// deleteDisabledMutatingWebhooks lists MutatingWebhookConfigurations
+// whose name has the volcano-admission-service- prefix and deletes any
+// that are not in the enabled set.
+func deleteDisabledMutatingWebhooks(ctx context.Context, kubeClient kubernetes.Interface, enabled map[string]struct{}) error {
+	client := kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations()
+	list, err := client.List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list MutatingWebhookConfigurations: %v", err)
+	}
+	for i := range list.Items {
+		name := list.Items[i].Name
+		if !strings.HasPrefix(name, volcanoAdmissionPrefix) {
+			continue
+		}
+		if _, ok := enabled[name]; ok {
+			continue
+		}
+		klog.V(2).Infof("Deleting disabled MutatingWebhookConfiguration %q", name)
+		if err := client.Delete(ctx, name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete MutatingWebhookConfiguration %q: %v", name, err)
+		}
+	}
+	return nil
+}
