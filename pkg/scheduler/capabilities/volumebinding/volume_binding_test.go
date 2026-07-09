@@ -1855,3 +1855,36 @@ func TestIsSchedulableAfterCSIDriverChange(t *testing.T) {
 		})
 	}
 }
+
+func TestVolumeBindingFilterNilStatePanic(t *testing.T) {
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "pod-no-pvc"},
+		Spec:       v1.PodSpec{},
+	}
+
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-a"},
+	}
+	nodeInfo := framework.NewNodeInfo()
+	nodeInfo.SetNode(node)
+
+	state := framework.NewCycleState()
+
+	state.Write(stateKey, &stateData{
+		podVolumeClaims: nil,
+	})
+
+	volumeBindingPlugin := &VolumeBinding{}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Test panicked, issue is not fixed: %v", r)
+		}
+	}()
+
+	status := volumeBindingPlugin.Filter(context.Background(), state, pod, nodeInfo)
+
+	if status != nil && !status.IsSuccess() {
+		t.Errorf("Expected Filter to succeed when there are no PVCs, but got status: %v", status)
+	}
+}
