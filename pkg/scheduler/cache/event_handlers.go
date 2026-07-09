@@ -85,8 +85,6 @@ func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *scheduling
 }
 
 // addPodCSIVolumesToTask counts the csi volumes used by task
-// @Lily922 TODO: support counting shared volumes. Currently, if two different pods use the same attachable volume
-// and scheduled on the same nodes the volume will be count twice, but actually only use one attachable limit resource
 func (sc *SchedulerCache) addPodCSIVolumesToTask(pi *schedulingapi.TaskInfo) error {
 	volumes, err := sc.getPodCSIVolumes(pi.Pod)
 	if err != nil {
@@ -94,14 +92,15 @@ func (sc *SchedulerCache) addPodCSIVolumesToTask(pi *schedulingapi.TaskInfo) err
 		return err
 	}
 
-	for key, count := range volumes {
-		pi.Resreq.AddScalar(key, float64(count))
+	pi.CSIVolumes = volumes
+	for key, volumeNames := range volumes {
+		pi.Resreq.AddScalar(key, float64(len(volumeNames)))
 	}
 	return nil
 }
 
-func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName]int64, error) {
-	volumes := make(map[v1.ResourceName]int64)
+func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName][]string, error) {
+	volumes := make(map[v1.ResourceName][]string)
 	for _, vol := range pod.Spec.Volumes {
 		pvcName := ""
 		isEphemeral := false
@@ -154,10 +153,12 @@ func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName]int
 		// For unattachable volume, set the limits number to a very large value, in this way, scheduling will never
 		// be limited due to insufficient quantity of it.
 		k := v1.ResourceName(volumeutil.GetCSIAttachLimitKey(driverName))
-		if _, ok := volumes[k]; !ok {
-			volumes[k] = 1
-		} else {
-			volumes[k] += 1
+		volumeName := fmt.Sprintf("%s/%s", pvc.Namespace, pvc.Name)
+		if pvc.Spec.VolumeName != "" {
+			volumeName = pvc.Spec.VolumeName
+		}
+		if !slices.Contains(volumes[k], volumeName) {
+			volumes[k] = append(volumes[k], volumeName)
 		}
 	}
 	return volumes, nil

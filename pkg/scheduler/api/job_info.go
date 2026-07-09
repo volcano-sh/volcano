@@ -133,6 +133,8 @@ type TaskInfo struct {
 	ResourceClaimKeys []string
 	// ResourceClaimDRAResreq stores per-claim DRA resources for shared-claim deduplication.
 	ResourceClaimDRAResreq map[string]map[string]*DRAResource
+	// CSIVolumes stores CSI volume names by attach limit resource.
+	CSIVolumes map[v1.ResourceName][]string
 
 	TransactionContext
 	// LastTransaction holds the context of last scheduling transaction
@@ -322,6 +324,12 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 	}
 	if ti.ResourceClaimDRAResreq != nil {
 		res.ResourceClaimDRAResreq = cloneResourceClaimDRAResreq(ti.ResourceClaimDRAResreq)
+	}
+	if ti.CSIVolumes != nil {
+		res.CSIVolumes = make(map[v1.ResourceName][]string, len(ti.CSIVolumes))
+		for k, v := range ti.CSIVolumes {
+			res.CSIVolumes[k] = append([]string(nil), v...)
+		}
 	}
 
 	return res

@@ -71,6 +71,7 @@ type NodeInfo struct {
 	ResourceUsage *NodeUsage
 
 	Tasks             map[TaskID]*TaskInfo
+	CSIVolumes        map[v1.ResourceName]map[string]int
 	NumaInfo          *NumatopoInfo
 	NumaChgFlag       NumaChgFlag
 	NumaSchedulerInfo *NumatopoInfo
@@ -411,33 +412,87 @@ func (ni *NodeInfo) setNode(node *v1.Node) {
 	ni.Pipelined = EmptyResource()
 	ni.Idle = NewResource(node.Status.Allocatable).Add(ni.OversubscriptionResource)
 	ni.Used = EmptyResource()
+	ni.CSIVolumes = nil
 
 	for _, ti := range ni.Tasks {
+		resreq := ni.csiResourceRequest(ti, 0)
 		switch ti.Status {
 		case Releasing:
-			ni.allocateIdleResource(ti)
-			ni.Releasing.Add(ti.Resreq)
-			ni.Used.Add(ti.Resreq)
+			ni.allocateIdleResource(ti, resreq)
+			ni.Releasing.Add(resreq)
+			ni.Used.Add(resreq)
 		case Pipelined:
-			ni.Pipelined.Add(ti.Resreq)
+			ni.Pipelined.Add(resreq)
 		default:
-			ni.allocateIdleResource(ti)
-			ni.Used.Add(ti.Resreq)
+			ni.allocateIdleResource(ti, resreq)
+			ni.Used.Add(resreq)
 			ni.addResource(ti.Pod)
+		}
+		ni.addCSIVolumes(ti)
+	}
+}
+
+func (ni *NodeInfo) allocateIdleResource(ti *TaskInfo, resreq *Resource) {
+	ok, resources := resreq.LessEqualWithResourcesName(ni.Idle, Zero)
+	if ok {
+		ni.Idle.sub(resreq)
+		return
+	}
+
+	ni.Idle.sub(resreq)
+	klog.ErrorS(nil, "Idle resources turn into negative after allocated",
+		"nodeName", ni.Name, "task", klog.KObj(ti.Pod), "resources", resources, "idle", ni.Idle.String(), "req", resreq.String())
+}
+
+func (ni *NodeInfo) csiResourceRequest(ti *TaskInfo, refCount int) *Resource {
+	resreq := ti.Resreq.Clone()
+	for resourceName, volumes := range ti.CSIVolumes {
+		for _, volume := range volumes {
+			count := ni.CSIVolumes[resourceName][volume]
+			if count <= refCount || resreq.ScalarResources[resourceName] <= 0 {
+				continue
+			}
+			resreq.ScalarResources[resourceName]--
+		}
+	}
+	return resreq
+}
+
+func (ni *NodeInfo) addCSIVolumes(ti *TaskInfo) {
+	for resourceName, volumes := range ti.CSIVolumes {
+		if ni.CSIVolumes == nil {
+			ni.CSIVolumes = make(map[v1.ResourceName]map[string]int)
+		}
+		if ni.CSIVolumes[resourceName] == nil {
+			ni.CSIVolumes[resourceName] = make(map[string]int)
+		}
+		for _, volume := range volumes {
+			ni.CSIVolumes[resourceName][volume]++
 		}
 	}
 }
 
-func (ni *NodeInfo) allocateIdleResource(ti *TaskInfo) {
-	ok, resources := ti.Resreq.LessEqualWithResourcesName(ni.Idle, Zero)
-	if ok {
-		ni.Idle.sub(ti.Resreq)
+func (ni *NodeInfo) removeCSIVolumes(ti *TaskInfo) {
+	if ni.CSIVolumes == nil {
 		return
 	}
-
-	ni.Idle.sub(ti.Resreq)
-	klog.ErrorS(nil, "Idle resources turn into negative after allocated",
-		"nodeName", ni.Name, "task", klog.KObj(ti.Pod), "resources", resources, "idle", ni.Idle.String(), "req", ti.Resreq.String())
+	for resourceName, volumes := range ti.CSIVolumes {
+		if ni.CSIVolumes[resourceName] == nil {
+			continue
+		}
+		for _, volume := range volumes {
+			ni.CSIVolumes[resourceName][volume]--
+			if ni.CSIVolumes[resourceName][volume] == 0 {
+				delete(ni.CSIVolumes[resourceName], volume)
+			}
+		}
+		if len(ni.CSIVolumes[resourceName]) == 0 {
+			delete(ni.CSIVolumes, resourceName)
+		}
+	}
+	if len(ni.CSIVolumes) == 0 {
+		ni.CSIVolumes = nil
+	}
 }
 
 // AddTask is used to add a task in nodeInfo object
@@ -460,26 +515,28 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 	ti := task.Clone()
 
 	if ni.Node != nil {
+		resreq := ni.csiResourceRequest(ti, 0)
 		switch ti.Status {
 		case Releasing:
-			ni.allocateIdleResource(ti)
-			ni.Releasing.Add(ti.Resreq)
-			ni.Used.Add(ti.Resreq)
+			ni.allocateIdleResource(ti, resreq)
+			ni.Releasing.Add(resreq)
+			ni.Used.Add(resreq)
 		case Pipelined:
-			ni.Pipelined.Add(ti.Resreq)
+			ni.Pipelined.Add(resreq)
 		case Binding:
 			// When task in Binding status, it will bind to node, we should double-check whether idle resources are enough to put task before bind to apiserver.
-			if ok, resNames := ti.Resreq.LessEqualWithResourcesName(ni.Idle, Zero); !ok {
-				return fmt.Errorf("node %s resources %v are not enough to put task <%s/%s>, idle: %s, req: %s", ni.Name, resNames, ti.Namespace, ti.Name, ni.Idle.String(), ti.Resreq.String())
+			if ok, resNames := resreq.LessEqualWithResourcesName(ni.Idle, Zero); !ok {
+				return fmt.Errorf("node %s resources %v are not enough to put task <%s/%s>, idle: %s, req: %s", ni.Name, resNames, ti.Namespace, ti.Name, ni.Idle.String(), resreq.String())
 			}
-			ni.allocateIdleResource(ti)
-			ni.Used.Add(ti.Resreq)
+			ni.allocateIdleResource(ti, resreq)
+			ni.Used.Add(resreq)
 			ni.addResource(ti.Pod)
 		default:
-			ni.allocateIdleResource(ti)
-			ni.Used.Add(ti.Resreq)
+			ni.allocateIdleResource(ti, resreq)
+			ni.Used.Add(resreq)
 			ni.addResource(ti.Pod)
 		}
+		ni.addCSIVolumes(ti)
 	}
 
 	if ni.NumaInfo != nil {
@@ -506,18 +563,20 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) {
 	}
 
 	if ni.Node != nil {
+		resreq := ni.csiResourceRequest(task, 1)
 		switch task.Status {
 		case Releasing:
-			ni.Releasing.Sub(task.Resreq)
-			ni.Idle.Add(task.Resreq)
-			ni.Used.Sub(task.Resreq)
+			ni.Releasing.Sub(resreq)
+			ni.Idle.Add(resreq)
+			ni.Used.Sub(resreq)
 		case Pipelined:
-			ni.Pipelined.Sub(task.Resreq)
+			ni.Pipelined.Sub(resreq)
 		default:
-			ni.Idle.Add(task.Resreq)
-			ni.Used.Sub(task.Resreq)
+			ni.Idle.Add(resreq)
+			ni.Used.Sub(resreq)
 			ni.subResource(ti.Pod)
 		}
+		ni.removeCSIVolumes(task)
 	}
 
 	if ni.NumaInfo != nil {

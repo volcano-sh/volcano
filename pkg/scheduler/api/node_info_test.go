@@ -198,6 +198,44 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 	}
 }
 
+func TestNodeInfo_SharedCSIVolumes(t *testing.T) {
+	attachLimit := v1.ResourceName("attachable-volumes-csi-test")
+	node := buildNode("n1", nil, BuildResourceList("2", "2G", []ScalarResource{{Name: string(attachLimit), Value: "1m"}, {Name: "pods", Value: "10"}}...))
+	pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, BuildResourceList("1", "1G"), nil, make(map[string]string))
+	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, BuildResourceList("1", "1G"), nil, make(map[string]string))
+	task1 := NewTaskInfo(pod1)
+	task2 := NewTaskInfo(pod2)
+
+	task1.Resreq.AddScalar(attachLimit, 1)
+	task2.Resreq.AddScalar(attachLimit, 1)
+	task1.CSIVolumes = map[v1.ResourceName][]string{attachLimit: {"pv1"}}
+	task2.CSIVolumes = map[v1.ResourceName][]string{attachLimit: {"pv1"}}
+
+	ni := NewNodeInfo(node)
+	if err := ni.AddTask(task1); err != nil {
+		t.Fatalf("add task1 failed: %v", err)
+	}
+	if err := ni.AddTask(task2); err != nil {
+		t.Fatalf("add task2 failed: %v", err)
+	}
+	if ni.Used.ScalarResources[attachLimit] != 1 {
+		t.Fatalf("expected used csi volume 1, got %v", ni.Used.ScalarResources[attachLimit])
+	}
+	if ni.Idle.ScalarResources[attachLimit] != 0 {
+		t.Fatalf("expected idle csi volume 0, got %v", ni.Idle.ScalarResources[attachLimit])
+	}
+
+	ni.RemoveTask(task1)
+	if ni.Used.ScalarResources[attachLimit] != 1 {
+		t.Fatalf("expected used csi volume 1 after removing shared task, got %v", ni.Used.ScalarResources[attachLimit])
+	}
+
+	ni.RemoveTask(task2)
+	if ni.Used.ScalarResources[attachLimit] != 0 {
+		t.Fatalf("expected used csi volume 0 after removing last task, got %v", ni.Used.ScalarResources[attachLimit])
+	}
+}
+
 func TestNodeInfo_SetNode(t *testing.T) {
 	// case1
 	case01Node1 := buildNode("n1", nil, BuildResourceList("10", "10G", []ScalarResource{{Name: "pods", Value: "15"}}...))
