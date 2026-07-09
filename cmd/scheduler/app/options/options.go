@@ -18,6 +18,7 @@ package options
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"sync"
 	"time"
@@ -40,6 +41,7 @@ const (
 	defaultQueue               = "default"
 	defaultListenAddress       = ":8080"
 	defaultHealthzAddress      = ":11251"
+	defaultPprofAddress        = "127.0.0.1:6060"
 	defaultPluginsDir          = ""
 
 	defaultQPS   = 2000.0
@@ -79,6 +81,7 @@ type ServerOption struct {
 	EnableMetrics       bool
 	EnablePprof         bool
 	ListenAddress       string
+	PprofAddress        string
 	EnablePriorityClass bool
 	EnableCSIStorage    bool
 	// vc-scheduler will load (not activate) custom plugins which are in this directory
@@ -170,7 +173,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"Enable tracking of available storage capacity that CSI drivers provide; it is false by default")
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
-	fs.BoolVar(&s.EnablePprof, "enable-pprof", false, "Enable the pprof endpoint; it is false by default")
+	fs.BoolVar(&s.EnablePprof, "enable-pprof", false, "Enable the pprof endpoint; it is false by default. Enable only in trusted environments.")
+	fs.StringVar(&s.PprofAddress, "pprof-address", defaultPprofAddress, "The address to listen on for pprof requests. Defaults to localhost only.")
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
@@ -185,7 +189,24 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.
 func (s *ServerOption) CheckOptionOrDie() error {
+	if s.EnablePprof {
+		if err := validatePprofAddress(s.PprofAddress); err != nil {
+			return err
+		}
+	}
 	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
+}
+
+func validatePprofAddress(address string) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return fmt.Errorf("invalid pprof address %q: %w", address, err)
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("pprof address %q must bind to a literal loopback IP address", address)
+	}
+	return nil
 }
 
 // RegisterOptions registers options.

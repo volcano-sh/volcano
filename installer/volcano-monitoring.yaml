@@ -60,6 +60,9 @@ data:
         - role: node
 
         relabel_configs:
+        - source_labels: [__meta_kubernetes_node_label_type]
+          regex: kwok
+          action: drop
         - action: labelmap
           regex: __meta_kubernetes_node_label_(.+)
         - target_label: __address__
@@ -113,6 +116,9 @@ data:
         - role: node
 
         relabel_configs:
+        - source_labels: [__meta_kubernetes_node_label_type]
+          regex: kwok
+          action: drop
         - action: labelmap
           regex: __meta_kubernetes_node_label_(.+)
         - target_label: __address__

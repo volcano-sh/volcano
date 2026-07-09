@@ -212,6 +212,7 @@ spec:
             {{- end }}
             {{- if .Values.custom.scheduler_pprof_enable }}
             - --enable-pprof=true
+            - --pprof-address={{ .Values.custom.scheduler_pprof_address }}
             {{- end }}
             - --leader-elect={{ .Values.custom.leader_elect_enable }}
             {{- if .Values.custom.leader_elect_enable }}
