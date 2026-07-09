@@ -222,23 +222,18 @@ Resources:
 - [Meeting link](https://zoom.us/j/91804791393)
 - [Meeting Calendar](https://calendar.google.com/calendar/b/1/embed?src=volcano.sh.bot@gmail.com) | [Subscribe](https://calendar.google.com/calendar/b/1?cid=dm9sY2Fuby5zaC5ib3RAZ21haWwuY29t)
 
-
 ## Contact
 
 If you have any question, feel free to reach out to us in the following ways:
 
 > [!TIP]
-> New to the Volcano community? Follow these steps to join the Slack community:
->
-> 1. Join the CNCF Slack workspace using the **Join CNCF Slack** link below.
-> 2. Sign in to the CNCF Slack workspace.
-> 3. Search for the `#volcano` channel and join it to participate in community discussions.
+> New to the Volcano community? First, join the CNCF Slack workspace using the **Join CNCF Slack** link below. After signing in, search for the `#volcano` channel in the CNCF Slack workspace and join it to participate in community discussions.
 
 **CNCF Slack Workspace:** [Join CNCF Slack](https://slack.cncf.io/)
 
-**Volcano Slack Channel:** https://cloud-native.slack.com/archives/C011GJDQS0N
+**Volcano Slack Channel:** [#volcano](https://cloud-native.slack.com/archives/C011GJDQS0N)
 
-**Mailing List:** https://groups.google.com/forum/#!forum/volcano-sh
+**Mailing List:** [volcano-sh Google Group](https://groups.google.com/forum/#!forum/volcano-sh)
 
-WeChat: Please add WeChat account `k8s2222` and request an invitation to the group chat.
+**WeChat:** Please add WeChat account `k8s2222` and request an invitation to the group chat.
 
