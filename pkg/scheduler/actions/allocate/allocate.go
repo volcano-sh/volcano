@@ -921,7 +921,7 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 	candidateNodes = append(candidateNodes, futureIdleCandidateNodesInOtherShards)
 
 	var bestNode *api.NodeInfo
-	var higestScore float64
+	var highestScore float64
 	for index, nodes := range candidateNodes {
 		if klog.V(5).Enabled() {
 			for _, node := range nodes {
@@ -938,7 +938,7 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 
 			bestNode = ssn.BestNodeFn(task, nodeScores)
 			if bestNode == nil {
-				bestNode, higestScore = util.SelectBestNodeAndScore(nodeScores)
+				bestNode, highestScore = util.SelectBestNodeAndScore(nodeScores)
 			}
 		}
 
@@ -947,7 +947,7 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 			break
 		}
 	}
-	return bestNode, higestScore
+	return bestNode, highestScore
 }
 
 func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo, job *api.JobInfo) (err error) {
