@@ -2079,3 +2079,92 @@ func TestJobEnqueuedUpdatesDRAInqueueForDRAOnlyJob(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Test_updateAncestors_noSliceAliasing is a regression test for a slice-aliasing
+// bug in updateAncestors. The ancestor chain of each queue was built with
+// `append(parent.ancestors, parentID)`. When the parent's ancestors slice had
+// spare capacity (which Go's growth pattern introduces once the slice reaches
+// length 5), append reused the parent's backing array, so sibling subtrees ended
+// up aliasing the same memory and overwrote each other's ancestor entries in deep
+// hierarchies. A corrupted ancestor chain makes the hierarchical capacity checks
+// enforce the wrong ancestor queue's quota (queue isolation / quota bypass).
+//
+// This builds a deep, branching hierarchy and asserts every queue gets the exact,
+// independent ancestor chain regardless of tree depth or sibling order.
+func Test_updateAncestors_noSliceAliasing(t *testing.T) {
+	// Linear spine root->l1->...->l6, then two branches under l6 that each have a
+	// child. Branch leaves (a/b) and their children (ga/gb) live at the depth where
+	// the aliasing bug corrupted siblings.
+	type qspec struct {
+		name   string
+		parent string
+	}
+	specs := []qspec{
+		{"root", ""},
+		{"l1", "root"},
+		{"l2", "l1"},
+		{"l3", "l2"},
+		{"l4", "l3"},
+		{"l5", "l4"},
+		{"l6", "l5"},
+		{"a", "l6"},
+		{"b", "l6"},
+		{"ga", "a"},
+		{"gb", "b"},
+	}
+
+	ssn := &framework.Session{Queues: map[api.QueueID]*api.QueueInfo{}}
+	for _, s := range specs {
+		q := &scheduling.Queue{
+			ObjectMeta: metav1.ObjectMeta{Name: s.name},
+			Spec:       scheduling.QueueSpec{Parent: s.parent},
+		}
+		ssn.Queues[api.QueueID(s.name)] = api.NewQueueInfo(q)
+	}
+
+	cp := &capacityPlugin{
+		rootQueue: rootQueueID,
+		queueOpts: map[api.QueueID]*queueAttr{},
+	}
+
+	// Mirror buildHierarchicalQueueAttrs' construction loop.
+	for _, s := range specs {
+		uid := api.QueueID(s.name)
+		if _, found := cp.queueOpts[uid]; found {
+			continue
+		}
+		cp.queueOpts[uid] = cp.newQueueAttr(ssn.Queues[uid])
+		if err := cp.updateAncestors(ssn.Queues[uid], ssn, map[api.QueueID]struct{}{}); err != nil {
+			t.Fatalf("updateAncestors(%s) returned error: %v", s.name, err)
+		}
+	}
+
+	// Expected ancestor chains (root-first, excluding the queue itself).
+	want := map[api.QueueID][]api.QueueID{
+		"root": {},
+		"l1":   {"root"},
+		"l2":   {"root", "l1"},
+		"l3":   {"root", "l1", "l2"},
+		"l4":   {"root", "l1", "l2", "l3"},
+		"l5":   {"root", "l1", "l2", "l3", "l4"},
+		"l6":   {"root", "l1", "l2", "l3", "l4", "l5"},
+		"a":    {"root", "l1", "l2", "l3", "l4", "l5", "l6"},
+		"b":    {"root", "l1", "l2", "l3", "l4", "l5", "l6"},
+		"ga":   {"root", "l1", "l2", "l3", "l4", "l5", "l6", "a"},
+		"gb":   {"root", "l1", "l2", "l3", "l4", "l5", "l6", "b"},
+	}
+
+	for uid, expected := range want {
+		got := cp.queueOpts[uid].ancestors
+		if len(got) != len(expected) {
+			t.Fatalf("queue %s: ancestors length = %d (%v), want %d (%v)",
+				uid, len(got), got, len(expected), expected)
+		}
+		for i := range expected {
+			if got[i] != expected[i] {
+				t.Fatalf("queue %s: ancestor[%d] = %q, want %q (full got=%v, want=%v)",
+					uid, i, got[i], expected[i], got, expected)
+			}
+		}
+	}
+}
