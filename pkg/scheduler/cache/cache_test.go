@@ -23,6 +23,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"sync"
 	"testing"
@@ -853,4 +854,24 @@ func TestAddUnassignedNumaPods_NilNodeValueSkips(t *testing.T) {
 		t.Fatalf("AddUnassignedNumaPods returned error: %v", err)
 	}
 	// No panic is the success condition.
+}
+
+// addDRAResource accumulates a user-controlled device count. A pod with two
+// same-deviceClass requests each near math.MaxInt64 (both individually valid:
+// the apiserver only rejects count <= 0) must not wrap the aggregate Count to a
+// negative value, which would later bypass the queue's DRA quota check.
+func TestAddDRAResource_saturates(t *testing.T) {
+	const dc = "gpu.example.com"
+	const maxInt64 = math.MaxInt64
+
+	m := make(map[string]*api.DRAResource)
+	addDRAResource(m, dc, maxInt64, nil)
+	addDRAResource(m, dc, maxInt64, nil)
+
+	if got := m[dc].Count; got < 0 {
+		t.Fatalf("addDRAResource wrapped to a negative aggregate Count (%d) for two MaxInt64 requests; want saturated non-negative", got)
+	}
+	if got := m[dc].Count; got != maxInt64 {
+		t.Fatalf("addDRAResource Count = %d for two MaxInt64 requests; want saturated to MaxInt64 (%d)", got, maxInt64)
+	}
 }
