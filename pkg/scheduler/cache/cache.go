@@ -80,12 +80,13 @@ import (
 )
 
 const (
-	// default interval for sync data from metrics server, the value is 30s
 	defaultMetricsInternal = 30 * time.Second
+	taskUpdaterWorker      = 16
+	handlerSyncPollPeriod  = 100 * time.Millisecond
 
-	taskUpdaterWorker = 16
-
-	handlerSyncPollPeriod = 100 * time.Millisecond
+	// MaxDRADeviceCount is the maximum number of devices allowed in a single DRA request.
+	// This prevents DoS attacks via unbounded loops and overflow.
+	MaxDRADeviceCount = 100000
 )
 
 // defaultIgnoredProvisioners contains provisioners that will be ignored during pod pvc request computation and preemption.
@@ -1881,13 +1882,16 @@ func isPendingDRAResourceClaimError(err error) bool {
 func addDRAResource(dst map[string]*schedulingapi.DRAResource, deviceClass string, count int64, capacity map[string]resource.Quantity) {
 	if dst[deviceClass] == nil {
 		dst[deviceClass] = &schedulingapi.DRAResource{}
-		if len(capacity) > 0 {
-			dst[deviceClass].Capacity = make(map[string]resource.Quantity)
-		}
+	}
+	// Initialize Capacity map if capacity is non-empty
+	if len(capacity) > 0 && dst[deviceClass].Capacity == nil {
+		dst[deviceClass].Capacity = make(map[string]resource.Quantity)
 	}
 	dst[deviceClass].Count += count
+
 	for dim, reqQty := range capacity {
 		totalQty := reqQty.DeepCopy()
+		// Loop is SAFE because count is capped at MaxDRADeviceCount (100000)
 		for i := int64(1); i < count; i++ {
 			totalQty.Add(reqQty)
 		}
@@ -1968,6 +1972,10 @@ func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulinga
 			// If AllocationMode is ExactCount and this field is not specified, the default is one.
 			if count == 0 {
 				count = 1
+			}
+			// Validate count range
+			if count < 0 || count > MaxDRADeviceCount {
+				return nil, nil, nil, fmt.Errorf("device count %d is invalid (must be between 1 and %d) for claim %s", count, MaxDRADeviceCount, claimKey)
 			}
 
 			var capacity map[string]resource.Quantity
