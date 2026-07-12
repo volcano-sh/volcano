@@ -1491,14 +1491,14 @@ func (sc *SchedulerCache) addOrUpdateNodeShard(shard *nodeshardv1alpha1.NodeShar
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 	sc.NodeShards[shard.Name] = shardInfo
-	sc.RefreshNodeShards()
+	sc.refreshNodeShardsLocked()
 }
 
 func (sc *SchedulerCache) deleteNodeShard(name string) {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
 	if _, ok := sc.NodeShards[name]; ok {
-		sc.Mutex.Lock()
-		defer sc.Mutex.Unlock()
 		delete(sc.NodeShards, name)
-		sc.RefreshNodeShards()
+		sc.refreshNodeShardsLocked()
 	}
 }
