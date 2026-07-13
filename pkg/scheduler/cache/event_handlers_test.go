@@ -1573,3 +1573,26 @@ func TestSchedulerCache_SyncHyperNode(t *testing.T) {
 		})
 	}
 }
+
+func TestSchedulerCache_SyncNode_RemoveOnLabelChange(t *testing.T) {
+	// Simulate: node was in cache with matching label, then label is removed
+	n1WithLabel := util.BuildNode("n1", nil, map[string]string{"train": "true"})
+	n1WithoutLabel := util.BuildNode("n1", nil, map[string]string{})
+
+	sc := NewDefaultMockSchedulerCache("volcano")
+	sc.nodeSelectorLabels = map[string]sets.Empty{
+		"train:true": {},
+	}
+
+	// Step 1: Add node with matching label to cache
+	sc.nodeInformer.Informer().GetIndexer().Add(n1WithLabel)
+	err := sc.SyncNode("n1")
+	assert.NoError(t, err)
+	assert.Contains(t, sc.Nodes, "n1", "node should be in cache after sync with matching label")
+
+	// Step 2: Update node to remove the label, then sync again
+	sc.nodeInformer.Informer().GetIndexer().Update(n1WithoutLabel)
+	err = sc.SyncNode("n1")
+	assert.NoError(t, err)
+	assert.NotContains(t, sc.Nodes, "n1", "node should be removed from cache after label removal")
+}
