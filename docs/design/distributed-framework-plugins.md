@@ -122,7 +122,7 @@ func (tp *tensorflowPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	if err != nil {
 		return err
 	}
-	// add TF_CONFIG envrionment
+	// add TF_CONFIG environment
 	for i := range pod.Spec.Containers {
 		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
 			Name:  "TF_CONFIG",
@@ -462,7 +462,7 @@ data:
 
 
 
-In `OnPodCreate` phase, the `hostfile` will be added into pod volumes, and mouted to specified path (e.g. `/etc/mpi/hostfile`). The `OMPI_MCA_orte_default_hostfile` environment variable should also be set.
+In `OnPodCreate` phase, the `hostfile` will be added into pod volumes, and mounted to specified path (e.g. `/etc/mpi/hostfile`). The `OMPI_MCA_orte_default_hostfile` environment variable should also be set.
 
 ```go
 func (mp *mpiPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
@@ -529,7 +529,7 @@ func (mp *mpiPlugin) getDepTasks(pod *v1.Pod, job *batch.Job) (tasks []batch.Tas
 
 We offer one implementation for `InitContainer`, it has limitations but works for common scenarios. we welcome better approaches.
 
-The logic in the init container is quite simple. It will send an ICMP message to the domain name of every task pod to check if the pod is alived. Here is an shell script example:
+The logic in the init container is quite simple. It will send an ICMP message to the domain name of every task pod to check if the pod is alive. Here is an shell script example:
 
 ```shell
 SECONDS=0
@@ -571,4 +571,4 @@ The Distributed Framework Plugins mentioned above work depending on svc plugin o
 The new logic to be added in webhook is shown as in below:
 
 1. Check if Distributed-Framework plugins exist
-2. Patch job spec with plugin denpendency
+2. Patch job spec with plugin dependency

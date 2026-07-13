@@ -239,7 +239,7 @@ online-demo-9f9bbdb58-fljzs   1/1     Running   0          6s
 
 #### Eviction happens when node has pressure
 
-Online workloads Qos is guaranteed by volcano agent and host OS, volcano agent detects node resource utilization in real time, and will evict offline workloads when node resource utilization exceeds the threshold, for CPU resource, it's 80% by default, we perform 7 core cpu stress to online workload, we can check event and it showed that offilne worload is evicted after about 1 minutes later.
+Online workloads Qos is guaranteed by volcano agent and host OS, volcano agent detects node resource utilization in real time, and will evict offline workloads when node resource utilization exceeds the threshold, for CPU resource, it's 80% by default, we perform 7 core cpu stress to online workload, we can check event and it showed that offline workload is evicted after about 1 minutes later.
 
 ```shell
 $ kubectl get event | grep Evicted
@@ -280,7 +280,7 @@ And if we stop online workload to release pressure then the eviction taint will 
 
 #### Limitation
 
-Volcano agent defines a Qos resource model for online and offline workloads, and provides application level guarantee(eviction when node has pressure) for online workloads Qos guarantee. The OS level cpu and memory isolation and suppress are guaranteed by host kernal, and currently volcano agent only adapted to openEuler 22.03 SP2 and higher version, please make sure that you are using the correct OS type and version.
+Volcano agent defines a Qos resource model for online and offline workloads, and provides application level guarantee(eviction when node has pressure) for online workloads Qos guarantee. The OS level cpu and memory isolation and suppress are guaranteed by host kernel, and currently volcano agent only adapted to openEuler 22.03 SP2 and higher version, please make sure that you are using the correct OS type and version.
 
 ### Network bandwidth isolation tutorial
 
@@ -382,7 +382,7 @@ You can see that offline pod can use almost 10% bandwidth when online pod use mo
 
 ### Feature switch
 
-Colocation feature has a unified switch on node, node has label volcano.sh/oversubscription=true or volcano.sh/colocation=true indicates that coloation is enabled. You can remove the two labels to disable all colocation features. And all colocation features take effect when node has these lables.
+Colocation feature has a unified switch on node, node has label volcano.sh/oversubscription=true or volcano.sh/colocation=true indicates that colocation is enabled. You can remove the two labels to disable all colocation features. And all colocation features take effect when node has these lables.
 
 - If you only want to use online and offline workloads colocation but not resource oversubscription, you just need to set the node label volcano.sh/colocation="true".
 - If you want to use colocation and resource oversubscription, you should set node label volcano.sh/oversubscription=true.

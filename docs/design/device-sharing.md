@@ -56,11 +56,11 @@ type Devices interface {
 }
 ```
 
-The first two method are used for node_info to update cluster status. The following four methods are used in predicate which allocatation and deallocation actually take place. Finally a monitor mothod for debug.
+The first two method are used for node_info to update cluster status. The following four methods are used in predicate which allocatation and deallocation actually take place. Finally a monitor method for debug.
 
-### Create a seperate package for gpushare related methods, and use Devices method to reimplement it.
+### Create a separate package for gpushare related methods, and use Devices method to reimplement it.
 
-There are two steps we need to do, first, we need to create a new package in "pkg/scheduler/api/devices/nvidia/gpushare", and implement Devices methods in it, then we need to seperate gpushare-related logic from "scheduler.api" and "predicate plugin", and convert them to package "pkg/scheduler/api/devices/nvidia/gpushare". The package contains the following files: device.go(which implement SharedDevicePool interface methods), share.go(which contains private methods for device.go), type.go(which contains const values and definations).
+There are two steps we need to do, first, we need to create a new package in "pkg/scheduler/api/devices/nvidia/gpushare", and implement Devices methods in it, then we need to separate gpushare-related logic from "scheduler.api" and "predicate plugin", and convert them to package "pkg/scheduler/api/devices/nvidia/gpushare". The package contains the following files: device.go(which implement SharedDevicePool interface methods), share.go(which contains private methods for device.go), type.go(which contains const values and definitions).
 
 Details of methods mapping is shown in the table below:
 
