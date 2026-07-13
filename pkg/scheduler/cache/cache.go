@@ -379,22 +379,20 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 
 // UpdateQueueStatus will update the status of queue
 func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
-	newQueue := &vcv1beta1.Queue{}
-	if err := schedulingscheme.Scheme.Convert(queue.Queue, newQueue, nil); err != nil {
-		klog.Errorf("error occurred in converting scheduling.Queue to v1beta1.Queue: %s", err.Error())
-		return err
-	}
-
 	// Use Server-Side Apply and own only .status.allocated with the
 	// scheduler's FieldManager. The queue-controller owns .status.state
 	// via its own FieldManager (see pkg/controllers/queue/…).
 	// UpdateStatus with a full-object body used to stomp the state field
 	// on every apply, forcing the queue controller to re-write it and
 	// producing a flap between the two writers.
-	queueStatusApply := v1beta1apply.QueueStatus().WithAllocated(newQueue.Status.Allocated)
-	queueApply := v1beta1apply.Queue(newQueue.Name).WithStatus(queueStatusApply)
+	//
+	// The apply payload is built directly from QueueInfo: Name is already
+	// a string and the internal Status.Allocated is already a
+	// v1.ResourceList, so no scheme conversion is needed.
+	queueStatusApply := v1beta1apply.QueueStatus().WithAllocated(queue.Queue.Status.Allocated)
+	queueApply := v1beta1apply.Queue(queue.Name).WithStatus(queueStatusApply)
 	if _, err := su.vcclient.SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: schedulerutil.DefaultComponentName, Force: true}); err != nil {
-		klog.Errorf("error occurred in updating Queue <%s>: %s", newQueue.Name, err.Error())
+		klog.Errorf("error occurred in updating Queue <%s>: %s", queue.Name, err.Error())
 		return err
 	}
 	return nil
