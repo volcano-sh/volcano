@@ -685,3 +685,35 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_CompletesAfterDone(t
 	assert.Less(t, elapsed, 2*time.Second, "WaitForHandlerSync should return after all pending objects are processed")
 	assert.GreaterOrEqual(t, elapsed, 100*time.Millisecond, "WaitForHandlerSync should wait until Done is called")
 }
+
+func TestSnapshotIndex(t *testing.T) {
+	activeQueue := &api.QueueInfo{UID: "active-queue", Name: "active-queue"}
+	activeJob := api.NewJobInfo("ns/active-job")
+	activeJob.Queue = activeQueue.UID
+	activeJob.PodGroup = &api.PodGroup{}
+	jobWithoutPodGroup := api.NewJobInfo("ns/no-podgroup")
+	jobWithoutPodGroup.Queue = activeQueue.UID
+	jobWithMissingQueue := api.NewJobInfo("ns/missing-queue")
+	jobWithMissingQueue.Queue = "missing-queue"
+	jobWithMissingQueue.PodGroup = &api.PodGroup{}
+
+	sc := &SchedulerCache{
+		Queues: map[api.QueueID]*api.QueueInfo{
+			activeQueue.UID: activeQueue,
+		},
+		Jobs: map[api.JobID]*api.JobInfo{
+			activeJob.UID:           activeJob,
+			jobWithoutPodGroup.UID:  jobWithoutPodGroup,
+			jobWithMissingQueue.UID: jobWithMissingQueue,
+		},
+	}
+
+	index := sc.SnapshotIndex()
+
+	if len(index.Queues) != 1 || index.Queues[activeQueue.UID] != nil {
+		t.Fatalf("expected only active queue ID with nil value, got %#v", index.Queues)
+	}
+	if len(index.Jobs) != 1 || index.Jobs[activeJob.UID] != nil {
+		t.Fatalf("expected only schedulable job ID with nil value, got %#v", index.Jobs)
+	}
+}

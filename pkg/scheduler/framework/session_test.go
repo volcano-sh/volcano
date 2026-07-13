@@ -3,14 +3,187 @@ package framework
 import (
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+func TestCloseSessionCleansMetricsForQueueMissingFromCache(t *testing.T) {
+	const queueName = "deleted-during-session"
+	t.Cleanup(func() {
+		metrics.DeleteQueueMetrics(queueName)
+	})
+
+	schedulerCache := cache.NewCustomMockSchedulerCache(
+		"metrics-cleanup-test",
+		nil,
+		nil,
+		&util.FakeStatusUpdater{},
+		nil,
+		nil,
+	)
+	queueObject := &schedulingv1beta1.Queue{ObjectMeta: metav1.ObjectMeta{Name: queueName}}
+	schedulerCache.AddQueueV1beta1(queueObject)
+	queue := schedulerCache.Queues[api.QueueID(queueName)].Clone()
+
+	// Reproduce delete -> recreate -> delete for the same queue key while the
+	// scheduling session still holds the first incarnation in its snapshot.
+	schedulerCache.DeleteQueueV1beta1(queueObject)
+	schedulerCache.AddQueueV1beta1(queueObject.DeepCopy())
+	schedulerCache.DeleteQueueV1beta1(queueObject)
+
+	ssn := &Session{
+		cache:  schedulerCache,
+		Jobs:   map[api.JobID]*api.JobInfo{},
+		Queues: map[api.QueueID]*api.QueueInfo{queue.UID: queue},
+	}
+
+	// Simulate a scheduling cycle writing metrics from its stale snapshot after
+	// the queue has already been removed from the scheduler cache.
+	metrics.UpdateQueueAllocated(queueName, 100, 1024, nil)
+	if _, found := gaugeMetricValue(t, "volcano_queue_allocated_milli_cpu", map[string]string{"queue_name": queueName}); !found {
+		t.Fatal("expected stale queue metric before closing the session")
+	}
+
+	closeSession(ssn)
+
+	if value, found := gaugeMetricValue(t, "volcano_queue_allocated_milli_cpu", map[string]string{"queue_name": queueName}); found {
+		t.Fatalf("expected closeSession to delete stale queue metric, found value %v", value)
+	}
+}
+
+func TestCloseSessionPreservesMetricsForRecreatedQueueStillInCache(t *testing.T) {
+	const queueName = "recreated-during-session"
+	t.Cleanup(func() {
+		metrics.DeleteQueueMetrics(queueName)
+	})
+
+	schedulerCache := cache.NewCustomMockSchedulerCache(
+		"metrics-cleanup-active-test",
+		nil,
+		nil,
+		&util.FakeStatusUpdater{},
+		nil,
+		nil,
+	)
+	queueObject := &schedulingv1beta1.Queue{ObjectMeta: metav1.ObjectMeta{Name: queueName}}
+	schedulerCache.AddQueueV1beta1(queueObject)
+	queue := schedulerCache.Queues[api.QueueID(queueName)].Clone()
+	schedulerCache.DeleteQueueV1beta1(queueObject)
+	schedulerCache.AddQueueV1beta1(queueObject.DeepCopy())
+
+	metrics.UpdateQueueAllocated(queueName, 200, 2048, nil)
+	closeSession(&Session{
+		cache:  schedulerCache,
+		Jobs:   map[api.JobID]*api.JobInfo{},
+		Queues: map[api.QueueID]*api.QueueInfo{queue.UID: queue},
+	})
+
+	if value, found := gaugeMetricValue(t, "volcano_queue_allocated_milli_cpu", map[string]string{"queue_name": queueName}); !found || value != 200 {
+		t.Fatalf("expected recreated queue metric to remain at 200, found=%v value=%v", found, value)
+	}
+}
+
+func TestSessionCleanMetricsForJobs(t *testing.T) {
+	const (
+		namespace = "metrics-cleanup-ns"
+		jobName   = "metrics-cleanup-job"
+		queueName = "metrics-cleanup-queue"
+	)
+	t.Cleanup(func() {
+		metrics.DeleteJobMetrics(jobName, queueName, namespace)
+	})
+
+	jobID := api.JobID(namespace + "/" + jobName)
+	job := api.NewJobInfo(jobID)
+	job.Name = jobName
+	job.Namespace = namespace
+	job.Queue = api.QueueID(queueName)
+	ssn := &Session{Jobs: map[api.JobID]*api.JobInfo{jobID: job}}
+
+	t.Run("delete a job missing from the current cache snapshot", func(t *testing.T) {
+		metrics.UpdateJobShare(namespace, jobName, 42)
+		metrics.UpdateE2eSchedulingStartTimeByJob(jobName, queueName, namespace, time.Unix(42, 0))
+		ssn.cleanMetrics(&api.ClusterInfo{
+			Jobs:   map[api.JobID]*api.JobInfo{},
+			Queues: map[api.QueueID]*api.QueueInfo{},
+		})
+
+		if value, found := gaugeMetricValue(t, "volcano_job_share", map[string]string{"job_ns": namespace, "job_id": jobName}); found {
+			t.Fatalf("expected stale job metric to be deleted, found value %v", value)
+		}
+		if value, found := gaugeMetricValue(t, "volcano_e2e_job_scheduling_start_time", map[string]string{"job_name": jobName, "queue": queueName, "job_namespace": namespace}); found {
+			t.Fatalf("expected stale e2e job metric to be deleted, found value %v", value)
+		}
+	})
+
+	t.Run("preserve a job still present in the current cache snapshot", func(t *testing.T) {
+		metrics.UpdateJobShare(namespace, jobName, 84)
+		metrics.UpdateE2eSchedulingStartTimeByJob(jobName, queueName, namespace, time.Unix(84, 0))
+		ssn.cleanMetrics(&api.ClusterInfo{
+			Jobs:   map[api.JobID]*api.JobInfo{jobID: nil},
+			Queues: map[api.QueueID]*api.QueueInfo{},
+		})
+
+		if value, found := gaugeMetricValue(t, "volcano_job_share", map[string]string{"job_ns": namespace, "job_id": jobName}); !found || value != 84 {
+			t.Fatalf("expected active job metric to remain at 84, found=%v value=%v", found, value)
+		}
+		if value, found := gaugeMetricValue(t, "volcano_e2e_job_scheduling_start_time", map[string]string{"job_name": jobName, "queue": queueName, "job_namespace": namespace}); !found || value != 84 {
+			t.Fatalf("expected active e2e job metric to remain at 84, found=%v value=%v", found, value)
+		}
+	})
+}
+
+func gaugeMetricValue(t *testing.T, name string, labels map[string]string) (float64, bool) {
+	t.Helper()
+
+	metricFamilies, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather prometheus metrics: %v", err)
+	}
+
+	for _, family := range metricFamilies {
+		if family.GetName() != name {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			if !hasMetricLabels(metric.GetLabel(), labels) || metric.GetGauge() == nil {
+				continue
+			}
+			return metric.GetGauge().GetValue(), true
+		}
+	}
+
+	return 0, false
+}
+
+func hasMetricLabels(metricLabels []*dto.LabelPair, labels map[string]string) bool {
+	for name, value := range labels {
+		found := false
+		for _, label := range metricLabels {
+			if label.GetName() == name && label.GetValue() == value {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
 
 func TestSession_adjustNetworkTopologySpec(t *testing.T) {
 	tests := []struct {

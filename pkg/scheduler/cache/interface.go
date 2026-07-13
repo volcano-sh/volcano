@@ -45,6 +45,9 @@ type Cache interface {
 	// Snapshot deep copy overall cache information into snapshot
 	Snapshot() *api.ClusterInfo
 
+	// SnapshotIndex returns the snapshot contains object ids of the cluster from cache
+	SnapshotIndex() *api.ClusterInfo
+
 	// WaitForCacheSync waits for all cache synced
 	WaitForCacheSync(stopCh <-chan struct{})
 
@@ -99,6 +102,7 @@ type Cache interface {
 
 	// IsJobTerminated returns if the job was terminated
 	IsJobTerminated(jobId api.JobID) bool
+
 	//UpdateNodeShardStatus update status in nodeshard
 	UpdateNodeShardStatus(nodeShardName string) error
 

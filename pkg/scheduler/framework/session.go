@@ -51,6 +51,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/gate"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -561,6 +562,7 @@ func closeSession(ssn *Session) {
 	ju.UpdateAll()
 
 	updateQueueStatus(ssn)
+	ssn.cleanMetrics(ssn.cache.SnapshotIndex())
 
 	ssn.Jobs = nil
 	ssn.Nodes = nil
@@ -576,6 +578,27 @@ func closeSession(ssn *Session) {
 	ssn.cache.OnSessionClose()
 
 	klog.V(3).Infof("Close Session %v", ssn.UID)
+}
+
+// cleanMetrics removes metrics that may have been written from this session's
+// stale snapshot after the corresponding job or queue left the cache. It must
+// run after all session-level metric updates have completed.
+func (ssn *Session) cleanMetrics(snapshot *api.ClusterInfo) {
+	for _, job := range ssn.Jobs {
+		if _, found := snapshot.Jobs[job.UID]; found {
+			continue
+		}
+		klog.V(4).Infof("Job <%s/%s> is not found in cache, deleting metrics for it.", job.Namespace, job.Name)
+		metrics.DeleteJobMetrics(job.Name, string(job.Queue), job.Namespace)
+	}
+
+	for _, queue := range ssn.Queues {
+		if _, found := snapshot.Queues[queue.UID]; found {
+			continue
+		}
+		klog.V(4).Infof("Queue <%s> is not found in cache, deleting metrics for it.", queue.Name)
+		metrics.DeleteQueueMetrics(queue.Name)
+	}
 }
 
 func getPodGroupPhase(jobInfo *api.JobInfo, unschedulable bool) scheduling.PodGroupPhase {

@@ -1586,6 +1586,43 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	return snapshot
 }
 
+// SnapshotIndex returns a lightweight snapshot containing the object IDs
+// currently available for scheduling.
+func (sc *SchedulerCache) SnapshotIndex() *schedulingapi.ClusterInfo {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	snapshot := &schedulingapi.ClusterInfo{
+		Nodes:  make(map[string]*schedulingapi.NodeInfo),
+		Jobs:   make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Queues: make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+	}
+
+	for _, value := range sc.Nodes {
+		if !value.Ready() {
+			continue
+		}
+
+		snapshot.Nodes[value.Name] = nil
+	}
+
+	for _, queue := range sc.Queues {
+		snapshot.Queues[queue.UID] = nil
+	}
+
+	for _, job := range sc.Jobs {
+		if job.PodGroup == nil {
+			continue
+		}
+		if _, found := snapshot.Queues[job.Queue]; !found {
+			continue
+		}
+		snapshot.Jobs[job.UID] = nil
+	}
+
+	return snapshot
+}
+
 func (sc *SchedulerCache) SharedDRAManager() fwk.SharedDRAManager {
 	return sc.sharedDRAManager
 }
