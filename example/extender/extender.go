@@ -36,11 +36,7 @@ func onSessionOpen(w http.ResponseWriter, r *http.Request) {
 
 	content, err := io.ReadAll(r.Body)
 	if err != nil {
-		if _, ok := err.(*http.MaxBytesError); ok {
-			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
-		} else {
-			http.Error(w, "failed to read request body", http.StatusBadRequest)
-		}
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
 		return
 	}
 
@@ -71,11 +67,7 @@ func predicate(w http.ResponseWriter, r *http.Request) {
 
 	content, err := io.ReadAll(r.Body)
 	if err != nil {
-		if _, ok := err.(*http.MaxBytesError); ok {
-			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
-		} else {
-			http.Error(w, "failed to read request body", http.StatusBadRequest)
-		}
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
 		return
 	}
 
@@ -108,11 +100,7 @@ func prioritize(w http.ResponseWriter, r *http.Request) {
 
 	content, err := io.ReadAll(r.Body)
 	if err != nil {
-		if _, ok := err.(*http.MaxBytesError); ok {
-			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
-		} else {
-			http.Error(w, "failed to read request body", http.StatusBadRequest)
-		}
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
 		return
 	}
 
