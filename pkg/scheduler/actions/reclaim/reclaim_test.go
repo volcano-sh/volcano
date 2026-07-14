@@ -292,28 +292,16 @@ func TestReclaim(t *testing.T) {
 			ExpectEvicted:  []string{"c1/victim-pod"},
 		},
 		{
-			// Regression: reclaimForTask skipped nodes with sufficient FutureIdle when
-			// reclaimees was empty, causing unnecessary gang scheduling failures.
+			// Regression (#5520): a gang's second task saw reclaimees=[] on n1 because
+			// the first task's eviction had already moved the victim to Releasing. The
+			// unconditional "continue" on empty reclaimees stopped before reaching the
+			// FutureIdle check, so the second task never pipelined, JobPipelined stayed
+			// false, and stmt.Discard() rolled back the first eviction, leaving the gang
+			// Pending with reclaim repeating the same evict/discard cycle each session.
 			//
-			// Within a single scheduling session, Statement.Evict() transitions a task
-			// from Running to Releasing immediately. On the next reclaimForTask call
-			// (for a second pending gang task), the same node's already-evicted task
-			// is Releasing and therefore excluded from reclaimees. The unconditional
-			// "continue" on empty reclaimees prevented reaching the FutureIdle check,
-			// so the task was never pipelined and stmt.Commit() was never called.
-			//
-			// Setup:
-			//   • n1 has 2 CPU total, fully used by victim (2 CPU, Preemptable).
-			//   • pg-preemptor (minMember=2) needs two 1-CPU tasks pipelined.
-			//   • First reclaimForTask: evicts victim (now Releasing), pipelines task1.
-			//     FutureIdle = 0 idle + 2 releasing - 1 pipelined = 1 CPU.
-			//   • Second reclaimForTask: reclaimees=[] (victim is Releasing, not Running),
-			//     but FutureIdle (1 CPU) >= task2 (1 CPU) — must pipeline without evicting.
-			//
-			// Without the fix: second task skips node, JobPipelined returns false,
-			// stmt.Discard() rolls back the eviction — 0 evictions committed.
-			// With the fix: second task pipelines via FutureIdle, JobPipelined=true,
-			// stmt.Commit() — exactly 1 eviction committed.
+			// With the fix, the second task pipelines via FutureIdle (1 CPU released by
+			// the first eviction, not yet reflected in Idle) even though reclaimees is
+			// empty, so JobPipelined succeeds and the eviction commits.
 			Name: "pipeline second task via FutureIdle when reclaimees empty after prior eviction",
 			Plugins: map[string]framework.PluginBuilder{
 				conformance.PluginName: conformance.New,
@@ -334,9 +322,9 @@ func TestReclaim(t *testing.T) {
 				util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
 			},
 			Queues: []*schedulingv1beta1.Queue{
-				// q1 deserves 1 CPU (weight 1 of 10), uses 2 CPU -> overused -> victim is reclaimable.
+				// q1 deserves 0.2 CPU (weight 1 of 10, cluster has 2 CPU), uses 2 CPU -> overused -> victim is reclaimable.
 				util.BuildQueue("q1", 1, nil),
-				// q2 deserves 9 CPU (weight 9 of 10), uses 0 -> starving -> preemptor reclaims.
+				// q2 deserves 1.8 CPU (weight 9 of 10, cluster has 2 CPU), uses 0 -> starving -> preemptor reclaims.
 				util.BuildQueue("q2", 9, nil),
 			},
 			ExpectEvictNum: 1,
