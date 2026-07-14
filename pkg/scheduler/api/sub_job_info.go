@@ -156,6 +156,11 @@ func (sji *SubJobInfo) deleteTask(ti *TaskInfo) {
 			}
 		}
 	}
+
+	// Clear NominatedHyperNode if the subJob scaled down to 0
+	if len(sji.Tasks) == 0 {
+		sji.NominatedHyperNode = ""
+	}
 }
 
 func (sji *SubJobInfo) getTaskHighestPriority() int32 {

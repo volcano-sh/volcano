@@ -952,3 +952,64 @@ func TestUpdateJobInfo_PropagatesNominationClear(t *testing.T) {
 	assert.Equal(t, "", cached.SubJobs[subID].NominatedHyperNode,
 		"cache must mirror allocate's clear-on-commit so the next cycle does not retry the consumed nomination")
 }
+
+// TestTaskUnschedulable_SyncsNominatedNodeNameToCache locks in that a
+// successful UpdatePodStatus with a non-empty nominatedNodeName is reflected
+// on the cache task's Pod pointer synchronously, without waiting on the pod
+// informer round-trip. This pairs with updateJobInfo's synchronous writeback
+// of NominatedHyperNode so the next session Snapshot sees a consistent
+// (NominatedHyperNode, NominatedNodeName) pair and validateNomination does
+// not spuriously invalidate the gangpreempt/gangreclaim pin.
+func TestTaskUnschedulable_SyncsNominatedNodeNameToCache(t *testing.T) {
+	owner := buildOwnerReference("j1")
+	pod := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"),
+		[]metav1.OwnerReference{owner}, make(map[string]string))
+	task := api.NewTaskInfo(pod)
+
+	job := api.NewJobInfo(task.Job, task)
+	sc := &SchedulerCache{
+		Jobs:          map[api.JobID]*api.JobInfo{task.Job: job},
+		StatusUpdater: &util.FakeStatusUpdater{},
+		Recorder:      record.NewFakeRecorder(32),
+	}
+
+	err := sc.taskUnschedulable(task, api.PodReasonUnschedulable, "pending", "n-nominated")
+	assert.NoError(t, err)
+
+	cachedTask, ok := sc.Jobs[task.Job].Tasks[task.UID]
+	assert.True(t, ok, "cache must still track the task after taskUnschedulable")
+	assert.Equal(t, "n-nominated", cachedTask.Pod.Status.NominatedNodeName,
+		"cache task's NominatedNodeName must reflect the API-server write synchronously, without waiting on the pod informer")
+	assert.Equal(t, "", pod.Status.NominatedNodeName,
+		"the caller's original Pod pointer must be untouched (taskUnschedulable deep-copies before mutating)")
+}
+
+// TestTaskUnschedulable_DoesNotSyncWhenNominatedNodeNameEmpty guards that
+// the cache sync only runs when we actually wrote a nominatedNodeName. The
+// empty-nominated case is used for regular unschedulable reasons that must
+// not clobber a previously written NominatedNodeName (per the existing
+// updateNomiNode guard).
+func TestTaskUnschedulable_DoesNotSyncWhenNominatedNodeNameEmpty(t *testing.T) {
+	owner := buildOwnerReference("j1")
+	pod := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"),
+		[]metav1.OwnerReference{owner}, make(map[string]string))
+	pod.Status.NominatedNodeName = "n-previous"
+	task := api.NewTaskInfo(pod)
+
+	job := api.NewJobInfo(task.Job, task)
+	sc := &SchedulerCache{
+		Jobs:          map[api.JobID]*api.JobInfo{task.Job: job},
+		StatusUpdater: &util.FakeStatusUpdater{},
+		Recorder:      record.NewFakeRecorder(32),
+	}
+
+	// Call taskUnschedulable with an empty nominatedNodeName - the sync
+	// must NOT touch the cached pod pointer for this case.
+	originalPod := sc.Jobs[task.Job].Tasks[task.UID].Pod
+	err := sc.taskUnschedulable(task, api.PodReasonUnschedulable, "still pending", "")
+	assert.NoError(t, err)
+	assert.Same(t, originalPod, sc.Jobs[task.Job].Tasks[task.UID].Pod,
+		"cache pod pointer must not be swapped when nominatedNodeName is empty")
+	assert.Equal(t, "n-previous", sc.Jobs[task.Job].Tasks[task.UID].Pod.Status.NominatedNodeName,
+		"previously written NominatedNodeName must remain intact")
+}

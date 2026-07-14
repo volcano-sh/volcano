@@ -953,3 +953,26 @@ func TestConvertToHardTopology(t *testing.T) {
 		})
 	}
 }
+
+func TestSubJobInfo_deleteTask_ClearsNominatedHyperNodeOnEmpty(t *testing.T) {
+	sji := NewSubJobInfo("gid", "uid", "job", nil, nil)
+	sji.NominatedHyperNode = "hn-pinned"
+	sji.AllocatedHyperNode = "hn-allocated"
+
+	t1 := &TaskInfo{UID: "t1", Job: "job", Priority: 5, TransactionContext: TransactionContext{Status: Pending}}
+	t2 := &TaskInfo{UID: "t2", Job: "job", Priority: 5, TransactionContext: TransactionContext{Status: Pending}}
+	sji.addTask(t1)
+	sji.addTask(t2)
+
+	sji.deleteTask(t1)
+	assert.Equal(t, "hn-pinned", sji.NominatedHyperNode,
+		"pin must persist while any task remains in the subJob")
+	assert.Equal(t, "hn-allocated", sji.AllocatedHyperNode,
+		"AllocatedHyperNode is out of scope and must not be touched")
+
+	sji.deleteTask(t2)
+	assert.Equal(t, "", sji.NominatedHyperNode,
+		"pin must be cleared once the subJob transitions to empty so a later scale-up on the same subJob key does not resurrect it")
+	assert.Equal(t, "hn-allocated", sji.AllocatedHyperNode,
+		"AllocatedHyperNode remains untouched on empty transition")
+}

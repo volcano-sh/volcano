@@ -319,6 +319,9 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 	if !actx.queuesRegular.Empty() {
 		klog.V(3).InfoS("Allocate pass 2: regular allocation",
 			"queues", actx.queuesRegular.Len())
+		// Pass 1 may have committed allocations that changed queues' share/allocated state
+		// re-heapify to force make pass 2 honor the correct QueueOrderFn order.
+		actx.queuesRegular.Reheapify()
 		alloc.allocateResourcesForQueues(actx.queuesRegular, actx.jobsByQueueRegular, actx)
 	}
 }
