@@ -23,6 +23,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -119,8 +120,9 @@ func (gp *Action) Execute(ssn *framework.Session) {
 			}
 
 			preemptorJob := preemptors.Pop().(*api.JobInfo)
+			metrics.RegisterGangPreemptionAttempts()
 			stmt := framework.NewStatement(ssn)
-			subJobHyperNodes := gp.preemptJobInDomains(ssn, stmt, queue, preemptorJob)
+			subJobHyperNodes, victimsCount := gp.preemptJobInDomains(ssn, stmt, queue, preemptorJob)
 
 			// Mirror legacy commit behavior: commit only when the job becomes pipelined.
 			if ssn.JobPipelined(preemptorJob) {
@@ -128,17 +130,19 @@ func (gp *Action) Execute(ssn *framework.Session) {
 				utils.ApplySubJobNominations(preemptorJob, subJobHyperNodes)
 			} else {
 				stmt.Discard()
+				victimsCount = 0
 			}
+			metrics.UpdateGangPreemptionVictimsCount(victimsCount)
 		}
 	}
 }
 
 func (gp *Action) UnInitialize() {}
 
-func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.Statement, queue *api.QueueInfo, preemptorJob *api.JobInfo) map[api.SubJobID]string {
+func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.Statement, queue *api.QueueInfo, preemptorJob *api.JobInfo) (map[api.SubJobID]string, int) {
 	pending := utils.CollectPendingTasksForGangEviction(ssn, preemptorJob)
 	if len(pending) == 0 {
-		return nil
+		return nil, 0
 	}
 
 	jobNeed := utils.SumInitResreq(pending)
@@ -175,10 +179,10 @@ func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.St
 			if err := stmt.RecoverOperations(plan); err != nil {
 				continue
 			}
-			return subJobHyperNodes
+			return subJobHyperNodes, len(attemptVictims)
 		}
 	}
-	return nil
+	return nil, 0
 }
 
 func (gp *Action) selectDomainBundles(ssn *framework.Session, preemptorJob *api.JobInfo, pendingTasks []*api.TaskInfo, jobNeed *api.Resource, domain string) []*utils.Bundle {

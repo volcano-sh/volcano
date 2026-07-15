@@ -23,6 +23,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -121,8 +122,9 @@ func (gr *Action) Execute(ssn *framework.Session) {
 				break
 			}
 			job := jobsQ.Pop().(*api.JobInfo)
+			metrics.RegisterGangReclaimAttempts()
 			stmt := framework.NewStatement(ssn)
-			subJobHyperNodes := gr.reclaimJobInDomains(ssn, stmt, queue, job)
+			subJobHyperNodes, victimsCount := gr.reclaimJobInDomains(ssn, stmt, queue, job)
 
 			// Mirror legacy commit behavior: commit only when the job becomes pipelined.
 			if ssn.JobPipelined(job) {
@@ -130,21 +132,23 @@ func (gr *Action) Execute(ssn *framework.Session) {
 				utils.ApplySubJobNominations(job, subJobHyperNodes)
 			} else {
 				stmt.Discard()
+				victimsCount = 0
 			}
+			metrics.UpdateGangReclaimVictimsCount(victimsCount)
 		}
 	}
 }
 
 func (gr *Action) UnInitialize() {}
 
-func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.Statement, queue *api.QueueInfo, job *api.JobInfo) map[api.SubJobID]string {
+func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.Statement, queue *api.QueueInfo, job *api.JobInfo) (map[api.SubJobID]string, int) {
 	pending := utils.CollectPendingTasksForGangEviction(ssn, job)
 	if len(pending) == 0 {
-		return nil
+		return nil, 0
 	}
 	if queue != nil && !ssn.Preemptive(queue, pending) {
 		klog.V(3).Infof("Queue <%s> cannot reclaim for job <%s/%s>, skip", queue.Name, job.Namespace, job.Name)
-		return nil
+		return nil, 0
 	}
 	jobNeed := utils.SumInitResreq(pending)
 	domains := utils.GetCandidateDomains(ssn, job, gr.maxDomains)
@@ -180,10 +184,10 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 			if err := stmt.RecoverOperations(plan); err != nil {
 				continue
 			}
-			return subJobHyperNodes
+			return subJobHyperNodes, len(attemptVictims)
 		}
 	}
-	return nil
+	return nil, 0
 }
 
 func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l, r *api.QueueInfo) bool, reclaimerJob *api.JobInfo, pendingTasks []*api.TaskInfo, jobNeed *api.Resource, domain string) []*utils.Bundle {

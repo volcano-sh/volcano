@@ -163,6 +163,38 @@ var (
 		},
 	)
 
+	gangPreemptionVictims = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "pod_gang_preemption_victims",
+			Help:      "Number of selected gang preemption victims",
+		},
+	)
+
+	gangPreemptionAttempts = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "total_gang_preemption_attempts",
+			Help:      "Total gang preemption attempts in the cluster till now",
+		},
+	)
+
+	gangReclaimVictims = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "pod_gang_reclaim_victims",
+			Help:      "Number of selected gang reclaim victims",
+		},
+	)
+
+	gangReclaimAttempts = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "total_gang_reclaim_attempts",
+			Help:      "Total gang reclaim attempts in the cluster till now",
+		},
+	)
+
 	unscheduleTaskCount = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
@@ -252,6 +284,26 @@ func UpdatePreemptionVictimsCount(victimsCount int) {
 // RegisterPreemptionAttempts records number of attempts for preemtion
 func RegisterPreemptionAttempts() {
 	preemptionAttempts.Inc()
+}
+
+// UpdateGangPreemptionVictimsCount updates count of gang preemption victims
+func UpdateGangPreemptionVictimsCount(victimsCount int) {
+	gangPreemptionVictims.Set(float64(victimsCount))
+}
+
+// RegisterGangPreemptionAttempts records number of attempts for gang preemption
+func RegisterGangPreemptionAttempts() {
+	gangPreemptionAttempts.Inc()
+}
+
+// UpdateGangReclaimVictimsCount updates count of gang reclaim victims
+func UpdateGangReclaimVictimsCount(victimsCount int) {
+	gangReclaimVictims.Set(float64(victimsCount))
+}
+
+// RegisterGangReclaimAttempts records number of attempts for gang reclaim
+func RegisterGangReclaimAttempts() {
+	gangReclaimAttempts.Inc()
 }
 
 // UpdateUnscheduleTaskCount records total number of unscheduleable tasks
