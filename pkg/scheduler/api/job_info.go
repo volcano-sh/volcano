@@ -869,10 +869,15 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason, msg, nominatedNodeN
 		return PodReasonSchedulable, msg, ""
 	case Pipelined:
 		msg = fmt.Sprintf("Pod %s/%s can possibly be assigned to %s, once resource is released and minAvailable is satisfied", taskInfo.Namespace, taskInfo.Name, ctx.NodeName)
-		if ctx.EvictionOccurred {
-			nominatedNodeName = ctx.NodeName
-		}
-		return PodReasonUnschedulable, msg, nominatedNodeName
+		// A Pipelined TransactionContext is the current scheduling intent, so
+		// always expose its node as NominatedNodeName. The old behavior did this
+		// only when EvictionOccurred was true; in a later cycle the same victim
+		// could still be terminating while no new eviction occurred, causing the
+		// valid nomination to disappear. Making every Pipelined task nominate its
+		// node also gives taskUnschedulable an unambiguous contract: an empty
+		// nomination means there is no longer a pipeline decision and an old Pod
+		// status value can be safely cleared.
+		return PodReasonUnschedulable, msg, ctx.NodeName
 	case Pending:
 		if fe := ji.NodesFitErrors[tid]; fe != nil {
 			// Pod is unschedulable

@@ -57,6 +57,41 @@ func buildNode(name string, alloc v1.ResourceList) *v1.Node {
 	}
 }
 
+func TestTaskUnschedulableUpdatesAndClearsNominatedNodeName(t *testing.T) {
+	tests := []struct {
+		name     string
+		original string
+		desired  string
+	}{
+		{name: "persist pipeline nomination", desired: "node-1"},
+		{name: "clear stale nomination", original: "node-1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := NewDefaultMockSchedulerCache("test-scheduler")
+			pod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "ns1", Name: "pod-1", UID: "pod-1"},
+				Status:     v1.PodStatus{NominatedNodeName: tt.original},
+			}
+			if _, err := sc.kubeClient.CoreV1().Pods(pod.Namespace).Create(context.Background(), pod.DeepCopy(), metav1.CreateOptions{}); err != nil {
+				t.Fatalf("create pod: %v", err)
+			}
+
+			task := api.NewTaskInfo(pod)
+			if err := sc.taskUnschedulable(task, api.PodReasonUnschedulable, "waiting for gang", tt.desired); err != nil {
+				t.Fatalf("taskUnschedulable: %v", err)
+			}
+
+			updated, err := sc.kubeClient.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("get pod: %v", err)
+			}
+			assert.Equal(t, tt.desired, updated.Status.NominatedNodeName)
+		})
+	}
+}
+
 func buildPod(ns, n, nn string,
 	p v1.PodPhase, req v1.ResourceList,
 	owner []metav1.OwnerReference, labels map[string]string) *v1.Pod {

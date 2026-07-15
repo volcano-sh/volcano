@@ -311,14 +311,27 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 			klog.V(3).InfoS("Try to allocate resource for job contains hard topology or subjob policy", "queue", queue.Name, "job", job.UID,
 				"allocatedHyperNode", job.AllocatedHyperNode, "subJobNum", jobWorksheet.subJobs.Len())
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
-			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
-				stmt.Commit()
-				ssn.MarkJobDirty(job.UID)
-				alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
+			if stmt != nil {
+				// Every statement has already changed the session snapshot and therefore
+				// must reach exactly one terminal path:
+				//   1. Ready: commit allocations because the gang can start safely.
+				//   2. Pipelined: keep only future-node intent; rolling back Allocate
+				//      operations prevents a partially ready gang from binding early.
+				//   3. Neither: discard all speculative changes so they do not leave
+				//      phantom task states or node resource usage in this session.
+				if ssn.JobReady(job) {
+					stmt.Commit()
+					ssn.MarkJobDirty(job.UID)
+					alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
 
-				// There are still left tasks that need to be allocated when min available < replicas, put the job back
-				if !jobWorksheet.Empty() {
-					jobs.Push(job)
+					// There are still left tasks that need to be allocated when min available < replicas, put the job back
+					if !jobWorksheet.Empty() {
+						jobs.Push(job)
+					}
+				} else if ssn.JobPipelined(job) {
+					stmt.CommitPipelined()
+				} else {
+					stmt.Discard()
 				}
 			}
 		} else {
@@ -340,19 +353,29 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 					stmt = alloc.allocateResourcesForTasks(subJob, tasks, framework.ClusterTopHyperNode)
 				}
 
-				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
-					stmt.Commit()
+				if stmt != nil {
+					// allocateResourcesForTasks mutates the session before returning.
+					// Resolve the transaction explicitly instead of dropping a non-nil
+					// statement: commit a ready gang, retain only pipeline intent for a
+					// pipelined gang, or roll the speculative result back completely.
+					if ssn.JobReady(job) {
+						stmt.Commit()
 
-					// Mirror recorder.UpdateDecisionToJob: clear the redeemed nomination.
-					if subJob.NominatedHyperNode != "" {
-						klog.V(3).InfoS("clear nominated hyperNode for committed subJob",
-							"subJob", subJob.UID, "old", subJob.NominatedHyperNode)
-						subJob.NominatedHyperNode = ""
-					}
+						// Mirror recorder.UpdateDecisionToJob: clear the redeemed nomination.
+						if subJob.NominatedHyperNode != "" {
+							klog.V(3).InfoS("clear nominated hyperNode for committed subJob",
+								"subJob", subJob.UID, "old", subJob.NominatedHyperNode)
+							subJob.NominatedHyperNode = ""
+						}
 
-					// There are still left tasks that need to be allocated when min available < replicas, put the job back
-					if tasks.Len() > 0 {
-						jobs.Push(job)
+						// There are still left tasks that need to be allocated when min available < replicas, put the job back
+						if tasks.Len() > 0 {
+							jobs.Push(job)
+						}
+					} else if ssn.JobPipelined(job) {
+						stmt.CommitPipelined()
+					} else {
+						stmt.Discard()
 					}
 				}
 			} else {

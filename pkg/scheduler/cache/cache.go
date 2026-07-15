@@ -343,6 +343,8 @@ func podConditionHaveUpdate(status *v1.PodStatus, condition *v1.PodCondition) bo
 }
 
 func podNominatedNodeNameNeedUpdate(status *v1.PodStatus, nodeName string) bool {
+	// nodeName is the complete desired value, not an optional patch. In
+	// particular, an empty value is meaningful and clears a stale nomination.
 	return status.NominatedNodeName != nodeName
 }
 
@@ -1088,12 +1090,16 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 
 	updateCond := podConditionHaveUpdate(&pod.Status, condition)
 
-	// only update pod's nominatedNodeName when nominatedNodeName is not empty
-	// consider this situation:
-	// 1. at session 1, the pod A preempt another lower priority pod B, and we updated A's nominatedNodeName
-	// 2. at session 2, the pod B is still terminating, so the pod A is still pipelined, but it preempt none, so
-	// the nominatedNodeName is empty, but we should not override the A's nominatedNodeName to empty
-	updateNomiNode := len(nominatedNodeName) > 0 && podNominatedNodeNameNeedUpdate(&pod.Status, nominatedNodeName)
+	// TaskSchedulingReason now guarantees that every Pipelined task reports its
+	// selected node, even when no new eviction happened in this session. Under
+	// that contract an empty nominatedNodeName means the task has no current
+	// pipeline decision, rather than "keep the previous value". Compare values
+	// directly so this path supports all required transitions:
+	//   "" -> node-a     create a nomination
+	//   node-a -> node-b move a nomination
+	//   node-a -> ""     clear a stale nomination
+	// Avoiding the old non-empty guard is what makes the last transition possible.
+	updateNomiNode := podNominatedNodeNameNeedUpdate(&pod.Status, nominatedNodeName)
 
 	if updateCond || updateNomiNode {
 		pod = pod.DeepCopy()
@@ -1102,8 +1108,9 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 			klog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
 		}
 
-		// if nominatedNode field changed, we should update it to the pod status, for k8s
-		// autoscaler will check this field and ignore this pod when scale up.
+		// Apply the complete desired value, including empty string for cleanup.
+		// External components such as autoscalers observe this Pod status field,
+		// so it must reflect the current pipeline decision rather than an old one.
 		if updateNomiNode {
 			klog.V(3).Infof("Updating pod nominatedNodeName for %s/%s from (%s) to (%s)", pod.Namespace, pod.Name, pod.Status.NominatedNodeName, nominatedNodeName)
 			pod.Status.NominatedNodeName = nominatedNodeName

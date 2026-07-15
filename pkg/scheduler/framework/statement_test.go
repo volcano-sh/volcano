@@ -394,3 +394,49 @@ func TestDiscardReversesOperations(t *testing.T) {
 		}
 	})
 }
+
+func TestCommitPipelinedPreservesOnlyPipelineOperations(t *testing.T) {
+	ssn, job, allocatedTask, node := newTestSession(t)
+
+	pipelinedTask := allocatedTask.Clone()
+	pipelinedTask.UID = api.TaskID("p2")
+	pipelinedTask.Name = "p2"
+	pipelinedTask.Pod = allocatedTask.Pod.DeepCopy()
+	pipelinedTask.Pod.UID = "p2"
+	pipelinedTask.Pod.Name = "p2"
+	pipelinedTask.TransactionContext = api.TransactionContext{Status: api.Pending}
+	pipelinedTask.LastTransaction = nil
+	job.AddTaskInfo(pipelinedTask)
+
+	stmt := NewStatement(ssn)
+	if err := stmt.Allocate(allocatedTask, node); err != nil {
+		t.Fatalf("Allocate failed: %v", err)
+	}
+	if err := stmt.Pipeline(pipelinedTask, node.Name, false); err != nil {
+		t.Fatalf("Pipeline failed: %v", err)
+	}
+
+	stmt.CommitPipelined()
+
+	if allocatedTask.Status != api.Pending || allocatedTask.NodeName != "" {
+		t.Fatalf("allocated task must be rolled back, got status %v on node %q", allocatedTask.Status, allocatedTask.NodeName)
+	}
+	if allocatedTask.LastTransaction == nil || allocatedTask.LastTransaction.Status != api.Allocated {
+		t.Fatalf("allocated task must retain its last scheduling decision for reporting, got %#v", allocatedTask.LastTransaction)
+	}
+	if pipelinedTask.Status != api.Pipelined || pipelinedTask.NodeName != node.Name {
+		t.Fatalf("pipeline decision must be retained, got status %v on node %q", pipelinedTask.Status, pipelinedTask.NodeName)
+	}
+	if pipelinedTask.LastTransaction != nil {
+		t.Fatalf("committed pipeline decision must not retain a discarded transaction, got %#v", pipelinedTask.LastTransaction)
+	}
+	if len(stmt.operations) != 0 {
+		t.Fatalf("committed statement must not retain operations, got %d", len(stmt.operations))
+	}
+	if _, found := node.Tasks[api.PodKey(allocatedTask.Pod)]; found {
+		t.Fatal("rolled-back allocated task must not remain on the session node")
+	}
+	if _, found := node.Tasks[api.PodKey(pipelinedTask.Pod)]; !found {
+		t.Fatal("pipelined task must remain on the session node until session close")
+	}
+}
