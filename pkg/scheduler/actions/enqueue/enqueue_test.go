@@ -121,6 +121,21 @@ func TestEnqueue(t *testing.T) {
 				"c1/pg1": scheduling.PodGroupPending,
 			},
 		},
+		{
+			Name: "invalid negative timeout annotation falls back to default and does not evict immediately",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithAnno("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue, map[string]string{api.JobInqueueTimeoutAnnotation: "-1"}),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("c1", 1, api.BuildResourceList("4", "4G")),
+			},
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"c1/pg1": scheduling.PodGroupInqueue,
+			},
+		},
 	}
 
 	trueValue := true

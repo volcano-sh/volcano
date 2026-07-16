@@ -109,9 +109,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			ssn.Jobs[job.UID] = job
 
 			// Record the enqueue timestamp for timeout tracking.
-			if job.EnqueueTimestamp.IsZero() {
-				job.EnqueueTimestamp = metav1.Time{Time: time.Now()}
-			}
+			job.EnqueueTimestamp = metav1.Now()
 		}
 
 		// Added Queue back until no job in Queue.
@@ -130,8 +128,7 @@ func (enqueue *Action) evictTimedOutInqueueJobs(ssn *framework.Session) {
 		// Initialize the enqueue timestamp if it's not set (e.g. for jobs that were
 		// already Inqueue before this feature was introduced).
 		if job.EnqueueTimestamp.IsZero() {
-			job.EnqueueTimestamp = metav1.Time{Time: time.Now()}
-			ssn.Jobs[job.UID] = job
+			job.EnqueueTimestamp = metav1.Now()
 			ssn.MarkJobDirty(job.UID)
 			continue
 		}
@@ -151,8 +148,6 @@ func (enqueue *Action) evictTimedOutInqueueJobs(ssn *framework.Session) {
 
 		// Notify plugins to release the inqueue quota.
 		ssn.JobInqueueEvicted(job)
-
-		ssn.Jobs[job.UID] = job
 	}
 }
 

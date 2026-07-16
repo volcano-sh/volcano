@@ -464,7 +464,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		if attr == nil {
 			return
 		}
-		attr.inqueue.Sub(job.DeductSchGatedResources(job.GetMinResources()))
+		attr.inqueue.Sub(job.DeductSchGatedResources(util.GetInqueueResource(job, job.Allocated)))
 		klog.V(4).Infof("%s:%s/%s inqueue quota released after timeout eviction",
 			pp.Name(), job.Namespace, job.Name)
 	})

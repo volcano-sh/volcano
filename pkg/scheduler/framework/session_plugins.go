@@ -635,6 +635,9 @@ func (ssn *Session) JobEnqueued(obj interface{}) {
 func (ssn *Session) JobInqueueEvicted(obj interface{}) {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledJobEnqueued) {
+				continue
+			}
 			fn, found := ssn.jobInqueueEvictedFns[plugin.Name]
 			if !found {
 				continue
