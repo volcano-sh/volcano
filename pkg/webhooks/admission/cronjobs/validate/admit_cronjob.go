@@ -33,6 +33,7 @@ import (
 	"k8s.io/kubernetes/pkg/capabilities"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
@@ -129,8 +130,37 @@ func validateCronJob(cronjob *v1alpha1.CronJob) string {
 	if msg := strings.TrimSpace(validateCronJobName(cronjob.Name)); msg != "" {
 		errs = append(errs, msg)
 	}
+	if msg := strings.TrimSpace(validateJobTemplate(&cronjob.Spec.JobTemplate.Spec)); msg != "" {
+		errs = append(errs, msg)
+	}
 	return strings.Join(errs, "; ")
 }
+
+func validateJobTemplate(spec *v1alpha1.JobSpec) string {
+	if len(spec.Tasks) == 0 {
+		return "No task specified in job spec"
+	}
+
+	queue, err := config.QueueLister.Get(spec.Queue)
+	if err != nil {
+		return fmt.Sprintf("unable to find job queue: %v", err)
+	}
+	if queue.Status.State != schedulingv1beta1.QueueStateOpen {
+		return fmt.Sprintf("can only submit job to queue with state `Open`, queue `%s` status is `%s`", queue.Name, queue.Status.State)
+	}
+	if queue.Name == "root" {
+		return "can not submit job to root queue"
+	}
+	childQueues, err := config.GetQueuesByParent(queue.Name)
+	if err != nil {
+		return fmt.Sprintf("failed to get child queues for queue %s: %v", queue.Name, err)
+	}
+	if len(childQueues) != 0 {
+		return fmt.Sprintf("can only submit job to leaf queue, queue `%s` has %d child queues", queue.Name, len(childQueues))
+	}
+	return ""
+}
+
 func validateCronjobSpec(spec *v1alpha1.CronJobSpec, nameSpace string) string {
 	var msg string
 	if len(spec.Schedule) == 0 {
