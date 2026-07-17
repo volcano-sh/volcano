@@ -273,3 +273,56 @@ func TestReleaseKeepsCommittedAnnotations(t *testing.T) {
 		t.Errorf("committed pod's vgpu-ids-new must be preserved on apiserver")
 	}
 }
+
+func TestReleaseBestEffortReleasesNodeLock(t *testing.T) {
+	pod := podWithVGPUAnnotations("allocating")
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node-a",
+			Annotations: map[string]string{
+				DeviceName: "2026-01-02T03:04:05Z",
+			},
+		},
+	}
+	client := fake.NewSimpleClientset(pod, node)
+	gs := &GPUDevices{Name: "node-a"}
+
+	old := NodeLockEnable
+	NodeLockEnable = true
+	defer func() { NodeLockEnable = old }()
+
+	if err := gs.Release(client, pod); err != nil {
+		t.Fatalf("Release returned error: %v", err)
+	}
+
+	gotNode, err := client.CoreV1().Nodes().Get(context.Background(), "node-a", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get node: %v", err)
+	}
+	if _, ok := gotNode.Annotations[DeviceName]; ok {
+		t.Fatalf("expected node lock annotation %q to be removed", DeviceName)
+	}
+}
+
+func TestReleaseNodeLockErrorDoesNotFailRelease(t *testing.T) {
+	pod := podWithVGPUAnnotations("allocating")
+	client := fake.NewSimpleClientset(pod)
+	gs := &GPUDevices{Name: "missing-node"}
+
+	old := NodeLockEnable
+	NodeLockEnable = true
+	defer func() { NodeLockEnable = old }()
+
+	if err := gs.Release(client, pod); err != nil {
+		t.Fatalf("Release should not fail even when lock release fails: %v", err)
+	}
+
+	for _, k := range []string{
+		AssignedNodeAnnotations, AssignedIDsAnnotations,
+		AssignedIDsToAllocateAnnotations, DeviceBindPhase,
+	} {
+		if _, ok := pod.Annotations[k]; ok {
+			t.Errorf("in-memory annotation %s should have been removed", k)
+		}
+	}
+}
