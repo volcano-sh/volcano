@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
 const eps = 1e-9
@@ -440,6 +441,68 @@ func TestGetResourceKey_PerQueueOverride(t *testing.T) {
 	}
 	if got := fsp.getResourceKey("cpu-queue"); got != "cpu" {
 		t.Errorf("cpu-queue: got %q, want %q", got, "cpu")
+	}
+}
+
+// --- targetQueues default-to-all-queues tests ---
+
+func TestNew_UnsetTargetQueues_DefaultsToAllQueues(t *testing.T) {
+	p := New(framework.Arguments{})
+	fsp := p.(*fairSharePlugin)
+
+	if !fsp.targetAllQueues {
+		t.Error("targetAllQueues = false, want true when fairshare.targetQueues is unset")
+	}
+	if len(fsp.targetQueueNames) != 0 {
+		t.Errorf("targetQueueNames = %v, want empty when fairshare.targetQueues is unset", fsp.targetQueueNames)
+	}
+}
+
+func TestNew_ExplicitTargetQueues_DisablesAllQueuesMode(t *testing.T) {
+	p := New(framework.Arguments{"fairshare.targetQueues": "gpu-queue, cpu-queue"})
+	fsp := p.(*fairSharePlugin)
+
+	if fsp.targetAllQueues {
+		t.Error("targetAllQueues = true, want false when fairshare.targetQueues is explicitly set")
+	}
+	for _, want := range []string{"gpu-queue", "cpu-queue"} {
+		if _, ok := fsp.targetQueueNames[want]; !ok {
+			t.Errorf("targetQueueNames missing %q: got %v", want, fsp.targetQueueNames)
+		}
+	}
+}
+
+func TestGetQueueName_TargetAllQueues_MatchesAnyQueue(t *testing.T) {
+	fsp := &fairSharePlugin{targetAllQueues: true}
+	ssn := &framework.Session{
+		Queues: map[api.QueueID]*api.QueueInfo{
+			"random-queue": {UID: "random-queue", Name: "random-queue"},
+		},
+	}
+	job := &api.JobInfo{Queue: "random-queue"}
+
+	name, targeted := fsp.getQueueName(ssn, job)
+	if !targeted || name != "random-queue" {
+		t.Errorf("getQueueName() = (%q, %v), want (%q, true)", name, targeted, "random-queue")
+	}
+}
+
+func TestGetQueueName_ExplicitAllowlist_OnlyMatchesListedQueues(t *testing.T) {
+	fsp := &fairSharePlugin{
+		targetQueueNames: map[string]struct{}{"gpu-queue": {}},
+	}
+	ssn := &framework.Session{
+		Queues: map[api.QueueID]*api.QueueInfo{
+			"gpu-queue":   {UID: "gpu-queue", Name: "gpu-queue"},
+			"other-queue": {UID: "other-queue", Name: "other-queue"},
+		},
+	}
+
+	if _, targeted := fsp.getQueueName(ssn, &api.JobInfo{Queue: "gpu-queue"}); !targeted {
+		t.Error("gpu-queue: targeted = false, want true (in allowlist)")
+	}
+	if _, targeted := fsp.getQueueName(ssn, &api.JobInfo{Queue: "other-queue"}); targeted {
+		t.Error("other-queue: targeted = true, want false (not in allowlist)")
 	}
 }
 

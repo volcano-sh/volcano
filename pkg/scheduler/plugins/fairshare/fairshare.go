@@ -81,8 +81,11 @@ type fairSharePlugin struct {
 	enableEnqueueGate bool
 	queueResourceKeys map[string]string
 	targetQueueNames  map[string]struct{}
-	halfLife          time.Duration
-	persistCfg        persistConfig
+	// targetAllQueues is true when fairshare.targetQueues is unset, meaning
+	// the plugin applies to every queue instead of a fixed allowlist.
+	targetAllQueues bool
+	halfLife        time.Duration
+	persistCfg      persistConfig
 
 	queues map[string]*queueState
 
@@ -95,7 +98,7 @@ type fairSharePlugin struct {
 //
 // Supported arguments:
 //
-//	fairshare.targetQueues          - comma-separated queue names (required)
+//	fairshare.targetQueues          - comma-separated queue names (default: all queues)
 //	fairshare.resourceKey           - default resource to track (default: "nvidia.com/gpu")
 //	fairshare.resourceKey.<queue>   - per-queue resource override (e.g., "cpu" for a CPU queue)
 //	fairshare.enableEnqueueGate     - "true" to enable enqueue gating (default: "false", ordering only)
@@ -127,6 +130,10 @@ func New(arguments framework.Arguments) framework.Plugin {
 				fsp.targetQueueNames[q] = struct{}{}
 			}
 		}
+	} else {
+		// No allowlist configured: apply fair share to every queue rather
+		// than silently doing nothing.
+		fsp.targetAllQueues = true
 	}
 
 	for queueName := range fsp.targetQueueNames {
@@ -179,8 +186,12 @@ func New(arguments framework.Arguments) framework.Plugin {
 		}
 	}
 
+	queuesLog := interface{}("all")
+	if !fsp.targetAllQueues {
+		queuesLog = fsp.targetQueueNames
+	}
 	klog.V(2).Infof("fairshare: plugin created — queues=%v resource=%s halfLife=%s enqueueGate=%v persist=%v",
-		fsp.targetQueueNames, fsp.defaultResource, fsp.halfLife, fsp.enableEnqueueGate, fsp.persistCfg.enabled)
+		queuesLog, fsp.defaultResource, fsp.halfLife, fsp.enableEnqueueGate, fsp.persistCfg.enabled)
 
 	return fsp
 }
@@ -199,15 +210,13 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	fsp.queues = make(map[string]*queueState)
 
-	for queueName := range fsp.targetQueueNames {
-		resourceKey := fsp.getResourceKey(queueName)
-		totalResource := fsp.getQueueTotalResource(ssn, queueName, resourceKey)
-
-		fsp.queues[queueName] = &queueState{
-			resourceKey:   resourceKey,
-			totalResource: totalResource,
-			userRunning:   make(map[string]float64),
-			userDemand:    make(map[string]float64),
+	if fsp.targetAllQueues {
+		for _, queueInfo := range ssn.Queues {
+			fsp.initQueueState(ssn, queueInfo.Name)
+		}
+	} else {
+		for queueName := range fsp.targetQueueNames {
+			fsp.initQueueState(ssn, queueName)
 		}
 	}
 
@@ -468,10 +477,26 @@ func DecayFactor(elapsed, halfLife time.Duration) float64 {
 	return math.Pow(2.0, -elapsed.Seconds()/halfLife.Seconds())
 }
 
+// initQueueState creates the per-cycle queueState entry for queueName.
+func (fsp *fairSharePlugin) initQueueState(ssn *framework.Session, queueName string) {
+	resourceKey := fsp.getResourceKey(queueName)
+	totalResource := fsp.getQueueTotalResource(ssn, queueName, resourceKey)
+
+	fsp.queues[queueName] = &queueState{
+		resourceKey:   resourceKey,
+		totalResource: totalResource,
+		userRunning:   make(map[string]float64),
+		userDemand:    make(map[string]float64),
+	}
+}
+
 func (fsp *fairSharePlugin) getQueueName(ssn *framework.Session, job *api.JobInfo) (string, bool) {
 	queue, ok := ssn.Queues[job.Queue]
 	if !ok {
 		return "", false
+	}
+	if fsp.targetAllQueues {
+		return queue.Name, true
 	}
 	_, targeted := fsp.targetQueueNames[queue.Name]
 	return queue.Name, targeted

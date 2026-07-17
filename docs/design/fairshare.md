@@ -133,7 +133,7 @@ tiers:
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `fairshare.targetQueues` | _(required)_ | Comma-separated queue names to apply fair share to |
+| `fairshare.targetQueues` | _(all queues)_ | Comma-separated queue names to apply fair share to; if unset, applies to every queue |
 | `fairshare.resourceKey` | `nvidia.com/gpu` | Default resource to track |
 | `fairshare.resourceKey.<queue>` | _(none)_ | Per-queue resource override (e.g., `amd.com/gpu`, `cpu`) |
 | `fairshare.halfLifeMinutes` | `240` | Half-life for usage decay in minutes |
