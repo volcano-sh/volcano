@@ -379,6 +379,31 @@ func getJobTemplate() v1alpha1.JobSpec {
 		},
 	}
 }
+func TestValidateCronJobTemplateDefaultQueue(t *testing.T) {
+	stopCh := setupDefaultQueue()
+	defer close(stopCh)
+
+	jobTemplate := getJobTemplate()
+	jobTemplate.Queue = ""
+	cronjob := &v1alpha1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cronvcjob",
+			Namespace: metav1.NamespaceDefault,
+		},
+		Spec: v1alpha1.CronJobSpec{
+			Schedule:          "* * * * *",
+			ConcurrencyPolicy: v1alpha1.AllowConcurrent,
+			JobTemplate: v1alpha1.JobTemplateSpec{
+				Spec: jobTemplate,
+			},
+		},
+	}
+
+	if msg := validateCronJob(cronjob); msg != "" {
+		t.Errorf("Expect no error, but got error %v", msg)
+	}
+}
+
 func TestValidateCronJobTemplate(t *testing.T) {
 	stopCh := setupDefaultQueue()
 	defer close(stopCh)

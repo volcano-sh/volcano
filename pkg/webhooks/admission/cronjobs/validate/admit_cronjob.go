@@ -141,7 +141,11 @@ func validateJobTemplate(spec *v1alpha1.JobSpec) string {
 		return "No task specified in job spec"
 	}
 
-	queue, err := config.QueueLister.Get(spec.Queue)
+	queueName := spec.Queue
+	if queueName == "" {
+		queueName = schedulingv1beta1.DefaultQueue
+	}
+	queue, err := config.QueueLister.Get(queueName)
 	if err != nil {
 		return fmt.Sprintf("unable to find job queue: %v", err)
 	}
