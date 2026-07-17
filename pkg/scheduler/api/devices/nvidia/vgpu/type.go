@@ -26,6 +26,9 @@ const (
 	AssignedIDsAnnotations           = "volcano.sh/vgpu-ids-new"
 	AssignedIDsToAllocateAnnotations = "volcano.sh/devices-to-allocate"
 	AssignedNodeAnnotations          = "volcano.sh/vgpu-node"
+	AssignedPodNameAnnotations       = "volcano.sh/vgpu-pod-name"
+	AssignedPodNamespaceAnnotations  = "volcano.sh/vgpu-pod-namespace"
+	AssignedPodUIDAnnotations        = "volcano.sh/vgpu-pod-uid"
 	BindTimeAnnotations              = "volcano.sh/bind-time"
 	DeviceBindPhase                  = "volcano.sh/bind-phase"
 

@@ -204,8 +204,12 @@ func podWithVGPUAnnotations(phase string) *v1.Pod {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "worker-0",
 			Namespace: "default",
+			UID:       types.UID("worker-0-uid-1234"),
 			Annotations: map[string]string{
 				AssignedNodeAnnotations:          "node-a",
+				AssignedPodNameAnnotations:       "worker-0",
+				AssignedPodNamespaceAnnotations:  "default",
+				AssignedPodUIDAnnotations:        "worker-0-uid-1234",
 				AssignedIDsAnnotations:           "GPU-aaaa,NVIDIA,80,0:",
 				AssignedIDsToAllocateAnnotations: "GPU-aaaa,NVIDIA,80,0:",
 				AssignedTimeAnnotations:          "1700000000",
@@ -231,6 +235,9 @@ func TestReleaseCleansSpeculativeAnnotations(t *testing.T) {
 	for _, k := range []string{
 		AssignedNodeAnnotations, AssignedIDsAnnotations,
 		AssignedIDsToAllocateAnnotations, DeviceBindPhase,
+		AssignedPodNameAnnotations, AssignedPodNamespaceAnnotations,
+		AssignedPodUIDAnnotations, AssignedTimeAnnotations,
+		BindTimeAnnotations,
 	} {
 		if _, ok := pod.Annotations[k]; ok {
 			t.Errorf("in-memory annotation %s should have been removed", k)
@@ -244,11 +251,16 @@ func TestReleaseCleansSpeculativeAnnotations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get pod: %v", err)
 	}
-	if _, ok := got.Annotations[AssignedNodeAnnotations]; ok {
-		t.Errorf("apiserver annotation %s should have been removed", AssignedNodeAnnotations)
-	}
-	if _, ok := got.Annotations[AssignedIDsAnnotations]; ok {
-		t.Errorf("apiserver annotation %s should have been removed", AssignedIDsAnnotations)
+	for _, k := range []string{
+		AssignedNodeAnnotations, AssignedIDsAnnotations,
+		AssignedIDsToAllocateAnnotations, DeviceBindPhase,
+		AssignedPodNameAnnotations, AssignedPodNamespaceAnnotations,
+		AssignedPodUIDAnnotations, AssignedTimeAnnotations,
+		BindTimeAnnotations,
+	} {
+		if _, ok := got.Annotations[k]; ok {
+			t.Errorf("apiserver annotation %s should have been removed", k)
+		}
 	}
 	if got.Annotations["keep-me"] != "yes" {
 		t.Errorf("non-device annotation must be preserved on apiserver")
@@ -268,8 +280,102 @@ func TestReleaseKeepsCommittedAnnotations(t *testing.T) {
 	if pod.Annotations[AssignedNodeAnnotations] != "node-a" {
 		t.Errorf("committed pod's vgpu-node must be preserved in-memory")
 	}
+	if pod.Annotations[AssignedPodNameAnnotations] != "worker-0" {
+		t.Errorf("committed pod's vgpu-pod-name must be preserved in-memory")
+	}
+	if pod.Annotations[AssignedPodNamespaceAnnotations] != "default" {
+		t.Errorf("committed pod's vgpu-pod-namespace must be preserved in-memory")
+	}
+	if pod.Annotations[AssignedPodUIDAnnotations] != "worker-0-uid-1234" {
+		t.Errorf("committed pod's vgpu-pod-uid must be preserved in-memory")
+	}
 	got, _ := client.CoreV1().Pods("default").Get(context.Background(), "worker-0", metav1.GetOptions{})
 	if got.Annotations[AssignedIDsAnnotations] == "" {
 		t.Errorf("committed pod's vgpu-ids-new must be preserved on apiserver")
+	}
+	if got.Annotations[AssignedPodNameAnnotations] != "worker-0" {
+		t.Errorf("committed pod's vgpu-pod-name must be preserved on apiserver")
+	}
+	if got.Annotations[AssignedPodNamespaceAnnotations] != "default" {
+		t.Errorf("committed pod's vgpu-pod-namespace must be preserved on apiserver")
+	}
+	if got.Annotations[AssignedPodUIDAnnotations] != "worker-0-uid-1234" {
+		t.Errorf("committed pod's vgpu-pod-uid must be preserved on apiserver")
+	}
+}
+
+func TestAllocateWritesPodIdentityAnnotations(t *testing.T) {
+	VGPUEnable = true
+	defer func() { VGPUEnable = false }()
+
+	gs := makeGPUDevices("node-a", 1, 80000, 4)
+	pod := makeVGPUPod("worker-0", "default", "worker-0", 40000, false, "")
+	client := fake.NewSimpleClientset(pod)
+
+	if err := gs.Allocate(client, pod); err != nil {
+		t.Fatalf("Allocate returned error: %v", err)
+	}
+
+	if pod.Annotations[AssignedPodNameAnnotations] != pod.Name {
+		t.Errorf("expected in-memory pod name annotation %q, got %q", pod.Name, pod.Annotations[AssignedPodNameAnnotations])
+	}
+	if pod.Annotations[AssignedPodNamespaceAnnotations] != pod.Namespace {
+		t.Errorf("expected in-memory pod namespace annotation %q, got %q", pod.Namespace, pod.Annotations[AssignedPodNamespaceAnnotations])
+	}
+	if pod.Annotations[AssignedPodUIDAnnotations] != string(pod.UID) {
+		t.Errorf("expected in-memory pod UID annotation %q, got %q", pod.UID, pod.Annotations[AssignedPodUIDAnnotations])
+	}
+
+	got, err := client.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get pod: %v", err)
+	}
+	if got.Annotations[AssignedPodNameAnnotations] != pod.Name {
+		t.Errorf("expected apiserver pod name annotation %q, got %q", pod.Name, got.Annotations[AssignedPodNameAnnotations])
+	}
+	if got.Annotations[AssignedPodNamespaceAnnotations] != pod.Namespace {
+		t.Errorf("expected apiserver pod namespace annotation %q, got %q", pod.Namespace, got.Annotations[AssignedPodNamespaceAnnotations])
+	}
+	if got.Annotations[AssignedPodUIDAnnotations] != string(pod.UID) {
+		t.Errorf("expected apiserver pod UID annotation %q, got %q", pod.UID, got.Annotations[AssignedPodUIDAnnotations])
+	}
+}
+
+func TestAllocateBackfillsPodIdentityAnnotationsWhenAlreadyAssigned(t *testing.T) {
+	VGPUEnable = true
+	defer func() { VGPUEnable = false }()
+
+	pod := makeVGPUPod("worker-0", "default", "worker-0", 40000, false, "")
+	pod.Annotations[AssignedNodeAnnotations] = "node-a"
+	pod.Annotations[AssignedIDsAnnotations] = "GPU-0000A,NVIDIA,40000,0:"
+	client := fake.NewSimpleClientset(pod)
+	gs := makeGPUDevices("node-a", 1, 80000, 4)
+
+	if err := gs.Allocate(client, pod); err != nil {
+		t.Fatalf("Allocate returned error: %v", err)
+	}
+
+	if pod.Annotations[AssignedPodNameAnnotations] != pod.Name {
+		t.Errorf("expected in-memory pod name annotation %q, got %q", pod.Name, pod.Annotations[AssignedPodNameAnnotations])
+	}
+	if pod.Annotations[AssignedPodNamespaceAnnotations] != pod.Namespace {
+		t.Errorf("expected in-memory pod namespace annotation %q, got %q", pod.Namespace, pod.Annotations[AssignedPodNamespaceAnnotations])
+	}
+	if pod.Annotations[AssignedPodUIDAnnotations] != string(pod.UID) {
+		t.Errorf("expected in-memory pod UID annotation %q, got %q", pod.UID, pod.Annotations[AssignedPodUIDAnnotations])
+	}
+
+	got, err := client.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get pod: %v", err)
+	}
+	if got.Annotations[AssignedPodNameAnnotations] != pod.Name {
+		t.Errorf("expected apiserver pod name annotation %q, got %q", pod.Name, got.Annotations[AssignedPodNameAnnotations])
+	}
+	if got.Annotations[AssignedPodNamespaceAnnotations] != pod.Namespace {
+		t.Errorf("expected apiserver pod namespace annotation %q, got %q", pod.Namespace, got.Annotations[AssignedPodNamespaceAnnotations])
+	}
+	if got.Annotations[AssignedPodUIDAnnotations] != string(pod.UID) {
+		t.Errorf("expected apiserver pod UID annotation %q, got %q", pod.UID, got.Annotations[AssignedPodUIDAnnotations])
 	}
 }
