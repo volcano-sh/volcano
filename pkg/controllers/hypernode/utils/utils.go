@@ -46,6 +46,8 @@ func UpdateHyperNode(vcClient vcclientset.Interface, lister v1alpha1.HyperNodeLi
 			return err
 		}
 
+		// The lister returns a shared cache object, so work on a copy.
+		current = current.DeepCopy()
 		current.Spec = updated.Spec
 		current.Status = updated.Status
 
@@ -63,11 +65,15 @@ func UpdateHyperNode(vcClient vcclientset.Interface, lister v1alpha1.HyperNodeLi
 			current.Annotations[k] = v
 		}
 
-		_, err = vcClient.TopologyV1alpha1().HyperNodes().Update(context.Background(), current, metav1.UpdateOptions{})
+		applied, err := vcClient.TopologyV1alpha1().HyperNodes().Update(context.Background(), current, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
-		_, err = vcClient.TopologyV1alpha1().HyperNodes().UpdateStatus(context.Background(), current, metav1.UpdateOptions{})
+
+		// Update bumped the resourceVersion, so carry the status onto what it
+		// returned. Reusing current here sends a stale version and conflicts.
+		applied.Status = current.Status
+		_, err = vcClient.TopologyV1alpha1().HyperNodes().UpdateStatus(context.Background(), applied, metav1.UpdateOptions{})
 		return err
 	})
 }
