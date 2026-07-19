@@ -45,7 +45,7 @@ var service = &router.AdmissionService{
 			Name: "validatepodgroup.volcano.sh",
 			Rules: []whv1.RuleWithOperations{
 				{
-					Operations: []whv1.OperationType{whv1.Create},
+					Operations: []whv1.OperationType{whv1.Create, whv1.Update},
 					Rule: whv1.Rule{
 						APIGroups:   []string{schedulingv1beta1.SchemeGroupVersion.Group},
 						APIVersions: []string{schedulingv1beta1.SchemeGroupVersion.Version},
@@ -72,6 +72,8 @@ func Validate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	switch ar.Request.Operation {
 	case admissionv1.Create:
 		errMsg = validatePodGroup(podgroup)
+	case admissionv1.Update:
+		errMsg = validateNetworkTopology(podgroup.Spec.NetworkTopology, podgroup.Spec.SubGroupPolicy)
 	default:
 		errMsg = fmt.Sprintf("unsupported operation %s", ar.Request.Operation)
 	}

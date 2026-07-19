@@ -36,6 +36,7 @@ func TestValidatePodGroup(t *testing.T) {
 		name        string
 		podGroup    *schedulingv1beta1.PodGroup
 		queue       *schedulingv1beta1.Queue
+		operation   admissionv1.Operation
 		expectError bool
 		// msgContains lists substrings that must all be present in the
 		// rejection message, used to assert that multiple validation errors
@@ -214,6 +215,28 @@ func TestValidatePodGroup(t *testing.T) {
 			expectError: true,
 		},
 		{
+			name: "invalid podgroup update with NetworkTopology containing HighestTierAllowed and HighestTierName",
+			podGroup: &schedulingv1beta1.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "PodGroup",
+					APIVersion: "scheduling.volcano.sh/v1beta1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-podgroup",
+				},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+						Mode:               schedulingv1beta1.HardNetworkTopologyMode,
+						HighestTierAllowed: &highestTierAllowed,
+						HighestTierName:    "volcano.sh/hypernode",
+					},
+				},
+			},
+			queue:       &schedulingv1beta1.Queue{},
+			operation:   admissionv1.Update,
+			expectError: true,
+		},
+		{
 			name: "invalid podgroup failing both queue and networkTopology checks reports a separated message",
 			podGroup: &schedulingv1beta1.PodGroup{
 				TypeMeta: metav1.TypeMeta{
@@ -248,6 +271,10 @@ func TestValidatePodGroup(t *testing.T) {
 			assert.Nil(t, err)
 
 			pgJson, _ := json.Marshal(tt.podGroup)
+			operation := tt.operation
+			if operation == "" {
+				operation = admissionv1.Create
+			}
 			// Create an AdmissionReview object
 			ar := admissionv1.AdmissionReview{
 				TypeMeta: metav1.TypeMeta{
@@ -260,7 +287,7 @@ func TestValidatePodGroup(t *testing.T) {
 						Version: schedulingv1beta1.SchemeGroupVersion.Version,
 						Kind:    "PodGroup",
 					},
-					Operation: admissionv1.Create,
+					Operation: operation,
 					Name:      tt.podGroup.Name,
 					Object:    runtime.RawExtension{Raw: pgJson},
 					Resource: metav1.GroupVersionResource{
