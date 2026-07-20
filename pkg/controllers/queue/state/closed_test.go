@@ -119,12 +119,12 @@ func TestClosedState_CloseQueueAction(t *testing.T) {
 				return nil
 			}
 			clearCalled := false
-			ClearClosedByParentAnnotation = func(queue *schedulingv1beta1.Queue) error {
+			ClearClosedByParentAnnotation = func(queue *schedulingv1beta1.Queue) (*schedulingv1beta1.Queue, error) {
 				if queue != tc.queue {
 					t.Errorf("expected queue %v, got %v", tc.queue, queue)
 				}
 				clearCalled = true
-				return nil
+				return queue, nil
 			}
 			s := &closedState{queue: tc.queue, event: tc.event}
 			err := s.Execute(busv1alpha1.CloseQueueAction)

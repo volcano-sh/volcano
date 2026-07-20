@@ -41,8 +41,9 @@ var (
 	// CloseQueue will set state of queue to close
 	CloseQueue QueueActionFn
 	// ClearClosedByParentAnnotation marks the queue as explicitly closed, so
-	// it is not automatically reopened when its parent queue reopens.
-	ClearClosedByParentAnnotation func(queue *v1beta1.Queue) error
+	// it is not automatically reopened when its parent queue reopens. It
+	// returns the patched queue so callers can replace their stale reference.
+	ClearClosedByParentAnnotation func(queue *v1beta1.Queue) (*v1beta1.Queue, error)
 )
 
 // NewState gets the state from queue status. event is the event of the request that
