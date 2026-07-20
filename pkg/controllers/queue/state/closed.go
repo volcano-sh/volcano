@@ -37,9 +37,11 @@ func (cs *closedState) Execute(action v1alpha1.Action) error {
 		// explicitly wants it closed, regardless of why it was closed before. Mark it as no
 		// longer merely closed-by-parent so it isn't auto-reopened when the parent reopens.
 		if cs.event == v1alpha1.CommandIssuedEvent {
-			if err := ClearClosedByParentAnnotation(cs.queue); err != nil {
+			updatedQueue, err := ClearClosedByParentAnnotation(cs.queue)
+			if err != nil {
 				return err
 			}
+			cs.queue = updatedQueue
 		}
 		return SyncQueue(cs.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
 			status.State = v1beta1.QueueStateClosed
