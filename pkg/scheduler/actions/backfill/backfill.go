@@ -100,6 +100,11 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 			}
 		}
 
+		if node == nil {
+			klog.V(3).Infof("No suitable node found for Task <%v/%v> in backfill", task.Namespace, task.Name)
+			continue
+		}
+
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
 		if err := ssn.Allocate(task, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v", task.UID, node.Name, ssn.UID)
