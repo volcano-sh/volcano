@@ -18,6 +18,7 @@ package framework
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -235,6 +236,40 @@ func TestUnifiedEvictable_EmptyCandidatesBlocksTier(t *testing.T) {
 	assert.Equal(t, api.TaskID("a"), result[0].UID)
 }
 
+// TestUnifiedEvictable_DisjointIntersectionStaysNilAndFallsThrough is the
+// UnifiedEvictable analogue of the Reclaimable/Preemptable nil-vs-empty
+// regression test.
+func TestUnifiedEvictable_DisjointIntersectionStaysNilAndFallsThrough(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	taskB := &api.TaskInfo{UID: "b"}
+	ctx := &api.EvictionContext{Kind: api.EvictionKindGangPreempt}
+
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{Plugins: []conf.PluginOption{
+				{Name: "p1"},
+				{Name: "p2"},
+			}},
+			{Plugins: []conf.PluginOption{
+				{Name: "fallback"},
+			}},
+		},
+		unifiedEvictableFns: map[string]api.UnifiedEvictableFn{},
+	}
+	ssn.AddUnifiedEvictableFn("p1", func(_ *api.EvictionContext, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	ssn.AddUnifiedEvictableFn("p2", func(_ *api.EvictionContext, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskB}, 1 // disjoint from p1 -> empty intersection
+	})
+	ssn.AddUnifiedEvictableFn("fallback", func(_ *api.EvictionContext, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+
+	result := ssn.UnifiedEvictable(ctx, []*api.TaskInfo{taskA, taskB})
+	assert.Equal(t, []*api.TaskInfo{taskA}, result, "tier 1's empty intersection must fall through to tier 2's fallback")
+}
+
 func TestUnifiedEvictable_NoPluginsReturnsNil(t *testing.T) {
 	ctx := &api.EvictionContext{Kind: api.EvictionKindGangPreempt}
 	ssn := &Session{
@@ -431,6 +466,75 @@ func TestReclaimable_AbstainSkipped(t *testing.T) {
 	assert.Equal(t, []*api.TaskInfo{taskA}, result)
 }
 
+// TestReclaimable_DisjointIntersectionStaysNilAndFallsThrough covers the
+// nil-vs-empty regression: when two plugins in the same tier return
+// non-empty but disjoint candidate sets, the intersection has zero elements.
+// That must leave victims == nil (not a non-nil empty slice), so the tier
+// loop's `if victims != nil { return victims }` check falls through to the
+// next tier instead of prematurely returning an empty result.
+func TestReclaimable_DisjointIntersectionStaysNilAndFallsThrough(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	taskB := &api.TaskInfo{UID: "b"}
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{Plugins: []conf.PluginOption{
+				{Name: "p1", EnabledReclaimable: boolPtr(true)},
+				{Name: "p2", EnabledReclaimable: boolPtr(true)},
+			}},
+			{Plugins: []conf.PluginOption{
+				{Name: "fallback", EnabledReclaimable: boolPtr(true)},
+			}},
+		},
+		reclaimableFns: map[string]api.EvictableFn{},
+	}
+	ssn.AddReclaimableFn("p1", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	ssn.AddReclaimableFn("p2", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskB}, 1 // disjoint from p1 -> empty intersection
+	})
+	ssn.AddReclaimableFn("fallback", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	result := ssn.Reclaimable(&api.TaskInfo{}, []*api.TaskInfo{taskA, taskB})
+	assert.Equal(t, []*api.TaskInfo{taskA}, result, "tier 1's empty intersection must fall through to tier 2's fallback")
+	if !reflect.DeepEqual(result, []*api.TaskInfo{taskA}) {
+		t.Fatalf("reflect.DeepEqual mismatch: got %#v", result)
+	}
+}
+
+// TestReclaimable_EmptyIntersectionWithinTierReinitializes covers the same
+// nil-vs-empty distinction within a single tier: after p1/p2 produce an
+// empty intersection, victims must reset to nil so plugin p3's candidates
+// re-initialize victims from scratch rather than intersecting against a
+// non-nil empty slice (which would incorrectly stay empty forever).
+func TestReclaimable_EmptyIntersectionWithinTierReinitializes(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	taskB := &api.TaskInfo{UID: "b"}
+	taskC := &api.TaskInfo{UID: "c"}
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{Plugins: []conf.PluginOption{
+				{Name: "p1", EnabledReclaimable: boolPtr(true)},
+				{Name: "p2", EnabledReclaimable: boolPtr(true)},
+				{Name: "p3", EnabledReclaimable: boolPtr(true)},
+			}},
+		},
+		reclaimableFns: map[string]api.EvictableFn{},
+	}
+	ssn.AddReclaimableFn("p1", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	ssn.AddReclaimableFn("p2", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskB}, 1 // disjoint -> empty intersection, victims must go back to nil
+	})
+	ssn.AddReclaimableFn("p3", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskC}, 1
+	})
+	result := ssn.Reclaimable(&api.TaskInfo{}, []*api.TaskInfo{taskA, taskB, taskC})
+	assert.Equal(t, []*api.TaskInfo{taskC}, result)
+}
+
 func TestPreemptable_TwoPlugins_Intersection(t *testing.T) {
 	taskA := &api.TaskInfo{UID: "a"}
 	taskB := &api.TaskInfo{UID: "b"}
@@ -507,4 +611,36 @@ func TestPreemptable_NoMatchingPlugin(t *testing.T) {
 	}
 	result := ssn.Preemptable(&api.TaskInfo{}, []*api.TaskInfo{{UID: "a"}})
 	assert.Nil(t, result)
+}
+
+// TestPreemptable_DisjointIntersectionStaysNilAndFallsThrough is the
+// Preemptable analogue of the Reclaimable nil-vs-empty regression test: a
+// disjoint (non-empty candidates, empty intersection) result within tier 1
+// must leave victims nil so tier 2's fallback plugin is consulted.
+func TestPreemptable_DisjointIntersectionStaysNilAndFallsThrough(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	taskB := &api.TaskInfo{UID: "b"}
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{Plugins: []conf.PluginOption{
+				{Name: "p1", EnabledPreemptable: boolPtr(true)},
+				{Name: "p2", EnabledPreemptable: boolPtr(true)},
+			}},
+			{Plugins: []conf.PluginOption{
+				{Name: "fallback", EnabledPreemptable: boolPtr(true)},
+			}},
+		},
+		preemptableFns: map[string]api.EvictableFn{},
+	}
+	ssn.AddPreemptableFn("p1", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	ssn.AddPreemptableFn("p2", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskB}, 1 // disjoint from p1 -> empty intersection
+	})
+	ssn.AddPreemptableFn("fallback", func(_ *api.TaskInfo, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	result := ssn.Preemptable(&api.TaskInfo{}, []*api.TaskInfo{taskA, taskB})
+	assert.Equal(t, []*api.TaskInfo{taskA}, result, "tier 1's empty intersection must fall through to tier 2's fallback")
 }
