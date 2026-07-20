@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6
 	github.com/agiledragon/gomonkey/v2 v2.11.0
-	github.com/cilium/ebpf v0.17.3
+	github.com/cilium/ebpf v0.22.0
 	github.com/containernetworking/cni v1.1.2
 	github.com/containernetworking/plugins v1.1.1
 	github.com/elastic/go-elasticsearch/v7 v7.17.7
