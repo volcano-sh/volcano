@@ -172,6 +172,13 @@ func (c *queuecontroller) closeQueue(queue *schedulingv1beta1.Queue, updateState
 	return nil
 }
 
+// clearClosedByParentAnnotation marks the queue as explicitly closed, so that syncHierarchicalQueue
+// no longer treats it as merely closed-by-parent and reopens it when the parent queue reopens.
+func (c *queuecontroller) clearClosedByParentAnnotation(queue *schedulingv1beta1.Queue) error {
+	_, err := c.updateQueueAnnotation(queue, ClosedByParentAnnotationKey, ClosedByParentAnnotationFalseValue)
+	return err
+}
+
 // sync the state between parent and child queues
 func (c *queuecontroller) syncHierarchicalQueue(queue *schedulingv1beta1.Queue) error {
 	if queue.Name == "root" {
