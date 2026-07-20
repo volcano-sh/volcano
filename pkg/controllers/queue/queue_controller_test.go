@@ -321,7 +321,7 @@ func TestClearClosedByParentAnnotation(t *testing.T) {
 	_, err := c.vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
 	assert.NoError(t, err)
 
-	err = c.clearClosedByParentAnnotation(queue)
+	_, err = c.clearClosedByParentAnnotation(queue)
 	assert.NoError(t, err)
 
 	item, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue.Name, metav1.GetOptions{})
