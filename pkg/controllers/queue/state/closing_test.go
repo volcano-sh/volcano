@@ -75,33 +75,43 @@ func TestClosingState_CloseQueueAction(t *testing.T) {
 	testcases := []struct {
 		name          string
 		queue         *schedulingv1beta1.Queue
+		event         busv1alpha1.Event
 		podGroups     []string
 		expectedState schedulingv1beta1.QueueState
+		expectClear   bool
 	}{
 		{
-			name: "CloseQueueAction: Closing queue with no podgroup",
+			name: "CloseQueueAction: manual re-close of a closing queue clears closed-by-parent",
 			queue: &schedulingv1beta1.Queue{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-queue"},
 				Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateClosing},
 			},
+			event:         busv1alpha1.CommandIssuedEvent,
 			podGroups:     []string{},
 			expectedState: schedulingv1beta1.QueueStateClosed,
+			expectClear:   true,
 		},
 		{
-			name: "CloseQueueAction: Closing queue with running podgroup",
+			name: "CloseQueueAction: automatic cascade re-targeting a closing queue leaves closed-by-parent untouched",
 			queue: &schedulingv1beta1.Queue{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-queue"},
 				Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateClosing},
 			},
+			event:         "",
 			podGroups:     []string{"pg1"},
 			expectedState: schedulingv1beta1.QueueStateClosing,
+			expectClear:   false,
 		},
 	}
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			origSyncQueue := SyncQueue
-			t.Cleanup(func() { SyncQueue = origSyncQueue })
+			origClearClosedByParentAnnotation := ClearClosedByParentAnnotation
+			t.Cleanup(func() {
+				SyncQueue = origSyncQueue
+				ClearClosedByParentAnnotation = origClearClosedByParentAnnotation
+			})
 
 			var capturedState schedulingv1beta1.QueueState
 			SyncQueue = func(queue *schedulingv1beta1.Queue, fn UpdateQueueStatusFn) error {
@@ -113,8 +123,16 @@ func TestClosingState_CloseQueueAction(t *testing.T) {
 				capturedState = fakeStatus.State
 				return nil
 			}
+			clearCalled := false
+			ClearClosedByParentAnnotation = func(queue *schedulingv1beta1.Queue) error {
+				if queue != tc.queue {
+					t.Errorf("expected queue %v, got %v", tc.queue, queue)
+				}
+				clearCalled = true
+				return nil
+			}
 
-			s := &closingState{queue: tc.queue}
+			s := &closingState{queue: tc.queue, event: tc.event}
 			err := s.Execute(busv1alpha1.CloseQueueAction)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -122,6 +140,9 @@ func TestClosingState_CloseQueueAction(t *testing.T) {
 
 			if capturedState != tc.expectedState {
 				t.Errorf("expected state %q got %q", tc.expectedState, capturedState)
+			}
+			if clearCalled != tc.expectClear {
+				t.Errorf("expected ClearClosedByParentAnnotation called=%v, got %v", tc.expectClear, clearCalled)
 			}
 		})
 	}
