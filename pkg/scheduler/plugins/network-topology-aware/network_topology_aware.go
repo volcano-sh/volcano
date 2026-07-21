@@ -82,6 +82,8 @@ type networkTopologyAwarePlugin struct {
 	maxHyperNodesForEviction int
 	// hyperNodeResourceCache stores the resource status of hypernodes to avoid repeated calculation: hypernode -> resourceStatus
 	hyperNodeResourceCache map[string]*resourceStatus
+	// nodeToHyperNode maps node name to hypernode name to avoid O(N) lookup during scoring
+	nodeToHyperNode map[string]string
 }
 
 type priorityWeight struct {
@@ -137,6 +139,22 @@ func (nta *networkTopologyAwarePlugin) initHyperNodeResourceCache(ssn *framework
 	}
 }
 
+func (nta *networkTopologyAwarePlugin) initNodeToHyperNode(ssn *framework.Session) {
+	if nta.nodeToHyperNode == nil {
+		nta.nodeToHyperNode = make(map[string]string)
+	}
+
+	// Pre-build node to hypernode map to avoid O(N) lookup inside the parallel loops.
+	if len(ssn.HyperNodesTiers) > 0 {
+		lowestTier := ssn.HyperNodesTiers[0]
+		for hyperNodeName := range ssn.HyperNodesSetByTier[lowestTier] {
+			for _, node := range ssn.RealNodesList[hyperNodeName] {
+				nta.nodeToHyperNode[node.Name] = hyperNodeName
+			}
+		}
+	}
+}
+
 /*
    The arguments of the networktopologyaware plugin can refer to the following configuration:
    tiers:
@@ -162,6 +180,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 		hyperNodesTier:           &hyperNodesTier{},
 		maxHyperNodesForEviction: getMaxHyperNodesForEviction(arguments),
 		hyperNodeResourceCache:   make(map[string]*resourceStatus),
+		nodeToHyperNode:          make(map[string]string),
 	}
 	klog.V(5).InfoS("successfully built plugin", "name", PluginName, "arguments", plugin.String())
 	return &plugin
@@ -289,6 +308,7 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 	}()
 	nta.hyperNodesTier.init(ssn.HyperNodesTiers)
 	nta.initHyperNodeResourceCache(ssn)
+	nta.initNodeToHyperNode(ssn)
 
 	ssn.AddHyperNodeOrderFn(nta.Name(), func(subJob *api.SubJobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
 		return nta.HyperNodeOrderFn(ssn, subJob, hyperNodes)
@@ -578,22 +598,11 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFnForNetworkAwarePods(ssn *
 		return nodeScores, nil
 	}
 
-	// Pre-build node to hypernode map to avoid O(N) lookup inside the parallel loops.
-	nodeToHyperNode := make(map[string]string)
-	if len(ssn.HyperNodesTiers) > 0 {
-		lowestTier := ssn.HyperNodesTiers[0]
-		for hyperNodeName := range ssn.HyperNodesSetByTier[lowestTier] {
-			for _, node := range ssn.RealNodesList[hyperNodeName] {
-				nodeToHyperNode[node.Name] = hyperNodeName
-			}
-		}
-	}
-
 	// Calculate score based on LCAHyperNode tier.
 	nodeScoresList := make([]float64, len(nodes))
 	workqueue.ParallelizeUntil(context.TODO(), batchNodeOrderFnWorkers, len(nodes), func(index int) {
 		node := nodes[index]
-		hyperNode := nodeToHyperNode[node.Name]
+		hyperNode := nta.nodeToHyperNode[node.Name]
 		score := nta.networkTopologyAwareScore(hyperNode, allocatedHyperNode, ssn.HyperNodes)
 		nodeScoresList[index] = score
 	})
@@ -616,7 +625,7 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFnForNetworkAwarePods(ssn *
 		candidateScores := make([]float64, len(candidateNodes))
 		workqueue.ParallelizeUntil(context.TODO(), batchNodeOrderFnWorkers, len(candidateNodes), func(index int) {
 			node := candidateNodes[index]
-			hyperNode := nodeToHyperNode[node]
+			hyperNode := nta.nodeToHyperNode[node]
 			candidateScores[index] = nta.scoreWithTaskNum(hyperNode, subJob.Tasks, ssn.RealNodesList)
 		})
 		for i, node := range candidateNodes {
