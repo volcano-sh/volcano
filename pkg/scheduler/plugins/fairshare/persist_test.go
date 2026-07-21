@@ -51,6 +51,11 @@ func saveAndResetGlobals(t *testing.T) func() {
 	savedClient := persistClient
 	persistClient = nil
 
+	flushMu.Lock()
+	savedLastFlushAt := lastFlushAt
+	lastFlushAt = time.Time{}
+	flushMu.Unlock()
+
 	return func() {
 		globalMu.Lock()
 		globalUsage = savedUsage
@@ -58,6 +63,9 @@ func saveAndResetGlobals(t *testing.T) func() {
 		globalMu.Unlock()
 		persistOnce = sync.Once{}
 		persistClient = savedClient
+		flushMu.Lock()
+		lastFlushAt = savedLastFlushAt
+		flushMu.Unlock()
 	}
 }
 
@@ -258,8 +266,8 @@ func TestRoundTrip_FlushThenLoad(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	globalMu.Lock()
 	globalUsage = map[string]map[string]float64{
-		"q1": {"user-a": 123.45, "user-b": 678.90},
-		"q2": {"user-c": 42.0},
+		"q1": {"ns-a": 123.45, "ns-b": 678.90},
+		"q2": {"ns-c": 42.0},
 	}
 	globalLastCycle = now
 	globalMu.Unlock()
@@ -284,14 +292,14 @@ func TestRoundTrip_FlushThenLoad(t *testing.T) {
 	if !globalLastCycle.Equal(now) {
 		t.Errorf("lastCycle: got %v, want %v", globalLastCycle, now)
 	}
-	if math.Abs(globalUsage["q1"]["user-a"]-123.45) > 0.01 {
-		t.Errorf("user-a: got %.2f, want 123.45", globalUsage["q1"]["user-a"])
+	if math.Abs(globalUsage["q1"]["ns-a"]-123.45) > 0.01 {
+		t.Errorf("ns-a: got %.2f, want 123.45", globalUsage["q1"]["ns-a"])
 	}
-	if math.Abs(globalUsage["q1"]["user-b"]-678.90) > 0.01 {
-		t.Errorf("user-b: got %.2f, want 678.90", globalUsage["q1"]["user-b"])
+	if math.Abs(globalUsage["q1"]["ns-b"]-678.90) > 0.01 {
+		t.Errorf("ns-b: got %.2f, want 678.90", globalUsage["q1"]["ns-b"])
 	}
-	if math.Abs(globalUsage["q2"]["user-c"]-42.0) > 0.01 {
-		t.Errorf("user-c: got %.2f, want 42.0", globalUsage["q2"]["user-c"])
+	if math.Abs(globalUsage["q2"]["ns-c"]-42.0) > 0.01 {
+		t.Errorf("ns-c: got %.2f, want 42.0", globalUsage["q2"]["ns-c"])
 	}
 }
 
@@ -306,6 +314,115 @@ func TestInitPersistence_DisabledIsNoop(t *testing.T) {
 
 	if persistClient != nil {
 		t.Error("persistClient should remain nil when disabled")
+	}
+}
+
+// --- maybeFlush tests (OnSessionClose-driven, rate-limited flush) ---
+
+func TestMaybeFlush_DisabledIsNoop(t *testing.T) {
+	restore := saveAndResetGlobals(t)
+	defer restore()
+
+	client := fake.NewSimpleClientset()
+	persistClient = client
+	cfg := testPersistConfig()
+	cfg.enabled = false
+
+	maybeFlush(cfg)
+
+	if _, err := client.CoreV1().ConfigMaps(cfg.namespace).Get(
+		context.TODO(), cfg.configMapName, metav1.GetOptions{}); err == nil {
+		t.Error("ConfigMap should not be created when persistence is disabled")
+	}
+}
+
+func TestMaybeFlush_FirstCallFlushesImmediately(t *testing.T) {
+	restore := saveAndResetGlobals(t)
+	defer restore()
+
+	client := fake.NewSimpleClientset()
+	persistClient = client
+	cfg := testPersistConfig()
+
+	globalMu.Lock()
+	globalUsage = map[string]map[string]float64{"gpu-queue": {"alice": 100.0}}
+	globalMu.Unlock()
+
+	maybeFlush(cfg)
+
+	if _, err := client.CoreV1().ConfigMaps(cfg.namespace).Get(
+		context.TODO(), cfg.configMapName, metav1.GetOptions{}); err != nil {
+		t.Errorf("expected ConfigMap to be created on first flush, get failed: %v", err)
+	}
+}
+
+func TestMaybeFlush_RateLimited_SkipsSecondCallWithinInterval(t *testing.T) {
+	restore := saveAndResetGlobals(t)
+	defer restore()
+
+	client := fake.NewSimpleClientset()
+	persistClient = client
+	cfg := testPersistConfig()
+	cfg.flushInterval = 1 * time.Hour // long enough that a second immediate call must be skipped
+
+	globalMu.Lock()
+	globalUsage = map[string]map[string]float64{"gpu-queue": {"alice": 100.0}}
+	globalMu.Unlock()
+	maybeFlush(cfg) // first call: flushes alice=100.0
+
+	globalMu.Lock()
+	globalUsage = map[string]map[string]float64{"gpu-queue": {"alice": 999.0}}
+	globalMu.Unlock()
+	maybeFlush(cfg) // second call, immediately after: should be skipped
+
+	cm, err := client.CoreV1().ConfigMaps(cfg.namespace).Get(
+		context.TODO(), cfg.configMapName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get ConfigMap: %v", err)
+	}
+	var state persistedState
+	if err := json.Unmarshal([]byte(cm.Data[stateDataKey]), &state); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if math.Abs(state.Queues["gpu-queue"]["alice"]-100.0) > 0.01 {
+		t.Errorf("second maybeFlush within the interval should have been skipped: got alice=%.2f, want 100.0 (from first flush)",
+			state.Queues["gpu-queue"]["alice"])
+	}
+}
+
+func TestMaybeFlush_FlushesAgainAfterIntervalElapses(t *testing.T) {
+	restore := saveAndResetGlobals(t)
+	defer restore()
+
+	client := fake.NewSimpleClientset()
+	persistClient = client
+	cfg := testPersistConfig()
+	cfg.flushInterval = 1 * time.Millisecond
+
+	globalMu.Lock()
+	globalUsage = map[string]map[string]float64{"gpu-queue": {"alice": 100.0}}
+	globalMu.Unlock()
+	maybeFlush(cfg)
+
+	time.Sleep(5 * time.Millisecond)
+
+	globalMu.Lock()
+	globalUsage = map[string]map[string]float64{"gpu-queue": {"alice": 999.0}}
+	globalMu.Unlock()
+	maybeFlush(cfg)
+
+	cm, err := client.CoreV1().ConfigMaps(cfg.namespace).Get(
+		context.TODO(), cfg.configMapName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get ConfigMap: %v", err)
+	}
+	var state persistedState
+	if err := json.Unmarshal([]byte(cm.Data[stateDataKey]), &state); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if math.Abs(state.Queues["gpu-queue"]["alice"]-999.0) > 0.01 {
+		t.Errorf("maybeFlush after the interval elapsed should have flushed again: got alice=%.2f, want 999.0",
+			state.Queues["gpu-queue"]["alice"])
 	}
 }
 

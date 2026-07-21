@@ -15,18 +15,23 @@ limitations under the License.
 */
 
 // Package fairshare implements a Volcano scheduler plugin that provides
-// per-user fair share scheduling within target queues using decayed cumulative
-// usage tracking. It prevents any single user from monopolizing resources when
-// multiple users have pending work, and remembers past usage across scheduling
-// cycles so that heavy consumers are deprioritized even after their jobs finish.
+// per-namespace fair share scheduling within target queues using decayed
+// cumulative usage tracking. It prevents any single namespace from
+// monopolizing resources when multiple namespaces have pending work, and
+// remembers past usage across scheduling cycles so that heavy consumers are
+// deprioritized even after their jobs finish.
 //
-// User identity is derived from the job's namespace (namespace-per-user pattern).
+// Tenant identity is the job's namespace — namespace is used directly rather
+// than a separate "user" concept, since not every cluster maps users to
+// namespaces one-to-one (e.g. a namespace may itself represent a team or
+// project shared by several users).
 // The tracked resource type is configurable per queue (e.g., nvidia.com/gpu for
 // GPU queues, cpu for CPU queues).
 //
 // Historical usage decays exponentially with a configurable half-life (default
-// 4 hours). This means a user who consumed 10 GPU-hours will see their usage
-// penalty halve every 4 hours, naturally converging back to equal priority.
+// 4 hours). This means a namespace that consumed 10 GPU-hours will see its
+// usage penalty halve every 4 hours, naturally converging back to equal
+// priority.
 package fairshare
 
 import (
@@ -50,7 +55,7 @@ import (
 // survive across the scheduler process lifetime.
 var (
 	globalMu        sync.Mutex
-	globalUsage     = make(map[string]map[string]float64) // [queue][user] → resource-seconds
+	globalUsage     = make(map[string]map[string]float64) // [queue][namespace] → resource-seconds
 	globalLastCycle time.Time
 )
 
@@ -58,20 +63,20 @@ const (
 	// PluginName is the name used to register this plugin with the framework.
 	PluginName = "fairshare"
 
-	defaultResourceKey     = "nvidia.com/gpu"
-	defaultUnknownUser     = "_unknown"
-	defaultHalfLifeMinutes = 240 // 4 hours
-	usageEpsilon           = 1.0 // 1 resource-second: treat as equal
-	usageCleanupThreshold  = 0.01
+	defaultResourceKey      = "nvidia.com/gpu"
+	defaultUnknownNamespace = "_unknown"
+	defaultHalfLifeMinutes  = 240 // 4 hours
+	usageEpsilon            = 1.0 // 1 resource-second: treat as equal
+	usageCleanupThreshold   = 0.01
 )
 
 // queueState holds per-queue fair share tracking for one scheduling cycle.
 type queueState struct {
-	resourceKey   v1.ResourceName
-	totalResource float64
-	userRunning   map[string]float64
-	userDemand    map[string]float64
-	fairShares    map[string]float64
+	resourceKey      v1.ResourceName
+	totalResource    float64
+	namespaceRunning map[string]float64
+	namespaceDemand  map[string]float64
+	fairShares       map[string]float64
 }
 
 type fairSharePlugin struct {
@@ -202,7 +207,7 @@ func (fsp *fairSharePlugin) Name() string {
 
 // OnSessionOpen is called at the beginning of each scheduling cycle. It:
 //  1. Decays historical usage and accumulates running usage for the elapsed period
-//  2. Scans all jobs in target queues, computes per-user resource demand and running counts
+//  2. Scans all jobs in target queues, computes per-namespace resource demand and running counts
 //  3. Runs the max-min fairness algorithm per queue
 //  4. Registers JobOrderFn (usage-based ordering), optional JobEnqueueableFn, and EventHandler
 func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
@@ -244,16 +249,16 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		qs := fsp.queues[queueName]
-		user := fsp.getUserFromJob(job)
+		namespace := fsp.getNamespaceFromJob(job)
 
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, task := range tasks {
 					res := taskResource(task, qs.resourceKey)
-					qs.userRunning[user] += res
+					qs.namespaceRunning[namespace] += res
 
 					if elapsed > 0 {
-						ensureGlobalQueueUsage(queueName)[user] += res * elapsed.Seconds()
+						ensureGlobalQueueUsage(queueName)[namespace] += res * elapsed.Seconds()
 					}
 				}
 			}
@@ -261,7 +266,7 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 
 		if pendingTasks, ok := job.TaskStatusIndex[api.Pending]; ok {
 			for _, task := range pendingTasks {
-				qs.userDemand[user] += taskResource(task, qs.resourceKey)
+				qs.namespaceDemand[namespace] += taskResource(task, qs.resourceKey)
 			}
 		}
 	}
@@ -272,20 +277,20 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	for queueName, qs := range fsp.queues {
 		totalDemand := make(map[string]float64)
-		for user := range qs.userRunning {
-			totalDemand[user] = qs.userRunning[user] + qs.userDemand[user]
+		for namespace := range qs.namespaceRunning {
+			totalDemand[namespace] = qs.namespaceRunning[namespace] + qs.namespaceDemand[namespace]
 		}
-		for user := range qs.userDemand {
-			if _, ok := totalDemand[user]; !ok {
-				totalDemand[user] = qs.userDemand[user]
+		for namespace := range qs.namespaceDemand {
+			if _, ok := totalDemand[namespace]; !ok {
+				totalDemand[namespace] = qs.namespaceDemand[namespace]
 			}
 		}
 
 		qs.fairShares = CalculateFairShares(totalDemand, qs.totalResource)
 
 		usage := fsp.sessionUsage[queueName]
-		klog.V(2).Infof("fairshare: queue=%s users=%d totalResource=%.0f running=%v demand=%v",
-			queueName, len(totalDemand), qs.totalResource, qs.userRunning, qs.userDemand)
+		klog.V(2).Infof("fairshare: queue=%s namespaces=%d totalResource=%.0f running=%v demand=%v",
+			queueName, len(totalDemand), qs.totalResource, qs.namespaceRunning, qs.namespaceDemand)
 		klog.V(3).Infof("fairshare: queue=%s shares=%v usage=%v halfLife=%s",
 			queueName, qs.fairShares, formatUsage(usage), fsp.halfLife)
 	}
@@ -311,16 +316,16 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		qs := fsp.queues[lQueue]
-		lUser := fsp.getUserFromJob(lJob)
-		rUser := fsp.getUserFromJob(rJob)
+		lNamespace := fsp.getNamespaceFromJob(lJob)
+		rNamespace := fsp.getNamespaceFromJob(rJob)
 
 		queueUsage := fsp.sessionUsage[lQueue]
-		lUsage := queueUsage[lUser]
-		rUsage := queueUsage[rUser]
+		lUsage := queueUsage[lNamespace]
+		rUsage := queueUsage[rNamespace]
 
-		klog.V(5).Infof("fairshare: JobOrderFn: <%s/%s> user=%s usage=%.1f running=%.0f, <%s/%s> user=%s usage=%.1f running=%.0f",
-			lJob.Namespace, lJob.Name, lUser, lUsage, qs.userRunning[lUser],
-			rJob.Namespace, rJob.Name, rUser, rUsage, qs.userRunning[rUser])
+		klog.V(5).Infof("fairshare: JobOrderFn: <%s/%s> namespace=%s usage=%.1f running=%.0f, <%s/%s> namespace=%s usage=%.1f running=%.0f",
+			lJob.Namespace, lJob.Name, lNamespace, lUsage, qs.namespaceRunning[lNamespace],
+			rJob.Namespace, rJob.Name, rNamespace, rUsage, qs.namespaceRunning[rNamespace])
 
 		if lUsage < rUsage-usageEpsilon {
 			klog.V(3).Infof("fairshare: JobOrderFn: %s/%s WINS over %s/%s (usage %.1f < %.1f)",
@@ -333,8 +338,8 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 			return 1
 		}
 
-		lRunning := qs.userRunning[lUser]
-		rRunning := qs.userRunning[rUser]
+		lRunning := qs.namespaceRunning[lNamespace]
+		rRunning := qs.namespaceRunning[rNamespace]
 		if lRunning < rRunning {
 			return -1
 		}
@@ -355,21 +360,21 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			qs := fsp.queues[queueName]
-			user := fsp.getUserFromJob(job)
-			share, ok := qs.fairShares[user]
+			namespace := fsp.getNamespaceFromJob(job)
+			share, ok := qs.fairShares[namespace]
 			if !ok {
 				return util.Abstain
 			}
 
-			running := qs.userRunning[user]
+			running := qs.namespaceRunning[namespace]
 			jobRes := jobTotalResource(job, qs.resourceKey)
 
-			klog.V(5).Infof("fairshare: JobEnqueueableFn: job=<%s/%s> user=%s running=%.0f jobRes=%.0f share=%.0f",
-				job.Namespace, job.Name, user, running, jobRes, share)
+			klog.V(5).Infof("fairshare: JobEnqueueableFn: job=<%s/%s> namespace=%s running=%.0f jobRes=%.0f share=%.0f",
+				job.Namespace, job.Name, namespace, running, jobRes, share)
 
 			if running >= share && jobRes > 0 {
-				klog.V(3).Infof("fairshare: REJECT enqueue for <%s/%s>: user %s at %.0f (share=%.0f)",
-					job.Namespace, job.Name, user, running, share)
+				klog.V(3).Infof("fairshare: REJECT enqueue for <%s/%s>: namespace %s at %.0f (share=%.0f)",
+					job.Namespace, job.Name, namespace, running, share)
 				return util.Reject
 			}
 
@@ -378,6 +383,19 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	ssn.AddEventHandler(&framework.EventHandler{
+		// AllocateFunc/DeallocateFunc only update qs.namespaceRunning, the
+		// session-local live count used by JobOrderFn/JobEnqueueableFn for
+		// the remainder of *this* cycle. They deliberately do not touch
+		// globalUsage (the persisted, decayed historical total): globalUsage
+		// grows by time-integrating running resource (res * elapsed.Seconds())
+		// once per cycle in OnSessionOpen, using the elapsed wall-clock time
+		// since the previous cycle. A mid-cycle allocation has no elapsed
+		// time associated with it yet — that only becomes known at the start
+		// of the *next* cycle, when this task shows up as already-allocated
+		// in job.TaskStatusIndex and its running time since the last cycle
+		// boundary gets integrated in. So a newly allocated task is missing
+		// from globalUsage for at most one scheduling cycle (~1s), which is
+		// negligible against the default 4h half-life.
 		AllocateFunc: func(event *framework.Event) {
 			task := event.Task
 			job, ok := ssn.Jobs[task.Job]
@@ -389,13 +407,13 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 			qs := fsp.queues[queueName]
-			user := fsp.getUserFromJob(job)
+			namespace := fsp.getNamespaceFromJob(job)
 			res := taskResource(task, qs.resourceKey)
-			qs.userRunning[user] += res
+			qs.namespaceRunning[namespace] += res
 
-			klog.V(4).Infof("fairshare: AllocateFunc: task=<%s/%s> user=%s res=%.0f newRunning=%.0f usage=%.1f share=%.0f",
-				task.Namespace, task.Name, user, res, qs.userRunning[user],
-				fsp.sessionUsage[queueName][user], qs.fairShares[user])
+			klog.V(4).Infof("fairshare: AllocateFunc: task=<%s/%s> namespace=%s res=%.0f newRunning=%.0f usage=%.1f share=%.0f",
+				task.Namespace, task.Name, namespace, res, qs.namespaceRunning[namespace],
+				fsp.sessionUsage[queueName][namespace], qs.fairShares[namespace])
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			task := event.Task
@@ -408,22 +426,26 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 			qs := fsp.queues[queueName]
-			user := fsp.getUserFromJob(job)
+			namespace := fsp.getNamespaceFromJob(job)
 			res := taskResource(task, qs.resourceKey)
-			qs.userRunning[user] -= res
-			if qs.userRunning[user] < 0 {
-				qs.userRunning[user] = 0
+			qs.namespaceRunning[namespace] -= res
+			if qs.namespaceRunning[namespace] < 0 {
+				qs.namespaceRunning[namespace] = 0
 			}
 
-			klog.V(4).Infof("fairshare: DeallocateFunc: task=<%s/%s> user=%s res=%.0f newRunning=%.0f usage=%.1f share=%.0f",
-				task.Namespace, task.Name, user, res, qs.userRunning[user],
-				fsp.sessionUsage[queueName][user], qs.fairShares[user])
+			klog.V(4).Infof("fairshare: DeallocateFunc: task=<%s/%s> namespace=%s res=%.0f newRunning=%.0f usage=%.1f share=%.0f",
+				task.Namespace, task.Name, namespace, res, qs.namespaceRunning[namespace],
+				fsp.sessionUsage[queueName][namespace], qs.fairShares[namespace])
 		},
 	})
 }
 
 func (fsp *fairSharePlugin) OnSessionClose(ssn *framework.Session) {
 	klog.V(4).Infof("fairshare: OnSessionClose")
+	// Rate-limited to fairshare.flushIntervalSeconds inside maybeFlush; see
+	// its doc comment in persist.go for why this replaced a background
+	// goroutine+ticker.
+	maybeFlush(fsp.persistCfg)
 }
 
 // decayAllUsage applies exponential decay to all historical usage:
@@ -434,13 +456,13 @@ func decayAllUsage(elapsed, halfLife time.Duration) {
 	}
 	factor := math.Pow(2.0, -elapsed.Seconds()/halfLife.Seconds())
 
-	for _, users := range globalUsage {
-		for user, usage := range users {
+	for _, namespaces := range globalUsage {
+		for namespace, usage := range namespaces {
 			decayed := usage * factor
 			if decayed < usageCleanupThreshold {
-				delete(users, user)
+				delete(namespaces, namespace)
 			} else {
-				users[user] = decayed
+				namespaces[namespace] = decayed
 			}
 		}
 	}
@@ -459,12 +481,12 @@ func ensureGlobalQueueUsage(queueName string) map[string]float64 {
 // Caller must hold globalMu.
 func snapshotUsage() map[string]map[string]float64 {
 	snap := make(map[string]map[string]float64, len(globalUsage))
-	for queue, users := range globalUsage {
-		userSnap := make(map[string]float64, len(users))
-		for user, val := range users {
-			userSnap[user] = val
+	for queue, namespaces := range globalUsage {
+		namespaceSnap := make(map[string]float64, len(namespaces))
+		for namespace, val := range namespaces {
+			namespaceSnap[namespace] = val
 		}
-		snap[queue] = userSnap
+		snap[queue] = namespaceSnap
 	}
 	return snap
 }
@@ -483,10 +505,10 @@ func (fsp *fairSharePlugin) initQueueState(ssn *framework.Session, queueName str
 	totalResource := fsp.getQueueTotalResource(ssn, queueName, resourceKey)
 
 	fsp.queues[queueName] = &queueState{
-		resourceKey:   resourceKey,
-		totalResource: totalResource,
-		userRunning:   make(map[string]float64),
-		userDemand:    make(map[string]float64),
+		resourceKey:      resourceKey,
+		totalResource:    totalResource,
+		namespaceRunning: make(map[string]float64),
+		namespaceDemand:  make(map[string]float64),
 	}
 }
 
@@ -522,11 +544,11 @@ func (fsp *fairSharePlugin) getQueueTotalResource(ssn *framework.Session, queueN
 	return ssn.TotalResource.Get(resourceKey)
 }
 
-func (fsp *fairSharePlugin) getUserFromJob(job *api.JobInfo) string {
+func (fsp *fairSharePlugin) getNamespaceFromJob(job *api.JobInfo) string {
 	if job.Namespace != "" {
 		return job.Namespace
 	}
-	return defaultUnknownUser
+	return defaultUnknownNamespace
 }
 
 func taskResource(task *api.TaskInfo, resourceKey v1.ResourceName) float64 {
@@ -545,19 +567,19 @@ func jobTotalResource(job *api.JobInfo, resourceKey v1.ResourceName) float64 {
 }
 
 // CalculateFairShares implements the max-min fairness algorithm.
-// Given a map of user -> total resource demand and the total available resources,
-// it returns a map of user -> fair share allocation.
-func CalculateFairShares(userDemand map[string]float64, totalResource float64) map[string]float64 {
-	shares := make(map[string]float64, len(userDemand))
+// Given a map of namespace -> total resource demand and the total available resources,
+// it returns a map of namespace -> fair share allocation.
+func CalculateFairShares(namespaceDemand map[string]float64, totalResource float64) map[string]float64 {
+	shares := make(map[string]float64, len(namespaceDemand))
 
-	if len(userDemand) == 0 || totalResource <= 0 {
+	if len(namespaceDemand) == 0 || totalResource <= 0 {
 		return shares
 	}
 
-	remaining := make(map[string]float64, len(userDemand))
-	for user, demand := range userDemand {
+	remaining := make(map[string]float64, len(namespaceDemand))
+	for namespace, demand := range namespaceDemand {
 		if demand > 0 {
-			remaining[user] = demand
+			remaining[namespace] = demand
 		}
 	}
 
@@ -571,21 +593,21 @@ func CalculateFairShares(userDemand map[string]float64, totalResource float64) m
 		equalShare := available / float64(len(remaining))
 
 		var satisfied []string
-		for user, demand := range remaining {
+		for namespace, demand := range remaining {
 			if demand <= equalShare {
-				shares[user] = demand
+				shares[namespace] = demand
 				available -= demand
-				satisfied = append(satisfied, user)
+				satisfied = append(satisfied, namespace)
 			}
 		}
 
-		for _, user := range satisfied {
-			delete(remaining, user)
+		for _, namespace := range satisfied {
+			delete(remaining, namespace)
 		}
 
 		if len(satisfied) == 0 {
-			for user := range remaining {
-				shares[user] = equalShare
+			for namespace := range remaining {
+				shares[namespace] = equalShare
 			}
 			break
 		}
@@ -597,16 +619,16 @@ func CalculateFairShares(userDemand map[string]float64, totalResource float64) m
 // FormatShares returns a human-readable string of fair share allocations.
 func FormatShares(shares map[string]float64) string {
 	parts := make([]string, 0, len(shares))
-	for user, share := range shares {
-		parts = append(parts, fmt.Sprintf("%s=%.1f", user, share))
+	for namespace, share := range shares {
+		parts = append(parts, fmt.Sprintf("%s=%.1f", namespace, share))
 	}
 	return strings.Join(parts, ", ")
 }
 
 func formatUsage(usage map[string]float64) string {
 	parts := make([]string, 0, len(usage))
-	for user, u := range usage {
-		parts = append(parts, fmt.Sprintf("%s=%.1f", user, u))
+	for namespace, u := range usage {
+		parts = append(parts, fmt.Sprintf("%s=%.1f", namespace, u))
 	}
 	if len(parts) == 0 {
 		return "{}"

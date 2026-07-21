@@ -39,7 +39,7 @@ const (
 
 // persistedState is the JSON structure stored in the ConfigMap.
 type persistedState struct {
-	LastCycle time.Time                    `json:"lastCycle"`
+	LastCycle time.Time                     `json:"lastCycle"`
 	Queues    map[string]map[string]float64 `json:"queues"`
 }
 
@@ -54,11 +54,16 @@ type persistConfig struct {
 var (
 	persistOnce   sync.Once
 	persistClient kubernetes.Interface
+
+	// flushMu guards lastFlushAt. Kept separate from globalMu so checking
+	// the flush deadline never contends with the scheduling-critical usage
+	// lock.
+	flushMu     sync.Mutex
+	lastFlushAt time.Time
 )
 
-// initPersistence loads existing state from the ConfigMap and starts a
-// background goroutine that periodically flushes globalUsage back.
-// Uses sync.Once so only the first call (first scheduling cycle) has effect.
+// initPersistence loads existing state from the ConfigMap on the first
+// scheduling cycle. Uses sync.Once so only the first call has effect.
 // Must be called BEFORE acquiring globalMu to avoid deadlock.
 func initPersistence(client kubernetes.Interface, cfg persistConfig) {
 	if !cfg.enabled {
@@ -69,19 +74,39 @@ func initPersistence(client kubernetes.Interface, cfg persistConfig) {
 		if err := loadState(cfg); err != nil {
 			klog.Warningf("fairshare: failed to load persisted state: %v (starting fresh)", err)
 		}
-		go flushLoop(cfg)
 		klog.V(2).Infof("fairshare: persistence enabled — namespace=%s configMap=%s flushInterval=%s",
 			cfg.namespace, cfg.configMapName, cfg.flushInterval)
 	})
 }
 
-func flushLoop(cfg persistConfig) {
-	ticker := time.NewTicker(cfg.flushInterval)
-	defer ticker.Stop()
-	for range ticker.C {
-		if err := flushState(cfg); err != nil {
-			klog.Warningf("fairshare: flush failed: %v", err)
-		}
+// maybeFlush flushes globalUsage to the ConfigMap if at least
+// cfg.flushInterval has elapsed since the last flush. Called from
+// OnSessionClose (once per scheduling cycle, ~1s) rather than from a
+// detached goroutine+ticker: a ticker outlives the plugin's config —
+// removing `fairshare` from the tier list (or a scheduler config hot
+// reload) doesn't stop it, so it keeps writing stale state forever. Tying
+// the flush to OnSessionClose means persistence naturally stops the moment
+// the plugin stops being invoked, with no separate shutdown path needed.
+// Rate-limiting here keeps the ConfigMap write cadence the same as before
+// (every flushInterval) rather than once per ~1s scheduling cycle.
+func maybeFlush(cfg persistConfig) {
+	if !cfg.enabled {
+		return
+	}
+
+	flushMu.Lock()
+	due := time.Since(lastFlushAt) >= cfg.flushInterval
+	if due {
+		lastFlushAt = time.Now()
+	}
+	flushMu.Unlock()
+
+	if !due {
+		return
+	}
+
+	if err := flushState(cfg); err != nil {
+		klog.Warningf("fairshare: flush failed: %v", err)
 	}
 }
 
@@ -130,12 +155,12 @@ func loadState(cfg persistConfig) error {
 	}
 	globalLastCycle = state.LastCycle
 
-	totalUsers := 0
-	for _, users := range globalUsage {
-		totalUsers += len(users)
+	totalNamespaces := 0
+	for _, namespaces := range globalUsage {
+		totalNamespaces += len(namespaces)
 	}
-	klog.V(2).Infof("fairshare: loaded persisted state — lastCycle=%s queues=%d users=%d",
-		state.LastCycle.Format(time.RFC3339), len(state.Queues), totalUsers)
+	klog.V(2).Infof("fairshare: loaded persisted state — lastCycle=%s queues=%d namespaces=%d",
+		state.LastCycle.Format(time.RFC3339), len(state.Queues), totalNamespaces)
 	return nil
 }
 
@@ -144,7 +169,7 @@ func flushState(cfg persistConfig) error {
 	globalMu.Lock()
 	state := persistedState{
 		LastCycle: globalLastCycle,
-		Queues:   snapshotUsage(),
+		Queues:    snapshotUsage(),
 	}
 	globalMu.Unlock()
 

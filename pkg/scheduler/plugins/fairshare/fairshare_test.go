@@ -27,15 +27,15 @@ import (
 
 const eps = 1e-9
 
-func assertShare(t *testing.T, shares map[string]float64, user string, expected float64) {
+func assertShare(t *testing.T, shares map[string]float64, namespace string, expected float64) {
 	t.Helper()
-	got, ok := shares[user]
+	got, ok := shares[namespace]
 	if !ok {
-		t.Errorf("user %q: not found in shares (expected %.1f)", user, expected)
+		t.Errorf("namespace %q: not found in shares (expected %.1f)", namespace, expected)
 		return
 	}
 	if math.Abs(got-expected) > eps {
-		t.Errorf("user %q: got %.4f, want %.4f", user, got, expected)
+		t.Errorf("namespace %q: got %.4f, want %.4f", namespace, got, expected)
 	}
 }
 
@@ -49,19 +49,19 @@ func totalShares(shares map[string]float64) float64 {
 
 // --- CalculateFairShares tests ---
 
-func TestFairShares_SingleUser(t *testing.T) {
+func TestFairShares_SingleNamespace(t *testing.T) {
 	demand := map[string]float64{"alice": 200}
 	shares := CalculateFairShares(demand, 87)
 	assertShare(t, shares, "alice", 87)
 }
 
-func TestFairShares_SingleUserLowDemand(t *testing.T) {
+func TestFairShares_SingleNamespaceLowDemand(t *testing.T) {
 	demand := map[string]float64{"alice": 10}
 	shares := CalculateFairShares(demand, 87)
 	assertShare(t, shares, "alice", 10)
 }
 
-func TestFairShares_TwoUsersEqual(t *testing.T) {
+func TestFairShares_TwoNamespacesEqual(t *testing.T) {
 	demand := map[string]float64{
 		"alice": 100,
 		"bob":   100,
@@ -71,7 +71,7 @@ func TestFairShares_TwoUsersEqual(t *testing.T) {
 	assertShare(t, shares, "bob", 43.5)
 }
 
-func TestFairShares_TwoUsersOneLow(t *testing.T) {
+func TestFairShares_TwoNamespacesOneLow(t *testing.T) {
 	demand := map[string]float64{
 		"alice": 200,
 		"bob":   10,
@@ -81,7 +81,7 @@ func TestFairShares_TwoUsersOneLow(t *testing.T) {
 	assertShare(t, shares, "alice", 77)
 }
 
-func TestFairShares_ThreeUsersAsymmetric(t *testing.T) {
+func TestFairShares_ThreeNamespacesAsymmetric(t *testing.T) {
 	demand := map[string]float64{
 		"A": 50,
 		"B": 60,
@@ -97,7 +97,7 @@ func TestFairShares_ThreeUsersAsymmetric(t *testing.T) {
 	}
 }
 
-func TestFairShares_ThreeUsersMixed(t *testing.T) {
+func TestFairShares_ThreeNamespacesMixed(t *testing.T) {
 	demand := map[string]float64{
 		"A": 200,
 		"B": 150,
@@ -109,7 +109,7 @@ func TestFairShares_ThreeUsersMixed(t *testing.T) {
 	assertShare(t, shares, "B", 38.5)
 }
 
-func TestFairShares_AllUsersLowDemand(t *testing.T) {
+func TestFairShares_AllNamespacesLowDemand(t *testing.T) {
 	demand := map[string]float64{
 		"alice": 5,
 		"bob":   10,
@@ -140,7 +140,7 @@ func TestFairShares_ZeroResource(t *testing.T) {
 	}
 }
 
-func TestFairShares_ZeroDemandUsers(t *testing.T) {
+func TestFairShares_ZeroDemandNamespaces(t *testing.T) {
 	demand := map[string]float64{
 		"alice": 0,
 		"bob":   50,
@@ -152,7 +152,7 @@ func TestFairShares_ZeroDemandUsers(t *testing.T) {
 	}
 }
 
-func TestFairShares_ManyUsersProgressiveElimination(t *testing.T) {
+func TestFairShares_ManyNamespacesProgressiveElimination(t *testing.T) {
 	demand := map[string]float64{
 		"A": 50,
 		"B": 40,
@@ -203,9 +203,9 @@ func TestFairShares_NeverExceedsDemand(t *testing.T) {
 	}
 	shares := CalculateFairShares(demand, 87)
 
-	for user, share := range shares {
-		if share > demand[user]+eps {
-			t.Errorf("user %q: share %.4f exceeds demand %.4f", user, share, demand[user])
+	for namespace, share := range shares {
+		if share > demand[namespace]+eps {
+			t.Errorf("namespace %q: share %.4f exceeds demand %.4f", namespace, share, demand[namespace])
 		}
 	}
 }
@@ -289,10 +289,10 @@ func TestDecayAllUsage_CleansUpNegligible(t *testing.T) {
 	globalMu.Lock()
 	oldUsage := globalUsage
 	globalUsage = map[string]map[string]float64{
-		"q": {"user": 0.005},
+		"q": {"ns": 0.005},
 	}
 	decayAllUsage(1*time.Hour, 1*time.Minute)
-	_, exists := globalUsage["q"]["user"]
+	_, exists := globalUsage["q"]["ns"]
 	globalUsage = oldUsage
 	globalMu.Unlock()
 
@@ -326,15 +326,15 @@ func TestDecayAllUsage_MultipleQueues(t *testing.T) {
 
 func TestUsageOrdering_LowerUsageWins(t *testing.T) {
 	usage := map[string]float64{
-		"user-a": 100.0,
-		"user-b": 0.0,
+		"ns-a": 100.0,
+		"ns-b": 0.0,
 	}
 
-	lUsage := usage["user-b"]
-	rUsage := usage["user-a"]
+	lUsage := usage["ns-b"]
+	rUsage := usage["ns-a"]
 
 	if lUsage >= rUsage-usageEpsilon {
-		t.Errorf("user-b (%.1f) should beat user-a (%.1f)", lUsage, rUsage)
+		t.Errorf("ns-b (%.1f) should beat ns-a (%.1f)", lUsage, rUsage)
 	}
 }
 
@@ -355,20 +355,20 @@ func TestUsageOrdering_EqualUsageFallsToRunning(t *testing.T) {
 
 func TestUsageOrdering_RealisticScenario(t *testing.T) {
 	usage := map[string]float64{
-		"user-a": 180.0,
-		"user-b": 60.0,
-		"user-c": 0.0,
-		"user-d": 0.0,
+		"ns-a": 180.0,
+		"ns-b": 60.0,
+		"ns-c": 0.0,
+		"ns-d": 0.0,
 	}
 
-	if !(usage["user-c"] < usage["user-b"]-usageEpsilon) {
-		t.Error("user-c should beat user-b")
+	if !(usage["ns-c"] < usage["ns-b"]-usageEpsilon) {
+		t.Error("ns-c should beat ns-b")
 	}
-	if !(usage["user-b"] < usage["user-a"]-usageEpsilon) {
-		t.Error("user-b should beat user-a")
+	if !(usage["ns-b"] < usage["ns-a"]-usageEpsilon) {
+		t.Error("ns-b should beat ns-a")
 	}
-	if math.Abs(usage["user-c"]-usage["user-d"]) > usageEpsilon {
-		t.Error("user-c and user-d should be tied")
+	if math.Abs(usage["ns-c"]-usage["ns-d"]) > usageEpsilon {
+		t.Error("ns-c and ns-d should be tied")
 	}
 }
 
@@ -392,7 +392,7 @@ func TestDecayScenario_10HourJob(t *testing.T) {
 
 // --- Helper tests ---
 
-func TestGetUserFromJob_Namespace(t *testing.T) {
+func TestGetNamespaceFromJob(t *testing.T) {
 	fsp := &fairSharePlugin{}
 
 	tests := []struct {
@@ -400,17 +400,17 @@ func TestGetUserFromJob_Namespace(t *testing.T) {
 		namespace string
 		want      string
 	}{
-		{"user namespace", "team-ml", "team-ml"},
+		{"regular namespace", "team-ml", "team-ml"},
 		{"system namespace", "kube-system", "kube-system"},
-		{"empty namespace", "", defaultUnknownUser},
+		{"empty namespace", "", defaultUnknownNamespace},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			job := &api.JobInfo{Namespace: tt.namespace}
-			got := fsp.getUserFromJob(job)
+			got := fsp.getNamespaceFromJob(job)
 			if got != tt.want {
-				t.Errorf("getUserFromJob() = %q, want %q", got, tt.want)
+				t.Errorf("getNamespaceFromJob() = %q, want %q", got, tt.want)
 			}
 		})
 	}
