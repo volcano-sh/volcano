@@ -127,9 +127,17 @@ func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName]int
 
 		pvc, err := sc.pvcInformer.Lister().PersistentVolumeClaims(pod.Namespace).Get(pvcName)
 		if err != nil {
-			// The PVC is required to proceed with
-			// scheduling of a new pod because it cannot
-			// run without it. Bail out immediately.
+			// A PVC ADD event can reach the scheduler's PVC informer after
+			// the pod's ADD reaches the pod informer (e.g. a pod created
+			// together with an OnDemand PVC). When the PVC is simply not
+			// found yet, wrap the error in pendingPVCError so addPod adds
+			// the task to the cache and re-queues it for resync instead of
+			// dropping the pod. Any other lookup error is fatal as before.
+			if errors.IsNotFound(err) {
+				return volumes, &pendingPVCError{
+					err: fmt.Errorf("looking up PVC %s/%s: %w", pod.Namespace, pvcName, err),
+				}
+			}
 			return volumes, fmt.Errorf("looking up PVC %s/%s: %v", pod.Namespace, pvcName, err)
 		}
 		// The PVC for an ephemeral volume must be owned by the pod.
@@ -266,6 +274,22 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	if err != nil {
 		if isPendingDRAResourceClaimError(err) {
 			klog.V(4).Infof("DRA ResourceClaim for pod <%s/%s> is not ready, add task to cache and retry: %v", pod.Namespace, pod.Name, err)
+			if addErr := sc.addTask(pi); addErr != nil {
+				return addErr
+			}
+			sc.resyncTask(pi)
+			return nil
+		}
+		// Recover from a Pod ADD that races ahead of its PVC ADD on the
+		// informers: the referenced PVC is not yet in the scheduler's PVC
+		// informer. Add the task to the cache and enqueue it for resync so
+		// syncTask re-fetches the pod once the PVC syncs, rather than
+		// dropping it (resyncTask on a task never added to sc.Jobs would be
+		// Forgotten by processResyncTask and lost). Same pattern as the DRA
+		// branch above. Only PVC-not-found is recovered here; other errors
+		// fall through to the drop path below.
+		if isPendingPVCError(err) {
+			klog.V(4).Infof("PVC for pod <%s/%s> not yet in informer cache, add task and retry: %v", pod.Namespace, pod.Name, err)
 			if addErr := sc.addTask(pi); addErr != nil {
 				return addErr
 			}

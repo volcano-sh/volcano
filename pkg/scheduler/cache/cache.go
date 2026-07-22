@@ -1873,6 +1873,27 @@ func isPendingDRAResourceClaimError(err error) bool {
 	return ok
 }
 
+// pendingPVCError marks a NewTaskInfo failure caused by a
+// PersistentVolumeClaim the pod references not yet being present in the
+// scheduler's PVC informer (a not-found lookup). It is treated like
+// pendingDRAResourceClaimError: the task is still added to the cache and
+// re-queued for resync so it is retried once the PVC informer catches up,
+// rather than being dropped. Using a dedicated type, created only for the
+// not-found case, keeps the retry path scoped to exactly this race and does
+// not swallow other lookup errors.
+type pendingPVCError struct {
+	err error
+}
+
+func (e *pendingPVCError) Error() string {
+	return e.err.Error()
+}
+
+func isPendingPVCError(err error) bool {
+	_, ok := err.(*pendingPVCError)
+	return ok
+}
+
 func addDRAResource(dst map[string]*schedulingapi.DRAResource, deviceClass string, count int64, capacity map[string]resource.Quantity) {
 	if dst[deviceClass] == nil {
 		dst[deviceClass] = &schedulingapi.DRAResource{}
