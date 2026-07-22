@@ -225,8 +225,10 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	// On the first cycle, load persisted state and start the flush goroutine.
-	// Must happen before acquiring globalMu (loadState takes the lock internally).
+	// On the first cycle, load any persisted state. Must happen before
+	// acquiring globalMu (loadState takes the lock internally). Flushing
+	// state back out happens later, in OnSessionClose via maybeFlush — not
+	// here, and not via a background goroutine.
 	initPersistence(ssn.KubeClient(), fsp.persistCfg)
 
 	// Hold globalMu for the entire decay + accumulation phase, then snapshot.
@@ -302,16 +304,7 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 		lQueue, lTarget := fsp.getQueueName(ssn, lJob)
 		rQueue, rTarget := fsp.getQueueName(ssn, rJob)
 
-		if !lTarget && !rTarget {
-			return 0
-		}
-		if !lTarget {
-			return -1
-		}
-		if !rTarget {
-			return 1
-		}
-		if lQueue != rQueue {
+		if shouldAbstainOrdering(lQueue, lTarget, rQueue, rTarget) {
 			return 0
 		}
 
@@ -510,6 +503,20 @@ func (fsp *fairSharePlugin) initQueueState(ssn *framework.Session, queueName str
 		namespaceRunning: make(map[string]float64),
 		namespaceDemand:  make(map[string]float64),
 	}
+}
+
+// shouldAbstainOrdering reports whether JobOrderFn should abstain (return 0)
+// for a pair of jobs. fairshare is queue-scoped: it has no basis to rank a
+// job against one from a queue it doesn't cover, or two jobs from different
+// targeted queues against each other. Abstaining (rather than picking a
+// winner based on targeting alone) lets other plugins/tiers decide those
+// comparisons instead of fairshare artificially favoring non-targeted-queue
+// jobs.
+func shouldAbstainOrdering(lQueue string, lTarget bool, rQueue string, rTarget bool) bool {
+	if !lTarget || !rTarget {
+		return true
+	}
+	return lQueue != rQueue
 }
 
 func (fsp *fairSharePlugin) getQueueName(ssn *framework.Session, job *api.JobInfo) (string, bool) {

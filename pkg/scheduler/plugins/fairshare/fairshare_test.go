@@ -506,6 +506,33 @@ func TestGetQueueName_ExplicitAllowlist_OnlyMatchesListedQueues(t *testing.T) {
 	}
 }
 
+func TestShouldAbstainOrdering(t *testing.T) {
+	tests := []struct {
+		name    string
+		lQueue  string
+		lTarget bool
+		rQueue  string
+		rTarget bool
+		want    bool
+	}{
+		{"both targeted, same queue", "gpu-queue", true, "gpu-queue", true, false},
+		{"both targeted, different queues", "gpu-queue", true, "cpu-queue", true, true},
+		{"left not targeted", "other-queue", false, "gpu-queue", true, true},
+		{"right not targeted", "gpu-queue", true, "other-queue", false, true},
+		{"neither targeted", "other-queue", false, "other-queue-2", false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldAbstainOrdering(tt.lQueue, tt.lTarget, tt.rQueue, tt.rTarget)
+			if got != tt.want {
+				t.Errorf("shouldAbstainOrdering(%q, %v, %q, %v) = %v, want %v",
+					tt.lQueue, tt.lTarget, tt.rQueue, tt.rTarget, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFormatShares(t *testing.T) {
 	shares := map[string]float64{"alice": 43.5, "bob": 43.5}
 	result := FormatShares(shares)
@@ -515,22 +542,26 @@ func TestFormatShares(t *testing.T) {
 }
 
 func TestEnsureGlobalQueueUsage_CreatesMap(t *testing.T) {
+	// ensureGlobalQueueUsage is documented as requiring globalMu to be held
+	// by the caller (it reads/writes globalUsage directly). Hold it for the
+	// whole read-modify-check sequence here, matching the contract.
 	globalMu.Lock()
 	oldUsage := globalUsage
 	globalUsage = make(map[string]map[string]float64)
-	globalMu.Unlock()
 
 	usage := ensureGlobalQueueUsage("new-queue")
 	if usage == nil {
+		globalUsage = oldUsage
+		globalMu.Unlock()
 		t.Fatal("expected non-nil map")
 	}
 	usage["alice"] = 42.0
 
-	if globalUsage["new-queue"]["alice"] != 42.0 {
-		t.Error("expected usage to be stored in global state")
-	}
-
-	globalMu.Lock()
+	got := globalUsage["new-queue"]["alice"]
 	globalUsage = oldUsage
 	globalMu.Unlock()
+
+	if got != 42.0 {
+		t.Error("expected usage to be stored in global state")
+	}
 }
