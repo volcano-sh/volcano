@@ -19,6 +19,7 @@ package fairshare
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"sync"
 	"testing"
@@ -26,7 +27,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	ktesting "k8s.io/client-go/testing"
 )
 
 func testPersistConfig() persistConfig {
@@ -423,6 +426,43 @@ func TestMaybeFlush_FlushesAgainAfterIntervalElapses(t *testing.T) {
 	if math.Abs(state.Queues["gpu-queue"]["alice"]-999.0) > 0.01 {
 		t.Errorf("maybeFlush after the interval elapsed should have flushed again: got alice=%.2f, want 999.0",
 			state.Queues["gpu-queue"]["alice"])
+	}
+}
+
+func TestMaybeFlush_FailedFlushDoesNotAdvanceLastFlushAt(t *testing.T) {
+	restore := saveAndResetGlobals(t)
+	defer restore()
+
+	client := fake.NewSimpleClientset()
+	client.PrependReactor("get", "configmaps", func(action ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("simulated transient apiserver error")
+	})
+	persistClient = client
+	cfg := testPersistConfig()
+	cfg.flushInterval = 1 * time.Hour // long enough that a retry-on-next-call only happens if the failed attempt didn't set lastFlushAt
+
+	globalMu.Lock()
+	globalUsage = map[string]map[string]float64{"gpu-queue": {"alice": 100.0}}
+	globalMu.Unlock()
+
+	maybeFlush(cfg) // fails (simulated), must not advance lastFlushAt
+
+	flushMu.Lock()
+	notAdvanced := lastFlushAt.IsZero()
+	flushMu.Unlock()
+	if !notAdvanced {
+		t.Error("lastFlushAt should remain zero after a failed flush, so the next call retries promptly")
+	}
+
+	// Remove the failing reactor and retry immediately — should succeed
+	// despite the long flushInterval, because the failed attempt never
+	// counted as "due" having been satisfied.
+	client.ReactionChain = client.ReactionChain[1:]
+	maybeFlush(cfg)
+
+	if _, err := client.CoreV1().ConfigMaps(cfg.namespace).Get(
+		context.TODO(), cfg.configMapName, metav1.GetOptions{}); err != nil {
+		t.Errorf("expected the retry to succeed and create the ConfigMap, get failed: %v", err)
 	}
 }
 

@@ -96,18 +96,24 @@ func maybeFlush(cfg persistConfig) {
 
 	flushMu.Lock()
 	due := time.Since(lastFlushAt) >= cfg.flushInterval
-	if due {
-		lastFlushAt = time.Now()
-	}
 	flushMu.Unlock()
 
 	if !due {
 		return
 	}
 
+	// lastFlushAt tracks the last *successful* flush, not the last attempt.
+	// Only advance it once flushState actually succeeds, so a transient
+	// failure (e.g. a momentary apiserver error) is retried on the very
+	// next cycle instead of being suppressed for a full flushInterval.
 	if err := flushState(cfg); err != nil {
 		klog.Warningf("fairshare: flush failed: %v", err)
+		return
 	}
+
+	flushMu.Lock()
+	lastFlushAt = time.Now()
+	flushMu.Unlock()
 }
 
 // apiCallTimeout returns a timeout for individual API calls. We use half the
