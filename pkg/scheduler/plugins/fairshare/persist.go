@@ -94,11 +94,19 @@ func maybeFlush(cfg persistConfig) {
 		return
 	}
 
+	// Hold flushMu across the due-check *and* the flush itself (not just
+	// the check). Volcano's main scheduler calls OnSessionClose
+	// sequentially today, but nothing here should assume that forever —
+	// if maybeFlush were ever called concurrently (e.g. from an
+	// Agent-Scheduler-style multi-worker setup), releasing the lock
+	// between the check and the flush would let two callers both observe
+	// due=true and both call flushState in parallel: duplicate API calls
+	// and a possible resourceVersion conflict on Update. Holding the lock
+	// for the whole sequence serializes flush attempts instead.
 	flushMu.Lock()
-	due := time.Since(lastFlushAt) >= cfg.flushInterval
-	flushMu.Unlock()
+	defer flushMu.Unlock()
 
-	if !due {
+	if time.Since(lastFlushAt) < cfg.flushInterval {
 		return
 	}
 
@@ -111,14 +119,13 @@ func maybeFlush(cfg persistConfig) {
 		return
 	}
 
-	flushMu.Lock()
 	lastFlushAt = time.Now()
-	flushMu.Unlock()
 }
 
 // apiCallTimeout returns a timeout for individual API calls. We use half the
-// flush interval so a slow/stalled request can't block the next flush tick
-// (time.Ticker drops ticks if the handler runs long).
+// flush interval so a slow/stalled apiserver call can't hold flushMu (and
+// therefore delay the next OnSessionClose-driven flush attempt) for longer
+// than half of flushInterval.
 func apiCallTimeout(cfg persistConfig) time.Duration {
 	if cfg.flushInterval <= 0 {
 		return 15 * time.Second
