@@ -42,22 +42,25 @@ func TestDeleteJobMetrics(t *testing.T) {
 
 	DeleteJobMetrics(jobName, queue, namespace)
 
-	if got := testutil.ToFloat64(e2eJobSchedulingDuration.WithLabelValues(jobName, queue, namespace)); got != 0 {
-		t.Errorf("expected e2eJobSchedulingDuration to be reset after delete, got %v", got)
+	// WithLabelValues would silently recreate a zero-value series here even
+	// if DeleteJobMetrics failed to remove it, masking a regression. Check
+	// the vec is actually empty instead of reading a (possibly fresh) value.
+	if count := testutil.CollectAndCount(e2eJobSchedulingDuration); count != 0 {
+		t.Errorf("expected no e2eJobSchedulingDuration series after delete, got %d", count)
 	}
-	if got := testutil.ToFloat64(e2eJobSchedulingStartTime.WithLabelValues(jobName, queue, namespace)); got != 0 {
-		t.Errorf("expected e2eJobSchedulingStartTime to be reset after delete, got %v", got)
+	if count := testutil.CollectAndCount(e2eJobSchedulingStartTime); count != 0 {
+		t.Errorf("expected no e2eJobSchedulingStartTime series after delete, got %d", count)
 	}
-	if got := testutil.ToFloat64(e2eJobSchedulingLastTime.WithLabelValues(jobName, queue, namespace)); got != 0 {
-		t.Errorf("expected e2eJobSchedulingLastTime to be reset after delete, got %v", got)
+	if count := testutil.CollectAndCount(e2eJobSchedulingLastTime); count != 0 {
+		t.Errorf("expected no e2eJobSchedulingLastTime series after delete, got %d", count)
 	}
-	if got := testutil.ToFloat64(unscheduleTaskCount.WithLabelValues(jobName)); got != 0 {
-		t.Errorf("expected unscheduleTaskCount to be reset after delete, got %v", got)
+	if count := testutil.CollectAndCount(unscheduleTaskCount); count != 0 {
+		t.Errorf("expected no unscheduleTaskCount series after delete, got %d", count)
 	}
-	if got := testutil.ToFloat64(jobShare.WithLabelValues(namespace, jobName)); got != 0 {
-		t.Errorf("expected jobShare to be reset after delete, got %v", got)
+	if count := testutil.CollectAndCount(jobShare); count != 0 {
+		t.Errorf("expected no jobShare series after delete, got %d", count)
 	}
-	if got := testutil.ToFloat64(jobRetryCount.WithLabelValues(jobName)); got != 0 {
-		t.Errorf("expected jobRetryCount to be reset after delete, got %v", got)
+	if count := testutil.CollectAndCount(jobRetryCount); count != 0 {
+		t.Errorf("expected no jobRetryCount series after delete, got %d", count)
 	}
 }
