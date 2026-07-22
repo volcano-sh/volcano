@@ -340,7 +340,7 @@ data:
 
 ### Testing
 
-#### Unit tests (47 tests)
+#### Unit tests (49 tests)
 
 - Max-min fair share algorithm correctness (single namespace, equal demand, asymmetric demand, progressive elimination)
 - Decay factor math (one/two half-lives, zero elapsed, zero half-life, small elapsed)
@@ -349,6 +349,8 @@ data:
 - Decay scenario (10-hour job decay over 4h and 24h)
 - Helpers (namespace extraction, resource key defaults/overrides)
 - `targetQueues` allowlist behavior (defaults to all queues when unset, restricts to the allowlist when set)
+- `shouldAbstainOrdering` (abstains unless both jobs are in the same targeted queue)
+- A failed persistence flush is retried on the next cycle instead of waiting a full `flushIntervalSeconds`
 - Persistence: flush creates ConfigMap, flush updates existing, load populates globals,
   load handles missing ConfigMap, load handles empty data, flush→load round-trip,
   disabled persistence is no-op, corrupt JSON returns error

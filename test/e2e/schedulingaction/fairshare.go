@@ -46,6 +46,30 @@ var _ = ginkgo.Describe("Fairshare Plugin E2E Test", func() {
 					"fairshare.halfLifeMinutes": "60",
 				},
 			}
+			// Session.JobOrderFn walks tiers-then-plugins in configured
+			// order and returns as soon as any plugin's comparison is
+			// non-zero. drf's dominant-resource-share comparison returns
+			// non-zero for almost any pair of jobs with differing resource
+			// requests, so fairshare must be inserted *before* drf — not
+			// appended after whatever's already configured — or its
+			// comparator would rarely get a chance to run at all. See
+			// docs/user-guide/how_to_use_fairshare_plugin.md, "Can it be
+			// used together with DRF?".
+			for i := range sc.Tiers {
+				idx := sc.Tiers[i].GetPluginIdxOf("drf")
+				if idx < 0 {
+					continue
+				}
+				plugins := sc.Tiers[i].Plugins
+				inserted := make([]e2eutil.PluginOption, 0, len(plugins)+1)
+				inserted = append(inserted, plugins[:idx]...)
+				inserted = append(inserted, fairsharePlugin)
+				inserted = append(inserted, plugins[idx:]...)
+				sc.Tiers[i].Plugins = inserted
+				return true
+			}
+			// No drf plugin configured: relative order doesn't matter, so
+			// appending is fine.
 			if len(sc.Tiers) > 0 {
 				sc.Tiers[0].Plugins = append(sc.Tiers[0].Plugins, fairsharePlugin)
 			} else {
@@ -60,14 +84,23 @@ var _ = ginkgo.Describe("Fairshare Plugin E2E Test", func() {
 		})
 		defer cmc.UndoChanged()
 
-		// Wait for config to take effect
-		time.Sleep(5 * time.Second)
+		// No extra sleep here: ChangeBy already waits for the config
+		// change to take effect (it bumps a "refreshts" annotation on the
+		// scheduler pods to force an immediate ConfigMap remount), matching
+		// the pattern used by the other scheduler-config-modifying E2E
+		// tests (e.g. enqueue.go) — none of them add a sleep after ChangeBy.
 
 		// Create test contexts for two different namespaces (simulating two users).
+		// A single node sized to exactly match User A's 4 jobs (4*500m =
+		// 2000m) so those jobs genuinely saturate all schedulable CPU —
+		// otherwise User B's job could schedule on free capacity without
+		// deleting anything, and without fairshare's ordering ever being
+		// exercised, making the test pass regardless of whether fairshare
+		// works.
 		ctx1 := e2eutil.InitTestContext(e2eutil.Options{
 			Namespace:     "fairshare-user-a",
 			Queues:        []string{"default"},
-			NodesNumLimit: 2,
+			NodesNumLimit: 1,
 			NodesResourceLimit: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("2000m"),
 				corev1.ResourceMemory: resource.MustParse("2048Mi"),
