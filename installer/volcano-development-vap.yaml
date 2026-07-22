@@ -273,6 +273,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: jobs.batch.volcano.sh
 spec:
   group: batch.volcano.sh
@@ -4546,6 +4547,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: cronjobs.batch.volcano.sh
 spec:
   group: batch.volcano.sh
@@ -9325,6 +9327,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: podgroups.scheduling.volcano.sh
 spec:
   group: scheduling.volcano.sh
@@ -9640,6 +9643,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: queues.scheduling.volcano.sh
 spec:
   group: scheduling.volcano.sh
@@ -11497,6 +11501,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: jobtemplates.flow.volcano.sh
 spec:
   group: flow.volcano.sh
@@ -15669,6 +15674,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: jobflows.flow.volcano.sh
 spec:
   group: flow.volcano.sh
