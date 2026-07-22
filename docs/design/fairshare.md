@@ -12,7 +12,7 @@ tenants sharing a `Queue`:
    requiring new `Session`/`SchedulerCache` fields or a `NamespaceOrderFn` stage.
 
 For usage instructions (arguments, configuration examples, interaction with other plugins),
-see the [fairshare user guide](../user-guide/fairshare.md).
+see the [fairshare user guide](../user-guide/how_to_use_fairshare_plugin.md).
 
 ---
 

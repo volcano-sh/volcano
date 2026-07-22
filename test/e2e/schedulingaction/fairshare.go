@@ -65,8 +65,8 @@ var _ = ginkgo.Describe("Fairshare Plugin E2E Test", func() {
 
 		// Create test contexts for two different namespaces (simulating two users).
 		ctx1 := e2eutil.InitTestContext(e2eutil.Options{
-			Namespace: "fairshare-user-a",
-			Queues:    []string{"default"},
+			Namespace:     "fairshare-user-a",
+			Queues:        []string{"default"},
 			NodesNumLimit: 2,
 			NodesResourceLimit: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("2000m"),
@@ -155,16 +155,24 @@ var _ = ginkgo.Describe("Fairshare Plugin E2E Test", func() {
 		err = e2eutil.WaitJobReady(ctx2, createdBJob)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		// Verify User A's extra job is still pending (or at least was scheduled after User B).
+		// Verify User A's extra job remains pending. The single slot freed by
+		// deleting userAJobs[0] must go to User B's job (lower historical
+		// usage), not to User A's extra job — that's the actual ordering
+		// claim fairshare makes. Treat Running>0 as an explicit failure
+		// (not just a falsy poll result) so a fairshare ordering regression
+		// fails loudly instead of the poll silently succeeding either way.
 		err = wait.Poll(2*time.Second, 30*time.Second, func() (bool, error) {
 			job, getErr := ctx1.Vcclient.BatchV1alpha1().Jobs("fairshare-user-a").Get(
 				context.TODO(), createdAExtraJob.Name, metav1.GetOptions{})
 			if getErr != nil {
 				return false, getErr
 			}
-			// If User A's extra job is still pending, fairshare is working correctly.
-			// If it becomes ready, we check the timeline against User B's job.
-			return job.Status.Running > 0 || job.Status.Pending > 0, nil
+			if job.Status.Running > 0 {
+				return false, fmt.Errorf(
+					"fairshare ordering violated: user-a-job-extra was scheduled (Running=%d) instead of staying pending behind lower-usage user-b-job-0",
+					job.Status.Running)
+			}
+			return job.Status.Pending > 0, nil
 		})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})

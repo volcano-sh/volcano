@@ -24,10 +24,20 @@ together, not as alternatives:
 - **fairshare** balances *which namespace* gets scheduled next based on historical
   consumption over time, within the same queue.
 
-Put `fairshare` in the same tier as `drf` (order between them does not matter — they operate
-on independent ordering criteria and Volcano composes `JobOrderFn` results across plugins).
-Both can coexist with `priority` and `gang` as well; `priority` should run before `fairshare`
-in the tier list so a higher `PriorityClass` always wins regardless of historical usage.
+**Plugin order matters here, and it isn't a "same tier vs. different tier" question.**
+`Session.JobOrderFn` walks every tier's plugin list in configured order (tiers first, then
+plugins within each tier) and returns as soon as *any* plugin's comparison is non-zero — see
+[`pkg/scheduler/framework/session_plugins.go`](https://github.com/volcano-sh/volcano/blob/master/pkg/scheduler/framework/session_plugins.go),
+`Session.JobOrderFn`. Whichever plugin appears earliest in that flattened order and returns a
+non-zero result decides the comparison; every later plugin is never consulted for that pair.
+
+Concretely: **list `fairshare` before `drf`** (as in the example config below, where
+`fairshare` is the 4th plugin overall and `drf` is the 5th). If `drf` were listed first
+instead, its dominant-resource-share comparison — which returns non-zero for almost any pair
+of jobs with differing resource requests — would decide most comparisons on its own,
+and `fairshare`'s historical-usage ordering would rarely get a chance to run at all. `priority`
+should still come before both, so a higher `PriorityClass` always wins regardless of either
+resource-share or historical-usage comparisons.
 
 ## Environment setup
 
@@ -86,8 +96,10 @@ data:
 
 ### priority plugin
 
-The `priority` plugin should run before `fairshare` in the same tier. A higher PriorityClass
-always wins. Fair share only breaks ties at equal priority levels.
+The `priority` plugin should be listed before `fairshare` (see [Can it be used together with
+DRF?](#can-it-be-used-together-with-drf) above for why list order — not tier grouping — is
+what determines this). A higher PriorityClass always wins. Fair share only breaks ties at
+equal priority levels.
 
 When all competing jobs use the same PriorityClass, fair share is fully effective as the
 tiebreaker. This means using a high PriorityClass only helps when others don't — if everyone
