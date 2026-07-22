@@ -164,6 +164,13 @@ func (sc *SchedulerCache) initMockInformers() {
 	// Create node informer
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
 
+	// Create PVC informer (required by addPodCSIVolumesToTask for pods
+	// referencing a PersistentVolumeClaim). Materialise via Informer() so
+	// SharedInformerFactory.Start actually starts it — matches the real
+	// newSchedulerCache wiring.
+	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
+	sc.pvcInformer.Informer()
+
 	// Initialize DRA manager if feature is enabled
 	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
 		ctx := context.TODO()

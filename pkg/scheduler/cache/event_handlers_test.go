@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/workqueue"
 
@@ -1572,4 +1573,63 @@ func TestSchedulerCache_SyncHyperNode(t *testing.T) {
 			assert.Equal(t, tt.ready, sc.HyperNodesInfo.Ready())
 		})
 	}
+}
+
+// TestAddPodWithUnresolvedPVCCachesTaskForResync verifies that when a Pod
+// ADD races ahead of its referenced PVC arriving in the scheduler PVC
+// informer, addPod does not drop the pod: it builds the TaskInfo, adds it
+// to the cache (so it carries the pod reference and can be scheduled once
+// the PVC syncs), and enqueues it for resync. Mirrors the DRA counterpart
+// TestAddPodWithUnresolvedResourceClaimTemplateCachesTaskForResync.
+func TestAddPodWithUnresolvedPVCCachesTaskForResync(t *testing.T) {
+	sc := newMockSchedulerCache("volcano")
+
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pod-with-pvc",
+			Namespace: "default",
+			UID:       types.UID("pod-with-pvc-uid"),
+			Annotations: map[string]string{
+				schedulingv1.KubeGroupNameAnnotationKey: "pg-with-pvc",
+			},
+		},
+		Spec: v1.PodSpec{
+			SchedulerName: "volcano",
+			Volumes: []v1.Volume{
+				{
+					Name: "scratch",
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "not-yet-in-informer",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// The PVC informer is empty, so NewTaskInfo returns a pendingPVCError.
+	// addPod must still succeed (nil error) by adding the task and
+	// scheduling a resync.
+	err := sc.addPod(pod)
+	assert.NoError(t, err, "addPod must not fail when the PVC is not yet in the informer; it should cache the task and retry")
+
+	// The task must exist in the cache as a proper TaskInfo carrying the
+	// pod reference, so it can be scheduled once the PVC informer syncs.
+	job, found := sc.Jobs[schedulingapi.JobID("default/pg-with-pvc")]
+	assert.True(t, found, "job must be present in the cache")
+	if !assert.NotNil(t, job) {
+		return
+	}
+	task, found := job.Tasks[schedulingapi.TaskID("pod-with-pvc-uid")]
+	assert.True(t, found, "task must be added to the cache")
+	if assert.NotNil(t, task) {
+		assert.NotNil(t, task.Pod, "cached task must carry its pod reference")
+		assert.Equal(t, "pod-with-pvc", task.Name)
+		assert.Equal(t, "default", task.Namespace)
+	}
+
+	// The task must be queued for resync so it is retried once the PVC
+	// informer catches up.
+	assert.Equal(t, 1, sc.errTasks.Len(), "task must be enqueued for resync")
 }
