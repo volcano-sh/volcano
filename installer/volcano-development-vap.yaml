@@ -8800,6 +8800,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: commands.bus.volcano.sh
 spec:
   group: bus.volcano.sh
@@ -9888,6 +9889,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: numatopologies.nodeinfo.volcano.sh
 spec:
   group: nodeinfo.volcano.sh
@@ -10019,6 +10021,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: hypernodes.topology.volcano.sh
 spec:
   group: topology.volcano.sh
@@ -10262,6 +10265,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: nodeshards.shard.volcano.sh
 spec:
   group: shard.volcano.sh
@@ -10354,6 +10358,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: colocationconfigurations.config.volcano.sh
 spec:
   group: config.volcano.sh
