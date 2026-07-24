@@ -131,16 +131,16 @@ spec:
           - |
            /vc-agent \
            {{- with .Values.custom.agent_supported_features }}
-           --supported-features={{ . }} \
+           --supported-features={{ . | quote }} \
            {{- end }}
            {{- with .Values.custom.agent_kube_cgroup_root }}
-           --kube-cgroup-root={{ . }} \
+           --kube-cgroup-root={{ . | quote }} \
            {{- end }}
            {{- with .Values.custom.agent_extend_resource_cpu_name }}
-           --extend-resource-cpu-name={{ . }} \
+           --extend-resource-cpu-name={{ . | quote }} \
            {{- end }}
            {{- with .Values.custom.agent_extend_resource_memory_name }}
-           --extend-resource-memory-name={{ . }} \
+           --extend-resource-memory-name={{ . | quote }} \
            {{- end }}
            --v=2 1>> /var/log/volcano/agent/volcano-agent.log 2>&1
           env:
