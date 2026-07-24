@@ -315,6 +315,29 @@ func BenchmarkSetNode(b *testing.B) {
 	}
 }
 
+// BenchmarkNodeInfoClone measures the per-call cost of Clone() to show what
+// SetNode was paying on every invocation before this optimization.
+func BenchmarkNodeInfoClone(b *testing.B) {
+	node := buildNode("n1", nil, BuildResourceList("16", "32G", []ScalarResource{{Name: "pods", Value: "110"}}...))
+
+	pods := make([]*v1.Pod, 20)
+	for i := range pods {
+		pods[i] = buildPod("default", fmt.Sprintf("p%d", i), "n1", v1.PodRunning,
+			BuildResourceList("100m", "128Mi"), []metav1.OwnerReference{}, make(map[string]string))
+	}
+
+	ni := NewNodeInfo(node)
+	for _, pod := range pods {
+		_ = ni.AddTask(NewTaskInfo(pod))
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = ni.Clone()
+	}
+}
+
 func TestCloneOthersPreservesTypedNilDevices(t *testing.T) {
 	ni := &NodeInfo{
 		Name: "test-node",

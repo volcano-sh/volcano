@@ -340,14 +340,13 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 
 // SetNode sets kubernetes node object to nodeInfo object
 func (ni *NodeInfo) SetNode(node *v1.Node) {
-	if node == nil {
-		ni.setNodeState(nil)
+	ni.setNodeState(node)
+	if !ni.Ready() {
 		klog.Warningf("Failed to set node info for %s, phase: %s, reason: %s",
 			ni.Name, ni.State.Phase, ni.State.Reason)
 		return
 	}
 	ni.setNode(node)
-	ni.setNodeState(node)
 }
 
 // setNodeOthersResource initialize sharable devices
