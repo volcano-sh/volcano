@@ -26,6 +26,7 @@ import (
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -299,6 +300,96 @@ func TestSyncQueue(t *testing.T) {
 		item, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), testcase.queue.Name, metav1.GetOptions{})
 		assert.NoError(t, err)
 		assert.Equal(t, testcase.ExpectState, item.Status.State)
+	}
+}
+
+func TestHandleQueueClearsClosedByParentOnManualClose(t *testing.T) {
+	testCases := []struct {
+		Name            string
+		queue           *schedulingv1beta1.Queue
+		request         *apis.Request
+		ExpectAnnoValue string
+	}{
+		{
+			// A child queue that was closed by its parent still carries the
+			// closed-by-parent=true mark. An admin then manually closes it via a
+			// command. The mark must be cleared so that reopening the parent does
+			// not override the manual close.
+			Name: "manual close clears closed-by-parent mark",
+			queue: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "child",
+					Annotations: map[string]string{
+						ClosedByParentAnnotationKey: ClosedByParentAnnotationTrueValue,
+					},
+				},
+				Status: schedulingv1beta1.QueueStatus{
+					State: schedulingv1beta1.QueueStateClosed,
+				},
+			},
+			request: &apis.Request{
+				QueueName: "child",
+				Event:     busv1alpha1.CommandIssuedEvent,
+				Action:    busv1alpha1.CloseQueueAction,
+			},
+			ExpectAnnoValue: ClosedByParentAnnotationFalseValue,
+		},
+		{
+			// A close propagated from the parent queue carries no CommandIssuedEvent,
+			// so the closed-by-parent mark must be left untouched.
+			Name: "parent-propagated close keeps closed-by-parent mark",
+			queue: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "child",
+					Annotations: map[string]string{
+						ClosedByParentAnnotationKey: ClosedByParentAnnotationTrueValue,
+					},
+				},
+				Status: schedulingv1beta1.QueueStatus{
+					State: schedulingv1beta1.QueueStateClosed,
+				},
+			},
+			request: &apis.Request{
+				QueueName: "child",
+				Action:    busv1alpha1.CloseQueueAction,
+			},
+			ExpectAnnoValue: ClosedByParentAnnotationTrueValue,
+		},
+	}
+
+	for _, testcase := range testCases {
+		t.Run(testcase.Name, func(t *testing.T) {
+			c := newFakeController()
+
+			// The child queue defaults its parent to "root", which must exist and
+			// be Open so the hierarchical sync can look it up.
+			rootQueue := &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "root",
+				},
+				Status: schedulingv1beta1.QueueStatus{
+					State: schedulingv1beta1.QueueStateOpen,
+				},
+			}
+			_, err := c.vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), rootQueue, metav1.CreateOptions{})
+			assert.NoError(t, err)
+			err = c.queueInformer.Informer().GetStore().Add(rootQueue)
+			assert.NoError(t, err)
+
+			testcase.queue.Spec.Parent = "root"
+			_, err = c.vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), testcase.queue, metav1.CreateOptions{})
+			assert.NoError(t, err)
+
+			err = c.queueInformer.Informer().GetStore().Add(testcase.queue)
+			assert.NoError(t, err)
+
+			err = c.handleQueue(testcase.request)
+			assert.NoError(t, err)
+
+			item, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), testcase.queue.Name, metav1.GetOptions{})
+			assert.NoError(t, err)
+			assert.Equal(t, testcase.ExpectAnnoValue, item.Annotations[ClosedByParentAnnotationKey])
+		})
 	}
 }
 
