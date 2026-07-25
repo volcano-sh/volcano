@@ -194,7 +194,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 				continue
 			} else if j.Queue != job.Queue {
 				q := ssn.Queues[j.Queue]
-				if !q.Reclaimable() {
+				if q == nil || !q.Reclaimable() {
 					continue
 				}
 				reclaimees = append(reclaimees, taskOnNode.Clone())
