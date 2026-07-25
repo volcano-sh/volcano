@@ -38,6 +38,7 @@ custom:
   scheduler_pprof_enable: false
   scheduler_plugins_dir: ""
   scheduler_name: ~
+  default_queue: ~
   leader_elect_enable: false
   # ValidatingAdmissionPolicy settings (auto-enabled for K8s >= 1.30)
   vap_enable: false
