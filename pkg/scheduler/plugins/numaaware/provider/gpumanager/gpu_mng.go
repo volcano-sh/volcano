@@ -145,9 +145,7 @@ func (mng *gpuMng) Allocate(container *v1.Container, bestHit *policy.TopologyHin
 
 	availableGPUSet, ok := resNumaSets[string(NvidiaGPUResource)]
 	if !ok {
-		return map[string]cpuset.CPUSet{
-			string(NvidiaGPUResource): cpuset.New(),
-		}
+		return nil
 	}
 
 	klog.V(4).Infof("[gpumanager] availableGPUs: %v requestNum: %v bestHit: %v", availableGPUSet, requestNum, bestHit)
