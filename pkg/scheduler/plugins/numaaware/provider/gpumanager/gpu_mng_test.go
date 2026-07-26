@@ -302,3 +302,28 @@ func Test_Allocate(t *testing.T) {
 		}
 	}
 }
+
+// GPU absent from resNumaSets must yield a nil assignment. Returning an
+// empty nvidia.com/gpu entry instead lands in NumatopoInfo.Allocate and
+// panics on the missing numares key at session close.
+func Test_Allocate_GPUAbsent(t *testing.T) {
+	container := v1.Container{
+		Resources: v1.ResourceRequirements{
+			Requests: v1.ResourceList{
+				NvidiaGPUResource: *resource.NewQuantity(4, resource.DecimalSI),
+			},
+		},
+	}
+	bestHit := &policy.TopologyHint{
+		NUMANodeAffinity: func() bitmask.BitMask {
+			mask, _ := bitmask.NewBitMask(0)
+			return mask
+		}(),
+		Preferred: true,
+	}
+
+	provider := NewProvider()
+	if got := provider.Allocate(&container, bestHit, &gpuNumaInfo, api.ResNumaSets{}); got != nil {
+		t.Errorf("Allocate with GPU absent = %v, want nil", got)
+	}
+}
