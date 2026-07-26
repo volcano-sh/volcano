@@ -26,6 +26,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
@@ -102,6 +104,23 @@ func TestNewLabelDiscoverer_start(t *testing.T) {
 			d.Stop()
 		})
 	}
+}
+
+func TestDeleteNodeWithTombstone(t *testing.T) {
+	d := &labelDiscoverer{
+		networkTopologyRecord: parseCfg(getCfg()),
+		queue: workqueue.NewTypedRateLimitingQueue(
+			workqueue.DefaultTypedControllerRateLimiter[string](),
+		),
+	}
+	defer d.queue.ShutDown()
+
+	node := expectedNodeForTest1()["node0"]
+	d.DeleteNode(cache.DeletedFinalStateUnknown{Key: node.Name, Obj: node})
+
+	assert.Eventually(t, func() bool {
+		return d.queue.Len() == 1
+	}, time.Second, 10*time.Millisecond, "expected Node deletion to trigger discovery")
 }
 
 func getCfg() api.DiscoveryConfig {
