@@ -135,6 +135,9 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 // Allocate is the function to remove the allocated resource
 func (info *NumatopoInfo) Allocate(resSets ResNumaSets) {
 	for resName := range resSets {
+		if info.NumaResMap[resName] == nil {
+			continue
+		}
 		info.NumaResMap[resName].Allocatable = info.NumaResMap[resName].Allocatable.Difference(resSets[resName])
 	}
 }
@@ -142,6 +145,9 @@ func (info *NumatopoInfo) Allocate(resSets ResNumaSets) {
 // Release is the function to reclaim the allocated resource
 func (info *NumatopoInfo) Release(resSets ResNumaSets) {
 	for resName := range resSets {
+		if info.NumaResMap[resName] == nil {
+			continue
+		}
 		info.NumaResMap[resName].Allocatable = info.NumaResMap[resName].Allocatable.Union(resSets[resName])
 	}
 }
