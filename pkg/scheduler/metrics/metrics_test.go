@@ -23,14 +23,29 @@ import (
 )
 
 func TestRegisterEvictionTransaction(t *testing.T) {
-	const action = "test-action"
+	actions := []string{
+		evictionActionPreempt,
+		evictionActionReclaim,
+		evictionActionGangPreempt,
+		evictionActionGangReclaim,
+	}
 
-	counter := evictionTransactions.WithLabelValues(action)
-	before := testutil.ToFloat64(counter)
+	for _, action := range actions {
+		t.Run(action, func(t *testing.T) {
+			counter := evictionTransactions.WithLabelValues(action)
+			before := testutil.ToFloat64(counter)
 
-	RegisterEvictionTransaction(action)
+			RegisterEvictionTransaction(action)
 
-	if got := testutil.ToFloat64(counter); got != before+1 {
-		t.Fatalf("eviction transaction counter = %v, want %v", got, before+1)
+			if got := testutil.ToFloat64(counter); got != before+1 {
+				t.Fatalf("eviction transaction counter = %v, want %v", got, before+1)
+			}
+		})
+	}
+
+	before := testutil.CollectAndCount(evictionTransactions)
+	RegisterEvictionTransaction("unsupported-action")
+	if got := testutil.CollectAndCount(evictionTransactions); got != before {
+		t.Fatalf("metric count after unsupported action = %d, want %d", got, before)
 	}
 }

@@ -32,7 +32,7 @@ This metrics describe internal state of volcano.
 |----------------------------------------|-----------------|-------------------------------------------------------------------|-----------------------------------------------|
 | `pod_preemption_victims`               | Gauge           | None                                                              | The number of selected preemption victims     |
 | `total_preemption_attempts`            | Counter         | None                                                              | Total preemption attempts in the cluster      |
-| `eviction_transactions_total`          | Counter         | `action`=&lt;action_name&gt;                                      | Total committed scheduler transactions containing at least one eviction for `preempt`, `reclaim`, `gangpreempt`, and `gangreclaim` |
+| `eviction_transactions_total`          | Counter         | `action`=&lt;`preempt`\|`reclaim`\|`gangpreempt`\|`gangreclaim`&gt; | Total committed scheduler transactions containing at least one eviction |
 | `unschedule_task_count`                | Gauge           | `job_id`=&lt;job_id&gt;                                           | The number of tasks failed to schedule        |
 | `unschedule_job_counts`                | Gauge           | None                                                              | The number of jobs could not be scheduled     |
 | `queue_allocated_milli_cpu`            | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Allocated CPU count for one queue             |
