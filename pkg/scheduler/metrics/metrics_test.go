@@ -31,6 +31,7 @@ func TestRegisterEvictionTransaction(t *testing.T) {
 	}
 
 	for _, action := range actions {
+		action := action
 		t.Run(action, func(t *testing.T) {
 			counter := evictionTransactions.WithLabelValues(action)
 			before := testutil.ToFloat64(counter)
