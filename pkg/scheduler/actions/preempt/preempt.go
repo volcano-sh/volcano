@@ -221,7 +221,11 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 			// Commit changes only if job is pipelined, otherwise try next job.
 			if ssn.JobPipelined(preemptorJob) {
+				hasEvictions := stmt.HasEvictions()
 				stmt.Commit()
+				if hasEvictions {
+					metrics.RegisterEvictionTransaction(pmpt.Name())
+				}
 			} else {
 				stmt.Discard()
 				continue
@@ -282,7 +286,11 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					stmt.Discard()
 					break
 				}
+				hasEvictions := stmt.HasEvictions()
 				stmt.Commit()
+				if hasEvictions {
+					metrics.RegisterEvictionTransaction(pmpt.Name())
+				}
 			}
 		}
 	}

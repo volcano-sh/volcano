@@ -163,6 +163,15 @@ var (
 		},
 	)
 
+	evictionTransactions = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "eviction_transactions_total",
+			Help:      "Total number of committed scheduler transactions containing at least one eviction, by action",
+		},
+		[]string{"action"},
+	)
+
 	unscheduleTaskCount = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
@@ -252,6 +261,11 @@ func UpdatePreemptionVictimsCount(victimsCount int) {
 // RegisterPreemptionAttempts records number of attempts for preemtion
 func RegisterPreemptionAttempts() {
 	preemptionAttempts.Inc()
+}
+
+// RegisterEvictionTransaction records a committed scheduler transaction containing at least one eviction.
+func RegisterEvictionTransaction(action string) {
+	evictionTransactions.WithLabelValues(action).Inc()
 }
 
 // UpdateUnscheduleTaskCount records total number of unscheduleable tasks
