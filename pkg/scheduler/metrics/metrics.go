@@ -163,6 +163,23 @@ var (
 		},
 	)
 
+	reclaimVictims = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "pod_reclaim_victims",
+			Help:      "Distribution of reclaim victims actually evicted per successful task reclaim",
+			Buckets:   []float64{0, 1, 2, 5, 10, 20, 50},
+		},
+	)
+
+	reclaimAttempts = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "total_reclaim_attempts",
+			Help:      "Total task-level reclaim attempts by this scheduler instance since start",
+		},
+	)
+
 	unscheduleTaskCount = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
@@ -252,6 +269,17 @@ func UpdatePreemptionVictimsCount(victimsCount int) {
 // RegisterPreemptionAttempts records number of attempts for preemtion
 func RegisterPreemptionAttempts() {
 	preemptionAttempts.Inc()
+}
+
+// UpdateReclaimVictimsCount records the number of reclaim victims evicted in
+// a single successful task reclaim.
+func UpdateReclaimVictimsCount(victimsCount int) {
+	reclaimVictims.Observe(float64(victimsCount))
+}
+
+// RegisterReclaimAttempts records a task-level reclaim attempt.
+func RegisterReclaimAttempts() {
+	reclaimAttempts.Inc()
 }
 
 // UpdateUnscheduleTaskCount records total number of unscheduleable tasks
