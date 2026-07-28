@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"testing"
 
+	"time"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -35,6 +37,7 @@ import (
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
+	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
@@ -621,5 +624,105 @@ func TestUpdatePodGroupFunc(t *testing.T) {
 				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, len)
 			}
 		})
+	}
+}
+
+func TestCleanPodDelayActionsKeepsDelayedActionForRecreatedPod(t *testing.T) {
+	controller := newController()
+	jobKey := "default/test-job"
+	podName := "test-job-task1-0"
+
+	t.Cleanup(func() {
+		controller.delayActionMapLock.Lock()
+		defer controller.delayActionMapLock.Unlock()
+		if m, ok := controller.delayActionMap[jobKey]; ok {
+			if delayAct, exists := m[podName]; exists && delayAct.cancel != nil {
+				delayAct.cancel()
+			}
+			delete(m, podName)
+		}
+	})
+
+	job := &batch.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-job",
+			Namespace: "default",
+			UID:       "job-uid",
+		},
+		Spec: batch.JobSpec{
+			Tasks: []batch.TaskSpec{
+				{
+					Name: "task1",
+					Policies: []batch.LifecyclePolicy{
+						{
+							Event:   bus.PodFailedEvent,
+							Action:  bus.RestartJobAction,
+							Timeout: &metav1.Duration{Duration: time.Hour},
+						},
+					},
+				},
+			},
+		},
+		Status: batch.JobStatus{
+			State: batch.JobState{Phase: batch.Running},
+		},
+	}
+	controller.cache.Add(job)
+
+	// 1. Simulate old pod failing
+	reqFailed := apis.Request{
+		Namespace: "default",
+		JobName:   "test-job",
+		TaskName:  "task1",
+		PodName:   podName,
+		PodUID:    "old-uid-A",
+		Event:     bus.PodFailedEvent,
+	}
+
+	queue := controller.getWorkerQueue(jobKey)
+	queue.Add(reqFailed)
+
+	for i := uint32(0); i < controller.workers; i++ {
+		if controller.queueList[i].Len() > 0 {
+			controller.processNextReq(i)
+		}
+	}
+
+	controller.delayActionMapLock.Lock()
+	delayMap := controller.delayActionMap[jobKey]
+	_, delayActionExists := delayMap[podName]
+	controller.delayActionMapLock.Unlock()
+
+	if !delayActionExists {
+		t.Fatalf("Precondition failed: delayed action was not created")
+	}
+
+	// 2. Simulate new pod starting up
+	reqRunning := apis.Request{
+		Namespace: "default",
+		JobName:   "test-job",
+		TaskName:  "task1",
+		PodName:   podName,
+		// Same pod name but different UID to simulate pod recreation.
+		PodUID: "new-uid-B",
+		Event:  bus.PodRunningEvent,
+	}
+
+	queue.Add(reqRunning)
+
+	for i := uint32(0); i < controller.workers; i++ {
+		if controller.queueList[i].Len() > 0 {
+			controller.processNextReq(i)
+		}
+	}
+
+	// 3. Check if delay action was incorrectly deleted
+	controller.delayActionMapLock.Lock()
+	delayMap = controller.delayActionMap[jobKey]
+	_, delayActionExists = delayMap[podName]
+	controller.delayActionMapLock.Unlock()
+
+	if !delayActionExists {
+		t.Fatalf("expected delayed action to remain for recreated pod with a different UID")
 	}
 }
