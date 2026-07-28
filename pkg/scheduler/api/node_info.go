@@ -346,19 +346,6 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 			ni.Name, ni.State.Phase, ni.State.Reason)
 		return
 	}
-
-	// Dry run, make sure all fields other than `State` are in the original state.
-	copy := ni.Clone()
-	copy.setNode(node)
-	copy.setNodeState(node)
-	if !copy.Ready() {
-		klog.Warningf("SetNode makes node %s not ready, phase: %s, reason: %s",
-			copy.Name, copy.State.Phase, copy.State.Reason)
-		// Set state of node to !Ready, left other fields untouched
-		ni.State = copy.State
-		return
-	}
-
 	ni.setNode(node)
 }
 
