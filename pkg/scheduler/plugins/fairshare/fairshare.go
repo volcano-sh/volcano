@@ -195,7 +195,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 	if !fsp.targetAllQueues {
 		queuesLog = fsp.targetQueueNames
 	}
-	klog.V(2).Infof("fairshare: plugin created — queues=%v resource=%s halfLife=%s enqueueGate=%v persist=%v",
+	klog.V(2).Infof("[fairshare] plugin created — queues=%v resource=%s halfLife=%s enqueueGate=%v persist=%v",
 		queuesLog, fsp.defaultResource, fsp.halfLife, fsp.enableEnqueueGate, fsp.persistCfg.enabled)
 
 	return fsp
@@ -211,7 +211,7 @@ func (fsp *fairSharePlugin) Name() string {
 //  3. Runs the max-min fairness algorithm per queue
 //  4. Registers JobOrderFn (usage-based ordering), optional JobEnqueueableFn, and EventHandler
 func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
-	klog.V(4).Infof("fairshare: OnSessionOpen enter")
+	klog.V(4).Infof("[fairshare] OnSessionOpen enter")
 
 	fsp.queues = make(map[string]*queueState)
 
@@ -238,7 +238,7 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 	if !globalLastCycle.IsZero() {
 		elapsed = now.Sub(globalLastCycle)
 		decayAllUsage(elapsed, fsp.halfLife)
-		klog.V(3).Infof("fairshare: decay applied — elapsed=%s factor=%.6f halfLife=%s",
+		klog.V(3).Infof("[fairshare] decay applied — elapsed=%s factor=%.6f halfLife=%s",
 			elapsed.Round(time.Millisecond), DecayFactor(elapsed, fsp.halfLife), fsp.halfLife)
 	}
 	globalLastCycle = now
@@ -291,9 +291,9 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 		qs.fairShares = CalculateFairShares(totalDemand, qs.totalResource)
 
 		usage := fsp.sessionUsage[queueName]
-		klog.V(2).Infof("fairshare: queue=%s namespaces=%d totalResource=%.0f running=%v demand=%v",
+		klog.V(2).Infof("[fairshare] queue=%s namespaces=%d totalResource=%.0f running=%v demand=%v",
 			queueName, len(totalDemand), qs.totalResource, qs.namespaceRunning, qs.namespaceDemand)
-		klog.V(3).Infof("fairshare: queue=%s shares=%v usage=%v halfLife=%s",
+		klog.V(3).Infof("[fairshare] queue=%s shares=%v usage=%v halfLife=%s",
 			queueName, qs.fairShares, formatUsage(usage), fsp.halfLife)
 	}
 
@@ -316,17 +316,17 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 		lUsage := queueUsage[lNamespace]
 		rUsage := queueUsage[rNamespace]
 
-		klog.V(5).Infof("fairshare: JobOrderFn: <%s/%s> namespace=%s usage=%.1f running=%.0f, <%s/%s> namespace=%s usage=%.1f running=%.0f",
+		klog.V(5).Infof("[fairshare] JobOrderFn: <%s/%s> namespace=%s usage=%.1f running=%.0f, <%s/%s> namespace=%s usage=%.1f running=%.0f",
 			lJob.Namespace, lJob.Name, lNamespace, lUsage, qs.namespaceRunning[lNamespace],
 			rJob.Namespace, rJob.Name, rNamespace, rUsage, qs.namespaceRunning[rNamespace])
 
 		if lUsage < rUsage-usageEpsilon {
-			klog.V(3).Infof("fairshare: JobOrderFn: %s/%s WINS over %s/%s (usage %.1f < %.1f)",
+			klog.V(3).Infof("[fairshare] JobOrderFn: %s/%s WINS over %s/%s (usage %.1f < %.1f)",
 				lJob.Namespace, lJob.Name, rJob.Namespace, rJob.Name, lUsage, rUsage)
 			return -1
 		}
 		if lUsage > rUsage+usageEpsilon {
-			klog.V(3).Infof("fairshare: JobOrderFn: %s/%s WINS over %s/%s (usage %.1f < %.1f)",
+			klog.V(3).Infof("[fairshare] JobOrderFn: %s/%s WINS over %s/%s (usage %.1f < %.1f)",
 				rJob.Namespace, rJob.Name, lJob.Namespace, lJob.Name, rUsage, lUsage)
 			return 1
 		}
@@ -362,11 +362,11 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 			running := qs.namespaceRunning[namespace]
 			jobRes := jobTotalResource(job, qs.resourceKey)
 
-			klog.V(5).Infof("fairshare: JobEnqueueableFn: job=<%s/%s> namespace=%s running=%.0f jobRes=%.0f share=%.0f",
+			klog.V(5).Infof("[fairshare] JobEnqueueableFn: job=<%s/%s> namespace=%s running=%.0f jobRes=%.0f share=%.0f",
 				job.Namespace, job.Name, namespace, running, jobRes, share)
 
 			if running >= share && jobRes > 0 {
-				klog.V(3).Infof("fairshare: REJECT enqueue for <%s/%s>: namespace %s at %.0f (share=%.0f)",
+				klog.V(3).Infof("[fairshare] REJECT enqueue for <%s/%s>: namespace %s at %.0f (share=%.0f)",
 					job.Namespace, job.Name, namespace, running, share)
 				return util.Reject
 			}
@@ -404,7 +404,7 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 			res := taskResource(task, qs.resourceKey)
 			qs.namespaceRunning[namespace] += res
 
-			klog.V(4).Infof("fairshare: AllocateFunc: task=<%s/%s> namespace=%s res=%.0f newRunning=%.0f usage=%.1f share=%.0f",
+			klog.V(4).Infof("[fairshare] AllocateFunc: task=<%s/%s> namespace=%s res=%.0f newRunning=%.0f usage=%.1f share=%.0f",
 				task.Namespace, task.Name, namespace, res, qs.namespaceRunning[namespace],
 				fsp.sessionUsage[queueName][namespace], qs.fairShares[namespace])
 		},
@@ -426,7 +426,7 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 				qs.namespaceRunning[namespace] = 0
 			}
 
-			klog.V(4).Infof("fairshare: DeallocateFunc: task=<%s/%s> namespace=%s res=%.0f newRunning=%.0f usage=%.1f share=%.0f",
+			klog.V(4).Infof("[fairshare] DeallocateFunc: task=<%s/%s> namespace=%s res=%.0f newRunning=%.0f usage=%.1f share=%.0f",
 				task.Namespace, task.Name, namespace, res, qs.namespaceRunning[namespace],
 				fsp.sessionUsage[queueName][namespace], qs.fairShares[namespace])
 		},
@@ -434,7 +434,7 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 }
 
 func (fsp *fairSharePlugin) OnSessionClose(ssn *framework.Session) {
-	klog.V(4).Infof("fairshare: OnSessionClose")
+	klog.V(4).Infof("[fairshare] OnSessionClose")
 	// Rate-limited to fairshare.flushIntervalSeconds inside maybeFlush; see
 	// its doc comment in persist.go for why this replaced a background
 	// goroutine+ticker.

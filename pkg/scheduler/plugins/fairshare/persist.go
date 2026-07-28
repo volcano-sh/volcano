@@ -72,9 +72,9 @@ func initPersistence(client kubernetes.Interface, cfg persistConfig) {
 	persistOnce.Do(func() {
 		persistClient = client
 		if err := loadState(cfg); err != nil {
-			klog.Warningf("fairshare: failed to load persisted state: %v (starting fresh)", err)
+			klog.Warningf("[fairshare] failed to load persisted state: %v (starting fresh)", err)
 		}
-		klog.V(2).Infof("fairshare: persistence enabled — namespace=%s configMap=%s flushInterval=%s",
+		klog.V(2).Infof("[fairshare] persistence enabled — namespace=%s configMap=%s flushInterval=%s",
 			cfg.namespace, cfg.configMapName, cfg.flushInterval)
 	})
 }
@@ -115,7 +115,7 @@ func maybeFlush(cfg persistConfig) {
 	// failure (e.g. a momentary apiserver error) is retried on the very
 	// next cycle instead of being suppressed for a full flushInterval.
 	if err := flushState(cfg); err != nil {
-		klog.Warningf("fairshare: flush failed: %v", err)
+		klog.Warningf("[fairshare] flush failed: %v", err)
 		return
 	}
 
@@ -141,7 +141,7 @@ func loadState(cfg persistConfig) error {
 		ctx, cfg.configMapName, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			klog.V(2).Infof("fairshare: no persisted state found, starting fresh")
+			klog.V(2).Infof("[fairshare] no persisted state found, starting fresh")
 			return nil
 		}
 		return fmt.Errorf("get ConfigMap %s/%s: %w", cfg.namespace, cfg.configMapName, err)
@@ -149,7 +149,7 @@ func loadState(cfg persistConfig) error {
 
 	data, ok := cm.Data[stateDataKey]
 	if !ok || data == "" {
-		klog.V(2).Infof("fairshare: ConfigMap exists but no %s key, starting fresh", stateDataKey)
+		klog.V(2).Infof("[fairshare] ConfigMap exists but no %s key, starting fresh", stateDataKey)
 		return nil
 	}
 
@@ -172,7 +172,7 @@ func loadState(cfg persistConfig) error {
 	for _, namespaces := range globalUsage {
 		totalNamespaces += len(namespaces)
 	}
-	klog.V(2).Infof("fairshare: loaded persisted state — lastCycle=%s queues=%d namespaces=%d",
+	klog.V(2).Infof("[fairshare] loaded persisted state — lastCycle=%s queues=%d namespaces=%d",
 		state.LastCycle.Format(time.RFC3339), len(state.Queues), totalNamespaces)
 	return nil
 }
@@ -211,7 +211,7 @@ func flushState(cfg persistConfig) error {
 		return fmt.Errorf("update ConfigMap: %w", err)
 	}
 
-	klog.V(4).Infof("fairshare: flushed state to ConfigMap (%d bytes)", len(data))
+	klog.V(4).Infof("[fairshare] flushed state to ConfigMap (%d bytes)", len(data))
 	return nil
 }
 
@@ -233,6 +233,6 @@ func createStateConfigMap(ctx context.Context, cfg persistConfig, data string) e
 		ctx, cm, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("create ConfigMap: %w", err)
 	}
-	klog.V(2).Infof("fairshare: created state ConfigMap %s/%s", cfg.namespace, cfg.configMapName)
+	klog.V(2).Infof("[fairshare] created state ConfigMap %s/%s", cfg.namespace, cfg.configMapName)
 	return nil
 }
