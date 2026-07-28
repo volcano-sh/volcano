@@ -6125,3 +6125,150 @@ func TestAllocate_FlatPathHonorsAndClearsNomination(t *testing.T) {
 	assert.Equal(t, "", subJob.NominatedHyperNode,
 		"flat-path commit must clear subJob.NominatedHyperNode (regression: previously left stale)")
 }
+
+// TestHasNominatedHyperNode covers the partitioning predicate used by
+// buildAllocateContext to route jobs into the two-pass allocation loop.
+func TestHasNominatedHyperNode(t *testing.T) {
+	jobID := api.JobID("ns/job")
+	cases := []struct {
+		name string
+		job  *api.JobInfo
+		want bool
+	}{
+		{name: "nil job", job: nil, want: false},
+		{
+			name: "no sub-jobs",
+			job:  &api.JobInfo{UID: jobID, SubJobs: map[api.SubJobID]*api.SubJobInfo{}},
+			want: false,
+		},
+		{
+			name: "all sub-jobs unpinned",
+			job: &api.JobInfo{UID: jobID, SubJobs: map[api.SubJobID]*api.SubJobInfo{
+				api.SubJobID("a"): {UID: "a"},
+				api.SubJobID("b"): {UID: "b"},
+			}},
+			want: false,
+		},
+		{
+			name: "one sub-job pinned",
+			job: &api.JobInfo{UID: jobID, SubJobs: map[api.SubJobID]*api.SubJobInfo{
+				api.SubJobID("a"): {UID: "a"},
+				api.SubJobID("b"): {UID: "b", NominatedHyperNode: "hn-pinned"},
+			}},
+			want: true,
+		},
+		{
+			name: "nil sub-job entry is ignored",
+			job: &api.JobInfo{UID: jobID, SubJobs: map[api.SubJobID]*api.SubJobInfo{
+				api.SubJobID("a"): nil,
+				api.SubJobID("b"): {UID: "b"},
+			}},
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, hasNominatedHyperNode(tc.job))
+		})
+	}
+}
+
+// TestAllocate_NominatedJobWinsOverRegularJob verifies that when a regular
+// and a nominated job in the same queue contend for a single-pod node, the
+// two-pass loop schedules the nominated job even though the default
+// JobOrderFn would otherwise pick the regular job first.
+func TestAllocate_NominatedJobWinsOverRegularJob(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{
+		drf.PluginName:        drf.New,
+		proportion.PluginName: proportion.New,
+		predicates.PluginName: predicates.New,
+		nodeorder.PluginName:  nodeorder.New,
+		gang.PluginName:       gang.New,
+	}
+
+	regularPod := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", nil, nil)
+	nominatedPod := util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", nil, nil)
+	// gangpreempt/gangreclaim mirror a Pod-level NominatedNodeName onto each
+	// would-be replacement so the flat-path nomination quick-path can find a leaf.
+	nominatedPod.Status.NominatedNodeName = "n1"
+
+	test := uthelper.TestCommonStruct{
+		Name:    "two-pass allocate: nominated job wins despite legacy ordering preferring the regular job",
+		Plugins: plugins,
+		PodGroups: []*schedulingv1.PodGroup{
+			util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+			util.BuildPodGroup("pg2", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+		},
+		Pods: []*v1.Pod{regularPod, nominatedPod},
+		Nodes: []*v1.Node{
+			util.BuildNode("n1", api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+		},
+		Queues: []*schedulingv1.Queue{
+			util.BuildQueue("c1", 1, nil),
+		},
+		ExpectBindMap:  map[string]string{"c1/p2": "n1"},
+		ExpectBindsNum: 1,
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:                gang.PluginName,
+					EnabledJobOrder:     &trueValue,
+					EnabledJobReady:     &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledJobStarving:  &trueValue,
+				},
+				{
+					Name:               drf.PluginName,
+					EnabledPreemptable: &trueValue,
+					EnabledJobOrder:    &trueValue,
+				},
+				{
+					Name:               proportion.PluginName,
+					EnabledQueueOrder:  &trueValue,
+					EnabledReclaimable: &trueValue,
+					EnabledAllocatable: &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:             nodeorder.PluginName,
+					EnabledNodeOrder: &trueValue,
+				},
+			},
+		},
+	}
+
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	// Mirror gangpreempt/gangreclaim's post-commit pin on pg2's default sub-job.
+	// ClusterTopHyperNode is the hyperNode emitted by those actions for jobs
+	// without hard network topology.
+	nominatedJob, ok := ssn.Jobs[api.JobID("c1/pg2")]
+	if !ok {
+		t.Fatalf("job c1/pg2 missing from session")
+	}
+	if nominatedJob.ContainsHardTopology() || nominatedJob.ContainsSubJobPolicy() {
+		t.Fatalf("test fixture must exercise the flat path; got hard topology=%v sub-job policy=%v",
+			nominatedJob.ContainsHardTopology(), nominatedJob.ContainsSubJobPolicy())
+	}
+	nominatedSubJob, ok := nominatedJob.SubJobs[nominatedJob.DefaultSubJobID()]
+	if !ok {
+		t.Fatalf("default sub-job missing from job c1/pg2")
+	}
+	nominatedSubJob.NominatedHyperNode = framework.ClusterTopHyperNode
+
+	test.Run([]framework.Action{New()})
+
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "", nominatedSubJob.NominatedHyperNode,
+		"flat-path commit must clear subJob.NominatedHyperNode after binding")
+}

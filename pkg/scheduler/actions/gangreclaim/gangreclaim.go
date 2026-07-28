@@ -127,7 +127,7 @@ func (gr *Action) Execute(ssn *framework.Session) {
 			// Mirror legacy commit behavior: commit only when the job becomes pipelined.
 			if ssn.JobPipelined(job) {
 				stmt.Commit()
-				utils.ApplySubJobNominations(job, subJobHyperNodes)
+				utils.ApplySubJobNominations(ssn, job, subJobHyperNodes)
 			} else {
 				stmt.Discard()
 			}
