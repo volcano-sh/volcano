@@ -36,7 +36,7 @@ import (
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
+	k8sutil "volcano.sh/volcano/pkg/scheduler/util/k8s"
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 )
 

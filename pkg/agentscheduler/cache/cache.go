@@ -67,7 +67,7 @@ import (
 	"volcano.sh/volcano/pkg/features"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
-	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
+	k8sutil "volcano.sh/volcano/pkg/scheduler/util/k8s"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 	"volcano.sh/volcano/pkg/util"
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"

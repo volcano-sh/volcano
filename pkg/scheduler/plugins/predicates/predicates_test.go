@@ -53,9 +53,9 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
-	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
+	"volcano.sh/volcano/pkg/scheduler/util/k8s"
 )
 
 type fakeFilterPlugin struct {
