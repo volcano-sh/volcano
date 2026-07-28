@@ -172,7 +172,7 @@ var (
 		prometheus.CounterOpts{
 			Subsystem: VolcanoSubSystemName,
 			Name:      "eviction_transactions_total",
-			Help:      "Total number of committed scheduler transactions containing at least one eviction, by action",
+			Help:      "Total number of committed eviction transactions, by action",
 		},
 		[]string{"action"},
 	)
