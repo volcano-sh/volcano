@@ -19,8 +19,8 @@ import (
 	agentuthelper "volcano.sh/volcano/pkg/agentscheduler/uthelper"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
-	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	"volcano.sh/volcano/pkg/scheduler/util"
+	k8sutil "volcano.sh/volcano/pkg/scheduler/util/k8s"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 

@@ -40,8 +40,8 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
-	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodescore"
+	"volcano.sh/volcano/pkg/scheduler/util/k8s"
 )
 
 const (

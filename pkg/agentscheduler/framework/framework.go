@@ -28,7 +28,7 @@ import (
 	"volcano.sh/volcano/pkg/agentscheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
-	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
+	k8sutil "volcano.sh/volcano/pkg/scheduler/util/k8s"
 )
 
 // Framework manages the scheduler plugins and their execution points.
