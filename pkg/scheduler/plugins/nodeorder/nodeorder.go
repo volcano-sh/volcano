@@ -76,6 +76,7 @@ type NodeOrderPlugin struct {
 }
 
 // scorePluginEntry contains a score plugin used by BatchNodeOrderFn.
+// If all score plugins support PreScore in the future, ScorePluginWithWeight can be replaced by scorePluginEntry
 type scorePluginEntry struct {
 	plugin nodescore.BaseScorePlugin
 	weight int

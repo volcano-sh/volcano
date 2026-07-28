@@ -45,7 +45,9 @@ func NodeInfosForCandidateNodes(nodes []*api.NodeInfo, nodeMap map[string]fwk.No
 	return nodeInfos
 }
 
-func RunPreScorePlugin(plugin fwk.PreScorePlugin, cycleState fwk.CycleState, pod *v1.Pod, nodeInfos []fwk.NodeInfo) (bool, error) {
+// RunPreScorePlugin runs a pre-score plugin.
+// It returns whether the plugin requested its Score phase to be skipped and any error from PreScore.
+func RunPreScorePlugin(plugin fwk.PreScorePlugin, cycleState fwk.CycleState, pod *v1.Pod, nodeInfos []fwk.NodeInfo) (skipScore bool, err error) {
 	status := plugin.PreScore(context.TODO(), cycleState, pod, nodeInfos)
 	if status.IsSkip() {
 		return true, nil
