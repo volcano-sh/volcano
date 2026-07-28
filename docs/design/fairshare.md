@@ -375,3 +375,7 @@ Validated on a test cluster with 2 GPU nodes and 4 tenant namespaces:
 - ConfigMap persistence has a small data-loss window equal to the flush interval on crashes
 - Fairness is scoped within a queue (as in the 2019 proposal above); this plugin does not
   change how DRF/proportion balance resources across queues
+- `fairshare` registers no `PreemptableFn`/`ReclaimableFn`; it only reorders the pending
+  queue and (optionally) gates enqueue. It cannot preempt already-running jobs, so a
+  namespace with long-lived running jobs keeps its resources regardless of how stale its
+  usage penalty becomes

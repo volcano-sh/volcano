@@ -159,6 +159,9 @@ func New(arguments framework.Arguments) framework.Plugin {
 	if halfLifeStr != "" {
 		if mins, err := strconv.Atoi(strings.TrimSpace(halfLifeStr)); err == nil && mins > 0 {
 			fsp.halfLife = time.Duration(mins) * time.Minute
+		} else {
+			klog.Warningf("[fairshare] invalid fairshare.halfLifeMinutes=%q (must be a positive integer); using default %s",
+				halfLifeStr, fsp.halfLife)
 		}
 	}
 
@@ -188,6 +191,9 @@ func New(arguments framework.Arguments) framework.Plugin {
 	if flushStr != "" {
 		if secs, err := strconv.Atoi(strings.TrimSpace(flushStr)); err == nil && secs > 0 {
 			fsp.persistCfg.flushInterval = time.Duration(secs) * time.Second
+		} else {
+			klog.Warningf("[fairshare] invalid fairshare.flushIntervalSeconds=%q (must be a positive integer); using default %s",
+				flushStr, fsp.persistCfg.flushInterval)
 		}
 	}
 
@@ -551,10 +557,20 @@ func (fsp *fairSharePlugin) getQueueTotalResource(ssn *framework.Session, queueN
 	return ssn.TotalResource.Get(resourceKey)
 }
 
+// emptyNamespaceWarnOnce logs a single warning the first time a job with an
+// empty namespace is encountered, so an unexpected upstream bug (a job
+// created without a namespace) doesn't silently and repeatedly get bucketed
+// into a shared _unknown namespace with no signal.
+var emptyNamespaceWarnOnce sync.Once
+
 func (fsp *fairSharePlugin) getNamespaceFromJob(job *api.JobInfo) string {
 	if job.Namespace != "" {
 		return job.Namespace
 	}
+	emptyNamespaceWarnOnce.Do(func() {
+		klog.Warningf("[fairshare] job %q has an empty namespace; bucketing into shared %q namespace — this should not happen in normal operation and may indicate a bug upstream of this plugin",
+			job.Name, defaultUnknownNamespace)
+	})
 	return defaultUnknownNamespace
 }
 

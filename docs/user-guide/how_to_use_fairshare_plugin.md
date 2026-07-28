@@ -115,6 +115,14 @@ plugins are complementary and typically run together.
 No interaction — gang scheduling handles minimum member requirements, while fairshare
 handles ordering among eligible jobs.
 
+## Limitations
+
+`fairshare` is **advisory only** for scheduling decisions that haven't happened yet — it
+registers no `PreemptableFn`/`ReclaimableFn`. It reorders the pending queue and (optionally)
+gates enqueue, but it cannot preempt jobs that are already running. This means a namespace
+with long-lived running jobs keeps its resources regardless of how stale its usage penalty
+becomes; `fairshare` only influences which namespace's *next* job gets scheduled first.
+
 ## Logging
 
 | klog level | What it shows |
