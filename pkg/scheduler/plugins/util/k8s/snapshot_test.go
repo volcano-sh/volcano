@@ -109,6 +109,38 @@ func TestSnapshot(t *testing.T) {
 	}
 }
 
+func TestSnapshotIsPVCUsedByPods(t *testing.T) {
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "pod",
+		},
+		Spec: v1.PodSpec{
+			NodeName: "node-1",
+			Volumes: []v1.Volume{
+				{
+					Name: "data",
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "data",
+						},
+					},
+				},
+			},
+		},
+	}
+	nodeInfo := framework.NewNodeInfo(pod)
+	nodeInfo.SetNode(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}})
+	snapshot := NewSnapshot(map[string]fwk.NodeInfo{"node-1": nodeInfo})
+
+	if !snapshot.IsPVCUsedByPods("default/data") {
+		t.Error("expected PVC to be in use")
+	}
+	if snapshot.IsPVCUsedByPods("other/data") {
+		t.Error("expected PVC in another namespace to not be in use")
+	}
+}
+
 func TestSnapshot_AddOrUpdateNodes(t *testing.T) {
 	tests := []struct {
 		name        string

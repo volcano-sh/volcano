@@ -46,6 +46,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumerestrictions"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -352,6 +353,17 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		if volumeRestrictionsFilter, exist := pp.FilterPlugins[volumerestrictions.Name].(*volumerestrictions.VolumeRestrictions); exist {
+			if !handleSkipPredicatePlugin(cycleState, volumeRestrictionsFilter.Name()) {
+				status := volumeRestrictionsFilter.AddPod(ctx, cycleState, taskToSchedule.Pod, podInfoToAdd, k8sNodeInfo)
+				if !status.IsSuccess() {
+					return fmt.Errorf("failed to add pod to node %s: %w", nodeInfo.Name, status.AsError())
+				}
+			}
+		} else {
+			return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", volumerestrictions.Name, taskToAdd.Namespace, taskToAdd.Name, nodeInfo.Name)
+		}
+
 		return nil
 	})
 
@@ -378,6 +390,17 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", interpodaffinity.Name, taskToRemove.Namespace, taskToRemove.Name, nodeInfo.Name)
 			}
 		}
+
+		if volumeRestrictionsFilter, exist := pp.FilterPlugins[volumerestrictions.Name].(*volumerestrictions.VolumeRestrictions); exist {
+			if !handleSkipPredicatePlugin(cycleState, volumeRestrictionsFilter.Name()) {
+				status := volumeRestrictionsFilter.RemovePod(ctx, cycleState, taskToSchedule.Pod, podInfoToRemove, k8sNodeInfo)
+				if !status.IsSuccess() {
+					return fmt.Errorf("failed to remove pod from node %s: %w", nodeInfo.Name, status.AsError())
+				}
+			}
+		} else {
+			return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", volumerestrictions.Name, taskToRemove.Namespace, taskToRemove.Name, nodeInfo.Name)
+		}
 		return nil
 	})
 
@@ -399,6 +422,17 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				} else {
 					return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", interpodaffinity.Name, task.Namespace, task.Name, node.Name)
 				}
+			}
+		}
+
+		if !handleSkipPredicatePlugin(cycleState, volumerestrictions.Name) {
+			if volumeRestrictionsFilter, exist := pp.FilterPlugins[volumerestrictions.Name]; exist {
+				status := volumeRestrictionsFilter.Filter(ctx, cycleState, task.Pod, k8sNodeInfo)
+				if !status.IsSuccess() {
+					return fmt.Errorf("failed to filter pod on node %s: %w", node.Name, status.AsError())
+				}
+			} else {
+				return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", volumerestrictions.Name, task.Namespace, task.Name, node.Name)
 			}
 		}
 
@@ -562,7 +596,15 @@ func (pp *PredicatesPlugin) InitPlugin() {
 			klog.Errorf("Failed to init %s plugin %v", nodevolumelimits.CSIName, err)
 		}
 	}
-	// 7. VolumeZone
+	// 7. VolumeRestrictions
+	if plugin, err := volumerestrictions.New(context.TODO(), nil, pp.Handle, pp.features); err == nil {
+		volumeRestrictionsFilter := plugin.(*volumerestrictions.VolumeRestrictions)
+		addFilterPlugin(volumerestrictions.Name, volumeRestrictionsFilter)
+		addPreFilterPlugin(volumerestrictions.Name, volumeRestrictionsFilter)
+	} else {
+		klog.Errorf("Failed to init %s plugin %v", volumerestrictions.Name, err)
+	}
+	// 8. VolumeZone
 	if pp.enabledPredicates.volumeZoneEnable {
 		if plugin, err := volumezone.New(context.TODO(), nil, pp.Handle, pp.features); err == nil {
 			volumeZoneFilter := plugin.(*volumezone.VolumeZone)
@@ -572,7 +614,7 @@ func (pp *PredicatesPlugin) InitPlugin() {
 			klog.Errorf("Failed to init %s plugin %v", volumezone.Name, err)
 		}
 	}
-	// 8. PodTopologySpread
+	// 9. PodTopologySpread
 	if pp.enabledPredicates.podTopologySpreadEnable {
 		// Setting cluster level default constraints is not support for now.
 		ptsArgs := &config.PodTopologySpreadArgs{DefaultingType: config.SystemDefaulting}
@@ -584,7 +626,7 @@ func (pp *PredicatesPlugin) InitPlugin() {
 			klog.Errorf("Failed to init %s plugin %v", podtopologyspread.Name, err)
 		}
 	}
-	// 9. VolumeBinding
+	// 10. VolumeBinding
 	if pp.enabledPredicates.volumeBindingEnable {
 		vbArgs := defaultVolumeBindingArgs()
 		// Currently, we support initializing the VolumeBinding plugin once, but do not support hot loading the plugin after modifying the VolumeBinding parameters.
@@ -608,7 +650,7 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		addPreScorePlugin(volumebinding.Name, volumeBindingPluginInstance)
 		addScorePlugin(volumebinding.Name, volumeBindingPluginInstance, vbArgs.Weight)
 	}
-	// 10. DRA
+	// 11. DRA
 	if pp.enabledPredicates.dynamicResourceAllocationEnable {
 		// Since Kubernetes 1.37 DRA registers a pod informer indexer, so create it once per factory.
 		factory := pp.Handle.SharedInformerFactory()
