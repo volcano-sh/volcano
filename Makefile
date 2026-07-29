@@ -224,7 +224,7 @@ e2e-test-cronjob: images
 	E2E_TYPE=CRONJOB ./hack/run-e2e-kind.sh
 
 e2e-test-dra: images
-	E2E_TYPE=DRA FEATURE_GATES="DynamicResourceAllocation=true,DRAConsumableCapacity=true" ./hack/run-e2e-kind.sh
+	E2E_TYPE=DRA FEATURE_GATES="DynamicResourceAllocation=true,DRAConsumableCapacity=true,DRAPrioritizedList=true" ./hack/run-e2e-kind.sh
 
 e2e-test-hypernode: images
 	E2E_TYPE=HYPERNODE ./hack/run-e2e-kind.sh
