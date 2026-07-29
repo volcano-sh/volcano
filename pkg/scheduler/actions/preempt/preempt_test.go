@@ -35,6 +35,7 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	deviceconfig "volcano.sh/volcano/pkg/scheduler/api/devices/config"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -818,26 +819,42 @@ func buildSingleCardGPUDevices(t *testing.T, nodeName, gpuUUID, ownerUID string,
 }
 
 // TestPreemptFractionalVGPU reproduces volcano-sh/volcano#4863: a pending pod
-// requesting a fractional vGPU slice (volcano.sh/vgpu-cores) stays Pending even
-// though evicting a lower-priority pod would free enough capacity, while the
-// equivalent whole-GPU-only scenario (volcano.sh/vgpu-number) already works.
+// requesting a fractional vGPU slice stays Pending even though evicting a
+// lower-priority pod would free enough capacity, while the equivalent
+// whole-GPU-only scenario (volcano.sh/vgpu-number) already works.
 //
 // Root cause: normalPreempt's "did eviction free enough?" gate
 // (preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero)) is a generic
-// scalar-resource comparison. volcano.sh/vgpu-cores is never present in
-// node.Status.Allocatable (see docs/user-guide/how_to_use_volcano_vgpu.md -
-// only vgpu-memory and vgpu-number are advertised as real node capacity), so
-// that comparison can never be satisfied for it regardless of how much the
-// device plugin's own ledger actually freed. The real, correct fit check
-// lives in deviceshare/vgpu's predicate - it was just never being consulted.
+// scalar-resource comparison, authoritative only for resources that actually
+// have a capacity number in node.Status.Allocatable. volcano.sh/vgpu-memory-percentage
+// never does - it's a pure request-side modifier ("50% of whatever card this
+// pod lands on" has no coherent node-wide total to advertise), confirmed by
+// grepping this codebase for anywhere it's written into Allocatable (nowhere)
+// versus NewGPUDevices's own gate in device_info.go, which requires
+// vgpu-cores and vgpu-memory specifically (not vgpu-memory-percentage) to be
+// present. So for pods using vgpu-memory-percentage, that comparison can
+// never be satisfied regardless of how much the device plugin's own ledger
+// actually freed. The real, correct fit check lives in deviceshare/vgpu's
+// predicate - it was just never being consulted.
+//
+// The two subtests below deliberately test different resources:
+//   - "fractional vgpu-cores" is a synthetic edge case: it never puts
+//     vgpu-cores in the node's Allocatable, which doesn't match
+//     NewGPUDevices's real gate, so it's not proven to reflect production.
+//     It's kept as a regression guard for the fallback mechanism in general.
+//   - "fractional vgpu-memory-percentage" is the realistic one: the node
+//     properly advertises vgpu-number/vgpu-cores/vgpu-memory in Allocatable
+//     (satisfying NewGPUDevices's actual gate), and the bug still reproduces
+//     purely from vgpu-memory-percentage being untracked. This is the
+//     concretely-verified case.
 func TestPreemptFractionalVGPU(t *testing.T) {
 	// Deliberately no proportion/capacity plugin here: this test isolates the
 	// node/device fit-check path (preempt.go + deviceshare) that issue #4863 and
 	// this fix are about. Queue-level fairness plugins (proportion, capacity) have
-	// their own, separate "deserved capacity" accounting that hits the same
-	// structural gap (vgpu-cores never appears in any capacity total) for a
-	// different reason (queue quota, not node fit) - that is a distinct problem
-	// in a different subsystem, out of scope for this fix.
+	// their own, separate "deserved capacity" accounting that would hit the same
+	// kind of gap for volcano.sh/vgpu-memory-percentage, for a different reason
+	// (queue quota, not node fit) - that is a distinct problem in a different
+	// subsystem, out of scope for this fix.
 	plugins := map[string]framework.PluginBuilder{
 		conformance.PluginName: conformance.New,
 		gang.PluginName:        gang.New,
@@ -886,7 +903,7 @@ func TestPreemptFractionalVGPU(t *testing.T) {
 		vgpuCoresRes  = "volcano.sh/vgpu-cores"
 	)
 
-	t.Run("fractional vgpu-cores: eviction frees enough, preemption should succeed", func(t *testing.T) {
+	t.Run("fractional vgpu-cores (synthetic, not confirmed to match production Allocatable): preemption should succeed", func(t *testing.T) {
 		victim := util.BuildPod("c1", "victim-frac", "n1", v1.PodRunning,
 			api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string))
 		addLimit(victim, vgpuNumberRes, "1")
@@ -973,6 +990,75 @@ func TestPreemptFractionalVGPU(t *testing.T) {
 			t.Fatalf("node n2 not found in session")
 		}
 		node.Others[vgpu.DeviceName] = buildSingleCardGPUDevices(t, "n2", "GPU-uuid-2", string(victim.UID), 8000, 0)
+
+		test.Run([]framework.Action{New()})
+		if err := test.CheckAll(0); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	// This subtest is deliberately more realistic than the first one above:
+	// NewGPUDevices (device_info.go) requires vgpu-cores and vgpu-memory to be
+	// present and nonzero in node.Status.Allocatable or it refuses to initialize
+	// GPU tracking at all, so on any real working vGPU node those two *are*
+	// tracked by the generic scalar-resource machinery - unlike the first
+	// subtest's node, which never declared vgpu-cores in Allocatable. Node here
+	// declares vgpu-number, vgpu-cores, and vgpu-memory in Allocatable to match
+	// that reality. The dimension actually under test is
+	// volcano.sh/vgpu-memory-percentage, which is never checked by
+	// NewGPUDevices's gate and never referenced anywhere as something written
+	// into Allocatable - it's a pure request-side modifier, since "50% of
+	// whatever card this pod lands on" has no coherent node-wide capacity
+	// total to advertise.
+	t.Run("fractional vgpu-memory-percentage: eviction frees enough, preemption should succeed", func(t *testing.T) {
+		deviceconfig.InitDevicesConfig("volcano-vgpu-device-config", "kube-system")
+		deviceconfig.GetConfig().NvidiaConfig.ResourceMemoryPercentageName = deviceconfig.VolcanoVGPUMemoryPercentage
+		t.Cleanup(func() { deviceconfig.GetConfig().NvidiaConfig.ResourceMemoryPercentageName = "" })
+
+		const vgpuMemPercentRes = "volcano.sh/vgpu-memory-percentage"
+
+		victim := util.BuildPod("c1", "victim-mempct", "n3", v1.PodRunning,
+			api.BuildResourceList("1", "1G"), "pg5", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string))
+		addLimit(victim, vgpuNumberRes, "1")
+		addLimit(victim, vgpuMemPercentRes, "100")
+		victim.Annotations[vgpu.AssignedIDsAnnotations] = fmt.Sprintf("%s,NVIDIA,%d,%d:", "GPU-uuid-3", 8000, 0)
+
+		preemptor := util.BuildPod("c1", "preemptor-mempct", "", v1.PodPending,
+			api.BuildResourceList("1", "1G"), "pg6", make(map[string]string), make(map[string]string))
+		addLimit(preemptor, vgpuNumberRes, "1")
+		addLimit(preemptor, vgpuMemPercentRes, "50")
+
+		test := uthelper.TestCommonStruct{
+			Name:    "fractional vgpu-memory-percentage preemption",
+			Plugins: plugins,
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg5", "c1", "q1", 0, map[string]int32{}, schedulingv1beta1.PodGroupInqueue, "vgpu-low-priority"),
+				util.BuildPodGroupWithPrio("pg6", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "vgpu-high-priority"),
+			},
+			Pods: []*v1.Pod{victim, preemptor},
+			Nodes: []*v1.Node{
+				util.BuildNode("n3", api.BuildResourceList("4", "4G", []api.ScalarResource{
+					{Name: "pods", Value: "10"},
+					{Name: vgpuNumberRes, Value: "1"},
+					{Name: "volcano.sh/vgpu-cores", Value: "100"},
+					{Name: "volcano.sh/vgpu-memory", Value: "8000"},
+				}...), make(map[string]string)),
+			},
+			Queues:         []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, nil)},
+			PriClass:       []*schedulingv1.PriorityClass{highPrio, lowPrio},
+			ExpectEvicted:  []string{"c1/victim-mempct"},
+			ExpectEvictNum: 1,
+		}
+
+		ssn := test.RegisterSession(tiers, []conf.Configuration{{Name: New().Name(),
+			Arguments: map[string]interface{}{EnableTopologyAwarePreemptionKey: false}}})
+		defer test.Close()
+
+		node, ok := ssn.Nodes["n3"]
+		if !ok {
+			t.Fatalf("node n3 not found in session")
+		}
+		node.Others[vgpu.DeviceName] = buildSingleCardGPUDevices(t, "n3", "GPU-uuid-3", string(victim.UID), 8000, 0)
 
 		test.Run([]framework.Action{New()})
 		if err := test.CheckAll(0); err != nil {

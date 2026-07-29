@@ -342,14 +342,16 @@ func (pmpt *Action) preempt(
 //
 // It can never be satisfied, however, for resources a device plugin tracks
 // entirely through its own predicate/ledger instead of node.Status.Allocatable
-// - e.g. volcano.sh/vgpu-cores and volcano.sh/vgpu-memory-percentage, which by
-// design are never advertised as node capacity (see
-// docs/user-guide/how_to_use_volcano_vgpu.md) because "50% of one card" isn't
-// a poolable node-wide quantity. When every failing dimension is one of
-// these - node.Allocatable has no capacity number for it at all - the
-// comparison is structurally unable to answer the question, so fall back to
-// the real per-plugin predicate (which deviceshare uses for the correct,
-// device-aware fit check) instead of treating "unknowable" as "no".
+// - confirmed for volcano.sh/vgpu-memory-percentage, which is a pure
+// request-side modifier ("50% of whatever card this pod lands on" has no
+// coherent node-wide capacity total to advertise) and is never referenced
+// anywhere as something written into Allocatable. volcano.sh/vgpu-cores may or
+// may not have the same gap depending on how the device plugin advertises it;
+// this fallback covers that case too if so, without assuming it either way.
+// When every failing dimension is one node.Allocatable has no capacity number
+// for at all, the comparison is structurally unable to answer the question,
+// so fall back to the real per-plugin predicate (which deviceshare uses for
+// the correct, device-aware fit check) instead of treating "unknowable" as "no".
 //
 // Note: this fallback is only as good as the registered predicate plugins.
 // A resource dimension that's neither in node.Allocatable NOR checked by any
