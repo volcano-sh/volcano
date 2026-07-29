@@ -212,7 +212,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		}
 
 		victims := ssn.Reclaimable(task, reclaimees)
-		if err := util.ValidateVictims(task, n, victims); err != nil {
+		if err := util.ValidateVictims(task, n, victims, ssn.PredicateFn); err != nil {
 			klog.V(3).Infof("No validated victims on Node <%s>: %v", n.Name, err)
 			continue
 		}
