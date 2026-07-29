@@ -320,12 +320,14 @@ func GetRealNodesByHyperNode(hyperNodes map[string]sets.Set[string], allNodes ma
 // have a real capacity number, so the comparison can be trusted as-is, including a genuine "no".
 //
 // It can never be satisfied, however, for resources a device plugin tracks entirely through its
-// own predicate/ledger instead - e.g. volcano.sh/vgpu-cores and volcano.sh/vgpu-memory-percentage,
-// which by design are never advertised as node capacity (see
-// docs/user-guide/how_to_use_volcano_vgpu.md) because "50% of one card" isn't a poolable
-// node-wide quantity. When every failing dimension is one of these, the comparison is
-// structurally unable to answer the question, so simulate evicting the victims on a throwaway
-// clone of node and ask the real predicate instead of treating "unknowable" as "no".
+// own predicate/ledger instead - confirmed for volcano.sh/vgpu-memory-percentage, a pure
+// request-side modifier ("50% of whatever card this pod lands on" has no coherent node-wide
+// capacity total to advertise) never referenced anywhere as something written into Allocatable.
+// volcano.sh/vgpu-cores may or may not have the same gap depending on how the device plugin
+// advertises it; this fallback covers that case too if so, without assuming it either way. When
+// every failing dimension is one node.Allocatable has no capacity number for at all, the
+// comparison is structurally unable to answer the question, so simulate evicting the victims on
+// a throwaway clone of node and ask the real predicate instead of treating "unknowable" as "no".
 func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api.TaskInfo, predicateFn func(*api.TaskInfo, *api.NodeInfo) error) error {
 	// Victims should not be judged to be empty here.
 	// It is possible to complete the scheduling of the preemptor without evicting the task.
