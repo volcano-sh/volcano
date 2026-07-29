@@ -622,7 +622,17 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		allocations := map[api.QueueID]*api.Resource{}
 		for _, reclaimee := range candidates {
 			job := ssn.Jobs[reclaimee.Job]
+			if job == nil {
+				klog.Warningf("[capacity] Skip reclaimee <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+					reclaimee.Namespace, reclaimee.Name, reclaimee.Job)
+				continue
+			}
 			attr := cp.queueOpts[job.Queue]
+			if attr == nil {
+				klog.Warningf("[capacity] Skip reclaimee <%s/%s>: queue <%s> not found in queueOpts",
+					reclaimee.Namespace, reclaimee.Name, job.Queue)
+				continue
+			}
 			if _, found := allocations[job.Queue]; !found {
 				allocations[job.Queue] = attr.allocated.Clone()
 			}

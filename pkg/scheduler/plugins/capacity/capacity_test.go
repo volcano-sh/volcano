@@ -1435,6 +1435,105 @@ func Test_buildHierarchicalQueueAttrs_nilSafety(t *testing.T) {
 	}
 }
 
+// Test_capacityPlugin_UnifiedEvictableFn_NilSafety is a regression test for
+// https://github.com/volcano-sh/volcano/issues/5782: the GangReclaim branch of
+// AddUnifiedEvictableFn dereferenced the reclaimee's job/queue attributes without
+// the nil checks that the sibling AddReclaimableFn already applies, so a
+// gang-reclaim candidate belonging to a job that's no longer in the session (or
+// whose queue isn't tracked in queueOpts) panicked the scheduler instead of being
+// skipped.
+func Test_capacityPlugin_UnifiedEvictableFn_NilSafety(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New, predicates.PluginName: predicates.New, gang.PluginName: gang.New}
+	trueValue := true
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+	p1 := util.BuildPod("ns1", "p1", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning)
+	queue1 := util.BuildQueueWithResourcesQuantity("q1", nil, api.BuildResourceList("2", "2Gi"))
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledReclaimable: &trueValue,
+					EnabledQueueOrder:  &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:               gang.PluginName,
+					EnabledJobStarving: &trueValue,
+				},
+			},
+		},
+	}
+
+	test := &uthelper.TestCommonStruct{
+		Plugins:   plugins,
+		Pods:      []*corev1.Pod{p1},
+		Nodes:     []*corev1.Node{n1},
+		PodGroups: []*schedulingv1beta1.PodGroup{pg1},
+		Queues:    []*schedulingv1beta1.Queue{queue1},
+	}
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	ctx := &api.EvictionContext{Kind: api.EvictionKindGangReclaim}
+
+	// orphanTask simulates a gang-reclaim candidate whose job was deleted from the
+	// session (e.g. the PodGroup was removed) between when the candidate list was
+	// built and when this callback runs: reclaimee.Job doesn't resolve in ssn.Jobs.
+	orphanTask := &api.TaskInfo{
+		UID:       "orphan-task",
+		Job:       "ns1/deleted-job",
+		Name:      "orphan",
+		Namespace: "ns1",
+		Resreq:    api.EmptyResource(),
+	}
+
+	// Must not panic: previously `job := ssn.Jobs[reclaimee.Job]` followed by
+	// `job.Queue` would dereference a nil job here.
+	victims := ssn.UnifiedEvictable(ctx, []*api.TaskInfo{orphanTask})
+	for _, v := range victims {
+		if v.UID == orphanTask.UID {
+			t.Fatalf("expected orphaned task with no matching job to be skipped, not returned as a victim")
+		}
+	}
+
+	// ghostQueueJob simulates a job whose queue was removed from queueOpts after
+	// buildQueueAttrs ran for this session (queue deleted mid-cycle): the job
+	// itself resolves, but cp.queueOpts[job.Queue] does not.
+	ghostQueueJob := api.NewJobInfo("ghost-queue-job")
+	ghostQueueJob.SetPodGroup(&api.PodGroup{
+		PodGroup: scheduling.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{Name: "ghost-queue-job", Namespace: "ns1"},
+			Spec:       scheduling.PodGroupSpec{Queue: "ghost-queue"},
+			Status:     scheduling.PodGroupStatus{Phase: scheduling.PodGroupRunning},
+		},
+	})
+	ssn.Jobs[ghostQueueJob.UID] = ghostQueueJob
+	ghostQueueTask := &api.TaskInfo{
+		UID:       "ghost-queue-task",
+		Job:       ghostQueueJob.UID,
+		Name:      "ghost-queue-task",
+		Namespace: "ns1",
+		Resreq:    api.EmptyResource(),
+	}
+
+	// Must not panic: previously `attr := cp.queueOpts[job.Queue]` followed by
+	// `attr.allocated.Clone()` would dereference a nil attr here.
+	victims = ssn.UnifiedEvictable(ctx, []*api.TaskInfo{ghostQueueTask})
+	for _, v := range victims {
+		if v.UID == ghostQueueTask.UID {
+			t.Fatalf("expected task from a queue missing in queueOpts to be skipped, not returned as a victim")
+		}
+	}
+}
+
 // TestNoDoubleCountingForInqueueJobWithBindingTasks is a regression test for a
 // double-counting bug in the capacity plugin.
 //
