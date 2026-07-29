@@ -40,6 +40,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumerestrictions"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -378,6 +379,83 @@ func TestPodAntiAffinity(t *testing.T) {
 	}
 }
 
+func TestReadWriteOncePodPreemption(t *testing.T) {
+	const (
+		namespace = "ns1"
+		claimName = "data"
+		nodeName  = "node1"
+	)
+	pvc := &apiv1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: claimName},
+		Spec: apiv1.PersistentVolumeClaimSpec{
+			AccessModes: []apiv1.PersistentVolumeAccessMode{apiv1.ReadWriteOncePod},
+		},
+	}
+	preempteePod := util.BuildPodWithPVC(namespace, "preemptee", nodeName, apiv1.PodRunning,
+		api.BuildResourceList("1", "1G"), pvc, "pg1", nil, nil)
+	preemptorPod := util.BuildPodWithPVC(namespace, "preemptor", "", apiv1.PodPending,
+		api.BuildResourceList("1", "1G"), pvc, "pg2", nil, nil)
+
+	test := uthelper.TestCommonStruct{
+		Name:    "preempt pod using ReadWriteOncePod PVC",
+		Plugins: map[string]framework.PluginBuilder{PluginName: New},
+		Pods:    []*apiv1.Pod{preempteePod, preemptorPod},
+		Nodes:   []*apiv1.Node{util.BuildNode(nodeName, api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)},
+		PodGroups: []*schedulingv1beta1.PodGroup{
+			util.BuildPodGroup("pg1", namespace, "q1", 0, nil, schedulingv1beta1.PodGroupRunning),
+			util.BuildPodGroup("pg2", namespace, "q1", 1, nil, schedulingv1beta1.PodGroupInqueue),
+		},
+		Queues: []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, api.BuildResourceList("2", "2G"))},
+		PVCs:   []*apiv1.PersistentVolumeClaim{pvc},
+	}
+	enabled := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledPredicate:   &enabled,
+					EnabledPreemptable: &enabled,
+					Arguments: map[string]interface{}{
+						NodeVolumeLimitsEnable: false,
+						VolumeBindingEnable:    false,
+						VolumeZoneEnable:       false,
+					},
+				},
+			},
+		},
+	}
+
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+	preemptee := api.NewTaskInfo(preempteePod)
+	preemptor := api.NewTaskInfo(preemptorPod)
+	state := ssn.GetCycleState(preemptor.UID)
+	if err := ssn.PrePredicateFn(preemptor); err != nil {
+		t.Fatalf("unexpected PrePredicate error: %v", err)
+	}
+	nodeInfo := ssn.Nodes[nodeName]
+	if err := ssn.SimulatePredicateFn(context.Background(), state, preemptor, nodeInfo); err == nil {
+		t.Fatal("expected RWOP conflict before removing preemptee")
+	}
+	if err := ssn.SimulateRemoveTaskFn(context.Background(), state, preemptor, preemptee, nodeInfo); err != nil {
+		t.Fatalf("failed to simulate preemptee removal: %v", err)
+	}
+	nodeInfo.RemoveTask(preemptee)
+	if err := ssn.SimulatePredicateFn(context.Background(), state, preemptor, nodeInfo); err != nil {
+		t.Fatalf("expected preemptor to fit after removing RWOP holder: %v", err)
+	}
+	if err := ssn.SimulateAddTaskFn(context.Background(), state, preemptor, preemptee, nodeInfo); err != nil {
+		t.Fatalf("failed to simulate preemptee addition: %v", err)
+	}
+	if err := nodeInfo.AddTask(preemptee); err != nil {
+		t.Fatalf("failed to add preemptee: %v", err)
+	}
+	if err := ssn.SimulatePredicateFn(context.Background(), state, preemptor, nodeInfo); err == nil {
+		t.Fatal("expected RWOP conflict after adding preemptee back")
+	}
+}
+
 func TestSetUpDynamicResourcesArgs_Default(t *testing.T) {
 	dra := defaultDynamicResourcesArgs()
 	setUpDynamicResourcesArgs(dra, nil)
@@ -451,9 +529,9 @@ func TestInitPlugin(t *testing.T) {
 			enablePodTopologySpread: true,
 			enableVolumeBinding:     false,
 			enableDRA:               false,
-			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumezone.Name, podtopologyspread.Name},
+			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumerestrictions.Name, volumezone.Name, podtopologyspread.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
-			expectInPrefilter:       []string{nodeaffinity.Name, nodeports.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumezone.Name, podtopologyspread.Name},
+			expectInPrefilter:       []string{nodeaffinity.Name, nodeports.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumerestrictions.Name, volumezone.Name, podtopologyspread.Name},
 			expectInReserve:         []string{},
 			expectInPreBind:         []string{},
 			expectInScore:           []string{},
@@ -473,9 +551,9 @@ func TestInitPlugin(t *testing.T) {
 			enablePodTopologySpread: false,
 			enableVolumeBinding:     true,
 			enableDRA:               false,
-			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, volumebinding.Name},
+			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, volumerestrictions.Name, volumebinding.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
-			expectInPrefilter:       []string{volumebinding.Name},
+			expectInPrefilter:       []string{volumerestrictions.Name, volumebinding.Name},
 			expectInReserve:         []string{volumebinding.Name},
 			expectInPreBind:         []string{volumebinding.Name},
 			expectInScore:           []string{volumebinding.Name},
@@ -494,9 +572,9 @@ func TestInitPlugin(t *testing.T) {
 			enablePodTopologySpread: false,
 			enableVolumeBinding:     false,
 			enableDRA:               true,
-			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, dynamicresources.Name},
+			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, volumerestrictions.Name, dynamicresources.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
-			expectInPrefilter:       []string{nodeaffinity.Name, dynamicresources.Name},
+			expectInPrefilter:       []string{nodeaffinity.Name, volumerestrictions.Name, dynamicresources.Name},
 			expectInReserve:         []string{dynamicresources.Name},
 			expectInPreBind:         []string{dynamicresources.Name},
 			expectInScore:           []string{},
@@ -516,9 +594,9 @@ func TestInitPlugin(t *testing.T) {
 			enablePodTopologySpread: true,
 			enableVolumeBinding:     true,
 			enableDRA:               true,
-			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumezone.Name, podtopologyspread.Name, volumebinding.Name, dynamicresources.Name},
+			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumerestrictions.Name, volumezone.Name, podtopologyspread.Name, volumebinding.Name, dynamicresources.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
-			expectInPrefilter:       []string{nodeports.Name, interpodaffinity.Name, podtopologyspread.Name, volumebinding.Name, dynamicresources.Name},
+			expectInPrefilter:       []string{nodeports.Name, interpodaffinity.Name, volumerestrictions.Name, podtopologyspread.Name, volumebinding.Name, dynamicresources.Name},
 			expectInReserve:         []string{volumebinding.Name, dynamicresources.Name},
 			expectInPreBind:         []string{volumebinding.Name, dynamicresources.Name},
 			expectInScore:           []string{volumebinding.Name},
@@ -623,6 +701,65 @@ func TestInitPlugin(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestVolumeRestrictionsReadWriteOncePod(t *testing.T) {
+	const (
+		namespace = "default"
+		claimName = "data"
+		nodeName  = "node-1"
+	)
+	pvc := &apiv1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: claimName},
+		Spec: apiv1.PersistentVolumeClaimSpec{
+			AccessModes: []apiv1.PersistentVolumeAccessMode{apiv1.ReadWriteOncePod},
+		},
+	}
+	existingPod := &apiv1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "existing"},
+		Spec: apiv1.PodSpec{
+			NodeName: nodeName,
+			Volumes: []apiv1.Volume{
+				{
+					Name: "data",
+					VolumeSource: apiv1.VolumeSource{
+						PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{ClaimName: claimName},
+					},
+				},
+			},
+		},
+	}
+	nodeInfo := schedframework.NewNodeInfo(existingPod)
+	nodeInfo.SetNode(&apiv1.Node{ObjectMeta: metav1.ObjectMeta{Name: nodeName}})
+	nodeMap := map[string]k8sframework.NodeInfo{nodeName: nodeInfo}
+
+	client := k8sfake.NewSimpleClientset(pvc)
+	informerFactory := informers.NewSharedInformerFactory(client, 0)
+	if err := informerFactory.Core().V1().PersistentVolumeClaims().Informer().GetStore().Add(pvc); err != nil {
+		t.Fatalf("failed to add PVC to informer store: %v", err)
+	}
+
+	pp := New(nil).(*PredicatesPlugin)
+	pp.enabledPredicates = predicateEnable{}
+	pp.Handle = k8s.NewFramework(
+		nodeMap,
+		k8s.WithClientSet(client),
+		k8s.WithInformerFactory(informerFactory),
+	)
+	pp.InitPlugin()
+
+	pod := existingPod.DeepCopy()
+	pod.Name = "pending"
+	pod.Spec.NodeName = ""
+	state := schedframework.NewCycleState()
+	preFilter := pp.PreFilterPlugins[volumerestrictions.Name]
+	if _, status := preFilter.PreFilter(context.Background(), state, pod, []k8sframework.NodeInfo{nodeInfo}); !status.IsSuccess() {
+		t.Fatalf("unexpected PreFilter status: %v", status)
+	}
+
+	status := pp.FilterPlugins[volumerestrictions.Name].Filter(context.Background(), state, pod, nodeInfo)
+	assert.Equal(t, k8sframework.Unschedulable, status.Code())
+	assert.Equal(t, volumerestrictions.ErrReasonReadWriteOncePodConflict, status.Message())
 }
 
 func TestPredicateFailureReasonAggregationOrderStable(t *testing.T) {
