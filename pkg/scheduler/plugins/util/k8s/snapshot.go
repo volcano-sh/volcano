@@ -416,7 +416,12 @@ func (s *Snapshot) Get(nodeName string) (fwk.NodeInfo, error) {
 }
 
 func (s *Snapshot) IsPVCUsedByPods(key string) bool {
-	panic("not implemented")
+	for _, nodeInfo := range s.fwkInfo.nodeInfoList {
+		if nodeInfo.GetPVCRefCounts()[key] > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Snapshot) GetGeneration() int64 {
