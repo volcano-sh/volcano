@@ -32,7 +32,7 @@ This metrics describe internal state of volcano.
 |----------------------------------------|-----------------|-------------------------------------------------------------------|-----------------------------------------------|
 | `pod_preemption_victims`               | Gauge           | None                                                              | The number of selected preemption victims     |
 | `total_preemption_attempts`            | Counter         | None                                                              | Total preemption attempts in the cluster      |
-| `eviction_transactions_total`          | Counter         | `action`=&lt;`preempt`\|`reclaim`\|`gangpreempt`\|`gangreclaim`&gt; | Total scheduler commit batches containing one or more per-Pod eviction decisions |
+| `eviction_transactions_total`          | Counter         | `action`=&lt;`preempt`\|`reclaim`\|`gangpreempt`\|`gangreclaim`&gt; | Scheduler commit batches with one or more per-Pod eviction decisions; counted once per batch regardless of victim count; not a Pod/PodGroup count and does not report Pod deletion outcomes |
 | `unschedule_task_count`                | Gauge           | `job_id`=&lt;job_id&gt;                                           | The number of tasks failed to schedule        |
 | `unschedule_job_counts`                | Gauge           | None                                                              | The number of jobs could not be scheduled     |
 | `queue_allocated_milli_cpu`            | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Allocated CPU count for one queue             |
@@ -66,8 +66,6 @@ This metrics describe internal state of volcano.
 | `job_retry_counts`                     | Counter         | `job_id`=&lt;job_id&gt;                                           | The number of retry counts for one job        |
 | `job_completed_phase_count`            | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job completed phase             |
 | `job_failed_phase_count`               | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job failed phase                |
-
-`eviction_transactions_total` increments once for each scheduler `Statement` that contains one or more per-Pod eviction operations and reaches the commit phase. A transaction can contain victims from one or multiple Jobs or PodGroups, depending on the action, and its victim count does not change the increment. The transaction boundary is defined by each scheduler action, so this metric is not a Pod, PodGroup, or victim Job count. Cache eviction and asynchronous Kubernetes Pod deletion outcomes are not reported by this metric.
 
 ### volcano agent scheduler related metrics
 
