@@ -38,7 +38,8 @@ jobs:
           TAG=${{ env.chart_version }} make generate-charts
       
       - name: Install chart-releaser
-        uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f # v1.7.0
+        # Warning: Do not upgrade from v1.5.0; newer versions require a gh-pages branch when uploading preview releases.
+        uses: helm/chart-releaser-action@be16258da8010256c6e82849661221415f031968 # v1.5.0
         with:
           install_only: true
 
