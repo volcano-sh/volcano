@@ -334,6 +334,57 @@ func (pmpt *Action) preempt(
 	return preemptSuccess, err
 }
 
+// fitsAfterEviction reports whether preemptor now fits on node. The generic
+// scalar-resource comparison is authoritative whenever every dimension it
+// flags as insufficient is one actually present in node.Allocatable (cpu,
+// memory, volcano.sh/vgpu-number, ...) - those have a real capacity number,
+// so the comparison can be trusted as-is, including a genuine "no" answer.
+//
+// It can never be satisfied, however, for resources a device plugin tracks
+// entirely through its own predicate/ledger instead of node.Status.Allocatable
+// - e.g. volcano.sh/vgpu-cores and volcano.sh/vgpu-memory-percentage, which by
+// design are never advertised as node capacity (see
+// docs/user-guide/how_to_use_volcano_vgpu.md) because "50% of one card" isn't
+// a poolable node-wide quantity. When every failing dimension is one of
+// these - node.Allocatable has no capacity number for it at all - the
+// comparison is structurally unable to answer the question, so fall back to
+// the real per-plugin predicate (which deviceshare uses for the correct,
+// device-aware fit check) instead of treating "unknowable" as "no".
+//
+// Note: this fallback is only as good as the registered predicate plugins.
+// A resource dimension that's neither in node.Allocatable NOR checked by any
+// registered predicate can't be judged by either mechanism - ssn.PredicateFn
+// simply has nothing to say about it and reports success. That matches
+// production configurations (the predicates plugin covers cpu/memory/pods;
+// deviceshare covers GPU shares), but a test harness that omits every plugin
+// covering a given dimension will see this fallback as permissive for it.
+func fitsAfterEviction(ssn *framework.Session, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
+	ok, failing := preemptor.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero)
+	if ok {
+		return true
+	}
+	if !allUntrackedByAllocatable(failing, node) {
+		return false
+	}
+	return ssn.PredicateFn(preemptor, node) == nil
+}
+
+// allUntrackedByAllocatable reports whether every named resource dimension is
+// absent from node.Allocatable's tracked capacity. cpu/memory are always
+// considered tracked (they're dedicated Resource fields, not scalar entries,
+// and always have a real, if zero, capacity number).
+func allUntrackedByAllocatable(resourceNames []string, node *api.NodeInfo) bool {
+	for _, name := range resourceNames {
+		if name == "cpu" || name == "memory" {
+			return false
+		}
+		if _, present := node.Allocatable.ScalarResources[v1.ResourceName(name)]; present {
+			return false
+		}
+	}
+	return true
+}
+
 func (pmpt *Action) normalPreempt(
 	ssn *framework.Session,
 	stmt *framework.Statement,
@@ -369,7 +420,7 @@ func (pmpt *Action) normalPreempt(
 		victims := ssn.Preemptable(preemptor, preemptees)
 		metrics.UpdatePreemptionVictimsCount(len(victims))
 
-		if err := util.ValidateVictims(preemptor, node, victims); err != nil {
+		if err := util.ValidateVictims(preemptor, node, victims, ssn.PredicateFn); err != nil {
 			klog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
 			continue
 		}
@@ -395,7 +446,7 @@ func (pmpt *Action) normalPreempt(
 			// so if current queue is not allocatable(the queue will be overused when consider current preemptor's requests)
 			// or current idle resource is not enough for preemptor, it need to continue preempting
 			// otherwise, break out
-			if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+			if ssn.Allocatable(currentQueue, preemptor) && fitsAfterEviction(ssn, preemptor, node) {
 				break
 			}
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
@@ -415,7 +466,7 @@ func (pmpt *Action) normalPreempt(
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
 		// If preemptor's queue is not allocatable, it means preemptor cannot be allocated. So no need care about the node idle resource
-		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+		if ssn.Allocatable(currentQueue, preemptor) && fitsAfterEviction(ssn, preemptor, node) {
 			if err := nodeStmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
@@ -764,7 +815,7 @@ func SelectVictimsOnNode(
 	allVictims := ssn.Preemptable(preemptor, preemptees)
 	metrics.UpdatePreemptionVictimsCount(len(allVictims))
 
-	if err := util.ValidateVictims(preemptor, nodeInfo, allVictims); err != nil {
+	if err := util.ValidateVictims(preemptor, nodeInfo, allVictims, ssn.PredicateFn); err != nil {
 		klog.V(3).Infof("No validated victims on Node <%s>: %v", nodeInfo.Name, err)
 		return nil, api.AsStatus(fmt.Errorf("no validated victims on Node <%s>: %v", nodeInfo.Name, err))
 	}

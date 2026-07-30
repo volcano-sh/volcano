@@ -23,20 +23,24 @@ package preempt
 
 import (
 	"flag"
+	"fmt"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
+	apiresource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/capacity"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
+	"volcano.sh/volcano/pkg/scheduler/plugins/deviceshare"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
@@ -763,4 +767,216 @@ func buildPodWithPodAntiAffinity(name, namespace, node string, phase v1.PodPhase
 	}
 
 	return pod
+}
+
+// addLimit sets a resource quantity in a pod's single-container Limits AND
+// Requests (creating the maps if needed). deviceshare/vgpu reads GPU sharing
+// requests from Limits; generic scalar-resource bookkeeping (TaskInfo.Resreq,
+// used by node.Idle/FutureIdle) reads Requests. A real Pod processed by the
+// API server has Requests defaulted from Limits automatically - a raw *v1.Pod
+// built in-memory for a test does not get that defaulting for free, so both
+// must be set explicitly or the generic side silently sees no request at all.
+func addLimit(pod *v1.Pod, name v1.ResourceName, quantity string) {
+	if pod.Spec.Containers[0].Resources.Limits == nil {
+		pod.Spec.Containers[0].Resources.Limits = make(v1.ResourceList)
+	}
+	if pod.Spec.Containers[0].Resources.Requests == nil {
+		pod.Spec.Containers[0].Resources.Requests = make(v1.ResourceList)
+	}
+	q := apiresource.MustParse(quantity)
+	pod.Spec.Containers[0].Resources.Limits[name] = q
+	pod.Spec.Containers[0].Resources.Requests[name] = q
+}
+
+// buildSingleCardGPUDevices returns a one-card vgpu device fixture (8000 memory
+// units, 100 cores) for node "nodeName". If ownerUID is non-empty, the card is
+// marked as fully occupied by that pod (usedMem/usedCores), mirroring what a
+// real prior allocation would have reserved - this is what a preemption victim
+// "holding" the GPU looks like before it gets evicted.
+func buildSingleCardGPUDevices(t *testing.T, nodeName, gpuUUID, ownerUID string, usedMem, usedCores uint) *vgpu.GPUDevices {
+	t.Helper()
+	gd := &vgpu.GPUDevices{
+		Name:   nodeName,
+		Device: make(map[int]*vgpu.GPUDevice),
+	}
+	gd.Device[0] = vgpu.NewGPUDevice(0, 8000)
+	gd.Device[0].Type = "NVIDIA"
+	gd.Device[0].Number = 1
+	gd.Device[0].UUID = gpuUUID
+	if ownerUID != "" {
+		gd.Device[0].UsedNum = 1
+		gd.Device[0].UsedMem = usedMem
+		gd.Device[0].UsedCore = usedCores
+		gd.Device[0].PodMap[ownerUID] = &vgpu.GPUUsage{UsedMem: usedMem, UsedCore: usedCores}
+	}
+	var ok bool
+	gd.Sharing, ok = vgpu.GetSharingHandler("hami-core")
+	if !ok {
+		t.Fatalf("failed to get hami-core sharing handler")
+	}
+	return gd
+}
+
+// TestPreemptFractionalVGPU reproduces volcano-sh/volcano#4863: a pending pod
+// requesting a fractional vGPU slice (volcano.sh/vgpu-cores) stays Pending even
+// though evicting a lower-priority pod would free enough capacity, while the
+// equivalent whole-GPU-only scenario (volcano.sh/vgpu-number) already works.
+//
+// Root cause: normalPreempt's "did eviction free enough?" gate
+// (preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero)) is a generic
+// scalar-resource comparison. volcano.sh/vgpu-cores is never present in
+// node.Status.Allocatable (see docs/user-guide/how_to_use_volcano_vgpu.md -
+// only vgpu-memory and vgpu-number are advertised as real node capacity), so
+// that comparison can never be satisfied for it regardless of how much the
+// device plugin's own ledger actually freed. The real, correct fit check
+// lives in deviceshare/vgpu's predicate - it was just never being consulted.
+func TestPreemptFractionalVGPU(t *testing.T) {
+	// Deliberately no proportion/capacity plugin here: this test isolates the
+	// node/device fit-check path (preempt.go + deviceshare) that issue #4863 and
+	// this fix are about. Queue-level fairness plugins (proportion, capacity) have
+	// their own, separate "deserved capacity" accounting that hits the same
+	// structural gap (vgpu-cores never appears in any capacity total) for a
+	// different reason (queue quota, not node fit) - that is a distinct problem
+	// in a different subsystem, out of scope for this fix.
+	plugins := map[string]framework.PluginBuilder{
+		conformance.PluginName: conformance.New,
+		gang.PluginName:        gang.New,
+		priority.PluginName:    priority.New,
+		deviceshare.PluginName: deviceshare.New,
+	}
+	highPrio := util.BuildPriorityClass("vgpu-high-priority", 100000)
+	lowPrio := util.BuildPriorityClass("vgpu-low-priority", 10)
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               conformance.PluginName,
+					EnabledPreemptable: &trueValue,
+				},
+				{
+					Name:                gang.PluginName,
+					EnabledPreemptable:  &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledJobStarving:  &trueValue,
+				},
+				{
+					Name:                priority.PluginName,
+					EnabledTaskOrder:    &trueValue,
+					EnabledJobOrder:     &trueValue,
+					EnabledPreemptable:  &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledJobStarving:  &trueValue,
+				},
+				{
+					Name:             deviceshare.PluginName,
+					EnabledPredicate: &trueValue,
+					Arguments: map[string]interface{}{
+						"deviceshare.VGPUEnable":     true,
+						"deviceshare.SchedulePolicy": "binpack",
+					},
+				},
+			},
+		},
+	}
+
+	const (
+		vgpuNumberRes = "volcano.sh/vgpu-number"
+		vgpuCoresRes  = "volcano.sh/vgpu-cores"
+	)
+
+	t.Run("fractional vgpu-cores: eviction frees enough, preemption should succeed", func(t *testing.T) {
+		victim := util.BuildPod("c1", "victim-frac", "n1", v1.PodRunning,
+			api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string))
+		addLimit(victim, vgpuNumberRes, "1")
+		addLimit(victim, vgpuCoresRes, "100")
+		victim.Annotations[vgpu.AssignedIDsAnnotations] = fmt.Sprintf("%s,NVIDIA,%d,%d:", "GPU-uuid-1", 8000, 100)
+
+		preemptor := util.BuildPod("c1", "preemptor-frac", "", v1.PodPending,
+			api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string))
+		addLimit(preemptor, vgpuNumberRes, "1")
+		addLimit(preemptor, vgpuCoresRes, "50")
+
+		test := uthelper.TestCommonStruct{
+			Name:    "fractional vgpu-cores preemption",
+			Plugins: plugins,
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, map[string]int32{}, schedulingv1beta1.PodGroupInqueue, "vgpu-low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "vgpu-high-priority"),
+			},
+			Pods: []*v1.Pod{victim, preemptor},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("4", "4G", []api.ScalarResource{
+					{Name: "pods", Value: "10"},
+					{Name: vgpuNumberRes, Value: "1"},
+				}...), make(map[string]string)),
+			},
+			Queues:         []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, nil)},
+			PriClass:       []*schedulingv1.PriorityClass{highPrio, lowPrio},
+			ExpectEvicted:  []string{"c1/victim-frac"},
+			ExpectEvictNum: 1,
+		}
+
+		ssn := test.RegisterSession(tiers, []conf.Configuration{{Name: New().Name(),
+			Arguments: map[string]interface{}{EnableTopologyAwarePreemptionKey: false}}})
+		defer test.Close()
+
+		node, ok := ssn.Nodes["n1"]
+		if !ok {
+			t.Fatalf("node n1 not found in session")
+		}
+		node.Others[vgpu.DeviceName] = buildSingleCardGPUDevices(t, "n1", "GPU-uuid-1", string(victim.UID), 8000, 100)
+
+		test.Run([]framework.Action{New()})
+		if err := test.CheckAll(0); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("whole-GPU vgpu-number only: unaffected regression guard", func(t *testing.T) {
+		victim := util.BuildPod("c1", "victim-whole", "n2", v1.PodRunning,
+			api.BuildResourceList("1", "1G"), "pg3", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string))
+		addLimit(victim, vgpuNumberRes, "1")
+		victim.Annotations[vgpu.AssignedIDsAnnotations] = fmt.Sprintf("%s,NVIDIA,%d,%d:", "GPU-uuid-2", 8000, 0)
+
+		preemptor := util.BuildPod("c1", "preemptor-whole", "", v1.PodPending,
+			api.BuildResourceList("1", "1G"), "pg4", make(map[string]string), make(map[string]string))
+		addLimit(preemptor, vgpuNumberRes, "1")
+
+		test := uthelper.TestCommonStruct{
+			Name:    "whole-GPU vgpu-number preemption",
+			Plugins: plugins,
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg3", "c1", "q1", 0, map[string]int32{}, schedulingv1beta1.PodGroupInqueue, "vgpu-low-priority"),
+				util.BuildPodGroupWithPrio("pg4", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "vgpu-high-priority"),
+			},
+			Pods: []*v1.Pod{victim, preemptor},
+			Nodes: []*v1.Node{
+				util.BuildNode("n2", api.BuildResourceList("4", "4G", []api.ScalarResource{
+					{Name: "pods", Value: "10"},
+					{Name: vgpuNumberRes, Value: "1"},
+				}...), make(map[string]string)),
+			},
+			Queues:         []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, nil)},
+			PriClass:       []*schedulingv1.PriorityClass{highPrio, lowPrio},
+			ExpectEvicted:  []string{"c1/victim-whole"},
+			ExpectEvictNum: 1,
+		}
+
+		ssn := test.RegisterSession(tiers, []conf.Configuration{{Name: New().Name(),
+			Arguments: map[string]interface{}{EnableTopologyAwarePreemptionKey: false}}})
+		defer test.Close()
+
+		node, ok := ssn.Nodes["n2"]
+		if !ok {
+			t.Fatalf("node n2 not found in session")
+		}
+		node.Others[vgpu.DeviceName] = buildSingleCardGPUDevices(t, "n2", "GPU-uuid-2", string(victim.UID), 8000, 0)
+
+		test.Run([]framework.Action{New()})
+		if err := test.CheckAll(0); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
