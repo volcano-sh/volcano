@@ -118,6 +118,8 @@ spec:
 a `QueueSpec` field. This keeps the experimental configuration out of the
 versioned Queue API until the behavior has matured.
 
+The implementation will define the `volcano.sh/overcommit-factor` annotation as a shared constant in `staging/src/volcano.sh/apis/pkg/apis/scheduling/v1beta1/labels.go`.
+
 The annotation value is a finite decimal factor greater than or equal to `1`.
 The Queue webhook validates this value when the feature gate is enabled.
 
@@ -380,7 +382,7 @@ gate is disabled.
 
 1. Add `QueueScopedOvercommit` as an alpha Volcano feature gate, defaulting to
    `false`.
-2. Define the annotation key and validation in the Queue webhook.
+2. Define the annotation key as a shared constant in `staging/src/volcano.sh/apis/pkg/apis/scheduling/v1beta1/labels.go` and validate it in the Queue webhook.
 3. Add `max-queue-overcommit-factor` validation to the overcommit plugin
    configuration.
 4. Extract the existing effective-capability calculation into shared scheduler
