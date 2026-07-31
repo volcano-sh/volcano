@@ -68,13 +68,22 @@ func New(args framework.Arguments) framework.Plugin {
 
 	for k, v := range args {
 		if strings.Contains(k, revocableZoneLabelPrefix) {
-			revocableZone[strings.Replace(k, revocableZoneLabelPrefix, "", 1)] = v.(string)
+			value, ok := v.(string)
+			if !ok {
+				klog.Warningf("Could not parse argument: %v for key %s to string, skip this revocable zone", v, k)
+				continue
+			}
+			revocableZone[strings.Replace(k, revocableZoneLabelPrefix, "", 1)] = value
 		}
 	}
 
-	if period, ok := args[evictPeriodLabel]; ok {
-		if d, err := time.ParseDuration(period.(string)); err == nil {
+	var periodStr string
+	args.GetString(&periodStr, evictPeriodLabel)
+	if periodStr != "" {
+		if d, err := time.ParseDuration(periodStr); err == nil {
 			evictPeriod = d
+		} else {
+			klog.Warningf("Could not parse argument %q for key %s to duration, using default %v", periodStr, evictPeriodLabel, evictPeriod)
 		}
 	}
 
