@@ -104,7 +104,7 @@ kind: Queue
 metadata:
   name: batch
   annotations:
-    scheduling.volcano.sh/overcommit-factor: "1.5"
+    volcano.sh/overcommit-factor: "1.5"
 spec:
   deserved:
     cpu: "40"
@@ -114,7 +114,7 @@ spec:
     memory: "320Gi"
 ```
 
-`scheduling.volcano.sh/overcommit-factor` is intentionally an annotation, not
+`volcano.sh/overcommit-factor` is intentionally an annotation, not
 a `QueueSpec` field. This keeps the experimental configuration out of the
 versioned Queue API until the behavior has matured.
 
@@ -279,7 +279,7 @@ root
 
 For a job in `batch`, the scheduler always runs the global check. It also runs
 queue checks for `batch`, `research`, and `root` only when each Queue explicitly
-sets `scheduling.volcano.sh/overcommit-factor`.
+sets `volcano.sh/overcommit-factor`.
 
 The root Queue is not implicitly given a queue-scoped budget. If an
 administrator explicitly annotates it, it is checked like any other annotated
