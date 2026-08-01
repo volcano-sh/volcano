@@ -437,8 +437,19 @@ func getSingleResource(r *api.Resource, name v1.ResourceName) float64 {
 
 // Recursively searches for the ancestor queue that recently defines the capability
 func findNearestAncestorCapability(q *schedulingv1beta1.Queue, rname v1.ResourceName) (float64, bool) {
+	// visited guards against a corrupted (cyclic) queue hierarchy reaching this walk by any
+	// path other than the admission check in validateQueueDepth, e.g. a cycle already present
+	// in the cluster from before that check existed. Without it, a cycle here would spin
+	// forever, permanently pinning the admission webhook's CPU.
+	visited := map[string]bool{q.Name: true}
 	parent := q.Spec.Parent
 	for parent != "" && parent != "root" {
+		if visited[parent] {
+			klog.Warningf("Detected a cycle in the queue hierarchy while resolving ancestor capability for queue %s at %s, aborting walk", q.Name, parent)
+			return 0, false
+		}
+		visited[parent] = true
+
 		pq, err := config.QueueLister.Get(parent)
 		if err != nil {
 			return 0, false
@@ -459,6 +470,21 @@ func findNearestAncestorCapability(q *schedulingv1beta1.Queue, rname v1.Resource
 
 // Recursively searches for the maximum capability value of a descendant queue
 func findSubtreeMaxCapability(q *schedulingv1beta1.Queue, rname v1.ResourceName) float64 {
+	return findSubtreeMaxCapabilityVisited(q, rname, map[string]bool{})
+}
+
+// findSubtreeMaxCapabilityVisited does the actual recursive walk. visited guards against a
+// corrupted (cyclic) queue hierarchy causing unbounded recursion; see findNearestAncestorCapability
+// for why this can't rely solely on the admission-time cycle check. Since every queue has exactly
+// one parent, the child graph is a proper tree/forest, so a single visited set shared across the
+// whole walk is safe: a legitimate hierarchy can never revisit the same queue name twice.
+func findSubtreeMaxCapabilityVisited(q *schedulingv1beta1.Queue, rname v1.ResourceName, visited map[string]bool) float64 {
+	if visited[q.Name] {
+		klog.Warningf("Detected a cycle in the queue hierarchy while resolving subtree max capability at queue %s, aborting walk", q.Name)
+		return 0
+	}
+	visited[q.Name] = true
+
 	if q.Spec.Capability != nil {
 		res := api.NewResource(q.Spec.Capability)
 		v := getSingleResource(res, rname)
@@ -473,7 +499,7 @@ func findSubtreeMaxCapability(q *schedulingv1beta1.Queue, rname v1.ResourceName)
 		klog.V(5).Infof("Failed to get child queues for queue %s: %v", q.Name, err)
 	} else {
 		for _, cq := range children {
-			v := findSubtreeMaxCapability(cq, rname)
+			v := findSubtreeMaxCapabilityVisited(cq, rname, visited)
 			if v > maxV {
 				maxV = v
 			}
@@ -502,6 +528,16 @@ func validateQueueDepth(queue *schedulingv1beta1.Queue) error {
 	parent := queue.Spec.Parent
 
 	for parent != "" && parent != "root" {
+		// If the walk up the ancestor chain ever reaches this queue's own name again,
+		// setting Spec.Parent to queue.Spec.Parent would introduce a cycle. This must be
+		// checked by name rather than relying solely on the depth bound below: when queue
+		// is itself being updated, config.QueueLister still holds its pre-update (stale)
+		// value the moment the walk revisits it, so a cycle can otherwise walk straight
+		// through queue's old, valid parent chain and reach "root" undetected.
+		if parent == queue.Name {
+			return fmt.Errorf("queue %s: setting parent to %s would create a cycle in the queue hierarchy",
+				queue.Name, queue.Spec.Parent)
+		}
 		depth++
 		if depth > config.MaxQueueDepth {
 			return fmt.Errorf("queue %s exceeds the maximum allowed depth of %d", queue.Name, config.MaxQueueDepth)

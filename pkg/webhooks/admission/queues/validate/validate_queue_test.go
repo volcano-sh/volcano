@@ -2254,6 +2254,135 @@ func TestValidateQueueDepthDynamic(t *testing.T) {
 	}
 }
 
+// TestValidateQueueDepthCycleDetection reproduces the exploit from
+// https://github.com/volcano-sh/volcano/issues/5807: re-parenting an existing queue onto
+// one of its own descendants used to be silently accepted, because config.QueueLister still
+// returns the pre-update (stale) copy of the queue being validated when the ancestor walk
+// revisits it, letting the walk escape through its old, valid parent chain to "root".
+func TestValidateQueueDepthCycleDetection(t *testing.T) {
+	config.VolcanoClient = fakeclient.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := informerFactory.Scheduling().V1beta1().Queues()
+	config.QueueLister = queueInformer.Lister()
+	config.MaxQueueDepth = 5
+
+	// Valid chain: root -> a -> b
+	a := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "a"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "root"},
+	}
+	b := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "b"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "a"},
+	}
+	// A sibling branch, used below to confirm a legitimate (non-cyclic) parent change is
+	// still accepted. Created upfront alongside a/b so the single informer sync below covers it.
+	c := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "c"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "root"},
+	}
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), a, metav1.CreateOptions{})
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), b, metav1.CreateOptions{})
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), c, metav1.CreateOptions{})
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	informerFactory.Start(stopCh)
+	informerFactory.WaitForCacheSync(stopCh)
+
+	// Simulate the in-flight admission request to re-parent "a" onto its own child "b".
+	// The lister still holds the pre-update "a" (Parent: "root"); validateQueueDepth is called
+	// with the new candidate object directly, exactly as AdmitQueues does.
+	aReparented := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "a"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "b"},
+	}
+
+	if err := validateQueueDepth(aReparented); err == nil {
+		t.Fatalf("expected re-parenting queue %q onto its own descendant %q to be rejected as a cycle, but it was accepted", aReparented.Name, aReparented.Spec.Parent)
+	}
+
+	// A legitimate, non-cyclic parent change must still be accepted.
+	bReparented := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "b"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "c"},
+	}
+	if err := validateQueueDepth(bReparented); err != nil {
+		t.Errorf("expected non-cyclic re-parenting of queue %q onto %q to be accepted, got error: %v", bReparented.Name, bReparented.Spec.Parent, err)
+	}
+}
+
+// runWithTimeout fails the test instead of hanging forever if fn does not return in time.
+// Used to assert termination of the cycle-walk helpers below: without the fix, these calls
+// spin forever on a cyclic hierarchy and would otherwise hang the whole test binary.
+func runWithTimeout(t *testing.T, timeout time.Duration, fn func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		fn()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		t.Fatalf("did not return within %v; likely an infinite loop/recursion on a cyclic queue hierarchy", timeout)
+	}
+}
+
+// setupCyclicQueuePair creates two queues whose Spec.Parent fields point at each other,
+// simulating a cycle that already exists in the cluster (e.g. from before this fix was
+// deployed), independent of whether admission still allows creating new ones.
+func setupCyclicQueuePair(t *testing.T) (x, y *schedulingv1beta1.Queue) {
+	t.Helper()
+	config.VolcanoClient = fakeclient.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := informerFactory.Scheduling().V1beta1().Queues()
+	config.QueueLister = queueInformer.Lister()
+
+	x = &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "x"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "y"},
+	}
+	y = &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "y"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "x", Capability: v1.ResourceList{v1.ResourceCPU: resource.MustParse("0")}},
+	}
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), x, metav1.CreateOptions{})
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), y, metav1.CreateOptions{})
+
+	stopCh := make(chan struct{})
+	t.Cleanup(func() { close(stopCh) })
+	informerFactory.Start(stopCh)
+	informerFactory.WaitForCacheSync(stopCh)
+
+	return x, y
+}
+
+func TestFindNearestAncestorCapabilityCycleSafety(t *testing.T) {
+	x, _ := setupCyclicQueuePair(t)
+
+	var val float64
+	var ok bool
+	runWithTimeout(t, 2*time.Second, func() {
+		val, ok = findNearestAncestorCapability(x, v1.ResourceCPU)
+	})
+	if ok {
+		t.Errorf("expected no capability to be found in a cyclic hierarchy with no non-zero capability set, got %v", val)
+	}
+}
+
+func TestFindSubtreeMaxCapabilityCycleSafety(t *testing.T) {
+	x, _ := setupCyclicQueuePair(t)
+
+	var val float64
+	runWithTimeout(t, 2*time.Second, func() {
+		val = findSubtreeMaxCapability(x, v1.ResourceCPU)
+	})
+	if val != 0 {
+		t.Errorf("expected max capability 0 in a cyclic hierarchy with no non-zero capability set, got %v", val)
+	}
+}
+
 func TestValidateChildAgainstAncestorForCapability(t *testing.T) {
 	// Setup fake client and informer
 	config.VolcanoClient = fakeclient.NewSimpleClientset()
