@@ -29,6 +29,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kube-scheduler/framework"
 	schedframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
@@ -733,6 +735,47 @@ func TestBatchNodeOrderRunsPreScorePlugins(t *testing.T) {
 				t.Errorf("expected node score presence to be %t, got %t", tt.wantScore, scored)
 			}
 		})
+	}
+}
+
+func TestFrameworkEventRecorder(t *testing.T) {
+	var predicatePlugin *PredicatesPlugin
+	test := uthelper.TestCommonStruct{
+		Plugins: map[string]framework.PluginBuilder{
+			PluginName: func(arguments framework.Arguments) framework.Plugin {
+				predicatePlugin = New(arguments).(*PredicatesPlugin)
+				return predicatePlugin
+			},
+		},
+	}
+	enabled := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:             PluginName,
+					EnabledPredicate: &enabled,
+				},
+			},
+		},
+	}
+
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	recorder, ok := ssn.EventRecorder().(*record.FakeRecorder)
+	if !ok {
+		t.Fatalf("unexpected event recorder type %T", ssn.EventRecorder())
+	}
+	predicatePlugin.Handle.EventRecorder().WithLogger(klog.Background()).Eventf(
+		&apiv1.Pod{}, nil, apiv1.EventTypeNormal, "BindingConditionsPending", "Scheduling", "waiting for binding conditions",
+	)
+
+	select {
+	case event := <-recorder.Events:
+		assert.Equal(t, "Normal BindingConditionsPending waiting for binding conditions", event)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for event")
 	}
 }
 

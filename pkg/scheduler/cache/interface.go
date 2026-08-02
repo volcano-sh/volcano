@@ -89,7 +89,7 @@ type Cache interface {
 	GetMetricsConf() map[string]string
 
 	// EventRecorder returns the event recorder
-	EventRecorder() record.EventRecorder
+	EventRecorder() record.EventRecorderLogger
 
 	// RegisterBinder registers the passed binder to the cache's binderRegistry
 	RegisterBinder(name string, binder interface{})
