@@ -777,6 +777,12 @@ func TestFrameworkEventRecorder(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for event")
 	}
+
+	assert.NotPanics(t, func() {
+		k8s.NewFramework(nil).EventRecorder().WithLogger(klog.Background()).Eventf(
+			&apiv1.Pod{}, nil, apiv1.EventTypeNormal, "BindingConditionsPending", "Scheduling", "waiting for binding conditions",
+		)
+	})
 }
 
 func TestPredicateFailureReasonAggregationOrderStable(t *testing.T) {

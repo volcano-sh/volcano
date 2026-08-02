@@ -253,7 +253,9 @@ func (f *Framework) GetVolcanoNodeInfo(nodeName string) (*api.NodeInfo, error) {
 
 // NewFramework is the constructor of Framework
 func NewFramework(nodeMap map[string]fwk.NodeInfo, opts ...Option) *Framework {
-	fw := &Framework{}
+	fw := &Framework{
+		eventRecorder: &events.FakeRecorder{},
+	}
 
 	for _, opt := range opts {
 		opt(fw)
