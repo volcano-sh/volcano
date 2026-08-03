@@ -179,8 +179,11 @@ func configTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
 //
 // Only invoked when --reconcile-admission-webhook is set.
 func SyncAdmissionWebhooks(kubeClient kubernetes.Interface, enabledAdmission string) error {
-	enabledValidating := make(map[string]struct{})
-	enabledMutating := make(map[string]struct{})
+	// Collect the configuration names this manager would create for the
+	// enabled entries. Validating and mutating webhooks have distinct names
+	// (…-validate vs …-mutate), so a single set keyed by full name is
+	// unambiguous and does not depend on the path suffix.
+	enabledWebhooks := make(map[string]struct{})
 	for _, entry := range strings.Split(strings.TrimSpace(enabledAdmission), ",") {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
@@ -190,18 +193,22 @@ func SyncAdmissionWebhooks(kubeClient kubernetes.Interface, enabledAdmission str
 		// mirror addCaCertForWebhook's naming: prefix + path with "/"
 		// replaced by "-".
 		name := volcanoAdmissionPrefix + strings.ReplaceAll(entry, "/", "-")
-		if strings.HasSuffix(entry, "/validate") {
-			enabledValidating[name] = struct{}{}
-		} else if strings.HasSuffix(entry, "/mutate") {
-			enabledMutating[name] = struct{}{}
-		}
+		enabledWebhooks[name] = struct{}{}
+	}
+
+	// The delete path is destructive: an empty enabled set would prune every
+	// configuration this manager owns. That only happens when
+	// --enabled-admission is blank or malformed, which is a misconfiguration,
+	// not an intentional "disable everything". Refuse rather than sweep.
+	if len(enabledWebhooks) == 0 {
+		return fmt.Errorf("--reconcile-admission-webhook is set but --enabled-admission yielded no webhook names (value: %q); refusing to delete all volcano admission webhook configurations", enabledAdmission)
 	}
 
 	ctx := context.Background()
-	if err := deleteDisabledValidatingWebhooks(ctx, kubeClient, enabledValidating); err != nil {
+	if err := deleteDisabledValidatingWebhooks(ctx, kubeClient, enabledWebhooks); err != nil {
 		return err
 	}
-	return deleteDisabledMutatingWebhooks(ctx, kubeClient, enabledMutating)
+	return deleteDisabledMutatingWebhooks(ctx, kubeClient, enabledWebhooks)
 }
 
 // deleteDisabledValidatingWebhooks lists ValidatingWebhookConfigurations
@@ -215,7 +222,11 @@ func deleteDisabledValidatingWebhooks(ctx context.Context, kubeClient kubernetes
 	}
 	for i := range list.Items {
 		name := list.Items[i].Name
-		if !strings.HasPrefix(name, volcanoAdmissionPrefix) {
+		// Match the exact prefix the manager uses, including the trailing
+		// hyphen, so names like "volcano-admission-service" or
+		// "volcano-admission-serviceX" that this manager never generated are
+		// left untouched.
+		if !strings.HasPrefix(name, volcanoAdmissionPrefix+"-") {
 			continue
 		}
 		if _, ok := enabled[name]; ok {
@@ -240,7 +251,11 @@ func deleteDisabledMutatingWebhooks(ctx context.Context, kubeClient kubernetes.I
 	}
 	for i := range list.Items {
 		name := list.Items[i].Name
-		if !strings.HasPrefix(name, volcanoAdmissionPrefix) {
+		// Match the exact prefix the manager uses, including the trailing
+		// hyphen, so names like "volcano-admission-service" or
+		// "volcano-admission-serviceX" that this manager never generated are
+		// left untouched.
+		if !strings.HasPrefix(name, volcanoAdmissionPrefix+"-") {
 			continue
 		}
 		if _, ok := enabled[name]; ok {
