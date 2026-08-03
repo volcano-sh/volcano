@@ -273,6 +273,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: jobs.batch.volcano.sh
 spec:
   group: batch.volcano.sh
@@ -4546,6 +4547,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: cronjobs.batch.volcano.sh
 spec:
   group: batch.volcano.sh
@@ -8798,6 +8800,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: commands.bus.volcano.sh
 spec:
   group: bus.volcano.sh
@@ -9325,6 +9328,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: podgroups.scheduling.volcano.sh
 spec:
   group: scheduling.volcano.sh
@@ -9640,6 +9644,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: queues.scheduling.volcano.sh
 spec:
   group: scheduling.volcano.sh
@@ -9884,6 +9889,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: numatopologies.nodeinfo.volcano.sh
 spec:
   group: nodeinfo.volcano.sh
@@ -10015,6 +10021,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: hypernodes.topology.volcano.sh
 spec:
   group: topology.volcano.sh
@@ -10258,6 +10265,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: nodeshards.shard.volcano.sh
 spec:
   group: shard.volcano.sh
@@ -10350,6 +10358,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: colocationconfigurations.config.volcano.sh
 spec:
   group: config.volcano.sh
@@ -11497,6 +11506,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: jobtemplates.flow.volcano.sh
 spec:
   group: flow.volcano.sh
@@ -15669,6 +15679,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: jobflows.flow.volcano.sh
 spec:
   group: flow.volcano.sh
