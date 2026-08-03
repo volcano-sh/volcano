@@ -1468,20 +1468,22 @@ func (sc *SchedulerCache) BindTask() {
 	tmpBindCache := make([]*BindContext, len(sc.bindCache))
 	copy(tmpBindCache, sc.bindCache)
 
-	// If --max-concurrent-binds is set, block until a slot is free so the
-	// number of in-flight bind goroutines stays bounded. The slot is
-	// released in the goroutine's defer below. When bindSemaphore is nil,
-	// this whole block is skipped and behaviour is identical to before.
-	if sc.bindSemaphore != nil {
-		acquireStart := time.Now()
-		klog.V(5).Infof("Waiting for bind semaphore, in-flight binds: %d", len(sc.bindSemaphore))
-		sc.bindSemaphore <- struct{}{}
-		klog.V(5).Infof("Acquired bind semaphore after %v, in-flight binds: %d", time.Since(acquireStart), len(sc.bindSemaphore))
-	}
-
 	// Currently, bindContexts only contain 1 element.
 	go func(bindContexts []*BindContext) {
+		// If --max-concurrent-binds is set, block until a slot is free so the
+		// number of in-flight bind goroutines stays bounded, releasing the
+		// slot when this goroutine exits. Acquiring inside the goroutine (not
+		// in BindTask itself) keeps processBindTask draining BindFlowChannel:
+		// if the semaphore is full, only these lightweight goroutines wait,
+		// never the single processBindTask loop. Blocking BindTask instead
+		// would stall the drain, let BindFlowChannel fill, and then block
+		// AddBindTask while it holds sc.Mutex, freezing the scheduler. When
+		// bindSemaphore is nil the block is skipped and behaviour is unchanged.
 		if sc.bindSemaphore != nil {
+			acquireStart := time.Now()
+			klog.V(5).Infof("Waiting for bind semaphore, in-flight binds: %d", len(sc.bindSemaphore))
+			sc.bindSemaphore <- struct{}{}
+			klog.V(5).Infof("Acquired bind semaphore after %v, in-flight binds: %d", time.Since(acquireStart), len(sc.bindSemaphore))
 			defer func() {
 				<-sc.bindSemaphore
 				klog.V(5).Infof("Released bind semaphore, in-flight binds: %d", len(sc.bindSemaphore))

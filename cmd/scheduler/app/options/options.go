@@ -193,6 +193,9 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.
 func (s *ServerOption) CheckOptionOrDie() error {
+	if s.MaxConcurrentBinds < 0 {
+		return fmt.Errorf("invalid --max-concurrent-binds %d: must be zero (disabled) or positive", s.MaxConcurrentBinds)
+	}
 	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
 }
 
