@@ -6,6 +6,6 @@ bases stands for v1.
 {{- if .Capabilities.APIVersions.Has "apiextensions.k8s.io/v1" -}}
 bases
 {{- else -}}
-v1beta1
+{{- fail "Volcano requires the apiextensions.k8s.io/v1 CustomResourceDefinition API; the deprecated v1beta1 CRD installation path is not supported" -}}
 {{- end -}}
 {{- end -}}
