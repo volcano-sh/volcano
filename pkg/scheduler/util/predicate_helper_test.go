@@ -17,11 +17,16 @@ limitations under the License.
 package util
 
 import (
+	"bytes"
+	"flag"
 	"fmt"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -230,6 +235,126 @@ func TestPredicateNodes(t *testing.T) {
 				t.Fatalf("expected error %s, got %s", tt.expectedErr, fitErr.Error())
 			}
 		})
+	}
+}
+
+func TestPredicateNodesLogVerbosity(t *testing.T) {
+	tests := []struct {
+		name               string
+		verbosity          int
+		wantSummaries      int
+		wantEvaluations    int
+		wantFailureDetails int
+	}{
+		{
+			name:      "V3 omits predicate summaries and node details",
+			verbosity: 3,
+		},
+		{
+			name:          "V4 logs one predicate summary",
+			verbosity:     4,
+			wantSummaries: 1,
+		},
+		{
+			name:               "V5 logs the predicate summary and node details",
+			verbosity:          5,
+			wantSummaries:      1,
+			wantEvaluations:    2,
+			wantFailureDetails: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := captureKlogOutput(t, tt.verbosity, func() {
+				options.ServerOpts = &options.ServerOption{
+					MinPercentageOfNodesToFind: 5,
+					MinNodesToFind:             1,
+					PercentageOfNodesToFind:    100,
+					ShardingMode:               commonutil.NoneShardingMode,
+				}
+
+				task := &api.TaskInfo{
+					Job:       "job1",
+					TaskRole:  "worker",
+					Namespace: "ns",
+					Name:      "task",
+				}
+				nodes := []*api.NodeInfo{{Name: "node1"}, {Name: "node2"}}
+				predicateFn := func(*api.TaskInfo, *api.NodeInfo) error {
+					return fmt.Errorf("predicate failed")
+				}
+
+				NewPredicateHelper().PredicateNodes(task, nodes, predicateFn, true, sets.New[string]("node1", "node2"))
+			})
+
+			assertLogCount(t, logs, "Predicate evaluation summary", tt.wantSummaries)
+			assertLogCount(t, logs, "Evaluating predicate for task on node", tt.wantEvaluations)
+			assertLogCount(t, logs, "Predicate failed for task on node", tt.wantFailureDetails)
+			if tt.verbosity == 4 {
+				for _, field := range []string{"totalNodes=2", "evaluatedNodes=2", "candidateNodes=0", "2 predicate failed"} {
+					if !strings.Contains(logs, field) {
+						t.Errorf("expected V4 summary to contain %q, got logs:\n%s", field, logs)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestPredicateNodesLogsCachedFailuresAtV5(t *testing.T) {
+	logs := captureKlogOutput(t, 5, func() {
+		options.ServerOpts = &options.ServerOption{
+			MinPercentageOfNodesToFind: 5,
+			MinNodesToFind:             1,
+			PercentageOfNodesToFind:    100,
+			ShardingMode:               commonutil.NoneShardingMode,
+		}
+
+		task := &api.TaskInfo{
+			Job:       "job1",
+			TaskRole:  "worker",
+			Namespace: "ns",
+			Name:      "task",
+		}
+		nodes := []*api.NodeInfo{{Name: "node1"}, {Name: "node2"}}
+		predicateFn := func(*api.TaskInfo, *api.NodeInfo) error {
+			return fmt.Errorf("predicate failed")
+		}
+
+		ph := NewPredicateHelper()
+		ph.PredicateNodes(task, nodes, predicateFn, true, sets.New[string]("node1", "node2"))
+		ph.PredicateNodes(task, nodes, predicateFn, true, sets.New[string]("node1", "node2"))
+	})
+
+	assertLogCount(t, logs, "cached=false", 2)
+	assertLogCount(t, logs, "cached=true", 2)
+}
+
+func captureKlogOutput(t *testing.T, verbosity int, run func()) string {
+	t.Helper()
+
+	state := klog.CaptureState()
+	t.Cleanup(state.Restore)
+
+	fs := flag.NewFlagSet("klog", flag.ContinueOnError)
+	klog.InitFlags(fs)
+	if err := fs.Set("v", strconv.Itoa(verbosity)); err != nil {
+		t.Fatalf("failed to set klog verbosity: %v", err)
+	}
+
+	var output bytes.Buffer
+	klog.SetOutput(&output)
+	klog.LogToStderr(false)
+	run()
+	klog.Flush()
+	return output.String()
+}
+
+func assertLogCount(t *testing.T, logs, message string, expected int) {
+	t.Helper()
+	if got := strings.Count(logs, message); got != expected {
+		t.Errorf("expected %d occurrences of %q, got %d in logs:\n%s", expected, message, got, logs)
 	}
 }
 

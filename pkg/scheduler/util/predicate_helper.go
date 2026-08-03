@@ -53,6 +53,7 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 
 	allNodes := len(nodes)
 	if allNodes == 0 {
+		logPredicateSummary(task, allNodes, 0, 0, fe)
 		return make([]*api.NodeInfo, 0), fe
 	}
 	numNodesToFind := CalculateNumOfFeasibleNodesToFind(int32(allNodes))
@@ -80,8 +81,11 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 		// to make sure all nodes have the same chance of being examined across pods.
 		node := nodes[(startIndex+index)%allNodes]
 		atomic.AddInt32(&processedNodes, 1)
-		klog.V(4).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
-			task.Namespace, task.Name, node.Name, task.Resreq, node.Idle)
+		klog.V(5).InfoS("Evaluating predicate for task on node",
+			"task", klog.KRef(task.Namespace, task.Name),
+			"node", node.Name,
+			"requestedResource", task.Resreq,
+			"idleResource", node.Idle)
 
 		// Check if the task had "predicate" failure before.
 		// And then check if the task failed to predict on this node before.
@@ -90,21 +94,22 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 
 			if ok {
 				nodeErrors[index] = errC
+				logPredicateFailure(task, node, errC, true)
 				return
 			}
 		}
 
 		if options.ServerOpts.ShardingMode == util.HardShardingMode && !nodesInShard.Has(node.Name) {
 			err := fmt.Errorf("node isn't in scheduler node shard")
-			klog.V(5).Infof("Predicates failed: node %s is not in scheduler shard", node.Name)
 			nodeErrors[index] = err
+			logPredicateFailure(task, node, err, false)
 			return
 		}
 
 		// TODO (k82cn): Enable eCache for performance improvement.
 		if err := fn(task, node); err != nil {
-			klog.V(5).InfoS("Predicate failed", "task", klog.KRef(task.Namespace, task.Name), "node", node.Name, "err", err)
 			nodeErrors[index] = err
+			logPredicateFailure(task, node, err, false)
 			return
 		}
 
@@ -141,7 +146,30 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 	newIndex := int64((startIndex + int(processedNodes)) % allNodes)
 	lastProcessedNodeIndex.Store(newIndex)
 
+	logPredicateSummary(task, allNodes, processedNodes, len(predicateNodes), fe)
 	return predicateNodes, fe
+}
+
+func logPredicateFailure(task *api.TaskInfo, node *api.NodeInfo, err error, cached bool) {
+	klog.V(5).InfoS("Predicate failed for task on node",
+		"task", klog.KRef(task.Namespace, task.Name),
+		"node", node.Name,
+		"cached", cached,
+		"err", err)
+}
+
+func logPredicateSummary(task *api.TaskInfo, totalNodes int, processedNodes int32, candidateNodes int, fitErrors *api.FitErrors) {
+	logger := klog.V(4)
+	if !logger.Enabled() {
+		return
+	}
+
+	logger.InfoS("Predicate evaluation summary",
+		"task", klog.KRef(task.Namespace, task.Name),
+		"totalNodes", totalNodes,
+		"evaluatedNodes", processedNodes,
+		"candidateNodes", candidateNodes,
+		"fitErrors", fitErrors.Error())
 }
 
 func taskGroupID(task *api.TaskInfo) string {
