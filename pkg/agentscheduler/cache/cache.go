@@ -1000,7 +1000,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			continue
 		}
 
-		snapshot.Nodes[value.info.Name] = value.info.Clone()
+		snapshot.Nodes[value.info.Name] = value.info.ShallowClone()
 	}
 	klog.V(3).InfoS("SnapShot for scheduling", "NodeNum", len(snapshot.Nodes))
 	return snapshot

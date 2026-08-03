@@ -242,12 +242,13 @@ func TestBuildNominationPlanInDomain_PipelineFailureRollsBackEviction(t *testing
 	assert.False(t, ok)
 	assert.Nil(t, plan)
 
-	// Dry-run must rollback temporary victim eviction when all pipeline attempts fail.
+	// Dry-run must rollback temporary victim eviction when all pipeline attempts fail,
+	// but it must not mutate the original shared task that was never pipelined.
 	assert.Len(t, node.Tasks, 1)
 	_, victimStillOnNode := node.Tasks[api.PodKey(victim.Pod)]
 	assert.True(t, victimStillOnNode)
 	assert.Equal(t, api.Running, victim.Status)
-	assert.Equal(t, "", t1.NodeName)
+	assert.Equal(t, "other-node", t1.NodeName)
 	assert.Equal(t, 1, len(job.TaskStatusIndex[api.Pending]))
 	assert.Equal(t, 0, len(job.TaskStatusIndex[api.Pipelined]))
 }

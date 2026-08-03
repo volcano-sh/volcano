@@ -63,7 +63,8 @@ func (shuffle *Action) Execute(ssn *framework.Session) {
 	victims := ssn.VictimTasks(tasks)
 	for victim := range victims {
 		klog.V(3).Infof("pod %s from namespace %s and job %s will be evicted.\n", victim.Name, victim.Namespace, string(victim.Job))
-		if err := ssn.Evict(victim, "shuffle"); err != nil {
+		// Clone victim before Evict to avoid mutating the shared task pointer
+		if err := ssn.Evict(victim.Clone(), "shuffle"); err != nil {
 			klog.Errorf("Failed to evict Task <%s/%s>: %v\n", victim.Namespace, victim.Name, err)
 			continue
 		}

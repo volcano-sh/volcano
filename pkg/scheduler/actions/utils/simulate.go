@@ -265,9 +265,12 @@ func runSimulateTrialAtHyperNode(
 		if !task.InitResreq.LessEqual(bestNode.FutureIdle(), api.Zero) {
 			return nil, false
 		}
-		if err := trial.Pipeline(task, bestNode.Name, victimsPresent); err != nil {
+		// Clone task before Pipeline to avoid mutating the shared task pointer.
+		// The rollback must use the same cloned task instance that was pipelined.
+		taskClone := task.Clone()
+		if err := trial.Pipeline(taskClone, bestNode.Name, victimsPresent); err != nil {
 			klog.ErrorS(err, "Simulate pipeline failed", "task", task.Name)
-			_ = trial.UnPipeline(task)
+			_ = trial.UnPipeline(taskClone)
 			return nil, false
 		}
 	}
