@@ -268,16 +268,13 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 
 	event := bus.OutOfSyncEvent
 	var exitCode int32
+	var exitCodes string
 
 	switch newPod.Status.Phase {
 	case v1.PodFailed:
 		if oldPod.Status.Phase != v1.PodFailed {
 			event = bus.PodFailedEvent
-			// TODO: currently only one container pod is supported by volcano
-			// Once multi containers pod is supported, update accordingly.
-			if len(newPod.Status.ContainerStatuses) > 0 && newPod.Status.ContainerStatuses[0].State.Terminated != nil {
-				exitCode = newPod.Status.ContainerStatuses[0].State.Terminated.ExitCode
-			}
+			exitCode, exitCodes = getNonZeroExitCodes(newPod.Status.ContainerStatuses)
 		}
 	case v1.PodSucceeded:
 		if oldPod.Status.Phase != v1.PodSucceeded &&
@@ -314,12 +311,32 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		PartitionID: apis.GetPartitionID(newPod),
 		Event:       event,
 		ExitCode:    exitCode,
+		ExitCodes:   exitCodes,
 		JobVersion:  int32(dVersion),
 	}
 
 	key := jobhelpers.GetJobKeyByReq(&req)
 	queue := cc.getWorkerQueue(key)
 	queue.Add(req)
+}
+
+func getNonZeroExitCodes(containerStatuses []v1.ContainerStatus) (int32, string) {
+	var exitCode int32
+	var exitCodes string
+	for _, status := range containerStatuses {
+		if status.State.Terminated == nil {
+			continue
+		}
+		code := status.State.Terminated.ExitCode
+		if code == 0 {
+			continue
+		}
+		if exitCode == 0 {
+			exitCode = code
+		}
+		exitCodes += fmt.Sprintf("%d,", code)
+	}
+	return exitCode, exitCodes
 }
 
 func (cc *jobcontroller) deletePod(obj interface{}) {
