@@ -49,11 +49,12 @@ import (
 // Scheduler watches for new unscheduled pods(PodGroup) in Volcano.
 // It attempts to find nodes that can accommodate these pods and writes the binding information back to the API server.
 type Scheduler struct {
-	cache          schedcache.Cache
-	schedulerConf  string
-	fileWatcher    filewatcher.FileWatcher
-	schedulePeriod time.Duration
-	once           sync.Once
+	cache              schedcache.Cache
+	unschedulableCache schedcache.UnschedulableCache
+	schedulerConf      string
+	fileWatcher        filewatcher.FileWatcher
+	schedulePeriod     time.Duration
+	once               sync.Once
 
 	mutex              sync.Mutex
 	actions            []framework.Action
@@ -84,6 +85,7 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 		schedulerConf:      opt.SchedulerConf,
 		fileWatcher:        watcher,
 		cache:              cache,
+		unschedulableCache: cache.UnschedulableCache(),
 		schedulePeriod:     opt.SchedulePeriod,
 		dumper:             schedcache.Dumper{Cache: cache, RootDir: opt.CacheDumpFileDir},
 		disableDefaultConf: opt.DisableDefaultSchedulerConfig,
@@ -138,7 +140,7 @@ func (pc *Scheduler) runOnce() {
 		conf.EnabledActionMap[action.Name()] = true
 	}
 
-	ssn := framework.OpenSession(pc.cache, plugins, configurations)
+	ssn := framework.OpenSession(pc.cache, plugins, configurations, framework.WithUnschedulableCache(pc.unschedulableCache))
 	ssn.SetSchGateManager(pc.schGateManager)
 	defer func() {
 		framework.CloseSession(ssn)
