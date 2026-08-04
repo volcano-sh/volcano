@@ -30,10 +30,30 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
+type sessionOptions struct {
+	unschedulableCache cache.UnschedulableCache
+}
+
+// SessionOption configures optional Session dependencies.
+type SessionOption func(*sessionOptions)
+
+// WithUnschedulableCache provides the cache used by the UnschedulableJobCache
+// feature. Keeping it separate from cache.Cache avoids runtime type assertions
+// and lets each interface have its own implementation.
+func WithUnschedulableCache(unschedulableCache cache.UnschedulableCache) SessionOption {
+	return func(options *sessionOptions) {
+		options.unschedulableCache = unschedulableCache
+	}
+}
+
 // OpenSession start the session
-func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration) *Session {
+func OpenSession(schedulerCache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration, opts ...SessionOption) *Session {
 	openStart := time.Now()
-	ssn := openSession(cache)
+	options := &sessionOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+	ssn := openSession(schedulerCache, options.unschedulableCache)
 	ssn.Tiers = tiers
 	ssn.Configurations = configurations
 	ssn.NodeMap = GenerateNodeMapAndSlice(ssn.Nodes)
@@ -54,6 +74,7 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Con
 	}
 
 	ssn.InitCycleState()
+	ssn.applyCachedSkips()
 	metrics.UpdateOpenSessionDuration(time.Since(openStart))
 
 	return ssn
@@ -66,6 +87,8 @@ func CloseSession(ssn *Session) {
 		plugin.OnSessionClose(ssn)
 		metrics.UpdatePluginDuration(plugin.Name(), metrics.OnSessionClose, metrics.Duration(onSessionCloseStart))
 	}
+
+	ssn.reconcileUnschedulableCache()
 
 	closeSession(ssn)
 }

@@ -166,6 +166,17 @@ type Status struct {
 	Plugin string
 }
 
+// PrePredicateError reports an unschedulable PrePredicate result and the
+// plugin that produced it.
+type PrePredicateError struct {
+	Plugin string
+	Reason string
+}
+
+func (e *PrePredicateError) Error() string {
+	return e.Reason
+}
+
 // String represents status string
 func (s *Status) String() string {
 	return s.Reason

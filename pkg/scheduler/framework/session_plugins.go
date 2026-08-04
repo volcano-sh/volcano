@@ -22,8 +22,12 @@ package framework
 
 import (
 	"context"
+	"errors"
 
 	fwk "k8s.io/kube-scheduler/framework"
+
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
@@ -413,6 +417,9 @@ func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) b
 				continue
 			}
 			if !af(queue, candidate) {
+				if candidate.Job != "" {
+					ssn.AddRejection(candidate.Job, plugin.Name, api.RejectionAllocatable, candidate.UID)
+				}
 				return false
 			}
 		}
@@ -593,6 +600,9 @@ func (ssn *Session) JobEnqueueable(obj interface{}) bool {
 
 			res := fn(obj)
 			if res < 0 {
+				if job, ok := obj.(*api.JobInfo); ok {
+					ssn.AddRejection(job.UID, plugin.Name, api.RejectionEnqueue)
+				}
 				return false
 			}
 			if res > 0 {
@@ -959,6 +969,10 @@ func (ssn *Session) PrePredicateFn(task *api.TaskInfo) error {
 			}
 			err := pfn(task)
 			if err != nil {
+				var rejection *api.PrePredicateError
+				if errors.As(err, &rejection) {
+					ssn.AddRejection(task.Job, rejection.Plugin, api.RejectionPredicate, task.UID)
+				}
 				return err
 			}
 		}
@@ -1217,4 +1231,141 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor
 // RegisterBinder registers the passed binder to the cache, the binder type can be such as pre-binder, post-binder
 func (ssn *Session) RegisterBinder(name string, binder interface{}) {
 	ssn.cache.RegisterBinder(name, binder)
+}
+
+// AddHintProvider registers a plugin's HintProvider with the cache-scoped
+// HintRegistry, so the unschedulable-job cache can wake Jobs this plugin rejected
+// when a subscribed cluster event fires.
+func (ssn *Session) AddHintProvider(name string, p api.HintProvider) {
+	if !ssn.unschedulableJobCacheEnabled {
+		return
+	}
+	ssn.unschedulableCache.AddHintProvider(name, p)
+}
+
+// rejectionKey identifies a rejection by the plugin and extension point that
+// produced it, so repeated rejections for the same key merge their tasks.
+type rejectionKey struct {
+	plugin string
+	source api.RejectionSource
+}
+
+// AddRejection records, for the current session, that plugin made job
+// unschedulable through the given source, optionally naming the failed tasks.
+// Rejections are drained into the unschedulable-job cache at CloseSession.
+func (ssn *Session) AddRejection(job api.JobID, plugin string, source api.RejectionSource, tasks ...api.TaskID) {
+	if !ssn.unschedulableJobCacheEnabled {
+		return
+	}
+	byKey := ssn.jobRejections[job]
+	if byKey == nil {
+		byKey = make(map[rejectionKey]sets.Set[api.TaskID])
+		ssn.jobRejections[job] = byKey
+	}
+	key := rejectionKey{plugin: plugin, source: source}
+	taskSet, ok := byKey[key]
+	if !ok {
+		taskSet = sets.New[api.TaskID]()
+		byKey[key] = taskSet
+	}
+	taskSet.Insert(tasks...)
+}
+
+// rejectionsForJob returns the rejections accumulated for job this session.
+func (ssn *Session) rejectionsForJob(job api.JobID) []api.Rejection {
+	byKey := ssn.jobRejections[job]
+	if len(byKey) == 0 {
+		return nil
+	}
+	rejections := make([]api.Rejection, 0, len(byKey))
+	for key, taskSet := range byKey {
+		var taskIDs []api.TaskID
+		if taskSet.Len() > 0 {
+			taskIDs = sets.List(taskSet)
+		}
+		rejections = append(rejections, api.Rejection{
+			Plugin: key.plugin,
+			Source: key.source,
+			Tasks:  taskIDs,
+		})
+	}
+	return rejections
+}
+
+// applyCachedSkips derives each pending Job's Skip decision from the
+// unschedulable-job cache at OpenSession. Jobs without a cached record keep the
+// zero-value Skip and are evaluated normally.
+func (ssn *Session) applyCachedSkips() {
+	if !ssn.unschedulableJobCacheEnabled {
+		return
+	}
+	for _, job := range ssn.Jobs {
+		rejections := ssn.unschedulableCache.GetCachedRejections(job)
+		if len(rejections) == 0 {
+			continue
+		}
+		job.Skip = api.ComputeSkip(job, rejections)
+		klog.V(4).Infof("Job %s cached skip: enqueue=%v allocate=%v tasks=%d",
+			job.UID, job.Skip.Enqueue, job.Skip.Allocate, len(job.Skip.Tasks))
+	}
+}
+
+// reconcileUnschedulableCache updates the unschedulable-job cache at CloseSession
+// to match what actually happened to each Job this session.
+func (ssn *Session) reconcileUnschedulableCache() {
+	if !ssn.unschedulableJobCacheEnabled {
+		return
+	}
+	for jobID, job := range ssn.Jobs {
+		// The Job made progress this session, either allocated enough tasks to be
+		// ready or had tasks pipelined by preemption, so drop any cached record.
+		if len(job.TaskStatusIndex[api.Pipelined]) > 0 || job.IsReady() {
+			ssn.unschedulableCache.ForgetUnschedulable(jobID)
+			continue
+		}
+
+		// A Job that was evaluated and still produced rejections is (re)cached
+		// with the fresh rejections.
+		if rejections := ssn.rejectionsForJob(jobID); len(rejections) > 0 {
+			scope := ssn.queueScope(job.Queue)
+			for i := range rejections {
+				rejections[i].Queues = scope
+			}
+			ssn.unschedulableCache.RecordUnschedulable(job, rejections)
+			continue
+		}
+
+		// No fresh rejections: if the Job was skipped this session, leave its
+		// existing record untouched; otherwise ensure no stale record remains.
+		if job.Skip.Skipped() {
+			continue
+		}
+
+		ssn.unschedulableCache.ForgetUnschedulable(jobID)
+	}
+}
+
+// queueScope returns queueID together with its ancestor queues, walking
+// Queue.Spec.Parent through ssn.Queues. The result scopes quota-plugin hint
+// wakeups: only resource changes within these queues can affect a quota
+// decision for a Job in queueID. The walk stops at the root, a missing parent,
+// or a cycle.
+func (ssn *Session) queueScope(queueID api.QueueID) []api.QueueID {
+	scope := []api.QueueID{queueID}
+	seen := map[api.QueueID]struct{}{queueID: {}}
+	current := queueID
+	for {
+		qi, ok := ssn.Queues[current]
+		if !ok || qi.Queue == nil || qi.Queue.Spec.Parent == "" {
+			break
+		}
+		parent := api.QueueID(qi.Queue.Spec.Parent)
+		if _, dup := seen[parent]; dup {
+			break
+		}
+		seen[parent] = struct{}{}
+		scope = append(scope, parent)
+		current = parent
+	}
+	return scope
 }

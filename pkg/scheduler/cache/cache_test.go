@@ -39,6 +39,7 @@ import (
 	kubetesting "k8s.io/client-go/testing"
 	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
@@ -83,6 +84,46 @@ func buildNode(name string, alloc v1.ResourceList) *v1.Node {
 			Capacity:    alloc,
 			Allocatable: alloc,
 		},
+	}
+}
+
+func TestEventMatchesSpecificUpdate(t *testing.T) {
+	tests := []struct {
+		name     string
+		sub      fwk.ActionType
+		incoming fwk.ActionType
+		want     bool
+	}{
+		{
+			name:     "general subscription matches scale down",
+			sub:      fwk.Update,
+			incoming: fwk.UpdatePodScaleDown,
+			want:     true,
+		},
+		{
+			name:     "scale down subscription ignores unclassified update",
+			sub:      fwk.UpdatePodScaleDown,
+			incoming: fwk.Update,
+			want:     false,
+		},
+		{
+			name:     "scale down subscription matches scale down",
+			sub:      fwk.UpdatePodScaleDown,
+			incoming: fwk.UpdatePodScaleDown,
+			want:     true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := eventMatches(
+				api.ClusterEvent{Resource: fwk.Pod, ActionType: test.sub},
+				api.ClusterEvent{Resource: fwk.Pod, ActionType: test.incoming},
+			)
+			if got != test.want {
+				t.Fatalf("eventMatches() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 
