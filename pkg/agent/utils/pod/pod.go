@@ -60,24 +60,7 @@ type SortedPodsByRequestCPU []*v1.Pod
 func (s SortedPodsByRequestCPU) Len() int      { return len(s) }
 func (s SortedPodsByRequestCPU) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s SortedPodsByRequestCPU) Less(i, j int) bool {
-	r1, r2 := int64(0), int64(0)
-	for _, c := range s[i].Spec.Containers {
-		r1 += c.Resources.Requests.Cpu().Value()
-	}
-	for _, c := range s[j].Spec.Containers {
-		r2 += c.Resources.Requests.Cpu().Value()
-	}
-
-	if utilfeature.DefaultFeatureGate.Enabled(k8sfeature.PodLevelResources) {
-		if podLevelResource, found := getPodLevelResourceRequest(s[i], v1.ResourceCPU); found {
-			r1 = podLevelResource.Value()
-		}
-		if podLevelResource, found := getPodLevelResourceRequest(s[j], v1.ResourceCPU); found {
-			r2 = podLevelResource.Value()
-		}
-	}
-
-	return r1 > r2
+	return getEffectivePodRequest(s[i], v1.ResourceCPU).Cmp(getEffectivePodRequest(s[j], v1.ResourceCPU)) > 0
 }
 
 // SortedPodsByRequestMemory sort pods by memory request value.
@@ -86,24 +69,7 @@ type SortedPodsByRequestMemory []*v1.Pod
 func (s SortedPodsByRequestMemory) Len() int      { return len(s) }
 func (s SortedPodsByRequestMemory) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s SortedPodsByRequestMemory) Less(i, j int) bool {
-	r1, r2 := int64(0), int64(0)
-	for _, c := range s[i].Spec.Containers {
-		r1 += c.Resources.Requests.Memory().Value()
-	}
-	for _, c := range s[j].Spec.Containers {
-		r2 += c.Resources.Requests.Memory().Value()
-	}
-
-	if utilfeature.DefaultFeatureGate.Enabled(k8sfeature.PodLevelResources) {
-		if podLevelResource, found := getPodLevelResourceRequest(s[i], v1.ResourceMemory); found {
-			r1 = podLevelResource.Value()
-		}
-		if podLevelResource, found := getPodLevelResourceRequest(s[j], v1.ResourceMemory); found {
-			r2 = podLevelResource.Value()
-		}
-	}
-
-	return r1 > r2
+	return getEffectivePodRequest(s[i], v1.ResourceMemory).Cmp(getEffectivePodRequest(s[j], v1.ResourceMemory)) > 0
 }
 
 // GetTotalRequest return the total resource of pods
@@ -175,56 +141,21 @@ func getTotalRequestByType(pods []*v1.Pod, fns []FilterPodsFunc, resType v1.Reso
 			continue
 		}
 
-		podRes := resource.Quantity{}
-		for _, container := range pod.Spec.Containers {
-			resValue, found := container.Resources.Requests[resType]
-			if !found {
-				continue
-			}
-			podRes.Add(resValue)
-		}
-
-		// init containers define the minimum of any resource
-		for _, container := range pod.Spec.InitContainers {
-			resValue, found := container.Resources.Requests[resType]
-			if !found {
-				continue
-			}
-			podRes = maxResourceReq(podRes, resValue)
-		}
-
-		if utilfeature.DefaultFeatureGate.Enabled(k8sfeature.PodLevelResources) && helpers.IsSupportedPodLevelResource(resType) {
-			if podLevelResource, found := getPodLevelResourceRequest(pod, resType); found {
-				podRes = podLevelResource
-			}
-		}
-
-		totalRes.Add(podRes)
+		totalRes.Add(getEffectivePodRequest(pod, resType))
 	}
 
 	return totalRes
 }
 
-// maxResourceReq return the greater one of res/newRes.
-func maxResourceReq(res, newRes resource.Quantity) resource.Quantity {
-	if res.Cmp(newRes) > 0 {
-		return res
-	}
-	return newRes
+// getEffectivePodRequest returns the Kubernetes effective request for a Pod resource.
+func getEffectivePodRequest(pod *v1.Pod, resType v1.ResourceName) resource.Quantity {
+	requests := helpers.PodRequests(pod, helpers.PodResourcesOptions{
+		SkipPodLevelResources: !utilfeature.DefaultFeatureGate.Enabled(k8sfeature.PodLevelResources),
+	})
+	return requests[resType]
 }
 
 // IsPodTerminated return true if pod is terminated.
 func IsPodTerminated(pod *v1.Pod) bool {
 	return pod.DeletionTimestamp != nil || pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed
-}
-
-func getPodLevelResourceRequest(pod *v1.Pod, rName v1.ResourceName) (resource.Quantity, bool) {
-	if pod == nil {
-		return resource.Quantity{}, false
-	}
-	if pod.Spec.Resources != nil && len(pod.Spec.Resources.Requests) != 0 {
-		resValue, found := pod.Spec.Resources.Requests[rName]
-		return resValue, found
-	}
-	return resource.Quantity{}, false
 }
