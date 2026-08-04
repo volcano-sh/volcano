@@ -82,6 +82,11 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 		predicateNodes, fitErrors := ph.PredicateNodes(task, ssn.NodeList, predicateFunc, backfill.enablePredicateErrorCache, ssn.NodesInShard)
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
+			if fitErrors != nil {
+				for plugin := range fitErrors.UnschedulablePlugins() {
+					ssn.AddRejection(job.UID, plugin, api.RejectionPredicate, task.UID)
+				}
+			}
 			continue
 		}
 
@@ -136,6 +141,13 @@ func (backfill *Action) pickUpPendingTasks(ssn *framework.Session) []*api.TaskIn
 			continue
 		}
 
+		if job.Skip.Allocate {
+			metrics.RegisterUnschedulableJobCacheSkip(job.Namespace, job.Name, backfill.Name())
+			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip backfill, reason: suppressed by unschedulable-job cache",
+				job.Namespace, job.Name, job.Queue)
+			continue
+		}
+
 		queue, found := ssn.Queues[job.Queue]
 		if !found {
 			continue
@@ -147,6 +159,10 @@ func (backfill *Action) pickUpPendingTasks(ssn *framework.Session) []*api.TaskIn
 			}
 
 			if task.SchGated {
+				continue
+			}
+
+			if job.Skip.SkipTask(task.UID) {
 				continue
 			}
 

@@ -109,6 +109,24 @@ type Cache interface {
 	OnSessionClose()
 }
 
+// UnschedulableCache is used to store the Jobs that were rejected by plugins in the previous scheduling session.
+// It is used to skip work in the current session when a Job's rejections are still valid.
+type UnschedulableCache interface {
+	// AddHintProvider registers a plugin's event subscriptions and hint callbacks.
+	AddHintProvider(name string, p api.HintProvider)
+
+	// RecordUnschedulable stores the plugin rejections observed for a Job in the
+	// current session.
+	RecordUnschedulable(job *api.JobInfo, rejections []api.Rejection)
+
+	// GetCachedRejections returns the rejections that may be reused to skip work
+	// for the Job in the current session.
+	GetCachedRejections(job *api.JobInfo) []api.Rejection
+
+	// ForgetUnschedulable removes the cached record for the Job.
+	ForgetUnschedulable(jobID api.JobID)
+}
+
 // Binder interface for binding task and hostname
 type Binder interface {
 	Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) map[api.TaskID]string

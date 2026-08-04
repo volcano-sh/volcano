@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/workqueue"
+	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/utils/cpuset"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -360,6 +361,61 @@ func TestSchedulerCache_UpdatePodGroupV1beta1(t *testing.T) {
 		if test.Expected != nil && pg != nil && (pg.Namespace != test.Expected.Namespace || pg.Name != test.Expected.Name) {
 			t.Errorf("Expected pg to be: %v but got :%v in case %d", test.Expected, pg, i)
 		}
+	}
+}
+
+func TestUpdatePodGroupUnschedulableCache(t *testing.T) {
+	tests := []struct {
+		name       string
+		newSpec    schedulingv1.PodGroupSpec
+		wantCached bool
+	}{
+		{
+			name:       "status-only update preserves cached rejection",
+			newSpec:    schedulingv1.PodGroupSpec{MinMember: 1},
+			wantCached: true,
+		},
+		{
+			name:    "spec update invalidates cached rejection",
+			newSpec: schedulingv1.PodGroupSpec{MinMember: 2},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			const (
+				namespace = "test"
+				name      = "job"
+				plugin    = "plugin"
+			)
+			jobID := api.JobID(namespace + "/" + name)
+			job := api.NewJobInfo(jobID)
+			jobs := map[api.JobID]*api.JobInfo{jobID: job}
+			unschedulableCache, registry := newTestUnschedulableCache(jobs)
+			registerTestHint(registry, plugin, api.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add}, nil)
+			rejections := []api.Rejection{{Plugin: plugin, Source: api.RejectionPredicate}}
+			unschedulableCache.RecordUnschedulable(job, rejections)
+
+			cache := &SchedulerCache{
+				Jobs:               jobs,
+				unschedulableCache: unschedulableCache,
+			}
+			oldPodGroup := &schedulingv1.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, ResourceVersion: "1"},
+				Spec:       schedulingv1.PodGroupSpec{MinMember: 1},
+			}
+			newPodGroup := oldPodGroup.DeepCopy()
+			newPodGroup.ResourceVersion = "2"
+			newPodGroup.Spec = test.newSpec
+			newPodGroup.Status.Phase = schedulingv1.PodGroupInqueue
+
+			cache.UpdatePodGroupV1beta1(oldPodGroup, newPodGroup)
+
+			gotCached := len(unschedulableCache.GetCachedRejections(job)) > 0
+			if gotCached != test.wantCached {
+				t.Fatalf("cached rejection exists = %v, want %v", gotCached, test.wantCached)
+			}
+		})
 	}
 }
 

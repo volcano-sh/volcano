@@ -38,7 +38,7 @@ func PodKey(pod *v1.Pod) TaskID {
 	return TaskID(key)
 }
 
-func getTaskStatus(pod *v1.Pod) TaskStatus {
+func GetTaskStatus(pod *v1.Pod) TaskStatus {
 	switch pod.Status.Phase {
 	case v1.PodRunning:
 		if pod.DeletionTimestamp != nil {

@@ -102,6 +102,23 @@ func (f *FitErrors) GetUnschedulableAndUnresolvableNodes() map[string]sets.Empty
 	return ret
 }
 
+// UnschedulablePlugins returns the set of plugin names that rejected the task
+// with an Unschedulable or UnschedulableAndUnresolvable status on any node.
+func (f *FitErrors) UnschedulablePlugins() sets.Set[string] {
+	plugins := sets.New[string]()
+	for _, node := range f.nodes {
+		for _, status := range node.Status {
+			if status == nil || status.Plugin == "" {
+				continue
+			}
+			if status.Code == Unschedulable || status.Code == UnschedulableAndUnresolvable {
+				plugins.Insert(status.Plugin)
+			}
+		}
+	}
+	return plugins
+}
+
 // Error returns the final error message
 func (f *FitErrors) Error() string {
 	if f.err == "" {
