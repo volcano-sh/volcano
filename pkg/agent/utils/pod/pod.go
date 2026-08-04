@@ -60,7 +60,9 @@ type SortedPodsByRequestCPU []*v1.Pod
 func (s SortedPodsByRequestCPU) Len() int      { return len(s) }
 func (s SortedPodsByRequestCPU) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s SortedPodsByRequestCPU) Less(i, j int) bool {
-	return getEffectivePodRequest(s[i], v1.ResourceCPU).Cmp(getEffectivePodRequest(s[j], v1.ResourceCPU)) > 0
+	left := getEffectivePodRequest(s[i], v1.ResourceCPU)
+	right := getEffectivePodRequest(s[j], v1.ResourceCPU)
+	return left.Cmp(right) > 0
 }
 
 // SortedPodsByRequestMemory sort pods by memory request value.
@@ -69,7 +71,9 @@ type SortedPodsByRequestMemory []*v1.Pod
 func (s SortedPodsByRequestMemory) Len() int      { return len(s) }
 func (s SortedPodsByRequestMemory) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s SortedPodsByRequestMemory) Less(i, j int) bool {
-	return getEffectivePodRequest(s[i], v1.ResourceMemory).Cmp(getEffectivePodRequest(s[j], v1.ResourceMemory)) > 0
+	left := getEffectivePodRequest(s[i], v1.ResourceMemory)
+	right := getEffectivePodRequest(s[j], v1.ResourceMemory)
+	return left.Cmp(right) > 0
 }
 
 // GetTotalRequest return the total resource of pods
