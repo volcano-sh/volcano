@@ -38,6 +38,38 @@ import (
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
+func recordDequeueBlocked(job *api.JobInfo, reason, msg string) {
+	job.JobFitErrors = msg
+	job.UnschedulableReason = reason
+	for _, task := range job.TaskStatusIndex[api.Pending] {
+		if task.SchGated {
+			continue
+		}
+		fe := api.NewFitErrors()
+		fe.SetError(msg)
+		job.NodesFitErrors[task.UID] = fe
+	}
+}
+
+func recordFIFOBlocked(job *api.JobInfo, queue *api.QueueInfo, threshold int32) {
+	msg := fmt.Sprintf("FIFO: Job <%s/%s> (priority=%d) is blocked by failed priority threshold (%d) in Queue <%s>",
+		job.Namespace, job.Name, job.Priority, threshold, queue.Name)
+	recordDequeueBlocked(job, scheduling.FIFOBlockedReason, msg)
+}
+
+func recordPriorityFIFOBlocked(job *api.JobInfo, queue *api.QueueInfo, threshold int32) {
+	msg := fmt.Sprintf("PriorityFIFO: Job <%s/%s> (priority=%d) is blocked by failed priority threshold (%d) in Queue <%s>",
+		job.Namespace, job.Name, job.Priority, threshold, queue.Name)
+	recordDequeueBlocked(job, scheduling.PriorityFIFOBlockedReason, msg)
+}
+
+func getDequeueStrategy(queue *api.QueueInfo) scheduling.DequeueStrategy {
+	if queue.Queue != nil && queue.Queue.Spec.DequeueStrategy != "" {
+		return queue.Queue.Spec.DequeueStrategy
+	}
+	return scheduling.DefaultDequeueStrategy
+}
+
 type allocateContext struct {
 	queues              *util.PriorityQueue                 // queue of *api.QueueInfo
 	jobsByQueue         map[api.QueueID]*util.PriorityQueue // queue of *api.JobInfo
@@ -283,6 +315,11 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 func (alloc *Action) allocateResources(actx *allocateContext) {
 	ssn := alloc.session
 
+	// For FIFO/PriorityFIFO strategies: track the highest failed priority per queue.
+	// PriorityFIFO blocks jobs with priority lower than the threshold.
+	// FIFO blocks jobs with priority lower than or equal to the threshold.
+	failedPriority := map[api.QueueID]*int32{}
+
 	queues := actx.queues
 	for {
 		if queues.Empty() {
@@ -303,6 +340,34 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 		}
 
 		job := jobs.Pop().(*api.JobInfo)
+
+		strategy := getDequeueStrategy(queue)
+		klog.V(3).Infof("Try to allocate resource to Jobs in Queue <%s> with strategy <%s>", queue.Name, strategy)
+
+		// PriorityFIFO/FIFO: check if this job should be blocked by failed priority threshold.
+		if threshold, exists := failedPriority[queue.UID]; exists {
+			switch strategy {
+			case scheduling.DequeueStrategyPriorityFIFO:
+				if job.Priority < *threshold {
+					klog.V(3).Infof("PriorityFIFO: Job <%s/%s> (priority=%d) is blocked by failed priority threshold (%d) in Queue <%s>",
+						job.Namespace, job.Name, job.Priority, *threshold, queue.Name)
+					recordPriorityFIFOBlocked(job, queue, *threshold)
+					queues.Push(queue)
+					continue
+				}
+			case scheduling.DequeueStrategyFIFO:
+				if job.Priority <= *threshold {
+					klog.V(3).Infof("FIFO: Job <%s/%s> (priority=%d) is blocked by failed priority threshold (%d) in Queue <%s>",
+						job.Namespace, job.Name, job.Priority, *threshold, queue.Name)
+					recordFIFOBlocked(job, queue, *threshold)
+					queues.Push(queue)
+					continue
+				}
+			}
+		}
+
+		allocateSuc := false
+
 		// Currently, both hard-mode network topology scheduling and subjob level scheduling use allocateForJob.
 		// TODO: In the future, we may need to unify the logic of network topology-aware scheduling and normal scheduling.
 		if job.ContainsHardTopology() || job.ContainsSubJobPolicy() {
@@ -312,6 +377,7 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 				"allocatedHyperNode", job.AllocatedHyperNode, "subJobNum", jobWorksheet.subJobs.Len())
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
 			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
+				allocateSuc = true
 				stmt.Commit()
 				ssn.MarkJobDirty(job.UID)
 				alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
@@ -341,6 +407,7 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 				}
 
 				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
+					allocateSuc = true
 					stmt.Commit()
 
 					// Mirror recorder.UpdateDecisionToJob: clear the redeemed nomination.
@@ -359,6 +426,19 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 				klog.ErrorS(nil, "Can not find default subJob or tasks for job", "job", job.UID,
 					"subJobExist", sjExist, "tasksExist", tasksExist)
 			}
+		}
+
+		// For FIFO/PriorityFIFO strategy: record the failed job's priority as blocking threshold,
+		// then re-push queue so remaining jobs can be checked against the threshold.
+		if !allocateSuc && (strategy == scheduling.DequeueStrategyFIFO || strategy == scheduling.DequeueStrategyPriorityFIFO) {
+			p := job.Priority
+			if existing, ok := failedPriority[queue.UID]; !ok || p > *existing {
+				failedPriority[queue.UID] = &p
+			}
+			klog.V(3).Infof("%s: Job <%v/%v> (priority=%d) failed to allocate in Queue <%s>, recording priority threshold",
+				strategy, job.Namespace, job.Name, job.Priority, queue.Name)
+			queues.Push(queue)
+			continue
 		}
 
 		// Put back the queue to priority queue after job's resource allocating finished,

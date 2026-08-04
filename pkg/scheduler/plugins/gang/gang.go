@@ -259,12 +259,16 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			// TODO: If the Job is gang-unschedulable due to scheduling gates
 			// we need a new message and reason to tell users
 			// More detail in design doc pod-scheduling-readiness.md
+			reason := v1beta1.NotEnoughResourcesReason
+			if job.UnschedulableReason != "" {
+				reason = job.UnschedulableReason
+			}
 			jc := &scheduling.PodGroupCondition{
 				Type:               scheduling.PodGroupUnschedulableType,
 				Status:             v1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
 				TransitionID:       string(ssn.UID),
-				Reason:             v1beta1.NotEnoughResourcesReason,
+				Reason:             reason,
 				Message:            msg,
 			}
 
