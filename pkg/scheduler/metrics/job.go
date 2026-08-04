@@ -57,4 +57,16 @@ func DeleteJobMetrics(jobName, queue, namespace string) {
 	unscheduleTaskCount.DeleteLabelValues(jobName)
 	jobShare.DeleteLabelValues(namespace, jobName)
 	jobRetryCount.DeleteLabelValues(jobName)
+	unschedulableJobCacheSkips.DeletePartialMatch(prometheus.Labels{
+		"job_namespace": namespace,
+		"job_name":      jobName,
+	})
+	unschedulableJobCacheWakeups.DeletePartialMatch(prometheus.Labels{
+		"job_namespace": namespace,
+		"job_name":      jobName,
+	})
+	unschedulableJobCacheWatchdogExpirations.DeletePartialMatch(prometheus.Labels{
+		"job_namespace": namespace,
+		"job_name":      jobName,
+	})
 }
