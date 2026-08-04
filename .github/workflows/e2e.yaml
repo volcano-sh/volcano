@@ -45,9 +45,26 @@ jobs:
     needs: build-images
     uses: ./.github/workflows/e2e_scheduling_actions.yaml
 
-  e2e-scheduling-gates:
+  e2e-feature-gated:
     needs: build-images
-    uses: ./.github/workflows/e2e_scheduling_gates.yaml
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite_name: E2E about Scheduling Gates
+            make_target: e2e-test-schedulinggates
+            artifact_name: volcano_e2e_scheduling_gates_logs
+            log_directory: e2e-scheduling-gates-logs
+          - suite_name: E2E about Unschedulable Job Cache
+            make_target: e2e-test-unschedulablejobcache
+            artifact_name: volcano_e2e_unschedulable_job_cache_logs
+            log_directory: e2e-unschedulable-job-cache-logs
+    uses: ./.github/workflows/e2e_feature_gated.yaml
+    with:
+      suite_name: ${{ matrix.suite_name }}
+      make_target: ${{ matrix.make_target }}
+      artifact_name: ${{ matrix.artifact_name }}
+      log_directory: ${{ matrix.log_directory }}
 
   e2e-scheduling-basic:
     needs: build-images
