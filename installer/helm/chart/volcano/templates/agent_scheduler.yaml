@@ -149,7 +149,7 @@ metadata:
     {{- mustMerge (.Values.custom.scheduler_labels | default (dict)) (.Values.custom.common_labels | default (dict)) | toYaml | nindent 4 }}
     {{- end }}
 spec:
-  replicas: {{ .Values.custom.scheduler_replicas }}
+  replicas: {{ .Values.custom.agent_scheduler_replicas }}
   selector:
     matchLabels:
       app: agent-scheduler
