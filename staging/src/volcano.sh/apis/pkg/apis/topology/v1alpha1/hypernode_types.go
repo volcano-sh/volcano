@@ -25,6 +25,7 @@ import (
 // +kubebuilder:object:root=true
 // +genclient:nonNamespaced
 // +kubebuilder:resource:path=hypernodes,shortName=hn,scope=Cluster
+// +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Tier",type=string,JSONPath=`.spec.tier`
 // +kubebuilder:printcolumn:name="TierName",type=string,JSONPath=`.spec.tierName`
