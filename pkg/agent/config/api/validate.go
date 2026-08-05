@@ -36,7 +36,7 @@ var (
 	EvictingMemoryLowWatermarkHigherThanHighWatermark            = "memory evicting low watermark is higher than high watermark"
 	IllegalOverSubscriptionTypes                                 = "overSubscriptionType(%s) is not supported, only supports cpu/memory"
 	IllegalCPUThrottlingThreshold                                = "cpuThrottlingThreshold must be a positive number between 1 and 100"
-	IllegalCPUJitterLimitPercent                                 = "cpuJitterLimitPercent must be a non-negative number between 1 and 100"
+	IllegalCPUJitterLimitPercent                                 = "cpuJitterLimitPercent must be a non-negative number"
 	IllegalCPURecoverLimitPercent                                = "cpuRecoverLimitPercent must be a positive number"
 )
 
