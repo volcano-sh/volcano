@@ -1911,12 +1911,11 @@ func addDRAResource(dst map[string]*schedulingapi.DRAResource, deviceClass strin
 	}
 	dst[deviceClass].Count += count
 	for dim, reqQty := range capacity {
-		totalQty := reqQty.DeepCopy()
-		for i := int64(1); i < count; i++ {
-			totalQty.Add(reqQty)
-		}
+		// Add the capacity contributed by count devices.
+		total := reqQty.DeepCopy()
+		total.Mul(count)
 		capQty := dst[deviceClass].Capacity[dim]
-		capQty.Add(totalQty)
+		capQty.Add(total)
 		dst[deviceClass].Capacity[dim] = capQty
 	}
 }

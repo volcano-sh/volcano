@@ -1507,10 +1507,9 @@ func (ji *JobInfo) GetMinDRAResources() map[string]*DRAResource {
 
 			result[deviceClass].Count = SaturatingAdd(result[deviceClass].Count, SaturatingMul(request.Count, int64(times)))
 			for dim, cap := range request.Capacity {
+				// Add the capacity contributed by the task instances.
 				totalCap := cap.DeepCopy()
-				for i := int32(0); i < times-1; i++ {
-					totalCap.Add(cap)
-				}
+				totalCap.Mul(int64(times))
 
 				if existing, exists := result[deviceClass].Capacity[dim]; exists {
 					existing.Add(totalCap)
