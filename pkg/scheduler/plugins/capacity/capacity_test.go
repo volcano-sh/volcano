@@ -2108,3 +2108,42 @@ func TestCheckDRAAllocatable_overflowRejected(t *testing.T) {
 		t.Fatalf("checkDRAAllocatable rejected a valid request (4 <= 8); want admitted")
 	}
 }
+
+// A negative device count can only result from an upstream int64 overflow
+// wrapping around (e.g. a pod whose two same-deviceClass requests, each near
+// math.MaxInt64, are summed in the cache's addDRAResource). Such a poisoned
+// negative must never be admitted: saturating the accumulation is not enough
+// because SaturatingAdd faithfully preserves an already-negative input.
+func TestCheckDRAAllocatable_negativeCountRejected(t *testing.T) {
+	const dc = "gpu.example.com"
+
+	// Negative in the request itself.
+	negRequest := &draQuotaAttr{
+		capability: map[string]*api.DRAResource{dc: {Count: 8}},
+		allocated:  map[string]*api.DRAResource{},
+		inqueue:    map[string]*api.DRAResource{},
+	}
+	if checkDRAAllocatable(negRequest, map[string]*api.DRAResource{dc: {Count: -2}}, false, true) {
+		t.Fatalf("checkDRAAllocatable admitted a negative request.Count (-2) against capability 8; want rejected")
+	}
+
+	// Negative already poisoning the queue's inqueue total.
+	poisonedInqueue := &draQuotaAttr{
+		capability: map[string]*api.DRAResource{dc: {Count: 8}},
+		allocated:  map[string]*api.DRAResource{},
+		inqueue:    map[string]*api.DRAResource{dc: {Count: math.MinInt64}},
+	}
+	if checkDRAAllocatable(poisonedInqueue, map[string]*api.DRAResource{dc: {Count: 4}}, false, true) {
+		t.Fatalf("checkDRAAllocatable admitted a request against a poisoned negative inqueue (MinInt64); want rejected")
+	}
+
+	// Negative already poisoning the queue's allocated total.
+	poisonedAllocated := &draQuotaAttr{
+		capability: map[string]*api.DRAResource{dc: {Count: 8}},
+		allocated:  map[string]*api.DRAResource{dc: {Count: math.MinInt64}},
+		inqueue:    map[string]*api.DRAResource{},
+	}
+	if checkDRAAllocatable(poisonedAllocated, map[string]*api.DRAResource{dc: {Count: 4}}, false, true) {
+		t.Fatalf("checkDRAAllocatable admitted a request against a poisoned negative allocated (MinInt64); want rejected")
+	}
+}
