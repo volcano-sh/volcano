@@ -22,6 +22,7 @@ package cache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync"
@@ -38,6 +39,7 @@ import (
 	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclientfake "volcano.sh/apis/pkg/client/clientset/versioned/fake"
@@ -853,4 +855,68 @@ func TestAddUnassignedNumaPods_NilNodeValueSkips(t *testing.T) {
 		t.Fatalf("AddUnassignedNumaPods returned error: %v", err)
 	}
 	// No panic is the success condition.
+}
+
+// TestUpdateQueueStatusUsesServerSideApply pins the wire behavior of the
+// scheduler queue-status writer: it must issue a single Server-Side Apply
+// patch under the "vc-scheduler" field manager that carries only
+// status.allocated (not status.state, which the queue-controller owns).
+// If someone reverts this to a full-object UpdateStatus write, this test
+// fails instead of a busy cluster flapping between the two writers.
+func TestUpdateQueueStatusUsesServerSideApply(t *testing.T) {
+	// Seed the queue so the fake clientset's apply reactor finds an object
+	// to patch (the fake does not create-on-apply).
+	fakeClient := vcclientfake.NewSimpleClientset(&vcv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "q1"},
+	})
+	su := &defaultStatusUpdater{
+		vcclient: fakeClient,
+	}
+
+	queue := &api.QueueInfo{
+		Name: "q1",
+		Queue: &scheduling.Queue{
+			ObjectMeta: metav1.ObjectMeta{Name: "q1"},
+			Status: scheduling.QueueStatus{
+				State:     scheduling.QueueStateOpen,
+				Allocated: api.BuildResourceList("2", "1G"),
+			},
+		},
+	}
+
+	err := su.UpdateQueueStatus(queue)
+	assert.NoError(t, err)
+
+	actions := fakeClient.Actions()
+	if !assert.Len(t, actions, 1, "expected exactly one apiserver action") {
+		return
+	}
+
+	patchAction, ok := actions[0].(kubetesting.PatchAction)
+	if !assert.True(t, ok, "expected a patch action, got %T", actions[0]) {
+		return
+	}
+
+	// Must be a Server-Side Apply patch on the status subresource of q1,
+	// under the vc-scheduler field manager, with Force set.
+	assert.Equal(t, types.ApplyPatchType, patchAction.GetPatchType(), "must be a server-side apply patch")
+	assert.Equal(t, "q1", patchAction.GetName())
+	assert.Equal(t, "status", patchAction.GetSubresource())
+	assert.Equal(t, util.DefaultComponentName, patchAction.(kubetesting.PatchActionImpl).PatchOptions.FieldManager)
+	if force := patchAction.(kubetesting.PatchActionImpl).PatchOptions.Force; assert.NotNil(t, force) {
+		assert.True(t, *force, "apply must set Force so ownership transfers from a legacy full-object writer")
+	}
+
+	// The applied status must contain allocated and must NOT contain
+	// state (owned by the queue-controller under its own field manager).
+	var payload map[string]interface{}
+	assert.NoError(t, json.Unmarshal(patchAction.GetPatch(), &payload))
+	status, ok := payload["status"].(map[string]interface{})
+	if !assert.True(t, ok, "apply payload must have a status object") {
+		return
+	}
+	_, hasAllocated := status["allocated"]
+	_, hasState := status["state"]
+	assert.True(t, hasAllocated, "apply must include status.allocated")
+	assert.False(t, hasState, "apply must NOT include status.state; that field is owned by the queue-controller")
 }
