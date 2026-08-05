@@ -216,11 +216,12 @@ func (test *TestCommonStruct) Run(actions []framework.Action) {
 		panic("no actions provided, please specify a list of actions to execute")
 	}
 
-	// registry actions in conf variables
-	conf.EnabledActionMap = make(map[string]bool, len(actions))
+	// record which actions are enabled on the session for this run
+	enabledActions := make(map[string]bool, len(actions))
 	for _, action := range actions {
-		conf.EnabledActionMap[action.Name()] = true
+		enabledActions[action.Name()] = true
 	}
+	test.ssn.EnabledActions = enabledActions
 
 	for _, action := range actions {
 		action.Initialize()

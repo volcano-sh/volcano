@@ -132,13 +132,14 @@ func (pc *Scheduler) runOnce() {
 	configurations := pc.configurations
 	pc.mutex.Unlock()
 
-	// Load ConfigMap to check which action is enabled.
-	conf.EnabledActionMap = make(map[string]bool)
+	// Record which actions are enabled so it can be checked during this scheduling cycle.
+	enabledActions := make(map[string]bool, len(actions))
 	for _, action := range actions {
-		conf.EnabledActionMap[action.Name()] = true
+		enabledActions[action.Name()] = true
 	}
 
 	ssn := framework.OpenSession(pc.cache, plugins, configurations)
+	ssn.EnabledActions = enabledActions
 	ssn.SetSchGateManager(pc.schGateManager)
 	defer func() {
 		framework.CloseSession(ssn)
