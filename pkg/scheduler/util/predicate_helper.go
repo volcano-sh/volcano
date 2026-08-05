@@ -53,7 +53,7 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 
 	allNodes := len(nodes)
 	if allNodes == 0 {
-		logPredicateSummary(task, allNodes, 0, 0, fe)
+		logPredicateSummary(task, allNodes, 0, 0, 0, 0, fe)
 		return make([]*api.NodeInfo, 0), fe
 	}
 	numNodesToFind := CalculateNumOfFeasibleNodesToFind(int32(allNodes))
@@ -63,6 +63,8 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 
 	numFoundNodes := int32(0)
 	processedNodes := int32(0)
+	failedNodes := 0
+	cachedFailureNodes := 0
 
 	taskGroupid := taskGroupID(task)
 	nodeErrorCache, taskFailedBefore := ph.taskPredicateErrorCache[taskGroupid]
@@ -133,8 +135,14 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 		if nodeErr == nil {
 			continue
 		}
+		failedNodes++
 		nodeName := nodes[(startIndex+i)%allNodes].Name
 		if enableErrorCache {
+			if taskFailedBefore {
+				if _, cached := nodeErrorCache[nodeName]; cached {
+					cachedFailureNodes++
+				}
+			}
 			nodeErrorCache[nodeName] = nodeErr
 		}
 		fe.SetNodeError(nodeName, nodeErr)
@@ -146,7 +154,7 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 	newIndex := int64((startIndex + int(processedNodes)) % allNodes)
 	lastProcessedNodeIndex.Store(newIndex)
 
-	logPredicateSummary(task, allNodes, processedNodes, len(predicateNodes), fe)
+	logPredicateSummary(task, allNodes, processedNodes, len(predicateNodes), failedNodes, cachedFailureNodes, fe)
 	return predicateNodes, fe
 }
 
@@ -158,17 +166,30 @@ func logPredicateFailure(task *api.TaskInfo, node *api.NodeInfo, err error, cach
 		"err", err)
 }
 
-func logPredicateSummary(task *api.TaskInfo, totalNodes int, processedNodes int32, candidateNodes int, fitErrors *api.FitErrors) {
-	logger := klog.V(4)
-	if !logger.Enabled() {
+func logPredicateSummary(task *api.TaskInfo, totalNodes int, processedNodes int32, candidateNodes, failedNodes, cachedFailureNodes int, fitErrors *api.FitErrors) {
+	if logger := klog.V(4); logger.Enabled() {
+		keysAndValues := []interface{}{
+			"task", klog.KRef(task.Namespace, task.Name),
+			"totalNodes", totalNodes,
+			"evaluatedNodes", processedNodes,
+			"candidateNodes", candidateNodes,
+			"failedNodes", failedNodes,
+			"cachedFailureNodes", cachedFailureNodes,
+		}
+		if failedNodes > 0 || candidateNodes == 0 {
+			keysAndValues = append(keysAndValues, "fitErrors", fitErrors.Error())
+		}
+
+		logger.InfoS("Predicate evaluation summary", keysAndValues...)
 		return
 	}
 
-	logger.InfoS("Predicate evaluation summary",
+	if failedNodes == 0 && candidateNodes > 0 {
+		return
+	}
+
+	klog.V(3).InfoS("Predicate evaluation summary",
 		"task", klog.KRef(task.Namespace, task.Name),
-		"totalNodes", totalNodes,
-		"evaluatedNodes", processedNodes,
-		"candidateNodes", candidateNodes,
 		"fitErrors", fitErrors.Error())
 }
 

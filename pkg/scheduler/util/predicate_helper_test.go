@@ -242,25 +242,54 @@ func TestPredicateNodesLogVerbosity(t *testing.T) {
 	tests := []struct {
 		name               string
 		verbosity          int
+		predicateFails     bool
 		wantSummaries      int
 		wantEvaluations    int
 		wantFailureDetails int
+		wantFailureReason  bool
+		wantDebugFields    bool
+		wantCandidateNodes int
+		wantFailedNodes    int
 	}{
 		{
-			name:      "V3 omits predicate summaries and node details",
+			name:              "V3 logs one failure summary without node details",
+			verbosity:         3,
+			predicateFails:    true,
+			wantSummaries:     1,
+			wantFailureReason: true,
+		},
+		{
+			name:      "V3 omits successful predicate summaries",
 			verbosity: 3,
 		},
 		{
-			name:          "V4 logs one predicate summary",
-			verbosity:     4,
-			wantSummaries: 1,
+			name:               "V4 logs one detailed failure summary",
+			verbosity:          4,
+			predicateFails:     true,
+			wantSummaries:      1,
+			wantFailureReason:  true,
+			wantDebugFields:    true,
+			wantCandidateNodes: 0,
+			wantFailedNodes:    2,
+		},
+		{
+			name:               "V4 logs one successful predicate summary",
+			verbosity:          4,
+			wantSummaries:      1,
+			wantDebugFields:    true,
+			wantCandidateNodes: 2,
 		},
 		{
 			name:               "V5 logs the predicate summary and node details",
 			verbosity:          5,
+			predicateFails:     true,
 			wantSummaries:      1,
 			wantEvaluations:    2,
 			wantFailureDetails: 2,
+			wantFailureReason:  true,
+			wantDebugFields:    true,
+			wantCandidateNodes: 0,
+			wantFailedNodes:    2,
 		},
 	}
 
@@ -282,7 +311,10 @@ func TestPredicateNodesLogVerbosity(t *testing.T) {
 				}
 				nodes := []*api.NodeInfo{{Name: "node1"}, {Name: "node2"}}
 				predicateFn := func(*api.TaskInfo, *api.NodeInfo) error {
-					return fmt.Errorf("predicate failed")
+					if tt.predicateFails {
+						return fmt.Errorf("predicate failed")
+					}
+					return nil
 				}
 
 				NewPredicateHelper().PredicateNodes(task, nodes, predicateFn, true, sets.New[string]("node1", "node2"))
@@ -291,10 +323,26 @@ func TestPredicateNodesLogVerbosity(t *testing.T) {
 			assertLogCount(t, logs, "Predicate evaluation summary", tt.wantSummaries)
 			assertLogCount(t, logs, "Evaluating predicate for task on node", tt.wantEvaluations)
 			assertLogCount(t, logs, "Predicate failed for task on node", tt.wantFailureDetails)
-			if tt.verbosity == 4 {
-				for _, field := range []string{"totalNodes=2", "evaluatedNodes=2", "candidateNodes=0", "2 predicate failed"} {
+			if got := strings.Contains(logs, "2 predicate failed"); got != tt.wantFailureReason {
+				t.Errorf("expected failure reason presence %t, got %t in logs:\n%s", tt.wantFailureReason, got, logs)
+			}
+			if tt.wantDebugFields {
+				fields := []string{
+					"totalNodes=2",
+					"evaluatedNodes=2",
+					fmt.Sprintf("candidateNodes=%d", tt.wantCandidateNodes),
+					fmt.Sprintf("failedNodes=%d", tt.wantFailedNodes),
+					"cachedFailureNodes=0",
+				}
+				for _, field := range fields {
 					if !strings.Contains(logs, field) {
-						t.Errorf("expected V4 summary to contain %q, got logs:\n%s", field, logs)
+						t.Errorf("expected predicate summary to contain %q, got logs:\n%s", field, logs)
+					}
+				}
+			} else {
+				for _, field := range []string{"totalNodes=", "evaluatedNodes=", "candidateNodes=", "failedNodes=", "cachedFailureNodes="} {
+					if strings.Contains(logs, field) {
+						t.Errorf("expected predicate summary to omit debug field %q, got logs:\n%s", field, logs)
 					}
 				}
 			}
@@ -329,6 +377,7 @@ func TestPredicateNodesLogsCachedFailuresAtV5(t *testing.T) {
 
 	assertLogCount(t, logs, "cached=false", 2)
 	assertLogCount(t, logs, "cached=true", 2)
+	assertLogCount(t, logs, "cachedFailureNodes=2", 1)
 }
 
 func captureKlogOutput(t *testing.T, verbosity int, run func()) string {
