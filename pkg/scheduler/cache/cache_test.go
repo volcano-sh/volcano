@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -276,8 +277,33 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 	}
 }
 
+// sortedStringSliceEqual returns true if a and b contain the same elements regardless of order.
+func sortedStringSliceEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	ac := append([]string(nil), a...)
+	bc := append([]string(nil), b...)
+	sort.Strings(ac)
+	sort.Strings(bc)
+	return reflect.DeepEqual(ac, bc)
+}
+
+// verifyNodeListIndex asserts that nodeListIndex is consistent with NodeList.
+func verifyNodeListIndex(t *testing.T, sc *SchedulerCache) {
+	t.Helper()
+	if len(sc.nodeListIndex) != len(sc.NodeList) {
+		t.Errorf("nodeListIndex len %d != NodeList len %d", len(sc.nodeListIndex), len(sc.NodeList))
+		return
+	}
+	for i, name := range sc.NodeList {
+		if got := sc.nodeListIndex[name]; got != i {
+			t.Errorf("nodeListIndex[%s] = %d, want %d", name, got, i)
+		}
+	}
+}
+
 func TestNodeOperation(t *testing.T) {
-	// case 1
 	node1 := buildNode("n1", api.BuildResourceList("2000m", "10G"))
 	node2 := buildNode("n2", api.BuildResourceList("4000m", "16G"))
 	node3 := buildNode("n3", api.BuildResourceList("3000m", "12G"))
@@ -285,92 +311,142 @@ func TestNodeOperation(t *testing.T) {
 	nodeInfo2 := api.NewNodeInfo(node2)
 	nodeInfo3 := api.NewNodeInfo(node3)
 	tests := []struct {
-		deletedNode *v1.Node
-		nodes       []*v1.Node
-		expected    *SchedulerCache
-		delExpect   *SchedulerCache
+		name          string
+		deletedNode   *v1.Node
+		nodes         []*v1.Node
+		expectedNodes map[string]*api.NodeInfo
+		expectedList  []string
+		delNodes      map[string]*api.NodeInfo
+		delList       []string
 	}{
 		{
+			name:        "delete middle node",
 			deletedNode: node2,
 			nodes:       []*v1.Node{node1, node2, node3},
-			expected: &SchedulerCache{
-				Nodes: map[string]*api.NodeInfo{
-					"n1": nodeInfo1,
-					"n2": nodeInfo2,
-					"n3": nodeInfo3,
-				},
-				NodeList: []string{"n1", "n2", "n3"},
+			expectedNodes: map[string]*api.NodeInfo{
+				"n1": nodeInfo1,
+				"n2": nodeInfo2,
+				"n3": nodeInfo3,
 			},
-			delExpect: &SchedulerCache{
-				Nodes: map[string]*api.NodeInfo{
-					"n1": nodeInfo1,
-					"n3": nodeInfo3,
-				},
-				NodeList: []string{"n1", "n3"},
+			expectedList: []string{"n1", "n2", "n3"},
+			delNodes: map[string]*api.NodeInfo{
+				"n1": nodeInfo1,
+				"n3": nodeInfo3,
 			},
+			delList: []string{"n1", "n3"},
 		},
 		{
+			name:        "delete first node",
 			deletedNode: node1,
 			nodes:       []*v1.Node{node1, node2, node3},
-			expected: &SchedulerCache{
-				Nodes: map[string]*api.NodeInfo{
-					"n1": nodeInfo1,
-					"n2": nodeInfo2,
-					"n3": nodeInfo3,
-				},
-				NodeList: []string{"n1", "n2", "n3"},
+			expectedNodes: map[string]*api.NodeInfo{
+				"n1": nodeInfo1,
+				"n2": nodeInfo2,
+				"n3": nodeInfo3,
 			},
-			delExpect: &SchedulerCache{
-				Nodes: map[string]*api.NodeInfo{
-					"n2": nodeInfo2,
-					"n3": nodeInfo3,
-				},
-				NodeList: []string{"n2", "n3"},
+			expectedList: []string{"n1", "n2", "n3"},
+			delNodes: map[string]*api.NodeInfo{
+				"n2": nodeInfo2,
+				"n3": nodeInfo3,
 			},
+			delList: []string{"n2", "n3"},
 		},
 		{
+			name:        "delete last node",
 			deletedNode: node3,
 			nodes:       []*v1.Node{node1, node2, node3},
-			expected: &SchedulerCache{
-				Nodes: map[string]*api.NodeInfo{
-					"n1": nodeInfo1,
-					"n2": nodeInfo2,
-					"n3": nodeInfo3,
-				},
-				NodeList: []string{"n1", "n2", "n3"},
+			expectedNodes: map[string]*api.NodeInfo{
+				"n1": nodeInfo1,
+				"n2": nodeInfo2,
+				"n3": nodeInfo3,
 			},
-			delExpect: &SchedulerCache{
-				Nodes: map[string]*api.NodeInfo{
-					"n1": nodeInfo1,
-					"n2": nodeInfo2,
-				},
-				NodeList: []string{"n1", "n2"},
+			expectedList: []string{"n1", "n2", "n3"},
+			delNodes: map[string]*api.NodeInfo{
+				"n1": nodeInfo1,
+				"n2": nodeInfo2,
 			},
+			delList: []string{"n1", "n2"},
 		},
 	}
 
 	for i, test := range tests {
-		cache := &SchedulerCache{
-			Nodes:    make(map[string]*api.NodeInfo),
-			NodeList: []string{},
-		}
+		t.Run(test.name, func(t *testing.T) {
+			cache := &SchedulerCache{
+				Nodes:         make(map[string]*api.NodeInfo),
+				NodeList:      []string{},
+				nodeListIndex: make(map[string]int),
+			}
 
-		for _, n := range test.nodes {
-			cache.AddOrUpdateNode(n)
-		}
+			for _, n := range test.nodes {
+				cache.AddOrUpdateNode(n)
+			}
 
-		if !reflect.DeepEqual(cache, test.expected) {
-			t.Errorf("case %d: \n expected %v, \n got %v \n",
-				i, test.expected, cache)
-		}
+			if !reflect.DeepEqual(cache.Nodes, test.expectedNodes) {
+				t.Errorf("case %d: Nodes mismatch: expected %v, got %v", i, test.expectedNodes, cache.Nodes)
+			}
+			if !sortedStringSliceEqual(cache.NodeList, test.expectedList) {
+				t.Errorf("case %d: NodeList mismatch: expected %v, got %v", i, test.expectedList, cache.NodeList)
+			}
+			verifyNodeListIndex(t, cache)
 
-		// delete node
-		cache.RemoveNode(test.deletedNode.Name)
-		if !reflect.DeepEqual(cache, test.delExpect) {
-			t.Errorf("case %d: \n expected %v, \n got %v \n",
-				i, test.delExpect, cache)
-		}
+			cache.RemoveNode(test.deletedNode.Name)
+
+			if !reflect.DeepEqual(cache.Nodes, test.delNodes) {
+				t.Errorf("case %d: Nodes after delete: expected %v, got %v", i, test.delNodes, cache.Nodes)
+			}
+			if !sortedStringSliceEqual(cache.NodeList, test.delList) {
+				t.Errorf("case %d: NodeList after delete: expected %v, got %v", i, test.delList, cache.NodeList)
+			}
+			verifyNodeListIndex(t, cache)
+		})
 	}
+}
+
+func TestNodeListIndexNoDuplicate(t *testing.T) {
+	node := buildNode("n1", api.BuildResourceList("2000m", "10G"))
+	cache := &SchedulerCache{
+		Nodes:         make(map[string]*api.NodeInfo),
+		NodeList:      []string{},
+		nodeListIndex: make(map[string]int),
+	}
+
+	cache.AddOrUpdateNode(node)
+	cache.AddOrUpdateNode(node)
+
+	if len(cache.NodeList) != 1 {
+		t.Errorf("expected NodeList len 1 after double add, got %d", len(cache.NodeList))
+	}
+	if len(cache.nodeListIndex) != 1 {
+		t.Errorf("expected nodeListIndex len 1 after double add, got %d", len(cache.nodeListIndex))
+	}
+	verifyNodeListIndex(t, cache)
+}
+
+func TestNodeListIndexRemoveAndReAdd(t *testing.T) {
+	node := buildNode("n1", api.BuildResourceList("2000m", "10G"))
+	cache := &SchedulerCache{
+		Nodes:         make(map[string]*api.NodeInfo),
+		NodeList:      []string{},
+		nodeListIndex: make(map[string]int),
+	}
+
+	cache.AddOrUpdateNode(node)
+	cache.RemoveNode("n1")
+
+	if len(cache.NodeList) != 0 {
+		t.Errorf("expected empty NodeList after remove, got %v", cache.NodeList)
+	}
+	if len(cache.nodeListIndex) != 0 {
+		t.Errorf("expected empty nodeListIndex after remove, got %v", cache.nodeListIndex)
+	}
+
+	cache.Nodes = make(map[string]*api.NodeInfo)
+	cache.AddOrUpdateNode(node)
+
+	if len(cache.NodeList) != 1 || cache.NodeList[0] != "n1" {
+		t.Errorf("expected [n1] after re-add, got %v", cache.NodeList)
+	}
+	verifyNodeListIndex(t, cache)
 }
 
 func TestBindTasks(t *testing.T) {
