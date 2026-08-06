@@ -31,6 +31,7 @@ import (
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
 	agentuthelper "volcano.sh/volcano/pkg/agentscheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
@@ -174,5 +175,31 @@ func TestConcurrentMultiWorkerScheduling(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestActionReloadRestoresDefaultArguments(t *testing.T) {
+	action := New()
+
+	action.OnActionInit([]conf.Configuration{{
+		Name: action.Name(),
+		Arguments: map[string]interface{}{
+			CandidateNodeCountKey:           10,
+			conf.EnablePredicateErrCacheKey: false,
+		},
+	}})
+	if action.candidateNodeCount != 10 {
+		t.Fatalf("expected candidateNodeCount to be 10, got %d", action.candidateNodeCount)
+	}
+	if action.enablePredicateErrorCache {
+		t.Fatal("expected predicate error cache to be disabled")
+	}
+
+	action.OnActionInit(nil)
+	if action.candidateNodeCount != DefaultCandidateNodeCount {
+		t.Fatalf("expected candidateNodeCount to be reset to %d, got %d", DefaultCandidateNodeCount, action.candidateNodeCount)
+	}
+	if !action.enablePredicateErrorCache {
+		t.Fatal("expected predicate error cache to be reset to enabled")
 	}
 }
