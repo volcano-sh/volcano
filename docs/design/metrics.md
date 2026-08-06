@@ -80,6 +80,12 @@ This metrics describe internal state of volcano.
 | **Metric Name**                                      | **Metric Type** | **Labels**                                                                                | **Description**                                                                              |
 |------------------------------------------------------|-----------------|-------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
 | `controller_job_to_pod_creation_latency_milliseconds` | Histogram      | None                                                                                      | Latency from VCJob creation to pod created in milliseconds                                   |
+| `namespacequeue_ready`                               | Gauge           | `queue_name`=&lt;namespace&gt;/&lt;name&gt;                                              | Whether a NamespaceQueue is ready for scheduling                                              |
+| `namespacequeue_blocked`                             | Gauge           | `queue_name`=&lt;namespace&gt;/&lt;name&gt;, `reason`=&lt;reason&gt;                       | Whether a NamespaceQueue is blocked, by controller condition reason                          |
+
+The existing `queue_pod_group_*_count` metrics also use the canonical
+`queue_name` for NamespaceQueues. NamespaceQueue metric series are removed
+when the corresponding NamespaceQueue is deleted.
 
 ### volcano Liveness
 Healthcheck last time of volcano activity and timeout
