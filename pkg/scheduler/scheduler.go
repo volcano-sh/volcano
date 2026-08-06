@@ -68,7 +68,7 @@ type Scheduler struct {
 }
 
 // NewScheduler returns a Scheduler
-func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, error) {
+func NewScheduler(config *rest.Config, opt *options.ServerOption, configVolumeBinding *rest.Config) (*Scheduler, error) {
 	var watcher filewatcher.FileWatcher
 	if opt.SchedulerConf != "" {
 		var err error
@@ -79,7 +79,7 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 		}
 	}
 
-	cache := schedcache.New(config, opt.SchedulerNames, opt.DefaultQueue, opt.NodeSelector, opt.NodeWorkerThreads, opt.IgnoredCSIProvisioners, opt.ResyncPeriod, opt.ResourceSyncTimeout)
+	cache := schedcache.New(config, opt.SchedulerNames, opt.DefaultQueue, opt.NodeSelector, opt.NodeWorkerThreads, opt.IgnoredCSIProvisioners, opt.ResyncPeriod, opt.ResourceSyncTimeout, configVolumeBinding)
 	scheduler := &Scheduler{
 		schedulerConf:      opt.SchedulerConf,
 		fileWatcher:        watcher,
