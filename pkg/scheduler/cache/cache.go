@@ -100,8 +100,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration) Cache {
-	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners, resyncPeriod, resourceSyncTimeout)
+func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration, maxConcurrentBinds int) Cache {
+	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners, resyncPeriod, resourceSyncTimeout, maxConcurrentBinds)
 }
 
 // SchedulerCache cache for the kube batch
@@ -172,6 +172,12 @@ type SchedulerCache struct {
 	BindFlowChannel chan *BindContext
 	bindCache       []*BindContext
 	batchNum        int
+
+	// bindSemaphore caps concurrent bind goroutines when
+	// --max-concurrent-binds is set to a positive value. Nil disables
+	// the cap (default). Each BindTask acquires a slot before spawning
+	// the bind goroutine and releases it when the goroutine returns.
+	bindSemaphore chan struct{}
 
 	// A map from image name to its imageState.
 	imageStates map[string]*imageState
@@ -519,7 +525,7 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 	}
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration, maxConcurrentBinds int) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -570,6 +576,10 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		NodeList:            []string{},
 		nodeWorkers:         nodeWorkers,
 		resourceSyncTimeout: resourceSyncTimeout,
+	}
+
+	if maxConcurrentBinds > 0 {
+		sc.bindSemaphore = make(chan struct{}, maxConcurrentBinds)
 	}
 
 	if options.ServerOpts.ShardingMode == util.HardShardingMode || options.ServerOpts.ShardingMode == util.SoftShardingMode {
@@ -1462,6 +1472,26 @@ func (sc *SchedulerCache) BindTask() {
 
 	// Currently, bindContexts only contain 1 element.
 	go func(bindContexts []*BindContext) {
+		// If --max-concurrent-binds is set, block until a slot is free so the
+		// number of in-flight bind goroutines stays bounded, releasing the
+		// slot when this goroutine exits. Acquiring inside the goroutine (not
+		// in BindTask itself) keeps processBindTask draining BindFlowChannel:
+		// if the semaphore is full, only these lightweight goroutines wait,
+		// never the single processBindTask loop. Blocking BindTask instead
+		// would stall the drain, let BindFlowChannel fill, and then block
+		// AddBindTask while it holds sc.Mutex, freezing the scheduler. When
+		// bindSemaphore is nil the block is skipped and behaviour is unchanged.
+		if sc.bindSemaphore != nil {
+			acquireStart := time.Now()
+			klog.V(5).Infof("Waiting for bind semaphore, in-flight binds: %d", len(sc.bindSemaphore))
+			sc.bindSemaphore <- struct{}{}
+			klog.V(5).Infof("Acquired bind semaphore after %v, in-flight binds: %d", time.Since(acquireStart), len(sc.bindSemaphore))
+			defer func() {
+				<-sc.bindSemaphore
+				klog.V(5).Infof("Released bind semaphore, in-flight binds: %d", len(sc.bindSemaphore))
+			}()
+		}
+
 		logger := klog.Background()
 		ctx := klog.NewContext(context.Background(), logger)
 		cancelCtx, cancel := context.WithCancel(ctx)
