@@ -635,7 +635,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 				victims = append(victims, reclaimee)
 				continue
 			}
-			reclaimable, _ := allocated.GreaterPartlyWithRelevantDimensions(attr.deserved, reclaimee.Resreq)
+			reclaimable, _ := allocated.GreaterPartlyWithRelevantDimensions(attr.deserved, reclaimee.Resreq.ResourceNames())
 			if reclaimable {
 				allocated.Sub(reclaimee.Resreq)
 				victims = append(victims, reclaimee)
@@ -667,14 +667,14 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		futureUsed := attr.allocated.Clone().Add(totalReq)
 
-		if allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, totalReq); !allocatable {
+		if allocatable, _ := futureUsed.LessEqualWithDimension(attr.realCapability, totalReq.ResourceNames()); !allocatable {
 			klog.V(3).Infof("Queue <%v> cannot reclaim because futureUsed <%v> exceeds realCapability <%v>.",
 				queue.Name, futureUsed, attr.realCapability)
 			return false
 		}
 
 		// If there is a single dimension whose deserved is greater than allocated, current tasks can reclaim by preempting others.
-		isPreemptive, resourceNames := futureUsed.LessEqualPartlyWithDimensionZeroFiltered(attr.deserved, totalReq)
+		isPreemptive, resourceNames := futureUsed.LessEqualPartlyWithRelevantDimensions(attr.deserved, totalReq.ResourceNames())
 		if isPreemptive {
 			klog.V(3).Infof("Queue <%v> can reclaim on resource dimensions: %v. "+
 				"The futureUsed: %v, deserved: %v, allocated: %v, tasks requested: %v",
@@ -694,7 +694,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 					}
 
 					futureUsedAncestor := ancestorAttr.allocated.Clone().Add(totalReq)
-					isPreemptive, resourceNames = futureUsedAncestor.LessEqualPartlyWithDimensionZeroFiltered(ancestorAttr.deserved, totalReq)
+					isPreemptive, resourceNames = futureUsedAncestor.LessEqualPartlyWithRelevantDimensions(ancestorAttr.deserved, totalReq.ResourceNames())
 					if isPreemptive {
 						klog.V(3).Infof("Queue's ancestor <%v> can reclaim on resource dimensions: %v. "+
 							"The futureUsedAncestor: %v, deserved: %v, allocated: %v, task requested: %v",
@@ -1666,8 +1666,7 @@ func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidat
 
 	// Include reserved resources in capacity check
 	futureUsed := attr.allocated.Clone().Add(reserved).Add(candidate.Resreq)
-	allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, candidate.Resreq)
-
+	allocatable, _ := futureUsed.LessEqualWithDimension(attr.realCapability, candidate.Resreq.ResourceNames())
 	if !allocatable {
 		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>, reserved <%v>; Candidate <%v>: resource request <%v>",
 			queue.Name, attr.realCapability, attr.allocated, reserved, candidate.Name, candidate.Resreq)
@@ -1703,7 +1702,7 @@ func (cp *capacityPlugin) jobEnqueueable(queue *api.QueueInfo, job *api.JobInfo)
 	// The queue resource quota limit has not reached
 	r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
 
-	valid, reasons := r.LessEqualWithDimensionAndResourcesName(attr.realCapability, minReq)
+	valid, reasons := r.LessEqualWithDimension(attr.realCapability, minReq.ResourceNames())
 	if !valid {
 		return valid, reasons
 	}
@@ -1862,7 +1861,7 @@ func (cp *capacityPlugin) checkGuaranteeConstraint(
 	guarantee *api.Resource,
 ) (bool, *api.Resource) {
 	exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
-	reclaimable := guarantee.LessEqual(exceptReclaimee, api.Zero)
+	reclaimable, _ := guarantee.LessEqual(exceptReclaimee, api.Zero)
 	return reclaimable, exceptReclaimee
 }
 
@@ -1897,7 +1896,7 @@ func (cp *capacityPlugin) checkDeservedExceedance(
 	reclaimer *api.TaskInfo,
 	queueName string,
 ) (bool, []string, string) {
-	reclaimable, dims := allocated.GreaterPartlyWithRelevantDimensions(deserved, reclaimee.Resreq)
+	reclaimable, dims := allocated.GreaterPartlyWithRelevantDimensions(deserved, reclaimee.Resreq.ResourceNames())
 	if !reclaimable {
 		reason := fmt.Sprintf(
 			"[capacity] Queue <%v> allocated resources are not greater than deserved on any relevant dimension of reclaimee. "+

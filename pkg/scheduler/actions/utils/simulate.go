@@ -262,7 +262,7 @@ func runSimulateTrialAtHyperNode(
 		if bestNode == nil {
 			return nil, false
 		}
-		if !task.InitResreq.LessEqual(bestNode.FutureIdle(), api.Zero) {
+		if ok, _ := task.InitResreq.LessEqual(bestNode.FutureIdle(), api.Zero); !ok {
 			return nil, false
 		}
 		if err := trial.Pipeline(task, bestNode.Name, victimsPresent); err != nil {
@@ -283,7 +283,7 @@ func runSimulateTrialAtHyperNode(
 }
 
 func simulatePredicate(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo) error {
-	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {
+	if ok, resources := task.InitResreq.LessEqual(node.FutureIdle(), api.Zero); !ok {
 		var statusSets api.StatusSets
 		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.WrapInsufficientResourceReason(resources)})
 		return api.NewFitErrWithStatus(task, node, statusSets...)
@@ -326,13 +326,13 @@ func prioritizeNodesForSimulate(ssn *framework.Session, task *api.TaskInfo, pred
 	var idleCandidateNodesInOtherShards []*api.NodeInfo
 	var futureIdleCandidateNodesInOtherShards []*api.NodeInfo
 	for _, n := range predicateNodes {
-		if task.InitResreq.LessEqual(n.Idle, api.Zero) {
+		if ok, _ := task.InitResreq.LessEqual(n.Idle, api.Zero); ok {
 			if shardingMode == commonutil.SoftShardingMode && !ssn.NodesInShard.Has(n.Name) {
 				idleCandidateNodesInOtherShards = append(idleCandidateNodesInOtherShards, n)
 			} else {
 				idleCandidateNodes = append(idleCandidateNodes, n)
 			}
-		} else if task.InitResreq.LessEqual(n.FutureIdle(), api.Zero) {
+		} else if ok, _ := task.InitResreq.LessEqual(n.FutureIdle(), api.Zero); ok {
 			if shardingMode == commonutil.SoftShardingMode && !ssn.NodesInShard.Has(n.Name) {
 				futureIdleCandidateNodesInOtherShards = append(futureIdleCandidateNodesInOtherShards, n)
 			} else {
