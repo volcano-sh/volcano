@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/component-base/featuregate"
 
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -45,6 +46,10 @@ type ControllerOption struct {
 	// Config holds the common attributes that can be passed to a Kubernetes client
 	// and controllers registered by the users can use it.
 	Config *rest.Config
+
+	// FeatureGateDisabled is true when the controller is initialized only to
+	// clean up resources created while its feature gate was enabled.
+	FeatureGateDisabled bool
 }
 
 // Controller is the interface of all controllers.
@@ -53,6 +58,21 @@ type Controller interface {
 	Initialize(opt *ControllerOption) error
 	// Run run the controller
 	Run(stopCh <-chan struct{})
+}
+
+// FeatureGatedController optionally associates a controller with a feature
+// gate. The controller manager skips initialization while the gate is disabled.
+type FeatureGatedController interface {
+	Controller
+	FeatureGate() featuregate.Feature
+}
+
+// FeatureGateCleanupController is an optional extension for a feature-gated
+// controller that must continue removing finalizers after its feature is
+// disabled.
+type FeatureGateCleanupController interface {
+	FeatureGatedController
+	RunWhenFeatureDisabled() bool
 }
 
 // FlagProvider is an optional interface that controllers can implement to

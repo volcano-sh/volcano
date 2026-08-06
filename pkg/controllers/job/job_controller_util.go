@@ -24,6 +24,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
 	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog/v2"
 
@@ -149,7 +150,10 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int, jobForwa
 	pod.Labels[batch.JobNameKey] = job.Name
 	pod.Labels[batch.TaskSpecKey] = tsKey
 	pod.Labels[batch.JobNamespaceKey] = job.Namespace
-	pod.Labels[batch.QueueNameKey] = job.Spec.Queue
+	delete(pod.Labels, batch.QueueNameKey)
+	if len(validation.IsValidLabelValue(job.Spec.Queue)) == 0 {
+		pod.Labels[batch.QueueNameKey] = job.Spec.Queue
+	}
 	if len(job.Labels) > 0 {
 		if value, found := job.Labels[schedulingv2.PodPreemptable]; found {
 			pod.Labels[schedulingv2.PodPreemptable] = value

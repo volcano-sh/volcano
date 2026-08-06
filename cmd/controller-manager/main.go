@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,6 +41,7 @@ import (
 	_ "volcano.sh/volcano/pkg/controllers/job"
 	_ "volcano.sh/volcano/pkg/controllers/jobflow"
 	_ "volcano.sh/volcano/pkg/controllers/jobtemplate"
+	_ "volcano.sh/volcano/pkg/controllers/namespacequeue"
 	_ "volcano.sh/volcano/pkg/controllers/podgroup"
 	_ "volcano.sh/volcano/pkg/controllers/queue"
 	_ "volcano.sh/volcano/pkg/controllers/sharding"
