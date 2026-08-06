@@ -5,6 +5,8 @@
 {{ $controller_main_csc := or .Values.custom.controller_main_csc .Values.custom.default_csc }}
 {{ $controller_ns := or .Values.custom.controller_ns .Values.custom.default_ns }}
 {{ $scheduler_name := .Values.custom.scheduler_name }}
+{{ $controller_feature_gates := include "volcano.featureGates" (dict "gates" .Values.custom.controller_feature_gates "namespaceQueueEnabled" .Values.custom.namespace_queue_enable) }}
+{{ $namespace_queue_max_depth := include "volcano.namespaceQueueMaxDepth" . }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -67,6 +69,15 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups", "queues", "queues/status"]
     verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues/finalizers"]
+    verbs: ["update", "patch"]
   - apiGroups: ["flow.volcano.sh"]
     resources: ["jobflows", "jobtemplates"]
     verbs: ["get", "list", "watch", "create", "delete", "update"]
@@ -211,6 +222,10 @@ spec:
               {{- if $enabledControllers }}
             - --controllers={{ $enabledControllers }}
               {{- end }}
+              {{- if $controller_feature_gates }}
+            - --feature-gates={{ $controller_feature_gates }}
+              {{- end }}
+            - --max-namespacequeue-depth={{ $namespace_queue_max_depth }}
             - -v={{.Values.custom.controller_log_level}}
             - 2>&1
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
