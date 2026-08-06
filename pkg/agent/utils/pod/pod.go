@@ -60,8 +60,8 @@ type SortedPodsByRequestCPU []*v1.Pod
 func (s SortedPodsByRequestCPU) Len() int      { return len(s) }
 func (s SortedPodsByRequestCPU) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s SortedPodsByRequestCPU) Less(i, j int) bool {
-	left := getEffectivePodRequest(s[i], v1.ResourceCPU)
-	right := getEffectivePodRequest(s[j], v1.ResourceCPU)
+	left := getEffectivePodRequestByResource(s[i], v1.ResourceCPU)
+	right := getEffectivePodRequestByResource(s[j], v1.ResourceCPU)
 	return left.Cmp(right) > 0
 }
 
@@ -71,8 +71,8 @@ type SortedPodsByRequestMemory []*v1.Pod
 func (s SortedPodsByRequestMemory) Len() int      { return len(s) }
 func (s SortedPodsByRequestMemory) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s SortedPodsByRequestMemory) Less(i, j int) bool {
-	left := getEffectivePodRequest(s[i], v1.ResourceMemory)
-	right := getEffectivePodRequest(s[j], v1.ResourceMemory)
+	left := getEffectivePodRequestByResource(s[i], v1.ResourceMemory)
+	right := getEffectivePodRequestByResource(s[j], v1.ResourceMemory)
 	return left.Cmp(right) > 0
 }
 
@@ -145,14 +145,14 @@ func getTotalRequestByType(pods []*v1.Pod, fns []FilterPodsFunc, resType v1.Reso
 			continue
 		}
 
-		totalRes.Add(getEffectivePodRequest(pod, resType))
+		totalRes.Add(getEffectivePodRequestByResource(pod, resType))
 	}
 
 	return totalRes
 }
 
-// getEffectivePodRequest returns the Kubernetes effective request for a Pod resource.
-func getEffectivePodRequest(pod *v1.Pod, resType v1.ResourceName) resource.Quantity {
+// getEffectivePodRequestByResource returns the Kubernetes effective request for a Pod resource.
+func getEffectivePodRequestByResource(pod *v1.Pod, resType v1.ResourceName) resource.Quantity {
 	requests := helpers.PodRequests(pod, helpers.PodResourcesOptions{
 		SkipPodLevelResources: !utilfeature.DefaultFeatureGate.Enabled(k8sfeature.PodLevelResources),
 	})
