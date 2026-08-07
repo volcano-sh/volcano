@@ -325,7 +325,14 @@ func updateQueueStateMetrics(ssn *Session) {
 		}
 
 		if job.PodGroup != nil {
-			podGroupCounts[job.Queue][job.PodGroup.Status.Phase]++
+			phase := job.PodGroup.Status.Phase
+			switch phase {
+			case scheduling.PodGroupPending, scheduling.PodGroupInqueue, scheduling.PodGroupRunning,
+				scheduling.PodGroupCompleted, scheduling.PodGroupUnknown:
+			default:
+				phase = scheduling.PodGroupUnknown
+			}
+			podGroupCounts[job.Queue][phase]++
 		}
 		for status, tasks := range job.TaskStatusIndex {
 			taskCounts[job.Queue][status] += len(tasks)

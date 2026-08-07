@@ -205,7 +205,7 @@ var (
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_task_count",
-			Help:      "Number of tasks in this queue by status at the beginning of the latest scheduling session",
+			Help:      "Number of tasks by status in jobs directly assigned to this queue at the beginning of the latest scheduling session",
 		}, []string{"queue_name", "status"},
 	)
 

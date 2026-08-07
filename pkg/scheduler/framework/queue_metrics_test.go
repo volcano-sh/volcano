@@ -46,6 +46,10 @@ func TestUpdateQueueStateMetrics(t *testing.T) {
 			childQueueID:  {UID: childQueueID, Name: childQueueName},
 		},
 		Jobs: map[api.JobID]*api.JobInfo{
+			"empty-phase-job": {
+				Queue:    childQueueID,
+				PodGroup: &api.PodGroup{PodGroup: scheduling.PodGroup{}},
+			},
 			"pending-job": {
 				Queue: childQueueID,
 				PodGroup: &api.PodGroup{PodGroup: scheduling.PodGroup{
@@ -75,7 +79,7 @@ func TestUpdateQueueStateMetrics(t *testing.T) {
 	updateQueueStateMetrics(ssn)
 
 	podGroupCounts := map[string]float64{
-		"pending": 1, "inqueue": 0, "running": 1, "completed": 0, "unknown": 0,
+		"pending": 1, "inqueue": 0, "running": 1, "completed": 0, "unknown": 1,
 	}
 	for phase, expected := range podGroupCounts {
 		requireQueueGaugeValue(t, "volcano_queue_pod_group_count", map[string]string{
