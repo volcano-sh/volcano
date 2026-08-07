@@ -142,9 +142,13 @@ type SchedulerCache struct {
 
 	Recorder record.EventRecorder
 
-	Jobs                 map[schedulingapi.JobID]*schedulingapi.JobInfo
-	Nodes                map[string]*schedulingapi.NodeInfo
-	Queues               map[schedulingapi.QueueID]*schedulingapi.QueueInfo
+	Jobs   map[schedulingapi.JobID]*schedulingapi.JobInfo
+	Nodes  map[string]*schedulingapi.NodeInfo
+	Queues map[schedulingapi.QueueID]*schedulingapi.QueueInfo
+	// jobQueueContribution records what each job currently adds to a queue's
+	// totals (see queue_allocation.go), so the totals can be updated no matter
+	// the event order. Only used when CacheQueueAccounting is on.
+	jobQueueContribution map[schedulingapi.JobID]*queueContribution
 	NodeShards           map[string]*schedulingapi.NodeShardInfo
 	PriorityClasses      map[string]*schedulingv1.PriorityClass
 	NodeList             []string

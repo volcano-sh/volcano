@@ -47,6 +47,14 @@ type QueueInfo struct {
 	// path from the root to the node itself.
 	Hierarchy string
 
+	// Allocated is the sum of Resreq over allocated tasks of all jobs in this
+	// queue. It is kept up to date by the cache when CacheQueueAccounting is on.
+	// Only jobs with a non nil PodGroup and a resolved queue are counted, which
+	// matches the jobs Snapshot exposes to plugins.
+	Allocated *Resource
+	// Request is the sum of Resreq over all tasks of all jobs in this queue.
+	Request *Resource
+
 	Queue *scheduling.Queue
 }
 
@@ -60,18 +68,31 @@ func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
 		Hierarchy: queue.Annotations[v1beta1.KubeHierarchyAnnotationKey],
 		Weights:   queue.Annotations[v1beta1.KubeHierarchyWeightAnnotationKey],
 
+		Allocated: EmptyResource(),
+		Request:   EmptyResource(),
+
 		Queue: queue,
 	}
 }
 
 // Clone is used to clone queueInfo object
 func (q *QueueInfo) Clone() *QueueInfo {
+	allocated := EmptyResource()
+	if q.Allocated != nil {
+		allocated = q.Allocated.Clone()
+	}
+	request := EmptyResource()
+	if q.Request != nil {
+		request = q.Request.Clone()
+	}
 	return &QueueInfo{
 		UID:       q.UID,
 		Name:      q.Name,
 		Weight:    q.Weight,
 		Hierarchy: q.Hierarchy,
 		Weights:   q.Weights,
+		Allocated: allocated,
+		Request:   request,
 		Queue:     q.Queue.DeepCopy(),
 	}
 }
