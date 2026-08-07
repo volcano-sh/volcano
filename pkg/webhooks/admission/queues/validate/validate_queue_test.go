@@ -2187,6 +2187,82 @@ func setupQueueInformerWithIndex(factory informers.SharedInformerFactory) cache.
 	return queueInformer
 }
 
+func TestValidateRootChildResources(t *testing.T) {
+	config.VolcanoClient = fakeclient.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := setupQueueInformerWithIndex(informerFactory)
+	config.QueueInformer = queueInformer
+	config.QueueLister = informerFactory.Scheduling().V1beta1().Queues().Lister()
+
+	root := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "root"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight:     1,
+			Capability: v1.ResourceList{v1.ResourceCPU: resource.MustParse("10")},
+			Deserved:   v1.ResourceList{v1.ResourceCPU: resource.MustParse("10")},
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{v1.ResourceCPU: resource.MustParse("10")},
+			},
+		},
+	}
+	rootChild := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "root-child-a"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight:   1,
+			Deserved: v1.ResourceList{v1.ResourceCPU: resource.MustParse("8")},
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{v1.ResourceCPU: resource.MustParse("8")},
+			},
+		},
+	}
+
+	if err := queueInformer.GetIndexer().Add(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := queueInformer.GetIndexer().Add(rootChild); err != nil {
+		t.Fatal(err)
+	}
+
+	newRootChild := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "root-child-b"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight:   1,
+			Deserved: v1.ResourceList{v1.ResourceCPU: resource.MustParse("8")},
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{v1.ResourceCPU: resource.MustParse("8")},
+			},
+		},
+	}
+	if err := validateHierarchicalQueueResources(newRootChild); err == nil {
+		t.Fatal("expected root child guarantee to be rejected")
+	}
+
+	rootWithoutQuota := root.DeepCopy()
+	rootWithoutQuota.Spec.Deserved = nil
+	rootWithoutQuota.Spec.Guarantee = schedulingv1beta1.Guarantee{}
+	if err := queueInformer.GetIndexer().Update(rootWithoutQuota); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateHierarchicalQueueResources(newRootChild); err != nil {
+		t.Fatalf("expected root child without root quota to pass, got %v", err)
+	}
+}
+
+func TestNeedsValidateHierarchicalQueueRootUpdate(t *testing.T) {
+	oldRoot := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "root"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Capability: v1.ResourceList{v1.ResourceCPU: resource.MustParse("20")},
+		},
+	}
+	root := oldRoot.DeepCopy()
+	root.Spec.Capability = v1.ResourceList{v1.ResourceCPU: resource.MustParse("10")}
+
+	if !needsValidateHierarchicalQueue(root, oldRoot, admissionv1.Update) {
+		t.Fatal("expected root resource update to require hierarchy validation")
+	}
+}
+
 func TestValidateQueueDepthDynamic(t *testing.T) {
 	// Setup fake client and lister
 	config.VolcanoClient = fakeclient.NewSimpleClientset()
@@ -2265,6 +2341,23 @@ func TestValidateChildAgainstAncestorForCapability(t *testing.T) {
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 
+	root := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "root"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU: resource.MustParse("100"),
+			},
+		},
+	}
+	rootChild := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "root-child"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+		},
+	}
+
 	// Build a 3-level hierarchy: root -> grandparent -> parent -> child
 	// grandparent: CPU=100, Memory=100Gi, GPU=8
 	grandparent := &schedulingv1beta1.Queue{
@@ -2302,6 +2395,8 @@ func TestValidateChildAgainstAncestorForCapability(t *testing.T) {
 		},
 	}
 
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), root, metav1.CreateOptions{})
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), rootChild, metav1.CreateOptions{})
 	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), grandparent, metav1.CreateOptions{})
 	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), parent, metav1.CreateOptions{})
 	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), parentNoCap, metav1.CreateOptions{})
@@ -2315,6 +2410,21 @@ func TestValidateChildAgainstAncestorForCapability(t *testing.T) {
 		expectErr bool
 		errSubstr string
 	}{
+		{
+			name: "Child under empty-parent queue checks root capability",
+			child: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: "child-under-root-child"},
+				Spec: schedulingv1beta1.QueueSpec{
+					Parent: "root-child",
+					Weight: 1,
+					Capability: v1.ResourceList{
+						v1.ResourceCPU: resource.MustParse("200"),
+					},
+				},
+			},
+			expectErr: true,
+			errSubstr: "exceeds its ancestor's capability",
+		},
 		{
 			name: "Child CPU exceeds direct parent capability",
 			child: &schedulingv1beta1.Queue{
