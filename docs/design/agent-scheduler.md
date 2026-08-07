@@ -87,13 +87,26 @@ The workflow diagram is shown as follows:
 ![](images/agent-scheduler/scheduling-queue-diagram.png)
 
 ## Snapshot maintenance
-Design of snapshot fast update mechanism and why. 
-TBD
+During each scheduling cycle, plugins repeatedly read node-level state such as resources, pods, affinities, and NUMA topology. Directly accessing and locking the global cache for every scheduling decision would introduce excessive lock contention and severely limit throughput, especially when multiple scheduler workers run concurrently. To address this, the Agent Scheduler adopts a dual-layer data structure to optimize scheduling performance:
+
+1. **SchedulerCache (Primary Cache)**: Maintains the authoritative and up-to-date cluster state, including nodes, pods, and resource information. It is continuously updated by Kubernetes informers and shared across all scheduling workers.
+2. **Snapshot (Worker-local View)**: Each scheduling worker maintains an independent, read-only snapshot representing the cluster state at a specific point in time. Snapshots are initialized when workers start and are incrementally updated before each scheduling cycle.
+
+### Key Design Mechanisms
+
+1. **Generation-based Incremental Updates**: Each node in the cache tracks a monotonically increasing generation number. Whenever a node’s state changes (e.g., node/pod addition/removal or resource updates), its generation is incremented and the node is moved to the head of a doubly linked list. During snapshot synchronization, only nodes with generation numbers greater than the snapshot’s current generation are processed, significantly reducing the update cost.
+2. **Dual Data Structures for Efficient Access**:
+- Doubly Linked List: Maintains nodes in recency order, with the most recently updated nodes at the head.
+- Hash Map: Enables O(1) lookup of nodes by name.
+- Indexed Snapshot: Snapshots maintain internal maps to support fast node access and position tracking.
+3. **Concurrent Access Optimization**: The separation of read-write locks and worker-local snapshots allows multiple scheduler workers to operate concurrently without contending on shared state. Each worker updates and reads its own snapshot instance, substantially improving scalability and throughput in multi-threaded scheduling scenarios.
+
+The interaction flow between Cache and Snapshot is shown in the following diagram:
+![](images/agent-scheduler/cache-snapshot-design.png)
 
 ## Multi-Worker scheduling
 Single scheduling process has performance bottleneck when a large number of Pods need to be scheduled. To improve throughput of scheduling, multiple worker can be enabled to perform parallel scheduling. Worker count can be configured via startup parameter `agent_scheduler_worker_count=x`.
 Parallel scheduling may bring scheduling conflict when cluster lack of resource. So Binder component is involved to resolve the conflict before executing real binding.
-
 
 Workers pops Pods from the scheduling queue and perform scheduling. After predicates and node ordering, multiple candidate nodes (configurable in number) is stored in scheduling result for allocating. The scheduling results are then passed to the Binder for final binding. The Binder processes allocation results from multiple workers, using optimistic concurrency control to resolve scheduling conflict, executing Bind for non-conflicting results.
 
