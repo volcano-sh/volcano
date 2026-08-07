@@ -87,7 +87,6 @@ func (alloc *Action) allocateTask(fwk *framework.Framework, schedCtx *agentapi.S
 
 	nodes := fwk.VolcanoNodeInfos()
 
-	// TODO: check is pod allocatable
 	klog.V(3).Infof("There are <%d> nodes for task <%v/%v>", len(nodes), task.Namespace, task.Name)
 
 	if err := fwk.PrePredicateFn(task); err != nil {
