@@ -92,3 +92,20 @@ func (q *QueueInfo) Reclaimable() bool {
 
 	return *q.Queue.Spec.Reclaimable
 }
+
+// Preemptable return whether queue is preemptable
+func (q *QueueInfo) Preemptable() bool {
+	if q == nil {
+		return false
+	}
+
+	if q.Queue == nil {
+		return false
+	}
+
+	if q.Queue.Spec.Preemptable == nil {
+		return true
+	}
+
+	return *q.Queue.Spec.Preemptable
+}
