@@ -474,6 +474,10 @@ case ${E2E_TYPE} in
     echo "Running scheduling gates e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulinggates/
     ;;
+"QUEUEOVERC")
+    echo "Running queue-scoped overcommit e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/queueovercommit/
+    ;;
 "VCCTL")
     echo "Running vcctl e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/vcctl/
