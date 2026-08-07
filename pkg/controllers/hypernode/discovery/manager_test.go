@@ -17,6 +17,7 @@ limitations under the License.
 package discovery
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -170,5 +171,106 @@ func TestManager_syncHandler(t *testing.T) {
 	assert.False(t, exists, "Discoverer should be stopped")
 
 	// Stop the manager
+	m.Stop()
+}
+
+func TestManager_UnchangedSourceConfigSkipsRestart(t *testing.T) {
+	var startCount int32
+
+	constructor := api.DiscovererConstructor(func(cfg api.DiscoveryConfig, kubeClient clientset.Interface, vcClient vcclientset.Interface) api.Discoverer {
+		atomic.AddInt32(&startCount, 1)
+		return fakedisc.NewFakeDiscoverer([]*topologyv1alpha1.HyperNode{}, cfg)
+	})
+	api.RegisterDiscoverer("unchangedSrc", constructor)
+
+	discoveryConfig := &api.NetworkTopologyConfig{
+		NetworkTopologyDiscovery: []api.DiscoveryConfig{
+			{
+				Source:  "unchangedSrc",
+				Enabled: true,
+				Config:  map[string]interface{}{"key": "value"},
+			},
+		},
+	}
+	loader := config.NewFakeLoader(discoveryConfig)
+	queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
+	fakeClient := fake.NewSimpleClientset()
+	fakeVcClient := fakevcclientset.NewSimpleClientset()
+	m := NewManager(loader, queue, fakeClient, fakeVcClient)
+
+	err := m.Start()
+	assert.NoError(t, err)
+
+	// First sync: new source not yet running, should start the discoverer
+	queue.Add("test-namespace/test-config")
+	timeout := time.After(time.Second)
+	select {
+	case <-m.ResultChannel():
+	case <-timeout:
+		t.Fatal("timed out waiting for first result")
+	}
+	assert.Equal(t, int32(1), atomic.LoadInt32(&startCount), "discoverer should start once on first sync")
+
+	// Second sync with same config: discoverer is running and config unchanged, should skip restart
+	queue.Add("test-namespace/test-config")
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&startCount), "discoverer should not restart when config is unchanged")
+
+	m.Stop()
+}
+
+func TestManager_ChangedSourceConfigRestartsDiscoverer(t *testing.T) {
+	var startCount int32
+
+	constructor := api.DiscovererConstructor(func(cfg api.DiscoveryConfig, kubeClient clientset.Interface, vcClient vcclientset.Interface) api.Discoverer {
+		atomic.AddInt32(&startCount, 1)
+		return fakedisc.NewFakeDiscoverer([]*topologyv1alpha1.HyperNode{}, cfg)
+	})
+	api.RegisterDiscoverer("changedSrc", constructor)
+
+	discoveryConfigV1 := &api.NetworkTopologyConfig{
+		NetworkTopologyDiscovery: []api.DiscoveryConfig{
+			{
+				Source:  "changedSrc",
+				Enabled: true,
+				Config:  map[string]interface{}{"key": "value1"},
+			},
+		},
+	}
+	discoveryConfigV2 := &api.NetworkTopologyConfig{
+		NetworkTopologyDiscovery: []api.DiscoveryConfig{
+			{
+				Source:  "changedSrc",
+				Enabled: true,
+				Config:  map[string]interface{}{"key": "value2"},
+			},
+		},
+	}
+
+	loader := config.NewFakeLoader(discoveryConfigV1)
+	queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
+	fakeClient := fake.NewSimpleClientset()
+	fakeVcClient := fakevcclientset.NewSimpleClientset()
+	m := NewManager(loader, queue, fakeClient, fakeVcClient)
+
+	err := m.Start()
+	assert.NoError(t, err)
+
+	// First sync: should start the discoverer
+	queue.Add("test-namespace/test-config")
+	timeout := time.After(time.Second)
+	select {
+	case <-m.ResultChannel():
+	case <-timeout:
+		t.Fatal("timed out waiting for first result")
+	}
+	assert.Equal(t, int32(1), atomic.LoadInt32(&startCount), "discoverer should start once on first sync")
+
+	// Second sync with updated config: should restart the discoverer
+	loader.SetConfig(discoveryConfigV2)
+	queue.Add("test-namespace/test-config")
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&startCount), "discoverer should restart when config changes")
+
 	m.Stop()
 }
