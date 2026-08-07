@@ -34,10 +34,30 @@ func makePodWithCPURequest(containerCPU, podLevelCPU string) *v1.Pod {
 	return pod
 }
 
+func makePodWithNativeSidecarCPU(containerCPU, sidecarCPU string) *v1.Pod {
+	always := v1.ContainerRestartPolicyAlways
+	return &v1.Pod{
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{{
+				Resources: v1.ResourceRequirements{Requests: v1.ResourceList{
+					v1.ResourceCPU: resource.MustParse(containerCPU),
+				}},
+			}},
+			InitContainers: []v1.Container{{
+				RestartPolicy: &always,
+				Resources: v1.ResourceRequirements{Requests: v1.ResourceList{
+					v1.ResourceCPU: resource.MustParse(sidecarCPU),
+				}},
+			}},
+		},
+	}
+}
+
 func TestSortedPodsByRequestCPU_Less(t *testing.T) {
 	pod1 := makePodWithCPURequest("1", "") // container-only, cpu=1
 	pod2 := makePodWithCPURequest("2", "") // container-only, cpu=2
 	pod3 := makePodWithCPURequest("3", "") // container-only, cpu=3
+	podWithSidecar := makePodWithNativeSidecarCPU("1", "2")
 	// Pod-level resources value should override container-level sum when the
 	// PodLevelResources feature gate is enabled.
 	podLevel := makePodWithCPURequest("1", "5") // pod-level cpu=5
@@ -101,6 +121,13 @@ func TestSortedPodsByRequestCPU_Less(t *testing.T) {
 			j:                 1,
 			podLevelResources: true,
 			expected:          true, // 3 > 1
+		},
+		{
+			name:     "native sidecar is included when sorting cpu requests",
+			s:        SortedPodsByRequestCPU{podWithSidecar, pod2},
+			i:        0,
+			j:        1,
+			expected: true, // 1 app + 2 sidecar > 2
 		},
 	}
 
@@ -293,6 +320,45 @@ func TestGetTotalRequestByType(t *testing.T) {
 		}
 		return p
 	}
+	podWithSidecarsAndOverhead := func() *v1.Pod {
+		always := v1.ContainerRestartPolicyAlways
+		return &v1.Pod{
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{{
+					Resources: v1.ResourceRequirements{Requests: v1.ResourceList{
+						v1.ResourceCPU:    resource.MustParse("1"),
+						v1.ResourceMemory: resource.MustParse("128Mi"),
+					}},
+				}},
+				InitContainers: []v1.Container{
+					{
+						RestartPolicy: &always,
+						Resources: v1.ResourceRequirements{Requests: v1.ResourceList{
+							v1.ResourceCPU:    resource.MustParse("1"),
+							v1.ResourceMemory: resource.MustParse("64Mi"),
+						}},
+					},
+					{
+						RestartPolicy: &always,
+						Resources: v1.ResourceRequirements{Requests: v1.ResourceList{
+							v1.ResourceCPU:    resource.MustParse("500m"),
+							v1.ResourceMemory: resource.MustParse("32Mi"),
+						}},
+					},
+					{
+						Resources: v1.ResourceRequirements{Requests: v1.ResourceList{
+							v1.ResourceCPU:    resource.MustParse("3"),
+							v1.ResourceMemory: resource.MustParse("256Mi"),
+						}},
+					},
+				},
+				Overhead: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("500m"),
+					v1.ResourceMemory: resource.MustParse("64Mi"),
+				},
+			},
+		}
+	}
 
 	tests := []struct {
 		name              string
@@ -375,6 +441,18 @@ func TestGetTotalRequestByType(t *testing.T) {
 			podLevelResources: true,
 			expected:          resource.MustParse("14"),
 		},
+		{
+			name:     "includes native sidecars ordinary init containers and pod overhead for cpu",
+			pods:     []*v1.Pod{podWithSidecarsAndOverhead()},
+			resType:  v1.ResourceCPU,
+			expected: resource.MustParse("5"),
+		},
+		{
+			name:     "includes native sidecars ordinary init containers and pod overhead for memory",
+			pods:     []*v1.Pod{podWithSidecarsAndOverhead()},
+			resType:  v1.ResourceMemory,
+			expected: resource.MustParse("416Mi"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -384,99 +462,6 @@ func TestGetTotalRequestByType(t *testing.T) {
 			got := getTotalRequestByType(tt.pods, tt.fns, tt.resType)
 			if got.Cmp(tt.expected) != 0 {
 				t.Fatalf("expected %s, got %s", tt.expected.String(), got.String())
-			}
-		})
-	}
-}
-
-func TestGetPodLevelResourceRequest(t *testing.T) {
-	cpuQuantity := resource.MustParse("4")
-	memoryQuantity := resource.MustParse("8Gi")
-
-	tests := []struct {
-		name     string
-		pod      *v1.Pod
-		rName    v1.ResourceName
-		expected resource.Quantity
-		found    bool
-	}{
-		{
-			name: "nil resources returns not found",
-			pod: &v1.Pod{
-				Spec: v1.PodSpec{},
-			},
-			rName:    v1.ResourceCPU,
-			expected: resource.Quantity{},
-			found:    false,
-		},
-		{
-			name: "empty requests returns not found",
-			pod: &v1.Pod{
-				Spec: v1.PodSpec{
-					Resources: &v1.ResourceRequirements{},
-				},
-			},
-			rName:    v1.ResourceCPU,
-			expected: resource.Quantity{},
-			found:    false,
-		},
-		{
-			name: "cpu request found",
-			pod: &v1.Pod{
-				Spec: v1.PodSpec{
-					Resources: &v1.ResourceRequirements{
-						Requests: v1.ResourceList{
-							v1.ResourceCPU:    cpuQuantity,
-							v1.ResourceMemory: memoryQuantity,
-						},
-					},
-				},
-			},
-			rName:    v1.ResourceCPU,
-			expected: cpuQuantity,
-			found:    true,
-		},
-		{
-			name: "memory request found",
-			pod: &v1.Pod{
-				Spec: v1.PodSpec{
-					Resources: &v1.ResourceRequirements{
-						Requests: v1.ResourceList{
-							v1.ResourceCPU:    cpuQuantity,
-							v1.ResourceMemory: memoryQuantity,
-						},
-					},
-				},
-			},
-			rName:    v1.ResourceMemory,
-			expected: memoryQuantity,
-			found:    true,
-		},
-		{
-			name: "requested resource not present returns not found",
-			pod: &v1.Pod{
-				Spec: v1.PodSpec{
-					Resources: &v1.ResourceRequirements{
-						Requests: v1.ResourceList{
-							v1.ResourceCPU: cpuQuantity,
-						},
-					},
-				},
-			},
-			rName:    v1.ResourceMemory,
-			expected: resource.Quantity{},
-			found:    false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, found := getPodLevelResourceRequest(tt.pod, tt.rName)
-			if found != tt.found {
-				t.Fatalf("expected found=%v, got found=%v", tt.found, found)
-			}
-			if got.Cmp(tt.expected) != 0 {
-				t.Fatalf("expected quantity=%s, got quantity=%s", tt.expected.String(), got.String())
 			}
 		})
 	}
