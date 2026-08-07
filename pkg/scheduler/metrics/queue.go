@@ -193,6 +193,22 @@ var (
 		}, []string{"queue_name", "resource"},
 	)
 
+	queuePodGroupCount = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "queue_pod_group_count",
+			Help:      "Number of PodGroups in this queue by phase at the beginning of the latest scheduling session",
+		}, []string{"queue_name", "phase"},
+	)
+
+	queueTaskCount = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "queue_task_count",
+			Help:      "Number of tasks by status in jobs directly assigned to this queue at the beginning of the latest scheduling session",
+		}, []string{"queue_name", "status"},
+	)
+
 	// Track all known scalar resources for each queue
 	knownScalarResources     = make(map[string]map[string]struct{})
 	knownScalarResourcesLock sync.RWMutex
@@ -283,6 +299,16 @@ func UpdateQueueInqueue(queueName string, milliCPU, memory float64, scalarResour
 	updateScalarResourceMetrics(queueInqueueScalarResource, queueName, scalarResources)
 }
 
+// UpdateQueuePodGroupCount records the number of PodGroups in one phase for a queue
+func UpdateQueuePodGroupCount(queueName, phase string, count int) {
+	queuePodGroupCount.WithLabelValues(queueName, phase).Set(float64(count))
+}
+
+// UpdateQueueTaskCount records the number of tasks in one status for a queue
+func UpdateQueueTaskCount(queueName, status string, count int) {
+	queueTaskCount.WithLabelValues(queueName, status).Set(float64(count))
+}
+
 // DeleteQueueMetrics delete all metrics related to the queue
 func DeleteQueueMetrics(queueName string) {
 	queueAllocatedMilliCPU.DeleteLabelValues(queueName)
@@ -307,6 +333,8 @@ func DeleteQueueMetrics(queueName string) {
 	queueCapacityScalarResource.DeletePartialMatch(partialLabelMap)
 	queueRealCapacityScalarResource.DeletePartialMatch(partialLabelMap)
 	queueInqueueScalarResource.DeletePartialMatch(partialLabelMap)
+	queuePodGroupCount.DeletePartialMatch(partialLabelMap)
+	queueTaskCount.DeletePartialMatch(partialLabelMap)
 	knownScalarResourcesLock.Lock()
 	delete(knownScalarResources, queueName)
 	knownScalarResourcesLock.Unlock()

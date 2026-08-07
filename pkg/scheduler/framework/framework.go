@@ -34,6 +34,7 @@ import (
 func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration) *Session {
 	openStart := time.Now()
 	ssn := openSession(cache)
+	updateQueueStateMetrics(ssn)
 	ssn.Tiers = tiers
 	ssn.Configurations = configurations
 	ssn.NodeMap = GenerateNodeMapAndSlice(ssn.Nodes)

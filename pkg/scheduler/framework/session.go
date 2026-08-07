@@ -51,6 +51,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/gate"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -60,6 +61,34 @@ const (
 	// Its Tier value is set to the maximum existing Tier + 1 among real HyperNodes. This is recalculated every time a session opens.
 	// If no real HyperNodes exist in the cluster, this virtual top-tier HyperNode will still exist with Tier = 1 and will encompass all Nodes in the cluster.
 	ClusterTopHyperNode = "<cluster-top-hypernode>"
+)
+
+var (
+	podGroupStatesForQueueMetrics = [...]struct {
+		phase scheduling.PodGroupPhase
+		label string
+	}{
+		{phase: scheduling.PodGroupPending, label: "pending"},
+		{phase: scheduling.PodGroupInqueue, label: "inqueue"},
+		{phase: scheduling.PodGroupRunning, label: "running"},
+		{phase: scheduling.PodGroupCompleted, label: "completed"},
+		{phase: scheduling.PodGroupUnknown, label: "unknown"},
+	}
+	taskStatesForQueueMetrics = [...]struct {
+		status api.TaskStatus
+		label  string
+	}{
+		{status: api.Pending, label: "pending"},
+		{status: api.Allocated, label: "allocated"},
+		{status: api.Pipelined, label: "pipelined"},
+		{status: api.Binding, label: "binding"},
+		{status: api.Bound, label: "bound"},
+		{status: api.Running, label: "running"},
+		{status: api.Releasing, label: "releasing"},
+		{status: api.Succeeded, label: "succeeded"},
+		{status: api.Failed, label: "failed"},
+		{status: api.Unknown, label: "unknown"},
+	}
 )
 
 // Session information for the current session
@@ -281,6 +310,43 @@ func openSession(cache cache.Cache) *Session {
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues), ssn.HyperNodesReadyToSchedule)
 
 	return ssn
+}
+
+func updateQueueStateMetrics(ssn *Session) {
+	podGroupCounts := make(map[api.QueueID]map[scheduling.PodGroupPhase]int, len(ssn.Queues))
+	taskCounts := make(map[api.QueueID]map[api.TaskStatus]int, len(ssn.Queues))
+
+	for _, job := range ssn.Jobs {
+		if podGroupCounts[job.Queue] == nil {
+			podGroupCounts[job.Queue] = make(map[scheduling.PodGroupPhase]int)
+		}
+		if taskCounts[job.Queue] == nil {
+			taskCounts[job.Queue] = make(map[api.TaskStatus]int)
+		}
+
+		if job.PodGroup != nil {
+			phase := job.PodGroup.Status.Phase
+			switch phase {
+			case scheduling.PodGroupPending, scheduling.PodGroupInqueue, scheduling.PodGroupRunning,
+				scheduling.PodGroupCompleted, scheduling.PodGroupUnknown:
+			default:
+				phase = scheduling.PodGroupUnknown
+			}
+			podGroupCounts[job.Queue][phase]++
+		}
+		for status, tasks := range job.TaskStatusIndex {
+			taskCounts[job.Queue][status] += len(tasks)
+		}
+	}
+
+	for queueID, queue := range ssn.Queues {
+		for _, state := range podGroupStatesForQueueMetrics {
+			metrics.UpdateQueuePodGroupCount(queue.Name, state.label, podGroupCounts[queueID][state.phase])
+		}
+		for _, state := range taskStatesForQueueMetrics {
+			metrics.UpdateQueueTaskCount(queue.Name, state.label, taskCounts[queueID][state.status])
+		}
+	}
 }
 
 // addClusterTopHyperNode adds a virtual top hyperNode of all hyperNodes in the cluster into the session
