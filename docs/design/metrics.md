@@ -60,6 +60,8 @@ This metrics describe internal state of volcano.
 | `queue_pod_group_pending_count`        | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | The number of Pending PodGroups in this queue |
 | `queue_pod_group_running_count`        | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | The number of Running PodGroups in this queue |
 | `queue_pod_group_unknown_count`        | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | The number of Unknown PodGroups in this queue |
+| `queue_pod_group_count`                | Gauge           | `queue_name`=&lt;queue_name&gt;, `phase`=&lt;phase&gt;             | Number of directly assigned PodGroups by phase at the beginning of the latest scheduling session |
+| `queue_task_count`                     | Gauge           | `queue_name`=&lt;queue_name&gt;, `status`=&lt;status&gt;           | Number of tasks in directly assigned PodGroups by status at the beginning of the latest scheduling session |
 | `namespace_share`                      | Gauge           | `namespace_name`=&lt;namespace_name&gt;                           | Deserved CPU count for one namespace          |
 | `namespace_weight`                     | Gauge           | `namespace_name`=&lt;namespace_name&gt;                           | Weight for one namespace                      |
 | `job_share`                            | Gauge           | `job_id`=&lt;job_id&gt;, `job_ns`=&lt;job_ns&gt;                  | Share for one job                             |
