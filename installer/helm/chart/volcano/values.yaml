@@ -22,6 +22,7 @@ basic:
   image_registry: "docker.io"
 custom:
   go_memlimit_enable: false
+  # DEPRECATED: Please use external.prometheus.enabled, external.kubeStateMetrics.enabled, and external.grafana.enabled instead.
   metrics_enable: false
   admission_enable: true
   admission_replicas: 1
@@ -344,4 +345,12 @@ service:
   #   - IPv4
   ipFamilies: []
 
-
+external:
+  prometheus:
+    enabled: false
+  kubeStateMetrics:
+    enabled: false
+  grafana:
+    enabled: false
+    dashboards:
+      enabled: false
