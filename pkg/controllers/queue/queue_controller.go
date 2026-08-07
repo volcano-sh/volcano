@@ -162,6 +162,7 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 	queuestate.SyncQueue = c.syncQueue
 	queuestate.OpenQueue = c.openQueue
 	queuestate.CloseQueue = c.closeQueue
+	queuestate.ClearClosedByParentAnnotation = c.clearClosedByParentAnnotation
 
 	c.syncHandler = c.handleQueue
 	c.syncCommandHandler = c.handleCommand
@@ -235,7 +236,7 @@ func (c *queuecontroller) handleQueue(req *apis.Request) error {
 		return fmt.Errorf("get queue %s failed for %v", req.QueueName, err)
 	}
 
-	queueState := queuestate.NewState(queue)
+	queueState := queuestate.NewState(queue, req.Event)
 	if queueState == nil {
 		return fmt.Errorf("queue %s state %s is invalid", queue.Name, queue.Status.State)
 	}

@@ -23,6 +23,7 @@ import (
 
 type closingState struct {
 	queue *v1beta1.Queue
+	event v1alpha1.Event
 }
 
 func (cs *closingState) Execute(action v1alpha1.Action) error {
@@ -32,6 +33,16 @@ func (cs *closingState) Execute(action v1alpha1.Action) error {
 			status.State = v1beta1.QueueStateOpen
 		})
 	case v1alpha1.CloseQueueAction:
+		// A user-issued close command re-targeting an already closing queue means the user
+		// explicitly wants it closed, regardless of why it was closing before. Mark it as no
+		// longer merely closed-by-parent so it isn't auto-reopened when the parent reopens.
+		if cs.event == v1alpha1.CommandIssuedEvent {
+			updatedQueue, err := ClearClosedByParentAnnotation(cs.queue)
+			if err != nil {
+				return err
+			}
+			cs.queue = updatedQueue
+		}
 		return SyncQueue(cs.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
 			if len(podGroupList) == 0 {
 				status.State = v1beta1.QueueStateClosed
