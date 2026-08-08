@@ -813,6 +813,52 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(5).Infof("job <%s/%s> enqueued", job.Namespace, job.Name)
 	})
 
+	ssn.AddJobInqueueEvictedFn(cp.Name(), func(obj interface{}) {
+		job, ok := obj.(*api.JobInfo)
+		if !ok || job == nil || job.PodGroup == nil {
+			return
+		}
+		queueID := job.Queue
+		attr := cp.queueOpts[queueID]
+		if attr == nil {
+			return
+		}
+		if job.PodGroup.Spec.MinResources == nil && !(cp.dynamicResourceAllocationEnable && attr.dra != nil && job.GetMinDRAResources() != nil) {
+			return
+		}
+		deductedResources := job.DeductSchGatedResources(util.GetInqueueResource(job, job.Allocated))
+		attr.inqueue.Sub(deductedResources)
+		
+		var minDRAReq map[string]*api.DRAResource
+		if cp.dynamicResourceAllocationEnable && attr.dra != nil {
+			minDRAReq = job.GetMinDRAResources()
+			for deviceClass, req := range minDRAReq {
+				if inq := attr.dra.inqueue[deviceClass]; inq != nil {
+					inq.Sub(req)
+				}
+			}
+		}
+
+		// If enable hierarchy, update the inqueue resource for all ancestors queues
+		if hierarchyEnabled {
+			for _, ancestorID := range attr.ancestors {
+				ancestorAttr := cp.queueOpts[ancestorID]
+				if ancestorAttr == nil {
+					continue
+				}
+				ancestorAttr.inqueue.Sub(deductedResources)
+				if cp.dynamicResourceAllocationEnable && ancestorAttr.dra != nil && minDRAReq != nil {
+					for deviceClass, req := range minDRAReq {
+						if inq := ancestorAttr.dra.inqueue[deviceClass]; inq != nil {
+							inq.Sub(req)
+						}
+					}
+				}
+			}
+		}
+		klog.V(4).Infof("job <%s/%s> inqueue quota released after timeout eviction", job.Namespace, job.Name)
+	})
+
 	ssn.AddPrePredicateFn(cp.Name(), func(task *api.TaskInfo) error {
 		state := &capacityState{
 			queueAttrs: make(map[api.QueueID]*queueAttr),
