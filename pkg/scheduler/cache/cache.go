@@ -140,7 +140,7 @@ type SchedulerCache struct {
 	StatusUpdater  StatusUpdater
 	PodGroupBinder BatchBinder
 
-	Recorder record.EventRecorder
+	Recorder record.EventRecorderLogger
 
 	Jobs                 map[schedulingapi.JobID]*schedulingapi.JobInfo
 	Nodes                map[string]*schedulingapi.NodeInfo
@@ -1072,7 +1072,7 @@ func (sc *SchedulerCache) AddUnassignedNumaPods(allocatedSets map[schedulingapi.
 }
 
 // EventRecorder returns the Event Recorder
-func (sc *SchedulerCache) EventRecorder() record.EventRecorder {
+func (sc *SchedulerCache) EventRecorder() record.EventRecorderLogger {
 	return sc.Recorder
 }
 
