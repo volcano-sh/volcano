@@ -313,8 +313,22 @@ func GetRealNodesByHyperNode(hyperNodes map[string]sets.Set[string], allNodes ma
 	return resultList, resultSet
 }
 
-// ValidateVictims returns an error if the resources of the victims can't satisfy the preemptor
-func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api.TaskInfo) error {
+// ValidateVictims returns an error if the resources of the victims can't satisfy the preemptor.
+// predicateFn (normally ssn.PredicateFn) is used as a fallback: the generic scalar-resource
+// comparison below is authoritative whenever every dimension it flags as insufficient is one
+// actually present in node.Status.Allocatable (cpu, memory, volcano.sh/vgpu-number, ...) - those
+// have a real capacity number, so the comparison can be trusted as-is, including a genuine "no".
+//
+// It can never be satisfied, however, for resources a device plugin tracks entirely through its
+// own predicate/ledger instead - confirmed for volcano.sh/vgpu-memory-percentage, a pure
+// request-side modifier ("50% of whatever card this pod lands on" has no coherent node-wide
+// capacity total to advertise) never referenced anywhere as something written into Allocatable.
+// volcano.sh/vgpu-cores may or may not have the same gap depending on how the device plugin
+// advertises it; this fallback covers that case too if so, without assuming it either way. When
+// every failing dimension is one node.Allocatable has no capacity number for at all, the
+// comparison is structurally unable to answer the question, so simulate evicting the victims on
+// a throwaway clone of node and ask the real predicate instead of treating "unknowable" as "no".
+func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api.TaskInfo, predicateFn func(*api.TaskInfo, *api.NodeInfo) error) error {
 	// Victims should not be judged to be empty here.
 	// It is possible to complete the scheduling of the preemptor without evicting the task.
 	// In the first round, a large task (CPU: 8) is expelled, and a small task is scheduled (CPU: 2)
@@ -325,11 +339,40 @@ func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api
 	}
 	// Every resource of the preemptor needs to be less or equal than corresponding
 	// idle resource after preemption.
-	if !preemptor.InitResreq.LessEqual(futureIdle, api.Zero) {
+	ok, failing := preemptor.InitResreq.LessEqualWithResourcesName(futureIdle, api.Zero)
+	if ok {
+		return nil
+	}
+	if !allUntrackedByAllocatable(failing, node) {
 		return fmt.Errorf("not enough resources: requested <%v>, but future idle <%v>",
 			preemptor.InitResreq, futureIdle)
 	}
+
+	nodeCopy := node.Clone()
+	for _, victim := range victims {
+		nodeCopy.RemoveTask(victim)
+	}
+	if err := predicateFn(preemptor, nodeCopy); err != nil {
+		return fmt.Errorf("not enough resources: requested <%v>, but future idle <%v>: %v",
+			preemptor.InitResreq, futureIdle, err)
+	}
 	return nil
+}
+
+// allUntrackedByAllocatable reports whether every named resource dimension is
+// absent from node.Allocatable's tracked capacity. cpu/memory are always
+// considered tracked (they're dedicated Resource fields, not scalar entries,
+// and always have a real, if zero, capacity number).
+func allUntrackedByAllocatable(resourceNames []string, node *api.NodeInfo) bool {
+	for _, name := range resourceNames {
+		if name == "cpu" || name == "memory" {
+			return false
+		}
+		if _, present := node.Allocatable.ScalarResources[v1.ResourceName(name)]; present {
+			return false
+		}
+	}
+	return true
 }
 
 // GetMinInt return minimum int from vals
