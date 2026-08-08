@@ -77,3 +77,51 @@ func TestRecoverOperations_PipelinePreservesEvictionFlag(t *testing.T) {
 		assert.True(t, recoveredTask.EvictionOccurred)
 	}
 }
+
+// TestRecoverOperations_MissingNodeReturnsError covers replaying a saved Allocate
+// operation whose node is no longer in the session. RecoverOperations resolves the
+// node by name and hands the result straight to Allocate, which dereferences it,
+// so a node that left the session between save and replay panicked the scheduler
+// rather than surfacing an error the caller could act on.
+func TestRecoverOperations_MissingNodeReturnsError(t *testing.T) {
+	jobID := api.JobID("ns/job-missing-node")
+	task := &api.TaskInfo{
+		UID:        "t1",
+		Job:        jobID,
+		Name:       "t1",
+		Namespace:  "ns",
+		Resreq:     (&api.Resource{MilliCPU: 1000}).Clone(),
+		InitResreq: (&api.Resource{MilliCPU: 1000}).Clone(),
+		Pod: &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "t1",
+				Namespace: "ns",
+				UID:       types.UID("t1"),
+			},
+		},
+		NumaInfo: &api.TopologyInfo{ResMap: map[int]v1.ResourceList{}},
+		TransactionContext: api.TransactionContext{
+			NodeName: "gone",
+			Status:   api.Pending,
+		},
+	}
+	job := api.NewJobInfo(jobID, task)
+
+	// Session deliberately has no nodes, standing in for a node removed between
+	// the operations being saved and replayed.
+	ssn := &Session{
+		Jobs:  map[api.JobID]*api.JobInfo{jobID: job},
+		Nodes: map[string]*api.NodeInfo{},
+	}
+
+	plan := &Statement{
+		ssn:        ssn,
+		operations: []operation{{name: Allocate, task: task}},
+	}
+
+	recoverStmt := NewStatement(ssn)
+	err := recoverStmt.RecoverOperations(plan)
+
+	assert.Error(t, err, "expected an error rather than a panic when the node is absent")
+	assert.Contains(t, err.Error(), "gone")
+}

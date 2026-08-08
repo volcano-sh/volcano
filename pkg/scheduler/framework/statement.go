@@ -470,7 +470,17 @@ func (s *Statement) RecoverOperations(stmt *Statement) error {
 				return err
 			}
 		case Allocate:
-			node := s.ssn.Nodes[op.task.NodeName]
+			// The node may have left the session between the operations being
+			// saved and replayed. Allocate dereferences the node, so recovering
+			// against a missing one panics the scheduler; report it instead so the
+			// caller can discard the partially applied statement.
+			node, found := s.ssn.Nodes[op.task.NodeName]
+			if !found {
+				err := fmt.Errorf("failed to find node <%s> in session <%v> when recovering allocation of task <%v/%v>",
+					op.task.NodeName, s.ssn.UID, op.task.Namespace, op.task.Name)
+				klog.Errorf("%v", err)
+				return err
+			}
 			err := s.Allocate(op.task, node)
 			if err != nil {
 				klog.Errorf("Failed to allocate task <%v/%v>: %v", op.task.Namespace, op.task.Name, err)
