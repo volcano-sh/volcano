@@ -515,9 +515,9 @@ func (sc *SchedulerCache) addOrUpdateNodeShard(shard *nodeshardv1alpha1.NodeShar
 }
 
 func (sc *SchedulerCache) deleteNodeShard(name string) {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
 	if _, ok := sc.NodeShards[name]; ok {
-		sc.Mutex.Lock()
-		defer sc.Mutex.Unlock()
 		delete(sc.NodeShards, name)
 		sc.ShardCoordinator.RefreshNodeShards(sc.NodeShards)
 	}
