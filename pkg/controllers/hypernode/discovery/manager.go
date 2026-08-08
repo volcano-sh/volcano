@@ -58,7 +58,11 @@ type Manager interface {
 
 // manager manages network topology discovery processes
 type manager struct {
-	mutex sync.Mutex
+	mutex    sync.Mutex
+	stopOnce sync.Once
+	stopped  bool
+	workerWG sync.WaitGroup
+	resultWG sync.WaitGroup
 
 	configLoader config.Loader
 	config       *api.NetworkTopologyConfig
@@ -99,7 +103,11 @@ func (m *manager) Start() error {
 		m.config = cfg
 	}
 
-	go m.worker()
+	m.workerWG.Add(1)
+	go func() {
+		defer m.workerWG.Done()
+		m.worker()
+	}()
 
 	klog.InfoS("Network topology discovery manager started")
 	return nil
@@ -107,9 +115,19 @@ func (m *manager) Start() error {
 
 // Stop halts all discovery processes
 func (m *manager) Stop() {
-	close(m.stopCh)
-	m.stopAllDiscoverers()
-	klog.InfoS("Network topology discovery manager stopped")
+	m.stopOnce.Do(func() {
+		m.mutex.Lock()
+		m.stopped = true
+		close(m.stopCh)
+		m.mutex.Unlock()
+
+		m.workQueue.ShutDown()
+		m.stopAllDiscoverers()
+		m.workerWG.Wait()
+		m.resultWG.Wait()
+		close(m.resultCh)
+		klog.InfoS("Network topology discovery manager stopped")
+	})
 }
 
 // ResultSynced every time the Result in ResultChannel are processed, this method must be called to notify network topology discover
@@ -150,7 +168,11 @@ func (m *manager) startSingleDiscoverer(source string) error {
 		return fmt.Errorf("failed to start discoverer: %v", err)
 	}
 
-	go m.processTopology(source, outputCh)
+	m.resultWG.Add(1)
+	go func() {
+		defer m.resultWG.Done()
+		m.processTopology(source, outputCh)
+	}()
 
 	klog.InfoS("Started network topology discoverer", "source", source)
 	return nil
@@ -232,6 +254,9 @@ func (m *manager) syncHandler(key string) error {
 
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+	if m.stopped {
+		return nil
+	}
 
 	err = m.handleRemovedSources(newConfig)
 	if err != nil {
@@ -287,9 +312,14 @@ func (m *manager) processTopology(source string, topologyCh <-chan []*topologyv1
 				return
 			}
 
-			m.resultCh <- Result{
+			result := Result{
 				HyperNodes: hyperNodes,
 				Source:     source,
+			}
+			select {
+			case m.resultCh <- result:
+			case <-m.stopCh:
+				return
 			}
 			klog.V(3).InfoS("Forwarded discovery results to unified channel",
 				"source", source,
