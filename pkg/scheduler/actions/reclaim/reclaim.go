@@ -207,8 +207,16 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		}
 
 		if len(reclaimees) == 0 {
-			klog.V(4).Infof("No reclaimees on Node <%s>.", n.Name)
-			continue
+			// A task can only be pipelined here without any reclaimees if resources
+			// are actually being released on this node (FutureIdle > Idle), e.g. by
+			// an eviction earlier in this same reclaim pass. If the task already fits
+			// in the node's current Idle resources, it doesn't depend on reclaiming
+			// anything, so leave it for the allocate action to handle instead of
+			// bypassing its AllocatableFn checks here.
+			if task.InitResreq.LessEqual(n.Idle, api.Zero) {
+				klog.V(4).Infof("No reclaimees on Node <%s>.", n.Name)
+				continue
+			}
 		}
 
 		victims := ssn.Reclaimable(task, reclaimees)
@@ -250,8 +258,8 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		}
 
 		if err := nodeStmt.Pipeline(task, n.Name, evictionOccurred); err != nil {
-			klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
-				task.Namespace, task.Name, n.Name)
+			klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>: %v",
+				task.Namespace, task.Name, n.Name, err)
 			nodeStmt.Discard()
 			continue
 		}
