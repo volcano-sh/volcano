@@ -18,6 +18,28 @@ package framework
 
 import "testing"
 
+type fakeAction struct{}
+
+func (fakeAction) Name() string     { return "fakeaction" }
+func (fakeAction) Initialize()      {}
+func (fakeAction) Execute(*Session) {}
+func (fakeAction) UnInitialize()    {}
+
+func TestGetActionCaseInsensitive(t *testing.T) {
+	RegisterAction(fakeAction{})
+
+	cases := []string{"fakeaction", "fakeAction", "FakeAction", "FAKEACTION"}
+	for _, name := range cases {
+		if _, found := GetAction(name); !found {
+			t.Errorf("expected to find action for lookup name %q", name)
+		}
+	}
+
+	if _, found := GetAction("notregistered"); found {
+		t.Errorf("expected not to find action for unregistered name")
+	}
+}
+
 func TestGetPluginName(t *testing.T) {
 	cases := []struct {
 		pluginPath string
