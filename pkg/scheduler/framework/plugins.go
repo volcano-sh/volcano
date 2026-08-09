@@ -105,19 +105,22 @@ func loadPluginBuilder(pluginPath string) (PluginBuilder, error) {
 // Action management
 var actionMap = map[string]Action{}
 
-// RegisterAction register action
+// RegisterAction register action. The name is stored in lower case so that
+// GetAction can look it up case-insensitively.
 func RegisterAction(act Action) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 
-	actionMap[act.Name()] = act
+	actionMap[strings.ToLower(act.Name())] = act
 }
 
-// GetAction get the action by name
+// GetAction get the action by name. The lookup is case-insensitive since
+// action names are documented in mixed case (e.g. gangPreempt) while they
+// are registered in lower case.
 func GetAction(name string) (Action, bool) {
 	pluginMutex.RLock()
 	defer pluginMutex.RUnlock()
 
-	act, found := actionMap[name]
+	act, found := actionMap[strings.ToLower(name)]
 	return act, found
 }
