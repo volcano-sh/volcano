@@ -35,6 +35,7 @@ func main() {
 
 	if err := command.Execute(); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
+		logs.FlushLogs()
 		os.Exit(1)
 	}
 }
