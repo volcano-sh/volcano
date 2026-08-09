@@ -28,7 +28,6 @@ import (
 	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
@@ -140,8 +139,8 @@ func TestRefreshNodeShards_AvailableNodesCalculation(t *testing.T) {
 	}
 
 	// Setup test data
-	nodeShard := schedulingapi.NewNodeShardInfo(buildShard("test-shard", []string{"node-1", "node-2", "node-3"}, []string{"node-1"}))
-	otherShard := schedulingapi.NewNodeShardInfo(buildShard("other-shard", []string{"node-2", "node-3"}, []string{"node-2"}))
+	nodeShard := api.NewNodeShardInfo(buildShard("test-shard", []string{"node-1", "node-2", "node-3"}, []string{"node-1"}))
+	otherShard := api.NewNodeShardInfo(buildShard("other-shard", []string{"node-2", "node-3"}, []string{"node-2"}))
 
 	tests := []struct {
 		name                string
@@ -257,7 +256,7 @@ func buildShard(name string, desired []string, inuse []string) *nodeshardv1alpha
 }
 
 func TestGenerateNodeShardWithStatusRecordsTransitionNodes(t *testing.T) {
-	shard := schedulingapi.NewNodeShardInfo(buildShard("test-shard", []string{"node-new"}, []string{"node-old"}))
+	shard := api.NewNodeShardInfo(buildShard("test-shard", []string{"node-new"}, []string{"node-old"}))
 	sc := &SchedulerCache{
 		NodeShards: map[string]*api.NodeShardInfo{
 			"test-shard": shard,

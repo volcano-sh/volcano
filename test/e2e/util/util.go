@@ -29,7 +29,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	schedv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -38,7 +37,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
-	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/yaml"
 
@@ -344,7 +342,7 @@ func setPlaceHolderForSchedulerTesting(ctx *TestContext, req v1.ResourceList, re
 }
 
 func createPlaceHolder(ctx *TestContext, phr v1.ResourceList, nodeName string) error {
-	pod := &corev1.Pod{
+	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      nodeName + "-placeholder",
 			Namespace: ctx.Namespace,
@@ -352,11 +350,11 @@ func createPlaceHolder(ctx *TestContext, phr v1.ResourceList, nodeName string) e
 				"role": "placeholder",
 			},
 		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
 				{
 					Name: "placeholder",
-					Resources: corev1.ResourceRequirements{
+					Resources: v1.ResourceRequirements{
 						Requests: phr,
 						Limits:   phr,
 					},
@@ -383,7 +381,7 @@ func deletePlaceHolder(ctx *TestContext) {
 	}
 }
 
-func GetPodList(ctx context.Context, c clientset.Interface, namespace string, ls *metav1.LabelSelector) *v1.PodList {
+func GetPodList(ctx context.Context, c kubernetes.Interface, namespace string, ls *metav1.LabelSelector) *v1.PodList {
 	selector, err := metav1.LabelSelectorAsSelector(ls)
 	Expect(err).NotTo(HaveOccurred())
 	podList, err := c.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
