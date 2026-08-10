@@ -16,17 +16,25 @@ limitations under the License.
 
 package framework
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 type fakeAction struct{}
 
-func (fakeAction) Name() string     { return "fakeaction" }
+func (fakeAction) Name() string     { return "FakeAction" }
 func (fakeAction) Initialize()      {}
 func (fakeAction) Execute(*Session) {}
 func (fakeAction) UnInitialize()    {}
 
 func TestGetActionCaseInsensitive(t *testing.T) {
 	RegisterAction(fakeAction{})
+	t.Cleanup(func() {
+		pluginMutex.Lock()
+		defer pluginMutex.Unlock()
+		delete(actionMap, strings.ToLower(fakeAction{}.Name()))
+	})
 
 	cases := []string{"fakeaction", "fakeAction", "FakeAction", "FAKEACTION"}
 	for _, name := range cases {
