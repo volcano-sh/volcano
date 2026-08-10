@@ -377,6 +377,7 @@ func (pmpt *Action) normalPreempt(
 		victimsQueue := ssn.BuildVictimsPriorityQueue(victims, preemptor)
 		// Preempt victims for tasks, pick lowest priority task first.
 		preempted := api.EmptyResource()
+		preemptorFits := preemptorFitsOnNode(ssn, currentQueue, preemptor, node)
 
 		for !victimsQueue.Empty() {
 			// If reclaimed enough resources, break loop to avoid Sub panic.
@@ -389,7 +390,7 @@ func (pmpt *Action) normalPreempt(
 			// so if current queue is not allocatable(the queue will be overused when consider current preemptor's requests)
 			// or current idle resource is not enough for preemptor, it need to continue preempting
 			// otherwise, break out
-			if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+			if preemptorFits {
 				break
 			}
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
@@ -397,6 +398,7 @@ func (pmpt *Action) normalPreempt(
 				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
 			nodeStmt.Evict(preemptee, "preempt")
 			preempted.Add(preemptee.Resreq)
+			preemptorFits = preemptorFitsOnNode(ssn, currentQueue, preemptor, node)
 		}
 
 		evictionOccurred := false
@@ -409,7 +411,7 @@ func (pmpt *Action) normalPreempt(
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
 		// If preemptor's queue is not allocatable, it means preemptor cannot be allocated. So no need care about the node idle resource
-		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+		if preemptorFits {
 			if err := nodeStmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
@@ -429,6 +431,13 @@ func (pmpt *Action) normalPreempt(
 	}
 
 	return assigned, nil
+}
+
+// preemptorFitsOnNode verifies aggregate resources and plugin predicates after tentative evictions.
+func preemptorFitsOnNode(ssn *framework.Session, queue *api.QueueInfo, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
+	return ssn.Allocatable(queue, preemptor) &&
+		preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) &&
+		ssn.PredicateFn(preemptor, node) == nil
 }
 
 func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {
