@@ -88,7 +88,7 @@ jobs:
 
       - name: Generate release manifests
         if: startsWith(github.ref, 'refs/tags/v')
-        run: make TAG=${{ env.TAG }} RELEASE_DIR=${{ runner.temp }}/release-manifests generate-yaml
+        run: make TAG=${{ env.TAG }} RELEASE_DIR=_output/release-manifests generate-yaml
         working-directory: ./src/github.com/${{ github.repository }}
 
       - name: Upload release manifests
@@ -96,10 +96,10 @@ jobs:
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           files: |
-            ${{ runner.temp }}/release-manifests/volcano-${{ env.TAG }}.yaml
-            ${{ runner.temp }}/release-manifests/volcano-agent-scheduler-${{ env.TAG }}.yaml
-            ${{ runner.temp }}/release-manifests/volcano-agent-${{ env.TAG }}.yaml
-            ${{ runner.temp }}/release-manifests/volcano-monitoring-${{ env.TAG }}.yaml
+            ./src/github.com/${{ github.repository }}/_output/release-manifests/volcano-${{ env.TAG }}.yaml
+            ./src/github.com/${{ github.repository }}/_output/release-manifests/volcano-agent-scheduler-${{ env.TAG }}.yaml
+            ./src/github.com/${{ github.repository }}/_output/release-manifests/volcano-agent-${{ env.TAG }}.yaml
+            ./src/github.com/${{ github.repository }}/_output/release-manifests/volcano-monitoring-${{ env.TAG }}.yaml
           fail_on_unmatched_files: true
           prerelease: ${{ contains(github.ref_name, '-') }}
 
