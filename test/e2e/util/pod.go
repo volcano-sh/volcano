@@ -27,32 +27,59 @@ import (
 )
 
 type PodSpec struct {
-	Name        string
-	Node        string
-	Req         v1.ResourceList
-	Tolerations []v1.Toleration
+	Name                          string
+	Node                          string
+	Req                           v1.ResourceList
+	Tolerations                   []v1.Toleration
+	Annotations                   map[string]string
+	SchedulerName                 string
+	RestartPolicy                 v1.RestartPolicy
+	Image                         string
+	Command                       []string
+	TerminationGracePeriodSeconds *int64
 }
 
 func CreatePod(ctx *TestContext, spec PodSpec) *v1.Pod {
+	meta := metav1.ObjectMeta{
+		Name:      spec.Name,
+		Namespace: ctx.Namespace,
+	}
+	if len(spec.Annotations) > 0 {
+		meta.Annotations = spec.Annotations
+	}
+
+	image := DefaultNginxImage
+	if spec.Image != "" {
+		image = spec.Image
+	}
+
+	container := v1.Container{
+		Image:           image,
+		Name:            spec.Name,
+		ImagePullPolicy: v1.PullIfNotPresent,
+		Resources: v1.ResourceRequirements{
+			Requests: spec.Req,
+		},
+	}
+	if len(spec.Command) > 0 {
+		container.Command = spec.Command
+	}
+
 	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      spec.Name,
-			Namespace: ctx.Namespace,
-		},
+		ObjectMeta: meta,
 		Spec: v1.PodSpec{
-			NodeName: spec.Node,
-			Containers: []v1.Container{
-				{
-					Image:           DefaultNginxImage,
-					Name:            spec.Name,
-					ImagePullPolicy: v1.PullIfNotPresent,
-					Resources: v1.ResourceRequirements{
-						Requests: spec.Req,
-					},
-				},
-			},
-			Tolerations: spec.Tolerations,
+			NodeName:      spec.Node,
+			SchedulerName: spec.SchedulerName,
+			Containers:    []v1.Container{container},
+			Tolerations:   spec.Tolerations,
 		},
+	}
+
+	if spec.RestartPolicy != "" {
+		pod.Spec.RestartPolicy = spec.RestartPolicy
+	}
+	if spec.TerminationGracePeriodSeconds != nil {
+		pod.Spec.TerminationGracePeriodSeconds = spec.TerminationGracePeriodSeconds
 	}
 
 	pod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
