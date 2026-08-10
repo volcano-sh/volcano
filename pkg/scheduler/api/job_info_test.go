@@ -841,10 +841,10 @@ func TestGetMinDRAResources_constantTimeForHugeTaskMinAvailable(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("GetMinDRAResources did not return for TaskMinAvailable=MaxInt32 within 5s; the unbounded capacity loop was reintroduced")
+		t.Fatal("GetMinDRAResources did not return within 5s for TaskMinAvailable=MaxInt32")
 	}
 
-	// MaxInt32 * 2Gi dwarfs 2Gi, so the multiply ran and was not dropped.
+	// MaxInt32 * 2Gi is far above 1Ei.
 	got := result["gpu.com"].Capacity["memory"]
 	if got.Cmp(resource.MustParse("1Ei")) <= 0 {
 		t.Fatalf("capacity = %s for TaskMinAvailable=MaxInt32; want much greater than 1Ei", got.String())

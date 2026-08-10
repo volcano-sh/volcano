@@ -48,9 +48,8 @@ import (
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 )
 
-// addDRAResource computes reqQty*count in O(1), so it returns immediately even at the
-// maximum count and is safe on its own rather than relying on the caller to bound count.
-// Before the O(1) change it looped ~count times (issue #5627) -- centuries for MaxInt64.
+// addDRAResource returns at once even at the maximum count and scales the capacity
+// exactly, without relying on the caller to bound count.
 func TestAddDRAResource_constantTimeForHugeCount(t *testing.T) {
 	const dc = "gpu.example.com"
 	m := make(map[string]*api.DRAResource)
@@ -64,12 +63,10 @@ func TestAddDRAResource_constantTimeForHugeCount(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("addDRAResource did not return for count=MaxInt64 within 5s; the unbounded loop was reintroduced")
+		t.Fatal("addDRAResource did not return within 5s for count=MaxInt64")
 	}
 
-	// The scaled capacity must be exact, not dropped or truncated: 2Gi * MaxInt64
-	// is 19807040628566084396238503936. A String round-trip would cap it near
-	// MaxInt64 instead.
+	// 2Gi * MaxInt64 = 19807040628566084396238503936, the exact scaled total.
 	got := m[dc].Capacity["memory"]
 	if want := resource.MustParse("19807040628566084396238503936"); got.Cmp(want) != 0 {
 		t.Fatalf("capacity = %s for count=MaxInt64; want exact %s", got.AsDec().String(), want.AsDec().String())
