@@ -47,12 +47,6 @@ get_development_image_tag() {
 	echo "${tags[0]}"
 }
 
-# Check if tag is a prerelease version (alpha/beta/rc)
-is_prerelease_tag() {
-	local tag="$1"
-	[[ "$tag" =~ (alpha|beta|rc) ]]
-}
-
 # Compare yaml files with appropriate tag replacement
 compare_yaml_files() {
 	local dev_file="$1"
@@ -65,8 +59,8 @@ compare_yaml_files() {
 		return 1
 	fi
 	
-	if [[ "$dev_tag" == "latest" ]] && is_prerelease_tag "$RELEASE_TAG"; then
-		# Master branch prerelease scenario: development file uses 'latest', release tag is prerelease
+	if [[ "$dev_tag" == "latest" && "$RELEASE_TAG" != "latest" ]]; then
+		# Tag build scenario: development file is the latest template
 		# Replace 'latest' with release tag in development file for comparison
 		echo "Comparing $file_type ($RELEASE_TAG)"
 		local temp_file=$(mktemp)
