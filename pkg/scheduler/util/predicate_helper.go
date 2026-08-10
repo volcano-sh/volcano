@@ -63,10 +63,15 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 	numFoundNodes := int32(0)
 	processedNodes := int32(0)
 
-	taskGroupid := taskGroupID(task)
-	nodeErrorCache, taskFailedBefore := ph.taskPredicateErrorCache[taskGroupid]
-	if nodeErrorCache == nil {
-		nodeErrorCache = map[string]error{}
+	var taskGroupid string
+	var nodeErrorCache map[string]error
+	var taskFailedBefore bool
+	if enableErrorCache {
+		taskGroupid = taskGroupID(task)
+		nodeErrorCache, taskFailedBefore = ph.taskPredicateErrorCache[taskGroupid]
+		if nodeErrorCache == nil {
+			nodeErrorCache = map[string]error{}
+		}
 	}
 	nodeErrors := make([]error, allNodes)
 
