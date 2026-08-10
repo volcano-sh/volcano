@@ -814,3 +814,42 @@ func TestGetMinDRAResourcesFallbackWithoutTaskMinAvailable(t *testing.T) {
 		},
 	}, job.GetMinDRAResources())
 }
+
+func newTaskWithStatus(uid string, status TaskStatus, nodeName string) *TaskInfo {
+	return &TaskInfo{
+		UID: TaskID(uid),
+		TransactionContext: TransactionContext{
+			Status:   status,
+			NodeName: nodeName,
+		},
+		Resreq: EmptyResource(),
+	}
+}
+
+func TestReleasingScheduledTaskNum(t *testing.T) {
+	jobInfo := NewJobInfo("job-1",
+		newTaskWithStatus("scheduled-1", Releasing, "node-1"),
+		newTaskWithStatus("unscheduled", Releasing, ""),
+		newTaskWithStatus("scheduled-2", Releasing, "node-2"),
+		newTaskWithStatus("running", Running, "node-3"),
+	)
+
+	if got, want := jobInfo.ReleasingScheduledTaskNum(), int32(2); got != want {
+		t.Fatalf("ReleasingScheduledTaskNum() = %v, want %v", got, want)
+	}
+}
+
+func TestScheduledTaskNum(t *testing.T) {
+	jobInfo := NewJobInfo("job-1",
+		newTaskWithStatus("running", Running, ""),
+		newTaskWithStatus("bound", Bound, ""),
+		newTaskWithStatus("failed", Failed, ""),
+		newTaskWithStatus("succeeded", Succeeded, ""),
+		newTaskWithStatus("pending", Pending, ""),
+		newTaskWithStatus("releasing", Releasing, ""),
+	)
+
+	if got, want := jobInfo.ScheduledTaskNum(), int32(4); got != want {
+		t.Fatalf("ScheduledTaskNum() = %v, want %v", got, want)
+	}
+}

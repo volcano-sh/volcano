@@ -27,16 +27,19 @@ import (
 )
 
 type PodSpec struct {
-	Name            string
-	Node            string
-	Req             v1.ResourceList
-	Tolerations     []v1.Toleration
-	Annotations     map[string]string
-	Labels          map[string]string
-	SchedulerName   string
-	RestartPolicy   v1.RestartPolicy
-	NodeSelector    map[string]string
-	SchedulingGates []v1.PodSchedulingGate
+	Name                          string
+	Node                          string
+	Req                           v1.ResourceList
+	Tolerations                   []v1.Toleration
+	Annotations                   map[string]string
+	Labels                        map[string]string
+	SchedulerName                 string
+	RestartPolicy                 v1.RestartPolicy
+	NodeSelector                  map[string]string
+	SchedulingGates               []v1.PodSchedulingGate
+	Image                         string
+	Command                       []string
+	TerminationGracePeriodSeconds *int64
 }
 
 func CreatePod(ctx *TestContext, spec PodSpec) *v1.Pod {
@@ -50,22 +53,30 @@ func CreatePod(ctx *TestContext, spec PodSpec) *v1.Pod {
 		meta.Labels = spec.Labels
 	}
 
+	image := DefaultNginxImage
+	if spec.Image != "" {
+		image = spec.Image
+	}
+
+	container := v1.Container{
+		Image:           image,
+		Name:            spec.Name,
+		ImagePullPolicy: v1.PullIfNotPresent,
+		Resources: v1.ResourceRequirements{
+			Requests: spec.Req,
+		},
+	}
+	if len(spec.Command) > 0 {
+		container.Command = spec.Command
+	}
+
 	pod := &v1.Pod{
 		ObjectMeta: meta,
 		Spec: v1.PodSpec{
 			NodeName:      spec.Node,
 			SchedulerName: spec.SchedulerName,
-			Containers: []v1.Container{
-				{
-					Image:           DefaultNginxImage,
-					Name:            spec.Name,
-					ImagePullPolicy: v1.PullIfNotPresent,
-					Resources: v1.ResourceRequirements{
-						Requests: spec.Req,
-					},
-				},
-			},
-			Tolerations: spec.Tolerations,
+			Containers:    []v1.Container{container},
+			Tolerations:   spec.Tolerations,
 		},
 	}
 
@@ -74,6 +85,9 @@ func CreatePod(ctx *TestContext, spec PodSpec) *v1.Pod {
 	}
 	if spec.RestartPolicy != "" {
 		pod.Spec.RestartPolicy = spec.RestartPolicy
+	}
+	if spec.TerminationGracePeriodSeconds != nil {
+		pod.Spec.TerminationGracePeriodSeconds = spec.TerminationGracePeriodSeconds
 	}
 
 	if len(spec.NodeSelector) > 0 {
