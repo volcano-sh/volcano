@@ -23,6 +23,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"sync"
 	"testing"
@@ -31,6 +32,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubefake "k8s.io/client-go/kubernetes/fake"
@@ -45,6 +47,31 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 )
+
+// addDRAResource returns at once even at the maximum count and scales the capacity
+// exactly, without relying on the caller to bound count.
+func TestAddDRAResource_constantTimeForHugeCount(t *testing.T) {
+	const dc = "gpu.example.com"
+	m := make(map[string]*api.DRAResource)
+	capacity := map[string]resource.Quantity{"memory": resource.MustParse("2Gi")}
+
+	done := make(chan struct{})
+	go func() {
+		addDRAResource(m, dc, math.MaxInt64, capacity)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("addDRAResource did not return within 5s for count=MaxInt64")
+	}
+
+	// 2Gi * MaxInt64 = 19807040628566084396238503936, the exact scaled total.
+	got := m[dc].Capacity["memory"]
+	if want := resource.MustParse("19807040628566084396238503936"); got.Cmp(want) != 0 {
+		t.Fatalf("capacity = %s for count=MaxInt64; want exact %s", got.AsDec().String(), want.AsDec().String())
+	}
+}
 
 func buildNode(name string, alloc v1.ResourceList) *v1.Node {
 	return &v1.Node{

@@ -21,7 +21,9 @@ limitations under the License.
 package api
 
 import (
+	"math"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
@@ -813,6 +815,40 @@ func TestGetMinDRAResourcesFallbackWithoutTaskMinAvailable(t *testing.T) {
 			Capacity: map[string]resource.Quantity{},
 		},
 	}, job.GetMinDRAResources())
+}
+
+func TestGetMinDRAResources_constantTimeForHugeTaskMinAvailable(t *testing.T) {
+	job := NewJobInfo("test-job")
+	job.TaskMinAvailable["worker"] = math.MaxInt32
+	job.Tasks[TaskID("worker-0")] = &TaskInfo{
+		UID:      TaskID("worker-0"),
+		Name:     "worker-0",
+		TaskRole: "worker",
+		DRAResreq: map[string]*DRAResource{
+			"gpu.com": {
+				Count:    1,
+				Capacity: map[string]resource.Quantity{"memory": resource.MustParse("2Gi")},
+			},
+		},
+	}
+
+	var result map[string]*DRAResource
+	done := make(chan struct{})
+	go func() {
+		result = job.GetMinDRAResources()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("GetMinDRAResources did not return within 5s for TaskMinAvailable=MaxInt32")
+	}
+
+	// MaxInt32 * 2Gi is far above 1Ei.
+	got := result["gpu.com"].Capacity["memory"]
+	if got.Cmp(resource.MustParse("1Ei")) <= 0 {
+		t.Fatalf("capacity = %s for TaskMinAvailable=MaxInt32; want much greater than 1Ei", got.String())
+	}
 }
 
 func TestTaskInfoPodAnnotations(t *testing.T) {
