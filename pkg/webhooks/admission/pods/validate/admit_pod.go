@@ -122,7 +122,7 @@ func validateAnnotation(pod *v1.Pod) error {
 			if value, found := pod.Annotations[key]; found {
 				num++
 				if err := validateIntPercentageStr(key, value); err != nil {
-					recordEvent(err)
+					recordEvent(pod, err)
 					return err
 				}
 			}
@@ -134,8 +134,10 @@ func validateAnnotation(pod *v1.Pod) error {
 	return nil
 }
 
-func recordEvent(err error) {
-	config.Recorder.Eventf(nil, v1.EventTypeWarning, "Admit", "Create pod failed due to %v", err)
+func recordEvent(pod *v1.Pod, err error) {
+	// The pod is never persisted once admission rejects it, so the event is only
+	// reachable through its namespace's event list, not through the pod itself.
+	config.Recorder.Eventf(pod, v1.EventTypeWarning, "Admit", "Create pod failed due to %v", err)
 }
 
 func validateIntPercentageStr(key, value string) error {
