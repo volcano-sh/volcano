@@ -2112,70 +2112,155 @@ func TestCheckDRAAllocatable_overflowRejected(t *testing.T) {
 // TestAncestorSharedClaim reproduces issue #5847: ancestor queues must track
 // shared ResourceClaim refcounts just like leaf queues do.
 //
-// Two failure modes are tested:
-//  1. Release direction: when one of two tasks sharing a claim is released, the
-//     ancestor must still charge the claim (the other task still holds it).
-//  2. Admit direction: when a task is admitted during a session against a claim
-//     the ancestor was already charged for at build time, the ancestor must not
-//     charge it a second time.
+// By constructing an actual session hierarchy, we exercise the real
+// buildHierarchicalQueueAttrs path. A job has two tasks sharing a claim.
+// Without the fix, the build path leaves resourceClaimRefs empty on the
+// ancestor, causing Allocate to double-charge the ancestor and Reject the task.
 func TestAncestorSharedClaim(t *testing.T) {
-	sharedTask := func(name string) *api.TaskInfo {
-		return &api.TaskInfo{
-			Name:              name,
-			Resreq:            api.EmptyResource(),
-			ResourceClaimKeys: []string{"ns1/shared"},
-			ResourceClaimDRAResreq: map[string]map[string]*api.DRAResource{
-				"ns1/shared": {"gpu.com": {Count: 1}},
+	if err := utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=true", kubefeatures.DynamicResourceAllocation)); err != nil {
+		t.Fatal(err)
+	}
+
+	claimName := "shared-claim"
+	claim := &resourcev1.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: claimName, Namespace: "ns1"},
+		Spec: resourcev1.ResourceClaimSpec{
+			Devices: resourcev1.DeviceClaim{
+				Requests: []resourcev1.DeviceRequest{
+					{
+						Name: "req-1",
+						Exactly: &resourcev1.ExactDeviceRequest{
+							DeviceClassName: "gpu.com",
+							Count:           1,
+						},
+					},
+				},
 			},
-			DRAResreq: map[string]*api.DRAResource{"gpu.com": {Count: 1}},
+		},
+	}
+
+	buildPod := func(name string, phase corev1.PodPhase, node, pgName string) *corev1.Pod {
+		pod := util.BuildPod("ns1", name, node, phase, api.BuildResourceList("1", "1Gi"), pgName, nil, nil)
+		pod.Spec.ResourceClaims = []corev1.PodResourceClaim{
+			{Name: "claim-1", ResourceClaimName: &claimName},
+		}
+		if pod.Annotations == nil {
+			pod.Annotations = make(map[string]string)
+		}
+		pod.Annotations[batchv1alpha1.TaskSpecKey] = "worker"
+		return pod
+	}
+
+	pA := buildPod("pA", corev1.PodRunning, "n1", "pg1")
+	pB := buildPod("pB", corev1.PodRunning, "n1", "pg2")
+
+	pg1 := util.BuildPodGroup("pg1", "ns1", "leaf1", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg2 := util.BuildPodGroup("pg2", "ns1", "leaf2", 1, nil, schedulingv1beta1.PodGroupRunning)
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("10", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+
+	rootQ := buildQueueWithParents("root", "", nil, nil)
+	rootQ.Spec.Capability = map[corev1.ResourceName]resource.Quantity{
+		corev1.ResourceName(DeviceClassCountPrefix + "gpu.com"): resource.MustParse("4"),
+	}
+	leaf1Q := buildQueueWithParents("leaf1", "root", nil, nil)
+	leaf1Q.Spec.Capability = map[corev1.ResourceName]resource.Quantity{
+		corev1.ResourceName(DeviceClassCountPrefix + "gpu.com"): resource.MustParse("4"),
+	}
+	leaf2Q := buildQueueWithParents("leaf2", "root", nil, nil)
+	leaf2Q.Spec.Capability = map[corev1.ResourceName]resource.Quantity{
+		corev1.ResourceName(DeviceClassCountPrefix + "gpu.com"): resource.MustParse("4"),
+	}
+
+	test := uthelper.TestCommonStruct{
+		Name:           "Ancestor double-charge bug",
+		Plugins:        map[string]framework.PluginBuilder{PluginName: New},
+		Pods:           []*corev1.Pod{pA, pB},
+		PodGroups:      []*schedulingv1beta1.PodGroup{pg1, pg2},
+		Queues:         []*schedulingv1beta1.Queue{rootQ, leaf1Q, leaf2Q},
+		Nodes:          []*corev1.Node{n1},
+		ResourceClaims: []*resourcev1.ResourceClaim{claim},
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:             PluginName,
+					EnabledHierarchy: &trueValue,
+				},
+			},
+		},
+	}
+	sc := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	cp := New(nil).(*capacityPlugin)
+	cp.OnSessionOpen(sc)
+
+	rootAttr := cp.queueOpts["root"]
+	leaf1Attr := cp.queueOpts["leaf1"]
+	leaf2Attr := cp.queueOpts["leaf2"]
+
+	if rootAttr == nil || leaf1Attr == nil || leaf2Attr == nil {
+		t.Fatalf("expected queue attributes to be created")
+	}
+
+	assertState := func(step string, q *queueAttr, expectedCount int64, expectedRefs int) {
+		t.Helper()
+		count := int64(0)
+		if q.dra.allocated["gpu.com"] != nil {
+			count = q.dra.allocated["gpu.com"].Count
+		}
+		if count != expectedCount {
+			t.Errorf("[%s] %s: expected allocated count %d, got %d", step, q.name, expectedCount, count)
+		}
+		refs := q.resourceClaimRefs["ns1/shared-claim"]
+		if refs != expectedRefs {
+			t.Errorf("[%s] %s: expected refcount %d, got %d", step, q.name, expectedRefs, refs)
 		}
 	}
-	newAttr := func(charged int64) *queueAttr {
-		return &queueAttr{
-			allocated:      api.EmptyResource(),
-			realCapability: api.InfiniteResource(),
-			dra: &draQuotaAttr{
-				allocated:  map[string]*api.DRAResource{"gpu.com": {Count: charged}},
-				capability: map[string]*api.DRAResource{"gpu.com": {Count: 4}},
-			},
-			resourceClaimRefs: make(map[string]int),
+
+	// 1. Verify build phase
+	assertState("build", leaf1Attr, 1, 1)
+	assertState("build", leaf2Attr, 1, 1)
+	assertState("build", rootAttr, 1, 2)
+
+	var taskA, taskB *api.TaskInfo
+	for _, job := range sc.Jobs {
+		for _, tasks := range job.TaskStatusIndex {
+			for _, task := range tasks {
+				if task.Name == "pA" {
+					taskA = task
+				}
+				if task.Name == "pB" {
+					taskB = task
+				}
+			}
 		}
 	}
 
-	taskA, taskB := sharedTask("a"), sharedTask("b")
-
-	// --- Release direction ---
-	// Simulate what buildHierarchicalQueueAttrs produces:
-	//   leaf: addTaskDRAAllocated called for both tasks → refcount=2, charged once.
-	//   ancestor (fixed path): addTaskDRAAllocated called for both tasks → refcount=2, charged once.
-	leaf := newAttr(0)
-	addTaskDRAAllocated(leaf, taskA)
-	addTaskDRAAllocated(leaf, taskB)
-
-	ancestor := newAttr(0)
-	addTaskDRAAllocated(ancestor, taskA)
-	addTaskDRAAllocated(ancestor, taskB)
-
-	// Release one task. The claim is still held by the other.
-	removeTaskDRAAllocated(leaf, taskA)
-	removeTaskDRAAllocated(ancestor, taskA)
-
-	leafCount := leaf.dra.allocated["gpu.com"].Count
-	ancestorCount := ancestor.dra.allocated["gpu.com"].Count
-	t.Logf("after releasing one of two tasks: leaf=%d, ancestor=%d", leafCount, ancestorCount)
-	if ancestorCount < leafCount {
-		t.Errorf("release direction: ancestor charges %d for a claim its child still charges %d for (want ancestor >= leaf)",
-			ancestorCount, leafCount)
+	if taskA == nil || taskB == nil {
+		t.Fatalf("tasks not found")
 	}
 
-	// --- Admit direction ---
-	// Ancestor was charged once at build time (refcount=1 via addTaskDRAAllocated).
-	// A second task for the same claim is admitted during the session.
-	// addTaskDRAAllocated should see refcount>0 and NOT charge again.
-	admitted := newAttr(0)
-	addTaskDRAAllocated(admitted, taskA) // simulates the build-time charge (refcount → 1)
-	addTaskDRAAllocated(admitted, taskB) // simulates AllocateFn during the session (refcount → 2, no new charge)
-	if got := admitted.dra.allocated["gpu.com"].Count; got != 1 {
-		t.Errorf("admit direction: ancestor charges %d for one shared claim (want 1)", got)
-	}
+	// 2. Remove one task
+	removeTaskDRAAllocated(leaf1Attr, taskA)
+	removeTaskDRAAllocated(rootAttr, taskA)
+	assertState("remove 1st", rootAttr, 1, 1)
+
+	// 3. Remove final task
+	removeTaskDRAAllocated(leaf2Attr, taskB)
+	removeTaskDRAAllocated(rootAttr, taskB)
+	assertState("remove 2nd", rootAttr, 0, 0)
+
+	// 4. Admit another task for already-counted claim does not charge it again
+	addTaskDRAAllocated(leaf1Attr, taskA)
+	addTaskDRAAllocated(rootAttr, taskA)
+	assertState("admit 1st", rootAttr, 1, 1)
+
+	addTaskDRAAllocated(leaf2Attr, taskB)
+	addTaskDRAAllocated(rootAttr, taskB)
+	assertState("admit 2nd", rootAttr, 1, 2)
 }
