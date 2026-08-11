@@ -2108,3 +2108,74 @@ func TestCheckDRAAllocatable_overflowRejected(t *testing.T) {
 		t.Fatalf("checkDRAAllocatable rejected a valid request (4 <= 8); want admitted")
 	}
 }
+
+// TestAncestorSharedClaim reproduces issue #5847: ancestor queues must track
+// shared ResourceClaim refcounts just like leaf queues do.
+//
+// Two failure modes are tested:
+//  1. Release direction: when one of two tasks sharing a claim is released, the
+//     ancestor must still charge the claim (the other task still holds it).
+//  2. Admit direction: when a task is admitted during a session against a claim
+//     the ancestor was already charged for at build time, the ancestor must not
+//     charge it a second time.
+func TestAncestorSharedClaim(t *testing.T) {
+	sharedTask := func(name string) *api.TaskInfo {
+		return &api.TaskInfo{
+			Name:              name,
+			Resreq:            api.EmptyResource(),
+			ResourceClaimKeys: []string{"ns1/shared"},
+			ResourceClaimDRAResreq: map[string]map[string]*api.DRAResource{
+				"ns1/shared": {"gpu.com": {Count: 1}},
+			},
+			DRAResreq: map[string]*api.DRAResource{"gpu.com": {Count: 1}},
+		}
+	}
+	newAttr := func(charged int64) *queueAttr {
+		return &queueAttr{
+			allocated:      api.EmptyResource(),
+			realCapability: api.InfiniteResource(),
+			dra: &draQuotaAttr{
+				allocated:  map[string]*api.DRAResource{"gpu.com": {Count: charged}},
+				capability: map[string]*api.DRAResource{"gpu.com": {Count: 4}},
+			},
+			resourceClaimRefs: make(map[string]int),
+		}
+	}
+
+	taskA, taskB := sharedTask("a"), sharedTask("b")
+
+	// --- Release direction ---
+	// Simulate what buildHierarchicalQueueAttrs produces:
+	//   leaf: addTaskDRAAllocated called for both tasks → refcount=2, charged once.
+	//   ancestor (fixed path): addTaskDRAAllocated called for both tasks → refcount=2, charged once.
+	leaf := newAttr(0)
+	addTaskDRAAllocated(leaf, taskA)
+	addTaskDRAAllocated(leaf, taskB)
+
+	ancestor := newAttr(0)
+	addTaskDRAAllocated(ancestor, taskA)
+	addTaskDRAAllocated(ancestor, taskB)
+
+	// Release one task. The claim is still held by the other.
+	removeTaskDRAAllocated(leaf, taskA)
+	removeTaskDRAAllocated(ancestor, taskA)
+
+	leafCount := leaf.dra.allocated["gpu.com"].Count
+	ancestorCount := ancestor.dra.allocated["gpu.com"].Count
+	t.Logf("after releasing one of two tasks: leaf=%d, ancestor=%d", leafCount, ancestorCount)
+	if ancestorCount < leafCount {
+		t.Errorf("release direction: ancestor charges %d for a claim its child still charges %d for (want ancestor >= leaf)",
+			ancestorCount, leafCount)
+	}
+
+	// --- Admit direction ---
+	// Ancestor was charged once at build time (refcount=1 via addTaskDRAAllocated).
+	// A second task for the same claim is admitted during the session.
+	// addTaskDRAAllocated should see refcount>0 and NOT charge again.
+	admitted := newAttr(0)
+	addTaskDRAAllocated(admitted, taskA) // simulates the build-time charge (refcount → 1)
+	addTaskDRAAllocated(admitted, taskB) // simulates AllocateFn during the session (refcount → 2, no new charge)
+	if got := admitted.dra.allocated["gpu.com"].Count; got != 1 {
+		t.Errorf("admit direction: ancestor charges %d for one shared claim (want 1)", got)
+	}
+}

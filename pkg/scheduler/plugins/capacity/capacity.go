@@ -409,6 +409,62 @@ func removeTaskDRAAllocated(attr *queueAttr, task *api.TaskInfo) {
 	}
 }
 
+// addTaskDRAAllocatedForAncestor is like addTaskDRAAllocated but only charges
+// DeviceClasses that are present in the ancestor's capability map. It must be
+// used instead of updateDRAAllocated in the build path so that ancestor queues
+// receive correct resourceClaimRefs and agree with the refcount-aware helpers
+// called by AllocateFn/DeallocateFn and the event handlers.
+//
+// Without this, ancestor.resourceClaimRefs stays empty: removeTaskDRAAllocated
+// always reads refCount=0 and subtracts (over-admission), and
+// addTaskDRAAllocated always reads refCount=0 and charges again (under-admission).
+// See https://github.com/volcano-sh/volcano/issues/5847.
+func addTaskDRAAllocatedForAncestor(attr *queueAttr, task *api.TaskInfo) {
+	if attr == nil || attr.dra == nil || task == nil {
+		return
+	}
+	capability := attr.dra.capability
+	if len(task.ResourceClaimDRAResreq) == 0 {
+		// Non-shared claims: filter task.DRAResreq by ancestor capability.
+		if task.DRAResreq != nil {
+			filtered := make(map[string]*api.DRAResource)
+			for dc, res := range task.DRAResreq {
+				if _, ok := capability[dc]; ok {
+					filtered[dc] = res
+				}
+			}
+			if len(filtered) > 0 {
+				updateDRAAllocated(attr.dra, filtered)
+			}
+		}
+		return
+	}
+	// Shared claims: same refcount logic as addTaskDRAAllocated, but only charge
+	// DeviceClasses that exist in the ancestor's capability.
+	if attr.resourceClaimRefs == nil {
+		attr.resourceClaimRefs = make(map[string]int)
+	}
+	for _, claimKey := range task.ResourceClaimKeys {
+		claimReq := task.ResourceClaimDRAResreq[claimKey]
+		if len(claimReq) == 0 {
+			continue
+		}
+		filtered := make(map[string]*api.DRAResource)
+		for dc, res := range claimReq {
+			if _, ok := capability[dc]; ok {
+				filtered[dc] = res
+			}
+		}
+		if len(filtered) == 0 {
+			continue
+		}
+		if attr.resourceClaimRefs[claimKey] == 0 {
+			updateDRAAllocated(attr.dra, filtered)
+		}
+		attr.resourceClaimRefs[claimKey]++
+	}
+}
+
 // New return capacityPlugin action
 func New(arguments framework.Arguments) framework.Plugin {
 	// Default to k8s feature gate values, allow override via plugin arguments
@@ -1112,6 +1168,16 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 					attr.request.Add(t.Resreq)
 					if cp.dynamicResourceAllocationEnable && attr.dra != nil && t.DRAResreq != nil {
 						addTaskDRAAllocated(attr, t)
+						// Propagate to ancestors using the refcount-aware helper so that
+						// ancestorAttr.resourceClaimRefs is seeded for shared claims.
+						// This fixes issue #5847 where the old delta-based update left
+						// resourceClaimRefs empty, causing accounting drift in both directions.
+						for _, ancestor := range attr.ancestors {
+							ancestorAttr := cp.queueOpts[ancestor]
+							if ancestorAttr.dra != nil {
+								addTaskDRAAllocatedForAncestor(ancestorAttr, t)
+							}
+						}
 					}
 				}
 			} else if status == api.Pending {
@@ -1247,10 +1313,6 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		oldRequest := attr.request.Clone()
 		oldInqueue := attr.inqueue.Clone()
 		oldElastic := attr.elastic.Clone()
-		var oldDRA *draQuotaAttr
-		if attr.dra != nil {
-			oldDRA = attr.dra.Clone()
-		}
 
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
@@ -1259,6 +1321,16 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 					attr.request.Add(t.Resreq)
 					if cp.dynamicResourceAllocationEnable && attr.dra != nil && t.DRAResreq != nil {
 						addTaskDRAAllocated(attr, t)
+						// Propagate to ancestors using the refcount-aware helper so that
+						// ancestorAttr.resourceClaimRefs is seeded for shared claims.
+						// This fixes issue #5847 where the old delta-based update left
+						// resourceClaimRefs empty, causing accounting drift in both directions.
+						for _, ancestor := range attr.ancestors {
+							ancestorAttr := cp.queueOpts[ancestor]
+							if ancestorAttr.dra != nil {
+								addTaskDRAAllocatedForAncestor(ancestorAttr, t)
+							}
+						}
 					}
 				}
 			} else if status == api.Pending {
@@ -1293,29 +1365,13 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		inqueueDelta := attr.inqueue.Clone().Sub(oldInqueue)
 		elasticDelta := attr.elastic.Clone().Sub(oldElastic)
 
-		var draDelta map[string]*api.DRAResource
-		if attr.dra != nil {
-			draDelta = getDRADelta(attr.dra, oldDRA)
-		}
-
 		for _, ancestor := range attr.ancestors {
 			ancestorAttr := cp.queueOpts[ancestor]
 			ancestorAttr.allocated.Add(allocatedDelta)
 			ancestorAttr.request.Add(requestDelta)
 			ancestorAttr.inqueue.Add(inqueueDelta)
 			ancestorAttr.elastic.Add(elasticDelta)
-			if cp.dynamicResourceAllocationEnable && ancestorAttr.dra != nil && draDelta != nil {
-				// Only propagate Delta for DeviceClasses that are configured in ancestor's capability
-				filteredDelta := make(map[string]*api.DRAResource)
-				for dc, res := range draDelta {
-					if _, ok := ancestorAttr.dra.capability[dc]; ok {
-						filteredDelta[dc] = res
-					}
-				}
-				if len(filteredDelta) > 0 {
-					updateDRAAllocated(ancestorAttr.dra, filteredDelta)
-				}
-			}
+			// DRA is now propagated per-task inside the task loop above.
 		}
 
 		klog.V(5).Infof("Queue %s allocated <%s> request <%s> inqueue <%s> elastic <%s>",
