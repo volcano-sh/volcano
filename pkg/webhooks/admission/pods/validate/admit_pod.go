@@ -50,7 +50,7 @@ var service = &router.AdmissionService{
 			Name: "validatepod.volcano.sh",
 			Rules: []whv1.RuleWithOperations{
 				{
-					Operations: []whv1.OperationType{whv1.Create},
+					Operations: []whv1.OperationType{whv1.Create, whv1.Update},
 					Rule: whv1.Rule{
 						APIGroups:   []string{""},
 						APIVersions: []string{"v1"},
@@ -80,8 +80,21 @@ func AdmitPods(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	switch ar.Request.Operation {
 	case admissionv1.Create:
 		msg = validatePod(pod, &reviewResponse)
+	case admissionv1.Update:
+		oldPod, err := schema.DecodePod(ar.Request.OldObject, ar.Request.Resource)
+		if err != nil {
+			return util.ToAdmissionResponse(err)
+		}
+		if slices.Contains(config.SchedulerNames, pod.Spec.SchedulerName) &&
+			oldPod.Annotations[vcv1beta1.QueueNameAnnotationKey] !=
+				pod.Annotations[vcv1beta1.QueueNameAnnotationKey] {
+			if err := validateQueueAnnotation(pod); err != nil {
+				msg = err.Error()
+				reviewResponse.Allowed = false
+			}
+		}
 	default:
-		err := fmt.Errorf("expect operation to be 'CREATE'")
+		err := fmt.Errorf("expect operation to be 'CREATE' or 'UPDATE'")
 		return util.ToAdmissionResponse(err)
 	}
 
@@ -100,15 +113,35 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 	if !slices.Contains(config.SchedulerNames, pod.Spec.SchedulerName) {
 		return ""
 	}
-	msg := ""
+	var errs []string
 
-	// check pod annotatations
 	if err := validateAnnotation(pod); err != nil {
-		msg = err.Error()
-		reviewResponse.Allowed = false
+		errs = append(errs, err.Error())
+	}
+	if err := validateQueueAnnotation(pod); err != nil {
+		errs = append(errs, err.Error())
 	}
 
-	return msg
+	if len(errs) == 0 {
+		return ""
+	}
+	reviewResponse.Allowed = false
+	return strings.Join(errs, "; ")
+}
+
+func validateQueueAnnotation(pod *v1.Pod) error {
+	reference, found := pod.Annotations[vcv1beta1.QueueNameAnnotationKey]
+	if !found || reference == "" {
+		return nil
+	}
+
+	return router.ValidateWorkloadQueueReference(
+		pod.Namespace,
+		reference,
+		vcv1beta1.DefaultQueue,
+		config,
+		router.QueueReferenceValidationOptions{},
+	)
 }
 
 func validateAnnotation(pod *v1.Pod) error {

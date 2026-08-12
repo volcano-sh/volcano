@@ -23,12 +23,18 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
+// NamespaceQueueReferencePrefix identifies a workload reference targeting a
+// NamespaceQueue in the workload namespace.
 const NamespaceQueueReferencePrefix = "namespace/"
 
+// QueueReferenceScope identifies whether a resolved reference is cluster- or
+// namespace-scoped.
 type QueueReferenceScope string
 
 const (
-	ClusterQueueReferenceScope   QueueReferenceScope = "cluster"
+	// ClusterQueueReferenceScope identifies a cluster-scoped Queue.
+	ClusterQueueReferenceScope QueueReferenceScope = "cluster"
+	// NamespaceQueueReferenceScope identifies a namespace-scoped NamespaceQueue.
 	NamespaceQueueReferenceScope QueueReferenceScope = "namespace"
 )
 
@@ -73,7 +79,6 @@ func ResolveWorkloadQueueReference(
 	if workloadNamespace == "" || name == "" || strings.Contains(name, "/") {
 		return ResolvedQueueReference{}, fmt.Errorf("invalid queue reference %q", reference)
 	}
-
 	return ResolvedQueueReference{
 		Scope:     NamespaceQueueReferenceScope,
 		Namespace: workloadNamespace,

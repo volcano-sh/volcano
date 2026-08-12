@@ -45,7 +45,7 @@ var service = &router.AdmissionService{
 			Name: "validatepodgroup.volcano.sh",
 			Rules: []whv1.RuleWithOperations{
 				{
-					Operations: []whv1.OperationType{whv1.Create},
+					Operations: []whv1.OperationType{whv1.Create, whv1.Update},
 					Rule: whv1.Rule{
 						APIGroups:   []string{schedulingv1beta1.SchemeGroupVersion.Group},
 						APIVersions: []string{schedulingv1beta1.SchemeGroupVersion.Version},
@@ -72,6 +72,14 @@ func Validate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	switch ar.Request.Operation {
 	case admissionv1.Create:
 		errMsg = validatePodGroup(podgroup)
+	case admissionv1.Update:
+		oldPodGroup, err := schema.DecodePodGroup(ar.Request.OldObject, ar.Request.Resource)
+		if err != nil {
+			return util.ToAdmissionResponse(err)
+		}
+		if oldPodGroup.Spec.Queue != podgroup.Spec.Queue {
+			errMsg = checkQueueState(podgroup.Namespace, podgroup.Spec.Queue)
+		}
 	default:
 		errMsg = fmt.Sprintf("unsupported operation %s", ar.Request.Operation)
 	}
@@ -92,7 +100,7 @@ func Validate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
 	var errs []string
 
-	if msg := checkQueueState(pg.Spec.Queue); msg != "" {
+	if msg := checkQueueState(pg.Namespace, pg.Spec.Queue); msg != "" {
 		errs = append(errs, strings.TrimSpace(msg))
 	}
 	if msg := validateNetworkTopology(pg.Spec.NetworkTopology, pg.Spec.SubGroupPolicy); msg != "" {
@@ -103,19 +111,19 @@ func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
 }
 
 // checkQueueState verifies if the queue exists and is in the open state
-func checkQueueState(queueName string) string {
-	if queueName == "" {
+func checkQueueState(workloadNamespace, queueReference string) string {
+	if queueReference == "" {
 		return ""
 	}
 
-	queue, err := config.QueueLister.Get(queueName)
-	if err != nil {
-		return fmt.Sprintf("unable to find queue: %s", err.Error())
-	}
-
-	if queue.Status.State != schedulingv1beta1.QueueStateOpen {
-		return fmt.Sprintf("can only submit PodGroup to queue with state `Open`, queue `%s` status is `%s`. ",
-			queue.Name, queue.Status.State)
+	if err := router.ValidateWorkloadQueueReference(
+		workloadNamespace,
+		queueReference,
+		schedulingv1beta1.DefaultQueue,
+		config,
+		router.QueueReferenceValidationOptions{},
+	); err != nil {
+		return err.Error()
 	}
 
 	return ""
