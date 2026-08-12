@@ -34,14 +34,18 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	kubetesting "k8s.io/client-go/testing"
 	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclientfake "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
@@ -559,6 +563,74 @@ func TestNewDefaultAndRootQueue(t *testing.T) {
 			assert.NoError(t, rootErr)
 			_, defaultErr := tt.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), defaultQueue, metav1.GetOptions{})
 			assert.NoError(t, defaultErr)
+		})
+	}
+}
+
+func TestNewDefaultAndRootQueueInitializesNamespaceQueueAuthorization(t *testing.T) {
+	tests := []struct {
+		name             string
+		namespaceQueue   bool
+		initialQueueSpec *vcv1beta1.QueueSpec
+		wantAllowed      []string
+	}{
+		{
+			name:           "new default queue with NamespaceQueue enabled",
+			namespaceQueue: true,
+			wantAllowed:    []string{"*"},
+		},
+		{
+			name:           "new default queue with NamespaceQueue disabled",
+			namespaceQueue: false,
+		},
+		{
+			name:           "existing default queue with explicit allowedNamespaces is preserved",
+			namespaceQueue: true,
+			initialQueueSpec: &vcv1beta1.QueueSpec{
+				AllowedNamespaces: []string{"team-a"},
+			},
+			wantAllowed: []string{"team-a"},
+		},
+		{
+			name:           "existing default queue with explicit empty allowedNamespaces is preserved",
+			namespaceQueue: true,
+			initialQueueSpec: &vcv1beta1.QueueSpec{
+				AllowedNamespaces: []string{},
+			},
+			wantAllowed: []string{},
+		},
+		{
+			name:             "existing default queue without allowedNamespaces is upgraded",
+			namespaceQueue:   true,
+			initialQueueSpec: &vcv1beta1.QueueSpec{},
+			wantAllowed:      []string{"*"},
+		},
+		{
+			name:             "existing default queue is untouched with NamespaceQueue disabled",
+			namespaceQueue:   false,
+			initialQueueSpec: &vcv1beta1.QueueSpec{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, tt.namespaceQueue)
+
+			var objects []runtime.Object
+			if tt.initialQueueSpec != nil {
+				objects = append(objects, &vcv1beta1.Queue{
+					ObjectMeta: metav1.ObjectMeta{Name: "default"},
+					Spec:       *tt.initialQueueSpec,
+				})
+			}
+			client := vcclientfake.NewSimpleClientset(objects...)
+			newDefaultAndRootQueue(client, "default")
+
+			queue, err := client.SchedulingV1beta1().Queues().Get(context.TODO(), "default", metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("failed to get default queue: %v", err)
+			}
+			assert.Equal(t, tt.wantAllowed, queue.Spec.AllowedNamespaces)
 		})
 	}
 }
