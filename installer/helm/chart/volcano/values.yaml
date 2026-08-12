@@ -8,6 +8,7 @@ basic:
   admission_secret_name: "volcano-admission-secret"
   admission_config_file: "config/volcano-admission.conf"
   scheduler_config_file: "config/volcano-scheduler.conf"
+  namespace_queue_scheduler_config_file: "config/volcano-scheduler-namespacequeue.conf"
   agent_scheduler_config_file: "config/agent-scheduler.conf"
   image_pull_secret: ""
   image_pull_policy: "Always"

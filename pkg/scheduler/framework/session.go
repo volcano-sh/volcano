@@ -84,12 +84,16 @@ type Session struct {
 	// Nil when SchedulingGatesQueueAdmission feature gate is disabled.
 	schGateManager *gate.SchGateManager
 
-	Jobs           map[api.JobID]*api.JobInfo
+	Jobs map[api.JobID]*api.JobInfo
+	// AccountingJobs retains jobs attached to inactive queues for status updates.
+	AccountingJobs map[api.JobID]*api.JobInfo
 	Nodes          map[string]*api.NodeInfo
 	CSINodesStatus map[string]*api.CSINodeStatusInfo
 	RevocableNodes map[string]*api.NodeInfo
 	Queues         map[api.QueueID]*api.QueueInfo
-	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
+	// AccountingQueues retains inactive ancestors needed for allocation propagation.
+	AccountingQueues map[api.QueueID]*api.QueueInfo
+	NamespaceInfo    map[api.NamespaceName]*api.NamespaceInfo
 
 	// NodeMap is like Nodes except that it uses k8s NodeInfo api and should only
 	// be used in k8s compatible api scenarios such as in predicates and nodeorder plugins.
@@ -180,12 +184,14 @@ func openSession(cache cache.Cache) *Session {
 			Status:      map[api.JobID]scheduling.PodGroupStatus{},
 			Annotations: map[api.JobID]map[string]string{},
 		},
-		DirtyJobs:      sets.New[api.JobID](),
-		Jobs:           map[api.JobID]*api.JobInfo{},
-		Nodes:          map[string]*api.NodeInfo{},
-		CSINodesStatus: map[string]*api.CSINodeStatusInfo{},
-		RevocableNodes: map[string]*api.NodeInfo{},
-		Queues:         map[api.QueueID]*api.QueueInfo{},
+		DirtyJobs:        sets.New[api.JobID](),
+		Jobs:             map[api.JobID]*api.JobInfo{},
+		AccountingJobs:   map[api.JobID]*api.JobInfo{},
+		Nodes:            map[string]*api.NodeInfo{},
+		CSINodesStatus:   map[string]*api.CSINodeStatusInfo{},
+		RevocableNodes:   map[string]*api.NodeInfo{},
+		Queues:           map[api.QueueID]*api.QueueInfo{},
+		AccountingQueues: map[api.QueueID]*api.QueueInfo{},
 
 		plugins:                       map[string]Plugin{},
 		jobOrderFns:                   map[string]api.CompareFn{},
@@ -230,6 +236,7 @@ func openSession(cache cache.Cache) *Session {
 	snapshot := cache.Snapshot()
 
 	ssn.Jobs = snapshot.Jobs
+	ssn.AccountingJobs = snapshot.AccountingJobs
 	for _, job := range ssn.Jobs {
 		if job.PodGroup != nil {
 			ssn.PodGroupOldState.Status[job.UID] = *job.PodGroup.Status.DeepCopy()
@@ -269,6 +276,7 @@ func openSession(cache cache.Cache) *Session {
 	ssn.CSINodesStatus = snapshot.CSINodesStatus
 	ssn.RevocableNodes = snapshot.RevocableNodes
 	ssn.Queues = snapshot.Queues
+	ssn.AccountingQueues = snapshot.AccountingQueues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
 	// calculate all nodes' resource only once in each schedule cycle, other plugins can clone it when need
 	for _, n := range ssn.Nodes {
@@ -501,14 +509,22 @@ func addNodeSharableDeviceUsage(ssn *Session, task *api.TaskInfo) {
 // updateQueueStatus updates allocated field in queue status on session close.
 func updateQueueStatus(ssn *Session) {
 	rootQueue := api.QueueID("root")
+	queues := ssn.AccountingQueues
+	if len(queues) == 0 {
+		queues = ssn.Queues
+	}
+	jobs := ssn.AccountingJobs
+	if len(jobs) == 0 {
+		jobs = ssn.Jobs
+	}
 	// calculate allocated resources on each queue
-	var allocatedResources = make(map[api.QueueID]*api.Resource, len(ssn.Queues))
-	var allocatedDRAResources = make(map[api.QueueID]map[string]*api.DRAResource, len(ssn.Queues))
-	var allocatedDRAClaimRefs = make(map[api.QueueID]map[string]int, len(ssn.Queues))
-	for queueID := range ssn.Queues {
+	var allocatedResources = make(map[api.QueueID]*api.Resource, len(queues))
+	var allocatedDRAResources = make(map[api.QueueID]map[string]*api.DRAResource, len(queues))
+	var allocatedDRAClaimRefs = make(map[api.QueueID]map[string]int, len(queues))
+	for queueID := range queues {
 		allocatedResources[queueID] = &api.Resource{}
 	}
-	for _, job := range ssn.Jobs {
+	for _, job := range jobs {
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, task := range tasks {
@@ -516,20 +532,39 @@ func updateQueueStatus(ssn *Session) {
 					allocatedResources[job.Queue].Add(task.Resreq)
 					addTaskDRAAllocatedByQueue(allocatedDRAResources, allocatedDRAClaimRefs, job.Queue, task)
 					// recursively updates the allocated resources of parent queues
-					queue := ssn.Queues[job.Queue].Queue
 					// compatibility unit testing
-					for ssn.Queues[rootQueue] != nil {
-						parent := string(rootQueue)
-						if queue.Spec.Parent != "" {
-							parent = queue.Spec.Parent
-						}
-						allocatedResources[api.QueueID(parent)].Add(task.Resreq)
-						addTaskDRAAllocatedByQueue(allocatedDRAResources, allocatedDRAClaimRefs, api.QueueID(parent), task)
+					queueInfo := queues[job.Queue]
+					if queueInfo == nil {
+						continue
+					}
 
-						if parent == string(rootQueue) {
+					visited := map[api.QueueID]struct{}{job.Queue: {}}
+					for {
+						parentID := queueInfo.Parent
+						if parentID == "" {
+							parentID = rootQueue
+						}
+						if _, found := visited[parentID]; found {
+							klog.Errorf("cycle detected in queue hierarchy while updating queue status for job <%s>: queue <%s> was visited twice", job.UID, parentID)
 							break
 						}
-						queue = ssn.Queues[api.QueueID(queue.Spec.Parent)].Queue
+						visited[parentID] = struct{}{}
+
+						if _, found := allocatedResources[parentID]; !found {
+							break
+						}
+
+						allocatedResources[parentID].Add(task.Resreq)
+						addTaskDRAAllocatedByQueue(allocatedDRAResources, allocatedDRAClaimRefs, parentID, task)
+
+						if parentID == rootQueue {
+							break
+						}
+
+						queueInfo = queues[parentID]
+						if queueInfo == nil {
+							break
+						}
 					}
 				}
 			}
@@ -537,21 +572,22 @@ func updateQueueStatus(ssn *Session) {
 	}
 
 	// update queue status
-	for queueID := range ssn.Queues {
+	for queueID := range queues {
 		// convert api.Resource to v1.ResourceList
 		var queueStatus = util.ConvertRes2ResList(allocatedResources[queueID]).DeepCopy()
 		queueStatus = mergeDRAAllocatedIntoResourceList(queueStatus, allocatedDRAResources[queueID])
 
-		if equality.Semantic.DeepEqual(ssn.Queues[queueID].Queue.Status.Allocated, queueStatus) {
+		queueInfo := queues[queueID]
+		if equality.Semantic.DeepEqual(queueInfo.Allocated, queueStatus) {
 			klog.V(5).Infof("Queue <%s> allocated resource keeps equal, no need to update queue status <%v>.",
-				queueID, ssn.Queues[queueID].Queue.Status.Allocated)
+				queueID, queueInfo.Allocated)
 			continue
 		}
 
-		ssn.Queues[queueID].Queue.Status.Allocated = queueStatus
+		queueInfo.Allocated = queueStatus
 
-		if err := ssn.cache.UpdateQueueStatus(ssn.Queues[queueID]); err != nil {
-			klog.Errorf("failed to update queue <%s> status: %s", ssn.Queues[queueID].Name, err.Error())
+		if err := ssn.cache.UpdateQueueStatus(queueInfo); err != nil {
+			klog.Errorf("failed to update queue <%s> status: %s", queueInfo.UID, err.Error())
 		}
 	}
 }
