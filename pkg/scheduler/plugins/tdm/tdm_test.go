@@ -140,6 +140,14 @@ func Test_New_MalformedArguments(t *testing.T) {
 			wantEvictPeriod:  2 * time.Minute,
 			wantRevocableLen: 1,
 		},
+		{
+			name: "revocable zone prefix must be at the start of the key",
+			args: framework.Arguments{
+				"other-" + revocableZoneLabelPrefix + "rz1": "10:00-21:00",
+			},
+			wantEvictPeriod:  time.Minute,
+			wantRevocableLen: 0,
+		},
 	}
 
 	for _, c := range tests {

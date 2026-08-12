@@ -67,13 +67,13 @@ func New(args framework.Arguments) framework.Plugin {
 	evictPeriod := time.Minute
 
 	for k, v := range args {
-		if strings.Contains(k, revocableZoneLabelPrefix) {
+		if strings.HasPrefix(k, revocableZoneLabelPrefix) {
 			value, ok := v.(string)
 			if !ok {
 				klog.Warningf("Could not parse argument: %v for key %s to string, skip this revocable zone", v, k)
 				continue
 			}
-			revocableZone[strings.Replace(k, revocableZoneLabelPrefix, "", 1)] = value
+			revocableZone[strings.TrimPrefix(k, revocableZoneLabelPrefix)] = value
 		}
 	}
 
