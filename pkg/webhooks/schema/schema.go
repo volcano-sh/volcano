@@ -131,6 +131,27 @@ func DecodeQueue(object runtime.RawExtension, resource metav1.GroupVersionResour
 	return &queue, nil
 }
 
+// DecodeNamespaceQueue decodes a NamespaceQueue after verifying its expected resource.
+func DecodeNamespaceQueue(object runtime.RawExtension, resource metav1.GroupVersionResource) (*schedulingv1beta1.NamespaceQueue, error) {
+	namespaceQueueResource := metav1.GroupVersionResource{
+		Group:    schedulingv1beta1.SchemeGroupVersion.Group,
+		Version:  schedulingv1beta1.SchemeGroupVersion.Version,
+		Resource: "namespacequeues",
+	}
+
+	if resource != namespaceQueueResource {
+		klog.Errorf("expect resource to be %s", namespaceQueueResource)
+		return nil, fmt.Errorf("expect resource to be %s", namespaceQueueResource)
+	}
+
+	namespaceQueue := schedulingv1beta1.NamespaceQueue{}
+	if _, _, err := Codecs.UniversalDeserializer().Decode(object.Raw, nil, &namespaceQueue); err != nil {
+		return nil, err
+	}
+
+	return &namespaceQueue, nil
+}
+
 // DecodePodGroup decodes the podgroup using deserializer from the raw object.
 func DecodePodGroup(object runtime.RawExtension, resource metav1.GroupVersionResource) (*schedulingv1beta1.PodGroup, error) {
 	podgroupResource := metav1.GroupVersionResource{

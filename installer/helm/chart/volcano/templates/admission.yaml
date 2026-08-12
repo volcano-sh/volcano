@@ -5,6 +5,8 @@
 {{ $admission_main_csc := or .Values.custom.admission_main_csc .Values.custom.default_csc }}
 {{ $admission_ns := or .Values.custom.admission_ns .Values.custom.default_ns }}
 {{ $scheduler_name := .Values.custom.scheduler_name }}
+{{ $admission_feature_gates := include "volcano.featureGates" (dict "gates" .Values.custom.admission_feature_gates "namespaceQueueEnabled" .Values.custom.namespace_queue_enable) }}
+{{ $namespace_queue_max_depth := include "volcano.namespaceQueueMaxDepth" . }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -56,6 +58,9 @@ rules:
     verbs: ["create", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["services"]
@@ -145,9 +150,10 @@ spec:
             {{- if $scheduler_name }}
             - --scheduler-name={{- $scheduler_name }}
             {{- end }}
-            {{- if .Values.custom.admission_feature_gates }}
-            - --feature-gates={{ .Values.custom.admission_feature_gates }}
+            {{- if $admission_feature_gates }}
+            - --feature-gates={{ $admission_feature_gates }}
             {{- end }}
+            - --max-namespacequeue-depth={{ $namespace_queue_max_depth }}
             - --enable-healthz=true
             - --logtostderr
             - --port={{.Values.basic.admission_port}}
