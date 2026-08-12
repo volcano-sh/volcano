@@ -19,6 +19,7 @@ package options
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -189,6 +190,10 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.
 func (s *ServerOption) CheckOptionOrDie() error {
+	if strings.Contains(s.DefaultQueue, "/") {
+		return fmt.Errorf("default-queue must be a cluster Queue name, got %q", s.DefaultQueue)
+	}
+
 	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
 }
 

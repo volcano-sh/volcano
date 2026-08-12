@@ -184,12 +184,18 @@ func (drf *drfPlugin) compareQueues(root *hierarchicalNode, lqueue *api.QueueInf
 }
 
 func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
+	hierarchyEnabled := drf.HierarchyEnabled(ssn)
+	if hierarchyEnabled {
+		if err := util.BuildEffectiveQueueHierarchy(ssn.Queues); err != nil {
+			klog.Errorf("failed to build effective queue hierarchy: %v", err)
+			return
+		}
+	}
+
 	// Prepare scheduling data for this session.
 	drf.totalResource.Add(ssn.TotalResource)
 
 	klog.V(4).Infof("Total Allocatable %s", drf.totalResource)
-
-	hierarchyEnabled := drf.HierarchyEnabled(ssn)
 
 	for _, job := range ssn.Jobs {
 		attr := &drfAttr{

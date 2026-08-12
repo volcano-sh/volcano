@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	scheduling "volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -594,6 +595,54 @@ func fitErrorCode(t *testing.T, err error) int {
 		t.Fatalf("expected *api.FitError with status, got empty status: %v", err)
 	}
 	return fitErr.Status[0].Code
+}
+
+func TestNamespaceQueueUsesNormalizedMetadata(t *testing.T) {
+	enabled := true
+	root := &api.QueueInfo{
+		UID:   "root",
+		Name:  "root",
+		Scope: api.ClusterQueueScope,
+		Affinity: &scheduling.Affinity{
+			NodeGroupAffinity: &scheduling.NodeGroupAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []string{"group1"},
+			},
+		},
+	}
+	namespaceQueue := &api.QueueInfo{
+		UID:         api.NamespaceQueueID("team-a", "training"),
+		Name:        "training",
+		Namespace:   "team-a",
+		Scope:       api.NamespaceQueueScope,
+		Parent:      root.UID,
+		Annotations: map[string]string{schedulingv1.NodeGroupResourceLimitsAnnotationKey: `{"group1":{"cpu":"2"}}`},
+	}
+
+	plugin := New(framework.Arguments{}).(*nodeGroupPlugin)
+	plugin.initQueueAttrs(&framework.Session{
+		Queues: map[api.QueueID]*api.QueueInfo{
+			root.UID:           root,
+			namespaceQueue.UID: namespaceQueue,
+		},
+		Tiers: []conf.Tier{{
+			Plugins: []conf.PluginOption{{
+				Name:             PluginName,
+				EnabledHierarchy: &enabled,
+			}},
+		}},
+	})
+
+	attr := plugin.queueAttrs[namespaceQueue.UID]
+	if attr == nil {
+		t.Fatal("NamespaceQueue attribute was not initialized")
+	}
+	if attr.affinity == nil || !attr.affinity.queueGroupAffinityRequired.Has("group1") {
+		t.Fatal("NamespaceQueue did not inherit parent affinity")
+	}
+	limit := attr.nodeGroupResourceLimits["group1"]
+	if limit == nil || limit.resource.MilliCPU != 2000 {
+		t.Fatalf("NamespaceQueue resource limit = %#v, want 2 CPUs", limit)
+	}
 }
 
 func TestNodeGroupResourceLimitAllocationEvent(t *testing.T) {

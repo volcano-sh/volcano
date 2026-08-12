@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -652,9 +652,9 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		queue := obj.(*api.QueueInfo)
-		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+		if queue.State != scheduling.QueueStateOpen {
 			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, can not reclaim for tasks.",
-				queue.Name, queue.Queue.Status.State)
+				queue.UID, queue.State)
 			return false
 		}
 
@@ -715,8 +715,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
-		if queue.Queue.Status.State != scheduling.QueueStateOpen {
-			klog.V(3).Infof("Queue <%s> current state: %s, cannot allocate task <%s>.", queue.Name, queue.Queue.Status.State, candidate.Name)
+		if queue.State != scheduling.QueueStateOpen {
+			klog.V(3).Infof("Queue <%s> current state: %s, cannot allocate task <%s>.", queue.UID, queue.State, candidate.Name)
 			return false
 		}
 		if !readyToSchedule {
@@ -754,9 +754,9 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		attr := cp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
 		// If the queue is not open, do not enqueue
-		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+		if queue.State != scheduling.QueueStateOpen {
 			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.",
-				queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
+				queue.UID, queue.State, job.Namespace, job.Name)
 			return util.Reject
 		}
 		// If no capability is set, always enqueue the job.
@@ -1055,10 +1055,10 @@ func (cp *capacityPlugin) OnSessionClose(ssn *framework.Session) {
 
 func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 	for _, queue := range ssn.Queues {
-		if len(queue.Queue.Spec.Guarantee.Resource) == 0 {
+		if len(queue.Guarantee.Resource) == 0 {
 			continue
 		}
-		guarantee := api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+		guarantee := api.NewResource(queue.Guarantee.Resource)
 		cp.totalGuarantee.Add(guarantee)
 	}
 	klog.V(4).Infof("The total guarantee resource is <%v>", cp.totalGuarantee)
@@ -1069,9 +1069,9 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			queue := ssn.Queues[job.Queue]
 			attr := &queueAttr{
 				queueID: queue.UID,
-				name:    queue.Name,
+				name:    string(queue.UID),
 
-				deserved:          api.NewResource(queue.Queue.Spec.Deserved),
+				deserved:          api.NewResource(queue.Deserved),
 				allocated:         api.EmptyResource(),
 				request:           api.EmptyResource(),
 				elastic:           api.EmptyResource(),
@@ -1079,8 +1079,8 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 				guarantee:         api.EmptyResource(),
 				resourceClaimRefs: make(map[string]int),
 			}
-			if len(queue.Queue.Spec.Capability) != 0 {
-				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
+			if len(queue.Capability) != 0 {
+				attr.capability = api.NewResource(queue.Capability)
 				if attr.capability.MilliCPU <= 0 {
 					attr.capability.MilliCPU = math.MaxFloat64
 				}
@@ -1088,9 +1088,9 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 					attr.capability.Memory = math.MaxFloat64
 				}
 			}
-			attr.dra = newDRAQuotaAttr(queue.Queue.Spec.Capability, queue.Queue.Spec.Deserved, queue.Queue.Spec.Guarantee.Resource)
-			if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
-				attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+			attr.dra = newDRAQuotaAttr(queue.Capability, queue.Deserved, queue.Guarantee.Resource)
+			if len(queue.Guarantee.Resource) != 0 {
+				attr.guarantee = api.NewResource(queue.Guarantee.Resource)
 			}
 			realCapability := api.ExceededPart(cp.totalResource, cp.totalGuarantee).Add(attr.guarantee)
 			if attr.capability == nil {
@@ -1173,36 +1173,37 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			continue
 		}
 		deservedCPU, deservedMem, scalarResources := 0.0, 0.0, map[v1.ResourceName]float64{}
-		if queue.Queue.Spec.Deserved != nil {
-			attr := api.NewResource(queue.Queue.Spec.Deserved)
+		if queue.Deserved != nil {
+			attr := api.NewResource(queue.Deserved)
 			deservedCPU = attr.MilliCPU
 			deservedMem = attr.Memory
 			scalarResources = attr.ScalarResources
 		}
-		metrics.UpdateQueueDeserved(queueInfo.Name, deservedCPU, deservedMem, scalarResources)
-		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
-		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
-		metrics.UpdateQueueInqueue(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
+		queueName := string(queueInfo.UID)
+		metrics.UpdateQueueDeserved(queueName, deservedCPU, deservedMem, scalarResources)
+		metrics.UpdateQueueAllocated(queueName, 0, 0, map[v1.ResourceName]float64{})
+		metrics.UpdateQueueRequest(queueName, 0, 0, map[v1.ResourceName]float64{})
+		metrics.UpdateQueueInqueue(queueName, 0, 0, map[v1.ResourceName]float64{})
 		guarantee := api.EmptyResource()
-		if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
-			guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+		if len(queue.Guarantee.Resource) != 0 {
+			guarantee = api.NewResource(queue.Guarantee.Resource)
 		}
 		realCapacity := api.ExceededPart(cp.totalResource, cp.totalGuarantee).Add(guarantee)
-		if len(queue.Queue.Spec.Capability) > 0 {
-			capacity := api.NewResource(queue.Queue.Spec.Capability)
+		if len(queue.Capability) > 0 {
+			capacity := api.NewResource(queue.Capability)
 			realCapacity.MinDimensionResource(capacity, api.Infinity)
-			metrics.UpdateQueueCapacity(queueInfo.Name, capacity.MilliCPU, capacity.Memory, capacity.ScalarResources)
+			metrics.UpdateQueueCapacity(queueName, capacity.MilliCPU, capacity.Memory, capacity.ScalarResources)
 		}
-		metrics.UpdateQueueRealCapacity(queueInfo.Name, realCapacity.MilliCPU, realCapacity.Memory, realCapacity.ScalarResources)
+		metrics.UpdateQueueRealCapacity(queueName, realCapacity.MilliCPU, realCapacity.Memory, realCapacity.ScalarResources)
 	}
 
 	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
-		if lv.Queue.Spec.Priority != rv.Queue.Spec.Priority {
+		if lv.Priority != rv.Priority {
 			// return negative means high priority
-			return int(rv.Queue.Spec.Priority) - int(lv.Queue.Spec.Priority)
+			return int(rv.Priority) - int(lv.Priority)
 		}
 
 		return cp.compareShareWithDeserved(cp.queueOpts[lv.UID], cp.queueOpts[rv.UID])
@@ -1366,9 +1367,9 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
-		if lv.Queue.Spec.Priority != rv.Queue.Spec.Priority {
+		if lv.Priority != rv.Priority {
 			// return negative means high priority
-			return int(rv.Queue.Spec.Priority) - int(lv.Queue.Spec.Priority)
+			return int(rv.Priority) - int(lv.Priority)
 		}
 
 		lvLeaf := cp.isLeafQueue(lv.UID)
@@ -1422,11 +1423,11 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 	attr := &queueAttr{
 		queueID:   queue.UID,
-		name:      queue.Name,
+		name:      string(queue.UID),
 		ancestors: make([]api.QueueID, 0),
 		children:  make(map[api.QueueID]*queueAttr),
 
-		deserved:          api.NewResource(queue.Queue.Spec.Deserved),
+		deserved:          api.NewResource(queue.Deserved),
 		allocated:         api.EmptyResource(),
 		request:           api.EmptyResource(),
 		elastic:           api.EmptyResource(),
@@ -1436,40 +1437,41 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 		realCapability:    api.EmptyResource(),
 		resourceClaimRefs: make(map[string]int),
 	}
-	if len(queue.Queue.Spec.Capability) != 0 {
-		attr.capability = api.NewResource(queue.Queue.Spec.Capability)
+	if len(queue.Capability) != 0 {
+		attr.capability = api.NewResource(queue.Capability)
 	}
 
-	if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
-		attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+	if len(queue.Guarantee.Resource) != 0 {
+		attr.guarantee = api.NewResource(queue.Guarantee.Resource)
 	}
 
-	attr.dra = newDRAQuotaAttr(queue.Queue.Spec.Capability, queue.Queue.Spec.Deserved, queue.Queue.Spec.Guarantee.Resource)
+	attr.dra = newDRAQuotaAttr(queue.Capability, queue.Deserved, queue.Guarantee.Resource)
 
 	return attr
 }
 
 func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.Session, visited map[api.QueueID]struct{}) error {
-	if queue.Name == cp.rootQueue {
+	rootID := api.QueueID(cp.rootQueue)
+	if queue.UID == rootID {
 		return nil
 	}
 
 	// Check for cycles in queue hierarchy
 	if _, exist := visited[queue.UID]; exist {
-		return fmt.Errorf("cycle detected in queue hierarchy for queue %s", queue.Name)
+		return fmt.Errorf("cycle detected in queue hierarchy for queue %s", queue.UID)
 	}
 	visited[queue.UID] = struct{}{}
 	defer delete(visited, queue.UID)
 
-	parent := cp.rootQueue
-	if queue.Queue.Spec.Parent != "" {
-		parent = queue.Queue.Spec.Parent
+	parentID := queue.Parent
+	if parentID == "" {
+		parentID = rootID
 	}
-	if _, exist := ssn.Queues[api.QueueID(parent)]; !exist {
-		return fmt.Errorf("the queue %s has invalid parent queue %s", queue.Name, parent)
+	parentInfo, exist := ssn.Queues[parentID]
+	if !exist {
+		return fmt.Errorf("the queue %s has invalid parent queue %s", queue.UID, parentID)
 	}
 
-	parentInfo := ssn.Queues[api.QueueID(parent)]
 	if _, found := cp.queueOpts[parentInfo.UID]; !found {
 		parentAttr := cp.newQueueAttr(parentInfo)
 		cp.queueOpts[parentAttr.queueID] = parentAttr
@@ -1519,7 +1521,7 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 		}
 	}
 
-	if attr.name == cp.rootQueue {
+	if attr.queueID == api.QueueID(cp.rootQueue) {
 		attr.guarantee = totalGuarantee
 		attr.deserved = totalDeserved
 	}

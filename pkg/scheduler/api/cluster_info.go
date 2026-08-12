@@ -37,6 +37,8 @@ type ClusterInfo struct {
 	RealNodesSet              map[string]sets.Set[string]
 	HyperNodesReadyToSchedule bool
 	Queues                    map[QueueID]*QueueInfo
+	AccountingQueues          map[QueueID]*QueueInfo
+	AccountingJobs            map[JobID]*JobInfo
 	NamespaceInfo             map[NamespaceName]*NamespaceInfo
 	RevocableNodes            map[string]*NodeInfo
 	NodeList                  []string

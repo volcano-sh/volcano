@@ -5,6 +5,7 @@
 {{ $scheduler_main_csc := or .Values.custom.scheduler_main_csc .Values.custom.default_csc }}
 {{ $scheduler_ns := or .Values.custom.scheduler_ns .Values.custom.default_ns }}
 {{ $scheduler_name := .Values.custom.scheduler_name }}
+{{ $scheduler_feature_gates := include "volcano.featureGates" (dict "gates" .Values.custom.scheduler_feature_gates "namespaceQueueEnabled" .Values.custom.namespace_queue_enable) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -91,6 +92,12 @@ rules:
     verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues/status"]
+    verbs: ["update"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues/status"]
     verbs: ["update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
@@ -235,8 +242,8 @@ spec:
             {{- if .Values.custom.scheduler_plugins_dir }}
             - --plugins-dir={{ .Values.custom.scheduler_plugins_dir }}
             {{- end }}
-            {{- if .Values.custom.scheduler_feature_gates }}
-            - --feature-gates={{ .Values.custom.scheduler_feature_gates }}
+            {{- if $scheduler_feature_gates }}
+            - --feature-gates={{ $scheduler_feature_gates }}
             {{- end }}
             {{- if .Values.custom.ignored_provisioners }}
             - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}

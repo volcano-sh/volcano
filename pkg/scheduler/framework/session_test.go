@@ -3,14 +3,160 @@ package framework
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
 )
+
+func TestQueueOrderFnSupportsNamespaceQueue(t *testing.T) {
+	earlier := &api.QueueInfo{
+		UID:               api.NamespaceQueueID("team-a", "training"),
+		Scope:             api.NamespaceQueueScope,
+		CreationTimestamp: metav1.NewTime(time.Unix(1, 0)),
+	}
+	later := &api.QueueInfo{
+		UID:               api.QueueID("research"),
+		Scope:             api.ClusterQueueScope,
+		CreationTimestamp: metav1.NewTime(time.Unix(2, 0)),
+	}
+
+	ssn := &Session{}
+	if !ssn.QueueOrderFn(earlier, later) {
+		t.Fatal("earlier NamespaceQueue should sort before later cluster Queue")
+	}
+}
+
+type queueStatusRecordingCache struct {
+	cache.Cache
+	updated map[api.QueueID]*api.QueueInfo
+}
+
+func (c *queueStatusRecordingCache) UpdateQueueStatus(queue *api.QueueInfo) error {
+	c.updated[queue.UID] = queue.Clone()
+	return nil
+}
+
+func TestUpdateQueueStatusWithNamespaceQueueHierarchy(t *testing.T) {
+	rootID := api.QueueID("root")
+	defaultID := api.QueueID("default")
+	departmentID := api.NamespaceQueueID("team-a", "department")
+	trainingID := api.NamespaceQueueID("team-a", "training")
+
+	queues := map[api.QueueID]*api.QueueInfo{
+		rootID: {
+			UID:   rootID,
+			Name:  "root",
+			Scope: api.ClusterQueueScope,
+		},
+		defaultID: {
+			UID:    defaultID,
+			Name:   "default",
+			Scope:  api.ClusterQueueScope,
+			Parent: rootID,
+		},
+		departmentID: {
+			UID:       departmentID,
+			Name:      "department",
+			Namespace: "team-a",
+			Scope:     api.NamespaceQueueScope,
+			Parent:    defaultID,
+		},
+		trainingID: {
+			UID:       trainingID,
+			Name:      "training",
+			Namespace: "team-a",
+			Scope:     api.NamespaceQueueScope,
+			Parent:    departmentID,
+		},
+	}
+
+	task := &api.TaskInfo{
+		UID:    "task-1",
+		Resreq: api.NewResource(api.BuildResourceList("1", "1Gi")),
+		Pod:    &v1.Pod{},
+		TransactionContext: api.TransactionContext{
+			Status: api.Running,
+		},
+	}
+	job := api.NewJobInfo("job-1", task)
+	job.Queue = trainingID
+	recorder := &queueStatusRecordingCache{updated: make(map[api.QueueID]*api.QueueInfo)}
+	ssn := &Session{
+		Jobs: map[api.JobID]*api.JobInfo{
+			job.UID: job,
+		},
+		Nodes:  make(map[string]*api.NodeInfo),
+		Queues: queues,
+		cache:  recorder,
+	}
+
+	updateQueueStatus(ssn)
+
+	want := api.BuildResourceList("1", "1Gi")
+	for _, queueID := range []api.QueueID{trainingID, departmentID, defaultID, rootID} {
+		updated, found := recorder.updated[queueID]
+		if !found {
+			t.Errorf("queue %q status was not updated", queueID)
+			continue
+		}
+		if !equality.Semantic.DeepEqual(updated.Allocated, want) {
+			t.Errorf("queue %q allocated = %v, want %v", queueID, updated.Allocated, want)
+		}
+	}
+}
+
+func TestUpdateQueueStatusAccountsForInactiveNamespaceQueue(t *testing.T) {
+	queueID := api.NamespaceQueueID("team-a", "training")
+	queue := &api.QueueInfo{
+		UID:       queueID,
+		Name:      "training",
+		Namespace: "team-a",
+		Scope:     api.NamespaceQueueScope,
+	}
+	task := &api.TaskInfo{
+		UID:    "task-1",
+		Resreq: api.NewResource(api.BuildResourceList("1", "1Gi")),
+		Pod:    &v1.Pod{},
+		TransactionContext: api.TransactionContext{
+			Status: api.Running,
+		},
+	}
+	job := api.NewJobInfo("job-1", task)
+	job.Queue = queueID
+	recorder := &queueStatusRecordingCache{updated: make(map[api.QueueID]*api.QueueInfo)}
+	ssn := &Session{
+		Jobs:   map[api.JobID]*api.JobInfo{},
+		Queues: map[api.QueueID]*api.QueueInfo{},
+		AccountingJobs: map[api.JobID]*api.JobInfo{
+			job.UID: job,
+		},
+		AccountingQueues: map[api.QueueID]*api.QueueInfo{
+			queueID: queue,
+		},
+		Nodes: map[string]*api.NodeInfo{},
+		cache: recorder,
+	}
+
+	updateQueueStatus(ssn)
+
+	updated, found := recorder.updated[queueID]
+	if !found {
+		t.Fatal("inactive NamespaceQueue status was not updated")
+	}
+	want := api.BuildResourceList("1", "1Gi")
+	if !equality.Semantic.DeepEqual(updated.Allocated, want) {
+		t.Fatalf("allocated = %v, want %v", updated.Allocated, want)
+	}
+}
 
 func TestSession_adjustNetworkTopologySpec(t *testing.T) {
 	tests := []struct {
