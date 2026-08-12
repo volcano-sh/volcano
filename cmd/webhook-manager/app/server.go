@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import (
 	"strconv"
 
 	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -32,7 +33,9 @@ import (
 	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
+	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/signals"
 	commonutil "volcano.sh/volcano/pkg/util"
@@ -84,6 +87,18 @@ func Run(config *options.Config) error {
 	}
 
 	queueLister := queueInformerFactory.Lister()
+	var namespaceQueueInformer cache.SharedIndexInformer
+	var namespaceQueueLister schedulinglister.NamespaceQueueLister
+	if utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) {
+		namespaceQueueInformerFactory := factory.Scheduling().V1beta1().NamespaceQueues()
+		namespaceQueueInformer = namespaceQueueInformerFactory.Informer()
+		if err := namespaceQueueInformer.AddIndexers(cache.Indexers{
+			router.NamespaceQueueParentIndexName: router.NamespaceQueueParentIndexFunc,
+		}); err != nil {
+			return fmt.Errorf("failed to add NamespaceQueue parent indexer: %v", err)
+		}
+		namespaceQueueLister = namespaceQueueInformerFactory.Lister()
+	}
 
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
@@ -94,11 +109,14 @@ func Run(config *options.Config) error {
 			service.Config.KubeClient = kubeClient
 			service.Config.QueueLister = queueLister
 			service.Config.QueueInformer = queueInformer
+			service.Config.NamespaceQueueLister = namespaceQueueLister
+			service.Config.NamespaceQueueInformer = namespaceQueueInformer
 			service.Config.SchedulerNames = config.SchedulerNames
 			service.Config.Recorder = recorder
 			service.Config.ConfigData = admissionConf
 			service.Config.EnableQueueAllocatedPodsCheck = config.EnableQueueAllocatedPodsCheck
 			service.Config.MaxQueueDepth = config.MaxQueueDepth
+			service.Config.MaxNamespaceQueueDepth = config.MaxNamespaceQueueDepth
 			service.Config.EnableRootQueueProtection = config.EnableRootQueueProtection
 		}
 

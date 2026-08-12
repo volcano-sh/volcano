@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import (
 	"k8s.io/klog/v2"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -92,7 +93,7 @@ func Validate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
 	var errs []string
 
-	if msg := checkQueueState(pg.Spec.Queue); msg != "" {
+	if msg := checkQueueState(pg.Namespace, pg.Spec.Queue); msg != "" {
 		errs = append(errs, strings.TrimSpace(msg))
 	}
 	if msg := validateNetworkTopology(pg.Spec.NetworkTopology, pg.Spec.SubGroupPolicy); msg != "" {
@@ -102,23 +103,66 @@ func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
 	return strings.Join(errs, "; ")
 }
 
-// checkQueueState verifies if the queue exists and is in the open state
-func checkQueueState(queueName string) string {
-	if queueName == "" {
+// checkQueueState verifies if the referenced queue exists and is open.
+func checkQueueState(workloadNamespace, queueReference string) string {
+	if queueReference == "" {
 		return ""
 	}
 
-	queue, err := config.QueueLister.Get(queueName)
+	resolved, err := router.ResolveQueueReference(
+		workloadNamespace,
+		queueReference,
+		schedulingv1beta1.DefaultQueue,
+	)
 	if err != nil {
-		return fmt.Sprintf("unable to find queue: %s", err.Error())
+		return err.Error()
 	}
 
-	if queue.Status.State != schedulingv1beta1.QueueStateOpen {
-		return fmt.Sprintf("can only submit PodGroup to queue with state `Open`, queue `%s` status is `%s`. ",
-			queue.Name, queue.Status.State)
-	}
+	switch resolved.Scope {
+	case router.ClusterQueueReferenceScope:
+		queue, err := config.QueueLister.Get(resolved.Name)
+		if err != nil {
+			return fmt.Sprintf("unable to find queue: %s", err.Error())
+		}
 
-	return ""
+		if queue.Status.State != schedulingv1beta1.QueueStateOpen {
+			return fmt.Sprintf("can only submit PodGroup to queue with state `Open`, queue `%s` status is `%s`. ",
+				queue.Name, queue.Status.State)
+		}
+
+		return ""
+
+	case router.NamespaceQueueReferenceScope:
+		queue, err := config.NamespaceQueueLister.
+			NamespaceQueues(resolved.Namespace).
+			Get(resolved.Name)
+		if err != nil {
+			return fmt.Sprintf("unable to find NamespaceQueue: %s", err.Error())
+		}
+
+		if commonutil.EffectiveNamespaceQueueState(queue.Spec.State) != schedulingv1beta1.QueueStateOpen {
+			return fmt.Sprintf(
+				"can only submit PodGroup to NamespaceQueue with desired state `Open`, NamespaceQueue `%s/%s` desired state is `%s`. ",
+				queue.Namespace,
+				queue.Name,
+				queue.Spec.State,
+			)
+		}
+
+		if queue.Status.State != schedulingv1beta1.QueueStateOpen {
+			return fmt.Sprintf(
+				"can only submit PodGroup to NamespaceQueue with state `Open`, NamespaceQueue `%s/%s` status is `%s`. ",
+				queue.Namespace,
+				queue.Name,
+				queue.Status.State,
+			)
+		}
+
+		return ""
+
+	default:
+		return fmt.Sprintf("unsupported queue reference scope %q", resolved.Scope)
+	}
 }
 
 func validateNetworkTopology(networkTopology *schedulingv1beta1.NetworkTopologySpec, policies []schedulingv1beta1.SubGroupPolicySpec) string {

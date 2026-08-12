@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -129,6 +129,27 @@ func DecodeQueue(object runtime.RawExtension, resource metav1.GroupVersionResour
 	}
 
 	return &queue, nil
+}
+
+// DecodeNamespaceQueue decodes a NamespaceQueue from an admission request.
+func DecodeNamespaceQueue(object runtime.RawExtension, resource metav1.GroupVersionResource) (*schedulingv1beta1.NamespaceQueue, error) {
+	namespaceQueueResource := metav1.GroupVersionResource{
+		Group:    schedulingv1beta1.SchemeGroupVersion.Group,
+		Version:  schedulingv1beta1.SchemeGroupVersion.Version,
+		Resource: "namespacequeues",
+	}
+
+	if resource != namespaceQueueResource {
+		klog.Errorf("expect resource to be %s", namespaceQueueResource)
+		return nil, fmt.Errorf("expect resource to be %s", namespaceQueueResource)
+	}
+
+	namespaceQueue := schedulingv1beta1.NamespaceQueue{}
+	if _, _, err := Codecs.UniversalDeserializer().Decode(object.Raw, nil, &namespaceQueue); err != nil {
+		return nil, err
+	}
+
+	return &namespaceQueue, nil
 }
 
 // DecodePodGroup decodes the podgroup using deserializer from the raw object.
