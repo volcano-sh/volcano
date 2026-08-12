@@ -75,6 +75,9 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["services"]
     verbs: ["get"]
@@ -9075,7 +9078,6 @@ spec:
             - --worker-threads-for-podgroup=5
             - --sharding-configmap=volcano-sharding-configmap
             - --sharding-configmap-namespace=volcano-system
-            - --max-namespacequeue-depth=5
             - -v=4
             - 2>&1
           imagePullPolicy: Always
@@ -9681,6 +9683,7 @@ spec:
     name: v1beta1
     schema:
       openAPIV3Schema:
+        description: Queue is a queue of PodGroup.
         properties:
           apiVersion:
             description: |-
@@ -10873,6 +10876,8 @@ spec:
     name: v1beta1
     schema:
       openAPIV3Schema:
+        description: NamespaceQueue is a namespace-scoped queue abstraction in Volcano
+          scheduling.
         properties:
           apiVersion:
             description: |-
