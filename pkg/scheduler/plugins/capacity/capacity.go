@@ -1069,7 +1069,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			queue := ssn.Queues[job.Queue]
 			attr := &queueAttr{
 				queueID: queue.UID,
-				name:    queue.Name,
+				name:    string(queue.UID),
 
 				deserved:          api.NewResource(queue.Queue.Spec.Deserved),
 				allocated:         api.EmptyResource(),
@@ -1179,10 +1179,11 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			deservedMem = attr.Memory
 			scalarResources = attr.ScalarResources
 		}
-		metrics.UpdateQueueDeserved(queueInfo.Name, deservedCPU, deservedMem, scalarResources)
-		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
-		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
-		metrics.UpdateQueueInqueue(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
+		queueName := string(queueInfo.UID)
+		metrics.UpdateQueueDeserved(queueName, deservedCPU, deservedMem, scalarResources)
+		metrics.UpdateQueueAllocated(queueName, 0, 0, map[v1.ResourceName]float64{})
+		metrics.UpdateQueueRequest(queueName, 0, 0, map[v1.ResourceName]float64{})
+		metrics.UpdateQueueInqueue(queueName, 0, 0, map[v1.ResourceName]float64{})
 		guarantee := api.EmptyResource()
 		if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
 			guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
@@ -1191,9 +1192,9 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		if len(queue.Queue.Spec.Capability) > 0 {
 			capacity := api.NewResource(queue.Queue.Spec.Capability)
 			realCapacity.MinDimensionResource(capacity, api.Infinity)
-			metrics.UpdateQueueCapacity(queueInfo.Name, capacity.MilliCPU, capacity.Memory, capacity.ScalarResources)
+			metrics.UpdateQueueCapacity(queueName, capacity.MilliCPU, capacity.Memory, capacity.ScalarResources)
 		}
-		metrics.UpdateQueueRealCapacity(queueInfo.Name, realCapacity.MilliCPU, realCapacity.Memory, realCapacity.ScalarResources)
+		metrics.UpdateQueueRealCapacity(queueName, realCapacity.MilliCPU, realCapacity.Memory, realCapacity.ScalarResources)
 	}
 
 	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
@@ -1422,7 +1423,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 	attr := &queueAttr{
 		queueID:   queue.UID,
-		name:      queue.Name,
+		name:      string(queue.UID),
 		ancestors: make([]api.QueueID, 0),
 		children:  make(map[api.QueueID]*queueAttr),
 
@@ -1450,7 +1451,7 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 }
 
 func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.Session, visited map[api.QueueID]struct{}) error {
-	if queue.Name == cp.rootQueue {
+	if queue.Scope == api.ClusterQueueScope && queue.UID == api.QueueID(cp.rootQueue) {
 		return nil
 	}
 

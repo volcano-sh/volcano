@@ -23,14 +23,25 @@ limitations under the License.
 package api
 
 import (
+	"fmt"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 // QueueID is UID type, serves as unique ID for each queue
 type QueueID types.UID
+
+type QueueScope string
+
+const (
+	ClusterQueueScope   QueueScope = "cluster"
+	NamespaceQueueScope QueueScope = "namespace"
+)
 
 // QueueInfo will have all details about queue
 type QueueInfo struct {
@@ -47,7 +58,10 @@ type QueueInfo struct {
 	// path from the root to the node itself.
 	Hierarchy string
 
-	Queue *scheduling.Queue
+	Scope          QueueScope
+	Namespace      string
+	Queue          *scheduling.Queue
+	NamespaceQueue *scheduling.NamespaceQueue
 }
 
 // NewQueueInfo creates new queueInfo object
@@ -59,21 +73,92 @@ func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
 		Weight:    queue.Spec.Weight,
 		Hierarchy: queue.Annotations[v1beta1.KubeHierarchyAnnotationKey],
 		Weights:   queue.Annotations[v1beta1.KubeHierarchyWeightAnnotationKey],
+		Scope:     ClusterQueueScope,
 
 		Queue: queue,
 	}
 }
 
+// NamespaceQueueID is the scheduler identity for a namespaced queue.
+func NamespaceQueueID(namespace, name string) QueueID {
+	return QueueID(namespace + "/" + name)
+}
+
+func NewNamespaceQueueInfo(namespaceQueue *scheduling.NamespaceQueue) (*QueueInfo, error) {
+	if namespaceQueue == nil {
+		return nil, fmt.Errorf("namespace queue is nil")
+	}
+	parent, err := commonutil.ResolveNamespaceQueueParentReference(namespaceQueue.Namespace, namespaceQueue.Spec.Parent)
+	if err != nil {
+		return nil, err
+	}
+	parentName := parent.Name
+	if parent.Scope == commonutil.NamespaceQueueReferenceScope {
+		parentName = string(NamespaceQueueID(parent.Namespace, parent.Name))
+	}
+	queue := &scheduling.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              namespaceQueue.Name,
+			Namespace:         namespaceQueue.Namespace,
+			CreationTimestamp: namespaceQueue.CreationTimestamp,
+			Annotations:       namespaceQueue.Annotations,
+		},
+		Spec: scheduling.QueueSpec{
+			Parent:      parentName,
+			Weight:      1,
+			Capability:  namespaceQueue.Spec.Capability.DeepCopy(),
+			Reclaimable: cloneBool(namespaceQueue.Spec.Reclaimable),
+			Guarantee: scheduling.Guarantee{
+				Resource: namespaceQueue.Spec.Guarantee.Resource.DeepCopy(),
+			},
+			Deserved:        namespaceQueue.Spec.Deserved.DeepCopy(),
+			Priority:        namespaceQueue.Spec.Priority,
+			DequeueStrategy: namespaceQueue.Spec.DequeueStrategy,
+		},
+		Status: scheduling.QueueStatus{
+			State:     namespaceQueue.Status.State,
+			Allocated: namespaceQueue.Status.Allocated.DeepCopy(),
+			Reservation: scheduling.Reservation{
+				Nodes:    append([]string(nil), namespaceQueue.Status.Reservation.Nodes...),
+				Resource: namespaceQueue.Status.Reservation.Resource.DeepCopy(),
+			},
+		},
+	}
+	return &QueueInfo{
+		UID:            NamespaceQueueID(namespaceQueue.Namespace, namespaceQueue.Name),
+		Name:           namespaceQueue.Name,
+		Weight:         1,
+		Scope:          NamespaceQueueScope,
+		Namespace:      namespaceQueue.Namespace,
+		Queue:          queue,
+		NamespaceQueue: namespaceQueue.DeepCopy(),
+	}, nil
+}
+
+func cloneBool(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
 // Clone is used to clone queueInfo object
 func (q *QueueInfo) Clone() *QueueInfo {
-	return &QueueInfo{
+	clone := &QueueInfo{
 		UID:       q.UID,
 		Name:      q.Name,
 		Weight:    q.Weight,
 		Hierarchy: q.Hierarchy,
 		Weights:   q.Weights,
+		Scope:     q.Scope,
+		Namespace: q.Namespace,
 		Queue:     q.Queue.DeepCopy(),
 	}
+	if q.NamespaceQueue != nil {
+		clone.NamespaceQueue = q.NamespaceQueue.DeepCopy()
+	}
+	return clone
 }
 
 // Reclaimable return whether queue is reclaimable

@@ -22,9 +22,47 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes/fake"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/features"
 )
+
+func TestResolveQueueReference(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	tests := []struct {
+		name      string
+		namespace string
+		reference string
+		defaultQ  string
+		want      string
+		wantErr   bool
+	}{
+		{name: "cluster", namespace: "team-a", reference: "compute", want: "compute"},
+		{name: "namespace", namespace: "team-a", reference: "namespace/compute", want: "team-a/compute"},
+		{name: "default", namespace: "team-a", defaultQ: "compute", want: "compute"},
+		{name: "invalid namespace reference", namespace: "team-a", reference: "namespace/", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveQueueReference(tt.namespace, tt.reference, tt.defaultQ)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error = %v, wantErr = %t", err, tt.wantErr)
+			}
+			if !tt.wantErr && string(got) != tt.want {
+				t.Fatalf("QueueID = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveQueueReferenceRejectsNamespaceQueueWhenDisabled(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, false)
+	if _, err := resolveQueueReference("team-a", "namespace/compute", ""); err == nil {
+		t.Fatal("accepted NamespaceQueue reference while feature gate is disabled")
+	}
+}
 
 func TestRemoveVolcanoSchGate(t *testing.T) {
 	tests := []struct {

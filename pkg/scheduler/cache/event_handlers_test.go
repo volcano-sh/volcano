@@ -648,6 +648,37 @@ func TestSchedulerCache_DeleteQueueV1beta1(t *testing.T) {
 	}
 }
 
+func TestSchedulerCache_NamespaceQueueIdentityIsNamespaced(t *testing.T) {
+	sc := &SchedulerCache{Queues: make(map[api.QueueID]*api.QueueInfo)}
+	first := &schedulingv1.NamespaceQueue{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "shared"},
+		Spec:       schedulingv1.NamespaceQueueSpec{Parent: "cluster/default"},
+	}
+	second := &schedulingv1.NamespaceQueue{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-b", Name: "shared"},
+		Spec:       schedulingv1.NamespaceQueueSpec{Parent: "cluster/default"},
+	}
+
+	sc.AddNamespaceQueueV1beta1(first)
+	sc.AddNamespaceQueueV1beta1(second)
+
+	if len(sc.Queues) != 2 {
+		t.Fatalf("queue count = %d, want 2", len(sc.Queues))
+	}
+	if sc.Queues[api.NamespaceQueueID("team-a", "shared")] == nil ||
+		sc.Queues[api.NamespaceQueueID("team-b", "shared")] == nil {
+		t.Fatal("same-name NamespaceQueues were not stored under independent IDs")
+	}
+
+	sc.DeleteNamespaceQueueV1beta1(first)
+	if sc.Queues[api.NamespaceQueueID("team-a", "shared")] != nil {
+		t.Fatal("deleted NamespaceQueue remained in cache")
+	}
+	if sc.Queues[api.NamespaceQueueID("team-b", "shared")] == nil {
+		t.Fatal("deleting one NamespaceQueue removed another namespace's queue")
+	}
+}
+
 func TestSchedulerCache_SyncNode(t *testing.T) {
 	n1 := util.BuildNode("n1", nil, map[string]string{"label-key": "label-value"})
 	expectedNodeInfo := schedulingapi.NewNodeInfo(n1)
