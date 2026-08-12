@@ -10,15 +10,6 @@ bases
 {{- end -}}
 {{- end -}}
 
-{{/* Validate and return the NamespaceQueue hierarchy depth limit. */}}
-{{- define "volcano.namespaceQueueMaxDepth" -}}
-{{- $depth := int .Values.custom.namespace_queue_max_depth -}}
-{{- if lt $depth 1 -}}
-{{- fail "custom.namespace_queue_max_depth must be greater than zero" -}}
-{{- end -}}
-{{- $depth -}}
-{{- end -}}
-
 {{/* Validate and return the HyperNode controller deployment mode. */}}
 {{- define "hypernodeControllerMode" -}}
 {{- $mode := .Values.custom.hypernode_controller_mode | default "controller-manager" -}}
@@ -29,6 +20,16 @@ bases
 {{- fail "custom.hypernode_controller_replicas must be at least 1 in standalone mode; use disabled mode to stop HyperNode reconciliation" -}}
 {{- end -}}
 {{- $mode -}}
+{{- end -}}
+
+{{/* Add NamespaceQueue admission only when the chart feature is enabled. */}}
+{{- define "volcano.enabledAdmissions" -}}
+{{- $configured := .admissions | default "" -}}
+{{- $admissions := splitList "," $configured -}}
+{{- if and .namespaceQueueEnabled (not (has "/namespacequeues/validate" $admissions)) -}}
+{{- $admissions = append $admissions "/namespacequeues/validate" -}}
+{{- end -}}
+{{- join "," $admissions -}}
 {{- end -}}
 
 {{/*
