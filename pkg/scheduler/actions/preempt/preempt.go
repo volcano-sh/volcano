@@ -365,26 +365,10 @@ func fitsAfterEviction(ssn *framework.Session, preemptor *api.TaskInfo, node *ap
 	if ok {
 		return true
 	}
-	if !allUntrackedByAllocatable(failing, node) {
+	if !util.AllUntrackedByAllocatable(failing, node) {
 		return false
 	}
 	return ssn.PredicateFn(preemptor, node) == nil
-}
-
-// allUntrackedByAllocatable reports whether every named resource dimension is
-// absent from node.Allocatable's tracked capacity. cpu/memory are always
-// considered tracked (they're dedicated Resource fields, not scalar entries,
-// and always have a real, if zero, capacity number).
-func allUntrackedByAllocatable(resourceNames []string, node *api.NodeInfo) bool {
-	for _, name := range resourceNames {
-		if name == "cpu" || name == "memory" {
-			return false
-		}
-		if _, present := node.Allocatable.ScalarResources[v1.ResourceName(name)]; present {
-			return false
-		}
-	}
-	return true
 }
 
 func (pmpt *Action) normalPreempt(

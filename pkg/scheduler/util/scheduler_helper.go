@@ -343,7 +343,7 @@ func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api
 	if ok {
 		return nil
 	}
-	if !allUntrackedByAllocatable(failing, node) {
+	if !AllUntrackedByAllocatable(failing, node) {
 		return fmt.Errorf("not enough resources: requested <%v>, but future idle <%v>",
 			preemptor.InitResreq, futureIdle)
 	}
@@ -359,11 +359,11 @@ func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api
 	return nil
 }
 
-// allUntrackedByAllocatable reports whether every named resource dimension is
+// AllUntrackedByAllocatable reports whether every named resource dimension is
 // absent from node.Allocatable's tracked capacity. cpu/memory are always
 // considered tracked (they're dedicated Resource fields, not scalar entries,
 // and always have a real, if zero, capacity number).
-func allUntrackedByAllocatable(resourceNames []string, node *api.NodeInfo) bool {
+func AllUntrackedByAllocatable(resourceNames []string, node *api.NodeInfo) bool {
 	for _, name := range resourceNames {
 		if name == "cpu" || name == "memory" {
 			return false
