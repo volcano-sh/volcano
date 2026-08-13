@@ -24,6 +24,11 @@ export LOG_LEVEL=3
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
 export E2E_TYPE=${E2E_TYPE:-"ALL"}
 export ARTIFACTS_PATH=${ARTIFACTS_PATH:-"${VK_ROOT}/volcano-e2e-logs"}
+if [[ "${HYPERNODE_E2E_PROFILE:-full}" == "topology-only" ]]; then
+  export VOLCANO_CONTROLLER_ENABLE=false
+  export VOLCANO_SCHEDULER_ENABLE=false
+  export VOLCANO_ADMISSION_ENABLE=false
+fi
 DRA_GINKGO_FOCUS=${DRA_GINKGO_FOCUS:-"DRA (Quota )?E2E Test"}
 mkdir -p "$ARTIFACTS_PATH"
 
@@ -306,6 +311,24 @@ EOF
     shardSyncPeriod: "30s"
     enableNodeEventTrigger: true"
   ;;
+"HYPERNODE")
+  hypernode_controller_replicas=1
+  if [[ "${HYPERNODE_CONTROLLER_MODE:-controller-manager}" == "standalone" ]]; then
+    # Exercise leader election and failover for the independently published image.
+    hypernode_controller_replicas=2
+  fi
+  echo "Install volcano chart for HyperNode ${HYPERNODE_CONTROLLER_MODE:-controller-manager} E2E"
+  helm-install-volcano "  hypernode_controller_replicas: ${hypernode_controller_replicas}
+  controller_config_override:
+    networkTopologyDiscovery:
+      - source: label
+        enabled: true
+        config:
+          networkTopologyTypes:
+            e2e-rack-topology:
+              - nodeLabel: volcano.sh/e2e-hypernode-rack
+              - nodeLabel: kubernetes.io/hostname"
+  ;;
 *)
   echo "Install volcano chart with crd version $crd_version"
   helm-install-volcano
@@ -343,6 +366,17 @@ basic:
 
 custom:
   scheduler_log_level: 5
+  hypernode_controller_mode: ${HYPERNODE_CONTROLLER_MODE:-controller-manager}
+  controller_enable: ${VOLCANO_CONTROLLER_ENABLE:-true}
+  scheduler_enable: ${VOLCANO_SCHEDULER_ENABLE:-true}
+  admission_enable: ${VOLCANO_ADMISSION_ENABLE:-true}
+  hypernode_controller_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
   admission_tolerations:
     - key: "node-role.kubernetes.io/control-plane"
       operator: "Exists"
@@ -429,15 +463,15 @@ else
     fi
 
     check-prerequisites
-    kind-up-cluster
-    install-kwok-with-helm
-    install-volcano
+    kind-up-cluster || exit 1
+    install-kwok-with-helm || exit 1
+    install-volcano || exit 1
 fi
 
 # Run e2e test
 cd ${VK_ROOT}
 
-install-ginkgo-if-not-exist
+install-ginkgo-if-not-exist || exit 1
 
 case ${E2E_TYPE} in
 "ALL")
@@ -498,7 +532,11 @@ case ${E2E_TYPE} in
     echo "Creating 8 kwok nodes for 3-tier topology"
     install-kwok-nodes 8
     echo "Running hypernode e2e suite..."
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/hypernode/
+    hypernode_ginkgo_args=()
+    if [[ "${HYPERNODE_E2E_PROFILE:-full}" == "topology-only" ]]; then
+      hypernode_ginkgo_args+=(--focus="HyperNode controller runtime")
+    fi
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} VOLCANO_E2E_RELEASE_NAME=${CLUSTER_NAME} VOLCANO_E2E_NAMESPACE=${NAMESPACE} ginkgo -r --slow-spec-threshold='30s' --progress "${hypernode_ginkgo_args[@]}" ./test/e2e/hypernode/
     ;;
 "CRONJOB")
     echo "Running cronjob e2e suite..."

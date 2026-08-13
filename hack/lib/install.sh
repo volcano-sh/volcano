@@ -27,11 +27,16 @@ function kind-up-cluster {
   echo
   echo "Loading docker images into kind cluster"
   # only need to load images into control-plane node because volcano components are deployed on control-plane node.
-  kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
-  kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG}          "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
-  kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG}    "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
+  if [[ "${HYPERNODE_CONTROLLER_MODE:-controller-manager}" == "standalone" ]]; then
+    kind load docker-image ${IMAGE_PREFIX}/vc-hypernode-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane || return 1
+  fi
+  if [[ "${HYPERNODE_E2E_PROFILE:-full}" != "topology-only" ]]; then
+    kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane || return 1
+    kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG}          "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane || return 1
+    kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG}    "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane || return 1
+  fi
   if [[ "${E2E_TYPE}" == AGENTSCHEDULER* ]]; then
-    kind load docker-image ${IMAGE_PREFIX}/vc-agent-scheduler:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
+    kind load docker-image ${IMAGE_PREFIX}/vc-agent-scheduler:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane || return 1
   fi
   if [[ "${E2E_TYPE}" == "DRA" || "${E2E_TYPE}" == "ALL" ]]; then
     ensure-dra-test-images
@@ -64,20 +69,29 @@ function ensure-dra-test-images {
 # check if the required images exist
 function check-images {
   echo "Checking whether the required images exist"
-  docker image inspect "${IMAGE_PREFIX}/vc-controller-manager:${TAG}" > /dev/null
-  if [[ $? -ne 0 ]]; then
-    echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-controller-manager:${TAG} does not exist"
-    exit 1
+  if [[ "${HYPERNODE_CONTROLLER_MODE:-controller-manager}" == "standalone" ]]; then
+    docker image inspect "${IMAGE_PREFIX}/vc-hypernode-controller-manager:${TAG}" > /dev/null
+    if [[ $? -ne 0 ]]; then
+      echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-hypernode-controller-manager:${TAG} does not exist"
+      exit 1
+    fi
   fi
-  docker image inspect "${IMAGE_PREFIX}/vc-scheduler:${TAG}" > /dev/null
-  if [[ $? -ne 0 ]]; then
-    echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-scheduler:${TAG} does not exist"
-    exit 1
-  fi
-  docker image inspect "${IMAGE_PREFIX}/vc-webhook-manager:${TAG}" > /dev/null
-  if [[ $? -ne 0 ]]; then
-    echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-webhook-manager:${TAG} does not exist"
-    exit 1
+  if [[ "${HYPERNODE_E2E_PROFILE:-full}" != "topology-only" ]]; then
+    docker image inspect "${IMAGE_PREFIX}/vc-controller-manager:${TAG}" > /dev/null
+    if [[ $? -ne 0 ]]; then
+      echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-controller-manager:${TAG} does not exist"
+      exit 1
+    fi
+    docker image inspect "${IMAGE_PREFIX}/vc-scheduler:${TAG}" > /dev/null
+    if [[ $? -ne 0 ]]; then
+      echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-scheduler:${TAG} does not exist"
+      exit 1
+    fi
+    docker image inspect "${IMAGE_PREFIX}/vc-webhook-manager:${TAG}" > /dev/null
+    if [[ $? -ne 0 ]]; then
+      echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-webhook-manager:${TAG} does not exist"
+      exit 1
+    fi
   fi
   if [[ "${E2E_TYPE}" == AGENTSCHEDULER* ]]; then
     docker image inspect "${IMAGE_PREFIX}/vc-agent-scheduler:${TAG}" > /dev/null
@@ -176,10 +190,10 @@ function install-ginkgo-if-not-exist {
 }
 
 function install-kwok-with-helm {
-  helm repo add kwok https://kwok.sigs.k8s.io/charts/
-  helm repo update
-  helm upgrade --namespace kube-system --install kwok kwok/kwok
-  helm upgrade --install kwok kwok/stage-fast
+  helm repo add kwok https://kwok.sigs.k8s.io/charts/ || return 1
+  helm repo update || return 1
+  helm upgrade --namespace kube-system --install kwok kwok/kwok || return 1
+  helm upgrade --install kwok kwok/stage-fast || return 1
   # delete pod-complete stage to avoid volcano-job-pod change status to complete.
-  kubectl delete stage pod-complete
+  kubectl delete stage pod-complete || return 1
 }
