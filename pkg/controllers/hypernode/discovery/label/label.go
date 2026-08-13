@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 
@@ -88,26 +87,12 @@ type labelDiscoverer struct {
 	hyperNodeLister       topologylisterv1alpha1.HyperNodeLister
 	nodeHandler           cache.ResourceEventHandlerRegistration
 	hyperNodeHandler      cache.ResourceEventHandlerRegistration
-	mutex                 sync.Mutex
-	workerWG              sync.WaitGroup
+	workerDone            chan struct{}
 	started               bool
-	stopped               bool
 }
 
 // Start begins the topology discovery process and returns the channel for receiving discovered topology
 func (l *labelDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
-	if l.started {
-		return nil, errors.New("label discoverer has already been started")
-	}
-	if l.stopped {
-		return nil, errors.New("label discoverer has already been stopped")
-	}
-	if l.nodeInformer == nil || l.hyperNodeInformer == nil {
-		return nil, errors.New("label discoverer requires Node and HyperNode informers")
-	}
-
 	var err error
 	l.nodeHandler, err = l.nodeInformer.Informer().AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
@@ -131,13 +116,23 @@ func (l *labelDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
 	}
 	if l.informerFactory != nil {
 		l.informerFactory.Start(l.stopCh)
+		for informerType, ok := range l.informerFactory.WaitForCacheSync(l.stopCh) {
+			if !ok {
+				klog.Errorf("Failed to sync informer cache: %v", informerType)
+			}
+		}
 	}
 	if l.vcInformerFactory != nil {
 		l.vcInformerFactory.Start(l.stopCh)
+		for informerType, ok := range l.vcInformerFactory.WaitForCacheSync(l.stopCh) {
+			if !ok {
+				klog.Errorf("Failed to sync informer cache: %v", informerType)
+			}
+		}
 	}
+	l.enqueue()
 
 	l.started = true
-	l.workerWG.Add(1)
 	go l.work()
 
 	return l.outputCh, nil
@@ -145,12 +140,6 @@ func (l *labelDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
 
 // Stop halts the discovery process
 func (l *labelDiscoverer) Stop() error {
-	l.mutex.Lock()
-	if l.stopped {
-		l.mutex.Unlock()
-		return nil
-	}
-	l.stopped = true
 	if l.nodeHandler != nil {
 		if err := l.nodeInformer.Informer().RemoveEventHandler(l.nodeHandler); err != nil {
 			klog.ErrorS(err, "Failed to remove Node event handler")
@@ -163,8 +152,9 @@ func (l *labelDiscoverer) Stop() error {
 	}
 	close(l.stopCh)
 	l.queue.ShutDown()
-	l.mutex.Unlock()
-	l.workerWG.Wait()
+	if l.started {
+		<-l.workerDone
+	}
 	return nil
 }
 
@@ -231,6 +221,7 @@ func newLabelDiscoverer(cfg api.DiscoveryConfig, options api.DiscovererOptions, 
 		outputCh:              outputCh,
 		stopCh:                stopCh,
 		completedCh:           completedCh,
+		workerDone:            make(chan struct{}),
 		queue:                 queue,
 		hyperNodeLister:       hyperNodeInformer.Lister(),
 	}, nil
@@ -283,25 +274,8 @@ func checkLabels(labels []NodeLabel) error {
 }
 
 func (l *labelDiscoverer) work() {
-	defer l.workerWG.Done()
+	defer close(l.workerDone)
 	defer close(l.outputCh)
-	if l.informerFactory != nil {
-		for informerType, ok := range l.informerFactory.WaitForCacheSync(l.stopCh) {
-			if !ok {
-				klog.ErrorS(nil, "Failed to sync informer cache", "informerType", informerType)
-				return
-			}
-		}
-	}
-	if l.vcInformerFactory != nil {
-		for informerType, ok := range l.vcInformerFactory.WaitForCacheSync(l.stopCh) {
-			if !ok {
-				klog.ErrorS(nil, "Failed to sync Volcano informer cache", "informerType", informerType)
-				return
-			}
-		}
-	}
-	l.enqueue()
 	for {
 		key, shutdown := l.queue.Get()
 		if shutdown {

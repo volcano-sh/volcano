@@ -18,18 +18,15 @@ package label
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
-	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/klog/v2"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
@@ -136,26 +133,6 @@ func TestNewLabelDiscovererWithOptionsFallsBackToDedicatedInformers(t *testing.T
 	assert.True(t, ok)
 	assert.NotNil(t, labelDiscoverer.informerFactory)
 	assert.NotNil(t, labelDiscoverer.vcInformerFactory)
-}
-
-func TestLegacyLabelDiscovererStopInterruptsCacheSync(t *testing.T) {
-	kubeClient := fake.NewSimpleClientset()
-	kubeClient.PrependReactor("list", "nodes", func(k8stesting.Action) (bool, runtime.Object, error) {
-		return true, nil, errors.New("API unavailable")
-	})
-	discoverer := NewLabelDiscoverer(getCfg(), kubeClient, vcclientset.NewSimpleClientset())
-	if _, err := discoverer.Start(); err != nil {
-		t.Fatalf("Start() returned an error: %v", err)
-	}
-
-	stopDone := make(chan error, 1)
-	go func() { stopDone <- discoverer.Stop() }()
-	select {
-	case err := <-stopDone:
-		assert.NoError(t, err)
-	case <-time.After(time.Second):
-		t.Fatal("Stop() blocked while informer caches were syncing")
-	}
 }
 
 func getCfg() api.DiscoveryConfig {

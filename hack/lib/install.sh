@@ -28,15 +28,15 @@ function kind-up-cluster {
   echo "Loading docker images into kind cluster"
   # only need to load images into control-plane node because volcano components are deployed on control-plane node.
   if [[ "${HYPERNODE_CONTROLLER_MODE:-controller-manager}" == "standalone" || "${HYPERNODE_E2E_PROFILE:-full}" == "migration" ]]; then
-    kind load docker-image ${IMAGE_PREFIX}/vc-hypernode-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane || return 1
+    kind load docker-image ${IMAGE_PREFIX}/vc-hypernode-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
   fi
   if [[ "${HYPERNODE_E2E_PROFILE:-full}" != "topology-only" ]]; then
-    kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane || return 1
-    kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG}          "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane || return 1
-    kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG}    "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane || return 1
+    kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
+    kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG}          "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
+    kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG}    "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
   fi
   if [[ "${E2E_TYPE}" == AGENTSCHEDULER* ]]; then
-    kind load docker-image ${IMAGE_PREFIX}/vc-agent-scheduler:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane || return 1
+    kind load docker-image ${IMAGE_PREFIX}/vc-agent-scheduler:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
   fi
   if [[ "${E2E_TYPE}" == "DRA" || "${E2E_TYPE}" == "ALL" ]]; then
     ensure-dra-test-images
@@ -190,10 +190,10 @@ function install-ginkgo-if-not-exist {
 }
 
 function install-kwok-with-helm {
-  helm repo add kwok https://kwok.sigs.k8s.io/charts/ || return 1
-  helm repo update || return 1
-  helm upgrade --namespace kube-system --install kwok kwok/kwok || return 1
-  helm upgrade --install kwok kwok/stage-fast || return 1
+  helm repo add kwok https://kwok.sigs.k8s.io/charts/
+  helm repo update
+  helm upgrade --namespace kube-system --install kwok kwok/kwok
+  helm upgrade --install kwok kwok/stage-fast
   # delete pod-complete stage to avoid volcano-job-pod change status to complete.
-  kubectl delete stage pod-complete || return 1
+  kubectl delete stage pod-complete
 }

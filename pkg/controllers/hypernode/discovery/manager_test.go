@@ -127,35 +127,6 @@ func TestStopDiscovererWaitsForDeliveredResultAndDropsBufferedResults(t *testing
 	m.workerWG.Wait()
 }
 
-func TestManagerLifecycleIsIdempotent(t *testing.T) {
-	newTestManager := func() *manager {
-		queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
-		return newManager(config.NewFakeLoader(&api.NetworkTopologyConfig{}), queue, fake.NewSimpleClientset(), fakevcclientset.NewSimpleClientset(), nil, nil)
-	}
-
-	t.Run("start and stop can be repeated", func(t *testing.T) {
-		manager := newTestManager()
-		assert.NoError(t, manager.Start())
-		assert.NoError(t, manager.Start())
-		manager.Stop()
-		manager.Stop()
-	})
-
-	t.Run("start after stop is rejected", func(t *testing.T) {
-		manager := newTestManager()
-		manager.Stop()
-		assert.Error(t, manager.Start())
-	})
-
-	t.Run("nil config is treated as empty", func(t *testing.T) {
-		queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
-		manager := newManager(config.NewFakeLoader(nil), queue, fake.NewSimpleClientset(), fakevcclientset.NewSimpleClientset(), nil, nil)
-		assert.NoError(t, manager.Start())
-		assert.NotNil(t, manager.config)
-		manager.Stop()
-	})
-}
-
 func TestManager_StartMultipleDiscoverers(t *testing.T) {
 	// Prepare test data
 	hyperNodesA := []*topologyv1alpha1.HyperNode{

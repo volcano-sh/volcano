@@ -199,14 +199,7 @@ func TestUfmDiscoverer_Start(t *testing.T) {
 				tc.config.Config["endpoint"] = serverBaseURL
 			}
 
-			discoverer, createErr := NewUFMDiscovererWithOptions(tc.config, api.DiscovererOptions{KubeClient: fakeClient, VolcanoClient: fakeVcClient})
-			if createErr != nil {
-				if !tc.expectedError {
-					t.Fatalf("NewUFMDiscovererWithOptions() returned an error: %v", createErr)
-				}
-				return
-			}
-			u := discoverer
+			u := NewUFMDiscoverer(tc.config, fakeClient, fakeVcClient)
 			outputCh, err := u.Start()
 			if tc.expectedError {
 				assert.Error(t, err)
@@ -234,29 +227,6 @@ func TestUfmDiscoverer_Start(t *testing.T) {
 			u.Stop()
 		})
 	}
-}
-
-func TestUFMDiscovererLifecycleAndDefaultInterval(t *testing.T) {
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "ufm-creds", Namespace: "default"},
-		Data:       map[string][]byte{"username": []byte("user"), "password": []byte("password")},
-	}
-	discoverer, err := NewUFMDiscovererWithOptions(api.DiscoveryConfig{
-		Config: map[string]interface{}{"endpoint": "https://ufm.invalid"},
-		Credentials: &api.Credentials{SecretRef: &api.SecretRef{
-			Name: "ufm-creds", Namespace: "default",
-		}},
-	}, api.DiscovererOptions{KubeClient: fake.NewSimpleClientset(secret)})
-	assert.NoError(t, err)
-	u := discoverer.(*ufmDiscoverer)
-	assert.Equal(t, api.DefaultDiscoveryInterval, u.discoveryInterval)
-
-	_, err = u.Start()
-	assert.NoError(t, err)
-	_, err = u.Start()
-	assert.Error(t, err)
-	assert.NoError(t, u.Stop())
-	assert.NoError(t, u.Stop())
 }
 
 // setupTestServer creates and returns an HTTP test server that mocks the UFM API

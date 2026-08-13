@@ -465,15 +465,15 @@ else
     fi
 
     check-prerequisites
-    kind-up-cluster || exit 1
-    install-kwok-with-helm || exit 1
-    install-volcano || exit 1
+    kind-up-cluster
+    install-kwok-with-helm
+    install-volcano
 fi
 
 # Run e2e test
 cd ${VK_ROOT}
 
-install-ginkgo-if-not-exist || exit 1
+install-ginkgo-if-not-exist
 
 case ${E2E_TYPE} in
 "ALL")

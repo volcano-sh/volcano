@@ -17,7 +17,6 @@ limitations under the License.
 package api
 
 import (
-	"context"
 	"fmt"
 	"sync"
 
@@ -47,7 +46,6 @@ type Discoverer interface {
 
 // DiscovererOptions contains the process-provided dependencies available to discoverers.
 type DiscovererOptions struct {
-	Context           context.Context
 	KubeClient        clientset.Interface
 	VolcanoClient     vcclientset.Interface
 	NodeInformer      coreinformerv1.NodeInformer
@@ -63,7 +61,7 @@ type DiscovererConstructor func(cfg DiscoveryConfig, kubeClient clientset.Interf
 type DiscovererOptionsConstructor func(cfg DiscoveryConfig, options DiscovererOptions) (Discoverer, error)
 
 var (
-	mutex              sync.RWMutex
+	mutex              sync.Mutex
 	discovererRegistry = make(map[string]DiscovererOptionsConstructor)
 )
 
@@ -90,14 +88,12 @@ func NewDiscoverer(cfg DiscoveryConfig, kubeClient clientset.Interface, vcClient
 
 // NewDiscovererWithOptions creates a discoverer using process-provided dependencies.
 func NewDiscovererWithOptions(cfg DiscoveryConfig, options DiscovererOptions) (Discoverer, error) {
-	mutex.RLock()
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	constructor, exists := discovererRegistry[cfg.Source]
-	mutex.RUnlock()
 	if !exists {
 		return nil, fmt.Errorf("unsupported discoverer type: %s", cfg.Source)
-	}
-	if constructor == nil {
-		return nil, fmt.Errorf("discoverer constructor is nil for source: %s", cfg.Source)
 	}
 	return constructor(cfg, options)
 }

@@ -1,4 +1,4 @@
-name: E2E HyperNode
+name: E2E Hypernode
 
 on:
   workflow_call:
@@ -8,7 +8,7 @@ permissions: read-all
 jobs:
   e2e_hypernode:
     runs-on: ubuntu-24.04
-    name: E2E HyperNode (${{ matrix.name }})
+    name: E2E about Hypernode (${{ matrix.name }})
     timeout-minutes: 40
     strategy:
       fail-fast: false

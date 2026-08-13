@@ -17,7 +17,6 @@ limitations under the License.
 package discovery
 
 import (
-	"context"
 	"fmt"
 	"sync"
 
@@ -81,15 +80,9 @@ type Manager interface {
 // manager manages network topology discovery processes
 type manager struct {
 	mutex           sync.Mutex
-	lifecycleMutex  sync.Mutex
 	discovererMutex sync.RWMutex
-	stopOnce        sync.Once
-	startOnce       sync.Once
-	startErr        error
 	managerWG       sync.WaitGroup
 	workerWG        sync.WaitGroup
-	ctx             context.Context
-	cancel          context.CancelFunc
 
 	configLoader config.Loader
 	config       *api.NetworkTopologyConfig
@@ -125,10 +118,7 @@ func NewManagerWithInformers(configLoader config.Loader, queue workqueue.TypedRa
 
 func newManager(configLoader config.Loader, queue workqueue.TypedRateLimitingInterface[string], kubeClient clientset.Interface, vcClient vcclientset.Interface,
 	nodeInformer coreinformerv1.NodeInformer, hyperNodeInformer topologyinformerv1alpha1.HyperNodeInformer) *manager {
-	ctx, cancel := context.WithCancel(context.Background())
 	return &manager{
-		ctx:               ctx,
-		cancel:            cancel,
 		configLoader:      configLoader,
 		discoverers:       make(map[string]api.Discoverer),
 		processorStopCh:   make(map[string]chan struct{}),
@@ -146,51 +136,33 @@ func newManager(configLoader config.Loader, queue workqueue.TypedRateLimitingInt
 
 // Start initializes and starts the topology discovery manager
 func (m *manager) Start() error {
-	m.startOnce.Do(func() {
-		m.lifecycleMutex.Lock()
-		defer m.lifecycleMutex.Unlock()
-		cfg, err := m.configLoader.LoadConfig()
-		if err != nil {
-			klog.ErrorS(err, "Failed to load config")
-			// Initialize with an empty config to avoid nil pointer dereference.
-			m.config = &api.NetworkTopologyConfig{}
-			// Do not return an error here, in case of configMap is updated correctly later.
-		} else if cfg == nil {
-			klog.ErrorS(nil, "Config loader returned an empty config")
-			m.config = &api.NetworkTopologyConfig{}
-		} else {
-			m.config = cfg
-		}
-		select {
-		case <-m.stopCh:
-			m.startErr = fmt.Errorf("network topology discovery manager has already been stopped")
-			return
-		default:
-		}
-		m.managerWG.Add(1)
-		go func() {
-			defer m.managerWG.Done()
-			m.worker()
-		}()
-		klog.InfoS("Network topology discovery manager started")
-	})
-	return m.startErr
+	cfg, err := m.configLoader.LoadConfig()
+	if err != nil {
+		klog.ErrorS(err, "Failed to load config")
+		// Initialize with an empty config to avoid nil pointer dereference.
+		m.config = &api.NetworkTopologyConfig{}
+		// Do not return an error here, in case of configMap is updated correctly later.
+	} else {
+		m.config = cfg
+	}
+	m.managerWG.Add(1)
+	go func() {
+		defer m.managerWG.Done()
+		m.worker()
+	}()
+	klog.InfoS("Network topology discovery manager started")
+	return nil
 }
 
 // Stop halts all discovery processes
 func (m *manager) Stop() {
-	m.stopOnce.Do(func() {
-		m.lifecycleMutex.Lock()
-		m.cancel()
-		close(m.stopCh)
-		m.workQueue.ShutDown()
-		m.lifecycleMutex.Unlock()
-		m.managerWG.Wait()
-		m.stopAllDiscoverers()
-		m.workerWG.Wait()
-		close(m.resultCh)
-		klog.InfoS("Network topology discovery manager stopped")
-	})
+	close(m.stopCh)
+	m.workQueue.ShutDown()
+	m.managerWG.Wait()
+	m.stopAllDiscoverers()
+	m.workerWG.Wait()
+	close(m.resultCh)
+	klog.InfoS("Network topology discovery manager stopped")
 }
 
 // ResultSynced acknowledges the in-flight result for a source. The manager
@@ -221,31 +193,20 @@ func (m *manager) startSingleDiscoverer(source string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %v", err)
 	}
-	if cfg == nil {
-		return fmt.Errorf("failed to load config: loader returned nil")
-	}
 	discoveryCfg := cfg.GetDiscoveryConfig(source)
 	if discoveryCfg == nil {
 		return fmt.Errorf("configuration not found for network topology discovery source: %s", source)
 	}
 
 	discoverer, err := api.NewDiscovererWithOptions(*discoveryCfg, api.DiscovererOptions{
-		Context:    m.ctx,
 		KubeClient: m.kubeClient, VolcanoClient: m.vcClient,
 		NodeInformer: m.nodeInformer, HyperNodeInformer: m.hyperNodeInformer,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create discoverer: %v", err)
 	}
-	if discoverer == nil {
-		return fmt.Errorf("failed to create discoverer: constructor for source %s returned nil", source)
-	}
-
 	outputCh, err := discoverer.Start()
 	if err != nil {
-		if stopErr := discoverer.Stop(); stopErr != nil {
-			klog.ErrorS(stopErr, "Failed to clean up discoverer after start failure", "source", source)
-		}
 		return fmt.Errorf("failed to start discoverer: %v", err)
 	}
 
@@ -345,9 +306,6 @@ func (m *manager) parseConfig(key string) (*api.NetworkTopologyConfig, error) {
 		// set an empty config and should not return err because we should handle configMap deletion event.
 		newConfig = &api.NetworkTopologyConfig{}
 	}
-	if newConfig == nil {
-		return nil, fmt.Errorf("config loader returned nil")
-	}
 	return newConfig, nil
 }
 
@@ -391,9 +349,6 @@ func (m *manager) syncHandler(key string) error {
 // handleRemovedSources stops discoverers sources that are no longer enabled
 func (m *manager) handleRemovedSources(config *api.NetworkTopologyConfig) error {
 	oldConfig := m.config
-	if oldConfig == nil {
-		oldConfig = &api.NetworkTopologyConfig{}
-	}
 
 	oldSources := sets.Set[string]{}
 	for _, source := range oldConfig.GetEnabledDiscoverySources() {

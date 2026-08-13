@@ -21,7 +21,6 @@ import (
 	"errors"
 	"os"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -82,7 +81,7 @@ func (m *mockDiscoveryManager) ResultChannel() <-chan discovery.Result {
 	return m.resultCh
 }
 
-func TestWatchDiscoveryResultsRetriesBeforeAcknowledgement(t *testing.T) {
+func TestWatchDiscoveryResultsAcknowledgesFailedResult(t *testing.T) {
 	existing := &topologyv1alpha1.HyperNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "rack-a",
@@ -96,12 +95,8 @@ func TestWatchDiscoveryResultsRetriesBeforeAcknowledgement(t *testing.T) {
 	hyperNodeInformer := vcInformerFactory.Topology().V1alpha1().HyperNodes()
 	assert.NoError(t, hyperNodeInformer.Informer().GetIndexer().Add(existing.DeepCopy()))
 
-	var updateAttempts atomic.Int32
 	fakeVcClient.Fake.PrependReactor("update", "hypernodes", func(action k8stesting.Action) (bool, runtime.Object, error) {
-		if updateAttempts.Add(1) == 1 {
-			return true, nil, errors.New("transient update failure")
-		}
-		return false, nil, nil
+		return true, nil, errors.New("persistent update failure")
 	})
 
 	mockManager := &mockDiscoveryManager{
@@ -113,11 +108,10 @@ func TestWatchDiscoveryResultsRetriesBeforeAcknowledgement(t *testing.T) {
 		hyperNodeLister:  hyperNodeInformer.Lister(),
 		discoveryManager: mockManager,
 	}
-	stopCh := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		controller.watchDiscoveryResults(stopCh)
+		controller.watchDiscoveryResults()
 	}()
 
 	mockManager.resultCh <- discovery.Result{
@@ -133,10 +127,9 @@ func TestWatchDiscoveryResultsRetriesBeforeAcknowledgement(t *testing.T) {
 	select {
 	case source := <-mockManager.syncedCh:
 		assert.Equal(t, "label", source)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for discovery result acknowledgement")
+	case <-time.After(time.Second):
+		t.Fatal("a failed discovery result was not acknowledged")
 	}
-	assert.GreaterOrEqual(t, updateAttempts.Load(), int32(2))
 	mockManager.mu.Lock()
 	assert.Equal(t, 1, mockManager.syncedCount)
 	mockManager.mu.Unlock()
@@ -149,7 +142,7 @@ func TestWatchDiscoveryResultsRetriesBeforeAcknowledgement(t *testing.T) {
 	}
 }
 
-func TestWatchDiscoveryResultsDoesNotBlockOtherSources(t *testing.T) {
+func TestWatchDiscoveryResultsProcessesNextResultAfterFailure(t *testing.T) {
 	existing := &topologyv1alpha1.HyperNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "rack-a",
@@ -168,18 +161,17 @@ func TestWatchDiscoveryResultsDoesNotBlockOtherSources(t *testing.T) {
 
 	mockManager := &mockDiscoveryManager{
 		resultCh: make(chan discovery.Result),
-		syncedCh: make(chan string, 1),
+		syncedCh: make(chan string, 2),
 	}
 	controller := &hyperNodeController{
 		vcClient:         fakeVcClient,
 		hyperNodeLister:  hyperNodeInformer.Lister(),
 		discoveryManager: mockManager,
 	}
-	stopCh := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		controller.watchDiscoveryResults(stopCh)
+		controller.watchDiscoveryResults()
 	}()
 
 	mockManager.resultCh <- discovery.Result{
@@ -188,14 +180,15 @@ func TestWatchDiscoveryResultsDoesNotBlockOtherSources(t *testing.T) {
 	}
 	mockManager.resultCh <- discovery.Result{Source: "ufm", HyperNodes: nil}
 
-	select {
-	case source := <-mockManager.syncedCh:
-		assert.Equal(t, "ufm", source)
-	case <-time.After(time.Second):
-		t.Fatal("a failing discovery source blocked acknowledgement of another source")
+	for _, expectedSource := range []string{"label", "ufm"} {
+		select {
+		case source := <-mockManager.syncedCh:
+			assert.Equal(t, expectedSource, source)
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for %q result acknowledgement", expectedSource)
+		}
 	}
 
-	close(stopCh)
 	close(mockManager.resultCh)
 	select {
 	case <-done:

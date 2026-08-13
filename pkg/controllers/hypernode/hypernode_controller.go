@@ -17,10 +17,7 @@ limitations under the License.
 package hypernode
 
 import (
-	"errors"
-	"fmt"
 	"sync"
-	"time"
 
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
@@ -118,7 +115,7 @@ func (hn *hyperNodeController) Run(stopCh <-chan struct{}) {
 	hn.workerWG.Add(2)
 	go func() {
 		defer hn.workerWG.Done()
-		hn.watchDiscoveryResults(stopCh)
+		hn.watchDiscoveryResults()
 	}()
 
 	// Start HyperNode queue processor
@@ -142,15 +139,6 @@ func (hn *hyperNodeController) Name() string {
 
 // Initialize initializes the hyperNode controller
 func (hn *hyperNodeController) Initialize(opt *framework.ControllerOption) error {
-	if opt == nil {
-		return errors.New("controller options must not be nil")
-	}
-	if opt.KubeClient == nil || opt.VolcanoClient == nil {
-		return errors.New("HyperNode controller requires Kubernetes and Volcano clients")
-	}
-	if opt.SharedInformerFactory == nil || opt.VCSharedInformerFactory == nil {
-		return errors.New("HyperNode controller requires Kubernetes and Volcano informer factories")
-	}
 	hn.vcClient = opt.VolcanoClient
 	hn.kubeClient = opt.KubeClient
 	hn.vcInformerFactory = opt.VCSharedInformerFactory
@@ -184,68 +172,31 @@ func (hn *hyperNodeController) Initialize(opt *framework.ControllerOption) error
 	return nil
 }
 
-func (hn *hyperNodeController) watchDiscoveryResults(stopCh <-chan struct{}) {
+func (hn *hyperNodeController) watchDiscoveryResults() {
 	resultCh := hn.discoveryManager.ResultChannel()
-	var resultWG sync.WaitGroup
-	defer resultWG.Wait()
 	klog.InfoS("Starting to watch discovery results")
 	for result := range resultCh {
-		resultWG.Add(1)
-		go func() {
-			defer resultWG.Done()
-			hn.processDiscoveryResult(stopCh, result)
-		}()
+		if result.HyperNodes != nil {
+			hn.reconcileTopology(result.Source, result.HyperNodes)
+		}
+		// Always acknowledge a delivered result. Reconciliation errors are
+		// reported by reconcileTopology and must not block discovery reloads.
+		hn.discoveryManager.ResultSynced(result.Source)
 	}
 	klog.InfoS("Discovery result channel closed")
 }
 
-func (hn *hyperNodeController) processDiscoveryResult(stopCh <-chan struct{}, result discovery.Result) {
-	if result.HyperNodes == nil {
-		hn.discoveryManager.ResultSynced(result.Source)
-		return
-	}
-
-	retryDelay := time.Second
-	for {
-		if err := hn.reconcileTopology(result.Source, result.HyperNodes); err == nil {
-			hn.discoveryManager.ResultSynced(result.Source)
-			return
-		} else {
-			klog.ErrorS(err, "Failed to reconcile discovered topology; retrying",
-				"source", result.Source, "retryAfter", retryDelay)
-		}
-		retryTimer := time.NewTimer(retryDelay)
-		select {
-		case <-stopCh:
-			if !retryTimer.Stop() {
-				select {
-				case <-retryTimer.C:
-				default:
-				}
-			}
-			return
-		case <-retryTimer.C:
-		}
-		if retryDelay < 30*time.Second {
-			retryDelay *= 2
-			if retryDelay > 30*time.Second {
-				retryDelay = 30 * time.Second
-			}
-		}
-	}
-}
-
 // reconcileTopology reconciles the discovered topology with existing HyperNode resources
-func (hn *hyperNodeController) reconcileTopology(source string, discoveredNodes []*topologyv1alpha1.HyperNode) error {
+func (hn *hyperNodeController) reconcileTopology(source string, discoveredNodes []*topologyv1alpha1.HyperNode) {
 	klog.InfoS("Starting topology reconciliation", "source", source, "discoveredNodeCount", len(discoveredNodes))
 
 	existingNodes, err := hn.hyperNodeLister.List(labels.SelectorFromSet(labels.Set{
 		api.NetworkTopologySourceLabelKey: source,
 	}))
 	if err != nil {
-		return fmt.Errorf("failed to list existing HyperNode resources: %w", err)
+		klog.ErrorS(err, "Failed to list existing HyperNode resources")
+		return
 	}
-	var reconcileErrors []error
 
 	existingNodeMap := make(map[string]*topologyv1alpha1.HyperNode)
 	for _, node := range existingNodes {
@@ -266,13 +217,11 @@ func (hn *hyperNodeController) reconcileTopology(source string, discoveredNodes 
 			klog.InfoS("Creating new HyperNode", "name", name, "source", source)
 			if err := utils.CreateHyperNode(hn.vcClient, node); err != nil {
 				klog.ErrorS(err, "Failed to create HyperNode", "name", name)
-				reconcileErrors = append(reconcileErrors, fmt.Errorf("create HyperNode %q: %w", name, err))
 			}
 		} else {
 			klog.InfoS("Updating HyperNode", "name", name, "source", source)
 			if err := utils.UpdateHyperNode(hn.vcClient, hn.hyperNodeLister, node); err != nil {
 				klog.ErrorS(err, "Failed to update HyperNode", "name", name)
-				reconcileErrors = append(reconcileErrors, fmt.Errorf("update HyperNode %q: %w", name, err))
 			}
 		}
 
@@ -283,7 +232,6 @@ func (hn *hyperNodeController) reconcileTopology(source string, discoveredNodes 
 		klog.InfoS("Deleting HyperNode", "name", name, "source", source)
 		if err := utils.DeleteHyperNode(hn.vcClient, name); err != nil {
 			klog.ErrorS(err, "Failed to delete HyperNode", "name", name)
-			reconcileErrors = append(reconcileErrors, fmt.Errorf("delete HyperNode %q: %w", name, err))
 		}
 	}
 
@@ -292,5 +240,4 @@ func (hn *hyperNodeController) reconcileTopology(source string, discoveredNodes 
 		"discovered", len(discoveredNodes),
 		"created/updated", len(discoveredNodeMap),
 		"deleted", len(existingNodeMap))
-	return errors.Join(reconcileErrors...)
 }

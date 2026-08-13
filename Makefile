@@ -236,9 +236,6 @@ e2e-test-dra: images
 e2e-test-hypernode: images
 	E2E_TYPE=HYPERNODE ./hack/run-e2e-kind.sh
 
-e2e-test-hypernode-standalone: images
-	HYPERNODE_CONTROLLER_MODE=standalone E2E_TYPE=HYPERNODE ./hack/run-e2e-kind.sh
-
 e2e-test-admission-webhook: images
 	E2E_TYPE=ADMISSION_WEBHOOK ./hack/run-e2e-kind.sh
 

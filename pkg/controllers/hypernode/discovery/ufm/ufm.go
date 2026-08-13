@@ -25,7 +25,6 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,7 +39,7 @@ import (
 )
 
 func init() {
-	api.RegisterDiscovererWithOptions("ufm", NewUFMDiscovererWithOptions)
+	api.RegisterDiscoverer("ufm", NewUFMDiscoverer)
 }
 
 const (
@@ -74,8 +73,6 @@ type LeafSwitchesGroup struct {
 
 // ufmDiscoverer implements the Discoverer interface for UFM
 type ufmDiscoverer struct {
-	initializationErr error
-	ctx               context.Context
 	endpoint          string
 	username          string
 	password          string
@@ -83,31 +80,11 @@ type ufmDiscoverer struct {
 	discoveryInterval time.Duration
 	client            *http.Client
 	stopCh            chan struct{}
-	stopOnce          sync.Once
-	workerWG          sync.WaitGroup
-	mutex             sync.Mutex
-	started           bool
-	stopped           bool
 }
 
-// NewUFMDiscoverer creates a UFM discoverer using the legacy client contract.
-func NewUFMDiscoverer(cfg api.DiscoveryConfig, kubeClient clientset.Interface, _ vcclientset.Interface) api.Discoverer {
-	discoverer, err := NewUFMDiscovererWithOptions(cfg, api.DiscovererOptions{KubeClient: kubeClient})
-	if err != nil {
-		return &ufmDiscoverer{initializationErr: err, stopCh: make(chan struct{})}
-	}
-	return discoverer
-}
-
-// NewUFMDiscovererWithOptions creates a new UFM topology discoverer.
-func NewUFMDiscovererWithOptions(cfg api.DiscoveryConfig, options api.DiscovererOptions) (api.Discoverer, error) {
-	if options.KubeClient == nil {
-		return nil, errors.New("UFM discoverer requires a Kubernetes client")
-	}
-	endpoint, ok := cfg.Config["endpoint"].(string)
-	if !ok || strings.TrimSpace(endpoint) == "" {
-		return nil, errors.New("UFM endpoint is not configured")
-	}
+// NewUFMDiscoverer creates a new UFM topology discoverer
+func NewUFMDiscoverer(cfg api.DiscoveryConfig, kubeClient clientset.Interface, vcClient vcclientset.Interface) api.Discoverer {
+	endpoint := cfg.Config["endpoint"].(string)
 	insecureSkipVerify, _ := cfg.Config["insecureSkipVerify"].(bool)
 
 	if insecureSkipVerify {
@@ -117,21 +94,13 @@ func NewUFMDiscovererWithOptions(cfg api.DiscoveryConfig, options api.Discoverer
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify},
 	}
 	client := &http.Client{Transport: tr, Timeout: 30 * time.Second}
-	discoveryInterval := cfg.Interval
-	if discoveryInterval <= 0 {
-		discoveryInterval = api.DefaultDiscoveryInterval
-	}
 
 	u := &ufmDiscoverer{
-		ctx:               options.Context,
 		endpoint:          endpoint,
-		discoveryInterval: discoveryInterval,
+		discoveryInterval: cfg.Interval,
 		client:            client,
-		kubeClient:        options.KubeClient,
+		kubeClient:        kubeClient,
 		stopCh:            make(chan struct{}),
-	}
-	if u.ctx == nil {
-		u.ctx = context.Background()
 	}
 
 	var username, password string
@@ -148,22 +117,11 @@ func NewUFMDiscovererWithOptions(cfg api.DiscoveryConfig, options api.Discoverer
 	u.password = password
 	klog.InfoS("UFM discoverer initialized")
 
-	return u, nil
+	return u
 }
 
 // Start begins the topology discovery process and returns the channel for receiving discovered topology
 func (u *ufmDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
-	u.mutex.Lock()
-	defer u.mutex.Unlock()
-	if u.initializationErr != nil {
-		return nil, u.initializationErr
-	}
-	if u.started {
-		return nil, errors.New("UFM discoverer has already been started")
-	}
-	if u.stopped {
-		return nil, errors.New("UFM discoverer has already been stopped")
-	}
 	if u.endpoint == "" {
 		return nil, errors.New("UFM endpoint is not configured")
 	}
@@ -179,9 +137,7 @@ func (u *ufmDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
 	// Create the output channel that this discoverer will manage
 	outputCh := make(chan []*topologyv1alpha1.HyperNode, 10)
 
-	// Start periodic discovery in a separate goroutine.
-	u.started = true
-	u.workerWG.Add(1)
+	// Start periodic discovery in a separate goroutine
 	go u.periodicDiscovery(outputCh)
 
 	return outputCh, nil
@@ -189,16 +145,7 @@ func (u *ufmDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
 
 // Stop halts the discovery process
 func (u *ufmDiscoverer) Stop() error {
-	u.mutex.Lock()
-	u.stopped = true
-	u.stopOnce.Do(func() {
-		close(u.stopCh)
-		if u.client != nil {
-			u.client.CloseIdleConnections()
-		}
-	})
-	u.mutex.Unlock()
-	u.workerWG.Wait()
+	close(u.stopCh)
 	return nil
 }
 
@@ -212,7 +159,7 @@ func (u *ufmDiscoverer) ResultSynced() {
 
 // getCredentialsFromSecret retrieves username and password from a Kubernetes Secret
 func (u *ufmDiscoverer) getCredentialsFromSecret(name, namespace string) (string, string, error) {
-	secret, err := u.kubeClient.CoreV1().Secrets(namespace).Get(u.ctx, name, metav1.GetOptions{})
+	secret, err := u.kubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get secret %s/%s: %v", namespace, name, err)
 	}
@@ -234,8 +181,6 @@ func (u *ufmDiscoverer) getCredentialsFromSecret(name, namespace string) (string
 
 // periodicDiscovery periodically discovers network topology
 func (u *ufmDiscoverer) periodicDiscovery(outputCh chan []*topologyv1alpha1.HyperNode) {
-	defer u.workerWG.Done()
-	defer close(outputCh)
 	// Perform immediate discovery first
 	u.discoverAndSend(outputCh)
 
@@ -248,7 +193,8 @@ func (u *ufmDiscoverer) periodicDiscovery(outputCh chan []*topologyv1alpha1.Hype
 		case <-ticker.C:
 			u.discoverAndSend(outputCh)
 		case <-u.stopCh:
-			klog.InfoS("UFM network topology discovery stopped")
+			klog.InfoS("UFM network topology discovery stopped, closing output channel")
+			close(outputCh)
 			return
 		}
 	}
@@ -287,20 +233,10 @@ func (u *ufmDiscoverer) fetchUFMData() ([]UFMInterface, error) {
 		requestURL = "https://" + strings.TrimRight(u.endpoint, "/") + ufmPortsPath
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, requestURL, nil)
+	req, err := http.NewRequest("GET", requestURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
-	requestCtx, cancel := context.WithCancel(req.Context())
-	defer cancel()
-	go func() {
-		select {
-		case <-u.stopCh:
-			cancel()
-		case <-requestCtx.Done():
-		}
-	}()
-	req = req.WithContext(requestCtx)
 	req.SetBasicAuth(u.username, u.password)
 
 	klog.InfoS("Sending request to UFM server", "url", requestURL)
