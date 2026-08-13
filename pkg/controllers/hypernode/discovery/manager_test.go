@@ -17,10 +17,11 @@ limitations under the License.
 package discovery
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
-	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/stretchr/testify/assert"
@@ -28,12 +29,132 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
-	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	fakevcclientset "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/hypernode/api"
 	"volcano.sh/volcano/pkg/controllers/hypernode/config"
 	fakedisc "volcano.sh/volcano/pkg/controllers/hypernode/discovery/fake"
 )
+
+type acknowledgementDiscoverer struct {
+	synced atomic.Int32
+}
+
+func (*acknowledgementDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
+	return make(chan []*topologyv1alpha1.HyperNode), nil
+}
+
+func (*acknowledgementDiscoverer) Stop() error     { return nil }
+func (*acknowledgementDiscoverer) Name() string    { return "acknowledgement" }
+func (d *acknowledgementDiscoverer) ResultSynced() { d.synced.Add(1) }
+
+func TestResultSyncedTargetsProducingDiscoverer(t *testing.T) {
+	producer := &acknowledgementDiscoverer{}
+	topologyCh := make(chan []*topologyv1alpha1.HyperNode, 1)
+	m := &manager{
+		resultCh:   make(chan Result),
+		stopCh:     make(chan struct{}),
+		pendingAck: make(map[string]*resultAcknowledgement),
+	}
+	processorStopCh := make(chan struct{})
+	processorDone := make(chan struct{})
+	m.workerWG.Add(1)
+	go m.processTopology("same-source", producer, topologyCh, processorStopCh, processorDone)
+	topologyCh <- []*topologyv1alpha1.HyperNode{{ObjectMeta: metav1.ObjectMeta{Name: "test"}}}
+	result := <-m.resultCh
+
+	// The acknowledgement is bound to the in-flight result and remains
+	// idempotent even when called more than once.
+	m.ResultSynced(result.Source)
+	m.ResultSynced(result.Source)
+
+	if got := producer.synced.Load(); got != 1 {
+		t.Fatalf("producer acknowledgement count = %d, want 1", got)
+	}
+
+	// A subsequent in-flight result is independently bound to the same
+	// producing instance.
+	topologyCh <- []*topologyv1alpha1.HyperNode{{ObjectMeta: metav1.ObjectMeta{Name: "legacy"}}}
+	legacyResult := <-m.resultCh
+	m.ResultSynced(legacyResult.Source)
+	if got := producer.synced.Load(); got != 2 {
+		t.Fatalf("producer acknowledgement count = %d, want 2", got)
+	}
+	close(processorStopCh)
+	<-processorDone
+	m.workerWG.Wait()
+}
+
+func TestStopDiscovererWaitsForDeliveredResultAndDropsBufferedResults(t *testing.T) {
+	producer := &acknowledgementDiscoverer{}
+	topologyCh := make(chan []*topologyv1alpha1.HyperNode, 2)
+	processorStopCh := make(chan struct{})
+	processorDone := make(chan struct{})
+	m := &manager{
+		discoverers:     map[string]api.Discoverer{"same-source": producer},
+		processorStopCh: map[string]chan struct{}{"same-source": processorStopCh},
+		processorDone:   map[string]chan struct{}{"same-source": processorDone},
+		pendingAck:      make(map[string]*resultAcknowledgement),
+		resultCh:        make(chan Result),
+		stopCh:          make(chan struct{}),
+	}
+	m.workerWG.Add(1)
+	go m.processTopology("same-source", producer, topologyCh, processorStopCh, processorDone)
+	topologyCh <- []*topologyv1alpha1.HyperNode{{ObjectMeta: metav1.ObjectMeta{Name: "delivered"}}}
+	topologyCh <- []*topologyv1alpha1.HyperNode{{ObjectMeta: metav1.ObjectMeta{Name: "buffered"}}}
+	result := <-m.resultCh
+
+	stopDone := make(chan error, 1)
+	go func() { stopDone <- m.stopSingleDiscoverer(result.Source) }()
+	select {
+	case err := <-stopDone:
+		t.Fatalf("stop completed before delivered result was acknowledged: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	m.ResultSynced(result.Source)
+	select {
+	case err := <-stopDone:
+		assert.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("stop did not complete after result acknowledgement")
+	}
+	select {
+	case result := <-m.resultCh:
+		t.Fatalf("old discoverer forwarded buffered result after stop: %s", result.HyperNodes[0].Name)
+	case <-time.After(50 * time.Millisecond):
+	}
+	m.workerWG.Wait()
+}
+
+func TestManagerLifecycleIsIdempotent(t *testing.T) {
+	newTestManager := func() *manager {
+		queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
+		return newManager(config.NewFakeLoader(&api.NetworkTopologyConfig{}), queue, fake.NewSimpleClientset(), fakevcclientset.NewSimpleClientset(), nil, nil)
+	}
+
+	t.Run("start and stop can be repeated", func(t *testing.T) {
+		manager := newTestManager()
+		assert.NoError(t, manager.Start())
+		assert.NoError(t, manager.Start())
+		manager.Stop()
+		manager.Stop()
+	})
+
+	t.Run("start after stop is rejected", func(t *testing.T) {
+		manager := newTestManager()
+		manager.Stop()
+		assert.Error(t, manager.Start())
+	})
+
+	t.Run("nil config is treated as empty", func(t *testing.T) {
+		queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
+		manager := newManager(config.NewFakeLoader(nil), queue, fake.NewSimpleClientset(), fakevcclientset.NewSimpleClientset(), nil, nil)
+		assert.NoError(t, manager.Start())
+		assert.NotNil(t, manager.config)
+		manager.Stop()
+	})
+}
 
 func TestManager_StartMultipleDiscoverers(t *testing.T) {
 	// Prepare test data
@@ -46,15 +167,15 @@ func TestManager_StartMultipleDiscoverers(t *testing.T) {
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "hb"}},
 	}
 
-	constructorA := api.DiscovererConstructor(func(cfg api.DiscoveryConfig, kubeClient clientset.Interface, vcClient vcclientset.Interface) api.Discoverer {
-		return fakedisc.NewFakeDiscoverer(hyperNodesA, cfg)
+	constructorA := api.DiscovererOptionsConstructor(func(cfg api.DiscoveryConfig, options api.DiscovererOptions) (api.Discoverer, error) {
+		return fakedisc.NewFakeDiscoverer(hyperNodesA, cfg), nil
 	})
-	constructorB := api.DiscovererConstructor(func(cfg api.DiscoveryConfig, kubeClient clientset.Interface, vcClient vcclientset.Interface) api.Discoverer {
-		return fakedisc.NewFakeDiscoverer(hyperNodesB, cfg)
+	constructorB := api.DiscovererOptionsConstructor(func(cfg api.DiscoveryConfig, options api.DiscovererOptions) (api.Discoverer, error) {
+		return fakedisc.NewFakeDiscoverer(hyperNodesB, cfg), nil
 	})
 
-	api.RegisterDiscoverer("sourceA", constructorA)
-	api.RegisterDiscoverer("sourceB", constructorB)
+	api.RegisterDiscovererWithOptions("sourceA", constructorA)
+	api.RegisterDiscovererWithOptions("sourceB", constructorB)
 
 	discoveryConfig := &api.NetworkTopologyConfig{
 		NetworkTopologyDiscovery: []api.DiscoveryConfig{
@@ -92,6 +213,7 @@ func TestManager_StartMultipleDiscoverers(t *testing.T) {
 				assert.Equal(t, 1, len(result.HyperNodes))
 				assert.Equal(t, "hb", result.HyperNodes[0].Name)
 			}
+			m.ResultSynced(result.Source)
 		case <-timeout:
 			t.Fatal("Test timed out waiting for results")
 		}
@@ -110,11 +232,11 @@ func TestManager_syncHandler(t *testing.T) {
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "ha1"}},
 	}
 
-	constructor := api.DiscovererConstructor(func(cfg api.DiscoveryConfig, kubeClient clientset.Interface, vcClient vcclientset.Interface) api.Discoverer {
-		return fakedisc.NewFakeDiscoverer(hyperNodes, cfg)
+	constructor := api.DiscovererOptionsConstructor(func(cfg api.DiscoveryConfig, options api.DiscovererOptions) (api.Discoverer, error) {
+		return fakedisc.NewFakeDiscoverer(hyperNodes, cfg), nil
 	})
 
-	api.RegisterDiscoverer("testSource", constructor)
+	api.RegisterDiscovererWithOptions("testSource", constructor)
 	discoveryConfigV1 := &api.NetworkTopologyConfig{
 		NetworkTopologyDiscovery: []api.DiscoveryConfig{
 			{
@@ -142,7 +264,9 @@ func TestManager_syncHandler(t *testing.T) {
 	queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
 	fakeClient := fake.NewSimpleClientset()
 	fakeVcClient := fakevcclientset.NewSimpleClientset()
-	m := NewManager(loader, queue, fakeClient, fakeVcClient)
+	informerFactory := informers.NewSharedInformerFactory(fakeClient, 0)
+	vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
+	m := NewManagerWithInformers(loader, queue, fakeClient, fakeVcClient, informerFactory.Core().V1().Nodes(), vcInformerFactory.Topology().V1alpha1().HyperNodes())
 
 	// Start the manager
 	err := m.Start()
@@ -151,23 +275,27 @@ func TestManager_syncHandler(t *testing.T) {
 	// Enqueue a dummy key to trigger the sync handler
 	queue.Add("test-namespace/test-config")
 
-	// Give the manager some time to process the initial config
-	time.Sleep(100 * time.Millisecond)
+	var result Result
+	select {
+	case result = <-m.ResultChannel():
+		m.ResultSynced(result.Source)
+	case <-time.After(time.Second):
+		t.Fatal("Test timed out waiting for initial discovery result")
+	}
 
 	//// Update the config with V2 version that disables the discoverer
 	loader.SetConfig(discoveryConfigV2)
 	// Enqueue the key again to trigger the sync handler with the updated config
 	queue.Add("test-namespace/test-config")
 
-	// Give the manager some time to process the updated config
-	time.Sleep(100 * time.Millisecond)
-
 	// Assert that the discoverer has been stopped
 	mgr := m.(*manager)
-	mgr.mutex.Lock()
-	_, exists := mgr.discoverers["testSource"]
-	mgr.mutex.Unlock()
-	assert.False(t, exists, "Discoverer should be stopped")
+	assert.Eventually(t, func() bool {
+		mgr.discovererMutex.RLock()
+		defer mgr.discovererMutex.RUnlock()
+		_, exists := mgr.discoverers["testSource"]
+		return !exists
+	}, time.Second, 10*time.Millisecond, "Discoverer should be stopped")
 
 	// Stop the manager
 	m.Stop()
