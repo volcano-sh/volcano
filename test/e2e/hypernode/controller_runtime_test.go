@@ -144,6 +144,8 @@ var _ = Describe("HyperNode controller runtime", Ordered, func() {
 			{name: "update HyperNode status", verb: "update", group: "topology.volcano.sh", resource: "hypernodes/status", allowed: true},
 			{name: "watch controller ConfigMap", verb: "watch", resource: "configmaps", namespace: namespace, allowed: true},
 			{name: "read UFM Secret", verb: "get", resource: "secrets", namespace: namespace, allowed: true},
+			{name: "read configured cross-namespace Secret", verb: "get", resource: "secrets", namespace: "default", allowed: true},
+			{name: "deny Secret access in an unconfigured namespace", verb: "get", resource: "secrets", namespace: "kube-system", allowed: false},
 			{name: "create leader Lease", verb: "create", group: "coordination.k8s.io", resource: "leases", namespace: namespace, allowed: true},
 			{name: "deny unrelated Pods", verb: "list", resource: "pods", namespace: namespace, allowed: false},
 		} {

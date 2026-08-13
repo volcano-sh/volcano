@@ -27,7 +27,7 @@ function kind-up-cluster {
   echo
   echo "Loading docker images into kind cluster"
   # only need to load images into control-plane node because volcano components are deployed on control-plane node.
-  if [[ "${HYPERNODE_CONTROLLER_MODE:-controller-manager}" == "standalone" ]]; then
+  if [[ "${HYPERNODE_CONTROLLER_MODE:-controller-manager}" == "standalone" || "${HYPERNODE_E2E_PROFILE:-full}" == "migration" ]]; then
     kind load docker-image ${IMAGE_PREFIX}/vc-hypernode-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane || return 1
   fi
   if [[ "${HYPERNODE_E2E_PROFILE:-full}" != "topology-only" ]]; then
@@ -69,7 +69,7 @@ function ensure-dra-test-images {
 # check if the required images exist
 function check-images {
   echo "Checking whether the required images exist"
-  if [[ "${HYPERNODE_CONTROLLER_MODE:-controller-manager}" == "standalone" ]]; then
+  if [[ "${HYPERNODE_CONTROLLER_MODE:-controller-manager}" == "standalone" || "${HYPERNODE_E2E_PROFILE:-full}" == "migration" ]]; then
     docker image inspect "${IMAGE_PREFIX}/vc-hypernode-controller-manager:${TAG}" > /dev/null
     if [[ $? -ne 0 ]]; then
       echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-hypernode-controller-manager:${TAG} does not exist"

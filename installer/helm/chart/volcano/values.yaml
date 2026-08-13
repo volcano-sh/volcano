@@ -36,6 +36,10 @@ custom:
   hypernode_controller_mode: controller-manager
   hypernode_controller_replicas: 1
   hypernode_controller_metrics_enable: true
+  # Additional namespaces in which the standalone controller may read
+  # discovery credential Secrets. The installation namespace is always
+  # authorized and does not need to be listed here.
+  hypernode_controller_secret_namespaces: []
   scheduler_enable: true
   agent_scheduler_enable: false
   agent_scheduler_replicas: 1
@@ -361,4 +365,3 @@ service:
   #   - IPv6
   #   - IPv4
   ipFamilies: []
-

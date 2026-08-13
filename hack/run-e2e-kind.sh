@@ -319,6 +319,8 @@ EOF
   fi
   echo "Install volcano chart for HyperNode ${HYPERNODE_CONTROLLER_MODE:-controller-manager} E2E"
   helm-install-volcano "  hypernode_controller_replicas: ${hypernode_controller_replicas}
+  hypernode_controller_secret_namespaces:
+    - default
   controller_config_override:
     networkTopologyDiscovery:
       - source: label
@@ -535,8 +537,10 @@ case ${E2E_TYPE} in
     hypernode_ginkgo_args=()
     if [[ "${HYPERNODE_E2E_PROFILE:-full}" == "topology-only" ]]; then
       hypernode_ginkgo_args+=(--focus="HyperNode controller runtime")
+    elif [[ "${HYPERNODE_E2E_PROFILE:-full}" == "migration" ]]; then
+      hypernode_ginkgo_args+=(--focus="HyperNode controller ownership migration")
     fi
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} VOLCANO_E2E_RELEASE_NAME=${CLUSTER_NAME} VOLCANO_E2E_NAMESPACE=${NAMESPACE} ginkgo -r --slow-spec-threshold='30s' --progress "${hypernode_ginkgo_args[@]}" ./test/e2e/hypernode/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} VOLCANO_E2E_RELEASE_NAME=${CLUSTER_NAME} VOLCANO_E2E_NAMESPACE=${NAMESPACE} VOLCANO_E2E_CHART_PATH=${VK_ROOT}/installer/helm/chart/volcano ginkgo -r --slow-spec-threshold='30s' --progress "${hypernode_ginkgo_args[@]}" ./test/e2e/hypernode/
     ;;
 "CRONJOB")
     echo "Running cronjob e2e suite..."
