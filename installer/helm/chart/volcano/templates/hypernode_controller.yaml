@@ -1,0 +1,226 @@
+{{- $mode := include "hypernodeControllerMode" . -}}
+{{- if eq $mode "standalone" }}
+{{- $affinity := or .Values.custom.hypernode_controller_affinity .Values.custom.default_affinity }}
+{{- $tolerations := or .Values.custom.hypernode_controller_tolerations .Values.custom.default_tolerations }}
+{{- $podSecurityContext := or .Values.custom.hypernode_controller_sc .Values.custom.default_sc }}
+{{- $containerSecurityContext := or .Values.custom.hypernode_controller_main_csc .Values.custom.default_csc }}
+{{- $nodeSelector := or .Values.custom.hypernode_controller_ns .Values.custom.default_ns }}
+{{- $selectorLabels := dict "app" "volcano-hypernode-controller" "app.kubernetes.io/instance" .Release.Name }}
+{{- $deploymentLabels := mergeOverwrite (deepCopy (.Values.custom.common_labels | default (dict))) (deepCopy (.Values.custom.hypernode_controller_labels | default (dict))) $selectorLabels }}
+{{- $podLabels := mergeOverwrite (deepCopy (.Values.custom.common_labels | default (dict))) (deepCopy (.Values.custom.hypernode_controller_podLabels | default (dict))) $selectorLabels }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-hypernode-controller
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-hypernode-controller
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["topology.volcano.sh"]
+    resources: ["hypernodes"]
+    verbs: ["list", "watch", "create", "update", "delete"]
+  - apiGroups: ["topology.volcano.sh"]
+    resources: ["hypernodes/status"]
+    verbs: ["update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-hypernode-controller
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-hypernode-controller
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-hypernode-controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-hypernode-controller
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+rules:
+  # Kubernetes versions without selector-aware authorization cannot match
+  # resourceNames on list/watch requests. The informer still uses a
+  # metadata.name field selector and therefore watches only this release's
+  # controller ConfigMap.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch", "update"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["create"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    resourceNames: ["{{ .Release.Name }}-hypernode-controller-manager"]
+    verbs: ["get", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-hypernode-controller
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-hypernode-controller
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Release.Name }}-hypernode-controller
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-hypernode-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- toYaml $deploymentLabels | nindent 4 }}
+spec:
+  replicas: {{ .Values.custom.hypernode_controller_replicas }}
+  {{- if gt (int .Values.custom.hypernode_controller_replicas) 1 }}
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  {{- else }}
+  strategy:
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- toYaml $selectorLabels | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- toYaml $podLabels | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-hypernode-controller
+      priorityClassName: system-cluster-critical
+      {{- if .Values.basic.image_pull_secret }}
+      imagePullSecrets:
+        - name: {{ .Values.basic.image_pull_secret }}
+      {{- end }}
+      {{- if $tolerations }}
+      tolerations: {{- toYaml $tolerations | nindent 8 }}
+      {{- end }}
+      {{- if $nodeSelector }}
+      nodeSelector: {{- toYaml $nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if $affinity }}
+      affinity: {{- toYaml $affinity | nindent 8 }}
+      {{- end }}
+      {{- if $podSecurityContext }}
+      securityContext: {{- toYaml $podSecurityContext | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: hypernode-controller-manager
+          image: {{ .Values.basic.image_registry }}/{{ .Values.basic.hypernode_controller_image_name }}:{{ .Values.basic.hypernode_controller_image_tag_version | default .Values.basic.image_tag_version }}
+          imagePullPolicy: {{ .Values.basic.image_pull_policy }}
+          {{- if .Values.custom.hypernode_controller_resources }}
+          resources: {{- toYaml .Values.custom.hypernode_controller_resources | nindent 12 }}
+          {{- end }}
+          {{- if $containerSecurityContext }}
+          securityContext: {{- toYaml $containerSecurityContext | nindent 12 }}
+          {{- end }}
+          args:
+            - --logtostderr
+            - --enable-healthz=true
+            {{- if .Values.custom.hypernode_controller_metrics_enable }}
+            - --enable-metrics=true
+            {{- end }}
+            - --leader-elect=true
+            - --leader-elect-resource-namespace={{ .Release.Namespace }}
+            - --leader-elect-resource-name={{ .Release.Name }}-hypernode-controller-manager
+            - --kube-api-qps={{ .Values.custom.hypernode_controller_kube_api_qps }}
+            - --kube-api-burst={{ .Values.custom.hypernode_controller_kube_api_burst }}
+            - -v={{ .Values.custom.hypernode_controller_log_level }}
+            - 2>&1
+          env:
+            - name: KUBE_POD_NAMESPACE
+              value: {{ .Release.Namespace }}
+            - name: HELM_RELEASE_NAME
+              value: {{ .Release.Name }}
+            {{- if .Values.custom.go_memlimit_enable }}
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.memory
+                  divisor: "1"
+            {{- end }}
+          ports:
+            - name: healthz
+              containerPort: 11251
+            {{- if .Values.custom.hypernode_controller_metrics_enable }}
+            - name: metrics
+              containerPort: 8081
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: healthz
+            periodSeconds: 5
+{{- if .Values.custom.hypernode_controller_metrics_enable }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-hypernode-controller-service
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8081"
+    prometheus.io/scrape: "true"
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    {{- toYaml $selectorLabels | nindent 4 }}
+  ports:
+    - name: metrics
+      port: 8081
+      targetPort: metrics
+{{- end }}
+{{- end }}

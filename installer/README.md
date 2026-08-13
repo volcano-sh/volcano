@@ -80,7 +80,9 @@ The following are the list configurable parameters of Volcano Chart and their de
 | Parameter|Description|Default Value|
 |----------------|-----------------|----------------------|
 |`basic.image_tag_version`| Docker image version Tag | `latest`|
+|`basic.hypernode_controller_image_tag_version`|Standalone HyperNode Controller image tag; falls back to `basic.image_tag_version` when empty|`""`|
 |`basic.controller_image_name`|Controller Docker Image Name|`volcanosh/vc-controller-manager`|
+|`basic.hypernode_controller_image_name`|Standalone HyperNode Controller Docker Image Name|`volcanosh/vc-hypernode-controller-manager`|
 |`basic.scheduler_image_name`|Scheduler Docker Image Name|`volcanosh/vc-scheduler`|
 |`basic.admission_image_name`|Admission Controller Image Name|`volcanosh/vc-webhook-manager`|
 |`basic.admission_secret_name`|Volcano Admission Secret Name|`volcano-admission-secret`|
@@ -95,46 +97,72 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.admission_replicas`|The number of Admission pods to run|`1`|
 |`custom.controller_enable`|Whether to Enable Controller|`true`|
 |`custom.controller_replicas`|The number of Controller pods to run|`1`|
+|`custom.hypernode_controller_mode`|HyperNode controller deployment mode: `controller-manager`, `standalone`, or `disabled`|`controller-manager`|
+|`custom.hypernode_controller_replicas`|The number of standalone HyperNode Controller pods to run|`1`|
+|`custom.hypernode_controller_metrics_enable`|Whether to enable metrics for the standalone HyperNode Controller|`true`|
 |`custom.scheduler_enable`|Whether to Enable Scheduler|`true`|
 |`custom.scheduler_replicas`|The number of Scheduler pods to run|`1`|
 |`custom.leader_elect_enable`|Whether to Enable leader elect|`false`|
 |`custom.admission_config_override`|Override admission configmap|`~`|
 |`custom.scheduler_config_override`|Override scheduler configmap|`~`|
 | `custom.controller_config_override`| Override controller configmap|`~`|
-|`custom.default_affinity`|Default affinity for Admission/Controller/Scheduler pods|`~`|
+|`custom.default_affinity`|Default affinity for Admission/Controller/HyperNode Controller/Scheduler pods|`~`|
 |`custom.admission_affinity`|Affinity for Admission pods|`~`|
 |`custom.controller_affinity`|Affinity for Controller pods|`~`|
+|`custom.hypernode_controller_affinity`|Affinity for standalone HyperNode Controller pods|`~`|
 |`custom.scheduler_affinity`|Affinity for Scheduler pods|`~`|
-|`custom.default_tolerations`|Default tolerations for Admission/Controller/Scheduler pods|`~`|
+|`custom.default_tolerations`|Default tolerations for Admission/Controller/HyperNode Controller/Scheduler pods|`~`|
 |`custom.admission_tolerations`|Tolerations for Admission pods|`~`|
 |`custom.controller_tolerations`|Tolerations for Controller pods|`~`|
+|`custom.hypernode_controller_tolerations`|Tolerations for standalone HyperNode Controller pods|`~`|
 |`custom.scheduler_tolerations`|Tolerations for Scheduler pods|`~`|
-|`custom.default_sc`|Default securityContext for Admission/Controller/Scheduler pods|`~`|
+|`custom.default_sc`|Default securityContext for Admission/Controller/HyperNode Controller/Scheduler pods|`~`|
 |`custom.admission_sc`|securityContext for Admission pods|`~`|
 |`custom.controller_sc`|securityContext for Controller pods|`~`|
+|`custom.hypernode_controller_sc`|securityContext for standalone HyperNode Controller pods|`~`|
 |`custom.scheduler_sc`|securityContext for Scheduler pods|`~`|
-|`custom.default_ns`|Default nodeSelector for Admission/Controller/Scheduler pods|`~`|
+|`custom.default_ns`|Default nodeSelector for Admission/Controller/HyperNode Controller/Scheduler pods|`~`|
 |`custom.admission_ns`|nodeSelector for Admission pods|`~`|
 |`custom.controller_ns`|nodeSelector for Controller pods|`~`|
+|`custom.hypernode_controller_ns`|nodeSelector for standalone HyperNode Controller pods|`~`|
 |`custom.scheduler_ns`|nodeSelector for Scheduler pods|`~`|
 |`custom.kube_state_metrics_ns`|nodeSelector for Kube State Metrics pods|`~`|
 |`custom.admission_podLabels`|Pod labels for Admission pods|`~`|
 |`custom.controller_podLabels`|Pod labels for Controller pods|`~`|
+|`custom.hypernode_controller_podLabels`|Pod labels for standalone HyperNode Controller pods|`~`|
 |`custom.scheduler_podLabels`|Pod labels for Scheduler pods|`~`|
 |`custom.admission_labels`|Labels for Admission deployment and job|`~`|
 |`custom.controller_labels`|Labels for Controller deployment|`~`|
+|`custom.hypernode_controller_labels`|Labels for standalone HyperNode Controller deployment|`~`|
 |`custom.scheduler_labels`|Labels for Scheduler deployment|`~`|
 |`custom.common_labels`|Labels for all chart objects except for CRDs |`~`|
 |`custom.admission_resources`|Resources for Admission pods|`~`|
 |`custom.admission_log_level`|Settings log print level for Admission|`4`|
 |`custom.controller_resources`|Resources for Controller pods|`~`|
 |`custom.controller_log_level`|Settings log print level for Controller|`4`|
+|`custom.hypernode_controller_resources`|Resources for standalone HyperNode Controller pods|`~`|
+|`custom.hypernode_controller_log_level`|Settings log print level for standalone HyperNode Controller|`4`|
+|`custom.hypernode_controller_kube_api_qps`|Kubernetes API client QPS for standalone HyperNode Controller|`50`|
+|`custom.hypernode_controller_kube_api_burst`|Kubernetes API client burst for standalone HyperNode Controller|`100`|
 |`custom.scheduler_resources`|Resources for Scheduler pods|`~`|
 |`custom.scheduler_log_level`|Settings log print level for Scheduler|`3`|
 |`custom.scheduler_plugins_dir`| Settings dir for the Scheduler to load custom plugins|``|
 |`custom.webhooks_namespace_selector_expressions`|Additional namespace selector expressions for Volcano admission webhooks|`~`|
 |`service.ipFamilyPolicy`|Settings service the family policy|``|
 |`service.ipFamilies`|Settings service the address families|`[]`|
+
+When switching HyperNode ownership between `controller-manager` and `standalone`, first set `custom.hypernode_controller_mode` to `disabled` and wait for the previous controller rollout or shutdown to complete. Then enable the target mode. This avoids overlapping reconciliation during the transition.
+
+`hypernode_controller_mode` controls only HyperNode ownership. To install a topology-only control plane without the aggregate controller manager, scheduler, or admission webhook, disable those components explicitly:
+
+```bash
+helm install volcano ./helm/chart/volcano \
+  --namespace volcano-system --create-namespace \
+  --set custom.hypernode_controller_mode=standalone \
+  --set custom.controller_enable=false \
+  --set custom.scheduler_enable=false \
+  --set custom.admission_enable=false
+```
 
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 

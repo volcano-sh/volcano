@@ -1,0 +1,17 @@
+{{- $mode := include "hypernodeControllerMode" . -}}
+{{- if or .Values.custom.controller_enable (eq $mode "standalone") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-controller-configmap
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+data:
+  volcano-controller.conf: |
+  {{- if .Values.custom.controller_config_override }}
+  {{ toYaml .Values.custom.controller_config_override | nindent 4 }}
+  {{- end }}
+{{- end }}

@@ -174,6 +174,7 @@ HELM_CMD="${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano 
       --set custom.sharding_configmap_enable=true\
       --set basic.image_registry=${IMAGE_REGISTRY} \
       --set basic.controller_image_name=${IMAGE_REPOSITORY}/vc-controller-manager \
+      --set basic.hypernode_controller_image_name=${IMAGE_REPOSITORY}/vc-hypernode-controller-manager \
       --set basic.scheduler_image_name=${IMAGE_REPOSITORY}/vc-scheduler \
       --set basic.admission_image_name=${IMAGE_REPOSITORY}/vc-webhook-manager \
       --set basic.agent_image_name=${IMAGE_REPOSITORY}/vc-agent \
@@ -183,6 +184,7 @@ HELM_CMD="${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano 
       -s templates/batch_v1alpha1_cronjob.yaml \
       -s templates/bus_v1alpha1_command.yaml \
       -s templates/controllers.yaml \
+      -s templates/controller_configmap.yaml \
       -s templates/scheduler.yaml \
       -s templates/scheduling_v1beta1_podgroup.yaml \
       -s templates/scheduling_v1beta1_queue.yaml \
