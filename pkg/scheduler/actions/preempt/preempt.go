@@ -423,11 +423,14 @@ func (pmpt *Action) normalPreempt(
 	return assigned, nil
 }
 
-// preemptorFitsOnNode checks whether it is safe to stop evicting same-queue victims for the preemptor.
-// Same-queue preemption makes the queue allocatable and restores aggregate node resources. If the queue is already
-// allocatable but the cluster lacks resources, the reclaim action handles cross-queue eviction instead. PredicateFn
-// also checks device feasibility, including vNPU or vGPU fragmentation where aggregate resources are sufficient but
-// no valid device allocation exists.
+// preemptorFitsOnNode checks whether the preemptor fits the node after tentative evictions.
+// A job may not be allocatable because:
+// 1. The cluster has free resources, but the queue is not allocatable.
+// 2. The cluster has no free resources, and the queue is not allocatable.
+// 3. The cluster has no free resources, but the queue is allocatable.
+// 4. The node has sufficient aggregate resources, but PredicateFn fails because vNPU or vGPU resources are fragmented.
+// Same-queue preemption handles cases 1 and 2. Reclaim handles case 3. For case 4, normal preemption continues until
+// the predicate passes after enough victims are evicted.
 func preemptorFitsOnNode(ssn *framework.Session, queue *api.QueueInfo, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
 	return ssn.Allocatable(queue, preemptor) &&
 		preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) &&
