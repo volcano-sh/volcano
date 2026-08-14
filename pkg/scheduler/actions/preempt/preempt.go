@@ -380,16 +380,6 @@ func (pmpt *Action) normalPreempt(
 		preemptorFits := preemptorFitsOnNode(ssn, currentQueue, preemptor, node)
 
 		for !victimsQueue.Empty() {
-			// If reclaimed enough resources, break loop to avoid Sub panic.
-			// Preempt action is about preempt in same queue, which job is not allocatable in allocate action, due to:
-			// 1. cluster has free resource, but queue not allocatable
-			// 2. cluster has no free resource, but queue not allocatable
-			// 3. cluster has no free resource, but queue allocatable
-			// for case 1 and 2, high priority job/task can preempt low priority job/task in same queue;
-			// for case 3, it need to do reclaim resource from other queue, in reclaim action;
-			// so if current queue is not allocatable(the queue will be overused when consider current preemptor's requests)
-			// or current idle resource is not enough for preemptor, it need to continue preempting
-			// otherwise, break out
 			if preemptorFits {
 				break
 			}
@@ -433,7 +423,11 @@ func (pmpt *Action) normalPreempt(
 	return assigned, nil
 }
 
-// preemptorFitsOnNode verifies aggregate resources and plugin predicates after tentative evictions.
+// preemptorFitsOnNode checks whether it is safe to stop evicting same-queue victims for the preemptor.
+// Same-queue preemption makes the queue allocatable and restores aggregate node resources. If the queue is already
+// allocatable but the cluster lacks resources, the reclaim action handles cross-queue eviction instead. PredicateFn
+// also checks device feasibility, including vNPU or vGPU fragmentation where aggregate resources are sufficient but
+// no valid device allocation exists.
 func preemptorFitsOnNode(ssn *framework.Session, queue *api.QueueInfo, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
 	return ssn.Allocatable(queue, preemptor) &&
 		preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) &&
