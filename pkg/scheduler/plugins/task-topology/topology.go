@@ -138,8 +138,10 @@ func (p *taskTopologyPlugin) TaskOrderFn(l interface{}, r interface{}) int {
 func (p *taskTopologyPlugin) calcBucketScore(task *api.TaskInfo, node *api.NodeInfo) (int, *JobManager, error) {
 	// task could never fits the node
 	maxResource := node.Idle.Clone().Add(node.Releasing)
-	if req := task.Resreq; req != nil && maxResource.LessPartly(req, api.Zero) {
-		return 0, nil, nil
+	if req := task.Resreq; req != nil {
+		if maxResource.LessPartly(req, api.Zero) {
+			return 0, nil, nil
+		}
 	}
 
 	jobManager, hasManager := p.managers[task.Job]
@@ -169,7 +171,10 @@ func (p *taskTopologyPlugin) calcBucketScore(task *api.TaskInfo, node *api.NodeI
 
 	// 3. the other tasks in bucket take into considering
 	score += len(bucket.tasks)
-	if bucket.request == nil || bucket.request.LessEqual(maxResource, api.Zero) {
+	if bucket.request == nil {
+		return score, jobManager, nil
+	}
+	if ok, _ := bucket.request.LessEqual(maxResource, api.Zero); ok {
 		return score, jobManager, nil
 	}
 
@@ -182,7 +187,7 @@ func (p *taskTopologyPlugin) calcBucketScore(task *api.TaskInfo, node *api.NodeI
 		}
 		remains.Sub(bucketTask.Resreq)
 		score--
-		if remains.LessEqual(maxResource, api.Zero) {
+		if ok, _ := remains.LessEqual(maxResource, api.Zero); ok {
 			break
 		}
 	}

@@ -168,7 +168,7 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 			selectedVictims = append(selectedVictims, bundle.Tasks...)
 			available := domainIdle.Clone()
 			available.Add(utils.SumResreq(selectedVictims))
-			if !jobNeed.LessEqual(available, api.Zero) {
+			if ok, _ := jobNeed.LessEqual(available, api.Zero); !ok {
 				continue
 			}
 
