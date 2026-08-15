@@ -755,6 +755,9 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 // Allocate the task to the node in the session
 func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
 	hostname := nodeInfo.Name
+
+	// Deep copy the Pod to avoid mutating the shared SchedulerCache object.
+	task.Pod = task.Pod.DeepCopy()
 	task.Pod.Spec.NodeName = hostname
 
 	// Only update status in session

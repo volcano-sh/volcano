@@ -785,3 +785,25 @@ func TestGetPodGroupPhase(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionAllocateCacheMutation(t *testing.T) {
+	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{UID: "pod-1"}, Spec: v1.PodSpec{}}
+	sc := cache.NewSchedulerCache()
+	sc.AddJob(api.NewJobInfo("default/pg", "pg", "pg", "default", "default", nil).Job)
+
+	err := sc.AddPod(pod)
+	assert.NoError(t, err)
+
+	ssn := OpenSession(sc, []conf.Tier{})
+	task := ssn.Jobs["default/pg"].Tasks["pod-1"]
+	node := api.NewNodeInfo(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}})
+	ssn.Nodes["node-1"] = node
+
+	err = ssn.Allocate(task, node)
+	assert.NoError(t, err)
+
+	cachedTask := sc.Jobs["default/pg"].Tasks["pod-1"]
+	assert.Empty(t, cachedTask.Pod.Spec.NodeName, "SchedulerCache Pod must not be mutated by Session.Allocate")
+	assert.Equal(t, "node-1", task.Pod.Spec.NodeName, "Session Task Pod should be mutated")
+	assert.NotSame(t, cachedTask.Pod, task.Pod, "Session Task Pod should be a deep copy")
+}
