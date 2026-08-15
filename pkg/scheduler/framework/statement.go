@@ -470,10 +470,14 @@ func (s *Statement) RecoverOperations(stmt *Statement) error {
 				return err
 			}
 		case Allocate:
-			// The node may have left the session between the operations being
-			// saved and replayed. Allocate dereferences the node, so recovering
-			// against a missing one panics the scheduler; report it instead so the
-			// caller can discard the partially applied statement.
+			// This map read is the only unchecked one in the function, and Allocate
+			// dereferences the node immediately (hostname := nodeInfo.Name), so a
+			// miss here segfaults the scheduler instead of returning an error. The
+			// current callers cannot produce a miss — SaveOperations stores cloned
+			// tasks, so a replayed Allocate always carries the NodeName it recorded
+			// — but keep the invariant local rather than resting it on Clone()
+			// semantics in another package, and report it so the caller can discard
+			// the partially applied statement.
 			node, found := s.ssn.Nodes[op.task.NodeName]
 			if !found {
 				err := fmt.Errorf("failed to find node <%s> in session <%v> when recovering allocation of task <%v/%v>",

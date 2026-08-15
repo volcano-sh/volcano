@@ -78,11 +78,15 @@ func TestRecoverOperations_PipelinePreservesEvictionFlag(t *testing.T) {
 	}
 }
 
-// TestRecoverOperations_MissingNodeReturnsError covers replaying a saved Allocate
-// operation whose node is no longer in the session. RecoverOperations resolves the
-// node by name and hands the result straight to Allocate, which dereferences it,
-// so a node that left the session between save and replay panicked the scheduler
-// rather than surfacing an error the caller could act on.
+// TestRecoverOperations_MissingNodeReturnsError pins the behaviour of replaying a
+// saved Allocate operation whose node is not in the session. RecoverOperations
+// resolves the node by name and hands the result straight to Allocate, which
+// dereferences it, so an unguarded miss segfaults the scheduler instead of
+// returning an error the caller can act on.
+//
+// No current caller reaches this state — SaveOperations clones the task, so a
+// replayed Allocate carries the NodeName it recorded — so this guards the
+// invariant rather than reproducing an observed crash.
 func TestRecoverOperations_MissingNodeReturnsError(t *testing.T) {
 	jobID := api.JobID("ns/job-missing-node")
 	task := &api.TaskInfo{
