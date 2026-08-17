@@ -172,3 +172,37 @@ func TestManager_syncHandler(t *testing.T) {
 	// Stop the manager
 	m.Stop()
 }
+
+func TestManagerStopShutsDownWorkerAndClosesResultChannel(t *testing.T) {
+	const source = "shutdown-test-source"
+
+	constructor := api.DiscovererConstructor(func(cfg api.DiscoveryConfig, kubeClient clientset.Interface, vcClient vcclientset.Interface) api.Discoverer {
+		return fakedisc.NewFakeDiscoverer(nil, cfg)
+	})
+	api.RegisterDiscoverer(source, constructor)
+
+	loader := config.NewFakeLoader(&api.NetworkTopologyConfig{
+		NetworkTopologyDiscovery: []api.DiscoveryConfig{{
+			Source:  source,
+			Enabled: true,
+		}},
+	})
+	queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
+	discoveryManager := NewManager(loader, queue, fake.NewSimpleClientset(), fakevcclientset.NewSimpleClientset())
+
+	if !assert.NoError(t, discoveryManager.Start()) {
+		return
+	}
+
+	mgr := discoveryManager.(*manager)
+	if !assert.NoError(t, mgr.startSingleDiscoverer(source)) {
+		return
+	}
+
+	discoveryManager.Stop()
+	discoveryManager.Stop()
+
+	assert.True(t, queue.ShuttingDown())
+	_, ok := <-discoveryManager.ResultChannel()
+	assert.False(t, ok)
+}
