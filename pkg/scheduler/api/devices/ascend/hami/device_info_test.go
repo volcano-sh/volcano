@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
@@ -339,6 +340,73 @@ func Test_fit(t *testing.T) {
 	}
 }
 
+func TestAscendDevicesFilterNodeErrorClassification(t *testing.T) {
+	newPod := func(deviceCount, deviceMemory string) *v1.Pod {
+		return &v1.Pod{
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{{
+					Name: "worker",
+					Resources: v1.ResourceRequirements{
+						Limits: v1.ResourceList{
+							"huawei.com/Ascend910A":        resource.MustParse(deviceCount),
+							"huawei.com/Ascend910A-memory": resource.MustParse(deviceMemory),
+						},
+					},
+				}},
+			},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		devices map[string]*AscendDevice
+		pod     *v1.Pod
+		status  int
+	}{
+		{
+			name: "insufficient device capacity is retryable",
+			devices: map[string]*AscendDevice{
+				"device-1": func() *AscendDevice {
+					device := createTestAscendAllocateDevice("device-1")
+					device.DeviceUsage.Used = 1
+					device.DeviceUsage.Usedmem = 32768
+					return device
+				}(),
+			},
+			pod:    newPod("1", "32768"),
+			status: devices.Unschedulable,
+		},
+		{
+			name:    "missing device inventory is an error",
+			devices: map[string]*AscendDevice{},
+			pod:     newPod("1", "32768"),
+			status:  devices.Error,
+		},
+		{
+			name: "invalid multi-device partial memory request is an error",
+			devices: map[string]*AscendDevice{
+				"device-1": func() *AscendDevice {
+					device := createTestAscendAllocateDevice("device-1")
+					device.config.Templates = []config.Template{{Name: "vir01", Memory: 4096, AICore: 1}}
+					return device
+				}(),
+			},
+			pod:    newPod("2", "4096"),
+			status: devices.Error,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ascendDevices := createTestAscendDevices("node-a", "Ascend910A", test.devices)
+			status, _, err := ascendDevices.FilterNode(test.pod, binpackPolicy)
+
+			assert.Error(t, err)
+			assert.Equal(t, test.status, status)
+		})
+	}
+}
+
 func Test_verifyReq(t *testing.T) {
 	conf, err := yamlStringToConfig(config_yaml)
 	assert.Nil(t, err)
@@ -605,6 +673,26 @@ func TestAscendDevices_AddResource(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func createTestAscendAllocateDevice(id string) *AscendDevice {
+	return &AscendDevice{
+		DeviceInfo: &devices.DeviceInfo{
+			ID:      id,
+			Devcore: 30,
+			Devmem:  32768,
+			Count:   1,
+		},
+		DeviceUsage: &devices.DeviceUsage{},
+		PodMap:      make(map[string]*devices.DeviceUsage),
+		config: config.VNPUConfig{
+			CommonWord:         "Ascend910A",
+			ResourceName:       "huawei.com/Ascend910A",
+			ResourceMemoryName: "huawei.com/Ascend910A-memory",
+			MemoryCapacity:     32768,
+			MemoryAllocatable:  32768,
+		},
 	}
 }
 
