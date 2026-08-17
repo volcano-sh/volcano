@@ -77,6 +77,8 @@ type RuntimeInfo struct {
 var (
 	AscendHAMiVNPUEnable bool
 	NodeLockEnable       bool
+
+	errInsufficientAscendDeviceCapacity = errors.New("no enough ascend device available")
 )
 
 func NewAscendDevices(name string, node *v1.Node) map[string]*AscendDevices {
@@ -257,6 +259,9 @@ func (ads *AscendDevices) HasDeviceRequest(pod *v1.Pod) bool {
 func (ads *AscendDevices) FilterNode(pod *v1.Pod, policy string) (int, string, error) {
 	_, err := ads.selectDevices(pod, policy)
 	if err != nil {
+		if errors.Is(err, errInsufficientAscendDeviceCapacity) {
+			return devices.Unschedulable, "no ascend device available", err
+		}
 		return devices.Error, "no ascend device available", err
 	}
 	klog.V(4).Infoln("ascend DeviceSharing successfully filters pods. device_type:", ads.Type)
@@ -479,7 +484,7 @@ func (ads *AscendDevices) selectDevices(pod *v1.Pod, schedulePolicy string) (dev
 		}
 		if req_nums > 0 {
 			klog.V(5).Infof("no enough ascend device available! raw req_nums %d cur req_nums %d", req.Nums, req_nums)
-			return nil, errors.Errorf("no enough ascend device available")
+			return nil, errors.WithStack(errInsufficientAscendDeviceCapacity)
 		}
 		if needTopology {
 			selectedDevs = selectDevicesWithTopology(int(req.Nums), selectedDevs)

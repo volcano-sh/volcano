@@ -375,19 +375,10 @@ func (pmpt *Action) normalPreempt(
 		victimsQueue := ssn.BuildVictimsPriorityQueue(victims, preemptor)
 		// Preempt victims for tasks, pick lowest priority task first.
 		preempted := api.EmptyResource()
+		preemptorFits := preemptorFitsOnNode(ssn, currentQueue, preemptor, node)
 
 		for !victimsQueue.Empty() {
-			// If reclaimed enough resources, break loop to avoid Sub panic.
-			// Preempt action is about preempt in same queue, which job is not allocatable in allocate action, due to:
-			// 1. cluster has free resource, but queue not allocatable
-			// 2. cluster has no free resource, but queue not allocatable
-			// 3. cluster has no free resource, but queue allocatable
-			// for case 1 and 2, high priority job/task can preempt low priority job/task in same queue;
-			// for case 3, it need to do reclaim resource from other queue, in reclaim action;
-			// so if current queue is not allocatable(the queue will be overused when consider current preemptor's requests)
-			// or current idle resource is not enough for preemptor, it need to continue preempting
-			// otherwise, break out
-			if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+			if preemptorFits {
 				break
 			}
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
@@ -395,6 +386,7 @@ func (pmpt *Action) normalPreempt(
 				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
 			nodeStmt.Evict(preemptee, "preempt")
 			preempted.Add(preemptee.Resreq)
+			preemptorFits = preemptorFitsOnNode(ssn, currentQueue, preemptor, node)
 		}
 
 		evictionOccurred := false
@@ -407,7 +399,7 @@ func (pmpt *Action) normalPreempt(
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
 		// If preemptor's queue is not allocatable, it means preemptor cannot be allocated. So no need care about the node idle resource
-		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+		if preemptorFits {
 			if err := nodeStmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
@@ -427,6 +419,20 @@ func (pmpt *Action) normalPreempt(
 	}
 
 	return assigned, nil
+}
+
+// preemptorFitsOnNode checks whether the preemptor fits the node after tentative evictions.
+// A job may not be allocatable because:
+// 1. The cluster has free resources, but the queue is not allocatable.
+// 2. The cluster has no free resources, and the queue is not allocatable.
+// 3. The cluster has no free resources, but the queue is allocatable.
+// 4. The node has sufficient aggregate resources, but PredicateFn fails because vNPU or vGPU resources are fragmented.
+// Same-queue preemption handles cases 1 and 2. Reclaim handles case 3. For case 4, normal preemption continues until
+// the predicate passes after enough victims are evicted.
+func preemptorFitsOnNode(ssn *framework.Session, queue *api.QueueInfo, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
+	return ssn.Allocatable(queue, preemptor) &&
+		preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) &&
+		ssn.PredicateFn(preemptor, node) == nil
 }
 
 func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {
