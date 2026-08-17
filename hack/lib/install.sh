@@ -14,6 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+VOLCANO_IMAGE_NAMES=(
+  "vc-controller-manager"
+  "vc-hypernode-controller-manager"
+  "vc-scheduler"
+  "vc-agent-scheduler"
+  "vc-webhook-manager"
+  "vc-agent"
+)
+
 # spin up cluster with kind command
 function kind-up-cluster {
   check-kind
@@ -26,18 +35,10 @@ function kind-up-cluster {
 
   echo
   echo "Loading docker images into kind cluster"
-  # only need to load images into control-plane node because volcano components are deployed on control-plane node.
-  if [[ "${HYPERNODE_CONTROLLER_MODE:-controller-manager}" == "standalone" || "${HYPERNODE_E2E_PROFILE:-full}" == "migration" ]]; then
-    kind load docker-image ${IMAGE_PREFIX}/vc-hypernode-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
-  fi
-  if [[ "${HYPERNODE_E2E_PROFILE:-full}" != "topology-only" ]]; then
-    kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
-    kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG}          "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
-    kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG}    "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
-  fi
-  if [[ "${E2E_TYPE}" == AGENTSCHEDULER* ]]; then
-    kind load docker-image ${IMAGE_PREFIX}/vc-agent-scheduler:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
-  fi
+  # The Volcano components exercised by the E2E suites are deployed on the control-plane node.
+  for image_name in "${VOLCANO_IMAGE_NAMES[@]}"; do
+    kind load docker-image "${IMAGE_PREFIX}/${image_name}:${TAG}" "${CLUSTER_CONTEXT[@]}" --nodes "${CLUSTER_CONTEXT[1]}-control-plane"
+  done
   if [[ "${E2E_TYPE}" == "DRA" || "${E2E_TYPE}" == "ALL" ]]; then
     ensure-dra-test-images
   fi
@@ -69,37 +70,12 @@ function ensure-dra-test-images {
 # check if the required images exist
 function check-images {
   echo "Checking whether the required images exist"
-  if [[ "${HYPERNODE_CONTROLLER_MODE:-controller-manager}" == "standalone" || "${HYPERNODE_E2E_PROFILE:-full}" == "migration" ]]; then
-    docker image inspect "${IMAGE_PREFIX}/vc-hypernode-controller-manager:${TAG}" > /dev/null
-    if [[ $? -ne 0 ]]; then
-      echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-hypernode-controller-manager:${TAG} does not exist"
+  for image_name in "${VOLCANO_IMAGE_NAMES[@]}"; do
+    if ! docker image inspect "${IMAGE_PREFIX}/${image_name}:${TAG}" > /dev/null; then
+      echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/${image_name}:${TAG} does not exist"
       exit 1
     fi
-  fi
-  if [[ "${HYPERNODE_E2E_PROFILE:-full}" != "topology-only" ]]; then
-    docker image inspect "${IMAGE_PREFIX}/vc-controller-manager:${TAG}" > /dev/null
-    if [[ $? -ne 0 ]]; then
-      echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-controller-manager:${TAG} does not exist"
-      exit 1
-    fi
-    docker image inspect "${IMAGE_PREFIX}/vc-scheduler:${TAG}" > /dev/null
-    if [[ $? -ne 0 ]]; then
-      echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-scheduler:${TAG} does not exist"
-      exit 1
-    fi
-    docker image inspect "${IMAGE_PREFIX}/vc-webhook-manager:${TAG}" > /dev/null
-    if [[ $? -ne 0 ]]; then
-      echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-webhook-manager:${TAG} does not exist"
-      exit 1
-    fi
-  fi
-  if [[ "${E2E_TYPE}" == AGENTSCHEDULER* ]]; then
-    docker image inspect "${IMAGE_PREFIX}/vc-agent-scheduler:${TAG}" > /dev/null
-    if [[ $? -ne 0 ]]; then
-      echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-agent-scheduler:${TAG} does not exist"
-      exit 1
-    fi
-  fi
+  done
 }
 
 # check if kubectl installed

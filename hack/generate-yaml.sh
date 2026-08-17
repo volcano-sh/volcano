@@ -174,7 +174,6 @@ HELM_CMD="${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano 
       --set custom.sharding_configmap_enable=true\
       --set basic.image_registry=${IMAGE_REGISTRY} \
       --set basic.controller_image_name=${IMAGE_REPOSITORY}/vc-controller-manager \
-      --set basic.hypernode_controller_image_name=${IMAGE_REPOSITORY}/vc-hypernode-controller-manager \
       --set basic.scheduler_image_name=${IMAGE_REPOSITORY}/vc-scheduler \
       --set basic.admission_image_name=${IMAGE_REPOSITORY}/vc-webhook-manager \
       --set basic.agent_image_name=${IMAGE_REPOSITORY}/vc-agent \

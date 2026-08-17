@@ -36,10 +36,6 @@ custom:
   hypernode_controller_mode: controller-manager
   hypernode_controller_replicas: 1
   hypernode_controller_metrics_enable: true
-  # Additional namespaces in which the standalone controller may read
-  # discovery credential Secrets. The installation namespace is always
-  # authorized and does not need to be listed here.
-  hypernode_controller_secret_namespaces: []
   scheduler_enable: true
   agent_scheduler_enable: false
   agent_scheduler_replicas: 1
@@ -62,6 +58,7 @@ custom:
   controller_worker_threads_for_gc: 5
   controller_worker_threads_for_podgroup: 5
   # Default: "*,-sharding-controller" (sharding-controller disabled by default)
+  # Do not explicitly enable hyperNode-controller in standalone or disabled mode.
   controller_enabled_controllers: ~
   scheduler_kube_api_qps: 2000
   scheduler_kube_api_burst: 2000

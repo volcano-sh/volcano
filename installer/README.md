@@ -100,7 +100,6 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.hypernode_controller_mode`|HyperNode controller deployment mode: `controller-manager`, `standalone`, or `disabled`|`controller-manager`|
 |`custom.hypernode_controller_replicas`|The number of standalone HyperNode Controller pods to run|`1`|
 |`custom.hypernode_controller_metrics_enable`|Whether to enable metrics for the standalone HyperNode Controller|`true`|
-|`custom.hypernode_controller_secret_namespaces`|Additional namespaces where the standalone HyperNode Controller may get discovery credential Secrets|`[]`|
 |`custom.scheduler_enable`|Whether to Enable Scheduler|`true`|
 |`custom.scheduler_replicas`|The number of Scheduler pods to run|`1`|
 |`custom.leader_elect_enable`|Whether to Enable leader elect|`false`|
@@ -154,9 +153,9 @@ The following are the list configurable parameters of Volcano Chart and their de
 
 When switching HyperNode ownership between `controller-manager` and `standalone`, first set `custom.hypernode_controller_mode` to `disabled` and wait for the previous controller rollout or shutdown to complete. Then enable the target mode. This avoids overlapping reconciliation during the transition.
 
-In standalone mode, the controller can read discovery credential Secrets in the Volcano installation namespace by default. If a discovery configuration references a Secret in another namespace, add that namespace to `custom.hypernode_controller_secret_namespaces`. The namespace must already exist; the chart creates a namespaced Role and RoleBinding without granting cluster-wide Secret access.
+In standalone mode, the controller can read discovery credential Secrets in the Volcano installation namespace. If a discovery configuration references a Secret in another namespace, grant the standalone ServiceAccount access with a Role and RoleBinding in that namespace.
 
-`hypernode_controller_mode` controls only HyperNode ownership. To install a topology-only control plane without the aggregate controller manager, scheduler, or admission webhook, disable those components explicitly:
+`hypernode_controller_mode` controls only HyperNode ownership. To install only the standalone HyperNode controller, disable the aggregate controller manager, scheduler, and admission webhook explicitly:
 
 ```bash
 helm install volcano ./helm/chart/volcano \

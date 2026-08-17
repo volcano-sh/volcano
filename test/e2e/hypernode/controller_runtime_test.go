@@ -55,10 +55,6 @@ var _ = Describe("HyperNode controller runtime", Ordered, func() {
 	if releaseName == "" {
 		releaseName = "integration"
 	}
-	profile := os.Getenv("HYPERNODE_E2E_PROFILE")
-	if profile == "" {
-		profile = "full"
-	}
 
 	BeforeAll(func() {
 		Expect(cleanupDiscoveredTopology()).To(Succeed())
@@ -73,20 +69,14 @@ var _ = Describe("HyperNode controller runtime", Ordered, func() {
 	It("deploys exactly one HyperNode controller owner", func() {
 		controllerDeployment, err := e2eutil.KubeClient.AppsV1().Deployments(namespace).Get(
 			context.Background(), releaseName+"-controllers", metav1.GetOptions{})
-		if profile == "topology-only" {
-			Expect(apierrors.IsNotFound(err)).To(BeTrue(), "aggregate controller must not exist in topology-only profile")
-		} else {
-			Expect(err).NotTo(HaveOccurred())
-		}
+		Expect(err).NotTo(HaveOccurred())
 
 		standaloneName := releaseName + "-hypernode-controller"
 		standaloneDeployment, standaloneErr := e2eutil.KubeClient.AppsV1().Deployments(namespace).Get(
 			context.Background(), standaloneName, metav1.GetOptions{})
 		if mode == "standalone" {
 			Expect(standaloneErr).NotTo(HaveOccurred())
-			if profile != "topology-only" {
-				Expect(controllerArgs(controllerDeployment)).To(ContainElement(ContainSubstring("-hyperNode-controller")))
-			}
+			Expect(controllerArgs(controllerDeployment)).To(ContainElement(ContainSubstring("-hyperNode-controller")))
 			verifyStandaloneDeployment(standaloneDeployment, releaseName)
 			Eventually(func() (int32, error) {
 				deployment, getErr := e2eutil.KubeClient.AppsV1().Deployments(namespace).Get(
@@ -144,8 +134,7 @@ var _ = Describe("HyperNode controller runtime", Ordered, func() {
 			{name: "update HyperNode status", verb: "update", group: "topology.volcano.sh", resource: "hypernodes/status", allowed: true},
 			{name: "watch controller ConfigMap", verb: "watch", resource: "configmaps", namespace: namespace, allowed: true},
 			{name: "read UFM Secret", verb: "get", resource: "secrets", namespace: namespace, allowed: true},
-			{name: "read configured cross-namespace Secret", verb: "get", resource: "secrets", namespace: "default", allowed: true},
-			{name: "deny Secret access in an unconfigured namespace", verb: "get", resource: "secrets", namespace: "kube-system", allowed: false},
+			{name: "deny cross-namespace Secret access", verb: "get", resource: "secrets", namespace: "default", allowed: false},
 			{name: "create leader Lease", verb: "create", group: "coordination.k8s.io", resource: "leases", namespace: namespace, allowed: true},
 			{name: "deny unrelated Pods", verb: "list", resource: "pods", namespace: namespace, allowed: false},
 		} {

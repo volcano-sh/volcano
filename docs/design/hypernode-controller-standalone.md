@@ -31,7 +31,7 @@ The community therefore needs to support two legitimate adoption models:
 1. users adopting Volcano as a complete scheduling system;
 2. users adopting only the HyperNode topology capability alongside an existing scheduler or AI platform.
 
-The current aggregate controller process serves the first model but creates unnecessary operational coupling for the second. Volcano does not provide an official way to deploy, roll out, scale, or manage RBAC for HyperNode independently, so topology-only users must still operate unrelated controller-manager capabilities.
+The current aggregate controller process serves the first model but creates unnecessary operational coupling for the second. Volcano does not provide an official way to deploy, roll out, scale, or manage RBAC for HyperNode independently, so users that only need HyperNode topology must still operate unrelated controller-manager capabilities.
 
 The existing `--controllers` flag selects which controller logic runs in the process, but it does not provide an independent binary, image, Deployment, fault domain, or RBAC boundary. It therefore cannot replace an officially supported standalone runtime.
 
@@ -44,7 +44,7 @@ This is primarily a community adoption and long-term maintenance problem, not a 
 | Community user | Expected way to use HyperNode | Support after this proposal |
 | --- | --- | --- |
 | Existing Volcano user | Upgrade Volcano and continue running HyperNode in `vc-controller-manager` | Supported by default with no migration |
-| Topology-only or custom-scheduler user | Deploy the official standalone HyperNode image without the complete Volcano controller manager | Officially supported |
+| Standalone HyperNode or custom-scheduler user | Deploy the official standalone HyperNode image without the complete Volcano controller manager | Officially supported |
 | User building Volcano independently | Clone or fork Volcano and build the standalone component from the corresponding source version | Supported |
 | User maintaining environment-specific discovery | Implement and register a private Discoverer in a Volcano fork, then build an enhanced image | Supported; the user owns rebasing and compatibility testing |
 | User contributing generally useful discovery | Implement a Discoverer through the existing registry and contribute it upstream | Supported and preferred; after merge, it is delivered in official images |
@@ -53,7 +53,7 @@ This is primarily a community adoption and long-term maintenance problem, not a 
 
 These scenarios lead to three community-level conclusions:
 
-- The community should provide official deployment choices instead of requiring every topology-only user to maintain a custom deployment.
+- The community should provide official deployment choices instead of requiring standalone HyperNode users to maintain a custom deployment.
 - Generally useful topology discovery and reconciliation capabilities should converge upstream so that compatibility, CI, and release maintenance are shared.
 - The HyperNode API, rather than internal controller packages, should remain the primary integration boundary between independently evolving systems.
 
@@ -62,7 +62,7 @@ These scenarios lead to three community-level conclusions:
 ### 4.1 Goals
 
 - Provide an officially supported standalone HyperNode controller while retaining controller-manager mode as the default.
-- Allow topology-only and custom-scheduler users to adopt HyperNode without running unrelated Volcano controllers.
+- Allow standalone HyperNode and custom-scheduler users to adopt HyperNode without running unrelated Volcano controllers.
 - Preserve the existing HyperNode resource API, configuration, discovery behavior, and scheduler integration.
 - Preserve the existing Discoverer registry so that new discovery methods work in both deployment modes.
 - Ensure that both deployment modes behave consistently and that exactly one process owns HyperNode reconciliation.
@@ -158,7 +158,7 @@ The setting provides three mutually exclusive modes:
 | `standalone` | Helm disables HyperNode in `vc-controller-manager` and creates the dedicated `vc-hypernode-controller-manager` Deployment |
 | `disabled` | No standalone resources are created, and HyperNode is disabled in `vc-controller-manager` |
 
-This setting is authoritative for HyperNode ownership and takes precedence over `controller_enabled_controllers` when deciding whether HyperNode is enabled. The `standalone` and `disabled` modes normalize the aggregate controller selection to exclude HyperNode, even when an older values file explicitly enables it. The `controller-manager` mode continues to honor the existing controller gates. This preserves values-file compatibility while preventing both processes from reconciling HyperNodes.
+In `standalone` and `disabled` modes, the chart appends `-hyperNode-controller` to the aggregate controller selection. The `controller-manager` mode continues to honor the existing controller gates unchanged. Do not explicitly enable `hyperNode-controller` through `controller_enabled_controllers` in `standalone` or `disabled` mode; conflicting controller gates are unsupported.
 
 Because the two deployment modes use different leader-election Leases, leader election cannot prevent a brief period of concurrent reconciliation during a transition. This proposal requires transitions through the `disabled` intermediate state:
 
@@ -170,9 +170,7 @@ standalone → disabled → controller-manager
 After entering `disabled`, the operator must confirm that the previous controller has stopped before enabling the target deployment mode. Existing HyperNode resources remain in the cluster during the transition. The initial implementation does not support a single-step transition with a zero-overlap guarantee.
 
 Standalone mode always enables leader election, including for a single replica, so a
-replacement Pod cannot start reconciling until the previous Pod has released or lost
-the Lease. The Deployment uses a non-overlapping `Recreate` update when configured
-with one replica. Multi-replica deployments use leader election and rolling updates.
+replacement Pod cannot reconcile until it acquires the Lease.
 
 ### 5.4 Compatibility Commitments
 
@@ -194,7 +192,7 @@ The standalone process initializes only the clients and informers that HyperNode
 
 The standalone controller must not watch Pods, PodGroups, Volcano Jobs, Queues, storage resources, or any other resources unrelated to HyperNode. Discoverers must reuse the process-provided Node and HyperNode shared informers rather than creating duplicate List/Watch streams and caches. Standalone RBAC must match this access scope.
 
-Default RBAC does not grant cluster-wide Secret access. The installation namespace is authorized by default; administrators can explicitly list additional credential Secret namespaces and the chart creates scoped Roles and RoleBindings in those namespaces.
+Default RBAC does not grant cluster-wide Secret access. The installation namespace is authorized by default. If a UFM Secret is outside that namespace, an administrator must create a Role and RoleBinding for the standalone ServiceAccount in the target namespace.
 
 For compatibility with Kubernetes versions that do not use field selectors during RBAC authorization, the Role grants ConfigMap List/Watch within the installation namespace. The client request itself is restricted to the release's controller ConfigMap by a `metadata.name` field selector.
 
@@ -232,7 +230,7 @@ The existing registry remains a source-level, compile-time Discoverer extension 
 This proposal is successful when:
 
 - existing users can upgrade without changing how HyperNode runs;
-- topology-only and custom-scheduler users can deploy an official, production-ready standalone component;
+- standalone HyperNode and custom-scheduler users can deploy an official, production-ready component;
 - controller-manager and standalone modes preserve equivalent HyperNode behavior;
 - installation and transition procedures prevent the two processes from reconciling HyperNodes concurrently;
 - the standalone process neither watches unrelated resources nor creates duplicate Node or HyperNode informers;

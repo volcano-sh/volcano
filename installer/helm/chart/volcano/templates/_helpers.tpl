@@ -21,30 +21,3 @@ bases
 {{- end -}}
 {{- $mode -}}
 {{- end -}}
-
-{{/* Resolve aggregate controller gates after applying HyperNode ownership. */}}
-{{- define "controllerEnabledControllers" -}}
-{{- $mode := include "hypernodeControllerMode" . -}}
-{{- $configuredValue := .Values.custom.controller_enabled_controllers | default "" -}}
-{{- $configured := "" -}}
-{{- if kindIs "slice" $configuredValue -}}
-  {{- $configured = join "," $configuredValue -}}
-{{- else -}}
-  {{- $configured = toString $configuredValue -}}
-{{- end -}}
-{{- if eq $mode "controller-manager" -}}
-{{- $configured -}}
-{{- else -}}
-{{- if not $configured -}}
-  {{- $configured = "*,-sharding-controller" -}}
-{{- end -}}
-{{- $controllers := list -}}
-{{- range (splitList "," $configured) -}}
-  {{- $controller := trim . -}}
-  {{- if and $controller (not (has $controller (list "hyperNode-controller" "+hyperNode-controller" "-hyperNode-controller"))) -}}
-    {{- $controllers = append $controllers $controller -}}
-  {{- end -}}
-{{- end -}}
-{{- join "," (append $controllers "-hyperNode-controller") -}}
-{{- end -}}
-{{- end -}}

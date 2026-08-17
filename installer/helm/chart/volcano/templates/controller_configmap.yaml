@@ -1,5 +1,3 @@
-{{- $mode := include "hypernodeControllerMode" . -}}
-{{- if or .Values.custom.controller_enable (eq $mode "standalone") }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -14,4 +12,3 @@ data:
   {{- if .Values.custom.controller_config_override }}
   {{ toYaml .Values.custom.controller_config_override | nindent 4 }}
   {{- end }}
-{{- end }}

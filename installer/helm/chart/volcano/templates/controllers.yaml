@@ -204,7 +204,10 @@ spec:
             - --sharding-configmap={{ .Release.Name }}-sharding-configmap
             - --sharding-configmap-namespace={{ .Release.Namespace }}
               {{- end }}
-              {{- $enabledControllers := include "controllerEnabledControllers" . }}
+              {{- $enabledControllers := .Values.custom.controller_enabled_controllers | default "" }}
+              {{- if ne (include "hypernodeControllerMode" .) "controller-manager" }}
+                {{- $enabledControllers = printf "%s,-hyperNode-controller" ($enabledControllers | default "*,-sharding-controller") }}
+              {{- end }}
               {{- if $enabledControllers }}
             - --controllers={{ $enabledControllers }}
               {{- end }}

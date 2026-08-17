@@ -102,42 +102,6 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ .Release.Name }}-hypernode-controller
-{{- range $secretNamespace := (.Values.custom.hypernode_controller_secret_namespaces | default (list) | uniq) }}
-{{- if and $secretNamespace (ne $secretNamespace $.Release.Namespace) }}
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: {{ $.Release.Name }}-hypernode-controller-secrets
-  namespace: {{ $secretNamespace | quote }}
-  {{- if $.Values.custom.common_labels }}
-  labels:
-    {{- toYaml $.Values.custom.common_labels | nindent 4 }}
-  {{- end }}
-rules:
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: {{ $.Release.Name }}-hypernode-controller-secrets
-  namespace: {{ $secretNamespace | quote }}
-  {{- if $.Values.custom.common_labels }}
-  labels:
-    {{- toYaml $.Values.custom.common_labels | nindent 4 }}
-  {{- end }}
-subjects:
-  - kind: ServiceAccount
-    name: {{ $.Release.Name }}-hypernode-controller
-    namespace: {{ $.Release.Namespace }}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: {{ $.Release.Name }}-hypernode-controller-secrets
-{{- end }}
-{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -148,15 +112,6 @@ metadata:
     {{- toYaml $deploymentLabels | nindent 4 }}
 spec:
   replicas: {{ .Values.custom.hypernode_controller_replicas }}
-  {{- if gt (int .Values.custom.hypernode_controller_replicas) 1 }}
-  strategy:
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
-  {{- else }}
-  strategy:
-    type: Recreate
-  {{- end }}
   selector:
     matchLabels:
       {{- toYaml $selectorLabels | nindent 6 }}

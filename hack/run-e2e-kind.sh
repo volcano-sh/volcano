@@ -24,9 +24,10 @@ export LOG_LEVEL=3
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
 export E2E_TYPE=${E2E_TYPE:-"ALL"}
 export ARTIFACTS_PATH=${ARTIFACTS_PATH:-"${VK_ROOT}/volcano-e2e-logs"}
-if [[ "${HYPERNODE_E2E_PROFILE:-full}" == "topology-only" ]]; then
-  export VOLCANO_CONTROLLER_ENABLE=false
-  export VOLCANO_SCHEDULER_ENABLE=false
+if [[ "${HYPERNODE_E2E_PROFILE:-full}" == "ownership-transition" ]]; then
+  # Keep this profile focused on controller ownership handover. The full
+  # profiles cover admission-enabled deployments, while each Helm upgrade
+  # restarts admission and can transiently reject an unrelated reconciliation.
   export VOLCANO_ADMISSION_ENABLE=false
 fi
 DRA_GINKGO_FOCUS=${DRA_GINKGO_FOCUS:-"DRA (Quota )?E2E Test"}
@@ -319,8 +320,6 @@ EOF
   fi
   echo "Install volcano chart for HyperNode ${HYPERNODE_CONTROLLER_MODE:-controller-manager} E2E"
   helm-install-volcano "  hypernode_controller_replicas: ${hypernode_controller_replicas}
-  hypernode_controller_secret_namespaces:
-    - default
   controller_config_override:
     networkTopologyDiscovery:
       - source: label
@@ -535,10 +534,8 @@ case ${E2E_TYPE} in
     install-kwok-nodes 8
     echo "Running hypernode e2e suite..."
     hypernode_ginkgo_args=()
-    if [[ "${HYPERNODE_E2E_PROFILE:-full}" == "topology-only" ]]; then
-      hypernode_ginkgo_args+=(--focus="HyperNode controller runtime")
-    elif [[ "${HYPERNODE_E2E_PROFILE:-full}" == "migration" ]]; then
-      hypernode_ginkgo_args+=(--focus="HyperNode controller ownership migration")
+    if [[ "${HYPERNODE_E2E_PROFILE:-full}" == "ownership-transition" ]]; then
+      hypernode_ginkgo_args+=(--focus="HyperNode controller ownership transition")
     fi
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} VOLCANO_E2E_RELEASE_NAME=${CLUSTER_NAME} VOLCANO_E2E_NAMESPACE=${NAMESPACE} VOLCANO_E2E_CHART_PATH=${VK_ROOT}/installer/helm/chart/volcano ginkgo -r --slow-spec-threshold='30s' --progress "${hypernode_ginkgo_args[@]}" ./test/e2e/hypernode/
     ;;

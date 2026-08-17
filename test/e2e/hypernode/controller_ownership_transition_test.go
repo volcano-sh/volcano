@@ -33,7 +33,7 @@ import (
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
-var _ = Describe("HyperNode controller ownership migration", Ordered, func() {
+var _ = Describe("HyperNode controller ownership transition", Ordered, func() {
 	namespace := os.Getenv("VOLCANO_E2E_NAMESPACE")
 	if namespace == "" {
 		namespace = "volcano-system"
@@ -45,8 +45,8 @@ var _ = Describe("HyperNode controller ownership migration", Ordered, func() {
 	profile := os.Getenv("HYPERNODE_E2E_PROFILE")
 
 	BeforeAll(func() {
-		if profile != "migration" {
-			Skip("ownership migration runs only in the migration profile")
+		if profile != "ownership-transition" {
+			Skip("ownership transition runs only in the ownership-transition profile")
 		}
 		Expect(os.Getenv("VOLCANO_E2E_CHART_PATH")).NotTo(BeEmpty())
 		Expect(cleanupDiscoveredTopology()).To(Succeed())
@@ -57,7 +57,7 @@ var _ = Describe("HyperNode controller ownership migration", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		if profile != "migration" {
+		if profile != "ownership-transition" {
 			return
 		}
 		// Preserve the failed ownership mode until the e2e harness exports Pod
@@ -72,11 +72,11 @@ var _ = Describe("HyperNode controller ownership migration", Ordered, func() {
 	})
 
 	It("preserves HyperNodes while moving ownership in both directions", func() {
-		Expect(setNodeTopologyLabel("kwok-node-0", "rack-migration")).To(Succeed())
+		Expect(setNodeTopologyLabel("kwok-node-0", "rack-ownership-transition")).To(Succeed())
 
 		var hyperNodeName, hyperNodeUID string
 		Eventually(func() error {
-			name, uid, err := migrationHyperNodeIdentity("rack-migration", 1)
+			name, uid, err := ownershipTransitionHyperNodeIdentity("rack-ownership-transition", 1)
 			if err == nil {
 				hyperNodeName, hyperNodeUID = name, uid
 			}
@@ -90,7 +90,7 @@ var _ = Describe("HyperNode controller ownership migration", Ordered, func() {
 		}, 2*time.Minute, time.Second).Should(Succeed())
 		Expect(expectMigrationHyperNode(hyperNodeName, hyperNodeUID, 1)).To(Succeed())
 
-		Expect(setNodeTopologyLabel("kwok-node-1", "rack-migration")).To(Succeed())
+		Expect(setNodeTopologyLabel("kwok-node-1", "rack-ownership-transition")).To(Succeed())
 		Consistently(func() error {
 			return expectMigrationHyperNode(hyperNodeName, hyperNodeUID, 1)
 		}, 10*time.Second, time.Second).Should(Succeed(), "disabled mode must not reconcile topology changes")
@@ -247,7 +247,7 @@ func expectDeploymentRolloutComplete(deployment *appsv1.Deployment) error {
 	return nil
 }
 
-func migrationHyperNodeIdentity(rack string, nodeCount int64) (string, string, error) {
+func ownershipTransitionHyperNodeIdentity(rack string, nodeCount int64) (string, string, error) {
 	hyperNodes, err := discoveredHyperNodes()
 	if err != nil {
 		return "", "", err
