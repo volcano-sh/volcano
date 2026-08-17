@@ -309,7 +309,21 @@ func (l *labelDiscoverer) UpdateNode(oldObj, newObj interface{}) {
 
 // DeleteNode Reconstruct the hyperNode when the node changes.
 func (l *labelDiscoverer) DeleteNode(obj interface{}) {
-	labelMap := l.getNodeNetworkTopologyLabels(obj)
+	node, ok := obj.(*v1.Node)
+	if !ok {
+		// If we reached here it means the Node was deleted but its final state is unrecorded.
+		tombstones, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			klog.Errorf("Couldn't get object from tombstone %#v", obj)
+			return
+		}
+		node, ok = tombstones.Obj.(*v1.Node)
+		if !ok {
+			klog.Errorf("Tombstone contained object that is not a Node: %#v", obj)
+			return
+		}
+	}
+	labelMap := l.getNodeNetworkTopologyLabels(node)
 	if len(labelMap) > 0 {
 		l.enqueue()
 	}
