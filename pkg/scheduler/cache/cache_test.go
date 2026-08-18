@@ -23,6 +23,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"sync"
 	"testing"
@@ -31,6 +32,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -44,6 +46,34 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 )
+
+// addDRAResource computes reqQty*count in O(1), so it returns immediately even at the
+// maximum count and is safe on its own rather than relying on the caller to bound count.
+// Before the O(1) change it looped ~count times (issue #5627) -- centuries for MaxInt64.
+func TestAddDRAResource_constantTimeForHugeCount(t *testing.T) {
+	const dc = "gpu.example.com"
+	m := make(map[string]*api.DRAResource)
+	capacity := map[string]resource.Quantity{"memory": resource.MustParse("2Gi")}
+
+	done := make(chan struct{})
+	go func() {
+		addDRAResource(m, dc, math.MaxInt64, capacity)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("addDRAResource did not return for count=MaxInt64 within 5s; the unbounded loop was reintroduced")
+	}
+
+	// The scaled capacity must be exact, not dropped or truncated: 2Gi * MaxInt64
+	// is 19807040628566084396238503936. A String round-trip would cap it near
+	// MaxInt64 instead.
+	got := m[dc].Capacity["memory"]
+	if want := resource.MustParse("19807040628566084396238503936"); got.Cmp(want) != 0 {
+		t.Fatalf("capacity = %s for count=MaxInt64; want exact %s", got.AsDec().String(), want.AsDec().String())
+	}
+}
 
 func buildNode(name string, alloc v1.ResourceList) *v1.Node {
 	return &v1.Node{
