@@ -1223,7 +1223,7 @@ single-tree or legacy discovery configuration.
 
 | Layer | Main path / symbol | Core change | Change type |
 | --- | --- | --- | --- |
-| Discovery configuration | `pkg/controllers/hypernode/api/types.go` | Add the Profile form while retaining the legacy list. | New extension |
+| Discovery configuration | `pkg/controllers/hypernode/discovery/label/label.go`, `pkg/controllers/hypernode/api/types.go` | Parse the Profile form while retaining the legacy list, and add the persisted Profile label key. | New extension |
 | Profile parsing and Node assignment | `pkg/controllers/hypernode/discovery/label/label.go` | Compile selectors, watch relevant Node label changes, validate Profile levels, and select one Profile per Node. | New |
 | Domain generation | `pkg/controllers/hypernode/discovery/label/` | Use profile-local identity, deterministic naming, Profile labels, limited legacy reuse, and collision checks. | New/modified |
 | Discovery replacement | `pkg/controllers/hypernode/discovery/manager.go` | Replace the active discoverer only after successful startup and reject stale generations. | Modified |
