@@ -1203,7 +1203,7 @@ single-tree or legacy discovery configuration.
 | A deeper tree's extra tier changes shallow-tree scores | Normalize locality with the owning `TopologyTree.Tiers`; for Normal Pods, use those local real tiers plus the common virtual-root term. |
 | Cross-tree candidates receive false locality through the virtual root | Return no physical locality score when candidate and allocated domains belong to different real trees. |
 | Scheduler restart loses the selected hard boundary | Reconstruct `AllocatedHyperNode` from bound-Pod membership, then resolve the semantic ancestor during later gradient generation. |
-| Tree construction adds scheduling overhead | Build the views and reverse indexes once per Session snapshot, then use indexed ownership lookups in candidate and scoring paths. |
+| Tree construction adds scheduling overhead | Build the real-tree views and HyperNode-to-tree reverse index once per Session snapshot, then reuse those views in candidate and scoring paths. |
 | Deterministic root ordering becomes an unintended hardware preference | Keep it as a stable default only; do not compare local tier numbers across trees, and leave explicit preference to a future API or policy. |
 
 ## 11. Alternatives Considered
@@ -1231,6 +1231,7 @@ single-tree or legacy discovery configuration.
 | Session topology | `pkg/scheduler/framework/session.go` | Add `TopologyTree`, `buildTopologyTrees`, `EnsureTopologyTrees`, `TopologyTrees`, and `HyperNodeToTopologyTree`. | New |
 | HyperNode access | `pkg/scheduler/api/hyper_node_info.go` | Reuse existing HyperNode data through tree-local accessors. | Modified access |
 | Constraint state | `pkg/scheduler/framework/session.go`, `pkg/scheduler/api/job_info.go`, `pkg/scheduler/api/sub_job_info.go`, `pkg/scheduler/api/hyper_node_info.go` | `adjustNetworkTopologySpec` retains native Hard names; `HardTopologyConstraint` propagates the complete spec; `TierName()` exposes branch semantics; Job/SubJob state records Soft-conversion provenance only to isolate the upstream compatibility path from native Hard. | Modified |
+| Admission validation | `pkg/webhooks/admission/jobs/validate/`, `pkg/webhooks/admission/podgroups/validate/` | Reject Hard constraints without a numeric or semantic boundary; retain Scheduler-side validation for old or bypassed objects. | Modified |
 | Semantic-name BFS | `pkg/scheduler/plugins/network-topology-aware/network_topology_aware.go` | `searchItem.nameBoundaryFound` carries parent-to-child path state; `validateTopologyConstraint` and `hasUniqueTierNameOnAncestorChain` reject invalid or ambiguous constraints. The effective search root may be a narrowed real subtree. | New/modified |
 | Hard gradients | same plugin | Invoke the subtree helper once per selected real root, group eligible objects by `HyperNodeInfo.Tier()`, sort tier keys and names, and append tree-separated gradients. | Modified |
 | Boundary composition and continuation | topology plugin `getHighestAllowedHyperNode` and `getSearchRoot` | Resolve the recovered semantic or numeric ancestor, then intersect it with the current incoming subtree without widening siblings. Job/SubGroup callers progressively narrow the incoming root. | Modified |
