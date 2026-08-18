@@ -416,9 +416,12 @@ type JobInfo struct {
 
 	AllocatedHyperNode string
 	NetworkTopology    *scheduling.NetworkTopologySpec
-	SubJobs            map[SubJobID]*SubJobInfo
-	TaskToSubJob       map[TaskID]SubJobID
-	MinSubJobs         map[SubJobGID]int32 // key is name of "PodGroup.Spec.SubGroupPolicy", value is minSubGroups
+	// softTopologyConverted records scheduler-internal Soft-to-Hard conversion
+	// provenance. It is intentionally not part of the Kubernetes-facing API.
+	softTopologyConverted bool
+	SubJobs               map[SubJobID]*SubJobInfo
+	TaskToSubJob          map[TaskID]SubJobID
+	MinSubJobs            map[SubJobGID]int32 // key is name of "PodGroup.Spec.SubGroupPolicy", value is minSubGroups
 
 	// All tasks of the Job.
 	TaskStatusIndex       map[TaskStatus]TasksMap
@@ -791,11 +794,12 @@ func (ji *JobInfo) Clone() *JobInfo {
 			return nil
 		}(),
 
-		AllocatedHyperNode: ji.AllocatedHyperNode,
-		NetworkTopology:    cloneNetworkTopology(ji.NetworkTopology),
-		SubJobs:            map[SubJobID]*SubJobInfo{},
-		TaskToSubJob:       map[TaskID]SubJobID{},
-		MinSubJobs:         maps.Clone(ji.MinSubJobs),
+		AllocatedHyperNode:    ji.AllocatedHyperNode,
+		NetworkTopology:       cloneNetworkTopology(ji.NetworkTopology),
+		softTopologyConverted: ji.softTopologyConverted,
+		SubJobs:               map[SubJobID]*SubJobInfo{},
+		TaskToSubJob:          map[TaskID]SubJobID{},
+		MinSubJobs:            maps.Clone(ji.MinSubJobs),
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
@@ -1297,7 +1301,8 @@ func (ji *JobInfo) HasPendingTasks() bool {
 	return len(ji.TaskStatusIndex[Pending]) != 0
 }
 
-// IsHardTopologyMode return whether the job's network topology mode is hard and also return the highest allowed tier
+// IsHardTopologyMode reports a numeric hard topology constraint and returns its
+// tier. Use HardTopologyConstraint when tier names are supported by the caller.
 func (ji *JobInfo) IsHardTopologyMode() (bool, int) {
 	if ji.NetworkTopology == nil || ji.NetworkTopology.HighestTierAllowed == nil {
 		return false, 0
@@ -1306,12 +1311,34 @@ func (ji *JobInfo) IsHardTopologyMode() (bool, int) {
 	return ji.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode, *ji.NetworkTopology.HighestTierAllowed
 }
 
+// HardTopologyConstraint returns the configured hard topology constraint without
+// validating its boundary. Tier names are intentionally preserved because their
+// numeric tier can differ between topology branches.
+func (ji *JobInfo) HardTopologyConstraint() *scheduling.NetworkTopologySpec {
+	if ji.NetworkTopology == nil || ji.NetworkTopology.Mode != scheduling.HardNetworkTopologyMode {
+		return nil
+	}
+	return ji.NetworkTopology
+}
+
 // IsSoftTopologyMode returns whether the job has configured network topologies with soft mode.
 func (ji *JobInfo) IsSoftTopologyMode() bool {
 	if ji.NetworkTopology == nil {
 		return false
 	}
 	return ji.NetworkTopology.Mode == scheduling.SoftNetworkTopologyMode
+}
+
+// SetSoftTopologyConverted records that the scheduler converted this job's
+// Soft topology constraint to Hard for the upstream compatibility path.
+func (ji *JobInfo) SetSoftTopologyConverted() {
+	ji.softTopologyConverted = true
+}
+
+// IsSoftTopologyConverted reports whether this job's Hard constraint originated
+// from scheduler Soft-to-Hard conversion.
+func (ji *JobInfo) IsSoftTopologyConverted() bool {
+	return ji.softTopologyConverted
 }
 
 // WithNetworkTopology returns whether the job has configured network topologies
@@ -1402,7 +1429,7 @@ func (ji *JobInfo) ContainsSubJobPolicy() bool {
 // ContainsHardTopologyInSubJob returns whether the subJobs in the job contain hard network topology
 func (ji *JobInfo) ContainsHardTopologyInSubJob() bool {
 	for _, subJob := range ji.SubJobs {
-		if hard, _ := subJob.IsHardTopologyMode(); hard {
+		if subJob.HardTopologyConstraint() != nil {
 			return true
 		}
 	}
@@ -1411,7 +1438,7 @@ func (ji *JobInfo) ContainsHardTopologyInSubJob() bool {
 
 // ContainsHardTopology returns whether the job and the subJobs in the job contain hard network topology
 func (ji *JobInfo) ContainsHardTopology() bool {
-	if hard, _ := ji.IsHardTopologyMode(); hard || ji.ContainsHardTopologyInSubJob() {
+	if ji.HardTopologyConstraint() != nil || ji.ContainsHardTopologyInSubJob() {
 		return true
 	}
 	return false
