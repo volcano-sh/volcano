@@ -83,8 +83,6 @@ const (
 	// default interval for sync data from metrics server, the value is 30s
 	defaultMetricsInternal = 30 * time.Second
 
-	taskUpdaterWorker = 16
-
 	handlerSyncPollPeriod = 100 * time.Millisecond
 )
 
@@ -1669,7 +1667,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 			taskInfos = append(taskInfos, task)
 		}
 
-		workqueue.ParallelizeUntil(context.TODO(), taskUpdaterWorker, len(taskInfos), func(index int) {
+		workqueue.ParallelizeUntil(context.TODO(), options.GetTaskUpdaterWorkerNum(), len(taskInfos), func(index int) {
 			taskInfo := taskInfos[index]
 
 			// The pod of a scheduling gated task is given
