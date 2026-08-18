@@ -166,6 +166,8 @@ helm install volcano ./helm/chart/volcano \
   --set custom.admission_enable=false
 ```
 
+For prerequisites, topology discovery configuration, verification, and migration from an existing installation, see [Install the Standalone HyperNode Controller](../docs/user-guide/how_to_install_standalone_hypernode_controller.md).
+
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 
 ```bash
