@@ -73,31 +73,40 @@ type Manager interface {
 	// ResultChannel returns a channel for receiving discovery results
 	ResultChannel() <-chan Result
 
-	// ResultSynced every time the Result in ResultChannel are processed, this method must be called to notify network topology discover
+	// ResultSynced acknowledges that the controller has processed a discovery result.
 	ResultSynced(source string)
 }
 
 // manager manages network topology discovery processes
 type manager struct {
-	mutex           sync.Mutex
+	// mutex serializes ConfigMap-driven discovery configuration reloads.
+	mutex sync.Mutex
+	// discovererMutex protects the per-source discoverer lifecycle and
+	// acknowledgement state shared by the reload worker and result processors.
 	discovererMutex sync.RWMutex
-	managerWG       sync.WaitGroup
-	workerWG        sync.WaitGroup
+	// managerWG tracks the configuration worker. workerWG tracks the result
+	// processor created for each discoverer instance.
+	managerWG sync.WaitGroup
+	workerWG  sync.WaitGroup
 
 	configLoader config.Loader
 	config       *api.NetworkTopologyConfig
 
 	discoverers map[string]api.Discoverer
-	// processorStopCh and processorDone bind each result forwarder to the
-	// discoverer instance registered for the same source.
+	// processorStopCh and processorDone control the result processor bound to
+	// each discoverer instance, so a replacement cannot overlap its predecessor.
 	processorStopCh map[string]chan struct{}
 	processorDone   map[string]chan struct{}
-	pendingAck      map[string]*resultAcknowledgement
-	workQueue       workqueue.TypedRateLimitingInterface[string]
-	stopCh          chan struct{}
+	// pendingAck binds the single in-flight result for a source to the exact
+	// discoverer instance that produced it.
+	pendingAck map[string]*resultAcknowledgement
+	workQueue  workqueue.TypedRateLimitingInterface[string]
+	stopCh     chan struct{}
 
-	kubeClient        clientset.Interface
-	vcClient          vcclientset.Interface
+	kubeClient clientset.Interface
+	vcClient   vcclientset.Interface
+	// Process-provided informers let built-in discoverers reuse existing caches
+	// instead of creating duplicate List/Watch streams.
 	nodeInformer      coreinformerv1.NodeInformer
 	hyperNodeInformer topologyinformerv1alpha1.HyperNodeInformer
 

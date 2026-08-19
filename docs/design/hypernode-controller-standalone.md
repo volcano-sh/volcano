@@ -176,6 +176,8 @@ replacement Pod cannot reconcile until it acquires the Lease.
 
 Both deployment modes use the existing HyperNode implementation, controller ConfigMap, and Discoverer registry. Given the same topology source configuration and set of registered Discoverers, they must produce semantically equivalent HyperNode resources. The default upgrade path creates no standalone workload and requires no API, configuration, or data migration.
 
+Standalone mode requires built-in Discoverers to reuse process-provided informers. Adapting the Label Discoverer to this ownership model exposed an existing gap in the ConfigMap-driven reload path: results from a retired Discoverer instance could overlap with or be acknowledged to its replacement. The manager lifecycle is therefore hardened for both deployment modes without changing the HyperNode API, discovery configuration, steady-state reconciliation semantics, or the legacy client-based Discoverer registration contract. This lifecycle does not coordinate deployment-mode transitions, which remain governed by the Helm `disabled` intermediate state described above.
+
 The standalone component provides the standard operational capabilities expected of a Volcano controller, including leader election, health and metrics endpoints, graceful shutdown, and least-privilege RBAC. It uses a dedicated leader-election Lease so that leader election and failover do not depend on `vc-controller-manager`. Exact flags and resource names are implementation details and are intentionally left out of this proposal.
 
 ### 5.5 Resource Access Boundary

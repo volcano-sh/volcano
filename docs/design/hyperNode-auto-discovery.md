@@ -136,6 +136,30 @@ func RegisterDiscoverer(source string, constructor DiscovererConstructor) {
 Existing client-based registrations remain supported. Discoverers that need
 process-provided shared informers can use `RegisterDiscovererWithOptions`.
 
+#### Result Delivery and Lifecycle
+
+For each discovery source, the manager forwards one result at a time and binds
+its acknowledgement to the Discoverer instance that produced it. After the
+HyperNode Controller reconciles the result, `ResultSynced` acknowledges that
+specific instance and allows it to continue.
+
+When a configuration update replaces a Discoverer, the manager stops accepting
+new results from the old instance, waits for any result already delivered to be
+acknowledged, and discards results that were still buffered by the old instance.
+The replacement starts only after the old result processor has exited. This
+prevents results produced from old and new configurations from being
+interleaved or acknowledged to the wrong Discoverer instance.
+
+During process shutdown, the manager stops the configuration queue, waits for
+its worker, stops all Discoverers, waits for their result processors, and then
+closes the shared result channel. These lifecycle rules apply equally to the
+controller-manager and standalone deployment modes.
+
+This lifecycle applies to ConfigMap-driven Discoverer replacement within a
+running controller process. It does not coordinate transitions between the
+controller-manager and standalone deployments; deployment-mode transitions are
+managed separately through the Helm `disabled` intermediate state.
+
 ### Discoverer
 
 `Discoverer` is a specific network topology discoverer, responsible for obtaining network topology information from a specific data source and converting it into `HyperNode` resources.
