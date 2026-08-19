@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2"
@@ -31,6 +32,7 @@ import (
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/hypernode/api"
 	"volcano.sh/volcano/pkg/controllers/hypernode/utils"
 )
@@ -85,9 +87,24 @@ func TestNewLabelDiscoverer_start(t *testing.T) {
 			fakeVcClient := vcclientset.NewSimpleClientset()
 			createNode(kubeClient, tc.nodes)
 			createHyperNode(fakeVcClient, tc.existHyperNode)
-			time.Sleep(300 * time.Millisecond)
-			d := NewLabelDiscoverer(cfg, kubeClient, fakeVcClient)
-			outputCh, _ := d.Start()
+			informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+			vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
+			nodeInformer := informerFactory.Core().V1().Nodes()
+			hyperNodeInformer := vcInformerFactory.Topology().V1alpha1().HyperNodes()
+			nodeInformer.Informer()
+			hyperNodeInformer.Informer()
+			d, err := NewLabelDiscovererWithOptions(cfg, api.DiscovererOptions{
+				KubeClient: kubeClient, VolcanoClient: fakeVcClient,
+				NodeInformer: nodeInformer, HyperNodeInformer: hyperNodeInformer,
+			})
+			assert.NoError(t, err)
+			stopCh := make(chan struct{})
+			informerFactory.Start(stopCh)
+			vcInformerFactory.Start(stopCh)
+			informerFactory.WaitForCacheSync(stopCh)
+			vcInformerFactory.WaitForCacheSync(stopCh)
+			outputCh, err := d.Start()
+			assert.NoError(t, err)
 			var hyperNodes []*topologyv1alpha1.HyperNode
 			select {
 			case hyperNodes = <-outputCh:
@@ -100,8 +117,22 @@ func TestNewLabelDiscoverer_start(t *testing.T) {
 				klog.Infof("target hyperNode name is %s\n", hn.Name)
 			}
 			d.Stop()
+			close(stopCh)
 		})
 	}
+}
+
+func TestNewLabelDiscovererWithOptionsFallsBackToDedicatedInformers(t *testing.T) {
+	discoverer, err := NewLabelDiscovererWithOptions(getCfg(), api.DiscovererOptions{
+		KubeClient:    fake.NewSimpleClientset(),
+		VolcanoClient: vcclientset.NewSimpleClientset(),
+	})
+	assert.NoError(t, err)
+
+	labelDiscoverer, ok := discoverer.(*labelDiscoverer)
+	assert.True(t, ok)
+	assert.NotNil(t, labelDiscoverer.informerFactory)
+	assert.NotNil(t, labelDiscoverer.vcInformerFactory)
 }
 
 func getCfg() api.DiscoveryConfig {

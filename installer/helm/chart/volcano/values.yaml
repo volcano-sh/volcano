@@ -1,5 +1,6 @@
 basic:
   controller_image_name: "volcanosh/vc-controller-manager"
+  hypernode_controller_image_name: "volcanosh/vc-hypernode-controller-manager"
   scheduler_image_name: "volcanosh/vc-scheduler"
   agent_scheduler_image_name: "volcanosh/vc-agent-scheduler"
   admission_image_name: "volcanosh/vc-webhook-manager"
@@ -14,6 +15,7 @@ basic:
   # Per-component keys override this only when set to a non-empty string.
   image_tag_version: "latest"
   controller_image_tag_version: ""
+  hypernode_controller_image_tag_version: ""
   scheduler_image_tag_version: ""
   agent_scheduler_image_tag_version: ""
   admission_image_tag_version: ""
@@ -29,6 +31,11 @@ custom:
   controller_enable: true
   controller_replicas: 1
   controller_metrics_enable: true
+  # Controls which process owns HyperNode reconciliation.
+  # Supported values: controller-manager, standalone, disabled.
+  hypernode_controller_mode: controller-manager
+  hypernode_controller_replicas: 1
+  hypernode_controller_metrics_enable: true
   scheduler_enable: true
   agent_scheduler_enable: false
   agent_scheduler_replicas: 1
@@ -45,10 +52,13 @@ custom:
   map_enable: false
   controller_kube_api_qps: 50
   controller_kube_api_burst: 100
+  hypernode_controller_kube_api_qps: 50
+  hypernode_controller_kube_api_burst: 100
   controller_worker_threads: 3
   controller_worker_threads_for_gc: 5
   controller_worker_threads_for_podgroup: 5
   # Default: "*,-sharding-controller" (sharding-controller disabled by default)
+  # Do not explicitly enable hyperNode-controller in standalone or disabled mode.
   controller_enabled_controllers: ~
   scheduler_kube_api_qps: 2000
   scheduler_kube_api_burst: 2000
@@ -131,6 +141,7 @@ custom:
   default_affinity: ~
   admission_affinity: ~
   controller_affinity: ~
+  hypernode_controller_affinity: ~
   scheduler_affinity: ~
   agent_affinity: ~
 
@@ -144,6 +155,7 @@ custom:
   default_tolerations: ~
   admission_tolerations: ~
   controller_tolerations: ~
+  hypernode_controller_tolerations: ~
   scheduler_tolerations: ~
   agent_tolerations:
   - key: "volcano.sh/offline-job-evicting"
@@ -164,6 +176,7 @@ custom:
   scheduler_sc: ~
   admission_sc: ~
   controller_sc: ~
+  hypernode_controller_sc: ~
   agent_sc: ~
 
 # Specify nodeSelector for all main Volcano components or per component
@@ -175,6 +188,7 @@ custom:
   admission_ns: ~
   scheduler_ns: ~
   controller_ns: ~
+  hypernode_controller_ns: ~
   kube_state_metrics_ns: ~
   agent_ns: ~
 
@@ -186,9 +200,11 @@ custom:
   admission_podLabels: ~
   scheduler_podLabels: ~
   controller_podLabels: ~
+  hypernode_controller_podLabels: ~
   admission_labels: ~
   scheduler_labels: ~
   controller_labels: ~
+  hypernode_controller_labels: ~
 
 # Specify labels for all Volcano helm chart objects except for CRDs
   common_labels: ~
@@ -206,6 +222,7 @@ custom:
   admission_resources: ~
   scheduler_resources: ~
   controller_resources: ~
+  hypernode_controller_resources: ~
   agent_resources: ~
 
 
@@ -234,6 +251,7 @@ custom:
   admission_log_level: 4
   scheduler_log_level: 3
   controller_log_level: 4
+  hypernode_controller_log_level: 4
 
 # Specify container security context for admission
 # For example:
@@ -253,6 +271,7 @@ custom:
   admission_init_csc: ~
   scheduler_main_csc: ~
   controller_main_csc: ~
+  hypernode_controller_main_csc: ~
   agent_main_csc:
     runAsNonRoot: true
     runAsUser: 1000
@@ -343,5 +362,3 @@ service:
   #   - IPv6
   #   - IPv4
   ipFamilies: []
-
-
