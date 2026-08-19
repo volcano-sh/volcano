@@ -105,6 +105,41 @@ so the best node is Node-A.
 
 ``` 
 
+### GPU resource topology
+
+On multi-GPU nodes, each GPU sits under a PCIe root complex that belongs to one NUMA node. If a pod gets its GPUs and its CPU/memory from different NUMA nodes, host-to-device transfers cross the NUMA boundary and throughput drops. The GPU path follows the same steps as the CPU path: report per-GPU topology to the scheduler, then filter and score nodes with it.
+
+#### Node GPU numa information
+
+The kubelet does not expose per-GPU NUMA affinity, so it is reported through the same numatopo CRD. A `gpuDetail` field is added to the spec, keyed by GPU index:
+
+```
+gpuDetail:
+  "0": { numa: 0, busID: "0000:1b:00.0", deviceModel: "NVIDIA A100-SXM4-80GB" }
+  "1": { numa: 0, busID: "0000:1c:00.0", deviceModel: "NVIDIA A100-SXM4-80GB" }
+  "2": { numa: 1, busID: "0000:3d:00.0", deviceModel: "NVIDIA A100-SXM4-80GB" }
+```
+
+`resource-exporter` fills it by scanning `/sys/bus/pci/devices` for NVIDIA GPUs and reading each device's `numa_node` from sysfs. For the type definition, refer to [numatopo_types](https://github.com/volcano-sh/apis/blob/master/pkg/apis/nodeinfo/v1alpha1/numatopo_types.go).
+
+#### Hint provider
+
+numaaware registers a GPU hint provider (`gpuMng`) next to the CPU provider. For a container that requests `nvidia.com/gpu`, it lists the NUMA node combinations whose available GPUs can satisfy the request and marks the one with the fewest NUMA nodes as preferred. It implements the same `HintProvider` interface as the CPU manager, so GPU and CPU hints are merged into one best hint per container.
+
+#### Allocate
+
+From the best hint, the provider takes GPUs from the NUMA nodes in the affinity mask first, and takes the rest from the leftover GPUs when the aligned ones are not enough.
+
+#### Priority function
+
+The score also accounts for GPU locality. For each node the CPU NUMA mask and the GPU NUMA mask of the assignment are OR-ed, and the score uses the count of NUMA nodes in that union:
+
+```
+score = weight * (100 - 100 * numaNodeNum / maxNumaNodeNum)
+```
+
+Here `numaNodeNum` is the number of NUMA nodes spanned by both CPU and GPU. A pod whose CPU and GPU sit on the same NUMA node spans fewer nodes and scores higher.
+
 For the usage details, please refer to the [NUMA Aware guide](../user-guide/how_to_use_numa_aware.md)
 ## Drawbacks
 
