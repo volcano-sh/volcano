@@ -1062,49 +1062,30 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		cp.totalGuarantee.Add(guarantee)
 	}
 	klog.V(4).Infof("The total guarantee resource is <%v>", cp.totalGuarantee)
+
 	// Build attributes for Queues.
+	for _, queue := range ssn.Queues {
+		attr := cp.newQueueAttr(queue)
+		realCapability := api.ExceededPart(cp.totalResource, cp.totalGuarantee).Add(attr.guarantee)
+		if attr.capability == nil {
+			attr.capability = api.EmptyResource()
+			attr.realCapability = realCapability
+		} else {
+			realCapability.MinDimensionResource(attr.capability, api.Infinity)
+			attr.realCapability = realCapability
+		}
+		cp.queueOpts[queue.UID] = attr
+		klog.V(4).Infof("Added Queue <%s> attributes.", queue.Name)
+	}
+
 	for _, job := range ssn.Jobs {
 		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
-		if _, found := cp.queueOpts[job.Queue]; !found {
-			queue := ssn.Queues[job.Queue]
-			attr := &queueAttr{
-				queueID: queue.UID,
-				name:    queue.Name,
-
-				deserved:          api.NewResource(queue.Queue.Spec.Deserved),
-				allocated:         api.EmptyResource(),
-				request:           api.EmptyResource(),
-				elastic:           api.EmptyResource(),
-				inqueue:           api.EmptyResource(),
-				guarantee:         api.EmptyResource(),
-				resourceClaimRefs: make(map[string]int),
-			}
-			if len(queue.Queue.Spec.Capability) != 0 {
-				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
-				if attr.capability.MilliCPU <= 0 {
-					attr.capability.MilliCPU = math.MaxFloat64
-				}
-				if attr.capability.Memory <= 0 {
-					attr.capability.Memory = math.MaxFloat64
-				}
-			}
-			attr.dra = newDRAQuotaAttr(queue.Queue.Spec.Capability, queue.Queue.Spec.Deserved, queue.Queue.Spec.Guarantee.Resource)
-			if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
-				attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
-			}
-			realCapability := api.ExceededPart(cp.totalResource, cp.totalGuarantee).Add(attr.guarantee)
-			if attr.capability == nil {
-				attr.capability = api.EmptyResource()
-				attr.realCapability = realCapability
-			} else {
-				realCapability.MinDimensionResource(attr.capability, api.Infinity)
-				attr.realCapability = realCapability
-			}
-			cp.queueOpts[job.Queue] = attr
-			klog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
+		attr, found := cp.queueOpts[job.Queue]
+		if !found {
+			klog.Warningf("[capacity] Skip Job <%s/%s>: queue <%s> not found in session",
+				job.Namespace, job.Name, job.Queue)
+			continue
 		}
-
-		attr := cp.queueOpts[job.Queue]
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
@@ -1559,6 +1540,16 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 // queues with non-empty deserved are prioritized over best-effort queues.
 // Returns negative if l should come before r.
 func (cp *capacityPlugin) compareShareWithDeserved(lattr, rattr *queueAttr) int {
+	if lattr == nil || rattr == nil {
+		if lattr == nil && rattr == nil {
+			return 0
+		}
+		if lattr == nil {
+			return 1
+		}
+		return -1
+	}
+
 	if lattr.share == rattr.share {
 		lHasDeserved := !lattr.deserved.IsEmpty()
 		rHasDeserved := !rattr.deserved.IsEmpty()
@@ -1644,6 +1635,9 @@ func (cp *capacityPlugin) buildQueueReservedTasksCache(ssn *framework.Session) {
 }
 
 func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo, draEnabled bool, consumableCapacityEnabled bool) bool {
+	if attr == nil {
+		return false
+	}
 	if draEnabled && attr.dra != nil {
 		candidateDRA := incrementalTaskDRA(attr, candidate)
 		if candidateDRA != nil {
@@ -1695,7 +1689,13 @@ func (cp *capacityPlugin) checkQueueAllocatableHierarchically(ssn *framework.Ses
 }
 
 func (cp *capacityPlugin) jobEnqueueable(queue *api.QueueInfo, job *api.JobInfo) (bool, []string) {
+	if queue == nil {
+		return false, []string{"queue-is-nil"}
+	}
 	attr := cp.queueOpts[queue.UID]
+	if attr == nil {
+		return false, []string{"queue-not-found"}
+	}
 	minReq := job.GetMinResources()
 
 	klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s>",
