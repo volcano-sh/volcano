@@ -80,7 +80,7 @@ func Run(ctx context.Context, opts *options.VolcanoAgentOptions) error {
 
 	var networkQoSMgr networkqos.NetworkQoSManager
 	if conf.IsFeatureSupported(string(features.NetworkQoSFeature)) {
-		networkQoSMgr = networkqos.NewNetworkQoSManager(conf)
+		networkQoSMgr = networkqos.NewNetworkQoSManager(conf, cgroupManager.GetCgroupVersion())
 		err = networkQoSMgr.Init()
 		if err != nil {
 			return fmt.Errorf("failed to init network qos: %v", err)
