@@ -29,6 +29,10 @@ const (
 	QueueEvent     fwk.EventResource = "Queue"
 	HyperNodeEvent fwk.EventResource = "HyperNode"
 	NumaInfoEvent  fwk.EventResource = "NumaInfo"
+
+	// MaxHintKeysPerSubscription bounds the key fanout a single subscription may
+	// contribute before the cache falls back to coarse dispatch.
+	MaxHintKeysPerSubscription = 256
 )
 
 // ClusterEvent identifies one category of cluster change a plugin subscribes to.
@@ -66,12 +70,38 @@ type JobHintFn func(
 	oldObj, newObj any,
 ) (HintResult, error)
 
+// HintKey is an opaque subscription key used to narrow candidate Jobs for a
+// declared event subscription.
+type HintKey string
+
+// JobKeysFn returns the necessary-condition keys for one rejected Job under a
+// declared subscription. If the paired HintFn can return HintWakeup, this key
+// set must share at least one key with EventKeysFn's result for that event, or
+// the cache cannot narrow dispatch safely. It must return an error when it
+// cannot construct a complete key set; callers treat an empty result, an error,
+// or an over-limit result as a fallback to coarse dispatch.
+type JobKeysFn func(job *JobInfo, rejection Rejection) ([]HintKey, error)
+
+// EventKeysFn returns the necessary-condition keys for one incoming event
+// object pair. If the paired HintFn can return HintWakeup, this key set must
+// share at least one key with JobKeysFn's result for that subscription, or the
+// cache cannot narrow dispatch safely. An empty successful result means that
+// this event has no indexed candidates. It must return an error when it cannot
+// construct a complete key set; callers treat an error or an over-limit result
+// as a fallback to coarse dispatch.
+type EventKeysFn func(oldObj, newObj any) ([]HintKey, error)
+
 // ClusterEventWithHint pairs one cluster event a plugin cares about with the
-// callback used to check whether that event may help a specific Job. A nil HintFn
-// means every occurrence of Event wakes Jobs blocked by this plugin.
+// callbacks used to narrow candidate Jobs and check whether that event may help
+// a specific Job. JobKeysFn and EventKeysFn are optional as a pair. A nil HintFn
+// means every occurrence of Event wakes Jobs blocked by this plugin. A provider
+// must declare each exact Event at most once; duplicate declarations invalidate
+// that provider so the cache fails open.
 type ClusterEventWithHint struct {
-	Event  ClusterEvent
-	HintFn JobHintFn
+	Event       ClusterEvent
+	JobKeysFn   JobKeysFn
+	EventKeysFn EventKeysFn
+	HintFn      JobHintFn
 }
 
 // HintProvider lets a plugin declare the events that can change its previous
@@ -103,6 +133,10 @@ type Rejection struct {
 	// Tasks holds the failed task IDs; nil only for RejectionEnqueue, which is
 	// a whole-PodGroup decision.
 	Tasks []TaskID
+	// HintKeys holds the optional necessary-condition keys that accompanied this
+	// rejection. Empty when the session fell back to coarse dispatch for this
+	// plugin/source aggregate.
+	HintKeys []HintKey
 	// Queues is the Job's queue and its ancestors, populated at record time.
 	// A resource change confined to a queue outside this set cannot affect a
 	// quota decision for the Job, so quota-plugin hints use it to scope wakeups.

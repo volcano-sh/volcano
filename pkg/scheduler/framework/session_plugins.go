@@ -23,6 +23,7 @@ package framework
 import (
 	"context"
 	"errors"
+	"sort"
 
 	fwk "k8s.io/kube-scheduler/framework"
 
@@ -1250,25 +1251,60 @@ type rejectionKey struct {
 	source api.RejectionSource
 }
 
+type rejectionAggregate struct {
+	tasks    sets.Set[api.TaskID]
+	hintKeys sets.Set[api.HintKey] // nil means coarse fallback
+}
+
 // AddRejection records, for the current session, that plugin made job
 // unschedulable through the given source, optionally naming the failed tasks.
 // Rejections are drained into the unschedulable-job cache at CloseSession.
 func (ssn *Session) AddRejection(job api.JobID, plugin string, source api.RejectionSource, tasks ...api.TaskID) {
+	ssn.AddRejectionWithKeys(job, plugin, source, nil, tasks...)
+}
+
+// AddRejectionWithKeys records, for the current session, that plugin made
+// job unschedulable through the given source, optionally naming the failed
+// tasks and the hint keys that were available for that rejection.
+func (ssn *Session) AddRejectionWithKeys(job api.JobID, plugin string, source api.RejectionSource, hintKeys []api.HintKey, tasks ...api.TaskID) {
 	if !ssn.unschedulableJobCacheEnabled {
 		return
 	}
+	if ssn.jobRejections == nil {
+		ssn.jobRejections = make(map[api.JobID]map[rejectionKey]*rejectionAggregate)
+	}
 	byKey := ssn.jobRejections[job]
 	if byKey == nil {
-		byKey = make(map[rejectionKey]sets.Set[api.TaskID])
+		byKey = make(map[rejectionKey]*rejectionAggregate)
 		ssn.jobRejections[job] = byKey
 	}
 	key := rejectionKey{plugin: plugin, source: source}
-	taskSet, ok := byKey[key]
+	acc, ok := byKey[key]
 	if !ok {
-		taskSet = sets.New[api.TaskID]()
-		byKey[key] = taskSet
+		acc = &rejectionAggregate{tasks: sets.New[api.TaskID]()}
+		byKey[key] = acc
 	}
-	taskSet.Insert(tasks...)
+	acc.tasks.Insert(tasks...)
+
+	if !ok {
+		if len(hintKeys) == 0 {
+			return
+		}
+		acc.hintKeys = sets.New[api.HintKey](hintKeys...)
+		if acc.hintKeys.Len() > api.MaxHintKeysPerSubscription {
+			acc.hintKeys = nil
+		}
+		return
+	}
+
+	if acc.hintKeys == nil || len(hintKeys) == 0 {
+		acc.hintKeys = nil
+		return
+	}
+	acc.hintKeys.Insert(hintKeys...)
+	if acc.hintKeys.Len() > api.MaxHintKeysPerSubscription {
+		acc.hintKeys = nil
+	}
 }
 
 // rejectionsForJob returns the rejections accumulated for job this session.
@@ -1280,15 +1316,28 @@ func (ssn *Session) rejectionsForJob(job api.JobID) []api.Rejection {
 	rejections := make([]api.Rejection, 0, len(byKey))
 	for key, taskSet := range byKey {
 		var taskIDs []api.TaskID
-		if taskSet.Len() > 0 {
-			taskIDs = sets.List(taskSet)
+		if taskSet.tasks.Len() > 0 {
+			taskIDs = sets.List(taskSet.tasks)
+			sort.Slice(taskIDs, func(i, j int) bool { return taskIDs[i] < taskIDs[j] })
+		}
+		var hintKeys []api.HintKey
+		if taskSet.hintKeys != nil {
+			hintKeys = sets.List(taskSet.hintKeys)
+			sort.Slice(hintKeys, func(i, j int) bool { return hintKeys[i] < hintKeys[j] })
 		}
 		rejections = append(rejections, api.Rejection{
-			Plugin: key.plugin,
-			Source: key.source,
-			Tasks:  taskIDs,
+			Plugin:   key.plugin,
+			Source:   key.source,
+			Tasks:    taskIDs,
+			HintKeys: hintKeys,
 		})
 	}
+	sort.Slice(rejections, func(i, j int) bool {
+		if rejections[i].Plugin != rejections[j].Plugin {
+			return rejections[i].Plugin < rejections[j].Plugin
+		}
+		return rejections[i].Source < rejections[j].Source
+	})
 	return rejections
 }
 
@@ -1317,15 +1366,16 @@ func (ssn *Session) reconcileUnschedulableCache() {
 		return
 	}
 	for jobID, job := range ssn.Jobs {
-		// The Job made progress this session, either allocated enough tasks to be
-		// ready or had tasks pipelined by preemption, so drop any cached record.
-		if len(job.TaskStatusIndex[api.Pipelined]) > 0 || job.IsReady() {
+		// A pipelined Job must remain visible to allocate/preempt in the next
+		// session. Do not cache even if another task was freshly rejected.
+		if len(job.TaskStatusIndex[api.Pipelined]) > 0 {
 			ssn.unschedulableCache.ForgetUnschedulable(jobID)
 			continue
 		}
 
-		// A Job that was evaluated and still produced rejections is (re)cached
-		// with the fresh rejections.
+		// Cache fresh rejections even when an elastic Job is already ready. Its
+		// rejected surplus tasks are still redundant work, while ComputeSkip
+		// keeps the Job eligible to schedule every other pending task.
 		if rejections := ssn.rejectionsForJob(jobID); len(rejections) > 0 {
 			scope := ssn.queueScope(job.Queue)
 			for i := range rejections {
@@ -1336,7 +1386,8 @@ func (ssn *Session) reconcileUnschedulableCache() {
 		}
 
 		// No fresh rejections: if the Job was skipped this session, leave its
-		// existing record untouched; otherwise ensure no stale record remains.
+		// existing record untouched. This includes ready elastic Jobs whose
+		// surplus rejected tasks were intentionally skipped.
 		if job.Skip.Skipped() {
 			continue
 		}

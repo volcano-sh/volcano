@@ -50,6 +50,19 @@ func registerTestHint(registry *HintRegistry, plugin string, event api.ClusterEv
 	}})
 }
 
+func registerTestIndexedHint(
+	registry *HintRegistry,
+	plugin string,
+	event api.ClusterEvent,
+	jobKeysFn api.JobKeysFn,
+	eventKeysFn api.EventKeysFn,
+	hintFn api.JobHintFn,
+) {
+	registry.Register(plugin, &fakeHintProvider{events: []api.ClusterEventWithHint{{
+		Event: event, JobKeysFn: jobKeysFn, EventKeysFn: eventKeysFn, HintFn: hintFn,
+	}}})
+}
+
 func TestUnschedulableJobCacheRecordAndGet(t *testing.T) {
 	rejections := []api.Rejection{{
 		Plugin: "plugin",

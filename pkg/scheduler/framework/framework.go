@@ -88,7 +88,5 @@ func CloseSession(ssn *Session) {
 		metrics.UpdatePluginDuration(plugin.Name(), metrics.OnSessionClose, metrics.Duration(onSessionCloseStart))
 	}
 
-	ssn.reconcileUnschedulableCache()
-
 	closeSession(ssn)
 }
