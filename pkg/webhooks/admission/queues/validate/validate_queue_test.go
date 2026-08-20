@@ -30,6 +30,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 
 	"k8s.io/client-go/tools/cache"
 
@@ -38,9 +40,79 @@ import (
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 	schedulingv1beta1informers "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
+
+func TestValidateQueueScopedOvercommit(t *testing.T) {
+	positiveDeserved := v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")}
+	queueWithAnnotation := func(value string, deserved v1.ResourceList) *schedulingv1beta1.Queue {
+		return &schedulingv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+				schedulingv1beta1.QueueOvercommitFactorAnnotationKey: value,
+			}},
+			Spec: schedulingv1beta1.QueueSpec{Deserved: deserved},
+		}
+	}
+
+	tests := []struct {
+		name      string
+		enabled   bool
+		queue     *schedulingv1beta1.Queue
+		oldQueue  *schedulingv1beta1.Queue
+		operation admissionv1.Operation
+		wantError bool
+	}{
+		{
+			name:      "reject annotation when feature gate is disabled",
+			queue:     queueWithAnnotation("1.5", positiveDeserved),
+			operation: admissionv1.Create,
+			wantError: true,
+		},
+		{
+			name:      "allow unchanged annotation when feature gate is disabled",
+			queue:     queueWithAnnotation("1.5", positiveDeserved),
+			oldQueue:  queueWithAnnotation("1.5", positiveDeserved),
+			operation: admissionv1.Update,
+			wantError: false,
+		},
+		{
+			name:      "reject invalid factor when feature gate is enabled",
+			enabled:   true,
+			queue:     queueWithAnnotation("not-a-number", positiveDeserved),
+			operation: admissionv1.Create,
+			wantError: true,
+		},
+		{
+			name:      "reject annotation without positive deserved resources",
+			enabled:   true,
+			queue:     queueWithAnnotation("1.5", v1.ResourceList{v1.ResourceCPU: resource.MustParse("0")}),
+			operation: admissionv1.Create,
+			wantError: true,
+		},
+		{
+			name:      "allow valid annotation when feature gate is enabled",
+			enabled:   true,
+			queue:     queueWithAnnotation("1.5", positiveDeserved),
+			operation: admissionv1.Create,
+			wantError: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.QueueScopedOvercommit, test.enabled)
+			err := validateQueueScopedOvercommit(test.queue, test.oldQueue, test.operation)
+			if test.wantError && err == nil {
+				t.Fatal("expected validation error")
+			}
+			if !test.wantError && err != nil {
+				t.Fatalf("unexpected validation error: %v", err)
+			}
+		})
+	}
+}
 
 func TestAdmitQueues(t *testing.T) {
 	config.MaxQueueDepth = 5

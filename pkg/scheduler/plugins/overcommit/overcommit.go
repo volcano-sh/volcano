@@ -17,10 +17,15 @@ limitations under the License.
 package overcommit
 
 import (
+	"math"
+
 	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
@@ -35,25 +40,31 @@ const (
 	overCommitFactor = "overcommit-factor"
 	// defaultOverCommitFactor defines the default overCommit resource factor for enqueue action
 	defaultOverCommitFactor = 1.2
+	// maxQueueOverCommitFactor is the maximum queue-scoped overcommit factor.
+	maxQueueOverCommitFactor = "max-queue-overcommit-factor"
 )
 
 type overcommitPlugin struct {
 	// Arguments given for the plugin
-	pluginArguments  framework.Arguments
-	totalResource    *api.Resource
-	idleResource     *api.Resource
-	inqueueResource  *api.Resource
-	overCommitFactor float64
+	pluginArguments          framework.Arguments
+	totalResource            *api.Resource
+	idleResource             *api.Resource
+	inqueueResource          *api.Resource
+	overCommitFactor         float64
+	maxQueueOverCommitFactor float64
+	hierarchyEnabled         bool
+	queueStates              map[api.QueueID]*queueAdmissionState
 }
 
 // New function returns overcommit plugin object
 func New(arguments framework.Arguments) framework.Plugin {
 	return &overcommitPlugin{
-		pluginArguments:  arguments,
-		totalResource:    api.EmptyResource(),
-		idleResource:     api.EmptyResource(),
-		inqueueResource:  api.EmptyResource(),
-		overCommitFactor: defaultOverCommitFactor,
+		pluginArguments:          arguments,
+		totalResource:            api.EmptyResource(),
+		idleResource:             api.EmptyResource(),
+		inqueueResource:          api.EmptyResource(),
+		overCommitFactor:         defaultOverCommitFactor,
+		maxQueueOverCommitFactor: defaultOverCommitFactor,
 	}
 }
 
@@ -75,11 +86,26 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 	klog.V(5).Infof("Enter overcommit plugin ...")
 	defer klog.V(5).Infof("Leaving overcommit plugin.")
 
+	op.totalResource = api.EmptyResource()
+	op.idleResource = api.EmptyResource()
+	op.inqueueResource = api.EmptyResource()
+	op.queueStates = nil
+	op.hierarchyEnabled = ssn.HierarchyEnabled(op.Name())
+
 	op.pluginArguments.GetFloat64(&op.overCommitFactor, overCommitFactor)
-	if op.overCommitFactor < 1.0 {
+	if op.overCommitFactor < 1.0 || math.IsNaN(op.overCommitFactor) || math.IsInf(op.overCommitFactor, 0) {
 		klog.Warningf("Invalid input %f for overcommit-factor, reason: overcommit-factor cannot be less than 1,"+
 			" using default value: %f.", op.overCommitFactor, defaultOverCommitFactor)
 		op.overCommitFactor = defaultOverCommitFactor
+	}
+	op.maxQueueOverCommitFactor = op.overCommitFactor
+	if _, configured := op.pluginArguments[maxQueueOverCommitFactor]; configured {
+		op.pluginArguments.GetFloat64(&op.maxQueueOverCommitFactor, maxQueueOverCommitFactor)
+		if op.maxQueueOverCommitFactor < 1.0 || math.IsNaN(op.maxQueueOverCommitFactor) || math.IsInf(op.maxQueueOverCommitFactor, 0) {
+			klog.Warningf("Invalid input %f for %s, using overcommit-factor value: %f.",
+				op.maxQueueOverCommitFactor, maxQueueOverCommitFactor, op.overCommitFactor)
+			op.maxQueueOverCommitFactor = op.overCommitFactor
+		}
 	}
 
 	op.totalResource.Add(ssn.TotalResource)
@@ -89,8 +115,13 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 		used.Add(node.Used)
 	}
 	op.idleResource = op.totalResource.Clone().Multi(op.overCommitFactor).SubWithoutAssert(used)
+	if utilfeature.DefaultFeatureGate.Enabled(features.QueueScopedOvercommit) {
+		op.buildQueueAdmissionStates(ssn)
+	}
 
 	for _, job := range ssn.Jobs {
+		op.addExistingJobToQueueStates(job)
+
 		// calculate inqueue job resources
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue && job.PodGroup.Spec.MinResources != nil {
 			// deduct the resources of scheduling gated tasks in a job when calculating inqueued resources
@@ -123,6 +154,13 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 		jobMinReq := job.GetMinResources()
 		couldInqueue, resourceNames := inqueue.Add(jobMinReq).LessEqualWithDimensionAndResourcesName(idle, jobMinReq)
 		if couldInqueue { // only compare the requested resource
+			if utilfeature.DefaultFeatureGate.Enabled(features.QueueScopedOvercommit) {
+				if queueName, resourceNames, permitted := op.jobQueueEnqueueable(job); !permitted {
+					ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType),
+						util.FormatResourceNames("queue overcommit admission budget insufficient for "+queueName, "insufficient", resourceNames))
+					return util.Reject
+				}
+			}
 			klog.V(4).Infof("Sufficient resources, permit job <%s/%s> to be inqueue", job.Namespace, job.Name)
 			return util.Permit
 		}
@@ -139,7 +177,11 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 			return
 		}
 		jobMinReq := job.GetMinResources()
-		op.inqueueResource.Add(job.DeductSchGatedResources(jobMinReq))
+		deductedResources := job.DeductSchGatedResources(jobMinReq)
+		op.inqueueResource.Add(deductedResources)
+		if utilfeature.DefaultFeatureGate.Enabled(features.QueueScopedOvercommit) {
+			op.addQueueInqueueResource(job, deductedResources)
+		}
 	})
 }
 
@@ -147,4 +189,5 @@ func (op *overcommitPlugin) OnSessionClose(ssn *framework.Session) {
 	op.totalResource = nil
 	op.idleResource = nil
 	op.inqueueResource = nil
+	op.queueStates = nil
 }
