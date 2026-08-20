@@ -26,9 +26,8 @@ import (
 	"k8s.io/kubernetes/pkg/features"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
 )
-
-const ResourceFitHintProviderName = "predicates-resource-fit"
 
 type ResourceFitHintProvider struct{}
 
@@ -39,12 +38,22 @@ func (p *ResourceFitHintProvider) EventsToRegister(context.Context) ([]api.Clust
 	}
 	return []api.ClusterEventWithHint{
 		{
-			Event:  api.ClusterEvent{Resource: fwk.Pod, ActionType: podActionType},
-			HintFn: resourceFitPodHint,
+			Event:       api.ClusterEvent{Resource: fwk.Pod, ActionType: podActionType},
+			JobKeysFn:   resourcefit.PodReleaseJobKeys,
+			EventKeysFn: resourcefit.PodReleaseEventKeys,
+			HintFn:      resourceFitPodHint,
 		},
 		{
-			Event:  api.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add | fwk.Update},
-			HintFn: resourceFitNodeHint,
+			Event:       api.ClusterEvent{Resource: fwk.Node, ActionType: fwk.UpdateNodeAllocatable},
+			JobKeysFn:   resourcefit.NodeGrowthJobKeys,
+			EventKeysFn: resourcefit.NodeGrowthEventKeys,
+			HintFn:      resourceFitNodeHint,
+		},
+		{
+			Event:       api.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add},
+			JobKeysFn:   resourcefit.NodeAddJobKeys,
+			EventKeysFn: resourcefit.NodeAddEventKeys,
+			HintFn:      resourceFitNodeHint,
 		},
 	}, nil
 }

@@ -1291,7 +1291,7 @@ func (ssn *Session) AddRejectionWithKeys(job api.JobID, plugin string, source ap
 			return
 		}
 		acc.hintKeys = sets.New[api.HintKey](hintKeys...)
-		if acc.hintKeys.Len() > api.MaxHintKeysPerSubscription {
+		if acc.hintKeys.Len() > api.MaxHintKeysPerPluginEvent {
 			acc.hintKeys = nil
 		}
 		return
@@ -1302,7 +1302,7 @@ func (ssn *Session) AddRejectionWithKeys(job api.JobID, plugin string, source ap
 		return
 	}
 	acc.hintKeys.Insert(hintKeys...)
-	if acc.hintKeys.Len() > api.MaxHintKeysPerSubscription {
+	if acc.hintKeys.Len() > api.MaxHintKeysPerPluginEvent {
 		acc.hintKeys = nil
 	}
 }

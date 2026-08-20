@@ -31,6 +31,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -84,6 +85,12 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 			job.NodesFitErrors[task.UID] = fitErrors
 			if fitErrors != nil {
 				for plugin := range fitErrors.UnschedulablePlugins() {
+					if plugin == resourcefit.ProviderName {
+						if keys, complete := resourcefit.RejectionKeys(task, fitErrors, ssn.Nodes); complete {
+							ssn.AddRejectionWithKeys(job.UID, plugin, api.RejectionPredicate, keys, task.UID)
+							continue
+						}
+					}
 					ssn.AddRejection(job.UID, plugin, api.RejectionPredicate, task.UID)
 				}
 			}

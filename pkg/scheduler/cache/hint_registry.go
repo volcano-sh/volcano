@@ -60,12 +60,34 @@ func (r *HintRegistry) Register(name string, p api.HintProvider) {
 	}
 	seen := make(map[api.ClusterEvent]struct{}, len(events))
 	for _, event := range events {
+		if (event.JobKeysFn == nil) != (event.EventKeysFn == nil) {
+			klog.Errorf("Failed to register hints for plugin %s: event %v must provide JobKeysFn and EventKeysFn together", name, event.Event)
+			delete(r.eventsByPlugin, name)
+			return
+		}
 		if _, exists := seen[event.Event]; exists {
 			klog.Errorf("Failed to register hints for plugin %s: duplicate event %v", name, event.Event)
 			delete(r.eventsByPlugin, name)
 			return
 		}
 		seen[event.Event] = struct{}{}
+	}
+	previousByEvent := make(map[api.ClusterEvent]api.ClusterEventWithHint, len(r.eventsByPlugin[name]))
+	for _, event := range r.eventsByPlugin[name] {
+		previousByEvent[event.Event] = event
+	}
+	for _, event := range events {
+		previous, exists := previousByEvent[event.Event]
+		if !exists {
+			continue
+		}
+		wasIndexed := previous.JobKeysFn != nil && previous.EventKeysFn != nil
+		isIndexed := event.JobKeysFn != nil && event.EventKeysFn != nil
+		if wasIndexed != isIndexed {
+			klog.Errorf("Failed to register hints for plugin %s: event %v changed HintKey indexing mode", name, event.Event)
+			delete(r.eventsByPlugin, name)
+			return
+		}
 	}
 	r.eventsByPlugin[name] = append([]api.ClusterEventWithHint(nil), events...)
 	klog.V(5).Infof("Registered %d hint event(s) for plugin %s", len(events), name)

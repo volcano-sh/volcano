@@ -27,20 +27,19 @@ import (
 )
 
 // churnJobCount is the sustained-fanout population size: 5,000 cached Jobs
-// spread evenly over churnBuckets, matching the secondary-index design's
+// spread evenly over churnKeyGroups, matching the secondary-index design's
 // sustained Pod-churn scenario.
 const (
-	churnJobCount = 5000
-	churnBuckets  = 100
+	churnJobCount  = 5000
+	churnKeyGroups = 100
 )
 
 // BenchmarkUnschedulableJobCachePodChurn measures sustained Pod/Delete
 // dispatch against 5,000 cached Jobs whose keys are spread deterministically
-// across 100 buckets. indexed=false forces every record through the coarse
-// fallback bucket (no JobKeysFn/EventKeysFn, the exact registration shape a
-// kube-scheduler adapter subscription uses); indexed=true registers a
-// key-aware subscription so OnEvent narrows candidates to the buckets the
-// event actually names. Selectivity is the percentage of the 100 buckets
+// across 100 HintKey groups. indexed=false records every Job without HintKeys
+// (no JobKeysFn/EventKeysFn, the exact registration shape used by an adapted
+// kube-scheduler plugin event); indexed=true lets OnEvent narrow candidates to
+// the HintKey groups named by the event. Selectivity is the percentage of groups
 // (and therefore of the 5,000 Jobs) the incoming event's EventKeysFn names.
 // After timing, the test asserts the callback ran exactly b.N times the
 // candidate count that selectivity/indexing implies; a wrong candidate
@@ -57,27 +56,27 @@ func BenchmarkUnschedulableJobCachePodChurn(b *testing.B) {
 }
 
 func benchmarkPodChurn(b *testing.B, jobCount, selectivityPercent int, indexed bool) {
-	if jobCount%churnBuckets != 0 {
-		b.Fatalf("jobCount %d must divide evenly by churnBuckets %d", jobCount, churnBuckets)
+	if jobCount%churnKeyGroups != 0 {
+		b.Fatalf("jobCount %d must divide evenly by churnKeyGroups %d", jobCount, churnKeyGroups)
 	}
-	matchedBuckets := churnBuckets * selectivityPercent / 100
-	if matchedBuckets < 1 {
-		matchedBuckets = 1
+	matchedKeyGroups := churnKeyGroups * selectivityPercent / 100
+	if matchedKeyGroups < 1 {
+		matchedKeyGroups = 1
 	}
-	if matchedBuckets > churnBuckets {
-		matchedBuckets = churnBuckets
+	if matchedKeyGroups > churnKeyGroups {
+		matchedKeyGroups = churnKeyGroups
 	}
-	perBucket := jobCount / churnBuckets
+	jobsPerKeyGroup := jobCount / churnKeyGroups
 
 	const plugin = "benchmark-churn"
 	registry := NewHintRegistry()
 	cache := NewUnschedulableJobCache(registry, DefaultMaxSkipDuration)
 	event := api.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}
 
-	bucketKey := func(bucket int) api.HintKey {
-		return api.HintKey(fmt.Sprintf("churn-bucket-%d", bucket))
+	keyForGroup := func(group int) api.HintKey {
+		return api.HintKey(fmt.Sprintf("churn-key-group-%d", group))
 	}
-	bucketOf := make(map[api.JobID]int, jobCount)
+	keyGroupByJobID := make(map[api.JobID]int, jobCount)
 
 	var callCount int64
 	// hintFn reads the rejected task's own request data, as a real HintFn may do
@@ -95,12 +94,12 @@ func benchmarkPodChurn(b *testing.B, jobCount, selectivityPercent int, indexed b
 
 	if indexed {
 		jobKeysFn := func(job *api.JobInfo, _ api.Rejection) ([]api.HintKey, error) {
-			return []api.HintKey{bucketKey(bucketOf[job.UID])}, nil
+			return []api.HintKey{keyForGroup(keyGroupByJobID[job.UID])}, nil
 		}
 		eventKeysFn := func(_, _ any) ([]api.HintKey, error) {
-			keys := make([]api.HintKey, matchedBuckets)
-			for i := 0; i < matchedBuckets; i++ {
-				keys[i] = bucketKey(i)
+			keys := make([]api.HintKey, matchedKeyGroups)
+			for i := 0; i < matchedKeyGroups; i++ {
+				keys[i] = keyForGroup(i)
 			}
 			return keys, nil
 		}
@@ -111,7 +110,7 @@ func benchmarkPodChurn(b *testing.B, jobCount, selectivityPercent int, indexed b
 
 	for i := 0; i < jobCount; i++ {
 		jobID := api.JobID(fmt.Sprintf("job-%d", i))
-		bucketOf[jobID] = i % churnBuckets
+		keyGroupByJobID[jobID] = i % churnKeyGroups
 		taskID := api.TaskID(fmt.Sprintf("task-%d", i))
 		request := &api.Resource{MilliCPU: 1000}
 		task := &api.TaskInfo{
@@ -138,7 +137,7 @@ func benchmarkPodChurn(b *testing.B, jobCount, selectivityPercent int, indexed b
 
 	expectedCandidates := jobCount
 	if indexed {
-		expectedCandidates = matchedBuckets * perBucket
+		expectedCandidates = matchedKeyGroups * jobsPerKeyGroup
 	}
 
 	b.ReportAllocs()
@@ -157,7 +156,7 @@ func benchmarkPodChurn(b *testing.B, jobCount, selectivityPercent int, indexed b
 // BenchmarkUnschedulableJobCacheRecord measures RecordUnschedulable's cost of
 // building (and, on repeated calls for the same Job, replacing) the bounded
 // key index at representative key counts, including the 256-key limit and
-// the 257-key case that must fall back to coarse dispatch.
+// the 257-key case that must dispatch the Job without HintKeys.
 func BenchmarkUnschedulableJobCacheRecord(b *testing.B) {
 	for _, keyCount := range []int{1, 16, 64, 256, 257} {
 		b.Run(fmt.Sprintf("keys=%d", keyCount), func(b *testing.B) {
@@ -181,8 +180,8 @@ func benchmarkRecordUnschedulable(b *testing.B, keyCount int) {
 	}
 	// eventKeysFn always names a key disjoint from every jobKeysFn key above,
 	// so the assertion below can distinguish indexed dispatch (never wakes on
-	// this event) from fallback dispatch (always wakes, regardless of key)
-	// without reaching into cache-internal fields.
+	// this event) from dispatch without HintKeys (always evaluates, regardless
+	// of the event key) without reaching into cache-internal fields.
 	eventKeysFn := func(_, _ any) ([]api.HintKey, error) {
 		return []api.HintKey{"record-key-disjoint"}, nil
 	}
@@ -229,9 +228,10 @@ func benchmarkRecordUnschedulable(b *testing.B, keyCount int) {
 
 	hintCalls = 0
 	cache.OnEvent(event, nil, "event")
-	wantFallback := keyCount > api.MaxHintKeysPerSubscription
-	gotFallback := hintCalls == 1
-	if gotFallback != wantFallback {
-		b.Fatalf("keys=%d: fallback = %v (hint calls %d), want fallback %v", keyCount, gotFallback, hintCalls, wantFallback)
+	wantDispatchWithoutHintKeys := keyCount > api.MaxHintKeysPerPluginEvent
+	gotDispatchWithoutHintKeys := hintCalls == 1
+	if gotDispatchWithoutHintKeys != wantDispatchWithoutHintKeys {
+		b.Fatalf("keys=%d: dispatch without HintKeys = %v (hint calls %d), want %v",
+			keyCount, gotDispatchWithoutHintKeys, hintCalls, wantDispatchWithoutHintKeys)
 	}
 }

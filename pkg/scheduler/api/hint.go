@@ -30,12 +30,13 @@ const (
 	HyperNodeEvent fwk.EventResource = "HyperNode"
 	NumaInfoEvent  fwk.EventResource = "NumaInfo"
 
-	// MaxHintKeysPerSubscription bounds the key fanout a single subscription may
-	// contribute before the cache falls back to coarse dispatch.
-	MaxHintKeysPerSubscription = 256
+	// MaxHintKeysPerPluginEvent bounds the HintKeys one Job or incoming event may
+	// contribute for a plugin event. An over-limit Job is indexed without
+	// HintKeys; an over-limit event selects every Job handled by that event.
+	MaxHintKeysPerPluginEvent = 256
 )
 
-// ClusterEvent identifies one category of cluster change a plugin subscribes to.
+// ClusterEvent identifies one category of cluster change handled by a plugin.
 // Resource is the object type whose change may affect scheduling and ActionType
 // names the kind of change.
 type ClusterEvent struct {
@@ -53,7 +54,7 @@ const (
 	HintWakeup
 )
 
-// JobHintFn is invoked when a subscribed cluster event fires for a Job that the
+// JobHintFn is invoked when a registered cluster event fires for a Job that the
 // plugin previously rejected. It reports whether this event may make the Job
 // schedulable.
 //
@@ -70,25 +71,25 @@ type JobHintFn func(
 	oldObj, newObj any,
 ) (HintResult, error)
 
-// HintKey is an opaque subscription key used to narrow candidate Jobs for a
-// declared event subscription.
+// HintKey identifies a necessary scheduling condition shared by a rejected Job
+// and an incoming plugin event. Matching keys narrow the candidate Jobs.
 type HintKey string
 
-// JobKeysFn returns the necessary-condition keys for one rejected Job under a
-// declared subscription. If the paired HintFn can return HintWakeup, this key
+// JobKeysFn returns the necessary-condition keys for one rejected Job and one
+// plugin event. If the paired HintFn can return HintWakeup, this key
 // set must share at least one key with EventKeysFn's result for that event, or
 // the cache cannot narrow dispatch safely. It must return an error when it
 // cannot construct a complete key set; callers treat an empty result, an error,
-// or an over-limit result as a fallback to coarse dispatch.
+// or an over-limit result by selecting this Job without HintKeys.
 type JobKeysFn func(job *JobInfo, rejection Rejection) ([]HintKey, error)
 
 // EventKeysFn returns the necessary-condition keys for one incoming event
 // object pair. If the paired HintFn can return HintWakeup, this key set must
-// share at least one key with JobKeysFn's result for that subscription, or the
+// share at least one key with JobKeysFn's result for that plugin event, or the
 // cache cannot narrow dispatch safely. An empty successful result means that
 // this event has no indexed candidates. It must return an error when it cannot
 // construct a complete key set; callers treat an error or an over-limit result
-// as a fallback to coarse dispatch.
+// by selecting every Job handled by that plugin event.
 type EventKeysFn func(oldObj, newObj any) ([]HintKey, error)
 
 // ClusterEventWithHint pairs one cluster event a plugin cares about with the
@@ -107,7 +108,7 @@ type ClusterEventWithHint struct {
 // HintProvider lets a plugin declare the events that can change its previous
 // unschedulable decisions.
 type HintProvider interface {
-	// EventsToRegister returns every (event, hint) pair this plugin subscribes to.
+	// EventsToRegister returns every event and hint pair handled by this plugin.
 	EventsToRegister(ctx context.Context) ([]ClusterEventWithHint, error)
 }
 
