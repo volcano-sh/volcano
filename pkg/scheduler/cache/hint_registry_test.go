@@ -68,6 +68,13 @@ func TestHintRegistryRegister(t *testing.T) {
 				{err: errors.New("registration failed")},
 			},
 		},
+		{
+			name: "duplicate plugin event clears registration",
+			providers: []registryHintProvider{{events: []api.ClusterEventWithHint{
+				nodeEvent,
+				nodeEvent,
+			}}},
+		},
 	}
 
 	for _, test := range tests {

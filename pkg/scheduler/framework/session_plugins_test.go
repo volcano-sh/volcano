@@ -319,11 +319,15 @@ func TestHyperNodeGradientForJobFn_NoPluginKeepsCurrentFallback(t *testing.T) {
 	assert.Equal(t, [][]*api.HyperNodeInfo{{root}}, result)
 }
 
-func TestAddRejectionDeduplicatesTasks(t *testing.T) {
-	ssn := &Session{
+func newRejectionTestSession() *Session {
+	return &Session{
 		unschedulableJobCacheEnabled: true,
-		jobRejections:                make(map[api.JobID]map[rejectionKey]sets.Set[api.TaskID]),
+		jobRejections:                make(map[api.JobID]map[rejectionKey]*rejectionAggregate),
 	}
+}
+
+func TestAddRejectionDeduplicatesTasks(t *testing.T) {
+	ssn := newRejectionTestSession()
 
 	ssn.AddRejection("job", "plugin-a", api.RejectionPredicate, "task-a", "task-a")
 	ssn.AddRejection("job", "plugin-a", api.RejectionPredicate, "task-b", "task-a")
@@ -337,6 +341,62 @@ func TestAddRejectionDeduplicatesTasks(t *testing.T) {
 	}, ssn.rejectionsForJob("job"))
 }
 
+func TestAddRejectionEnqueueLeavesNilTasksWhenUnspecified(t *testing.T) {
+	ssn := newRejectionTestSession()
+
+	ssn.AddRejection("job", "plugin", api.RejectionEnqueue)
+
+	got := ssn.rejectionsForJob("job")
+	if assert.Len(t, got, 1) {
+		assert.Nil(t, got[0].Tasks)
+	}
+}
+
+func TestAddRejectionWithKeys(t *testing.T) {
+	ssn := newRejectionTestSession()
+	ssn.AddRejectionWithKeys("job", "plugin", api.RejectionPredicate,
+		[]api.HintKey{"node-a/cpu", "node-a/cpu"}, "task-a")
+	ssn.AddRejectionWithKeys("job", "plugin", api.RejectionPredicate,
+		[]api.HintKey{"node-b/memory"}, "task-b")
+
+	got := ssn.rejectionsForJob("job")
+	if assert.Len(t, got, 1) {
+		assert.ElementsMatch(t, []api.TaskID{"task-a", "task-b"}, got[0].Tasks)
+		assert.ElementsMatch(t, []api.HintKey{"node-a/cpu", "node-b/memory"}, got[0].HintKeys)
+	}
+}
+
+func TestAddRejectionWithKeysFallsBackOnNilKeys(t *testing.T) {
+	ssn := newRejectionTestSession()
+	ssn.AddRejectionWithKeys("job", "plugin", api.RejectionPredicate,
+		[]api.HintKey{"node-a/cpu"}, "task-a")
+	ssn.AddRejectionWithKeys("job", "plugin", api.RejectionPredicate, nil, "task-b")
+
+	got := ssn.rejectionsForJob("job")
+	if assert.Len(t, got, 1) {
+		assert.ElementsMatch(t, []api.TaskID{"task-a", "task-b"}, got[0].Tasks)
+		assert.Nil(t, got[0].HintKeys)
+	}
+}
+
+func TestAddRejectionWithKeysOverLimitFallsBack(t *testing.T) {
+	ssn := newRejectionTestSession()
+	keys := make([]api.HintKey, 0, api.MaxHintKeysPerSubscription+1)
+	for i := range api.MaxHintKeysPerSubscription + 1 {
+		keys = append(keys, api.HintKey(fmt.Sprintf("node-%03d/cpu", i)))
+	}
+
+	for i, key := range keys {
+		ssn.AddRejectionWithKeys("job", "plugin", api.RejectionPredicate, []api.HintKey{key}, api.TaskID(fmt.Sprintf("task-%03d", i)))
+	}
+
+	got := ssn.rejectionsForJob("job")
+	if assert.Len(t, got, 1) {
+		assert.Len(t, got[0].Tasks, len(keys))
+		assert.Nil(t, got[0].HintKeys)
+	}
+}
+
 func TestPrePredicateFnRecordsUnschedulablePlugin(t *testing.T) {
 	enabled := true
 	newSession := func(fn api.PrePredicateFn) *Session {
@@ -344,7 +404,7 @@ func TestPrePredicateFnRecordsUnschedulablePlugin(t *testing.T) {
 			Tiers:                        []conf.Tier{{Plugins: []conf.PluginOption{{Name: "predicates", EnabledPredicate: &enabled}}}},
 			prePredicateFns:              make(map[string]api.PrePredicateFn),
 			unschedulableJobCacheEnabled: true,
-			jobRejections:                make(map[api.JobID]map[rejectionKey]sets.Set[api.TaskID]),
+			jobRejections:                make(map[api.JobID]map[rejectionKey]*rejectionAggregate),
 		}
 		ssn.AddPrePredicateFn("predicates", fn)
 		return ssn
@@ -373,6 +433,8 @@ type fakeUnschedulableCache struct {
 }
 
 func (f *fakeUnschedulableCache) AddHintProvider(string, api.HintProvider) {}
+
+func (f *fakeUnschedulableCache) BeginSession() {}
 
 func (f *fakeUnschedulableCache) RecordUnschedulable(job *api.JobInfo, rejections []api.Rejection) {
 	f.recorded[job.UID] = rejections
@@ -455,6 +517,15 @@ func TestReconcileUnschedulableCache(t *testing.T) {
 			wantState: "forgotten",
 		},
 		{
+			name: "records fresh rejection for ready elastic Job",
+			prepare: func(ssn *Session, job *api.JobInfo) {
+				job.MinAvailable = 1
+				job.TaskStatusIndex[api.Running] = api.TasksMap{"running": {UID: "running"}}
+				ssn.AddRejection(job.UID, "plugin", api.RejectionPredicate, "extra")
+			},
+			wantState: "recorded",
+		},
+		{
 			name: "forgets pipelined Job",
 			prepare: func(_ *Session, job *api.JobInfo) {
 				job.TaskStatusIndex[api.Pipelined] = api.TasksMap{"task": {UID: "task"}}
@@ -495,7 +566,7 @@ func TestReconcileUnschedulableCache(t *testing.T) {
 				Queues:                       map[api.QueueID]*api.QueueInfo{},
 				unschedulableCache:           fakeCache,
 				unschedulableJobCacheEnabled: true,
-				jobRejections:                make(map[api.JobID]map[rejectionKey]sets.Set[api.TaskID]),
+				jobRejections:                make(map[api.JobID]map[rejectionKey]*rejectionAggregate),
 			}
 			test.prepare(ssn, job)
 
