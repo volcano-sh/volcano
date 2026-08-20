@@ -45,6 +45,31 @@ type allocateContext struct {
 	tasksNoHardTopology map[api.JobID]*util.PriorityQueue // queue of *api.TaskInfo, job without any hard network topology policy use this queue
 }
 
+const (
+	// hyperNodeCandidateSampleSize bounds how many candidate hyperNodes are dry-run
+	// allocated per gradient tier. On a large, mostly-homogeneous fleet, exhaustively
+	// dry-running every candidate in a tier (which can be in the thousands) before
+	// picking a winner is the dominant cost of scheduling; this caps that cost.
+	hyperNodeCandidateSampleSize = 200
+
+	// hyperNodeEarlyExitPatience stops the scan of a gradient tier once this many
+	// consecutive candidates (after at least one success) have failed to improve on
+	// the best score found so far, since further scanning is unlikely to find better.
+	hyperNodeEarlyExitPatience = 20
+)
+
+// shouldStopHyperNodeScan decides whether to stop scanning further candidate hyperNodes
+// in the current gradient tier. It never stops before at least one solution has been
+// found - the sample-size cap and early-exit patience only kick in once a solution
+// already exists, so a capped scan can never find fewer solutions than an exhaustive
+// scan of the same tier would (it can only stop sooner once success is no longer in doubt).
+func shouldStopHyperNodeScan(tried int, hasSolution bool, sinceImprovement int) bool {
+	if !hasSolution {
+		return false
+	}
+	return tried >= hyperNodeCandidateSampleSize || sinceImprovement >= hyperNodeEarlyExitPatience
+}
+
 type JobWorksheet struct {
 	subJobs          *util.PriorityQueue // queue of *api.SubJobInfo
 	subJobWorksheets map[api.SubJobID]*SubJobWorksheet
@@ -383,9 +408,15 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 		jobWorksheetsBackup := make(map[string]*JobWorksheet) // backup the job worksheet after the job is allocated to a hyperNode
 		subJobsAllocationScores := make(map[string]float64)   // save the subJobs allocation score of the job allocated to a hyperNode
 
+		tried := 0
+		bestScoreSoFar := math.Inf(-1)
+		sinceImprovement := 0
+
 		for _, hyperNode := range hyperNodes {
 			var stmtList []*framework.Statement
 			var subJobsAllocationScore float64
+
+			tried++
 
 			// Clone jobWorksheet and rest job's fit err to make sure it's a clean cache when everytime filter a hyperNode and do not affect each other between hyperNodes.
 			job.ResetFitErr()
@@ -415,18 +446,37 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 			alloc.recorder.RecoverSubJobStatus(job)
 
 			mergedStmt := framework.SaveOperations(stmtList...)
-			if len(mergedStmt.Operations()) == 0 {
-				continue // skip recording this empty solution
-			}
-			if ssn.JobReady(job) || ssn.JobPipelined(job) {
+			improved := false
+			if len(mergedStmt.Operations()) > 0 && (ssn.JobReady(job) || ssn.JobPipelined(job)) {
 				stmtBackup[hyperNode.Name] = mergedStmt                          // backup successful solution
 				jobWorksheetsBackup[hyperNode.Name] = jobWorksheetCopy           // backup remains subJobs
 				subJobsAllocationScores[hyperNode.Name] = subJobsAllocationScore // save the subJobs allocation score of the job
+				if subJobsAllocationScore > bestScoreSoFar {
+					bestScoreSoFar = subJobsAllocationScore
+					improved = true
+				}
+			}
+			if improved {
+				sinceImprovement = 0
+			} else {
+				sinceImprovement++
 			}
 
 			// dry run in every hyperNode
 			for _, stmt := range stmtList {
 				stmt.Discard()
+			}
+
+			// Stop scanning this gradient once we've sampled enough candidates, or once
+			// we already have a solution and haven't improved on it for a while - on a
+			// large, mostly-homogeneous fleet, exhaustively trying every remaining
+			// candidate is unlikely to find a meaningfully better one. Never stops before
+			// finding at least one solution, so this can't find fewer solutions than an
+			// exhaustive scan would.
+			if shouldStopHyperNodeScan(tried, len(subJobsAllocationScores) > 0, sinceImprovement) {
+				klog.V(3).InfoS("Stop hyperNode scan", "job", job.UID, "gradient", gradient,
+					"tried", tried, "sinceImprovement", sinceImprovement)
+				break
 			}
 		}
 
@@ -486,7 +536,13 @@ func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *
 		stmtBackup := make(map[string]*framework.Statement)         // backup the statement after the subJob is allocated to a hyperNode
 		subJobWorksheetsBackup := make(map[string]*SubJobWorksheet) // backup the subJob worksheet after the subJob is allocated to a hyperNode
 
+		tried := 0
+		bestScoreSoFar := math.Inf(-1)
+		sinceImprovement := 0
+
 		for _, hyperNode := range hyperNodes {
+			tried++
+
 			// Clone subJobWorksheet and rest subJob's fit err to make sure it's a clean cache when everytime filter a hyperNode and do not affect each other between hyperNodes.
 			job.ResetSubJobFitErr(subJob.UID)
 			subJobWorksheetCopy := subJobWorksheet.Clone()
@@ -495,10 +551,33 @@ func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *
 				"subJob", subJob.UID, "taskNum", subJobWorksheetCopy.tasks.Len(), "hyperNode", hyperNode.Name)
 			stmt := alloc.allocateResourcesForTasks(subJob, subJobWorksheetCopy.tasks, hyperNode.Name)
 
+			improved := false
 			if stmt != nil && len(stmt.Operations()) > 0 {
 				stmtBackup[hyperNode.Name] = framework.SaveOperations(stmt)  // backup successful solution
 				subJobWorksheetsBackup[hyperNode.Name] = subJobWorksheetCopy // backup remains tasks
 				stmt.Discard()                                               // dry run in every hyperNode
+
+				if candidateScores, err := util.PrioritizeHyperNodes(
+					map[string][]*api.NodeInfo{hyperNode.Name: ssn.RealNodesList[hyperNode.Name]}, subJob, ssn.HyperNodeOrderMapFn); err == nil {
+					if _, score := util.SelectBestHyperNodeAndScore(candidateScores); score > bestScoreSoFar {
+						bestScoreSoFar = score
+						improved = true
+					}
+				}
+			}
+			if improved {
+				sinceImprovement = 0
+			} else {
+				sinceImprovement++
+			}
+
+			// Stop scanning this gradient once we've sampled enough candidates, or once
+			// we already have a solution and haven't improved on it for a while. Never
+			// stops before finding at least one solution.
+			if shouldStopHyperNodeScan(tried, len(stmtBackup) > 0, sinceImprovement) {
+				klog.V(3).InfoS("Stop hyperNode scan", "subJob", subJob.UID, "gradient", gradient,
+					"tried", tried, "sinceImprovement", sinceImprovement)
+				break
 			}
 		}
 
