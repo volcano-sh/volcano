@@ -168,8 +168,9 @@ type Session struct {
 	// jobRejections accumulates, during a session, the plugin rejections that made
 	// each Job unschedulable. It is drained at CloseSession into the
 	// unschedulable-job cache. Keyed by Job ID, then by the plugin and extension
-	// point that produced the rejection; the value is the set of failed task IDs.
-	jobRejections                map[api.JobID]map[rejectionKey]sets.Set[api.TaskID]
+	// point that produced the rejection; the value tracks failed task IDs and the
+	// optional hint-key aggregate for that rejection key.
+	jobRejections                map[api.JobID]map[rejectionKey]*rejectionAggregate
 	unschedulableJobCacheEnabled bool
 
 	NodesInShard sets.Set[string]
@@ -247,7 +248,8 @@ func openSession(schedulerCache cache.Cache, unschedulableCache cache.Unschedula
 		unschedulableJobCacheEnabled:  unschedulableJobCacheEnabled,
 	}
 	if unschedulableJobCacheEnabled {
-		ssn.jobRejections = make(map[api.JobID]map[rejectionKey]sets.Set[api.TaskID])
+		ssn.jobRejections = make(map[api.JobID]map[rejectionKey]*rejectionAggregate)
+		unschedulableCache.BeginSession()
 	}
 
 	snapshot := schedulerCache.Snapshot()
@@ -594,6 +596,7 @@ func closeSession(ssn *Session) {
 	ju.UpdateAll()
 
 	updateQueueStatus(ssn)
+	ssn.reconcileUnschedulableCache()
 
 	ssn.Jobs = nil
 	ssn.Nodes = nil

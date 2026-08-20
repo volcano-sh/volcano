@@ -26,7 +26,8 @@ import (
 )
 
 // HintRegistry stores the HintProviders declared by plugins, keyed by plugin
-// name, so the UnschedulableJobCache can look up a plugin's events at Record time.
+// name, so the UnschedulableJobCache can look up a plugin's events at Record
+// time.
 type HintRegistry struct {
 	mu             sync.RWMutex
 	eventsByPlugin map[string][]api.ClusterEventWithHint
@@ -57,7 +58,16 @@ func (r *HintRegistry) Register(name string, p api.HintProvider) {
 		delete(r.eventsByPlugin, name)
 		return
 	}
-	r.eventsByPlugin[name] = events
+	seen := make(map[api.ClusterEvent]struct{}, len(events))
+	for _, event := range events {
+		if _, exists := seen[event.Event]; exists {
+			klog.Errorf("Failed to register hints for plugin %s: duplicate event %v", name, event.Event)
+			delete(r.eventsByPlugin, name)
+			return
+		}
+		seen[event.Event] = struct{}{}
+	}
+	r.eventsByPlugin[name] = append([]api.ClusterEventWithHint(nil), events...)
 	klog.V(5).Infof("Registered %d hint event(s) for plugin %s", len(events), name)
 }
 
