@@ -1909,7 +1909,7 @@ func addDRAResource(dst map[string]*schedulingapi.DRAResource, deviceClass strin
 			dst[deviceClass].Capacity = make(map[string]resource.Quantity)
 		}
 	}
-	dst[deviceClass].Count += count
+	dst[deviceClass].Count = schedulingapi.SaturatingAdd(dst[deviceClass].Count, count)
 	for dim, reqQty := range capacity {
 		// Add the capacity contributed by count devices.
 		total := reqQty.DeepCopy()

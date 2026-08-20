@@ -2108,3 +2108,37 @@ func TestCheckDRAAllocatable_overflowRejected(t *testing.T) {
 		t.Fatalf("checkDRAAllocatable rejected a valid request (4 <= 8); want admitted")
 	}
 }
+
+// getDRADelta adjusts a queue's running totals with an unclamped subtract, and
+// SaturatingAdd does not clamp a negative back to zero, so an ancestor can be
+// driven below zero by a release it never balanced. checkDRAAllocatable must
+// reject such a total. This drives it through getDRADelta and updateDRAAllocated
+// rather than setting the negative by hand.
+func TestCheckDRAAllocatable_negativeDeltaRejected(t *testing.T) {
+	const dc = "gpu.example.com"
+
+	// Child releases its allocation: old snapshot held 5 devices, new holds none.
+	oldChild := &draQuotaAttr{allocated: map[string]*api.DRAResource{dc: {Count: 5}}}
+	newChild := &draQuotaAttr{allocated: map[string]*api.DRAResource{}}
+
+	delta := getDRADelta(newChild, oldChild)
+	if got := delta[dc].Count; got != -5 {
+		t.Fatalf("getDRADelta returned %d for a released allocation; want -5", got)
+	}
+
+	// Parent got only this release delta; the matching add was filtered out earlier
+	// while dc was absent from its capability.
+	parent := &draQuotaAttr{
+		capability: map[string]*api.DRAResource{dc: {Count: 8}},
+		allocated:  map[string]*api.DRAResource{},
+		inqueue:    map[string]*api.DRAResource{},
+	}
+	updateDRAAllocated(parent, delta)
+	if got := parent.allocated[dc].Count; got >= 0 {
+		t.Fatalf("parent allocated is %d after the release delta; want negative", got)
+	}
+
+	if checkDRAAllocatable(parent, map[string]*api.DRAResource{dc: {Count: 4}}, false, true) {
+		t.Fatalf("checkDRAAllocatable admitted a request against a negative allocated total; want rejected")
+	}
+}
