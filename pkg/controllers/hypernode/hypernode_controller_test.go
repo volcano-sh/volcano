@@ -18,6 +18,7 @@ package hypernode
 
 import (
 	"context"
+	"errors"
 	"os"
 	"sync"
 	"testing"
@@ -26,8 +27,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/util/workqueue"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
@@ -43,6 +46,8 @@ type mockDiscoveryManager struct {
 	startCalled bool
 	stopCalled  bool
 	resultCh    chan discovery.Result
+	syncedCh    chan string
+	syncedCount int
 
 	mu sync.Mutex
 }
@@ -64,10 +69,132 @@ func (m *mockDiscoveryManager) Stop() {
 }
 
 func (m *mockDiscoveryManager) ResultSynced(source string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.syncedCount++
+	if m.syncedCh != nil {
+		m.syncedCh <- source
+	}
 }
 
 func (m *mockDiscoveryManager) ResultChannel() <-chan discovery.Result {
 	return m.resultCh
+}
+
+func TestWatchDiscoveryResultsAcknowledgesFailedResult(t *testing.T) {
+	existing := &topologyv1alpha1.HyperNode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "rack-a",
+			Labels: map[string]string{
+				api.NetworkTopologySourceLabelKey: "label",
+			},
+		},
+	}
+	fakeVcClient := vcclientset.NewSimpleClientset(existing.DeepCopy())
+	vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
+	hyperNodeInformer := vcInformerFactory.Topology().V1alpha1().HyperNodes()
+	assert.NoError(t, hyperNodeInformer.Informer().GetIndexer().Add(existing.DeepCopy()))
+
+	fakeVcClient.Fake.PrependReactor("update", "hypernodes", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("persistent update failure")
+	})
+
+	mockManager := &mockDiscoveryManager{
+		resultCh: make(chan discovery.Result),
+		syncedCh: make(chan string, 1),
+	}
+	controller := &hyperNodeController{
+		vcClient:         fakeVcClient,
+		hyperNodeLister:  hyperNodeInformer.Lister(),
+		discoveryManager: mockManager,
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		controller.watchDiscoveryResults()
+	}()
+
+	mockManager.resultCh <- discovery.Result{
+		Source: "label",
+		HyperNodes: []*topologyv1alpha1.HyperNode{{
+			ObjectMeta: metav1.ObjectMeta{Name: "rack-a"},
+			Spec: topologyv1alpha1.HyperNodeSpec{
+				Tier: 1,
+			},
+		}},
+	}
+
+	select {
+	case source := <-mockManager.syncedCh:
+		assert.Equal(t, "label", source)
+	case <-time.After(time.Second):
+		t.Fatal("a failed discovery result was not acknowledged")
+	}
+	mockManager.mu.Lock()
+	assert.Equal(t, 1, mockManager.syncedCount)
+	mockManager.mu.Unlock()
+
+	close(mockManager.resultCh)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for discovery result watcher to stop")
+	}
+}
+
+func TestWatchDiscoveryResultsProcessesNextResultAfterFailure(t *testing.T) {
+	existing := &topologyv1alpha1.HyperNode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "rack-a",
+			Labels: map[string]string{
+				api.NetworkTopologySourceLabelKey: "label",
+			},
+		},
+	}
+	fakeVcClient := vcclientset.NewSimpleClientset(existing.DeepCopy())
+	vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
+	hyperNodeInformer := vcInformerFactory.Topology().V1alpha1().HyperNodes()
+	assert.NoError(t, hyperNodeInformer.Informer().GetIndexer().Add(existing.DeepCopy()))
+	fakeVcClient.Fake.PrependReactor("update", "hypernodes", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("persistent update failure")
+	})
+
+	mockManager := &mockDiscoveryManager{
+		resultCh: make(chan discovery.Result),
+		syncedCh: make(chan string, 2),
+	}
+	controller := &hyperNodeController{
+		vcClient:         fakeVcClient,
+		hyperNodeLister:  hyperNodeInformer.Lister(),
+		discoveryManager: mockManager,
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		controller.watchDiscoveryResults()
+	}()
+
+	mockManager.resultCh <- discovery.Result{
+		Source:     "label",
+		HyperNodes: []*topologyv1alpha1.HyperNode{{ObjectMeta: metav1.ObjectMeta{Name: "rack-a"}}},
+	}
+	mockManager.resultCh <- discovery.Result{Source: "ufm", HyperNodes: nil}
+
+	for _, expectedSource := range []string{"label", "ufm"} {
+		select {
+		case source := <-mockManager.syncedCh:
+			assert.Equal(t, expectedSource, source)
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for %q result acknowledgement", expectedSource)
+		}
+	}
+
+	close(mockManager.resultCh)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for discovery result watcher to stop")
+	}
 }
 
 func TestHyperNodeController_Run(t *testing.T) {

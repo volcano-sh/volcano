@@ -33,6 +33,7 @@ import (
 	"k8s.io/klog/v2"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
+	hypernodeutil "volcano.sh/volcano/pkg/util/hypernode"
 )
 
 // HyperNodesInfo stores and manages the hierarchical structure of HyperNodes.
@@ -372,7 +373,7 @@ func (hni *HyperNodesInfo) BuildHyperNodeCache(hn *HyperNodeInfo, processed sets
 			if _, ok := hni.realNodesSet[hn.Name]; !ok {
 				hni.realNodesSet[hn.Name] = sets.New[string]()
 			}
-			members := GetMembers(member.Selector, nodes)
+			members := hypernodeutil.GetMembers(member.Selector, nodes)
 			klog.V(5).InfoS("Get members of hyperNode", "name", hn.Name, "members", members)
 			hni.realNodesSet[hn.Name] = hni.realNodesSet[hn.Name].Union(members)
 
@@ -570,47 +571,11 @@ func (hni *HyperNodesInfo) addChild(parent, member string) error {
 }
 
 // GetMembers retrieves the members of a HyperNode based on the selector.
+//
+// Deprecated: use hypernodeutil.GetMembers. This wrapper is kept for source
+// compatibility with callers that imported the scheduler API helper.
 func GetMembers(selector topologyv1alpha1.MemberSelector, nodes []*corev1.Node) sets.Set[string] {
-	members := sets.New[string]()
-	if selector.ExactMatch != nil {
-		if selector.ExactMatch.Name == "" {
-			return members
-		}
-		members.Insert(selector.ExactMatch.Name)
-	}
-
-	if selector.RegexMatch != nil {
-		pattern := selector.RegexMatch.Pattern
-		reg, err := regexp.Compile(pattern)
-		if err != nil {
-			klog.ErrorS(err, "Failed to compile regular expression", "pattern", pattern)
-			return sets.Set[string]{}
-		}
-		for _, node := range nodes {
-			if reg.MatchString(node.Name) {
-				members.Insert(node.Name)
-			}
-		}
-	}
-
-	if selector.LabelMatch != nil {
-		if len(selector.LabelMatch.MatchLabels) == 0 && len(selector.LabelMatch.MatchExpressions) == 0 {
-			return members
-		}
-		labelSelector, err := metav1.LabelSelectorAsSelector(selector.LabelMatch)
-		if err != nil {
-			klog.ErrorS(err, "Failed to convert labelMatch to labelSelector", "LabelMatch", selector.LabelMatch)
-			return sets.Set[string]{}
-		}
-		for _, node := range nodes {
-			nodeLabels := labels.Set(node.Labels)
-			if labelSelector.Matches(nodeLabels) {
-				members.Insert(node.Name)
-			}
-		}
-	}
-
-	return members
+	return hypernodeutil.GetMembers(selector, nodes)
 }
 
 // exactMatchMember retrieves the member name if the selector is an exact match.

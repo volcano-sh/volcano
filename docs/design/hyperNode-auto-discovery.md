@@ -127,11 +127,38 @@ type DiscoveryConfig struct {
 *   **Key Code**:
 
 ```go
-// RegisterDiscoverer registers the discoverer constructor for the specified source
-func RegisterDiscoverer(source string, constructor DiscovererConstructor, kubeClient clientset.Interface) {
+// RegisterDiscoverer registers the discoverer constructor for the specified source.
+func RegisterDiscoverer(source string, constructor DiscovererConstructor) {
     discovererRegistry[source] = constructor
 }
 ```
+
+Existing client-based registrations remain supported. Discoverers that need
+process-provided shared informers can use `RegisterDiscovererWithOptions`.
+
+#### Result Delivery and Lifecycle
+
+For each discovery source, the manager forwards one result at a time and binds
+its acknowledgement to the Discoverer instance that produced it. After the
+HyperNode Controller reconciles the result, `ResultSynced` acknowledges that
+specific instance and allows it to continue.
+
+When a configuration update replaces a Discoverer, the manager stops accepting
+new results from the old instance, waits for any result already delivered to be
+acknowledged, and discards results that were still buffered by the old instance.
+The replacement starts only after the old result processor has exited. This
+prevents results produced from old and new configurations from being
+interleaved or acknowledged to the wrong Discoverer instance.
+
+During process shutdown, the manager stops the configuration queue, waits for
+its worker, stops all Discoverers, waits for their result processors, and then
+closes the shared result channel. These lifecycle rules apply equally to the
+controller-manager and standalone deployment modes.
+
+This lifecycle applies to ConfigMap-driven Discoverer replacement within a
+running controller process. It does not coordinate transitions between the
+controller-manager and standalone deployments; deployment-mode transitions are
+managed separately through the Helm `disabled` intermediate state.
 
 ### Discoverer
 
@@ -147,15 +174,24 @@ func RegisterDiscoverer(source string, constructor DiscovererConstructor, kubeCl
 // Discoverer is the interface for network topology discovery
 type Discoverer interface {
     // Start begins the discovery process, sending discovered nodes through the provided channel
-    Start(outputCh chan<- []*topologyv1alpha1.HyperNode) error
+    Start() (chan []*topologyv1alpha1.HyperNode, error)
 
     // Stop halts the discovery process
     Stop() error
 
     // Name returns the discoverer identifier, this is used for labeling discovered hyperNodes for distinction.
     Name() string
+
+    // ResultSynced is called after the controller reconciles a discovery result.
+    ResultSynced()
 }
 ```
+
+Built-in discoverers receive process-provided dependencies through
+`DiscovererOptions`. Discoverers that consume Kubernetes resources should reuse
+these clients and shared informers rather than creating independent List/Watch
+streams. A discoverer must also unregister any event handlers and stop its
+workers when `Stop` is called.
 
 *   **Implementation**:
     *   **UFM Discoverer**: Obtain network topology information from UFM (Unified Fabric Manager).
