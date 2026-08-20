@@ -245,6 +245,8 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 	job := sc.getOrCreateJob(pi)
 	if job != nil {
 		job.AddTaskInfo(pi)
+		// Keep the job's queue totals in sync (does nothing while the gate is off).
+		sc.updateQueueForJob(job)
 	}
 
 	return nil
@@ -388,6 +390,8 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 	if len(ti.Job) != 0 {
 		if job, found := sc.Jobs[ti.Job]; found {
 			job.DeleteTaskInfo(ti)
+			// Keep the job's queue totals in sync (does nothing while the gate is off).
+			sc.updateQueueForJob(job)
 		} else {
 			klog.Warningf("Failed to find Job <%v> for Task <%v/%v> in cache.", ti.Job, ti.Namespace, ti.Name)
 		}
@@ -864,15 +868,22 @@ func (sc *SchedulerCache) setPodGroup(ss *schedulingapi.PodGroup) error {
 		sc.Jobs[job] = schedulingapi.NewJobInfo(job)
 	}
 
-	sc.Jobs[job].SetPodGroup(ss)
+	ji := sc.Jobs[job]
+
+	ji.SetPodGroup(ss)
 
 	// TODO(k82cn): set default queue in admission.
 	if len(ss.Spec.Queue) == 0 {
-		sc.Jobs[job].Queue = schedulingapi.QueueID(sc.defaultQueue)
+		ji.Queue = schedulingapi.QueueID(sc.defaultQueue)
 	}
 
-	metrics.UpdateE2eSchedulingStartTimeByJob(sc.Jobs[job].Name, string(sc.Jobs[job].Queue), sc.Jobs[job].Namespace,
-		sc.Jobs[job].CreationTimestamp.Time)
+	// Reconcile the job's queue totals now that its PodGroup and queue are set.
+	// Handles the first assignment and a later reassignment. Does nothing while the
+	// gate is off.
+	sc.updateQueueForJob(ji)
+
+	metrics.UpdateE2eSchedulingStartTimeByJob(ji.Name, string(ji.Queue), ji.Namespace,
+		ji.CreationTimestamp.Time)
 	return nil
 }
 
@@ -890,6 +901,10 @@ func (sc *SchedulerCache) deletePodGroup(id schedulingapi.JobID) error {
 
 	// Unset SchedulingSpec
 	job.UnsetPodGroup()
+
+	// The job has no PodGroup now, so it drops out of its queue totals. Does nothing
+	// while the gate is off.
+	sc.updateQueueForJob(job)
 
 	sc.deleteJob(job)
 
@@ -1064,6 +1079,12 @@ func (sc *SchedulerCache) DeleteQueueV1beta1(obj interface{}) {
 func (sc *SchedulerCache) addQueue(queue *scheduling.Queue) {
 	qi := schedulingapi.NewQueueInfo(queue)
 	sc.Queues[qi.UID] = qi
+	// Rebuild this queue's totals. addQueue is reused by updateQueue (which
+	// replaces the QueueInfo) and a queue may be created after jobs already
+	// reference it. Does nothing while the gate is off.
+	if sc.queueAllocationEnabled() {
+		sc.reconcileQueueFromJobsLocked(qi.UID)
+	}
 }
 
 func (sc *SchedulerCache) updateQueue(queue *scheduling.Queue) {

@@ -53,6 +53,12 @@ const (
 	// capacity, preventing cluster autoscalers from triggering unnecessary
 	// scale-ups for pods that are simply waiting for queue admission.
 	SchedulingGatesQueueAdmission featuregate.Feature = "SchedulingGatesQueueAdmission"
+
+	// CacheQueueAccounting keeps per queue allocated/request totals in the
+	// scheduler cache, updated in the pod/podgroup event handlers, instead of
+	// having queue plugins rebuild them every OnSessionOpen. While disabled (the
+	// default) it does nothing and plugins keep computing their own totals.
+	CacheQueueAccounting featuregate.Feature = "CacheQueueAccounting"
 )
 
 func init() {
@@ -70,4 +76,6 @@ var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec
 	ResourceTopology:              {Default: true, PreRelease: featuregate.Alpha},
 	CronVolcanoJobSupport:         {Default: true, PreRelease: featuregate.Alpha},
 	SchedulingGatesQueueAdmission: {Default: false, PreRelease: featuregate.Alpha},
+	// CacheQueueAccounting is off by default until it is validated.
+	CacheQueueAccounting: {Default: false, PreRelease: featuregate.Alpha},
 }
