@@ -27,8 +27,8 @@ echo "running 'go mod tidy' for repo root"
 go mod tidy
 
 function volcano::git::check_status() {
-	# check if there's any uncommitted changes on go.mod or go.sum /
-	echo $( git status --short 2>/dev/null | grep -E "go.mod|go.sum/" |wc -l)
+	# check if there's any uncommitted changes on go.mod or go.sum
+	echo $( git status --short 2>/dev/null | grep -E 'go\.(mod|sum)' |wc -l)
 }
 
 ret=$(volcano::git::check_status)
