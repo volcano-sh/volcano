@@ -96,6 +96,7 @@ spec:
                 enum:
                 - fifo
                 - traverse
+                - priorityfifo
                 type: string
               deserved:
                 additionalProperties:

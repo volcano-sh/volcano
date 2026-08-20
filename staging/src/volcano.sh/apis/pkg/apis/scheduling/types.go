@@ -111,6 +111,12 @@ const (
 
 	// NotEnoughPodsReason is probed if there're not enough tasks compared to `spec.minMember`
 	NotEnoughPodsReason string = "NotEnoughTasks"
+
+	// FIFOBlockedReason is probed if a job is blocked by the FIFO dequeue strategy
+	FIFOBlockedReason string = "FIFOBlocked"
+
+	// PriorityFIFOBlockedReason is probed if a job is blocked by the PriorityFIFO dequeue strategy
+	PriorityFIFOBlockedReason string = "PriorityFIFOBlocked"
 )
 
 // QueueEvent represent the phase of queue.
@@ -462,6 +468,9 @@ const (
 	// DequeueStrategyTraverse defines a strategy that traverses the queue. If the head of the queue cannot be scheduled,
 	// it will be skipped and the scheduler will attempt to dequeue subsequent jobs.
 	DequeueStrategyTraverse DequeueStrategy = "traverse"
+	// DequeueStrategyPriorityFIFO defines a priority-aware FIFO strategy. If a job fails to allocate,
+	// jobs with the same priority can still be scheduled, but lower-priority jobs are blocked.
+	DequeueStrategyPriorityFIFO DequeueStrategy = "priorityfifo"
 
 	// DefaultDequeueStrategy is the default dequeue strategy.
 	DefaultDequeueStrategy DequeueStrategy = DequeueStrategyTraverse
