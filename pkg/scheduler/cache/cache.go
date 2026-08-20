@@ -143,6 +143,7 @@ type SchedulerCache struct {
 	Recorder record.EventRecorder
 
 	Jobs                 map[schedulingapi.JobID]*schedulingapi.JobInfo
+	unschedulableJobs    unschedulableJobCache
 	Nodes                map[string]*schedulingapi.NodeInfo
 	Queues               map[schedulingapi.QueueID]*schedulingapi.QueueInfo
 	NodeShards           map[string]*schedulingapi.NodeShardInfo
@@ -548,6 +549,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 
 	sc := &SchedulerCache{
 		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		unschedulableJobs:   newUnschedulableJobCache(),
 		Nodes:               make(map[string]*schedulingapi.NodeInfo),
 		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
@@ -1164,6 +1166,7 @@ func (sc *SchedulerCache) processCleanupJob() {
 		klog.V(5).Infof("Just add pguid:%v, try to delete pguid:%v", newPgVersion, oldPgVersion)
 		if oldPgVersion == newPgVersion {
 			delete(sc.Jobs, currJob.UID)
+			sc.unschedulableJobs.Delete(currJob.UID)
 			metrics.DeleteJobMetrics(currJob.Name, string(currJob.Queue), currJob.Namespace)
 			klog.V(3).Infof("Job <%v:%v/%v> was deleted.", currJob.UID, currJob.Namespace, currJob.Name)
 		}
@@ -1475,6 +1478,32 @@ func (sc *SchedulerCache) BindTask() {
 	// The slice here needs to point to a new underlying array, otherwise bindCache may not be able to trigger garbage collection immediately
 	// if it is not expanded, causing memory leaks.
 	sc.bindCache = make([]*BindContext, 0)
+}
+
+// AddUnschedulableJob prevents enqueue from admitting a job for a bounded
+// duration after it failed to make scheduling progress. It also updates an
+// Inqueue PodGroup in the cache to Pending so a new session cannot account its
+// stale phase while the status update is still propagating through informers.
+func (sc *SchedulerCache) AddUnschedulableJob(jobID schedulingapi.JobID, reason string) {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	job, found := sc.Jobs[jobID]
+	if !found {
+		klog.V(4).InfoS("Skip adding unknown job to unschedulable job cache",
+			"job", jobID, "reason", reason)
+		return
+	}
+	sc.unschedulableJobs.Add(jobID, reason)
+	if job.PodGroup != nil && job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
+		job.PodGroup.Status.Phase = scheduling.PodGroupPending
+	}
+}
+
+// IsJobUnschedulable reports whether a job is still within its maximum
+// unschedulable cache duration.
+func (sc *SchedulerCache) IsJobUnschedulable(jobID schedulingapi.JobID) bool {
+	return sc.unschedulableJobs.Contains(jobID)
 }
 
 // Snapshot returns the complete snapshot of the cluster from cache

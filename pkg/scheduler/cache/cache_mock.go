@@ -121,6 +121,7 @@ func getNodeWorkers() uint32 {
 func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 	msc := &SchedulerCache{
 		Jobs:                   make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		unschedulableJobs:      newUnschedulableJobCache(),
 		Nodes:                  make(map[string]*schedulingapi.NodeInfo),
 		Queues:                 make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		PriorityClasses:        make(map[string]*schedulingv1.PriorityClass),
