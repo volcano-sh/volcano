@@ -1021,6 +1021,7 @@ func TestSchedulerCache_DeleteQueueV1beta1(t *testing.T) {
 
 func TestSchedulerCache_NamespaceQueueIdentityIsNamespaced(t *testing.T) {
 	sc := &SchedulerCache{Queues: make(map[api.QueueID]*api.QueueInfo)}
+	clusterQueue := &schedulingv1.Queue{ObjectMeta: metav1.ObjectMeta{Name: "shared"}}
 	first := &schedulingv1.NamespaceQueue{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "shared"},
 		Spec:       schedulingv1.NamespaceQueueSpec{Parent: "cluster/default"},
@@ -1030,11 +1031,15 @@ func TestSchedulerCache_NamespaceQueueIdentityIsNamespaced(t *testing.T) {
 		Spec:       schedulingv1.NamespaceQueueSpec{Parent: "cluster/default"},
 	}
 
+	sc.AddQueueV1beta1(clusterQueue)
 	sc.AddNamespaceQueueV1beta1(first)
 	sc.AddNamespaceQueueV1beta1(second)
 
-	if len(sc.Queues) != 2 {
-		t.Fatalf("queue count = %d, want 2", len(sc.Queues))
+	if len(sc.Queues) != 3 {
+		t.Fatalf("queue count = %d, want 3", len(sc.Queues))
+	}
+	if sc.Queues[api.QueueID("shared")] == nil {
+		t.Fatal("cluster Queue identity was not preserved")
 	}
 	if sc.Queues[api.NamespaceQueueID("team-a", "shared")] == nil ||
 		sc.Queues[api.NamespaceQueueID("team-b", "shared")] == nil {
@@ -1047,6 +1052,9 @@ func TestSchedulerCache_NamespaceQueueIdentityIsNamespaced(t *testing.T) {
 	}
 	if sc.Queues[api.NamespaceQueueID("team-b", "shared")] == nil {
 		t.Fatal("deleting one NamespaceQueue removed another namespace's queue")
+	}
+	if sc.Queues[api.QueueID("shared")] == nil {
+		t.Fatal("deleting a NamespaceQueue removed the cluster Queue")
 	}
 }
 
