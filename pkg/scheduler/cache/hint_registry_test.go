@@ -43,6 +43,15 @@ func TestHintRegistryRegister(t *testing.T) {
 	podEvent := api.ClusterEventWithHint{
 		Event: api.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete},
 	}
+	indexedNodeEvent := nodeEvent
+	indexedNodeEvent.JobKeysFn = func(*api.JobInfo, api.Rejection) ([]api.HintKey, error) {
+		return []api.HintKey{"node"}, nil
+	}
+	indexedNodeEvent.EventKeysFn = func(any, any) ([]api.HintKey, error) {
+		return []api.HintKey{"node"}, nil
+	}
+	unpairedNodeEvent := indexedNodeEvent
+	unpairedNodeEvent.EventKeysFn = nil
 	tests := []struct {
 		name      string
 		providers []registryHintProvider
@@ -74,6 +83,17 @@ func TestHintRegistryRegister(t *testing.T) {
 				nodeEvent,
 				nodeEvent,
 			}}},
+		},
+		{
+			name: "changing index mode clears registration",
+			providers: []registryHintProvider{
+				{events: []api.ClusterEventWithHint{nodeEvent}},
+				{events: []api.ClusterEventWithHint{indexedNodeEvent}},
+			},
+		},
+		{
+			name:      "unpaired HintKey functions clear registration",
+			providers: []registryHintProvider{{events: []api.ClusterEventWithHint{unpairedNodeEvent}}},
 		},
 	}
 

@@ -381,8 +381,8 @@ func TestAddRejectionWithKeysFallsBackOnNilKeys(t *testing.T) {
 
 func TestAddRejectionWithKeysOverLimitFallsBack(t *testing.T) {
 	ssn := newRejectionTestSession()
-	keys := make([]api.HintKey, 0, api.MaxHintKeysPerSubscription+1)
-	for i := range api.MaxHintKeysPerSubscription + 1 {
+	keys := make([]api.HintKey, 0, api.MaxHintKeysPerPluginEvent+1)
+	for i := range api.MaxHintKeysPerPluginEvent + 1 {
 		keys = append(keys, api.HintKey(fmt.Sprintf("node-%03d/cpu", i)))
 	}
 

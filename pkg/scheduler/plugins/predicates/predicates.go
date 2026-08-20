@@ -53,6 +53,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodescore"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
 )
 
 const (
@@ -357,7 +358,7 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		ssn.AddHintProvider(name, &hintprovider.KubeHintProvider{Ext: ext})
 	}
 	// Volcano has its own built-in node resource predicate, which is not a wrapped k8s plugin. Also register it as a hint provider.
-	ssn.AddHintProvider(hintprovider.ResourceFitHintProviderName, &hintprovider.ResourceFitHintProvider{})
+	ssn.AddHintProvider(resourcefit.ProviderName, &hintprovider.ResourceFitHintProvider{})
 
 	// Add SimulateAddTask function
 	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
@@ -702,9 +703,10 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 		klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed, allocatable <%d>, existed <%d>",
 			task.Namespace, task.Name, node.Name, node.Allocatable.MaxTaskNum, len(nodeInfo.GetPods()))
 		podsNumStatus := &api.Status{
-			Code:   api.Unschedulable,
-			Reason: api.NodePodNumberExceeded,
-			Plugin: hintprovider.ResourceFitHintProviderName,
+			Code:                  api.Unschedulable,
+			Reason:                api.NodePodNumberExceeded,
+			Plugin:                resourcefit.ProviderName,
+			InsufficientResources: []string{string(v1.ResourcePods)},
 		}
 		predicateStatus = append(predicateStatus, podsNumStatus)
 	}
