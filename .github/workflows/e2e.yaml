@@ -37,6 +37,10 @@ jobs:
     needs: build-images
     uses: ./.github/workflows/e2e_hypernode.yaml
 
+  e2e-namespacequeue:
+    needs: build-images
+    uses: ./.github/workflows/e2e_namespacequeue.yaml
+
   e2e-parallel-jobs:
     needs: build-images
     uses: ./.github/workflows/e2e_parallel_jobs.yaml
