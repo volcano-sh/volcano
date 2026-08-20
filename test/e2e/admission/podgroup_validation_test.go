@@ -18,12 +18,12 @@ package admission
 
 import (
 	"context"
-	"time"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/test/e2e/util"
@@ -39,7 +39,7 @@ var _ = ginkgo.Describe("PodGroup Validating E2E Test", func() {
 		// First create a queue with Open state
 		queue := &schedulingv1beta1.Queue{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-queue-open",
+				Name: "test-queue-open-podgroup",
 			},
 			Spec: schedulingv1beta1.QueueSpec{
 				Weight: 1,
@@ -49,16 +49,20 @@ var _ = ginkgo.Describe("PodGroup Validating E2E Test", func() {
 		createdQueue, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		// Small delay to ensure mutation is complete
-		time.Sleep(100 * time.Millisecond)
-
-		// Get the latest version of the queue after potential mutations
-		updatedQueue, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), createdQueue.Name, metav1.GetOptions{})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-		// Update queue status to Open (since status is typically set by controller)
-		updatedQueue.Status.State = schedulingv1beta1.QueueStateOpen
-		_, err = testCtx.Vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), updatedQueue, metav1.UpdateOptions{})
+		// Update the latest Queue version because the queue controller may update status concurrently.
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			updatedQueue, getErr := testCtx.Vcclient.SchedulingV1beta1().Queues().Get(
+				context.TODO(), createdQueue.Name, metav1.GetOptions{},
+			)
+			if getErr != nil {
+				return getErr
+			}
+			updatedQueue.Status.State = schedulingv1beta1.QueueStateOpen
+			_, updateErr := testCtx.Vcclient.SchedulingV1beta1().Queues().UpdateStatus(
+				context.TODO(), updatedQueue, metav1.UpdateOptions{},
+			)
+			return updateErr
+		})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		// Now create PodGroup that references this queue
@@ -68,7 +72,7 @@ var _ = ginkgo.Describe("PodGroup Validating E2E Test", func() {
 				Name:      "test-podgroup-valid",
 			},
 			Spec: schedulingv1beta1.PodGroupSpec{
-				Queue:             "test-queue-open",
+				Queue:             "test-queue-open-podgroup",
 				MinMember:         1,
 				PriorityClassName: "",
 			},

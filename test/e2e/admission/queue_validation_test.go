@@ -40,7 +40,7 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 
 		queue := &schedulingv1beta1.Queue{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-queue-open",
+				Name: "test-queue-open-validation",
 			},
 			Spec: schedulingv1beta1.QueueSpec{
 				Weight: 1,
