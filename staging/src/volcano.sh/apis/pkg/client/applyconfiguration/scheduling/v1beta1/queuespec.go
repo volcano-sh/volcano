@@ -31,6 +31,8 @@ type QueueSpecApplyConfiguration struct {
 	Capability *v1.ResourceList `json:"capability,omitempty"`
 	// Reclaimable indicate whether the queue can be reclaimed by other queue
 	Reclaimable *bool `json:"reclaimable,omitempty"`
+	// Preemptable indicate whether the queue can be preempted by other queue
+	Preemptable *bool `json:"preemptable,omitempty"`
 	// extendCluster indicate the jobs in this Queue will be dispatched to these clusters.
 	ExtendClusters []ClusterApplyConfiguration `json:"extendClusters,omitempty"`
 	// Guarantee indicate configuration about resource reservation
@@ -76,6 +78,14 @@ func (b *QueueSpecApplyConfiguration) WithCapability(value v1.ResourceList) *Que
 // If called multiple times, the Reclaimable field is set to the value of the last call.
 func (b *QueueSpecApplyConfiguration) WithReclaimable(value bool) *QueueSpecApplyConfiguration {
 	b.Reclaimable = &value
+	return b
+}
+
+// WithPreemptable sets the Preemptable field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Preemptable field is set to the value of the last call.
+func (b *QueueSpecApplyConfiguration) WithPreemptable(value bool) *QueueSpecApplyConfiguration {
+	b.Preemptable = &value
 	return b
 }
 
