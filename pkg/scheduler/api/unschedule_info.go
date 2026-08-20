@@ -119,6 +119,34 @@ func (f *FitErrors) UnschedulablePlugins() sets.Set[string] {
 	return plugins
 }
 
+// NodePluginInsufficientResources returns, for every node carrying an
+// Unschedulable or UnschedulableAndUnresolvable status for the given plugin,
+// the union of that status's structured InsufficientResources dimensions.
+//
+// A rejected node whose matching status(es) carry no structured dimensions is
+// still present in the returned map with a nil slice, so callers can
+// distinguish "rejected by this plugin with no structured detail recorded"
+// (which must fail open rather than silently drop a real blocker) from "not
+// rejected by this plugin" (absent from the map).
+func (f *FitErrors) NodePluginInsufficientResources(plugin string) map[string][]string {
+	result := make(map[string][]string)
+	for _, node := range f.nodes {
+		for _, status := range node.Status {
+			if status == nil || status.Plugin != plugin {
+				continue
+			}
+			if status.Code != Unschedulable && status.Code != UnschedulableAndUnresolvable {
+				continue
+			}
+			if _, ok := result[node.NodeName]; !ok {
+				result[node.NodeName] = nil
+			}
+			result[node.NodeName] = append(result[node.NodeName], status.InsufficientResources...)
+		}
+	}
+	return result
+}
+
 // Error returns the final error message
 func (f *FitErrors) Error() string {
 	if f.err == "" {

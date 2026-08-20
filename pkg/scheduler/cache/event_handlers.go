@@ -449,6 +449,23 @@ func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 	return nil
 }
 
+func unschedulableJobIDForPod(pod *v1.Pod) (schedulingapi.JobID, bool) {
+	if pod == nil {
+		return "", false
+	}
+	groupName := pod.Annotations[schedulingv1beta1.KubeGroupNameAnnotationKey]
+	if groupName == "" {
+		return "", false
+	}
+	return schedulingapi.JobID(fmt.Sprintf("%s/%s", pod.Namespace, groupName)), true
+}
+
+func (sc *SchedulerCache) invalidateUnschedulableJobForPod(pod *v1.Pod) {
+	if jobID, ok := unschedulableJobIDForPod(pod); ok {
+		sc.unschedulableCache.InvalidateUnschedulable(jobID)
+	}
+}
+
 // AddPod add pod to scheduler cache
 func (sc *SchedulerCache) AddPod(obj interface{}) {
 	pod, ok := obj.(*v1.Pod)
@@ -468,6 +485,7 @@ func (sc *SchedulerCache) AddPod(obj interface{}) {
 	if pod.Spec.NodeName == "" {
 		metrics.UpdateTaskScheduleDuration(metrics.TaskStageWatched, metrics.Duration(pod.CreationTimestamp.Time))
 	}
+	sc.invalidateUnschedulableJobForPod(pod)
 	sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Add}, nil, pod)
 	klog.V(3).Infof("Added pod <%s/%v> into cache.", pod.Namespace, pod.Name)
 }
@@ -495,10 +513,35 @@ func (sc *SchedulerCache) UpdatePod(oldObj, newObj interface{}) {
 
 	// A terminal Pod releases all of its node resources, so it is dispatched as Delete
 	// to wake any subscriber that reacts to resource release.
-	if !schedulingapi.CompletedStatus(schedulingapi.GetTaskStatus(oldPod)) && schedulingapi.CompletedStatus(schedulingapi.GetTaskStatus(newPod)) {
+	terminalRelease := !schedulingapi.CompletedStatus(schedulingapi.GetTaskStatus(oldPod)) &&
+		schedulingapi.CompletedStatus(schedulingapi.GetTaskStatus(newPod))
+	events := kubeschedulerframework.PodSchedulingPropertiesChange(newPod, oldPod)
+	// PodSchedulingPropertiesChange returns the generic Update mask when it
+	// cannot classify an update more precisely, including routine Pod status
+	// churn. Only a concrete action such as UpdatePodLabel or
+	// UpdatePodScaleDown proves that the owning Job's scheduling inputs changed;
+	// invalidating on generic Update would turn ordinary status updates into
+	// cache misses.
+	hasSpecificSchedulingEvent := slices.ContainsFunc(events, func(event fwk.ClusterEvent) bool {
+		return event.ActionType != fwk.Update
+	})
+	oldJobID, oldHasJob := unschedulableJobIDForPod(oldPod)
+	newJobID, newHasJob := unschedulableJobIDForPod(newPod)
+	jobAssignmentChanged := oldHasJob != newHasJob || oldJobID != newJobID
+	if jobAssignmentChanged {
+		if oldHasJob {
+			sc.unschedulableCache.InvalidateUnschedulable(oldJobID)
+		}
+		if newHasJob {
+			sc.unschedulableCache.InvalidateUnschedulable(newJobID)
+		}
+	} else if terminalRelease || hasSpecificSchedulingEvent {
+		sc.invalidateUnschedulableJobForPod(newPod)
+	}
+	if terminalRelease {
 		sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}, oldPod, nil)
 	} else {
-		for _, event := range kubeschedulerframework.PodSchedulingPropertiesChange(newPod, oldPod) {
+		for _, event := range events {
 			sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.Pod, ActionType: event.ActionType}, oldPod, newPod)
 		}
 	}
@@ -532,6 +575,7 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 		return
 	}
 
+	sc.invalidateUnschedulableJobForPod(pod)
 	sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}, pod, nil)
 	klog.V(3).Infof("Deleted pod <%s/%v> from cache.", pod.Namespace, pod.Name)
 }
@@ -919,6 +963,34 @@ func (sc *SchedulerCache) updatePodGroup(newPodGroup *schedulingapi.PodGroup) er
 	return sc.setPodGroup(newPodGroup)
 }
 
+// podGroupSchedulingInputsChanged returns true when a PodGroup update can
+// change scheduling. JobAllocatedHyperNode is ignored because it is scheduler
+// output rather than scheduling input.
+func podGroupSchedulingInputsChanged(oldPodGroup, newPodGroup *schedulingv1beta1.PodGroup) bool {
+	if !equality.Semantic.DeepEqual(oldPodGroup.Spec, newPodGroup.Spec) ||
+		!equality.Semantic.DeepEqual(oldPodGroup.Labels, newPodGroup.Labels) {
+		return true
+	}
+
+	for key, oldValue := range oldPodGroup.Annotations {
+		if key == schedulingapi.JobAllocatedHyperNode {
+			continue
+		}
+		if newValue, found := newPodGroup.Annotations[key]; !found || newValue != oldValue {
+			return true
+		}
+	}
+	for key := range newPodGroup.Annotations {
+		if key == schedulingapi.JobAllocatedHyperNode {
+			continue
+		}
+		if _, found := oldPodGroup.Annotations[key]; !found {
+			return true
+		}
+	}
+	return false
+}
+
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) deletePodGroup(id schedulingapi.JobID) error {
 	job, found := sc.Jobs[id]
@@ -979,10 +1051,7 @@ func (sc *SchedulerCache) UpdatePodGroupV1beta1(oldObj, newObj interface{}) {
 	if oldSS.ResourceVersion == newSS.ResourceVersion {
 		return
 	}
-	if !equality.Semantic.DeepEqual(oldSS.Spec, newSS.Spec) {
-		jobID := schedulingapi.JobID(fmt.Sprintf("%s/%s", newSS.Namespace, newSS.Name))
-		sc.unschedulableCache.ForgetUnschedulable(jobID)
-	}
+	schedulingInputsChanged := podGroupSchedulingInputsChanged(oldSS, newSS)
 
 	podgroup := scheduling.PodGroup{}
 	if err := scheme.Scheme.Convert(newSS, &podgroup, nil); err != nil {
@@ -1000,6 +1069,10 @@ func (sc *SchedulerCache) UpdatePodGroupV1beta1(oldObj, newObj interface{}) {
 	if err != nil {
 		klog.Errorf("Failed to update SchedulingSpec %s into cache: %v", pg.Name, err)
 		return
+	}
+	if schedulingInputsChanged {
+		jobID := schedulingapi.JobID(fmt.Sprintf("%s/%s", newSS.Namespace, newSS.Name))
+		sc.unschedulableCache.InvalidateUnschedulable(jobID)
 	}
 	oldPg := &schedulingapi.PodGroup{Version: schedulingapi.PodGroupVersionV1Beta1}
 	oldConverted := scheduling.PodGroup{}
@@ -1028,8 +1101,6 @@ func (sc *SchedulerCache) DeletePodGroupV1beta1(obj interface{}) {
 	}
 
 	jobID := schedulingapi.JobID(fmt.Sprintf("%s/%s", ss.Namespace, ss.Name))
-	sc.unschedulableCache.ForgetUnschedulable(jobID)
-
 	sc.Mutex.Lock()
 	err := sc.deletePodGroup(jobID)
 	sc.Mutex.Unlock()
@@ -1037,6 +1108,7 @@ func (sc *SchedulerCache) DeletePodGroupV1beta1(obj interface{}) {
 		klog.Errorf("Failed to delete podgroup %s from cache: %v", ss.Name, err)
 		return
 	}
+	sc.unschedulableCache.InvalidateUnschedulable(jobID)
 
 	podgroup := scheduling.PodGroup{}
 	if err := scheme.Scheme.Convert(ss, &podgroup, nil); err != nil {
