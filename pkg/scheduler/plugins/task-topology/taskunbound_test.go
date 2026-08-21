@@ -34,10 +34,10 @@ import (
 )
 
 type bucketState struct {
-	tasks       map[types.UID]*api.TaskInfo
+	tasks       map[types.UID]struct{}
 	taskNameSet map[string]int
 	reqScore    float64
-	request     *api.Resource
+	request     api.Resource
 	boundTask   int
 	node        map[string]int
 }
@@ -53,11 +53,15 @@ func snapshotManager(jm *JobManager) managerState {
 		nodeTaskSet: make(map[string]map[string]int, len(jm.nodeTaskSet)),
 	}
 	for index, bucket := range jm.buckets {
+		tasks := make(map[types.UID]struct{}, len(bucket.tasks))
+		for uid := range bucket.tasks {
+			tasks[uid] = struct{}{}
+		}
 		state.buckets[index] = bucketState{
-			tasks:       maps.Clone(bucket.tasks),
+			tasks:       tasks,
 			taskNameSet: maps.Clone(bucket.taskNameSet),
 			reqScore:    bucket.reqScore,
-			request:     bucket.request.Clone(),
+			request:     *bucket.request.Clone(),
 			boundTask:   bucket.boundTask,
 			node:        maps.Clone(bucket.node),
 		}
