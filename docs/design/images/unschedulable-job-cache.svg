@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 800" width="1040" height="800">
+  <style>
+    text { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #111827; }
+    .title { font-size: 22px; font-weight: 700; }
+    .strip { font-size: 15px; font-weight: 700; fill: #4c1d95; }
+    .box-title { font-size: 17px; font-weight: 700; fill: #4c1d95; }
+    .pill { font-size: 12px; font-weight: 600; fill: #1f2937; }
+    .pill-green { font-size: 12px; font-weight: 600; fill: #065f46; }
+    .diamond-text { font-size: 12px; font-weight: 700; fill: #1e3a8a; }
+    .branch { font-size: 11px; font-weight: 700; fill: #475569; }
+    .cache-title { font-size: 19px; font-weight: 700; fill: #065f46; }
+    .cache-body { font-size: 13px; fill: #065f46; }
+    .cache-item { font-size: 13px; fill: #065f46; }
+    .aux-title { font-size: 16px; font-weight: 700; fill: #334155; }
+    .aux-body { font-size: 13px; fill: #1f2937; }
+    .label { font-size: 13px; font-weight: 600; fill: #334155; }
+    .legend { font-size: 13px; fill: #475569; }
+  </style>
+  <defs>
+    <marker id="v-arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0,10 4,0 8" fill="#334155"/>
+    </marker>
+    <marker id="v-arrow-sm" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0,8 3,0 6" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <rect width="1040" height="800" fill="#ffffff"/>
+  <text x="520" y="40" text-anchor="middle" class="title">Volcano: session loop with UnschedulableJobCache</text>
+
+  <!-- Session strip -->
+  <rect x="30" y="70" width="980" height="270" rx="12" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="50" y="96" class="strip">Scheduler session (runs every schedule period)</text>
+
+  <!-- ========== Sub-box 1: OpenSession ========== -->
+  <rect x="50" y="110" width="300" height="220" rx="8" fill="#ffffff" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="200" y="138" text-anchor="middle" class="box-title">OpenSession</text>
+
+  <rect x="160" y="160" width="80" height="24" rx="6" fill="#eef2ff" stroke="#4338ca" stroke-width="1.2"/>
+  <text x="200" y="177" text-anchor="middle" class="pill">pending Job</text>
+
+  <path d="M 200 184 L 200 197" stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#v-arrow-sm)"/>
+
+  <polygon points="200,200 245,225 200,250 155,225" fill="#ffffff" stroke="#334155" stroke-width="1.5"/>
+  <text x="200" y="229" text-anchor="middle" class="diamond-text">in cache?</text>
+
+  <path d="M 165 232 L 132 273" stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#v-arrow-sm)"/>
+  <text x="128" y="252" class="branch">hit</text>
+
+  <path d="M 235 232 L 268 273" stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#v-arrow-sm)"/>
+  <text x="252" y="252" class="branch">miss</text>
+
+  <rect x="75" y="278" width="115" height="24" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="132" y="295" text-anchor="middle" class="pill-green">set SkipPredicate</text>
+
+  <rect x="210" y="278" width="115" height="24" rx="6" fill="#f8fafc" stroke="#334155" stroke-width="1.2"/>
+  <text x="267" y="295" text-anchor="middle" class="pill">evaluate normally</text>
+
+  <!-- ========== Sub-box 2: Scheduler actions ========== -->
+  <rect x="370" y="110" width="300" height="220" rx="8" fill="#ffffff" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="520" y="138" text-anchor="middle" class="box-title">Scheduler actions</text>
+
+  <!-- Row 1: enqueue / allocate / backfill -> skip if tagged -->
+  <rect x="386" y="158" width="76" height="20" rx="5" fill="#eef2ff" stroke="#4338ca" stroke-width="1"/>
+  <text x="424" y="173" text-anchor="middle" class="pill">enqueue</text>
+  <rect x="386" y="181" width="76" height="20" rx="5" fill="#eef2ff" stroke="#4338ca" stroke-width="1"/>
+  <text x="424" y="196" text-anchor="middle" class="pill">allocate</text>
+  <rect x="386" y="204" width="76" height="20" rx="5" fill="#eef2ff" stroke="#4338ca" stroke-width="1"/>
+  <text x="424" y="219" text-anchor="middle" class="pill">backfill</text>
+
+  <path d="M 462 168 L 482 191" stroke="#334155" stroke-width="1.2" fill="none"/>
+  <path d="M 462 191 L 482 191" stroke="#334155" stroke-width="1.2" fill="none"/>
+  <path d="M 462 214 L 482 191" stroke="#334155" stroke-width="1.2" fill="none"/>
+  <path d="M 482 191 L 552 191" stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#v-arrow-sm)"/>
+
+  <rect x="555" y="179" width="105" height="24" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="607" y="196" text-anchor="middle" class="pill-green">skip if tagged</text>
+
+  <!-- Row 2: preempt / reclaim -> evaluate every Job -->
+  <rect x="386" y="245" width="76" height="20" rx="5" fill="#eef2ff" stroke="#4338ca" stroke-width="1"/>
+  <text x="424" y="260" text-anchor="middle" class="pill">preempt</text>
+  <rect x="386" y="268" width="76" height="20" rx="5" fill="#eef2ff" stroke="#4338ca" stroke-width="1"/>
+  <text x="424" y="283" text-anchor="middle" class="pill">reclaim</text>
+
+  <path d="M 462 255 L 482 266" stroke="#334155" stroke-width="1.2" fill="none"/>
+  <path d="M 462 278 L 482 266" stroke="#334155" stroke-width="1.2" fill="none"/>
+  <path d="M 482 266 L 552 266" stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#v-arrow-sm)"/>
+
+  <rect x="555" y="254" width="105" height="24" rx="6" fill="#f8fafc" stroke="#334155" stroke-width="1.2"/>
+  <text x="607" y="271" text-anchor="middle" class="pill">evaluate every Job</text>
+
+  <!-- ========== Sub-box 3: CloseSession ========== -->
+  <rect x="690" y="110" width="300" height="220" rx="8" fill="#ffffff" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="840" y="138" text-anchor="middle" class="box-title">CloseSession</text>
+
+  <rect x="795" y="160" width="90" height="24" rx="6" fill="#eef2ff" stroke="#4338ca" stroke-width="1.2"/>
+  <text x="840" y="177" text-anchor="middle" class="pill">evaluated Job</text>
+
+  <path d="M 840 184 L 840 197" stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#v-arrow-sm)"/>
+
+  <polygon points="840,200 900,225 840,250 780,225" fill="#ffffff" stroke="#334155" stroke-width="1.5"/>
+  <text x="840" y="229" text-anchor="middle" class="diamond-text">still pending?</text>
+
+  <path d="M 797 232 L 772 273" stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#v-arrow-sm)"/>
+  <text x="770" y="252" class="branch">no</text>
+
+  <path d="M 883 232 L 908 273" stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#v-arrow-sm)"/>
+  <text x="895" y="252" class="branch">yes</text>
+
+  <rect x="715" y="278" width="115" height="24" rx="6" fill="#f8fafc" stroke="#334155" stroke-width="1.2"/>
+  <text x="772" y="295" text-anchor="middle" class="pill">Forget(job)</text>
+
+  <rect x="850" y="278" width="115" height="24" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="907" y="295" text-anchor="middle" class="pill-green">Record(job)</text>
+
+  <!-- ========== Informer aux box ========== -->
+  <rect x="30" y="470" width="240" height="160" rx="10" fill="#f8fafc" stroke="#334155" stroke-width="1.5"/>
+  <text x="150" y="500" text-anchor="middle" class="aux-title">Informer events</text>
+  <rect x="45" y="525" width="90" height="22" rx="5" fill="#ffffff" stroke="#334155" stroke-width="1"/>
+  <text x="90" y="540" text-anchor="middle" class="pill">handler</text>
+  <path d="M 135 536 L 160 536" stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#v-arrow-sm)"/>
+  <rect x="160" y="525" width="95" height="22" rx="5" fill="#ffffff" stroke="#334155" stroke-width="1"/>
+  <text x="207" y="540" text-anchor="middle" class="pill">ClusterEvent</text>
+  <path d="M 150 555 L 150 578" stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#v-arrow-sm)"/>
+  <text x="150" y="600" text-anchor="middle" class="aux-body">cache.OnEvent(evt)</text>
+
+  <!-- ========== Watchdog aux box ========== -->
+  <rect x="770" y="470" width="240" height="160" rx="10" fill="#f8fafc" stroke="#334155" stroke-width="1.5"/>
+  <text x="890" y="500" text-anchor="middle" class="aux-title">Watchdog goroutine</text>
+  <circle cx="815" cy="545" r="16" fill="#ffffff" stroke="#334155" stroke-width="1.5"/>
+  <line x1="815" y1="545" x2="815" y2="533" stroke="#334155" stroke-width="1.4"/>
+  <line x1="815" y1="545" x2="825" y2="550" stroke="#334155" stroke-width="1.4"/>
+  <path d="M 838 545 L 862 545" stroke="#334155" stroke-width="1.5" fill="none" marker-end="url(#v-arrow-sm)"/>
+  <text x="937" y="541" text-anchor="middle" class="aux-body">drop records with</text>
+  <text x="937" y="559" text-anchor="middle" class="aux-body">expired RetryAfter</text>
+  <text x="890" y="600" text-anchor="middle" class="aux-body">(safety net for missed hints)</text>
+
+  <!-- ========== Cache circle ========== -->
+  <circle cx="520" cy="560" r="140" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+  <text x="520" y="525" text-anchor="middle" class="cache-title">UnschedulableJobCache</text>
+  <text x="520" y="555" text-anchor="middle" class="cache-body">one record per Job:</text>
+  <text x="520" y="580" text-anchor="middle" class="cache-item">• plugin rejections</text>
+  <text x="520" y="601" text-anchor="middle" class="cache-item">• subscribed cluster events</text>
+  <text x="520" y="622" text-anchor="middle" class="cache-item">• RetryAfter timestamp</text>
+
+  <!-- Arrow: OpenSession -> Cache (read, dashed) -->
+  <path d="M 200 330 L 406.3 478.2" stroke="#334155" stroke-width="1.8" stroke-dasharray="6,5" fill="none" marker-end="url(#v-arrow)"/>
+  <rect x="267" y="393" width="72" height="22" rx="4" fill="#ffffff"/>
+  <text x="303" y="409" text-anchor="middle" class="label">check</text>
+
+  <!-- Arrow: CloseSession -> Cache (write, solid) -->
+  <path d="M 840 330 L 633.7 478.2" stroke="#334155" stroke-width="1.8" fill="none" marker-end="url(#v-arrow)"/>
+  <rect x="678" y="393" width="118" height="22" rx="4" fill="#ffffff"/>
+  <text x="737" y="409" text-anchor="middle" class="label">record / forget</text>
+
+  <!-- Arrow: Informer -> Cache -->
+  <path d="M 270 560 L 380 560" stroke="#334155" stroke-width="1.8" fill="none" marker-end="url(#v-arrow)"/>
+  <rect x="292" y="534" width="66" height="20" rx="4" fill="#ffffff"/>
+  <text x="325" y="549" text-anchor="middle" class="label">OnEvent</text>
+
+  <!-- Arrow: Watchdog -> Cache -->
+  <path d="M 770 560 L 660 560" stroke="#334155" stroke-width="1.8" fill="none" marker-end="url(#v-arrow)"/>
+  <rect x="682" y="534" width="52" height="20" rx="4" fill="#ffffff"/>
+  <text x="708" y="549" text-anchor="middle" class="label">flush</text>
+
+  <!-- Legend -->
+  <line x1="280" y1="750" x2="332" y2="750" stroke="#334155" stroke-width="1.8"/>
+  <text x="342" y="754" class="legend">writes / mutates cache</text>
+
+  <line x1="560" y1="750" x2="612" y2="750" stroke="#334155" stroke-width="1.8" stroke-dasharray="6,5"/>
+  <text x="622" y="754" class="legend">reads cache</text>
+</svg>
