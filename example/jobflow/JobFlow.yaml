@@ -7,7 +7,9 @@ spec:
   jobRetainPolicy: delete   # After jobflow runs, keep the generated job. Otherwise, delete it.
   flows:
     - name: a
+      maxRetry: 5           # When the maxRetry defined, use this maxRetry count for JobFlowTemplate
     - name: b
+      maxRetry: 2
       dependsOn:
         targets: ['a']
     - name: c
