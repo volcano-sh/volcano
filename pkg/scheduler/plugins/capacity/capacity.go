@@ -409,6 +409,7 @@ func removeTaskDRAAllocated(attr *queueAttr, task *api.TaskInfo) {
 	}
 }
 
+
 // New return capacityPlugin action
 func New(arguments framework.Arguments) framework.Plugin {
 	// Default to k8s feature gate values, allow override via plugin arguments
@@ -1247,10 +1248,6 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		oldRequest := attr.request.Clone()
 		oldInqueue := attr.inqueue.Clone()
 		oldElastic := attr.elastic.Clone()
-		var oldDRA *draQuotaAttr
-		if attr.dra != nil {
-			oldDRA = attr.dra.Clone()
-		}
 
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
@@ -1259,6 +1256,12 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 					attr.request.Add(t.Resreq)
 					if cp.dynamicResourceAllocationEnable && attr.dra != nil && t.DRAResreq != nil {
 						addTaskDRAAllocated(attr, t)
+						for _, ancestor := range attr.ancestors {
+							ancestorAttr := cp.queueOpts[ancestor]
+							if ancestorAttr.dra != nil {
+								addTaskDRAAllocated(ancestorAttr, t)
+							}
+						}
 					}
 				}
 			} else if status == api.Pending {
@@ -1293,29 +1296,13 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		inqueueDelta := attr.inqueue.Clone().Sub(oldInqueue)
 		elasticDelta := attr.elastic.Clone().Sub(oldElastic)
 
-		var draDelta map[string]*api.DRAResource
-		if attr.dra != nil {
-			draDelta = getDRADelta(attr.dra, oldDRA)
-		}
-
 		for _, ancestor := range attr.ancestors {
 			ancestorAttr := cp.queueOpts[ancestor]
 			ancestorAttr.allocated.Add(allocatedDelta)
 			ancestorAttr.request.Add(requestDelta)
 			ancestorAttr.inqueue.Add(inqueueDelta)
 			ancestorAttr.elastic.Add(elasticDelta)
-			if cp.dynamicResourceAllocationEnable && ancestorAttr.dra != nil && draDelta != nil {
-				// Only propagate Delta for DeviceClasses that are configured in ancestor's capability
-				filteredDelta := make(map[string]*api.DRAResource)
-				for dc, res := range draDelta {
-					if _, ok := ancestorAttr.dra.capability[dc]; ok {
-						filteredDelta[dc] = res
-					}
-				}
-				if len(filteredDelta) > 0 {
-					updateDRAAllocated(ancestorAttr.dra, filteredDelta)
-				}
-			}
+			// DRA is now propagated per-task inside the task loop above.
 		}
 
 		klog.V(5).Infof("Queue %s allocated <%s> request <%s> inqueue <%s> elastic <%s>",
