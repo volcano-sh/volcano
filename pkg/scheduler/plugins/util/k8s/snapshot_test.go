@@ -334,6 +334,37 @@ func TestSnapshot_AddOrUpdateNodes(t *testing.T) {
 					s.fwkInfo.havePodsWithAffinityNodeInfoList[0].Node().Name == "node-1"
 			},
 		},
+		{
+			name: "skip nil node object",
+			setup: func() (*Snapshot, []*api.NodeInfo) {
+				snapshot := NewEmptySnapshot()
+				validNode := api.NewNodeInfo(&v1.Node{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node-valid",
+					},
+					Status: v1.NodeStatus{
+						Capacity: v1.ResourceList{
+							v1.ResourceCPU:    resource.MustParse("4"),
+							v1.ResourceMemory: resource.MustParse("8Gi"),
+						},
+						Allocatable: v1.ResourceList{
+							v1.ResourceCPU:    resource.MustParse("4"),
+							v1.ResourceMemory: resource.MustParse("8Gi"),
+						},
+					},
+				})
+				nilNodeObj := api.NewNodeInfo(nil)
+				nilNodeObj.Name = "node-nil"
+				return snapshot, []*api.NodeInfo{nilNodeObj, validNode}
+			},
+			wantErr: false,
+			checkResult: func(s *Snapshot) bool {
+				return len(s.GetFwkNodeInfoList()) == 1 &&
+					s.GetFwkNodeInfoList()[0].Node().Name == "node-valid" &&
+					len(s.GetVolcanoNodeInfoList()) == 1 &&
+					s.GetVolcanoNodeInfoList()[0].Name == "node-valid"
+			},
+		},
 	}
 
 	for _, tt := range tests {
