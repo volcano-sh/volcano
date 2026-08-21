@@ -399,6 +399,21 @@ func TestTaskSchedulingReason(t *testing.T) {
 	}
 }
 
+func TestTaskSchedulingReasonAlwaysNominatesPipelinedTask(t *testing.T) {
+	pod := buildPod("ns1", "task-1", "", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
+	job := NewJobInfo(JobID("job-1"))
+	task := NewTaskInfo(pod)
+	job.AddTaskInfo(task)
+
+	task.Status = Pipelined
+	task.NodeName = "node-1"
+	task.EvictionOccurred = false
+
+	reason, _, nominatedNodeName := job.TaskSchedulingReason(task.UID)
+	assert.Equal(t, PodReasonUnschedulable, reason)
+	assert.Equal(t, "node-1", nominatedNodeName)
+}
+
 func TestJobInfo(t *testing.T) {
 	newTaskFunc := func(uid, jobUid types.UID, status TaskStatus, resources *Resource) *TaskInfo {
 		isBestEffort := resources.IsEmpty()
