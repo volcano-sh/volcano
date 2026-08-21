@@ -290,11 +290,6 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 			new.Spec.Volumes[i].VolumeClaimName = ""
 		}
 	}
-	for i := range old.Spec.Volumes {
-		if old.Spec.Volumes[i].VolumeClaim != nil {
-			old.Spec.Volumes[i].VolumeClaimName = ""
-		}
-	}
 
 	if !apiequality.Semantic.DeepEqual(new.Spec, old.Spec) {
 		return fmt.Errorf("job updates may not change fields other than `minAvailable`, `tasks[*].replicas under spec` and `PriorityClassName`")
