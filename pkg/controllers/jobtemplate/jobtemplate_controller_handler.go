@@ -56,12 +56,18 @@ func (jt *jobtemplatecontroller) addJob(obj interface{}) {
 		return
 	}
 
-	//Filter vcjobs created by JobFlow
-	namespaceName := strings.Split(job.Labels[CreatedByJobTemplate], ".")
+	// Filter vcjobs created by JobTemplate. The namespace cannot contain dots,
+	// but the JobTemplate name can, so only split on the first separator.
+	namespaceName := strings.SplitN(job.Labels[CreatedByJobTemplate], ".", 2)
 	if len(namespaceName) != CreateByJobTemplateValueNum {
+		klog.Warningf("invalid label value for %q: %q, expected format %q", CreatedByJobTemplate, job.Labels[CreatedByJobTemplate], "<namespace>.<jobTemplateName>")
 		return
 	}
 	namespace, name := namespaceName[0], namespaceName[1]
+	if len(namespace) == 0 || len(name) == 0 {
+		klog.Warningf("invalid label value for %q: %q, namespace and name cannot be empty", CreatedByJobTemplate, job.Labels[CreatedByJobTemplate])
+		return
+	}
 
 	req := apis.FlowRequest{
 		Namespace:       namespace,

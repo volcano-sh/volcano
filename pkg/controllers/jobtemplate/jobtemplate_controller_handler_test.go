@@ -77,6 +77,61 @@ func TestAddJob(t *testing.T) {
 			},
 			ExpectValue: 1,
 		},
+		{
+			Name: "Valid with dots in name",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job2",
+					Namespace: namespace,
+					Labels:    map[string]string{CreatedByJobTemplate: "test.my.template"},
+				},
+			},
+			ExpectValue: 1,
+		},
+		{
+			Name: "Invalid no dots",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job3",
+					Namespace: namespace,
+					Labels:    map[string]string{CreatedByJobTemplate: "nonamespaceorname"},
+				},
+			},
+			ExpectValue: 0,
+		},
+		{
+			Name: "Invalid empty name",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job4",
+					Namespace: namespace,
+					Labels:    map[string]string{CreatedByJobTemplate: "test."},
+				},
+			},
+			ExpectValue: 0,
+		},
+		{
+			Name: "Invalid empty namespace",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job5",
+					Namespace: namespace,
+					Labels:    map[string]string{CreatedByJobTemplate: ".name"},
+				},
+			},
+			ExpectValue: 0,
+		},
+		{
+			Name: "Invalid empty value",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job6",
+					Namespace: namespace,
+					Labels:    map[string]string{CreatedByJobTemplate: ""},
+				},
+			},
+			ExpectValue: 0,
+		},
 	}
 	for i, testcase := range testCases {
 		t.Run(testcase.Name, func(t *testing.T) {
