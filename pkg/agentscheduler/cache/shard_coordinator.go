@@ -139,13 +139,13 @@ func (sc *ShardCoordinator) tryUpdateNodeShardStatus() bool {
 
 	update := true
 	for index, state := range sc.workerStates {
-		//skip update if any worker is scheduling with nodes before this revision
-		p := &state.revisionInScheduling
-		if p == nil {
+		if state == nil {
+			klog.Errorf("Worker %d state is not inited, skip it when checking nodeshard update", index)
 			continue
 		}
-		revision := atomic.LoadInt64(p)
-		if state != nil && revision > 0 && revision < latest {
+		//skip update if any worker is scheduling with nodes before this revision
+		revision := atomic.LoadInt64(&state.revisionInScheduling)
+		if revision > 0 && revision < latest {
 			klog.V(3).Infof("Worker %d is scheduling with old nodes, skip nodeshard update", index)
 			update = false
 			break
