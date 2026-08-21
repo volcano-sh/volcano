@@ -1,0 +1,28 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: test-annotations-job
+  namespace: default
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  plugins:
+    ringsconfigmap:
+      - "-configmap-annotations"
+      - '{"version":"v1.0","team":"ai","created-by":"volcano","description":"ConfigMap for AI training job"}'
+      - "-configmap-labels"
+      - '{"app":"ai-training","environment":"production"}'
+      - "-configmap-data"
+      - '{"hccl.json":"{\"status\":\"ready\",\"nodes\":8,\"topology\":\"ring\"}","config.yaml":"apiVersion: v1\nkind: Config\nmetadata:\n  name: ai-config"}'
+  tasks:
+  - name: "task-1"
+    replicas: 1
+    template:
+      spec:
+        containers:
+        - name: test-container
+          image: nginx:latest
+          command:
+          - sleep
+          - "3600"
+        restartPolicy: Never
