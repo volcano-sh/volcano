@@ -68,7 +68,7 @@ type Session struct {
 
 	kubeClient      kubernetes.Interface
 	vcClient        vcclient.Interface
-	recorder        record.EventRecorder
+	recorder        record.EventRecorderLogger
 	cache           cache.Cache
 	restConfig      *rest.Config
 	informerFactory informers.SharedInformerFactory
@@ -976,6 +976,11 @@ func (ssn *Session) ClientConfig() *rest.Config {
 // InformerFactory returns the scheduler ShareInformerFactory
 func (ssn *Session) InformerFactory() informers.SharedInformerFactory {
 	return ssn.informerFactory
+}
+
+// EventRecorder returns the event recorder
+func (ssn *Session) EventRecorder() record.EventRecorderLogger {
+	return ssn.recorder
 }
 
 // RecordPodGroupEvent records podGroup events
