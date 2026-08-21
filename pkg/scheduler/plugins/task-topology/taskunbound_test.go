@@ -17,167 +17,163 @@ limitations under the License.
 package tasktopology
 
 import (
+	"maps"
 	"reflect"
+	"sort"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
+	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-// newTestTask builds a TaskInfo with the given UID, task-spec annotation, and
-// (optional) node binding. The container requests 1 CPU / 1Gi memory.
-func newTestTask(uid, taskSpec, nodeName string) *api.TaskInfo {
-	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			UID:         types.UID(uid),
-			Name:        "pod-" + uid,
-			Namespace:   "default",
-			Annotations: map[string]string{v1alpha1.TaskSpecKey: taskSpec},
-		},
-		Spec: v1.PodSpec{
-			Containers: []v1.Container{{
-				Name:  "c",
-				Image: "busybox",
-				Resources: v1.ResourceRequirements{
-					Requests: v1.ResourceList{
-						v1.ResourceCPU:    resource.MustParse("1"),
-						v1.ResourceMemory: resource.MustParse("1Gi"),
-					},
-				},
-			}},
-		},
-	}
-	t := api.NewTaskInfo(pod)
-	t.NodeName = nodeName
-	t.Job = api.JobID("job-test")
-	return t
-}
-
-// snapshot of bucket state we care about for round-trip equality.
 type bucketState struct {
 	tasks       map[types.UID]*api.TaskInfo
 	taskNameSet map[string]int
 	reqScore    float64
-	requestCPU  float64
-	requestMem  float64
+	request     *api.Resource
 	boundTask   int
 	node        map[string]int
 }
 
-func snapshotBucket(b *Bucket) bucketState {
-	tasks := make(map[types.UID]*api.TaskInfo, len(b.tasks))
-	for k, v := range b.tasks {
-		tasks[k] = v
-	}
-	tns := make(map[string]int, len(b.taskNameSet))
-	for k, v := range b.taskNameSet {
-		tns[k] = v
-	}
-	node := make(map[string]int, len(b.node))
-	for k, v := range b.node {
-		node[k] = v
-	}
-	return bucketState{
-		tasks:       tasks,
-		taskNameSet: tns,
-		reqScore:    b.reqScore,
-		requestCPU:  b.request.MilliCPU,
-		requestMem:  b.request.Memory,
-		boundTask:   b.boundTask,
-		node:        node,
-	}
+type managerState struct {
+	buckets     []bucketState
+	nodeTaskSet map[string]map[string]int
 }
 
-// TestBucket_TaskUnbound_IsInverseOfTaskBound verifies that calling
-// TaskUnbound after TaskBound restores the bucket to its pre-bind state.
-//
-// Without this, a Statement.Discard() leaves the bucket with phantom
-// boundTask++ / node[N]++ counts and a missing entry in tasks, so
-// subsequent NodeOrderFn scores in the same session compute against
-// stale state. See volcano-sh/volcano#4003.
-func TestBucket_TaskUnbound_IsInverseOfTaskBound(t *testing.T) {
-	b := NewBucket()
-	task := newTestTask("u1", "ps", "")
-
-	// Stage: task added to bucket as pending (no NodeName yet).
-	b.AddTask("ps", task)
-
-	before := snapshotBucket(b)
-
-	// Bind: scheduler allocates the task to node-a.
-	task.NodeName = "node-a"
-	b.TaskBound(task)
-
-	// Sanity-check that TaskBound mutated state.
-	if b.boundTask != before.boundTask+1 {
-		t.Fatalf("after TaskBound: boundTask=%d, want %d", b.boundTask, before.boundTask+1)
+func snapshotManager(jm *JobManager) managerState {
+	state := managerState{
+		buckets:     make([]bucketState, len(jm.buckets)),
+		nodeTaskSet: make(map[string]map[string]int, len(jm.nodeTaskSet)),
 	}
-	if b.node["node-a"] != 1 {
-		t.Fatalf("after TaskBound: node[node-a]=%d, want 1", b.node["node-a"])
-	}
-	if _, ok := b.tasks[task.Pod.UID]; ok {
-		t.Fatal("after TaskBound: tasks still contains uid; want delete")
-	}
-
-	// Discard: scheduler rolls back the allocation.
-	b.TaskUnbound(task)
-
-	after := snapshotBucket(b)
-	if !reflect.DeepEqual(before, after) {
-		t.Fatalf("TaskUnbound did not restore bucket state\n  before=%#v\n  after=%#v", before, after)
-	}
-}
-
-// TestJobManager_TaskUnbound_IsInverseOfTaskBound verifies the same
-// invariant at the JobManager level — including the nodeTaskSet
-// bookkeeping that drives inter-task affinity scoring.
-func TestJobManager_TaskUnbound_IsInverseOfTaskBound(t *testing.T) {
-	jm := NewJobManager(api.JobID("job-test"))
-	bucket := jm.NewBucket()
-
-	task := newTestTask("u1", "ps", "")
-	jm.AddTaskToBucket(bucket.index, "ps", task)
-
-	beforeBucket := snapshotBucket(bucket)
-	beforeNodeTaskSet := copyNodeTaskSet(jm.nodeTaskSet)
-
-	// Bind
-	task.NodeName = "node-a"
-	jm.TaskBound(task)
-	if jm.nodeTaskSet["node-a"]["ps"] != 1 {
-		t.Fatalf("after TaskBound: nodeTaskSet[node-a][ps]=%d, want 1",
-			jm.nodeTaskSet["node-a"]["ps"])
-	}
-
-	// Discard
-	jm.TaskUnbound(task)
-
-	afterBucket := snapshotBucket(bucket)
-	afterNodeTaskSet := copyNodeTaskSet(jm.nodeTaskSet)
-
-	if !reflect.DeepEqual(beforeBucket, afterBucket) {
-		t.Fatalf("TaskUnbound did not restore bucket state\n  before=%#v\n  after=%#v",
-			beforeBucket, afterBucket)
-	}
-	if !reflect.DeepEqual(beforeNodeTaskSet, afterNodeTaskSet) {
-		t.Fatalf("TaskUnbound did not clean up nodeTaskSet\n  before=%#v\n  after=%#v",
-			beforeNodeTaskSet, afterNodeTaskSet)
-	}
-}
-
-func copyNodeTaskSet(m map[string]map[string]int) map[string]map[string]int {
-	out := make(map[string]map[string]int, len(m))
-	for k, inner := range m {
-		copied := make(map[string]int, len(inner))
-		for ik, iv := range inner {
-			copied[ik] = iv
+	for index, bucket := range jm.buckets {
+		state.buckets[index] = bucketState{
+			tasks:       maps.Clone(bucket.tasks),
+			taskNameSet: maps.Clone(bucket.taskNameSet),
+			reqScore:    bucket.reqScore,
+			request:     bucket.request.Clone(),
+			boundTask:   bucket.boundTask,
+			node:        maps.Clone(bucket.node),
 		}
-		out[k] = copied
 	}
-	return out
+	for node, taskSet := range jm.nodeTaskSet {
+		state.nodeTaskSet[node] = maps.Clone(taskSet)
+	}
+	return state
+}
+
+func newRollbackSession(t *testing.T, withBoundTask bool) (*framework.Session, *JobManager, []*api.TaskInfo, *api.NodeInfo) {
+	t.Helper()
+
+	schedulerCache := cache.NewDefaultMockSchedulerCache("test-scheduler")
+	schedulerCache.AddOrUpdateNode(
+		util.BuildNode("n1", api.BuildResourceList("4", "8Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil),
+	)
+	for index, name := range []string{"worker-0", "worker-1"} {
+		nodeName := ""
+		phase := v1.PodPending
+		if withBoundTask && index == 0 {
+			nodeName = "n1"
+			phase = v1.PodRunning
+		}
+		pod := util.BuildPod("ns1", name, nodeName, phase, api.BuildResourceList("1", "1Gi"), "pg1", nil, nil)
+		pod.Annotations[batchv1alpha1.TaskSpecKey] = "worker"
+		schedulerCache.AddPod(pod)
+	}
+	podGroup := util.BuildPodGroup("pg1", "ns1", "q1", 2, nil, v1beta1.PodGroupInqueue)
+	podGroup.Annotations = map[string]string{JobAffinityAnnotations: "worker"}
+	schedulerCache.AddPodGroupV1beta1(podGroup)
+	schedulerCache.AddQueueV1beta1(util.BuildQueue("q1", 1, nil))
+
+	session := framework.OpenSession(schedulerCache, nil, nil)
+	plugin := New(framework.Arguments{}).(*taskTopologyPlugin)
+	plugin.OnSessionOpen(session)
+	t.Cleanup(func() {
+		plugin.OnSessionClose(session)
+		framework.CloseSession(session)
+	})
+
+	var job *api.JobInfo
+	for _, candidate := range session.Jobs {
+		job = candidate
+		break
+	}
+	if job == nil {
+		t.Fatal("session has no job")
+	}
+	manager := plugin.managers[job.UID]
+	if manager == nil {
+		t.Fatal("task-topology manager was not initialized")
+	}
+
+	tasks := make([]*api.TaskInfo, 0, len(job.Tasks))
+	for _, task := range job.Tasks {
+		tasks = append(tasks, task)
+	}
+	sort.Slice(tasks, func(i, j int) bool { return tasks[i].Name < tasks[j].Name })
+
+	return session, manager, tasks, session.Nodes["n1"]
+}
+
+func TestStatementRollbackRestoresTaskTopologyState(t *testing.T) {
+	t.Run("discard", func(t *testing.T) {
+		session, manager, tasks, node := newRollbackSession(t, false)
+		before := snapshotManager(manager)
+		statement := framework.NewStatement(session)
+
+		for _, task := range tasks {
+			if err := statement.Allocate(task, node); err != nil {
+				t.Fatalf("allocate %s: %v", task.Name, err)
+			}
+		}
+		if got := manager.nodeTaskSet[node.Name]["worker"]; got != len(tasks) {
+			t.Fatalf("bound worker count = %d, want %d", got, len(tasks))
+		}
+
+		statement.Discard()
+		if after := snapshotManager(manager); !reflect.DeepEqual(before, after) {
+			t.Fatalf("discard did not restore task-topology state\nbefore: %#v\nafter:  %#v", before, after)
+		}
+
+		statement.Discard()
+		if after := snapshotManager(manager); !reflect.DeepEqual(before, after) {
+			t.Fatalf("repeated discard changed task-topology state\nbefore: %#v\nafter:  %#v", before, after)
+		}
+	})
+
+	t.Run("failed allocation", func(t *testing.T) {
+		session, manager, tasks, _ := newRollbackSession(t, false)
+		before := snapshotManager(manager)
+
+		err := framework.NewStatement(session).Allocate(tasks[0], &api.NodeInfo{Name: "missing"})
+		if err == nil {
+			t.Fatal("allocate to missing node succeeded")
+		}
+		if after := snapshotManager(manager); !reflect.DeepEqual(before, after) {
+			t.Fatalf("failed allocation did not restore task-topology state\nbefore: %#v\nafter:  %#v", before, after)
+		}
+	})
+
+	t.Run("discard eviction", func(t *testing.T) {
+		session, manager, tasks, _ := newRollbackSession(t, true)
+		before := snapshotManager(manager)
+		boundTask := tasks[0]
+		if boundTask.NodeName == "" {
+			boundTask = tasks[1]
+		}
+
+		statement := framework.NewStatement(session)
+		statement.Evict(boundTask, "test")
+		statement.Discard()
+
+		if after := snapshotManager(manager); !reflect.DeepEqual(before, after) {
+			t.Fatalf("eviction discard did not restore task-topology state\nbefore: %#v\nafter:  %#v", before, after)
+		}
+	})
 }
