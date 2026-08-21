@@ -183,6 +183,7 @@ HELM_CMD="${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano 
       -s templates/batch_v1alpha1_cronjob.yaml \
       -s templates/bus_v1alpha1_command.yaml \
       -s templates/controllers.yaml \
+      -s templates/controller_configmap.yaml \
       -s templates/scheduler.yaml \
       -s templates/scheduling_v1beta1_podgroup.yaml \
       -s templates/scheduling_v1beta1_queue.yaml \
