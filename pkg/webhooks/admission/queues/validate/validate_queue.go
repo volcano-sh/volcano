@@ -329,44 +329,28 @@ func validateQueueDeleting(queueName string) error {
 	return nil
 }
 
-// needsValidateHierarchicalQueue determines if hierarchy resource validation is necessary
-// Returns true only if:
-// - Queue is not the root queue itself AND
-// - Either it's a CREATE operation OR resources (capability/deserved/guarantee) changed on UPDATE OR parent changed on UPDATE
+// needsValidateHierarchicalQueue determines if hierarchy resource validation is necessary.
 func needsValidateHierarchicalQueue(queue, oldQueue *schedulingv1beta1.Queue, operation admissionv1.Operation) bool {
-	// Only the root queue itself should skip validation completely
-	if queue.Name == "root" {
-		return false
-	}
-
-	// For CREATE operations, always validate
 	if operation == admissionv1.Create {
-		return true
+		return queue.Name != "root"
 	}
 
-	// For UPDATE operations, only validate if resources or parent changed
 	if operation == admissionv1.Update && oldQueue != nil {
-		// Check if parent changed
 		if queue.Spec.Parent != oldQueue.Spec.Parent {
 			return true
 		}
-		// Check if capability changed
 		if !equality.Semantic.DeepEqual(queue.Spec.Capability, oldQueue.Spec.Capability) {
 			return true
 		}
-		// Check if deserved changed
 		if !equality.Semantic.DeepEqual(queue.Spec.Deserved, oldQueue.Spec.Deserved) {
 			return true
 		}
-		// Check if guarantee changed
 		if !equality.Semantic.DeepEqual(queue.Spec.Guarantee.Resource, oldQueue.Spec.Guarantee.Resource) {
 			return true
 		}
-		// No resource or parent changes, skip validation
 		return false
 	}
 
-	// Default: skip validation
 	return false
 }
 
@@ -438,7 +422,16 @@ func getSingleResource(r *api.Resource, name v1.ResourceName) float64 {
 // Recursively searches for the ancestor queue that recently defines the capability
 func findNearestAncestorCapability(q *schedulingv1beta1.Queue, rname v1.ResourceName) (float64, bool) {
 	parent := q.Spec.Parent
-	for parent != "" && parent != "root" {
+	if parent == "" && q.Name != "root" {
+		parent = "root"
+	}
+	visited := map[string]struct{}{}
+	for parent != "" {
+		if _, ok := visited[parent]; ok {
+			return 0, false
+		}
+		visited[parent] = struct{}{}
+
 		pq, err := config.QueueLister.Get(parent)
 		if err != nil {
 			return 0, false
@@ -453,6 +446,9 @@ func findNearestAncestorCapability(q *schedulingv1beta1.Queue, rname v1.Resource
 		}
 
 		parent = pq.Spec.Parent
+		if parent == "" && pq.Name != "root" {
+			parent = "root"
+		}
 	}
 	return 0, false
 }
@@ -525,28 +521,34 @@ func validateQueueDepth(queue *schedulingv1beta1.Queue) error {
 // - Parent's capability >= each child's capability
 // - Sum of children's guarantee/deserved <= parent's limit
 func validateHierarchicalQueueResources(queue *schedulingv1beta1.Queue) error {
+	parentName := queue.Spec.Parent
+	if parentName == "" && queue.Name != "root" {
+		parentName = "root"
+	}
+
 	// If this is a child queue, validate against parent
-	if queue.Spec.Parent != "" && queue.Spec.Parent != "root" {
+	if parentName != "" {
 		// Get parent queue directly using lister
-		parentQueue, err := config.QueueLister.Get(queue.Spec.Parent)
-		if err != nil {
-			return fmt.Errorf("parent queue %s not found: %v", queue.Spec.Parent, err)
+		parentQueue, err := config.QueueLister.Get(parentName)
+		if err != nil && parentName != "root" {
+			return fmt.Errorf("parent queue %s not found: %v", parentName, err)
 		}
+		if err == nil {
+			// Check queue's capability <= ancestors's capability
+			if err := validateChildAgainstAncestor(queue); err != nil {
+				return err
+			}
 
-		// Check queue's capability <= ancestors's capability
-		if err := validateChildAgainstAncestor(queue); err != nil {
-			return err
-		}
+			// Get siblings using index
+			siblings, err := config.GetQueuesByParent(parentName)
+			if err != nil {
+				return fmt.Errorf("failed to get sibling queues: %v", err)
+			}
 
-		// Get siblings using index
-		siblings, err := config.GetQueuesByParent(queue.Spec.Parent)
-		if err != nil {
-			return fmt.Errorf("failed to get sibling queues: %v", err)
-		}
-
-		// Check sum of all siblings' (including this queue) guarantee/deserved <= parent's limit
-		if err := validateSiblingsSum(queue, parentQueue, siblings); err != nil {
-			return err
+			// Check sum of all siblings' (including this queue) guarantee/deserved <= parent's limit
+			if err := validateSiblingsSum(queue, parentQueue, siblings); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -592,18 +594,20 @@ func validateSiblingsSum(queue, parent *schedulingv1beta1.Queue, siblings []*sch
 
 	parentGuarantee := api.NewResource(parent.Spec.Guarantee.Resource)
 	parentDeserved := api.NewResource(parent.Spec.Deserved)
+	checkGuarantee := parent.Name != "root" || len(parent.Spec.Guarantee.Resource) != 0
+	checkDeserved := parent.Name != "root" || len(parent.Spec.Deserved) != 0
 
 	// siblings are already filtered by parent, just exclude self
 	for _, sibling := range siblings {
 		if sibling.Name != queue.Name {
 			totalGuarantee.Add(api.NewResource(sibling.Spec.Guarantee.Resource))
-			if parentGuarantee.LessPartly(totalGuarantee, api.Zero) {
+			if checkGuarantee && parentGuarantee.LessPartly(totalGuarantee, api.Zero) {
 				return fmt.Errorf("parent queue %s validation failed: sum of children's guarantee (%s) exceeds parent's guarantee limit (%s)",
 					parent.Name, totalGuarantee, parentGuarantee)
 			}
 
 			totalDeserved.Add(api.NewResource(sibling.Spec.Deserved))
-			if parentDeserved.LessPartly(totalDeserved, api.Zero) {
+			if checkDeserved && parentDeserved.LessPartly(totalDeserved, api.Zero) {
 				return fmt.Errorf("parent queue %s validation failed: sum of children's deserved (%s) exceeds parent's deserved limit (%s)",
 					parent.Name, totalDeserved, parentDeserved)
 			}
@@ -612,13 +616,13 @@ func validateSiblingsSum(queue, parent *schedulingv1beta1.Queue, siblings []*sch
 
 	// Add the current queue's resources
 	totalGuarantee.Add(api.NewResource(queue.Spec.Guarantee.Resource))
-	if parentGuarantee.LessPartly(totalGuarantee, api.Zero) {
+	if checkGuarantee && parentGuarantee.LessPartly(totalGuarantee, api.Zero) {
 		return fmt.Errorf("parent queue %s validation failed: sum of children's guarantee (%s) exceeds parent's guarantee limit (%s)",
 			parent.Name, totalGuarantee, parentGuarantee)
 	}
 
 	totalDeserved.Add(api.NewResource(queue.Spec.Deserved))
-	if parentDeserved.LessPartly(totalDeserved, api.Zero) {
+	if checkDeserved && parentDeserved.LessPartly(totalDeserved, api.Zero) {
 		return fmt.Errorf("parent queue %s validation failed: sum of children's deserved (%s) exceeds parent's deserved limit (%s)",
 			parent.Name, totalDeserved, parentDeserved)
 	}
@@ -661,17 +665,19 @@ func validateChildrenConstraints(parent *schedulingv1beta1.Queue, children []*sc
 
 	parentGuarantee := api.NewResource(parent.Spec.Guarantee.Resource)
 	parentDeserved := api.NewResource(parent.Spec.Deserved)
+	checkGuarantee := parent.Name != "root" || len(parent.Spec.Guarantee.Resource) != 0
+	checkDeserved := parent.Name != "root" || len(parent.Spec.Deserved) != 0
 
 	for _, child := range children {
 		// Accumulate children's guarantee and deserved
 		totalGuarantee.Add(api.NewResource(child.Spec.Guarantee.Resource))
-		if parentGuarantee.LessPartly(totalGuarantee, api.Zero) {
+		if checkGuarantee && parentGuarantee.LessPartly(totalGuarantee, api.Zero) {
 			return fmt.Errorf("queue %s validation failed: sum of children's guarantee (%s) exceeds parent's guarantee limit (%s)",
 				parent.Name, totalGuarantee, parentGuarantee)
 		}
 
 		totalDeserved.Add(api.NewResource(child.Spec.Deserved))
-		if parentDeserved.LessPartly(totalDeserved, api.Zero) {
+		if checkDeserved && parentDeserved.LessPartly(totalDeserved, api.Zero) {
 			return fmt.Errorf("queue %s validation failed: sum of children's deserved (%s) exceeds parent's deserved limit (%s)",
 				parent.Name, totalDeserved, parentDeserved)
 		}
