@@ -21,7 +21,9 @@ import (
 	"log"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,8 +37,52 @@ import (
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+// gaugeValue looks up a gauge series by metric family name and exact label
+// match in the process-wide default registry. It returns ok=false if no
+// series with that label set is currently registered, which is how
+// prometheus.DeleteLabelValues manifests: the series is removed outright
+// rather than reset to zero.
+func gaugeValue(t *testing.T, familyName string, labels map[string]string) (float64, bool) {
+	t.Helper()
+
+	families, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	for _, f := range families {
+		if f.GetName() != familyName {
+			continue
+		}
+		for _, m := range f.GetMetric() {
+			if len(m.GetLabel()) != len(labels) {
+				continue
+			}
+			match := true
+			for name, value := range labels {
+				found := false
+				for _, l := range m.GetLabel() {
+					if l.GetName() == name && l.GetValue() == value {
+						found = true
+						break
+					}
+				}
+				if !found {
+					match = false
+					break
+				}
+			}
+			if match {
+				return m.GetGauge().GetValue(), true
+			}
+		}
+	}
+	return 0, false
+}
 
 func TestSchedulerCache_updateTask(t *testing.T) {
 	namespace := "test"
@@ -456,6 +502,48 @@ func TestSchedulerCache_DeletePodGroupV1beta1(t *testing.T) {
 		if test.Expected == nil && job.PodGroup != nil {
 			t.Errorf("Expected job  to be: %v but got :%v in case %d", test.Expected, job, i)
 		}
+	}
+}
+
+func TestSchedulerCache_DeletePodGroupV1beta1_ClearsJobMetrics(t *testing.T) {
+	namespace := "test-metrics-cleanup"
+	jobName := "metrics-cleanup-job"
+
+	pg := &schedulingv1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobName,
+			Namespace: namespace,
+		},
+	}
+
+	cache := &SchedulerCache{
+		Jobs:  make(map[api.JobID]*api.JobInfo),
+		Nodes: make(map[string]*api.NodeInfo),
+	}
+	cache.DeletedJobs = workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]())
+
+	cache.AddPodGroupV1beta1(pg)
+
+	metrics.UpdateE2eSchedulingDurationByJob(jobName, "", namespace, 100*time.Millisecond)
+	metrics.UpdateUnscheduleTaskCount(jobName, 5)
+
+	durationLabels := map[string]string{"job_name": jobName, "queue": "", "job_namespace": namespace}
+	unscheduleLabels := map[string]string{"job_id": jobName}
+
+	if v, ok := gaugeValue(t, "volcano_e2e_job_scheduling_duration", durationLabels); !ok || v != 100 {
+		t.Fatalf("expected e2e scheduling duration to be 100 before delete, got %v (found=%v)", v, ok)
+	}
+	if v, ok := gaugeValue(t, "volcano_unschedule_task_count", unscheduleLabels); !ok || v != 5 {
+		t.Fatalf("expected unschedule task count to be 5 before delete, got %v (found=%v)", v, ok)
+	}
+
+	cache.DeletePodGroupV1beta1(pg)
+
+	if v, ok := gaugeValue(t, "volcano_e2e_job_scheduling_duration", durationLabels); ok {
+		t.Errorf("expected e2e scheduling duration series to be removed after PodGroup delete, still got %v", v)
+	}
+	if v, ok := gaugeValue(t, "volcano_unschedule_task_count", unscheduleLabels); ok {
+		t.Errorf("expected unschedule task count series to be removed after PodGroup delete, still got %v", v)
 	}
 }
 
