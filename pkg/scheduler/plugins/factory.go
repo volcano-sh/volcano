@@ -28,6 +28,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/deviceshare"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
+	"volcano.sh/volcano/pkg/scheduler/plugins/fairshare"
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	networktopologyaware "volcano.sh/volcano/pkg/scheduler/plugins/network-topology-aware"
@@ -67,6 +68,7 @@ func init() {
 	framework.RegisterPluginBuilder(cdp.PluginName, cdp.New)
 	framework.RegisterPluginBuilder(rescheduling.PluginName, rescheduling.New)
 	framework.RegisterPluginBuilder(usage.PluginName, usage.New)
+	framework.RegisterPluginBuilder(fairshare.PluginName, fairshare.New)
 	framework.RegisterPluginBuilder(pdb.PluginName, pdb.New)
 	framework.RegisterPluginBuilder(nodegroup.PluginName, nodegroup.New)
 	framework.RegisterPluginBuilder(networktopologyaware.PluginName, networktopologyaware.New)
