@@ -47,6 +47,12 @@ const VolcanoGroupMinResourcesAnnotationKey = GroupName + "/group-min-resources"
 // which queue it belongs to.
 const QueueNameAnnotationKey = GroupName + "/queue-name"
 
+// NamespaceQueueNameAnnotationKey is set on a PodGroup or Pod template to reference
+// a namespace-scoped NamespaceQueue by its local name. The admission webhook resolves
+// this to the shadow cluster Queue name and sets PodGroup.Spec.Queue accordingly,
+// so the scheduler requires no modification to handle NamespaceQueue-bound workloads.
+const NamespaceQueueNameAnnotationKey = GroupName + "/namespacequeue-name"
+
 // QueueAllocationGateKey is the annotation key to opt-in to queue capacity
 // gate management and the name of the scheduling gate that controls queue admission.
 const QueueAllocationGateKey = GroupName + "/queue-allocation-gate"
