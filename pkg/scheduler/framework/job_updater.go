@@ -26,11 +26,8 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
-)
-
-const (
-	jobUpdaterWorker = 16
 )
 
 // TimeJitterAfter means: new after old + duration + jitter
@@ -61,7 +58,7 @@ func NewJobUpdater(ssn *Session) *JobUpdater {
 }
 
 func (ju *JobUpdater) UpdateAll() {
-	workqueue.ParallelizeUntil(context.TODO(), jobUpdaterWorker, len(ju.jobQueue), ju.updateJob)
+	workqueue.ParallelizeUntil(context.TODO(), options.GetJobUpdaterWorkerNum(), len(ju.jobQueue), ju.updateJob)
 }
 
 func isPodGroupConditionsUpdated(newCondition, oldCondition []scheduling.PodGroupCondition) bool {

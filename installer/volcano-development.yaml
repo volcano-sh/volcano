@@ -9295,6 +9295,8 @@ spec:
             - --kube-api-burst=2000
             - --schedule-period=1s
             - --node-worker-threads=20
+            - --job-updater-worker-num=16
+            - --task-updater-worker-num=16
             - -v=3
             - 2>&1
           env:
