@@ -123,7 +123,14 @@ func (sm *ShardingManager) CalculateShardAssignments(
 	if len(nodes) > defaultBatchSize {
 		return sm.calculateShardAssignmentsBatched(nodes, currentShards)
 	}
+	return sm.calculateGlobalShardAssignments(nodes, currentShards)
+}
 
+// calculateGlobalShardAssignments calculates shard assignments across the complete set of candidate nodes.
+func (sm *ShardingManager) calculateGlobalShardAssignments(
+	nodes []*corev1.Node,
+	currentShards []*shardv1alpha1.NodeShard,
+) (map[string]*ShardAssignment, error) {
 	allMetrics := sm.metricsProvider.GetAllNodeMetrics()
 	policyMetrics := sm.convertNodeMetrics(allMetrics)
 
@@ -281,33 +288,9 @@ func (sm *ShardingManager) calculateShardAssignmentsBatched(
 	nodes []*corev1.Node,
 	currentShards []*shardv1alpha1.NodeShard,
 ) (map[string]*ShardAssignment, error) {
-	batchSize := defaultBatchSize
-	assignments := make(map[string]*ShardAssignment)
-
-	for i := 0; i < len(nodes); i += batchSize {
-		end := i + batchSize
-		if end > len(nodes) {
-			end = len(nodes)
-		}
-
-		batch := nodes[i:end]
-		batchAssignments, err := sm.CalculateShardAssignments(batch, currentShards)
-		if err != nil {
-			return nil, err
-		}
-
-		for scheduler, assignment := range batchAssignments {
-			if existing, exists := assignments[scheduler]; exists {
-				existing.NodesDesired = append(existing.NodesDesired, assignment.NodesDesired...)
-			} else {
-				assignments[scheduler] = assignment
-			}
-		}
-
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	return assignments, nil
+	// For large node counts (>defaultBatchSize), execute assignment pipeline globally across all nodes
+	// to preserve assignedNodes tracking and global policy limits across the cluster.
+	return sm.calculateGlobalShardAssignments(nodes, currentShards)
 }
 
 func (sm *ShardingManager) convertNodeMetrics(metrics map[string]*NodeMetrics) map[string]*policy.NodeMetrics {
