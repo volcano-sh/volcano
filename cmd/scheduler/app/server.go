@@ -57,6 +57,17 @@ func Run(opt *options.ServerOption) error {
 		return err
 	}
 
+	// Build a second rest.Config for volume-binding API operations. It
+	// reuses the main kubeconfig / master address but carries its own
+	// QPS / Burst budget so PVC-heavy scheduling waves do not starve
+	// the main scheduler kube-client of pod-binding traffic.
+	opt.KubeClientVolumeBindingOptions.KubeConfig = opt.KubeClientOptions.KubeConfig
+	opt.KubeClientVolumeBindingOptions.Master = opt.KubeClientOptions.Master
+	configVolumeBinding, err := kube.BuildConfig(opt.KubeClientVolumeBindingOptions)
+	if err != nil {
+		return fmt.Errorf("failed to build kube config for volume binding: %w", err)
+	}
+
 	// Align default feature-gates with the connected cluster's version.
 	if err := commonutil.SetupComponentGlobals(config); err != nil {
 		klog.Errorf("failed to set component globals: %v", err)
@@ -71,7 +82,7 @@ func Run(opt *options.ServerOption) error {
 		}
 	}
 
-	sched, err := scheduler.NewScheduler(config, opt)
+	sched, err := scheduler.NewScheduler(config, opt, configVolumeBinding)
 	if err != nil {
 		panic(err)
 	}

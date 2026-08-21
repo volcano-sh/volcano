@@ -66,12 +66,18 @@ const (
 type Session struct {
 	UID types.UID
 
-	kubeClient      kubernetes.Interface
-	vcClient        vcclient.Interface
-	recorder        record.EventRecorder
-	cache           cache.Cache
-	restConfig      *rest.Config
-	informerFactory informers.SharedInformerFactory
+	kubeClient kubernetes.Interface
+	// kubeClientVolumeBinding is a session-scoped view of the cache's
+	// volume-binding kube-client. Plugins that perform PV / PVC API
+	// operations (typically the VolumeBinding predicates plugin) should
+	// use it rather than KubeClient so their traffic is metered against
+	// --kube-api-qps-volume / --kube-api-burst-volume.
+	kubeClientVolumeBinding kubernetes.Interface
+	vcClient                vcclient.Interface
+	recorder                record.EventRecorder
+	cache                   cache.Cache
+	restConfig              *rest.Config
+	informerFactory         informers.SharedInformerFactory
 
 	TotalResource *api.Resource
 	// PodGroupOldState contains podgroup status and annotations during schedule
@@ -167,13 +173,14 @@ type Session struct {
 func openSession(cache cache.Cache) *Session {
 	cache.OnSessionOpen()
 	ssn := &Session{
-		UID:             uuid.NewUUID(),
-		kubeClient:      cache.Client(),
-		vcClient:        cache.VCClient(),
-		restConfig:      cache.ClientConfig(),
-		recorder:        cache.EventRecorder(),
-		cache:           cache,
-		informerFactory: cache.SharedInformerFactory(),
+		UID:                     uuid.NewUUID(),
+		kubeClient:              cache.Client(),
+		kubeClientVolumeBinding: cache.ClientVolumeBinding(),
+		vcClient:                cache.VCClient(),
+		restConfig:              cache.ClientConfig(),
+		recorder:                cache.EventRecorder(),
+		cache:                   cache,
+		informerFactory:         cache.SharedInformerFactory(),
 
 		TotalResource: api.EmptyResource(),
 		PodGroupOldState: &api.PodGroupOldState{
@@ -950,6 +957,15 @@ func (ssn *Session) AddUnassignedNumaPods(allocatedSets map[api.PodMeta]map[stri
 // KubeClient returns the kubernetes client
 func (ssn *Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
+}
+
+// KubeClientVolumeBinding returns the kubernetes client dedicated to
+// volume-binding API operations (PV / PVC). Plugins that call the
+// apiserver for volume-binding should use it instead of KubeClient so
+// their traffic is metered against --kube-api-qps-volume /
+// --kube-api-burst-volume.
+func (ssn *Session) KubeClientVolumeBinding() kubernetes.Interface {
+	return ssn.kubeClientVolumeBinding
 }
 
 // SchGateManager returns the scheduler gate manager.
