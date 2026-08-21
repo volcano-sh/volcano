@@ -490,6 +490,10 @@ func (ads *AscendDevices) selectDevices(pod *v1.Pod, schedulePolicy string) (dev
 		selectedDevs := make([]*AscendDevice, 0)
 		for _, dev := range availableDevs {
 			klog.V(5).Infof("check fit. req %+v dev_info %+v dev_usage %+v", req, dev.DeviceInfo, dev.DeviceUsage)
+			if !devices.CheckUUID(pod.GetAnnotations(), dev.DeviceInfo.ID, dev.useUUIDAnno, dev.noUseUUIDAnno, ads.Type) {
+				klog.V(5).Infof("check uuid failed. dev ID %s", dev.DeviceInfo.ID)
+				continue
+			}
 			if !fit(&req, dev, isHAMiCoreMode(pod)) {
 				klog.V(5).Infof("fit false. dev ID %s", dev.DeviceInfo.ID)
 				continue
