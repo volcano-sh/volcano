@@ -446,6 +446,11 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 		finalStmt := framework.NewStatement(ssn)
 		if err = finalStmt.RecoverOperations(bestStmt); err != nil {
 			klog.ErrorS(err, "Failed to recover operations", "job", job.UID, "hyperNode", bestHyperNode)
+			// RecoverOperations replays operations one by one, so a failure part way
+			// through leaves the earlier ones applied to the session and recorded on
+			// finalStmt. Roll them back, otherwise they stay orphaned and corrupt node
+			// accounting and task statuses for the rest of the scheduling cycle.
+			finalStmt.Discard()
 			return nil
 		}
 
@@ -519,6 +524,9 @@ func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *
 		finalStmt := framework.NewStatement(ssn)
 		if err = finalStmt.RecoverOperations(bestStmt); err != nil {
 			klog.ErrorS(err, "Failed to recover operations", "subJob", subJob.UID, "hyperNode", bestHyperNode)
+			// See allocateForJob: partially applied operations must be rolled back or
+			// they remain orphaned in the session.
+			finalStmt.Discard()
 			return nil, 0
 		}
 		newAllocatedHyperNode := ssn.HyperNodes.GetLCAHyperNode(subJob.AllocatedHyperNode, bestHyperNode)
