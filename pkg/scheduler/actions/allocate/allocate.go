@@ -152,7 +152,7 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 	for _, job := range ssn.Jobs {
 		// If not config enqueue action, change Pending pg into Inqueue state to avoid blocking job scheduling.
 		if job.IsPending() {
-			if conf.EnabledActionMap["enqueue"] {
+			if ssn.EnabledActions["enqueue"] {
 				klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: job status is pending.",
 					job.Namespace, job.Name, job.Queue)
 				continue

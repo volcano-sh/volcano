@@ -99,6 +99,10 @@ type Session struct {
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
+	// EnabledActions records which actions are configured to run in this scheduling
+	// session. It is populated once by the caller after the session is opened and
+	// must not be mutated afterward.
+	EnabledActions map[string]bool
 	// HyperNodes stores the HyperNodeInfo of each HyperNode
 	HyperNodes           api.HyperNodeInfoMap
 	HyperNodeTierNameMap api.HyperNodeTierNameMap
@@ -186,6 +190,7 @@ func openSession(cache cache.Cache) *Session {
 		CSINodesStatus: map[string]*api.CSINodeStatusInfo{},
 		RevocableNodes: map[string]*api.NodeInfo{},
 		Queues:         map[api.QueueID]*api.QueueInfo{},
+		EnabledActions: map[string]bool{},
 
 		plugins:                       map[string]Plugin{},
 		jobOrderFns:                   map[string]api.CompareFn{},
