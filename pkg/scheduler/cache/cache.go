@@ -99,8 +99,8 @@ func init() {
 	utilruntime.Must(schemeBuilder.AddToScheme(scheme.Scheme))
 }
 
-// New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration) Cache {
+// New returns a SchedulerCache.
+func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration) *SchedulerCache {
 	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners, resyncPeriod, resourceSyncTimeout)
 }
 
@@ -188,6 +188,12 @@ type SchedulerCache struct {
 	multiSchedulerInfo
 
 	binderRegistry *BinderRegistry
+
+	// hintRegistry holds the HintProviders declared by plugins during OpenSession.
+	hintRegistry *HintRegistry
+	// unschedulableCache records Jobs that stayed unschedulable so later sessions
+	// can skip their redundant filter work until a subscribed event wakes them.
+	unschedulableCache *UnschedulableJobCache
 
 	// sharedDRAManager is used in DRA plugin, contains resourceClaimTracker, resourceSliceLister and deviceClassLister
 	sharedDRAManager fwk.SharedDRAManager
@@ -616,6 +622,14 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	}
 
 	sc.binderRegistry = NewBinderRegistry()
+	if utilfeature.DefaultFeatureGate.Enabled(features.UnschedulableJobCache) {
+		maxSkipDuration := DefaultMaxSkipDuration
+		if options.ServerOpts != nil {
+			maxSkipDuration = options.ServerOpts.UnschedulableJobCacheMaxSkipDuration
+		}
+		sc.hintRegistry = NewHintRegistry()
+		sc.unschedulableCache = NewUnschedulableJobCache(sc.hintRegistry, sc.getJobInfo, maxSkipDuration)
+	}
 
 	// add all events handlers
 	sc.addEventHandler()
@@ -678,28 +692,43 @@ func (sc *SchedulerCache) addEventHandler() {
 	handlers["node"] = schedulercache.NewInitialEventHandlerRegistration(handlerRegistration, sc.nodeInitialEventTracker)
 
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
-	sc.pvcInformer.Informer()
+	handlerRegistration = sc.addHintEventHandler(sc.pvcInformer.Informer(), fwk.PersistentVolumeClaim)
+	handlers["pvc"] = handlerRegistration
 	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
-	sc.pvInformer.Informer()
+	handlerRegistration = sc.addHintEventHandler(sc.pvInformer.Informer(), fwk.PersistentVolume)
+	handlers["pv"] = handlerRegistration
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
-	sc.scInformer.Informer()
+	handlerRegistration = sc.addHintEventHandler(sc.scInformer.Informer(), fwk.StorageClass)
+	handlers["storageClass"] = handlerRegistration
 	sc.vaInformer = informerFactory.Storage().V1().VolumeAttachments()
-	sc.vaInformer.Informer()
+	handlerRegistration = sc.addHintEventHandler(sc.vaInformer.Informer(), fwk.VolumeAttachment)
+	handlers["volumeAttachment"] = handlerRegistration
 	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
 	handlerRegistration, _ = sc.csiNodeInformer.Informer().AddEventHandler(
 		cache.ResourceEventHandlerDetailedFuncs{
-			AddFunc:    sc.AddOrUpdateCSINode,
-			UpdateFunc: sc.UpdateCSINode,
-			DeleteFunc: sc.DeleteCSINode,
+			AddFunc: func(obj interface{}, isInInitialList bool) {
+				sc.AddOrUpdateCSINode(obj, isInInitialList)
+				sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.CSINode, ActionType: fwk.Add}, nil, obj)
+			},
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				sc.UpdateCSINode(oldObj, newObj)
+				sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.CSINode, ActionType: fwk.Update}, oldObj, newObj)
+			},
+			DeleteFunc: func(obj interface{}) {
+				sc.DeleteCSINode(obj)
+				sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.CSINode, ActionType: fwk.Delete}, obj, nil)
+			},
 		},
 	)
 	handlers["csiNode"] = handlerRegistration
 
 	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage {
 		sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
-		sc.csiDriverInformer.Informer()
+		handlerRegistration = sc.addHintEventHandler(sc.csiDriverInformer.Informer(), fwk.CSIDriver)
+		handlers["csiDriver"] = handlerRegistration
 		sc.csiStorageCapacityInformer = informerFactory.Storage().V1().CSIStorageCapacities()
-		sc.csiStorageCapacityInformer.Informer()
+		handlerRegistration = sc.addHintEventHandler(sc.csiStorageCapacityInformer.Informer(), fwk.CSIStorageCapacity)
+		handlers["csiStorageCapacity"] = handlerRegistration
 	}
 
 	sc.podInformer = informerFactory.Core().V1().Pods()
@@ -832,7 +861,15 @@ func (sc *SchedulerCache) addEventHandler() {
 		ctx := context.TODO()
 		logger := klog.FromContext(ctx)
 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
+		handlerRegistration = sc.addHintEventHandler(resourceClaimInformer, fwk.ResourceClaim)
+		handlers["resourceClaim"] = handlerRegistration
 		sc.resourceClaimCache = assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+		resourceSliceInformer := informerFactory.Resource().V1().ResourceSlices().Informer()
+		handlerRegistration = sc.addHintEventHandler(resourceSliceInformer, fwk.ResourceSlice)
+		handlers["resourceSlice"] = handlerRegistration
+		deviceClassInformer := informerFactory.Resource().V1().DeviceClasses().Informer()
+		handlerRegistration = sc.addHintEventHandler(deviceClassInformer, fwk.DeviceClass)
+		handlers["deviceClass"] = handlerRegistration
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
 			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaintRules),
 			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
@@ -851,6 +888,21 @@ func (sc *SchedulerCache) addEventHandler() {
 		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, sc.resourceClaimCache, resourceSliceTracker, informerFactory)
 	}
 	sc.registeredHandlers = handlers
+}
+
+func (sc *SchedulerCache) addHintEventHandler(informer cache.SharedIndexInformer, resource fwk.EventResource) cache.ResourceEventHandlerRegistration {
+	handlerRegistration, _ := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: resource, ActionType: fwk.Add}, nil, obj)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: resource, ActionType: fwk.Update}, oldObj, newObj)
+		},
+		DeleteFunc: func(obj interface{}) {
+			sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: resource, ActionType: fwk.Delete}, obj, nil)
+		},
+	})
+	return handlerRegistration
 }
 
 // Run  starts the schedulerCache
@@ -872,6 +924,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go wait.Until(sc.processCleanupJob, 0, stopCh)
 
 	go wait.Until(sc.processBindTask, time.Millisecond*20, stopCh)
+
+	// Expire stale unschedulable-job cache records so their retries resume.
+	sc.unschedulableCache.StartWatchdog(stopCh)
 
 	// Get metrics data
 	klog.V(3).Infof("Start metrics collection, metricsConf is %v", sc.metricsConf)
@@ -1841,6 +1896,24 @@ func (sc *SchedulerCache) RegisterBinder(name string, binder interface{}) {
 		sc.binderRegistry = NewBinderRegistry()
 	}
 	sc.binderRegistry.Register(name, binder)
+}
+
+// UnschedulableCache returns the independent cache used by QueueingHints. It is
+// nil when the UnschedulableJobCache feature is disabled.
+func (sc *SchedulerCache) UnschedulableCache() UnschedulableCache {
+	return sc.unschedulableCache
+}
+
+// getJobInfo returns the current JobInfo for jobID or nil when it is no longer
+// tracked. It is the jobGetter used by the UnschedulableJobCache.
+func (sc *SchedulerCache) getJobInfo(jobID schedulingapi.JobID) *schedulingapi.JobInfo {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	job := sc.Jobs[jobID]
+	if job == nil {
+		return nil
+	}
+	return job.Clone()
 }
 
 func (sc *SchedulerCache) OnSessionOpen() {

@@ -32,15 +32,16 @@ import (
 )
 
 const (
-	defaultSchedulerName       = "volcano"
-	defaultShardName           = "volcano"
-	defaultSchedulerPeriod     = time.Second
-	defaultResyncPeriod        = 0
-	defaultResourceSyncTimeout = 60 * time.Second
-	defaultQueue               = "default"
-	defaultListenAddress       = ":8080"
-	defaultHealthzAddress      = ":11251"
-	defaultPluginsDir          = ""
+	defaultSchedulerName                        = "volcano"
+	defaultShardName                            = "volcano"
+	defaultSchedulerPeriod                      = time.Second
+	defaultUnschedulableJobCacheMaxSkipDuration = 5 * time.Minute
+	defaultResyncPeriod                         = 0
+	defaultResourceSyncTimeout                  = 60 * time.Second
+	defaultQueue                                = "default"
+	defaultListenAddress                        = ":8080"
+	defaultHealthzAddress                       = ":11251"
+	defaultPluginsDir                           = ""
 
 	defaultQPS   = 2000.0
 	defaultBurst = 2000
@@ -111,6 +112,10 @@ type ServerOption struct {
 	// timeout on waiting for handlers handle initial resource synchronization before starting scheduling, 0 will skip waiting
 	ResourceSyncTimeout time.Duration
 
+	// UnschedulableJobCacheMaxSkipDuration bounds how long a Job may remain
+	// cached without a matching wakeup event.
+	UnschedulableJobCacheMaxSkipDuration time.Duration
+
 	// DisableDefaultSchedulerConfig indicates if the scheduler should fallback to default
 	// config if the current scheduler config is invalid
 	DisableDefaultSchedulerConfig bool
@@ -131,7 +136,8 @@ var ServerOpts *ServerOption
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
 	return &ServerOption{
-		EnableCSIStorage: true,
+		EnableCSIStorage:                     true,
+		UnschedulableJobCacheMaxSkipDuration: defaultUnschedulableJobCacheMaxSkipDuration,
 	}
 }
 
@@ -182,6 +188,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&s.GateRemovalWorkerNum, "gate-removal-worker-num", 5, "The number of async workers for scheduling gate removal (used when SchedulingGatesQueueAdmission is enabled).")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 	fs.DurationVar(&s.ResourceSyncTimeout, "resource-sync-timeout", defaultResourceSyncTimeout, "timeout on waiting for handler handling initial resources synchronization before starting scheduler, default is 60s, 0 skip waiting")
+	fs.DurationVar(&s.UnschedulableJobCacheMaxSkipDuration, "unschedulable-job-cache-max-skip-duration", defaultUnschedulableJobCacheMaxSkipDuration,
+		"Maximum duration a Job may remain in the unschedulable-job cache without a matching event")
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
 	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling, none(default)|hard|soft mode is supported")
 	fs.StringVar(&s.ShardName, "scheduler-sharding-name", defaultShardName, "The name of shard used for this scheduler")
