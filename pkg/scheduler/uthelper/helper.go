@@ -36,7 +36,6 @@ import (
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -96,7 +95,7 @@ type TestCommonStruct struct {
 	// ExpectStatus the expected final podgroup status.
 	ExpectStatus map[api.JobID]scheduling.PodGroupPhase
 	// ExpectTaskStatusNums represents the expected number map of various TaskStatuses in podgroup
-	ExpectTaskStatusNums map[api.JobID]map[schedulingapi.TaskStatus]int
+	ExpectTaskStatusNums map[api.JobID]map[api.TaskStatus]int
 	// ExpectBindsNum the expected bind events numbers.
 	ExpectBindsNum int
 	// ExpectEvictNum the expected evict events numbers, include preempted and reclaimed evict events
@@ -205,7 +204,7 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 			}
 		}
 	}
-	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
+	schedulerCache.HyperNodesInfo = api.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
 
 	return schedulerCache
 }
