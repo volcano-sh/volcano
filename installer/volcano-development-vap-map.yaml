@@ -11391,7 +11391,12 @@ spec:
     - name: flowNames
       expression: "variables.flows.map(flow, flow.name)"
   validations:
-    # 1. Valid Dependency References - Dependencies must reference existing flows
+    # 1. JobFlow spec updates are not supported
+    - expression: request.operation != "UPDATE" || object.spec == oldObject.spec
+      message: "jobflow spec updates are not supported"
+      reason: Invalid
+
+    # 2. Valid Dependency References - Dependencies must reference existing flows
     - expression: |
         variables.flows.all(flow,
           !has(flow.dependsOn) ||
@@ -11401,7 +11406,7 @@ spec:
       message: "jobflow Flow is not DAG: vertex is not defined"
       reason: Invalid
 
-    # 2. No Self-Dependencies - A flow cannot depend on itself
+    # 3. No Self-Dependencies - A flow cannot depend on itself
     - expression: |
         variables.flows.all(flow,
           !has(flow.dependsOn) ||
