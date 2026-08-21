@@ -108,11 +108,7 @@ func (b *Bucket) TaskBound(task *api.TaskInfo) {
 	b.CalcResReq(task.Resreq, reqSub)
 }
 
-// TaskUnbound reverses TaskBound: it returns the task to the pending
-// set, restores its resource request to the bucket, and decrements the
-// bound counters. The framework invokes this through DeallocateFunc when
-// a Statement is discarded, so subsequent NodeOrderFn calls in the same
-// session do not score against rolled-back allocations.
+// TaskUnbound restores bucket state after task deallocation.
 func (b *Bucket) TaskUnbound(task *api.TaskInfo) {
 	if task.NodeName != "" {
 		b.node[task.NodeName]--

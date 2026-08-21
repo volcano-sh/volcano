@@ -161,9 +161,24 @@ func (jm *JobManager) AddTaskToBucket(bucketIndex int, taskName string, task *ap
 	bucket := jm.buckets[bucketIndex]
 	jm.podInBucket[task.Pod.UID] = bucketIndex
 	bucket.AddTask(taskName, task)
+	if task.NodeName != "" {
+		jm.addTaskToNode(taskName, task.NodeName)
+	}
 	if size := len(bucket.tasks) + bucket.boundTask; size > jm.bucketMaxSize {
 		jm.bucketMaxSize = size
 	}
+}
+
+func (jm *JobManager) addTaskToNode(taskName, nodeName string) {
+	if taskName == "" {
+		return
+	}
+	set, ok := jm.nodeTaskSet[nodeName]
+	if !ok {
+		set = make(map[string]int)
+		jm.nodeTaskSet[nodeName] = set
+	}
+	set[taskName]++
 }
 
 // L compared with R, -1 for L < R, 0 for L == R, 1 for L > R
@@ -313,14 +328,7 @@ func (jm *JobManager) ConstructBucket(tasks map[api.TaskID]*api.TaskInfo) {
 
 // TaskBound binds task to bucket
 func (jm *JobManager) TaskBound(task *api.TaskInfo) {
-	if taskName := getTaskName(task); taskName != "" {
-		set, ok := jm.nodeTaskSet[task.NodeName]
-		if !ok {
-			set = make(map[string]int)
-			jm.nodeTaskSet[task.NodeName] = set
-		}
-		set[taskName]++
-	}
+	jm.addTaskToNode(getTaskName(task), task.NodeName)
 
 	bucket := jm.GetBucket(task)
 	if bucket != nil {
@@ -328,10 +336,7 @@ func (jm *JobManager) TaskBound(task *api.TaskInfo) {
 	}
 }
 
-// TaskUnbound reverses TaskBound. It is invoked from the plugin's
-// DeallocateFunc when the scheduler rolls back an allocation (e.g.
-// Statement.Discard on a failed gang-schedule attempt) so the bucket
-// and node-affinity bookkeeping match the actual session state.
+// TaskUnbound restores task-topology state after task deallocation.
 func (jm *JobManager) TaskUnbound(task *api.TaskInfo) {
 	if taskName := getTaskName(task); taskName != "" {
 		if set, ok := jm.nodeTaskSet[task.NodeName]; ok {
