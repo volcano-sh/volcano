@@ -102,6 +102,11 @@ func PodGroups(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 }
 
 func createPodGroupPatch(podgroup *schedulingv1beta1.PodGroup) ([]byte, error) {
+	if podgroup.Spec.Queue == "" {
+		return json.Marshal([]patchOperation{
+			{Op: "add", Path: "/spec/queue", Value: resolveDefaultQueue()},
+		})
+	}
 	if podgroup.Spec.Queue != schedulingv1beta1.DefaultQueue {
 		return nil, nil
 	}
@@ -122,4 +127,11 @@ func createPodGroupPatch(podgroup *schedulingv1beta1.PodGroup) ([]byte, error) {
 	}
 
 	return nil, nil
+}
+
+func resolveDefaultQueue() string {
+	if config.DefaultQueue != "" {
+		return config.DefaultQueue
+	}
+	return schedulingv1beta1.DefaultQueue
 }
