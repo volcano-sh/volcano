@@ -165,12 +165,7 @@ func organizeEvictionWorksheet(ssn *framework.Session, job *api.JobInfo) *evicti
 			subJobs = append(subJobs, subJob)
 		}
 	}
-	slices.SortFunc(subJobs, func(l, r *api.SubJobInfo) int {
-		if !ssn.SubJobOrderFn(l, r) {
-			return 1
-		}
-		return -1
-	})
+	slices.SortFunc(subJobs, ssn.SubJobCompareFn)
 	requireSubJobs := sets.Set[api.SubJobID]{}
 	for _, subJob := range subJobs {
 		if subJobCountMap[subJob.GID] < job.MinSubJobs[subJob.GID] {
