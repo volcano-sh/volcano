@@ -102,3 +102,12 @@ func TestAddFlags(t *testing.T) {
 		assert.Equal(t, v, utilfeature.DefaultFeatureGate.Enabled(k))
 	}
 }
+
+func TestCheckOptionOrDieRejectsNamespaceQueueDefault(t *testing.T) {
+	option := NewServerOption()
+	option.DefaultQueue = "namespace/training"
+
+	if err := option.CheckOptionOrDie(); err == nil {
+		t.Fatal("CheckOptionOrDie() accepted a NamespaceQueue as default-queue")
+	}
+}

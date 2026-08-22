@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ import (
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 	controllerMpi "volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
+	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -199,10 +200,40 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		b.WriteString(err.Error())
 	}
 
-	queue, err := config.QueueLister.Get(job.Spec.Queue)
+	b.WriteString(validateJobQueue(job.Namespace, job.Spec.Queue))
+
+	if hasDependenciesBetweenTasks {
+		_, isDag := topoSort(job)
+		if !isDag {
+			b.WriteString(" job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG);")
+		}
+	}
+
+	if b.Len() > 0 {
+		reviewResponse.Allowed = false
+	}
+
+	return b.String()
+}
+
+func validateJobQueue(workloadNamespace, queueReference string) string {
+	resolved, err := router.ResolveQueueReference(
+		workloadNamespace,
+		queueReference,
+		schedulingv1beta1.DefaultQueue,
+	)
 	if err != nil {
-		fmt.Fprintf(&b, " unable to find job queue: %v;", err)
-	} else {
+		return fmt.Sprintf(" invalid job queue reference: %v;", err)
+	}
+
+	switch resolved.Scope {
+	case router.ClusterQueueReferenceScope:
+		queue, err := config.QueueLister.Get(resolved.Name)
+		if err != nil {
+			return fmt.Sprintf(" unable to find job queue: %v;", err)
+		}
+
+		var b strings.Builder
 		if queue.Status.State != schedulingv1beta1.QueueStateOpen {
 			fmt.Fprintf(&b, " can only submit job to queue with state `Open`, "+
 				"queue `%s` status is `%s`;", queue.Name, queue.Status.State)
@@ -220,20 +251,32 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 				fmt.Fprintf(&b, " can only submit job to leaf queue, "+"queue `%s` has %d child queues;", queue.Name, len(childQueues))
 			}
 		}
-	}
 
-	if hasDependenciesBetweenTasks {
-		_, isDag := topoSort(job)
-		if !isDag {
-			b.WriteString(" job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG);")
+		return b.String()
+
+	case router.NamespaceQueueReferenceScope:
+		queue, err := config.NamespaceQueueLister.
+			NamespaceQueues(resolved.Namespace).
+			Get(resolved.Name)
+		if err != nil {
+			return fmt.Sprintf(" unable to find job NamespaceQueue: %v;", err)
 		}
-	}
 
-	if b.Len() > 0 {
-		reviewResponse.Allowed = false
-	}
+		if commonutil.EffectiveNamespaceQueueState(queue.Spec.State) != schedulingv1beta1.QueueStateOpen {
+			return fmt.Sprintf(" can only submit job to NamespaceQueue with desired state `Open`, "+
+				"NamespaceQueue `%s/%s` desired state is `%s`;", queue.Namespace, queue.Name, queue.Spec.State)
+		}
 
-	return b.String()
+		if queue.Status.State != schedulingv1beta1.QueueStateOpen {
+			return fmt.Sprintf(" can only submit job to NamespaceQueue with state `Open`, "+
+				"NamespaceQueue `%s/%s` status is `%s`;", queue.Namespace, queue.Name, queue.Status.State)
+		}
+
+		return ""
+
+	default:
+		return fmt.Sprintf(" unsupported job queue reference scope %q;", resolved.Scope)
+	}
 }
 
 func validateJobUpdate(old, new *v1alpha1.Job) error {

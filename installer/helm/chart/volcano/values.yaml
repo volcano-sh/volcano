@@ -66,7 +66,7 @@ custom:
   scheduler_node_worker_threads: 20
   scheduler_percentage_nodes_to_find: ~
   agent_scheduler_worker_count: 1
-  enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/validate,/queues/mutate,/queues/validate,/hypernodes/validate,/cronjobs/validate"
+  enabled_admissions: "/jobs/mutate,/jobs/validate,/namespacequeues/validate,/podgroups/mutate,/podgroups/validate,/queues/mutate,/queues/validate,/hypernodes/validate,/cronjobs/validate"
   colocation_enable: false
   ignored_provisioners: ~
 # Override the configuration for agent.
@@ -291,6 +291,9 @@ custom:
   # Specify feature gates for components
   scheduler_feature_gates: ~
   admission_feature_gates: ~
+  controller_feature_gates: ~
+  namespace_queue_enable: false
+  namespace_queue_max_depth: 5
 
 # Specify options for scheduler sharding
   agent_scheduler_sharding_mode: ~

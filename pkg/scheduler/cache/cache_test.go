@@ -1,6 +1,6 @@
 /*
 Copyright 2017 The Kubernetes Authors.
-Copyright 2018-2025 The Volcano Authors.
+Copyright 2018-2026 The Volcano Authors.
 
 Modifications made by Volcano authors:
 - Enhanced test coverage for cache functionality
@@ -32,17 +32,24 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apiMeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	kubetesting "k8s.io/client-go/testing"
 	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclientfake "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
@@ -70,6 +77,227 @@ func TestAddDRAResource_constantTimeForHugeCount(t *testing.T) {
 	got := m[dc].Capacity["memory"]
 	if want := resource.MustParse("19807040628566084396238503936"); got.Cmp(want) != 0 {
 		t.Fatalf("capacity = %s for count=MaxInt64; want exact %s", got.AsDec().String(), want.AsDec().String())
+	}
+}
+
+func TestDefaultStatusUpdaterUpdateQueueStatus(t *testing.T) {
+	allocated := api.BuildResourceList("2", "4Gi")
+
+	tests := []struct {
+		name      string
+		objects   []runtime.Object
+		queueInfo *api.QueueInfo
+		getStatus func(t *testing.T, client vcclient.Interface) v1.ResourceList
+	}{
+		{
+			name: "cluster queue",
+			objects: []runtime.Object{
+				&vcv1beta1.Queue{ObjectMeta: metav1.ObjectMeta{Name: "research"}},
+			},
+			queueInfo: api.NewQueueInfo(&scheduling.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: "research"},
+			}),
+			getStatus: func(t *testing.T, client vcclient.Interface) v1.ResourceList {
+				t.Helper()
+				queue, err := client.SchedulingV1beta1().Queues().Get(
+					context.TODO(), "research", metav1.GetOptions{})
+				if err != nil {
+					t.Fatalf("failed to get Queue: %v", err)
+				}
+				return queue.Status.Allocated
+			},
+		},
+		{
+			name: "namespace queue",
+			objects: []runtime.Object{
+				&vcv1beta1.NamespaceQueue{
+					ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a"},
+				},
+			},
+			queueInfo: func() *api.QueueInfo {
+				queueInfo, err := api.NewNamespaceQueueInfo(&scheduling.NamespaceQueue{
+					ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a"},
+				})
+				if err != nil {
+					t.Fatalf("failed to create NamespaceQueueInfo: %v", err)
+				}
+				return queueInfo
+			}(),
+			getStatus: func(t *testing.T, client vcclient.Interface) v1.ResourceList {
+				t.Helper()
+				queue, err := client.SchedulingV1beta1().NamespaceQueues("team-a").Get(
+					context.TODO(), "training", metav1.GetOptions{})
+				if err != nil {
+					t.Fatalf("failed to get NamespaceQueue: %v", err)
+				}
+				return queue.Status.Allocated
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := vcclientfake.NewSimpleClientset(tt.objects...)
+			updater := &defaultStatusUpdater{vcclient: client}
+			tt.queueInfo.Allocated = allocated.DeepCopy()
+
+			if err := updater.UpdateQueueStatus(tt.queueInfo); err != nil {
+				t.Fatalf("UpdateQueueStatus() error = %v", err)
+			}
+
+			if got := tt.getStatus(t, client); !equality.Semantic.DeepEqual(got, allocated) {
+				t.Fatalf("allocated resources = %v, want %v", got, allocated)
+			}
+		})
+	}
+}
+
+func TestDefaultStatusUpdaterPreservesNamespaceQueueControllerOwnedFields(t *testing.T) {
+	current := &vcv1beta1.NamespaceQueue{
+		ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a"},
+		Status: vcv1beta1.NamespaceQueueStatus{
+			State:     vcv1beta1.QueueStateOpen,
+			Pending:   1,
+			Running:   2,
+			Completed: 3,
+			Conditions: []metav1.Condition{{
+				Type:   "Ready",
+				Status: metav1.ConditionTrue,
+			}},
+		},
+	}
+	client := vcclientfake.NewSimpleClientset(current)
+	updater := &defaultStatusUpdater{vcclient: client}
+
+	queueInfo, err := api.NewNamespaceQueueInfo(&scheduling.NamespaceQueue{
+		ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a"},
+	})
+	if err != nil {
+		t.Fatalf("failed to create NamespaceQueueInfo: %v", err)
+	}
+	queueInfo.Allocated = api.BuildResourceList("2", "4Gi")
+	queueInfo.Reservation = scheduling.Reservation{
+		Nodes:    []string{"node-1"},
+		Resource: v1.ResourceList{"memory": resource.MustParse("2Gi")},
+	}
+
+	if err := updater.UpdateQueueStatus(queueInfo); err != nil {
+		t.Fatalf("UpdateQueueStatus() error = %v", err)
+	}
+
+	updated, err := client.SchedulingV1beta1().NamespaceQueues("team-a").Get(
+		context.TODO(), "training", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("failed to get NamespaceQueue: %v", err)
+	}
+	if updated.Status.State != vcv1beta1.QueueStateOpen ||
+		updated.Status.Pending != 1 || updated.Status.Running != 2 || updated.Status.Completed != 3 {
+		t.Fatalf("controller-owned status was changed: %#v", updated.Status)
+	}
+	ready := apiMeta.FindStatusCondition(updated.Status.Conditions, "Ready")
+	if ready == nil || ready.Status != metav1.ConditionTrue {
+		t.Fatalf("Ready condition = %#v, want True", ready)
+	}
+	if !equality.Semantic.DeepEqual(updated.Status.Allocated, queueInfo.Allocated) {
+		t.Fatalf("allocated resources = %v, want %v", updated.Status.Allocated, queueInfo.Allocated)
+	}
+	if !reflect.DeepEqual(updated.Status.Reservation.Nodes, queueInfo.Reservation.Nodes) ||
+		!equality.Semantic.DeepEqual(updated.Status.Reservation.Resource, queueInfo.Reservation.Resource) {
+		t.Fatalf("reservation = %#v, want nodes=%v resource=%v",
+			updated.Status.Reservation, queueInfo.Reservation.Nodes, queueInfo.Reservation.Resource)
+	}
+}
+
+func TestSchedulerCacheNamespaceQueueParentChainReadiness(t *testing.T) {
+	open := scheduling.QueueStateOpen
+	closed := scheduling.QueueStateClosed
+
+	newQueue := func(id api.QueueID, scope api.QueueScope, parent api.QueueID, state scheduling.QueueState) *api.QueueInfo {
+		return &api.QueueInfo{
+			UID:    id,
+			Scope:  scope,
+			Parent: parent,
+			State:  state,
+		}
+	}
+
+	tests := []struct {
+		name      string
+		queues    map[api.QueueID]*api.QueueInfo
+		candidate api.QueueID
+		wantOpen  bool
+	}{
+		{
+			name: "open namespace queue hierarchy",
+			queues: map[api.QueueID]*api.QueueInfo{
+				"root":    newQueue("root", api.ClusterQueueScope, "", open),
+				"default": newQueue("default", api.ClusterQueueScope, "root", open),
+				api.NamespaceQueueID("team-a", "training"): newQueue(
+					api.NamespaceQueueID("team-a", "training"), api.NamespaceQueueScope, "default", open,
+				),
+			},
+			candidate: api.NamespaceQueueID("team-a", "training"),
+			wantOpen:  true,
+		},
+		{
+			name: "closed namespace parent",
+			queues: map[api.QueueID]*api.QueueInfo{
+				"root":    newQueue("root", api.ClusterQueueScope, "", open),
+				"default": newQueue("default", api.ClusterQueueScope, "root", open),
+				api.NamespaceQueueID("team-a", "department"): newQueue(
+					api.NamespaceQueueID("team-a", "department"), api.NamespaceQueueScope, "default", closed,
+				),
+				api.NamespaceQueueID("team-a", "training"): newQueue(
+					api.NamespaceQueueID("team-a", "training"), api.NamespaceQueueScope,
+					api.NamespaceQueueID("team-a", "department"), open,
+				),
+			},
+			candidate: api.NamespaceQueueID("team-a", "training"),
+		},
+		{
+			name: "closed cluster parent",
+			queues: map[api.QueueID]*api.QueueInfo{
+				"root":    newQueue("root", api.ClusterQueueScope, "", open),
+				"default": newQueue("default", api.ClusterQueueScope, "root", closed),
+				api.NamespaceQueueID("team-a", "training"): newQueue(
+					api.NamespaceQueueID("team-a", "training"), api.NamespaceQueueScope, "default", open,
+				),
+			},
+			candidate: api.NamespaceQueueID("team-a", "training"),
+		},
+		{
+			name: "missing parent",
+			queues: map[api.QueueID]*api.QueueInfo{
+				api.NamespaceQueueID("team-a", "training"): newQueue(
+					api.NamespaceQueueID("team-a", "training"), api.NamespaceQueueScope, "missing", open,
+				),
+			},
+			candidate: api.NamespaceQueueID("team-a", "training"),
+		},
+		{
+			name: "cyclic hierarchy",
+			queues: map[api.QueueID]*api.QueueInfo{
+				api.NamespaceQueueID("team-a", "a"): newQueue(
+					api.NamespaceQueueID("team-a", "a"), api.NamespaceQueueScope,
+					api.NamespaceQueueID("team-a", "b"), open,
+				),
+				api.NamespaceQueueID("team-a", "b"): newQueue(
+					api.NamespaceQueueID("team-a", "b"), api.NamespaceQueueScope,
+					api.NamespaceQueueID("team-a", "a"), open,
+				),
+			},
+			candidate: api.NamespaceQueueID("team-a", "a"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cache := &SchedulerCache{AccountingQueues: tt.queues}
+			queue := tt.queues[tt.candidate]
+			if got := cache.isNamespaceQueueParentChainOpen(queue); got != tt.wantOpen {
+				t.Fatalf("isNamespaceQueueParentChainOpen() = %t, want %t", got, tt.wantOpen)
+			}
+		})
 	}
 }
 
@@ -518,6 +746,7 @@ func (m *mockPreBinder) PreBindRollBack(ctx context.Context, bindCtx *BindContex
 }
 
 func TestNewDefaultAndRootQueue(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
 	rootQueue := "root"
 	defaultQueue := "default"
 
@@ -558,10 +787,74 @@ func TestNewDefaultAndRootQueue(t *testing.T) {
 			wg.Wait()
 			_, rootErr := tt.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), rootQueue, metav1.GetOptions{})
 			assert.NoError(t, rootErr)
-			_, defaultErr := tt.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), defaultQueue, metav1.GetOptions{})
+			defaultQueueObject, defaultErr := tt.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), defaultQueue, metav1.GetOptions{})
 			assert.NoError(t, defaultErr)
+			if tt.name == "successfully create the both queues" ||
+				tt.name == "successfully create the default queue, skip the root queue" {
+				assert.Equal(t, []string{"*"}, defaultQueueObject.Spec.AllowedNamespaces)
+			}
 		})
 	}
+}
+
+func TestNewDefaultAndRootQueuePreservesExistingDefaultQueue(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	defaultQueue := &vcv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "default"},
+		Spec: vcv1beta1.QueueSpec{
+			AllowedNamespaces: []string{"team-a"},
+		},
+	}
+	client := vcclientfake.NewSimpleClientset(defaultQueue)
+
+	newDefaultAndRootQueue(client, defaultQueue.Name)
+
+	updated, err := client.SchedulingV1beta1().Queues().Get(
+		context.TODO(), defaultQueue.Name, metav1.GetOptions{})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"team-a"}, updated.Spec.AllowedNamespaces)
+}
+
+func TestNewDefaultAndRootQueuePreservesEmptyExistingAuthorization(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	client := vcclientfake.NewSimpleClientset(&vcv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: vcv1beta1.DefaultQueue},
+	})
+
+	newDefaultAndRootQueue(client, vcv1beta1.DefaultQueue)
+
+	updated, err := client.SchedulingV1beta1().Queues().Get(
+		context.TODO(), vcv1beta1.DefaultQueue, metav1.GetOptions{})
+	assert.NoError(t, err)
+	assert.Nil(t, updated.Spec.AllowedNamespaces)
+}
+
+func TestNewDefaultAndRootQueueDoesNotCreateNamespaceQueueDefaultWhenDisabled(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, false)
+	client := vcclientfake.NewSimpleClientset()
+
+	newDefaultAndRootQueue(client, "tenant-default")
+
+	_, err := client.SchedulingV1beta1().Queues().Get(
+		context.TODO(), vcv1beta1.DefaultQueue, metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err))
+}
+
+func TestNewDefaultAndRootQueueWithCustomSchedulerDefault(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	client := vcclientfake.NewSimpleClientset()
+
+	newDefaultAndRootQueue(client, "tenant-default")
+
+	customDefault, err := client.SchedulingV1beta1().Queues().Get(
+		context.TODO(), "tenant-default", metav1.GetOptions{})
+	assert.NoError(t, err)
+	assert.Nil(t, customDefault.Spec.AllowedNamespaces)
+
+	namespaceQueueDefault, err := client.SchedulingV1beta1().Queues().Get(
+		context.TODO(), vcv1beta1.DefaultQueue, metav1.GetOptions{})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"*"}, namespaceQueueDefault.Spec.AllowedNamespaces)
 }
 
 // mockHandlerRegistration is a mock implementation of cache.ResourceEventHandlerRegistration

@@ -112,10 +112,10 @@ func newQueueAttr(queue *api.QueueInfo) *queueAttr {
 }
 
 func parseNodeGroupResourceLimits(queue *api.QueueInfo) (map[string]*nodeGroupResourceLimit, error) {
-	if queue == nil || queue.Queue == nil || len(queue.Queue.Annotations) == 0 {
+	if queue == nil || len(queue.Annotations) == 0 {
 		return nil, nil
 	}
-	raw := queue.Queue.Annotations[schedulingv1.NodeGroupResourceLimitsAnnotationKey]
+	raw := queue.Annotations[schedulingv1.NodeGroupResourceLimitsAnnotationKey]
 	if raw == "" {
 		return nil, nil
 	}
@@ -140,7 +140,7 @@ func parseNodeGroupResourceLimits(queue *api.QueueInfo) (map[string]*nodeGroupRe
 }
 
 func newQueueGroupAffinity(queue *api.QueueInfo) *queueGroupAffinity {
-	if queue.Queue.Spec.Affinity == nil {
+	if queue == nil || queue.Affinity == nil {
 		return nil
 	}
 
@@ -151,7 +151,7 @@ func newQueueGroupAffinity(queue *api.QueueInfo) *queueGroupAffinity {
 		queueGroupAffinityPreferred:     sets.New[string](),
 	}
 
-	nodeGroupAffinity := queue.Queue.Spec.Affinity.NodeGroupAffinity
+	nodeGroupAffinity := queue.Affinity.NodeGroupAffinity
 	if nodeGroupAffinity != nil {
 		affinity.queueGroupAffinityPreferred.Insert(nodeGroupAffinity.PreferredDuringSchedulingIgnoredDuringExecution...)
 		affinity.queueGroupAffinityRequired.Insert(nodeGroupAffinity.RequiredDuringSchedulingIgnoredDuringExecution...)
@@ -160,7 +160,7 @@ func newQueueGroupAffinity(queue *api.QueueInfo) *queueGroupAffinity {
 			affinity.queueGroupAffinityPreferredIndexes[group] = i
 		}
 	}
-	nodeGroupAntiAffinity := queue.Queue.Spec.Affinity.NodeGroupAntiAffinity
+	nodeGroupAntiAffinity := queue.Affinity.NodeGroupAntiAffinity
 	if nodeGroupAntiAffinity != nil {
 		affinity.queueGroupAntiAffinityPreferred.Insert(nodeGroupAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution...)
 		affinity.queueGroupAntiAffinityRequired.Insert(nodeGroupAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution...)
@@ -254,14 +254,14 @@ func (np *nodeGroupPlugin) buildAncestors(ssn *framework.Session, attr *queueAtt
 	}
 
 	queueInfo := ssn.Queues[attr.queueID]
-	parentID := api.QueueID(rootQueueID)
-	if queueInfo.Queue.Spec.Parent != "" {
-		parentID = api.QueueID(queueInfo.Queue.Spec.Parent)
+	parentID := queueInfo.Parent
+	if parentID == "" {
+		parentID = api.QueueID(rootQueueID)
 	}
 
 	parentInfo := ssn.Queues[parentID]
 	if parentInfo == nil {
-		klog.Warningf("Parent queue %s not found for queue %s, unable to build hierarchy.", queueInfo.Queue.Spec.Parent, queueInfo.Name)
+		klog.Warningf("Parent queue %s not found for queue %s, unable to build hierarchy.", parentID, queueInfo.Name)
 		return
 	}
 

@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,10 +37,13 @@ type AdmissionServiceConfig struct {
 	VolcanoClient                 versioned.Interface
 	QueueLister                   schedulinglister.QueueLister
 	QueueInformer                 cache.SharedIndexInformer
+	NamespaceQueueLister          schedulinglister.NamespaceQueueLister
+	NamespaceQueueInformer        cache.SharedIndexInformer
 	Recorder                      record.EventRecorder
 	ConfigData                    *config.AdmissionConfiguration
 	EnableQueueAllocatedPodsCheck bool
 	MaxQueueDepth                 int
+	MaxNamespaceQueueDepth        int
 	EnableRootQueueProtection     bool
 }
 

@@ -24,6 +24,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	kubeclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -152,15 +153,29 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 
 	return func(ctx context.Context) {
 		framework.ForeachController(func(c framework.Controller) {
+			featureGateDisabled := false
+			if gated, ok := c.(framework.FeatureGatedController); ok &&
+				!utilfeature.DefaultFeatureGate.Enabled(gated.FeatureGate()) {
+				cleanup, canCleanup := c.(framework.FeatureGateCleanupController)
+				if !canCleanup || !cleanup.RunWhenFeatureDisabled() {
+					klog.Infof("Controller <%s> is disabled by feature gate <%s>", c.Name(), gated.FeatureGate())
+					return
+				}
+				featureGateDisabled = true
+				klog.Infof("Controller <%s> is running in cleanup-only mode because feature gate <%s> is disabled", c.Name(), gated.FeatureGate())
+			}
 			// if controller is not enabled, skip it
 			if !isControllerEnabled(c.Name(), opt.Controllers) {
 				klog.Infof("Controller <%s> is not enable", c.Name())
 				return
 			}
+			controllerOpt.FeatureGateDisabled = featureGateDisabled
 			if err := c.Initialize(controllerOpt); err != nil {
 				klog.Errorf("Failed to initialize controller <%s>: %v", c.Name(), err)
+				controllerOpt.FeatureGateDisabled = false
 				return
 			}
+			controllerOpt.FeatureGateDisabled = false
 
 			go c.Run(ctx.Done())
 		})

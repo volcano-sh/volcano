@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright 2021 The Volcano Authors.
+# Copyright 2026 The Volcano Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,10 @@ export LOG_LEVEL=3
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
 export E2E_TYPE=${E2E_TYPE:-"ALL"}
 export ARTIFACTS_PATH=${ARTIFACTS_PATH:-"${VK_ROOT}/volcano-e2e-logs"}
+export NAMESPACE_QUEUE_ENABLE=${NAMESPACE_QUEUE_ENABLE:-false}
+if [[ "${E2E_TYPE}" == "ALL" || "${E2E_TYPE}" == "NAMESPACEQUEUE" ]]; then
+  export NAMESPACE_QUEUE_ENABLE=true
+fi
 if [[ "${HYPERNODE_E2E_PROFILE:-full}" == "ownership-transition" ]]; then
   # Keep this profile focused on controller ownership handover. The full
   # profiles cover admission-enabled deployments, while each Helm upgrade
@@ -403,7 +407,8 @@ custom:
     node-role.kubernetes.io/control-plane: ""
   scheduler_feature_gates: ${FEATURE_GATES}
   admission_feature_gates: ${FEATURE_GATES}
-  enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
+  namespace_queue_enable: ${NAMESPACE_QUEUE_ENABLE}
+  enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/namespacequeues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
   ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
   local helm_status=${PIPESTATUS[1]}
@@ -486,6 +491,7 @@ case ${E2E_TYPE} in
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/cronjob/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress --focus="${DRA_GINKGO_FOCUS}" ./test/e2e/dra/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/admission/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/namespacequeue/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/hypernode/
     ;;
 "JOBP")
@@ -528,6 +534,10 @@ case ${E2E_TYPE} in
 "ADMISSION_WEBHOOK")
     echo "Running admission webhook e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/admission/
+    ;;
+"NAMESPACEQUEUE")
+    echo "Running NamespaceQueue e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/namespacequeue/
     ;;
 "HYPERNODE")
     echo "Creating 8 kwok nodes for 3-tier topology"

@@ -27,6 +27,7 @@ import (
 
 type SchedulingV1beta1Interface interface {
 	RESTClient() rest.Interface
+	NamespaceQueuesGetter
 	PodGroupsGetter
 	QueuesGetter
 }
@@ -34,6 +35,10 @@ type SchedulingV1beta1Interface interface {
 // SchedulingV1beta1Client is used to interact with features provided by the scheduling.volcano.sh group.
 type SchedulingV1beta1Client struct {
 	restClient rest.Interface
+}
+
+func (c *SchedulingV1beta1Client) NamespaceQueues(namespace string) NamespaceQueueInterface {
+	return newNamespaceQueues(c, namespace)
 }
 
 func (c *SchedulingV1beta1Client) PodGroups(namespace string) PodGroupInterface {

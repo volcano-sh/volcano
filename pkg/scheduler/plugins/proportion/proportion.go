@@ -93,10 +93,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	klog.V(4).Infof("The total resource is <%v>", pp.totalResource)
 	for _, queue := range ssn.Queues {
-		if len(queue.Queue.Spec.Guarantee.Resource) == 0 {
+		if len(queue.Guarantee.Resource) == 0 {
 			continue
 		}
-		guarantee := api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+		guarantee := api.NewResource(queue.Guarantee.Resource)
 		pp.totalGuarantee.Add(guarantee)
 	}
 	klog.V(4).Infof("The total guarantee resource is <%v>", pp.totalGuarantee)
@@ -107,7 +107,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			queue := ssn.Queues[job.Queue]
 			attr := &queueAttr{
 				queueID: queue.UID,
-				name:    queue.Name,
+				name:    string(queue.UID),
 				weight:  queue.Weight,
 
 				deserved:  api.EmptyResource(),
@@ -117,8 +117,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				inqueue:   api.EmptyResource(),
 				guarantee: api.EmptyResource(),
 			}
-			if len(queue.Queue.Spec.Capability) != 0 {
-				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
+			if len(queue.Capability) != 0 {
+				attr.capability = api.NewResource(queue.Capability)
 				if attr.capability.MilliCPU <= 0 {
 					attr.capability.MilliCPU = math.MaxFloat64
 				}
@@ -126,8 +126,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 					attr.capability.Memory = math.MaxFloat64
 				}
 			}
-			if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
-				attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+			if len(queue.Guarantee.Resource) != 0 {
+				attr.guarantee = api.NewResource(queue.Guarantee.Resource)
 			}
 			realCapability := api.ExceededPart(pp.totalResource, pp.totalGuarantee).Add(attr.guarantee)
 			if attr.capability == nil {
@@ -191,9 +191,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			metrics.UpdateQueueWeight(attr.name, attr.weight)
 			continue
 		}
-		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
-		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
-		metrics.UpdateQueueInqueue(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
+		queueName := string(queueInfo.UID)
+		metrics.UpdateQueueAllocated(queueName, 0, 0, map[v1.ResourceName]float64{})
+		metrics.UpdateQueueRequest(queueName, 0, 0, map[v1.ResourceName]float64{})
+		metrics.UpdateQueueInqueue(queueName, 0, 0, map[v1.ResourceName]float64{})
 	}
 
 	remaining := pp.totalResource.Clone()
@@ -269,9 +270,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
-		if lv.Queue.Spec.Priority != rv.Queue.Spec.Priority {
+		if lv.Priority != rv.Priority {
 			// return negative means high priority
-			return int(rv.Queue.Spec.Priority) - int(lv.Queue.Spec.Priority)
+			return int(rv.Priority) - int(lv.Priority)
 		}
 
 		if pp.queueOpts[lv.UID].share == pp.queueOpts[rv.UID].share {
@@ -333,8 +334,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	queueAllocatable := func(queue *api.QueueInfo, candidates []*api.TaskInfo) bool {
-		if queue.Queue.Status.State != scheduling.QueueStateOpen {
-			klog.V(3).Infof("Queue <%s> current state: %s, is not in open state, can not allocate tasks.", queue.Name, queue.Queue.Status.State)
+		if !queue.IsOpen() {
+			klog.V(3).Infof("Queue <%s> current state: %s, is not in open state, can not allocate tasks.", queue.UID, queue.State)
 			return false
 		}
 
@@ -407,8 +408,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		attr := pp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
 		// If the queue is not open, do not enqueue
-		if queue.Queue.Status.State != scheduling.QueueStateOpen {
-			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.", queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
+		if !queue.IsOpen() {
+			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.", queue.UID, queue.State, job.Namespace, job.Name)
 			return util.Reject
 		}
 		// If no capability is set, always enqueue the job.

@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package validate
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -28,13 +29,16 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	k8score "k8s.io/kubernetes/pkg/apis/core"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -99,6 +103,14 @@ func AdmitQueues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse 
 			}
 		}
 
+		if ar.Request.Operation == admissionv1.Update &&
+			utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) &&
+			!equality.Semantic.DeepEqual(oldQueue.Spec.AllowedNamespaces, queue.Spec.AllowedNamespaces) {
+			if err = validateAllowedNamespacesUpdate(oldQueue, queue); err != nil {
+				return util.ToAdmissionResponse(err)
+			}
+		}
+
 		// Block attribute modifications to root queue on UPDATE
 		if config.EnableRootQueueProtection && ar.Request.Operation == admissionv1.Update && queue.Name == "root" && oldQueue != nil {
 			if !equality.Semantic.DeepEqual(queue.Spec.Capability, oldQueue.Spec.Capability) ||
@@ -127,6 +139,80 @@ func AdmitQueues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse 
 	return &admissionv1.AdmissionResponse{
 		Allowed: true,
 	}
+}
+
+func validateAllowedNamespacesUpdate(oldQueue, newQueue *schedulingv1beta1.Queue) error {
+	if oldQueue == nil || newQueue == nil {
+		return fmt.Errorf("old and new Queue must not be nil")
+	}
+
+	namespaceQueues, err := config.NamespaceQueueLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("failed to list NamespaceQueues: %w", err)
+	}
+
+	var blocked []string
+	for _, namespaceQueue := range namespaceQueues {
+		if effectiveClusterParent(namespaceQueue) != newQueue.Name {
+			continue
+		}
+		if !isNamespaceAllowedByQueue(oldQueue, namespaceQueue.Namespace) ||
+			isNamespaceAllowedByQueue(newQueue, namespaceQueue.Namespace) ||
+			util.IsNamespaceQueueClosedAndDrained(namespaceQueue) {
+			continue
+		}
+
+		blocked = append(blocked, namespaceQueue.Namespace+"/"+namespaceQueue.Name)
+	}
+
+	if len(blocked) == 0 {
+		return nil
+	}
+
+	sort.Strings(blocked)
+	return fmt.Errorf(
+		"cannot revoke NamespaceQueue authorization from Queue %q; update or close and drain these NamespaceQueues first: %s",
+		newQueue.Name,
+		strings.Join(blocked, ", "),
+	)
+}
+
+func effectiveClusterParent(namespaceQueue *schedulingv1beta1.NamespaceQueue) string {
+	visited := map[string]struct{}{}
+	current := namespaceQueue
+	for current != nil {
+		key := current.Namespace + "/" + current.Name
+		if _, found := visited[key]; found {
+			return ""
+		}
+		visited[key] = struct{}{}
+
+		parent, err := commonutil.ResolveNamespaceQueueParentReference(current.Namespace, current.Spec.Parent)
+		if err != nil {
+			return ""
+		}
+		if parent.Scope == commonutil.ClusterQueueReferenceScope {
+			return parent.Name
+		}
+		if config.NamespaceQueueLister == nil {
+			return ""
+		}
+		current, err = config.NamespaceQueueLister.NamespaceQueues(parent.Namespace).Get(parent.Name)
+		if err != nil {
+			return ""
+		}
+	}
+	return ""
+}
+
+func isNamespaceAllowedByQueue(queue *schedulingv1beta1.Queue, namespace string) bool {
+	for _, allowedNamespace := range queue.Spec.AllowedNamespaces {
+		if allowedNamespace == "*" || allowedNamespace == namespace {
+			return true
+		}
+	}
+
+	return false
 }
 
 func validateQueue(queue *schedulingv1beta1.Queue) error {
@@ -324,9 +410,43 @@ func validateQueueDeleting(queueName string) error {
 			queue.Name, len(childQueueNames), strings.Join(childQueueNames, ", "))
 	}
 
+	namespaceQueueNames, err := listNamespaceQueueChildren(queueName)
+	if err != nil {
+		return fmt.Errorf("failed to list NamespaceQueues using queue %s as parent: %v", queueName, err)
+	}
+	if len(namespaceQueueNames) > 0 {
+		return fmt.Errorf(
+			"queue %s can not be deleted because it is the parent of NamespaceQueues: %s",
+			queue.Name,
+			strings.Join(namespaceQueueNames, ", "),
+		)
+	}
+
 	klog.V(3).Infof("Validation passed for deleting hierarchical queue %s", queue.Name)
 
 	return nil
+}
+
+func listNamespaceQueueChildren(parentQueueName string) ([]string, error) {
+	if !utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) || config.NamespaceQueueLister == nil {
+		return nil, nil
+	}
+
+	namespaceQueues, err := config.NamespaceQueueLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	children := make([]string, 0)
+	for _, namespaceQueue := range namespaceQueues {
+		if effectiveClusterParent(namespaceQueue) != parentQueueName {
+			continue
+		}
+		children = append(children, namespaceQueue.Namespace+"/"+namespaceQueue.Name)
+	}
+
+	sort.Strings(children)
+	return children, nil
 }
 
 // needsValidateHierarchicalQueue determines if hierarchy resource validation is necessary

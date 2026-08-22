@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,19 +24,24 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
+	"volcano.sh/volcano/pkg/features"
 )
 
 func TestValidatePodGroup(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
 	highestTierAllowed := 1
 	tests := []struct {
-		name        string
-		podGroup    *schedulingv1beta1.PodGroup
-		queue       *schedulingv1beta1.Queue
-		expectError bool
+		name           string
+		podGroup       *schedulingv1beta1.PodGroup
+		queue          *schedulingv1beta1.Queue
+		namespaceQueue *schedulingv1beta1.NamespaceQueue
+		expectError    bool
 		// msgContains lists substrings that must all be present in the
 		// rejection message, used to assert that multiple validation errors
 		// are reported and properly separated.
@@ -115,6 +120,108 @@ func TestValidatePodGroup(t *testing.T) {
 			},
 			queue:       &schedulingv1beta1.Queue{},
 			expectError: true,
+		},
+		{
+			name: "valid podgroup with ready namespace queue",
+			podGroup: &schedulingv1beta1.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-podgroup",
+					Namespace: "team-a",
+				},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					Queue: "namespace/training",
+				},
+			},
+			queue: &schedulingv1beta1.Queue{},
+			namespaceQueue: &schedulingv1beta1.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "training",
+					Namespace:  "team-a",
+					Generation: 2,
+				},
+				Status: schedulingv1beta1.NamespaceQueueStatus{
+					State: schedulingv1beta1.QueueStateOpen,
+					Conditions: []metav1.Condition{
+						{
+							Type:               "Ready",
+							Status:             metav1.ConditionTrue,
+							ObservedGeneration: 2,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "invalid podgroup with closed namespace queue",
+			podGroup: &schedulingv1beta1.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-podgroup", Namespace: "team-a"},
+				Spec:       schedulingv1beta1.PodGroupSpec{Queue: "namespace/training"},
+			},
+			queue: &schedulingv1beta1.Queue{},
+			namespaceQueue: &schedulingv1beta1.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a"},
+				Status: schedulingv1beta1.NamespaceQueueStatus{
+					State: schedulingv1beta1.QueueStateClosed,
+				},
+			},
+			expectError: true,
+			msgContains: []string{"NamespaceQueue with state `Open`", "team-a/training", "Closed"},
+		},
+		{
+			name: "invalid podgroup with desired closed namespace queue before status reconciliation",
+			podGroup: &schedulingv1beta1.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-podgroup", Namespace: "team-a"},
+				Spec:       schedulingv1beta1.PodGroupSpec{Queue: "namespace/training"},
+			},
+			queue: &schedulingv1beta1.Queue{},
+			namespaceQueue: &schedulingv1beta1.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a"},
+				Spec: schedulingv1beta1.NamespaceQueueSpec{
+					State: schedulingv1beta1.QueueStateClosed,
+				},
+				Status: schedulingv1beta1.NamespaceQueueStatus{
+					State: schedulingv1beta1.QueueStateOpen,
+				},
+			},
+			expectError: true,
+			msgContains: []string{"NamespaceQueue with desired state `Open`", "team-a/training", "Closed"},
+		},
+		{
+			name: "valid podgroup with open namespace queue that is not ready yet",
+			podGroup: &schedulingv1beta1.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-podgroup", Namespace: "team-a"},
+				Spec:       schedulingv1beta1.PodGroupSpec{Queue: "namespace/training"},
+			},
+			queue: &schedulingv1beta1.Queue{},
+			namespaceQueue: &schedulingv1beta1.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a", Generation: 1},
+				Status: schedulingv1beta1.NamespaceQueueStatus{
+					State: schedulingv1beta1.QueueStateOpen,
+					Conditions: []metav1.Condition{
+						{Type: "Ready", Status: metav1.ConditionFalse, ObservedGeneration: 1},
+					},
+				},
+			},
+		},
+		{
+			name: "invalid podgroup with namespace queue that does not exist",
+			podGroup: &schedulingv1beta1.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-podgroup", Namespace: "team-a"},
+				Spec:       schedulingv1beta1.PodGroupSpec{Queue: "namespace/training"},
+			},
+			queue:       &schedulingv1beta1.Queue{},
+			expectError: true,
+			msgContains: []string{"unable to find NamespaceQueue", "training"},
+		},
+		{
+			name: "invalid podgroup with malformed namespace queue reference",
+			podGroup: &schedulingv1beta1.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-podgroup", Namespace: "team-a"},
+				Spec:       schedulingv1beta1.PodGroupSpec{Queue: "namespace/department/training"},
+			},
+			queue:       &schedulingv1beta1.Queue{},
+			expectError: true,
+			msgContains: []string{"invalid queue reference"},
 		},
 		{
 			name: "valid podgroup configured with SubGroupPolicy containing HighestTierName",
@@ -246,6 +353,13 @@ func TestValidatePodGroup(t *testing.T) {
 			config.QueueLister = queueInformer.Lister()
 			err := queueInformer.Informer().GetIndexer().Add(tt.queue)
 			assert.Nil(t, err)
+
+			namespaceQueueInformer := informerFactory.Scheduling().V1beta1().NamespaceQueues()
+			config.NamespaceQueueLister = namespaceQueueInformer.Lister()
+			if tt.namespaceQueue != nil {
+				err := namespaceQueueInformer.Informer().GetIndexer().Add(tt.namespaceQueue)
+				assert.Nil(t, err)
+			}
 
 			pgJson, _ := json.Marshal(tt.podGroup)
 			// Create an AdmissionReview object

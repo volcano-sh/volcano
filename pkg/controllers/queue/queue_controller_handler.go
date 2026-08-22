@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/metrics"
+	controllerutil "volcano.sh/volcano/pkg/util"
 )
 
 func (c *queuecontroller) enqueue(req *apis.Request) {
@@ -75,6 +76,9 @@ func (c *queuecontroller) updateQueue(oldObj, newObj interface{}) {
 
 func (c *queuecontroller) addPodGroup(obj interface{}) {
 	pg := obj.(*schedulingv1beta1.PodGroup)
+	if controllerutil.HasNamespaceQueuePrefix(pg.Spec.Queue) {
+		return
+	}
 	key, _ := cache.MetaNamespaceKeyFunc(obj)
 
 	c.pgMutex.Lock()
@@ -99,8 +103,12 @@ func (c *queuecontroller) updatePodGroup(old, new interface{}) {
 	oldPG := old.(*schedulingv1beta1.PodGroup)
 	newPG := new.(*schedulingv1beta1.PodGroup)
 
-	// Note: we have no use case update PodGroup.Spec.Queue
-	// So do not consider it here.
+	if oldPG.Spec.Queue != newPG.Spec.Queue {
+		c.deletePodGroup(oldPG)
+		c.addPodGroup(newPG)
+		return
+	}
+
 	if oldPG.Status.Phase != newPG.Status.Phase {
 		c.addPodGroup(newPG)
 	}
@@ -119,6 +127,9 @@ func (c *queuecontroller) deletePodGroup(obj interface{}) {
 			klog.Errorf("Tombstone contained object that is not a PodGroup: %#v.", obj)
 			return
 		}
+	}
+	if controllerutil.HasNamespaceQueuePrefix(pg.Spec.Queue) {
+		return
 	}
 
 	key, _ := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)

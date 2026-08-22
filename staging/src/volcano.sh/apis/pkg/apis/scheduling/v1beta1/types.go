@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -192,7 +192,7 @@ type PodGroupSpec struct {
 	// +optional
 	// +kubebuilder:default:="default"
 	// +kubebuilder:validation:MaxLength=253
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+	// +kubebuilder:validation:Pattern=`^(namespace/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	Queue string `json:"queue,omitempty" protobuf:"bytes,2,opt,name=queue"`
 
 	// If specified, indicates the PodGroup's priority. "system-node-critical" and
@@ -369,6 +369,120 @@ type Queue struct {
 	Status QueueStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=namespacequeues,scope=Namespaced,shortName=nq
+// +kubebuilder:printcolumn:name="PARENT",type=string,JSONPath=`.spec.parent`
+// +kubebuilder:printcolumn:name="STATE",type=string,JSONPath=`.status.state`
+// +kubebuilder:printcolumn:name="AGE",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// NamespaceQueue is a namespace-scoped queue abstraction in Volcano scheduling.
+type NamespaceQueue struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	// +optional
+	Spec NamespaceQueueSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+
+	// +optional
+	Status NamespaceQueueStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
+}
+
+// NamespaceQueueSpec represents the desired behavior of NamespaceQueue.
+type NamespaceQueueSpec struct {
+	// Parent can be a cluster Queue or another NamespaceQueue in the same namespace.
+	// "cluster/<name>" refers to a cluster-scoped Queue.
+	// An unprefixed value refers to a NamespaceQueue in the same namespace.
+	// +optional
+	// +kubebuilder:default:="cluster/default"
+	// +kubebuilder:validation:MaxLength=261
+	// +kubebuilder:validation:Pattern=`^(cluster/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+	Parent string `json:"parent,omitempty" protobuf:"bytes,1,opt,name=parent"`
+
+	// +optional
+	Capability v1.ResourceList `json:"capability,omitempty" protobuf:"bytes,2,opt,name=capability"`
+
+	// +optional
+	Reclaimable *bool `json:"reclaimable,omitempty" protobuf:"bytes,3,opt,name=reclaimable"`
+
+	// +optional
+	Guarantee Guarantee `json:"guarantee,omitempty" protobuf:"bytes,4,opt,name=guarantee"`
+
+	// +optional
+	Deserved v1.ResourceList `json:"deserved,omitempty" protobuf:"bytes,5,opt,name=deserved"`
+
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	Priority int32 `json:"priority,omitempty" protobuf:"varint,6,opt,name=priority"`
+
+	// +optional
+	// +kubebuilder:default:=traverse
+	// +kubebuilder:validation:Enum=fifo;traverse
+	DequeueStrategy DequeueStrategy `json:"dequeueStrategy,omitempty" protobuf:"bytes,7,opt,name=dequeueStrategy"`
+
+	// State specifies the desired lifecycle state of this NamespaceQueue.
+	// Closing is an observed state and cannot be requested directly.
+	// +optional
+	// +kubebuilder:default:=Open
+	// +kubebuilder:validation:Enum=Open;Closed
+	State QueueState `json:"state,omitempty" protobuf:"bytes,8,opt,name=state"`
+}
+
+// NamespaceQueueStatus represents the current status of NamespaceQueue.
+type NamespaceQueueStatus struct {
+	// +kubebuilder:validation:Enum=Open;Closed;Closing;Unknown
+	// +optional
+	State QueueState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state"`
+
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Unknown int32 `json:"unknown,omitempty" protobuf:"varint,2,opt,name=unknown"`
+
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Pending int32 `json:"pending,omitempty" protobuf:"varint,3,opt,name=pending"`
+
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Running int32 `json:"running,omitempty" protobuf:"varint,4,opt,name=running"`
+
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Inqueue int32 `json:"inqueue,omitempty" protobuf:"varint,5,opt,name=inqueue"`
+
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Completed int32 `json:"completed,omitempty" protobuf:"varint,6,opt,name=completed"`
+
+	// +optional
+	Reservation Reservation `json:"reservation,omitempty" protobuf:"bytes,7,opt,name=reservation"`
+
+	// +optional
+	Allocated v1.ResourceList `json:"allocated,omitempty" protobuf:"bytes,8,opt,name=allocated"`
+
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty" protobuf:"bytes,9,rep,name=conditions"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+
+// NamespaceQueueList is a collection of namespace queues.
+type NamespaceQueueList struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// +optional
+	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	Items []NamespaceQueue `json:"items" protobuf:"bytes,2,rep,name=items"`
+}
+
 // Guarantee represents configuration of queue resource reservation
 type Guarantee struct {
 	// The amount of cluster resource reserved for queue. Just set either `percentage` or `resource`
@@ -505,6 +619,18 @@ type QueueSpec struct {
 	// +kubebuilder:default:=traverse
 	// +kubebuilder:validation:Enum=fifo;traverse
 	DequeueStrategy DequeueStrategy `json:"dequeueStrategy,omitempty" protobuf:"bytes,11,opt,name=dequeueStrategy"`
+
+	// AllowedNamespaces lists the namespaces whose NamespaceQueues may use
+	// this Queue as their cluster-scoped parent.
+	// An empty or omitted list denies attachment.
+	// The literal "*" allows all namespaces and must be the only entry when present.
+	//
+	// +optional
+	// +listType=set
+	// +kubebuilder:validation:items:MaxLength=63
+	// +kubebuilder:validation:items:Pattern=`^(\*|[a-z0-9]([-a-z0-9]*[a-z0-9])?)$`
+	// +kubebuilder:validation:XValidation:rule="!self.exists(x, x == '*') || size(self) == 1",message="the wildcard '*' must be the only entry"
+	AllowedNamespaces []string `json:"allowedNamespaces,omitempty" protobuf:"bytes,12,rep,name=allowedNamespaces"`
 }
 
 type DequeueStrategy string

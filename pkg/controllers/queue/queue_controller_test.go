@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -244,6 +244,60 @@ func TestUpdatePodGroup(t *testing.T) {
 		if testcase.ExpectValue != c.queue.Len() {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, c.queue.Len())
 		}
+	}
+}
+
+func TestQueueControllerIgnoresNamespaceQueuePodGroups(t *testing.T) {
+	c := newFakeController()
+	pg := &schedulingv1beta1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "pg1", Namespace: "team-a"},
+		Spec:       schedulingv1beta1.PodGroupSpec{Queue: "namespace/training"},
+		Status:     schedulingv1beta1.PodGroupStatus{Phase: schedulingv1beta1.PodGroupPending},
+	}
+
+	c.addPodGroup(pg)
+	if c.queue.Len() != 0 {
+		t.Fatalf("queue length after add = %d, want 0", c.queue.Len())
+	}
+	if _, found := c.podGroups[pg.Spec.Queue]; found {
+		t.Fatalf("namespace queue reference %q was added to cluster queue index", pg.Spec.Queue)
+	}
+
+	updated := pg.DeepCopy()
+	updated.Status.Phase = schedulingv1beta1.PodGroupRunning
+	c.updatePodGroup(pg, updated)
+	if c.queue.Len() != 0 {
+		t.Fatalf("queue length after update = %d, want 0", c.queue.Len())
+	}
+
+	c.deletePodGroup(cache.DeletedFinalStateUnknown{Key: "team-a/pg1", Obj: updated})
+	if c.queue.Len() != 0 {
+		t.Fatalf("queue length after delete = %d, want 0", c.queue.Len())
+	}
+}
+
+func TestQueueControllerRemovesPodGroupWhenReferenceChangesToNamespaceQueue(t *testing.T) {
+	c := newFakeController()
+	oldPG := &schedulingv1beta1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "pg1", Namespace: "team-a"},
+		Spec:       schedulingv1beta1.PodGroupSpec{Queue: "research"},
+		Status:     schedulingv1beta1.PodGroupStatus{Phase: schedulingv1beta1.PodGroupPending},
+	}
+	c.addPodGroup(oldPG)
+
+	newPG := oldPG.DeepCopy()
+	newPG.Spec.Queue = "namespace/training"
+	c.updatePodGroup(oldPG, newPG)
+
+	key, err := cache.MetaNamespaceKeyFunc(oldPG)
+	if err != nil {
+		t.Fatalf("failed to get PodGroup key: %v", err)
+	}
+	if _, found := c.podGroups[oldPG.Spec.Queue][key]; found {
+		t.Fatalf("PodGroup %q remained in cluster Queue %q index", key, oldPG.Spec.Queue)
+	}
+	if _, found := c.podGroups[newPG.Spec.Queue]; found {
+		t.Fatalf("namespace queue reference %q was added to cluster queue index", newPG.Spec.Queue)
 	}
 }
 

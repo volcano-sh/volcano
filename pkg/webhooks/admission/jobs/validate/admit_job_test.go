@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/tools/cache"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/kubernetes/pkg/features"
 
@@ -34,7 +35,128 @@ import (
 	schedulingv1beta2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
+	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
+	volcanofeatures "volcano.sh/volcano/pkg/features"
 )
+
+func TestValidateJobQueue(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, volcanofeatures.NamespaceQueue, true)
+	tests := []struct {
+		name            string
+		namespace       string
+		reference       string
+		queue           *schedulingv1beta2.Queue
+		namespaceQueue  *schedulingv1beta2.NamespaceQueue
+		expectedMessage string
+	}{
+		{
+			name:      "open cluster queue",
+			namespace: "team-a",
+			reference: "research",
+			queue: &schedulingv1beta2.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: "research"},
+				Status: schedulingv1beta2.QueueStatus{
+					State: schedulingv1beta2.QueueStateOpen,
+				},
+			},
+		},
+		{
+			name:      "open namespace queue",
+			namespace: "team-a",
+			reference: "namespace/training",
+			namespaceQueue: &schedulingv1beta2.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a"},
+				Status: schedulingv1beta2.NamespaceQueueStatus{
+					State: schedulingv1beta2.QueueStateOpen,
+				},
+			},
+		},
+		{
+			name:      "open namespace queue pending readiness reconciliation",
+			namespace: "team-a",
+			reference: "namespace/training",
+			namespaceQueue: &schedulingv1beta2.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a", Generation: 2},
+				Status: schedulingv1beta2.NamespaceQueueStatus{
+					State: schedulingv1beta2.QueueStateOpen,
+					Conditions: []metav1.Condition{
+						{Type: "Ready", Status: metav1.ConditionFalse, ObservedGeneration: 2},
+					},
+				},
+			},
+		},
+		{
+			name:      "closed namespace queue",
+			namespace: "team-a",
+			reference: "namespace/training",
+			namespaceQueue: &schedulingv1beta2.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a"},
+				Status: schedulingv1beta2.NamespaceQueueStatus{
+					State: schedulingv1beta2.QueueStateClosed,
+				},
+			},
+			expectedMessage: "can only submit job to NamespaceQueue with state `Open`",
+		},
+		{
+			name:      "desired closed namespace queue before status reconciliation",
+			namespace: "team-a",
+			reference: "namespace/training",
+			namespaceQueue: &schedulingv1beta2.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a"},
+				Spec: schedulingv1beta2.NamespaceQueueSpec{
+					State: schedulingv1beta2.QueueStateClosed,
+				},
+				Status: schedulingv1beta2.NamespaceQueueStatus{
+					State: schedulingv1beta2.QueueStateOpen,
+				},
+			},
+			expectedMessage: "can only submit job to NamespaceQueue with desired state `Open`",
+		},
+		{
+			name:            "missing namespace queue",
+			namespace:       "team-a",
+			reference:       "namespace/training",
+			expectedMessage: "unable to find job NamespaceQueue",
+		},
+		{
+			name:            "malformed namespace queue reference",
+			namespace:       "team-a",
+			reference:       "namespace/department/training",
+			expectedMessage: "invalid job queue reference",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queueIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+			if tt.queue != nil {
+				if err := queueIndexer.Add(tt.queue); err != nil {
+					t.Fatalf("failed to add Queue to indexer: %v", err)
+				}
+			}
+			config.QueueLister = schedulinglister.NewQueueLister(queueIndexer)
+			config.QueueInformer = nil
+
+			namespaceQueueIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+				cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
+			})
+			if tt.namespaceQueue != nil {
+				if err := namespaceQueueIndexer.Add(tt.namespaceQueue); err != nil {
+					t.Fatalf("failed to add NamespaceQueue to indexer: %v", err)
+				}
+			}
+			config.NamespaceQueueLister = schedulinglister.NewNamespaceQueueLister(namespaceQueueIndexer)
+
+			message := validateJobQueue(tt.namespace, tt.reference)
+			if tt.expectedMessage == "" && message != "" {
+				t.Fatalf("expected queue reference to be accepted, got %q", message)
+			}
+			if tt.expectedMessage != "" && !strings.Contains(message, tt.expectedMessage) {
+				t.Fatalf("expected message to contain %q, got %q", tt.expectedMessage, message)
+			}
+		})
+	}
+}
 
 func TestValidateJobCreate(t *testing.T) {
 	var policyExitCode int32 = -1

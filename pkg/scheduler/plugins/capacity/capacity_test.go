@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1432,6 +1432,78 @@ func Test_buildHierarchicalQueueAttrs_nilSafety(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestNamespaceQueueHierarchyUsesCanonicalQueueInfo(t *testing.T) {
+	root := api.NewQueueInfo(&scheduling.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: rootQueueID},
+	})
+	research := api.NewQueueInfo(&scheduling.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "research"},
+		Spec:       scheduling.QueueSpec{Parent: rootQueueID},
+	})
+
+	localParent, err := api.NewNamespaceQueueInfo(&scheduling.NamespaceQueue{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "root"},
+		Spec: scheduling.NamespaceQueueSpec{
+			Parent: "cluster/research",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewNamespaceQueueInfo(parent) error = %v", err)
+	}
+
+	child, err := api.NewNamespaceQueueInfo(&scheduling.NamespaceQueue{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "training"},
+		Spec: scheduling.NamespaceQueueSpec{
+			Parent:     "root",
+			Capability: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("10")},
+			Deserved:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("6")},
+			Guarantee: scheduling.Guarantee{
+				Resource: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2")},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewNamespaceQueueInfo(child) error = %v", err)
+	}
+
+	ssn := &framework.Session{
+		Queues: map[api.QueueID]*api.QueueInfo{
+			root.UID:        root,
+			research.UID:    research,
+			localParent.UID: localParent,
+			child.UID:       child,
+		},
+	}
+	cp := &capacityPlugin{
+		rootQueue: rootQueueID,
+		queueOpts: map[api.QueueID]*queueAttr{},
+	}
+
+	childAttr := cp.newQueueAttr(child)
+	cp.queueOpts[child.UID] = childAttr
+	if err := cp.updateAncestors(child, ssn, map[api.QueueID]struct{}{}); err != nil {
+		t.Fatalf("updateAncestors() error = %v", err)
+	}
+
+	if childAttr.name != "team-a/training" {
+		t.Fatalf("queue attribute name = %q, want %q", childAttr.name, "team-a/training")
+	}
+	if childAttr.capability.MilliCPU != 10000 || childAttr.deserved.MilliCPU != 6000 || childAttr.guarantee.MilliCPU != 2000 {
+		t.Fatalf("normalized resources were not used: capability=%v deserved=%v guarantee=%v",
+			childAttr.capability, childAttr.deserved, childAttr.guarantee)
+	}
+
+	wantAncestors := []api.QueueID{"root", "research", "team-a/root"}
+	if len(childAttr.ancestors) != len(wantAncestors) {
+		t.Fatalf("ancestors = %v, want %v", childAttr.ancestors, wantAncestors)
+	}
+	for i := range wantAncestors {
+		if childAttr.ancestors[i] != wantAncestors[i] {
+			t.Fatalf("ancestors = %v, want %v", childAttr.ancestors, wantAncestors)
+		}
 	}
 }
 

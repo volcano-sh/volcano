@@ -5,6 +5,7 @@
 {{ $agent_scheduler_main_csc := or .Values.custom.agent_scheduler_main_csc .Values.custom.default_csc }}
 {{ $agent_scheduler_ns := or .Values.custom.agent_scheduler_ns .Values.custom.default_ns }}
 {{ $agent_scheduler_name := .Values.custom.agent_scheduler_name }}
+{{ $scheduler_feature_gates := include "volcano.featureGates" (dict "gates" .Values.custom.scheduler_feature_gates "namespaceQueueEnabled" .Values.custom.namespace_queue_enable) }}
 
 apiVersion: v1
 kind: ConfigMap
@@ -217,8 +218,8 @@ spec:
             {{- if .Values.custom.scheduler_plugins_dir }}
             - --plugins-dir={{ .Values.custom.scheduler_plugins_dir }}
             {{- end }}
-            {{- if .Values.custom.scheduler_feature_gates }}
-            - --feature-gates={{ .Values.custom.scheduler_feature_gates }}
+            {{- if $scheduler_feature_gates }}
+            - --feature-gates={{ $scheduler_feature_gates }}
             {{- end }}
             {{- if .Values.custom.ignored_provisioners }}
             - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}
