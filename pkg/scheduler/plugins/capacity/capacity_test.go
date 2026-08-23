@@ -2108,3 +2108,43 @@ func TestCheckDRAAllocatable_overflowRejected(t *testing.T) {
 		t.Fatalf("checkDRAAllocatable rejected a valid request (4 <= 8); want admitted")
 	}
 }
+
+func TestCapacityEmptyQueueAndOrphanedJob(t *testing.T) {
+	uthelper.RegisterPlugins(map[string]framework.PluginBuilder{PluginName: New, gang.PluginName: gang.New})
+	defer framework.CleanupPluginBuilders()
+
+	queue1 := util.BuildQueueWithResourcesQuantity("q1", nil, api.BuildResourceList("2", "2Gi"))
+	pg1 := util.BuildPodGroup("pg1", "ns1", "missing-queue", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	w1 := util.BuildPod("ns1", "worker-1", "", corev1.PodPending, api.BuildResourceList("1", "1k"), "pg1", nil, nil)
+
+	schedulerCache := &cache.SchedulerCache{
+		Nodes:         make(map[string]*api.NodeInfo),
+		Jobs:          make(map[api.JobID]*api.JobInfo),
+		Queues:        make(map[api.QueueID]*api.QueueInfo),
+		Binder:        &util.FakeBinder{Channel: make(chan string)},
+		Evictor:       &util.FakeEvictor{Channel: make(chan string)},
+		StatusUpdater: &util.FakeStatusUpdater{},
+		VolumeBinder:  &util.FakeVolumeBinder{},
+		Recorder:      record.NewFakeRecorder(100),
+	}
+
+	schedulerCache.AddQueue(queue1)
+	schedulerCache.AddPodGroup(pg1)
+	schedulerCache.AddPod(w1)
+
+	trueValue := true
+	ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:             PluginName,
+					EnabledPredicate: &trueValue,
+				},
+			},
+		},
+	}, nil)
+	defer framework.CloseSession(ssn)
+
+	allocator := allocate.New()
+	allocator.Execute(ssn)
+}

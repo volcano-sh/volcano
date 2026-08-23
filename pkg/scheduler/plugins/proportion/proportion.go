@@ -100,48 +100,51 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		pp.totalGuarantee.Add(guarantee)
 	}
 	klog.V(4).Infof("The total guarantee resource is <%v>", pp.totalGuarantee)
-	// Build attributes for Queues.
+	// Build attributes for all Queues.
+	for _, queue := range ssn.Queues {
+		attr := &queueAttr{
+			queueID: queue.UID,
+			name:    queue.Name,
+			weight:  queue.Weight,
+
+			deserved:  api.EmptyResource(),
+			allocated: api.EmptyResource(),
+			request:   api.EmptyResource(),
+			elastic:   api.EmptyResource(),
+			inqueue:   api.EmptyResource(),
+			guarantee: api.EmptyResource(),
+		}
+		if len(queue.Queue.Spec.Capability) != 0 {
+			attr.capability = api.NewResource(queue.Queue.Spec.Capability)
+			if attr.capability.MilliCPU <= 0 {
+				attr.capability.MilliCPU = math.MaxFloat64
+			}
+			if attr.capability.Memory <= 0 {
+				attr.capability.Memory = math.MaxFloat64
+			}
+		}
+		if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
+			attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+		}
+		realCapability := api.ExceededPart(pp.totalResource, pp.totalGuarantee).Add(attr.guarantee)
+		if attr.capability == nil {
+			attr.capability = api.EmptyResource()
+			attr.realCapability = realCapability
+		} else {
+			realCapability.MinDimensionResource(attr.capability, api.Infinity)
+			attr.realCapability = realCapability
+		}
+		pp.queueOpts[queue.UID] = attr
+		klog.V(4).Infof("Added Queue <%s> attributes.", queue.Name)
+	}
+
 	for _, job := range ssn.Jobs {
 		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
-		if _, found := pp.queueOpts[job.Queue]; !found {
-			queue := ssn.Queues[job.Queue]
-			attr := &queueAttr{
-				queueID: queue.UID,
-				name:    queue.Name,
-				weight:  queue.Weight,
-
-				deserved:  api.EmptyResource(),
-				allocated: api.EmptyResource(),
-				request:   api.EmptyResource(),
-				elastic:   api.EmptyResource(),
-				inqueue:   api.EmptyResource(),
-				guarantee: api.EmptyResource(),
-			}
-			if len(queue.Queue.Spec.Capability) != 0 {
-				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
-				if attr.capability.MilliCPU <= 0 {
-					attr.capability.MilliCPU = math.MaxFloat64
-				}
-				if attr.capability.Memory <= 0 {
-					attr.capability.Memory = math.MaxFloat64
-				}
-			}
-			if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
-				attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
-			}
-			realCapability := api.ExceededPart(pp.totalResource, pp.totalGuarantee).Add(attr.guarantee)
-			if attr.capability == nil {
-				attr.capability = api.EmptyResource()
-				attr.realCapability = realCapability
-			} else {
-				realCapability.MinDimensionResource(attr.capability, api.Infinity)
-				attr.realCapability = realCapability
-			}
-			pp.queueOpts[job.Queue] = attr
-			klog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
-		}
-
 		attr := pp.queueOpts[job.Queue]
+		if attr == nil {
+			klog.Warningf("[proportion] Skip orphaned job <%s/%s>: queue <%s> not found in session", job.Namespace, job.Name, job.Queue)
+			continue
+		}
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
