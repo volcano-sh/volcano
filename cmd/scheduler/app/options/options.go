@@ -94,10 +94,12 @@ type ServerOption struct {
 	MinPercentageOfNodesToFind int32
 	PercentageOfNodesToFind    int32
 
-	NodeSelector      []string
-	CacheDumpFileDir  string
-	EnableCacheDumper bool
-	NodeWorkerThreads uint32
+	NodeSelector       []string
+	CacheDumpFileDir   string
+	EnableCacheDumper  bool
+	NodeWorkerThreads  uint32
+	JobUpdaterWorkers  uint32
+	TaskUpdaterWorkers uint32
 
 	// GateRemovalWorkerNum is the number of async workers for scheduling gate removal.
 	// Only used when SchedulingGatesQueueAdmission feature gate is enabled.
@@ -131,7 +133,18 @@ var ServerOpts *ServerOption
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
 	return &ServerOption{
-		EnableCSIStorage: true,
+		EnableCSIStorage:           true,
+		DefaultQueue:               defaultQueue,
+		PrintVersion:               false,
+		EnableMetrics:              false,
+		EnablePprof:                false,
+		EnablePriorityClass:        true,
+		MinNodesToFind:             defaultMinNodesToFind,
+		MinPercentageOfNodesToFind: defaultMinPercentageOfNodesToFind,
+		PercentageOfNodesToFind:    defaultPercentageOfNodesToFind,
+		NodeWorkerThreads:          defaultNodeWorkers,
+		JobUpdaterWorkers:          16,
+		TaskUpdaterWorkers:         16,
 	}
 }
 
@@ -179,6 +192,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
+	fs.Uint32Var(&s.JobUpdaterWorkers, "job-updater-worker-num", 16, "The number of threads used to process job updates.")
+	fs.Uint32Var(&s.TaskUpdaterWorkers, "task-updater-worker-num", 16, "The number of threads used to process task updates.")
 	fs.IntVar(&s.GateRemovalWorkerNum, "gate-removal-worker-num", 5, "The number of async workers for scheduling gate removal (used when SchedulingGatesQueueAdmission is enabled).")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 	fs.DurationVar(&s.ResourceSyncTimeout, "resource-sync-timeout", defaultResourceSyncTimeout, "timeout on waiting for handler handling initial resources synchronization before starting scheduler, default is 60s, 0 skip waiting")
@@ -189,6 +204,12 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.
 func (s *ServerOption) CheckOptionOrDie() error {
+	if s.JobUpdaterWorkers == 0 {
+		return fmt.Errorf("job-updater-worker-num must be greater than 0")
+	}
+	if s.TaskUpdaterWorkers == 0 {
+		return fmt.Errorf("task-updater-worker-num must be greater than 0")
+	}
 	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
 }
 

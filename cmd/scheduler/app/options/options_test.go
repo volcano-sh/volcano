@@ -89,6 +89,8 @@ func TestAddFlags(t *testing.T) {
 		ShardingMode:                  commonutil.NoneShardingMode,
 		ShardName:                     defaultSchedulerName,
 		ResourceSyncTimeout:           60 * time.Second,
+		JobUpdaterWorkers:             16,
+		TaskUpdaterWorkers:            16,
 	}
 	expectedFeatureGates := map[featuregate.Feature]bool{
 		features.PodDisruptionBudgetsSupport: false,

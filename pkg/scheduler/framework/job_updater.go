@@ -29,9 +29,16 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
-const (
+var (
 	jobUpdaterWorker = 16
 )
+
+// SetJobUpdaterWorker sets the number of job updater workers
+func SetJobUpdaterWorker(workers uint32) {
+	if workers > 0 {
+		jobUpdaterWorker = int(workers)
+	}
+}
 
 // TimeJitterAfter means: new after old + duration + jitter
 func TimeJitterAfter(new, old time.Time, duration, maxJitter time.Duration) bool {

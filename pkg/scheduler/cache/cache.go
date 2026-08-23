@@ -83,10 +83,19 @@ const (
 	// default interval for sync data from metrics server, the value is 30s
 	defaultMetricsInternal = 30 * time.Second
 
-	taskUpdaterWorker = 16
-
 	handlerSyncPollPeriod = 100 * time.Millisecond
 )
+
+var (
+	taskUpdaterWorker = 16
+)
+
+// SetTaskUpdaterWorker sets the number of task updater workers
+func SetTaskUpdaterWorker(workers uint32) {
+	if workers > 0 {
+		taskUpdaterWorker = int(workers)
+	}
+}
 
 // defaultIgnoredProvisioners contains provisioners that will be ignored during pod pvc request computation and preemption.
 var defaultIgnoredProvisioners = []string{"rancher.io/local-path", "hostpath.csi.k8s.io"}
