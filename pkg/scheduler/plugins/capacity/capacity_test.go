@@ -2124,12 +2124,10 @@ func TestCapacityEmptyQueueAndOrphanedJob(t *testing.T) {
 		Binder:        &util.FakeBinder{Channel: make(chan string)},
 		Evictor:       &util.FakeEvictor{Channel: make(chan string)},
 		StatusUpdater: &util.FakeStatusUpdater{},
-		VolumeBinder:  &util.FakeVolumeBinder{},
-		Recorder:      record.NewFakeRecorder(100),
 	}
 
-	schedulerCache.AddQueue(queue1)
-	schedulerCache.AddPodGroup(pg1)
+	schedulerCache.AddQueueV1beta1(queue1)
+	schedulerCache.AddPodGroupV1beta1(pg1)
 	schedulerCache.AddPod(w1)
 
 	trueValue := true
