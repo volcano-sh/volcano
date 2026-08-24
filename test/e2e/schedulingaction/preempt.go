@@ -471,8 +471,8 @@ var _ = Describe("Job E2E Test", func() {
 
 			sc.Configurations = append(sc.Configurations, e2eutil.Configuration{
 				Name: "preempt",
-				Arguments: map[string]string{
-					"enableTopologyAwarePreemption": "true",
+				Arguments: map[string]interface{}{
+					"enableTopologyAwarePreemption": true,
 				},
 			})
 			sc.Actions = newActions
