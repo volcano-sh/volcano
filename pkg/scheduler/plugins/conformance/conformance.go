@@ -59,6 +59,10 @@ func (pp *conformancePlugin) OnSessionOpen(ssn *framework.Session) {
 			victims = append(victims, evictee)
 		}
 
+		if len(victims) == len(evictees) {
+			return nil, util.Abstain
+		}
+
 		return victims, util.Permit
 	}
 
@@ -75,6 +79,9 @@ func (pp *conformancePlugin) OnSessionOpen(ssn *framework.Session) {
 				continue
 			}
 			victims = append(victims, evictee)
+		}
+		if len(victims) == len(candidates) {
+			return nil, util.Abstain
 		}
 		return victims, util.Permit
 	})
