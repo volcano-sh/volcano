@@ -215,12 +215,12 @@ func (hn *hyperNodeController) reconcileTopology(source string, discoveredNodes 
 	for name, node := range discoveredNodeMap {
 		if _, exists := existingNodeMap[name]; !exists {
 			klog.InfoS("Creating new HyperNode", "name", name, "source", source)
-			if err := utils.CreateHyperNode(hn.vcClient, node); err != nil {
-				klog.ErrorS(err, "Failed to create HyperNode", "name", name)
+			if err := utils.CreateOrUpdateHyperNode(hn.vcClient, node); err != nil {
+				klog.ErrorS(err, "Failed to create or update HyperNode", "name", name)
 			}
 		} else {
 			klog.InfoS("Updating HyperNode", "name", name, "source", source)
-			if err := utils.UpdateHyperNode(hn.vcClient, hn.hyperNodeLister, node); err != nil {
+			if err := utils.UpdateHyperNode(hn.vcClient, node); err != nil {
 				klog.ErrorS(err, "Failed to update HyperNode", "name", name)
 			}
 		}

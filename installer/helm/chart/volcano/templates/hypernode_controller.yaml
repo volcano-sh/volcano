@@ -32,7 +32,7 @@ rules:
     verbs: ["list", "watch"]
   - apiGroups: ["topology.volcano.sh"]
     resources: ["hypernodes"]
-    verbs: ["list", "watch", "create", "update", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
   - apiGroups: ["topology.volcano.sh"]
     resources: ["hypernodes/status"]
     verbs: ["update"]

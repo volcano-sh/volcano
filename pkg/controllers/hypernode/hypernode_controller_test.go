@@ -197,6 +197,89 @@ func TestWatchDiscoveryResultsProcessesNextResultAfterFailure(t *testing.T) {
 	}
 }
 
+func TestReconcileTopologyUpdatesExistingHyperNodeWhenCacheIsStale(t *testing.T) {
+	existing := &topologyv1alpha1.HyperNode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "rack-a",
+			Labels: map[string]string{
+				api.NetworkTopologySourceLabelKey: "label",
+				"volcano.sh/rack":                 "rack-a",
+			},
+		},
+		Spec: topologyv1alpha1.HyperNodeSpec{
+			Tier:     1,
+			TierName: "volcano.sh/rack",
+			Members: []topologyv1alpha1.MemberSpec{{
+				Type:     topologyv1alpha1.MemberTypeNode,
+				Selector: topologyv1alpha1.MemberSelector{ExactMatch: &topologyv1alpha1.ExactMatch{Name: "node-0"}},
+			}},
+		},
+	}
+	fakeVcClient := vcclientset.NewSimpleClientset(existing.DeepCopy())
+	vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
+	hyperNodeInformer := vcInformerFactory.Topology().V1alpha1().HyperNodes()
+	controller := &hyperNodeController{
+		vcClient:        fakeVcClient,
+		hyperNodeLister: hyperNodeInformer.Lister(),
+	}
+	discovered := existing.DeepCopy()
+	discovered.Spec.Members = append(discovered.Spec.Members, topologyv1alpha1.MemberSpec{
+		Type:     topologyv1alpha1.MemberTypeNode,
+		Selector: topologyv1alpha1.MemberSelector{ExactMatch: &topologyv1alpha1.ExactMatch{Name: "node-1"}},
+	})
+
+	// The API object exists, but the informer is deliberately not started so
+	// reconciliation takes the create path with a stale cache.
+	controller.reconcileTopology("label", []*topologyv1alpha1.HyperNode{discovered})
+
+	list, err := fakeVcClient.TopologyV1alpha1().HyperNodes().List(context.Background(), metav1.ListOptions{})
+	assert.NoError(t, err)
+	assert.Len(t, list.Items, 1)
+	assert.Equal(t, discovered.Spec, list.Items[0].Spec)
+}
+
+func TestReconcileTopologyDoesNotTakeOverHyperNodeFromDifferentSource(t *testing.T) {
+	existing := &topologyv1alpha1.HyperNode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "shared-name",
+			Labels: map[string]string{
+				api.NetworkTopologySourceLabelKey: "ufm",
+			},
+		},
+		Spec: topologyv1alpha1.HyperNodeSpec{
+			Tier: 1,
+			Members: []topologyv1alpha1.MemberSpec{{
+				Type:     topologyv1alpha1.MemberTypeNode,
+				Selector: topologyv1alpha1.MemberSelector{ExactMatch: &topologyv1alpha1.ExactMatch{Name: "ufm-node"}},
+			}},
+		},
+	}
+	fakeVcClient := vcclientset.NewSimpleClientset(existing.DeepCopy())
+	vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
+	controller := &hyperNodeController{
+		vcClient:        fakeVcClient,
+		hyperNodeLister: vcInformerFactory.Topology().V1alpha1().HyperNodes().Lister(),
+	}
+	discovered := existing.DeepCopy()
+	discovered.Labels[api.NetworkTopologySourceLabelKey] = "label"
+	discovered.Spec.Members[0].Selector.ExactMatch.Name = "label-node"
+
+	// The source-scoped cache does not contain the same-name UFM object. The
+	// failed create must not transfer ownership to the label discoverer.
+	controller.reconcileTopology("label", []*topologyv1alpha1.HyperNode{discovered})
+
+	actual, err := fakeVcClient.TopologyV1alpha1().HyperNodes().Get(
+		context.Background(), existing.Name, metav1.GetOptions{})
+	assert.NoError(t, err)
+	assert.Equal(t, "ufm", actual.Labels[api.NetworkTopologySourceLabelKey])
+	assert.Equal(t, existing.Spec, actual.Spec)
+	for _, action := range fakeVcClient.Actions() {
+		if action.GetVerb() == "update" && action.GetResource().Resource == "hypernodes" {
+			t.Fatalf("foreign HyperNode must not be updated: %#v", action)
+		}
+	}
+}
+
 func TestHyperNodeController_Run(t *testing.T) {
 	stopCh := make(chan struct{})
 
