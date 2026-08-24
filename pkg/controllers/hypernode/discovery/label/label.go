@@ -17,6 +17,7 @@ limitations under the License.
 package label
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -27,6 +28,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/informers"
@@ -85,10 +87,33 @@ type labelDiscoverer struct {
 	completedCh           chan struct{}
 	queue                 workqueue.TypedRateLimitingInterface[string]
 	hyperNodeLister       topologylisterv1alpha1.HyperNodeLister
+	vcClient              vcclientset.Interface
 	nodeHandler           cache.ResourceEventHandlerRegistration
 	hyperNodeHandler      cache.ResourceEventHandlerRegistration
 	workerDone            chan struct{}
 	started               bool
+}
+
+// hyperNodeNameResolver resolves and reuses HyperNode names within one complete
+// topology discovery cycle. It lazily loads one live API snapshot when the
+// informer cache misses and shares that snapshot across all name resolutions
+// in the cycle. A new resolver is created for each cycle so the snapshot is
+// never reused by a later discovery.
+type hyperNodeNameResolver struct {
+	hyperNodeLister    topologylisterv1alpha1.HyperNodeLister
+	vcClient           vcclientset.Interface
+	liveHyperNodes     []*topologyv1alpha1.HyperNode
+	liveHyperNodeNames map[string]struct{}
+	liveLoaded         bool
+	liveErr            error
+}
+
+func newHyperNodeNameResolver(hyperNodeLister topologylisterv1alpha1.HyperNodeLister,
+	vcClient vcclientset.Interface) *hyperNodeNameResolver {
+	return &hyperNodeNameResolver{
+		hyperNodeLister: hyperNodeLister,
+		vcClient:        vcClient,
+	}
 }
 
 // Start begins the topology discovery process and returns the channel for receiving discovered topology
@@ -200,6 +225,9 @@ func newLabelDiscoverer(cfg api.DiscoveryConfig, options api.DiscovererOptions, 
 	if options.NodeInformer == nil || options.HyperNodeInformer == nil {
 		return nil, errors.New("label discoverer requires Node and HyperNode informers")
 	}
+	if options.VolcanoClient == nil {
+		return nil, errors.New("label discoverer requires a Volcano client")
+	}
 	// parse config
 	networkTopologyRecord := parseCfg(cfg)
 
@@ -224,6 +252,7 @@ func newLabelDiscoverer(cfg api.DiscoveryConfig, options api.DiscovererOptions, 
 		workerDone:            make(chan struct{}),
 		queue:                 queue,
 		hyperNodeLister:       hyperNodeInformer.Lister(),
+		vcClient:              options.VolcanoClient,
 	}, nil
 }
 
@@ -439,6 +468,7 @@ func (l *labelDiscoverer) generateHyperNodeInfo() (map[string]HyperNodeInfo, err
 
 	// Record the label and hyperNodeName.
 	labelHyperNodeMap := make(map[string]map[string]string)
+	nameResolver := newHyperNodeNameResolver(l.hyperNodeLister, l.vcClient)
 
 	// Get all node
 	list, err := l.nodeInformer.Lister().List(labels.Everything())
@@ -461,7 +491,7 @@ func (l *labelDiscoverer) generateHyperNodeInfo() (map[string]HyperNodeInfo, err
 				hyperNodeName, exists := getHyperNodeCached(labelHyperNodeMap, key, value)
 				if !exists {
 					// Construct hyperNodeName
-					hyperNodeName, err = l.buildHyperNodeName(topologyTypeName, key, value, tier, hyperNodeInfoMap)
+					hyperNodeName, err = nameResolver.buildHyperNodeName(topologyTypeName, key, value, tier, hyperNodeInfoMap)
 					if err != nil {
 						klog.Errorf("Failed to build hyperNode resources, error is %v", err.Error())
 						return hyperNodeInfoMap, err
@@ -497,37 +527,52 @@ func (l *labelDiscoverer) generateHyperNodeInfo() (map[string]HyperNodeInfo, err
 	return hyperNodeInfoMap, err
 }
 
-func (l *labelDiscoverer) buildHyperNodeName(topologyTypeName, key, value string, tier int, hyperNodeInfoMap map[string]HyperNodeInfo) (string, error) {
-	list, err := l.hyperNodeLister.List(labels.SelectorFromSet(labels.Set{
+func (r *hyperNodeNameResolver) buildHyperNodeName(topologyTypeName, key, value string, tier int, hyperNodeInfoMap map[string]HyperNodeInfo) (string, error) {
+	selector := labels.SelectorFromSet(labels.Set{
 		key:                               value,
 		api.NetworkTopologySourceLabelKey: "label",
-	}))
+	})
+	list, err := r.hyperNodeLister.List(selector)
 	if err != nil {
 		klog.Errorf("Failed to list existing hyperNode resources, error is %v", err.Error())
 		return "", err
 	}
 	topologyTypeName = cleanString(topologyTypeName)
-	if len(list) > 0 {
-		targetName := fmt.Sprintf("hypernode-%s-tier%d", topologyTypeName, tier)
-		// To ensure deterministic behavior, sort by name before iterating.
-		sort.Slice(list, func(i, j int) bool {
-			return list[i].Name < list[j].Name
-		})
-		for _, hyperNode := range list {
-			if strings.HasPrefix(hyperNode.Name, targetName) {
-				return hyperNode.Name, nil
-			}
+	targetName := fmt.Sprintf("hypernode-%s-tier%d", topologyTypeName, tier)
+	if name, found := findExistingHyperNodeName(list, targetName); found {
+		return name, nil
+	}
+
+	// An API write can complete before the shared informer observes it. Confirm
+	// the cache miss against the API before generating another random name for
+	// the same logical topology. A resolver loads at most one live snapshot per
+	// discovery round, even when the topology contains many HyperNodes.
+	liveHyperNodes, err := r.getLiveHyperNodes()
+	if err != nil {
+		return "", err
+	}
+	matchingLiveHyperNodes := make([]*topologyv1alpha1.HyperNode, 0)
+	for _, hyperNode := range liveHyperNodes {
+		if selector.Matches(labels.Set(hyperNode.Labels)) {
+			matchingLiveHyperNodes = append(matchingLiveHyperNodes, hyperNode)
 		}
 	}
+	if name, found := findExistingHyperNodeName(matchingLiveHyperNodes, targetName); found {
+		return name, nil
+	}
+
 	for i := 0; i < loopCount; i++ {
 		randomSuffix := rand.String(5)
 		hyperNodeName := fmt.Sprintf("hypernode-%s-tier%d-%s", topologyTypeName, tier, randomSuffix)
-		_, err := l.hyperNodeLister.Get(hyperNodeName)
+		_, err := r.hyperNodeLister.Get(hyperNodeName)
 		if err == nil {
 			continue
 		}
 		if !apierrors.IsNotFound(err) {
 			return "", err
+		}
+		if _, exists := r.liveHyperNodeNames[hyperNodeName]; exists {
+			continue
 		}
 		_, exists := hyperNodeInfoMap[hyperNodeName]
 		if !exists {
@@ -536,6 +581,40 @@ func (l *labelDiscoverer) buildHyperNodeName(topologyTypeName, key, value string
 	}
 	klog.Errorf("unable to get unique hyperNodeName after %d attempts", loopCount)
 	return "", fmt.Errorf("unable to get unique hyperNodeName after %d attempts", loopCount)
+}
+
+func (r *hyperNodeNameResolver) getLiveHyperNodes() ([]*topologyv1alpha1.HyperNode, error) {
+	if r.liveLoaded {
+		return r.liveHyperNodes, r.liveErr
+	}
+	r.liveLoaded = true
+	liveList, err := r.vcClient.TopologyV1alpha1().HyperNodes().List(
+		context.Background(), metav1.ListOptions{})
+	if err != nil {
+		r.liveErr = fmt.Errorf("failed to confirm existing HyperNodes from API: %w", err)
+		return nil, r.liveErr
+	}
+	r.liveHyperNodes = make([]*topologyv1alpha1.HyperNode, 0, len(liveList.Items))
+	r.liveHyperNodeNames = make(map[string]struct{}, len(liveList.Items))
+	for i := range liveList.Items {
+		r.liveHyperNodes = append(r.liveHyperNodes, &liveList.Items[i])
+		r.liveHyperNodeNames[liveList.Items[i].Name] = struct{}{}
+	}
+	return r.liveHyperNodes, nil
+}
+
+func findExistingHyperNodeName(hyperNodes []*topologyv1alpha1.HyperNode, targetName string) (string, bool) {
+	matchingNames := make([]string, 0, len(hyperNodes))
+	for _, hyperNode := range hyperNodes {
+		if strings.HasPrefix(hyperNode.Name, targetName) {
+			matchingNames = append(matchingNames, hyperNode.Name)
+		}
+	}
+	if len(matchingNames) == 0 {
+		return "", false
+	}
+	sort.Strings(matchingNames)
+	return matchingNames[0], true
 }
 
 func cleanString(s string) string {

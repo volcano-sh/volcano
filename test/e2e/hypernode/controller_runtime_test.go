@@ -130,6 +130,7 @@ var _ = Describe("HyperNode controller runtime", Ordered, func() {
 			allowed   bool
 		}{
 			{name: "list Nodes", verb: "list", resource: "nodes", allowed: true},
+			{name: "get HyperNodes", verb: "get", group: "topology.volcano.sh", resource: "hypernodes", allowed: true},
 			{name: "write HyperNodes", verb: "create", group: "topology.volcano.sh", resource: "hypernodes", allowed: true},
 			{name: "update HyperNode status", verb: "update", group: "topology.volcano.sh", resource: "hypernodes/status", allowed: true},
 			{name: "watch controller ConfigMap", verb: "watch", resource: "configmaps", namespace: namespace, allowed: true},
