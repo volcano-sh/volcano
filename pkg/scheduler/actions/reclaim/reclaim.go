@@ -215,12 +215,14 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		victimsQueue := ssn.BuildVictimsPriorityQueue(victims, task)
 		resreq := task.InitResreq.Clone()
 		reclaimed := api.EmptyResource()
-
-		// The reclaimed resources should be added to the remaining available resources of the nodes to avoid over-reclaiming.
 		availableResources := n.FutureIdle()
+		reclaimerFits := reclaimerFitsOnNode(ssn, task, n, resreq, availableResources)
 
 		evictionOccurred := false
 		for !victimsQueue.Empty() {
+			if reclaimerFits {
+				break
+			}
 			reclaimee := victimsQueue.Pop().(*api.TaskInfo)
 			klog.V(3).Infof("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
 				reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
@@ -232,14 +234,12 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			reclaimed.Add(reclaimee.Resreq)
 			availableResources.Add(reclaimee.Resreq)
 			evictionOccurred = true
-			if resreq.LessEqual(availableResources, api.Zero) {
-				break
-			}
+			reclaimerFits = reclaimerFitsOnNode(ssn, task, n, resreq, availableResources)
 		}
 
 		klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>, and Node <%s> availableResources <%v>.", reclaimed, task.Namespace, task.Name, task.InitResreq, n.Name, availableResources)
 
-		if task.InitResreq.LessEqual(availableResources, api.Zero) {
+		if reclaimerFits {
 			if err := stmt.Pipeline(task, n.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					task.Namespace, task.Name, n.Name)
@@ -251,6 +251,12 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			break
 		}
 	}
+}
+
+// reclaimerFitsOnNode verifies available resources and plugin predicates after tentative evictions.
+func reclaimerFitsOnNode(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo, resreq, availableResources *api.Resource) bool {
+	return resreq.LessEqual(availableResources, api.Zero) &&
+		ssn.PredicateFn(task, node) == nil
 }
 
 func (ra *Action) UnInitialize() {
