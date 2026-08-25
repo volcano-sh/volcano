@@ -218,8 +218,11 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		}
 
 		victimsQueue := ssn.BuildVictimsPriorityQueue(victims, task)
+		resreq := task.InitResreq.Clone()
 		reclaimed := api.EmptyResource()
-		reclaimerFits := reclaimerFitsOnNode(ssn, task, n)
+
+		availableResources := n.FutureIdle()
+		reclaimerFits := reclaimerFitsOnNode(ssn, task, n, resreq, availableResources)
 
 		// Use a per-node statement so that evictions are isolated to this node.
 		// Only merge into the caller's stmt if Pipeline succeeds; otherwise discard
@@ -235,11 +238,12 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 				reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
 			nodeStmt.Evict(reclaimee, "reclaim")
 			reclaimed.Add(reclaimee.Resreq)
+			availableResources.Add(reclaimee.Resreq)
 			evictionOccurred = true
-			reclaimerFits = reclaimerFitsOnNode(ssn, task, n)
+			reclaimerFits = reclaimerFitsOnNode(ssn, task, n, resreq, availableResources)
 		}
 
-		klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>.", reclaimed, task.Namespace, task.Name, task.InitResreq)
+		klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>, and Node <%s> availableResources <%v>.", reclaimed, task.Namespace, task.Name, task.InitResreq, n.Name, availableResources)
 
 		if !reclaimerFits {
 			nodeStmt.Discard()
@@ -257,9 +261,9 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 	}
 }
 
-// reclaimerFitsOnNode verifies aggregate resources and plugin predicates after tentative evictions.
-func reclaimerFitsOnNode(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo) bool {
-	return task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) &&
+// reclaimerFitsOnNode verifies available resources and plugin predicates after tentative evictions.
+func reclaimerFitsOnNode(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo, resreq, availableResources *api.Resource) bool {
+	return resreq.LessEqual(availableResources, api.Zero) &&
 		ssn.PredicateFn(task, node) == nil
 }
 
