@@ -92,6 +92,10 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 			if node == nil {
 				node, _ = util.SelectBestNodeAndScore(nodeScores)
 			}
+			if node == nil {
+				klog.V(3).Infof("No best node for task <%v/%v>, skip it in backfill", task.Namespace, task.Name)
+				continue
+			}
 		}
 
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
