@@ -19,6 +19,7 @@
 - [Risks and Mitigations](#risks-and-mitigations)
 - [Alternatives Considered](#alternatives-considered)
 - [Test Plan](#test-plan)
+- [Performance Validation](#performance-validation)
 - [Related Issues](#related-issues)
 <!-- /toc -->
 
@@ -909,9 +910,10 @@ thresholds; and the
 
 **Benchmarks**
 
-`benchmark/testcases/unschedulable-job-cache/`: 5,000 pending PodGroups with mixed
-rejection sources. Compare `allocate` latency, session duration, bind throughput,
-and cache memory before and after the cache is enabled.
+Performance tests compare the cache enabled and disabled under a schedulable Job
+stream, with both homogeneous and mixed pending backlogs. They record useful Job
+throughput, scheduling latency, session time, predicate calls, scheduler CPU, and
+RSS. The workloads and results are described in Performance Validation below.
 
 **End-to-end**
 
@@ -930,6 +932,132 @@ and cache memory before and after the cache is enabled.
   the record is dropped instead of refreshed.
 - **Watchdog safety net.** A cached Job whose subscribed events never fire is
   re-evaluated after the configured maximum skip duration.
+
+## Performance Validation
+
+Batch clusters often keep Jobs pending for reasons that cannot change in the next
+scheduling session: a gang does not have enough GPUs, a Queue has exhausted its
+quota, or no Node satisfies a placement constraint. Re-running the same filters
+once per second does not help those Jobs, but it does compete with newly submitted
+work. The cache trades memory and event processing for fewer repeated scheduling
+attempts, so the validation covers both sides of that trade: it must reduce work
+when a backlog exists, remain cheap when it does not, and retry promptly when the
+cluster really changes.
+
+The A/B cases below changed only the feature gate. Cluster-level cases were run
+three times and report the median. The test cluster had 100 KWOK Nodes with 32 CPUs
+and 256 GiB of memory each, a one-second scheduling period, and scheduler/client
+QPS and burst of 5000/10000.
+
+### Normal scheduling without a pending backlog
+
+A healthy cluster may have no long-lived unschedulable work at all. The cache must
+keep its overhead small in that common case. This scenario submitted schedulable
+four-Pod Jobs at 100 Jobs/s for at least 15 seconds without creating any blocked
+Job. There were no cache skips or wakeups in either run.
+
+| Metric | Cache off | Cache on | Change |
+|---|---:|---:|---:|
+| Job throughput | 71.05 Jobs/s | 71.35 Jobs/s | +0.4% |
+| Job scheduling latency P95 | 4 s | 4 s | no change |
+| Scheduler CPU | 18.27 s | 18.89 s | +3.4% |
+| Average session | 1947.39 ms | 1965.61 ms | +0.9% |
+| Predicate calls | 4,481 | 4,416 | -1.5% |
+
+Throughput and latency stayed effectively unchanged. Scheduler CPU was 3.4%
+higher in these runs when the cache had nothing to skip.
+
+### Long-lived pending Jobs competing with new work
+
+The main production use case is a queue containing training or batch Jobs that
+remain unschedulable for minutes while smaller Jobs continue to arrive. To show
+how that pressure scales, one test used single-Pod Jobs that each requested 100
+CPUs, more than any Node could provide, and varied the backlog from 1,000 to 5,000
+Jobs. The same schedulable four-Pod stream used above ran behind the backlog.
+
+| Blocked Jobs | Metric | Cache off | Cache on | Change |
+|---:|---|---:|---:|---:|
+| 1,000 | Job throughput | 54.10 Jobs/s | 75.01 Jobs/s | +38.7% |
+| 1,000 | P95 latency | 7 s | 4 s | -42.9% |
+| 1,000 | Average session | 3213.45 ms | 2160.34 ms | -32.8% |
+| 5,000 | Job throughput | 21.61 Jobs/s | 71.96 Jobs/s | 3.33x |
+| 5,000 | P95 latency | 12 s | 5 s | -58.3% |
+| 5,000 | Average session | 5466.08 ms | 2159.42 ms | -60.5% |
+
+Without the cache, useful throughput collapsed as the backlog grew because every
+session revisited every impossible Job. With the cache, throughput stayed close to
+the no-backlog result. At 1,000 blocked Jobs, scheduler CPU fell by 14.5% and
+predicate calls by 35.4%; at 5,000 they fell by 29.1% and 61.6%. Scheduler RSS
+increased by about 86 MiB and 380 MiB respectively, making the
+space-for-throughput trade explicit.
+
+A separate test used a more realistic gang shape. It kept 50 high-priority Jobs
+pending, each with 20 tasks: 15 tasks that fit, five Resource Fit failures, and
+`minAvailable=16`. While those Jobs remained at the head of the queue, schedulable
+lower-priority Jobs with `replicas/minAvailable=4/4` arrived at 100 Jobs/s.
+
+| Metric | Cache off | Cache on | Change |
+|---|---:|---:|---:|
+| Job throughput | 64.55 Jobs/s | 78.10 Jobs/s | +21.0% |
+| Job scheduling latency P95 | 7 s | 4 s | -42.9% |
+| Scheduler CPU | 25.88 s | 19.46 s | -24.8% |
+| Predicate calls | 7,256 | 4,852 | -33.1% |
+
+This is the user-visible reason for the feature: avoiding unchanged work creates
+room for Jobs that the cluster can actually run, rather than merely shortening an
+otherwise empty session.
+
+### Cluster changes and noisy events
+
+Pending state eventually becomes stale: Pods finish, Nodes join the cluster, or a
+Queue receives more quota. The cache must react to those changes without treating
+every informer event as useful. The E2E suite covers both sides. A Job cached on a
+missing Node label was scheduled after a matching Node update, and a Resource
+Fit-blocked Job was scheduled after the only CPU-consuming Pod was deleted. Queue
+capacity and task-quota cases similarly recovered after their matching updates.
+The focused Resource Fit case passed five consecutive runs; its one-minute bound
+is well below the default five-minute watchdog, so recovery did not depend on the
+periodic safety retry.
+
+For the opposite extreme, 1,000 Jobs requested more CPU than any Node could ever
+provide while 50 unrelated Pods/s were deleted for 30 seconds. The Resource Fit
+index selected no candidate (`K=0`) and produced no false wakeup.
+
+| Metric | Cache off | Cache on | Change |
+|---|---:|---:|---:|
+| Scheduler CPU / 30 s | 42.75 s | 10.27 s | -76.0% |
+| Average session | 909.38 ms | 29.40 ms | -96.8% |
+| Predicate calls | 16,000 | 0 | -100% |
+| False Pod wakeups | 0 | 0 | none |
+
+The secondary-index microbenchmark explains why event churn remains cheap. With
+5,000 cached Jobs, an event selecting 1% of the bucket took 7.87 µs instead of
+986.7 µs for full-bucket delivery, a 125x difference. At 10% it was 10.8x faster;
+at 100% it was 0.4% slower. Provider-specific keys are therefore useful only when
+they exclude a meaningful part of the bucket, while the generic full-bucket path
+remains the correctness fallback.
+
+### Mixed reasons for pending Jobs
+
+Production queues are not uniformly blocked by Resource Fit. The final scenario
+used 1,000 pending Jobs split evenly among Resource Fit, Node Affinity,
+Inter-Pod Affinity, and Queue rejection, then submitted the same schedulable
+four-Pod stream. Only Resource Fit used the provider-specific secondary index;
+the other reasons exercised the generic cache and fallback delivery paths.
+
+| Metric | Cache off | Cache on | Change |
+|---|---:|---:|---:|
+| Job throughput | 62.68 Jobs/s | 71.64 Jobs/s | +14.3% |
+| Job scheduling latency P95 | 6 s | 5 s | -16.7% |
+| Scheduler CPU | 23.28 s | 22.53 s | -3.2% |
+| Average session | 2518.80 ms | 1812.42 ms | -28.0% |
+| Predicate calls | 6,547 | 4,429 | -32.4% |
+
+The mixed backlog still improved useful throughput by 14.3% and reduced predicate
+calls by 32.4%. Taken together, the scenarios show that the cache is nearly
+neutral in a healthy queue, increasingly valuable as a pending backlog grows,
+responsive to relevant changes, and still useful when rejection reasons are
+heterogeneous.
 
 ## Related Issues
 
