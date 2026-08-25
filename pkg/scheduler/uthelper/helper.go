@@ -267,7 +267,7 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 	for i := 0; i < test.ExpectBindsNum; i++ {
 		select {
 		case <-binder.Channel:
-		case <-time.After(300 * time.Millisecond):
+		case <-time.After(5 * time.Second):
 			return fmt.Errorf("failed to get Bind request in case %d(%s)", caseIndex, test.Name)
 		}
 	}

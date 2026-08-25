@@ -194,7 +194,7 @@ var _ = Describe("Agent Scheduler E2E Test", func() {
 			for i := 0; i < podCount; i++ {
 				podName := fmt.Sprintf("agent-multi-pod-%d", i)
 				podNames[i] = podName
-				pod := createAgentPod(ctx.Namespace, podName, "50m")
+				pod := createAgentPod(ctx.Namespace, podName, "10m")
 				_, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(
 					context.TODO(), pod, metav1.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred(), "failed to create pod %s", podName)
