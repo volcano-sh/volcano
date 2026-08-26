@@ -106,10 +106,7 @@ registered in `overcommit` returns a value belows `0`, `jobEnqueueableFn`, which
 
 ### Queue-Scoped Overcommit
 
-The alpha `QueueScopedOvercommit` feature adds an optional Queue-level admission
-check to the `overcommit` plugin. It does not replace the existing global
-`overcommit-factor` check. See [How to Use Queue-Scoped Overcommit](how_to_use_queue_scoped_overcommit.md)
-for feature-gate, Queue annotation, and scheduler configuration examples.
+The alpha `QueueScopedOvercommit` feature adds an optional Queue-level admission check to the `overcommit` plugin. It does not replace the existing global `overcommit-factor` check. See [How to Use Queue-Scoped Overcommit](how_to_use_queue_scoped_overcommit.md) for feature-gate, Queue annotation, and scheduler configuration examples.
 
 ## FAQ
 * How can I decide which plugins should be grouped into a tier? How many tiers should I set for my business?
