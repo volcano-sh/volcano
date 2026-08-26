@@ -71,7 +71,7 @@ func Test_reporter_RefreshCfg(t *testing.T) {
 		cfg               *api.ColocationConfig
 		enable            bool
 		expectNode        func() *v1.Node
-		expectTypes       sets.String
+		expectTypes       sets.Set[string]
 		expectEvictedPods []*v1.Pod
 	}{
 		{
@@ -96,7 +96,7 @@ func Test_reporter_RefreshCfg(t *testing.T) {
 					OverSubscriptionTypes: utilpointer.String("cpu,memory"),
 				}},
 			enable:      true,
-			expectTypes: sets.NewString("cpu", "memory"),
+			expectTypes: sets.New[string]("cpu", "memory"),
 			expectNode: func() *v1.Node {
 				node, err := makeNode()
 				assert.NoError(t, err)
@@ -125,7 +125,7 @@ func Test_reporter_RefreshCfg(t *testing.T) {
 					Enable:                utilpointer.Bool(true),
 					OverSubscriptionTypes: utilpointer.String("cpu,memory"),
 				}},
-			expectTypes: sets.NewString("cpu", "memory"),
+			expectTypes: sets.New[string]("cpu", "memory"),
 			expectNode: func() *v1.Node {
 				node, err := makeNode()
 				assert.NoError(t, err)
