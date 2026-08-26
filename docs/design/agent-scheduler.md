@@ -180,7 +180,7 @@ After Session open, scheduler obtain the nodes available for the current session
 In each scheduler, a coordinator is needed for detecting changes in NodeShards and calculating the nodes that can be used in the next scheduling cycle. Based on the in-use status of nodes in different shards and the nodes assigned to this scheduler's shard, the coordinator computes which nodes this scheduler can use in its next scheduling and update NodeShard to tell other schedulers which nodes are being used.
 
 #### Shard Coordinator in Agent Scheduler
-Sharding coordinator watch NodeShard changes and caculate available nodes for scheduler.  After all scheduler workers synchronized the available nodes, the coordinator updates NodesInUse/NodesToRemove/NodesToAdd fields of the NodeShard:
+Sharding coordinator watch NodeShard changes and calculate available nodes for scheduler.  After all scheduler workers synchronized the available nodes, the coordinator updates NodesInUse/NodesToRemove/NodesToAdd fields of the NodeShard:
 - If the NodeShard changes while no workers are actively scheduling, the coordinator calculates the schedulable nodes and updates NodesInUse/NodesToRemove/NodesToAdd field with the new list.
 - If the NodeShard changes while workers are actively scheduling, the coordinator cannot immediately update NodesInUse/NodesToRemove/NodesToAdd field, because the nodes currently used by workers may include other nodes. Once a worker completes a scheduling cycle, and if no other workers are scheduling or all workers have started using the nodes calculated by the coordinator after change, the coordinator updates NodesInUse/NodesToRemove/NodesToAdd field with the newly computed available nodes.
 

@@ -81,6 +81,8 @@ type RuntimeInfo struct {
 var (
 	AscendHAMiVNPUEnable bool
 	NodeLockEnable       bool
+
+	errInsufficientAscendDeviceCapacity = errors.New("no enough ascend device available")
 )
 
 func NewAscendDevices(name string, node *v1.Node) map[string]*AscendDevices {
@@ -180,6 +182,7 @@ func (ads *AscendDevices) SubResource(pod *v1.Pod) {
 	ano_key := devices.SupportDevices[ads.Type]
 	ano, ok := pod.Annotations[ano_key]
 	if !ok {
+		ads.subResourceByUID(pod)
 		return
 	}
 	con_devs, err := devices.DecodeContainerDevices(ano)
@@ -198,6 +201,21 @@ func (ads *AscendDevices) SubResource(pod *v1.Pod) {
 			ads.SubResourceUsage(dev, cono_dev.Usedcores, cono_dev.Usedmem)
 			klog.V(5).Infof("sub resource usage for pod %s. device %s usedmem %d usedcore %d", pod.Name, dev.DeviceInfo.ID, cono_dev.Usedmem, cono_dev.Usedcores)
 		}
+	}
+}
+
+func (ads *AscendDevices) subResourceByUID(pod *v1.Pod) {
+	if pod == nil {
+		return
+	}
+	for _, dev := range ads.Devices {
+		usage, ok := dev.PodMap[string(pod.UID)]
+		if !ok {
+			continue
+		}
+		delete(dev.PodMap, string(pod.UID))
+		ads.SubResourceUsage(dev, usage.Usedcores, usage.Usedmem)
+		klog.V(5).Infof("sub resource usage for pod %s by uid. device %s usedmem %d usedcore %d", pod.Name, dev.DeviceInfo.ID, usage.Usedmem, usage.Usedcores)
 	}
 }
 
@@ -262,6 +280,9 @@ func (ads *AscendDevices) HasDeviceRequest(pod *v1.Pod) bool {
 func (ads *AscendDevices) FilterNode(pod *v1.Pod, policy string) (int, string, error) {
 	_, err := ads.selectDevices(pod, policy)
 	if err != nil {
+		if errors.Is(err, errInsufficientAscendDeviceCapacity) {
+			return devices.Unschedulable, "no ascend device available", err
+		}
 		return devices.Error, "no ascend device available", err
 	}
 	klog.V(4).Infoln("ascend DeviceSharing successfully filters pods. device_type:", ads.Type)
@@ -315,18 +336,18 @@ func (ads *AscendDevices) ScoreNode(pod *v1.Pod, policy string) float64 {
 	return score
 }
 
-func (ads *AscendDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
+func (ads *AscendDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) (*devices.DeviceReservation, error) {
 	klog.V(4).Infof("Allocate device %s to Pod %s", ads.Type, pod.Name)
 	if NodeLockEnable {
 		nodelock.UseClient(kubeClient)
 		err := nodelock.LockNode(ads.NodeName, NodeLockAscend)
 		if err != nil {
-			return errors.Errorf("node %s locked for %s. err: %s", ads.NodeName, pod.Name, err.Error())
+			return nil, errors.Errorf("node %s locked for %s hami vnpu. lockname %s", ads.NodeName, pod.Name, err.Error())
 		}
 	}
 	podDevs, err := ads.selectDevices(pod, ads.Policy)
 	if err != nil {
-		return errors.Errorf("failed to select ascend devices for pod %s: %v", pod.Name, err)
+		return nil, errors.Errorf("failed to select ascend devices for pod %s: %v", pod.Name, err)
 	}
 	annotations := ads.CreateAnnotations(pod, podDevs)
 
@@ -336,21 +357,20 @@ func (ads *AscendDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod)
 	annotations[util.DeviceBindPhase] = "allocating"
 	annotations[util.BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
 
-	err = devices.PatchPodAnnotations(kubeClient, pod, annotations)
-	if err != nil {
-		return err
-	}
 	klog.V(4).Infof("Allocate Success. device %s Pod %s", ads.Type, pod.Name)
-	return nil
+	return &devices.DeviceReservation{
+		DeviceType:  ads.Type,
+		Annotations: annotations,
+	}, nil
 }
 
-func (ads *AscendDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	if ads == nil || pod == nil || pod.Annotations == nil {
-		return nil
+func (ads *AscendDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) (*devices.DeviceReservation, error) {
+	if ads == nil || pod == nil {
+		return nil, nil
 	}
 	ads.SubResource(pod)
 	if pod.Annotations[util.DeviceBindPhase] == DeviceBindSuccess {
-		return nil
+		return nil, nil
 	}
 	keys := []string{
 		util.AssignedNodeAnnotations,
@@ -366,13 +386,10 @@ func (ads *AscendDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) 
 			fmt.Sprintf("huawei.com/%s", commonWord),
 		)
 	}
-	if err := devices.RemovePodAnnotations(kubeClient, pod, keys); err != nil {
-		return err
-	}
-	for _, k := range keys {
-		delete(pod.Annotations, k)
-	}
-	return nil
+	return &devices.DeviceReservation{
+		DeviceType:  ads.Type,
+		Annotations: devices.AnnotationKeyMap(keys),
+	}, nil
 }
 
 func (ads *AscendDevices) GetIgnoredDevices() []string {
@@ -485,7 +502,7 @@ func (ads *AscendDevices) selectDevices(pod *v1.Pod, schedulePolicy string) (dev
 		}
 		if req_nums > 0 {
 			klog.V(5).Infof("no enough ascend device available! raw req_nums %d cur req_nums %d", req.Nums, req_nums)
-			return nil, errors.Errorf("no enough ascend device available")
+			return nil, errors.WithStack(errInsufficientAscendDeviceCapacity)
 		}
 		if needTopology {
 			selectedDevs = selectDevicesWithTopology(int(req.Nums), selectedDevs)

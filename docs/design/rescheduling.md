@@ -63,7 +63,7 @@ for [Descheduler](https://github.com/kubernetes-sigs/descheduler)
 ### Metrics
 All the decisions made by rescheduling strategies will consider the metrics from `Prometheus`. Namely, Volcano will 
 list the real node resource utilization and pod distribution instead of request resource. Basically, usage of`CPU` and 
-`Memroy` will be collected. Other resource such as `GPU` can be extended.
+`Memory` will be collected. Other resource such as `GPU` can be extended.
 
 ## Implementation(Beta)
 ```yaml

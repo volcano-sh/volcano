@@ -50,4 +50,4 @@ In conformance plugin, it checks whether a task is critical or running in kube-s
 It checks whether by evicting a task, it affects gang scheduling in kube-batch.  It checks whether by evicting particular task,
 total number of tasks running for a job is going to be less than the minAvailable requirement for gang scheduling requirement.
 #### DRF:
-The preemptor can only preempt other tasks only if the share of the preemptor is less than the share of the preemptee after recalculating the resource allocation of the premptor and preemptee.
+The preemptor can only preempt other tasks only if the share of the preemptor is less than the share of the preemptee after recalculating the resource allocation of the preemptor and preemptee.

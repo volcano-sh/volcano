@@ -24,6 +24,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
+	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/hami"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/mindcluster/ascend310p/vnpu"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
@@ -65,10 +66,17 @@ type Devices interface {
 	// scheduling policies.
 	ScoreNode(pod *v1.Pod, policy string) float64
 
-	// Allocate action in predicate
-	Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error
-	// Release action in predicate
-	Release(kubeClient kubernetes.Interface, pod *v1.Pod) error
+	// Allocate action in predicate.
+	// Returns the reservation data produced by this allocation, including annotations
+	// that need to be carried during binding. Implementations that do not need bind
+	// annotations may return (nil, nil).
+	Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) (*devices.DeviceReservation, error)
+
+	// Release action in predicate.
+	// Rolls back the in-memory ledger and optionally returns annotation keys that
+	// should be removed from TaskInfo.PodAnnotations. The implementation owns any
+	// apiserver-side annotation cleanup it performs.
+	Release(kubeClient kubernetes.Interface, pod *v1.Pod) (*devices.DeviceReservation, error)
 
 	// GetIgnoredDevices notify vc-scheduler to ignore devices in return list
 	GetIgnoredDevices() []string

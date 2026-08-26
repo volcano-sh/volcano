@@ -277,16 +277,17 @@ func (gs *GPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
 	return false
 }
 
-func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	if gs == nil || pod == nil || pod.Annotations == nil {
-		return nil
+func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) (*devices.DeviceReservation, error) {
+	if gs == nil || pod == nil {
+		return nil, nil
 	}
-	// Release is required for rollback paths (e.g. UnPipeline) where NodeInfo
-	// does not invoke subResource for Pipelined tasks.
+	// Roll back the in-memory device ledger for UnPipeline/UnAllocate paths.
 	gs.SubResource(pod)
 
-	if pod.Annotations[DeviceBindPhase] == "success" {
-		return nil
+	// Once binding succeeds, vgpu-device-plugin owns these annotations.
+	// The scheduler must not clean them again.
+	if pod.Annotations != nil && pod.Annotations[DeviceBindPhase] == "success" {
+		return nil, nil
 	}
 
 	keys := []string{
@@ -297,13 +298,10 @@ func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) erro
 		BindTimeAnnotations,              // volcano.sh/bind-time
 		DeviceBindPhase,                  // volcano.sh/bind-phase
 	}
-	if err := devices.RemovePodAnnotations(kubeClient, pod, keys); err != nil {
-		return err
-	}
-	for _, k := range keys {
-		delete(pod.Annotations, k)
-	}
-	return nil
+	return &devices.DeviceReservation{
+		DeviceType:  DeviceName,
+		Annotations: devices.AnnotationKeyMap(keys),
+	}, nil
 }
 
 func (gs *GPUDevices) FilterNode(pod *v1.Pod, schedulePolicy string) (int, string, error) {
@@ -320,54 +318,43 @@ func (gs *GPUDevices) FilterNode(pod *v1.Pod, schedulePolicy string) (int, strin
 	return devices.Success, "", nil
 }
 
-func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	if VGPUEnable {
-		klog.V(4).Infoln("hami-vgpu DeviceSharing:Into AllocateToPod", pod.Name)
-		if alreadyAssignedOnNode(pod, gs.Name) {
-			klog.V(4).InfoS("hami-vgpu DeviceSharing: skip duplicate AllocateToPod",
-				"pod", pod.Name, "namespace", pod.Namespace, "node", gs.Name)
-			return nil
-		}
-		fit, device, _, err := checkNodeGPUSharingPredicateAndScore(pod, gs, false, SchedulePolicy)
-		if err != nil || !fit {
-			klog.ErrorS(err, "Failed to allocate vgpu task", "pod", pod.Name)
-			return err
-		}
-		if NodeLockEnable {
-			nodelock.UseClient(kubeClient)
-			err = nodelock.LockNode(gs.Name, DeviceName)
-			if err != nil {
-				return errors.Errorf("node %s locked for %s hamivgpu lockname %s", gs.Name, pod.Name, err.Error())
-			}
-		}
-
-		annotations := make(map[string]string)
-		annotations[AssignedNodeAnnotations] = gs.Name
-		annotations[AssignedTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
-		annotations[AssignedIDsAnnotations] = encodePodDevices(device)
-		annotations[AssignedIDsToAllocateAnnotations] = annotations[AssignedIDsAnnotations]
-
-		annotations[DeviceBindPhase] = "allocating"
-		annotations[BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
-		// Keep in-memory pod object in sync so rollback paths (UnPipeline ->
-		// Deallocate -> Release) can see allocated IDs before apiserver watch
-		// catches up.
-		if pod.Annotations == nil {
-			pod.Annotations = map[string]string{}
-		}
-		for k, v := range annotations {
-			pod.Annotations[k] = v
-		}
-		// To avoid that the pod allocated info updating latency, add it first
-		gs.addToPodMap(annotations, pod)
-		err = patchPodAnnotations(kubeClient, pod, annotations)
-		if err != nil {
-			return err
-		}
-
-		klog.V(3).Infoln("DeviceSharing:Allocate Success")
+func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) (*devices.DeviceReservation, error) {
+	if !VGPUEnable {
+		return nil, nil
 	}
-	return nil
+	klog.V(4).Infoln("hami-vgpu DeviceSharing:Into AllocateToPod", pod.Name)
+	fit, device, _, err := checkNodeGPUSharingPredicateAndScore(pod, gs, false, SchedulePolicy)
+	if err != nil || !fit {
+		klog.ErrorS(err, "Failed to allocate vgpu task", "pod", pod.Name)
+		return nil, err
+	}
+	if NodeLockEnable {
+		nodelock.UseClient(kubeClient)
+		err = nodelock.LockNode(gs.Name, DeviceName)
+		if err != nil {
+			return nil, errors.Errorf("node %s locked for %s hamivgpu lockname %s", gs.Name, pod.Name, err.Error())
+		}
+	}
+
+	annotations := make(map[string]string)
+	annotations[AssignedNodeAnnotations] = gs.Name
+	annotations[AssignedTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
+	annotations[AssignedIDsAnnotations] = encodePodDevices(device)
+	annotations[AssignedIDsToAllocateAnnotations] = annotations[AssignedIDsAnnotations]
+	annotations[DeviceBindPhase] = "allocating"
+	annotations[BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
+
+	// Update the in-memory device ledger without mutating shared pod annotations.
+	// Passing annotations directly avoids concurrent reads/writes on the shared Pod map.
+	gs.addToPodMap(annotations, pod)
+
+	// Return allocation annotations so predicates can carry the same values on
+	// the binding request. The apiserver merges Binding annotations into the Pod
+	// atomically with node assignment.
+	return &devices.DeviceReservation{
+		DeviceType:  DeviceName,
+		Annotations: annotations,
+	}, nil
 }
 
 // DeepCopy returns a deep copy of GPUDevices for use in dry-run simulation.
@@ -415,13 +402,4 @@ func (gs *GPUDevices) DeepCopy() interface{} {
 		cp.Device[id] = newDev
 	}
 	return cp
-}
-
-func alreadyAssignedOnNode(pod *v1.Pod, nodeName string) bool {
-	if pod == nil || pod.Annotations == nil || nodeName == "" {
-		return false
-	}
-
-	return pod.Annotations[AssignedNodeAnnotations] == nodeName &&
-		pod.Annotations[AssignedIDsAnnotations] != ""
 }

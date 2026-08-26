@@ -28,7 +28,7 @@ jobs:
           go-version: 1.26.x
 
       - name: Checkout code
-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/go/pkg/mod
@@ -40,7 +40,7 @@ jobs:
           curl -LO https://dl.k8s.io/release/v1.36.1/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
 
       - name: Download Images
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: volcano-images
           path: _output/images

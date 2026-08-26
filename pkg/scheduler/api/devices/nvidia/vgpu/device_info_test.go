@@ -217,38 +217,35 @@ func podWithVGPUAnnotations(phase string) *v1.Pod {
 	}
 }
 
-// A discarded (speculative) allocation must have its device annotations removed so it
-// cannot survive onto a different node. Regression test for volcano-sh/volcano#5335.
-func TestReleaseCleansSpeculativeAnnotations(t *testing.T) {
+// TestReleaseReturnsSpeculativeAnnotationKeys verifies that Release only reports
+// the speculative annotation keys that should be removed from TaskInfo.PodAnnotations.
+func TestReleaseReturnsSpeculativeAnnotationKeys(t *testing.T) {
 	pod := podWithVGPUAnnotations("allocating")
 	client := fake.NewSimpleClientset(pod)
 	gs := &GPUDevices{Name: "node-a"}
 
-	if err := gs.Release(client, pod); err != nil {
+	reservation, err := gs.Release(client, pod)
+	if err != nil {
 		t.Fatalf("Release returned error: %v", err)
-	}
-
-	for _, k := range []string{
-		AssignedNodeAnnotations, AssignedIDsAnnotations,
-		AssignedIDsToAllocateAnnotations, DeviceBindPhase,
-	} {
-		if _, ok := pod.Annotations[k]; ok {
-			t.Errorf("in-memory annotation %s should have been removed", k)
-		}
-	}
-	if pod.Annotations["keep-me"] != "yes" {
-		t.Errorf("non-device annotation must be preserved in-memory")
 	}
 
 	got, err := client.CoreV1().Pods("default").Get(context.Background(), "worker-0", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("get pod: %v", err)
 	}
-	if _, ok := got.Annotations[AssignedNodeAnnotations]; ok {
-		t.Errorf("apiserver annotation %s should have been removed", AssignedNodeAnnotations)
-	}
-	if _, ok := got.Annotations[AssignedIDsAnnotations]; ok {
-		t.Errorf("apiserver annotation %s should have been removed", AssignedIDsAnnotations)
+	for _, k := range []string{
+		AssignedNodeAnnotations, AssignedIDsAnnotations,
+		AssignedIDsToAllocateAnnotations, DeviceBindPhase,
+	} {
+		if _, ok := got.Annotations[k]; !ok {
+			t.Errorf("apiserver annotation %s should not be removed during Release", k)
+		}
+		if reservation == nil || reservation.Annotations == nil {
+			t.Fatalf("Release should return annotation keys removed from TaskInfo.PodAnnotations")
+		}
+		if _, ok := reservation.Annotations[k]; !ok {
+			t.Errorf("reservation should request deletion of annotation %s", k)
+		}
 	}
 	if got.Annotations["keep-me"] != "yes" {
 		t.Errorf("non-device annotation must be preserved on apiserver")
@@ -262,7 +259,7 @@ func TestReleaseKeepsCommittedAnnotations(t *testing.T) {
 	client := fake.NewSimpleClientset(pod)
 	gs := &GPUDevices{Name: "node-a"}
 
-	if err := gs.Release(client, pod); err != nil {
+	if _, err := gs.Release(client, pod); err != nil {
 		t.Fatalf("Release returned error: %v", err)
 	}
 	if pod.Annotations[AssignedNodeAnnotations] != "node-a" {

@@ -584,16 +584,19 @@ func getPodGroupPhase(jobInfo *api.JobInfo, unschedulable bool) scheduling.PodGr
 		return scheduling.PodGroupUnknown
 	}
 
-	scheduled := 0
+	scheduled := int(jobInfo.ScheduledTaskNum())
 	completed := 0
 	for s, tasks := range jobInfo.TaskStatusIndex {
-		if api.ScheduledStatus(s) {
-			scheduled += len(tasks)
-		}
 		if api.CompletedStatus(s) {
 			completed += len(tasks)
 		}
 	}
+	// Releasing tasks that were already scheduled (pods with deletionTimestamp
+	// gracefully terminating on a node) still occupy their slots, so count them
+	// as scheduled to keep the PodGroup phase from flipping to Pending/Inqueue
+	// during termination. Never-scheduled Releasing tasks are excluded so that
+	// deleting pending pods does not promote the PodGroup to Running.
+	scheduled += int(jobInfo.ReleasingScheduledTaskNum())
 
 	if int32(scheduled) >= jobInfo.PodGroup.Spec.MinMember {
 		// If all scheduled tasks are completed, then the podgroup is completed
@@ -939,9 +942,9 @@ func (ssn *Session) AddEventHandler(eh *EventHandler) {
 	ssn.eventHandlers = append(ssn.eventHandlers, eh)
 }
 
-// UpdateSchedulerNumaInfo update SchedulerNumaInfo
-func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNumaSets) {
-	ssn.cache.UpdateSchedulerNumaInfo(AllocatedSets)
+// AddUnassignedNumaPods add the pods that are newly-scheduled but has not been allocated resources to nodes' UnassignedNumaPods
+func (ssn *Session) AddUnassignedNumaPods(allocatedSets map[api.PodMeta]map[string]api.ResNumaSets) {
+	ssn.cache.AddUnassignedNumaPods(allocatedSets)
 }
 
 // KubeClient returns the kubernetes client

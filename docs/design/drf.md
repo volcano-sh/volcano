@@ -11,7 +11,7 @@ Schedule the task of the job with smallest dominant resource
 
 ## Kube-Batch Implementation
 DRF calculate shares for each job. The share is the highest value of  ratio of the (allocated resource/Total Resource) of the three resource types CPU, Memory and GPU.
-This share value is used for job ordering and task premption.
+This share value is used for job ordering and task preemption.
 
 #### 1. Job Ordering:
   The job having the lowest share will have higher priority.
@@ -30,4 +30,4 @@ This share value is used for job ordering and task premption.
 
 #### 2. Task Preemption:
 
-The preemptor can only preempt other tasks only if the share of the preemptor is less than the share of the preemptee after recalculating the resource allocation  of the premptor and preemptee.
+The preemptor can only preempt other tasks only if the share of the preemptor is less than the share of the preemptee after recalculating the resource allocation of the preemptor and preemptee.

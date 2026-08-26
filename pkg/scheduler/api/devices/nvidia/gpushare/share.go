@@ -197,6 +197,13 @@ func AddGPUIndexPatch(ids []int) string {
 		escapeJSONPointer(GPUIndex), idsstring)
 }
 
+func gpuIndexAnnotations(ids []int) map[string]string {
+	return map[string]string{
+		PredicateTime: strconv.FormatInt(time.Now().UnixNano(), 10),
+		GPUIndex:      strings.Trim(strings.Replace(fmt.Sprint(ids), " ", ",", -1), "[]"),
+	}
+}
+
 // RemoveGPUIndexPatch returns the patch removing GPU index
 func RemoveGPUIndexPatch() string {
 	return fmt.Sprintf(`[{"op": "remove", "path": "/metadata/annotations/%s"},`+

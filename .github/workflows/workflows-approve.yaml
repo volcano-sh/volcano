@@ -13,6 +13,9 @@ permissions: read-all
 
 jobs:
   approve:
+    # Workflows for branches in this repository run without manual approval.
+    # This job is only needed to approve workflow runs from fork pull requests.
+    if: github.event.pull_request.head.repo.full_name != github.repository
     name: Approve workflows based on contributor status
     runs-on: ubuntu-latest
     permissions:

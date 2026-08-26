@@ -30,7 +30,7 @@ organizations will want to run multiple frameworks in the same cluster and a cen
 is needed to coordinate and allocate resources uniformly. This two-level scheduling approach is used by a number of systems.
 
 In two-level scheduler, like `Mesos`, a centralized resource allocator dynamically partitions a cluster, allocating 
-resources to different scheduler frameworks. Resources distributed to the frameworks contain only `avaliable` resources, 
+resources to different scheduler frameworks. Resources distributed to the frameworks contain only `available` resources,
 ones that are currently unused. Because only one framework is examining a resource at a time, resource conflicts is avoided.
 
 To access volcano as one framework to a two-level scheduler, the volcano needs to provide access for external modifications 
@@ -201,7 +201,7 @@ func (eh *defaultEventHandler) AddPod(obj interface{}) {
 - Add `--config-path` command to declare the configuration path of eventHandler
 
 ```go
-eventHadler := GetEventHandler(eventHandlerName, configFilePath, sc, config)
+eventHandler := GetEventHandler(eventHandlerName, configFilePath, sc, config)
 sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
    cache.FilteringResourceEventHandler{
       FilterFunc: func(obj interface{}) bool {
@@ -213,9 +213,9 @@ sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
          }
       },
       Handler: cache.ResourceEventHandlerFuncs{
-         AddFunc:    eventHadler.AddNode,
-         UpdateFunc: eventHadler.UpdateNode,
-         DeleteFunc: eventHadler.DeleteNode,
+         AddFunc:    eventHandler.AddNode,
+         UpdateFunc: eventHandler.UpdateNode,
+         DeleteFunc: eventHandler.DeleteNode,
       },
    },
    0,

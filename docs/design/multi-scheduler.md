@@ -10,7 +10,7 @@ when the schedulers work in parallel, it is easy to occur the resource conflicts
 - There are no resource conflicts when Multiple schedulers work in parallel.
 ## Design Action
 
-To devide the cluster resource, user need to set the taints and labels on cluster nodes and set the corresponding tolerations and nodeSelector on the pods. It will need a lot of manpower to modify the yaml files. 
+To divide the cluster resource, user need to set the taints and labels on cluster nodes and set the corresponding tolerations and nodeSelector on the pods. It will need a lot of manpower to modify the yaml files.
 For less user operation, volcano supports the action about the pod parts automatically and adds a new MutatingAdmissionWebhook in volcano admission deployment to do it.
 
 ### New configmap (volcano-admission-configmap)
@@ -25,7 +25,7 @@ The configmap defines some resource groups, each resource group contains
   - NodeSelector
   - SchedulerName
 
-If the object field is not setted, it is filled with a default as the following:
+If the object field is not set, it is filled with a default as the following:
 ````
 - resourceGroup: XXX                   
   object:
@@ -64,11 +64,11 @@ data:
       schedulerName: volcano
       labels:
         volcano.sh/nodetype: cpu
-    - resourceGroup: gpu                          # if the object is unsetted, default is:  the key is annotation,
+    - resourceGroup: gpu                          # if the object is unset, default is:  the key is annotation,
       schedulerName: volcano                      # the annotation key is fixed and is "volcano.sh/resource-group", The corresponding value is the resourceGroup field
       labels:
         volcano.sh/nodetype: gpu
-    - resourceGroup: fixed                        # if the object is unsetted, default is:  the key is annotation,
+    - resourceGroup: fixed                        # if the object is unset, default is:  the key is annotation,
       schedulerName: volcano                      # the annotation key is fixed and is "volcano.sh/resource-group", The corresponding value is the resourceGroup field
       object:
         key: annotation
@@ -239,7 +239,7 @@ metadata:
 data:
   volcano-admission.conf: |
     resourceGroups:
-    - resourceGroup: fixed                        # if the object is unsetted, default is:  the key is annotation,
+    - resourceGroup: fixed                        # if the object is unset, default is:  the key is annotation,
       schedulerName: volcano                      # the annotation key is fixed and is "volcano.sh/resource-group", The corresponding value is the resourceGroup field
       object:
         key: annotation

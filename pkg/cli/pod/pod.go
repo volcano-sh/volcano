@@ -21,7 +21,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -43,6 +45,8 @@ import (
 )
 
 const (
+	// Namespace pod namespace
+	Namespace string = "Namespace"
 	// Name pod name
 	Name string = "Name"
 	// Ready pod ready
@@ -150,54 +154,73 @@ func ListPods(ctx context.Context) error {
 		fmt.Printf("No resources found\n")
 		return nil
 	}
-	PrintPods(&pods, os.Stdout)
+	sortPods(pods.Items)
+	PrintPods(&pods, os.Stdout, listPodFlags.allNamespace)
 
 	return nil
 }
 
-func PrintPods(pods *corev1.PodList, writer io.Writer) {
-	maxNameLen := 0
-	maxReadyLen := 0
-	maxStatusLen := 0
-	maxRestartLen := 0
-	maxAgeLen := 0
+type podColumn struct {
+	header string
+	value  func(PodInfo) string
+}
+
+func PrintPods(pods *corev1.PodList, writer io.Writer, showNamespace bool) {
+	var columns []podColumn
+	if showNamespace {
+		columns = append(columns, podColumn{Namespace, func(p PodInfo) string { return p.Namespace }})
+	}
+	columns = append(columns,
+		podColumn{Name, func(p PodInfo) string { return p.Name }},
+		podColumn{Ready, func(p PodInfo) string { return p.ReadyContainers }},
+		podColumn{Status, func(p PodInfo) string { return p.Status }},
+		podColumn{Restart, func(p PodInfo) string { return p.Restarts }},
+		podColumn{Age, func(p PodInfo) string { return p.CreationTimestamp }},
+	)
 
 	var infoList []PodInfo
-	for _, pod := range pods.Items {
-		info := printPod(&pod)
-		infoList = append(infoList, info)
-		// update max length for each column
-		if len(info.Name) > maxNameLen {
-			maxNameLen = len(info.Name)
-		}
-		if len(info.ReadyContainers) > maxReadyLen {
-			maxReadyLen = len(info.ReadyContainers)
-		}
-		if len(info.Status) > maxStatusLen {
-			maxStatusLen = len(info.Status)
-		}
-		if len(info.Restarts) > maxRestartLen {
-			maxRestartLen = len(info.Restarts)
-		}
-		if len(info.CreationTimestamp) > maxAgeLen {
-			maxAgeLen = len(info.CreationTimestamp)
+	for i := range pods.Items {
+		infoList = append(infoList, printPod(&pods.Items[i]))
+	}
+
+	// Size each column to fit its widest value plus a fixed spacing. When the
+	// header is wider than every value, fall back to the header length plus a
+	// smaller separator so the header never touches the next column (and so an
+	// empty list still renders a readable header row).
+	const (
+		columnSpacing = 8
+		headerSpacing = 2
+	)
+	widths := make([]int, len(columns))
+	for i, col := range columns {
+		widths[i] = len(col.header) + headerSpacing
+		for _, info := range infoList {
+			if l := len(col.value(info)) + columnSpacing; l > widths[i] {
+				widths[i] = l
+			}
 		}
 	}
-	columnSpacing := 8
-	maxNameLen += columnSpacing
-	maxReadyLen += columnSpacing
-	maxStatusLen += columnSpacing
-	maxRestartLen += columnSpacing
-	maxAgeLen += columnSpacing
-	formatStr := fmt.Sprintf("%%-%ds%%-%ds%%-%ds%%-%ds%%-%ds\n", maxNameLen, maxReadyLen, maxStatusLen, maxRestartLen, maxAgeLen)
-	_, err := fmt.Fprintf(writer, formatStr, Name, Ready, Status, Restart, Age)
-	if err != nil {
+
+	formatBuilder := make([]string, len(columns))
+	for i := range columns {
+		formatBuilder[i] = fmt.Sprintf("%%-%ds", widths[i])
+	}
+	formatStr := strings.Join(formatBuilder, "") + "\n"
+
+	headerArgs := make([]interface{}, len(columns))
+	for i, col := range columns {
+		headerArgs[i] = col.header
+	}
+	if _, err := fmt.Fprintf(writer, formatStr, headerArgs...); err != nil {
 		fmt.Printf("Failed to print Pod information: %s.\n", err)
 		return
 	}
 	for _, info := range infoList {
-		_, err := fmt.Fprintf(writer, formatStr, info.Name, info.ReadyContainers, info.Status, info.Restarts, info.CreationTimestamp)
-		if err != nil {
+		rowArgs := make([]interface{}, len(columns))
+		for i, col := range columns {
+			rowArgs[i] = col.value(info)
+		}
+		if _, err := fmt.Fprintf(writer, formatStr, rowArgs...); err != nil {
 			fmt.Printf("Failed to print Pod information: %s.\n", err)
 			return
 		}
@@ -280,7 +303,7 @@ func appendIfNotExists(existing, toAppend []corev1.Pod) []corev1.Pod {
 	for _, pod := range toAppend {
 		exists := false
 		for _, existingPod := range existing {
-			if existingPod.Name == pod.Name {
+			if existingPod.Namespace == pod.Namespace && existingPod.Name == pod.Name {
 				exists = true
 				break
 			}
@@ -290,6 +313,18 @@ func appendIfNotExists(existing, toAppend []corev1.Pod) []corev1.Pod {
 		}
 	}
 	return existing
+}
+
+// sortPods orders the pods by namespace and name. The queue path merges two
+// filtered lists, so without this the rows can come out with the namespaces
+// interleaved rather than grouped.
+func sortPods(pods []corev1.Pod) {
+	sort.Slice(pods, func(i, j int) bool {
+		if pods[i].Namespace != pods[j].Namespace {
+			return pods[i].Namespace < pods[j].Namespace
+		}
+		return pods[i].Name < pods[j].Name
+	})
 }
 
 // translateTimestampSince translates a timestamp into a human-readable string using time.Since.
@@ -302,6 +337,7 @@ func translateTimestampSince(timestamp metav1.Time) string {
 
 // PodInfo holds information about a pod.
 type PodInfo struct {
+	Namespace         string
 	Name              string
 	ReadyContainers   string
 	Status            string
@@ -454,6 +490,7 @@ func printPod(pod *corev1.Pod) PodInfo {
 	}
 
 	podInfo := PodInfo{
+		Namespace:         pod.Namespace,
 		Name:              pod.Name,
 		ReadyContainers:   fmt.Sprintf("%d/%d", readyContainers, totalContainers),
 		Status:            reason,

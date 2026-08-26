@@ -17,6 +17,7 @@ limitations under the License.
 package pod
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -222,5 +224,117 @@ func buildPod(namespace, name string, labels map[string]string, annotations map[
 				},
 			},
 		},
+	}
+}
+
+func TestPrintPodsAllNamespaces(t *testing.T) {
+	pods := &corev1.PodList{
+		Items: []corev1.Pod{
+			buildPod("team-a", "worker-0", nil, nil),
+			buildPod("team-b", "worker-0", nil, nil),
+		},
+	}
+
+	var buf bytes.Buffer
+	PrintPods(pods, &buf, true)
+
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected header plus 2 rows, got %d lines: %q", len(lines), buf.String())
+	}
+	if !strings.HasPrefix(lines[0], Namespace) {
+		t.Errorf("expected header to start with %q, got %q", Namespace, lines[0])
+	}
+	if !strings.HasPrefix(lines[1], "team-a") || !strings.Contains(lines[1], "worker-0") {
+		t.Errorf("expected first row for team-a/worker-0, got %q", lines[1])
+	}
+	if !strings.HasPrefix(lines[2], "team-b") || !strings.Contains(lines[2], "worker-0") {
+		t.Errorf("expected second row for team-b/worker-0, got %q", lines[2])
+	}
+}
+
+func TestPrintPodsWithoutNamespaceColumn(t *testing.T) {
+	pods := &corev1.PodList{
+		Items: []corev1.Pod{
+			buildPod("team-a", "worker-0", nil, nil),
+		},
+	}
+
+	var buf bytes.Buffer
+	PrintPods(pods, &buf, false)
+
+	out := buf.String()
+	if strings.Contains(out, Namespace) {
+		t.Errorf("did not expect a Namespace column, got %q", out)
+	}
+	if !strings.HasPrefix(out, Name) {
+		t.Errorf("expected header to start with %q, got %q", Name, out)
+	}
+}
+
+func TestPrintPodsHeaderDrivenWidth(t *testing.T) {
+	// When the header is wider than every value (a single-character namespace)
+	// or there are no rows at all, the header must still keep a separator from
+	// the next column instead of touching it.
+	cases := map[string]*corev1.PodList{
+		"single char namespace": {
+			Items: []corev1.Pod{buildPod("a", "w", nil, nil)},
+		},
+		"empty list": {},
+	}
+
+	for name, pods := range cases {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			PrintPods(pods, &buf, true)
+
+			header := strings.SplitN(buf.String(), "\n", 2)[0]
+			if !strings.HasPrefix(header, Namespace+" ") {
+				t.Errorf("expected %q to be followed by a separator, got %q", Namespace, header)
+			}
+		})
+	}
+}
+
+func TestSortPods(t *testing.T) {
+	// Rows can turn up with the namespaces interleaved, so check they come back
+	// grouped by namespace, and by name within each one.
+	pods := []corev1.Pod{
+		buildPod("team-b", "worker-1", nil, nil),
+		buildPod("team-a", "worker-1", nil, nil),
+		buildPod("team-b", "worker-0", nil, nil),
+		buildPod("team-a", "worker-0", nil, nil),
+	}
+
+	sortPods(pods)
+
+	var got []string
+	for _, p := range pods {
+		got = append(got, p.Namespace+"/"+p.Name)
+	}
+	want := []string{"team-a/worker-0", "team-a/worker-1", "team-b/worker-0", "team-b/worker-1"}
+	if !slices.Equal(got, want) {
+		t.Errorf("expected pods in order %v, got %v", want, got)
+	}
+}
+
+func TestAppendIfNotExists(t *testing.T) {
+	existing := []corev1.Pod{
+		buildPod("team-a", "worker-0", nil, nil),
+	}
+	toAppend := []corev1.Pod{
+		buildPod("team-a", "worker-0", nil, nil),
+		buildPod("team-b", "worker-0", nil, nil),
+	}
+
+	got := appendIfNotExists(existing, toAppend)
+
+	var keys []string
+	for _, p := range got {
+		keys = append(keys, p.Namespace+"/"+p.Name)
+	}
+	want := []string{"team-a/worker-0", "team-b/worker-0"}
+	if !reflect.DeepEqual(keys, want) {
+		t.Errorf("expected pods %v, got %v", want, keys)
 	}
 }

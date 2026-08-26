@@ -33,7 +33,7 @@ example curl command example
 sudo curl --unix-socket /tmp/socks/klog.sock "http://localhost/setlevel?level=5&duration=60s"
 ```
 
-## 3、Why not change klog level throuth change configmap
+## 3、Why not change klog level through change configmap
 1、Modifying configmap may affect other plugins.If  Volcano deployed in a customer cluster,  the configmap cannot be modified easily.
 2、It'll be confusing that both options and configmap has same parameters,but have different value.
 

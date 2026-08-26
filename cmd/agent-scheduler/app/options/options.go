@@ -128,6 +128,14 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 func (s *ServerOption) CheckOptionOrDie() error {
 	s.ServerOption.ShardingMode = s.ShardingMode
 	s.ServerOption.ShardName = s.ShardName
+	return s.validateOptions()
+}
+
+// validateOptions validates agent scheduler-specific options.
+func (s *ServerOption) validateOptions() error {
+	if s.ScheduleWorkerCount <= 0 {
+		return fmt.Errorf("scheduler-worker-count must be greater than 0")
+	}
 	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
 }
 

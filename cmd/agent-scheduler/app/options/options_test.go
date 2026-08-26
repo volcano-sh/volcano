@@ -124,3 +124,18 @@ func TestCheckOptionOrDieSyncsAgentShardingOptions(t *testing.T) {
 	assert.Equal(t, commonutil.HardShardingMode, s.ServerOption.ShardingMode)
 	assert.Equal(t, defaultShardName, s.ServerOption.ShardName)
 }
+
+func TestCheckOptionOrDieRejectsNonPositiveScheduleWorkerCount(t *testing.T) {
+	fs := pflag.NewFlagSet("worker-count-test", pflag.ExitOnError)
+	s := NewServerOption()
+	commonutil.LeaderElectionDefault(&s.LeaderElection)
+	componentbaseoptions.BindLeaderElectionFlags(&s.LeaderElection, fs)
+	s.AddFlags(fs)
+	s.LeaderElection.ResourceName = commonutil.GenerateComponentName([]string{s.SchedulerName})
+
+	err := fs.Parse([]string{"--scheduler-worker-count=0"})
+	assert.NoError(t, err)
+
+	err = s.CheckOptionOrDie()
+	assert.EqualError(t, err, "scheduler-worker-count must be greater than 0")
+}

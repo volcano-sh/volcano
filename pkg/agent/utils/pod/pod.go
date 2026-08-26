@@ -21,8 +21,11 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	clientset "k8s.io/client-go/kubernetes"
+	helpers "k8s.io/component-helpers/resource"
 	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
+	k8sfeature "k8s.io/kubernetes/pkg/features"
 
 	"volcano.sh/volcano/pkg/agent/apis/extension"
 	"volcano.sh/volcano/pkg/agent/utils"
@@ -57,14 +60,9 @@ type SortedPodsByRequestCPU []*v1.Pod
 func (s SortedPodsByRequestCPU) Len() int      { return len(s) }
 func (s SortedPodsByRequestCPU) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s SortedPodsByRequestCPU) Less(i, j int) bool {
-	r1, r2 := int64(0), int64(0)
-	for _, c := range s[i].Spec.Containers {
-		r1 += c.Resources.Requests.Cpu().Value()
-	}
-	for _, c := range s[j].Spec.Containers {
-		r2 += c.Resources.Requests.Cpu().Value()
-	}
-	return r1 > r2
+	left := getEffectivePodRequestByResource(s[i], v1.ResourceCPU)
+	right := getEffectivePodRequestByResource(s[j], v1.ResourceCPU)
+	return left.Cmp(right) > 0
 }
 
 // SortedPodsByRequestMemory sort pods by memory request value.
@@ -73,14 +71,9 @@ type SortedPodsByRequestMemory []*v1.Pod
 func (s SortedPodsByRequestMemory) Len() int      { return len(s) }
 func (s SortedPodsByRequestMemory) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s SortedPodsByRequestMemory) Less(i, j int) bool {
-	r1, r2 := int64(0), int64(0)
-	for _, c := range s[i].Spec.Containers {
-		r1 += c.Resources.Requests.Memory().Value()
-	}
-	for _, c := range s[j].Spec.Containers {
-		r2 += c.Resources.Requests.Memory().Value()
-	}
-	return r1 > r2
+	left := getEffectivePodRequestByResource(s[i], v1.ResourceMemory)
+	right := getEffectivePodRequestByResource(s[j], v1.ResourceMemory)
+	return left.Cmp(right) > 0
 }
 
 // GetTotalRequest return the total resource of pods
@@ -152,35 +145,18 @@ func getTotalRequestByType(pods []*v1.Pod, fns []FilterPodsFunc, resType v1.Reso
 			continue
 		}
 
-		podRes := resource.Quantity{}
-		for _, container := range pod.Spec.Containers {
-			resValue, found := container.Resources.Requests[resType]
-			if !found {
-				continue
-			}
-			podRes.Add(resValue)
-		}
-
-		// init containers define the minimum of any resource
-		for _, container := range pod.Spec.InitContainers {
-			resValue, found := container.Resources.Requests[resType]
-			if !found {
-				continue
-			}
-			podRes = maxResourceReq(podRes, resValue)
-		}
-		totalRes.Add(podRes)
+		totalRes.Add(getEffectivePodRequestByResource(pod, resType))
 	}
 
 	return totalRes
 }
 
-// maxResourceReq return the greater one of res/newRes.
-func maxResourceReq(res, newRes resource.Quantity) resource.Quantity {
-	if res.Cmp(newRes) > 0 {
-		return res
-	}
-	return newRes
+// getEffectivePodRequestByResource returns the Kubernetes effective request for a Pod resource.
+func getEffectivePodRequestByResource(pod *v1.Pod, resType v1.ResourceName) resource.Quantity {
+	requests := helpers.PodRequests(pod, helpers.PodResourcesOptions{
+		SkipPodLevelResources: !utilfeature.DefaultFeatureGate.Enabled(k8sfeature.PodLevelResources),
+	})
+	return requests[resType]
 }
 
 // IsPodTerminated return true if pod is terminated.

@@ -17,7 +17,7 @@ Volcano agent supports cloud-native online and offline workloads colocation. It 
 |     LS(Latency Sensitive)     |      Latency sensitive approximate online workloads      |
 |        BE(Best Effort)        |    Offline AI/Big Data workloads, tolerable evictions    |
 
-You can set different qos levels to identify workloads of different priorities, and there is no seperate `priorityClass` definition to be consistent with k8s.
+You can set different qos levels to identify workloads of different priorities, and there is no separate `priorityClass` definition to be consistent with k8s.
 
 ### Features
 
@@ -164,14 +164,14 @@ Allocatable:
   hugepages-1Gi:               0
   hugepages-2Mi:               0
   kubernetes.io/batch-cpu:     7937 # oversubscription resource cpu, unit is milli cpu
-  kubernetes.io/batch-memory:  14327175770 # oversubscription resource memory, utit is byte
+  kubernetes.io/batch-memory:  14327175770 # oversubscription resource memory, unit is byte
   memory:                      15754924Ki
   pods:                        110
 ```
 
 #### Deploy online and offline workloads
 
-Online workloads are identified by setting annotation `volcano.sh/qos-level: "LC" or` `volcano.sh/qos-level: "HLS"` or `volcano.sh/qos-level: "LS"`.Offline workloads are identified by setting annotation `volcano.sh/qos-level: "BE"`, it can only use oversubscrption resources(kubernetes.io/batch-cpu and kubernetes.io/batch-memory). We use an image with stress tool of online workload to simulate online workloads business pressure rises, if you can not access the image, you can also replace it with other image that has stress tool.
+Online workloads are identified by setting annotation `volcano.sh/qos-level: "LC" or` `volcano.sh/qos-level: "HLS"` or `volcano.sh/qos-level: "LS"`.Offline workloads are identified by setting annotation `volcano.sh/qos-level: "BE"`, it can only use oversubscription resources(kubernetes.io/batch-cpu and kubernetes.io/batch-memory). We use an image with stress tool of online workload to simulate online workloads business pressure rises, if you can not access the image, you can also replace it with other image that has stress tool.
 
 ```yaml
 # online workload
@@ -239,7 +239,7 @@ online-demo-9f9bbdb58-fljzs   1/1     Running   0          6s
 
 #### Eviction happens when node has pressure
 
-Online workloads Qos is guaranteed by volcano agent and host OS, volcano agent detects node resource utilization in real time, and will evict offline workloads when node resource utilization exceeds the threshold, for CPU resource, it's 80% by default, we perform 7 core cpu stress to online workload, we can check event and it showed that offilne worload is evicted after about 1 minutes later.
+Online workloads Qos is guaranteed by volcano agent and host OS, volcano agent detects node resource utilization in real time, and will evict offline workloads when node resource utilization exceeds the threshold, for CPU resource, it's 80% by default, we perform 7 core cpu stress to online workload, we can check event and it showed that offline workload is evicted after about 1 minute later.
 
 ```shell
 $ kubectl get event | grep Evicted
@@ -261,7 +261,7 @@ Allocatable:
   pods:                        110
 ```
 
-Volcano agent will also add eviction taint to current node when eviction happened to avoid new workloads continuously scheduled to the node and put additional pressure on current node. We can find that new created offline pod is pening because of eviction taint.
+Volcano agent will also add eviction taint to current node when eviction happened to avoid new workloads continuously scheduled to the node and put additional pressure on current node. We can find that new created offline pod is pending because of eviction taint.
 
 ```shell
 $ kubectl get po
@@ -280,7 +280,7 @@ And if we stop online workload to release pressure then the eviction taint will 
 
 #### Limitation
 
-Volcano agent defines a Qos resource model for online and offline workloads, and provides application level guarantee(eviction when node has pressure) for online workloads Qos guarantee. The OS level cpu and memory isolation and suppress are guaranteed by host kernal, and currently volcano agent only adapted to openEuler 22.03 SP2 and higher version, please make sure that you are using the correct OS type and version.
+Volcano agent defines a Qos resource model for online and offline workloads, and provides application level guarantee(eviction when node has pressure) for online workloads Qos guarantee. The OS level cpu and memory isolation and suppress are guaranteed by host kernel, and currently volcano agent only adapted to openEuler 22.03 SP2 and higher version, please make sure that you are using the correct OS type and version.
 
 ### Network bandwidth isolation tutorial
 
@@ -342,7 +342,7 @@ and also specify the container command like online deployment.
 
 #### Check logs
 
-Check online and offine pod logs
+Check online and offline pod logs
 
 online pod log:
 
@@ -382,7 +382,7 @@ You can see that offline pod can use almost 10% bandwidth when online pod use mo
 
 ### Feature switch
 
-Colocation feature has a unified switch on node, node has label volcano.sh/oversubscription=true or volcano.sh/colocation=true indicates that coloation is enabled. You can remove the two labels to disable all colocation features. And all colocation features take effect when node has these lables.
+Colocation feature has a unified switch on node. A node with the label volcano.sh/oversubscription=true or volcano.sh/colocation=true indicates that colocation is enabled. You can remove the two labels to disable all colocation features. All colocation features take effect when node has these labels.
 
 - If you only want to use online and offline workloads colocation but not resource oversubscription, you just need to set the node label volcano.sh/colocation="true".
 - If you want to use colocation and resource oversubscription, you should set node label volcano.sh/oversubscription=true.

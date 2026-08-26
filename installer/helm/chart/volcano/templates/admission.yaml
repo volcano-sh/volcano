@@ -20,16 +20,6 @@ data:
     {{- .Values.custom.admission_config_override | nindent 4 }}
   {{- else }}
   {{- (.Files.Glob .Values.basic.admission_config_file).AsConfig | nindent 2}}
-  {{- if .Values.custom.device_mutator_enable }}
-    deviceMutator:
-      enable: true
-      {{- if .Values.custom.known_geometries_cm_name }}
-      knownGeometriesCMName: {{ .Values.custom.known_geometries_cm_name }}
-      {{- end }}
-      {{- if .Values.custom.known_geometries_cm_namespace }}
-      knownGeometriesCMNamespace: {{ .Values.custom.known_geometries_cm_namespace}}
-      {{- end }}
-  {{- end }}
   {{- end }}
 ---
 apiVersion: v1

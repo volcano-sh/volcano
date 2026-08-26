@@ -21,7 +21,9 @@ limitations under the License.
 package api
 
 import (
+	"math"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
@@ -813,4 +815,147 @@ func TestGetMinDRAResourcesFallbackWithoutTaskMinAvailable(t *testing.T) {
 			Capacity: map[string]resource.Quantity{},
 		},
 	}, job.GetMinDRAResources())
+}
+
+func TestGetMinDRAResources_constantTimeForHugeTaskMinAvailable(t *testing.T) {
+	job := NewJobInfo("test-job")
+	job.TaskMinAvailable["worker"] = math.MaxInt32
+	job.Tasks[TaskID("worker-0")] = &TaskInfo{
+		UID:      TaskID("worker-0"),
+		Name:     "worker-0",
+		TaskRole: "worker",
+		DRAResreq: map[string]*DRAResource{
+			"gpu.com": {
+				Count:    1,
+				Capacity: map[string]resource.Quantity{"memory": resource.MustParse("2Gi")},
+			},
+		},
+	}
+
+	var result map[string]*DRAResource
+	done := make(chan struct{})
+	go func() {
+		result = job.GetMinDRAResources()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("GetMinDRAResources did not return within 5s for TaskMinAvailable=MaxInt32")
+	}
+
+	// MaxInt32 * 2Gi is far above 1Ei.
+	got := result["gpu.com"].Capacity["memory"]
+	if got.Cmp(resource.MustParse("1Ei")) <= 0 {
+		t.Fatalf("capacity = %s for TaskMinAvailable=MaxInt32; want much greater than 1Ei", got.String())
+	}
+}
+
+func TestTaskInfoPodAnnotations(t *testing.T) {
+	tests := []struct {
+		name        string
+		task        *TaskInfo
+		existing    map[string]string
+		annotations map[string]string
+		want        map[string]string
+	}{
+		{
+			name:        "nil task ignores annotations",
+			task:        nil,
+			annotations: map[string]string{"gpu.volcano.sh/device": "0"},
+			want:        nil,
+		},
+		{
+			name:        "stores annotations on empty task",
+			task:        &TaskInfo{},
+			annotations: map[string]string{"gpu.volcano.sh/device": "0", "gpu.volcano.sh/memory": "16Gi"},
+			want:        map[string]string{"gpu.volcano.sh/device": "0", "gpu.volcano.sh/memory": "16Gi"},
+		},
+		{
+			name:        "merges annotations and overwrites existing keys",
+			task:        &TaskInfo{},
+			existing:    map[string]string{"gpu.volcano.sh/device": "0"},
+			annotations: map[string]string{"gpu.volcano.sh/device": "1", "gpu.volcano.sh/memory": "16Gi"},
+			want:        map[string]string{"gpu.volcano.sh/device": "1", "gpu.volcano.sh/memory": "16Gi"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.task != nil && tt.existing != nil {
+				tt.task.MergePodAnnotations(tt.existing)
+			}
+
+			assert.NotPanics(t, func() {
+				tt.task.MergePodAnnotations(tt.annotations)
+			})
+
+			if tt.task == nil {
+				return
+			}
+			assert.Equal(t, tt.want, tt.task.PodAnnotations)
+		})
+	}
+}
+
+func TestTaskInfoPodAnnotationsAreCloned(t *testing.T) {
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{"keep": "original"},
+		},
+	}
+	task := NewTaskInfo(pod)
+
+	task.MergePodAnnotations(map[string]string{"keep": "task", "new": "value"})
+
+	assert.Equal(t, "original", pod.Annotations["keep"])
+	assert.NotContains(t, pod.Annotations, "new")
+
+	cloned := task.Clone()
+	cloned.MergePodAnnotations(map[string]string{"keep": "clone"})
+	cloned.DeletePodAnnotations("new")
+
+	assert.Equal(t, "task", task.PodAnnotations["keep"])
+	assert.Equal(t, "value", task.PodAnnotations["new"])
+	assert.Equal(t, "clone", cloned.PodAnnotations["keep"])
+	assert.NotContains(t, cloned.PodAnnotations, "new")
+}
+
+func newTaskWithStatus(uid string, status TaskStatus, nodeName string) *TaskInfo {
+	return &TaskInfo{
+		UID: TaskID(uid),
+		TransactionContext: TransactionContext{
+			Status:   status,
+			NodeName: nodeName,
+		},
+		Resreq: EmptyResource(),
+	}
+}
+
+func TestReleasingScheduledTaskNum(t *testing.T) {
+	jobInfo := NewJobInfo("job-1",
+		newTaskWithStatus("scheduled-1", Releasing, "node-1"),
+		newTaskWithStatus("unscheduled", Releasing, ""),
+		newTaskWithStatus("scheduled-2", Releasing, "node-2"),
+		newTaskWithStatus("running", Running, "node-3"),
+	)
+
+	if got, want := jobInfo.ReleasingScheduledTaskNum(), int32(2); got != want {
+		t.Fatalf("ReleasingScheduledTaskNum() = %v, want %v", got, want)
+	}
+}
+
+func TestScheduledTaskNum(t *testing.T) {
+	jobInfo := NewJobInfo("job-1",
+		newTaskWithStatus("running", Running, ""),
+		newTaskWithStatus("bound", Bound, ""),
+		newTaskWithStatus("failed", Failed, ""),
+		newTaskWithStatus("succeeded", Succeeded, ""),
+		newTaskWithStatus("pending", Pending, ""),
+		newTaskWithStatus("releasing", Releasing, ""),
+	)
+
+	if got, want := jobInfo.ScheduledTaskNum(), int32(4); got != want {
+		t.Fatalf("ScheduledTaskNum() = %v, want %v", got, want)
+	}
 }

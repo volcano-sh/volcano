@@ -3,7 +3,7 @@
 ## Backgrounds
 
 Each time when podgroups states changed, the controller will update the statistics of podgroup of each state in the queue's status. 
-And at the end of each scheduling session, the volcano scheduler will also update the allocated filed in queue's status to recored 
+And at the end of each scheduling session, the volcano scheduler will also update the allocated field in queue's status to record
 the amount of the amount of resources allocated. Both components use `UpdateStatus` api to update the queue status, which will cause
 conflict errors. When the controller encounter such an error, it will trigger `AddRateLimited` to push back the podgroup into work queue, 
 resulting in accumulation of memory leak. See in issue #3597: https://github.com/volcano-sh/volcano/issues/3597.

@@ -179,6 +179,7 @@ type Condition struct {
 //+kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.state.phase"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:resource:path=jobflows,shortName=jf
+// +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 //+kubebuilder:subresource:status
 
 // JobFlow is the Schema for the jobflows API

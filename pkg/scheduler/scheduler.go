@@ -152,12 +152,17 @@ func (pc *Scheduler) runOnce() {
 	}
 }
 
+// logLoadedSchedulerConf logs the scheduler configuration that was actually
+// applied, line by line, to facilitate debugging.
+func logLoadedSchedulerConf(confStr string) {
+	klog.V(2).Infoln("Successfully loaded Scheduler conf as follows:")
+	for _, line := range strings.Split(strings.TrimSpace(confStr), "\n") {
+		klog.V(2).Infoln(line)
+	}
+}
+
 func (pc *Scheduler) loadSchedulerConf() {
 	klog.V(4).Infof("Start loadSchedulerConf ...")
-	defer func() {
-		actions, plugins := pc.getSchedulerConf()
-		klog.V(2).Infof("Finished loading scheduler config. Final state: actions=%v, plugins=%v", actions, plugins)
-	}()
 
 	if pc.disableDefaultConf && len(pc.schedulerConf) == 0 {
 		klog.Fatalf("No --scheduler-conf path provided and default configuration fallback is disabled")
@@ -170,6 +175,7 @@ func (pc *Scheduler) loadSchedulerConf() {
 			if err != nil {
 				klog.Fatalf("Invalid default configuration: unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
 			}
+			logLoadedSchedulerConf(DefaultSchedulerConf)
 		})
 	}
 
@@ -202,18 +208,7 @@ func (pc *Scheduler) loadSchedulerConf() {
 	pc.configurations = configurations
 	pc.metricsConf = metricsConf
 	pc.mutex.Unlock()
-}
-
-func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
-	for _, action := range pc.actions {
-		actions = append(actions, action.Name())
-	}
-	for _, tier := range pc.plugins {
-		for _, plugin := range tier.Plugins {
-			plugins = append(plugins, plugin.Name)
-		}
-	}
-	return
+	logLoadedSchedulerConf(config)
 }
 
 func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {

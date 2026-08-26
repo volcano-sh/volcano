@@ -17,7 +17,7 @@ Job | Pod | Resource | Node | NodeAllocatable | NodeIdle
 default/single-1000-0 | single-1000-0 | cpu 8, memory 8G, nvidia.com/gpu 0 | nodeC0-0 | cpu 74, memory 128G, nvidia.com/gpu 8 | cpu 66, memory 120G, nvidia.com/gpu 8 |
 default/single-1000-1 | single-1000-1 | cpu 8, memory 8G, nvidia.com/gpu 0 | nodeC0-0 | cpu 66, memory 120G, nvidia.com/gpu 8 | cpu 58, memory 112G, nvidia.com/gpu 8 |
 
-If we take GPU as primary resource and want to use 1GPU 'binded' with 8CPUs, the left 58 CPUs are insufficent for 8 GPUs; the proportion plugin is designed to solve this problem.
+If we take GPU as primary resource and want to use 1GPU 'binded' with 8CPUs, the left 58 CPUs are insufficient for 8 GPUs; the proportion plugin is designed to solve this problem.
 
 ## with proportion plugin
 

@@ -783,6 +783,9 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 				fitErrors.SetNodeError(ni.Name, err)
 			}
 			job.NodesFitErrors[task.UID] = fitErrors
+			if job.NeedContinueAllocating(subJob.UID) {
+				continue
+			}
 			break
 		}
 
@@ -821,9 +824,8 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 			// otherwise, should continue to find other allocatable task
 			if job.NeedContinueAllocating(subJob.UID) {
 				continue
-			} else {
-				break
 			}
+			break
 		}
 
 		if subJob.WithNetworkTopology() {

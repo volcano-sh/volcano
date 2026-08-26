@@ -19,11 +19,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/spf13/pflag"
-	_ "go.uber.org/automaxprocs"
+	"go.uber.org/automaxprocs/maxprocs"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -50,7 +49,6 @@ import (
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
 	klog.InitFlags(nil)
 	// Opt into the new klog behavior so that -stderrthreshold is honored even
 	// when -logtostderr=true (the default).
@@ -63,6 +61,10 @@ func main() {
 	utilfeature.DefaultMutableFeatureGate.AddFlag(pflag.CommandLine)
 
 	cliflag.InitFlags()
+
+	if _, err := maxprocs.Set(maxprocs.Logger(klog.Infof)); err != nil {
+		klog.Errorf("Failed to set GOMAXPROCS: %v", err)
+	}
 
 	if config.PrintVersion {
 		version.PrintVersionAndExit()

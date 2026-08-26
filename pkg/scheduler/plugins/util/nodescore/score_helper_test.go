@@ -17,6 +17,8 @@ limitations under the License.
 package nodescore
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -26,6 +28,41 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
+
+type fakeScorePlugin struct {
+	name       string
+	scores     map[string]int64
+	extensions *fakeScoreExtensions
+}
+
+func (p *fakeScorePlugin) Name() string {
+	return p.name
+}
+
+func (p *fakeScorePlugin) Score(_ context.Context, _ fwk.CycleState, _ *v1.Pod, nodeInfo fwk.NodeInfo) (int64, *fwk.Status) {
+	return p.scores[nodeInfo.Node().Name], nil
+}
+
+func (p *fakeScorePlugin) ScoreExtensions() fwk.ScoreExtensions {
+	if p.extensions == nil {
+		return nil
+	}
+	return p.extensions
+}
+
+type fakeScoreExtensions struct {
+	calls     int
+	normalize func(fwk.NodeScoreList)
+	status    *fwk.Status
+}
+
+func (e *fakeScoreExtensions) NormalizeScore(_ context.Context, _ fwk.CycleState, _ *v1.Pod, scores fwk.NodeScoreList) *fwk.Status {
+	e.calls++
+	if e.normalize != nil {
+		e.normalize(scores)
+	}
+	return e.status
+}
 
 func TestNodeInfosForCandidateNodes(t *testing.T) {
 	nodeA := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-a"}}
@@ -58,4 +95,101 @@ func TestNodeInfosForCandidateNodes(t *testing.T) {
 	if got[1].Node().Name != "node-c" {
 		t.Fatalf("expected second node to be node-c, got %s", got[1].Node().Name)
 	}
+}
+
+func TestCalculatePluginScore(t *testing.T) {
+	tests := []struct {
+		name           string
+		extensions     *fakeScoreExtensions
+		expectedScores map[string]float64
+		expectedCalls  int
+	}{
+		{
+			name: "skips normalization when score extensions are absent",
+			expectedScores: map[string]float64{
+				"node-a": 20,
+				"node-b": 40,
+			},
+		},
+		{
+			name: "normalizes scores before applying weight",
+			extensions: &fakeScoreExtensions{
+				normalize: func(scores fwk.NodeScoreList) {
+					scores[0].Score = 50
+					scores[1].Score = 75
+				},
+			},
+			expectedScores: map[string]float64{
+				"node-a": 100,
+				"node-b": 150,
+			},
+			expectedCalls: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plugin := &fakeScorePlugin{
+				name:       "test-score-plugin",
+				scores:     map[string]int64{"node-a": 10, "node-b": 20},
+				extensions: tt.extensions,
+			}
+
+			scores, err := CalculatePluginScore(
+				plugin.Name(),
+				plugin,
+				k8sframework.NewCycleState(),
+				&v1.Pod{},
+				testNodeInfos("node-a", "node-b"),
+				2,
+			)
+			if err != nil {
+				t.Fatalf("CalculatePluginScore returned an error: %v", err)
+			}
+			for nodeName, expectedScore := range tt.expectedScores {
+				if score := scores[nodeName]; score != expectedScore {
+					t.Errorf("expected score %v for %s, got %v", expectedScore, nodeName, score)
+				}
+			}
+			if tt.extensions != nil && tt.extensions.calls != tt.expectedCalls {
+				t.Errorf("expected NormalizeScore to be called %d times, got %d", tt.expectedCalls, tt.extensions.calls)
+			}
+		})
+	}
+}
+
+func TestCalculatePluginScoreReturnsNormalizeError(t *testing.T) {
+	extensions := &fakeScoreExtensions{
+		status: fwk.NewStatus(fwk.Error, "normalization failed"),
+	}
+	plugin := &fakeScorePlugin{
+		name:       "test-score-plugin",
+		scores:     map[string]int64{"node-a": 10},
+		extensions: extensions,
+	}
+
+	_, err := CalculatePluginScore(
+		plugin.Name(),
+		plugin,
+		k8sframework.NewCycleState(),
+		&v1.Pod{},
+		testNodeInfos("node-a"),
+		1,
+	)
+	if err == nil || !strings.Contains(err.Error(), "normalization failed") {
+		t.Fatalf("expected normalization error, got %v", err)
+	}
+	if extensions.calls != 1 {
+		t.Errorf("expected NormalizeScore to be called once, got %d", extensions.calls)
+	}
+}
+
+func testNodeInfos(names ...string) []fwk.NodeInfo {
+	nodeInfos := make([]fwk.NodeInfo, 0, len(names))
+	for _, name := range names {
+		nodeInfo := k8sframework.NewNodeInfo()
+		nodeInfo.SetNode(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}})
+		nodeInfos = append(nodeInfos, nodeInfo)
+	}
+	return nodeInfos
 }
