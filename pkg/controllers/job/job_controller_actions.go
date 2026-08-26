@@ -103,6 +103,9 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 	var total int
 
 	podsToKill := make(map[string]*v1.Pod)
+	// retainedPods holds pods that are kept alive (not sent to kill) and need
+	// their phase counted into the job status.
+	retainedPods := make(map[string]*v1.Pod)
 
 	if target != nil {
 		switch target.Type {
@@ -172,6 +175,9 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 
 				if !retain {
 					podsToKill[pod.Name] = pod
+				} else {
+					// Pod is retained; record it so we can update job status below.
+					retainedPods[pod.Name] = pod
 				}
 			}
 		}
@@ -208,6 +214,14 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 		errs = append(errs, err)
 		cc.resyncTask(pod)
 
+		classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
+		calcPodStatus(pod, taskStatusCount)
+	}
+
+	// Update job status for retained pods (pods kept alive due to podRetainPhase).
+	// retainedPods was populated during the target==nil scan above, so terminating
+	// pods that were already counted there are not included here, avoiding double-counting.
+	for _, pod := range retainedPods {
 		classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
 		calcPodStatus(pod, taskStatusCount)
 	}
