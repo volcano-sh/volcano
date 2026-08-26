@@ -189,10 +189,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
 			metrics.UpdateQueueInqueue(attr.name, attr.inqueue.MilliCPU, attr.inqueue.Memory, attr.inqueue.ScalarResources)
 			metrics.UpdateQueueWeight(attr.name, attr.weight)
+			metrics.UpdateQueueGuarantee(attr.name, attr.guarantee.MilliCPU, attr.guarantee.Memory, attr.guarantee.ScalarResources)
 			continue
 		}
 		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
 		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
+		guarantee := api.NewResource(queueInfo.Queue.Spec.Guarantee.Resource)
+		metrics.UpdateQueueGuarantee(queueInfo.Name, guarantee.MilliCPU, guarantee.Memory, guarantee.ScalarResources)
 		metrics.UpdateQueueInqueue(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
 	}
 

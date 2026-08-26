@@ -169,6 +169,30 @@ var (
 		}, []string{"queue_name", "resource"},
 	)
 
+	queueGuaranteeMilliCPU = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "queue_guarantee_milli_cpu",
+			Help:      "Guaranteed CPU count for one queue",
+		}, []string{"queue_name"},
+	)
+
+	queueGuaranteeMemory = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "queue_guarantee_memory_bytes",
+			Help:      "Guaranteed memory for one queue",
+		}, []string{"queue_name"},
+	)
+
+	queueGuaranteeScalarResource = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "queue_guarantee_scalar_resources",
+			Help:      "Guaranteed scalar resources for one queue",
+		}, []string{"queue_name", "resource"},
+	)
+
 	queueInqueueMilliCPU = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
@@ -276,6 +300,13 @@ func UpdateQueueRealCapacity(queueName string, milliCPU, memory float64, scalarR
 	updateScalarResourceMetrics(queueRealCapacityScalarResource, queueName, scalarResources)
 }
 
+// UpdateQueueGuarantee records guaranteed resources for one queue
+func UpdateQueueGuarantee(queueName string, milliCPU, memory float64, scalarResources map[v1.ResourceName]float64) {
+	queueGuaranteeMilliCPU.WithLabelValues(queueName).Set(milliCPU)
+	queueGuaranteeMemory.WithLabelValues(queueName).Set(memory)
+	updateScalarResourceMetrics(queueGuaranteeScalarResource, queueName, scalarResources)
+}
+
 // UpdateQueueInqueue records resources for admitted but not yet running jobs in one queue
 func UpdateQueueInqueue(queueName string, milliCPU, memory float64, scalarResources map[v1.ResourceName]float64) {
 	queueInqueueMilliCPU.WithLabelValues(queueName).Set(milliCPU)
@@ -298,6 +329,8 @@ func DeleteQueueMetrics(queueName string) {
 	queueCapacityMemory.DeleteLabelValues(queueName)
 	queueRealCapacityMilliCPU.DeleteLabelValues(queueName)
 	queueRealCapacityMemory.DeleteLabelValues(queueName)
+	queueGuaranteeMilliCPU.DeleteLabelValues(queueName)
+	queueGuaranteeMemory.DeleteLabelValues(queueName)
 	queueInqueueMilliCPU.DeleteLabelValues(queueName)
 	queueInqueueMemory.DeleteLabelValues(queueName)
 	partialLabelMap := map[string]string{"queue_name": queueName}
@@ -306,6 +339,7 @@ func DeleteQueueMetrics(queueName string) {
 	queueDeservedScalarResource.DeletePartialMatch(partialLabelMap)
 	queueCapacityScalarResource.DeletePartialMatch(partialLabelMap)
 	queueRealCapacityScalarResource.DeletePartialMatch(partialLabelMap)
+	queueGuaranteeScalarResource.DeletePartialMatch(partialLabelMap)
 	queueInqueueScalarResource.DeletePartialMatch(partialLabelMap)
 	knownScalarResourcesLock.Lock()
 	delete(knownScalarResources, queueName)
