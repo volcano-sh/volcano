@@ -893,6 +893,13 @@ func (sc *SchedulerCache) deletePodGroup(id schedulingapi.JobID) error {
 
 	sc.deleteJob(job)
 
+	// The PodGroup is gone for good at this point, so its metrics are stale
+	// regardless of whether the job still has tasks lingering in the cache.
+	// Clean them up here instead of relying solely on processCleanupJob,
+	// which only fires once the job has no tasks left and can otherwise
+	// leave metrics behind indefinitely for jobs that never reach that state.
+	metrics.DeleteJobMetrics(job.Name, string(job.Queue), job.Namespace)
+
 	return nil
 }
 
