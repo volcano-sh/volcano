@@ -66,6 +66,33 @@ func TestNewResource(t *testing.T) {
 	}
 }
 
+func TestNewResourceLargeScalarQuantity(t *testing.T) {
+	// Very large scalar quantities such as "10P" ephemeral-storage are used to
+	// express an effectively unlimited capability. Quantity.MilliValue() overflows
+	// int64 for these values (it returns 0), which used to make the stored
+	// capability non-positive so that even a 1Gi request did not fit.
+	capability := NewResource(v1.ResourceList{
+		v1.ResourceEphemeralStorage: resource.MustParse("10P"),
+		"example.com/scalar":        resource.MustParse("10P"),
+	})
+	request := NewResource(v1.ResourceList{
+		v1.ResourceEphemeralStorage: resource.MustParse("1Gi"),
+		"example.com/scalar":        resource.MustParse("1"),
+	})
+
+	expected := float64(10000000000000000 * 1000)
+	if got := capability.ScalarResources[v1.ResourceEphemeralStorage]; got != expected {
+		t.Errorf("expected ephemeral-storage capability %v, got %v", expected, got)
+	}
+	if got := capability.ScalarResources["example.com/scalar"]; got != expected {
+		t.Errorf("expected extended-resource capability %v, got %v", expected, got)
+	}
+
+	if !request.LessEqual(capability, Zero) {
+		t.Errorf("expected 1Gi ephemeral-storage and 1 extended resource to fit within a 10P capability")
+	}
+}
+
 func TestInfiniteResource(t *testing.T) {
 	expected := &Resource{
 		MilliCPU:   math.MaxFloat64,
