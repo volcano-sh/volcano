@@ -993,3 +993,114 @@ func buildPodWithPodAntiAffinity(name, namespace, node string, phase v1.PodPhase
 
 	return pod
 }
+
+const untrackedResourceTopologyPluginName = "device-fit-topology-untracked"
+
+type untrackedResourceTopologyPlugin struct{}
+
+func (p *untrackedResourceTopologyPlugin) Name() string {
+	return untrackedResourceTopologyPluginName
+}
+
+func (p *untrackedResourceTopologyPlugin) OnSessionOpen(ssn *framework.Session) {
+	ssn.AddPredicateFn(p.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+		if task.Name != "preemptor" {
+			return nil
+		}
+		remaining := 0
+		for _, nodeTask := range node.Tasks {
+			if (nodeTask.Name == "preemptee-low" || nodeTask.Name == "preemptee-mid" || nodeTask.Name == "preemptee-high") &&
+				nodeTask.Status != api.Releasing {
+				remaining++
+			}
+		}
+		// Stands in for a device predicate (e.g. deviceshare/HAMi) satisfied once at least one
+		// victim is evicted, independent of node.Status.Allocatable.
+		if remaining > 2 {
+			return api.NewFitErrWithStatus(task, node, &api.Status{
+				Code:   api.Unschedulable,
+				Reason: "hidden device capacity is occupied",
+			})
+		}
+		return nil
+	})
+}
+
+func (p *untrackedResourceTopologyPlugin) OnSessionClose(ssn *framework.Session) {}
+
+// TestTopologyAwarePreemptUntrackedResourceDoesNotOverEvict covers #5858: SelectVictimsOnNode
+// decides when to stop evicting and which evictions to reprieve using the same generic
+// scalar-resource arithmetic as normalPreempt. A preemptor requesting a resource dimension the
+// node never advertises in Allocatable at all (volcano.sh/vgpu-memory-percentage here) must not
+// make that arithmetic permanently unsatisfiable, or SelectVictimsOnNode keeps evicting every
+// remaining candidate instead of stopping once the real predicate is satisfied, causing
+// unnecessary over-eviction. With three evictable victims at increasing priority and a device
+// predicate satisfied after just one eviction, only the lowest-priority victim should be evicted.
+func TestTopologyAwarePreemptUntrackedResourceDoesNotOverEvict(t *testing.T) {
+	trueValue := true
+	falseValue := false
+	plugins := map[string]framework.PluginBuilder{
+		conformance.PluginName: conformance.New,
+		gang.PluginName:        gang.New,
+		priority.PluginName:    priority.New,
+		proportion.PluginName:  proportion.New,
+		untrackedResourceTopologyPluginName: func(framework.Arguments) framework.Plugin {
+			return &untrackedResourceTopologyPlugin{}
+		},
+	}
+	lowPrio := util.BuildPriorityClass("low-priority", 10)
+	midPrio := util.BuildPriorityClass("mid-priority", 500)
+	victimHighPrio := util.BuildPriorityClass("victim-high-priority", 1000)
+	preemptorPrio := util.BuildPriorityClass("preemptor-priority", 100000)
+
+	test := uthelper.TestCommonStruct{
+		Name:    "topology-aware preemption stops after the real predicate is satisfied despite an untracked resource",
+		Plugins: plugins,
+		PodGroups: []*schedulingv1beta1.PodGroup{
+			util.BuildPodGroupWithPrio("pg-low", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+			util.BuildPodGroupWithPrio("pg-mid", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
+			util.BuildPodGroupWithPrio("pg-victim-high", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "victim-high-priority"),
+			util.BuildPodGroupWithPrio("pg-preemptor", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "preemptor-priority"),
+		},
+		Pods: []*v1.Pod{
+			util.BuildPod("c1", "preemptee-low", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-low", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+			util.BuildPod("c1", "preemptee-mid", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-mid", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+			util.BuildPod("c1", "preemptee-high", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-victim-high", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+			util.BuildPod("c1", "preemptor", "", v1.PodPending,
+				api.BuildResourceList("1", "1G", api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"}),
+				"pg-preemptor", make(map[string]string), make(map[string]string)),
+		},
+		// n1's Allocatable deliberately carries no volcano.sh/vgpu-memory-percentage entry at all.
+		Nodes: []*v1.Node{
+			util.BuildNode("n1", api.BuildResourceList("3", "3G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+		},
+		Queues: []*schedulingv1beta1.Queue{
+			util.BuildQueue("q1", 1, nil),
+		},
+		PriClass:       []*schedulingv1.PriorityClass{lowPrio, midPrio, victimHighPrio, preemptorPrio},
+		ExpectEvicted:  []string{"c1/preemptee-low"},
+		ExpectEvictNum: 1,
+	}
+	// proportion's Allocatable reuses queueAllocatable arithmetic with the identical untracked
+	// resource gap independently (a separate, pre-existing bug in that plugin, out of scope
+	// here). Disabled so this test isolates the fix in SelectVictimsOnNode.
+	tiers := []conf.Tier{{
+		Plugins: []conf.PluginOption{
+			{Name: conformance.PluginName, EnabledPreemptable: &trueValue},
+			{Name: gang.PluginName, EnabledPreemptable: &falseValue, EnabledJobPipelined: &trueValue, EnabledJobStarving: &trueValue},
+			{Name: priority.PluginName, EnabledTaskOrder: &trueValue, EnabledJobOrder: &trueValue, EnabledPreemptable: &trueValue, EnabledJobPipelined: &trueValue, EnabledJobStarving: &trueValue},
+			{Name: proportion.PluginName, EnabledOverused: &trueValue, EnabledQueueOrder: &trueValue},
+			{Name: untrackedResourceTopologyPluginName, EnabledPredicate: &trueValue},
+		},
+	}}
+
+	test.RegisterSession(tiers, []conf.Configuration{{
+		Name:      New().Name(),
+		Arguments: map[string]interface{}{EnableTopologyAwarePreemptionKey: true},
+	}})
+	defer test.Close()
+	test.Run([]framework.Action{New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+}
