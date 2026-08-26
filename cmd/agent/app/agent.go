@@ -49,6 +49,7 @@ func NewVolcanoAgentCommand(ctx context.Context) *cobra.Command {
 			cliflag.PrintFlags(cmd.Flags())
 			if err := Run(ctx, opts); err != nil {
 				_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
+				klog.Flush()
 				os.Exit(1)
 			}
 		},
