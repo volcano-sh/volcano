@@ -161,8 +161,10 @@ func (backfill *Action) pickUpPendingTasks(ssn *framework.Session) []*api.TaskIn
 			err := stmt.UnPipeline(task)
 			if err != nil {
 				klog.Errorf("Failed to unpipeline task: %s", err.Error())
+				stmt.Discard()
 				continue
 			}
+			stmt.Commit()
 			if _, existed := tasks[job.UID]; !existed {
 				tasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 			}
