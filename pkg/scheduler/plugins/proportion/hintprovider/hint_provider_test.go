@@ -27,6 +27,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 func TestProportionHints(t *testing.T) {
@@ -36,7 +37,7 @@ func TestProportionHints(t *testing.T) {
 	job.PodGroup = &api.PodGroup{PodGroup: scheduling.PodGroup{Spec: scheduling.PodGroupSpec{
 		MinResources: &v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")},
 	}}}
-	rejection := api.Rejection{Source: api.RejectionEnqueue}
+	rejection := unschedulable.Rejection{Source: unschedulable.RejectionEnqueue}
 
 	queue := func(state scheduling.QueueState, weight int32, capability string) *scheduling.Queue {
 		q := &scheduling.Queue{
@@ -71,20 +72,20 @@ func TestProportionHints(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		hintFn api.JobHintFn
+		hintFn unschedulable.JobHintFn
 		oldObj any
 		newObj any
-		want   api.HintResult
+		want   unschedulable.HintResult
 	}{
-		{name: "queue weight change wakes any rejected Job", hintFn: queueHint, oldObj: queue(scheduling.QueueStateOpen, 1, ""), newObj: queue(scheduling.QueueStateOpen, 2, ""), want: api.HintWakeup},
-		{name: "queue capability change wakes any rejected Job", hintFn: queueHint, oldObj: queue(scheduling.QueueStateOpen, 1, "1"), newObj: queue(scheduling.QueueStateOpen, 1, "2"), want: api.HintWakeup},
-		{name: "queue deletion returns share to the pool", hintFn: queueHint, oldObj: queue(scheduling.QueueStateOpen, 1, "1"), want: api.HintWakeup},
-		{name: "metadata-only queue update is skipped", hintFn: queueHint, oldObj: queue(scheduling.QueueStateOpen, 1, "1"), newObj: queue(scheduling.QueueStateOpen, 1, "1"), want: api.HintSkip},
-		{name: "pod deletion freeing CPU wakes Job", hintFn: podHint, oldObj: pod("1", "1Gi"), want: api.HintWakeup},
-		{name: "pod releasing only memory is skipped", hintFn: podHint, oldObj: pod("1", "2Gi"), newObj: pod("1", "1Gi"), want: api.HintSkip},
-		{name: "consuming PodGroup releasing CPU wakes Job", hintFn: podGroupHint, oldObj: podGroup(cpu, scheduling.PodGroupRunning), newObj: podGroup(cpu, scheduling.PodGroupCompleted), want: api.HintWakeup},
-		{name: "PodGroup releasing only memory is skipped", hintFn: podGroupHint, oldObj: podGroup(memory, scheduling.PodGroupRunning), newObj: podGroup(memory, scheduling.PodGroupCompleted), want: api.HintSkip},
-		{name: "non-consuming PodGroup deletion is skipped", hintFn: podGroupHint, oldObj: podGroup(cpu, scheduling.PodGroupPending), want: api.HintSkip},
+		{name: "queue weight change wakes any rejected Job", hintFn: queueHint, oldObj: queue(scheduling.QueueStateOpen, 1, ""), newObj: queue(scheduling.QueueStateOpen, 2, ""), want: unschedulable.HintWakeup},
+		{name: "queue capability change wakes any rejected Job", hintFn: queueHint, oldObj: queue(scheduling.QueueStateOpen, 1, "1"), newObj: queue(scheduling.QueueStateOpen, 1, "2"), want: unschedulable.HintWakeup},
+		{name: "queue deletion returns share to the pool", hintFn: queueHint, oldObj: queue(scheduling.QueueStateOpen, 1, "1"), want: unschedulable.HintWakeup},
+		{name: "metadata-only queue update is skipped", hintFn: queueHint, oldObj: queue(scheduling.QueueStateOpen, 1, "1"), newObj: queue(scheduling.QueueStateOpen, 1, "1"), want: unschedulable.HintSkip},
+		{name: "pod deletion freeing CPU wakes Job", hintFn: podHint, oldObj: pod("1", "1Gi"), want: unschedulable.HintWakeup},
+		{name: "pod releasing only memory is skipped", hintFn: podHint, oldObj: pod("1", "2Gi"), newObj: pod("1", "1Gi"), want: unschedulable.HintSkip},
+		{name: "consuming PodGroup releasing CPU wakes Job", hintFn: podGroupHint, oldObj: podGroup(cpu, scheduling.PodGroupRunning), newObj: podGroup(cpu, scheduling.PodGroupCompleted), want: unschedulable.HintWakeup},
+		{name: "PodGroup releasing only memory is skipped", hintFn: podGroupHint, oldObj: podGroup(memory, scheduling.PodGroupRunning), newObj: podGroup(memory, scheduling.PodGroupCompleted), want: unschedulable.HintSkip},
+		{name: "non-consuming PodGroup deletion is skipped", hintFn: podGroupHint, oldObj: podGroup(cpu, scheduling.PodGroupPending), want: unschedulable.HintSkip},
 	}
 
 	for _, test := range tests {
@@ -101,9 +102,9 @@ func TestProportionHints(t *testing.T) {
 }
 
 func TestEventsToRegister(t *testing.T) {
-	want := []api.ClusterEvent{
-		{Resource: api.QueueEvent, ActionType: fwk.Update | fwk.Delete},
-		{Resource: api.PodGroupEvent, ActionType: fwk.Update | fwk.Delete},
+	want := []fwk.ClusterEvent{
+		{Resource: unschedulable.QueueEvent, ActionType: fwk.Update | fwk.Delete},
+		{Resource: unschedulable.PodGroupEvent, ActionType: fwk.Update | fwk.Delete},
 		{Resource: fwk.Node, ActionType: fwk.Add | fwk.UpdateNodeAllocatable},
 		{Resource: fwk.Pod, ActionType: fwk.Delete | fwk.UpdatePodScaleDown},
 	}

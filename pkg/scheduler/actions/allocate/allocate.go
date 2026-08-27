@@ -35,6 +35,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
@@ -907,11 +908,11 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 				for plugin := range fitErrors.UnschedulablePlugins() {
 					if plugin == resourcefit.ProviderName {
 						if keys, complete := resourcefit.RejectionKeys(task, fitErrors, ssn.Nodes); complete {
-							ssn.AddRejectionWithKeys(job.UID, plugin, api.RejectionPredicate, keys, task.UID)
+							ssn.AddRejectionWithKeys(job.UID, plugin, unschedulable.RejectionPredicate, keys, task.UID)
 							continue
 						}
 					}
-					ssn.AddRejection(job.UID, plugin, api.RejectionPredicate, task.UID)
+					ssn.AddRejection(job.UID, plugin, unschedulable.RejectionPredicate, task.UID)
 				}
 			}
 			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,

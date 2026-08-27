@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cache
+package unschedulable
 
 import (
 	"fmt"
@@ -34,7 +34,7 @@ const (
 	churnKeyGroups = 100
 )
 
-// BenchmarkUnschedulableJobCachePodChurn measures sustained Pod/Delete
+// BenchmarkJobCachePodChurn measures sustained Pod/Delete
 // dispatch against 5,000 cached Jobs whose keys are spread deterministically
 // across 100 HintKey groups. indexed=false records every Job without HintKeys
 // (no JobKeysFn/EventKeysFn, the exact registration shape used by an adapted
@@ -44,7 +44,7 @@ const (
 // After timing, the test asserts the callback ran exactly b.N times the
 // candidate count that selectivity/indexing implies; a wrong candidate
 // selection fails the benchmark instead of only skewing ns/op.
-func BenchmarkUnschedulableJobCachePodChurn(b *testing.B) {
+func BenchmarkJobCachePodChurn(b *testing.B) {
 	for _, indexed := range []bool{false, true} {
 		for _, selectivity := range []int{1, 10, 100} {
 			name := fmt.Sprintf("indexed=%t/selectivity=%d%%", indexed, selectivity)
@@ -69,12 +69,12 @@ func benchmarkPodChurn(b *testing.B, jobCount, selectivityPercent int, indexed b
 	jobsPerKeyGroup := jobCount / churnKeyGroups
 
 	const plugin = "benchmark-churn"
-	registry := NewHintRegistry()
-	cache := NewUnschedulableJobCache(registry, DefaultMaxSkipDuration)
-	event := api.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}
+	cache := NewJobCache(DefaultMaxSkipDuration)
+	registry := cache.registry
+	event := fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}
 
-	keyForGroup := func(group int) api.HintKey {
-		return api.HintKey(fmt.Sprintf("churn-key-group-%d", group))
+	keyForGroup := func(group int) HintKey {
+		return HintKey(fmt.Sprintf("churn-key-group-%d", group))
 	}
 	keyGroupByJobID := make(map[api.JobID]int, jobCount)
 
@@ -82,22 +82,22 @@ func benchmarkPodChurn(b *testing.B, jobCount, selectivityPercent int, indexed b
 	// hintFn reads the rejected task's own request data, as a real HintFn may do
 	// when deciding whether an event intersects the Job's rejected demand,
 	// instead of measuring an empty callback as a proxy for the real cost.
-	hintFn := func(job *api.JobInfo, rejection api.Rejection, _, _ any) (api.HintResult, error) {
+	hintFn := func(job *api.JobInfo, rejection Rejection, _, _ any) (HintResult, error) {
 		atomic.AddInt64(&callCount, 1)
 		for _, taskID := range rejection.Tasks {
 			if task := job.Tasks[taskID]; task != nil && task.InitResreq != nil {
 				_ = task.InitResreq.MilliCPU
 			}
 		}
-		return api.HintSkip, nil
+		return HintSkip, nil
 	}
 
 	if indexed {
-		jobKeysFn := func(job *api.JobInfo, _ api.Rejection) ([]api.HintKey, error) {
-			return []api.HintKey{keyForGroup(keyGroupByJobID[job.UID])}, nil
+		jobKeysFn := func(job *api.JobInfo, _ Rejection) ([]HintKey, error) {
+			return []HintKey{keyForGroup(keyGroupByJobID[job.UID])}, nil
 		}
-		eventKeysFn := func(_, _ any) ([]api.HintKey, error) {
-			keys := make([]api.HintKey, matchedKeyGroups)
+		eventKeysFn := func(_, _ any) ([]HintKey, error) {
+			keys := make([]HintKey, matchedKeyGroups)
 			for i := 0; i < matchedKeyGroups; i++ {
 				keys[i] = keyForGroup(i)
 			}
@@ -128,9 +128,9 @@ func benchmarkPodChurn(b *testing.B, jobCount, selectivityPercent int, indexed b
 		job := api.NewJobInfo(jobID, task)
 		job.Name = string(jobID)
 		job.Namespace = "benchmark"
-		cache.RecordUnschedulable(job, []api.Rejection{{
+		cache.Record(job, []Rejection{{
 			Plugin: plugin,
-			Source: api.RejectionPredicate,
+			Source: RejectionPredicate,
 			Tasks:  []api.TaskID{taskID},
 		}})
 	}
@@ -153,47 +153,47 @@ func benchmarkPodChurn(b *testing.B, jobCount, selectivityPercent int, indexed b
 	}
 }
 
-// BenchmarkUnschedulableJobCacheRecord measures RecordUnschedulable's cost of
+// BenchmarkJobCacheRecord measures Record's cost of
 // building (and, on repeated calls for the same Job, replacing) the bounded
 // key index at representative key counts, including the 256-key limit and
 // the 257-key case that must dispatch the Job without HintKeys.
-func BenchmarkUnschedulableJobCacheRecord(b *testing.B) {
+func BenchmarkJobCacheRecord(b *testing.B) {
 	for _, keyCount := range []int{1, 16, 64, 256, 257} {
 		b.Run(fmt.Sprintf("keys=%d", keyCount), func(b *testing.B) {
-			benchmarkRecordUnschedulable(b, keyCount)
+			benchmarkRecord(b, keyCount)
 		})
 	}
 }
 
-func benchmarkRecordUnschedulable(b *testing.B, keyCount int) {
+func benchmarkRecord(b *testing.B, keyCount int) {
 	const plugin = "benchmark-record"
-	registry := NewHintRegistry()
-	cache := NewUnschedulableJobCache(registry, DefaultMaxSkipDuration)
-	event := api.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}
+	cache := NewJobCache(DefaultMaxSkipDuration)
+	registry := cache.registry
+	event := fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}
 
-	keys := make([]api.HintKey, keyCount)
+	keys := make([]HintKey, keyCount)
 	for i := range keys {
-		keys[i] = api.HintKey(fmt.Sprintf("record-key-%d", i))
+		keys[i] = HintKey(fmt.Sprintf("record-key-%d", i))
 	}
-	jobKeysFn := func(*api.JobInfo, api.Rejection) ([]api.HintKey, error) {
-		return append([]api.HintKey(nil), keys...), nil
+	jobKeysFn := func(*api.JobInfo, Rejection) ([]HintKey, error) {
+		return append([]HintKey(nil), keys...), nil
 	}
 	// eventKeysFn always names a key disjoint from every jobKeysFn key above,
 	// so the assertion below can distinguish indexed dispatch (never wakes on
 	// this event) from dispatch without HintKeys (always evaluates, regardless
 	// of the event key) without reaching into cache-internal fields.
-	eventKeysFn := func(_, _ any) ([]api.HintKey, error) {
-		return []api.HintKey{"record-key-disjoint"}, nil
+	eventKeysFn := func(_, _ any) ([]HintKey, error) {
+		return []HintKey{"record-key-disjoint"}, nil
 	}
 	var hintCalls int
-	hintFn := func(job *api.JobInfo, rejection api.Rejection, _, _ any) (api.HintResult, error) {
+	hintFn := func(job *api.JobInfo, rejection Rejection, _, _ any) (HintResult, error) {
 		hintCalls++
 		for _, taskID := range rejection.Tasks {
 			if task := job.Tasks[taskID]; task != nil && task.InitResreq != nil {
 				_ = task.InitResreq.MilliCPU
 			}
 		}
-		return api.HintSkip, nil
+		return HintSkip, nil
 	}
 	registerTestIndexedHint(registry, plugin, event, jobKeysFn, eventKeysFn, hintFn)
 
@@ -217,18 +217,18 @@ func benchmarkRecordUnschedulable(b *testing.B, keyCount int) {
 	job := api.NewJobInfo("benchmark/job", task)
 	job.Name = "job"
 	job.Namespace = "benchmark"
-	rejections := []api.Rejection{{Plugin: plugin, Source: api.RejectionPredicate, Tasks: []api.TaskID{taskID}}}
+	rejections := []Rejection{{Plugin: plugin, Source: RejectionPredicate, Tasks: []api.TaskID{taskID}}}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cache.RecordUnschedulable(job, rejections)
+		cache.Record(job, rejections)
 	}
 	b.StopTimer()
 
 	hintCalls = 0
 	cache.OnEvent(event, nil, "event")
-	wantDispatchWithoutHintKeys := keyCount > api.MaxHintKeysPerPluginEvent
+	wantDispatchWithoutHintKeys := keyCount > MaxHintKeysPerPluginEvent
 	gotDispatchWithoutHintKeys := hintCalls == 1
 	if gotDispatchWithoutHintKeys != wantDispatchWithoutHintKeys {
 		b.Fatalf("keys=%d: dispatch without HintKeys = %v (hint calls %d), want %v",

@@ -29,13 +29,14 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 // RejectedRequest returns the aggregate resource request whose positive
 // dimensions are relevant to the rejection, and whether it could be resolved.
 // The quantities are meant only to select the dimensions a rejected Job cares
 // about; callers must not treat the sum as a schedulability check.
-func RejectedRequest(job *api.JobInfo, rejection api.Rejection) (*api.Resource, bool) {
+func RejectedRequest(job *api.JobInfo, rejection unschedulable.Rejection) (*api.Resource, bool) {
 	if job == nil {
 		return nil, false
 	}
@@ -154,20 +155,20 @@ func PodGroupReleasedQuota(oldPg, newPg *api.PodGroup) bool {
 // queue scoping and is shared verbatim by capacity and proportion. It does not
 // decide whether the growth is sufficient; the next scheduling session
 // recomputes that. Missing request data wakes conservatively.
-func NodeHint(job *api.JobInfo, rejection api.Rejection, oldObj, newObj any) (api.HintResult, error) {
+func NodeHint(job *api.JobInfo, rejection unschedulable.Rejection, oldObj, newObj any) (unschedulable.HintResult, error) {
 	// Node events should carry the post-change Node. Unknown payloads cannot be
 	// proved irrelevant, so wake rather than risk a stale cached Job.
 	newNode, ok := newObj.(*v1.Node)
 	if !ok || newNode == nil {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	request, complete := RejectedRequest(job, rejection)
 	if !complete {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	// A zero request cannot be helped by allocatable growth.
 	if request.IsEmpty() {
-		return api.HintSkip, nil
+		return unschedulable.HintSkip, nil
 	}
 
 	oldAllocatable := api.EmptyResource()
@@ -176,7 +177,7 @@ func NodeHint(job *api.JobInfo, rejection api.Rejection, oldObj, newObj any) (ap
 		// compares against zero, treating all capacity on the new Node as growth.
 		oldNode, ok := oldObj.(*v1.Node)
 		if !ok || oldNode == nil {
-			return api.HintWakeup, nil
+			return unschedulable.HintWakeup, nil
 		}
 		oldAllocatable = api.NewResource(oldNode.Status.Allocatable)
 	}
@@ -184,7 +185,7 @@ func NodeHint(job *api.JobInfo, rejection api.Rejection, oldObj, newObj any) (ap
 	// Sufficiency is deliberately left to the next scheduling session; hints
 	// only establish that the event could improve a relevant dimension.
 	if AllocatableGrewForRequest(request, oldAllocatable, newAllocatable) {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
-	return api.HintSkip, nil
+	return unschedulable.HintSkip, nil
 }

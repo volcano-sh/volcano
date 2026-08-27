@@ -52,6 +52,7 @@ func TestAddFlags(t *testing.T) {
 		"--leader-elect-renew-deadline=20s",
 		"--leader-elect-retry-period=10s",
 		"--unschedulable-job-cache-max-skip-duration=10s",
+		"--unschedulable-job-cache-debug-metrics=true",
 		"--feature-gates=PodDisruptionBudgetsSupport=false,VolcanoJobSupport=true",
 	}
 	fs.Parse(args)
@@ -93,6 +94,7 @@ func TestAddFlags(t *testing.T) {
 		ShardName:                            defaultSchedulerName,
 		ResourceSyncTimeout:                  60 * time.Second,
 		UnschedulableJobCacheMaxSkipDuration: 10 * time.Second,
+		UnschedulableJobCacheDebugMetrics:    true,
 	}
 	expectedFeatureGates := map[featuregate.Feature]bool{
 		features.PodDisruptionBudgetsSupport: false,

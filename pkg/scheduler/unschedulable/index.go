@@ -14,11 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cache
+package unschedulable
 
 import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	fwk "k8s.io/kube-scheduler/framework"
+	kubeschedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -45,7 +46,7 @@ type pluginActionKey struct {
 // Keeping the Job collections in jobHintKeyIndex separates event extraction
 // from candidate Job lookup.
 type pluginActionIndex struct {
-	eventHintKeysFn api.EventKeysFn
+	eventHintKeysFn EventKeysFn
 	jobs            jobHintKeyIndex
 }
 
@@ -56,7 +57,7 @@ type pluginActionIndex struct {
 type jobHintKeyIndex struct {
 	allJobIDs             sets.Set[api.JobID]
 	jobIDsWithoutHintKeys sets.Set[api.JobID]
-	jobIDsByHintKey       map[api.HintKey]sets.Set[api.JobID]
+	jobIDsByHintKey       map[HintKey]sets.Set[api.JobID]
 }
 
 // jobIndexLocation identifies one index location containing a Job. It lets
@@ -65,7 +66,7 @@ type jobHintKeyIndex struct {
 type jobIndexLocation struct {
 	resource        fwk.EventResource
 	pluginActionKey pluginActionKey
-	hintKeys        []api.HintKey
+	hintKeys        []HintKey
 }
 
 // pluginActionIndexSnapshot captures a matching plugin/action index before its
@@ -76,8 +77,8 @@ type pluginActionIndexSnapshot struct {
 	resource        fwk.EventResource
 	pluginActionKey pluginActionKey
 	index           *pluginActionIndex
-	eventHintKeysFn api.EventKeysFn
-	eventHintKeys   []api.HintKey
+	eventHintKeysFn EventKeysFn
+	eventHintKeys   []HintKey
 	err             error
 }
 
@@ -90,10 +91,10 @@ func newEventIndex() eventIndex {
 
 // removeJobFromIndexesLocked removes jobID from every plugin/action index
 // recorded by its current unschedulableRecord. It does not delete the record:
-// RecordUnschedulable calls it before replacing a record, while
-// ForgetUnschedulable calls it before deleting one. The caller must hold c.mu
+// Record calls it before replacing a record, while Forget calls it before
+// deleting one. The caller must hold c.mu
 // for writing.
-func (c *UnschedulableJobCache) removeJobFromIndexesLocked(jobID api.JobID) {
+func (c *JobCache) removeJobFromIndexesLocked(jobID api.JobID) {
 	rec, ok := c.records[jobID]
 	if !ok {
 		return
@@ -123,13 +124,13 @@ func (c *UnschedulableJobCache) removeJobFromIndexesLocked(jobID api.JobID) {
 // match ev. It first selects the concrete EventResource indexes, then checks
 // ActionType, and finally includes matching wildcard indexes. EventKeysFn
 // callbacks run after this method releases c.mu.
-func (c *UnschedulableJobCache) matchingPluginActionIndexSnapshots(ev api.ClusterEvent) []pluginActionIndexSnapshot {
+func (c *JobCache) matchingPluginActionIndexSnapshots(ev fwk.ClusterEvent) []pluginActionIndexSnapshot {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	var snapshots []pluginActionIndexSnapshot
 	for key, index := range c.eventIndex.jobIndexesByResource[ev.Resource] {
-		if actionMatches(key.actionType, ev.ActionType) {
+		if eventMatches(fwk.ClusterEvent{Resource: ev.Resource, ActionType: key.actionType}, ev) {
 			snapshots = append(snapshots, pluginActionIndexSnapshot{
 				resource:        ev.Resource,
 				pluginActionKey: key,
@@ -139,7 +140,7 @@ func (c *UnschedulableJobCache) matchingPluginActionIndexSnapshots(ev api.Cluste
 		}
 	}
 	for key, index := range c.eventIndex.wildcardJobIndexes {
-		if actionMatches(key.actionType, ev.ActionType) {
+		if eventMatches(fwk.ClusterEvent{Resource: fwk.WildCard, ActionType: key.actionType}, ev) {
 			snapshots = append(snapshots, pluginActionIndexSnapshot{
 				resource:        fwk.WildCard,
 				pluginActionKey: key,
@@ -155,7 +156,7 @@ func (c *UnschedulableJobCache) matchingPluginActionIndexSnapshots(ev api.Cluste
 // immutable records. Extraction failure selects all Jobs in that index;
 // otherwise Jobs without HintKeys and Jobs sharing an event HintKey are
 // selected. A Job present in multiple matching indexes is returned once.
-func (c *UnschedulableJobCache) candidateRecordsForIndexSnapshots(snapshots []pluginActionIndexSnapshot) []*unschedulableRecord {
+func (c *JobCache) candidateRecordsForIndexSnapshots(snapshots []pluginActionIndexSnapshot) []*unschedulableRecord {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -200,28 +201,24 @@ func (c *UnschedulableJobCache) candidateRecordsForIndexSnapshots(snapshots []pl
 // event. A general Update matches a specific update such as UpdatePodScaleDown,
 // but a specific update does not match a general Update whose changed property
 // could not be classified.
-func eventMatches(registered, incoming api.ClusterEvent) bool {
-	if registered.Resource != fwk.WildCard && registered.Resource != incoming.Resource {
-		return false
-	}
-	return actionMatches(registered.ActionType, incoming.ActionType)
-}
-
-func actionMatches(registered, incoming fwk.ActionType) bool {
-	return registered&incoming != 0 && incoming <= registered
+func eventMatches(registered, incoming fwk.ClusterEvent) bool {
+	return kubeschedulerframework.MatchClusterEvents(registered, incoming)
 }
 
 // ensurePluginActionIndexLocked returns the Job index for one resource/plugin/
-// action classification, creating it when absent. The caller must hold c.mu for
-// writing.
-func (c *UnschedulableJobCache) ensurePluginActionIndexLocked(resource fwk.EventResource, key pluginActionKey, eventHintKeysFn api.EventKeysFn) *pluginActionIndex {
+// action classification, creating it when absent. An existing index retains
+// the EventKeysFn installed when it was created so Jobs recorded in different
+// Sessions share one event-side extraction. AddHintProvider therefore requires
+// the paired JobKeysFn and EventKeysFn to keep the same HintKey semantics across
+// registrations for this classification. The caller must hold c.mu for writing.
+func (c *JobCache) ensurePluginActionIndexLocked(resource fwk.EventResource, key pluginActionKey, eventHintKeysFn EventKeysFn) *pluginActionIndex {
 	newIndex := func() *pluginActionIndex {
 		return &pluginActionIndex{
 			eventHintKeysFn: eventHintKeysFn,
 			jobs: jobHintKeyIndex{
 				allJobIDs:             sets.New[api.JobID](),
 				jobIDsWithoutHintKeys: sets.New[api.JobID](),
-				jobIDsByHintKey:       make(map[api.HintKey]sets.Set[api.JobID]),
+				jobIDsByHintKey:       make(map[HintKey]sets.Set[api.JobID]),
 			},
 		}
 	}
@@ -243,7 +240,7 @@ func (c *UnschedulableJobCache) ensurePluginActionIndexLocked(resource fwk.Event
 // lookupPluginActionIndexLocked returns the current index for one resource/
 // plugin/action classification. The caller must hold c.mu for reading or
 // writing.
-func (c *UnschedulableJobCache) lookupPluginActionIndexLocked(resource fwk.EventResource, key pluginActionKey) *pluginActionIndex {
+func (c *JobCache) lookupPluginActionIndexLocked(resource fwk.EventResource, key pluginActionKey) *pluginActionIndex {
 	if resource == fwk.WildCard {
 		return c.eventIndex.wildcardJobIndexes[key]
 	}
@@ -255,7 +252,7 @@ func (c *UnschedulableJobCache) lookupPluginActionIndexLocked(resource fwk.Event
 
 // deletePluginActionIndexLocked removes an empty index and its empty resource
 // map. The caller must hold c.mu for writing.
-func (c *UnschedulableJobCache) deletePluginActionIndexLocked(resource fwk.EventResource, key pluginActionKey) {
+func (c *JobCache) deletePluginActionIndexLocked(resource fwk.EventResource, key pluginActionKey) {
 	if resource == fwk.WildCard {
 		delete(c.eventIndex.wildcardJobIndexes, key)
 		return
@@ -268,12 +265,12 @@ func (c *UnschedulableJobCache) deletePluginActionIndexLocked(resource fwk.Event
 }
 
 // uniqueHintKeys removes duplicate keys while preserving first-seen order.
-func uniqueHintKeys(keys []api.HintKey) []api.HintKey {
+func uniqueHintKeys(keys []HintKey) []HintKey {
 	if len(keys) == 0 {
 		return nil
 	}
-	seen := sets.New[api.HintKey]()
-	unique := make([]api.HintKey, 0, len(keys))
+	seen := sets.New[HintKey]()
+	unique := make([]HintKey, 0, len(keys))
 	for _, key := range keys {
 		if seen.Has(key) {
 			continue

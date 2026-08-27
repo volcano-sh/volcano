@@ -27,11 +27,12 @@ import (
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 func TestCapacityHints(t *testing.T) {
 	job := &api.JobInfo{Queue: "child"}
-	rejection := api.Rejection{Queues: []api.QueueID{"child", "parent", "root"}}
+	rejection := unschedulable.Rejection{Queues: []api.QueueID{"child", "parent", "root"}}
 	podGroup := func(queue string, phase scheduling.PodGroupPhase) *api.PodGroup {
 		return &api.PodGroup{PodGroup: scheduling.PodGroup{
 			Spec:   scheduling.PodGroupSpec{Queue: queue},
@@ -66,17 +67,17 @@ func TestCapacityHints(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		hintFn api.JobHintFn
+		hintFn unschedulable.JobHintFn
 		oldObj any
 		newObj any
-		want   api.HintResult
+		want   unschedulable.HintResult
 	}{
-		{name: "capability increase in ancestor scope wakes Job", hintFn: queueHint, oldObj: queue("parent", scheduling.QueueStateOpen, "1"), newObj: queue("parent", scheduling.QueueStateOpen, "2"), want: api.HintWakeup},
-		{name: "capability decrease in scope is skipped", hintFn: queueHint, oldObj: queue("child", scheduling.QueueStateOpen, "2"), newObj: queue("child", scheduling.QueueStateOpen, "1"), want: api.HintSkip},
-		{name: "removing capability limit wakes Job", hintFn: queueHint, oldObj: queue("child", scheduling.QueueStateOpen, "1"), newObj: queue("child", scheduling.QueueStateOpen, ""), want: api.HintWakeup},
-		{name: "opening Queue wakes Job", hintFn: queueHint, oldObj: queue("child", scheduling.QueueStateClosed, "1"), newObj: queue("child", scheduling.QueueStateOpen, "1"), want: api.HintWakeup},
-		{name: "guarantee increase wakes Job", hintFn: queueHint, oldObj: queueWithCPU("child", scheduling.QueueStateOpen, "2", "1", ""), newObj: queueWithCPU("child", scheduling.QueueStateOpen, "2", "2", ""), want: api.HintWakeup},
-		{name: "deserved increase wakes Job", hintFn: queueHint, oldObj: queueWithCPU("child", scheduling.QueueStateOpen, "2", "", "1"), newObj: queueWithCPU("child", scheduling.QueueStateOpen, "2", "", "2"), want: api.HintWakeup},
+		{name: "capability increase in ancestor scope wakes Job", hintFn: queueHint, oldObj: queue("parent", scheduling.QueueStateOpen, "1"), newObj: queue("parent", scheduling.QueueStateOpen, "2"), want: unschedulable.HintWakeup},
+		{name: "capability decrease in scope is skipped", hintFn: queueHint, oldObj: queue("child", scheduling.QueueStateOpen, "2"), newObj: queue("child", scheduling.QueueStateOpen, "1"), want: unschedulable.HintSkip},
+		{name: "removing capability limit wakes Job", hintFn: queueHint, oldObj: queue("child", scheduling.QueueStateOpen, "1"), newObj: queue("child", scheduling.QueueStateOpen, ""), want: unschedulable.HintWakeup},
+		{name: "opening Queue wakes Job", hintFn: queueHint, oldObj: queue("child", scheduling.QueueStateClosed, "1"), newObj: queue("child", scheduling.QueueStateOpen, "1"), want: unschedulable.HintWakeup},
+		{name: "guarantee increase wakes Job", hintFn: queueHint, oldObj: queueWithCPU("child", scheduling.QueueStateOpen, "2", "1", ""), newObj: queueWithCPU("child", scheduling.QueueStateOpen, "2", "2", ""), want: unschedulable.HintWakeup},
+		{name: "deserved increase wakes Job", hintFn: queueHint, oldObj: queueWithCPU("child", scheduling.QueueStateOpen, "2", "", "1"), newObj: queueWithCPU("child", scheduling.QueueStateOpen, "2", "", "2"), want: unschedulable.HintWakeup},
 		{name: "parent change wakes Job conservatively", hintFn: queueHint, oldObj: func() *scheduling.Queue {
 			q := queue("child", scheduling.QueueStateOpen, "2")
 			q.Spec.Parent = "parent"
@@ -85,7 +86,7 @@ func TestCapacityHints(t *testing.T) {
 			q := queue("child", scheduling.QueueStateOpen, "2")
 			q.Spec.Parent = "other-parent"
 			return q
-		}(), want: api.HintWakeup},
+		}(), want: unschedulable.HintWakeup},
 		{name: "weight and priority change is skipped", hintFn: queueHint, oldObj: func() *scheduling.Queue {
 			q := queue("child", scheduling.QueueStateOpen, "2")
 			q.Spec.Weight = 1
@@ -96,21 +97,21 @@ func TestCapacityHints(t *testing.T) {
 			q.Spec.Weight = 2
 			q.Spec.Priority = 2
 			return q
-		}(), want: api.HintSkip},
+		}(), want: unschedulable.HintSkip},
 		{name: "status counters update in scope is skipped", hintFn: queueHint, oldObj: queue("child", scheduling.QueueStateOpen, "1"), newObj: func() *scheduling.Queue {
 			q := queue("child", scheduling.QueueStateOpen, "1")
 			q.Status.Running = 1
 			return q
-		}(), want: api.HintSkip},
-		{name: "queue update outside scope is skipped", hintFn: queueHint, oldObj: queue("other", scheduling.QueueStateOpen, "1"), newObj: queue("other", scheduling.QueueStateOpen, "2"), want: api.HintSkip},
-		{name: "PodGroup leaving consuming phase wakes Job", hintFn: podGroupHint, oldObj: podGroup("child", scheduling.PodGroupRunning), newObj: podGroup("child", scheduling.PodGroupCompleted), want: api.HintWakeup},
-		{name: "PodGroup remaining in consuming phase is skipped", hintFn: podGroupHint, oldObj: podGroup("child", scheduling.PodGroupRunning), newObj: podGroup("child", scheduling.PodGroupInqueue), want: api.HintSkip},
-		{name: "consuming PodGroup moving out of rejection path wakes Job", hintFn: podGroupHint, oldObj: podGroup("child", scheduling.PodGroupRunning), newObj: podGroup("other", scheduling.PodGroupRunning), want: api.HintWakeup},
-		{name: "PodGroup release outside rejection path is skipped", hintFn: podGroupHint, oldObj: podGroup("other", scheduling.PodGroupRunning), newObj: podGroup("other", scheduling.PodGroupCompleted), want: api.HintSkip},
-		{name: "consuming PodGroup deletion in rejection path wakes Job", hintFn: podGroupHint, oldObj: podGroup("parent", scheduling.PodGroupRunning), want: api.HintWakeup},
-		{name: "non-consuming PodGroup deletion is skipped", hintFn: podGroupHint, oldObj: podGroup("other", scheduling.PodGroupPending), want: api.HintSkip},
-		{name: "Pod deletion in rejection path wakes Job", hintFn: podHint, oldObj: pod("child"), want: api.HintWakeup},
-		{name: "Pod deletion outside rejection path is skipped", hintFn: podHint, oldObj: pod("other"), want: api.HintSkip},
+		}(), want: unschedulable.HintSkip},
+		{name: "queue update outside scope is skipped", hintFn: queueHint, oldObj: queue("other", scheduling.QueueStateOpen, "1"), newObj: queue("other", scheduling.QueueStateOpen, "2"), want: unschedulable.HintSkip},
+		{name: "PodGroup leaving consuming phase wakes Job", hintFn: podGroupHint, oldObj: podGroup("child", scheduling.PodGroupRunning), newObj: podGroup("child", scheduling.PodGroupCompleted), want: unschedulable.HintWakeup},
+		{name: "PodGroup remaining in consuming phase is skipped", hintFn: podGroupHint, oldObj: podGroup("child", scheduling.PodGroupRunning), newObj: podGroup("child", scheduling.PodGroupInqueue), want: unschedulable.HintSkip},
+		{name: "consuming PodGroup moving out of rejection path wakes Job", hintFn: podGroupHint, oldObj: podGroup("child", scheduling.PodGroupRunning), newObj: podGroup("other", scheduling.PodGroupRunning), want: unschedulable.HintWakeup},
+		{name: "PodGroup release outside rejection path is skipped", hintFn: podGroupHint, oldObj: podGroup("other", scheduling.PodGroupRunning), newObj: podGroup("other", scheduling.PodGroupCompleted), want: unschedulable.HintSkip},
+		{name: "consuming PodGroup deletion in rejection path wakes Job", hintFn: podGroupHint, oldObj: podGroup("parent", scheduling.PodGroupRunning), want: unschedulable.HintWakeup},
+		{name: "non-consuming PodGroup deletion is skipped", hintFn: podGroupHint, oldObj: podGroup("other", scheduling.PodGroupPending), want: unschedulable.HintSkip},
+		{name: "Pod deletion in rejection path wakes Job", hintFn: podHint, oldObj: pod("child"), want: unschedulable.HintWakeup},
+		{name: "Pod deletion outside rejection path is skipped", hintFn: podHint, oldObj: pod("other"), want: unschedulable.HintSkip},
 	}
 
 	for _, test := range tests {
@@ -128,13 +129,13 @@ func TestCapacityHints(t *testing.T) {
 
 func TestCapacityEventsToRegister(t *testing.T) {
 	want := []struct {
-		event   api.ClusterEvent
+		event   fwk.ClusterEvent
 		hasHint bool
 	}{
-		{event: api.ClusterEvent{Resource: api.QueueEvent, ActionType: fwk.Update}, hasHint: true},
-		{event: api.ClusterEvent{Resource: api.PodGroupEvent, ActionType: fwk.Update | fwk.Delete}, hasHint: true},
-		{event: api.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add | fwk.UpdateNodeAllocatable}, hasHint: true},
-		{event: api.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete | fwk.UpdatePodScaleDown}, hasHint: true},
+		{event: fwk.ClusterEvent{Resource: unschedulable.QueueEvent, ActionType: fwk.Update}, hasHint: true},
+		{event: fwk.ClusterEvent{Resource: unschedulable.PodGroupEvent, ActionType: fwk.Update | fwk.Delete}, hasHint: true},
+		{event: fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add | fwk.UpdateNodeAllocatable}, hasHint: true},
+		{event: fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete | fwk.UpdatePodScaleDown}, hasHint: true},
 	}
 
 	events, err := (&CapacityHintProvider{}).EventsToRegister(t.Context())

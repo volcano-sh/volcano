@@ -28,6 +28,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/hintutil"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 // CapacityHintProvider implements QueueingHints for the capacity plugin.
@@ -40,22 +41,22 @@ import (
 // ancestry.
 type CapacityHintProvider struct{}
 
-var _ api.HintProvider = (*CapacityHintProvider)(nil)
+var _ unschedulable.HintProvider = (*CapacityHintProvider)(nil)
 
-// EventsToRegister implements api.HintProvider. Queue and Node hints inspect
+// EventsToRegister implements unschedulable.HintProvider. Queue and Node hints inspect
 // whether the change can relax the recorded rejection. Pod and PodGroup hints
 // additionally require resource release from a Queue in the recorded rejection
 // path.
-func (p *CapacityHintProvider) EventsToRegister(_ context.Context) ([]api.ClusterEventWithHint, error) {
-	return []api.ClusterEventWithHint{
+func (p *CapacityHintProvider) EventsToRegister(_ context.Context) ([]unschedulable.EventWithHint, error) {
+	return []unschedulable.EventWithHint{
 		// Only an update can relax a Queue object used by the rejected path.
-		{Event: api.ClusterEvent{Resource: api.QueueEvent, ActionType: fwk.Update}, HintFn: queueHint},
+		{Event: fwk.ClusterEvent{Resource: unschedulable.QueueEvent, ActionType: fwk.Update}, HintFn: queueHint},
 		// A consuming PodGroup can release quota on update or deletion.
-		{Event: api.ClusterEvent{Resource: api.PodGroupEvent, ActionType: fwk.Update | fwk.Delete}, HintFn: podGroupHint},
+		{Event: fwk.ClusterEvent{Resource: unschedulable.PodGroupEvent, ActionType: fwk.Update | fwk.Delete}, HintFn: podGroupHint},
 		// Node capacity is global, so capacity shares the topology-free Node hint.
-		{Event: api.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add | fwk.UpdateNodeAllocatable}, HintFn: hintutil.NodeHint},
+		{Event: fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add | fwk.UpdateNodeAllocatable}, HintFn: hintutil.NodeHint},
 		// Pod deletion or scale-down can release usage charged to the Queue path.
-		{Event: api.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete | fwk.UpdatePodScaleDown}, HintFn: podHint},
+		{Event: fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete | fwk.UpdatePodScaleDown}, HintFn: podHint},
 	}, nil
 }
 
@@ -63,7 +64,7 @@ func (p *CapacityHintProvider) EventsToRegister(_ context.Context) ([]api.Cluste
 // Queue or one of the ancestors checked by capacity. It is used for Queue object
 // updates, where the updated Queue itself must have participated in the previous
 // rejection.
-func queueWasCheckedForRejection(rejection api.Rejection, queueName string, jobQueue api.QueueID) bool {
+func queueWasCheckedForRejection(rejection unschedulable.Rejection, queueName string, jobQueue api.QueueID) bool {
 	qid := api.QueueID(queueName)
 	// Older or non-hierarchical rejections may not record a path; in that case
 	// only the Job's own Queue is known to be relevant.
@@ -81,25 +82,25 @@ func queueWasCheckedForRejection(rejection api.Rejection, queueName string, jobQ
 
 // queueHint wakes when an updated Queue participated in the rejection and the
 // update can loosen one of the admission or capacity constraints it enforced.
-func queueHint(job *api.JobInfo, rejection api.Rejection, oldObj, newObj any) (api.HintResult, error) {
+func queueHint(job *api.JobInfo, rejection unschedulable.Rejection, oldObj, newObj any) (unschedulable.HintResult, error) {
 	// Queue Update should carry the new object. Unknown payloads fail open.
 	newQueue, ok := newObj.(*scheduling.Queue)
 	if !ok || newQueue == nil {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	if !queueWasCheckedForRejection(rejection, newQueue.Name, job.Queue) {
-		return api.HintSkip, nil
+		return unschedulable.HintSkip, nil
 	}
 	// The old object is required to prove that a relevant constraint relaxed.
 	oldQueue, ok := oldObj.(*scheduling.Queue)
 	if !ok || oldQueue == nil {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	// Changes that only tighten quota or touch unrelated fields cannot help.
 	if queueCapacityRelaxed(oldQueue, newQueue) {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
-	return api.HintSkip, nil
+	return unschedulable.HintSkip, nil
 }
 
 // queueCapacityRelaxed reports whether a Queue update can invalidate a previous
@@ -133,34 +134,34 @@ func queueCapacityRelaxed(oldQueue, newQueue *scheduling.Queue) bool {
 // quota from a Queue recorded in the capacity rejection. A release from a
 // sibling Queue is intentionally not inferred here: doing that reliably needs
 // the shared Queue hierarchy/accounting model tracked by #5565.
-func podGroupHint(job *api.JobInfo, rejection api.Rejection, oldObj, newObj any) (api.HintResult, error) {
+func podGroupHint(job *api.JobInfo, rejection unschedulable.Rejection, oldObj, newObj any) (unschedulable.HintResult, error) {
 	if newObj == nil {
 		// Delete releases quota only if the old PodGroup consumed it in a Queue
 		// that participated in this Job's rejection.
 		pg, ok := oldObj.(*api.PodGroup)
 		if !ok || pg == nil {
-			return api.HintWakeup, nil
+			return unschedulable.HintWakeup, nil
 		}
 		if queueWasCheckedForRejection(rejection, pg.Spec.Queue, job.Queue) && hintutil.PodGroupConsumesQuota(pg.Status.Phase) {
-			return api.HintWakeup, nil
+			return unschedulable.HintWakeup, nil
 		}
-		return api.HintSkip, nil
+		return unschedulable.HintSkip, nil
 	}
 
 	// Update needs both snapshots to determine the old Queue and phase change.
 	oldPg, oldOK := oldObj.(*api.PodGroup)
 	newPg, newOK := newObj.(*api.PodGroup)
 	if !oldOK || oldPg == nil || !newOK || newPg == nil {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	if !queueWasCheckedForRejection(rejection, oldPg.Spec.Queue, job.Queue) {
-		return api.HintSkip, nil
+		return unschedulable.HintSkip, nil
 	}
 	// The old Queue benefits when the PodGroup stops consuming there or moves.
 	if hintutil.PodGroupReleasedQuota(oldPg, newPg) {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
-	return api.HintSkip, nil
+	return unschedulable.HintSkip, nil
 }
 
 // podHint wakes a rejected Job when deletion or in-place scale-down releases
@@ -168,21 +169,21 @@ func podGroupHint(job *api.JobInfo, rejection api.Rejection, oldObj, newObj any)
 // Queue outside the recorded path is skipped. When the Pod carries no queue
 // identity the hint fails open and wakes, so only vcjob Pods are filtered
 // precisely; other Pods keep the queue on their PodGroup, not on the Pod.
-func podHint(job *api.JobInfo, rejection api.Rejection, oldObj, _ any) (api.HintResult, error) {
+func podHint(job *api.JobInfo, rejection unschedulable.Rejection, oldObj, _ any) (unschedulable.HintResult, error) {
 	// Both deletion and scale-down release resources from the old Pod snapshot.
 	pod, ok := oldObj.(*v1.Pod)
 	if !ok || pod == nil {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	queue := podQueue(pod)
 	// Pods that inherit Queue through PodGroup cannot be scoped safely here.
 	if queue == "" {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	if queueWasCheckedForRejection(rejection, queue, job.Queue) {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
-	return api.HintSkip, nil
+	return unschedulable.HintSkip, nil
 }
 
 // podQueue returns the Pod's queue when it can be read directly from the Pod.

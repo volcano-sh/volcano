@@ -29,6 +29,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 func TestResourceFitRejectionKeysUsesReadableSlashSeparatedKeys(t *testing.T) {
@@ -50,14 +51,14 @@ func TestResourceFitRejectionKeysUsesReadableSlashSeparatedKeys(t *testing.T) {
 	keys, complete := resourcefit.RejectionKeys(task, fitErrors, nodes)
 	assert.True(t, complete)
 
-	want := []api.HintKey{
+	want := []unschedulable.HintKey{
 		"rejected-task/task-1",
 		"pod-release/node-a/cpu",
 		"node-growth/node-a/cpu",
 		"node-growth/node-b/cpu",
 	}
 	assert.ElementsMatch(t, want, keys)
-	assert.NotContains(t, keys, api.HintKey("pod-release/node-b/cpu"))
+	assert.NotContains(t, keys, unschedulable.HintKey("pod-release/node-b/cpu"))
 }
 
 // nodeInfoWithAllocatable builds a NodeInfo with the given total allocatable
@@ -85,7 +86,7 @@ func TestResourceFitRejectionKeys(t *testing.T) {
 		task         *api.TaskInfo
 		fitErrors    func() *api.FitErrors
 		nodes        map[string]*api.NodeInfo
-		wantKeys     []api.HintKey
+		wantKeys     []unschedulable.HintKey
 		wantComplete bool
 	}{
 		{
@@ -100,7 +101,7 @@ func TestResourceFitRejectionKeys(t *testing.T) {
 			nodes: map[string]*api.NodeInfo{
 				"node-a": nodeInfoWithAllocatable("node-a", "8", "8Gi", "100"),
 			},
-			wantKeys: []api.HintKey{
+			wantKeys: []unschedulable.HintKey{
 				resourcefit.RejectedTaskKey(task.UID),
 				resourcefit.NodeGrowthKey("node-a", "cpu"),
 				resourcefit.PodReleaseKey("node-a", "cpu"),
@@ -120,7 +121,7 @@ func TestResourceFitRejectionKeys(t *testing.T) {
 				// Node's total allocatable CPU (1) is below the task's 2 CPU request.
 				"node-a": nodeInfoWithAllocatable("node-a", "1", "8Gi", "100"),
 			},
-			wantKeys: []api.HintKey{
+			wantKeys: []unschedulable.HintKey{
 				resourcefit.RejectedTaskKey(task.UID),
 				resourcefit.NodeGrowthKey("node-a", "cpu"),
 			},
@@ -138,7 +139,7 @@ func TestResourceFitRejectionKeys(t *testing.T) {
 			nodes: map[string]*api.NodeInfo{
 				"node-a": nodeInfoWithAllocatable("node-a", "8", "8Gi", "100"),
 			},
-			wantKeys: []api.HintKey{
+			wantKeys: []unschedulable.HintKey{
 				resourcefit.RejectedTaskKey(task.UID),
 				resourcefit.NodeGrowthKey("node-a", "pods"),
 				resourcefit.PodReleaseKey("node-a", "pods"),
@@ -167,7 +168,7 @@ func TestResourceFitRejectionKeys(t *testing.T) {
 			nodes: map[string]*api.NodeInfo{
 				"node-a": nodeInfoWithAllocatable("node-a", "64", "256Gi", "110"),
 			},
-			wantKeys: []api.HintKey{
+			wantKeys: []unschedulable.HintKey{
 				resourcefit.RejectedTaskKey(task.UID),
 				resourcefit.NodeGrowthKey("node-a", "pods"),
 				resourcefit.PodReleaseKey("node-a", "pods"),
@@ -266,9 +267,9 @@ func TestResourceFitPodReleaseKeysIntersectRejectedTask(t *testing.T) {
 	}
 	entry := findEvent(t, entries, fwk.Pod, fwk.Delete)
 
-	rejection := api.Rejection{
+	rejection := unschedulable.Rejection{
 		Tasks:    []api.TaskID{task.UID},
-		HintKeys: []api.HintKey{resourcefit.RejectedTaskKey(task.UID), resourcefit.NodeGrowthKey("node-a", "cpu")},
+		HintKeys: []unschedulable.HintKey{resourcefit.RejectedTaskKey(task.UID), resourcefit.NodeGrowthKey("node-a", "cpu")},
 	}
 
 	jobKeys, err := entry.JobKeysFn(job, rejection)
@@ -313,7 +314,7 @@ func TestResourceFitPodReleaseOnAnotherRejectedNodeIntersects(t *testing.T) {
 		t.Fatalf("EventsToRegister() error = %v", err)
 	}
 	entry := findEvent(t, entries, fwk.Pod, fwk.Delete)
-	jobKeys, err := entry.JobKeysFn(job, api.Rejection{Tasks: []api.TaskID{task.UID}, HintKeys: rejectionKeys})
+	jobKeys, err := entry.JobKeysFn(job, unschedulable.Rejection{Tasks: []api.TaskID{task.UID}, HintKeys: rejectionKeys})
 	if err != nil {
 		t.Fatalf("JobKeysFn() error = %v", err)
 	}
@@ -340,7 +341,7 @@ func TestResourceFitPodReleaseJobKeysErrorsWhenIncomplete(t *testing.T) {
 	}
 	entry := findEvent(t, entries, fwk.Pod, fwk.Delete)
 
-	rejection := api.Rejection{Tasks: []api.TaskID{task.UID}}
+	rejection := unschedulable.Rejection{Tasks: []api.TaskID{task.UID}}
 	_, err = entry.JobKeysFn(job, rejection)
 	assert.Error(t, err)
 }
@@ -355,7 +356,7 @@ func TestResourceFitNodeGrowthJobKeysErrorsWhenIncomplete(t *testing.T) {
 	}
 	entry := findEvent(t, entries, fwk.Node, fwk.UpdateNodeAllocatable)
 
-	rejection := api.Rejection{Tasks: []api.TaskID{task.UID}}
+	rejection := unschedulable.Rejection{Tasks: []api.TaskID{task.UID}}
 	_, err = entry.JobKeysFn(job, rejection)
 	assert.Error(t, err)
 }
@@ -363,7 +364,7 @@ func TestResourceFitNodeGrowthJobKeysErrorsWhenIncomplete(t *testing.T) {
 func TestResourceFitNodeAddKeysIntersectRequestedDimensions(t *testing.T) {
 	task := api.NewTaskInfo(podWithCPU("target", "2"))
 	job := api.NewJobInfo("job", task)
-	rejection := api.Rejection{Tasks: []api.TaskID{task.UID}}
+	rejection := unschedulable.Rejection{Tasks: []api.TaskID{task.UID}}
 
 	entries, err := (&ResourceFitHintProvider{}).EventsToRegister(context.Background())
 	if err != nil {
@@ -418,7 +419,7 @@ func TestResourceFitNodeAddJobKeysErrorsOnNilInitResreq(t *testing.T) {
 	incompleteTask := api.NewTaskInfo(podWithCPU("incomplete", "1"))
 	incompleteTask.InitResreq = nil
 	job := api.NewJobInfo("job", completeTask, incompleteTask)
-	rejection := api.Rejection{Tasks: []api.TaskID{completeTask.UID, incompleteTask.UID}}
+	rejection := unschedulable.Rejection{Tasks: []api.TaskID{completeTask.UID, incompleteTask.UID}}
 
 	entries, err := (&ResourceFitHintProvider{}).EventsToRegister(context.Background())
 	if err != nil {
@@ -455,7 +456,7 @@ func TestResourceFitPodReleasePodCountKeyIntersectsRealPodDelete(t *testing.T) {
 	wantKey := resourcefit.PodReleaseKey("node-a", "pods")
 	assert.Contains(t, keys, wantKey)
 
-	rejection := api.Rejection{Tasks: []api.TaskID{task.UID}, HintKeys: keys}
+	rejection := unschedulable.Rejection{Tasks: []api.TaskID{task.UID}, HintKeys: keys}
 
 	entries, err := (&ResourceFitHintProvider{}).EventsToRegister(context.Background())
 	if err != nil {
@@ -484,7 +485,7 @@ func TestResourceFitPodReleasePodCountKeyIntersectsRealPodDelete(t *testing.T) {
 // ActionType includes action. The Pod subscription's ActionType may also
 // carry UpdatePodScaleDown depending on the InPlacePodVerticalScaling feature
 // gate, so this matches on the bit being set rather than exact equality.
-func findEvent(t *testing.T, entries []api.ClusterEventWithHint, resource fwk.EventResource, action fwk.ActionType) api.ClusterEventWithHint {
+func findEvent(t *testing.T, entries []unschedulable.EventWithHint, resource fwk.EventResource, action fwk.ActionType) unschedulable.EventWithHint {
 	t.Helper()
 	for _, entry := range entries {
 		if entry.Event.Resource == resource && entry.Event.ActionType&action == action {
@@ -492,5 +493,5 @@ func findEvent(t *testing.T, entries []api.ClusterEventWithHint, resource fwk.Ev
 		}
 	}
 	t.Fatalf("no ClusterEventWithHint found for resource=%v action=%v", resource, action)
-	return api.ClusterEventWithHint{}
+	return unschedulable.EventWithHint{}
 }

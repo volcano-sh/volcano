@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 // ProviderName identifies Volcano's built-in node resource-fit predicate.
@@ -40,38 +41,38 @@ const (
 
 // hintKey joins readable slash-separated parts. Node names and task UIDs cannot
 // contain "/", and resource names are always the final component.
-func hintKey(parts ...string) api.HintKey {
-	return api.HintKey(strings.Join(parts, "/"))
+func hintKey(parts ...string) unschedulable.HintKey {
+	return unschedulable.HintKey(strings.Join(parts, "/"))
 }
 
 // PodReleaseKey identifies a resource dimension released on one node.
-func PodReleaseKey(nodeName, dimension string) api.HintKey {
+func PodReleaseKey(nodeName, dimension string) unschedulable.HintKey {
 	return hintKey(hintKindPodRelease, nodeName, dimension)
 }
 
 // NodeGrowthKey identifies an allocatable resource dimension growing on one node.
-func NodeGrowthKey(nodeName, dimension string) api.HintKey {
+func NodeGrowthKey(nodeName, dimension string) unschedulable.HintKey {
 	return hintKey(hintKindNodeGrowth, nodeName, dimension)
 }
 
 // RejectedTaskKey identifies deletion of a task that participated in a rejection.
-func RejectedTaskKey(taskID api.TaskID) api.HintKey {
+func RejectedTaskKey(taskID api.TaskID) unschedulable.HintKey {
 	return hintKey(hintKindRejectedTask, string(taskID))
 }
 
 // NodeAddKey identifies a resource dimension supplied by a newly added node.
-func NodeAddKey(dimension string) api.HintKey {
+func NodeAddKey(dimension string) unschedulable.HintKey {
 	return hintKey(hintKindNodeAdd, dimension)
 }
 
 // hasKeyKind reports whether key uses the given kind prefix.
-func hasKeyKind(key api.HintKey, kind string) bool {
+func hasKeyKind(key unschedulable.HintKey, kind string) bool {
 	return strings.HasPrefix(string(key), kind+"/")
 }
 
 // filterKeysByKind returns the subset of keys whose kind matches one of kinds.
-func filterKeysByKind(keys []api.HintKey, kinds ...string) []api.HintKey {
-	var filtered []api.HintKey
+func filterKeysByKind(keys []unschedulable.HintKey, kinds ...string) []unschedulable.HintKey {
+	var filtered []unschedulable.HintKey
 	for _, key := range keys {
 		for _, kind := range kinds {
 			if hasKeyKind(key, kind) {
@@ -93,7 +94,7 @@ func filterKeysByKind(keys []api.HintKey, kinds ...string) []api.HintKey {
 //
 // complete is false when the rejection does not contain enough structured data
 // to build every key.
-func RejectionKeys(task *api.TaskInfo, fitErrors *api.FitErrors, nodes map[string]*api.NodeInfo) ([]api.HintKey, bool) {
+func RejectionKeys(task *api.TaskInfo, fitErrors *api.FitErrors, nodes map[string]*api.NodeInfo) ([]unschedulable.HintKey, bool) {
 	if task == nil || task.InitResreq == nil || fitErrors == nil {
 		return nil, false
 	}
@@ -103,7 +104,7 @@ func RejectionKeys(task *api.TaskInfo, fitErrors *api.FitErrors, nodes map[strin
 		return nil, false
 	}
 
-	keys := sets.New[api.HintKey](RejectedTaskKey(task.UID))
+	keys := sets.New[unschedulable.HintKey](RejectedTaskKey(task.UID))
 	for nodeName, dimensions := range nodeDimensions {
 		if len(dimensions) == 0 {
 			// Do not index a rejection with unknown resource dimensions.
@@ -121,7 +122,7 @@ func RejectionKeys(task *api.TaskInfo, fitErrors *api.FitErrors, nodes map[strin
 			}
 		}
 
-		if keys.Len() > api.MaxHintKeysPerPluginEvent {
+		if keys.Len() > unschedulable.MaxHintKeysPerPluginEvent {
 			return nil, false
 		}
 	}
@@ -129,7 +130,7 @@ func RejectionKeys(task *api.TaskInfo, fitErrors *api.FitErrors, nodes map[strin
 	return sortedHintKeys(keys), true
 }
 
-func sortedHintKeys(keys sets.Set[api.HintKey]) []api.HintKey {
+func sortedHintKeys(keys sets.Set[unschedulable.HintKey]) []unschedulable.HintKey {
 	result := keys.UnsortedList()
 	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
 	return result
@@ -184,7 +185,7 @@ func changedDimensions(before, after *api.Resource) []string {
 
 // PodReleaseJobKeys returns the Pod-release and task keys recorded
 // for a resource-fit rejection.
-func PodReleaseJobKeys(job *api.JobInfo, rejection api.Rejection) ([]api.HintKey, error) {
+func PodReleaseJobKeys(job *api.JobInfo, rejection unschedulable.Rejection) ([]unschedulable.HintKey, error) {
 	if len(rejection.HintKeys) == 0 {
 		return nil, fmt.Errorf("resource-fit pod-release keys are incomplete")
 	}
@@ -193,13 +194,13 @@ func PodReleaseJobKeys(job *api.JobInfo, rejection api.Rejection) ([]api.HintKey
 
 // PodReleaseEventKeys returns the task key and resources released
 // by a Pod deletion, termination or scale-down.
-func PodReleaseEventKeys(oldObj, newObj any) ([]api.HintKey, error) {
+func PodReleaseEventKeys(oldObj, newObj any) ([]unschedulable.HintKey, error) {
 	oldPod, ok := oldObj.(*v1.Pod)
 	if !ok || oldPod == nil {
 		return nil, fmt.Errorf("expected old object to be *v1.Pod, got %T", oldObj)
 	}
 
-	keys := []api.HintKey{RejectedTaskKey(api.TaskID(oldPod.UID))}
+	keys := []unschedulable.HintKey{RejectedTaskKey(api.TaskID(oldPod.UID))}
 	if oldPod.Spec.NodeName == "" {
 		// A pending Pod holds no node resources to release.
 		return keys, nil
@@ -223,7 +224,7 @@ func PodReleaseEventKeys(oldObj, newObj any) ([]api.HintKey, error) {
 
 // NodeGrowthJobKeys returns the Node-growth keys recorded for a
 // resource-fit rejection.
-func NodeGrowthJobKeys(job *api.JobInfo, rejection api.Rejection) ([]api.HintKey, error) {
+func NodeGrowthJobKeys(job *api.JobInfo, rejection unschedulable.Rejection) ([]unschedulable.HintKey, error) {
 	if len(rejection.HintKeys) == 0 {
 		return nil, fmt.Errorf("resource-fit node-growth keys are incomplete")
 	}
@@ -232,7 +233,7 @@ func NodeGrowthJobKeys(job *api.JobInfo, rejection api.Rejection) ([]api.HintKey
 
 // NodeGrowthEventKeys returns resources whose allocatable value
 // increased on a Node.
-func NodeGrowthEventKeys(oldObj, newObj any) ([]api.HintKey, error) {
+func NodeGrowthEventKeys(oldObj, newObj any) ([]unschedulable.HintKey, error) {
 	oldNode, ok := oldObj.(*v1.Node)
 	if !ok || oldNode == nil {
 		return nil, fmt.Errorf("expected old object to be *v1.Node, got %T", oldObj)
@@ -247,7 +248,7 @@ func NodeGrowthEventKeys(oldObj, newObj any) ([]api.HintKey, error) {
 		// No increased resource can match a Node-growth key.
 		return nil, nil
 	}
-	keys := make([]api.HintKey, 0, len(dimensions))
+	keys := make([]unschedulable.HintKey, 0, len(dimensions))
 	for _, dimension := range dimensions {
 		keys = append(keys, NodeGrowthKey(newNode.Name, dimension))
 	}
@@ -255,7 +256,7 @@ func NodeGrowthEventKeys(oldObj, newObj any) ([]api.HintKey, error) {
 }
 
 // NodeAddJobKeys returns the resources requested by rejected tasks.
-func NodeAddJobKeys(job *api.JobInfo, rejection api.Rejection) ([]api.HintKey, error) {
+func NodeAddJobKeys(job *api.JobInfo, rejection unschedulable.Rejection) ([]unschedulable.HintKey, error) {
 	if job == nil {
 		return nil, fmt.Errorf("resource-fit node-add keys: job is nil")
 	}
@@ -275,7 +276,7 @@ func NodeAddJobKeys(job *api.JobInfo, rejection api.Rejection) ([]api.HintKey, e
 		return nil, fmt.Errorf("resource-fit node-add keys: no requested dimensions found")
 	}
 
-	keys := make([]api.HintKey, 0, dims.Len())
+	keys := make([]unschedulable.HintKey, 0, dims.Len())
 	for _, dim := range sortedStrings(dims) {
 		keys = append(keys, NodeAddKey(dim))
 	}
@@ -283,7 +284,7 @@ func NodeAddJobKeys(job *api.JobInfo, rejection api.Rejection) ([]api.HintKey, e
 }
 
 // NodeAddEventKeys returns resources supplied by a new Node.
-func NodeAddEventKeys(_, newObj any) ([]api.HintKey, error) {
+func NodeAddEventKeys(_, newObj any) ([]unschedulable.HintKey, error) {
 	newNode, ok := newObj.(*v1.Node)
 	if !ok || newNode == nil {
 		return nil, fmt.Errorf("expected new object to be *v1.Node, got %T", newObj)
@@ -293,7 +294,7 @@ func NodeAddEventKeys(_, newObj any) ([]api.HintKey, error) {
 	if len(dims) == 0 {
 		return nil, fmt.Errorf("resource-fit node-add event: no allocatable dimensions found")
 	}
-	keys := make([]api.HintKey, 0, len(dims))
+	keys := make([]unschedulable.HintKey, 0, len(dims))
 	for _, dim := range dims {
 		keys = append(keys, NodeAddKey(dim))
 	}

@@ -27,6 +27,7 @@ import (
 	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 type fakeEnqueueExtensions struct {
@@ -47,7 +48,7 @@ func TestKubeHintProviderEventsToRegister(t *testing.T) {
 	tests := []struct {
 		name    string
 		ext     fakeEnqueueExtensions
-		want    []api.ClusterEvent
+		want    []fwk.ClusterEvent
 		wantErr error
 	}{
 		{
@@ -56,7 +57,7 @@ func TestKubeHintProviderEventsToRegister(t *testing.T) {
 				{Event: fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add}},
 				{Event: fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}},
 			}},
-			want: []api.ClusterEvent{
+			want: []fwk.ClusterEvent{
 				{Resource: fwk.Node, ActionType: fwk.Add},
 				{Resource: fwk.Pod, ActionType: fwk.Delete},
 			},
@@ -91,7 +92,7 @@ func TestWrapPodHint(t *testing.T) {
 	tests := []struct {
 		name    string
 		kubeFn  fwk.QueueingHintFn
-		want    api.HintResult
+		want    unschedulable.HintResult
 		wantErr error
 	}{
 		{
@@ -99,7 +100,7 @@ func TestWrapPodHint(t *testing.T) {
 			kubeFn: func(klog.Logger, *v1.Pod, any, any) (fwk.QueueingHint, error) {
 				return fwk.QueueSkip, nil
 			},
-			want: api.HintSkip,
+			want: unschedulable.HintSkip,
 		},
 		{
 			name: "wakes when any rejected task queues",
@@ -109,14 +110,14 @@ func TestWrapPodHint(t *testing.T) {
 				}
 				return fwk.QueueSkip, nil
 			},
-			want: api.HintWakeup,
+			want: unschedulable.HintWakeup,
 		},
 		{
 			name: "wakes and returns hint error",
 			kubeFn: func(klog.Logger, *v1.Pod, any, any) (fwk.QueueingHint, error) {
 				return fwk.QueueSkip, hintErr
 			},
-			want:    api.HintWakeup,
+			want:    unschedulable.HintWakeup,
 			wantErr: hintErr,
 		},
 	}
@@ -126,7 +127,7 @@ func TestWrapPodHint(t *testing.T) {
 	task1 := api.NewTaskInfo(pod1)
 	task2 := api.NewTaskInfo(pod2)
 	job := api.NewJobInfo("job", task1, task2)
-	rejection := api.Rejection{Tasks: []api.TaskID{task1.UID, task2.UID}}
+	rejection := unschedulable.Rejection{Tasks: []api.TaskID{task1.UID, task2.UID}}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -25,6 +25,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 func TestNodeHint(t *testing.T) {
@@ -37,7 +38,7 @@ func TestNodeHint(t *testing.T) {
 	taskRequest := api.NewResource(v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")})
 	task := &api.TaskInfo{UID: "task", Resreq: taskRequest.Clone(), InitResreq: taskRequest}
 	taskJob := api.NewJobInfo("job", task)
-	taskRejection := api.Rejection{Source: api.RejectionAllocatable, Tasks: []api.TaskID{task.UID}}
+	taskRejection := unschedulable.Rejection{Source: unschedulable.RejectionAllocatable, Tasks: []api.TaskID{task.UID}}
 	enqueueJob := api.NewJobInfo("enqueue-job")
 	enqueueJob.PodGroup = &api.PodGroup{PodGroup: scheduling.PodGroup{Spec: scheduling.PodGroupSpec{
 		MinResources: &v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")},
@@ -46,16 +47,16 @@ func TestNodeHint(t *testing.T) {
 	tests := []struct {
 		name      string
 		job       *api.JobInfo
-		rejection api.Rejection
+		rejection unschedulable.Rejection
 		oldNode   *v1.Node
 		newNode   *v1.Node
-		want      api.HintResult
+		want      unschedulable.HintResult
 	}{
-		{name: "Node Add with requested CPU wakes task rejection", job: taskJob, rejection: taskRejection, newNode: node("1", "1Gi"), want: api.HintWakeup},
-		{name: "requested CPU increase wakes task rejection", job: taskJob, rejection: taskRejection, oldNode: node("1", "1Gi"), newNode: node("2", "1Gi"), want: api.HintWakeup},
-		{name: "requested CPU decrease is skipped", job: taskJob, rejection: taskRejection, oldNode: node("2", "1Gi"), newNode: node("1", "1Gi"), want: api.HintSkip},
-		{name: "unrequested memory increase is skipped", job: taskJob, rejection: taskRejection, oldNode: node("1", "1Gi"), newNode: node("1", "2Gi"), want: api.HintSkip},
-		{name: "MinResources CPU increase wakes enqueue rejection", job: enqueueJob, rejection: api.Rejection{Source: api.RejectionEnqueue}, oldNode: node("1", "1Gi"), newNode: node("2", "1Gi"), want: api.HintWakeup},
+		{name: "Node Add with requested CPU wakes task rejection", job: taskJob, rejection: taskRejection, newNode: node("1", "1Gi"), want: unschedulable.HintWakeup},
+		{name: "requested CPU increase wakes task rejection", job: taskJob, rejection: taskRejection, oldNode: node("1", "1Gi"), newNode: node("2", "1Gi"), want: unschedulable.HintWakeup},
+		{name: "requested CPU decrease is skipped", job: taskJob, rejection: taskRejection, oldNode: node("2", "1Gi"), newNode: node("1", "1Gi"), want: unschedulable.HintSkip},
+		{name: "unrequested memory increase is skipped", job: taskJob, rejection: taskRejection, oldNode: node("1", "1Gi"), newNode: node("1", "2Gi"), want: unschedulable.HintSkip},
+		{name: "MinResources CPU increase wakes enqueue rejection", job: enqueueJob, rejection: unschedulable.Rejection{Source: unschedulable.RejectionEnqueue}, oldNode: node("1", "1Gi"), newNode: node("2", "1Gi"), want: unschedulable.HintWakeup},
 	}
 
 	for _, test := range tests {

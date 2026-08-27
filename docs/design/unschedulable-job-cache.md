@@ -126,6 +126,11 @@ no per-Pod queue buckets. Instead, a single `UnschedulableJobCache` lives beside
 scheduling loop, and is updated from three sources: the session itself, informer
 handlers, and a background watchdog.
 
+The Alpha implementation names this component `unschedulable.JobCache`. The
+Scheduler owns it, while SchedulerCache forwards informer events to it. Hint
+contracts and the private registry live in `pkg/scheduler/unschedulable`, and
+cluster events reuse kube-scheduler's `fwk.ClusterEvent` type.
+
 ![UnschedulableJobCache architecture](images/unschedulable-job-cache.svg)
 
 The scheduler session drives most of the interaction. `OpenSession` derives
@@ -433,9 +438,9 @@ through the normal filter path every session, which matches today's behavior.
 
 ### 3. UnschedulableJobCache
 
-`UnschedulableJobCache` lives on `SchedulerCache`. It records unschedulable Jobs by
-`JobID`, together with the rejection list collected at `CloseSession` and the hint
-callbacks copied from `HintRegistry`.
+The Alpha `unschedulable.JobCache` is owned by the Scheduler. It records
+unschedulable Jobs by `JobID`, together with the rejection list collected at
+`CloseSession` and the hint functions copied from its private registry.
 
 The normal retry lifecycle is:
 
@@ -616,6 +621,9 @@ whose `RetryAfter` has passed. Keeping expiry off the scheduling path means
 normal wake-up path, and the timestamp is a safety net for missed hints or
 informer edge cases.
 
+Per-Job skip, wake-up, and watchdog metrics are disabled by default and can be
+enabled with `--unschedulable-job-cache-debug-metrics=true`.
+
 #### Per-session overhead
 
 For a Job with no cached record, `GetCachedRejections` is a single map
@@ -674,6 +682,10 @@ soon as one hint returns `HintWakeup`. A hint that returns an error is treated
 as `HintWakeup` too, so a broken hint can never keep a Job cached forever. Jobs
 whose hints all return `HintSkip` stay cached until another event fires or the
 `RetryAfter` watchdog (§3) lets them retry.
+
+The Alpha implementation also lets a provider supply `HintKey` functions that
+narrow candidates within an event bucket. Resource Fit uses this secondary
+index; providers without selective keys continue to use bucket dispatch.
 
 The cache lock is held only while copying candidate IDs and immutable subscription
 snapshots. `JobHintFn` callbacks run after the lock is released, so plugin code cannot
