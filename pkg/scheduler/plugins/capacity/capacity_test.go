@@ -1450,10 +1450,6 @@ func Test_buildHierarchicalQueueAttrs_nilSafety(t *testing.T) {
 func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
 	options.Default()
 
-	prevEnabledActionMap := conf.EnabledActionMap
-	conf.EnabledActionMap = map[string]bool{"enqueue": true}
-	defer func() { conf.EnabledActionMap = prevEnabledActionMap }()
-
 	trueValue := true
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 	uthelper.RegisterPlugins(plugins)
@@ -1514,6 +1510,7 @@ func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
 	// Cycle 1: allocate jobA. After this pA1/pA2/pA3 are Binding in cache,
 	// pgA stays Inqueue (Binding ∉ ScheduledStatus).
 	ssn1 := framework.OpenSession(sc, tiers, nil)
+	ssn1.EnabledActions = map[string]bool{"enqueue": true}
 	allocate.New().Execute(ssn1)
 	framework.CloseSession(ssn1)
 
@@ -1532,6 +1529,7 @@ func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
 	// Correct (fix applied):  allocated=3CPU, inqueue=max(0,3-3)=0 → 1+3+0=4 ≤ 4 → jobB bound.
 	// Buggy (pre-fix):        allocated=3CPU, inqueue=3CPU         → 1+3+3=7 > 4 → jobB rejected.
 	ssn2 := framework.OpenSession(sc, tiers, nil)
+	ssn2.EnabledActions = map[string]bool{"enqueue": true}
 	enqueue.New().Execute(ssn2)
 	allocate.New().Execute(ssn2)
 	framework.CloseSession(ssn2)

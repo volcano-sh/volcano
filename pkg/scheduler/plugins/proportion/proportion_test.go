@@ -523,12 +523,6 @@ func TestAllocate(t *testing.T) {
 func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
 	options.Default()
 
-	// Tell the allocate action that the enqueue action is active, so it will
-	// not bypass the queue-capacity check by promoting Pending→Inqueue itself.
-	prevEnabledActionMap := conf.EnabledActionMap
-	conf.EnabledActionMap = map[string]bool{"enqueue": true}
-	defer func() { conf.EnabledActionMap = prevEnabledActionMap }()
-
 	trueValue := true
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 	uthelper.RegisterPlugins(plugins)
@@ -595,6 +589,9 @@ func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
 	// After this cycle, pA1/pA2/pA3 are in Binding state in the scheduler cache.
 	// pgA remains Inqueue because Binding ∉ ScheduledStatus.
 	ssn1 := framework.OpenSession(sc, tiers, nil)
+	// Tell the allocate action that the enqueue action is active, so it will
+	// not bypass the queue-capacity check by promoting Pending→Inqueue itself.
+	ssn1.EnabledActions = map[string]bool{"enqueue": true}
 	allocate.New().Execute(ssn1)
 	framework.CloseSession(ssn1)
 
@@ -618,6 +615,7 @@ func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
 	// Buggy behaviour (pre-fix): attr.allocated=3CPU, attr.inqueue=3CPU (full minResources)
 	//   → jobB.minReq(1CPU) + 3CPU + 3CPU = 7CPU > capacity(4CPU) → jobB rejected.
 	ssn2 := framework.OpenSession(sc, tiers, nil)
+	ssn2.EnabledActions = map[string]bool{"enqueue": true}
 	enqueue.New().Execute(ssn2)
 	allocate.New().Execute(ssn2)
 	framework.CloseSession(ssn2)
