@@ -62,16 +62,22 @@ var (
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
 	KubeClientOptions kube.ClientOptions
-	CertFile          string
-	KeyFile           string
-	CaCertFile        string
-	CertData          []byte
-	KeyData           []byte
-	CaCertData        []byte
-	SchedulerNames    []string
-	SchedulerConf     string
-	SchedulePeriod    time.Duration
-	ResyncPeriod      time.Duration
+	// KubeClientVolumeBindingOptions carries a second set of QPS/Burst
+	// values used only for volume-binding API operations (PV / PVC).
+	// Isolating these from the main scheduler kube-client budget prevents
+	// PVC-heavy workloads (e.g. Spark OnDemand PVCs) from starving the
+	// scheduler's pod-binding traffic during bursts.
+	KubeClientVolumeBindingOptions kube.ClientOptions
+	CertFile                       string
+	KeyFile                        string
+	CaCertFile                     string
+	CertData                       []byte
+	KeyData                        []byte
+	CaCertData                     []byte
+	SchedulerNames                 []string
+	SchedulerConf                  string
+	SchedulePeriod                 time.Duration
+	ResyncPeriod                   time.Duration
 	// leaderElection defines the configuration of leader election.
 	LeaderElection config.LeaderElectionConfiguration
 	// Deprecated: use ResourceNamespace instead.
@@ -181,6 +187,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"Enable PriorityClass to provide the capacity of preemption at pod group level; to disable it, set it false")
 	fs.Float32Var(&s.KubeClientOptions.QPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
 	fs.IntVar(&s.KubeClientOptions.Burst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
+	fs.Float32Var(&s.KubeClientVolumeBindingOptions.QPS, "kube-api-qps-volume", defaultQPS, "QPS to use while talking with kubernetes apiserver for volume-binding operations (PV / PVC). Isolated from --kube-api-qps.")
+	fs.IntVar(&s.KubeClientVolumeBindingOptions.Burst, "kube-api-burst-volume", defaultBurst, "Burst to use while talking with kubernetes apiserver for volume-binding operations (PV / PVC). Isolated from --kube-api-burst.")
 
 	// Minimum number of feasible nodes to find and score
 	fs.Int32Var(&s.MinNodesToFind, "minimum-feasible-nodes", defaultMinNodesToFind, "The minimum number of feasible nodes to find and score")

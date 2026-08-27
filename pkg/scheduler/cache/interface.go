@@ -71,6 +71,13 @@ type Cache interface {
 	// Client returns the kubernetes clientSet, which can be used by plugins
 	Client() kubernetes.Interface
 
+	// ClientVolumeBinding returns the kubernetes clientSet dedicated to
+	// volume-binding API operations (PV / PVC). It is backed by a
+	// separate rest.Config with its own --kube-api-qps-volume /
+	// --kube-api-burst-volume budget so PVC-heavy scheduling waves do
+	// not compete with pod-binding traffic on the main client.
+	ClientVolumeBinding() kubernetes.Interface
+
 	// VCClient returns the volcano clientSet, which can be used by plugins
 	VCClient() vcclient.Interface
 

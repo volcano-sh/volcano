@@ -29,6 +29,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/features"
@@ -119,6 +120,14 @@ type PredicatesPlugin struct {
 	ScoreOrder          []string
 	PredicateCache      *predicateCache
 	Handle              fwk.Handle
+	// kubeClientVolumeBinding is the session's volume-binding kube-client
+	// (--kube-api-qps-volume / --kube-api-burst-volume). The VolumeBinding
+	// plugin is built with a handle backed by this client so its PV / PVC
+	// operations are metered against a dedicated QPS budget, isolating them
+	// from the rest of the scheduler's kube-client traffic. It is nil when
+	// the session did not provide a dedicated client (e.g. test harnesses
+	// that stub the cache), in which case the plugin falls back to Handle.
+	kubeClientVolumeBinding kubernetes.Interface
 }
 
 // New return predicate plugin
@@ -201,6 +210,13 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		k8s.WithInformerFactory(ssn.InformerFactory()),
 	)
 	pp.Handle = handle
+
+	// Record the session's volume-binding kube-client. The sibling Handle
+	// that uses it is built lazily inside InitPlugin's volumeBindingPluginOnce
+	// block, so it reuses the main handle's snapshot and is constructed only
+	// when the VolumeBinding plugin is actually initialized (once), rather
+	// than rescanning every node on each session.
+	pp.kubeClientVolumeBinding = ssn.KubeClientVolumeBinding()
 
 	pp.InitPlugin()
 
@@ -616,7 +632,34 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		volumeBindingPluginOnce.Do(func() {
 			setUpVolumeBindingArgs(vbArgs, pp.pluginArguments)
 
-			plugin, err := volumebinding.New(context.TODO(), vbArgs.VolumeBindingArgs, pp.Handle, pp.features)
+			// Default to the main handle. When the session provides a
+			// dedicated volume-binding kube-client, build a sibling handle
+			// that differs only by clientset so the plugin's PV / PVC calls
+			// use --kube-api-qps-volume / --kube-api-burst-volume instead of
+			// the main scheduler budget. The sibling reuses the main handle's
+			// snapshot, DRA manager, CSI manager and informer factory, so it
+			// does not rescan nodes; and because this runs inside
+			// volumeBindingPluginOnce, it is built only once for the process.
+			vbHandle := pp.Handle
+			if pp.kubeClientVolumeBinding != nil {
+				mainFwk, ok := pp.Handle.(*k8s.Framework)
+				if !ok {
+					klog.Fatalf("volume-binding handle: expected *k8s.Framework main handle, got %T", pp.Handle)
+				}
+				snapshot, ok := mainFwk.SnapshotSharedLister().(*k8s.Snapshot)
+				if !ok {
+					klog.Fatalf("volume-binding handle: expected *k8s.Snapshot, got %T", mainFwk.SnapshotSharedLister())
+				}
+				vbHandle = k8s.NewFramework(nil,
+					k8s.WithSnapshotSharedLister(snapshot),
+					k8s.WithSharedDRAManager(mainFwk.SharedDRAManager()),
+					k8s.WithSharedCSIManager(mainFwk.SharedCSIManager()),
+					k8s.WithClientSet(pp.kubeClientVolumeBinding),
+					k8s.WithInformerFactory(mainFwk.SharedInformerFactory()),
+				)
+			}
+
+			plugin, err := volumebinding.New(context.TODO(), vbArgs.VolumeBindingArgs, vbHandle, pp.features)
 			if err != nil {
 				klog.Fatalf("failed to create volume binding plugin with args %+v: %v", vbArgs, err)
 			}

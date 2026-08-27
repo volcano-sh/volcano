@@ -98,18 +98,24 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration) Cache {
-	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners, resyncPeriod, resourceSyncTimeout)
+func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration, configVolumeBinding *rest.Config) Cache {
+	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners, resyncPeriod, resourceSyncTimeout, configVolumeBinding)
 }
 
 // SchedulerCache cache for the kube batch
 type SchedulerCache struct {
 	sync.Mutex
 
-	kubeClient   kubernetes.Interface
-	restConfig   *rest.Config
-	vcClient     vcclient.Interface
-	defaultQueue string
+	kubeClient kubernetes.Interface
+	restConfig *rest.Config
+	// kubeClientVolumeBinding is a separate kubernetes.Interface built
+	// from configVolumeBinding, dedicated to volume-binding API calls
+	// (PV / PVC) initiated by the VolumeBinding plugin. Isolating this
+	// traffic from the main scheduler kube-client keeps pod-binding
+	// requests from being starved when PVC-heavy workloads burst.
+	kubeClientVolumeBinding kubernetes.Interface
+	vcClient                vcclient.Interface
+	defaultQueue            string
 	// schedulerName is the name for volcano scheduler
 	schedulerNames     []string
 	nodeSelectorLabels map[string]sets.Empty
@@ -517,7 +523,7 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 	}
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration, configVolumeBinding *rest.Config) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -529,6 +535,17 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	eventClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init eventClient, with err: %v", err))
+	}
+	// Fall back to the main config when no dedicated volume-binding config
+	// is supplied (unit tests, custom integrations). kubernetes.NewForConfig(nil)
+	// would otherwise panic here.
+	cfgVolumeBinding := configVolumeBinding
+	if cfgVolumeBinding == nil {
+		cfgVolumeBinding = config
+	}
+	kubeClientVolumeBinding, err := kubernetes.NewForConfig(cfgVolumeBinding)
+	if err != nil {
+		panic(fmt.Sprintf("failed init kubeClientVolumeBinding, with err: %v", err))
 	}
 
 	// create default queue and root queue
@@ -545,25 +562,26 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	)
 
 	sc := &SchedulerCache{
-		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Nodes:               make(map[string]*schedulingapi.NodeInfo),
-		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
-		errTasks:            workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
-		nodeQueue:           workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[schedulercache.QueueObjectWrapper]()),
-		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[string](deletedJobsRateLimiter),
-		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[schedulercache.QueueObjectWrapper]()),
-		kubeClient:          kubeClient,
-		vcClient:            vcClient,
-		restConfig:          config,
-		defaultQueue:        defaultQueue,
-		schedulerNames:      schedulerNames,
-		nodeSelectorLabels:  make(map[string]sets.Empty),
-		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
-		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
-		imageStates:         make(map[string]*imageState),
-		InUseNodesInShard:   sets.Set[string]{},
-		NodeShards:          make(map[string]*schedulingapi.NodeShardInfo),
+		Jobs:                    make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Nodes:                   make(map[string]*schedulingapi.NodeInfo),
+		Queues:                  make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		PriorityClasses:         make(map[string]*schedulingv1.PriorityClass),
+		errTasks:                workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
+		nodeQueue:               workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[schedulercache.QueueObjectWrapper]()),
+		DeletedJobs:             workqueue.NewTypedRateLimitingQueue[string](deletedJobsRateLimiter),
+		hyperNodesQueue:         workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[schedulercache.QueueObjectWrapper]()),
+		kubeClient:              kubeClient,
+		vcClient:                vcClient,
+		restConfig:              config,
+		kubeClientVolumeBinding: kubeClientVolumeBinding,
+		defaultQueue:            defaultQueue,
+		schedulerNames:          schedulerNames,
+		nodeSelectorLabels:      make(map[string]sets.Empty),
+		NamespaceCollection:     make(map[string]*schedulingapi.NamespaceCollection),
+		CSINodesStatus:          make(map[string]*schedulingapi.CSINodeStatusInfo),
+		imageStates:             make(map[string]*imageState),
+		InUseNodesInShard:       sets.Set[string]{},
+		NodeShards:              make(map[string]*schedulingapi.NodeShardInfo),
 
 		NodeList:            []string{},
 		nodeWorkers:         nodeWorkers,
@@ -1027,6 +1045,14 @@ func (sc *SchedulerCache) Client() kubernetes.Interface {
 	return sc.kubeClient
 }
 
+// ClientVolumeBinding returns the kubernetes clientSet dedicated to
+// volume-binding API operations. Backed by --kube-api-qps-volume /
+// --kube-api-burst-volume so PV / PVC traffic does not compete with
+// pod-binding traffic on the main scheduler kube-client budget.
+func (sc *SchedulerCache) ClientVolumeBinding() kubernetes.Interface {
+	return sc.kubeClientVolumeBinding
+}
+
 // VCClient returns the volcano clientSet
 func (sc *SchedulerCache) VCClient() vcclient.Interface {
 	return sc.vcClient
@@ -1435,6 +1461,7 @@ func (sc *SchedulerCache) executePreBind(ctx context.Context, bindContext *BindC
 func (sc *SchedulerCache) executePreBinds(ctx context.Context, bindContexts []*BindContext, preBinders map[string]PreBinder) []*BindContext {
 	logger := klog.FromContext(ctx)
 	successfulBindContexts := make([]*BindContext, 0, len(bindContexts))
+	preBindsStart := time.Now()
 
 	for _, bindContext := range bindContexts {
 		if err := sc.executePreBind(ctx, bindContext, preBinders); err != nil {
@@ -1449,6 +1476,9 @@ func (sc *SchedulerCache) executePreBinds(ctx context.Context, bindContexts []*B
 		successfulBindContexts = append(successfulBindContexts, bindContext)
 	}
 
+	if logger.V(4).Enabled() {
+		logger.V(4).Info("executePreBinds finished", "taskCount", len(bindContexts), "successCount", len(successfulBindContexts), "latency", time.Since(preBindsStart))
+	}
 	return successfulBindContexts
 }
 
