@@ -1535,22 +1535,21 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 	cloneJob := func(value *schedulingapi.JobInfo) {
 		defer wg.Done()
-		if value.PodGroup != nil {
-			value.Priority = sc.defaultPriority
+		clonedJob := value.Clone()
+		if clonedJob.PodGroup != nil {
+			clonedJob.Priority = sc.defaultPriority
 
-			priName := value.PodGroup.Spec.PriorityClassName
+			priName := clonedJob.PodGroup.Spec.PriorityClassName
 			if priorityClass, found := sc.PriorityClasses[priName]; found {
-				value.Priority = priorityClass.Value
+				clonedJob.Priority = priorityClass.Value
 			}
 
 			klog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
-				value.Namespace, value.Name, priName, value.Priority)
+				clonedJob.Namespace, clonedJob.Name, priName, clonedJob.Priority)
 		}
 
-		clonedJob := value.Clone()
-
 		cloneJobLock.Lock()
-		snapshot.Jobs[value.UID] = clonedJob
+		snapshot.Jobs[clonedJob.UID] = clonedJob
 		cloneJobLock.Unlock()
 	}
 
