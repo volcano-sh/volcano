@@ -6,9 +6,9 @@ concurrency:
 
 on:
   push:
-    branches:
-      - master
-    tags:
+    branches-ignore:
+      - "dependabot/**"
+      - "copilot/**"
   pull_request:
 
 permissions: read-all
