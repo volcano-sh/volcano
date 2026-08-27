@@ -27,30 +27,31 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 type ResourceFitHintProvider struct{}
 
-func (p *ResourceFitHintProvider) EventsToRegister(context.Context) ([]api.ClusterEventWithHint, error) {
+func (p *ResourceFitHintProvider) EventsToRegister(context.Context) ([]unschedulable.EventWithHint, error) {
 	podActionType := fwk.Delete
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
 		podActionType |= fwk.UpdatePodScaleDown
 	}
-	return []api.ClusterEventWithHint{
+	return []unschedulable.EventWithHint{
 		{
-			Event:       api.ClusterEvent{Resource: fwk.Pod, ActionType: podActionType},
+			Event:       fwk.ClusterEvent{Resource: fwk.Pod, ActionType: podActionType},
 			JobKeysFn:   resourcefit.PodReleaseJobKeys,
 			EventKeysFn: resourcefit.PodReleaseEventKeys,
 			HintFn:      resourceFitPodHint,
 		},
 		{
-			Event:       api.ClusterEvent{Resource: fwk.Node, ActionType: fwk.UpdateNodeAllocatable},
+			Event:       fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.UpdateNodeAllocatable},
 			JobKeysFn:   resourcefit.NodeGrowthJobKeys,
 			EventKeysFn: resourcefit.NodeGrowthEventKeys,
 			HintFn:      resourceFitNodeHint,
 		},
 		{
-			Event:       api.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add},
+			Event:       fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add},
 			JobKeysFn:   resourcefit.NodeAddJobKeys,
 			EventKeysFn: resourcefit.NodeAddEventKeys,
 			HintFn:      resourceFitNodeHint,
@@ -58,37 +59,37 @@ func (p *ResourceFitHintProvider) EventsToRegister(context.Context) ([]api.Clust
 	}, nil
 }
 
-func resourceFitPodHint(job *api.JobInfo, rejection api.Rejection, oldObj, newObj any) (api.HintResult, error) {
+func resourceFitPodHint(job *api.JobInfo, rejection unschedulable.Rejection, oldObj, newObj any) (unschedulable.HintResult, error) {
 	oldPod, ok := oldObj.(*v1.Pod)
 	if !ok || oldPod == nil {
-		return api.HintWakeup, fmt.Errorf("expected old object to be *v1.Pod, got %T", oldObj)
+		return unschedulable.HintWakeup, fmt.Errorf("expected old object to be *v1.Pod, got %T", oldObj)
 	}
 
 	if newObj == nil {
 		// 1. Deleting a rejected task changes the Job and triggers a retry.
 		if rejectionIncludesPod(rejection, oldPod) {
-			return api.HintWakeup, nil
+			return unschedulable.HintWakeup, nil
 		}
 
 		// 2. Deleting an unrelated pending or terminated Pod frees no node
 		// resources; deleting a scheduled Pod may free requested resources.
 		if oldPod.Spec.NodeName == "" || podTerminated(oldPod) {
-			return api.HintSkip, nil
+			return unschedulable.HintSkip, nil
 		}
 		return resourceReleaseHint(job, rejection, api.GetPodResourceRequest(oldPod), api.EmptyResource()), nil
 	}
 
 	newPod, ok := newObj.(*v1.Pod)
 	if !ok || newPod == nil {
-		return api.HintWakeup, fmt.Errorf("expected new object to be *v1.Pod, got %T", newObj)
+		return unschedulable.HintWakeup, fmt.Errorf("expected new object to be *v1.Pod, got %T", newObj)
 	}
 	if !utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
-		return api.HintSkip, nil
+		return unschedulable.HintSkip, nil
 	}
 
 	// 3. Scaling down an unrelated pending Pod does not affect node resources.
 	if oldPod.Spec.NodeName == "" && !rejectionIncludesPod(rejection, oldPod) {
-		return api.HintSkip, nil
+		return unschedulable.HintSkip, nil
 	}
 
 	// 4. For an in-place scale-down, retry only when the Pod request decreased
@@ -96,10 +97,10 @@ func resourceFitPodHint(job *api.JobInfo, rejection api.Rejection, oldObj, newOb
 	return resourceReleaseHint(job, rejection, api.GetPodResourceRequest(oldPod), api.GetPodResourceRequest(newPod)), nil
 }
 
-func resourceFitNodeHint(job *api.JobInfo, rejection api.Rejection, oldObj, newObj any) (api.HintResult, error) {
+func resourceFitNodeHint(job *api.JobInfo, rejection unschedulable.Rejection, oldObj, newObj any) (unschedulable.HintResult, error) {
 	newNode, ok := newObj.(*v1.Node)
 	if !ok || newNode == nil {
-		return api.HintWakeup, fmt.Errorf("expected new object to be *v1.Node, got %T", newObj)
+		return unschedulable.HintWakeup, fmt.Errorf("expected new object to be *v1.Node, got %T", newObj)
 	}
 	// 1. A newly added Node triggers a retry when its allocatable resources can
 	// satisfy at least one rejected task's initial resource request.
@@ -108,7 +109,7 @@ func resourceFitNodeHint(job *api.JobInfo, rejection api.Rejection, oldObj, newO
 	}
 	oldNode, ok := oldObj.(*v1.Node)
 	if !ok || oldNode == nil {
-		return api.HintWakeup, fmt.Errorf("expected old object to be *v1.Node, got %T", oldObj)
+		return unschedulable.HintWakeup, fmt.Errorf("expected old object to be *v1.Node, got %T", oldObj)
 	}
 
 	// 2. A Node update triggers a retry only when requested allocatable
@@ -119,23 +120,23 @@ func resourceFitNodeHint(job *api.JobInfo, rejection api.Rejection, oldObj, newO
 // newNodeFitHint reports whether a newly added Node's allocatable resources can
 // satisfy at least one rejected task's initial resource request. Missing Job,
 // rejection, or resource data returns HintWakeup.
-func newNodeFitHint(job *api.JobInfo, rejection api.Rejection, newAllocatable *api.Resource) api.HintResult {
+func newNodeFitHint(job *api.JobInfo, rejection unschedulable.Rejection, newAllocatable *api.Resource) unschedulable.HintResult {
 	if job == nil || len(rejection.Tasks) == 0 || newAllocatable == nil {
-		return api.HintWakeup
+		return unschedulable.HintWakeup
 	}
 	for _, taskID := range rejection.Tasks {
 		task := job.Tasks[taskID]
 		if task == nil {
-			return api.HintWakeup
+			return unschedulable.HintWakeup
 		}
 		if task.InitResreq == nil {
-			return api.HintWakeup
+			return unschedulable.HintWakeup
 		}
 		if task.InitResreq.LessEqual(newAllocatable, api.Zero) {
-			return api.HintWakeup
+			return unschedulable.HintWakeup
 		}
 	}
-	return api.HintSkip
+	return unschedulable.HintSkip
 }
 
 // resourceReleaseHint reports whether a Pod event releases a resource requested
@@ -152,20 +153,20 @@ func newNodeFitHint(job *api.JobInfo, rejection api.Rejection, newAllocatable *a
 // releasing 1 CPU can make the task fit even though the released quantity is
 // less than the task request. The next scheduling cycle performs the complete
 // resource-fit check. Missing Job or rejection data returns HintWakeup.
-func resourceReleaseHint(job *api.JobInfo, rejection api.Rejection, oldPodRequest, newPodRequest *api.Resource) api.HintResult {
+func resourceReleaseHint(job *api.JobInfo, rejection unschedulable.Rejection, oldPodRequest, newPodRequest *api.Resource) unschedulable.HintResult {
 	if job == nil || len(rejection.Tasks) == 0 {
-		return api.HintWakeup
+		return unschedulable.HintWakeup
 	}
 	for _, taskID := range rejection.Tasks {
 		task := job.Tasks[taskID]
 		if task == nil {
-			return api.HintWakeup
+			return unschedulable.HintWakeup
 		}
 		if requestedResourceDecreased(task.InitResreq, oldPodRequest, newPodRequest) {
-			return api.HintWakeup
+			return unschedulable.HintWakeup
 		}
 	}
-	return api.HintSkip
+	return unschedulable.HintSkip
 }
 
 // allocatableIncreaseHint reports whether a Node update may satisfy at least one
@@ -180,23 +181,23 @@ func resourceReleaseHint(job *api.JobInfo, rejection api.Rejection, oldPodReques
 // its requested resource dimensions increased. The event does not include the task state required to calculate
 // FutureIdle, so the next scheduling cycle performs the complete resource-fit
 // check. Missing Job, rejection, or resource data returns HintWakeup.
-func allocatableIncreaseHint(job *api.JobInfo, rejection api.Rejection, oldAllocatable, newAllocatable *api.Resource) api.HintResult {
+func allocatableIncreaseHint(job *api.JobInfo, rejection unschedulable.Rejection, oldAllocatable, newAllocatable *api.Resource) unschedulable.HintResult {
 	if job == nil || len(rejection.Tasks) == 0 || oldAllocatable == nil || newAllocatable == nil {
-		return api.HintWakeup
+		return unschedulable.HintWakeup
 	}
 	for _, taskID := range rejection.Tasks {
 		task := job.Tasks[taskID]
 		if task == nil {
-			return api.HintWakeup
+			return unschedulable.HintWakeup
 		}
 		if task.InitResreq == nil {
-			return api.HintWakeup
+			return unschedulable.HintWakeup
 		}
 		if task.InitResreq.LessEqual(newAllocatable, api.Zero) && requestedResourceIncreased(task.InitResreq, oldAllocatable, newAllocatable) {
-			return api.HintWakeup
+			return unschedulable.HintWakeup
 		}
 	}
-	return api.HintSkip
+	return unschedulable.HintSkip
 }
 
 // requestedResourceDecreased reports whether oldValue is greater than newValue
@@ -234,7 +235,7 @@ func podTerminated(pod *v1.Pod) bool {
 
 // rejectionIncludesPod reports whether the event Pod is one of the tasks that
 // produced this resource-fit rejection.
-func rejectionIncludesPod(rejection api.Rejection, pod *v1.Pod) bool {
+func rejectionIncludesPod(rejection unschedulable.Rejection, pod *v1.Pod) bool {
 	taskID := api.TaskID(pod.UID)
 	for _, rejectedTaskID := range rejection.Tasks {
 		if rejectedTaskID == taskID {

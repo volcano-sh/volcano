@@ -145,6 +145,7 @@ custom:
   controller_affinity: ~
   hypernode_controller_affinity: ~
   scheduler_affinity: ~
+  scheduler_unschedulable_job_cache_debug_metrics: false
   agent_affinity: ~
 
 # Specify tolerations for all main Volcano components or per component

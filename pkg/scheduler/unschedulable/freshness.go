@@ -14,25 +14,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cache
+package unschedulable
 
-import "volcano.sh/volcano/pkg/scheduler/api"
+import (
+	fwk "k8s.io/kube-scheduler/framework"
+
+	"volcano.sh/volcano/pkg/scheduler/api"
+)
 
 // freshnessTracker prevents session results from being cached when they were
 // computed from a snapshot older than a relevant cluster event or direct Job
-// invalidation. Its methods must be called while UnschedulableJobCache.mu is
+// invalidation. Its methods must be called while JobCache.mu is
 // held.
 type freshnessTracker struct {
 	currentGeneration   uint64
 	sessionGeneration   uint64
 	sessionStarted      bool
-	lastEventGeneration map[api.ClusterEvent]uint64
+	lastEventGeneration map[eventKey]uint64
 	lastJobInvalidation map[api.JobID]uint64
 }
 
 func newFreshnessTracker() freshnessTracker {
 	return freshnessTracker{
-		lastEventGeneration: make(map[api.ClusterEvent]uint64),
+		lastEventGeneration: make(map[eventKey]uint64),
 		lastJobInvalidation: make(map[api.JobID]uint64),
 	}
 }
@@ -45,9 +49,9 @@ func (t *freshnessTracker) beginSession() {
 	clear(t.lastJobInvalidation)
 }
 
-func (t *freshnessTracker) recordEvent(event api.ClusterEvent) {
+func (t *freshnessTracker) recordEvent(event fwk.ClusterEvent) {
 	t.currentGeneration++
-	t.lastEventGeneration[event] = t.currentGeneration
+	t.lastEventGeneration[newEventKey(event)] = t.currentGeneration
 }
 
 func (t *freshnessTracker) recordJobInvalidation(jobID api.JobID) {
@@ -63,12 +67,12 @@ func (t *freshnessTracker) matchingEventOccurredAfterSessionStart(eventHints []p
 	if !t.sessionStarted {
 		return false
 	}
-	for event, generation := range t.lastEventGeneration {
+	for key, generation := range t.lastEventGeneration {
 		if generation <= t.sessionGeneration {
 			continue
 		}
 		for _, eventHint := range eventHints {
-			if eventMatches(eventHint.event, event) {
+			if eventMatches(eventHint.event, key.clusterEvent()) {
 				return true
 			}
 		}

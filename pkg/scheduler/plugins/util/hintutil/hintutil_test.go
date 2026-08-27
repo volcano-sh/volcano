@@ -25,6 +25,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 func TestNodeHint(t *testing.T) {
@@ -37,7 +38,7 @@ func TestNodeHint(t *testing.T) {
 	taskRequest := api.NewResource(v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")})
 	task := &api.TaskInfo{UID: "task", Resreq: taskRequest.Clone(), InitResreq: taskRequest}
 	taskJob := api.NewJobInfo("job", task)
-	taskRejection := api.Rejection{Source: api.RejectionAllocatable, Tasks: []api.TaskID{task.UID}}
+	taskRejection := unschedulable.Rejection{Source: unschedulable.RejectionAllocatable, Tasks: []api.TaskID{task.UID}}
 	enqueueJob := api.NewJobInfo("enqueue-job")
 	enqueueJob.PodGroup = &api.PodGroup{PodGroup: scheduling.PodGroup{Spec: scheduling.PodGroupSpec{
 		MinResources: &v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")},
@@ -46,16 +47,16 @@ func TestNodeHint(t *testing.T) {
 	tests := []struct {
 		name      string
 		job       *api.JobInfo
-		rejection api.Rejection
+		rejection unschedulable.Rejection
 		oldNode   *v1.Node
 		newNode   *v1.Node
-		want      api.HintResult
+		want      unschedulable.HintResult
 	}{
-		{name: "Node Add with requested CPU wakes task rejection", job: taskJob, rejection: taskRejection, newNode: node("1", "1Gi"), want: api.HintWakeup},
-		{name: "requested CPU increase wakes task rejection", job: taskJob, rejection: taskRejection, oldNode: node("1", "1Gi"), newNode: node("2", "1Gi"), want: api.HintWakeup},
-		{name: "requested CPU decrease is skipped", job: taskJob, rejection: taskRejection, oldNode: node("2", "1Gi"), newNode: node("1", "1Gi"), want: api.HintSkip},
-		{name: "unrequested memory increase is skipped", job: taskJob, rejection: taskRejection, oldNode: node("1", "1Gi"), newNode: node("1", "2Gi"), want: api.HintSkip},
-		{name: "MinResources CPU increase wakes enqueue rejection", job: enqueueJob, rejection: api.Rejection{Source: api.RejectionEnqueue}, oldNode: node("1", "1Gi"), newNode: node("2", "1Gi"), want: api.HintWakeup},
+		{name: "Node Add with requested CPU wakes task rejection", job: taskJob, rejection: taskRejection, newNode: node("1", "1Gi"), want: unschedulable.HintWakeup},
+		{name: "requested CPU increase wakes task rejection", job: taskJob, rejection: taskRejection, oldNode: node("1", "1Gi"), newNode: node("2", "1Gi"), want: unschedulable.HintWakeup},
+		{name: "requested CPU decrease is skipped", job: taskJob, rejection: taskRejection, oldNode: node("2", "1Gi"), newNode: node("1", "1Gi"), want: unschedulable.HintSkip},
+		{name: "unrequested memory increase is skipped", job: taskJob, rejection: taskRejection, oldNode: node("1", "1Gi"), newNode: node("1", "2Gi"), want: unschedulable.HintSkip},
+		{name: "MinResources CPU increase wakes enqueue rejection", job: enqueueJob, rejection: unschedulable.Rejection{Source: unschedulable.RejectionEnqueue}, oldNode: node("1", "1Gi"), newNode: node("2", "1Gi"), want: unschedulable.HintWakeup},
 	}
 
 	for _, test := range tests {
@@ -96,6 +97,64 @@ func TestUsageReleasedForRequest(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			if got := UsageReleasedForRequest(request, test.oldUsage, test.newUsage); got != test.want {
 				t.Fatalf("UsageReleasedForRequest() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestResourceLimitRelaxed(t *testing.T) {
+	resources := func(values map[v1.ResourceName]string) v1.ResourceList {
+		result := make(v1.ResourceList, len(values))
+		for name, value := range values {
+			result[name] = resource.MustParse(value)
+		}
+		return result
+	}
+
+	tests := []struct {
+		name     string
+		oldLimit v1.ResourceList
+		newLimit v1.ResourceList
+		want     bool
+	}{
+		{
+			name:     "increasing an existing limit is relaxed",
+			oldLimit: resources(map[v1.ResourceName]string{v1.ResourceCPU: "1"}),
+			newLimit: resources(map[v1.ResourceName]string{v1.ResourceCPU: "2"}),
+			want:     true,
+		},
+		{
+			name:     "removing an existing limit is relaxed",
+			oldLimit: resources(map[v1.ResourceName]string{v1.ResourceCPU: "1"}),
+			newLimit: v1.ResourceList{},
+			want:     true,
+		},
+		{
+			name:     "adding a new limit is not relaxed",
+			oldLimit: v1.ResourceList{},
+			newLimit: resources(map[v1.ResourceName]string{v1.ResourceCPU: "10"}),
+		},
+		{
+			name: "adding one limit while retaining another is not relaxed",
+			oldLimit: resources(map[v1.ResourceName]string{
+				v1.ResourceMemory: "1Gi",
+			}),
+			newLimit: resources(map[v1.ResourceName]string{
+				v1.ResourceCPU:    "10",
+				v1.ResourceMemory: "1Gi",
+			}),
+		},
+		{
+			name:     "decreasing an existing limit is not relaxed",
+			oldLimit: resources(map[v1.ResourceName]string{v1.ResourceCPU: "2"}),
+			newLimit: resources(map[v1.ResourceName]string{v1.ResourceCPU: "1"}),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ResourceLimitRelaxed(test.oldLimit, test.newLimit); got != test.want {
+				t.Fatalf("ResourceLimitRelaxed() = %v, want %v", got, test.want)
 			}
 		})
 	}

@@ -17,6 +17,7 @@ limitations under the License.
 package cache
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/utils/cpuset"
@@ -36,8 +38,43 @@ import (
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+type testHintProvider struct {
+	event fwk.ClusterEvent
+}
+
+func (p testHintProvider) EventsToRegister(context.Context) ([]unschedulable.EventWithHint, error) {
+	return []unschedulable.EventWithHint{{Event: p.event}}, nil
+}
+
+func TestRegisterHintEventHandler(t *testing.T) {
+	tests := []struct {
+		name             string
+		jobCache         *unschedulable.JobCache
+		wantRegistration bool
+	}{
+		{name: "cache disabled", wantRegistration: false},
+		{name: "cache enabled", jobCache: unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration), wantRegistration: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			schedulerCache := &SchedulerCache{unschedulableJobCache: test.jobCache}
+			informer := kcache.NewSharedIndexInformer(&kcache.ListWatch{}, &v1.PersistentVolume{}, 0, kcache.Indexers{})
+			handlers := make(map[string]kcache.ResourceEventHandlerRegistration)
+
+			schedulerCache.registerHintEventHandler(handlers, "pv", informer, fwk.PersistentVolume)
+
+			_, registered := handlers["pv"]
+			if registered != test.wantRegistration {
+				t.Fatalf("hint handler registered = %v, want %v", registered, test.wantRegistration)
+			}
+		})
+	}
+}
 
 func TestSchedulerCache_updateTask(t *testing.T) {
 	namespace := "test"
@@ -414,14 +451,14 @@ func TestUpdatePodGroupUnschedulableCache(t *testing.T) {
 			jobID := api.JobID(namespace + "/" + name)
 			job := api.NewJobInfo(jobID)
 			jobs := map[api.JobID]*api.JobInfo{jobID: job}
-			unschedulableCache, registry := newTestUnschedulableCache()
-			registerTestHint(registry, plugin, api.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add}, nil)
-			rejections := []api.Rejection{{Plugin: plugin, Source: api.RejectionPredicate}}
-			unschedulableCache.RecordUnschedulable(job, rejections)
+			unschedulableCache := unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration)
+			unschedulableCache.AddHintProvider(plugin, testHintProvider{event: fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add}})
+			rejections := []unschedulable.Rejection{{Plugin: plugin, Source: unschedulable.RejectionPredicate}}
+			unschedulableCache.Record(job, rejections)
 
 			cache := &SchedulerCache{
-				Jobs:               jobs,
-				unschedulableCache: unschedulableCache,
+				Jobs:                  jobs,
+				unschedulableJobCache: unschedulableCache,
 			}
 			oldPodGroup := &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
@@ -439,7 +476,7 @@ func TestUpdatePodGroupUnschedulableCache(t *testing.T) {
 
 			cache.UpdatePodGroupV1beta1(oldPodGroup, newPodGroup)
 
-			gotCached := len(unschedulableCache.GetCachedRejections(job)) > 0
+			gotCached := len(unschedulableCache.CachedRejections(job)) > 0
 			if gotCached != test.wantCached {
 				t.Fatalf("cached rejection exists = %v, want %v", gotCached, test.wantCached)
 			}
@@ -460,14 +497,14 @@ func TestPodSchedulingInputChangeInvalidatesUnschedulableCache(t *testing.T) {
 		pod.Annotations = map[string]string{schedulingv1.KubeGroupNameAnnotationKey: groupName}
 		return pod
 	}
-	newCache := func(t *testing.T, pods ...*v1.Pod) (*SchedulerCache, *UnschedulableJobCache) {
+	newCache := func(t *testing.T, pods ...*v1.Pod) (*SchedulerCache, *unschedulable.JobCache) {
 		t.Helper()
-		unschedulableCache, registry := newTestUnschedulableCache()
-		registerTestHint(registry, plugin, api.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add}, nil)
+		unschedulableCache := unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration)
+		unschedulableCache.AddHintProvider(plugin, testHintProvider{event: fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add}})
 		schedulerCache := &SchedulerCache{
-			Jobs:               make(map[api.JobID]*api.JobInfo),
-			Nodes:              make(map[string]*api.NodeInfo),
-			unschedulableCache: unschedulableCache,
+			Jobs:                  make(map[api.JobID]*api.JobInfo),
+			Nodes:                 make(map[string]*api.NodeInfo),
+			unschedulableJobCache: unschedulableCache,
 		}
 		for _, pod := range pods {
 			schedulerCache.AddPod(pod)
@@ -477,16 +514,16 @@ func TestPodSchedulingInputChangeInvalidatesUnschedulableCache(t *testing.T) {
 			t.Fatalf("job %s was not created", jobID)
 		}
 		// AddPod invalidates the Job. Begin a scheduler session after those
-		// initial mutations so RecordUnschedulable models CloseSession.
+		// initial mutations so Record models CloseSession.
 		unschedulableCache.BeginSession()
-		unschedulableCache.RecordUnschedulable(job.Clone(), []api.Rejection{{
+		unschedulableCache.Record(job.Clone(), []unschedulable.Rejection{{
 			Plugin: plugin,
-			Source: api.RejectionPredicate,
+			Source: unschedulable.RejectionPredicate,
 		}})
 		return schedulerCache, unschedulableCache
 	}
-	isCached := func(cache *SchedulerCache, unschedulableCache *UnschedulableJobCache) bool {
-		return len(unschedulableCache.GetCachedRejections(cache.Jobs[jobID])) > 0
+	isCached := func(cache *SchedulerCache, unschedulableCache *unschedulable.JobCache) bool {
+		return len(unschedulableCache.CachedRejections(cache.Jobs[jobID])) > 0
 	}
 
 	t.Run("pod add", func(t *testing.T) {
@@ -549,49 +586,18 @@ func TestPodSchedulingInputChangeInvalidatesUnschedulableCache(t *testing.T) {
 		}
 	})
 
-	for _, test := range []struct {
-		name     string
-		newGroup string
-	}{
-		{name: "pod reassigned to another job", newGroup: "new-job"},
-		{name: "pod removed from job", newGroup: ""},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			oldPod := newPod("pod")
-			cache, unschedulableCache := newCache(t, oldPod, newPod("kept"))
-			oldJob := cache.Jobs[jobID].Clone()
-			updatedPod := oldPod.DeepCopy()
-			if test.newGroup == "" {
-				delete(updatedPod.Annotations, schedulingv1.KubeGroupNameAnnotationKey)
-			} else {
-				updatedPod.Annotations[schedulingv1.KubeGroupNameAnnotationKey] = test.newGroup
-			}
+	t.Run("pod joins job", func(t *testing.T) {
+		oldPod := buildPod(namespace, "pod", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), nil, nil)
+		cache, unschedulableCache := newCache(t, oldPod, newPod("kept"))
+		updatedPod := oldPod.DeepCopy()
+		updatedPod.Annotations = map[string]string{schedulingv1.KubeGroupNameAnnotationKey: groupName}
 
-			cache.UpdatePod(oldPod, updatedPod)
+		cache.UpdatePod(oldPod, updatedPod)
 
-			if got := unschedulableCache.GetCachedRejections(oldJob); got != nil {
-				t.Fatalf("old Job cached rejection survived Pod group change: %#v", got)
-			}
-			if test.newGroup == "" {
-				return
-			}
-
-			newJobID := api.JobID(namespace + "/" + test.newGroup)
-			newJob := cache.Jobs[newJobID]
-			if newJob == nil {
-				t.Fatalf("new job %s was not created", newJobID)
-			}
-			// The reassigned Job had no record when the update occurred. A stale
-			// session conclusion must still be rejected by freshness tracking.
-			unschedulableCache.RecordUnschedulable(newJob.Clone(), []api.Rejection{{
-				Plugin: plugin,
-				Source: api.RejectionPredicate,
-			}})
-			if got := unschedulableCache.GetCachedRejections(newJob); got != nil {
-				t.Fatalf("new Job accepted a stale post-reassignment record: %#v", got)
-			}
-		})
-	}
+		if isCached(cache, unschedulableCache) {
+			t.Fatal("cached rejection survived adding a Pod to the Job")
+		}
+	})
 }
 
 func TestSchedulerCache_DeletePodGroupV1beta1(t *testing.T) {

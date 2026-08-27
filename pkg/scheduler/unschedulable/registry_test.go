@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cache
+package unschedulable
 
 import (
 	"context"
@@ -28,80 +28,89 @@ import (
 )
 
 type registryHintProvider struct {
-	events []api.ClusterEventWithHint
+	events []EventWithHint
 	err    error
 }
 
-func (p registryHintProvider) EventsToRegister(context.Context) ([]api.ClusterEventWithHint, error) {
+func (p registryHintProvider) EventsToRegister(context.Context) ([]EventWithHint, error) {
 	return p.events, p.err
 }
 
 func TestHintRegistryRegister(t *testing.T) {
-	nodeEvent := api.ClusterEventWithHint{
-		Event: api.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add},
+	nodeEvent := EventWithHint{
+		Event: fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add},
 	}
-	podEvent := api.ClusterEventWithHint{
-		Event: api.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete},
+	podEvent := EventWithHint{
+		Event: fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete},
 	}
 	indexedNodeEvent := nodeEvent
-	indexedNodeEvent.JobKeysFn = func(*api.JobInfo, api.Rejection) ([]api.HintKey, error) {
-		return []api.HintKey{"node"}, nil
+	indexedNodeEvent.JobKeysFn = func(*api.JobInfo, Rejection) ([]HintKey, error) {
+		return []HintKey{"node"}, nil
 	}
-	indexedNodeEvent.EventKeysFn = func(any, any) ([]api.HintKey, error) {
-		return []api.HintKey{"node"}, nil
+	indexedNodeEvent.EventKeysFn = func(any, any) ([]HintKey, error) {
+		return []HintKey{"node"}, nil
 	}
 	unpairedNodeEvent := indexedNodeEvent
 	unpairedNodeEvent.EventKeysFn = nil
+	labeledNodeEvent := nodeEvent
+	labeledNodeEvent.Event.CustomLabel = "same-semantic-event"
 	tests := []struct {
 		name      string
 		providers []registryHintProvider
-		want      []api.ClusterEventWithHint
+		want      []EventWithHint
 	}{
 		{
 			name:      "registers plugin events",
-			providers: []registryHintProvider{{events: []api.ClusterEventWithHint{nodeEvent}}},
-			want:      []api.ClusterEventWithHint{nodeEvent},
+			providers: []registryHintProvider{{events: []EventWithHint{nodeEvent}}},
+			want:      []EventWithHint{nodeEvent},
 		},
 		{
 			name: "replaces previous plugin events",
 			providers: []registryHintProvider{
-				{events: []api.ClusterEventWithHint{nodeEvent}},
-				{events: []api.ClusterEventWithHint{podEvent}},
+				{events: []EventWithHint{nodeEvent}},
+				{events: []EventWithHint{podEvent}},
 			},
-			want: []api.ClusterEventWithHint{podEvent},
+			want: []EventWithHint{podEvent},
 		},
 		{
 			name: "failed replacement clears previous events",
 			providers: []registryHintProvider{
-				{events: []api.ClusterEventWithHint{nodeEvent}},
+				{events: []EventWithHint{nodeEvent}},
 				{err: errors.New("registration failed")},
 			},
 		},
 		{
 			name: "duplicate plugin event clears registration",
-			providers: []registryHintProvider{{events: []api.ClusterEventWithHint{
+			providers: []registryHintProvider{{events: []EventWithHint{
 				nodeEvent,
 				nodeEvent,
 			}}},
 		},
 		{
+			name: "custom label does not create a distinct plugin event",
+			providers: []registryHintProvider{{events: []EventWithHint{
+				nodeEvent,
+				labeledNodeEvent,
+			}}},
+		},
+		{
 			name: "changing index mode clears registration",
 			providers: []registryHintProvider{
-				{events: []api.ClusterEventWithHint{nodeEvent}},
-				{events: []api.ClusterEventWithHint{indexedNodeEvent}},
+				{events: []EventWithHint{nodeEvent}},
+				{events: []EventWithHint{indexedNodeEvent}},
 			},
 		},
 		{
 			name:      "unpaired HintKey functions clear registration",
-			providers: []registryHintProvider{{events: []api.ClusterEventWithHint{unpairedNodeEvent}}},
+			providers: []registryHintProvider{{events: []EventWithHint{unpairedNodeEvent}}},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			registry := NewHintRegistry()
+			registry := newHintRegistry()
 			for _, provider := range test.providers {
-				registry.Register("plugin", provider)
+				registry.register("plugin", provider)
 			}
 
 			if got := registry.eventsForPlugin("plugin"); !reflect.DeepEqual(got, test.want) {

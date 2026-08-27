@@ -14,36 +14,38 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package api
+package unschedulable
 
 import (
 	"reflect"
 	"testing"
+
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 func TestComputeSkip(t *testing.T) {
-	task := func(id TaskID, role string) *TaskInfo {
-		return &TaskInfo{UID: id, TaskRole: role}
+	task := func(id api.TaskID, role string) *api.TaskInfo {
+		return &api.TaskInfo{UID: id, TaskRole: role}
 	}
-	pendingJob := func(minAvailable int32, tasks ...*TaskInfo) *JobInfo {
-		pending := TasksMap{}
+	pendingJob := func(minAvailable int32, tasks ...*api.TaskInfo) *api.JobInfo {
+		pending := api.TasksMap{}
 		for _, task := range tasks {
 			pending[task.UID] = task
 		}
-		return &JobInfo{
+		return &api.JobInfo{
 			MinAvailable:     minAvailable,
-			TaskStatusIndex:  map[TaskStatus]TasksMap{Pending: pending},
+			TaskStatusIndex:  map[api.TaskStatus]api.TasksMap{api.Pending: pending},
 			TaskMinAvailable: map[string]int32{},
-			SubJobs:          map[SubJobID]*SubJobInfo{},
-			MinSubJobs:       map[SubJobGID]int32{},
+			SubJobs:          map[api.SubJobID]*api.SubJobInfo{},
+			MinSubJobs:       map[api.SubJobGID]int32{},
 		}
 	}
 
 	tests := []struct {
 		name       string
-		job        *JobInfo
+		job        *api.JobInfo
 		rejections []Rejection
-		want       SkipDecision
+		want       api.SkipDecision
 	}{
 		{
 			name: "enqueue rejection skips enqueue",
@@ -51,7 +53,7 @@ func TestComputeSkip(t *testing.T) {
 			rejections: []Rejection{{
 				Source: RejectionEnqueue,
 			}},
-			want: SkipDecision{Enqueue: true},
+			want: api.SkipDecision{Enqueue: true},
 		},
 		{
 			name: "skips rejected task when remaining tasks reach Job minimum",
@@ -59,9 +61,9 @@ func TestComputeSkip(t *testing.T) {
 				task("task-1", ""), task("task-2", ""), task("task-3", "")),
 			rejections: []Rejection{{
 				Source: RejectionPredicate,
-				Tasks:  []TaskID{"task-1"},
+				Tasks:  []api.TaskID{"task-1"},
 			}},
-			want: SkipDecision{Tasks: map[TaskID]struct{}{"task-1": {}}},
+			want: api.SkipDecision{Tasks: map[api.TaskID]struct{}{"task-1": {}}},
 		},
 		{
 			name: "skips allocation when remaining tasks miss Job minimum",
@@ -69,34 +71,34 @@ func TestComputeSkip(t *testing.T) {
 				task("task-1", ""), task("task-2", ""), task("task-3", "")),
 			rejections: []Rejection{{
 				Source: RejectionPredicate,
-				Tasks:  []TaskID{"task-1"},
+				Tasks:  []api.TaskID{"task-1"},
 			}},
-			want: SkipDecision{Allocate: true},
+			want: api.SkipDecision{Allocate: true},
 		},
 		{
 			name: "counts running tasks toward Job minimum",
-			job: &JobInfo{
+			job: &api.JobInfo{
 				MinAvailable: 2,
-				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Running: {"running": task("running", "")},
-					Pending: {
+				TaskStatusIndex: map[api.TaskStatus]api.TasksMap{
+					api.Running: {"running": task("running", "")},
+					api.Pending: {
 						"rejected": task("rejected", ""),
 						"pending":  task("pending", ""),
 					},
 				},
 				TaskMinAvailable: map[string]int32{},
-				SubJobs:          map[SubJobID]*SubJobInfo{},
-				MinSubJobs:       map[SubJobGID]int32{},
+				SubJobs:          map[api.SubJobID]*api.SubJobInfo{},
+				MinSubJobs:       map[api.SubJobGID]int32{},
 			},
 			rejections: []Rejection{{
 				Source: RejectionPredicate,
-				Tasks:  []TaskID{"rejected"},
+				Tasks:  []api.TaskID{"rejected"},
 			}},
-			want: SkipDecision{Tasks: map[TaskID]struct{}{"rejected": {}}},
+			want: api.SkipDecision{Tasks: map[api.TaskID]struct{}{"rejected": {}}},
 		},
 		{
 			name: "skips allocation when a role minimum cannot be reached",
-			job: func() *JobInfo {
+			job: func() *api.JobInfo {
 				job := pendingJob(2,
 					task("worker-1", "worker"), task("worker-2", "worker"), task("ps", "ps"))
 				job.TaskMinAvailable = map[string]int32{"worker": 2}
@@ -105,39 +107,39 @@ func TestComputeSkip(t *testing.T) {
 			}(),
 			rejections: []Rejection{{
 				Source: RejectionPredicate,
-				Tasks:  []TaskID{"worker-1"},
+				Tasks:  []api.TaskID{"worker-1"},
 			}},
-			want: SkipDecision{Allocate: true},
+			want: api.SkipDecision{Allocate: true},
 		},
 		{
 			name: "skips allocation when subgroup minimum cannot be reached",
-			job: func() *JobInfo {
-				tasks := []*TaskInfo{
+			job: func() *api.JobInfo {
+				tasks := []*api.TaskInfo{
 					task("group-a-1", ""), task("group-a-2", ""),
 					task("group-b-1", ""), task("group-b-2", ""),
 				}
 				job := pendingJob(2, tasks...)
-				gid := SubJobGID("group")
-				job.SubJobs = map[SubJobID]*SubJobInfo{
+				gid := api.SubJobGID("group")
+				job.SubJobs = map[api.SubJobID]*api.SubJobInfo{
 					"group-a": {
 						GID:             gid,
 						MinAvailable:    2,
-						TaskStatusIndex: map[TaskStatus]TasksMap{Pending: {"group-a-1": tasks[0], "group-a-2": tasks[1]}},
+						TaskStatusIndex: map[api.TaskStatus]api.TasksMap{api.Pending: {"group-a-1": tasks[0], "group-a-2": tasks[1]}},
 					},
 					"group-b": {
 						GID:             gid,
 						MinAvailable:    2,
-						TaskStatusIndex: map[TaskStatus]TasksMap{Pending: {"group-b-1": tasks[2], "group-b-2": tasks[3]}},
+						TaskStatusIndex: map[api.TaskStatus]api.TasksMap{api.Pending: {"group-b-1": tasks[2], "group-b-2": tasks[3]}},
 					},
 				}
-				job.MinSubJobs = map[SubJobGID]int32{gid: 2}
+				job.MinSubJobs = map[api.SubJobGID]int32{gid: 2}
 				return job
 			}(),
 			rejections: []Rejection{{
 				Source: RejectionPredicate,
-				Tasks:  []TaskID{"group-a-1"},
+				Tasks:  []api.TaskID{"group-a-1"},
 			}},
-			want: SkipDecision{Allocate: true},
+			want: api.SkipDecision{Allocate: true},
 		},
 	}
 

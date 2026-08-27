@@ -69,13 +69,13 @@ const (
 type Session struct {
 	UID types.UID
 
-	kubeClient         kubernetes.Interface
-	vcClient           vcclient.Interface
-	recorder           record.EventRecorder
-	cache              cache.Cache
-	unschedulableCache cache.UnschedulableCache
-	restConfig         *rest.Config
-	informerFactory    informers.SharedInformerFactory
+	kubeClient            kubernetes.Interface
+	vcClient              vcclient.Interface
+	recorder              record.EventRecorder
+	cache                 cache.Cache
+	unschedulableJobCache unschedulableJobCache
+	restConfig            *rest.Config
+	informerFactory       informers.SharedInformerFactory
 
 	TotalResource *api.Resource
 	// PodGroupOldState contains podgroup status and annotations during schedule
@@ -165,35 +165,32 @@ type Session struct {
 	// The key is task's UID, value is the CycleState.
 	cycleStatesMap sync.Map
 
-	// jobRejections accumulates, during a session, the plugin rejections that made
-	// each Job unschedulable. It is drained at CloseSession into the
-	// unschedulable-job cache. Keyed by Job ID, then by the plugin and extension
-	// point that produced the rejection; the value tracks failed task IDs and the
-	// optional hint-key aggregate for that rejection key.
-	jobRejections                map[api.JobID]map[rejectionKey]*rejectionAggregate
+	// jobRejections records confirmed rejections and isolates rejections produced
+	// by nested Job and SubJob evaluations.
+	jobRejections                jobRejectionTracker
 	unschedulableJobCacheEnabled bool
 
 	NodesInShard sets.Set[string]
 }
 
-func openSession(schedulerCache cache.Cache, unschedulableCache cache.UnschedulableCache) *Session {
+func openSession(schedulerCache cache.Cache, unschedulableJobCache unschedulableJobCache) *Session {
 	schedulerCache.OnSessionOpen()
 	// Feature gate flags initialization
 	unschedulableJobCacheEnabled := utilfeature.DefaultFeatureGate.Enabled(features.UnschedulableJobCache)
-	if unschedulableJobCacheEnabled && unschedulableCache == nil {
+	if unschedulableJobCacheEnabled && unschedulableJobCache == nil {
 		klog.Error("UnschedulableJobCache feature gate is enabled, but no unschedulable cache instance was provided")
 		unschedulableJobCacheEnabled = false
 	}
 
 	ssn := &Session{
-		UID:                uuid.NewUUID(),
-		kubeClient:         schedulerCache.Client(),
-		vcClient:           schedulerCache.VCClient(),
-		restConfig:         schedulerCache.ClientConfig(),
-		recorder:           schedulerCache.EventRecorder(),
-		cache:              schedulerCache,
-		unschedulableCache: unschedulableCache,
-		informerFactory:    schedulerCache.SharedInformerFactory(),
+		UID:                   uuid.NewUUID(),
+		kubeClient:            schedulerCache.Client(),
+		vcClient:              schedulerCache.VCClient(),
+		restConfig:            schedulerCache.ClientConfig(),
+		recorder:              schedulerCache.EventRecorder(),
+		cache:                 schedulerCache,
+		unschedulableJobCache: unschedulableJobCache,
+		informerFactory:       schedulerCache.SharedInformerFactory(),
 
 		TotalResource: api.EmptyResource(),
 		PodGroupOldState: &api.PodGroupOldState{
@@ -248,8 +245,7 @@ func openSession(schedulerCache cache.Cache, unschedulableCache cache.Unschedula
 		unschedulableJobCacheEnabled:  unschedulableJobCacheEnabled,
 	}
 	if unschedulableJobCacheEnabled {
-		ssn.jobRejections = make(map[api.JobID]map[rejectionKey]*rejectionAggregate)
-		unschedulableCache.BeginSession()
+		unschedulableJobCache.BeginSession()
 	}
 
 	snapshot := schedulerCache.Snapshot()

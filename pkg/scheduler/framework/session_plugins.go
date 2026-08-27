@@ -23,16 +23,15 @@ package framework
 import (
 	"context"
 	"errors"
-	"sort"
 
 	fwk "k8s.io/kube-scheduler/framework"
 
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -418,8 +417,8 @@ func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) b
 				continue
 			}
 			if !af(queue, candidate) {
-				if candidate.Job != "" {
-					ssn.AddRejection(candidate.Job, plugin.Name, api.RejectionAllocatable, candidate.UID)
+				if ssn.unschedulableJobCacheEnabled && candidate.Job != "" {
+					ssn.AddRejection(candidate.Job, plugin.Name, unschedulable.RejectionAllocatable, candidate.UID)
 				}
 				return false
 			}
@@ -601,8 +600,10 @@ func (ssn *Session) JobEnqueueable(obj interface{}) bool {
 
 			res := fn(obj)
 			if res < 0 {
-				if job, ok := obj.(*api.JobInfo); ok {
-					ssn.AddRejection(job.UID, plugin.Name, api.RejectionEnqueue)
+				if ssn.unschedulableJobCacheEnabled {
+					if job, ok := obj.(*api.JobInfo); ok {
+						ssn.AddRejection(job.UID, plugin.Name, unschedulable.RejectionEnqueue)
+					}
 				}
 				return false
 			}
@@ -969,13 +970,16 @@ func (ssn *Session) PrePredicateFn(task *api.TaskInfo) error {
 				continue
 			}
 			err := pfn(task)
-			if err != nil {
+			if err == nil {
+				continue
+			}
+			if ssn.unschedulableJobCacheEnabled {
 				var rejection *api.PrePredicateError
 				if errors.As(err, &rejection) {
-					ssn.AddRejection(task.Job, rejection.Plugin, api.RejectionPredicate, task.UID)
+					ssn.AddRejection(task.Job, rejection.Plugin, unschedulable.RejectionPredicate, task.UID)
 				}
-				return err
 			}
+			return err
 		}
 	}
 	return nil
@@ -1234,111 +1238,12 @@ func (ssn *Session) RegisterBinder(name string, binder interface{}) {
 	ssn.cache.RegisterBinder(name, binder)
 }
 
-// AddHintProvider registers a plugin's HintProvider with the cache-scoped
-// HintRegistry, so the unschedulable-job cache can wake Jobs this plugin rejected
-// when a subscribed cluster event fires.
-func (ssn *Session) AddHintProvider(name string, p api.HintProvider) {
+// AddHintProvider registers events that may make Jobs rejected by a plugin schedulable.
+func (ssn *Session) AddHintProvider(pluginName string, p unschedulable.HintProvider) {
 	if !ssn.unschedulableJobCacheEnabled {
 		return
 	}
-	ssn.unschedulableCache.AddHintProvider(name, p)
-}
-
-// rejectionKey identifies a rejection by the plugin and extension point that
-// produced it, so repeated rejections for the same key merge their tasks.
-type rejectionKey struct {
-	plugin string
-	source api.RejectionSource
-}
-
-type rejectionAggregate struct {
-	tasks    sets.Set[api.TaskID]
-	hintKeys sets.Set[api.HintKey] // nil means coarse fallback
-}
-
-// AddRejection records, for the current session, that plugin made job
-// unschedulable through the given source, optionally naming the failed tasks.
-// Rejections are drained into the unschedulable-job cache at CloseSession.
-func (ssn *Session) AddRejection(job api.JobID, plugin string, source api.RejectionSource, tasks ...api.TaskID) {
-	ssn.AddRejectionWithKeys(job, plugin, source, nil, tasks...)
-}
-
-// AddRejectionWithKeys records, for the current session, that plugin made
-// job unschedulable through the given source, optionally naming the failed
-// tasks and the hint keys that were available for that rejection.
-func (ssn *Session) AddRejectionWithKeys(job api.JobID, plugin string, source api.RejectionSource, hintKeys []api.HintKey, tasks ...api.TaskID) {
-	if !ssn.unschedulableJobCacheEnabled {
-		return
-	}
-	if ssn.jobRejections == nil {
-		ssn.jobRejections = make(map[api.JobID]map[rejectionKey]*rejectionAggregate)
-	}
-	byKey := ssn.jobRejections[job]
-	if byKey == nil {
-		byKey = make(map[rejectionKey]*rejectionAggregate)
-		ssn.jobRejections[job] = byKey
-	}
-	key := rejectionKey{plugin: plugin, source: source}
-	acc, ok := byKey[key]
-	if !ok {
-		acc = &rejectionAggregate{tasks: sets.New[api.TaskID]()}
-		byKey[key] = acc
-	}
-	acc.tasks.Insert(tasks...)
-
-	if !ok {
-		if len(hintKeys) == 0 {
-			return
-		}
-		acc.hintKeys = sets.New[api.HintKey](hintKeys...)
-		if acc.hintKeys.Len() > api.MaxHintKeysPerPluginEvent {
-			acc.hintKeys = nil
-		}
-		return
-	}
-
-	if acc.hintKeys == nil || len(hintKeys) == 0 {
-		acc.hintKeys = nil
-		return
-	}
-	acc.hintKeys.Insert(hintKeys...)
-	if acc.hintKeys.Len() > api.MaxHintKeysPerPluginEvent {
-		acc.hintKeys = nil
-	}
-}
-
-// rejectionsForJob returns the rejections accumulated for job this session.
-func (ssn *Session) rejectionsForJob(job api.JobID) []api.Rejection {
-	byKey := ssn.jobRejections[job]
-	if len(byKey) == 0 {
-		return nil
-	}
-	rejections := make([]api.Rejection, 0, len(byKey))
-	for key, taskSet := range byKey {
-		var taskIDs []api.TaskID
-		if taskSet.tasks.Len() > 0 {
-			taskIDs = sets.List(taskSet.tasks)
-			sort.Slice(taskIDs, func(i, j int) bool { return taskIDs[i] < taskIDs[j] })
-		}
-		var hintKeys []api.HintKey
-		if taskSet.hintKeys != nil {
-			hintKeys = sets.List(taskSet.hintKeys)
-			sort.Slice(hintKeys, func(i, j int) bool { return hintKeys[i] < hintKeys[j] })
-		}
-		rejections = append(rejections, api.Rejection{
-			Plugin:   key.plugin,
-			Source:   key.source,
-			Tasks:    taskIDs,
-			HintKeys: hintKeys,
-		})
-	}
-	sort.Slice(rejections, func(i, j int) bool {
-		if rejections[i].Plugin != rejections[j].Plugin {
-			return rejections[i].Plugin < rejections[j].Plugin
-		}
-		return rejections[i].Source < rejections[j].Source
-	})
-	return rejections
+	ssn.unschedulableJobCache.AddHintProvider(pluginName, p)
 }
 
 // applyCachedSkips derives each pending Job's Skip decision from the
@@ -1349,11 +1254,11 @@ func (ssn *Session) applyCachedSkips() {
 		return
 	}
 	for _, job := range ssn.Jobs {
-		rejections := ssn.unschedulableCache.GetCachedRejections(job)
+		rejections := ssn.unschedulableJobCache.CachedRejections(job)
 		if len(rejections) == 0 {
 			continue
 		}
-		job.Skip = api.ComputeSkip(job, rejections)
+		job.Skip = unschedulable.ComputeSkip(job, rejections)
 		klog.V(4).Infof("Job %s cached skip: enqueue=%v allocate=%v tasks=%d",
 			job.UID, job.Skip.Enqueue, job.Skip.Allocate, len(job.Skip.Tasks))
 	}
@@ -1369,7 +1274,7 @@ func (ssn *Session) reconcileUnschedulableCache() {
 		// A pipelined Job must remain visible to allocate/preempt in the next
 		// session. Do not cache even if another task was freshly rejected.
 		if len(job.TaskStatusIndex[api.Pipelined]) > 0 {
-			ssn.unschedulableCache.ForgetUnschedulable(jobID)
+			ssn.unschedulableJobCache.Forget(jobID)
 			continue
 		}
 
@@ -1381,7 +1286,7 @@ func (ssn *Session) reconcileUnschedulableCache() {
 			for i := range rejections {
 				rejections[i].Queues = scope
 			}
-			ssn.unschedulableCache.RecordUnschedulable(job, rejections)
+			ssn.unschedulableJobCache.Record(job, rejections)
 			continue
 		}
 
@@ -1392,7 +1297,7 @@ func (ssn *Session) reconcileUnschedulableCache() {
 			continue
 		}
 
-		ssn.unschedulableCache.ForgetUnschedulable(jobID)
+		ssn.unschedulableJobCache.Forget(jobID)
 	}
 }
 

@@ -27,6 +27,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/hintutil"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 // Provider supplies QueueingHints for Jobs rejected by the proportion plugin.
@@ -40,21 +41,21 @@ import (
 // to capacity's and is shared through hintutil.
 type Provider struct{}
 
-var _ api.HintProvider = (*Provider)(nil)
+var _ unschedulable.HintProvider = (*Provider)(nil)
 
-// EventsToRegister implements api.HintProvider. Queue Add is intentionally not
+// EventsToRegister implements unschedulable.HintProvider. Queue Add is intentionally not
 // registered: adding a weighted Queue only dilutes the split and can never
 // raise an already-rejected Job's deserved.
-func (p *Provider) EventsToRegister(_ context.Context) ([]api.ClusterEventWithHint, error) {
-	return []api.ClusterEventWithHint{
+func (p *Provider) EventsToRegister(_ context.Context) ([]unschedulable.EventWithHint, error) {
+	return []unschedulable.EventWithHint{
 		// Global share inputs change when a Queue is updated or removed.
-		{Event: api.ClusterEvent{Resource: api.QueueEvent, ActionType: fwk.Update | fwk.Delete}, HintFn: queueHint},
+		{Event: fwk.ClusterEvent{Resource: unschedulable.QueueEvent, ActionType: fwk.Update | fwk.Delete}, HintFn: queueHint},
 		// A PodGroup leaving quota-consuming state returns demand to the pool.
-		{Event: api.ClusterEvent{Resource: api.PodGroupEvent, ActionType: fwk.Update | fwk.Delete}, HintFn: podGroupHint},
+		{Event: fwk.ClusterEvent{Resource: unschedulable.PodGroupEvent, ActionType: fwk.Update | fwk.Delete}, HintFn: podGroupHint},
 		// New allocatable can increase every Queue's effective capacity.
-		{Event: api.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add | fwk.UpdateNodeAllocatable}, HintFn: hintutil.NodeHint},
+		{Event: fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add | fwk.UpdateNodeAllocatable}, HintFn: hintutil.NodeHint},
 		// Pod deletion or scale-down lowers globally accounted usage.
-		{Event: api.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete | fwk.UpdatePodScaleDown}, HintFn: podHint},
+		{Event: fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete | fwk.UpdatePodScaleDown}, HintFn: podHint},
 	}, nil
 }
 
@@ -63,22 +64,22 @@ func (p *Provider) EventsToRegister(_ context.Context) ([]api.ClusterEventWithHi
 // Job's own Queue: deserved is recomputed across all Queues, so a change to any
 // Queue can raise this Job's share. Only metadata-only updates, which leave
 // every redistribution input unchanged, are skipped.
-func queueHint(_ *api.JobInfo, _ api.Rejection, oldObj, newObj any) (api.HintResult, error) {
+func queueHint(_ *api.JobInfo, _ unschedulable.Rejection, oldObj, newObj any) (unschedulable.HintResult, error) {
 	// Delete: the Queue's deserved share returns to the pool for the rest.
 	if newObj == nil {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	// Update must provide both snapshots. Unknown payloads wake conservatively.
 	oldQueue, oldOK := oldObj.(*scheduling.Queue)
 	newQueue, newOK := newObj.(*scheduling.Queue)
 	if !oldOK || oldQueue == nil || !newOK || newQueue == nil {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	// Any scheduling input change can reshape every Queue's global share.
 	if queueRedistributionInputChanged(oldQueue, newQueue) {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
-	return api.HintSkip, nil
+	return unschedulable.HintSkip, nil
 }
 
 // queueRedistributionInputChanged reports whether a Queue update touched a field
@@ -103,19 +104,19 @@ func queueRedistributionInputChanged(oldQueue, newQueue *scheduling.Queue) bool 
 // podHint wakes a rejected Job when a deleted or scaled-down Pod frees capacity
 // in a dimension the Job requests. Because proportion accounts usage globally,
 // the released Pod's Queue is irrelevant; only the released dimensions matter.
-func podHint(job *api.JobInfo, rejection api.Rejection, oldObj, newObj any) (api.HintResult, error) {
+func podHint(job *api.JobInfo, rejection unschedulable.Rejection, oldObj, newObj any) (unschedulable.HintResult, error) {
 	// Delete and scale-down events need the old Pod to measure released usage.
 	oldPod, ok := oldObj.(*v1.Pod)
 	if !ok || oldPod == nil {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	request, complete := hintutil.RejectedRequest(job, rejection)
 	if !complete {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	// A zero request has no resource dimension that this release can improve.
 	if request.IsEmpty() {
-		return api.HintSkip, nil
+		return unschedulable.HintSkip, nil
 	}
 	oldUsage := api.GetPodResourceRequest(oldPod)
 	newUsage := api.EmptyResource()
@@ -125,22 +126,22 @@ func podHint(job *api.JobInfo, rejection api.Rejection, oldObj, newObj any) (api
 		newUsage = api.GetPodResourceRequest(newPod)
 	}
 	if hintutil.UsageReleasedForRequest(request, oldUsage, newUsage) {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
-	return api.HintSkip, nil
+	return unschedulable.HintSkip, nil
 }
 
 // podGroupHint wakes a rejected Job when a consuming PodGroup releases demand in
 // a dimension the Job requests. As with podHint the releasing Queue is
 // irrelevant under global fair share; only the released dimensions matter.
-func podGroupHint(job *api.JobInfo, rejection api.Rejection, oldObj, newObj any) (api.HintResult, error) {
+func podGroupHint(job *api.JobInfo, rejection unschedulable.Rejection, oldObj, newObj any) (unschedulable.HintResult, error) {
 	// The old snapshot identifies whether the PodGroup previously consumed quota.
 	oldPg, ok := oldObj.(*api.PodGroup)
 	if !ok || oldPg == nil {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	if !hintutil.PodGroupConsumesQuota(oldPg.Status.Phase) {
-		return api.HintSkip, nil
+		return unschedulable.HintSkip, nil
 	}
 	// Delete releases the whole old demand; update releases it only when the
 	// PodGroup leaves consuming state or moves to another Queue.
@@ -148,32 +149,32 @@ func podGroupHint(job *api.JobInfo, rejection api.Rejection, oldObj, newObj any)
 	if !released {
 		newPg, ok := newObj.(*api.PodGroup)
 		if !ok || newPg == nil {
-			return api.HintWakeup, nil
+			return unschedulable.HintWakeup, nil
 		}
 		released = hintutil.PodGroupReleasedQuota(oldPg, newPg)
 	}
 	if !released {
-		return api.HintSkip, nil
+		return unschedulable.HintSkip, nil
 	}
 
 	// MinResources is the demand proportion charged while the gang was queued.
 	demand := podGroupDemand(oldPg)
 	if demand.IsEmpty() {
 		// Released dimensions unknown; wake conservatively.
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	request, complete := hintutil.RejectedRequest(job, rejection)
 	if !complete {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
 	// No requested dimension can benefit from the released demand.
 	if request.IsEmpty() {
-		return api.HintSkip, nil
+		return unschedulable.HintSkip, nil
 	}
 	if hintutil.UsageReleasedForRequest(request, demand, api.EmptyResource()) {
-		return api.HintWakeup, nil
+		return unschedulable.HintWakeup, nil
 	}
-	return api.HintSkip, nil
+	return unschedulable.HintSkip, nil
 }
 
 // podGroupDemand returns the resource dimensions a PodGroup withdraws from the

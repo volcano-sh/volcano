@@ -395,6 +395,32 @@ type TasksMap map[TaskID]*TaskInfo
 // NodeResourceMap stores resource in a node
 type NodeResourceMap map[string]*Resource
 
+// SkipDecision describes the scheduling work skipped for a Job in one session.
+type SkipDecision struct {
+	// Enqueue skips the JobEnqueueable check.
+	Enqueue bool
+
+	// Allocate skips the allocate and backfill actions.
+	Allocate bool
+
+	// Tasks lists tasks skipped by allocate and backfill when Allocate is false.
+	Tasks map[TaskID]struct{}
+}
+
+// Skipped reports whether any scheduling work is skipped.
+func (d SkipDecision) Skipped() bool {
+	return d.Enqueue || d.Allocate || len(d.Tasks) > 0
+}
+
+// SkipTask reports whether a task is skipped.
+func (d SkipDecision) SkipTask(taskID TaskID) bool {
+	if d.Allocate {
+		return true
+	}
+	_, ok := d.Tasks[taskID]
+	return ok
+}
+
 // JobInfo will have all info of a Job
 type JobInfo struct {
 	UID   JobID

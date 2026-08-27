@@ -342,23 +342,25 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.RegisterBinder(pp.Name(), pp)
 
-	// Add hint provider for PredicateFn and PrePredicateFn
-	hintPlugins := make(map[string]fwk.Plugin, len(pp.FilterPlugins)+len(pp.PreFilterPlugins))
-	for name, plugin := range pp.FilterPlugins {
-		hintPlugins[name] = plugin
-	}
-	for name, plugin := range pp.PreFilterPlugins {
-		hintPlugins[name] = plugin
-	}
-	for name, plugin := range hintPlugins {
-		ext, ok := plugin.(fwk.EnqueueExtensions)
-		if !ok {
-			continue
+	if ssn.RejectionTrackingEnabled() {
+		// Add hint provider for PredicateFn and PrePredicateFn.
+		hintPlugins := make(map[string]fwk.Plugin, len(pp.FilterPlugins)+len(pp.PreFilterPlugins))
+		for name, plugin := range pp.FilterPlugins {
+			hintPlugins[name] = plugin
 		}
-		ssn.AddHintProvider(name, &hintprovider.KubeHintProvider{Ext: ext})
+		for name, plugin := range pp.PreFilterPlugins {
+			hintPlugins[name] = plugin
+		}
+		for name, plugin := range hintPlugins {
+			ext, ok := plugin.(fwk.EnqueueExtensions)
+			if !ok {
+				continue
+			}
+			ssn.AddHintProvider(name, &hintprovider.KubeHintProvider{Ext: ext})
+		}
+		// Volcano's built-in node resource predicate is not a wrapped Kubernetes plugin.
+		ssn.AddHintProvider(resourcefit.ProviderName, &hintprovider.ResourceFitHintProvider{})
 	}
-	// Volcano has its own built-in node resource predicate, which is not a wrapped k8s plugin. Also register it as a hint provider.
-	ssn.AddHintProvider(resourcefit.ProviderName, &hintprovider.ResourceFitHintProvider{})
 
 	// Add SimulateAddTask function
 	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
