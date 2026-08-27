@@ -59,7 +59,6 @@ func (hn *hyperNodeController) setupConfigMapInformer() {
 		return filteredInformer
 	})
 	hn.configMapInformer = hn.informerFactory.Core().V1().ConfigMaps()
-	// TODO: Only trigger handler when networkTopologyDiscovery config changed.
 	hn.configMapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    hn.addConfigMap,
 		UpdateFunc: hn.updateConfigMap,
@@ -78,13 +77,22 @@ func (hn *hyperNodeController) addConfigMap(obj interface{}) {
 }
 
 func (hn *hyperNodeController) updateConfigMap(oldObj, newObj interface{}) {
-	cm, ok := newObj.(*v1.ConfigMap)
+	newCm, ok := newObj.(*v1.ConfigMap)
 	if !ok {
 		klog.ErrorS(nil, "Cannot convert to *v1.ConfigMap", "obj", newObj)
 		return
 	}
-	klog.V(3).InfoS("Update ConfigMap", "namespace", cm.Namespace, "name", cm.Name)
-	hn.enqueueConfigMap(cm)
+	oldCm, ok := oldObj.(*v1.ConfigMap)
+	if !ok {
+		klog.ErrorS(nil, "Cannot convert to *v1.ConfigMap", "obj", oldObj)
+		return
+	}
+	if oldCm.Data[config.DefaultConfigKey] == newCm.Data[config.DefaultConfigKey] {
+		klog.V(5).InfoS("topology config unchanged, skipping", "namespace", newCm.Namespace, "name", newCm.Name)
+		return
+	}
+	klog.V(3).InfoS("Update ConfigMap", "namespace", newCm.Namespace, "name", newCm.Name)
+	hn.enqueueConfigMap(newCm)
 }
 
 func (hn *hyperNodeController) deleteConfigMap(obj interface{}) {
