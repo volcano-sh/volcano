@@ -121,6 +121,8 @@ type ServerOption struct {
 	// UnschedulableJobCacheMaxSkipDuration bounds how long a Job may remain
 	// cached without a matching wakeup event.
 	UnschedulableJobCacheMaxSkipDuration time.Duration
+	// UnschedulableJobCacheDebugMetrics enables per-Job cache metrics.
+	UnschedulableJobCacheDebugMetrics bool
 
 	// DisableDefaultSchedulerConfig indicates if the scheduler should fallback to default
 	// config if the current scheduler config is invalid
@@ -214,6 +216,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&s.ResourceSyncTimeout, "resource-sync-timeout", defaultResourceSyncTimeout, "timeout on waiting for handler handling initial resources synchronization before starting scheduler, default is 60s, 0 skip waiting")
 	fs.DurationVar(&s.UnschedulableJobCacheMaxSkipDuration, "unschedulable-job-cache-max-skip-duration", defaultUnschedulableJobCacheMaxSkipDuration,
 		"Maximum duration a Job may remain in the unschedulable-job cache without a matching event")
+	fs.BoolVar(&s.UnschedulableJobCacheDebugMetrics, "unschedulable-job-cache-debug-metrics", false,
+		"Enable per-Job unschedulable-job cache metrics for debugging")
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
 	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling, none(default)|hard|soft mode is supported")
 	fs.StringVar(&s.ShardName, "scheduler-sharding-name", defaultShardName, "The name of shard used for this scheduler")

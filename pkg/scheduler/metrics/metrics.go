@@ -17,6 +17,7 @@ limitations under the License.
 package metrics
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -54,6 +55,8 @@ const (
 )
 
 var (
+	unschedulableJobCacheDebugMetricsEnabled atomic.Bool
+
 	e2eSchedulingLatency = promauto.NewHistogram(
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoSubSystemName,
@@ -254,19 +257,33 @@ func UpdateOpenSessionDuration(duration time.Duration) {
 // RegisterUnschedulableJobCacheSkip records one scheduling stage suppressed by
 // the unschedulable-job cache.
 func RegisterUnschedulableJobCacheSkip(namespace, jobName, stage string) {
+	if !unschedulableJobCacheDebugMetricsEnabled.Load() {
+		return
+	}
 	unschedulableJobCacheSkips.WithLabelValues(namespace, jobName, stage).Inc()
 }
 
 // RegisterUnschedulableJobCacheWakeup records a cached Job invalidated by a
 // matching cluster event.
 func RegisterUnschedulableJobCacheWakeup(namespace, jobName, resource, action string) {
+	if !unschedulableJobCacheDebugMetricsEnabled.Load() {
+		return
+	}
 	unschedulableJobCacheWakeups.WithLabelValues(namespace, jobName, resource, action).Inc()
 }
 
 // RegisterUnschedulableJobCacheWatchdogExpiration records a cached Job released
 // after its maximum skip duration elapsed without a matching event.
 func RegisterUnschedulableJobCacheWatchdogExpiration(namespace, jobName string) {
+	if !unschedulableJobCacheDebugMetricsEnabled.Load() {
+		return
+	}
 	unschedulableJobCacheWatchdogExpirations.WithLabelValues(namespace, jobName).Inc()
+}
+
+// SetUnschedulableJobCacheDebugMetricsEnabled controls per-Job cache metrics.
+func SetUnschedulableJobCacheDebugMetricsEnabled(enabled bool) {
+	unschedulableJobCacheDebugMetricsEnabled.Store(enabled)
 }
 
 // UpdateE2eSchedulingDurationByJob updates per-job duration from creation to last task assumed/pipelined

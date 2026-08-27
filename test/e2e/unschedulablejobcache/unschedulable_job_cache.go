@@ -33,7 +33,7 @@ import (
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
-	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
@@ -458,7 +458,7 @@ func runQueueCapabilityWakeupCase(pluginName, queueName, jobName string) {
 		}},
 	})
 	skipLabels := schedulerJobMetricLabels(job, map[string]string{"stage": "enqueue"})
-	wakeupLabels := schedulerJobMetricLabels(job, map[string]string{"resource": string(api.QueueEvent)})
+	wakeupLabels := schedulerJobMetricLabels(job, map[string]string{"resource": string(unschedulable.QueueEvent)})
 	skipBaseline := schedulerMetricValue(ctx, skipMetricName, skipLabels)
 	wakeupBaseline := schedulerMetricValue(ctx, wakeupMetricName, wakeupLabels)
 
@@ -522,7 +522,7 @@ func runTaskQuotaWakeupCase(pluginName, queueName, jobName string) {
 	updateQueueCPUCapability(ctx, queueName, "500m")
 
 	skipLabels := schedulerJobMetricLabels(job, map[string]string{"stage": "allocate"})
-	wakeupLabels := schedulerJobMetricLabels(job, map[string]string{"resource": string(api.QueueEvent)})
+	wakeupLabels := schedulerJobMetricLabels(job, map[string]string{"resource": string(unschedulable.QueueEvent)})
 	skipBaseline := schedulerMetricValue(ctx, skipMetricName, skipLabels)
 	wakeupBaseline := schedulerMetricValue(ctx, wakeupMetricName, wakeupLabels)
 

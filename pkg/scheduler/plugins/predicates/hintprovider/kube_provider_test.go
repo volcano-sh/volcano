@@ -27,6 +27,7 @@ import (
 	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 type fakeEnqueueExtensions struct {
@@ -47,7 +48,7 @@ func TestKubeHintProviderEventsToRegister(t *testing.T) {
 	tests := []struct {
 		name    string
 		ext     fakeEnqueueExtensions
-		want    []api.ClusterEvent
+		want    []fwk.ClusterEvent
 		wantErr error
 	}{
 		{
@@ -56,7 +57,7 @@ func TestKubeHintProviderEventsToRegister(t *testing.T) {
 				{Event: fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add}},
 				{Event: fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}},
 			}},
-			want: []api.ClusterEvent{
+			want: []fwk.ClusterEvent{
 				{Resource: fwk.Node, ActionType: fwk.Add},
 				{Resource: fwk.Pod, ActionType: fwk.Delete},
 			},
@@ -88,49 +89,86 @@ func TestKubeHintProviderEventsToRegister(t *testing.T) {
 
 func TestWrapPodHint(t *testing.T) {
 	hintErr := errors.New("hint failed")
+	pod1 := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "task-1", UID: "task-1"}}
+	pod2 := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "task-2", UID: "task-2"}}
+	task1 := api.NewTaskInfo(pod1)
+	task2 := api.NewTaskInfo(pod2)
+	nilPodTask := api.NewTaskInfo(&v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "nil-pod", UID: "nil-pod"}})
+	nilPodTask.Pod = nil
+	job := api.NewJobInfo("job", task1, task2)
+	jobWithNilPod := api.NewJobInfo("job", task1, nilPodTask)
 	tests := []struct {
 		name    string
+		job     *api.JobInfo
+		tasks   []api.TaskID
 		kubeFn  fwk.QueueingHintFn
-		want    api.HintResult
+		want    unschedulable.HintResult
 		wantErr error
 	}{
 		{
 			name: "skips when every rejected task is skipped",
+			job:  job,
+			tasks: []api.TaskID{
+				task1.UID,
+				task2.UID,
+			},
 			kubeFn: func(klog.Logger, *v1.Pod, any, any) (fwk.QueueingHint, error) {
 				return fwk.QueueSkip, nil
 			},
-			want: api.HintSkip,
+			want: unschedulable.HintSkip,
 		},
 		{
 			name: "wakes when any rejected task queues",
+			job:  job,
+			tasks: []api.TaskID{
+				task1.UID,
+				task2.UID,
+			},
 			kubeFn: func(_ klog.Logger, pod *v1.Pod, _, _ any) (fwk.QueueingHint, error) {
 				if pod.Name == "task-2" {
 					return fwk.Queue, nil
 				}
 				return fwk.QueueSkip, nil
 			},
-			want: api.HintWakeup,
+			want: unschedulable.HintWakeup,
 		},
 		{
 			name: "wakes and returns hint error",
+			job:  job,
+			tasks: []api.TaskID{
+				task1.UID,
+				task2.UID,
+			},
 			kubeFn: func(klog.Logger, *v1.Pod, any, any) (fwk.QueueingHint, error) {
 				return fwk.QueueSkip, hintErr
 			},
-			want:    api.HintWakeup,
+			want:    unschedulable.HintWakeup,
 			wantErr: hintErr,
+		},
+		{
+			name:  "wakes when a rejected task is missing",
+			job:   job,
+			tasks: []api.TaskID{task1.UID, "missing"},
+			kubeFn: func(klog.Logger, *v1.Pod, any, any) (fwk.QueueingHint, error) {
+				return fwk.QueueSkip, nil
+			},
+			want: unschedulable.HintWakeup,
+		},
+		{
+			name:  "wakes when a rejected task has no Pod",
+			job:   jobWithNilPod,
+			tasks: []api.TaskID{task1.UID, "nil-pod"},
+			kubeFn: func(klog.Logger, *v1.Pod, any, any) (fwk.QueueingHint, error) {
+				return fwk.QueueSkip, nil
+			},
+			want: unschedulable.HintWakeup,
 		},
 	}
 
-	pod1 := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "task-1", UID: "task-1"}}
-	pod2 := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "task-2", UID: "task-2"}}
-	task1 := api.NewTaskInfo(pod1)
-	task2 := api.NewTaskInfo(pod2)
-	job := api.NewJobInfo("job", task1, task2)
-	rejection := api.Rejection{Tasks: []api.TaskID{task1.UID, task2.UID}}
-
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := wrapPodHint(test.kubeFn)(job, rejection, nil, nil)
+			rejection := unschedulable.Rejection{Tasks: test.tasks}
+			got, err := wrapPodHint(test.kubeFn)(test.job, rejection, nil, nil)
 			if !errors.Is(err, test.wantErr) {
 				t.Fatalf("wrapped hint error = %v, want %v", err, test.wantErr)
 			}

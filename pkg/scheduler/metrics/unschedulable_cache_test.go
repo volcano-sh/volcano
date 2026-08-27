@@ -59,7 +59,17 @@ func TestUnschedulableJobCacheMetrics(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			SetUnschedulableJobCacheDebugMetricsEnabled(false)
+			t.Cleanup(func() { SetUnschedulableJobCacheDebugMetricsEnabled(false) })
+
 			before := test.value()
+			test.register()
+			if got := test.value(); got != before {
+				t.Fatalf("disabled metric value = %v, want %v", got, before)
+			}
+
+			SetUnschedulableJobCacheDebugMetricsEnabled(true)
+			before = test.value()
 			test.register()
 			if got := test.value(); got != before+1 {
 				t.Fatalf("metric value = %v, want %v", got, before+1)

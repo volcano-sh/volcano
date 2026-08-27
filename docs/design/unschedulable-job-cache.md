@@ -126,6 +126,11 @@ no per-Pod queue buckets. Instead, a single `UnschedulableJobCache` lives beside
 scheduling loop, and is updated from three sources: the session itself, informer
 handlers, and a background watchdog.
 
+The Alpha implementation names this component `unschedulable.JobCache`. The
+Scheduler owns it, while SchedulerCache forwards informer events to it. Hint
+contracts and the private registry live in `pkg/scheduler/unschedulable`, and
+cluster events reuse kube-scheduler's `fwk.ClusterEvent` type.
+
 ![UnschedulableJobCache architecture](images/unschedulable-job-cache.svg)
 
 The scheduler session drives most of the interaction. `OpenSession` derives
@@ -564,9 +569,9 @@ through the normal filter path every session, which matches today's behavior.
 
 ### 3. UnschedulableJobCache
 
-`UnschedulableJobCache` lives on `SchedulerCache`. It records unschedulable Jobs by
-`JobID`, together with the rejection list collected at `CloseSession` and the hint
-functions copied from `HintRegistry`.
+The Alpha `unschedulable.JobCache` is owned by the Scheduler. It records
+unschedulable Jobs by `JobID`, together with the rejection list collected at
+`CloseSession` and the hint functions copied from its private registry.
 
 The normal retry lifecycle is:
 
@@ -833,6 +838,9 @@ whose `RetryAfter` has passed. Keeping expiry off the scheduling path means
 `OpenSession` and `GetCachedRejections` only read a record. Events remain the
 normal wake-up path, and the timestamp is a safety net for missed hints or
 informer edge cases.
+
+Per-Job skip, wake-up, and watchdog metrics are disabled by default and can be
+enabled with `--unschedulable-job-cache-debug-metrics=true`.
 
 #### Per-session overhead
 

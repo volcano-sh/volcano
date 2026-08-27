@@ -14,12 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package api
+package unschedulable
 
 import (
 	"context"
 
 	fwk "k8s.io/kube-scheduler/framework"
+
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 // Volcano-specific event resources that are not part of the kube-scheduler
@@ -36,12 +38,19 @@ const (
 	MaxHintKeysPerPluginEvent = 256
 )
 
-// ClusterEvent identifies one category of cluster change handled by a plugin.
-// Resource is the object type whose change may affect scheduling and ActionType
-// names the kind of change.
-type ClusterEvent struct {
-	Resource   fwk.EventResource
-	ActionType fwk.ActionType
+// eventKey is the semantic identity used by registries and freshness tracking.
+// ClusterEvent.CustomLabel affects only presentation and therefore is excluded.
+type eventKey struct {
+	resource   fwk.EventResource
+	actionType fwk.ActionType
+}
+
+func newEventKey(event fwk.ClusterEvent) eventKey {
+	return eventKey{resource: event.Resource, actionType: event.ActionType}
+}
+
+func (k eventKey) clusterEvent() fwk.ClusterEvent {
+	return fwk.ClusterEvent{Resource: k.resource, ActionType: k.actionType}
 }
 
 // HintResult is the decision a JobHintFn returns for one Job on one event.
@@ -66,7 +75,7 @@ const (
 //
 // A non-nil error is treated as HintWakeup by the caller.
 type JobHintFn func(
-	job *JobInfo,
+	job *api.JobInfo,
 	rejection Rejection,
 	oldObj, newObj any,
 ) (HintResult, error)
@@ -81,7 +90,7 @@ type HintKey string
 // the cache cannot narrow dispatch safely. It must return an error when it
 // cannot construct a complete key set; callers treat an empty result, an error,
 // or an over-limit result by selecting this Job without HintKeys.
-type JobKeysFn func(job *JobInfo, rejection Rejection) ([]HintKey, error)
+type JobKeysFn func(job *api.JobInfo, rejection Rejection) ([]HintKey, error)
 
 // EventKeysFn returns the necessary-condition keys for one incoming event
 // object pair. If the paired HintFn can return HintWakeup, this key set must
@@ -92,14 +101,17 @@ type JobKeysFn func(job *JobInfo, rejection Rejection) ([]HintKey, error)
 // by selecting every Job handled by that plugin event.
 type EventKeysFn func(oldObj, newObj any) ([]HintKey, error)
 
-// ClusterEventWithHint pairs one cluster event a plugin cares about with the
+// EventWithHint pairs one cluster event a plugin cares about with the
 // callbacks used to narrow candidate Jobs and check whether that event may help
 // a specific Job. JobKeysFn and EventKeysFn are optional as a pair. A nil HintFn
 // means every occurrence of Event wakes Jobs blocked by this plugin. A provider
 // must declare each exact Event at most once; duplicate declarations invalidate
-// that provider so the cache fails open.
-type ClusterEventWithHint struct {
-	Event       ClusterEvent
+// that provider so the cache fails open. When a plugin registers the same Event
+// in later Sessions, its paired JobKeysFn and EventKeysFn must preserve their
+// HintKey namespace and extraction semantics because one index can contain Jobs
+// recorded under multiple registrations.
+type EventWithHint struct {
+	Event       fwk.ClusterEvent
 	JobKeysFn   JobKeysFn
 	EventKeysFn EventKeysFn
 	HintFn      JobHintFn
@@ -109,7 +121,7 @@ type ClusterEventWithHint struct {
 // unschedulable decisions.
 type HintProvider interface {
 	// EventsToRegister returns every event and hint pair handled by this plugin.
-	EventsToRegister(ctx context.Context) ([]ClusterEventWithHint, error)
+	EventsToRegister(ctx context.Context) ([]EventWithHint, error)
 }
 
 // RejectionSource names the extension point that emitted a rejection.
@@ -133,7 +145,7 @@ type Rejection struct {
 	Source RejectionSource
 	// Tasks holds the failed task IDs; nil only for RejectionEnqueue, which is
 	// a whole-PodGroup decision.
-	Tasks []TaskID
+	Tasks []api.TaskID
 	// HintKeys holds the optional necessary-condition keys that accompanied this
 	// rejection. Empty when the session fell back to coarse dispatch for this
 	// plugin/source aggregate.
@@ -142,47 +154,16 @@ type Rejection struct {
 	// A resource change confined to a queue outside this set cannot affect a
 	// quota decision for the Job, so quota-plugin hints use it to scope wakeups.
 	// Empty when the recording context has no queue hierarchy available.
-	Queues []QueueID
+	Queues []api.QueueID
 }
 
-// SkipDecision names the work an action should skip for a pending Job this
-// session, derived from the cached rejections and the Job's gang topology.
-type SkipDecision struct {
-	// Enqueue skips enqueue's JobEnqueueable re-check for this Job.
-	Enqueue bool
-
-	// Allocate skips the allocate and backfill actions entirely for this Job.
-	Allocate bool
-
-	// Tasks lists task IDs that allocate and backfill should treat as
-	// unschedulable this session. Consulted only when Allocate is false.
-	Tasks map[TaskID]struct{}
-}
-
-// Skipped reports whether the decision skips any work for the Job this session.
-// It is false for the zero value, which a Job carries when no cached rejection
-// was applied at OpenSession.
-func (d SkipDecision) Skipped() bool {
-	return d.Enqueue || d.Allocate || len(d.Tasks) > 0
-}
-
-// SkipTask reports whether the given task should be treated as unschedulable this
-// session because of cached per-task rejections.
-func (d SkipDecision) SkipTask(taskID TaskID) bool {
-	if d.Allocate {
-		return true
-	}
-	_, ok := d.Tasks[taskID]
-	return ok
-}
-
-// ComputeSkip turns the cached rejections into a SkipDecision for the Job. The
+// ComputeSkip turns the cached rejections into an api.SkipDecision for the Job. The
 // RejectionEnqueue source sets Enqueue; per-task sources set Allocate when the
 // Job can no longer reach its gang criterion, otherwise they list the tasks to
 // skip.
-func ComputeSkip(job *JobInfo, rejections []Rejection) SkipDecision {
-	var d SkipDecision
-	tasks := map[TaskID]struct{}{}
+func ComputeSkip(job *api.JobInfo, rejections []Rejection) api.SkipDecision {
+	var d api.SkipDecision
+	tasks := map[api.TaskID]struct{}{}
 	for _, r := range rejections {
 		if r.Source == RejectionEnqueue {
 			d.Enqueue = true
@@ -195,7 +176,7 @@ func ComputeSkip(job *JobInfo, rejections []Rejection) SkipDecision {
 	if len(tasks) == 0 {
 		return d
 	}
-	if !canReach(job, tasks) {
+	if !gangMinimumsReachable(job, tasks) {
 		d.Allocate = true
 		return d
 	}
@@ -203,8 +184,8 @@ func ComputeSkip(job *JobInfo, rejections []Rejection) SkipDecision {
 	return d
 }
 
-// canReach reports whether job can still satisfy every gang minimum after the
-// tasks in skipped are treated as unschedulable this session. The scheduler
+// gangMinimumsReachable reports whether job can still satisfy every gang minimum after the
+// tasks in skippedPendingTasks are treated as unschedulable this session. The scheduler
 // enforces three independent gang minimums, and the Job stays reachable only
 // while all of them still hold:
 //
@@ -215,9 +196,9 @@ func ComputeSkip(job *JobInfo, rejections []Rejection) SkipDecision {
 //     independently reach their own MinAvailable to satisfy MinSubJobs.
 //
 // Only pending tasks are removable: a task already holding or reserving
-// resources counts regardless of whether it appears in skipped.
-func canReach(job *JobInfo, skipped map[TaskID]struct{}) bool {
-	members := countPotentialGangMembers(job.TaskStatusIndex, skipped)
+// resources counts regardless of whether it appears in skippedPendingTasks.
+func gangMinimumsReachable(job *api.JobInfo, skippedPendingTasks map[api.TaskID]struct{}) bool {
+	members := countPotentialGangMembers(job.TaskStatusIndex, skippedPendingTasks)
 
 	// Job-level minimum.
 	if members.total < job.MinAvailable {
@@ -236,9 +217,9 @@ func canReach(job *JobInfo, skipped map[TaskID]struct{}) bool {
 	// Count the subJobs in each group that can still reach their own MinAvailable,
 	// then require enough of them per MinSubJobs.
 	if len(job.MinSubJobs) > 0 {
-		reachableSubJobs := map[SubJobGID]int32{}
+		reachableSubJobs := map[api.SubJobGID]int32{}
 		for _, sj := range job.SubJobs {
-			if countPotentialGangMembers(sj.TaskStatusIndex, skipped).total >= sj.MinAvailable {
+			if countPotentialGangMembers(sj.TaskStatusIndex, skippedPendingTasks).total >= sj.MinAvailable {
 				reachableSubJobs[sj.GID]++
 			}
 		}
@@ -260,19 +241,19 @@ type gangMemberCounts struct {
 // countPotentialGangMembers counts tasks that can still contribute to a gang
 // minimum. Allocated, Binding, Bound, Running, Succeeded, and Pipelined tasks
 // always count. Pending tasks count unless rejected in the previous session.
-func countPotentialGangMembers(index map[TaskStatus]TasksMap, skipped map[TaskID]struct{}) gangMemberCounts {
+func countPotentialGangMembers(taskStatusIndex map[api.TaskStatus]api.TasksMap, skippedPendingTasks map[api.TaskID]struct{}) gangMemberCounts {
 	counts := gangMemberCounts{
 		byRole: make(map[string]int32),
 	}
-	for status, tasks := range index {
+	for status, tasks := range taskStatusIndex {
 		skipRejected := false
 		switch {
-		case AllocatedStatus(status), status == Succeeded, status == Pipelined:
+		case api.AllocatedStatus(status), status == api.Succeeded, status == api.Pipelined:
 		// A Job below its gang minimum can still contain progressed tasks:
 		//  1. A previously ready Job may retain Running tasks after losing other members(e.g. preemption or eviction).
 		//  2. Retried tasks may be Pending while earlier members remain Bound or Running.
 		//  3. Scaling up a gang minimum leaves existing members running while new members are Pending.
-		case status == Pending:
+		case status == api.Pending:
 			skipRejected = true
 		default:
 			continue
@@ -280,7 +261,7 @@ func countPotentialGangMembers(index map[TaskStatus]TasksMap, skipped map[TaskID
 
 		for _, task := range tasks {
 			if skipRejected {
-				if _, rejected := skipped[task.UID]; rejected {
+				if _, rejected := skippedPendingTasks[task.UID]; rejected {
 					continue
 				}
 			}

@@ -57,6 +57,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -6276,29 +6277,120 @@ func TestAllocate_NominatedJobWinsOverRegularJob(t *testing.T) {
 		"flat-path commit must clear subJob.NominatedHyperNode after binding")
 }
 
-// fakeUnschedulableCacheForAllocate is a minimal cache.UnschedulableCache used
+func TestAllocateTopologyRejections(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, volcanofeatures.UnschedulableJobCache, true)
+
+	trueValue := true
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{
+		{
+			Name:                gang.PluginName,
+			EnabledJobOrder:     &trueValue,
+			EnabledJobReady:     &trueValue,
+			EnabledJobPipelined: &trueValue,
+			EnabledJobStarving:  &trueValue,
+		},
+		{
+			Name:             predicates.PluginName,
+			EnabledPredicate: &trueValue,
+		},
+		{
+			Name:                     networktopologyaware.PluginName,
+			EnabledHyperNodeGradient: &trueValue,
+		},
+	}}}
+	plugins := map[string]framework.PluginBuilder{
+		gang.PluginName:                 gang.New,
+		predicates.PluginName:           predicates.New,
+		networktopologyaware.PluginName: networktopologyaware.New,
+	}
+
+	tests := []struct {
+		name           string
+		secondNodeTags map[string]string
+		wantBinds      int
+		wantRejections bool
+	}{
+		{
+			name:           "keeps only the selected HyperNode result",
+			secondNodeTags: map[string]string{"nodeRole": "master"},
+			wantBinds:      1,
+		},
+		{
+			name:           "keeps failed results when no HyperNode fits",
+			wantRejections: true,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			test := uthelper.TestCommonStruct{
+				Name:    testCase.name,
+				Plugins: plugins,
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "", "q1", 1, nil, schedulingv1.PodGroupInqueue, "hard", 1),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, map[string]string{"nodeRole": "master"}),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.BuildNode("s1-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), testCase.secondNodeTags),
+				},
+				HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1")},
+				HyperNodesMap: map[string]*api.HyperNodeInfo{
+					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{{Name: "s0-n1", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"}})),
+					"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{{Name: "s1-n2", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"}})),
+				},
+				HyperNodes: map[string]sets.Set[string]{
+					"s0": sets.New[string]("s0-n1"),
+					"s1": sets.New[string]("s1-n2"),
+				},
+				Queues:         []*schedulingv1.Queue{util.BuildQueue("q1", 1, nil)},
+				ExpectBindsNum: testCase.wantBinds,
+			}
+			if testCase.wantBinds == 1 {
+				test.ExpectBindMap = map[string]string{"c1/p1": "s1-n2"}
+			}
+
+			fakeCache := &fakeUnschedulableCacheForAllocate{}
+			test.RegisterSession(tiers, nil, framework.WithUnschedulableJobCache(fakeCache))
+			test.Run([]framework.Action{New()})
+			if err := test.CheckAll(0); err != nil {
+				t.Fatal(err)
+			}
+			test.Close()
+
+			gotRejections := len(fakeCache.recorded["c1/pg1"]) > 0
+			if gotRejections != testCase.wantRejections {
+				t.Fatalf("Job rejections recorded = %v, want %v", gotRejections, testCase.wantRejections)
+			}
+		})
+	}
+}
+
+// fakeUnschedulableCacheForAllocate is a minimal session cache used
 // to observe the rejections recorded at CloseSession without exercising the
 // real cache's event-index bookkeeping.
 type fakeUnschedulableCacheForAllocate struct {
-	recorded map[api.JobID][]api.Rejection
+	recorded map[api.JobID][]unschedulable.Rejection
 }
 
 func (f *fakeUnschedulableCacheForAllocate) BeginSession() {}
 
-func (f *fakeUnschedulableCacheForAllocate) AddHintProvider(string, api.HintProvider) {}
+func (f *fakeUnschedulableCacheForAllocate) AddHintProvider(string, unschedulable.HintProvider) {}
 
-func (f *fakeUnschedulableCacheForAllocate) RecordUnschedulable(job *api.JobInfo, rejections []api.Rejection) {
+func (f *fakeUnschedulableCacheForAllocate) Record(job *api.JobInfo, rejections []unschedulable.Rejection) {
 	if f.recorded == nil {
-		f.recorded = map[api.JobID][]api.Rejection{}
+		f.recorded = map[api.JobID][]unschedulable.Rejection{}
 	}
 	f.recorded[job.UID] = rejections
 }
 
-func (f *fakeUnschedulableCacheForAllocate) GetCachedRejections(*api.JobInfo) []api.Rejection {
+func (f *fakeUnschedulableCacheForAllocate) CachedRejections(*api.JobInfo) []unschedulable.Rejection {
 	return nil
 }
 
-func (f *fakeUnschedulableCacheForAllocate) ForgetUnschedulable(api.JobID) {}
+func (f *fakeUnschedulableCacheForAllocate) Forget(api.JobID) {}
 
 // TestAllocateResourceFitRejectionCarriesHintKeys proves that allocate's
 // fitErrors.UnschedulablePlugins() loop calls AddRejectionWithKeys for the
@@ -6339,7 +6431,7 @@ func TestAllocateResourceFitRejectionCarriesHintKeys(t *testing.T) {
 	}}}
 
 	fakeCache := &fakeUnschedulableCacheForAllocate{}
-	ssn := framework.OpenSession(schedulerCache, tiers, nil, framework.WithUnschedulableCache(fakeCache))
+	ssn := framework.OpenSession(schedulerCache, tiers, nil, framework.WithUnschedulableJobCache(fakeCache))
 
 	ssn.AddPredicateFn("fake-other", func(task *api.TaskInfo, node *api.NodeInfo) error {
 		if node.Name == "node-other" {
@@ -6356,7 +6448,7 @@ func TestAllocateResourceFitRejectionCarriesHintKeys(t *testing.T) {
 		return
 	}
 
-	var resourceFit, other *api.Rejection
+	var resourceFit, other *unschedulable.Rejection
 	for i := range rejections {
 		switch rejections[i].Plugin {
 		case resourcefit.ProviderName:
@@ -6384,7 +6476,7 @@ func TestAllocateResourceFitRejectionCarriesHintKeys(t *testing.T) {
 // ("node-growth/<node>/<dimension>") without importing the unexported
 // constructor, so this test observes the same externally-visible key the
 // unschedulable cache would use to narrow dispatch.
-func hasNodeGrowthKeyForDimension(keys []api.HintKey, node, dimension string) bool {
+func hasNodeGrowthKeyForDimension(keys []unschedulable.HintKey, node, dimension string) bool {
 	want := fmt.Sprintf("node-growth/%s/%s", node, dimension)
 	for _, k := range keys {
 		if string(k) == want {

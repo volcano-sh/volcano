@@ -57,6 +57,7 @@ import (
 	"volcano.sh/apis/pkg/apis/utils"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 )
 
@@ -462,7 +463,7 @@ func unschedulableJobIDForPod(pod *v1.Pod) (schedulingapi.JobID, bool) {
 
 func (sc *SchedulerCache) invalidateUnschedulableJobForPod(pod *v1.Pod) {
 	if jobID, ok := unschedulableJobIDForPod(pod); ok {
-		sc.unschedulableCache.InvalidateUnschedulable(jobID)
+		sc.unschedulableJobCache.Invalidate(jobID)
 	}
 }
 
@@ -486,7 +487,7 @@ func (sc *SchedulerCache) AddPod(obj interface{}) {
 		metrics.UpdateTaskScheduleDuration(metrics.TaskStageWatched, metrics.Duration(pod.CreationTimestamp.Time))
 	}
 	sc.invalidateUnschedulableJobForPod(pod)
-	sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Add}, nil, pod)
+	sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Add}, nil, pod)
 	klog.V(3).Infof("Added pod <%s/%v> into cache.", pod.Namespace, pod.Name)
 }
 
@@ -530,19 +531,19 @@ func (sc *SchedulerCache) UpdatePod(oldObj, newObj interface{}) {
 	jobAssignmentChanged := oldHasJob != newHasJob || oldJobID != newJobID
 	if jobAssignmentChanged {
 		if oldHasJob {
-			sc.unschedulableCache.InvalidateUnschedulable(oldJobID)
+			sc.unschedulableJobCache.Invalidate(oldJobID)
 		}
 		if newHasJob {
-			sc.unschedulableCache.InvalidateUnschedulable(newJobID)
+			sc.unschedulableJobCache.Invalidate(newJobID)
 		}
 	} else if terminalRelease || hasSpecificSchedulingEvent {
 		sc.invalidateUnschedulableJobForPod(newPod)
 	}
 	if terminalRelease {
-		sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}, oldPod, nil)
+		sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}, oldPod, nil)
 	} else {
 		for _, event := range events {
-			sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.Pod, ActionType: event.ActionType}, oldPod, newPod)
+			sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.Pod, ActionType: event.ActionType}, oldPod, newPod)
 		}
 	}
 	klog.V(4).Infof("Updated pod <%s/%v> in cache.", oldPod.Namespace, oldPod.Name)
@@ -576,7 +577,7 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 	}
 
 	sc.invalidateUnschedulableJobForPod(pod)
-	sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}, pod, nil)
+	sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}, pod, nil)
 	klog.V(3).Infof("Deleted pod <%s/%v> from cache.", pod.Namespace, pod.Name)
 }
 
@@ -757,7 +758,7 @@ func (sc *SchedulerCache) SyncNode(nodeName string) error {
 
 			klog.V(3).Infof("Node <%s> was deleted, removed from cache.", nodeName)
 			if oldNode != nil {
-				sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Delete}, oldNode, nil)
+				sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Delete}, oldNode, nil)
 			}
 			return nil
 		}
@@ -780,11 +781,11 @@ func (sc *SchedulerCache) SyncNode(nodeName string) error {
 		return err
 	}
 	if oldNode == nil {
-		sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add}, nil, nodeCopy)
+		sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add}, nil, nodeCopy)
 		return nil
 	}
 	for _, event := range kubeschedulerframework.NodeSchedulingPropertiesChange(nodeCopy, oldNode) {
-		sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: fwk.Node, ActionType: event.ActionType}, oldNode, nodeCopy)
+		sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.Node, ActionType: event.ActionType}, oldNode, nodeCopy)
 	}
 	return nil
 }
@@ -1032,7 +1033,7 @@ func (sc *SchedulerCache) AddPodGroupV1beta1(obj interface{}) {
 		klog.Errorf("Failed to add PodGroup %s into cache: %v", ss.Name, err)
 		return
 	}
-	sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: schedulingapi.PodGroupEvent, ActionType: fwk.Add}, nil, pg)
+	sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: unschedulable.PodGroupEvent, ActionType: fwk.Add}, nil, pg)
 }
 
 // UpdatePodGroupV1beta1 add podgroup to scheduler cache
@@ -1072,14 +1073,14 @@ func (sc *SchedulerCache) UpdatePodGroupV1beta1(oldObj, newObj interface{}) {
 	}
 	if schedulingInputsChanged {
 		jobID := schedulingapi.JobID(fmt.Sprintf("%s/%s", newSS.Namespace, newSS.Name))
-		sc.unschedulableCache.InvalidateUnschedulable(jobID)
+		sc.unschedulableJobCache.Invalidate(jobID)
 	}
 	oldPg := &schedulingapi.PodGroup{Version: schedulingapi.PodGroupVersionV1Beta1}
 	oldConverted := scheduling.PodGroup{}
 	if err := scheme.Scheme.Convert(oldSS, &oldConverted, nil); err == nil {
 		oldPg.PodGroup = oldConverted
 	}
-	sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: schedulingapi.PodGroupEvent, ActionType: fwk.Update}, oldPg, pg)
+	sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: unschedulable.PodGroupEvent, ActionType: fwk.Update}, oldPg, pg)
 }
 
 // DeletePodGroupV1beta1 delete podgroup from scheduler cache
@@ -1108,7 +1109,7 @@ func (sc *SchedulerCache) DeletePodGroupV1beta1(obj interface{}) {
 		klog.Errorf("Failed to delete podgroup %s from cache: %v", ss.Name, err)
 		return
 	}
-	sc.unschedulableCache.InvalidateUnschedulable(jobID)
+	sc.unschedulableJobCache.Invalidate(jobID)
 
 	podgroup := scheduling.PodGroup{}
 	if err := scheme.Scheme.Convert(ss, &podgroup, nil); err != nil {
@@ -1116,7 +1117,7 @@ func (sc *SchedulerCache) DeletePodGroupV1beta1(obj interface{}) {
 		return
 	}
 	pg := &schedulingapi.PodGroup{PodGroup: podgroup, Version: schedulingapi.PodGroupVersionV1Beta1}
-	sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: schedulingapi.PodGroupEvent, ActionType: fwk.Delete}, pg, nil)
+	sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: unschedulable.PodGroupEvent, ActionType: fwk.Delete}, pg, nil)
 }
 
 // AddQueueV1beta1 add queue to scheduler cache
@@ -1137,7 +1138,7 @@ func (sc *SchedulerCache) AddQueueV1beta1(obj interface{}) {
 	klog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
 	sc.addQueue(queue)
 	sc.Mutex.Unlock()
-	sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: schedulingapi.QueueEvent, ActionType: fwk.Add}, nil, queue)
+	sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: unschedulable.QueueEvent, ActionType: fwk.Add}, nil, queue)
 }
 
 // UpdateQueueV1beta1 update queue to scheduler cache
@@ -1171,7 +1172,7 @@ func (sc *SchedulerCache) UpdateQueueV1beta1(oldObj, newObj interface{}) {
 	sc.Mutex.Lock()
 	sc.updateQueue(newQueue)
 	sc.Mutex.Unlock()
-	sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: schedulingapi.QueueEvent, ActionType: fwk.Update}, oldQueue, newQueue)
+	sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: unschedulable.QueueEvent, ActionType: fwk.Update}, oldQueue, newQueue)
 }
 
 // DeleteQueueV1beta1 delete queue from the scheduler cache
@@ -1195,7 +1196,7 @@ func (sc *SchedulerCache) DeleteQueueV1beta1(obj interface{}) {
 	sc.Mutex.Lock()
 	sc.deleteQueue(schedulingapi.QueueID(ss.Name))
 	sc.Mutex.Unlock()
-	sc.unschedulableCache.OnEvent(schedulingapi.ClusterEvent{Resource: schedulingapi.QueueEvent, ActionType: fwk.Delete}, ss, nil)
+	sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: unschedulable.QueueEvent, ActionType: fwk.Delete}, ss, nil)
 }
 
 func (sc *SchedulerCache) addQueue(queue *scheduling.Queue) {

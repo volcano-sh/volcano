@@ -39,6 +39,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -243,29 +244,29 @@ func TestBackfillSkipsTaskWhenNoBestNode(t *testing.T) {
 	}
 }
 
-// fakeUnschedulableCacheForBackfill is a minimal cache.UnschedulableCache used
+// fakeUnschedulableCacheForBackfill is a minimal session cache used
 // to observe the rejections recorded at CloseSession without exercising the
 // real cache's event-index bookkeeping.
 type fakeUnschedulableCacheForBackfill struct {
-	recorded map[api.JobID][]api.Rejection
+	recorded map[api.JobID][]unschedulable.Rejection
 }
 
 func (f *fakeUnschedulableCacheForBackfill) BeginSession() {}
 
-func (f *fakeUnschedulableCacheForBackfill) AddHintProvider(string, api.HintProvider) {}
+func (f *fakeUnschedulableCacheForBackfill) AddHintProvider(string, unschedulable.HintProvider) {}
 
-func (f *fakeUnschedulableCacheForBackfill) RecordUnschedulable(job *api.JobInfo, rejections []api.Rejection) {
+func (f *fakeUnschedulableCacheForBackfill) Record(job *api.JobInfo, rejections []unschedulable.Rejection) {
 	if f.recorded == nil {
-		f.recorded = map[api.JobID][]api.Rejection{}
+		f.recorded = map[api.JobID][]unschedulable.Rejection{}
 	}
 	f.recorded[job.UID] = rejections
 }
 
-func (f *fakeUnschedulableCacheForBackfill) GetCachedRejections(*api.JobInfo) []api.Rejection {
+func (f *fakeUnschedulableCacheForBackfill) CachedRejections(*api.JobInfo) []unschedulable.Rejection {
 	return nil
 }
 
-func (f *fakeUnschedulableCacheForBackfill) ForgetUnschedulable(api.JobID) {}
+func (f *fakeUnschedulableCacheForBackfill) Forget(api.JobID) {}
 
 // TestBackfillResourceFitRejectionCarriesHintKeys proves that backfill's
 // fitErrors.UnschedulablePlugins() loop calls AddRejectionWithKeys for the
@@ -322,7 +323,7 @@ func TestBackfillResourceFitRejectionCarriesHintKeys(t *testing.T) {
 	}}}
 
 	fakeCache := &fakeUnschedulableCacheForBackfill{}
-	ssn := framework.OpenSession(schedulerCache, tilers, []conf.Configuration{}, framework.WithUnschedulableCache(fakeCache))
+	ssn := framework.OpenSession(schedulerCache, tilers, []conf.Configuration{}, framework.WithUnschedulableJobCache(fakeCache))
 
 	ssn.AddPredicateFn(resourcefit.ProviderName, func(task *api.TaskInfo, node *api.NodeInfo) error {
 		if node.Name == "node-small" {
@@ -349,7 +350,7 @@ func TestBackfillResourceFitRejectionCarriesHintKeys(t *testing.T) {
 		return
 	}
 
-	var resourceFit, other *api.Rejection
+	var resourceFit, other *unschedulable.Rejection
 	for i := range rejections {
 		switch rejections[i].Plugin {
 		case resourcefit.ProviderName:
@@ -376,7 +377,7 @@ func TestBackfillResourceFitRejectionCarriesHintKeys(t *testing.T) {
 // ("pod-release/<node>/<dimension>") without importing the unexported
 // constructor, so this test observes the same externally-visible key the
 // unschedulable cache would use to narrow dispatch.
-func hasPodReleaseKeyForDimension(keys []api.HintKey, node, dimension string) bool {
+func hasPodReleaseKeyForDimension(keys []unschedulable.HintKey, node, dimension string) bool {
 	want := fmt.Sprintf("pod-release/%s/%s", node, dimension)
 	for _, k := range keys {
 		if string(k) == want {

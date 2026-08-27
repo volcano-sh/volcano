@@ -25,52 +25,53 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 func TestResourceFitPodHint(t *testing.T) {
 	targetPod := podWithCPU("target", "2")
 	task := api.NewTaskInfo(targetPod)
 	job := api.NewJobInfo("job", task)
-	rejection := api.Rejection{Tasks: []api.TaskID{task.UID}}
+	rejection := unschedulable.Rejection{Tasks: []api.TaskID{task.UID}}
 
 	tests := []struct {
 		name     string
 		oldPod   *v1.Pod
 		newPod   *v1.Pod
-		expected api.HintResult
+		expected unschedulable.HintResult
 	}{
 		{
 			name:     "scheduled pod deletion frees resources",
 			oldPod:   scheduledPodWithCPU("deleted", "1"),
-			expected: api.HintWakeup,
+			expected: unschedulable.HintWakeup,
 		},
 		{
 			name:     "unscheduled pod deletion does not free node resources",
 			oldPod:   podWithCPU("deleted", "1"),
-			expected: api.HintSkip,
+			expected: unschedulable.HintSkip,
 		},
 		{
 			name:     "rejected pending pod deletion changes the job",
 			oldPod:   podWithCPU("target", "2"),
-			expected: api.HintWakeup,
+			expected: unschedulable.HintWakeup,
 		},
 		{
 			name:     "rejected pending pod request decreases",
 			oldPod:   podWithCPU("target", "2"),
 			newPod:   podWithCPU("target", "1"),
-			expected: api.HintWakeup,
+			expected: unschedulable.HintWakeup,
 		},
 		{
 			name:     "scheduled pod request decreases",
 			oldPod:   scheduledPodWithCPU("resized", "2"),
 			newPod:   scheduledPodWithCPU("resized", "1"),
-			expected: api.HintWakeup,
+			expected: unschedulable.HintWakeup,
 		},
 		{
 			name:     "scheduled pod update does not change resources",
 			oldPod:   scheduledPodWithCPU("updated", "1"),
 			newPod:   scheduledPodWithCPU("updated", "1"),
-			expected: api.HintSkip,
+			expected: unschedulable.HintSkip,
 		},
 	}
 
@@ -94,42 +95,42 @@ func TestResourceFitPodHint(t *testing.T) {
 func TestResourceFitNodeHint(t *testing.T) {
 	task := api.NewTaskInfo(podWithCPU("target", "2"))
 	job := api.NewJobInfo("job", task)
-	rejection := api.Rejection{Tasks: []api.TaskID{task.UID}}
+	rejection := unschedulable.Rejection{Tasks: []api.TaskID{task.UID}}
 
 	oldNode := nodeWithResources("1", "1Gi")
 	tests := []struct {
 		name   string
 		oldObj any
 		newObj any
-		want   api.HintResult
+		want   unschedulable.HintResult
 	}{
 		{
 			name:   "CPU increase makes rejected task fit",
 			oldObj: oldNode,
 			newObj: nodeWithResources("2", "1Gi"),
-			want:   api.HintWakeup,
+			want:   unschedulable.HintWakeup,
 		},
 		{
 			name:   "CPU increase remains insufficient",
 			oldObj: oldNode,
 			newObj: nodeWithResources("1500m", "1Gi"),
-			want:   api.HintSkip,
+			want:   unschedulable.HintSkip,
 		},
 		{
 			name:   "unrequested resource increase is skipped",
 			oldObj: oldNode,
 			newObj: nodeWithResources("1", "2Gi"),
-			want:   api.HintSkip,
+			want:   unschedulable.HintSkip,
 		},
 		{
 			name:   "new Node cannot fit rejected task",
 			newObj: oldNode,
-			want:   api.HintSkip,
+			want:   unschedulable.HintSkip,
 		},
 		{
 			name:   "new Node can fit rejected task",
 			newObj: nodeWithResources("2", "1Gi"),
-			want:   api.HintWakeup,
+			want:   unschedulable.HintWakeup,
 		},
 	}
 
@@ -153,23 +154,23 @@ func TestResourceFitHintsWakeWhenRejectedTaskIsMissing(t *testing.T) {
 	twoCPUs := api.NewResource(v1.ResourceList{v1.ResourceCPU: resource.MustParse("2")})
 	hints := []struct {
 		name string
-		hint func(api.Rejection) api.HintResult
+		hint func(unschedulable.Rejection) unschedulable.HintResult
 	}{
 		{
 			name: "new Node",
-			hint: func(rejection api.Rejection) api.HintResult {
+			hint: func(rejection unschedulable.Rejection) unschedulable.HintResult {
 				return newNodeFitHint(job, rejection, twoCPUs)
 			},
 		},
 		{
 			name: "Pod resource release",
-			hint: func(rejection api.Rejection) api.HintResult {
+			hint: func(rejection unschedulable.Rejection) unschedulable.HintResult {
 				return resourceReleaseHint(job, rejection, twoCPUs, oneCPU)
 			},
 		},
 		{
 			name: "Node allocatable increase",
-			hint: func(rejection api.Rejection) api.HintResult {
+			hint: func(rejection unschedulable.Rejection) unschedulable.HintResult {
 				return allocatableIncreaseHint(job, rejection, oneCPU, twoCPUs)
 			},
 		},
@@ -185,9 +186,9 @@ func TestResourceFitHintsWakeWhenRejectedTaskIsMissing(t *testing.T) {
 	for _, hint := range hints {
 		for _, rejection := range rejections {
 			t.Run(hint.name+"/"+rejection.name, func(t *testing.T) {
-				got := hint.hint(api.Rejection{Tasks: rejection.tasks})
-				if got != api.HintWakeup {
-					t.Fatalf("hint result = %v, want %v for missing rejected task", got, api.HintWakeup)
+				got := hint.hint(unschedulable.Rejection{Tasks: rejection.tasks})
+				if got != unschedulable.HintWakeup {
+					t.Fatalf("hint result = %v, want %v for missing rejected task", got, unschedulable.HintWakeup)
 				}
 			})
 		}
