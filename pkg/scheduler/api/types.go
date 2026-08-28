@@ -66,6 +66,16 @@ const (
 	Unknown
 )
 
+const (
+	// spBlockAnnotationKey is the PodGroup annotation key used by the Ascend plugin
+	// to declare SuperPod block size for Ascend SuperPod scheduling.
+	spBlockAnnotationKey = "sp-block"
+
+	// blockUnit is the base unit for sp-block; the annotation value must be a positive
+	// integer multiple of this value. Used by the Ascend plugin only.
+	blockUnit = 16
+)
+
 func (ts TaskStatus) String() string {
 	switch ts {
 	case Pending:
@@ -380,6 +390,12 @@ type ReservedNodesFn func()
 
 // VictimTasksFn is the func declaration used to select victim tasks
 type VictimTasksFn func([]*TaskInfo) []*TaskInfo
+
+// BatchVictimScoreFn returns priority scores for ALL candidate preemption/reclaim nodes at once.
+// The map key is the node name and the value is the victims that would be evicted on
+// that node to make room for the initiator. A higher score means the node is more preferred.
+// Scores from all enabled plugins are summed per node (like BatchNodeOrderFn).
+type BatchVictimScoreFn func(initiator *TaskInfo, nodesToVictims map[string][]*TaskInfo) (map[string]float64, error)
 
 // AllocatableFn is the func declaration used to check whether the task can be allocated
 type AllocatableFn func(*QueueInfo, *TaskInfo) bool
