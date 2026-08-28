@@ -6127,7 +6127,7 @@ func TestAllocate_FlatPathHonorsAndClearsNomination(t *testing.T) {
 }
 
 // TestHasNominatedHyperNode covers the partitioning predicate used by
-// buildAllocateContext to route jobs into the two-pass allocation loop.
+// buildAllocateContext to route jobs into the two-phase allocation loop.
 func TestHasNominatedHyperNode(t *testing.T) {
 	jobID := api.JobID("ns/job")
 	cases := []struct {
@@ -6175,7 +6175,7 @@ func TestHasNominatedHyperNode(t *testing.T) {
 
 // TestAllocate_NominatedJobWinsOverRegularJob verifies that when a regular
 // and a nominated job in the same queue contend for a single-pod node, the
-// two-pass loop schedules the nominated job even though the default
+// two-phase loop schedules the nominated job even though the default
 // JobOrderFn would otherwise pick the regular job first.
 func TestAllocate_NominatedJobWinsOverRegularJob(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{
@@ -6193,7 +6193,7 @@ func TestAllocate_NominatedJobWinsOverRegularJob(t *testing.T) {
 	nominatedPod.Status.NominatedNodeName = "n1"
 
 	test := uthelper.TestCommonStruct{
-		Name:    "two-pass allocate: nominated job wins despite legacy ordering preferring the regular job",
+		Name:    "two-phase allocate: nominated job wins despite legacy ordering preferring the regular job",
 		Plugins: plugins,
 		PodGroups: []*schedulingv1.PodGroup{
 			util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),

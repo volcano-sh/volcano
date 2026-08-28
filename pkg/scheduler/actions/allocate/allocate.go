@@ -203,12 +203,12 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 			continue
 		}
 
-		// jobs with NominatedHyperNode go into the nominated pass; everything else into the regular pass.
+		// jobs with NominatedHyperNode go into the nominated phase; everything else into the regular phase.
 		queues, jobsByQueue := actx.queuesRegular, actx.jobsByQueueRegular
-		pass := "regular"
+		phase := "regular"
 		if hasNominatedHyperNode(job) {
 			queues, jobsByQueue = actx.queuesNominated, actx.jobsByQueueNominated
-			pass = "nominated"
+			phase = "nominated"
 			// allocateFromNomination either redeems the pin and clears it post-commit
 			// or invalidates it on a validate/predicate miss; both paths must reach
 			// SchedulerCache, otherwise the stale NominatedHyperNode is retried next
@@ -220,7 +220,7 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 			queues.Push(ssn.Queues[job.Queue])
 		}
 
-		klog.V(4).Infof("Added Job <%s/%s> into Queue <%s> in %s pass", job.Namespace, job.Name, job.Queue, pass)
+		klog.V(4).Infof("Added Job <%s/%s> into Queue <%s> in %s phase", job.Namespace, job.Name, job.Queue, phase)
 		jobsByQueue[job.Queue].Push(job)
 		actx.jobWorksheet[job.UID] = worksheet
 
@@ -311,25 +311,30 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 }
 
 func (alloc *Action) allocateResources(actx *allocateContext) {
+	var nominatedCommitted bool
 	if !actx.queuesNominated.Empty() {
-		klog.V(3).InfoS("Allocate pass 1: prioritize jobs with NominatedHyperNode",
+		klog.V(3).InfoS("Allocating jobs with NominatedHyperNode",
 			"queues", actx.queuesNominated.Len())
-		alloc.allocateResourcesForQueues(actx.queuesNominated, actx.jobsByQueueNominated, actx)
+		nominatedCommitted = alloc.allocateResourcesForQueues(actx.queuesNominated, actx.jobsByQueueNominated, actx)
 	}
 	if !actx.queuesRegular.Empty() {
-		klog.V(3).InfoS("Allocate pass 2: regular allocation",
+		klog.V(3).InfoS("Allocating jobs without NominatedHyperNode",
 			"queues", actx.queuesRegular.Len())
-		// Pass 1 may have committed allocations that changed queues' share/allocated state
-		// re-heapify to force make pass 2 honor the correct QueueOrderFn order.
-		actx.queuesRegular.Reheapify()
+		// Commits from the nominated phase may have changed queues' share/allocated state
+		// re-heapify to force the regular phase to honor the current QueueOrderFn.
+		if nominatedCommitted {
+			actx.queuesRegular.Reheapify()
+		}
 		alloc.allocateResourcesForQueues(actx.queuesRegular, actx.jobsByQueueRegular, actx)
 	}
 }
 
 // allocateResourcesForQueues allocates resources for jobs in the given queues and jobsByQueue.
-// Can be run in two passes, one for jobs with NominatedHyperNode and one for everything else.
-func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobsByQueue map[api.QueueID]*util.PriorityQueue, actx *allocateContext) {
+// Called once for jobs with NominatedHyperNode and again for everything else.
+// Returns true if at least one statement was committed.
+func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobsByQueue map[api.QueueID]*util.PriorityQueue, actx *allocateContext) bool {
 	ssn := alloc.session
+	var committed bool
 
 	for {
 		if queues.Empty() {
@@ -360,6 +365,7 @@ func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobs
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
 			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
 				stmt.Commit()
+				committed = true
 				ssn.MarkJobDirty(job.UID)
 				alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
 
@@ -389,6 +395,7 @@ func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobs
 
 				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
 					stmt.Commit()
+					committed = true
 
 					// Mirror recorder.UpdateDecisionToJob: clear the redeemed nomination.
 					if subJob.NominatedHyperNode != "" {
@@ -412,6 +419,8 @@ func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobs
 		// To ensure that the priority of the queue is calculated based on the latest resource allocation situation.
 		queues.Push(queue)
 	}
+
+	return committed
 }
 
 func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet, hyperNodeToAllocate *api.HyperNodeInfo) *framework.Statement {
