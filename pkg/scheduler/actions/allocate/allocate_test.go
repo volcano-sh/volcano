@@ -6125,3 +6125,61 @@ func TestAllocate_FlatPathHonorsAndClearsNomination(t *testing.T) {
 	assert.Equal(t, "", subJob.NominatedHyperNode,
 		"flat-path commit must clear subJob.NominatedHyperNode (regression: previously left stale)")
 }
+
+// TestShouldStopHyperNodeScan locks in the guarantee that bounding/early-exiting the
+// hyperNode candidate scan (added to keep scheduling latency bounded on large fleets)
+// can never find fewer solutions than an exhaustive scan of the same tier would: the
+// cap and patience thresholds must never stop the scan before at least one solution
+// has been found.
+func TestShouldStopHyperNodeScan(t *testing.T) {
+	tests := []struct {
+		name             string
+		tried            int
+		hasSolution      bool
+		sinceImprovement int
+		want             bool
+	}{
+		{
+			name:             "no solution yet, even far past the sample size and patience thresholds, must keep scanning",
+			tried:            hyperNodeCandidateSampleSize * 10,
+			hasSolution:      false,
+			sinceImprovement: hyperNodeEarlyExitPatience * 10,
+			want:             false,
+		},
+		{
+			name:             "no solution yet, well within thresholds, keep scanning",
+			tried:            1,
+			hasSolution:      false,
+			sinceImprovement: 0,
+			want:             false,
+		},
+		{
+			name:             "solution found, sample size reached, stop",
+			tried:            hyperNodeCandidateSampleSize,
+			hasSolution:      true,
+			sinceImprovement: 0,
+			want:             true,
+		},
+		{
+			name:             "solution found, patience exhausted, stop",
+			tried:            5,
+			hasSolution:      true,
+			sinceImprovement: hyperNodeEarlyExitPatience,
+			want:             true,
+		},
+		{
+			name:             "solution found, still within both thresholds, keep scanning",
+			tried:            1,
+			hasSolution:      true,
+			sinceImprovement: 0,
+			want:             false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldStopHyperNodeScan(tt.tried, tt.hasSolution, tt.sinceImprovement)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
