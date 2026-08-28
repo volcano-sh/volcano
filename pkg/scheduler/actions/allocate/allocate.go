@@ -934,7 +934,7 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 		case len(nodes) == 1: // If only one node after predicate, just use it.
 			bestNode = nodes[0]
 		case len(nodes) > 1: // If more than one node after predicate, using "the best" one
-			nodeScores := util.PrioritizeNodes(task, nodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+			nodeScores := util.PrioritizeNodes(task, nodes, ssn.BatchNodeOrderFn, ssn.NodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
 			bestNode = ssn.BestNodeFn(task, nodeScores)
 			if bestNode == nil {

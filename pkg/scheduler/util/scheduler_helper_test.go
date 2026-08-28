@@ -721,8 +721,11 @@ func TestPrioritizeNodes(t *testing.T) {
 	noopBatch := func(*api.TaskInfo, []*api.NodeInfo) (map[string]float64, error) {
 		return nil, nil
 	}
-	noopMap := func(*api.TaskInfo, *api.NodeInfo) (map[string]float64, float64, error) {
-		return nil, 0, nil
+	noopOrder := func(*api.TaskInfo, *api.NodeInfo) (float64, error) {
+		return 0, nil
+	}
+	noopMap := func(*api.TaskInfo, *api.NodeInfo) (map[string]float64, error) {
+		return nil, nil
 	}
 	noopReduce := func(*api.TaskInfo, map[string]fwk.NodeScoreList) (map[string]float64, error) {
 		return nil, nil
@@ -732,6 +735,7 @@ func TestPrioritizeNodes(t *testing.T) {
 		name     string
 		nodes    []*api.NodeInfo
 		batchFn  api.BatchNodeOrderFn
+		orderFn  api.NodeOrderFn
 		mapFn    api.NodeOrderMapFn
 		reduceFn api.NodeOrderReduceFn
 		expected map[string]float64
@@ -739,6 +743,7 @@ func TestPrioritizeNodes(t *testing.T) {
 		{
 			name:     "empty node list",
 			batchFn:  noopBatch,
+			orderFn:  noopOrder,
 			mapFn:    noopMap,
 			reduceFn: noopReduce,
 		},
@@ -748,9 +753,12 @@ func TestPrioritizeNodes(t *testing.T) {
 			batchFn: func(_ *api.TaskInfo, _ []*api.NodeInfo) (map[string]float64, error) {
 				return map[string]float64{"node1": 10, "node2": 20}, nil
 			},
-			mapFn: func(_ *api.TaskInfo, n *api.NodeInfo) (map[string]float64, float64, error) {
+			orderFn: func(_ *api.TaskInfo, n *api.NodeInfo) (float64, error) {
 				order := map[string]float64{"node1": 1, "node2": 2}
-				return map[string]float64{"plugin": 5}, order[n.Name], nil
+				return order[n.Name], nil
+			},
+			mapFn: func(_ *api.TaskInfo, _ *api.NodeInfo) (map[string]float64, error) {
+				return map[string]float64{"plugin": 5}, nil
 			},
 			reduceFn: func(_ *api.TaskInfo, m map[string]fwk.NodeScoreList) (map[string]float64, error) {
 				out := map[string]float64{}
@@ -766,20 +774,50 @@ func TestPrioritizeNodes(t *testing.T) {
 			expected: map[string]float64{"node1": 14, "node2": 25},
 		},
 		{
+			name:    "orderFn error does not suppress map and reduce scores",
+			nodes:   []*api.NodeInfo{node1, node2, node3},
+			batchFn: noopBatch,
+			orderFn: func(_ *api.TaskInfo, n *api.NodeInfo) (float64, error) {
+				if n.Name == "node2" {
+					return 0, fmt.Errorf("order failed")
+				}
+				return 7, nil
+			},
+			mapFn: func(_ *api.TaskInfo, _ *api.NodeInfo) (map[string]float64, error) {
+				return map[string]float64{"plugin": 5}, nil
+			},
+			reduceFn: func(_ *api.TaskInfo, m map[string]fwk.NodeScoreList) (map[string]float64, error) {
+				out := map[string]float64{}
+				for _, list := range m {
+					for _, ns := range list {
+						out[ns.Name] += 3
+					}
+				}
+				return out, nil
+			},
+			// node1: order(7) + reduce(3) = 10
+			// node2: order failed(0) + reduce(3) = 3
+			// node3: order(7) + reduce(3) = 10
+			expected: map[string]float64{"node1": 10, "node2": 3, "node3": 10},
+		},
+		{
 			name:    "mapFn error on one node still scores the others",
 			nodes:   []*api.NodeInfo{node1, node2, node3},
 			batchFn: noopBatch,
-			mapFn: func(_ *api.TaskInfo, n *api.NodeInfo) (map[string]float64, float64, error) {
+			orderFn: func(_ *api.TaskInfo, _ *api.NodeInfo) (float64, error) {
+				return 7, nil
+			},
+			mapFn: func(_ *api.TaskInfo, n *api.NodeInfo) (map[string]float64, error) {
 				if n.Name == "node2" {
-					return nil, 0, fmt.Errorf("map failed")
+					return nil, fmt.Errorf("map failed")
 				}
-				return nil, 7, nil
+				return nil, nil
 			},
 			reduceFn: noopReduce,
 			// node1: order(7) = 7
-			// node2: mapFn errored, skipped during merge, defaults to 0
+			// node2: mapFn errored, but order(7) is retained
 			// node3: order(7) = 7
-			expected: map[string]float64{"node1": 7, "node2": 0, "node3": 7},
+			expected: map[string]float64{"node1": 7, "node2": 7, "node3": 7},
 		},
 		{
 			name:  "batchFn error returns empty result",
@@ -787,6 +825,7 @@ func TestPrioritizeNodes(t *testing.T) {
 			batchFn: func(*api.TaskInfo, []*api.NodeInfo) (map[string]float64, error) {
 				return nil, fmt.Errorf("batch failed")
 			},
+			orderFn:  noopOrder,
 			mapFn:    noopMap,
 			reduceFn: noopReduce,
 		},
@@ -794,6 +833,7 @@ func TestPrioritizeNodes(t *testing.T) {
 			name:    "reduceFn error returns empty result",
 			nodes:   []*api.NodeInfo{node1, node2},
 			batchFn: noopBatch,
+			orderFn: noopOrder,
 			mapFn:   noopMap,
 			reduceFn: func(*api.TaskInfo, map[string]fwk.NodeScoreList) (map[string]float64, error) {
 				return nil, fmt.Errorf("reduce failed")
@@ -803,7 +843,7 @@ func TestPrioritizeNodes(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := PrioritizeNodes(task, tc.nodes, tc.batchFn, tc.mapFn, tc.reduceFn)
+			result := PrioritizeNodes(task, tc.nodes, tc.batchFn, tc.orderFn, tc.mapFn, tc.reduceFn)
 			got := map[string]float64{}
 			for score, nodes := range result {
 				for _, n := range nodes {
@@ -824,8 +864,8 @@ func TestPrioritizeNodes(t *testing.T) {
 }
 
 // TestPrioritizeNodesNoRace runs PrioritizeNodes over a large number of nodes
-// under the Go race detector to verify that the lock-free map phase does not
-// cause any data races or let any node scores get dropped or overwritten.
+// under the Go race detector to verify that the lock-free order phase and the
+// serial map phase do not drop or overwrite node scores.
 func TestPrioritizeNodesNoRace(t *testing.T) {
 	const numNodes = 500
 	task := &api.TaskInfo{Name: "task1", Namespace: "default"}
@@ -837,6 +877,7 @@ func TestPrioritizeNodesNoRace(t *testing.T) {
 		nameToIdx[name] = i
 	}
 
+	mapCallOrder := make([]string, 0, numNodes)
 	result := PrioritizeNodes(
 		task, nodes,
 		func(_ *api.TaskInfo, ns []*api.NodeInfo) (map[string]float64, error) {
@@ -846,8 +887,12 @@ func TestPrioritizeNodesNoRace(t *testing.T) {
 			}
 			return scores, nil
 		},
-		func(_ *api.TaskInfo, n *api.NodeInfo) (map[string]float64, float64, error) {
-			return nil, float64(nameToIdx[n.Name]), nil
+		func(_ *api.TaskInfo, n *api.NodeInfo) (float64, error) {
+			return float64(nameToIdx[n.Name]), nil
+		},
+		func(_ *api.TaskInfo, n *api.NodeInfo) (map[string]float64, error) {
+			mapCallOrder = append(mapCallOrder, n.Name)
+			return nil, nil
 		},
 		func(*api.TaskInfo, map[string]fwk.NodeScoreList) (map[string]float64, error) {
 			return nil, nil
@@ -865,6 +910,9 @@ func TestPrioritizeNodesNoRace(t *testing.T) {
 		expected := float64(i * 11)
 		if got[n.Name] != expected {
 			t.Errorf("Node %s: expected score %v, but got %v", n.Name, expected, got[n.Name])
+		}
+		if mapCallOrder[i] != n.Name {
+			t.Errorf("Map call %d: expected node %s, but got %s", i, n.Name, mapCallOrder[i])
 		}
 	}
 }

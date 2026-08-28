@@ -363,8 +363,8 @@ type NodeMapFn func(*TaskInfo, *NodeInfo) (float64, error)
 // NodeReduceFn is the func declaration used to reduce priority score for a node for a particular task.
 type NodeReduceFn func(*TaskInfo, fwk.NodeScoreList) error
 
-// NodeOrderMapFn is the func declaration used to get priority score of all plugins for a node for a particular task.
-type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, float64, error)
+// NodeOrderMapFn is the func declaration used to get map scores of all plugins for a node for a particular task.
+type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, error)
 
 // HyperNodeOrderMapFn is the func declaration used to get priority score of all plugins for a hyperNode for a particular job.
 type HyperNodeOrderMapFn func(*SubJobInfo, map[string][]*NodeInfo) (map[string]map[string]float64, error)

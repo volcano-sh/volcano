@@ -50,13 +50,6 @@ const (
 
 var lastProcessedNodeIndex atomic.Int64
 
-// nodeScoreResult holds the per-node scoring output collected by parallel workers.
-type nodeScoreResult struct {
-	pluginScores map[string]float64
-	orderScore   float64
-	err          error
-}
-
 // CalculateNumOfFeasibleNodesToFind returns the number of feasible nodes that once found,
 // the scheduler stops its search for more feasible nodes.
 func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
@@ -81,40 +74,40 @@ func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
 }
 
 // PrioritizeNodes returns a map whose key is node's score and value are corresponding nodes
-func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.BatchNodeOrderFn, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
+func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.BatchNodeOrderFn, orderFn api.NodeOrderFn, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
 	nodeScores := map[float64][]*api.NodeInfo{}
 
-	results := make([]nodeScoreResult, len(nodes))
+	nodeOrderScores := make([]float64, len(nodes))
 
 	scoreNode := func(index int) {
 		node := nodes[index]
-		pluginScores, orderScore, err := mapFn(task, node)
+		orderScore, err := orderFn(task, node)
 		if err != nil {
-			results[index].err = err
 			klog.Errorf("Error in Calculating Priority for the node:%v", err)
 			return
 		}
-		// Lock-free write to pre-allocated slice at unique index
-		results[index].pluginScores = pluginScores
-		results[index].orderScore = orderScore
+		// Lock-free write to a pre-allocated slice at a unique index.
+		nodeOrderScores[index] = orderScore
 	}
 	scoreStart := time.Now()
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), scoreNode)
 
 	pluginNodeScoreMap := map[string]fwk.NodeScoreList{}
-	nodeOrderScoreMap := make(map[string]float64, len(nodes))
-	for index, res := range results {
-		if res.err != nil {
+	// NodeMapFn is a legacy extension point without a concurrency-safety contract,
+	// so collect its per-plugin scores serially before running the reduce phase.
+	for index := range nodes {
+		nodeName := nodes[index].Name
+		pluginScores, err := mapFn(task, nodes[index])
+		if err != nil {
+			klog.Errorf("Error in Calculating Priority for the node:%v", err)
 			continue
 		}
-		nodeName := nodes[index].Name
-		for plugin, score := range res.pluginScores {
+		for plugin, score := range pluginScores {
 			pluginNodeScoreMap[plugin] = append(pluginNodeScoreMap[plugin], fwk.NodeScore{
 				Name:  nodeName,
 				Score: int64(math.Floor(score)),
 			})
 		}
-		nodeOrderScoreMap[nodeName] = res.orderScore
 	}
 
 	reduceScores, err := reduceFn(task, pluginNodeScoreMap)
@@ -131,14 +124,11 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 	metrics.UpdateSchedulingStageDuration(metrics.SchedulingStageScoring, time.Since(scoreStart))
 
 	nodeScoreMap := map[string]float64{}
-	for _, node := range nodes {
+	for index, node := range nodes {
 		// If no plugin is applied to this node, the default is 0.0
-		score := 0.0
+		score := nodeOrderScores[index]
 		if reduceScore, ok := reduceScores[node.Name]; ok {
 			score += reduceScore
-		}
-		if orderScore, ok := nodeOrderScoreMap[node.Name]; ok {
-			score += orderScore
 		}
 		if batchScore, ok := batchNodeScore[node.Name]; ok {
 			score += batchScore
