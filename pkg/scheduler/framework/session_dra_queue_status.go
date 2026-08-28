@@ -28,38 +28,81 @@ const (
 	queueDRADeviceClassCapacitySep = ".deviceclass/"
 )
 
-func addTaskDRAAllocatedByQueue(
-	allocated map[api.QueueID]map[string]*api.DRAResource,
-	resourceClaimRefs map[api.QueueID]map[string]int,
-	queueID api.QueueID,
-	task *api.TaskInfo,
-) {
+type queueDRAAllocation struct {
+	// unattributed contains DRA resources that cannot be associated with an
+	// individual ResourceClaim and therefore cannot be deduplicated.
+	unattributed map[string]*api.DRAResource
+	// claims contains DRA resources keyed by ResourceClaim. Keeping the claim
+	// identity allows ancestors to deduplicate claims shared by descendants.
+	claims map[string]map[string]*api.DRAResource
+}
+
+func newQueueDRAAllocation() *queueDRAAllocation {
+	return &queueDRAAllocation{}
+}
+
+func (allocated *queueDRAAllocation) addTask(task *api.TaskInfo) {
 	if task == nil {
 		return
 	}
 
-	if allocated[queueID] == nil {
-		allocated[queueID] = make(map[string]*api.DRAResource)
-	}
-	if resourceClaimRefs[queueID] == nil {
-		resourceClaimRefs[queueID] = make(map[string]int)
-	}
-
 	if len(task.ResourceClaimDRAResreq) == 0 {
-		mergeDRAResourceMap(allocated[queueID], task.DRAResreq)
+		if len(task.DRAResreq) == 0 {
+			return
+		}
+		if allocated.unattributed == nil {
+			allocated.unattributed = make(map[string]*api.DRAResource)
+		}
+		mergeDRAResourceMap(allocated.unattributed, task.DRAResreq)
 		return
 	}
 
 	for _, claimKey := range task.ResourceClaimKeys {
+		if _, found := allocated.claims[claimKey]; found {
+			continue
+		}
 		claimReq := task.ResourceClaimDRAResreq[claimKey]
 		if len(claimReq) == 0 {
 			continue
 		}
-		if resourceClaimRefs[queueID][claimKey] == 0 {
-			mergeDRAResourceMap(allocated[queueID], claimReq)
+		if allocated.claims == nil {
+			allocated.claims = make(map[string]map[string]*api.DRAResource)
 		}
-		resourceClaimRefs[queueID][claimKey]++
+		allocated.claims[claimKey] = claimReq
 	}
+}
+
+func (allocated *queueDRAAllocation) addChild(child *queueDRAAllocation) {
+	if len(child.unattributed) > 0 {
+		if allocated.unattributed == nil {
+			allocated.unattributed = make(map[string]*api.DRAResource)
+		}
+		mergeDRAResourceMap(allocated.unattributed, child.unattributed)
+	}
+	if len(child.claims) > 0 && allocated.claims == nil {
+		allocated.claims = make(map[string]map[string]*api.DRAResource)
+	}
+	for claimKey, claimReq := range child.claims {
+		if _, found := allocated.claims[claimKey]; !found {
+			allocated.claims[claimKey] = claimReq
+		}
+	}
+}
+
+func (allocated *queueDRAAllocation) empty() bool {
+	return allocated == nil || len(allocated.unattributed) == 0 && len(allocated.claims) == 0
+}
+
+func (allocated *queueDRAAllocation) total() map[string]*api.DRAResource {
+	if allocated.empty() {
+		return nil
+	}
+	total := make(map[string]*api.DRAResource)
+	mergeDRAResourceMap(total, allocated.unattributed)
+	for _, claimReq := range allocated.claims {
+		mergeDRAResourceMap(total, claimReq)
+	}
+	return total
 }
 
 func mergeDRAResourceMap(dst map[string]*api.DRAResource, src map[string]*api.DRAResource) {
