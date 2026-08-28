@@ -6,8 +6,9 @@ concurrency:
 
 on:
   push:
-    branches-ignore:
-      - "dependabot/**"
+    branches:
+      - master
+      - "e2e/**"
   pull_request:
 
 permissions: read-all
