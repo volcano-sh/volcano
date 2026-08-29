@@ -214,9 +214,6 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 	return nil
 }
 
-func (s *Statement) pipeline(task *api.TaskInfo) {
-}
-
 func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 	return s.unPipeline(task)
 }
@@ -410,7 +407,12 @@ func (s *Statement) Commit() {
 				klog.Errorf("Failed to evict task: %s", err.Error())
 			}
 		case Pipeline:
-			s.pipeline(op.task)
+			// Pipeline deliberately has no cache-level resource reservation or
+			// binding side effect. The task remains Pipelined in this session, and
+			// RecordJobStatusEvent persists only its selected node as the Pod's
+			// NominatedNodeName when the session closes. The next session retries
+			// that node first without making the task compete with a stale cache
+			// reservation of its own resources.
 		case Allocate:
 			err := s.allocate(op.task)
 			if err != nil {
@@ -418,6 +420,52 @@ func (s *Statement) Commit() {
 					klog.Errorf("Failed to unallocate task <%v/%v>: %v.", op.task.Namespace, op.task.Name, e)
 				}
 				klog.Errorf("Failed to allocate task <%v/%v>: %v.", op.task.Namespace, op.task.Name, err)
+			}
+		}
+	}
+	s.operations = nil
+}
+
+// CommitPipelined resolves a statement for a job that satisfies JobPipelined
+// but not JobReady. Such a statement can contain a mixture of Allocate and
+// Pipeline operations; for example, a gang with minAvailable=4 may have two
+// Allocated tasks and two Pipelined tasks. Calling Commit in that state would
+// bind the two Allocated tasks before the complete gang is ready.
+//
+// This method therefore applies selective transaction semantics:
+//   - Pipeline is retained in the session. Its current TransactionContext is
+//     authoritative and is later reported as Pod.Status.NominatedNodeName.
+//   - Allocate is rolled back to Pending. GenerateLastTxContext preserves the
+//     successful trial placement for scheduling diagnostics without binding.
+//   - Evict is rolled back defensively. Allocate statements do not normally
+//     contain Evict, but "commit pipeline only" must not leak any other effect.
+//
+// Pipeline state intentionally reserves resources only in the current session.
+// Across sessions, the durable state is NominatedNodeName rather than a task or
+// node resource reservation in SchedulerCache. This avoids stale reservations,
+// self-competition on FutureIdle, and cache/informer consistency problems.
+func (s *Statement) CommitPipelined() {
+	klog.V(3).Info("Committing pipeline decisions and rolling back other operations ...")
+	for i := len(s.operations) - 1; i >= 0; i-- {
+		op := s.operations[i]
+		if op.name == Pipeline {
+			// The current Pipelined TransactionContext remains valid, so an older
+			// discarded transaction must not override it during status reporting.
+			op.task.ClearLastTxContext()
+			continue
+		}
+
+		// Preserve the attempted placement for TaskSchedulingReason before
+		// restoring the live TransactionContext to its pre-statement state.
+		op.task.GenerateLastTxContext()
+		switch op.name {
+		case Evict:
+			if err := s.unevict(op.task); err != nil {
+				klog.Errorf("Failed to roll back eviction while committing pipelined statement: %s", err.Error())
+			}
+		case Allocate:
+			if err := s.unallocate(op.task); err != nil {
+				klog.Errorf("Failed to roll back allocation while committing pipelined statement: %s", err.Error())
 			}
 		}
 	}
