@@ -273,6 +273,10 @@ func checkDRAAllocatable(dra *draQuotaAttr, taskDRA map[string]*api.DRAResource,
 		klog.V(5).Infof("checkDRAAllocatable: deviceClass=%s, allocated=%d, inqueue=%d, request=%d, capability=%d",
 			deviceClass, allocatedCount, inqueueCount, request.Count, capability.Count)
 
+		// For any positive capability below MaxInt64 the quota decision is exact: a
+		// sum that overflows saturates to MaxInt64, which still exceeds that
+		// capability and is rejected. A capability of MaxInt64 is effectively
+		// non-binding, since no realizable allocation reaches that many devices.
 		if capability.Count > 0 && api.SaturatingAdd(api.SaturatingAdd(allocatedCount, inqueueCount), request.Count) > capability.Count {
 			klog.V(3).Infof("checkDRAAllocatable: count exceeded for %s: allocated=%d, inqueue=%d, requested=%d, capability=%d",
 				deviceClass, allocatedCount, inqueueCount, request.Count, capability.Count)
