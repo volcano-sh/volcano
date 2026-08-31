@@ -420,6 +420,10 @@ type QueueSpec struct {
 	// +optional
 	Reclaimable *bool `json:"reclaimable,omitempty" protobuf:"varint,3,opt,name=reclaimable"`
 
+	// Preemptable indicate whether the queue can be preempted by other queue
+	// +optional
+	Preemptable *bool `json:"preemptable,omitempty" protobuf:"varint,12,opt,name=preemptable"`
+
 	// extendCluster indicate the jobs in this Queue will be dispatched to these clusters.
 	// +optional
 	ExtendClusters []Cluster `json:"extendClusters,omitempty" protobuf:"bytes,4,rep,name=extendClusters"`
