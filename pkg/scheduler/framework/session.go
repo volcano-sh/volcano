@@ -568,6 +568,8 @@ func updateQueueStatus(ssn *Session) {
 }
 
 func closeSession(ssn *Session) {
+	logTaskFitErrors(ssn)
+
 	ju := NewJobUpdater(ssn)
 	ju.UpdateAll()
 
@@ -587,6 +589,24 @@ func closeSession(ssn *Session) {
 	ssn.cache.OnSessionClose()
 
 	klog.V(3).Infof("Close Session %v", ssn.UID)
+}
+
+func logTaskFitErrors(ssn *Session) {
+	if !klog.V(5).Enabled() {
+		return
+	}
+	for _, job := range ssn.Jobs {
+		for taskID, fitErr := range job.NodesFitErrors {
+			if fitErr == nil {
+				continue
+			}
+			task, ok := job.Tasks[taskID]
+			if !ok {
+				continue
+			}
+			klog.V(5).InfoS("Task unschedulable", "task", klog.KRef(task.Namespace, task.Name), "reason", fitErr.Error())
+		}
+	}
 }
 
 func getPodGroupPhase(jobInfo *api.JobInfo, unschedulable bool) scheduling.PodGroupPhase {
