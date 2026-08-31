@@ -881,3 +881,135 @@ func TestAddUnassignedNumaPods_NilNodeValueSkips(t *testing.T) {
 	}
 	// No panic is the success condition.
 }
+
+// TestUpdateJobInfo_PropagatesNominatedHyperNode locks in the cache writeback
+// for gangpreempt/gangreclaim's NominatedHyperNode pin. Without this
+// propagation the pin is wiped by the next Snapshot+CloneStatusFrom, defeating
+// the per-subJob fast path in allocate.
+func TestUpdateJobInfo_PropagatesNominatedHyperNode(t *testing.T) {
+	jobID := api.JobID("ns/job")
+	subID := api.SubJobID("sub-1")
+
+	cached := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subID: {UID: subID, Job: jobID},
+		},
+	}
+	sc := &SchedulerCache{
+		Jobs: map[api.JobID]*api.JobInfo{jobID: cached},
+	}
+
+	// Session-side copy carries the gangpreempt/gangreclaim decision.
+	sessionView := &api.JobInfo{
+		UID:                jobID,
+		AllocatedHyperNode: "hn-allocated",
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subID: {
+				UID:                subID,
+				Job:                jobID,
+				AllocatedHyperNode: "hn-allocated",
+				NominatedHyperNode: "hn-nominated",
+			},
+		},
+	}
+
+	sc.updateJobInfo(sessionView)
+
+	assert.Equal(t, "hn-allocated", cached.AllocatedHyperNode)
+	assert.Equal(t, "hn-allocated", cached.SubJobs[subID].AllocatedHyperNode)
+	assert.Equal(t, "hn-nominated", cached.SubJobs[subID].NominatedHyperNode,
+		"cache must persist NominatedHyperNode so the next cycle honors the gang-eviction pin")
+}
+
+// TestUpdateJobInfo_PropagatesNominationClear ensures that when allocate
+// clears NominatedHyperNode after consuming the pin, the empty value also
+// makes it back into the cache so the next session does not retry the stale
+// pin via the fast path.
+func TestUpdateJobInfo_PropagatesNominationClear(t *testing.T) {
+	jobID := api.JobID("ns/job")
+	subID := api.SubJobID("sub-1")
+
+	cached := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subID: {UID: subID, Job: jobID, NominatedHyperNode: "hn-nominated"},
+		},
+	}
+	sc := &SchedulerCache{
+		Jobs: map[api.JobID]*api.JobInfo{jobID: cached},
+	}
+
+	sessionView := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subID: {UID: subID, Job: jobID, NominatedHyperNode: ""},
+		},
+	}
+
+	sc.updateJobInfo(sessionView)
+
+	assert.Equal(t, "", cached.SubJobs[subID].NominatedHyperNode,
+		"cache must mirror allocate's clear-on-commit so the next cycle does not retry the consumed nomination")
+}
+
+// TestTaskUnschedulable_SyncsNominatedNodeNameToCache locks in that a
+// successful UpdatePodStatus with a non-empty nominatedNodeName is reflected
+// on the cache task's Pod pointer synchronously, without waiting on the pod
+// informer round-trip. This pairs with updateJobInfo's synchronous writeback
+// of NominatedHyperNode so the next session Snapshot sees a consistent
+// (NominatedHyperNode, NominatedNodeName) pair and validateNomination does
+// not spuriously invalidate the gangpreempt/gangreclaim pin.
+func TestTaskUnschedulable_SyncsNominatedNodeNameToCache(t *testing.T) {
+	owner := buildOwnerReference("j1")
+	pod := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"),
+		[]metav1.OwnerReference{owner}, make(map[string]string))
+	task := api.NewTaskInfo(pod)
+
+	job := api.NewJobInfo(task.Job, task)
+	sc := &SchedulerCache{
+		Jobs:          map[api.JobID]*api.JobInfo{task.Job: job},
+		StatusUpdater: &util.FakeStatusUpdater{},
+		Recorder:      record.NewFakeRecorder(32),
+	}
+
+	err := sc.taskUnschedulable(task, api.PodReasonUnschedulable, "pending", "n-nominated")
+	assert.NoError(t, err)
+
+	cachedTask, ok := sc.Jobs[task.Job].Tasks[task.UID]
+	assert.True(t, ok, "cache must still track the task after taskUnschedulable")
+	assert.Equal(t, "n-nominated", cachedTask.Pod.Status.NominatedNodeName,
+		"cache task's NominatedNodeName must reflect the API-server write synchronously, without waiting on the pod informer")
+	assert.Equal(t, "", pod.Status.NominatedNodeName,
+		"the caller's original Pod pointer must be untouched (taskUnschedulable deep-copies before mutating)")
+}
+
+// TestTaskUnschedulable_DoesNotSyncWhenNominatedNodeNameEmpty guards that
+// the cache sync only runs when we actually wrote a nominatedNodeName. The
+// empty-nominated case is used for regular unschedulable reasons that must
+// not clobber a previously written NominatedNodeName (per the existing
+// updateNomiNode guard).
+func TestTaskUnschedulable_DoesNotSyncWhenNominatedNodeNameEmpty(t *testing.T) {
+	owner := buildOwnerReference("j1")
+	pod := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"),
+		[]metav1.OwnerReference{owner}, make(map[string]string))
+	pod.Status.NominatedNodeName = "n-previous"
+	task := api.NewTaskInfo(pod)
+
+	job := api.NewJobInfo(task.Job, task)
+	sc := &SchedulerCache{
+		Jobs:          map[api.JobID]*api.JobInfo{task.Job: job},
+		StatusUpdater: &util.FakeStatusUpdater{},
+		Recorder:      record.NewFakeRecorder(32),
+	}
+
+	// Call taskUnschedulable with an empty nominatedNodeName - the sync
+	// must NOT touch the cached pod pointer for this case.
+	originalPod := sc.Jobs[task.Job].Tasks[task.UID].Pod
+	err := sc.taskUnschedulable(task, api.PodReasonUnschedulable, "still pending", "")
+	assert.NoError(t, err)
+	assert.Same(t, originalPod, sc.Jobs[task.Job].Tasks[task.UID].Pod,
+		"cache pod pointer must not be swapped when nominatedNodeName is empty")
+	assert.Equal(t, "n-previous", sc.Jobs[task.Job].Tasks[task.UID].Pod.Status.NominatedNodeName,
+		"previously written NominatedNodeName must remain intact")
+}
