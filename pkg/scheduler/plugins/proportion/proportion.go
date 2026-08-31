@@ -100,48 +100,52 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		pp.totalGuarantee.Add(guarantee)
 	}
 	klog.V(4).Infof("The total guarantee resource is <%v>", pp.totalGuarantee)
+	for _, queue := range ssn.Queues {
+		attr := &queueAttr{
+			queueID: queue.UID,
+			name:    queue.Name,
+			weight:  queue.Weight,
+
+			deserved:  api.EmptyResource(),
+			allocated: api.EmptyResource(),
+			request:   api.EmptyResource(),
+			elastic:   api.EmptyResource(),
+			inqueue:   api.EmptyResource(),
+			guarantee: api.EmptyResource(),
+		}
+		if len(queue.Queue.Spec.Capability) != 0 {
+			attr.capability = api.NewResource(queue.Queue.Spec.Capability)
+			if attr.capability.MilliCPU <= 0 {
+				attr.capability.MilliCPU = math.MaxFloat64
+			}
+			if attr.capability.Memory <= 0 {
+				attr.capability.Memory = math.MaxFloat64
+			}
+		}
+		if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
+			attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+		}
+		realCapability := api.ExceededPart(pp.totalResource, pp.totalGuarantee).Add(attr.guarantee)
+		if attr.capability == nil {
+			attr.capability = api.EmptyResource()
+			attr.realCapability = realCapability
+		} else {
+			realCapability.MinDimensionResource(attr.capability, api.Infinity)
+			attr.realCapability = realCapability
+		}
+		pp.queueOpts[queue.UID] = attr
+		klog.V(4).Infof("Added Queue <%s> attributes.", queue.Name)
+	}
+
 	// Build attributes for Queues.
 	for _, job := range ssn.Jobs {
 		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
-		if _, found := pp.queueOpts[job.Queue]; !found {
-			queue := ssn.Queues[job.Queue]
-			attr := &queueAttr{
-				queueID: queue.UID,
-				name:    queue.Name,
-				weight:  queue.Weight,
-
-				deserved:  api.EmptyResource(),
-				allocated: api.EmptyResource(),
-				request:   api.EmptyResource(),
-				elastic:   api.EmptyResource(),
-				inqueue:   api.EmptyResource(),
-				guarantee: api.EmptyResource(),
-			}
-			if len(queue.Queue.Spec.Capability) != 0 {
-				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
-				if attr.capability.MilliCPU <= 0 {
-					attr.capability.MilliCPU = math.MaxFloat64
-				}
-				if attr.capability.Memory <= 0 {
-					attr.capability.Memory = math.MaxFloat64
-				}
-			}
-			if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
-				attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
-			}
-			realCapability := api.ExceededPart(pp.totalResource, pp.totalGuarantee).Add(attr.guarantee)
-			if attr.capability == nil {
-				attr.capability = api.EmptyResource()
-				attr.realCapability = realCapability
-			} else {
-				realCapability.MinDimensionResource(attr.capability, api.Infinity)
-				attr.realCapability = realCapability
-			}
-			pp.queueOpts[job.Queue] = attr
-			klog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
+		attr, found := pp.queueOpts[job.Queue]
+		if !found {
+			klog.Warningf("[proportion] Skip Job <%s/%s>: queue <%s> not found in session",
+				job.Namespace, job.Name, job.Queue)
+			continue
 		}
-
-		attr := pp.queueOpts[job.Queue]
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
@@ -274,11 +278,23 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			return int(rv.Queue.Spec.Priority) - int(lv.Queue.Spec.Priority)
 		}
 
-		if pp.queueOpts[lv.UID].share == pp.queueOpts[rv.UID].share {
+		lAttr := pp.queueOpts[lv.UID]
+		rAttr := pp.queueOpts[rv.UID]
+		if lAttr == nil || rAttr == nil {
+			if lAttr == nil && rAttr == nil {
+				return 0
+			}
+			if lAttr == nil {
+				return 1
+			}
+			return -1
+		}
+
+		if lAttr.share == rAttr.share {
 			return 0
 		}
 
-		if pp.queueOpts[lv.UID].share < pp.queueOpts[rv.UID].share {
+		if lAttr.share < rAttr.share {
 			return -1
 		}
 
@@ -321,6 +337,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) bool {
 		queue := obj.(*api.QueueInfo)
 		attr := pp.queueOpts[queue.UID]
+		if attr == nil {
+			return false
+		}
 
 		overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
 		metrics.UpdateQueueOverused(attr.name, overused)
@@ -339,6 +358,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		attr := pp.queueOpts[queue.UID]
+		if attr == nil {
+			return false
+		}
 		totalReq := api.EmptyResource()
 		for _, task := range candidates {
 			if task != nil {
@@ -406,6 +428,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		queueID := job.Queue
 		attr := pp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
+		if queue == nil || attr == nil {
+			klog.Warningf("[proportion] Queue <%s> not found for Job <%s/%s>, reject", queueID, job.Namespace, job.Name)
+			return util.Reject
+		}
 		// If the queue is not open, do not enqueue
 		if queue.Queue.Status.State != scheduling.QueueStateOpen {
 			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.", queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)

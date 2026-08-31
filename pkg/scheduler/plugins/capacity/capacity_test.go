@@ -2108,3 +2108,71 @@ func TestCheckDRAAllocatable_overflowRejected(t *testing.T) {
 		t.Fatalf("checkDRAAllocatable rejected a valid request (4 <= 8); want admitted")
 	}
 }
+
+// TestEmptyQueueAndOrphanedJobSafetyNonHierarchical tests that capacity plugin
+// in non-hierarchical mode handles empty queues and orphaned jobs without panicking.
+func TestEmptyQueueAndOrphanedJobSafetyNonHierarchical(t *testing.T) {
+	trueValue := true
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("10", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+
+	res1CPU := api.BuildResourceList("1", "1Gi")
+	pod1 := util.BuildPod("ns1", "pod1", "", corev1.PodPending, res1CPU, "pg1", nil, nil)
+	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+	pg1.Spec.MinResources = &res1CPU
+
+	// podOrphan belongs to non-existent queue "q-deleted"
+	podOrphan := util.BuildPod("ns1", "podOrphan", "", corev1.PodPending, res1CPU, "pgOrphan", nil, nil)
+	pgOrphan := util.BuildPodGroup("pgOrphan", "ns1", "q-deleted", 1, nil, schedulingv1beta1.PodGroupPending)
+	pgOrphan.Spec.MinResources = &res1CPU
+
+	// q1 has job pg1, q2 and q3 are empty queues
+	q1 := util.BuildQueue("q1", 1, api.BuildResourceList("4", "4Gi"))
+	q2 := util.BuildQueue("q2", 2, api.BuildResourceList("4", "4Gi"))
+	q3 := util.BuildQueue("q3", 3, api.BuildResourceList("4", "4Gi"))
+
+	plugins := map[string]framework.PluginBuilder{
+		PluginName: New,
+	}
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{Name: PluginName, EnabledJobEnqueued: &trueValue, EnabledQueueOrder: &trueValue},
+			},
+		},
+	}
+
+	test := uthelper.TestCommonStruct{
+		Name:      "empty queues and orphaned jobs safety in capacity plugin (non-hierarchical)",
+		Plugins:   plugins,
+		Pods:      []*corev1.Pod{pod1, podOrphan},
+		Nodes:     []*corev1.Node{n1},
+		PodGroups: []*schedulingv1beta1.PodGroup{pg1, pgOrphan},
+		Queues:    []*schedulingv1beta1.Queue{q1, q2, q3},
+		ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+			"ns1/pg1": scheduling.PodGroupInqueue,
+		},
+	}
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	// Verify QueueOrderFn does not panic when comparing empty and busy queues
+	q1Info := ssn.Queues["q1"]
+	q2Info := ssn.Queues["q2"]
+	q3Info := ssn.Queues["q3"]
+
+	_ = ssn.QueueOrderFn(q1Info, q2Info)
+	_ = ssn.QueueOrderFn(q2Info, q3Info)
+	_ = ssn.QueueOrderFn(q1Info, q3Info)
+
+	// Verify Allocatable on empty queue does not panic
+	task1 := ssn.Jobs["ns1/pg1"].Tasks[api.PodKey(pod1)]
+	if !ssn.Allocatable(q2Info, task1) {
+		t.Errorf("expected task1 to be allocatable on empty queue q2")
+	}
+
+	test.Run([]framework.Action{enqueue.New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+}
