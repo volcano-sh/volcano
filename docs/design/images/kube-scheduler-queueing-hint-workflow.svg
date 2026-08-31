@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 620" width="940" height="620">
+  <style>
+    text { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #111827; }
+    .title { font-size: 20px; font-weight: 700; }
+    .queue { font-size: 16px; font-weight: 700; fill: #1e3a8a; }
+    .queue-sub { font-size: 12px; fill: #475569; }
+    .queue-item { font-size: 12px; fill: #334155; }
+    .box { font-size: 14px; font-weight: 600; fill: #111827; }
+    .diamond-title { font-size: 14px; font-weight: 700; fill: #1e3a8a; }
+    .diamond-sub { font-size: 11px; fill: #475569; }
+    .label { font-size: 12px; font-weight: 600; fill: #334155; }
+    .label-sub { font-size: 11px; fill: #475569; }
+    .label-green { font-size: 12px; font-weight: 700; fill: #047857; }
+    .label-green-sub { font-size: 11px; fill: #047857; }
+    .legend { font-size: 12px; fill: #475569; }
+  </style>
+  <defs>
+    <marker id="k-arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0,10 4,0 8" fill="#334155"/>
+    </marker>
+    <marker id="k-wake" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0,10 4,0 8" fill="#047857"/>
+    </marker>
+  </defs>
+
+  <rect width="940" height="620" fill="#ffffff"/>
+  <text x="470" y="28" text-anchor="middle" class="title">kube-scheduler: pod queues and event-driven wake-up</text>
+
+  <!-- Top boxes: Scheduler over activeQ, Cluster event over backoffQ -->
+  <rect x="80" y="46" width="140" height="50" rx="8" fill="#f8fafc" stroke="#334155" stroke-width="1.5"/>
+  <text x="150" y="77" text-anchor="middle" class="box">Scheduler</text>
+
+  <rect x="670" y="46" width="180" height="50" rx="8" fill="#f8fafc" stroke="#334155" stroke-width="1.5"/>
+  <text x="760" y="77" text-anchor="middle" class="box">Cluster event</text>
+
+  <!-- activeQ -->
+  <circle cx="150" cy="280" r="70" fill="#dbeafe" stroke="#1e40af" stroke-width="2"/>
+  <text x="150" y="276" text-anchor="middle" class="queue">activeQ</text>
+  <text x="150" y="298" text-anchor="middle" class="queue-sub">ready to schedule</text>
+
+  <!-- backoffQ -->
+  <circle cx="760" cy="280" r="70" fill="#dbeafe" stroke="#1e40af" stroke-width="2"/>
+  <text x="760" y="276" text-anchor="middle" class="queue">backoffQ</text>
+  <text x="760" y="298" text-anchor="middle" class="queue-sub">still in backoff</text>
+
+  <!-- Diamond: QueueingHintFn decision -->
+  <polygon points="455,205 570,280 455,355 340,280" fill="#ffffff" stroke="#334155" stroke-width="2"/>
+  <text x="455" y="277" text-anchor="middle" class="diamond-title">QueueingHintFn?</text>
+  <text x="455" y="294" text-anchor="middle" class="diamond-sub">run on each entry</text>
+
+  <!-- unschedulablePods -->
+  <circle cx="455" cy="460" r="70" fill="#dbeafe" stroke="#1e40af" stroke-width="2"/>
+  <text x="455" y="456" text-anchor="middle" class="queue">unschedulablePods</text>
+  <text x="455" y="478" text-anchor="middle" class="queue-sub">waiting for a hint</text>
+
+  <!-- Arrow 1: activeQ -> Scheduler (pop) -->
+  <path d="M 150 210 L 150 96" stroke="#334155" stroke-width="1.8" fill="none" marker-end="url(#k-arrow)"/>
+  <rect x="163" y="142" width="34" height="18" rx="4" fill="#ffffff"/>
+  <text x="180" y="155" text-anchor="middle" class="label">pop</text>
+
+  <!-- Arrow 2: Scheduler -> unschedulablePods (curved on far left, bypassing activeQ) -->
+  <path d="M 100 96 C 25 250, 25 460, 385 460" stroke="#334155" stroke-width="1.8" fill="none" marker-end="url(#k-arrow)"/>
+  <rect x="8" y="278" width="88" height="34" rx="4" fill="#ffffff"/>
+  <text x="52" y="292" text-anchor="middle" class="label">reject</text>
+  <text x="52" y="306" text-anchor="middle" class="label-sub">record entry</text>
+
+  <!-- Arrow 3: Cluster event -> Diamond top vertex -->
+  <path d="M 700 96 L 460 202" stroke="#334155" stroke-width="1.8" fill="none" marker-end="url(#k-arrow)"/>
+  <rect x="562" y="138" width="54" height="18" rx="4" fill="#ffffff"/>
+  <text x="589" y="151" text-anchor="middle" class="label">trigger</text>
+
+  <!-- Arrow 4: Diamond left vertex -> activeQ right edge (Queue, backoff expired) -->
+  <path d="M 340 280 L 223 280" stroke="#047857" stroke-width="2" fill="none" marker-end="url(#k-wake)"/>
+  <rect x="238" y="286" width="88" height="30" rx="4" fill="#ffffff"/>
+  <text x="282" y="298" text-anchor="middle" class="label-green">Queue</text>
+  <text x="282" y="311" text-anchor="middle" class="label-green-sub">backoff expired</text>
+
+  <!-- Arrow 5: Diamond right vertex -> backoffQ left edge (Queue, backoff pending) -->
+  <path d="M 570 280 L 687 280" stroke="#047857" stroke-width="2" fill="none" marker-end="url(#k-wake)"/>
+  <rect x="583" y="286" width="88" height="30" rx="4" fill="#ffffff"/>
+  <text x="627" y="298" text-anchor="middle" class="label-green">Queue</text>
+  <text x="627" y="311" text-anchor="middle" class="label-green-sub">backoff pending</text>
+
+  <!-- Arrow 6: Diamond bottom -> unschedulablePods (QueueSkip, side-labeled) -->
+  <path d="M 455 355 L 455 388" stroke="#334155" stroke-width="1.8" fill="none" marker-end="url(#k-arrow)"/>
+  <rect x="467" y="352" width="90" height="30" rx="4" fill="#ffffff"/>
+  <text x="512" y="364" text-anchor="middle" class="label">QueueSkip</text>
+  <text x="512" y="377" text-anchor="middle" class="label-sub">stay in queue</text>
+
+  <!-- Legend -->
+  <line x1="290" y1="602" x2="335" y2="602" stroke="#334155" stroke-width="1.8"/>
+  <text x="342" y="606" class="legend">normal flow</text>
+
+  <line x1="500" y1="602" x2="545" y2="602" stroke="#047857" stroke-width="2"/>
+  <text x="552" y="606" class="legend">hint returns Queue (wake)</text>
+</svg>
