@@ -86,7 +86,9 @@ func (d *Dumper) dumpAll() {
 	}
 
 	klog.Info("Dump of hyperNodes info in scheduler cache")
-	d.printHyperNodeInfo(snapshot.HyperNodesSetByTier, snapshot.RealNodesSet, snapshot.HyperNodes)
+	if len(snapshot.HyperNodesSetByTier) > 0 {
+		klog.Info(d.printHyperNodeInfo(snapshot.HyperNodesSetByTier, snapshot.RealNodesSet, snapshot.HyperNodes))
+	}
 
 	d.displaySchedulerMemStats()
 }
@@ -113,15 +115,16 @@ func (d *Dumper) printJobInfo(jobInfo *api.JobInfo) string {
 	return data.String()
 }
 
-func (d *Dumper) printHyperNodeInfo(HyperNodesSetByTier map[int]sets.Set[string], realNodesSet map[string]sets.Set[string], hyperNodeInfoMap api.HyperNodeInfoMap) {
+func (d *Dumper) printHyperNodeInfo(HyperNodesSetByTier map[int]sets.Set[string], realNodesSet map[string]sets.Set[string], hyperNodeInfoMap api.HyperNodeInfoMap) string {
 	var data strings.Builder
 	data.WriteString("\n")
 	for tier, hyperNodes := range HyperNodesSetByTier {
 		for hyperNode := range hyperNodes {
-			fmt.Fprintf(&data, "Tier: %d, HyperNodeName: %s, Nodes: %s, HyperNodeInfo: %#v\n", tier, hyperNode, realNodesSet[hyperNode], hyperNodeInfoMap[hyperNode])
+			fmt.Fprintf(&data, "Tier: %d, HyperNodeName: %s, Nodes: %v, HyperNodeInfo: %#v\n", tier, hyperNode, sets.List(realNodesSet[hyperNode]), hyperNodeInfoMap[hyperNode])
 		}
 	}
 	data.WriteString("\n")
+	return data.String()
 }
 
 // ListenForSignal starts a goroutine that will respond when process
