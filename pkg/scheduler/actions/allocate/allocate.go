@@ -97,7 +97,7 @@ func (w *SubJobWorksheet) Clone() *SubJobWorksheet {
 type Action struct {
 	session *framework.Session
 	// configured flag for error cache
-	enablePredicateErrorCache bool
+	enablePredicateErrorCache   bool
 	enableTopologyAwareAllocate bool
 
 	recorder *Recorder
