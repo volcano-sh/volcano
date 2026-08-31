@@ -147,6 +147,7 @@ custom:
   default_ns:
     node-role.kubernetes.io/control-plane: ""
   scheduler_feature_gates: ${FEATURE_GATES}
+  scheduler_unschedulable_job_cache_debug_metrics: ${UNSCHEDULABLE_JOB_CACHE_DEBUG_METRICS:-false}
   admission_feature_gates: ${FEATURE_GATES}
   enabled_admissions: ""
   vap_enable: true
@@ -193,6 +194,7 @@ custom:
   default_ns:
     node-role.kubernetes.io/control-plane: ""
   scheduler_feature_gates: ${FEATURE_GATES}
+  scheduler_unschedulable_job_cache_debug_metrics: ${UNSCHEDULABLE_JOB_CACHE_DEBUG_METRICS:-false}
   admission_feature_gates: ${FEATURE_GATES}
   enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
   vap_enable: false
@@ -402,6 +404,7 @@ custom:
   default_ns:
     node-role.kubernetes.io/control-plane: ""
   scheduler_feature_gates: ${FEATURE_GATES}
+  scheduler_unschedulable_job_cache_debug_metrics: ${UNSCHEDULABLE_JOB_CACHE_DEBUG_METRICS:-false}
   admission_feature_gates: ${FEATURE_GATES}
   enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
   ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
@@ -509,6 +512,10 @@ case ${E2E_TYPE} in
     echo "Running scheduling gates e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulinggates/
     ;;
+"UNSCHEDULABLEJOBCACHE")
+  echo "Running unschedulable job cache e2e suite..."
+  KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/unschedulablejobcache/
+  ;;
 "VCCTL")
     echo "Running vcctl e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/vcctl/

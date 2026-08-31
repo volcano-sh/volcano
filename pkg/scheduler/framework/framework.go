@@ -25,15 +25,44 @@ import (
 
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
+type sessionOptions struct {
+	unschedulableJobCache unschedulableJobCache
+}
+
+// unschedulableJobCache defines the cache operations used by a scheduling session.
+type unschedulableJobCache interface {
+	AddHintProvider(name string, provider unschedulable.HintProvider)
+	BeginSession()
+	Record(job *api.JobInfo, rejections []unschedulable.Rejection)
+	CachedRejections(job *api.JobInfo) []unschedulable.Rejection
+	Forget(jobID api.JobID)
+}
+
+// SessionOption configures optional Session dependencies.
+type SessionOption func(*sessionOptions)
+
+// WithUnschedulableJobCache configures the Job cache used by a Session.
+func WithUnschedulableJobCache(jobCache unschedulableJobCache) SessionOption {
+	return func(options *sessionOptions) {
+		options.unschedulableJobCache = jobCache
+	}
+}
+
 // OpenSession start the session
-func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration) *Session {
+func OpenSession(schedulerCache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration, opts ...SessionOption) *Session {
 	openStart := time.Now()
-	ssn := openSession(cache)
+	options := &sessionOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+	ssn := openSession(schedulerCache, options.unschedulableJobCache)
 	ssn.Tiers = tiers
 	ssn.Configurations = configurations
 	ssn.NodeMap = GenerateNodeMapAndSlice(ssn.Nodes)
@@ -54,6 +83,7 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Con
 	}
 
 	ssn.InitCycleState()
+	ssn.applyCachedSkips()
 	metrics.UpdateOpenSessionDuration(time.Since(openStart))
 
 	return ssn

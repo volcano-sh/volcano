@@ -164,6 +164,26 @@ type Status struct {
 	Code   int
 	Reason string
 	Plugin string
+	// InsufficientResources is the structured counterpart to Reason for a
+	// resource-shortage Unschedulable/UnschedulableAndUnresolvable status: it
+	// lists the resource dimension names (e.g. "cpu", "memory", "pods", or a
+	// scalar resource name) that caused the failure. Any code path that fails
+	// a task due to resource capacity (built-in resource-fit checks, the
+	// predicates Pod-count check, etc.) must populate this field so that
+	// downstream consumers (e.g. hint-key derivation) never need to parse the
+	// human-readable Reason string.
+	InsufficientResources []string
+}
+
+// PrePredicateError reports an unschedulable PrePredicate result and the
+// plugin that produced it.
+type PrePredicateError struct {
+	Plugin string
+	Reason string
+}
+
+func (e *PrePredicateError) Error() string {
+	return e.Reason
 }
 
 // String represents status string

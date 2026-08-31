@@ -37,6 +37,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/plugins/proportion/hintprovider"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
@@ -90,6 +91,10 @@ func (pp *proportionPlugin) Name() string {
 func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Prepare scheduling data for this session.
 	pp.totalResource.Add(ssn.TotalResource)
+
+	// Register this plugin as a HintProvider so quota-rejected Jobs are woken by
+	// queue/podgroup/pod events.
+	ssn.AddHintProvider(pp.Name(), &hintprovider.Provider{})
 
 	klog.V(4).Infof("The total resource is <%v>", pp.totalResource)
 	for _, queue := range ssn.Queues {

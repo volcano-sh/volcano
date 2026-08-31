@@ -22,11 +22,15 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -314,4 +318,306 @@ func TestHyperNodeGradientForJobFn_NoPluginKeepsCurrentFallback(t *testing.T) {
 	root := &api.HyperNodeInfo{Name: "root"}
 	result := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
 	assert.Equal(t, [][]*api.HyperNodeInfo{{root}}, result)
+}
+
+func newRejectionTestSession() *Session {
+	return &Session{
+		unschedulableJobCacheEnabled: true,
+		jobRejections:                make(map[api.JobID]map[rejectionKey]*rejectionAggregate),
+	}
+}
+
+func TestAddRejectionDeduplicatesTasks(t *testing.T) {
+	ssn := newRejectionTestSession()
+
+	ssn.AddRejection("job", "plugin-a", unschedulable.RejectionPredicate, "task-a", "task-a")
+	ssn.AddRejection("job", "plugin-a", unschedulable.RejectionPredicate, "task-b", "task-a")
+	ssn.AddRejection("job", "plugin-a", unschedulable.RejectionAllocatable, "task-a")
+	ssn.AddRejection("job", "plugin-b", unschedulable.RejectionPredicate, "task-a")
+
+	assert.ElementsMatch(t, []unschedulable.Rejection{
+		{Plugin: "plugin-a", Source: unschedulable.RejectionPredicate, Tasks: []api.TaskID{"task-a", "task-b"}},
+		{Plugin: "plugin-a", Source: unschedulable.RejectionAllocatable, Tasks: []api.TaskID{"task-a"}},
+		{Plugin: "plugin-b", Source: unschedulable.RejectionPredicate, Tasks: []api.TaskID{"task-a"}},
+	}, ssn.rejectionsForJob("job"))
+}
+
+func TestAddRejectionEnqueueLeavesNilTasksWhenUnspecified(t *testing.T) {
+	ssn := newRejectionTestSession()
+
+	ssn.AddRejection("job", "plugin", unschedulable.RejectionEnqueue)
+
+	got := ssn.rejectionsForJob("job")
+	if assert.Len(t, got, 1) {
+		assert.Nil(t, got[0].Tasks)
+	}
+}
+
+func TestAddRejectionWithKeys(t *testing.T) {
+	ssn := newRejectionTestSession()
+	ssn.AddRejectionWithKeys("job", "plugin", unschedulable.RejectionPredicate,
+		[]unschedulable.HintKey{"node-a/cpu", "node-a/cpu"}, "task-a")
+	ssn.AddRejectionWithKeys("job", "plugin", unschedulable.RejectionPredicate,
+		[]unschedulable.HintKey{"node-b/memory"}, "task-b")
+
+	got := ssn.rejectionsForJob("job")
+	if assert.Len(t, got, 1) {
+		assert.ElementsMatch(t, []api.TaskID{"task-a", "task-b"}, got[0].Tasks)
+		assert.ElementsMatch(t, []unschedulable.HintKey{"node-a/cpu", "node-b/memory"}, got[0].HintKeys)
+	}
+}
+
+func TestAddRejectionWithKeysFallsBackOnNilKeys(t *testing.T) {
+	ssn := newRejectionTestSession()
+	ssn.AddRejectionWithKeys("job", "plugin", unschedulable.RejectionPredicate,
+		[]unschedulable.HintKey{"node-a/cpu"}, "task-a")
+	ssn.AddRejectionWithKeys("job", "plugin", unschedulable.RejectionPredicate, nil, "task-b")
+
+	got := ssn.rejectionsForJob("job")
+	if assert.Len(t, got, 1) {
+		assert.ElementsMatch(t, []api.TaskID{"task-a", "task-b"}, got[0].Tasks)
+		assert.Nil(t, got[0].HintKeys)
+	}
+}
+
+func TestAddRejectionWithKeysOverLimitFallsBack(t *testing.T) {
+	ssn := newRejectionTestSession()
+	keys := make([]unschedulable.HintKey, 0, unschedulable.MaxHintKeysPerPluginEvent+1)
+	for i := range unschedulable.MaxHintKeysPerPluginEvent + 1 {
+		keys = append(keys, unschedulable.HintKey(fmt.Sprintf("node-%03d/cpu", i)))
+	}
+
+	for i, key := range keys {
+		ssn.AddRejectionWithKeys("job", "plugin", unschedulable.RejectionPredicate, []unschedulable.HintKey{key}, api.TaskID(fmt.Sprintf("task-%03d", i)))
+	}
+
+	got := ssn.rejectionsForJob("job")
+	if assert.Len(t, got, 1) {
+		assert.Len(t, got[0].Tasks, len(keys))
+		assert.Nil(t, got[0].HintKeys)
+	}
+}
+
+func TestPrePredicateFnRecordsUnschedulablePlugin(t *testing.T) {
+	enabled := true
+	newSession := func(fn api.PrePredicateFn) *Session {
+		ssn := &Session{
+			Tiers:                        []conf.Tier{{Plugins: []conf.PluginOption{{Name: "predicates", EnabledPredicate: &enabled}}}},
+			prePredicateFns:              make(map[string]api.PrePredicateFn),
+			unschedulableJobCacheEnabled: true,
+			jobRejections:                make(map[api.JobID]map[rejectionKey]*rejectionAggregate),
+		}
+		ssn.AddPrePredicateFn("predicates", fn)
+		return ssn
+	}
+	task := &api.TaskInfo{UID: "task", Job: "job"}
+
+	ssn := newSession(func(*api.TaskInfo) error {
+		return &api.PrePredicateError{Plugin: "NodeAffinity", Reason: "no matching node"}
+	})
+	assert.EqualError(t, ssn.PrePredicateFn(task), "no matching node")
+	assert.Equal(t, []unschedulable.Rejection{{
+		Plugin: "NodeAffinity",
+		Source: unschedulable.RejectionPredicate,
+		Tasks:  []api.TaskID{"task"},
+	}}, ssn.rejectionsForJob("job"))
+
+	ssn = newSession(func(*api.TaskInfo) error { return fmt.Errorf("internal failure") })
+	assert.EqualError(t, ssn.PrePredicateFn(task), "internal failure")
+	assert.Empty(t, ssn.rejectionsForJob("job"))
+}
+
+type fakeUnschedulableCache struct {
+	cached    map[api.JobID][]unschedulable.Rejection
+	recorded  map[api.JobID][]unschedulable.Rejection
+	forgotten sets.Set[api.JobID]
+}
+
+func (f *fakeUnschedulableCache) AddHintProvider(string, unschedulable.HintProvider) {}
+
+func (f *fakeUnschedulableCache) BeginSession() {}
+
+func (f *fakeUnschedulableCache) Record(job *api.JobInfo, rejections []unschedulable.Rejection) {
+	f.recorded[job.UID] = rejections
+}
+
+func (f *fakeUnschedulableCache) CachedRejections(job *api.JobInfo) []unschedulable.Rejection {
+	return f.cached[job.UID]
+}
+
+func (f *fakeUnschedulableCache) Forget(jobID api.JobID) {
+	f.forgotten.Insert(jobID)
+}
+
+func TestApplyCachedSkips(t *testing.T) {
+	tests := []struct {
+		name       string
+		minMembers int32
+		tasks      int
+		want       api.SkipDecision
+	}{
+		{
+			name:       "skips rejected task when gang remains reachable",
+			minMembers: 1,
+			tasks:      2,
+			want:       api.SkipDecision{Tasks: map[api.TaskID]struct{}{"task-0": {}}},
+		},
+		{
+			name:       "skips allocation when gang becomes unreachable",
+			minMembers: 2,
+			tasks:      2,
+			want:       api.SkipDecision{Allocate: true},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			pending := api.TasksMap{}
+			for i := range test.tasks {
+				id := api.TaskID(fmt.Sprintf("task-%d", i))
+				pending[id] = &api.TaskInfo{UID: id}
+			}
+			job := &api.JobInfo{
+				UID:              "job",
+				MinAvailable:     test.minMembers,
+				TaskStatusIndex:  map[api.TaskStatus]api.TasksMap{api.Pending: pending},
+				TaskMinAvailable: map[string]int32{},
+				SubJobs:          map[api.SubJobID]*api.SubJobInfo{},
+				MinSubJobs:       map[api.SubJobGID]int32{},
+			}
+			fakeCache := &fakeUnschedulableCache{
+				cached: map[api.JobID][]unschedulable.Rejection{
+					job.UID: {{Plugin: "plugin", Source: unschedulable.RejectionPredicate, Tasks: []api.TaskID{"task-0"}}},
+				},
+			}
+			ssn := &Session{
+				Jobs:                         map[api.JobID]*api.JobInfo{job.UID: job},
+				unschedulableJobCache:        fakeCache,
+				unschedulableJobCacheEnabled: true,
+			}
+
+			ssn.applyCachedSkips()
+
+			assert.Equal(t, test.want, job.Skip)
+		})
+	}
+}
+
+func TestReconcileUnschedulableCache(t *testing.T) {
+	tests := []struct {
+		name      string
+		prepare   func(*Session, *api.JobInfo)
+		wantState string
+	}{
+		{
+			name: "forgets ready Job",
+			prepare: func(_ *Session, job *api.JobInfo) {
+				job.MinAvailable = 1
+				job.TaskStatusIndex[api.Running] = api.TasksMap{"task": {UID: "task"}}
+			},
+			wantState: "forgotten",
+		},
+		{
+			name: "records fresh rejection for ready elastic Job",
+			prepare: func(ssn *Session, job *api.JobInfo) {
+				job.MinAvailable = 1
+				job.TaskStatusIndex[api.Running] = api.TasksMap{"running": {UID: "running"}}
+				ssn.AddRejection(job.UID, "plugin", unschedulable.RejectionPredicate, "extra")
+			},
+			wantState: "recorded",
+		},
+		{
+			name: "forgets pipelined Job",
+			prepare: func(_ *Session, job *api.JobInfo) {
+				job.TaskStatusIndex[api.Pipelined] = api.TasksMap{"task": {UID: "task"}}
+			},
+			wantState: "forgotten",
+		},
+		{
+			name: "records fresh rejection",
+			prepare: func(ssn *Session, job *api.JobInfo) {
+				ssn.AddRejection(job.UID, "plugin", unschedulable.RejectionPredicate, "task")
+			},
+			wantState: "recorded",
+		},
+		{
+			name: "keeps record for skipped Job",
+			prepare: func(_ *Session, job *api.JobInfo) {
+				job.Skip.Enqueue = true
+			},
+			wantState: "unchanged",
+		},
+		{
+			name:      "forgets stale record",
+			prepare:   func(*Session, *api.JobInfo) {},
+			wantState: "forgotten",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			job := api.NewJobInfo("job")
+			job.MinAvailable = 1
+			fakeCache := &fakeUnschedulableCache{
+				recorded:  map[api.JobID][]unschedulable.Rejection{},
+				forgotten: sets.New[api.JobID](),
+			}
+			ssn := &Session{
+				Jobs:                         map[api.JobID]*api.JobInfo{job.UID: job},
+				Queues:                       map[api.QueueID]*api.QueueInfo{},
+				unschedulableJobCache:        fakeCache,
+				unschedulableJobCacheEnabled: true,
+				jobRejections:                make(map[api.JobID]map[rejectionKey]*rejectionAggregate),
+			}
+			test.prepare(ssn, job)
+
+			ssn.reconcileUnschedulableCache()
+
+			gotState := "unchanged"
+			if fakeCache.forgotten.Has(job.UID) {
+				gotState = "forgotten"
+			} else if len(fakeCache.recorded[job.UID]) > 0 {
+				gotState = "recorded"
+			}
+			if gotState != test.wantState {
+				t.Fatalf("cache state = %q, want %q", gotState, test.wantState)
+			}
+		})
+	}
+}
+
+func TestQueueScope(t *testing.T) {
+	queue := func(name, parent string) *api.QueueInfo {
+		return api.NewQueueInfo(&scheduling.Queue{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec:       scheduling.QueueSpec{Parent: parent},
+		})
+	}
+	tests := []struct {
+		name   string
+		queues map[api.QueueID]*api.QueueInfo
+		want   []api.QueueID
+	}{
+		{
+			name:   "returns Job queue",
+			queues: map[api.QueueID]*api.QueueInfo{"child": queue("child", "")},
+			want:   []api.QueueID{"child"},
+		},
+		{
+			name: "includes ancestor queues",
+			queues: map[api.QueueID]*api.QueueInfo{
+				"child":  queue("child", "parent"),
+				"parent": queue("parent", "root"),
+				"root":   queue("root", ""),
+			},
+			want: []api.QueueID{"child", "parent", "root"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ssn := &Session{Queues: test.queues}
+			assert.Equal(t, test.want, ssn.queueScope("child"))
+		})
+	}
 }

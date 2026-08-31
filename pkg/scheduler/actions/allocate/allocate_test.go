@@ -44,7 +44,9 @@ import (
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	volcanofeatures "volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/binpack"
@@ -54,6 +56,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -6271,4 +6275,122 @@ func TestAllocate_NominatedJobWinsOverRegularJob(t *testing.T) {
 	}
 	assert.Equal(t, "", nominatedSubJob.NominatedHyperNode,
 		"flat-path commit must clear subJob.NominatedHyperNode after binding")
+}
+
+// fakeUnschedulableCacheForAllocate is a minimal session cache used
+// to observe the rejections recorded at CloseSession without exercising the
+// real cache's event-index bookkeeping.
+type fakeUnschedulableCacheForAllocate struct {
+	recorded map[api.JobID][]unschedulable.Rejection
+}
+
+func (f *fakeUnschedulableCacheForAllocate) BeginSession() {}
+
+func (f *fakeUnschedulableCacheForAllocate) AddHintProvider(string, unschedulable.HintProvider) {}
+
+func (f *fakeUnschedulableCacheForAllocate) Record(job *api.JobInfo, rejections []unschedulable.Rejection) {
+	if f.recorded == nil {
+		f.recorded = map[api.JobID][]unschedulable.Rejection{}
+	}
+	f.recorded[job.UID] = rejections
+}
+
+func (f *fakeUnschedulableCacheForAllocate) CachedRejections(*api.JobInfo) []unschedulable.Rejection {
+	return nil
+}
+
+func (f *fakeUnschedulableCacheForAllocate) Forget(api.JobID) {}
+
+// TestAllocateResourceFitRejectionCarriesHintKeys proves that allocate's
+// fitErrors.UnschedulablePlugins() loop calls AddRejectionWithKeys for the
+// resource-fit plugin, while a different rejecting plugin on the same task
+// still falls back to the plain, key-less AddRejection.
+func TestAllocateResourceFitRejectionCarriesHintKeys(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, volcanofeatures.UnschedulableJobCache, true)
+
+	binder := util.NewFakeBinder(0)
+	evictor := util.NewFakeEvictor(0)
+	statusUpdater := &util.FakeStatusUpdater{}
+	schedulerCache := cache.NewCustomMockSchedulerCache("ut-resource-fit-hint-keys", binder, evictor, statusUpdater, nil, nil)
+	stop := make(chan struct{})
+	defer close(stop)
+	schedulerCache.Run(stop)
+	schedulerCache.WaitForCacheSync(stop)
+
+	// node-small has too little CPU: allocate's own built-in resource check
+	// rejects it before ever reaching a registered predicate plugin.
+	if err := schedulerCache.AddOrUpdateNode(util.BuildNode("node-small",
+		api.BuildResourceList("1", "4Gi", []api.ScalarResource{{Name: "pods", Value: "100"}}...), nil)); err != nil {
+		t.Fatalf("AddOrUpdateNode(node-small) error = %v", err)
+	}
+	// node-other has plenty of CPU/memory, so it passes the built-in resource
+	// check and reaches the fake "fake-other" predicate plugin, which rejects it.
+	if err := schedulerCache.AddOrUpdateNode(util.BuildNode("node-other",
+		api.BuildResourceList("10", "16Gi", []api.ScalarResource{{Name: "pods", Value: "100"}}...), nil)); err != nil {
+		t.Fatalf("AddOrUpdateNode(node-other) error = %v", err)
+	}
+
+	schedulerCache.AddQueueV1beta1(util.BuildQueue("q1", 1, nil))
+	schedulerCache.AddPodGroupV1beta1(util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1.PodGroupInqueue))
+	schedulerCache.AddPod(util.BuildPod("ns1", "task1", "", v1.PodPending, api.BuildResourceList("2", "1Gi"), "pg1", nil, nil))
+
+	trueValue := true
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{
+		{Name: "fake-other", EnabledPredicate: &trueValue},
+	}}}
+
+	fakeCache := &fakeUnschedulableCacheForAllocate{}
+	ssn := framework.OpenSession(schedulerCache, tiers, nil, framework.WithUnschedulableJobCache(fakeCache))
+
+	ssn.AddPredicateFn("fake-other", func(task *api.TaskInfo, node *api.NodeInfo) error {
+		if node.Name == "node-other" {
+			return api.NewFitErrWithStatus(task, node, &api.Status{Code: api.UnschedulableAndUnresolvable, Plugin: "fake-other"})
+		}
+		return nil
+	})
+
+	New().Execute(ssn)
+	framework.CloseSession(ssn)
+
+	rejections := fakeCache.recorded["ns1/pg1"]
+	if !assert.NotEmpty(t, rejections, "expected rejections to be recorded for job ns1/pg1") {
+		return
+	}
+
+	var resourceFit, other *unschedulable.Rejection
+	for i := range rejections {
+		switch rejections[i].Plugin {
+		case resourcefit.ProviderName:
+			resourceFit = &rejections[i]
+		case "fake-other":
+			other = &rejections[i]
+		}
+	}
+
+	if assert.NotNil(t, resourceFit, "expected a resource-fit rejection") {
+		assert.NotEmpty(t, resourceFit.HintKeys, "resource-fit rejection must carry hint keys")
+		assert.True(t, hasNodeGrowthKeyForDimension(resourceFit.HintKeys, "node-small", "cpu"),
+			"resource-fit rejection must carry a node-growth key for node-small's cpu dimension "+
+				"(the structured InsufficientResources populated by allocate's built-in resource "+
+				"check); got %v", resourceFit.HintKeys)
+	}
+	if assert.NotNil(t, other, "expected a fake-other rejection") {
+		assert.Empty(t, other.HintKeys, "non-resource-fit rejection must not carry hint keys")
+	}
+}
+
+// hasNodeGrowthKeyForDimension reports whether keys contains a Node-growth
+// hint key for the given node and resource dimension. It mirrors the
+// slash-separated encoding resourcefit key produces
+// ("node-growth/<node>/<dimension>") without importing the unexported
+// constructor, so this test observes the same externally-visible key the
+// unschedulable cache would use to narrow dispatch.
+func hasNodeGrowthKeyForDimension(keys []unschedulable.HintKey, node, dimension string) bool {
+	want := fmt.Sprintf("node-growth/%s/%s", node, dimension)
+	for _, k := range keys {
+		if string(k) == want {
+			return true
+		}
+	}
+	return false
 }

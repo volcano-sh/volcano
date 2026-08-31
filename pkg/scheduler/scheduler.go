@@ -43,17 +43,19 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/gate"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 // Scheduler represents a "Volcano Scheduler".
 // Scheduler watches for new unscheduled pods(PodGroup) in Volcano.
 // It attempts to find nodes that can accommodate these pods and writes the binding information back to the API server.
 type Scheduler struct {
-	cache          schedcache.Cache
-	schedulerConf  string
-	fileWatcher    filewatcher.FileWatcher
-	schedulePeriod time.Duration
-	once           sync.Once
+	cache                 schedcache.Cache
+	unschedulableJobCache *unschedulable.JobCache
+	schedulerConf         string
+	fileWatcher           filewatcher.FileWatcher
+	schedulePeriod        time.Duration
+	once                  sync.Once
 
 	mutex              sync.Mutex
 	actions            []framework.Action
@@ -79,14 +81,23 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 		}
 	}
 
-	cache := schedcache.New(config, opt.SchedulerNames, opt.DefaultQueue, opt.NodeSelector, opt.NodeWorkerThreads, opt.IgnoredCSIProvisioners, opt.ResyncPeriod, opt.ResourceSyncTimeout)
+	metrics.SetUnschedulableJobCacheDebugMetricsEnabled(opt.UnschedulableJobCacheDebugMetrics)
+
+	var unschedulableJobCache *unschedulable.JobCache
+	var cacheOptions []schedcache.Option
+	if utilfeature.DefaultFeatureGate.Enabled(features.UnschedulableJobCache) {
+		unschedulableJobCache = unschedulable.NewJobCache(opt.UnschedulableJobCacheMaxSkipDuration)
+		cacheOptions = append(cacheOptions, schedcache.WithUnschedulableJobCache(unschedulableJobCache))
+	}
+	cache := schedcache.New(config, opt.SchedulerNames, opt.DefaultQueue, opt.NodeSelector, opt.NodeWorkerThreads, opt.IgnoredCSIProvisioners, opt.ResyncPeriod, opt.ResourceSyncTimeout, cacheOptions...)
 	scheduler := &Scheduler{
-		schedulerConf:      opt.SchedulerConf,
-		fileWatcher:        watcher,
-		cache:              cache,
-		schedulePeriod:     opt.SchedulePeriod,
-		dumper:             schedcache.Dumper{Cache: cache, RootDir: opt.CacheDumpFileDir},
-		disableDefaultConf: opt.DisableDefaultSchedulerConfig,
+		schedulerConf:         opt.SchedulerConf,
+		fileWatcher:           watcher,
+		cache:                 cache,
+		unschedulableJobCache: unschedulableJobCache,
+		schedulePeriod:        opt.SchedulePeriod,
+		dumper:                schedcache.Dumper{Cache: cache, RootDir: opt.CacheDumpFileDir},
+		disableDefaultConf:    opt.DisableDefaultSchedulerConfig,
 	}
 
 	return scheduler, nil
@@ -110,6 +121,7 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	go pc.watchSchedulerConf(stopCh)
 	// Start cache for policy.
 	pc.cache.SetMetricsConf(pc.metricsConf)
+	pc.unschedulableJobCache.Run(stopCh)
 	pc.cache.Run(stopCh)
 	klog.V(2).Infof("Scheduler completes Initialization and start to run")
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
@@ -138,7 +150,7 @@ func (pc *Scheduler) runOnce() {
 		conf.EnabledActionMap[action.Name()] = true
 	}
 
-	ssn := framework.OpenSession(pc.cache, plugins, configurations)
+	ssn := framework.OpenSession(pc.cache, plugins, configurations, framework.WithUnschedulableJobCache(pc.unschedulableJobCache))
 	ssn.SetSchGateManager(pc.schGateManager)
 	defer func() {
 		framework.CloseSession(ssn)

@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -47,6 +48,7 @@ import (
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -67,12 +69,13 @@ const (
 type Session struct {
 	UID types.UID
 
-	kubeClient      kubernetes.Interface
-	vcClient        vcclient.Interface
-	recorder        record.EventRecorder
-	cache           cache.Cache
-	restConfig      *rest.Config
-	informerFactory informers.SharedInformerFactory
+	kubeClient            kubernetes.Interface
+	vcClient              vcclient.Interface
+	recorder              record.EventRecorder
+	cache                 cache.Cache
+	unschedulableJobCache unschedulableJobCache
+	restConfig            *rest.Config
+	informerFactory       informers.SharedInformerFactory
 
 	TotalResource *api.Resource
 	// PodGroupOldState contains podgroup status and annotations during schedule
@@ -162,19 +165,35 @@ type Session struct {
 	// The key is task's UID, value is the CycleState.
 	cycleStatesMap sync.Map
 
+	// jobRejections accumulates, during a session, the plugin rejections that made
+	// each Job unschedulable. It is drained at CloseSession into the
+	// unschedulable-job cache. Keyed by Job ID, then by the plugin and extension
+	// point that produced the rejection; the value tracks failed task IDs and the
+	// optional hint-key aggregate for that rejection key.
+	jobRejections                map[api.JobID]map[rejectionKey]*rejectionAggregate
+	unschedulableJobCacheEnabled bool
+
 	NodesInShard sets.Set[string]
 }
 
-func openSession(cache cache.Cache) *Session {
-	cache.OnSessionOpen()
+func openSession(schedulerCache cache.Cache, unschedulableJobCache unschedulableJobCache) *Session {
+	schedulerCache.OnSessionOpen()
+	// Feature gate flags initialization
+	unschedulableJobCacheEnabled := utilfeature.DefaultFeatureGate.Enabled(features.UnschedulableJobCache)
+	if unschedulableJobCacheEnabled && unschedulableJobCache == nil {
+		klog.Error("UnschedulableJobCache feature gate is enabled, but no unschedulable cache instance was provided")
+		unschedulableJobCacheEnabled = false
+	}
+
 	ssn := &Session{
-		UID:             uuid.NewUUID(),
-		kubeClient:      cache.Client(),
-		vcClient:        cache.VCClient(),
-		restConfig:      cache.ClientConfig(),
-		recorder:        cache.EventRecorder(),
-		cache:           cache,
-		informerFactory: cache.SharedInformerFactory(),
+		UID:                   uuid.NewUUID(),
+		kubeClient:            schedulerCache.Client(),
+		vcClient:              schedulerCache.VCClient(),
+		restConfig:            schedulerCache.ClientConfig(),
+		recorder:              schedulerCache.EventRecorder(),
+		cache:                 schedulerCache,
+		unschedulableJobCache: unschedulableJobCache,
+		informerFactory:       schedulerCache.SharedInformerFactory(),
 
 		TotalResource: api.EmptyResource(),
 		PodGroupOldState: &api.PodGroupOldState{
@@ -226,9 +245,14 @@ func openSession(cache cache.Cache) *Session {
 		subJobOrderFns:                map[string]api.CompareFn{},
 		hyperNodeGradientForJobFns:    map[string]api.HyperNodeGradientForJobFn{},
 		hyperNodeGradientForSubJobFns: map[string]api.HyperNodeGradientForSubJobFn{},
+		unschedulableJobCacheEnabled:  unschedulableJobCacheEnabled,
+	}
+	if unschedulableJobCacheEnabled {
+		ssn.jobRejections = make(map[api.JobID]map[rejectionKey]*rejectionAggregate)
+		unschedulableJobCache.BeginSession()
 	}
 
-	snapshot := cache.Snapshot()
+	snapshot := schedulerCache.Snapshot()
 	taskCountsByQueue := make(map[api.QueueID]map[string]int, len(snapshot.Queues))
 
 	ssn.Jobs = snapshot.Jobs
@@ -572,6 +596,7 @@ func closeSession(ssn *Session) {
 	ju.UpdateAll()
 
 	updateQueueStatus(ssn)
+	ssn.reconcileUnschedulableCache()
 
 	ssn.Jobs = nil
 	ssn.Nodes = nil

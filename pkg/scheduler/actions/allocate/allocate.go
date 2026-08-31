@@ -34,6 +34,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
@@ -186,6 +188,16 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 			continue
 		}
 
+		if job.Skip.Allocate {
+			metrics.RegisterUnschedulableJobCacheSkip(job.Namespace, job.Name, alloc.Name())
+			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: suppressed by unschedulable-job cache",
+				job.Namespace, job.Name, job.Queue)
+			continue
+		}
+		if hasPendingCachedTask(job) {
+			metrics.RegisterUnschedulableJobCacheSkip(job.Namespace, job.Name, alloc.Name())
+		}
+
 		if _, found := ssn.Queues[job.Queue]; !found {
 			klog.Warningf("Skip adding Job <%s/%s> because its queue %s is not found",
 				job.Namespace, job.Name, job.Queue)
@@ -233,6 +245,15 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 	}
 
 	return actx
+}
+
+func hasPendingCachedTask(job *api.JobInfo) bool {
+	for taskID := range job.TaskStatusIndex[api.Pending] {
+		if job.Skip.SkipTask(taskID) {
+			return true
+		}
+	}
+	return false
 }
 
 func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
@@ -284,6 +305,13 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 		}
 
 		for _, task := range subJob.TaskStatusIndex[api.Pending] {
+			// Skip tasks the unschedulable-job cache has flagged as still failing.
+			if job.Skip.SkipTask(task.UID) {
+				klog.V(4).Infof("Task <%v/%v> skipped: suppressed by unschedulable-job cache.",
+					task.Namespace, task.Name)
+				continue
+			}
+
 			// Skip tasks with external (non-Volcano) scheduling gates
 			// Allow Volcano-managed gates (they'll be handled by capacity plugin)
 			if task.SchGated && !api.HasOnlyVolcanoSchedulingGate(task.Pod) {
@@ -875,6 +903,18 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 				fitErrors.SetHyperNode(hyperNode)
 			}
 			job.NodesFitErrors[task.UID] = fitErrors
+			// Record every predicate plugin that rejected the task on the checked nodes
+			if fitErrors != nil {
+				for plugin := range fitErrors.UnschedulablePlugins() {
+					if plugin == resourcefit.ProviderName {
+						if keys, complete := resourcefit.RejectionKeys(task, fitErrors, ssn.Nodes); complete {
+							ssn.AddRejectionWithKeys(job.UID, plugin, unschedulable.RejectionPredicate, keys, task.UID)
+							continue
+						}
+					}
+					ssn.AddRejection(job.UID, plugin, unschedulable.RejectionPredicate, task.UID)
+				}
+			}
 			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,
 			// so we should break from continuously allocating.
 			// otherwise, should continue to find other allocatable task
@@ -1042,7 +1082,12 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 	// Check for Resource Predicate
 	var statusSets api.StatusSets
 	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {
-		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.WrapInsufficientResourceReason(resources)})
+		statusSets = append(statusSets, &api.Status{
+			Code:                  api.Unschedulable,
+			Reason:                api.WrapInsufficientResourceReason(resources),
+			Plugin:                resourcefit.ProviderName,
+			InsufficientResources: resources,
+		})
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
 	return alloc.session.PredicateForAllocateAction(task, node)

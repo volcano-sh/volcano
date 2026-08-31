@@ -49,9 +49,11 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/predicates/hintprovider"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodescore"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
 )
 
 const (
@@ -339,6 +341,24 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.RegisterBinder(pp.Name(), pp)
+
+	// Add hint provider for PredicateFn and PrePredicateFn
+	hintPlugins := make(map[string]fwk.Plugin, len(pp.FilterPlugins)+len(pp.PreFilterPlugins))
+	for name, plugin := range pp.FilterPlugins {
+		hintPlugins[name] = plugin
+	}
+	for name, plugin := range pp.PreFilterPlugins {
+		hintPlugins[name] = plugin
+	}
+	for name, plugin := range hintPlugins {
+		ext, ok := plugin.(fwk.EnqueueExtensions)
+		if !ok {
+			continue
+		}
+		ssn.AddHintProvider(name, &hintprovider.KubeHintProvider{Ext: ext})
+	}
+	// Volcano has its own built-in node resource predicate, which is not a wrapped k8s plugin. Also register it as a hint provider.
+	ssn.AddHintProvider(resourcefit.ProviderName, &hintprovider.ResourceFitHintProvider{})
 
 	// Add SimulateAddTask function
 	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
@@ -683,9 +703,10 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 		klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed, allocatable <%d>, existed <%d>",
 			task.Namespace, task.Name, node.Name, node.Allocatable.MaxTaskNum, len(nodeInfo.GetPods()))
 		podsNumStatus := &api.Status{
-			Code:   api.Unschedulable,
-			Reason: api.NodePodNumberExceeded,
-			Plugin: pp.Name(),
+			Code:                  api.Unschedulable,
+			Reason:                api.NodePodNumberExceeded,
+			Plugin:                resourcefit.ProviderName,
+			InsufficientResources: []string{string(v1.ResourcePods)},
 		}
 		predicateStatus = append(predicateStatus, podsNumStatus)
 	}
@@ -705,6 +726,9 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 			status := plugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
 			filterStatus := api.ConvertPredicateStatus(status)
 			if filterStatus.Code != api.Success {
+				if filterStatus.Plugin == "" {
+					filterStatus.Plugin = name
+				}
 				predicateStatus = append(predicateStatus, filterStatus)
 				if util.ShouldAbort(filterStatus) {
 					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", name, status.Message())
@@ -759,6 +783,9 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 		status := plugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
 		filterStatus := api.ConvertPredicateStatus(status)
 		if filterStatus.Code != api.Success {
+			if filterStatus.Plugin == "" {
+				filterStatus.Plugin = name
+			}
 			predicateStatus = append(predicateStatus, filterStatus)
 			if util.ShouldAbort(filterStatus) {
 				return api.NewFitErrWithStatus(task, node, predicateStatus...)
@@ -936,11 +963,23 @@ func handleSkipPrePredicatePlugin(status *fwk.Status, state *k8sframework.CycleS
 		state.GetSkipFilterPlugins().Insert(pluginName)
 		klog.V(5).Infof("The predicate of plugin %s will skip execution for pod <%s/%s>, because the status returned by pre-predicate is skip",
 			pluginName, task.Namespace, task.Name)
-	} else if !status.IsSuccess() {
-		return fmt.Errorf("plugin %s pre-predicates failed %s", pluginName, status.Message())
+		return nil
 	}
 
-	return nil
+	if status.IsSuccess() {
+		return nil
+	}
+
+	if status.Code() == fwk.Unschedulable || status.Code() == fwk.UnschedulableAndUnresolvable {
+		// Preserve the rejecting plugin so its events can trigger a retry.
+		return &api.PrePredicateError{
+			Plugin: pluginName,
+			Reason: fmt.Sprintf("plugin %s pre-predicates failed %s", pluginName, status.Message()),
+		}
+	}
+
+	// Other errors such as fwk.Error, we should return an error to stop scheduling and log the error.
+	return fmt.Errorf("plugin %s pre-predicates failed %s", pluginName, status.Message())
 }
 
 func (pp *PredicatesPlugin) OnSessionClose(ssn *framework.Session) {}
