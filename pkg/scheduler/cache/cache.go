@@ -83,8 +83,6 @@ const (
 	// default interval for sync data from metrics server, the value is 30s
 	defaultMetricsInternal = 30 * time.Second
 
-	taskUpdaterWorker = 16
-
 	handlerSyncPollPeriod = 100 * time.Millisecond
 )
 
@@ -1114,14 +1112,37 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 		// k8s core, so using the same string here.
 		// The reason field in PodCondition can be "Unschedulable"
 		sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", "%s", message)
-		if _, err := sc.StatusUpdater.UpdatePodStatus(pod); err != nil {
+		updatedPod, err := sc.StatusUpdater.UpdatePodStatus(pod)
+		if err != nil {
 			return err
+		}
+
+		// Sync pod to cache so the next Snapshot sees NominatedNodeName aligned
+		// with NominatedHyperNode, without waiting on the pod-status informer.
+		if updateNomiNode && updatedPod != nil {
+			sc.syncTaskPodToCache(task, updatedPod)
 		}
 	} else {
 		klog.V(4).Infof("task unscheduleable %s/%s, message: %s, skip by no condition update", pod.Namespace, pod.Name, message)
 	}
 
 	return nil
+}
+
+// syncTaskPodToCache swaps the cache task's Pod pointer to updatedPod
+// synchronously, avoiding the pod-status informer round-trip.
+func (sc *SchedulerCache) syncTaskPodToCache(task *schedulingapi.TaskInfo, updatedPod *v1.Pod) {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	jobInCache, ok := sc.Jobs[task.Job]
+	if !ok {
+		return
+	}
+	taskInCache, ok := jobInCache.Tasks[task.UID]
+	if !ok {
+		return
+	}
+	taskInCache.Pod = updatedPod
 }
 
 func (sc *SchedulerCache) deleteJob(job *schedulingapi.JobInfo) {
@@ -1669,7 +1690,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 			taskInfos = append(taskInfos, task)
 		}
 
-		workqueue.ParallelizeUntil(context.TODO(), taskUpdaterWorker, len(taskInfos), func(index int) {
+		workqueue.ParallelizeUntil(context.TODO(), options.GetTaskUpdaterWorkerNum(), len(taskInfos), func(index int) {
 			taskInfo := taskInfos[index]
 
 			// The pod of a scheduling gated task is given
@@ -1742,6 +1763,7 @@ func (sc *SchedulerCache) updateJobInfo(job *schedulingapi.JobInfo) {
 		for subJobID, subJobInCache := range jobInCache.SubJobs {
 			if subJob, found := job.SubJobs[subJobID]; found {
 				subJobInCache.AllocatedHyperNode = subJob.AllocatedHyperNode
+				subJobInCache.NominatedHyperNode = subJob.NominatedHyperNode
 			}
 		}
 	}

@@ -187,7 +187,7 @@ The standalone process initializes only the clients and informers that HyperNode
 | Resource | Access | Purpose |
 | --- | --- | --- |
 | Node | List/Watch | Read topology labels and calculate the node count represented by each HyperNode |
-| HyperNode | List/Watch and reconciliation writes | Maintain topology resources and their status |
+| HyperNode | Get/List/Watch and reconciliation writes | Maintain topology resources and their status |
 | Controller ConfigMap | List/Watch the installation's configuration object through a `metadata.name` field selector | Load and update topology discovery configuration |
 | UFM Secret | Get by name only when referenced; no Watch | Retrieve credentials for the external discovery system |
 | Leader-election Lease | Get/Create/Update as required by leader election | Provide high availability for the standalone controller |

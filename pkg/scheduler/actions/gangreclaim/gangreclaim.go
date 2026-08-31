@@ -132,7 +132,7 @@ func (gr *Action) Execute(ssn *framework.Session) {
 				if hasEvictions {
 					metrics.RegisterEvictionTransaction(gr.Name())
 				}
-				utils.ApplySubJobNominations(job, subJobHyperNodes)
+				utils.ApplySubJobNominations(ssn, job, subJobHyperNodes)
 			} else {
 				stmt.Discard()
 			}

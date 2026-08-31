@@ -70,6 +70,11 @@ func (q *PriorityQueue) Len() int {
 	return q.queue.Len()
 }
 
+// Reheapify re-establishes the heap invariant after mutating the queue items
+func (q *PriorityQueue) Reheapify() {
+	heap.Init(&q.queue)
+}
+
 func (q *PriorityQueue) Clone() *PriorityQueue {
 	items := make([]interface{}, len(q.queue.items), cap(q.queue.items))
 	copy(items, q.queue.items)

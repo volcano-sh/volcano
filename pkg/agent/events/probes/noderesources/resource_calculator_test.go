@@ -166,7 +166,7 @@ func Test_historicalUsageCalculator_preProcess(t *testing.T) {
 		name             string
 		getNodeFunc      utilnode.ActiveNode
 		getPodsFunc      utilpod.ActivePods
-		resourceTypes    sets.String
+		resourceTypes    sets.Set[string]
 		expectedResource framework.NodeResourceEvent
 	}{
 		{
@@ -219,7 +219,7 @@ func Test_historicalUsageCalculator_preProcess(t *testing.T) {
 				queue:             queue,
 				eventQueueFactory: factory,
 				getNodeFunc:       tt.getNodeFunc,
-				resourceTypes:     sets.NewString("cpu", "memory"),
+				resourceTypes:     sets.New[string]("cpu", "memory"),
 			}
 			r.preProcess()
 			eventQueue := factory.EventQueue(string(framework.NodeResourcesEventName)).GetQueue()
@@ -239,37 +239,37 @@ func Test_historicalUsageCalculator_preProcess(t *testing.T) {
 func Test_historicalUsageCalculator_RefreshCfg(t *testing.T) {
 	tests := []struct {
 		name                 string
-		resourceTypes        sets.String
+		resourceTypes        sets.Set[string]
 		cfg                  *api.ColocationConfig
-		expectedResourceType sets.String
+		expectedResourceType sets.Set[string]
 		wantErr              assert.ErrorAssertionFunc
 	}{
 		{
 			name:                 "return err",
 			cfg:                  nil,
-			resourceTypes:        sets.NewString(),
-			expectedResourceType: sets.NewString(),
+			resourceTypes:        sets.New[string](),
+			expectedResourceType: sets.New[string](),
 			wantErr:              assert.Error,
 		},
 		{
 			name:                 "empty config",
 			cfg:                  &api.ColocationConfig{OverSubscriptionConfig: &api.OverSubscription{OverSubscriptionTypes: utilpointer.String("")}},
-			resourceTypes:        sets.NewString(),
-			expectedResourceType: sets.NewString(),
+			resourceTypes:        sets.New[string](),
+			expectedResourceType: sets.New[string](),
 			wantErr:              assert.NoError,
 		},
 		{
 			name:                 "cpu",
 			cfg:                  &api.ColocationConfig{OverSubscriptionConfig: &api.OverSubscription{OverSubscriptionTypes: utilpointer.String("cpu")}},
-			resourceTypes:        sets.NewString(),
-			expectedResourceType: sets.NewString("cpu"),
+			resourceTypes:        sets.New[string](),
+			expectedResourceType: sets.New[string]("cpu"),
 			wantErr:              assert.NoError,
 		},
 		{
 			name:                 "cpu and memory",
 			cfg:                  &api.ColocationConfig{OverSubscriptionConfig: &api.OverSubscription{OverSubscriptionTypes: utilpointer.String("cpu,memory")}},
-			resourceTypes:        sets.NewString(),
-			expectedResourceType: sets.NewString("cpu", "memory"),
+			resourceTypes:        sets.New[string](),
+			expectedResourceType: sets.New[string]("cpu", "memory"),
 			wantErr:              assert.NoError,
 		},
 	}

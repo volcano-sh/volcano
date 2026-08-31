@@ -39,10 +39,24 @@ import (
 )
 
 type allocateContext struct {
-	queues              *util.PriorityQueue                 // queue of *api.QueueInfo
-	jobsByQueue         map[api.QueueID]*util.PriorityQueue // queue of *api.JobInfo
-	jobWorksheet        map[api.JobID]*JobWorksheet
-	tasksNoHardTopology map[api.JobID]*util.PriorityQueue // queue of *api.TaskInfo, job without any hard network topology policy use this queue
+	queuesNominated      *util.PriorityQueue                 // queue of *api.QueueInfo for jobs with NominatedHyperNode
+	queuesRegular        *util.PriorityQueue                 // queue of *api.QueueInfo for jobs without NominatedHyperNode
+	jobsByQueueNominated map[api.QueueID]*util.PriorityQueue // queue of *api.JobInfo for jobs with NominatedHyperNode
+	jobsByQueueRegular   map[api.QueueID]*util.PriorityQueue // queue of *api.JobInfo for jobs without NominatedHyperNode
+	jobWorksheet         map[api.JobID]*JobWorksheet
+	tasksNoHardTopology  map[api.JobID]*util.PriorityQueue // queue of *api.TaskInfo, job without any hard network topology policy use this queue
+}
+
+func hasNominatedHyperNode(job *api.JobInfo) bool {
+	if job == nil {
+		return false
+	}
+	for _, subJob := range job.SubJobs {
+		if subJob != nil && subJob.NominatedHyperNode != "" {
+			return true
+		}
+	}
+	return false
 }
 
 type JobWorksheet struct {
@@ -135,7 +149,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	alloc.session = ssn
 	alloc.recorder = NewRecorder()
 	actx := alloc.buildAllocateContext()
-	klog.V(3).Infof("Try to allocate resource to %d Queues", actx.queues.Len())
+	klog.V(3).Infof("Try to allocate resource: %d Queues with nominated jobs, %d Queues with regular jobs",
+		actx.queuesNominated.Len(), actx.queuesRegular.Len())
+
 	alloc.allocateResources(actx)
 }
 
@@ -143,10 +159,12 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 	ssn := alloc.session
 
 	actx := &allocateContext{
-		queues:              util.NewPriorityQueue(ssn.QueueOrderFn), // queues sort queues by QueueOrderFn.
-		jobsByQueue:         make(map[api.QueueID]*util.PriorityQueue),
-		jobWorksheet:        make(map[api.JobID]*JobWorksheet),
-		tasksNoHardTopology: make(map[api.JobID]*util.PriorityQueue),
+		queuesNominated:      util.NewPriorityQueue(ssn.QueueOrderFn), // queues sort queues by QueueOrderFn.
+		queuesRegular:        util.NewPriorityQueue(ssn.QueueOrderFn),
+		jobsByQueueNominated: make(map[api.QueueID]*util.PriorityQueue),
+		jobsByQueueRegular:   make(map[api.QueueID]*util.PriorityQueue),
+		jobWorksheet:         make(map[api.JobID]*JobWorksheet),
+		tasksNoHardTopology:  make(map[api.JobID]*util.PriorityQueue),
 	}
 
 	for _, job := range ssn.Jobs {
@@ -185,13 +203,25 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 			continue
 		}
 
-		if _, found := actx.jobsByQueue[job.Queue]; !found {
-			actx.jobsByQueue[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
-			actx.queues.Push(ssn.Queues[job.Queue])
+		// jobs with NominatedHyperNode go into the nominated phase; everything else into the regular phase.
+		queues, jobsByQueue := actx.queuesRegular, actx.jobsByQueueRegular
+		phase := "regular"
+		if hasNominatedHyperNode(job) {
+			queues, jobsByQueue = actx.queuesNominated, actx.jobsByQueueNominated
+			phase = "nominated"
+			// allocateFromNomination either redeems the pin and clears it post-commit
+			// or invalidates it on a validate/predicate miss; both paths must reach
+			// SchedulerCache, otherwise the stale NominatedHyperNode is retried next
+			// cycle.
+			ssn.MarkJobDirty(job.UID)
+		}
+		if _, found := jobsByQueue[job.Queue]; !found {
+			jobsByQueue[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+			queues.Push(ssn.Queues[job.Queue])
 		}
 
-		klog.V(4).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
-		actx.jobsByQueue[job.Queue].Push(job)
+		klog.V(4).Infof("Added Job <%s/%s> into Queue <%s> in %s phase", job.Namespace, job.Name, job.Queue, phase)
+		jobsByQueue[job.Queue].Push(job)
 		actx.jobWorksheet[job.UID] = worksheet
 
 		// job without any hard network topology policy use actx.tasksNoHardTopology
@@ -281,9 +311,31 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 }
 
 func (alloc *Action) allocateResources(actx *allocateContext) {
-	ssn := alloc.session
+	var nominatedCommitted bool
+	if !actx.queuesNominated.Empty() {
+		klog.V(3).InfoS("Allocating jobs with NominatedHyperNode",
+			"queues", actx.queuesNominated.Len())
+		nominatedCommitted = alloc.allocateResourcesForQueues(actx.queuesNominated, actx.jobsByQueueNominated, actx)
+	}
+	if !actx.queuesRegular.Empty() {
+		klog.V(3).InfoS("Allocating jobs without NominatedHyperNode",
+			"queues", actx.queuesRegular.Len())
+		// Commits from the nominated phase may have changed queues' share/allocated state
+		// re-heapify to force the regular phase to honor the current QueueOrderFn.
+		if nominatedCommitted {
+			actx.queuesRegular.Reheapify()
+		}
+		alloc.allocateResourcesForQueues(actx.queuesRegular, actx.jobsByQueueRegular, actx)
+	}
+}
 
-	queues := actx.queues
+// allocateResourcesForQueues allocates resources for jobs in the given queues and jobsByQueue.
+// Called once for jobs with NominatedHyperNode and again for everything else.
+// Returns true if at least one statement was committed.
+func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobsByQueue map[api.QueueID]*util.PriorityQueue, actx *allocateContext) bool {
+	ssn := alloc.session
+	var committed bool
+
 	for {
 		if queues.Empty() {
 			break
@@ -296,7 +348,7 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 			continue
 		}
 
-		jobs, found := actx.jobsByQueue[queue.UID]
+		jobs, found := jobsByQueue[queue.UID]
 		if !found || jobs.Empty() {
 			klog.V(4).Infof("Can not find jobs for queue %s.", queue.Name)
 			continue
@@ -313,6 +365,7 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
 			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
 				stmt.Commit()
+				committed = true
 				ssn.MarkJobDirty(job.UID)
 				alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
 
@@ -342,6 +395,7 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 
 				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
 					stmt.Commit()
+					committed = true
 
 					// Mirror recorder.UpdateDecisionToJob: clear the redeemed nomination.
 					if subJob.NominatedHyperNode != "" {
@@ -365,6 +419,8 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 		// To ensure that the priority of the queue is calculated based on the latest resource allocation situation.
 		queues.Push(queue)
 	}
+
+	return committed
 }
 
 func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet, hyperNodeToAllocate *api.HyperNodeInfo) *framework.Statement {

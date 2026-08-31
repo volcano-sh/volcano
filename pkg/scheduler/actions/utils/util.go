@@ -96,15 +96,21 @@ func GetCandidateDomains(ssn *framework.Session, job *api.JobInfo, maxDomains in
 
 // ApplySubJobNominations sets SubJobInfo.NominatedHyperNode on each
 // subJob whose UID appears in subJobHyperNodes, after the outer
-// gangpreempt/gangreclaim Statement has committed.
-func ApplySubJobNominations(job *api.JobInfo, subJobHyperNodes map[api.SubJobID]string) {
+// gangpreempt/gangreclaim Statement has committed, and marks the job
+// dirty so the cache writeback persists the NominatedHyperNode into the next cycle.
+func ApplySubJobNominations(ssn *framework.Session, job *api.JobInfo, subJobHyperNodes map[api.SubJobID]string) {
 	if job == nil {
 		return
 	}
+	applied := false
 	for sjID, hn := range subJobHyperNodes {
 		if sj, ok := job.SubJobs[sjID]; ok && hn != "" {
 			sj.NominatedHyperNode = hn
+			applied = true
 		}
+	}
+	if applied && ssn != nil {
+		ssn.MarkJobDirty(job.UID)
 	}
 }
 
