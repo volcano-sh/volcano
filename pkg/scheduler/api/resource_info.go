@@ -567,6 +567,18 @@ func (r *Resource) LessEqualWithResourcesName(rr *Resource, defaultValue Dimensi
 // to advertise), where the generic scalar comparison has nothing to compare against and can't be
 // trusted as "no".
 func AllUntrackedByAllocatable(names []string, node *NodeInfo) bool {
+	if node.Allocatable == nil {
+		return false
+	}
+	return AllUntrackedByResource(names, node.Allocatable)
+}
+
+// AllUntrackedByResource reports whether every resource name in names has no capacity entry at
+// all in r. cpu and memory always carry a real capacity number, so they are never considered
+// untracked. Same idea as AllUntrackedByAllocatable, generalized to any Resource baseline, such
+// as a queue's deserved or capability share, which a device-tracked resource is just as absent
+// from as it is from node.Allocatable.
+func AllUntrackedByResource(names []string, r *Resource) bool {
 	if len(names) == 0 {
 		return false
 	}
@@ -574,10 +586,10 @@ func AllUntrackedByAllocatable(names []string, node *NodeInfo) bool {
 		if name == string(v1.ResourceCPU) || name == string(v1.ResourceMemory) {
 			return false
 		}
-		if node.Allocatable == nil {
+		if r == nil {
 			return false
 		}
-		if _, tracked := node.Allocatable.ScalarResources[v1.ResourceName(name)]; tracked {
+		if _, tracked := r.ScalarResources[v1.ResourceName(name)]; tracked {
 			return false
 		}
 	}

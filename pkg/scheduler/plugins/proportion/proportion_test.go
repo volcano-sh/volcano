@@ -685,3 +685,154 @@ func TestJobEnqueuedOnOtherPluginsReject(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestAllocatableUntrackedResourceDefersToDeserved covers the allocate-path instance of the
+// #4863-class bug in the proportion plugin: a task requesting a resource dimension the queue's
+// deserved share has no entry for at all (volcano.sh/vgpu-memory-percentage here, mirroring
+// HAMi's fractional vGPU resource) must not be rejected by queueAllocatable's generic arithmetic,
+// which otherwise treats deserved's default zero capacity for that dimension as a hard violation
+// regardless of how much cpu/memory headroom the queue actually has.
+func TestAllocatableUntrackedResourceDefersToDeserved(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	trueValue := true
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	p1 := util.BuildPod("ns1", "p1", "", apiv1.PodPending,
+		api.BuildResourceList("1", "1Gi", api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"}),
+		"pg1", make(map[string]string), make(map[string]string))
+	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	// q1's capability/deserved deliberately carries no volcano.sh/vgpu-memory-percentage entry
+	// at all, and covers the node's full cpu/memory capacity.
+	queue1 := util.BuildQueue("q1", 1, api.BuildResourceList("2", "4Gi"))
+
+	test := uthelper.TestCommonStruct{
+		Name:      "allocatable check does not block a task purely for a resource untracked in queue deserved",
+		Plugins:   plugins,
+		Pods:      []*apiv1.Pod{p1},
+		Nodes:     []*apiv1.Node{n1},
+		PodGroups: []*schedulingv1beta1.PodGroup{pg1},
+		Queues:    []*schedulingv1beta1.Queue{queue1},
+		ExpectBindMap: map[string]string{
+			"ns1/p1": "n1",
+		},
+		ExpectBindsNum: 1,
+	}
+
+	tiers := []conf.Tier{{
+		Plugins: []conf.PluginOption{
+			{Name: PluginName, EnabledAllocatable: &trueValue, EnabledOverused: &trueValue, EnabledQueueOrder: &trueValue},
+		},
+	}}
+	test.RegisterSession(tiers, nil)
+	defer test.Close()
+	test.Run([]framework.Action{allocate.New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPreemptiveUntrackedResourceDefersToDeserved covers the reclaim-path instance of the same
+// bug via ssn.Preemptive (queueAllocatable is shared between AddAllocatableFn and
+// AddPreemptiveFn): a reclaimer requesting an untracked resource must not be blocked from even
+// attempting to reclaim, purely because its own queue's deserved share has no entry for that
+// dimension.
+func TestPreemptiveUntrackedResourceDefersToDeserved(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{
+		PluginName:          New,
+		gang.PluginName:     gang.New,
+		priority.PluginName: priority.New,
+	}
+	trueValue := true
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	victim := util.BuildPod("ns1", "victim", "n1", apiv1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string))
+	reclaimer := util.BuildPod("ns1", "reclaimer", "", apiv1.PodPending,
+		api.BuildResourceList("1", "1Gi", api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"}),
+		"pg-reclaimer", make(map[string]string), make(map[string]string))
+	pgVictim := util.BuildPodGroupWithPrio("pg-victim", "ns1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, "low-priority")
+	pgReclaimer := util.BuildPodGroupWithPrio("pg-reclaimer", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority")
+	// q2's capability/deserved deliberately carries no volcano.sh/vgpu-memory-percentage entry.
+	queue1 := util.BuildQueue("q1", 1, nil)
+	queue2 := util.BuildQueue("q2", 9, nil)
+	lowPrio := util.BuildPriorityClass("low-priority", 10)
+	highPrio := util.BuildPriorityClass("high-priority", 100000)
+
+	test := uthelper.TestCommonStruct{
+		Name:           "reclaim's preemptive check does not block a reclaimer purely for a resource untracked in queue deserved",
+		Plugins:        plugins,
+		Pods:           []*apiv1.Pod{victim, reclaimer},
+		Nodes:          []*apiv1.Node{n1},
+		PodGroups:      []*schedulingv1beta1.PodGroup{pgVictim, pgReclaimer},
+		Queues:         []*schedulingv1beta1.Queue{queue1, queue2},
+		PriClass:       []*schedulingv1.PriorityClass{lowPrio, highPrio},
+		ExpectEvicted:  []string{"ns1/victim"},
+		ExpectEvictNum: 1,
+	}
+
+	tiers := []conf.Tier{{
+		Plugins: []conf.PluginOption{
+			{Name: PluginName, EnabledOverused: &trueValue, EnabledQueueOrder: &trueValue, EnablePreemptive: &trueValue, EnabledReclaimable: &trueValue},
+			{Name: gang.PluginName, EnabledJobStarving: &trueValue},
+			{Name: priority.PluginName, EnabledTaskOrder: &trueValue, EnabledJobOrder: &trueValue},
+		},
+	}}
+	test.RegisterSession(tiers, nil)
+	defer test.Close()
+	test.Run([]framework.Action{reclaim.New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestReclaimableUntrackedResourceDoesNotForcePerpetualOverDeserved covers AddReclaimableFn's
+// own, independent instance of the bug: a victim task requesting a resource untracked in its
+// queue's deserved share must not make that queue look permanently "over deserved" on that
+// dimension alone. deserved defaults to zero capacity for a dimension it has no entry for, so
+// without the fix, any positive usage of an untracked resource makes the arithmetic conclude the
+// queue is over-deserved forever, regardless of actual cpu/memory usage, marking every task in it
+// as a reclaim victim indefinitely. Here the victim's queue is well within its cpu/memory
+// deserved share, so it should not be offered as a reclaim victim at all.
+func TestReclaimableUntrackedResourceDoesNotForcePerpetualOverDeserved(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	trueValue := true
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	victim := util.BuildPod("ns1", "victim", "n1", apiv1.PodRunning,
+		api.BuildResourceList("1", "1Gi", api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"}),
+		"pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string))
+	reclaimer := util.BuildPod("ns1", "reclaimer", "", apiv1.PodPending, api.BuildResourceList("1", "1Gi"), "pg-reclaimer", make(map[string]string), make(map[string]string))
+	pgVictim := util.BuildPodGroup("pg-victim", "ns1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning)
+	pgReclaimer := util.BuildPodGroup("pg-reclaimer", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	// q1's deserved covers its actual cpu/memory usage generously (3 cpu / 3Gi deserved for 1
+	// cpu / 1Gi used), and deliberately has no entry for volcano.sh/vgpu-memory-percentage.
+	queue1 := util.BuildQueueWithPriorityAndResourcesQuantity("q1", 1, api.BuildResourceList("3", "3Gi"), nil)
+	queue2 := util.BuildQueueWithPriorityAndResourcesQuantity("q2", 1, api.BuildResourceList("1", "1Gi"), nil)
+
+	tiers := []conf.Tier{{
+		Plugins: []conf.PluginOption{
+			{Name: PluginName, EnabledReclaimable: &trueValue, EnabledQueueOrder: &trueValue},
+		},
+	}}
+
+	test := uthelper.TestCommonStruct{
+		Name:      "reclaimable does not offer a victim whose queue is within its cpu/memory deserved share",
+		Plugins:   plugins,
+		Pods:      []*apiv1.Pod{victim, reclaimer},
+		Nodes:     []*apiv1.Node{n1},
+		PodGroups: []*schedulingv1beta1.PodGroup{pgVictim, pgReclaimer},
+		Queues:    []*schedulingv1beta1.Queue{queue1, queue2},
+	}
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	reclaimerTask := api.NewTaskInfo(reclaimer)
+	victimTask := ssn.Jobs[api.JobID("ns1/pg-victim")].TaskStatusIndex[api.Running][api.TaskID("ns1-victim")]
+	if victimTask == nil {
+		t.Fatalf("victim task not found in session")
+	}
+
+	victims := ssn.Reclaimable(reclaimerTask, []*api.TaskInfo{victimTask})
+	if len(victims) != 0 {
+		t.Fatalf("expected no reclaim victims from a queue within its cpu/memory deserved share, got %v", victims)
+	}
+}
