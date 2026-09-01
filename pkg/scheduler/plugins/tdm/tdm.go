@@ -41,8 +41,6 @@ const (
 	defaultPodEvictNum       = 1
 )
 
-var lastEvictAt time.Time
-
 /*
    actions: "enqueue, reclaim, allocate, preempt"
    tiers:
@@ -59,6 +57,7 @@ type tdmPlugin struct {
 	// evictPeriod
 	// default 1m
 	evictPeriod time.Duration
+	lastEvictAt time.Time
 }
 
 // New function returns prioritizePlugin object
@@ -78,7 +77,11 @@ func New(args framework.Arguments) framework.Plugin {
 		}
 	}
 
-	return &tdmPlugin{revocableZone, evictPeriod}
+	return &tdmPlugin{
+		revocableZone: revocableZone,
+		evictPeriod:   evictPeriod,
+		lastEvictAt:   time.Time{},
+	}
 }
 
 func (tp *tdmPlugin) Name() string {
@@ -234,8 +237,8 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	victimsFn := func([]*api.TaskInfo) []*api.TaskInfo {
-		if lastEvictAt.Add(tp.evictPeriod).After(time.Now()) {
-			klog.V(4).Infof("TDM next evict time at %v", lastEvictAt)
+		if tp.lastEvictAt.Add(tp.evictPeriod).After(time.Now()) {
+			klog.V(4).Infof("TDM next evict time at %v", tp.lastEvictAt)
 			return nil
 		}
 
@@ -256,7 +259,7 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		// need to consider concurrency?
-		lastEvictAt = time.Now()
+		tp.lastEvictAt = time.Now()
 
 		klog.V(4).Infof("TDM got %v victims", len(victims))
 
