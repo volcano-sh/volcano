@@ -514,6 +514,10 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration  
 metadata:  
   name: volcano-admission-service-cronjobs-validate  
+  {{- if .Values.custom.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-admission-cert
+  {{- end }}
   {{- if .Values.custom.common_labels }}  
   labels:  
     {{- toYaml .Values.custom.common_labels | nindent 4 }}  
