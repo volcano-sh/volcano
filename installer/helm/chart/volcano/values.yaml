@@ -23,6 +23,10 @@ basic:
   admission_port: 8443
   image_registry: "docker.io"
 custom:
+  # Use cert-manager for admission TLS when available. When disabled, the
+  # admission-init hook provides the self-signed fallback certificate path.
+  certManager:
+    enabled: false
   go_memlimit_enable: false
   metrics_enable: false
   admission_enable: true
