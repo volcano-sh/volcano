@@ -268,24 +268,36 @@ inactivity. After 24 hours, the penalty is effectively forgotten.
 ### State persistence
 
 Volcano recreates plugin instances via `New()` every scheduling cycle, so instance-level
-state is lost between cycles. The fairshare plugin uses package-level globals protected
-by a `sync.Mutex` to persist usage history across scheduling cycles:
+state is lost between cycles. The fairshare plugin keeps usage history in a single
+package-level struct that survives across cycles:
 
 ```go
-var (
-    globalMu        sync.Mutex
-    globalUsage     = make(map[string]map[string]float64) // [queue][namespace] → resource-seconds
-    globalLastCycle time.Time
-)
+var state = &fairShareProcessState{
+    usage: make(map[string]map[string]float64), // [queue][namespace] → resource-seconds
+}
+
+type fairShareProcessState struct {
+    usage     map[string]map[string]float64
+    lastCycle time.Time
+
+    persistenceInitialized bool
+    lastFlushAt            time.Time
+}
 ```
+
+`state` is intentionally unguarded by a lock: `OnSessionOpen`/`OnSessionClose` are only
+ever invoked sequentially from the single scheduler goroutine (Volcano's `wait.Until`
+loop never overlaps invocations). If Volcano ever runs sessions concurrently, this needs
+a real redesign, not a reintroduced global lock.
 
 #### Durable persistence (ConfigMap)
 
 To survive scheduler restarts, the plugin can optionally persist state to a ConfigMap.
 When `fairshare.persistState` is set to `"true"`:
 
-1. On the **first scheduling cycle**, a `sync.Once` block loads any existing state from
-   the ConfigMap into `globalUsage` / `globalLastCycle`.
+1. On the **first scheduling cycle**, `initPersistence` loads any existing state from
+   the ConfigMap into `state.usage` / `state.lastCycle`, guarded by
+   `state.persistenceInitialized` so it only runs once.
 2. **`OnSessionClose`** (called once per scheduling cycle, ~1s) flushes the current state
    to the ConfigMap whenever at least `flushIntervalSeconds` has elapsed since the last
    flush (default: 30 seconds). Writes use the ConfigMap's `resourceVersion` for
@@ -293,7 +305,7 @@ When `fairshare.persistState` is set to `"true"`:
    detached goroutine+ticker means persistence stops the moment the plugin stops being
    invoked (e.g. removed from the tier list via a config hot-reload) — a ticker would
    otherwise keep writing stale state forever with no shutdown hook.
-3. On restart, the loaded `globalLastCycle` is used to compute the elapsed time and apply
+3. On restart, the loaded `state.lastCycle` is used to compute the elapsed time and apply
    the correct decay, so namespaces are not unfairly penalized or forgiven by the downtime.
 
 The ConfigMap is stored in the scheduler's namespace (default: `volcano-system`):
