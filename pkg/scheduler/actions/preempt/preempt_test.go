@@ -508,7 +508,14 @@ func newNormalPreemptDeviceFitFixture() (uthelper.TestCommonStruct, []conf.Tier)
 			util.BuildPod("c1", "preemptor", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg-high", make(map[string]string), make(map[string]string)),
 		},
 		Nodes: []*v1.Node{
-			util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{
+				{Name: "pods", Value: "10"},
+				// Tracked like a real HAMi node: vgpu-number is advertised in Allocatable.
+				// vgpu-memory-percentage deliberately is not (see
+				// TestNormalPreemptUntrackedResourceDefersToPredicate) - that's the one
+				// dimension this fixture is actually testing.
+				{Name: "volcano.sh/vgpu-number", Value: "1"},
+			}...), make(map[string]string)),
 		},
 		Queues: []*schedulingv1beta1.Queue{
 			util.BuildQueue("q1", 1, nil),
@@ -544,7 +551,14 @@ func TestNormalPreemptUntrackedResourceDefersToPredicate(t *testing.T) {
 	test.Pods = []*v1.Pod{
 		util.BuildPod("c1", "preemptee", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-low", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
 		util.BuildPod("c1", "preemptor", "", v1.PodPending,
-			api.BuildResourceList("1", "1G", api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"}),
+			// vgpu-memory-percentage is never requested on its own in practice - the API
+			// requires vgpu-number (or vgpu-memory) alongside it. Both are requested here;
+			// only vgpu-memory-percentage is untracked in n1's Allocatable (see the fixture
+			// above), which is the one dimension this test is actually exercising.
+			api.BuildResourceList("1", "1G",
+				api.ScalarResource{Name: "volcano.sh/vgpu-number", Value: "1"},
+				api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"},
+			),
 			"pg-high", make(map[string]string), make(map[string]string)),
 	}
 	// n1's Allocatable deliberately carries no volcano.sh/vgpu-memory-percentage entry at all,

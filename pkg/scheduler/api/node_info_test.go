@@ -512,9 +512,18 @@ func TestNodeInfoClonePreservesUnassignedNumaPods(t *testing.T) {
 // volcano.sh/vgpu-memory-percentage, tracked entirely by a device plugin's own ledger) must not
 // be rejected here, since nothing downstream double-checks it again.
 func TestNodeInfo_AddTask_UntrackedResourceDefersToPredicate(t *testing.T) {
-	node := buildNode("n1", nil, BuildResourceList("2000m", "2G", []ScalarResource{{Name: "pods", Value: "10"}}...))
+	// vgpu-number is tracked in Allocatable, matching a real HAMi node; only
+	// vgpu-memory-percentage - never requested on its own in practice - is untracked, which is the
+	// one dimension this test exercises.
+	node := buildNode("n1", nil, BuildResourceList("2000m", "2G", []ScalarResource{
+		{Name: "pods", Value: "10"},
+		{Name: "volcano.sh/vgpu-number", Value: "1"},
+	}...))
 	pod := buildPod("c1", "p1", "", v1.PodPending,
-		BuildResourceList("1000m", "1G", []ScalarResource{{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"}}...),
+		BuildResourceList("1000m", "1G", []ScalarResource{
+			{Name: "volcano.sh/vgpu-number", Value: "1"},
+			{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"},
+		}...),
 		[]metav1.OwnerReference{}, make(map[string]string))
 
 	ni := NewNodeInfo(node)
