@@ -1033,6 +1033,13 @@ func (sc *SchedulerCache) UpdateSnapshot(snapshot *k8sutil.Snapshot) error {
 				node.info.Name, node.info.Generation, snapshotGeneration)
 			break
 		}
+		// A task event can create a placeholder NodeInfo before the matching
+		// Node event arrives. Placeholders are intentionally excluded from
+		// scheduling snapshots; passing one to Snapshot.addOrUpdateNode would
+		// dereference a nil Kubernetes Node.
+		if node.info == nil || node.info.Node == nil || !node.info.Ready() {
+			continue
+		}
 		klog.V(5).Infof("current node name need to update in cache is %s", node.info.Name)
 		nodesToUpdate = append(nodesToUpdate, node.info)
 	}
