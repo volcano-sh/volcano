@@ -429,12 +429,20 @@ func (pmpt *Action) normalPreempt(
 // 2. The cluster has no free resources, and the queue is not allocatable.
 // 3. The cluster has no free resources, but the queue is allocatable.
 // 4. The node has sufficient aggregate resources, but PredicateFn fails because vNPU or vGPU resources are fragmented.
-// Same-queue preemption handles cases 1 and 2. Reclaim handles case 3. For case 4, normal preemption continues until
-// the predicate passes after enough victims are evicted.
+// 5. The preemptor requests a resource dimension no node advertises in Allocatable at all, such as
+// volcano.sh/vgpu-memory-percentage, which a device plugin tracks entirely on its own. The generic
+// resource comparison below can't tell that apart from a genuine shortfall, so it treats a shortfall
+// confined to untracked dimensions as inconclusive and defers to PredicateFn instead of rejecting outright.
+// Same-queue preemption handles cases 1 and 2. Reclaim handles case 3. For cases 4 and 5, normal preemption
+// continues until the predicate passes after enough victims are evicted.
 func preemptorFitsOnNode(ssn *framework.Session, queue *api.QueueInfo, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
-	return ssn.Allocatable(queue, preemptor) &&
-		preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) &&
-		ssn.PredicateFn(preemptor, node) == nil
+	if !ssn.Allocatable(queue, preemptor) {
+		return false
+	}
+	if ok, failing := preemptor.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok && !api.AllUntrackedByAllocatable(failing, node) {
+		return false
+	}
+	return ssn.PredicateFn(preemptor, node) == nil
 }
 
 func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {
@@ -750,6 +758,22 @@ func SelectVictimsOnNode(
 		return nil
 	}
 
+	// fitsAfterSimulatedEviction reports whether preemptor fits on nodeInfo given the current
+	// simulated eviction state. The generic scalar-resource comparison is only trustworthy for
+	// resources nodeInfo.Allocatable actually carries a capacity number for. A resource a device
+	// plugin tracks entirely through its own ledger instead (like volcano.sh/vgpu-memory-percentage,
+	// a pure request-side modifier with no coherent node-wide total to advertise) can never pass
+	// it, no matter how much room the real predicate would allow, so a shortfall confined to
+	// untracked dimensions is treated as inconclusive rather than a hard no; the caller still
+	// consults SimulatePredicateFn afterward to make the actual determination.
+	fitsAfterSimulatedEviction := func() bool {
+		if !ssn.SimulateAllocatableFn(ctx, state, currentQueue, preemptor) {
+			return false
+		}
+		ok, resources := preemptor.InitResreq.LessEqualWithResourcesName(nodeInfo.FutureIdle(), api.Zero)
+		return ok || api.AllUntrackedByAllocatable(resources, nodeInfo)
+	}
+
 	var preemptees []*api.TaskInfo
 	for _, task := range nodeInfo.Tasks {
 		if filter == nil {
@@ -780,7 +804,7 @@ func SelectVictimsOnNode(
 			return nil, api.AsStatus(err)
 		}
 
-		if ssn.SimulateAllocatableFn(ctx, state, currentQueue, preemptor) && preemptor.InitResreq.LessEqual(nodeInfo.FutureIdle(), api.Zero) {
+		if fitsAfterSimulatedEviction() {
 			if err := ssn.SimulatePredicateFn(ctx, state, preemptor, nodeInfo); err == nil {
 				klog.V(3).Infof("Pod %v/%v can be scheduled on node %v after preempt %v/%v, stop evicting more pods", preemptor.Namespace, preemptor.Name, nodeInfo.Name, task.Namespace, task.Name)
 				break
@@ -816,7 +840,7 @@ func SelectVictimsOnNode(
 		}
 
 		var fits bool
-		if ssn.SimulateAllocatableFn(ctx, state, currentQueue, preemptor) && preemptor.InitResreq.LessEqual(nodeInfo.FutureIdle(), api.Zero) {
+		if fitsAfterSimulatedEviction() {
 			err := ssn.SimulatePredicateFn(ctx, state, preemptor, nodeInfo)
 			fits = err == nil
 		}
