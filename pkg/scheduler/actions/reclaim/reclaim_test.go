@@ -512,14 +512,25 @@ func TestReclaimUntrackedResourceDefersToPredicate(t *testing.T) {
 			util.BuildPod("c1", "device-holder-3", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
 			// device-fit-after-reclaim's predicate only special-cases a task named "reclaimer", so
 			// this stays evicted regardless of the untracked resource on the reclaimer's request.
+			// vgpu-memory-percentage is never requested on its own in practice - the API requires
+			// vgpu-number (or vgpu-memory) alongside it. Both are requested here; only
+			// vgpu-memory-percentage is untracked in n1's Allocatable below, which is the one
+			// dimension this test is actually exercising.
 			util.BuildPod("c1", "reclaimer", "", v1.PodPending,
-				api.BuildResourceList("1", "1G", api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"}),
+				api.BuildResourceList("1", "1G",
+					api.ScalarResource{Name: "volcano.sh/vgpu-number", Value: "1"},
+					api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"},
+				),
 				"pg-reclaimer", make(map[string]string), make(map[string]string)),
 			util.BuildPod("c1", "other-queue-demand", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg-demand", make(map[string]string), make(map[string]string)),
 		},
-		// n1's Allocatable deliberately carries no volcano.sh/vgpu-memory-percentage entry at all.
+		// n1's Allocatable tracks vgpu-number like a real HAMi node, but deliberately carries no
+		// volcano.sh/vgpu-memory-percentage entry at all.
 		Nodes: []*v1.Node{
-			util.BuildNode("n1", api.BuildResourceList("3", "3G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			util.BuildNode("n1", api.BuildResourceList("3", "3G", []api.ScalarResource{
+				{Name: "pods", Value: "10"},
+				{Name: "volcano.sh/vgpu-number", Value: "1"},
+			}...), make(map[string]string)),
 		},
 		Queues: []*schedulingv1beta1.Queue{
 			util.BuildQueue("q1", 1, nil),

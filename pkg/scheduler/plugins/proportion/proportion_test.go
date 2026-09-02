@@ -697,8 +697,15 @@ func TestAllocatableUntrackedResourceDefersToDeserved(t *testing.T) {
 	trueValue := true
 
 	n1 := util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	// vgpu-memory-percentage is never requested on its own in practice - the API requires
+	// vgpu-number (or vgpu-memory) alongside it. Both are requested here; only
+	// vgpu-memory-percentage is untracked in q1's deserved below, which is the one dimension
+	// this test is actually exercising.
 	p1 := util.BuildPod("ns1", "p1", "", apiv1.PodPending,
-		api.BuildResourceList("1", "1Gi", api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"}),
+		api.BuildResourceList("1", "1Gi",
+			api.ScalarResource{Name: "volcano.sh/vgpu-number", Value: "1"},
+			api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"},
+		),
 		"pg1", make(map[string]string), make(map[string]string))
 	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue)
 	// q1's capability/deserved deliberately carries no volcano.sh/vgpu-memory-percentage entry
@@ -746,8 +753,15 @@ func TestPreemptiveUntrackedResourceDefersToDeserved(t *testing.T) {
 
 	n1 := util.BuildNode("n1", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
 	victim := util.BuildPod("ns1", "victim", "n1", apiv1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string))
+	// vgpu-memory-percentage is never requested on its own in practice - the API requires
+	// vgpu-number (or vgpu-memory) alongside it. Both are requested here; only
+	// vgpu-memory-percentage is untracked in q2's deserved below, which is the one dimension
+	// this test is actually exercising.
 	reclaimer := util.BuildPod("ns1", "reclaimer", "", apiv1.PodPending,
-		api.BuildResourceList("1", "1Gi", api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"}),
+		api.BuildResourceList("1", "1Gi",
+			api.ScalarResource{Name: "volcano.sh/vgpu-number", Value: "1"},
+			api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"},
+		),
 		"pg-reclaimer", make(map[string]string), make(map[string]string))
 	pgVictim := util.BuildPodGroupWithPrio("pg-victim", "ns1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, "low-priority")
 	pgReclaimer := util.BuildPodGroupWithPrio("pg-reclaimer", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority")
@@ -797,8 +811,15 @@ func TestReclaimableUntrackedResourceDoesNotForcePerpetualOverDeserved(t *testin
 	trueValue := true
 
 	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	// vgpu-memory-percentage is never requested on its own in practice - the API requires
+	// vgpu-number (or vgpu-memory) alongside it. Both are requested here; only
+	// vgpu-memory-percentage is untracked in q1's deserved below, which is the one dimension
+	// this test is actually exercising.
 	victim := util.BuildPod("ns1", "victim", "n1", apiv1.PodRunning,
-		api.BuildResourceList("1", "1Gi", api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"}),
+		api.BuildResourceList("1", "1Gi",
+			api.ScalarResource{Name: "volcano.sh/vgpu-number", Value: "1"},
+			api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"},
+		),
 		"pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string))
 	reclaimer := util.BuildPod("ns1", "reclaimer", "", apiv1.PodPending, api.BuildResourceList("1", "1Gi"), "pg-reclaimer", make(map[string]string), make(map[string]string))
 	pgVictim := util.BuildPodGroup("pg-victim", "ns1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning)
