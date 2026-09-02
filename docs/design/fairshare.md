@@ -1,8 +1,26 @@
-# Namespace fair share
+# Fair share scheduling
+
+This document covers two related design proposals for fair share scheduling among
+tenants sharing a `Queue`:
+
+1. [Namespace fair share](#namespace-fair-share-2019) (2019, [@lminzhw](http://github.com/lminzhw)) —
+   static per-namespace weights recorded on `ResourceQuota`, compared via a new
+   `NamespaceOrderFn` scheduling-loop stage.
+2. [Per-namespace fair share with decayed usage tracking](#per-namespace-fair-share-with-decayed-usage-tracking-2026)
+   (2026) — a self-contained scheduler plugin that tracks historical resource-seconds per
+   namespace with exponential decay, addressing the same underlying problem without
+   requiring new `Session`/`SchedulerCache` fields or a `NamespaceOrderFn` stage.
+
+For usage instructions (arguments, configuration examples, interaction with other plugins),
+see the [fairshare user guide](../user-guide/how_to_use_fairshare_plugin.md).
+
+---
+
+## Namespace fair share (2019)
 
 [@lminzhw](http://github.com/lminzhw); May 8, 2019
 
-## Motivation
+### Motivation
 
 `Queue` was introduced in [kube-batch](http://github.com/kubernetes-sigs/kube-batch) to share resources among users.
 
@@ -12,7 +30,7 @@ So, we need a more fine-grained strategy to balance resource usage among users i
 
 In consideration of multi-user model in kubernetes, we use namespace to distinguish different user. Each namespace would have its weight to control resources usage.
 
-## Function Specification
+### Function Specification
 
 Weight have these features:
 > 1. `Queue` level
@@ -20,7 +38,7 @@ Weight have these features:
 > 3. record in namespace `quota`
 > 4. higher value means more resources after balancing
 
-### where is the weight
+#### where is the weight
 
 ```yaml
 apiVersion: v1
@@ -177,3 +195,187 @@ All these plugin would choose some victims respective, and the intersection of t
     | q1 w1 | ns1 w2    |           | 4 cpu          |                    |
     | q2 w3 | ns1 w2    | 5 cpu     | 12 cpu         | 3 cpu              |
     |       | ns2 w6    | 20 cpu    |                | 9 cpu              |
+
+---
+
+## Per-namespace fair share with decayed usage tracking (2026)
+
+### Background
+
+Volcano's existing DRF plugin provides dominant resource fairness at the namespace/queue level,
+but it only considers the **current allocation snapshot** — it has no memory of past usage.
+This leads to a well-documented problem in multi-tenant GPU clusters (see [#4165](https://github.com/volcano-sh/volcano/issues/4165)):
+
+- Namespace A submits hundreds of GPU jobs and fills the cluster
+- Namespace B arrives later with a handful of jobs
+- As namespace A's jobs complete, its new pending jobs immediately regain priority
+  (they have equal or lower current allocation), effectively starving namespace B
+
+This "submission-order bias" means the first tenant to flood the queue monopolizes resources
+indefinitely, even when other tenants have legitimate demand. SLURM solves this with its
+fair share algorithm that tracks historical usage with exponential decay.
+
+This is the same underlying gap the 2019 [Namespace fair share](#namespace-fair-share-2019)
+proposal above targeted, but that design requires new `NamespaceOrderFn` scheduling-loop
+stages and `NamespaceInfo` plumbing through `SchedulerCache`/`Session`/`ClusterInfo` that were
+never landed. The proposal below is intentionally scoped to a single self-contained plugin —
+no framework changes — trading the static, admin-configured `ResourceQuota` weight for a
+usage-based measure that adapts automatically as tenants' consumption rises and falls.
+
+It's also worth calling out an assumption both designs share and that's worth being explicit
+about: Volcano already supports fair sharing *across* queues (via DRF/proportion at the queue
+level). Both the 2019 proposal and this one are about fair sharing **within** a single queue,
+for the case — common when tenants map to namespaces rather than to dedicated queues — where
+multiple tenants submit jobs into the same queue and need to be balanced against each other
+there.
+
+### Proposal
+
+Add a new `fairshare` scheduler plugin that tracks cumulative resource-seconds per namespace
+and applies exponential half-life decay so that past consumption is gradually forgiven.
+
+### Namespace identity
+
+Tenants are identified by their job's **namespace** directly — there is no separate "user"
+concept, since not every cluster maps individual users to namespaces one-to-one (a namespace
+may itself represent a team or project shared by several users). No additional labels are
+required.
+
+### Algorithm
+
+Each scheduling cycle (~1 second):
+
+1. **Decay** all historical usage: `usage × 2^(-elapsed / halfLife)`
+2. **Accumulate** running usage: for each allocated task, add `resource_count × elapsed_seconds`
+   to the namespace's cumulative total
+3. **Order** pending jobs via `JobOrderFn`:
+   - **Primary**: Lower cumulative usage wins (with a 1.0 resource-second epsilon for float comparison)
+   - **Secondary**: Fewer currently-running resources wins (within-cycle tiebreaker)
+
+### Half-life decay
+
+| Time since usage | Remaining weight (4h half-life) |
+|-----------------|--------------------------------|
+| 0 hours         | 100%                           |
+| 4 hours         | 50%                            |
+| 8 hours         | 25%                            |
+| 12 hours        | 12.5%                          |
+| 24 hours        | 1.6%                           |
+
+A namespace that consumed 10 GPU-hours will see its usage penalty halve every 4 hours of
+inactivity. After 24 hours, the penalty is effectively forgotten.
+
+### State persistence
+
+Volcano recreates plugin instances via `New()` every scheduling cycle, so instance-level
+state is lost between cycles. The fairshare plugin uses package-level globals protected
+by a `sync.Mutex` to persist usage history across scheduling cycles:
+
+```go
+var (
+    globalMu        sync.Mutex
+    globalUsage     = make(map[string]map[string]float64) // [queue][namespace] → resource-seconds
+    globalLastCycle time.Time
+)
+```
+
+#### Durable persistence (ConfigMap)
+
+To survive scheduler restarts, the plugin can optionally persist state to a ConfigMap.
+When `fairshare.persistState` is set to `"true"`:
+
+1. On the **first scheduling cycle**, a `sync.Once` block loads any existing state from
+   the ConfigMap into `globalUsage` / `globalLastCycle`.
+2. **`OnSessionClose`** (called once per scheduling cycle, ~1s) flushes the current state
+   to the ConfigMap whenever at least `flushIntervalSeconds` has elapsed since the last
+   flush (default: 30 seconds). Writes use the ConfigMap's `resourceVersion` for
+   optimistic concurrency. Tying the flush to the session lifecycle rather than a
+   detached goroutine+ticker means persistence stops the moment the plugin stops being
+   invoked (e.g. removed from the tier list via a config hot-reload) — a ticker would
+   otherwise keep writing stale state forever with no shutdown hook.
+3. On restart, the loaded `globalLastCycle` is used to compute the elapsed time and apply
+   the correct decay, so namespaces are not unfairly penalized or forgiven by the downtime.
+
+The ConfigMap is stored in the scheduler's namespace (default: `volcano-system`):
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fairshare-usage-state
+  namespace: volcano-system
+  labels:
+    app: volcano-scheduler
+    component: fairshare
+data:
+  state.json: |
+    {
+      "lastCycle": "2026-04-07T12:00:00Z",
+      "queues": {
+        "gpu-queue": {
+          "team-a": 12345.67,
+          "team-b": 8901.23
+        }
+      }
+    }
+```
+
+**Design considerations:**
+
+- **Leader election**: Volcano already elects a single active scheduler. Only the leader writes.
+- **Data loss window**: At most `flushInterval` seconds of usage data is lost on a crash.
+  With the default 30-second interval and a 4-hour half-life, this is negligible.
+- **Size**: Even with 1000 namespaces across 50 queues, the JSON payload is ~50 KB — well
+  within the 1 MB ConfigMap limit.
+- **Backward compatibility**: Persistence is disabled by default. Existing deployments are
+  unaffected.
+
+### Scheduler hooks
+
+| Hook | Purpose |
+|------|---------|
+| `JobOrderFn` | Orders jobs by cumulative usage (lower wins), with running-resource tiebreaker |
+| `JobEnqueueableFn` | (Optional) Blocks namespaces at/above their max-min fair share from the scheduling pipeline |
+| `EventHandler` | Tracks allocations/deallocations in real-time during the scheduling cycle |
+
+### Testing
+
+#### Unit tests (49 tests)
+
+- Max-min fair share algorithm correctness (single namespace, equal demand, asymmetric demand, progressive elimination)
+- Decay factor math (one/two half-lives, zero elapsed, zero half-life, small elapsed)
+- `decayAllUsage` (halves after one half-life, cleans up negligible entries, multi-queue)
+- Usage ordering (lower usage wins, equal usage falls to running tiebreaker, realistic multi-namespace scenario)
+- Decay scenario (10-hour job decay over 4h and 24h)
+- Helpers (namespace extraction, resource key defaults/overrides)
+- `targetQueues` allowlist behavior (defaults to all queues when unset, restricts to the allowlist when set)
+- `shouldAbstainOrdering` (abstains unless both jobs are in the same targeted queue)
+- A failed persistence flush is retried on the next cycle instead of waiting a full `flushIntervalSeconds`
+- Persistence: flush creates ConfigMap, flush updates existing, load populates globals,
+  load handles missing ConfigMap, load handles empty data, flush→load round-trip,
+  disabled persistence is no-op, corrupt JSON returns error
+- `maybeFlush` rate limiting (disabled is a no-op, first call flushes immediately, a second
+  call within the interval is skipped, flushes again once the interval elapses)
+
+#### Integration tests
+
+Validated on a test cluster with 2 GPU nodes and 4 tenant namespaces:
+
+1. **Without decay tracking**: FIFO behavior, last tenant waited ~7 minutes
+2. **With decay tracking**: All tenants got GPUs within ~2 minutes, scheduling rotated between tenants
+3. **Burst asymmetry** (1 tenant = 8 jobs, others = 1 each): Minority tenants' jobs completed within ~2 minutes
+4. **DAG/workflow simulation**: GPU steps interleaved across tenants by cumulative usage
+5. **PriorityClass interaction**: High-priority bypassed fair share as expected
+6. **Scheduler restart**: Running jobs survived, new jobs scheduled fairly post-restart
+
+### Limitations
+
+- Without `persistState`, state is in-memory only and lost on scheduler restart
+- Namespace-based identity only; no support for arbitrary custom labels (can be extended)
+- ConfigMap persistence has a small data-loss window equal to the flush interval on crashes
+- Fairness is scoped within a queue (as in the 2019 proposal above); this plugin does not
+  change how DRF/proportion balance resources across queues
+- `fairshare` registers no `PreemptableFn`/`ReclaimableFn`; it only reorders the pending
+  queue and (optionally) gates enqueue. It cannot preempt already-running jobs, so a
+  namespace with long-lived running jobs keeps its resources regardless of how stale its
+  usage penalty becomes
