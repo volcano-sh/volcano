@@ -69,7 +69,7 @@ include Makefile.def
 
 .EXPORT_ALL_VARIABLES:
 
-all: vc-scheduler vc-agent-scheduler vc-controller-manager vc-webhook-manager vc-agent vcctl command-lines
+all: vc-scheduler vc-agent-scheduler vc-controller-manager vc-hypernode-controller-manager vc-webhook-manager vc-agent vcctl command-lines
 
 init:
 	mkdir -p ${BIN_DIR}
@@ -92,6 +92,9 @@ vc-agent-scheduler: init
 vc-controller-manager: init
 	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-controller-manager ./cmd/controller-manager
 
+vc-hypernode-controller-manager: init
+	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-hypernode-controller-manager ./cmd/hypernode-controller-manager
+
 vc-webhook-manager: init
 	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-webhook-manager ./cmd/webhook-manager
 
@@ -102,9 +105,9 @@ vc-agent: init
 vcctl: init
 	CC=${CC} CGO_ENABLED=0 GOOS=$(if $(filter file,$(origin GOOS)),$(OS),$(GOOS)) GOARCH=$(GOARCH) go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vcctl ./cmd/cli
 
-image_bins: vc-scheduler vc-agent-scheduler vc-controller-manager vc-webhook-manager vc-agent
+image_bins: vc-scheduler vc-agent-scheduler vc-controller-manager vc-hypernode-controller-manager vc-webhook-manager vc-agent
 
-images: vc-scheduler-image vc-agent-scheduler-image vc-controller-manager-image vc-webhook-manager-image vc-agent-image
+images: vc-scheduler-image vc-agent-scheduler-image vc-controller-manager-image vc-hypernode-controller-manager-image vc-webhook-manager-image vc-agent-image
 
 # Define a reusable build function for individual component images
 define build_component_image
@@ -124,6 +127,9 @@ endef
 vc-controller-manager-image:
 	$(call build_component_image,controller-manager)
 
+vc-hypernode-controller-manager-image:
+	$(call build_component_image,hypernode-controller-manager)
+
 vc-scheduler-image:
 	$(call build_component_image,scheduler)
 
@@ -140,6 +146,7 @@ save-images:
 	@mkdir -p ${IMAGES_DIR}
 	@echo "Saving images with gzip compression..."
 	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-controller-manager:$(TAG) | gzip > ${IMAGES_DIR}/vc-controller-manager-$(TAG).tar.gz'
+	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-hypernode-controller-manager:$(TAG) | gzip > ${IMAGES_DIR}/vc-hypernode-controller-manager-$(TAG).tar.gz'
 	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-scheduler:$(TAG) | gzip > ${IMAGES_DIR}/vc-scheduler-$(TAG).tar.gz'
 	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-agent-scheduler:$(TAG) | gzip > ${IMAGES_DIR}/vc-agent-scheduler-$(TAG).tar.gz'
 	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-webhook-manager:$(TAG) | gzip > ${IMAGES_DIR}/vc-webhook-manager-$(TAG).tar.gz'
@@ -224,7 +231,7 @@ e2e-test-cronjob: images
 	E2E_TYPE=CRONJOB ./hack/run-e2e-kind.sh
 
 e2e-test-dra: images
-	E2E_TYPE=DRA FEATURE_GATES="DynamicResourceAllocation=true,DRAConsumableCapacity=true" ./hack/run-e2e-kind.sh
+	E2E_TYPE=DRA FEATURE_GATES="DynamicResourceAllocation=true,DRAConsumableCapacity=true,DRAPrioritizedList=true" ./hack/run-e2e-kind.sh
 
 e2e-test-hypernode: images
 	E2E_TYPE=HYPERNODE ./hack/run-e2e-kind.sh

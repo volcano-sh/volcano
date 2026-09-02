@@ -204,8 +204,12 @@ spec:
             - --sharding-configmap={{ .Release.Name }}-sharding-configmap
             - --sharding-configmap-namespace={{ .Release.Namespace }}
               {{- end }}
-              {{- if .Values.custom.controller_enabled_controllers }}
-            - --controllers={{.Values.custom.controller_enabled_controllers}}
+              {{- $enabledControllers := .Values.custom.controller_enabled_controllers | default "" }}
+              {{- if ne (include "hypernodeControllerMode" .) "controller-manager" }}
+                {{- $enabledControllers = printf "%s,-hyperNode-controller" ($enabledControllers | default "*,-sharding-controller") }}
+              {{- end }}
+              {{- if $enabledControllers }}
+            - --controllers={{ $enabledControllers }}
               {{- end }}
             - -v={{.Values.custom.controller_log_level}}
             - 2>&1
@@ -251,21 +255,6 @@ spec:
     app: volcano-controller
   type: ClusterIP
 
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ .Release.Name }}-controller-configmap
-  namespace: {{ .Release.Namespace }}
-  {{- if .Values.custom.common_labels }}
-  labels:
-    {{- toYaml .Values.custom.common_labels | nindent 4 }}
-  {{- end }}
-data:
-  volcano-controller.conf: |
-  {{- if .Values.custom.controller_config_override }}
-  {{ toYaml .Values.custom.controller_config_override | nindent 4 }}
-  {{- end }}
 {{- if .Values.custom.sharding_configmap_enable }}
 ---
 apiVersion: v1

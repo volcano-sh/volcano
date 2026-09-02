@@ -83,6 +83,8 @@ func TestAddFlags(t *testing.T) {
 		MinPercentageOfNodesToFind:    defaultMinPercentageOfNodesToFind,
 		PercentageOfNodesToFind:       defaultPercentageOfNodesToFind,
 		NodeWorkerThreads:             defaultNodeWorkers,
+		JobUpdaterWorkerNum:           defaultJobUpdaterWorkerNum,
+		TaskUpdaterWorkerNum:          defaultTaskUpdaterWorkerNum,
 		GateRemovalWorkerNum:          5,
 		CacheDumpFileDir:              "/tmp",
 		DisableDefaultSchedulerConfig: false,
@@ -100,5 +102,62 @@ func TestAddFlags(t *testing.T) {
 	}
 	for k, v := range expectedFeatureGates {
 		assert.Equal(t, v, utilfeature.DefaultFeatureGate.Enabled(k))
+	}
+}
+
+func TestUpdaterWorkerNumFlags(t *testing.T) {
+	originalOpts := ServerOpts
+	t.Cleanup(func() {
+		ServerOpts = originalOpts
+	})
+	ServerOpts = nil
+	assert.Equal(t, defaultJobUpdaterWorkerNum, GetJobUpdaterWorkerNum())
+	assert.Equal(t, defaultTaskUpdaterWorkerNum, GetTaskUpdaterWorkerNum())
+
+	fs := pflag.NewFlagSet("updater-worker-num-test", pflag.ExitOnError)
+	s := NewServerOption()
+	s.AddFlags(fs)
+
+	err := fs.Parse([]string{
+		"--job-updater-worker-num=8",
+		"--task-updater-worker-num=4",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 8, s.JobUpdaterWorkerNum)
+	assert.Equal(t, 4, s.TaskUpdaterWorkerNum)
+	ServerOpts = s
+	assert.Equal(t, 8, GetJobUpdaterWorkerNum())
+	assert.Equal(t, 4, GetTaskUpdaterWorkerNum())
+}
+
+func TestCheckOptionOrDieRejectsNonPositiveUpdaterWorkerNum(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "zero job updater workers",
+			args:    []string{"--job-updater-worker-num=0"},
+			wantErr: "job-updater-worker-num must be greater than 0",
+		},
+		{
+			name:    "negative task updater workers",
+			args:    []string{"--task-updater-worker-num=-1"},
+			wantErr: "task-updater-worker-num must be greater than 0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := pflag.NewFlagSet("updater-worker-num-validation-test", pflag.ExitOnError)
+			s := NewServerOption()
+			s.AddFlags(fs)
+			s.LeaderElection.LeaderElect = false
+
+			err := fs.Parse(tt.args)
+			assert.NoError(t, err)
+			assert.EqualError(t, s.CheckOptionOrDie(), tt.wantErr)
+		})
 	}
 }

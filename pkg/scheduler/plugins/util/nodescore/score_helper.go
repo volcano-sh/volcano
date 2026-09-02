@@ -29,16 +29,7 @@ import (
 )
 
 type BaseScorePlugin interface {
-	fwk.PreScorePlugin
 	fwk.ScorePlugin
-}
-
-// EmptyNormalizer is a no-op normalizer that does nothing. For plugins that do not implement the ScoreExtensions interface,
-// such as VolumeBinding, ExampleNormalizer can be used, indicating that there is no need to normalize the score
-type EmptyNormalizer struct{}
-
-func (e *EmptyNormalizer) NormalizeScore(ctx context.Context, state fwk.CycleState, p *v1.Pod, scores fwk.NodeScoreList) *fwk.Status {
-	return nil
 }
 
 func NodeInfosForCandidateNodes(nodes []*api.NodeInfo, nodeMap map[string]fwk.NodeInfo) []fwk.NodeInfo {
@@ -54,24 +45,27 @@ func NodeInfosForCandidateNodes(nodes []*api.NodeInfo, nodeMap map[string]fwk.No
 	return nodeInfos
 }
 
+// RunPreScorePlugin runs a pre-score plugin.
+// It returns whether the plugin requested its Score phase to be skipped and any error from PreScore.
+func RunPreScorePlugin(plugin fwk.PreScorePlugin, cycleState fwk.CycleState, pod *v1.Pod, nodeInfos []fwk.NodeInfo) (skipScore bool, err error) {
+	status := plugin.PreScore(context.TODO(), cycleState, pod, nodeInfos)
+	if status.IsSkip() {
+		return true, nil
+	}
+	if !status.IsSuccess() {
+		return false, status.AsError()
+	}
+	return false, nil
+}
+
 func CalculatePluginScore(
 	pluginName string,
 	plugin BaseScorePlugin,
-	normalizer fwk.ScoreExtensions,
 	cycleState fwk.CycleState,
 	pod *v1.Pod,
 	nodeInfos []fwk.NodeInfo,
 	weight int,
 ) (map[string]float64, error) {
-	preScoreStatus := plugin.PreScore(context.TODO(), cycleState, pod, nodeInfos)
-	if preScoreStatus.IsSkip() {
-		// Skip Score
-		return map[string]float64{}, nil
-	}
-	if !preScoreStatus.IsSuccess() {
-		return nil, preScoreStatus.AsError()
-	}
-
 	nodeScoreList := make(fwk.NodeScoreList, len(nodeInfos))
 	// the default parallelization worker number is 16.
 	// the whole scoring will fail if one of the processes failed.
@@ -106,7 +100,12 @@ func CalculatePluginScore(
 	default:
 	}
 
-	normalizer.NormalizeScore(context.TODO(), cycleState, pod, nodeScoreList)
+	if extensions := plugin.ScoreExtensions(); extensions != nil {
+		normalizeStatus := extensions.NormalizeScore(context.TODO(), cycleState, pod, nodeScoreList)
+		if !normalizeStatus.IsSuccess() {
+			return nil, fmt.Errorf("normalize %s score failed %v", pluginName, normalizeStatus.Message())
+		}
+	}
 
 	nodeScores := make(map[string]float64, len(nodeInfos))
 	for i, nodeScore := range nodeScoreList {

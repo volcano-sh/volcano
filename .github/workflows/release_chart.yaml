@@ -12,14 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: "${{ github.repository_owner }}/volcano"
           path: "volcano"
           fetch-depth: 0
 
       - name: Checkout helm-charts
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: "${{ github.repository_owner }}/helm-charts"
           # use token for helm-charts repo
@@ -38,7 +38,8 @@ jobs:
           TAG=${{ env.chart_version }} make generate-charts
       
       - name: Install chart-releaser
-        uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f # v1.7.0
+        # Warning: Do not upgrade from v1.5.0; newer versions require a gh-pages branch when uploading preview releases.
+        uses: helm/chart-releaser-action@be16258da8010256c6e82849661221415f031968 # v1.5.0
         with:
           install_only: true
 
