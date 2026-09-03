@@ -582,6 +582,20 @@ func TestSnapshot_DeleteNode(t *testing.T) {
 	}
 }
 
+func TestSnapshot_AddOrUpdateNodesSkipsPlaceholder(t *testing.T) {
+	snapshot := NewEmptySnapshot()
+	placeholder := api.NewNodeInfo(nil)
+
+	snapshot.AddOrUpdateNodes([]*api.NodeInfo{placeholder})
+
+	if got := len(snapshot.GetFwkNodeInfoList()); got != 0 {
+		t.Fatalf("expected placeholder node to be skipped, got %d framework nodes", got)
+	}
+	if got := len(snapshot.GetVolcanoNodeInfoList()); got != 0 {
+		t.Fatalf("expected placeholder node to be skipped, got %d volcano nodes", got)
+	}
+}
+
 func TestSnapshot_RemoveDeletedNodesFromSnapshot(t *testing.T) {
 	tests := []struct {
 		name        string

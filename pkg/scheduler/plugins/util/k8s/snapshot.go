@@ -133,6 +133,9 @@ func (s *Snapshot) AddOrUpdateNodes(nodes []*api.NodeInfo) {
 
 // addOrUpdateNode adds or updates node information in both fwkInfo and volcanoInfo.
 func (s *Snapshot) addOrUpdateNode(nodeInfo *api.NodeInfo) {
+	if nodeInfo == nil || nodeInfo.Node == nil || !nodeInfo.Ready() {
+		return
+	}
 	// Create Volcano NodeInfo
 	volcanoNodeInfo := nodeInfo.Clone()
 	nodeName := volcanoNodeInfo.Node.Name
