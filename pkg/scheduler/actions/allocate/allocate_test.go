@@ -6272,3 +6272,95 @@ func TestAllocate_NominatedJobWinsOverRegularJob(t *testing.T) {
 	assert.Equal(t, "", nominatedSubJob.NominatedHyperNode,
 		"flat-path commit must clear subJob.NominatedHyperNode after binding")
 }
+
+const untrackedResourceAllocatePluginName = "device-fit-allocate"
+
+type untrackedResourceAllocatePlugin struct{}
+
+func (p *untrackedResourceAllocatePlugin) Name() string {
+	return untrackedResourceAllocatePluginName
+}
+
+func (p *untrackedResourceAllocatePlugin) OnSessionOpen(ssn *framework.Session) {
+	ssn.AddPredicateFn(p.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+		if task.Name != "p1" {
+			return nil
+		}
+		// Stands in for a device plugin (e.g. deviceshare/HAMi) that tracks
+		// volcano.sh/vgpu-memory-percentage on its own ledger and confirms the
+		// request fits, independent of node.Status.Allocatable.
+		return nil
+	})
+}
+
+func (p *untrackedResourceAllocatePlugin) OnSessionClose(ssn *framework.Session) {}
+
+// TestAllocateUntrackedResourceDefersToPredicate covers the allocate-action counterpart of the
+// #4863-class bug already fixed in preempt/reclaim: a task requesting a resource dimension the
+// node never advertises in Allocatable at all (volcano.sh/vgpu-memory-percentage here, mirroring
+// HAMi's fractional vGPU resource) must not be rejected by the generic scalar-resource arithmetic
+// in alloc.predicate or filtered out of every scoring bucket in prioritizeNodes, before the real
+// device-aware predicate ever gets a say. The node here is otherwise completely idle, so a pass
+// depends entirely on both of those functions falling back correctly.
+func TestAllocateUntrackedResourceDefersToPredicate(t *testing.T) {
+	trueValue := true
+	plugins := map[string]framework.PluginBuilder{
+		gang.PluginName:       gang.New,
+		proportion.PluginName: proportion.New,
+		untrackedResourceAllocatePluginName: func(framework.Arguments) framework.Plugin {
+			return &untrackedResourceAllocatePlugin{}
+		},
+	}
+	test := uthelper.TestCommonStruct{
+		Name:    "allocate binds a task requesting a resource untracked in node.Allocatable",
+		Plugins: plugins,
+		PodGroups: []*schedulingv1.PodGroup{
+			util.BuildPodGroup("pg1", "c1", "q1", 1, nil, schedulingv1.PodGroupInqueue),
+		},
+		Pods: []*v1.Pod{
+			// vgpu-memory-percentage is never requested on its own in practice - the API
+			// requires vgpu-number (or vgpu-memory) alongside it. Both are requested here;
+			// only vgpu-memory-percentage is untracked in n1's Allocatable below, which is
+			// the one dimension this test is actually exercising.
+			util.BuildPod("c1", "p1", "", v1.PodPending,
+				api.BuildResourceList("1", "1G",
+					api.ScalarResource{Name: "volcano.sh/vgpu-number", Value: "1"},
+					api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"},
+				),
+				"pg1", make(map[string]string), make(map[string]string)),
+		},
+		// n1's Allocatable tracks vgpu-number like a real HAMi node, but deliberately carries
+		// no volcano.sh/vgpu-memory-percentage entry at all; the node is otherwise fully idle.
+		Nodes: []*v1.Node{
+			util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{
+				{Name: "pods", Value: "10"},
+				{Name: "volcano.sh/vgpu-number", Value: "1"},
+			}...), make(map[string]string)),
+		},
+		Queues: []*schedulingv1.Queue{
+			util.BuildQueue("q1", 1, nil),
+		},
+		ExpectBindMap: map[string]string{
+			"c1/p1": "n1",
+		},
+		ExpectBindsNum: 1,
+	}
+	// proportion's Allocatable reuses the same queueAllocatable arithmetic that its Preemptive
+	// and Reclaimable checks do, and has this identical untracked-resource gap independently (a
+	// separate, pre-existing bug in that plugin, out of scope here). Disabled so this test
+	// isolates the fix in alloc.predicate/prioritizeNodes.
+	tiers := []conf.Tier{{
+		Plugins: []conf.PluginOption{
+			{Name: gang.PluginName, EnabledJobStarving: &trueValue, EnabledJobPipelined: &trueValue},
+			{Name: proportion.PluginName, EnabledOverused: &trueValue, EnabledQueueOrder: &trueValue},
+			{Name: untrackedResourceAllocatePluginName, EnabledPredicate: &trueValue},
+		},
+	}}
+
+	test.RegisterSession(tiers, nil)
+	defer test.Close()
+	test.Run([]framework.Action{New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+}
