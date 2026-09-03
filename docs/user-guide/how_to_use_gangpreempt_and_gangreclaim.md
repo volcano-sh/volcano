@@ -11,6 +11,21 @@ Both actions first prefer a victim gang's surplus tasks: tasks above its gang, p
 
 Use the action names exactly as shown: `gangpreempt` and `gangreclaim` are lowercase.
 
+## Difference from Legacy Preempt and Reclaim
+
+Legacy `preempt` and `reclaim` consider victims as individual tasks on candidate nodes. They do not select victim Jobs as bundles or preserve a victim gang’s minAvailable by themselves. Depending on task ordering and node placement, they can evict one Pod from each of two victim gangs with no surplus tasks, causing both gangs to fall below `minAvailable`.
+
+`gangpreempt` and `gangreclaim` evaluate victim Jobs first. They select a Job's surplus tasks as a bundle when that preserves the gang's minimums. If no safe surplus is available and whole-bundle eviction is allowed, they select a whole victim gang rather than taking individual Pods from several gangs. This keeps as many victim Jobs intact as possible.
+
+For example, consider a four-CPU cluster with two low-priority Jobs. Each Job has two running Pods and `minAvailable: 2`. A new gang needs two CPUs.
+
+| Action type | Possible victim selection | Result |
+| --- | --- | --- |
+| Legacy `preempt` | One Pod from each victim Job | Both victim gangs fall below their minimum. |
+| `gangpreempt` | Both Pods from one victim Job | One victim gang remains completely intact. |
+
+The same job-integrity rule applies to `gangreclaim` when one Queue reclaims resources from another Queue.
+
 ## When to Use Each Action
 
 | Action | Use it when | Main requirements | It does not do |
@@ -18,21 +33,11 @@ Use the action names exactly as shown: `gangpreempt` and `gangreclaim` are lower
 | `gangpreempt` | A higher-priority gang must run before a lower-priority gang in the same Queue. | The requester has higher priority and the victim Pods are preemptable. | Preempt workloads from another Queue. |
 | `gangreclaim` | A Queue needs back resources that another Queue has borrowed. | The victim Queue is reclaimable and is using more than its deserved resources. The requester must be eligible to reclaim. | Reclaim from a Queue that is within its deserved resources or is not reclaimable. |
 
-## Supported Versions and Validation
+## Supported Versions
 
-The actions are available in Volcano `v1.15.0` and later releases that include them. Do not use the action name casing from older examples or issue reports such as `gangPreempt` or `gangReclaim`. Those names are not registered actions.
+`gangpreempt` and `gangreclaim` are supported in Volcano `v1.15.0` and later. Do not use action names such as `gangPreempt` or `gangReclaim`. Those names are not registered.
 
-The configuration in this guide was validated with the repository E2E suite on 2026-09-01:
-
-| Item | Value |
-| --- | --- |
-| Kubernetes test cluster | Kind using `kindest/node:v1.36.1` |
-| Volcano build | `v1.16.0-alpha.1-62-g9f6821b8d` |
-| Test command | `make e2e-test-gangevict FORCE_REBUILD=false` |
-| Result | `28 Passed`, `0 Failed` |
-| Test source | `test/e2e/gangevict/gangevict.go` |
-
-The suite covers same-Queue priority preemption, cross-Queue reclamation, safe surplus eviction, whole-gang fallback, equal/higher-priority protection, Queue reclaimability, Queue deserved-resource boundaries, role and sub-group minimums, and topology constraints. Re-run the suite against the exact Volcano image and Kubernetes version that you plan to deploy.
+These gang-aware actions are still at an early stage. They currently coexist with legacy `preempt` and `reclaim` actions. The project may unify the legacy and gang-aware implementations in the future, so review release notes before upgrading.
 
 ## Prerequisites
 
@@ -42,11 +47,11 @@ Before enabling these actions:
 2. Define a `PriorityClass` for the priority-preemption scenario.
 3. Mark workloads that may be evicted with `volcano.sh/preemptable: "true"`.
 4. For reclamation, configure Queue `deserved` resources and set potential victim Queues to `reclaimable: true`. See the [Capacity Plugin User Guide](./how_to_use_capacity_plugin.md) for more Queue-capacity details.
-5. Size the cluster so that the examples can fill the relevant resources. The examples below assume at least 4 allocatable CPUs.
+5. Use a test cluster with four schedulable CPUs, or adjust the resource requests and replica counts so the victim Jobs fill the available CPU before you submit the requester.
 
-## Tested Scheduler Configuration
+## Recommended Scheduler Configuration
 
-The following is the complete configuration used by the gang eviction E2E suite. It is a validated baseline for using both actions together. It uses the flat capacity model (`enableHierarchy: false`).
+The following configuration is a recommended baseline for using both actions together. It uses the flat capacity model (`enableHierarchy: false`).
 
 ```yaml
 kind: ConfigMap
@@ -67,15 +72,7 @@ data:
       - name: capacity
         enableHierarchy: false
     - plugins:
-      - name: overcommit
-      - name: drf
-        enablePreemptable: false
       - name: predicates
-        arguments:
-          predicate.DynamicResourceAllocationEnable: true
-      - name: nodeorder
-      - name: binpack
-      - name: network-topology-aware
 ```
 
 Apply the configuration according to your installation method, then restart or roll out the scheduler if your deployment does not automatically reload its ConfigMap:
@@ -93,9 +90,9 @@ kubectl -n volcano-system rollout status deployment/volcano-scheduler
 - `gang` supplies gang readiness, minimums, and gang-aware victim protection.
 - `conformance` prevents eviction of protected workloads.
 - `capacity` supplies Queue deserved-resource accounting and the eligibility decisions needed by `gangreclaim`.
-- `sla` is part of the tested pipeline and supplies gang pipeline behavior used by the actions.
+- `sla` supplies gang pipeline behavior used by the actions.
 
-The remaining plugins in the configuration are also part of the tested baseline. You may add plugins for your own scheduling needs, but retain the required components above and validate the resulting full configuration in a representative cluster. Do not enable `proportion` together with `capacity`. They are alternative Queue-capacity models.
+You may add plugins for your own scheduling needs, such as Queue ordering, node scoring, bin packing, or topology-aware scheduling. Retain the components above and validate the resulting full configuration in a representative cluster. Do not enable `proportion` together with `capacity`. They are alternative Queue-capacity models.
 
 ### Whole-Gang Fallback
 
@@ -111,11 +108,9 @@ configurations:
     allowWholeBundle: false
 ```
 
-The actions also accept `maxDomains`, which limits how many candidate topology domains are inspected for one waiting gang. The default is `8`. Leave it unchanged unless you understand the topology trade-off.
-
 ## Example 1: Same-Queue Priority Preemption
 
-This example runs a four-Pod low-priority gang in one Queue, then submits a two-Pod higher-priority gang to the same full cluster. The low-priority gang has `minAvailable: 2`, so two of its four Pods are safe surplus victims. The higher-priority gang should run and the victim gang should retain two running Pods.
+This example runs two low-priority victim gangs in one Queue, then submits a two-Pod higher-priority gang to the same full cluster. Each victim gang has two Pods and `minAvailable: 2`, so neither has spare Pods. The higher-priority gang should run by evicting one whole victim gang and leaving the other intact.
 
 Save the Queue and priority classes as `priority-demo-prerequisites.yaml`:
 
@@ -146,13 +141,13 @@ globalDefault: false
 description: Higher-priority requesting gang.
 ```
 
-Save the victim gang as `low-priority-victim.yaml` and apply the prerequisites before it:
+Save the two preemptable victim gangs as `preemption-victims.yaml`:
 
 ```yaml
 apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
-  name: low-priority-victim
+  name: preemption-victim-a
   namespace: default
   annotations:
     volcano.sh/preemptable: "true"
@@ -163,7 +158,32 @@ spec:
   minAvailable: 2
   tasks:
   - name: worker
-    replicas: 4
+    replicas: 2
+    template:
+      spec:
+        restartPolicy: Never
+        containers:
+        - name: worker
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: "1"
+---
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: preemption-victim-b
+  namespace: default
+  annotations:
+    volcano.sh/preemptable: "true"
+spec:
+  schedulerName: volcano
+  queue: priority-demo
+  priorityClassName: gang-low
+  minAvailable: 2
+  tasks:
+  - name: worker
+    replicas: 2
     template:
       spec:
         restartPolicy: Never
@@ -177,17 +197,18 @@ spec:
 
 ```shell
 kubectl apply -f priority-demo-prerequisites.yaml
-kubectl apply -f low-priority-victim.yaml
-kubectl wait --for=condition=Ready pod -l volcano.sh/job-name=low-priority-victim --timeout=180s
+kubectl apply -f preemption-victims.yaml
+kubectl wait --for=condition=Ready pod -l volcano.sh/job-name=preemption-victim-a --timeout=180s
+kubectl wait --for=condition=Ready pod -l volcano.sh/job-name=preemption-victim-b --timeout=180s
 ```
 
-Save the requester as `high-priority-requester.yaml`, then apply it:
+Save the requester as `preemption-requester.yaml`, then apply it:
 
 ```yaml
 apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
-  name: high-priority-requester
+  name: preemption-requester
   namespace: default
 spec:
   schedulerName: volcano
@@ -209,24 +230,34 @@ spec:
 ```
 
 ```shell
-kubectl apply -f high-priority-requester.yaml
+kubectl apply -f preemption-requester.yaml
 ```
 
-Expected behavior:
+Expected behavior with the default `allowWholeBundle: true`:
 
 ```shell
 kubectl get pods -w
 ```
 
-- The two requester Pods become `Running`.
-- Two surplus Pods from `low-priority-victim` are evicted or become pending according to the Job retry policy.
-- At least two victim Pods remain running, satisfying `minAvailable: 2`.
+- The two `preemption-requester` Pods become `Running`.
+- `gangpreempt` evicts both Pods from either `preemption-victim-a` or `preemption-victim-b`.
+- The other victim gang retains both Pods and remains ready.
 
-The requester remains pending if it has equal or lower priority, if the victim Pods are not preemptable, if the gangs are in different Queues, or if the cluster cannot satisfy the requester even after eligible eviction.
+For comparison, legacy actions can choose one Pod from each victim gang because they select individual tasks. The exact legacy victim choice depends on task ordering and node placement, so do not use it as a deterministic validation result.
+
+Set `allowWholeBundle: false` when it is unacceptable to break either victim gang. In that configuration, `preemption-requester` remains pending instead.
+
+Clean up the preemption example before running the reclamation example:
+
+```shell
+kubectl delete -f preemption-requester.yaml --ignore-not-found
+kubectl delete -f preemption-victims.yaml --ignore-not-found
+kubectl delete -f priority-demo-prerequisites.yaml --ignore-not-found
+```
 
 ## Example 2: Cross-Queue Resource Reclamation
 
-This example gives two Queues two CPUs of deserved resource each. A victim gang in `borrower` first occupies all four CPUs. When the `owner` Queue submits a two-Pod gang, `gangreclaim` returns two CPUs to `owner`. The borrower gang keeps its two-Pod minimum.
+This example gives two Queues two CPUs of deserved resource each. Two victim gangs in `borrower` first occupy all four CPUs. Each has two Pods and `minAvailable: 2`, so neither has spare Pods. When `owner` submits a two-Pod gang, `gangreclaim` returns two CPUs to `owner` by evicting one whole borrower gang and leaving the other intact.
 
 Save the Queues as `reclaim-queues.yaml`:
 
@@ -250,13 +281,13 @@ spec:
     cpu: "2"
 ```
 
-Save this preemptable borrower gang as `borrower-gang.yaml` and apply it after the Queues:
+Save the two preemptable borrower gangs as `borrower-victims.yaml`:
 
 ```yaml
 apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
-  name: borrower-gang
+  name: borrower-victim-a
   namespace: default
   annotations:
     volcano.sh/preemptable: "true"
@@ -266,7 +297,31 @@ spec:
   minAvailable: 2
   tasks:
   - name: worker
-    replicas: 4
+    replicas: 2
+    template:
+      spec:
+        restartPolicy: Never
+        containers:
+        - name: worker
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: "1"
+---
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: borrower-victim-b
+  namespace: default
+  annotations:
+    volcano.sh/preemptable: "true"
+spec:
+  schedulerName: volcano
+  queue: borrower
+  minAvailable: 2
+  tasks:
+  - name: worker
+    replicas: 2
     template:
       spec:
         restartPolicy: Never
@@ -280,17 +335,18 @@ spec:
 
 ```shell
 kubectl apply -f reclaim-queues.yaml
-kubectl apply -f borrower-gang.yaml
-kubectl wait --for=condition=Ready pod -l volcano.sh/job-name=borrower-gang --timeout=180s
+kubectl apply -f borrower-victims.yaml
+kubectl wait --for=condition=Ready pod -l volcano.sh/job-name=borrower-victim-a --timeout=180s
+kubectl wait --for=condition=Ready pod -l volcano.sh/job-name=borrower-victim-b --timeout=180s
 ```
 
-After its four Pods are running, save the owner gang as `owner-gang.yaml` and apply it:
+Save the owner requester as `owner-requester.yaml`, then apply it:
 
 ```yaml
 apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
-  name: owner-gang
+  name: owner-requester
   namespace: default
 spec:
   schedulerName: volcano
@@ -311,16 +367,27 @@ spec:
 ```
 
 ```shell
-kubectl apply -f owner-gang.yaml
+kubectl apply -f owner-requester.yaml
 ```
 
-Expected behavior:
+Expected behavior with the default `allowWholeBundle: true`:
 
-- The two `owner-gang` Pods become `Running`.
-- `borrower-gang` loses only its two surplus Pods and retains its two-Pod gang minimum.
-- The result gives each Queue its two CPUs of deserved resources.
+- The two `owner-requester` Pods become `Running`.
+- `gangreclaim` evicts both Pods from either `borrower-victim-a` or `borrower-victim-b`.
+- The other borrower gang retains both Pods and remains ready.
+- `owner` receives its two CPUs of deserved resources.
 
-The requester should remain pending when the victim Queue is not reclaimable, is not over its deserved resources, the requester Queue is already overused, or eligible resources are insufficient to satisfy the requester's gang minimum.
+For comparison, legacy `reclaim` can choose one Pod from each borrower gang because it selects individual tasks. The exact legacy victim choice depends on task ordering and node placement, so do not use it as a deterministic validation result.
+
+Set `allowWholeBundle: false` when it is unacceptable to break either borrower gang. In that configuration, `owner-requester` remains pending. The requester also remains pending when the borrower Queue is not reclaimable, is not over its deserved resources, the requester Queue is already overused, or no eligible whole or surplus bundle can satisfy the request.
+
+Clean up the reclamation example when you are finished:
+
+```shell
+kubectl delete -f owner-requester.yaml --ignore-not-found
+kubectl delete -f borrower-victims.yaml --ignore-not-found
+kubectl delete -f reclaim-queues.yaml --ignore-not-found
+```
 
 ## Observe and Troubleshoot
 
@@ -345,19 +412,6 @@ Common configuration problems:
 
 ## Relationship with Legacy Actions
 
-Volcano currently provides both legacy `preempt`/`reclaim` actions and gang-aware `gangpreempt`/`gangreclaim` actions. The tested configuration above uses only the gang-aware actions. It does not mix legacy and gang-aware eviction actions in one pipeline.
+Volcano currently provides both legacy `preempt`/`reclaim` actions and gang-aware `gangpreempt`/`gangreclaim` actions. The recommended configuration above uses only the gang-aware actions. It does not mix legacy and gang-aware eviction actions in one pipeline.
 
 The project may unify the legacy and gang-aware implementations in a future release. Treat the current action names and configuration details as version-specific behavior, and review the release notes before upgrading.
-
-## Reproduce the Validation
-
-To run the same E2E coverage from a Volcano source checkout, use a disposable Kind environment with Docker available:
-
-```shell
-unset CLUSTER_NAME
-export CLEANUP_CLUSTER=0
-export ARTIFACTS_PATH="$PWD/e2e-gangevict-logs"
-make e2e-test-gangevict FORCE_REBUILD=false
-```
-
-The runner uses the `integration` cluster name by default. Keep that default for the current suite because its scheduler ConfigMap test helper expects `integration-scheduler-configmap`.
