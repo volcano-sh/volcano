@@ -20,10 +20,13 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
 
 	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
@@ -130,5 +133,56 @@ func TestValidatePod(t *testing.T) {
 		if testCase.ExpectErr == false && testCase.reviewResponse.Allowed != true {
 			t.Errorf("%s: test case Expect Allowed as true but got false. %v", testCase.Name, testCase.reviewResponse)
 		}
+	}
+}
+
+func TestValidatePodRecordsRejectionEvent(t *testing.T) {
+	broadcaster := record.NewBroadcaster()
+	defer broadcaster.Shutdown()
+
+	events := make(chan *v1.Event, 1)
+	watcher := broadcaster.StartEventWatcher(func(event *v1.Event) {
+		events <- event
+	})
+	defer watcher.Stop()
+
+	oldRecorder, oldSchedulerNames := config.Recorder, config.SchedulerNames
+	t.Cleanup(func() {
+		config.Recorder, config.SchedulerNames = oldRecorder, oldSchedulerNames
+	})
+	config.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "volcano-admission"})
+	config.SchedulerNames = []string{"volcano"}
+
+	// TypeMeta is left empty so that the recorder has to resolve the pod's kind
+	// through the scheme it was built with.
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:   "test",
+			Name:        "invalid-jdb-pod",
+			UID:         "invalid-jdb-pod-uid",
+			Annotations: map[string]string{vcschedulingv1.JDBMinAvailable: "not-a-number"},
+		},
+		Spec: v1.PodSpec{SchedulerName: "volcano"},
+	}
+
+	reviewResponse := admissionv1.AdmissionResponse{Allowed: true}
+	if msg := validatePod(pod, &reviewResponse); msg == "" {
+		t.Fatal("Expect the pod to be rejected, but got an empty message")
+	}
+
+	select {
+	case event := <-events:
+		if event.InvolvedObject.Name != pod.Name || event.InvolvedObject.UID != pod.UID {
+			t.Errorf("Expect the event to reference pod %s (uid %s), but got %+v",
+				pod.Name, pod.UID, event.InvolvedObject)
+		}
+		if event.Namespace != pod.Namespace {
+			t.Errorf("Expect the event in namespace %s, but got %s", pod.Namespace, event.Namespace)
+		}
+		if event.Type != v1.EventTypeWarning {
+			t.Errorf("Expect a %s event, but got %s", v1.EventTypeWarning, event.Type)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Timed out waiting for the rejection event to be recorded")
 	}
 }
