@@ -182,4 +182,4 @@ Alternatively, a YAML file that specifies the values for the parameters can be p
 $ helm install --name volcano-release -f values.yaml volcano/volcano
 ```
 
-> **Tip**: You can use the default [values.yaml](chart/volcano/values.yaml)
+> **Tip**: You can use the default [values.yaml](helm/chart/volcano/values.yaml)
