@@ -530,6 +530,48 @@ func newNormalPreemptDeviceFitFixture() (uthelper.TestCommonStruct, []conf.Tier)
 	return test, tiers
 }
 
+// TestNormalPreemptUntrackedResourceDefersToPredicate covers #4863: a preemptor requesting
+// a resource dimension the node never advertises in Allocatable at all (volcano.sh/vgpu-memory-percentage
+// here, mirroring HAMi's fractional vGPU resource, which is a pure request-side modifier with no
+// coherent node-wide capacity total to advertise) must not be rejected by the generic scalar-resource
+// arithmetic before the device-aware predicate ever runs. Before the fix, node.FutureIdle() has no entry
+// for that resource name, so the comparison reads it as zero capacity and preemptorFitsOnNode/ValidateVictims
+// reject unconditionally, regardless of what the real predicate would say, and the preemptor never gets
+// scheduled even after the victim is evicted.
+func TestNormalPreemptUntrackedResourceDefersToPredicate(t *testing.T) {
+	test, tiers := newNormalPreemptDeviceFitFixture()
+	test.Name = "normal preemption evicts a victim for a resource untracked in node.Allocatable"
+	test.Pods = []*v1.Pod{
+		util.BuildPod("c1", "preemptee", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-low", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+		util.BuildPod("c1", "preemptor", "", v1.PodPending,
+			api.BuildResourceList("1", "1G", api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"}),
+			"pg-high", make(map[string]string), make(map[string]string)),
+	}
+	// n1's Allocatable deliberately carries no volcano.sh/vgpu-memory-percentage entry at all,
+	// matching a real HAMi node: the resource is tracked by the device plugin's own ledger, not
+	// advertised node-wide.
+	//
+	// proportion's own queue-level Allocatable check has this identical untracked-resource gap
+	// independently (attr.deserved never carries an unconfigured scalar dimension either), which
+	// is a separate bug in a different plugin, out of scope here. Disable it so this test isolates
+	// the node-level fix in preemptorFitsOnNode/ValidateVictims that #4863/#5784 actually covers.
+	falseValue := false
+	for i, plugin := range tiers[0].Plugins {
+		if plugin.Name == proportion.PluginName {
+			tiers[0].Plugins[i].EnabledAllocatable = &falseValue
+		}
+	}
+	test.RegisterSession(tiers, []conf.Configuration{{
+		Name:      New().Name(),
+		Arguments: map[string]interface{}{EnableTopologyAwarePreemptionKey: false},
+	}})
+	defer test.Close()
+	test.Run([]framework.Action{New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func newNormalPreemptBenchmarkFixture() (uthelper.TestCommonStruct, []conf.Tier) {
 	test, tiers := newNormalPreemptDeviceFitFixture()
 	test.Name = "normal preemption benchmark with one required victim"
