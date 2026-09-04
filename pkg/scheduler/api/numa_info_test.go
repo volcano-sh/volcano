@@ -189,3 +189,40 @@ func TestNumatopoInfoDeepCopyIsolation(t *testing.T) {
 		t.Errorf("Original PodAllocations mutated: got %+v, want %+v", got, originalPodAlloc)
 	}
 }
+
+// resSets may carry a resource the node has no numa info for (e.g. the gpu
+// provider hands back an nvidia.com/gpu entry while NumaResMap only tracks
+// cpu). Allocate/Release must skip it instead of dereferencing a nil
+// *ResourceInfo and panicking.
+func TestNumatopoInfoAllocateReleaseMissingResource(t *testing.T) {
+	newInfo := func() *NumatopoInfo {
+		return &NumatopoInfo{
+			NumaResMap: map[string]*ResourceInfo{
+				"cpu": {Allocatable: cpuset.New(0, 1, 2, 3)},
+			},
+		}
+	}
+
+	resSets := ResNumaSets{
+		"cpu":            cpuset.New(0, 1),
+		"nvidia.com/gpu": cpuset.New(0, 1, 2, 3),
+	}
+
+	info := newInfo()
+	info.Allocate(resSets)
+	if got := info.NumaResMap["cpu"].Allocatable; !got.Equals(cpuset.New(2, 3)) {
+		t.Errorf("Allocate cpu = %v, want 2-3", got)
+	}
+	if _, ok := info.NumaResMap["nvidia.com/gpu"]; ok {
+		t.Errorf("Allocate should not create a numares entry for a missing resource")
+	}
+
+	info = newInfo()
+	info.Release(resSets)
+	if got := info.NumaResMap["cpu"].Allocatable; !got.Equals(cpuset.New(0, 1, 2, 3)) {
+		t.Errorf("Release cpu = %v, want 0-3", got)
+	}
+	if _, ok := info.NumaResMap["nvidia.com/gpu"]; ok {
+		t.Errorf("Release should not create a numares entry for a missing resource")
+	}
+}
