@@ -24,6 +24,20 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
+// QueueNodeGroupResource contains allocated resources for one queue and nodegroup pair.
+type QueueNodeGroupResource struct {
+	QueueName       string
+	NodeGroupName   string
+	MilliCPU        float64
+	Memory          float64
+	ScalarResources map[v1.ResourceName]float64
+}
+
+type queueNodeGroupKey struct {
+	queueName     string
+	nodeGroupName string
+}
+
 var (
 	queueAllocatedMilliCPU = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -47,6 +61,30 @@ var (
 			Name:      "queue_allocated_scalar_resources",
 			Help:      "Allocated scalar resources for one queue",
 		}, []string{"queue_name", "resource"},
+	)
+
+	queueNodeGroupAllocatedMilliCPU = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "queue_nodegroup_allocated_milli_cpu",
+			Help:      "Allocated CPU requests in millicores for one queue on one nodegroup",
+		}, []string{"queue_name", "nodegroup_name"},
+	)
+
+	queueNodeGroupAllocatedMemory = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "queue_nodegroup_allocated_memory_bytes",
+			Help:      "Allocated memory requests in bytes for one queue on one nodegroup",
+		}, []string{"queue_name", "nodegroup_name"},
+	)
+
+	queueNodeGroupAllocatedScalarResource = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "queue_nodegroup_allocated_scalar_resources",
+			Help:      "Allocated scalar resource requests for one queue on one nodegroup",
+		}, []string{"queue_name", "nodegroup_name", "resource"},
 	)
 
 	queueRequestMilliCPU = promauto.NewGaugeVec(
@@ -216,6 +254,9 @@ var (
 	// Track all known scalar resources for each queue
 	knownScalarResources     = make(map[string]map[string]struct{})
 	knownScalarResourcesLock sync.RWMutex
+
+	queueNodeGroupAllocatedMetricsLock sync.Mutex
+	knownQueueNodeGroupScalarResources = make(map[queueNodeGroupKey]map[string]struct{})
 )
 
 // helper to update knownScalarResources and delete metrics for removed resources
@@ -245,6 +286,84 @@ func UpdateQueueAllocated(queueName string, milliCPU, memory float64, scalarReso
 	queueAllocatedMilliCPU.WithLabelValues(queueName).Set(milliCPU)
 	queueAllocatedMemory.WithLabelValues(queueName).Set(memory)
 	updateScalarResourceMetrics(queueAllocatedScalarResource, queueName, scalarResources)
+}
+
+// SyncQueueNodeGroupAllocated refreshes queue/nodegroup allocations from a scheduler session snapshot.
+// Missing pairs for an existing queue are set to zero; metrics for missing queues are deleted.
+func SyncQueueNodeGroupAllocated(queueNames []string, resources []QueueNodeGroupResource) {
+	queueNodeGroupAllocatedMetricsLock.Lock()
+	defer queueNodeGroupAllocatedMetricsLock.Unlock()
+
+	activeQueues := make(map[string]struct{}, len(queueNames))
+	for _, queueName := range queueNames {
+		activeQueues[queueName] = struct{}{}
+	}
+	activePairs := make(map[queueNodeGroupKey]struct{}, len(resources))
+	for _, resource := range resources {
+		if _, found := activeQueues[resource.QueueName]; found {
+			activePairs[queueNodeGroupKey{queueName: resource.QueueName, nodeGroupName: resource.NodeGroupName}] = struct{}{}
+		}
+	}
+	for key, scalarResources := range knownQueueNodeGroupScalarResources {
+		if _, found := activeQueues[key.queueName]; !found {
+			deleteQueueNodeGroupAllocatedLocked(key)
+			continue
+		}
+		if _, found := activePairs[key]; !found {
+			zeroQueueNodeGroupAllocatedLocked(key, scalarResources)
+		}
+	}
+
+	for _, resource := range resources {
+		if _, found := activeQueues[resource.QueueName]; !found {
+			continue
+		}
+		updateQueueNodeGroupAllocatedLocked(resource)
+	}
+}
+
+func zeroQueueNodeGroupAllocatedLocked(key queueNodeGroupKey, scalarResources map[string]struct{}) {
+	queueNodeGroupAllocatedMilliCPU.WithLabelValues(key.queueName, key.nodeGroupName).Set(0)
+	queueNodeGroupAllocatedMemory.WithLabelValues(key.queueName, key.nodeGroupName).Set(0)
+	for name := range scalarResources {
+		queueNodeGroupAllocatedScalarResource.WithLabelValues(key.queueName, key.nodeGroupName, name).Set(0)
+	}
+}
+
+func updateQueueNodeGroupAllocatedLocked(resource QueueNodeGroupResource) {
+	key := queueNodeGroupKey{queueName: resource.QueueName, nodeGroupName: resource.NodeGroupName}
+	knownScalarResourceNames, known := knownQueueNodeGroupScalarResources[key]
+	if !known {
+		knownQueueNodeGroupScalarResources[key] = nil
+	}
+
+	queueNodeGroupAllocatedMilliCPU.WithLabelValues(resource.QueueName, resource.NodeGroupName).Set(resource.MilliCPU)
+	queueNodeGroupAllocatedMemory.WithLabelValues(resource.QueueName, resource.NodeGroupName).Set(resource.Memory)
+
+	for resourceName, value := range resource.ScalarResources {
+		name := string(resourceName)
+		if knownScalarResourceNames == nil {
+			knownScalarResourceNames = make(map[string]struct{})
+			knownQueueNodeGroupScalarResources[key] = knownScalarResourceNames
+		}
+		knownScalarResourceNames[name] = struct{}{}
+		queueNodeGroupAllocatedScalarResource.WithLabelValues(resource.QueueName, resource.NodeGroupName, name).Set(value)
+	}
+	for name := range knownScalarResourceNames {
+		if _, found := resource.ScalarResources[v1.ResourceName(name)]; !found {
+			queueNodeGroupAllocatedScalarResource.WithLabelValues(resource.QueueName, resource.NodeGroupName, name).Set(0)
+		}
+	}
+}
+
+func deleteQueueNodeGroupAllocatedLocked(key queueNodeGroupKey) {
+	queueNodeGroupAllocatedMilliCPU.DeleteLabelValues(key.queueName, key.nodeGroupName)
+	queueNodeGroupAllocatedMemory.DeleteLabelValues(key.queueName, key.nodeGroupName)
+	queueNodeGroupAllocatedScalarResource.DeletePartialMatch(prometheus.Labels{
+		"queue_name":     key.queueName,
+		"nodegroup_name": key.nodeGroupName,
+	})
+	delete(knownQueueNodeGroupScalarResources, key)
 }
 
 // UpdateQueueRequest records request resources for one queue
@@ -335,6 +454,16 @@ func DeleteQueueMetrics(queueName string) {
 	queueRealCapacityScalarResource.DeletePartialMatch(partialLabelMap)
 	queueInqueueScalarResource.DeletePartialMatch(partialLabelMap)
 	queueTaskCount.DeletePartialMatch(partialLabelMap)
+	queueNodeGroupAllocatedMetricsLock.Lock()
+	queueNodeGroupAllocatedMilliCPU.DeletePartialMatch(partialLabelMap)
+	queueNodeGroupAllocatedMemory.DeletePartialMatch(partialLabelMap)
+	queueNodeGroupAllocatedScalarResource.DeletePartialMatch(partialLabelMap)
+	for key := range knownQueueNodeGroupScalarResources {
+		if key.queueName == queueName {
+			delete(knownQueueNodeGroupScalarResources, key)
+		}
+	}
+	queueNodeGroupAllocatedMetricsLock.Unlock()
 	knownScalarResourcesLock.Lock()
 	delete(knownScalarResources, queueName)
 	knownScalarResourcesLock.Unlock()
