@@ -65,11 +65,7 @@ func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
 			klog.Warningln("Assert lowThresholdsConfigs to map error, abort the configuration parse.")
 			return
 		}
-		config := make(map[string]int)
-		for k, v := range lowConfigs {
-			config[k.(string)] = v.(int)
-		}
-		parseThreshold(config, lnuc, "Thresholds")
+		parseThreshold(toStringIntMap(lowConfigs, "thresholds"), lnuc, "Thresholds")
 	}
 	targetThresholdsConfigs, ok := configs["targetThresholds"]
 	if ok {
@@ -78,12 +74,31 @@ func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
 			klog.Warningln("Assert targetThresholdsConfigs to map error, abort the configuration parse.")
 			return
 		}
-		config := make(map[string]int)
-		for k, v := range targetConfigs {
-			config[k.(string)] = v.(int)
-		}
-		parseThreshold(config, lnuc, "TargetThresholds")
+		parseThreshold(toStringIntMap(targetConfigs, "targetThresholds"), lnuc, "TargetThresholds")
 	}
+}
+
+// toStringIntMap converts a YAML-decoded threshold map into map[string]int.
+// The caller has already asserted the container type; this checks the element
+// types, which YAML does not guarantee. A quoted number such as cpu: "20"
+// decodes to a string, so entries that are not string-keyed integers are
+// logged and skipped rather than panicking the scheduler.
+func toStringIntMap(in map[interface{}]interface{}, name string) map[string]int {
+	out := make(map[string]int, len(in))
+	for k, v := range in {
+		key, ok := k.(string)
+		if !ok {
+			klog.Warningf("Skipping %s entry with non-string key %v, expected a string", name, k)
+			continue
+		}
+		value, ok := v.(int)
+		if !ok {
+			klog.Warningf("Skipping %s entry %q: expected an integer, got %T", name, key, v)
+			continue
+		}
+		out[key] = value
+	}
+	return out
 }
 
 func parseThreshold(thresholdsConfig map[string]int, lnuc *LowNodeUtilizationConf, param string) {
