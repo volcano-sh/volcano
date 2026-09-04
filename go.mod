@@ -44,7 +44,7 @@ require (
 	k8s.io/dynamic-resource-allocation v0.36.1
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kubectl v0.0.0
-	k8s.io/kubernetes v1.36.1
+	k8s.io/kubernetes v1.36.3
 	k8s.io/metrics v0.36.1
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
@@ -126,7 +126,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	k8s.io/cli-runtime v0.36.1 // indirect
-	k8s.io/cri-api v0.36.1 // indirect
+	k8s.io/cri-api v0.36.3 // indirect
 	k8s.io/cri-client v0.0.0 // indirect
 	k8s.io/cri-streaming v0.0.0 // indirect
 	k8s.io/csi-translation-lib v0.36.1 // indirect
@@ -136,7 +136,7 @@ require (
 	sigs.k8s.io/kustomize/api v0.21.1 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.21.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
-	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
+	sigs.k8s.io/structured-merge-diff/v6 v6.3.3 // indirect
 )
 
 require (
@@ -230,7 +230,7 @@ replace (
 	k8s.io/component-base => k8s.io/component-base v0.36.1
 	k8s.io/component-helpers => k8s.io/component-helpers v0.36.1
 	k8s.io/controller-manager => k8s.io/controller-manager v0.36.1
-	k8s.io/cri-api => k8s.io/cri-api v0.36.1
+	k8s.io/cri-api => k8s.io/cri-api v0.36.3
 	k8s.io/cri-client => k8s.io/cri-client v0.36.1
 	k8s.io/cri-streaming => k8s.io/cri-streaming v0.36.1
 	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.36.1
