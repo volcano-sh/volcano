@@ -1036,32 +1036,27 @@ func isEnabled(enabled *bool) bool {
 	return enabled != nil && *enabled
 }
 
-// NodeOrderMapFn invoke node order function of the plugins
-func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, float64, error) {
+// NodeOrderMapFn invokes node map functions of the plugins.
+func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, error) {
+	if len(ssn.nodeMapFns) == 0 {
+		return nil, nil
+	}
 	nodeScoreMap := map[string]float64{}
-	var priorityScore float64
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledNodeOrder) {
 				continue
 			}
-			if pfn, found := ssn.nodeOrderFns[plugin.Name]; found {
-				score, err := pfn(task, node)
-				if err != nil {
-					return nodeScoreMap, priorityScore, err
-				}
-				priorityScore += score
-			}
 			if pfn, found := ssn.nodeMapFns[plugin.Name]; found {
 				score, err := pfn(task, node)
 				if err != nil {
-					return nodeScoreMap, priorityScore, err
+					return nodeScoreMap, err
 				}
 				nodeScoreMap[plugin.Name] = score
 			}
 		}
 	}
-	return nodeScoreMap, priorityScore, nil
+	return nodeScoreMap, nil
 }
 
 // HyperNodeOrderMapFn invoke hyperNode order function of the plugins

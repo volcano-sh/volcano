@@ -682,7 +682,7 @@ func TestUsage_prioritizeNodesDoesNotDoubleCountNodeOrder(t *testing.T) {
 
 	for _, job := range ssn.Jobs {
 		for _, task := range job.Tasks {
-			nodeScores := util.PrioritizeNodes(task, []*api.NodeInfo{ssn.Nodes[n1.Name], ssn.Nodes[n2.Name]}, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+			nodeScores := util.PrioritizeNodes(task, []*api.NodeInfo{ssn.Nodes[n1.Name], ssn.Nodes[n2.Name]}, ssn.BatchNodeOrderFn, ssn.NodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 			scoreByNode := map[string]float64{}
 			for score, nodes := range nodeScores {
 				for _, node := range nodes {
