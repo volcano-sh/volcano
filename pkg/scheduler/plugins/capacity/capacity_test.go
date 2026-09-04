@@ -1357,7 +1357,6 @@ func Test_buildHierarchicalQueueAttrs_nilSafety(t *testing.T) {
 	actions := []framework.Action{allocate.New()}
 
 	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
-
 	tiers := []conf.Tier{
 		{
 			Plugins: []conf.PluginOption{
@@ -2106,5 +2105,89 @@ func TestCheckDRAAllocatable_overflowRejected(t *testing.T) {
 	}
 	if !checkDRAAllocatable(fresh, map[string]*api.DRAResource{dc: {Count: 4}}, false, true) {
 		t.Fatalf("checkDRAAllocatable rejected a valid request (4 <= 8); want admitted")
+	}
+}
+
+// TestBuildQueueAttrsMetricConsistency tests Bug 1 fix:
+// Queue allocated metric should be consistent with Queue.Status.Allocated
+// when hierarchy is disabled, including for jobless queues (like root queue).
+// Before the fix: jobless queues were not added to queueOpts, so their
+// allocated metric was reported as zero instead of Queue.Status.Allocated.
+// After the fix: jobless queues are added to queueOpts with allocated read
+// from Queue.Status.Allocated.
+func TestBuildQueueAttrsMetricConsistency(t *testing.T) {
+	trueValue := true
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+
+	// A running pod in q1: q1 is a "queue with jobs", so its allocated is
+	// derived from the job (2 CPU / 2Gi).
+	p1 := util.BuildPod("ns1", "p1", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg1", make(map[string]string), make(map[string]string))
+	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning)
+
+	// root is a jobless queue: it has no pods of its own, but its
+	// Status.Allocated reflects resources allocated by child queues in a
+	// previous cycle. The fix must surface this value in metrics.
+	root := util.BuildQueueWithResourcesQuantity("root", api.BuildResourceList("4", "4Gi"), nil)
+	root.Status.Allocated = api.BuildResourceList("3", "3Gi")
+
+	queue1 := util.BuildQueueWithResourcesQuantity("q1", api.BuildResourceList("2", "2Gi"), api.BuildResourceList("4", "4Gi"))
+
+	binder := util.NewFakeBinder(10)
+	evictor := util.NewFakeEvictor(0)
+	statusUpdater := &util.FakeStatusUpdater{}
+	stop := make(chan struct{})
+	defer close(stop)
+
+	sc := cache.NewCustomMockSchedulerCache("test-capacity", binder, evictor, statusUpdater, nil, nil)
+	sc.Run(stop)
+	sc.AddOrUpdateNode(n1)
+	sc.AddPod(p1)
+	sc.AddPodGroupV1beta1(pg1)
+	sc.AddQueueV1beta1(root)
+	sc.AddQueueV1beta1(queue1)
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledOverused:    &trueValue,
+					EnabledJobEnqueued: &trueValue,
+					// Hierarchy is NOT enabled - this is the key for Bug 1.
+					EnabledHierarchy: nil,
+				},
+			},
+		},
+	}
+
+	ssn := framework.OpenSession(sc, tiers, nil)
+	defer framework.CloseSession(ssn)
+
+	cp := New(nil).(*capacityPlugin)
+	cp.OnSessionOpen(ssn)
+
+	// The jobless root queue MUST be present in queueOpts (this is the fix).
+	rootAttr, ok := cp.queueOpts[api.QueueID("root")]
+	if !ok {
+		t.Fatal("jobless root queue should be present in queueOpts after buildQueueAttrs")
+	}
+
+	// Its allocated must come from Queue.Status.Allocated, not zero.
+	expectedRoot := api.NewResource(api.BuildResourceList("3", "3Gi"))
+	if rootAttr.allocated.MilliCPU != expectedRoot.MilliCPU || rootAttr.allocated.Memory != expectedRoot.Memory {
+		t.Errorf("jobless root queue allocated: got %v, want %v (from Status.Allocated)", rootAttr.allocated, expectedRoot)
+	}
+
+	// Sanity: a queue with a job derives its allocated from the job, proving
+	// the two code paths (job vs jobless) populate queueOpts independently.
+	q1Attr, ok := cp.queueOpts[api.QueueID("q1")]
+	if !ok {
+		t.Fatal("q1 should be present in queueOpts")
+	}
+	expectedQ1 := api.NewResource(api.BuildResourceList("2", "2Gi"))
+	if q1Attr.allocated.MilliCPU != expectedQ1.MilliCPU || q1Attr.allocated.Memory != expectedQ1.Memory {
+		t.Errorf("q1 allocated: got %v, want %v (from job)", q1Attr.allocated, expectedQ1)
 	}
 }
