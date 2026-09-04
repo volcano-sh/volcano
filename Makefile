@@ -242,6 +242,9 @@ e2e-test-admission-webhook: images
 e2e-test-admission-policy: images
 	E2E_TYPE=ADMISSION_POLICY ./hack/run-e2e-kind.sh
 
+e2e-test-namespacequeue: images
+	E2E_TYPE=NAMESPACEQUEUE ./hack/run-e2e-kind.sh
+
 e2e-test-agentscheduler: images
 	E2E_TYPE=AGENTSCHEDULER$(if $(SHARDING_MODE),_$(shell echo $(SHARDING_MODE) | tr '[:lower:]' '[:upper:]'),) ./hack/run-e2e-kind.sh
 

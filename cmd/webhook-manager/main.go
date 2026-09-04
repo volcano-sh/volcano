@@ -38,6 +38,7 @@ import (
 	_ "volcano.sh/volcano/pkg/webhooks/admission/jobflows/validate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/jobs/mutate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/jobs/validate"
+	_ "volcano.sh/volcano/pkg/webhooks/admission/namespacequeues/validate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/podgroups/mutate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/podgroups/validate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/pods/mutate"
@@ -74,8 +75,8 @@ func main() {
 	klog.StartFlushDaemon(*logFlushFreq)
 	defer klog.Flush()
 
-	if err := config.CheckPortOrDie(); err != nil {
-		klog.Fatalf("Configured port is invalid: %v", err)
+	if err := config.Validate(); err != nil {
+		klog.Fatalf("Webhook manager configuration is invalid: %v", err)
 	}
 
 	if err := config.ParseCAFiles(nil); err != nil {

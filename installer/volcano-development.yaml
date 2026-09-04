@@ -75,11 +75,17 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["services"]
     verbs: ["get"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
     verbs: ["get", "list", "watch"]
 ---
 # Source: volcano/templates/admission.yaml
@@ -142,13 +148,14 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - args:
-            - --enabled-admission=/jobs/mutate,/jobs/validate,/podgroups/validate,/queues/mutate,/queues/validate,/hypernodes/validate,/cronjobs/validate
+            - --enabled-admission=/jobs/mutate,/jobs/validate,/namespacequeues/validate,/podgroups/mutate,/podgroups/validate,/queues/mutate,/queues/validate,/hypernodes/validate,/cronjobs/validate
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
             - --admission-conf=/admission.local.config/configmap/volcano-admission.conf
             - --webhook-namespace=volcano-system
             - --webhook-service-name=volcano-admission-service
+            - --max-namespacequeue-depth=5
             - --enable-healthz=true
             - --logtostderr
             - --port=8443
@@ -399,7 +406,7 @@ spec:
               queue:
                 default: default
                 maxLength: 253
-                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                pattern: ^(namespace/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               runningEstimate:
                 type: string
@@ -4691,7 +4698,7 @@ spec:
                       queue:
                         default: default
                         maxLength: 253
-                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                        pattern: ^(namespace/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                         type: string
                       runningEstimate:
                         type: string
@@ -8953,6 +8960,15 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups", "queues", "queues/status"]
     verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues/finalizers"]
+    verbs: ["update", "patch"]
   - apiGroups: ["flow.volcano.sh"]
     resources: ["jobflows", "jobtemplates"]
     verbs: ["get", "list", "watch", "create", "delete", "update"]
@@ -9066,6 +9082,7 @@ spec:
             - --worker-threads-for-podgroup=5
             - --sharding-configmap=volcano-sharding-configmap
             - --sharding-configmap-namespace=volcano-system
+            - --max-namespacequeue-depth=5
             - -v=4
             - 2>&1
           imagePullPolicy: Always
@@ -9180,6 +9197,12 @@ rules:
     verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues/status"]
+    verbs: ["update"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues/status"]
     verbs: ["update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
@@ -9457,7 +9480,7 @@ spec:
                   Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
                   the PodGroup will not be scheduled. Defaults to `default` Queue with the lowest weight.
                 maxLength: 253
-                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                pattern: ^(namespace/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               subGroupPolicy:
                 description: |-
@@ -9665,7 +9688,6 @@ spec:
     name: v1beta1
     schema:
       openAPIV3Schema:
-        description: Queue is a queue of PodGroup.
         properties:
           apiVersion:
             description: |-
@@ -9722,6 +9744,21 @@ spec:
                         type: array
                     type: object
                 type: object
+              allowedNamespaces:
+                description: |-
+                  AllowedNamespaces lists the namespaces whose NamespaceQueues may use
+                  this Queue as their cluster-scoped parent.
+                  An empty or omitted list denies attachment.
+                  The literal "*" allows all namespaces and must be the only entry when present.
+                items:
+                  maxLength: 63
+                  pattern: ^(\*|[a-z0-9]([-a-z0-9]*[a-z0-9])?)$
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
+                x-kubernetes-validations:
+                - message: the wildcard '*' must be the only entry
+                  rule: '!self.exists(x, x == ''*'') || size(self) == 1'
               capability:
                 additionalProperties:
                   anyOf:
@@ -10591,6 +10628,45 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
+  name: volcano-admission-service-podgroups-mutate
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: volcano-admission-service
+        namespace: volcano-system
+        path: /podgroups/mutate
+        port: 443
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    name: mutatepodgroup.volcano.sh
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - volcano-system
+            - kube-system
+    objectSelector: {}
+    reinvocationPolicy: Never
+    rules:
+      - apiGroups:
+          - scheduling.volcano.sh
+        apiVersions:
+          - v1beta1
+        operations:
+          - CREATE
+        resources:
+          - podgroups
+        scope: '*'
+    sideEffects: NoneOnDryRun
+    timeoutSeconds: 10
+---
+# Source: volcano/templates/webhooks.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
   name: volcano-admission-service-jobs-mutate
 webhooks:
   - admissionReviewVersions:
@@ -10709,6 +10785,46 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
+  name: volcano-admission-service-namespacequeues-validate
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: volcano-admission-service
+        namespace: volcano-system
+        path: /namespacequeues/validate
+        port: 443
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    name: validatenamespacequeue.volcano.sh
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - volcano-system
+            - kube-system
+    objectSelector: {}
+    rules:
+      - apiGroups:
+          - scheduling.volcano.sh
+        apiVersions:
+          - v1beta1
+        operations:
+          - CREATE
+          - UPDATE
+          - DELETE
+        resources:
+          - namespacequeues
+        scope: Namespaced
+    sideEffects: NoneOnDryRun
+    timeoutSeconds: 10
+---
+# Source: volcano/templates/webhooks.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
   name: volcano-admission-service-podgroups-validate
 webhooks:
   - admissionReviewVersions:
@@ -10737,6 +10853,7 @@ webhooks:
           - v1beta1
         operations:
           - CREATE
+          - UPDATE
         resources:
           - podgroups
         scope: '*'
@@ -10811,6 +10928,256 @@ webhooks:
         scope: '*'  
     sideEffects: NoneOnDryRun  
     timeoutSeconds: 10
+---
+# Source: volcano/templates/scheduling_v1beta1_namespacequeue.yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: namespacequeues.scheduling.volcano.sh
+spec:
+  group: scheduling.volcano.sh
+  names:
+    kind: NamespaceQueue
+    listKind: NamespaceQueueList
+    plural: namespacequeues
+    shortNames:
+    - nq
+    singular: namespacequeue
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.parent
+      name: PARENT
+      type: string
+    - jsonPath: .status.state
+      name: STATE
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec defines the desired NamespaceQueue behavior.
+            properties:
+              capability:
+                additionalProperties:
+                  anyOf:
+                  - type: integer
+                  - type: string
+                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                  x-kubernetes-int-or-string: true
+                description: Capability limits the resources that this NamespaceQueue
+                  may consume.
+                type: object
+              dequeueStrategy:
+                default: traverse
+                description: DequeueStrategy controls how descendants are traversed
+                  when work is dequeued.
+                enum:
+                - fifo
+                - traverse
+                type: string
+              deserved:
+                additionalProperties:
+                  anyOf:
+                  - type: integer
+                  - type: string
+                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                  x-kubernetes-int-or-string: true
+                description: Deserved declares the fair-share resource entitlement
+                  for this NamespaceQueue.
+                type: object
+              guarantee:
+                description: Guarantee reserves resources for this NamespaceQueue
+                  and its descendants.
+                properties:
+                  resource:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: The amount of cluster resource reserved for queue.
+                      Just set either `percentage` or `resource`
+                    type: object
+                type: object
+              parent:
+                default: cluster/default
+                description: |-
+                  Parent can be a cluster Queue or another NamespaceQueue in the same namespace.
+                  "cluster/<name>" refers to a cluster-scoped Queue.
+                  An unprefixed value refers to a NamespaceQueue in the same namespace.
+                maxLength: 261
+                pattern: ^(cluster/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                type: string
+              priority:
+                description: Priority influences queue ordering during scheduling
+                  and reclamation.
+                format: int32
+                minimum: 0
+                type: integer
+              reclaimable:
+                description: Reclaimable controls whether workloads in this NamespaceQueue
+                  may be reclaimed.
+                type: boolean
+            type: object
+          status:
+            description: Status reports the observed NamespaceQueue lifecycle and
+              workload state.
+            properties:
+              allocated:
+                additionalProperties:
+                  anyOf:
+                  - type: integer
+                  - type: string
+                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                  x-kubernetes-int-or-string: true
+                description: Allocated records scheduler-owned resources allocated
+                  to the queue.
+                type: object
+              completed:
+                description: Completed counts PodGroups that have finished execution.
+                format: int32
+                minimum: 0
+                type: integer
+              conditions:
+                description: Conditions describe authorization and scheduling readiness
+                  transitions.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              inqueue:
+                description: Inqueue counts PodGroups admitted to the scheduling queue.
+                format: int32
+                minimum: 0
+                type: integer
+              pending:
+                description: Pending counts PodGroups waiting for scheduling.
+                format: int32
+                minimum: 0
+                type: integer
+              reservation:
+                description: Reservation records scheduler-owned node reservations.
+                properties:
+                  nodes:
+                    description: Nodes are Locked nodes for queue
+                    items:
+                      type: string
+                    type: array
+                  resource:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: Resource is a list of total idle resource in locked
+                      nodes.
+                    type: object
+                type: object
+              running:
+                description: Running counts PodGroups with running workloads.
+                format: int32
+                minimum: 0
+                type: integer
+              state:
+                description: State is the observed lifecycle state of the NamespaceQueue.
+                enum:
+                - Open
+                - Closed
+                - Closing
+                - Unknown
+                type: string
+              unknown:
+                description: Unknown counts PodGroups whose phase is unset or not
+                  recognized.
+                format: int32
+                minimum: 0
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
 ---
 # Source: jobflow/templates/flow_v1alpha1_jobflows.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -10926,7 +11293,7 @@ spec:
               queue:
                 default: default
                 maxLength: 253
-                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                pattern: ^(namespace/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               runningEstimate:
                 type: string
@@ -15175,7 +15542,7 @@ spec:
                             queue:
                               default: default
                               maxLength: 253
-                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                              pattern: ^(namespace/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                               type: string
                             runningEstimate:
                               type: string

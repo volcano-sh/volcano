@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 const (
@@ -84,4 +85,146 @@ func (asc *AdmissionServiceConfig) GetQueuesByParent(parentName string) ([]*sche
 	}
 
 	return queues, nil
+}
+
+// GetNamespaceQueuesByParent returns NamespaceQueues attached to parent. It
+// uses the informer index when available and retains a lister fallback for
+// tests and legacy construction paths.
+func (asc *AdmissionServiceConfig) GetNamespaceQueuesByParent(
+	parentRef ResolvedQueueReference,
+	namespace string,
+) ([]*schedulingv1beta1.NamespaceQueue, error) {
+	if asc == nil {
+		return nil, fmt.Errorf("admission service config is nil")
+	}
+	if asc.NamespaceQueueInformer != nil {
+		objects, err := asc.NamespaceQueueInformer.GetIndexer().ByIndex(
+			NamespaceQueueParentIndexName,
+			NamespaceQueueParentIndexKey(parentRef),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query NamespaceQueue parent index: %w", err)
+		}
+
+		queues := make([]*schedulingv1beta1.NamespaceQueue, 0, len(objects))
+		for _, object := range objects {
+			queue, ok := object.(*schedulingv1beta1.NamespaceQueue)
+			if ok && (namespace == "" || queue.Namespace == namespace) {
+				queues = append(queues, queue)
+			}
+		}
+		return queues, nil
+	}
+	if asc.NamespaceQueueLister == nil {
+		return nil, fmt.Errorf("NamespaceQueue lister is not configured")
+	}
+
+	var queues []*schedulingv1beta1.NamespaceQueue
+	var err error
+	if namespace == "" {
+		queues, err = asc.NamespaceQueueLister.List(labels.Everything())
+	} else {
+		queues, err = asc.NamespaceQueueLister.NamespaceQueues(namespace).List(labels.Everything())
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to list NamespaceQueues: %w", err)
+	}
+
+	matched := make([]*schedulingv1beta1.NamespaceQueue, 0, len(queues))
+	for _, queue := range queues {
+		resolvedParentRef, err := commonutil.ResolveNamespaceQueueParentReference(queue.Namespace, queue.Spec.Parent)
+		if err == nil && resolvedParentRef == parentRef {
+			matched = append(matched, queue)
+		}
+	}
+	return matched, nil
+}
+
+// GetNamespaceQueueDescendants returns the NamespaceQueue subtree below a
+// cluster Queue. Indexed traversal visits only affected descendants; the
+// lister fallback builds one adjacency map to avoid repeated full scans.
+func (asc *AdmissionServiceConfig) GetNamespaceQueueDescendants(
+	clusterQueueName string,
+) ([]*schedulingv1beta1.NamespaceQueue, error) {
+	if clusterQueueName == "" {
+		return nil, fmt.Errorf("cluster Queue name is empty")
+	}
+	root := ResolvedQueueReference{
+		Scope: commonutil.ClusterQueueReferenceScope,
+		Name:  clusterQueueName,
+	}
+
+	if asc == nil {
+		return nil, fmt.Errorf("admission service config is nil")
+	}
+
+	getChildQueues := func(parentRef ResolvedQueueReference) ([]*schedulingv1beta1.NamespaceQueue, error) {
+		return asc.GetNamespaceQueuesByParent(parentRef, "")
+	}
+	if asc.NamespaceQueueInformer == nil {
+		childQueuesByParent, err := asc.namespaceQueueChildrenIndex()
+		if err != nil {
+			return nil, err
+		}
+		getChildQueues = func(parentRef ResolvedQueueReference) ([]*schedulingv1beta1.NamespaceQueue, error) {
+			return childQueuesByParent[NamespaceQueueParentIndexKey(parentRef)], nil
+		}
+	}
+	return walkNamespaceQueueDescendants(root, getChildQueues)
+}
+
+func (asc *AdmissionServiceConfig) namespaceQueueChildrenIndex() (
+	map[string][]*schedulingv1beta1.NamespaceQueue,
+	error,
+) {
+	if asc.NamespaceQueueLister == nil {
+		return nil, fmt.Errorf("NamespaceQueue lister is not configured")
+	}
+	queues, err := asc.NamespaceQueueLister.List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list NamespaceQueues: %w", err)
+	}
+
+	childrenByParent := make(map[string][]*schedulingv1beta1.NamespaceQueue, len(queues))
+	for _, queue := range queues {
+		parentRef, err := commonutil.ResolveNamespaceQueueParentReference(queue.Namespace, queue.Spec.Parent)
+		if err != nil {
+			continue
+		}
+		key := NamespaceQueueParentIndexKey(parentRef)
+		childrenByParent[key] = append(childrenByParent[key], queue)
+	}
+
+	return childrenByParent, nil
+}
+
+func walkNamespaceQueueDescendants(
+	root ResolvedQueueReference,
+	getChildQueues func(ResolvedQueueReference) ([]*schedulingv1beta1.NamespaceQueue, error),
+) ([]*schedulingv1beta1.NamespaceQueue, error) {
+	descendantQueues := make([]*schedulingv1beta1.NamespaceQueue, 0)
+	frontier := []ResolvedQueueReference{root}
+	visitedQueueRefs := make(map[string]struct{})
+	for len(frontier) > 0 {
+		currentParentRef := frontier[0]
+		frontier = frontier[1:]
+		directChildQueues, err := getChildQueues(currentParentRef)
+		if err != nil {
+			return nil, err
+		}
+		for _, childQueue := range directChildQueues {
+			childQueueKey := childQueue.Namespace + "/" + childQueue.Name
+			if _, found := visitedQueueRefs[childQueueKey]; found {
+				return nil, fmt.Errorf("NamespaceQueue hierarchy contains a cycle at %q", childQueueKey)
+			}
+			visitedQueueRefs[childQueueKey] = struct{}{}
+			descendantQueues = append(descendantQueues, childQueue)
+			frontier = append(frontier, ResolvedQueueReference{
+				Scope:     commonutil.NamespaceQueueReferenceScope,
+				Namespace: childQueue.Namespace,
+				Name:      childQueue.Name,
+			})
+		}
+	}
+	return descendantQueues, nil
 }

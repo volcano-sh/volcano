@@ -93,21 +93,27 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	klog.V(4).Infof("The total resource is <%v>", pp.totalResource)
 	for _, queue := range ssn.Queues {
-		if len(queue.Queue.Spec.Guarantee.Resource) == 0 {
+		if queue == nil || queue.Scope != api.ClusterQueueScope {
 			continue
 		}
-		guarantee := api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+		if len(queue.Guarantee.Resource) == 0 {
+			continue
+		}
+		guarantee := api.NewResource(queue.Guarantee.Resource)
 		pp.totalGuarantee.Add(guarantee)
 	}
 	klog.V(4).Infof("The total guarantee resource is <%v>", pp.totalGuarantee)
 	// Build attributes for Queues.
 	for _, job := range ssn.Jobs {
 		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
+		queue := ssn.Queues[job.Queue]
+		if queue == nil || queue.Scope != api.ClusterQueueScope {
+			continue
+		}
 		if _, found := pp.queueOpts[job.Queue]; !found {
-			queue := ssn.Queues[job.Queue]
 			attr := &queueAttr{
 				queueID: queue.UID,
-				name:    queue.Name,
+				name:    string(queue.UID),
 				weight:  queue.Weight,
 
 				deserved:  api.EmptyResource(),
@@ -117,8 +123,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				inqueue:   api.EmptyResource(),
 				guarantee: api.EmptyResource(),
 			}
-			if len(queue.Queue.Spec.Capability) != 0 {
-				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
+			if len(queue.Capability) != 0 {
+				attr.capability = api.NewResource(queue.Capability)
 				if attr.capability.MilliCPU <= 0 {
 					attr.capability.MilliCPU = math.MaxFloat64
 				}
@@ -126,8 +132,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 					attr.capability.Memory = math.MaxFloat64
 				}
 			}
-			if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
-				attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+			if len(queue.Guarantee.Resource) != 0 {
+				attr.guarantee = api.NewResource(queue.Guarantee.Resource)
 			}
 			realCapability := api.ExceededPart(pp.totalResource, pp.totalGuarantee).Add(attr.guarantee)
 			if attr.capability == nil {
@@ -184,6 +190,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	// Record metrics
 	for queueID, queueInfo := range ssn.Queues {
+		if queueInfo == nil || queueInfo.Scope != api.ClusterQueueScope {
+			continue
+		}
 		if attr, ok := pp.queueOpts[queueID]; ok {
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
@@ -191,9 +200,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			metrics.UpdateQueueWeight(attr.name, attr.weight)
 			continue
 		}
-		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
-		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
-		metrics.UpdateQueueInqueue(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
+		queueName := string(queueInfo.UID)
+		metrics.UpdateQueueAllocated(queueName, 0, 0, map[v1.ResourceName]float64{})
+		metrics.UpdateQueueRequest(queueName, 0, 0, map[v1.ResourceName]float64{})
+		metrics.UpdateQueueInqueue(queueName, 0, 0, map[v1.ResourceName]float64{})
 	}
 
 	remaining := pp.totalResource.Clone()
@@ -268,17 +278,26 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
-
-		if lv.Queue.Spec.Priority != rv.Queue.Spec.Priority {
-			// return negative means high priority
-			return int(rv.Queue.Spec.Priority) - int(lv.Queue.Spec.Priority)
-		}
-
-		if pp.queueOpts[lv.UID].share == pp.queueOpts[rv.UID].share {
+		if lv == nil || rv == nil || lv.Scope != api.ClusterQueueScope || rv.Scope != api.ClusterQueueScope {
 			return 0
 		}
 
-		if pp.queueOpts[lv.UID].share < pp.queueOpts[rv.UID].share {
+		if lv.Priority != rv.Priority {
+			// return negative means high priority
+			return int(rv.Priority) - int(lv.Priority)
+		}
+
+		lattr := pp.queueOpts[lv.UID]
+		rattr := pp.queueOpts[rv.UID]
+		if lattr == nil || rattr == nil {
+			return 0
+		}
+
+		if lattr.share == rattr.share {
+			return 0
+		}
+
+		if lattr.share < rattr.share {
 			return -1
 		}
 
@@ -288,6 +307,14 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddReclaimableFn(pp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		var victims []*api.TaskInfo
 		allocations := map[api.QueueID]*api.Resource{}
+		reclaimerJob := ssn.Jobs[reclaimer.Job]
+		if reclaimerJob == nil {
+			return nil, util.Abstain
+		}
+		reclaimerQueue := ssn.Queues[reclaimerJob.Queue]
+		if reclaimerQueue == nil || reclaimerQueue.Scope != api.ClusterQueueScope {
+			return nil, util.Abstain
+		}
 
 		for _, reclaimee := range reclaimees {
 			job := ssn.Jobs[reclaimee.Job]
@@ -320,7 +347,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) bool {
 		queue := obj.(*api.QueueInfo)
+		if queue == nil || queue.Scope != api.ClusterQueueScope {
+			return false
+		}
 		attr := pp.queueOpts[queue.UID]
+		if attr == nil {
+			return false
+		}
 
 		overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
 		metrics.UpdateQueueOverused(attr.name, overused)
@@ -333,12 +366,18 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	queueAllocatable := func(queue *api.QueueInfo, candidates []*api.TaskInfo) bool {
-		if queue.Queue.Status.State != scheduling.QueueStateOpen {
-			klog.V(3).Infof("Queue <%s> current state: %s, is not in open state, can not allocate tasks.", queue.Name, queue.Queue.Status.State)
+		if queue == nil || queue.Scope != api.ClusterQueueScope {
+			return false
+		}
+		if !queue.IsOpen() {
+			klog.V(3).Infof("Queue <%s> current state: %s, is not in open state, can not allocate tasks.", queue.UID, queue.State)
 			return false
 		}
 
 		attr := pp.queueOpts[queue.UID]
+		if attr == nil {
+			return false
+		}
 		totalReq := api.EmptyResource()
 		for _, task := range candidates {
 			if task != nil {
@@ -361,6 +400,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.AddSimulateAllocatableFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		if queue == nil || queue.Scope != api.ClusterQueueScope {
+			return false
+		}
 		state, err := getProportionState(cycleState)
 		if err != nil {
 			klog.Errorf("getProportionState error: %v", err)
@@ -406,9 +448,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		queueID := job.Queue
 		attr := pp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
+		if queue == nil || queue.Scope != api.ClusterQueueScope || attr == nil {
+			return util.Abstain
+		}
 		// If the queue is not open, do not enqueue
-		if queue.Queue.Status.State != scheduling.QueueStateOpen {
-			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.", queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
+		if !queue.IsOpen() {
+			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.", queue.UID, queue.State, job.Namespace, job.Name)
 			return util.Reject
 		}
 		// If no capability is set, always enqueue the job.
@@ -440,6 +485,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddJobEnqueuedFn(pp.Name(), func(obj interface{}) {
 		job := obj.(*api.JobInfo)
+		queue := ssn.Queues[job.Queue]
+		if queue == nil || queue.Scope != api.ClusterQueueScope {
+			return
+		}
 		if job.PodGroup.Spec.MinResources == nil {
 			return
 		}

@@ -37,11 +37,15 @@ type ClusterInfo struct {
 	RealNodesSet              map[string]sets.Set[string]
 	HyperNodesReadyToSchedule bool
 	Queues                    map[QueueID]*QueueInfo
-	NamespaceInfo             map[NamespaceName]*NamespaceInfo
-	RevocableNodes            map[string]*NodeInfo
-	NodeList                  []string
-	CSINodesStatus            map[string]*CSINodeStatusInfo
-	NodesInShard              sets.Set[string]
+	// AccountingQueues retains inactive queues so status can drain through parents.
+	AccountingQueues map[QueueID]*QueueInfo
+	// AccountingJobs retains jobs whose queues are inactive for status accounting.
+	AccountingJobs map[JobID]*JobInfo
+	NamespaceInfo  map[NamespaceName]*NamespaceInfo
+	RevocableNodes map[string]*NodeInfo
+	NodeList       []string
+	CSINodesStatus map[string]*CSINodeStatusInfo
+	NodesInShard   sets.Set[string]
 }
 
 func (ci ClusterInfo) String() string {

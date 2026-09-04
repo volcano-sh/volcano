@@ -28,11 +28,15 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"stathat.com/c/consistent"
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/features"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 type hyperNodeEventSource string
@@ -168,4 +172,43 @@ func RemoveVolcanoSchGate(kubeClient kubernetes.Interface, namespace, name strin
 		metav1.PatchOptions{})
 
 	return err
+}
+
+// resolveQueueReference converts a workload queue reference into the canonical
+// QueueID used by the scheduler. Empty references retain the configured
+// cluster default, preserving legacy workload behavior.
+func resolveQueueReference(
+	workloadNamespace,
+	reference,
+	defaultQueue string,
+) (schedulingapi.QueueID, error) {
+	effectiveReference := reference
+	if effectiveReference == "" {
+		effectiveReference = defaultQueue
+	}
+
+	// Preserve the scheduler's existing behavior when neither the workload nor
+	// the scheduler configuration selects a queue.
+	if effectiveReference == "" {
+		return "", nil
+	}
+	if commonutil.HasNamespaceQueuePrefix(effectiveReference) &&
+		!utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) {
+		return "", fmt.Errorf("NamespaceQueue feature is disabled")
+	}
+
+	resolvedQueueRef, err := commonutil.ResolveWorkloadQueueReference(
+		workloadNamespace,
+		effectiveReference,
+		"",
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if resolvedQueueRef.Scope == commonutil.ClusterQueueReferenceScope {
+		return schedulingapi.QueueID(resolvedQueueRef.Name), nil
+	}
+
+	return schedulingapi.NamespaceQueueID(resolvedQueueRef.Namespace, resolvedQueueRef.Name), nil
 }

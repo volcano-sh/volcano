@@ -30,6 +30,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -115,23 +116,25 @@ type SchedulerCache struct {
 	nodeSelectorLabels map[string]sets.Empty
 	metricsConf        map[string]string
 
-	resyncPeriod               time.Duration
-	podInformer                infov1.PodInformer
-	nodeInformer               infov1.NodeInformer
-	hyperNodeInformer          topologyinformerv1alpha1.HyperNodeInformer
-	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
-	queueInformerV1beta1       vcinformerv1.QueueInformer
-	pvInformer                 infov1.PersistentVolumeInformer
-	pvcInformer                infov1.PersistentVolumeClaimInformer
-	scInformer                 storagev1.StorageClassInformer
-	vaInformer                 storagev1.VolumeAttachmentInformer
-	pcInformer                 schedv1.PriorityClassInformer
-	quotaInformer              infov1.ResourceQuotaInformer
-	csiNodeInformer            storagev1.CSINodeInformer
-	csiDriverInformer          storagev1.CSIDriverInformer
-	csiStorageCapacityInformer storagev1.CSIStorageCapacityInformer
-	cpuInformer                cpuinformerv1.NumatopologyInformer
-	nodeShardInformer          shardinformerv1alpha1.NodeShardInformer
+	resyncPeriod            time.Duration
+	podInformer             infov1.PodInformer
+	nodeInformer            infov1.NodeInformer
+	hyperNodeInformer       topologyinformerv1alpha1.HyperNodeInformer
+	podGroupInformerV1beta1 vcinformerv1.PodGroupInformer
+	queueInformerV1beta1    vcinformerv1.QueueInformer
+	// namespaceQueueInformerV1beta1 watches namespace-scoped queue lifecycle and status.
+	namespaceQueueInformerV1beta1 vcinformerv1.NamespaceQueueInformer
+	pvInformer                    infov1.PersistentVolumeInformer
+	pvcInformer                   infov1.PersistentVolumeClaimInformer
+	scInformer                    storagev1.StorageClassInformer
+	vaInformer                    storagev1.VolumeAttachmentInformer
+	pcInformer                    schedv1.PriorityClassInformer
+	quotaInformer                 infov1.ResourceQuotaInformer
+	csiNodeInformer               storagev1.CSINodeInformer
+	csiDriverInformer             storagev1.CSIDriverInformer
+	csiStorageCapacityInformer    storagev1.CSIStorageCapacityInformer
+	cpuInformer                   cpuinformerv1.NumatopologyInformer
+	nodeShardInformer             shardinformerv1alpha1.NodeShardInformer
 
 	Binder         Binder
 	Evictor        Evictor
@@ -140,9 +143,12 @@ type SchedulerCache struct {
 
 	Recorder record.EventRecorder
 
-	Jobs                 map[schedulingapi.JobID]*schedulingapi.JobInfo
-	Nodes                map[string]*schedulingapi.NodeInfo
-	Queues               map[schedulingapi.QueueID]*schedulingapi.QueueInfo
+	Jobs  map[schedulingapi.JobID]*schedulingapi.JobInfo
+	Nodes map[string]*schedulingapi.NodeInfo
+	// Queues contains queues currently eligible for scheduling.
+	Queues map[schedulingapi.QueueID]*schedulingapi.QueueInfo
+	// AccountingQueues retains inactive queues for resource status propagation.
+	AccountingQueues     map[schedulingapi.QueueID]*schedulingapi.QueueInfo
 	NodeShards           map[string]*schedulingapi.NodeShardInfo
 	PriorityClasses      map[string]*schedulingv1.PriorityClass
 	NodeList             []string
@@ -375,18 +381,67 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 
 // UpdateQueueStatus will update the status of queue
 func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
-	newQueue := &vcv1beta1.Queue{}
-	if err := schedulingscheme.Scheme.Convert(queue.Queue, newQueue, nil); err != nil {
-		klog.Errorf("error occurred in converting scheduling.Queue to v1beta1.Queue: %s", err.Error())
-		return err
+	if queue == nil {
+		return fmt.Errorf("cannot update status for nil QueueInfo")
 	}
 
-	_, err := su.vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Errorf("error occurred in updating Queue <%s>: %s", newQueue.Name, err.Error())
-		return err
+	switch queue.Scope {
+	case schedulingapi.ClusterQueueScope:
+		if queue.Queue == nil {
+			return fmt.Errorf("cluster QueueInfo <%s> has no source Queue", queue.UID)
+		}
+
+		newQueue := &vcv1beta1.Queue{}
+		if err := schedulingscheme.Scheme.Convert(queue.Queue, newQueue, nil); err != nil {
+			return fmt.Errorf("failed to convert Queue <%s> to v1beta1: %w", queue.UID, err)
+		}
+		newQueue.Status.Allocated = queue.Allocated.DeepCopy()
+
+		if _, err := su.vcclient.SchedulingV1beta1().Queues().UpdateStatus(
+			context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("failed to update Queue <%s> status: %w", newQueue.Name, err)
+		}
+		return nil
+
+	case schedulingapi.NamespaceQueueScope:
+		if queue.NamespaceQueue == nil {
+			return fmt.Errorf("namespace QueueInfo <%s> has no source NamespaceQueue", queue.UID)
+		}
+
+		return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			current, err := su.vcclient.SchedulingV1beta1().
+				NamespaceQueues(queue.NamespaceQueue.Namespace).
+				Get(ctx, queue.NamespaceQueue.Name, metav1.GetOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to get NamespaceQueue <%s/%s>: %w",
+					queue.NamespaceQueue.Namespace, queue.NamespaceQueue.Name, err)
+			}
+
+			if equality.Semantic.DeepEqual(current.Status.Allocated, queue.Allocated) &&
+				equality.Semantic.DeepEqual(current.Status.Reservation, queue.Reservation) {
+				return nil
+			}
+
+			updated := current.DeepCopy()
+			updated.Status.Allocated = queue.Allocated.DeepCopy()
+			updated.Status.Reservation = vcv1beta1.Reservation{
+				Nodes:    append([]string(nil), queue.Reservation.Nodes...),
+				Resource: queue.Reservation.Resource.DeepCopy(),
+			}
+
+			if _, err := su.vcclient.SchedulingV1beta1().NamespaceQueues(updated.Namespace).UpdateStatus(
+				ctx, updated, metav1.UpdateOptions{}); err != nil {
+				return fmt.Errorf("failed to update NamespaceQueue <%s/%s> status: %w",
+					updated.Namespace, updated.Name, err)
+			}
+			return nil
+		})
+
+	default:
+		return fmt.Errorf("cannot update QueueInfo <%s> with unknown scope %q", queue.UID, queue.Scope)
 	}
-	return nil
 }
 
 type podgroupBinder struct {
@@ -483,6 +538,10 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 				Weight:      1,
 			},
 		}
+		if name == vcv1beta1.DefaultQueue &&
+			utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) {
+			newQueue.Spec.AllowedNamespaces = []string{"*"}
+		}
 
 		return retry.OnError(wait.Backoff{
 			Steps:    60,
@@ -514,6 +573,12 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 
 	if err := createIfNotExists(defaultQueue, true); err != nil {
 		klog.Fatalf("failed to init default queue: %v", err)
+	}
+	if utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) &&
+		defaultQueue != vcv1beta1.DefaultQueue {
+		if err := createIfNotExists(vcv1beta1.DefaultQueue, true); err != nil {
+			klog.Fatalf("failed to init NamespaceQueue default parent: %v", err)
+		}
 	}
 }
 
@@ -548,6 +613,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
 		Nodes:               make(map[string]*schedulingapi.NodeInfo),
 		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		AccountingQueues:    make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
 		errTasks:            workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
 		nodeQueue:           workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[schedulercache.QueueObjectWrapper]()),
@@ -795,6 +861,18 @@ func (sc *SchedulerCache) addEventHandler() {
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
 	handlers["queue"] = handlerRegistration
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) {
+		sc.namespaceQueueInformerV1beta1 = vcinformers.Scheduling().V1beta1().NamespaceQueues()
+		handlerRegistration, _ = sc.namespaceQueueInformerV1beta1.Informer().AddEventHandler(
+			cache.ResourceEventHandlerFuncs{
+				AddFunc:    sc.AddNamespaceQueueV1beta1,
+				UpdateFunc: sc.UpdateNamespaceQueueV1beta1,
+				DeleteFunc: sc.DeleteNamespaceQueueV1beta1,
+			},
+		)
+		handlers["namespacequeue"] = handlerRegistration
+	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.ResourceTopology) {
 		sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()
@@ -1510,7 +1588,9 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		HyperNodeTierNameMap: make(schedulingapi.HyperNodeTierNameMap),
 		RealNodesSet:         make(map[string]sets.Set[string]),
 		Jobs:                 make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		AccountingJobs:       make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
 		Queues:               make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		AccountingQueues:     make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		NamespaceInfo:        make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
 		RevocableNodes:       make(map[string]*schedulingapi.NodeInfo),
 		NodeList:             make([]string, len(sc.NodeList)),
@@ -1550,7 +1630,22 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	sc.HyperNodesInfo.Unlock()
 
 	for _, value := range sc.Queues {
+		if value.Scope == schedulingapi.NamespaceQueueScope &&
+			!sc.isNamespaceQueueParentChainOpen(value) {
+			klog.V(4).Infof(
+				"Skip NamespaceQueue <%s> because its parent chain is not open",
+				value.UID,
+			)
+			continue
+		}
+
 		snapshot.Queues[value.UID] = value.Clone()
+		if _, found := sc.AccountingQueues[value.UID]; !found {
+			snapshot.AccountingQueues[value.UID] = value.Clone()
+		}
+	}
+	for _, value := range sc.AccountingQueues {
+		snapshot.AccountingQueues[value.UID] = value.Clone()
 	}
 
 	var cloneJobLock sync.Mutex
@@ -1573,7 +1668,10 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		clonedJob := value.Clone()
 
 		cloneJobLock.Lock()
-		snapshot.Jobs[value.UID] = clonedJob
+		snapshot.AccountingJobs[value.UID] = clonedJob
+		if _, active := snapshot.Queues[value.Queue]; active {
+			snapshot.Jobs[value.UID] = clonedJob
+		}
 		cloneJobLock.Unlock()
 	}
 
@@ -1591,7 +1689,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			continue
 		}
 
-		if _, found := snapshot.Queues[value.Queue]; !found {
+		if _, found := snapshot.AccountingQueues[value.Queue]; !found {
 			klog.V(3).Infof("The Queue <%v> of Job <%v/%v> does not exist, ignore it.",
 				value.Queue, value.Namespace, value.Name)
 			continue
@@ -1608,6 +1706,46 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		klog.InfoS("HyperNode snapShot for scheduling", "tiers", snapshot.HyperNodesSetByTier, "realNodesSet", snapshot.RealNodesSet, "hyperNodesReadyToSchedule", snapshot.HyperNodesReadyToSchedule)
 	}
 	return snapshot
+}
+
+// isNamespaceQueueParentChainOpen is the scheduler's final readiness check for
+// NamespaceQueue hierarchies. Controller status propagation is eventually
+// consistent, so the scheduler must not rely only on the child's Ready
+// condition when a parent is closing or unavailable.
+func (sc *SchedulerCache) isNamespaceQueueParentChainOpen(
+	queue *schedulingapi.QueueInfo,
+) bool {
+	if queue == nil || queue.Scope != schedulingapi.NamespaceQueueScope {
+		return true
+	}
+
+	visited := make(map[schedulingapi.QueueID]struct{})
+	current := queue
+	for current != nil {
+		if _, exists := visited[current.UID]; exists {
+			return false
+		}
+		visited[current.UID] = struct{}{}
+
+		if current.State != scheduling.QueueStateOpen {
+			return false
+		}
+		if current.UID == schedulingapi.QueueID("root") {
+			return true
+		}
+
+		parentID := current.Parent
+		if parentID == "" {
+			parentID = schedulingapi.QueueID("root")
+		}
+		parent, exists := sc.AccountingQueues[parentID]
+		if !exists || parent == nil {
+			return false
+		}
+		current = parent
+	}
+
+	return false
 }
 
 func (sc *SchedulerCache) SharedDRAManager() fwk.SharedDRAManager {

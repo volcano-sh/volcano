@@ -19,6 +19,7 @@ package options
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -218,6 +219,9 @@ func (s *ServerOption) CheckOptionOrDie() error {
 	}
 	if s.TaskUpdaterWorkerNum <= 0 {
 		return fmt.Errorf("task-updater-worker-num must be greater than 0")
+	}
+	if strings.Contains(s.DefaultQueue, "/") {
+		return fmt.Errorf("default-queue must be a cluster Queue name, got %q", s.DefaultQueue)
 	}
 	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
 }
