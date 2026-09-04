@@ -504,3 +504,49 @@ func TestNodeInfoClonePreservesUnassignedNumaPods(t *testing.T) {
 		t.Errorf("Clone mutation leaked back into original: %v", ni.UnassignedNumaPods)
 	}
 }
+
+// TestNodeInfo_AddTask_UntrackedResourceDefersToPredicate covers the final, most fundamental
+// occurrence of the #4863-class bug: AddTask's Binding-status check is the last gate every task
+// passes through before actually binding to the API server, across every scheduling action. A
+// task requesting a resource dimension the node never advertises in Allocatable at all (like
+// volcano.sh/vgpu-memory-percentage, tracked entirely by a device plugin's own ledger) must not
+// be rejected here, since nothing downstream double-checks it again.
+func TestNodeInfo_AddTask_UntrackedResourceDefersToPredicate(t *testing.T) {
+	// vgpu-number is tracked in Allocatable, matching a real HAMi node; only
+	// vgpu-memory-percentage - never requested on its own in practice - is untracked, which is the
+	// one dimension this test exercises.
+	node := buildNode("n1", nil, BuildResourceList("2000m", "2G", []ScalarResource{
+		{Name: "pods", Value: "10"},
+		{Name: "volcano.sh/vgpu-number", Value: "1"},
+	}...))
+	pod := buildPod("c1", "p1", "", v1.PodPending,
+		BuildResourceList("1000m", "1G", []ScalarResource{
+			{Name: "volcano.sh/vgpu-number", Value: "1"},
+			{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"},
+		}...),
+		[]metav1.OwnerReference{}, make(map[string]string))
+
+	ni := NewNodeInfo(node)
+	task := NewTaskInfo(pod)
+	task.Status = Binding
+
+	if err := ni.AddTask(task); err != nil {
+		t.Fatalf("expected AddTask to succeed for a resource untracked in node.Allocatable, got error: %v", err)
+	}
+}
+
+// TestNodeInfo_AddTask_GenuineShortfallStillRejected is the companion regression: a real,
+// tracked-resource shortfall (cpu here) must still be rejected at bind time. The fallback above
+// is only for dimensions Allocatable has no entry for at all, not a blanket bypass.
+func TestNodeInfo_AddTask_GenuineShortfallStillRejected(t *testing.T) {
+	node := buildNode("n1", nil, BuildResourceList("1000m", "2G", []ScalarResource{{Name: "pods", Value: "10"}}...))
+	pod := buildPod("c1", "p1", "", v1.PodPending, BuildResourceList("2000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+
+	ni := NewNodeInfo(node)
+	task := NewTaskInfo(pod)
+	task.Status = Binding
+
+	if err := ni.AddTask(task); err == nil {
+		t.Fatal("expected AddTask to reject a genuine cpu shortfall, got success")
+	}
+}
