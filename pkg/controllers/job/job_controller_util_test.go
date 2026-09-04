@@ -478,6 +478,187 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
+func TestGetNonZeroExitCodes(t *testing.T) {
+	statuses := []v1.ContainerStatus{
+		{
+			Name: "succeeded",
+			State: v1.ContainerState{
+				Terminated: &v1.ContainerStateTerminated{ExitCode: 0},
+			},
+		},
+		{
+			Name: "running",
+			State: v1.ContainerState{
+				Running: &v1.ContainerStateRunning{},
+			},
+		},
+		{
+			Name: "failed-42",
+			State: v1.ContainerState{
+				Terminated: &v1.ContainerStateTerminated{ExitCode: 42},
+			},
+		},
+		{
+			Name: "failed-2",
+			State: v1.ContainerState{
+				Terminated: &v1.ContainerStateTerminated{ExitCode: 2},
+			},
+		},
+	}
+
+	expectedExitCode := int32(42)
+	expectedExitCodes := "42,2,"
+	exitCode, exitCodes := getNonZeroExitCodes(statuses)
+	if exitCode != expectedExitCode {
+		t.Errorf("expected exit code %d, got %d", expectedExitCode, exitCode)
+	}
+	if exitCodes != expectedExitCodes {
+		t.Errorf("expected exit codes %s, got %s", expectedExitCodes, exitCodes)
+	}
+}
+
+func TestApplyPoliciesWithExitCodes(t *testing.T) {
+	namespace := "test"
+	errorCode2 := int32(2)
+	errorCode42 := int32(42)
+	zeroExitCode := int32(0)
+
+	testcases := []struct {
+		name      string
+		job       *v1alpha1.Job
+		request   *apis.Request
+		returnVal busv1alpha1.Action
+	}{
+		{
+			name: "task policy matches any regular container exit code",
+			job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 1,
+							Policies: []v1alpha1.LifecyclePolicy{
+								{
+									Action:   busv1alpha1.RestartTaskAction,
+									ExitCode: &errorCode42,
+								},
+							},
+						},
+					},
+				},
+			},
+			request: &apis.Request{
+				TaskName:  "task1",
+				ExitCodes: "2,42,",
+			},
+			returnVal: busv1alpha1.RestartTaskAction,
+		},
+		{
+			name: "exit code policy order is preserved",
+			job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 1,
+							Policies: []v1alpha1.LifecyclePolicy{
+								{
+									Action:   busv1alpha1.TerminateJobAction,
+									ExitCode: &errorCode42,
+								},
+								{
+									Action:   busv1alpha1.RestartTaskAction,
+									ExitCode: &errorCode2,
+								},
+							},
+						},
+					},
+				},
+			},
+			request: &apis.Request{
+				TaskName:  "task1",
+				ExitCodes: "2,42,",
+			},
+			returnVal: busv1alpha1.TerminateJobAction,
+		},
+		{
+			name: "job policy matches any regular container exit code",
+			job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 1,
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Action:   busv1alpha1.TerminateJobAction,
+							ExitCode: &errorCode42,
+						},
+					},
+				},
+			},
+			request: &apis.Request{
+				ExitCodes: "2,42,",
+			},
+			returnVal: busv1alpha1.TerminateJobAction,
+		},
+		{
+			name: "zero exit code does not match",
+			job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 1,
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Action:   busv1alpha1.TerminateJobAction,
+							ExitCode: &zeroExitCode,
+						},
+					},
+				},
+			},
+			request: &apis.Request{
+				ExitCodes: "0,",
+			},
+			returnVal: busv1alpha1.SyncJobAction,
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			action := applyPolicies(testcase.job, testcase.request)
+			if action.action != testcase.returnVal {
+				t.Errorf("expected action %s, got %s", testcase.returnVal, action.action)
+			}
+		})
+	}
+}
+
 func TestApplyPolicies(t *testing.T) {
 	namespace := "test"
 	errorCode0 := int32(0)
