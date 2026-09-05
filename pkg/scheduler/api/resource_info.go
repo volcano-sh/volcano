@@ -559,6 +559,43 @@ func (r *Resource) LessEqualWithResourcesName(rr *Resource, defaultValue Dimensi
 	return true, resources
 }
 
+// AllUntrackedByAllocatable reports whether every resource name in names has no capacity entry
+// at all in node.Allocatable. cpu and memory always carry a real capacity number, so they are
+// never considered untracked. Used to tell a genuine shortfall (a tracked resource that's really
+// insufficient) apart from a resource dimension a device plugin manages entirely on its own (like
+// volcano.sh/vgpu-memory-percentage, a pure request-side modifier with no coherent node-wide total
+// to advertise), where the generic scalar comparison has nothing to compare against and can't be
+// trusted as "no".
+func AllUntrackedByAllocatable(names []string, node *NodeInfo) bool {
+	if node.Allocatable == nil {
+		return false
+	}
+	return AllUntrackedByResource(names, node.Allocatable)
+}
+
+// AllUntrackedByResource reports whether every resource name in names has no capacity entry at
+// all in r. cpu and memory always carry a real capacity number, so they are never considered
+// untracked. Same idea as AllUntrackedByAllocatable, generalized to any Resource baseline, such
+// as a queue's deserved or capability share, which a device-tracked resource is just as absent
+// from as it is from node.Allocatable.
+func AllUntrackedByResource(names []string, r *Resource) bool {
+	if len(names) == 0 {
+		return false
+	}
+	for _, name := range names {
+		if name == string(v1.ResourceCPU) || name == string(v1.ResourceMemory) {
+			return false
+		}
+		if r == nil {
+			return false
+		}
+		if _, tracked := r.ScalarResources[v1.ResourceName(name)]; tracked {
+			return false
+		}
+	}
+	return true
+}
+
 // LessPartly returns true if there exists any dimension whose resource amount in r is less than that in rr.
 // Otherwise returns false.
 // @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
