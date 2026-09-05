@@ -8,8 +8,21 @@ permissions: read-all
 jobs:
   e2e_hypernode:
     runs-on: ubuntu-24.04
-    name: E2E about Hypernode
+    name: E2E about Hypernode (${{ matrix.name }})
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: controller-manager
+            mode: controller-manager
+            profile: full
+          - name: standalone
+            mode: standalone
+            profile: full
+          - name: ownership-transition
+            mode: controller-manager
+            profile: ownership-transition
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
@@ -51,6 +64,9 @@ jobs:
           make load-images
 
       - name: Run E2E Tests
+        env:
+          HYPERNODE_CONTROLLER_MODE: ${{ matrix.mode }}
+          HYPERNODE_E2E_PROFILE: ${{ matrix.profile }}
         run: |
           export ARTIFACTS_PATH=${{ github.workspace }}/e2e-hypernode-logs
           make e2e-test-hypernode FORCE_REBUILD=false
@@ -59,5 +75,19 @@ jobs:
         if: '!success()'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: volcano_e2e_hypernode_logs
+          name: volcano_e2e_hypernode_${{ matrix.name }}_logs
           path: ${{ github.workspace }}/e2e-hypernode-logs
+
+  e2e_hypernode_result:
+    name: E2E about Hypernode
+    runs-on: ubuntu-24.04
+    needs: e2e_hypernode
+    if: ${{ always() }}
+    timeout-minutes: 1
+    steps:
+      - name: Verify HyperNode E2E matrix result
+        env:
+          HYPERNODE_E2E_RESULT: ${{ needs.e2e_hypernode.result }}
+        run: |
+          echo "HyperNode E2E matrix result: ${HYPERNODE_E2E_RESULT}"
+          [[ "${HYPERNODE_E2E_RESULT}" == "success" ]]

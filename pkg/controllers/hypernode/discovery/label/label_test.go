@@ -18,19 +18,25 @@ package label
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	clienttesting "k8s.io/client-go/testing"
 	"k8s.io/klog/v2"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/hypernode/api"
 	"volcano.sh/volcano/pkg/controllers/hypernode/utils"
 )
@@ -85,9 +91,24 @@ func TestNewLabelDiscoverer_start(t *testing.T) {
 			fakeVcClient := vcclientset.NewSimpleClientset()
 			createNode(kubeClient, tc.nodes)
 			createHyperNode(fakeVcClient, tc.existHyperNode)
-			time.Sleep(300 * time.Millisecond)
-			d := NewLabelDiscoverer(cfg, kubeClient, fakeVcClient)
-			outputCh, _ := d.Start()
+			informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+			vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
+			nodeInformer := informerFactory.Core().V1().Nodes()
+			hyperNodeInformer := vcInformerFactory.Topology().V1alpha1().HyperNodes()
+			nodeInformer.Informer()
+			hyperNodeInformer.Informer()
+			d, err := NewLabelDiscovererWithOptions(cfg, api.DiscovererOptions{
+				KubeClient: kubeClient, VolcanoClient: fakeVcClient,
+				NodeInformer: nodeInformer, HyperNodeInformer: hyperNodeInformer,
+			})
+			assert.NoError(t, err)
+			stopCh := make(chan struct{})
+			informerFactory.Start(stopCh)
+			vcInformerFactory.Start(stopCh)
+			informerFactory.WaitForCacheSync(stopCh)
+			vcInformerFactory.WaitForCacheSync(stopCh)
+			outputCh, err := d.Start()
+			assert.NoError(t, err)
 			var hyperNodes []*topologyv1alpha1.HyperNode
 			select {
 			case hyperNodes = <-outputCh:
@@ -100,8 +121,116 @@ func TestNewLabelDiscoverer_start(t *testing.T) {
 				klog.Infof("target hyperNode name is %s\n", hn.Name)
 			}
 			d.Stop()
+			close(stopCh)
 		})
 	}
+}
+
+func TestNewLabelDiscovererWithOptionsFallsBackToDedicatedInformers(t *testing.T) {
+	discoverer, err := NewLabelDiscovererWithOptions(getCfg(), api.DiscovererOptions{
+		KubeClient:    fake.NewSimpleClientset(),
+		VolcanoClient: vcclientset.NewSimpleClientset(),
+	})
+	assert.NoError(t, err)
+
+	labelDiscoverer, ok := discoverer.(*labelDiscoverer)
+	assert.True(t, ok)
+	assert.NotNil(t, labelDiscoverer.informerFactory)
+	assert.NotNil(t, labelDiscoverer.vcInformerFactory)
+}
+
+func TestBuildHyperNodeNameFallsBackToAPIWhenInformerCacheIsStale(t *testing.T) {
+	const (
+		topologyType  = "e2e-rack-topology"
+		topologyLabel = "volcano.sh/e2e-hypernode-rack"
+		topologyValue = "rack-a"
+		existingName  = "hypernode-e2e-rack-topology-tier1-abcde"
+	)
+	existing := utils.BuildHyperNodeWithTierName(existingName, 1, topologyLabel, nil, map[string]string{
+		api.NetworkTopologySourceLabelKey: "label",
+		topologyLabel:                     topologyValue,
+	})
+	kubeClient := fake.NewSimpleClientset()
+	fakeVcClient := vcclientset.NewSimpleClientset(existing)
+	informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+	vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
+	hyperNodeInformer := vcInformerFactory.Topology().V1alpha1().HyperNodes()
+
+	discoverer, err := NewLabelDiscovererWithOptions(getCfg(), api.DiscovererOptions{
+		KubeClient:        kubeClient,
+		VolcanoClient:     fakeVcClient,
+		NodeInformer:      informerFactory.Core().V1().Nodes(),
+		HyperNodeInformer: hyperNodeInformer,
+	})
+	assert.NoError(t, err)
+	labelDiscoverer := discoverer.(*labelDiscoverer)
+	resolver := newHyperNodeNameResolver(labelDiscoverer.hyperNodeLister, labelDiscoverer.vcClient)
+
+	// Keep the informer stopped so its cache does not contain the API object.
+	cached, err := hyperNodeInformer.Lister().List(labels.Everything())
+	assert.NoError(t, err)
+	assert.Empty(t, cached)
+
+	name, err := resolver.buildHyperNodeName(topologyType, topologyLabel, topologyValue, 1, map[string]HyperNodeInfo{})
+	assert.NoError(t, err)
+	assert.Equal(t, existingName, name)
+}
+
+func TestHyperNodeNameResolverLoadsLiveSnapshotOnceWithoutPerNameGets(t *testing.T) {
+	kubeClient := fake.NewSimpleClientset()
+	fakeVcClient := vcclientset.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+	vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
+	discoverer, err := NewLabelDiscovererWithOptions(getCfg(), api.DiscovererOptions{
+		KubeClient:        kubeClient,
+		VolcanoClient:     fakeVcClient,
+		NodeInformer:      informerFactory.Core().V1().Nodes(),
+		HyperNodeInformer: vcInformerFactory.Topology().V1alpha1().HyperNodes(),
+	})
+	assert.NoError(t, err)
+	labelDiscoverer := discoverer.(*labelDiscoverer)
+	resolver := newHyperNodeNameResolver(labelDiscoverer.hyperNodeLister, labelDiscoverer.vcClient)
+
+	_, err = resolver.buildHyperNodeName("topology-a", "volcano.sh/rack", "rack-a", 1, map[string]HyperNodeInfo{})
+	assert.NoError(t, err)
+	_, err = resolver.buildHyperNodeName("topology-a", "volcano.sh/rack", "rack-b", 1, map[string]HyperNodeInfo{})
+	assert.NoError(t, err)
+
+	listCount := 0
+	getCount := 0
+	for _, action := range fakeVcClient.Actions() {
+		if action.GetVerb() == "list" && action.GetResource().Resource == "hypernodes" {
+			listCount++
+		}
+		if action.GetVerb() == "get" && action.GetResource().Resource == "hypernodes" {
+			getCount++
+		}
+	}
+	assert.Equal(t, 1, listCount)
+	assert.Equal(t, 0, getCount)
+}
+
+func TestBuildHyperNodeNameReturnsLiveLookupError(t *testing.T) {
+	kubeClient := fake.NewSimpleClientset()
+	fakeVcClient := vcclientset.NewSimpleClientset()
+	fakeVcClient.PrependReactor("list", "hypernodes", func(clienttesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("API unavailable")
+	})
+	informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+	vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
+	discoverer, err := NewLabelDiscovererWithOptions(getCfg(), api.DiscovererOptions{
+		KubeClient:        kubeClient,
+		VolcanoClient:     fakeVcClient,
+		NodeInformer:      informerFactory.Core().V1().Nodes(),
+		HyperNodeInformer: vcInformerFactory.Topology().V1alpha1().HyperNodes(),
+	})
+	assert.NoError(t, err)
+
+	labelDiscoverer := discoverer.(*labelDiscoverer)
+	resolver := newHyperNodeNameResolver(labelDiscoverer.hyperNodeLister, labelDiscoverer.vcClient)
+	_, err = resolver.buildHyperNodeName(
+		"topology-a", "volcano.sh/rack", "rack-a", 1, map[string]HyperNodeInfo{})
+	assert.ErrorContains(t, err, "failed to confirm existing HyperNodes from API")
 }
 
 func getCfg() api.DiscoveryConfig {

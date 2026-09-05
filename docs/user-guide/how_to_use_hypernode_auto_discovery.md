@@ -8,6 +8,8 @@ This document describes how to use the HyperNode network topology auto-discovery
 
 Please [Install Volcano](https://github.com/volcano-sh/volcano/tree/master?tab=readme-ov-file#quick-start-guide) with version >= v1.12.0 first.
 
+HyperNode discovery can run in `vc-controller-manager` or in the [standalone HyperNode controller](./how_to_install_standalone_hypernode_controller.md). Both deployment modes use the same discovery configuration.
+
 ## Configuration
 
 The HyperNode network topology discovery feature is configured via a ConfigMap. The ConfigMap contains the configuration for the discovery sources, such as UFM, RoCE, and label, you can modify the configuration according to your own cluster environments.
@@ -127,10 +129,18 @@ data:
 
 ## Verification
 
-1.  Check the Volcano controller logs to ensure that the discovery sources are started successfully.
+1.  Check the controller logs to ensure that the discovery sources are started successfully.
+
+For the default `vc-controller-manager` deployment:
 
 ```bash
-kubectl logs -n volcano-system -l app=volcano-controllers -c volcano-controllers | grep "Successfully started all network topology discoverers"
+kubectl logs -n volcano-system -l app=volcano-controller -c volcano-controllers | grep "Successfully started all network topology discoverers"
+```
+
+For the standalone HyperNode controller deployment:
+
+```bash
+kubectl logs -n volcano-system deployment/volcano-hypernode-controller -c hypernode-controller-manager | grep "Successfully started all network topology discoverers"
 ```
 
 2.  Check the created HyperNode resources.

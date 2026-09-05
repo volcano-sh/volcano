@@ -2,9 +2,8 @@ name: Code Verify
 
 on:
   push:
-    branches:
-      - master
-    tags:
+    branches-ignore:
+      - "dependabot/**"
   pull_request:
 
 permissions: read-all

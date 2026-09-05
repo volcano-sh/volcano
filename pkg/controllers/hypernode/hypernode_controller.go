@@ -17,6 +17,8 @@ limitations under the License.
 package hypernode
 
 import (
+	"sync"
+
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -39,7 +41,7 @@ import (
 )
 
 func init() {
-	framework.RegisterController(&hyperNodeController{})
+	framework.RegisterController(NewController())
 }
 
 const (
@@ -64,6 +66,25 @@ type hyperNodeController struct {
 	discoveryManager   discovery.Manager
 	configMapNamespace string
 	configMapName      string
+	workerWG           sync.WaitGroup
+	cacheSyncSucceeded chan struct{}
+	cacheSyncOnce      sync.Once
+}
+
+// Controller is the HyperNode controller contract used by Volcano processes.
+type Controller interface {
+	framework.Controller
+	CacheSyncSucceeded() <-chan struct{}
+}
+
+// NewController creates a HyperNode controller.
+func NewController() Controller {
+	return &hyperNodeController{cacheSyncSucceeded: make(chan struct{})}
+}
+
+// CacheSyncSucceeded is closed after all HyperNode controller caches are synced.
+func (hn *hyperNodeController) CacheSyncSucceeded() <-chan struct{} {
+	return hn.cacheSyncSucceeded
 }
 
 // Run starts the hyperNode controller
@@ -82,20 +103,32 @@ func (hn *hyperNodeController) Run(stopCh <-chan struct{}) {
 			return
 		}
 	}
-
 	if err := hn.discoveryManager.Start(); err != nil {
 		klog.ErrorS(err, "Failed to start network topology discovery manager")
 		return
 	}
-	go hn.watchDiscoveryResults()
+	hn.cacheSyncOnce.Do(func() {
+		if hn.cacheSyncSucceeded != nil {
+			close(hn.cacheSyncSucceeded)
+		}
+	})
+	hn.workerWG.Add(2)
+	go func() {
+		defer hn.workerWG.Done()
+		hn.watchDiscoveryResults()
+	}()
 
 	// Start HyperNode queue processor
-	go hn.processHyperNodeQueue()
+	go func() {
+		defer hn.workerWG.Done()
+		hn.processHyperNodeQueue()
+	}()
 
 	klog.InfoS("HyperNode controller started")
 	<-stopCh
 	hn.discoveryManager.Stop()
 	hn.hyperNodeQueue.ShutDown()
+	hn.workerWG.Wait()
 	klog.InfoS("HyperNode controller stopped")
 }
 
@@ -114,7 +147,8 @@ func (hn *hyperNodeController) Initialize(opt *framework.ControllerOption) error
 	hn.hyperNodeInformer = hn.vcInformerFactory.Topology().V1alpha1().HyperNodes()
 	hn.hyperNodeLister = hn.hyperNodeInformer.Lister()
 	hn.hyperNodeQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
-	hn.nodeLister = hn.informerFactory.Core().V1().Nodes().Lister()
+	nodeInformer := hn.informerFactory.Core().V1().Nodes()
+	hn.nodeLister = nodeInformer.Lister()
 
 	hn.setConfigMapNamespaceAndName()
 	hn.setupConfigMapInformer()
@@ -127,7 +161,7 @@ func (hn *hyperNodeController) Initialize(opt *framework.ControllerOption) error
 		hn.configMapName,
 	)
 
-	hn.discoveryManager = discovery.NewManager(configLoader, hn.configMapQueue, hn.kubeClient, hn.vcClient)
+	hn.discoveryManager = discovery.NewManagerWithInformers(configLoader, hn.configMapQueue, hn.kubeClient, hn.vcClient, nodeInformer, hn.hyperNodeInformer)
 
 	// Add event handlers for HyperNode
 	hn.hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -144,8 +178,10 @@ func (hn *hyperNodeController) watchDiscoveryResults() {
 	for result := range resultCh {
 		if result.HyperNodes != nil {
 			hn.reconcileTopology(result.Source, result.HyperNodes)
-			hn.discoveryManager.ResultSynced(result.Source)
 		}
+		// Always acknowledge a delivered result. Reconciliation errors are
+		// reported by reconcileTopology and must not block discovery reloads.
+		hn.discoveryManager.ResultSynced(result.Source)
 	}
 	klog.InfoS("Discovery result channel closed")
 }
@@ -179,12 +215,12 @@ func (hn *hyperNodeController) reconcileTopology(source string, discoveredNodes 
 	for name, node := range discoveredNodeMap {
 		if _, exists := existingNodeMap[name]; !exists {
 			klog.InfoS("Creating new HyperNode", "name", name, "source", source)
-			if err := utils.CreateHyperNode(hn.vcClient, node); err != nil {
-				klog.ErrorS(err, "Failed to create HyperNode", "name", name)
+			if err := utils.CreateOrUpdateHyperNode(hn.vcClient, node); err != nil {
+				klog.ErrorS(err, "Failed to create or update HyperNode", "name", name)
 			}
 		} else {
 			klog.InfoS("Updating HyperNode", "name", name, "source", source)
-			if err := utils.UpdateHyperNode(hn.vcClient, hn.hyperNodeLister, node); err != nil {
+			if err := utils.UpdateHyperNode(hn.vcClient, node); err != nil {
 				klog.ErrorS(err, "Failed to update HyperNode", "name", name)
 			}
 		}

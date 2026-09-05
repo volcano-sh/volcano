@@ -23,7 +23,7 @@ These workloads commonly leverage AI, Big Data, and HPC frameworks such as Spark
 
 Volcano incorporates over fifteen years of collective experience in operating diverse high-performance workloads at scale across multiple systems and platforms. It combines proven best practices and innovative concepts from the open-source community to deliver a powerful and flexible scheduling solution.
 
-As of 2025, Volcano has seen widespread adoption across numerous industries globally, including Internet/Cloud, Finance, Manufacturing, and Medical sectors. Many organizations and institutions are not only end-users but also active contributors to the project. Hundreds of contributors actively participate in code commits, pull request reviews, issue discussions, documentation updates, and design proposals. We encourage your participation in the ongoing development and growth of the Volcano project.
+As of 2026, Volcano has seen widespread adoption across numerous industries globally, including Internet/Cloud, Finance, Manufacturing, and Medical sectors. Many organizations and institutions are not only end-users but also active contributors to the project. Hundreds of contributors actively participate in code commits, pull request reviews, issue discussions, documentation updates, and design proposals. We encourage your participation in the ongoing development and growth of the Volcano project.
 
 
 > [!NOTE]
@@ -53,6 +53,11 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 - [Optimize LLM Workflows with Smart Infrastructure Enhanced by Volcano @ KubeCon 2024 China](https://www.youtube.com/watch?v=77Qn1-I-muQ)
 - [How Volcano Enable Next Wave of Intelligent Applications @ KubeCon 2024 China](https://www.youtube.com/watch?v=IzR7zJQ8vMw)
 - [Leverage Topology Modeling and Topology-Aware Scheduling to Accelerate LLM Training @ KubeCon 2024 China](https://www.youtube.com/watch?v=IB54LHQQ8lI)
+- [Cloud Native AI: Harness the Power of Advanced Scheduling for High-Performance AI/ML Training @ KubeCon 2025 EU](https://www.youtube.com/watch?v=yCyezOTVU_Y)
+- [Scaling Model Training with Volcano: iFlytek's Kubernetes Breakthrough @ KubeCon 2025 China](https://www.youtube.com/watch?v=JfN73WyvPbE)
+- [Intelligent Topology for AI Power: Network-Aware Scheduling Optimization with Volcano HyperNode @ KubeCon 2025 NA](https://www.youtube.com/watch?v=KwPHDI4qusc)
+- [Project Lightning Talk: Next-Gen AI Orchestration with Volcano on Kubernetes @ KubeCon 2026 EU](https://www.youtube.com/watch?v=0vYUzJ7eO8M)
+- [Volcano: Orchestrating the Full AI Lifecycle from Training to Inference and Agents @ KubeCon 2026 EU](https://www.youtube.com/watch?v=mzA0yuZ4QuY)
 
 
 ## Ecosystem
@@ -78,6 +83,8 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 - [Kthena](https://github.com/volcano-sh/kthena/tree/main/examples)
 
 ## Use Cases
+- [How Feedzai Built a Self-Service Spark on Kubernetes Platform with Volcano (KubeCon 2026 EU)](https://www.youtube.com/watch?v=jmz8c3oEmPY)
+- [iFLYTEK Wins CNCF End User Case Study Contest for Scalable AI Infrastructure Breakthroughs with Volcano](https://www.cncf.io/announcements/2025/06/09/iflytek-wins-cncf-end-user-case-study-contest-for-scalable-ai-infrastructure-breakthroughs-with-volcano/)
 - [Why Spark chooses Volcano as built-in batch scheduler on Kubernetes?](https://www.cncf.io/blog/2022/06/30/why-spark-chooses-volcano-as-built-in-batch-scheduler-on-kubernetes/)
 - [ING Bank: How Volcano empowers its big data analytics platform](https://www.cncf.io/blog/2023/02/21/ing-bank-how-volcano-empowers-its-big-data-analytics-platform/)
 - [Using Volcano as a custom scheduler for Apache Spark on Amazon EMR on EKS](https://docs.aws.amazon.com/emr/latest/EMR-on-EKS-DevelopmentGuide/tutorial-volcano.html)
@@ -206,10 +213,10 @@ Key:
 If Volcano helps your research, we appreciate your citations. Here is the BibTeX entry:
 
 ```bibtex
-@misc{volcano2025,
+@misc{volcano2026,
   title={Volcano: A Cloud Native Batch System},
   author={Klaus Ma and Kevin Wang and others},
-  year={2025},
+  year={2026},
   howpublished={\url{https://github.com/volcano-sh/volcano}},
 }
 ```
@@ -219,8 +226,7 @@ If Volcano helps your research, we appreciate your citations. Here is the BibTeX
 We hold community meetings for different timezones. See [Volcano Community Meeting Info](https://github.com/volcano-sh/community#community-meeting).
 
 Resources:
-- [Meeting notes and agenda](https://docs.google.com/document/d/1YLbF8zjZBiR9PbXQPB22iuc_L0Oui5A1lddVfRnZrqs/edit)
-- [Meeting link](https://zoom.us/j/91804791393)
+- [Meeting notes, agenda, and the meeting link](https://docs.google.com/document/d/1YLbF8zjZBiR9PbXQPB22iuc_L0Oui5A1lddVfRnZrqs/edit)
 - [Meeting Calendar](https://calendar.google.com/calendar/b/1/embed?src=volcano.sh.bot@gmail.com) | [Subscribe](https://calendar.google.com/calendar/b/1?cid=dm9sY2Fuby5zaC5ib3RAZ21haWwuY29t)
 
 ## Contact
@@ -237,4 +243,3 @@ If you have any question, feel free to reach out to us in the following ways:
 **Mailing List:** [volcano-sh Google Group](https://groups.google.com/forum/#!forum/volcano-sh)
 
 **WeChat:** Please add WeChat account `k8s2222` and request an invitation to the group chat.
-

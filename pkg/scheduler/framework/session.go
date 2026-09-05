@@ -51,6 +51,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/gate"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -228,6 +229,7 @@ func openSession(cache cache.Cache) *Session {
 	}
 
 	snapshot := cache.Snapshot()
+	taskCountsByQueue := make(map[api.QueueID]map[string]int, len(snapshot.Queues))
 
 	ssn.Jobs = snapshot.Jobs
 	for _, job := range ssn.Jobs {
@@ -235,6 +237,15 @@ func openSession(cache cache.Cache) *Session {
 			ssn.PodGroupOldState.Status[job.UID] = *job.PodGroup.Status.DeepCopy()
 			ssn.PodGroupOldState.Annotations[job.UID] = maps.Clone(job.PodGroup.GetAnnotations())
 		}
+		if taskCountsByQueue[job.Queue] == nil {
+			taskCountsByQueue[job.Queue] = make(map[string]int)
+		}
+		for status, tasks := range job.TaskStatusIndex {
+			taskCountsByQueue[job.Queue][strings.ToLower(status.String())] += len(tasks)
+		}
+	}
+	for queueID, queue := range snapshot.Queues {
+		metrics.UpdateQueueTaskCounts(queue.Name, taskCountsByQueue[queueID])
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
 
@@ -584,16 +595,19 @@ func getPodGroupPhase(jobInfo *api.JobInfo, unschedulable bool) scheduling.PodGr
 		return scheduling.PodGroupUnknown
 	}
 
-	scheduled := 0
+	scheduled := int(jobInfo.ScheduledTaskNum())
 	completed := 0
 	for s, tasks := range jobInfo.TaskStatusIndex {
-		if api.ScheduledStatus(s) {
-			scheduled += len(tasks)
-		}
 		if api.CompletedStatus(s) {
 			completed += len(tasks)
 		}
 	}
+	// Releasing tasks that were already scheduled (pods with deletionTimestamp
+	// gracefully terminating on a node) still occupy their slots, so count them
+	// as scheduled to keep the PodGroup phase from flipping to Pending/Inqueue
+	// during termination. Never-scheduled Releasing tasks are excluded so that
+	// deleting pending pods does not promote the PodGroup to Running.
+	scheduled += int(jobInfo.ReleasingScheduledTaskNum())
 
 	if int32(scheduled) >= jobInfo.PodGroup.Spec.MinMember {
 		// If all scheduled tasks are completed, then the podgroup is completed

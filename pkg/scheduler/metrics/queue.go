@@ -193,6 +193,26 @@ var (
 		}, []string{"queue_name", "resource"},
 	)
 
+	queueTaskCount = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "queue_session_start_task_count",
+			Help:      "Number of tasks by status in jobs directly assigned to this queue at the beginning of the latest scheduling session",
+		}, []string{"queue_name", "status"},
+	)
+	queueTaskStatuses = [...]string{
+		"pending",
+		"allocated",
+		"pipelined",
+		"binding",
+		"bound",
+		"running",
+		"releasing",
+		"succeeded",
+		"failed",
+		"unknown",
+	}
+
 	// Track all known scalar resources for each queue
 	knownScalarResources     = make(map[string]map[string]struct{})
 	knownScalarResourcesLock sync.RWMutex
@@ -283,6 +303,13 @@ func UpdateQueueInqueue(queueName string, milliCPU, memory float64, scalarResour
 	updateScalarResourceMetrics(queueInqueueScalarResource, queueName, scalarResources)
 }
 
+// UpdateQueueTaskCounts records the number of tasks in each status for a queue
+func UpdateQueueTaskCounts(queueName string, taskCounts map[string]int) {
+	for _, status := range queueTaskStatuses {
+		queueTaskCount.WithLabelValues(queueName, status).Set(float64(taskCounts[status]))
+	}
+}
+
 // DeleteQueueMetrics delete all metrics related to the queue
 func DeleteQueueMetrics(queueName string) {
 	queueAllocatedMilliCPU.DeleteLabelValues(queueName)
@@ -307,6 +334,7 @@ func DeleteQueueMetrics(queueName string) {
 	queueCapacityScalarResource.DeletePartialMatch(partialLabelMap)
 	queueRealCapacityScalarResource.DeletePartialMatch(partialLabelMap)
 	queueInqueueScalarResource.DeletePartialMatch(partialLabelMap)
+	queueTaskCount.DeletePartialMatch(partialLabelMap)
 	knownScalarResourcesLock.Lock()
 	delete(knownScalarResources, queueName)
 	knownScalarResourcesLock.Unlock()
