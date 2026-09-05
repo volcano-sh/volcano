@@ -959,3 +959,59 @@ func TestScheduledTaskNum(t *testing.T) {
 		t.Fatalf("ScheduledTaskNum() = %v, want %v", got, want)
 	}
 }
+
+func TestIsSuperPodJob(t *testing.T) {
+	tests := []struct {
+		name string
+		anno map[string]string
+		want bool
+	}{
+		{
+			name: "no sp-block annotation",
+			anno: nil,
+			want: false,
+		},
+		{
+			name: "invalid sp-block value",
+			anno: map[string]string{spBlockAnnotationKey: "invalid"},
+			want: false,
+		},
+		{
+			name: "zero block size",
+			anno: map[string]string{spBlockAnnotationKey: "0"},
+			want: false,
+		},
+		{
+			name: "negative block size",
+			anno: map[string]string{spBlockAnnotationKey: "-16"},
+			want: false,
+		},
+		{
+			name: "positive but not multiple of block unit",
+			anno: map[string]string{spBlockAnnotationKey: "8"},
+			want: false,
+		},
+		{
+			name: "valid block size equals block unit",
+			anno: map[string]string{spBlockAnnotationKey: "16"},
+			want: true,
+		},
+		{
+			name: "valid block size multiple of block unit",
+			anno: map[string]string{spBlockAnnotationKey: "32"},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			job := NewJobInfo("test-job")
+			pg := scheduling.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: tt.anno,
+				},
+			}
+			job.SetPodGroup(&PodGroup{PodGroup: pg})
+			assert.Equal(t, tt.want, job.IsSuperPodJob())
+		})
+	}
+}

@@ -192,6 +192,11 @@ func (ssn *Session) AddSimulateAllocatableFn(name string, fn api.SimulateAllocat
 	ssn.simulateAllocatableFns[name] = fn
 }
 
+// AddBatchVictimScoreFn add batchVictimScoreFn function
+func (ssn *Session) AddBatchVictimScoreFn(name string, fn api.BatchVictimScoreFn) {
+	ssn.batchVictimScoreFns[name] = fn
+}
+
 func (ssn *Session) AddSimulatePredicateFn(name string, fn api.SimulatePredicateFn) {
 	ssn.simulatePredicateFns[name] = fn
 }
@@ -883,6 +888,34 @@ func (ssn *Session) SimulateAllocatableFn(ctx context.Context, state fwk.CycleSt
 		}
 	}
 	return true
+}
+
+// BatchVictimNodeScore invokes batch victim score functions of the plugins.
+// Scores are summed across all enabled plugins (matching BatchNodeOrderFn semantics).
+func (ssn *Session) BatchVictimNodeScore(
+	initiator *api.TaskInfo,
+	nodesToVictims map[string][]*api.TaskInfo,
+) (map[string]float64, error) {
+	scores := make(map[string]float64, len(nodesToVictims))
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledVictimScore) {
+				continue
+			}
+			fn, found := ssn.batchVictimScoreFns[plugin.Name]
+			if !found {
+				continue
+			}
+			nodeScores, err := fn(initiator, nodesToVictims)
+			if err != nil {
+				return nil, err
+			}
+			for nodeName, score := range nodeScores {
+				scores[nodeName] += score
+			}
+		}
+	}
+	return scores, nil
 }
 
 // SimulatePredicateFn invoke simulatePredicateFn function of the plugins
