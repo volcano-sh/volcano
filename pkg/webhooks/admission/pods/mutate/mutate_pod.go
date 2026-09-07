@@ -231,7 +231,6 @@ func patchAffinity(pod *v1.Pod, resGroupConfig wkconfig.ResGroupConfig) *patchOp
 	var affinity v1.Affinity
 	err := json.Unmarshal([]byte(resGroupConfig.Affinity), &affinity)
 	if err != nil {
-		fmt.Println("Failed to unmarshal JSON:", err)
 		klog.V(3).Infof("Failed to unmarshal JSON: %s", err)
 		return nil
 	}
