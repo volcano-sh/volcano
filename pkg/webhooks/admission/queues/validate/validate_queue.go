@@ -27,9 +27,9 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/util/retry"
@@ -371,7 +371,17 @@ func validateHierarchicalQueueStateTransition(queue, oldQueue *schedulingv1beta1
 		if isClosedByParentCascade(queue) {
 			return nil
 		}
-		return cascadeCloseDescendants(queue)
+		// Cascade-closing descendants is a best-effort side effect of the parent's
+		// own, already-valid state transition: it has no cross-object transaction to
+		// roll back to. If one descendant fails to close, admission of the parent's
+		// close request must not be denied on that account -- doing so would leave
+		// whichever descendants did close stuck in that state while the parent that
+		// caused it gets rejected back to Open, which is a worse inconsistency than
+		// a single straggling descendant that a retry (or a future reconcile) can
+		// still close. So log and allow; see the discussion on #5351 for context.
+		if err := cascadeCloseDescendants(queue); err != nil {
+			klog.Errorf("cascade close for queue %s completed with errors: %v", queue.Name, err)
+		}
 	}
 
 	return nil

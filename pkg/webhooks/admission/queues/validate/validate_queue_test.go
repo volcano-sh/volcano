@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
+	clienttesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -2787,6 +2788,86 @@ func TestValidateHierarchicalQueueStateTransition(t *testing.T) {
 			t.Fatalf("expected closed-by-parent annotation on grandchild queue")
 		}
 	})
+}
+
+// TestValidateHierarchicalQueueStateTransitionCascadePartialFailure ensures that a
+// descendant failing to cascade-close does not deny admission of the parent's own,
+// already-valid close transition: the parent update must still be allowed, and
+// descendants that did close successfully must not be reverted. See the discussion
+// on volcano-sh/volcano#5351 about cascade-close having no cross-object rollback.
+func TestValidateHierarchicalQueueStateTransitionCascadePartialFailure(t *testing.T) {
+	savedConfig := saveQueueValidateTestConfig()
+	defer savedConfig.restore()
+
+	config.EnableCascadeChildQueueClose = true
+
+	parentQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "parent-queue-2"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "root"},
+		Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateOpen},
+	}
+	okChild := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "ok-child-queue"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "parent-queue-2"},
+		Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateOpen},
+	}
+	failingChild := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "failing-child-queue"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "parent-queue-2"},
+		Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateOpen},
+	}
+
+	fakeVolcanoClient := fakeclient.NewSimpleClientset(&parentQueue, &okChild, &failingChild)
+	fakeVolcanoClient.PrependReactor("update", "queues", func(action clienttesting.Action) (bool, runtime.Object, error) {
+		updateAction, ok := action.(clienttesting.UpdateAction)
+		if !ok {
+			return false, nil, nil
+		}
+		obj, ok := updateAction.GetObject().(*schedulingv1beta1.Queue)
+		if ok && obj.Name == failingChild.Name {
+			return true, nil, fmt.Errorf("simulated conflict closing %s", failingChild.Name)
+		}
+		return false, nil, nil
+	})
+	config.VolcanoClient = fakeVolcanoClient
+
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := setupQueueInformerWithIndex(informerFactory)
+	config.QueueInformer = queueInformer
+	config.QueueLister = informerFactory.Scheduling().V1beta1().Queues().Lister()
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	informerFactory.Start(stopCh)
+	for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			t.Fatalf("failed to sync cache: %v", informerType)
+		}
+	}
+
+	oldParent := parentQueue.DeepCopy()
+	newParent := parentQueue.DeepCopy()
+	newParent.Status.State = schedulingv1beta1.QueueStateClosed
+
+	if err := validateHierarchicalQueueStateTransition(newParent, oldParent); err != nil {
+		t.Fatalf("parent's own close must be admitted even if a descendant fails to cascade-close, got error: %v", err)
+	}
+
+	updatedOkChild, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), okChild.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("failed to get ok child queue: %v", err)
+	}
+	if updatedOkChild.Status.State != schedulingv1beta1.QueueStateClosed {
+		t.Fatalf("expected ok child queue to be closed, got %s", updatedOkChild.Status.State)
+	}
+
+	updatedFailingChild, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), failingChild.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("failed to get failing child queue: %v", err)
+	}
+	if updatedFailingChild.Status.State != schedulingv1beta1.QueueStateOpen {
+		t.Fatalf("expected failing child queue to remain open after its cascade-close failed, got %s", updatedFailingChild.Status.State)
+	}
 }
 
 func TestValidateQueueDeletingClosedBeforeDeleteCheck(t *testing.T) {
