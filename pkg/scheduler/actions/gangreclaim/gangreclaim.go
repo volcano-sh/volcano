@@ -32,6 +32,8 @@ const (
 	MaxDomainsKey = "maxDomains"
 	// AllowWholeBundleKey toggles whether whole-job ("whole-bundle") victim bundles may be selected.
 	AllowWholeBundleKey = "allowWholeBundle"
+	// VictimOrderPolicyKey selects safe-first or priority-first victim bundle ordering.
+	VictimOrderPolicyKey = "victimOrderPolicy"
 	// defaultMaxDomains is used when maxDomains is unset or invalid (<= 0).
 	defaultMaxDomains = 8
 	// defaultWholeBundleOn is the default for allowWholeBundle.
@@ -43,14 +45,17 @@ type Action struct {
 	maxDomains int
 	// allowWholeBundle permits selecting whole-job victim bundles when true.
 	allowWholeBundle bool
+	// victimOrderPolicy controls whether safe bundles or lower-priority workloads are considered first.
+	victimOrderPolicy utils.VictimOrderPolicy
 	// configured flag for predicate error cache
 	enablePredicateErrorCache bool
 }
 
 func New() *Action {
 	return &Action{
-		maxDomains:       defaultMaxDomains,
-		allowWholeBundle: defaultWholeBundleOn,
+		maxDomains:        defaultMaxDomains,
+		allowWholeBundle:  defaultWholeBundleOn,
+		victimOrderPolicy: utils.VictimOrderSafeFirst,
 	}
 }
 
@@ -69,6 +74,14 @@ func (gr *Action) parseArguments(ssn *framework.Session) {
 		gr.maxDomains = defaultMaxDomains
 	}
 	arguments.GetBool(&gr.allowWholeBundle, AllowWholeBundleKey)
+	configuredPolicy := string(utils.VictimOrderSafeFirst)
+	arguments.GetString(&configuredPolicy, VictimOrderPolicyKey)
+	policy, valid := utils.ParseVictimOrderPolicy(configuredPolicy)
+	if !valid {
+		klog.Warningf("Invalid %s value %q for action %s, falling back to %q",
+			VictimOrderPolicyKey, configuredPolicy, gr.Name(), utils.VictimOrderSafeFirst)
+	}
+	gr.victimOrderPolicy = policy
 
 	// Honor allocate's predicateErrorCacheEnable for the per-sub-job simulation, defaulting to
 	// enabled when allocate is not configured.
@@ -226,7 +239,7 @@ func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l
 	if len(bundles) == 0 {
 		return nil
 	}
-	utils.SortBundlesForReclaim(bundles, jobNeed, lessQueueFn, ssn.Queues)
+	utils.SortBundlesForReclaim(bundles, jobNeed, gr.victimOrderPolicy, lessQueueFn, ssn.Queues)
 
 	evictCtx := &api.EvictionContext{
 		Kind:      api.EvictionKindGangReclaim,
@@ -246,7 +259,7 @@ func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l
 	if len(valid) == 0 {
 		return nil
 	}
-	utils.SortBundlesForReclaim(valid, jobNeed, lessQueueFn, ssn.Queues)
+	utils.SortBundlesForReclaim(valid, jobNeed, gr.victimOrderPolicy, lessQueueFn, ssn.Queues)
 	selected := make([]*utils.Bundle, 0, len(valid))
 	for _, bundle := range valid {
 		if bundle.Type == utils.BundleWhole && !gr.allowWholeBundle {
