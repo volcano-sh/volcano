@@ -160,6 +160,23 @@ The argument is configured independently on `gangpreempt` and `gangreclaim`. An 
 
 For `gangreclaim`, victim queue ordering is always the outermost key. `victimOrderPolicy` only changes ordering among workloads inside the same victim queue, so queue-level fairness cannot be bypassed by workload priority or bundle type. For `gangpreempt`, the policy applies inside the relevant preemption queue context. Remaining ties use the action's existing workload ordering, an efficiency metric that compares local gain in the chosen HyperNode against global disruption of the victim job, and finally deterministic identifiers.
 
+Queue selection and workload selection are separate priority scopes rather than values combined into one global score. `gangreclaim` first uses `QueueOrderFn` to choose which underused queue gets an opportunity to reclaim. With the capacity plugin, a higher `Queue.spec.priority` is scheduled first; queues at the same priority are ordered by their allocated-to-deserved share, with the more underused queue first.
+
+The action then uses `VictimQueueOrderFn` to choose where resources are reclaimed from. In flat capacity mode this falls back to the reverse of `QueueOrderFn`, so a lower-priority victim queue is considered before a higher-priority victim queue and, at equal queue priority, a more overused queue is considered first. Hierarchical capacity may first prefer victim queues according to their relationship to the reclaimer in the queue tree, then uses the same fallback ordering when that relationship ties.
+
+Only after a victim queue has been ordered does `victimOrderPolicy` compare its workloads. Consequently, a high-priority workload in a lower-priority victim queue can be reclaimed before a low-priority workload in a protected, higher-priority victim queue. This is intentional: queue priority, deserved resources, guarantees, reclaimability, and hierarchy define the outer resource-isolation boundary; `JobInfo.Priority` protects workloads within that boundary.
+
+The complete ordering model is:
+
+```text
+reclaimer QueueOrderFn
+-> victim VictimQueueOrderFn
+-> victimOrderPolicy (JobInfo.Priority and Safe/Whole)
+-> existing workload order
+-> ROI
+-> deterministic tie-break
+```
+
 A practical way to read the efficiency metric is "how much local relief do we get per unit of global disruption."
 
 For each resource dimension the preemptor actually requests (for example CPU, memory, or GPU), the scheduler compares two quantities from the candidate bundle. `Local` is what the bundle frees inside the current HyperNode, which is the immediate gain for this eviction attempt. `Global` is the total disruption cost of selecting that bundle at cluster scope. For a safe bundle, `Global` is usually the sum of the resources of the evicted tasks. For a whole bundle, `Global` includes the full gang-level disruption implied by breaking that victim job.

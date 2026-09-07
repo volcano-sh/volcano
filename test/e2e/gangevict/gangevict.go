@@ -1734,6 +1734,47 @@ var _ = Describe("Gang-aware priority-first victim ordering E2E Test", func() {
 		Expect(countReadyTasks(ctx, lowVictim)).To(Equal(0))
 		Expect(countReadyTasks(ctx, mediumVictim)).To(Equal(2))
 	})
+
+	It("GR-P2: victim queue priority remains outside the queue-local bundle policy", func() {
+		reclaimerQueue := "gr-queue-order-reclaimer-q"
+		lowPriorityVictimQueue := "gr-queue-order-low-q"
+		highPriorityVictimQueue := "gr-queue-order-high-q"
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{reclaimerQueue, lowPriorityVictimQueue, highPriorityVictimQueue},
+			NodesNumLimit:      4,
+			NodesResourceLimit: e2eutil.CPU2Mem2,
+			DeservedResource: map[string]v1.ResourceList{
+				reclaimerQueue:          deservedCPU(2),
+				highPriorityVictimQueue: deservedCPU(4),
+			},
+			PriorityClasses: map[string]int32{
+				priorityFirstHigh: priorityFirstHighVal,
+				priorityFirstLow:  priorityFirstLowVal,
+			},
+		})
+
+		By("Making the reclaimer queue highest priority and protecting one victim queue over the other")
+		setQueuePriority(ctx, reclaimerQueue, 200)
+		setQueuePriority(ctx, highPriorityVictimQueue, 100)
+		setQueuePriority(ctx, lowPriorityVictimQueue, 10)
+
+		By("Creating a tight gang in the lower-priority victim queue, so it only offers a Whole bundle")
+		lowQueueVictim := createGangJob(ctx, "low-queue-victim-grp2", lowPriorityVictimQueue, priorityFirstLow, e2eutil.CPU1Mem1, 2, 2, true)
+		Expect(e2eutil.WaitTasksReady(ctx, lowQueueVictim, 2)).To(Succeed())
+
+		By("Creating an elastic gang in the higher-priority victim queue, so it offers a Safe bundle")
+		highQueueVictim := createGangJob(ctx, "high-queue-victim-grp2", highPriorityVictimQueue, priorityFirstLow, e2eutil.CPU1Mem1, 6, 4, true)
+		Expect(e2eutil.WaitTasksReady(ctx, highQueueVictim, 6)).To(Succeed())
+
+		By("Submitting a two-task gang to the underused reclaimer queue")
+		reclaimer := createGangJob(ctx, "reclaimer-grp2", reclaimerQueue, priorityFirstHigh, e2eutil.CPU1Mem1, 2, 2, false)
+		Expect(e2eutil.WaitTasksReady(ctx, reclaimer, 2)).To(Succeed())
+
+		By("Expecting the lower-priority victim queue's Whole bundle to precede the higher-priority queue's Safe bundle")
+		time.Sleep(10 * time.Second)
+		Expect(countReadyTasks(ctx, lowQueueVictim)).To(Equal(0))
+		Expect(countReadyTasks(ctx, highQueueVictim)).To(Equal(6))
+	})
 })
 
 // countReadyTasks returns the number of Running/Succeeded pods for a job.
