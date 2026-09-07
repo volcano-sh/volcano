@@ -47,7 +47,7 @@ func NewCustomMockSchedulerCache(schedulerName string,
 	evictor Evictor,
 	statusUpdater StatusUpdater,
 	PodGroupBinder BatchBinder,
-	recorder record.EventRecorder,
+	recorder record.EventRecorderLogger,
 ) *SchedulerCache {
 	options.Default() // init options first because cache may reference server opts in options
 	msc := newMockSchedulerCache(schedulerName)

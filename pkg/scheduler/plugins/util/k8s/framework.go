@@ -25,6 +25,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
@@ -40,6 +41,7 @@ type Framework struct {
 	snapshot         *Snapshot
 	kubeClient       kubernetes.Interface
 	informerFactory  informers.SharedInformerFactory
+	eventRecorder    events.EventRecorderLogger
 	sharedDRAManager fwk.SharedDRAManager
 	sharedCSIManager fwk.CSIManager
 }
@@ -80,6 +82,13 @@ func WithClientSet(clientSet kubernetes.Interface) Option {
 func WithInformerFactory(informerFactory informers.SharedInformerFactory) Option {
 	return func(o *Framework) {
 		o.informerFactory = informerFactory
+	}
+}
+
+// WithEventRecorder sets the event recorder for the framework.
+func WithEventRecorder(eventRecorder record.EventRecorderLogger) Option {
+	return func(o *Framework) {
+		o.eventRecorder = record.NewEventRecorderAdapter(eventRecorder)
 	}
 }
 
@@ -132,9 +141,8 @@ func (f *Framework) VolumeBinder() volumebinding.SchedulerVolumeBinder {
 	panic("not implemented")
 }
 
-// EventRecorder was introduced in k8s v1.19.6 and to be implemented
 func (f *Framework) EventRecorder() events.EventRecorderLogger {
-	return nil
+	return f.eventRecorder
 }
 
 func (f *Framework) AddNominatedPod(logger klog.Logger, pod fwk.PodInfo, nominatingInfo *fwk.NominatingInfo) {
@@ -245,7 +253,9 @@ func (f *Framework) GetVolcanoNodeInfo(nodeName string) (*api.NodeInfo, error) {
 
 // NewFramework is the constructor of Framework
 func NewFramework(nodeMap map[string]fwk.NodeInfo, opts ...Option) *Framework {
-	fw := &Framework{}
+	fw := &Framework{
+		eventRecorder: &events.FakeRecorder{},
+	}
 
 	for _, opt := range opts {
 		opt(fw)

@@ -199,6 +199,7 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		k8s.WithSharedCSIManager(nodevolumelimits.NewCSIManager(ssn.InformerFactory().Storage().V1().CSINodes().Lister())),
 		k8s.WithClientSet(ssn.KubeClient()),
 		k8s.WithInformerFactory(ssn.InformerFactory()),
+		k8s.WithEventRecorder(ssn.EventRecorder()),
 	)
 	pp.Handle = handle
 
