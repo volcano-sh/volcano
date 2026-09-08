@@ -326,6 +326,45 @@ func TestReclaim(t *testing.T) {
 			ExpectEvicted:  []string{"c1/victim-pod"},
 		},
 		{
+			// Regression (#5520): a gang's second task saw reclaimees=[] on n1 because
+			// the first task's eviction had already moved the victim to Releasing. The
+			// unconditional "continue" on empty reclaimees stopped before reaching the
+			// FutureIdle check, so the second task never pipelined, JobPipelined stayed
+			// false, and stmt.Discard() rolled back the first eviction, leaving the gang
+			// Pending with reclaim repeating the same evict/discard cycle each session.
+			//
+			// With the fix, the second task pipelines via FutureIdle (1 CPU released by
+			// the first eviction, not yet reflected in Idle) even though reclaimees is
+			// empty, so JobPipelined succeeds and the eviction commits.
+			Name: "pipeline second task via FutureIdle when reclaimees empty after prior eviction",
+			Plugins: map[string]framework.PluginBuilder{
+				conformance.PluginName: conformance.New,
+				gang.PluginName:        gang.New,
+				proportion.PluginName:  proportion.New,
+			},
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg-victim", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
+				util.BuildPodGroupWithPrio("pg-preemptor", "c1", "q2", 2, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+			},
+			Pods: []*v1.Pod{
+				// victim occupies all 2 CPU on n1; both preemptor tasks need 1 CPU each.
+				util.BuildPod("c1", "victim", "n1", v1.PodRunning, api.BuildResourceList("2", "2G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor-task1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg-preemptor", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptor-task2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg-preemptor", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				// q1 deserves 0.2 CPU (weight 1 of 10, cluster has 2 CPU), uses 2 CPU -> overused -> victim is reclaimable.
+				util.BuildQueue("q1", 1, nil),
+				// q2 deserves 1.8 CPU (weight 9 of 10, cluster has 2 CPU), uses 0 -> starving -> preemptor reclaims.
+				util.BuildQueue("q2", 9, nil),
+			},
+			ExpectEvictNum: 1,
+			ExpectEvicted:  []string{"c1/victim"},
+		},
+		{
 			// Regression: the original victim loop placed the "resources satisfied"
 			// check AFTER each eviction rather than before it.  This caused at least
 			// one victim to be spuriously evicted even when the node's FutureIdle was
