@@ -80,7 +80,7 @@ For `PurposeEvict`, ordering should favor feasibility and latency. Gradients are
 Instead of extending the current actions, this design introduces two dedicated actions: `gangPreempt` and `gangReclaim`. The existing `preempt` and `reclaim` actions remain unchanged, while gang-aware behavior is isolated in the new actions for cleaner rollout and lower regression risk.
 
 ```yaml
-actions: "allocate, backfill, gangpreempt, gangreclaim"
+actions: "allocate, backfill, gangreclaim, gangpreempt"
 configurations:
   - name: gangpreempt
     arguments:
@@ -153,29 +153,36 @@ Both sorting passes use the same comparator family, but on different inputs. The
 
 The `victimOrderPolicy` action argument controls the ordering of workloads and bundle types. It accepts two values:
 
-- `safe-first` is the default and preserves the legacy comparator. For preemption the order is Safe/Whole, existing victim job order, ROI, then deterministic identifiers. For reclamation it is Safe/Whole, victim queue order, ROI, then deterministic identifiers. It adds no numeric workload-priority comparison or queue-grouping tie-break. Safe bundles across queues therefore precede whole bundles.
+- `safe-first` is the default. Within a victim queue, it considers Safe bundles before Whole bundles, then prefers lower `JobInfo.Priority`. It prioritizes gang integrity within that queue.
 - `priority-first` prefers lower-priority workloads before higher-priority workloads. This allows a lower-priority workload's whole bundle to be used before a higher-priority workload's safe bundle. Within the same priority level, safe bundles remain ahead of whole bundles to avoid unnecessary gang disruption.
 
 The argument is configured independently on `gangpreempt` and `gangreclaim`. An invalid value emits a warning and falls back to `safe-first`.
 
-With `priority-first`, `gangreclaim` puts victim queue ordering outermost, grouping tied queues by UID before comparing workload priority and Safe/Whole. Remaining ties use ROI and deterministic identifiers. `gangpreempt` only considers its own queue and orders by workload priority, Safe/Whole, existing victim job order, ROI, then deterministic identifiers. These new ordering rules require explicit opt-in; omitted or invalid configuration retains legacy ordering.
+Both policies put victim queue ordering outermost for `gangreclaim`, grouping tied queues by UID before applying the queue-local policy. `gangpreempt` only considers its own queue. After the policy keys, preemption uses its existing victim job comparator; both actions then use ROI and deterministic identifiers. Equal-priority workloads prefer Safe before Whole across that priority level, rather than exhausting each individual workload.
+
+This changes the previous gang-aware default comparator: reclamation now compares queues before bundle types, and both actions explicitly compare numeric workload priority within each bundle type under `safe-first`. It does not change the legacy task-level `preempt` and `reclaim` actions.
 
 Queue selection and workload selection are separate priority scopes rather than values combined into one global score. `gangreclaim` first uses `QueueOrderFn` to choose which underused queue gets an opportunity to reclaim. With the capacity plugin, a higher `Queue.spec.priority` is scheduled first; queues at the same priority are ordered by their allocated-to-deserved share, with the more underused queue first.
 
 The action then uses `VictimQueueOrderFn` to choose where resources are reclaimed from. In flat capacity mode this falls back to the reverse of `QueueOrderFn`, so a lower-priority victim queue is considered before a higher-priority victim queue and, at equal queue priority, a more overused queue is considered first. Hierarchical capacity may first prefer victim queues according to their relationship to the reclaimer in the queue tree, then uses the same fallback ordering when that relationship ties.
 
-Under `priority-first`, only after a victim queue has been ordered are its workloads compared. Consequently, a high-priority workload in a lower-priority victim queue can be reclaimed before a low-priority workload in a protected, higher-priority victim queue. Under `safe-first`, bundle type precedes victim queue ordering. Both policies remain subject to the existing eligibility and resource checks.
+Under either policy, a queue preferred by the victim queue comparator can offer an executable Whole bundle that precedes a more protected queue's Safe bundle. Workload priority and bundle type cannot override victim queue ordering. Both policies remain subject to the existing eligibility and resource checks.
 
-The `priority-first` reclamation ordering model is:
+The reclamation ordering model is:
 
 ```text
 reclaimer QueueOrderFn
 -> victim VictimQueueOrderFn
--> workload priority
--> Safe/Whole
+-> queue-local policy:
+     safe-first:     Safe/Whole -> workload priority
+     priority-first: workload priority -> Safe/Whole
 -> ROI
 -> deterministic tie-break
 ```
+
+Resource entitlement and action order are separate from victim ordering. To attempt recovery of deserved resources before replacing lower-priority workloads in the requesting queue, configure `gangreclaim` before `gangpreempt`, as in the example above. Reclamation still requires the existing `PreemptiveFn` resource checks; ordering cannot grant an overused queue additional entitlement. Multi-resource and hierarchical eligibility remain plugin-defined. The actions do not construct a joint plan combining cross-queue reclamation and same-queue preemption.
+
+`allowWholeBundle` remains the separate permission to select Whole bundles. Selection stops once resources and placement simulation satisfy the target; neither policy requires clearing a workload or a queue. Known limitation: disabled or partially approved Whole bundles can consume capacity filtering's temporary reclamation allowance before being discarded, excluding later Safe candidates. A second sort does not recover those candidates; resolving this filtering interaction is separate from defining the comparator.
 
 A practical way to read the efficiency metric is "how much local relief do we get per unit of global disruption."
 
@@ -242,9 +249,9 @@ def select_gang_victims_in_hypernode(preemptor, hypernode, candidates, ssn):
 
 The two new actions share the same core mechanism but use different comparator orders for bundle sorting.
 
-`gangPreempt` chooses victims in the relevant queue context. With `safe-first`, disruption class precedes the existing victim job comparator. With `priority-first`, numeric workload priority precedes disruption class and efficiency cannot override either key.
+`gangPreempt` chooses victims in the relevant queue context. With `safe-first`, disruption class precedes numeric workload priority. With `priority-first`, numeric workload priority precedes disruption class. The existing victim job comparator and efficiency cannot override either key.
 
-`gangReclaim` recovers resources from overused queues for under-served queues. Reclaimability checks apply to both policies. `safe-first` preserves bundle-type-first ordering; `priority-first` makes victim queue ordering precede workload priority and bundle type.
+`gangReclaim` recovers resources from overused queues for under-served queues. Reclaimability checks apply to both policies. Victim queue ordering precedes both workload priority and bundle type; the policy only swaps those two keys within each victim queue.
 
 This separation keeps existing scheduling semantics clear while letting both actions benefit from the same HyperNode and bundle mechanics.
 
