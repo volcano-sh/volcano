@@ -308,7 +308,11 @@ func TestSortBundlesForReclaim_VictimQueuePrecedesBundlePolicy(t *testing.T) {
 	for _, policy := range []VictimOrderPolicy{VictimOrderSafeFirst, VictimOrderPriorityFirst} {
 		bundles := []*Bundle{otherSafe, preferredWhole}
 		SortBundlesForReclaim(bundles, need, policy, lessQueue, queues)
-		assert.Equal(t, api.TaskID("preferred-whole"), bundles[0].Tasks[0].UID)
+		want := api.TaskID("other-safe")
+		if policy == VictimOrderPriorityFirst {
+			want = "preferred-whole"
+		}
+		assert.Equal(t, want, bundles[0].Tasks[0].UID)
 	}
 }
 
@@ -326,8 +330,48 @@ func TestSortBundlesForReclaim_TiedVictimQueuesRemainGrouped(t *testing.T) {
 	for _, policy := range []VictimOrderPolicy{VictimOrderSafeFirst, VictimOrderPriorityFirst} {
 		bundles := []*Bundle{queueBSafe, queueAWhole}
 		SortBundlesForReclaim(bundles, (&api.Resource{MilliCPU: 1000}).Clone(), policy, tiedQueueOrder, queues)
-		assert.Equal(t, api.TaskID("a-whole"), bundles[0].Tasks[0].UID)
+		want := api.TaskID("b-safe")
+		if policy == VictimOrderPriorityFirst {
+			want = "a-whole"
+		}
+		assert.Equal(t, want, bundles[0].Tasks[0].UID)
 	}
+}
+
+func TestSafeFirstPreservesLegacyTieBreaks(t *testing.T) {
+	low := &api.JobInfo{UID: "low", Queue: "a", Priority: 10}
+	high := &api.JobInfo{UID: "high", Queue: "b", Priority: 50}
+	l := testBundle(BundleWhole, low, "low", 1000, 4000)
+	h := testBundle(BundleWhole, high, "high", 1000, 2000)
+	need := &api.Resource{MilliCPU: 1000}
+	queues := map[api.QueueID]*api.QueueInfo{"a": {UID: "a"}, "b": {UID: "b"}}
+
+	t.Run("preempt honors existing job order over numeric priority", func(t *testing.T) {
+		bundles := []*Bundle{l, h}
+		SortBundlesForPreempt(bundles, need, VictimOrderSafeFirst, func(l, r *api.JobInfo) bool {
+			return l.Priority > r.Priority
+		})
+		assert.Equal(t, api.TaskID("high"), bundles[0].Tasks[0].UID)
+	})
+	for _, tc := range []struct {
+		name string
+		less func(l, r *api.QueueInfo) bool
+	}{
+		{name: "absent queue comparator"},
+		{name: "tied queues", less: func(l, r *api.QueueInfo) bool { return false }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bundles := []*Bundle{l, h}
+			SortBundlesForReclaim(bundles, need, VictimOrderSafeFirst, tc.less, queues)
+			assert.Equal(t, api.TaskID("high"), bundles[0].Tasks[0].UID)
+		})
+	}
+	t.Run("reclaim uses ROI within a queue regardless of priority", func(t *testing.T) {
+		high.Queue = low.Queue
+		bundles := []*Bundle{l, h}
+		SortBundlesForReclaim(bundles, need, VictimOrderSafeFirst, nil, queues)
+		assert.Equal(t, api.TaskID("high"), bundles[0].Tasks[0].UID)
+	})
 }
 
 func TestSortBundlesForPreempt_PriorityFirstUsesSafeFirstForEqualPriority(t *testing.T) {
