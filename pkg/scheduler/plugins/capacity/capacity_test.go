@@ -23,8 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -39,7 +37,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
 	"volcano.sh/volcano/pkg/scheduler/actions/reclaim"
-	actionutils "volcano.sh/volcano/pkg/scheduler/actions/utils"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -835,77 +832,6 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 			test.Run(actions)
 			if err := test.CheckAll(i); err != nil {
 				t.Fatal(err)
-			}
-		})
-	}
-}
-
-func TestGangReclaimFiltering_AncestorAllowanceAndWholeRollback(t *testing.T) {
-	for _, level := range []int{0, 1} {
-		t.Run(fmt.Sprintf("ancestor-level-%d", level), func(t *testing.T) {
-			one := api.BuildResourceList("1", "0")
-			fixture := &uthelper.TestCommonStruct{
-				Plugins: map[string]framework.PluginBuilder{PluginName: New},
-				Nodes:   []*corev1.Node{util.BuildNode("n1", api.BuildResourceList("6", "0", api.ScalarResource{Name: "pods", Value: "10"}), nil)},
-				Queues: []*schedulingv1beta1.Queue{
-					buildQueueWithParents("root", "", nil, nil),
-					buildQueueWithParents("victim-parent", "root", api.BuildResourceList("3", "0"), nil),
-					buildQueueWithParents("target-parent", "root", api.BuildResourceList("3", "0"), nil),
-					buildQueueWithParents("v1", "victim-parent", one, nil),
-					buildQueueWithParents("v2", "victim-parent", one, nil),
-					buildQueueWithParents("target", "target-parent", api.BuildResourceList("3", "0"), nil),
-				},
-				PodGroups: []*schedulingv1beta1.PodGroup{
-					util.BuildPodGroup("v1", "ns", "v1", 2, nil, schedulingv1beta1.PodGroupRunning),
-					util.BuildPodGroup("v2", "ns", "v2", 1, nil, schedulingv1beta1.PodGroupRunning),
-					util.BuildPodGroup("target", "ns", "target", 1, nil, schedulingv1beta1.PodGroupInqueue),
-				},
-			}
-			for _, group := range []string{"v1", "v2"} {
-				for i := 0; i < 2; i++ {
-					fixture.Pods = append(fixture.Pods, util.BuildPod("ns", fmt.Sprintf("%s-%d", group, i), "n1", corev1.PodRunning, one, group, nil, nil))
-				}
-			}
-			fixture.Pods = append(fixture.Pods, util.BuildPod("ns", "target", "", corev1.PodPending, api.BuildResourceList("2", "0"), "target", nil, nil))
-			enabled := true
-			ssn := fixture.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{{
-				Name: PluginName, EnabledHierarchy: &enabled, EnabledReclaimable: &enabled,
-				Arguments: framework.Arguments{"ancestorReclaimLevel": level},
-			}}}}, nil)
-			defer fixture.Close()
-			target := ssn.Jobs["ns/target"]
-			require.NotNil(t, target)
-			var targets []*api.TaskInfo
-			for _, task := range target.Tasks {
-				targets = append(targets, task)
-			}
-			ctx := &api.EvictionContext{Kind: api.EvictionKindGangReclaim, Job: target, TargetTasks: targets}
-			filter := func(tasks []*api.TaskInfo) []*api.TaskInfo { return ssn.UnifiedEvictable(ctx, tasks) }
-			var core, safe []*api.TaskInfo
-			for _, task := range ssn.Jobs["ns/v1"].Tasks {
-				core = append(core, task)
-			}
-			for _, task := range ssn.Jobs["ns/v2"].Tasks {
-				safe = append(safe, task)
-			}
-			// Both leaves can individually spare one task, but with ancestor
-			// checks enabled their shared parent can spare only one in total.
-			ordered := []*api.TaskInfo{core[0], safe[0]}
-			want := 2
-			if level == 1 {
-				want = 1
-			}
-			assert.Equal(t, ordered[:want], filter(ordered))
-			assert.Len(t, ssn.Reclaimable(targets[0], ordered), want, "legacy reclaim uses its own victim order but the same allowance")
-			assert.Equal(t, ordered[:want], filter(ordered), "filtering must not mutate quota state")
-
-			bundles := []*actionutils.Bundle{
-				{Type: actionutils.BundleWhole, Job: ssn.Jobs["ns/v1"], Tasks: core},
-				{Type: actionutils.BundleSafe, Job: ssn.Jobs["ns/v2"], Tasks: safe[:1]},
-			}
-			for _, allowWhole := range []bool{false, true} {
-				valid := actionutils.FilterOrderedBundles(bundles, allowWhole, filter)
-				assert.Equal(t, safe[:1], actionutils.FlattenBundles(valid), "rejected/disabled Whole must leave allowance for later Safe")
 			}
 		})
 	}

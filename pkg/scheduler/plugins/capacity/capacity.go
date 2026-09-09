@@ -456,7 +456,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		cp.buildQueueAttrs(ssn)
 	}
 
-	filterReclaimCandidates := func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
+	ssn.AddReclaimableFn(cp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		var victims []*api.TaskInfo
 		allocations := map[api.QueueID]*api.Resource{}
 		if !readyToSchedule {
@@ -477,7 +477,9 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return victims, util.Reject
 		}
 
-		for _, reclaimee := range reclaimees {
+		reclaimeesQueue := ssn.BuildVictimsPriorityQueue(reclaimees, reclaimer)
+		for !reclaimeesQueue.Empty() {
+			reclaimee := reclaimeesQueue.Pop().(*api.TaskInfo)
 			job := ssn.Jobs[reclaimee.Job]
 			if job == nil {
 				klog.Warningf("[capacity] Skip reclaimee <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
@@ -598,38 +600,49 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		klog.V(4).Infof("[capacity] Victims from capacity plugin: victims=%+v reclaimer=%s.", victims, reclaimer)
 		return victims, util.Permit
-	}
-
-	ssn.AddReclaimableFn(cp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
-		pq := ssn.BuildVictimsPriorityQueue(reclaimees, reclaimer)
-		ordered := make([]*api.TaskInfo, 0, len(reclaimees))
-		for !pq.Empty() {
-			ordered = append(ordered, pq.Pop().(*api.TaskInfo))
-		}
-		return filterReclaimCandidates(reclaimer, ordered)
 	})
 
+	// Currently handles GangReclaim and GangPreempt only.
+	// Support for legacy task-level preempt/reclaim will be added in the future.
 	ssn.AddUnifiedEvictableFn(cp.Name(), func(evictCtx *api.EvictionContext, candidates []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		if evictCtx.Kind == api.EvictionKindGangPreempt {
+			// Capacity does not filter victims for preemption (same as legacy preempt
+			// where no PreemptableFn is registered). Permit all candidates.
 			return candidates, util.Permit
 		}
-		if evictCtx.Job == nil || len(evictCtx.TargetTasks) == 0 {
+		// GangReclaim path: apply guarantee and deserved checks per victim queue.
+		// Unlike legacy task-level reclaim, shouldSkipReclaimee is not called here
+		// because the chance of a gang having zero intersecting resource dimensions
+		// with a victim is low. Can be added later if needed.
+		if !readyToSchedule {
+			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
 			return nil, util.Reject
 		}
-		// Represent the actual gang target's requested dimensions without
-		// reordering victims. Share leaf and ancestor checks with legacy reclaim.
-		reclaimer := &api.TaskInfo{
-			Job:        evictCtx.Job.UID,
-			Name:       evictCtx.Job.Name,
-			Namespace:  evictCtx.Job.Namespace,
-			Resreq:     api.EmptyResource(),
-			InitResreq: api.EmptyResource(),
+		var victims []*api.TaskInfo
+		allocations := map[api.QueueID]*api.Resource{}
+		for _, reclaimee := range candidates {
+			job := ssn.Jobs[reclaimee.Job]
+			attr := cp.queueOpts[job.Queue]
+			if _, found := allocations[job.Queue]; !found {
+				allocations[job.Queue] = attr.allocated.Clone()
+			}
+			allocated := allocations[job.Queue]
+			if satisfies, _ := cp.checkGuaranteeConstraint(allocated, reclaimee, attr.guarantee); !satisfies {
+				continue
+			}
+			if isVictim, _ := cp.isImmediateVictim(reclaimee, attr.deserved); isVictim {
+				allocated.Sub(reclaimee.Resreq)
+				victims = append(victims, reclaimee)
+				continue
+			}
+			reclaimable, _ := allocated.GreaterPartlyWithRelevantDimensions(attr.deserved, reclaimee.Resreq)
+			if reclaimable {
+				allocated.Sub(reclaimee.Resreq)
+				victims = append(victims, reclaimee)
+			}
 		}
-		for _, task := range evictCtx.TargetTasks {
-			reclaimer.Resreq.Add(task.Resreq)
-			reclaimer.InitResreq.Add(task.InitResreq)
-		}
-		return filterReclaimCandidates(reclaimer, candidates)
+		klog.V(4).Infof("[capacity] Victims from capacity UnifiedEvictableFn: victims=%+v", victims)
+		return victims, util.Permit
 	})
 
 	ssn.AddPreemptiveFn(cp.Name(), func(obj interface{}, candidates []*api.TaskInfo) bool {

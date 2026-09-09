@@ -177,8 +177,8 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 		}
 		domainIdle := utils.SumIdleAndReleasing(nodes)
 		if jobNeed.LessEqual(domainIdle, api.Zero) {
-			plan, nominations, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, pending, nil, utils.ReasonGangReclaim, gr.enablePredicateErrorCache)
-			if ok && stmt.RecoverOperations(plan) == nil {
+			plan, nominations, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, nil, utils.ReasonGangReclaim, gr.enablePredicateErrorCache)
+			if ok && utils.RecoverNominationPlan(ssn, stmt, plan) == nil {
 				return nominations
 			}
 		}
@@ -197,11 +197,11 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 
 			attemptVictims := append([]*api.TaskInfo(nil), selectedVictims...)
 
-			plan, subJobHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, pending, attemptVictims, utils.ReasonGangReclaim, gr.enablePredicateErrorCache)
+			plan, subJobHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, attemptVictims, utils.ReasonGangReclaim, gr.enablePredicateErrorCache)
 			if !ok {
 				continue
 			}
-			if err := stmt.RecoverOperations(plan); err != nil {
+			if err := utils.RecoverNominationPlan(ssn, stmt, plan); err != nil {
 				continue
 			}
 			return subJobHyperNodes
@@ -248,10 +248,9 @@ func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l
 	utils.SortBundlesForReclaim(bundles, jobNeed, gr.victimOrderPolicy, lessQueueFn, ssn.Queues)
 
 	evictCtx := &api.EvictionContext{
-		Kind:        api.EvictionKindGangReclaim,
-		Job:         reclaimerJob,
-		HyperNode:   domain,
-		TargetTasks: pendingTasks,
+		Kind:      api.EvictionKindGangReclaim,
+		Job:       reclaimerJob,
+		HyperNode: domain,
 	}
 	valid := utils.FilterOrderedBundles(bundles, gr.allowWholeBundle, func(tasks []*api.TaskInfo) []*api.TaskInfo {
 		return ssn.UnifiedEvictable(evictCtx, tasks)

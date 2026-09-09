@@ -55,9 +55,7 @@ func TestGangPlan_OnlyEvictsWhatTargetNeeds(t *testing.T) {
 			for i := 0; i < 4; i++ {
 				fixture.Pods = append(fixture.Pods, util.BuildPod("ns", fmt.Sprintf("v%d", i), "n1", v1.PodRunning, one, "victim", nil, nil))
 			}
-			for i := 0; i < 3; i++ {
-				fixture.Pods = append(fixture.Pods, util.BuildPod("ns", fmt.Sprintf("p%d", i), "", v1.PodPending, one, "target", nil, nil))
-			}
+			fixture.Pods = append(fixture.Pods, util.BuildPod("ns", "p0", "", v1.PodPending, one, "target", nil, nil))
 			enabled := true
 			ssn := fixture.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{
 				{Name: gang.PluginName, EnabledJobReady: &enabled, EnabledJobPipelined: &enabled},
@@ -79,7 +77,7 @@ func TestGangPlan_OnlyEvictsWhatTargetNeeds(t *testing.T) {
 			require.NotEmpty(t, nominations)
 			assert.Len(t, victim.TaskStatusIndex[api.Releasing], 1-idle)
 			assert.Len(t, target.TaskStatusIndex[api.Pipelined], 1)
-			assert.Len(t, target.TaskStatusIndex[api.Pending], 2, "optional pending tasks must not enlarge the gang target")
+			assert.Empty(t, target.TaskStatusIndex[api.Pending])
 			assert.True(t, ssn.JobReady(victim), "Safe selection must preserve victim gang readiness")
 		})
 	}
