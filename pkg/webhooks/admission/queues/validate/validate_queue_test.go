@@ -2677,6 +2677,33 @@ func TestValidateChildrenConstraintsForCapability(t *testing.T) {
 	}
 }
 
+func TestValidateHierarchicalAttributesReportsAllBadWeights(t *testing.T) {
+	config.VolcanoClient = fakeclient.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	config.QueueLister = informerFactory.Scheduling().V1beta1().Queues().Lister()
+
+	queue := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "queue-with-bad-weights",
+			Annotations: map[string]string{
+				schedulingv1beta1.KubeHierarchyAnnotationKey:       "root/sci",
+				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "bad/-1",
+			},
+		},
+	}
+
+	errs := validateHierarchicalAttributes(queue, field.NewPath("metadata", "annotations"))
+	if len(errs) != 2 {
+		t.Fatalf("expected 2 errors, got %d: %v", len(errs), errs)
+	}
+	if !contains(errs[0].Error(), "bad") {
+		t.Errorf("expected first error to mention the invalid weight %q, got %q", "bad", errs[0].Error())
+	}
+	if !contains(errs[1].Error(), "-1") {
+		t.Errorf("expected second error to mention the invalid weight %q, got %q", "-1", errs[1].Error())
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > 0 && len(substr) > 0 && searchSubstring(s, substr)))
