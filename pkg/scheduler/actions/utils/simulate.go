@@ -37,7 +37,7 @@ const (
 // BuildNominationPlanInDomain dry-runs eviction + placement in jobDomainHyperNode and returns a
 // fresh plan Statement only when the target job reaches JobPipelined. session is clean on return;
 // callers must RecoverOperations(plan) to commit, or may drop the plan if not proceeding.
-func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo, jobDomainHyperNode *api.HyperNodeInfo, victims []*api.TaskInfo, reason string, enablePredCache bool) (*framework.Statement, map[api.SubJobID]string, bool) {
+func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo, jobDomainHyperNode *api.HyperNodeInfo, targetTasks, victims []*api.TaskInfo, reason string, enablePredCache bool) (*framework.Statement, map[api.SubJobID]string, bool) {
 	if ssn == nil || job == nil || jobDomainHyperNode == nil {
 		return nil, nil, false
 	}
@@ -47,6 +47,29 @@ func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, j
 	}
 
 	worksheet := organizeEvictionWorksheet(ssn, job)
+	// Use exactly the same target as the action's entitlement and resource
+	// checks. Optional pending work must not enlarge this eviction plan.
+	target := map[api.TaskID]bool{}
+	for _, task := range targetTasks {
+		target[task.UID] = true
+	}
+	if len(target) == 0 {
+		return nil, nil, false
+	}
+	for _, ws := range worksheet.subJobWorksheets {
+		filtered := util.NewPriorityQueue(ssn.TaskOrderFn)
+		for !ws.tasks.Empty() {
+			task := ws.tasks.Pop().(*api.TaskInfo)
+			if target[task.UID] {
+				filtered.Push(task)
+				delete(target, task.UID)
+			}
+		}
+		ws.tasks = filtered
+	}
+	if len(target) > 0 {
+		return nil, nil, false
+	}
 	if worksheet.Empty() {
 		// TODO: Worksheet is empty while allocate may still have eligible pending (e.g. SchGated /
 		// empty-resreq filtered here only, pending tasks missing from SubJobs maps with fallback
@@ -54,7 +77,6 @@ func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, j
 		return nil, nil, false
 	}
 
-	jobWasReady := ssn.JobReady(job)
 	victimsPresent := len(victims) > 0
 
 	// Statement chain: one victimStmt (if any victims) plus one per successfully pipelined
@@ -119,12 +141,9 @@ func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, j
 		subJobHyperNodes[subJob.UID] = winnerHN
 		jobPipelinedAfterLastSubJob = ssn.JobPipelined(job)
 
-		// Stop once the cumulative chain satisfies the job.
-		//   jobWasReady:                 job already JobReady; caller only requested one sub-job's pending placement.
-		//   jobPipelinedAfterLastSubJob: starting-up job; cumulative chain now flips JobPipelined.
-		if jobWasReady || jobPipelinedAfterLastSubJob {
-			break
-		}
+		// Place the entire supplied target even if this sub-job already meets
+		// JobPipelined. Reordering tied sub-jobs must not shrink the target
+		// after entitlement and resource checks have used it.
 	}
 
 	if !jobPipelinedAfterLastSubJob {
@@ -369,7 +388,9 @@ func prioritizeNodesForSimulate(ssn *framework.Session, task *api.TaskInfo, pred
 }
 
 // CollectPendingTasksForGangEviction returns pending tasks for gang preempt/reclaim (demand + policyTask).
-// If JobReady: first worksheet subJob with pending; else: all worksheet pending; nil if none.
+// If JobReady: first worksheet subJob with pending. Otherwise select the first
+// worksheet prefix satisfying gang readiness on a private job clone. Sub-jobs
+// with explicit policies remain atomic; ordinary jobs may stop within a sub-job.
 func CollectPendingTasksForGangEviction(ssn *framework.Session, job *api.JobInfo) []*api.TaskInfo {
 	if ssn == nil || job == nil {
 		return nil
@@ -386,6 +407,7 @@ func collectPendingTasksForJobStartup(ssn *framework.Session, job *api.JobInfo) 
 		return nil
 	}
 	out := make([]*api.TaskInfo, 0)
+	shadow := job.Clone()
 	q := ws.subJobs.Clone()
 	for !q.Empty() {
 		sj := q.Pop().(*api.SubJobInfo)
@@ -395,10 +417,18 @@ func collectPendingTasksForJobStartup(ssn *framework.Session, job *api.JobInfo) 
 		}
 		tq := sjWS.tasks.Clone()
 		for !tq.Empty() {
-			out = append(out, tq.Pop().(*api.TaskInfo))
+			task := tq.Pop().(*api.TaskInfo)
+			out = append(out, task)
+			shadow.UpdateTaskStatus(shadow.Tasks[task.UID], api.Pipelined)
+			if !job.ContainsSubJobPolicy() && ssn.JobPipelined(shadow) {
+				return out
+			}
+		}
+		if ssn.JobPipelined(shadow) {
+			return out
 		}
 	}
-	return out
+	return nil
 }
 
 func collectPendingTasksForRunningJob(ssn *framework.Session, job *api.JobInfo) []*api.TaskInfo {

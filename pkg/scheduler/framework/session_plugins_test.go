@@ -167,6 +167,13 @@ func TestUnifiedEvictable_TierWalkAndIntersection(t *testing.T) {
 	result := ssn.UnifiedEvictable(ctx, candidates)
 	assert.Len(t, result, 1)
 	assert.Equal(t, api.TaskID("b"), result[0].UID)
+	ssn.AddUnifiedEvictableFn("p1", func(_ *api.EvictionContext, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskB, taskA}, 1
+	})
+	ssn.AddUnifiedEvictableFn("p2", func(_ *api.EvictionContext, _ []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA, taskB, taskC}, 1
+	})
+	assert.Equal(t, []*api.TaskInfo{taskB, taskA}, ssn.UnifiedEvictable(ctx, candidates), "intersection must preserve established victim order")
 }
 
 func TestUnifiedEvictable_AbstainSkipped(t *testing.T) {

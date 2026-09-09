@@ -338,6 +338,9 @@ const (
 type EvictionContext struct {
 	Kind EvictionKind
 	Job  *JobInfo
+	// TargetTasks is the gang placement target used for resource eligibility.
+	// It excludes optional pending tasks outside this eviction attempt.
+	TargetTasks []*TaskInfo
 	// Task is only populated for task-level eviction (EvictionKindTaskPreempt / EvictionKindTaskReclaim).
 	// For gang-aware eviction kinds it is nil; use Job instead.
 	Task      *TaskInfo
@@ -346,6 +349,9 @@ type EvictionContext struct {
 
 // UnifiedEvictableFn is the victim-filter callback for gang-aware eviction.
 // Plugins use EvictionContext.Kind to branch between gang and legacy modes.
+// Each invocation evaluates the complete candidate trial against the current
+// session snapshot without persisting accounting changes between invocations.
+// Gang actions replay accepted prefixes so quota usage remains cumulative.
 type UnifiedEvictableFn func(ctx *EvictionContext, candidates []*TaskInfo) ([]*TaskInfo, int)
 
 // NodeOrderFn is the func declaration used to get priority score for a node for a particular task.

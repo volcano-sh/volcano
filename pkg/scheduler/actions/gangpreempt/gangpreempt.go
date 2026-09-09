@@ -166,11 +166,21 @@ func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.St
 		if len(domainNodes) == 0 {
 			continue
 		}
+		jobHN := ssn.HyperNodes[domain]
+		if jobHN == nil {
+			jobHN = ssn.HyperNodes[framework.ClusterTopHyperNode]
+		}
+		domainIdle := utils.SumIdleAndReleasing(domainNodes)
+		if jobNeed.LessEqual(domainIdle, api.Zero) {
+			plan, nominations, ok := utils.BuildNominationPlanInDomain(ssn, queue, preemptorJob, jobHN, pending, nil, utils.ReasonGangPreempt, gp.enablePredicateErrorCache)
+			if ok && stmt.RecoverOperations(plan) == nil {
+				return nominations
+			}
+		}
 		domainBundles := gp.selectDomainBundles(ssn, preemptorJob, pending, jobNeed, domain)
 		if len(domainBundles) == 0 {
 			continue
 		}
-		domainIdle := utils.SumIdleAndReleasing(domainNodes)
 		selectedVictims := make([]*api.TaskInfo, 0)
 		for _, bundle := range domainBundles {
 			selectedVictims = append(selectedVictims, bundle.Tasks...)
@@ -182,11 +192,7 @@ func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.St
 
 			attemptVictims := append([]*api.TaskInfo(nil), selectedVictims...)
 
-			jobHN := ssn.HyperNodes[domain]
-			if jobHN == nil {
-				jobHN = ssn.HyperNodes[framework.ClusterTopHyperNode]
-			}
-			plan, subJobHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, preemptorJob, jobHN, attemptVictims, utils.ReasonGangPreempt, gp.enablePredicateErrorCache)
+			plan, subJobHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, preemptorJob, jobHN, pending, attemptVictims, utils.ReasonGangPreempt, gp.enablePredicateErrorCache)
 			if !ok {
 				continue
 			}
@@ -241,32 +247,16 @@ func (gp *Action) selectDomainBundles(ssn *framework.Session, preemptorJob *api.
 	})
 
 	evictCtx := &api.EvictionContext{
-		Kind:      api.EvictionKindGangPreempt,
-		Job:       preemptorJob,
-		HyperNode: domain,
+		Kind:        api.EvictionKindGangPreempt,
+		Job:         preemptorJob,
+		HyperNode:   domain,
+		TargetTasks: pendingTasks,
 	}
-	orderedCandidates := utils.FlattenBundles(bundles)
-	allowed := ssn.UnifiedEvictable(evictCtx, orderedCandidates)
-	if len(allowed) == 0 {
-		return nil
-	}
-	allowedSet := make(map[api.TaskID]struct{}, len(allowed))
-	for _, t := range allowed {
-		allowedSet[t.UID] = struct{}{}
-	}
-	valid := utils.ApplyAllowedTasks(bundles, allowedSet)
-	if len(valid) == 0 {
-		return nil
-	}
+	valid := utils.FilterOrderedBundles(bundles, gp.allowWholeBundle, func(tasks []*api.TaskInfo) []*api.TaskInfo {
+		return ssn.UnifiedEvictable(evictCtx, tasks)
+	})
 	utils.SortBundlesForPreempt(valid, jobNeed, gp.victimOrderPolicy, func(l, r *api.JobInfo) bool {
 		return !ssn.JobOrderFn(l, r)
 	})
-	selected := make([]*utils.Bundle, 0, len(valid))
-	for _, bundle := range valid {
-		if bundle.Type == utils.BundleWhole && !gp.allowWholeBundle {
-			continue
-		}
-		selected = append(selected, bundle)
-	}
-	return selected
+	return valid
 }

@@ -171,11 +171,21 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 		if len(nodes) == 0 {
 			continue
 		}
+		jobHN := ssn.HyperNodes[domain]
+		if jobHN == nil {
+			jobHN = ssn.HyperNodes[framework.ClusterTopHyperNode]
+		}
+		domainIdle := utils.SumIdleAndReleasing(nodes)
+		if jobNeed.LessEqual(domainIdle, api.Zero) {
+			plan, nominations, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, pending, nil, utils.ReasonGangReclaim, gr.enablePredicateErrorCache)
+			if ok && stmt.RecoverOperations(plan) == nil {
+				return nominations
+			}
+		}
 		domainBundles := gr.selectDomainBundles(ssn, queueLessFn(ssn, job.Queue), job, pending, jobNeed, domain)
 		if len(domainBundles) == 0 {
 			continue
 		}
-		domainIdle := utils.SumIdleAndReleasing(nodes)
 		selectedVictims := make([]*api.TaskInfo, 0)
 		for _, bundle := range domainBundles {
 			selectedVictims = append(selectedVictims, bundle.Tasks...)
@@ -187,11 +197,7 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 
 			attemptVictims := append([]*api.TaskInfo(nil), selectedVictims...)
 
-			jobHN := ssn.HyperNodes[domain]
-			if jobHN == nil {
-				jobHN = ssn.HyperNodes[framework.ClusterTopHyperNode]
-			}
-			plan, subJobHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, attemptVictims, utils.ReasonGangReclaim, gr.enablePredicateErrorCache)
+			plan, subJobHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, pending, attemptVictims, utils.ReasonGangReclaim, gr.enablePredicateErrorCache)
 			if !ok {
 				continue
 			}
@@ -242,32 +248,16 @@ func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l
 	utils.SortBundlesForReclaim(bundles, jobNeed, gr.victimOrderPolicy, lessQueueFn, ssn.Queues)
 
 	evictCtx := &api.EvictionContext{
-		Kind:      api.EvictionKindGangReclaim,
-		Job:       reclaimerJob,
-		HyperNode: domain,
+		Kind:        api.EvictionKindGangReclaim,
+		Job:         reclaimerJob,
+		HyperNode:   domain,
+		TargetTasks: pendingTasks,
 	}
-	orderedCandidates := utils.FlattenBundles(bundles)
-	allowed := ssn.UnifiedEvictable(evictCtx, orderedCandidates)
-	if len(allowed) == 0 {
-		return nil
-	}
-	allowedSet := make(map[api.TaskID]struct{}, len(allowed))
-	for _, t := range allowed {
-		allowedSet[t.UID] = struct{}{}
-	}
-	valid := utils.ApplyAllowedTasks(bundles, allowedSet)
-	if len(valid) == 0 {
-		return nil
-	}
+	valid := utils.FilterOrderedBundles(bundles, gr.allowWholeBundle, func(tasks []*api.TaskInfo) []*api.TaskInfo {
+		return ssn.UnifiedEvictable(evictCtx, tasks)
+	})
 	utils.SortBundlesForReclaim(valid, jobNeed, gr.victimOrderPolicy, lessQueueFn, ssn.Queues)
-	selected := make([]*utils.Bundle, 0, len(valid))
-	for _, bundle := range valid {
-		if bundle.Type == utils.BundleWhole && !gr.allowWholeBundle {
-			continue
-		}
-		selected = append(selected, bundle)
-	}
-	return selected
+	return valid
 }
 
 func queueLessFn(ssn *framework.Session, preemptorQueue api.QueueID) func(l, r *api.QueueInfo) bool {
