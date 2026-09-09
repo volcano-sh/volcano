@@ -338,9 +338,6 @@ const (
 type EvictionContext struct {
 	Kind EvictionKind
 	Job  *JobInfo
-	// TargetTasks is the gang placement target used for resource eligibility.
-	// It excludes optional pending tasks outside this eviction attempt.
-	TargetTasks []*TaskInfo
 	// Task is only populated for task-level eviction (EvictionKindTaskPreempt / EvictionKindTaskReclaim).
 	// For gang-aware eviction kinds it is nil; use Job instead.
 	Task      *TaskInfo

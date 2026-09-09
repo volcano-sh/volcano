@@ -172,8 +172,8 @@ func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.St
 		}
 		domainIdle := utils.SumIdleAndReleasing(domainNodes)
 		if jobNeed.LessEqual(domainIdle, api.Zero) {
-			plan, nominations, ok := utils.BuildNominationPlanInDomain(ssn, queue, preemptorJob, jobHN, pending, nil, utils.ReasonGangPreempt, gp.enablePredicateErrorCache)
-			if ok && stmt.RecoverOperations(plan) == nil {
+			plan, nominations, ok := utils.BuildNominationPlanInDomain(ssn, queue, preemptorJob, jobHN, nil, utils.ReasonGangPreempt, gp.enablePredicateErrorCache)
+			if ok && utils.RecoverNominationPlan(ssn, stmt, plan) == nil {
 				return nominations
 			}
 		}
@@ -192,11 +192,11 @@ func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.St
 
 			attemptVictims := append([]*api.TaskInfo(nil), selectedVictims...)
 
-			plan, subJobHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, preemptorJob, jobHN, pending, attemptVictims, utils.ReasonGangPreempt, gp.enablePredicateErrorCache)
+			plan, subJobHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, preemptorJob, jobHN, attemptVictims, utils.ReasonGangPreempt, gp.enablePredicateErrorCache)
 			if !ok {
 				continue
 			}
-			if err := stmt.RecoverOperations(plan); err != nil {
+			if err := utils.RecoverNominationPlan(ssn, stmt, plan); err != nil {
 				continue
 			}
 			return subJobHyperNodes
@@ -247,10 +247,9 @@ func (gp *Action) selectDomainBundles(ssn *framework.Session, preemptorJob *api.
 	})
 
 	evictCtx := &api.EvictionContext{
-		Kind:        api.EvictionKindGangPreempt,
-		Job:         preemptorJob,
-		HyperNode:   domain,
-		TargetTasks: pendingTasks,
+		Kind:      api.EvictionKindGangPreempt,
+		Job:       preemptorJob,
+		HyperNode: domain,
 	}
 	valid := utils.FilterOrderedBundles(bundles, gp.allowWholeBundle, func(tasks []*api.TaskInfo) []*api.TaskInfo {
 		return ssn.UnifiedEvictable(evictCtx, tasks)

@@ -117,7 +117,7 @@ Bundle ordering is performed in two passes for each HyperNode.
 
 In the first pass, the scheduler sorts raw bundles, skips Whole when disabled, and evaluates candidates through `UnifiedEvictable`. Every trial contains the already accepted prefix plus one Safe task or an entire Whole bundle. A trial is accepted only if all its tasks remain eligible. Rejected trials do not enter the next prefix, so partially approved Whole bundles cannot consume later Safe candidates' allowance.
 
-Each filter invocation evaluates an unchanged session snapshot. Replaying the prefix preserves cumulative quota checks across jobs and queues without persisting rejected trials. The capacity plugin shares its leaf and configured ancestor reclaim checks with legacy reclaim, while preserving gang actions' input order. This prioritizes correctness: replay can evaluate a quadratic number of candidate entries; plugins must not mutate session state during filtering.
+Each filter invocation evaluates an unchanged session snapshot. Replaying the prefix preserves the existing plugins' cumulative quota checks without persisting rejected trials. Replay can evaluate a quadratic number of candidate entries; plugins must not mutate session state during filtering. Plugin-result intersection preserves order and is linear per call.
 
 In the second pass, the scheduler re-sorts the rebuilt bundle list before final selection. This second sort is required because plugin filtering can remove or shrink bundles, which changes their effective value and relative priority.
 
@@ -125,7 +125,7 @@ Before selecting victims, the action tries a zero-victim placement if current re
 
 If simulation succeeds, the action determines placement nodes for the preemptor tasks in that HyperNode, then executes eviction and nomination in one transaction and returns success. If simulation fails, the action keeps selecting the next bundle and retries. If all bundles are exhausted without a successful simulation, the current HyperNode is considered invalid for eviction and the action moves to the next HyperNode.
 
-The target is computed once and reused for queue entitlement checks, resource demand, plugin context (`EvictionContext.TargetTasks`), and simulation. For startup it is the first worksheet prefix that satisfies `JobPipelined` on a private job clone; ordinary jobs can stop within a sub-job, while explicit sub-job policies retain sub-job atomicity. For an already-ready job it is the first worksheet sub-job's pending tasks. Later optional pending tasks do not enlarge the plan. This is an ordered target, not a search over every feasible task subset.
+Victim ordering does not change pending-task collection, gang readiness, or plugin-defined reclaim eligibility. Plan recovery uses a temporary statement: failure rolls back that attempt; success transfers its operations to the parent statement.
 
 The ordering guarantee is **within each candidate HyperNode**. The first feasible domain and victim prefix win; the scheduler does not globally minimize evictions or compare Whole in one domain against Safe in every other domain.
 
@@ -204,6 +204,7 @@ Future work includes two follow-ups. First, in addition to skipping unrequested 
 # Pseudo code: SelectGangVictimsInHyperNode
 def select_gang_victims_in_hypernode(preemptor, hypernode, candidates, ssn):
     bundles = []
+    need = pending_eviction_demand(ssn, preemptor)
 
     # Phase 1: build raw bundles for each candidate job.
     for job in candidates:
@@ -225,23 +226,23 @@ def select_gang_victims_in_hypernode(preemptor, hypernode, candidates, ssn):
             continue
         for unit in ([b] if b.is_whole() else single_task_units(b)):
             trial = accepted + unit.tasks
-            allowed = unified_evictable(context_with_target, trial)
+            allowed = unified_evictable(eviction_context, trial)
             if all(t in allowed for t in trial):
                 accepted = trial
                 valid.append(unit)
 
     # Phase 3: second-pass sort, then incremental select + simulate.
     valid = sort_bundles(valid, preemptor, victim_order_policy)
-    if enough(current_free(hypernode), target.request()):
-        if simulate_place(target, hypernode, []):
+    if enough(current_free(hypernode), need):
+        if simulate_place(preemptor, hypernode, []):
             return [], True
     chosen = []
     released = zero_resource()
     for b in valid:
         chosen.append(b)
         released = add_resource(released, b.local_resource())
-        if enough(add_resource(current_free(hypernode), released), target.request()):
-            if simulate_place(target, hypernode, chosen):
+        if enough(add_resource(current_free(hypernode), released), need):
+            if simulate_place(preemptor, hypernode, chosen):
                 return chosen, True
 
     return None, False
@@ -269,4 +270,4 @@ Phase 1 implements the core gang-aware eviction path end to end.
 
 ## Future Work
 
-Future work can reduce cumulative-prefix replay costs, compare plans across domains, or search alternative feasible gang targets. The scoring model can add penalties for unrequested resources, and comparator policy can be extracted into an extension hook. These are separate from the current queue-local ordering contract.
+Future work can optimize filtering costs and extend comparator policy through a plugin hook.

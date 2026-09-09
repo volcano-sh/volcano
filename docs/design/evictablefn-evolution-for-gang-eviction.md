@@ -59,14 +59,14 @@ type EvictionContext struct {
 	Job    *JobInfo
 	Task   *TaskInfo
 
-	TargetTasks []*TaskInfo
+	PendingTasks []*TaskInfo
 	HyperNode string
 }
 
 type UnifiedEvictableFn func(ctx *EvictionContext, candidates []*TaskInfo) ([]*TaskInfo, int)
 ```
 
-`TargetTasks` is the exact pending gang target used by entitlement checks and placement simulation, not every pending task of the initiating job. Gang actions replay cumulative candidate prefixes against an unchanged session snapshot: filters must account for the entire input without persisting trial state. A rejected Whole trial is omitted from subsequent prefixes, while accepted victims remain included so quota limits cannot reset between workloads.
+Gang actions can replay cumulative candidate prefixes. Each invocation must evaluate the complete input against the unchanged session snapshot without persisting trial accounting. Rejected trials are omitted from subsequent prefixes.
 
 #### Pros
 

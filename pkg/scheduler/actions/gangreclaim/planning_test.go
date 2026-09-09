@@ -25,6 +25,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	actionutils "volcano.sh/volcano/pkg/scheduler/actions/utils"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -34,6 +35,58 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+func TestGangReclaimOrder_RejectedWholeLeavesAllowanceForSafe(t *testing.T) {
+	options.Default()
+	for _, policy := range []actionutils.VictimOrderPolicy{actionutils.VictimOrderSafeFirst, actionutils.VictimOrderPriorityFirst} {
+		for _, allowWhole := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/whole-%t", policy, allowWhole), func(t *testing.T) {
+				one := api.BuildResourceList("1", "0")
+				fixture := &uthelper.TestCommonStruct{
+					Plugins: map[string]framework.PluginBuilder{gang.PluginName: gang.New, capacity.PluginName: capacity.New},
+					Nodes:   []*v1.Node{util.BuildNode("n1", api.BuildResourceList("4", "0", api.ScalarResource{Name: "pods", Value: "20"}), nil)},
+					Queues: []*v1beta1.Queue{
+						util.BuildQueueWithResourcesQuantity("victim", api.BuildResourceList("3", "0"), nil),
+						util.BuildQueueWithResourcesQuantity("target", one, nil),
+					},
+					PodGroups: []*v1beta1.PodGroup{
+						util.BuildPodGroup("low", "ns", "victim", 2, nil, v1beta1.PodGroupRunning),
+						util.BuildPodGroup("higher", "ns", "victim", 1, nil, v1beta1.PodGroupRunning),
+						util.BuildPodGroup("target", "ns", "target", 1, nil, v1beta1.PodGroupInqueue),
+					},
+				}
+				for _, group := range []string{"low", "higher"} {
+					for i := 0; i < 2; i++ {
+						fixture.Pods = append(fixture.Pods, util.BuildPod("ns", fmt.Sprintf("%s-%d", group, i), "n1", v1.PodRunning, one, group, nil, nil))
+					}
+				}
+				fixture.Pods = append(fixture.Pods, util.BuildPod("ns", "target", "", v1.PodPending, one, "target", nil, nil))
+				enabled := true
+				ssn := fixture.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{
+					{Name: gang.PluginName, EnabledJobReady: &enabled, EnabledJobPipelined: &enabled},
+					{Name: capacity.PluginName, EnablePreemptive: &enabled, EnabledAllocatable: &enabled},
+				}}}, nil)
+				defer fixture.Close()
+				target, low, higher := ssn.Jobs["ns/target"], ssn.Jobs["ns/low"], ssn.Jobs["ns/higher"]
+				low.Priority, higher.Priority = 1, 2
+				ssn.HyperNodes[framework.ClusterTopHyperNode] = &api.HyperNodeInfo{Name: framework.ClusterTopHyperNode}
+				ssn.RealNodesList[framework.ClusterTopHyperNode] = []*api.NodeInfo{ssn.Nodes["n1"]}
+				action := New()
+				action.victimOrderPolicy, action.allowWholeBundle = policy, allowWhole
+				stmt := framework.NewStatement(ssn)
+				defer stmt.Discard()
+				// The victim queue can spare only one CPU: the low-priority
+				// two-task Whole must not consume the higher workload's Safe allowance.
+				require.NotEmpty(t, action.reclaimJobInDomains(ssn, stmt, ssn.Queues[target.Queue], target))
+				assert.Len(t, low.TaskStatusIndex[api.Running], 2)
+				assert.Empty(t, low.TaskStatusIndex[api.Releasing])
+				assert.Len(t, higher.TaskStatusIndex[api.Releasing], 1)
+				assert.True(t, ssn.JobReady(higher))
+				assert.Len(t, target.TaskStatusIndex[api.Pipelined], 1)
+			})
+		}
+	}
+}
 
 func TestGangPlan_OnlyEvictsWhatTargetNeeds(t *testing.T) {
 	options.Default()
@@ -55,9 +108,7 @@ func TestGangPlan_OnlyEvictsWhatTargetNeeds(t *testing.T) {
 			for i := 0; i < 4; i++ {
 				fixture.Pods = append(fixture.Pods, util.BuildPod("ns", fmt.Sprintf("v%d", i), "n1", v1.PodRunning, one, "victim", nil, nil))
 			}
-			for i := 0; i < 3; i++ {
-				fixture.Pods = append(fixture.Pods, util.BuildPod("ns", fmt.Sprintf("p%d", i), "", v1.PodPending, one, "target", nil, nil))
-			}
+			fixture.Pods = append(fixture.Pods, util.BuildPod("ns", "p0", "", v1.PodPending, one, "target", nil, nil))
 			enabled := true
 			ssn := fixture.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{
 				{Name: gang.PluginName, EnabledJobReady: &enabled, EnabledJobPipelined: &enabled},
@@ -79,7 +130,7 @@ func TestGangPlan_OnlyEvictsWhatTargetNeeds(t *testing.T) {
 			require.NotEmpty(t, nominations)
 			assert.Len(t, victim.TaskStatusIndex[api.Releasing], 1-idle)
 			assert.Len(t, target.TaskStatusIndex[api.Pipelined], 1)
-			assert.Len(t, target.TaskStatusIndex[api.Pending], 2, "optional pending tasks must not enlarge the gang target")
+			assert.Empty(t, target.TaskStatusIndex[api.Pending])
 			assert.True(t, ssn.JobReady(victim), "Safe selection must preserve victim gang readiness")
 		})
 	}
