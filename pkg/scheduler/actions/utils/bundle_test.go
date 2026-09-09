@@ -21,12 +21,54 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
+
+func TestSafeTaskPrioritySurvivesSecondSort(t *testing.T) {
+	for _, action := range []string{"preempt", "reclaim"} {
+		for _, policy := range []VictimOrderPolicy{VictimOrderSafeFirst, VictimOrderPriorityFirst} {
+			for _, equalPriority := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/equal-priority-%t", action, policy, equalPriority), func(t *testing.T) {
+					low := &api.TaskInfo{UID: "z-low", Job: "job", Priority: 1, Resreq: &api.Resource{MilliCPU: 1000}}
+					high := &api.TaskInfo{UID: "a-high", Job: "job", Priority: 2, Resreq: &api.Resource{MilliCPU: 1000}}
+					core := &api.TaskInfo{UID: "core", Job: "job", Priority: 3, Resreq: &api.Resource{MilliCPU: 1000}}
+					low.Status, high.Status, core.Status = api.Running, api.Running, api.Running
+					want := low.UID
+					if equalPriority {
+						high.Priority = low.Priority
+						want = high.UID // UID breaks ties only after task priority.
+					}
+					job := api.NewJobInfo("job", low, high, core)
+					job.MinAvailable, job.Queue = 1, "queue"
+					need := &api.Resource{MilliCPU: 1000}
+					queues := map[api.QueueID]*api.QueueInfo{"queue": {UID: "queue"}}
+					sortBundles := func(bundles []*Bundle) {
+						if action == "preempt" {
+							SortBundlesForPreempt(bundles, need, policy, nil)
+						} else {
+							SortBundlesForReclaim(bundles, need, policy, nil, queues)
+						}
+					}
+					bundles := CreateJobBundles(job, []*api.TaskInfo{core, high, low})
+					sortBundles(bundles)
+					require.Equal(t, want, bundles[0].Tasks[0].UID)
+					valid := FilterOrderedBundles(bundles, false, func(tasks []*api.TaskInfo) []*api.TaskInfo { return tasks })
+					require.Len(t, valid, 2)
+					require.Equal(t, want, valid[0].Tasks[0].UID)
+					sortBundles(valid)
+					selected := SelectBundles(valid, need, false)
+					require.Len(t, selected, 1)
+					assert.Equal(t, want, selected[0].Tasks[0].UID)
+				})
+			}
+		}
+	}
+}
 
 func BenchmarkFilterOrderedBundles(b *testing.B) {
 	for _, count := range []int{32, 128, 512} {

@@ -35,6 +35,77 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
+func TestGangPlan_VictimPolicyOutcomes(t *testing.T) {
+	options.Default()
+	for _, tc := range []struct {
+		policy                        string
+		lowReleasing, higherReleasing int
+	}{
+		{policy: "safe-first", lowReleasing: 1, higherReleasing: 1},
+		{policy: "priority-first", lowReleasing: 2, higherReleasing: 0},
+	} {
+		t.Run(tc.policy, func(t *testing.T) {
+			// Identical inputs: each victim has one Safe and one Whole task;
+			// the target needs two CPUs. Only the configured policy differs.
+			one := api.BuildResourceList("1", "0")
+			fixture := &uthelper.TestCommonStruct{
+				Plugins: map[string]framework.PluginBuilder{gang.PluginName: gang.New, priority.PluginName: priority.New, capacity.PluginName: capacity.New},
+				Nodes:   []*v1.Node{util.BuildNode("n1", api.BuildResourceList("4", "0", api.ScalarResource{Name: "pods", Value: "20"}), nil)},
+				Queues: []*v1beta1.Queue{
+					util.BuildQueueWithResourcesQuantity("victim", api.BuildResourceList("4", "0"), nil),
+				},
+				PodGroups: []*v1beta1.PodGroup{
+					util.BuildPodGroup("low", "ns", "victim", 1, nil, v1beta1.PodGroupRunning),
+					util.BuildPodGroup("higher", "ns", "victim", 1, nil, v1beta1.PodGroupRunning),
+					util.BuildPodGroup("target", "ns", "victim", 2, nil, v1beta1.PodGroupInqueue),
+				},
+			}
+			for _, group := range []string{"low", "higher", "target"} {
+				node, phase := "n1", v1.PodRunning
+				if group == "target" {
+					node, phase = "", v1.PodPending
+				}
+				for i := 0; i < 2; i++ {
+					fixture.Pods = append(fixture.Pods, util.BuildPod("ns", fmt.Sprintf("%s-%d", group, i), node, phase, one, group, nil, nil))
+				}
+			}
+			enabled := true
+			ssn := fixture.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{
+				{Name: gang.PluginName, EnabledJobReady: &enabled, EnabledJobPipelined: &enabled},
+				{Name: priority.PluginName},
+				{Name: capacity.PluginName, EnablePreemptive: &enabled, EnabledAllocatable: &enabled},
+			}}}, nil)
+			defer fixture.Close()
+			target, low, higher := ssn.Jobs["ns/target"], ssn.Jobs["ns/low"], ssn.Jobs["ns/higher"]
+			require.NotNil(t, target)
+			require.NotNil(t, low)
+			require.NotNil(t, higher)
+			target.Priority, low.Priority, higher.Priority = 100, 1, 2
+			ssn.HyperNodes[framework.ClusterTopHyperNode] = &api.HyperNodeInfo{Name: framework.ClusterTopHyperNode}
+			ssn.RealNodesList[framework.ClusterTopHyperNode] = []*api.NodeInfo{ssn.Nodes["n1"]}
+			action := New()
+			ssn.Configurations = []conf.Configuration{{
+				Name:      action.Name(),
+				Arguments: map[string]interface{}{VictimOrderPolicyKey: tc.policy, AllowWholeBundleKey: true},
+			}}
+			action.parseArguments(ssn)
+			stmt := framework.NewStatement(ssn)
+			defer stmt.Discard()
+
+			require.NotEmpty(t, action.preemptJobInDomains(ssn, stmt, ssn.Queues[target.Queue], target))
+			assert.Len(t, low.TaskStatusIndex[api.Releasing], tc.lowReleasing)
+			assert.Len(t, higher.TaskStatusIndex[api.Releasing], tc.higherReleasing)
+			assert.Len(t, low.TaskStatusIndex[api.Running], 2-tc.lowReleasing)
+			assert.Len(t, higher.TaskStatusIndex[api.Running], 2-tc.higherReleasing)
+			assert.Equal(t, tc.lowReleasing < 2, ssn.JobReady(low))
+			assert.True(t, ssn.JobReady(higher))
+			assert.Len(t, target.TaskStatusIndex[api.Pipelined], 2)
+			assert.Empty(t, target.TaskStatusIndex[api.Pending])
+			assert.True(t, ssn.JobPipelined(target))
+		})
+	}
+}
+
 func TestGangPlan_OnlyEvictsWhatTargetNeeds(t *testing.T) {
 	options.Default()
 	for _, idle := range []int{0, 1} {
