@@ -30,15 +30,16 @@ const (
 	BundleWhole
 )
 
-// VictimOrderPolicy controls whether gang-aware victim ordering prioritizes
-// legacy safe-first ordering or queue-scoped workload priority.
+// VictimOrderPolicy orders disruption class and workload priority within a
+// victim queue. Reclamation always compares victim queues before this policy.
 type VictimOrderPolicy string
 
 const (
-	// VictimOrderSafeFirst considers all safe bundles before any whole bundle.
+	// VictimOrderSafeFirst considers safe bundles before whole bundles within
+	// each victim queue, then prefers lower-priority workloads.
 	VictimOrderSafeFirst VictimOrderPolicy = "safe-first"
-	// VictimOrderPriorityFirst exhausts lower-priority workloads before considering
-	// higher-priority workloads, while still preferring safe over whole within a workload.
+	// VictimOrderPriorityFirst prefers lower-priority workloads within each victim
+	// queue, with safe before whole across workloads at the same priority.
 	VictimOrderPriorityFirst VictimOrderPolicy = "priority-first"
 )
 
@@ -286,21 +287,11 @@ func SortBundlesForPreempt(bundles []*Bundle, need *api.Resource, policy VictimO
 func SortBundlesForReclaim(bundles []*Bundle, need *api.Resource, policy VictimOrderPolicy, lessQueueFn func(l, r *api.QueueInfo) bool, queues map[api.QueueID]*api.QueueInfo) {
 	sort.SliceStable(bundles, func(i, j int) bool {
 		l, r := bundles[i], bundles[j]
-		if policy == VictimOrderPriorityFirst {
-			if cmp := compareVictimQueues(l, r, lessQueueFn, queues, true); cmp != 0 {
-				return cmp < 0
-			}
-			if cmp := compareBundlePolicy(l, r, policy, nil); cmp != 0 {
-				return cmp < 0
-			}
-		} else {
-			// Preserve legacy ordering, including ROI when queue order ties.
-			if cmp := compareBundleType(l, r); cmp != 0 {
-				return cmp < 0
-			}
-			if cmp := compareVictimQueues(l, r, lessQueueFn, queues, false); cmp != 0 {
-				return cmp < 0
-			}
+		if cmp := compareVictimQueues(l, r, lessQueueFn, queues); cmp != 0 {
+			return cmp < 0
+		}
+		if cmp := compareBundlePolicy(l, r, policy, nil); cmp != 0 {
+			return cmp < 0
 		}
 		iroi := bundleROI(l, need)
 		jroi := bundleROI(r, need)
@@ -322,6 +313,9 @@ func compareBundlePolicy(l, r *Bundle, policy VictimOrderPolicy, lessVictimJobFn
 		return compareVictimJobs(l.Job, r.Job, lessVictimJobFn)
 	}
 	if cmp := compareBundleType(l, r); cmp != 0 {
+		return cmp
+	}
+	if cmp := compareJobPriority(l, r); cmp != 0 {
 		return cmp
 	}
 	return compareVictimJobs(l.Job, r.Job, lessVictimJobFn)
@@ -357,7 +351,7 @@ func compareVictimJobs(l, r *api.JobInfo, lessVictimJobFn func(l, r *api.JobInfo
 	return compareLess(lessVictimJobFn(l, r), lessVictimJobFn(r, l))
 }
 
-func compareVictimQueues(l, r *Bundle, lessQueueFn func(l, r *api.QueueInfo) bool, queues map[api.QueueID]*api.QueueInfo, keepQueuesGrouped bool) int {
+func compareVictimQueues(l, r *Bundle, lessQueueFn func(l, r *api.QueueInfo) bool, queues map[api.QueueID]*api.QueueInfo) int {
 	if l == nil || r == nil || l.Job == nil || r.Job == nil {
 		return 0
 	}
@@ -370,9 +364,6 @@ func compareVictimQueues(l, r *Bundle, lessQueueFn func(l, r *api.QueueInfo) boo
 		if cmp := compareLess(lessQueueFn(lq, rq), lessQueueFn(rq, lq)); cmp != 0 {
 			return cmp
 		}
-	}
-	if !keepQueuesGrouped {
-		return 0
 	}
 	if lq.UID < rq.UID {
 		return -1
