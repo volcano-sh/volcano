@@ -162,6 +162,8 @@ The argument is configured independently on `gangpreempt` and `gangreclaim`. An 
 
 Both policies put victim queue ordering outermost for `gangreclaim`, grouping tied queues by UID before applying the queue-local policy. `gangpreempt` only considers its own queue. After the policy keys, preemption uses its existing victim job comparator; both actions then use ROI and deterministic identifiers. Equal-priority workloads prefer Safe before Whole across that priority level, rather than exhausting each individual workload.
 
+Within the same workload, Safe tasks retain ascending `TaskInfo.Priority` order after filtering splits them into single-task bundles; task UID only breaks equal-priority ties. Task priority does not override queue or workload ordering.
+
 This changes the previous gang-aware default comparator: reclamation now compares queues before bundle types, and both actions explicitly compare numeric workload priority within each bundle type under `safe-first`. It does not change the legacy task-level `preempt` and `reclaim` actions.
 
 Queue selection and workload selection are separate priority scopes rather than values combined into one global score. `gangreclaim` first uses `QueueOrderFn` to choose which underused queue gets an opportunity to reclaim. With the capacity plugin, a higher `Queue.spec.priority` is scheduled first; queues at the same priority are ordered by their allocated-to-deserved share, with the more underused queue first.

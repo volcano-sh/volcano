@@ -479,6 +479,14 @@ func stableBundleLess(l, r *Bundle) bool {
 		return lJobUID < rJobUID
 	}
 
+	// Filtering splits Safe bundles into single tasks. Preserve the job-local
+	// task priority order established by CreateJobBundles on the second sort.
+	if l.Job != nil && r.Job != nil && l.Type == BundleSafe && r.Type == BundleSafe && len(l.Tasks) == 1 && len(r.Tasks) == 1 {
+		if l.Tasks[0].Priority != r.Tasks[0].Priority {
+			return l.Tasks[0].Priority < r.Tasks[0].Priority
+		}
+	}
+
 	lFirstTaskUID := firstTaskUID(l)
 	rFirstTaskUID := firstTaskUID(r)
 	if lFirstTaskUID != rFirstTaskUID {
