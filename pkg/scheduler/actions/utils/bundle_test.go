@@ -17,12 +17,41 @@ limitations under the License.
 package utils
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
+	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
+
+func BenchmarkFilterOrderedBundles(b *testing.B) {
+	for _, count := range []int{32, 128, 512} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			ssn := &framework.Session{Tiers: []conf.Tier{{Plugins: []conf.PluginOption{{Name: "first"}, {Name: "second"}}}}}
+			for _, name := range []string{"first", "second"} {
+				ssn.AddUnifiedEvictableFn(name, func(_ *api.EvictionContext, tasks []*api.TaskInfo) ([]*api.TaskInfo, int) {
+					return tasks, util.Permit
+				})
+			}
+			tasks := make([]*api.TaskInfo, count)
+			for i := range tasks {
+				tasks[i] = &api.TaskInfo{UID: api.TaskID(fmt.Sprint(i)), Resreq: &api.Resource{MilliCPU: 1000}}
+			}
+			bundles := []*Bundle{{Type: BundleSafe, Tasks: tasks}}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				FilterOrderedBundles(bundles, true, func(trial []*api.TaskInfo) []*api.TaskInfo {
+					return ssn.UnifiedEvictable(&api.EvictionContext{}, trial)
+				})
+			}
+		})
+	}
+}
 
 func TestCreateJobBundles_SafeAndWhole(t *testing.T) {
 	job := &api.JobInfo{
@@ -76,6 +105,71 @@ func TestApplyAllowedTasks_WholeAtomicAndSafeShrink(t *testing.T) {
 	assert.Equal(t, BundleSafe, valid[0].Type)
 	assert.Len(t, valid[0].Tasks, 1)
 	assert.Equal(t, api.TaskID("t1"), valid[0].Tasks[0].UID)
+}
+
+func TestFilterOrderedBundles_WholeDoesNotConsumeRejectedAllowance(t *testing.T) {
+	task := func(id api.TaskID) *api.TaskInfo {
+		return &api.TaskInfo{UID: id, Resreq: &api.Resource{MilliCPU: 1000}}
+	}
+	first, w1, w2, later := task("first"), task("w1"), task("w2"), task("later")
+	bundles := []*Bundle{
+		{Type: BundleSafe, Tasks: []*api.TaskInfo{first}},
+		{Type: BundleWhole, Tasks: []*api.TaskInfo{w1, w2}},
+		{Type: BundleSafe, Tasks: []*api.TaskInfo{later}},
+	}
+	for _, allowWhole := range []bool{false, true} {
+		// Each invocation evaluates cumulative victims against the same quota
+		// snapshot. Only two tasks may be reclaimed in total.
+		filter := func(tasks []*api.TaskInfo) []*api.TaskInfo {
+			if !allowWhole {
+				for _, candidate := range tasks {
+					assert.NotEqual(t, w1.UID, candidate.UID)
+					assert.NotEqual(t, w2.UID, candidate.UID)
+				}
+			}
+			if len(tasks) > 2 {
+				return tasks[:2]
+			}
+			return tasks
+		}
+		valid := FilterOrderedBundles(bundles, allowWhole, filter)
+		assert.Equal(t, []*api.TaskInfo{first, later}, FlattenBundles(valid))
+	}
+}
+
+func TestFilterOrderedBundles_SafeSelectionIsIncremental(t *testing.T) {
+	tasks := []*api.TaskInfo{
+		{UID: "s1", Resreq: &api.Resource{MilliCPU: 1000}},
+		{UID: "s2", Resreq: &api.Resource{MilliCPU: 1000}},
+		{UID: "s3", Resreq: &api.Resource{MilliCPU: 1000}},
+	}
+	bundles := []*Bundle{{Type: BundleSafe, Tasks: tasks, LocalRes: sumTasks(tasks)}}
+	valid := FilterOrderedBundles(bundles, true, func(tasks []*api.TaskInfo) []*api.TaskInfo { return tasks })
+	assert.Len(t, valid, 3)
+	selected := SelectBundles(valid, &api.Resource{MilliCPU: 1000}, true)
+	assert.Equal(t, tasks[:1], FlattenBundles(selected), "one required task must not evict all surplus")
+	assert.Len(t, bundles[0].Tasks, 3, "do not mutate raw bundles")
+}
+
+func TestFilterOrderedBundles_KeepsWholeAtomicAndReplaysPrefix(t *testing.T) {
+	tasks := []*api.TaskInfo{
+		{UID: "w1", Resreq: &api.Resource{MilliCPU: 1000}},
+		{UID: "w2", Resreq: &api.Resource{MilliCPU: 1000}},
+		{UID: "s1", Resreq: &api.Resource{MilliCPU: 1000}},
+	}
+	bundles := []*Bundle{
+		{Type: BundleWhole, Tasks: tasks[:2], LocalRes: sumTasks(tasks[:2])},
+		{Type: BundleSafe, Tasks: tasks[2:]},
+	}
+	valid := FilterOrderedBundles(bundles, true, func(trial []*api.TaskInfo) []*api.TaskInfo {
+		if len(trial) > 2 {
+			return trial[:2]
+		}
+		return trial
+	})
+	assert.Len(t, valid, 1)
+	assert.Equal(t, bundles[0], valid[0])
+	assert.Equal(t, tasks[:2], FlattenBundles(SelectBundles(valid, &api.Resource{MilliCPU: 1000}, true)))
 }
 
 func TestSelectBundles_RespectsAllowWhole(t *testing.T) {

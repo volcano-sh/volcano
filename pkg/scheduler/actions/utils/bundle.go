@@ -223,6 +223,47 @@ func FlattenBundles(bundles []*Bundle) []*api.TaskInfo {
 	return out
 }
 
+// FilterOrderedBundles replays the accepted prefix for each candidate. A failed
+// Whole trial therefore cannot spend the allowance of later bundles. Filters
+// must evaluate each call against the unchanged session snapshot; replaying the
+// prefix preserves cumulative resource accounting across calls.
+// Safe bundles become single-task selection units so placement can stop early.
+func FilterOrderedBundles(bundles []*Bundle, allowWhole bool, filter func([]*api.TaskInfo) []*api.TaskInfo) []*Bundle {
+	var accepted []*api.TaskInfo
+	var result []*Bundle
+	try := func(b *Bundle) {
+		trial := make([]*api.TaskInfo, 0, len(accepted)+len(b.Tasks))
+		trial = append(trial, accepted...)
+		trial = append(trial, b.Tasks...)
+		allowed := make(map[api.TaskID]bool, len(trial))
+		for _, task := range filter(trial) {
+			allowed[task.UID] = true
+		}
+		for _, task := range trial {
+			if !allowed[task.UID] {
+				return
+			}
+		}
+		accepted = trial
+		result = append(result, b)
+	}
+	for _, b := range bundles {
+		if b.Type == BundleWhole {
+			if allowWhole {
+				try(b)
+			}
+			continue
+		}
+		for _, task := range b.Tasks {
+			unit := *b
+			unit.Tasks = []*api.TaskInfo{task}
+			unit.LocalRes = sumTasks(unit.Tasks)
+			try(&unit)
+		}
+	}
+	return result
+}
+
 func ApplyAllowedTasks(bundles []*Bundle, allowed map[api.TaskID]struct{}) []*Bundle {
 	valid := make([]*Bundle, 0, len(bundles))
 	for _, b := range bundles {

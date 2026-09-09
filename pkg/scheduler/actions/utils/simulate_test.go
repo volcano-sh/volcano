@@ -17,16 +17,23 @@ limitations under the License.
 package utils
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
+	"volcano.sh/volcano/pkg/scheduler/uthelper"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 // testDomainHyperNode registers nodes under a hypernode name in ssn.RealNodesList and returns a
@@ -40,7 +47,7 @@ func testDomainHyperNode(ssn *framework.Session, name string, nodes []*api.NodeI
 }
 
 func TestBuildNominationPlanInDomain_Guards(t *testing.T) {
-	plan, _, ok := BuildNominationPlanInDomain(nil, nil, nil, nil, nil, "x", true)
+	plan, _, ok := BuildNominationPlanInDomain(nil, nil, nil, nil, nil, nil, "x", true)
 	assert.False(t, ok)
 	assert.Nil(t, plan)
 
@@ -56,39 +63,100 @@ func TestBuildNominationPlanInDomain_Guards(t *testing.T) {
 		Jobs:  map[api.JobID]*api.JobInfo{jobID: job},
 		Nodes: map[string]*api.NodeInfo{node.Name: node},
 	}
-	plan, _, ok = BuildNominationPlanInDomain(ssn, nil, job, nil, nil, "x", true)
+	plan, _, ok = BuildNominationPlanInDomain(ssn, nil, job, nil, CollectPendingTasksForGangEviction(ssn, job), nil, "x", true)
 	assert.False(t, ok)
 	assert.Nil(t, plan)
 }
 
-func TestCollectPendingTasksForJobStartup_WorksheetOrder(t *testing.T) {
-	jobID := api.JobID("ns/startup-pending")
-	t1 := makeTask(jobID, "t1")
-	t2 := makeTask(jobID, "t2")
-	job := api.NewJobInfo(jobID, t1, t2)
-	job.SubJobs = map[api.SubJobID]*api.SubJobInfo{
-		"sj-late": {
-			UID:        "sj-late",
-			GID:        "g1",
-			MatchIndex: 2,
-			TaskStatusIndex: map[api.TaskStatus]api.TasksMap{
-				api.Pending: {t2.UID: t2},
-			},
-		},
-		"sj-early": {
-			UID:        "sj-early",
-			GID:        "g1",
-			MatchIndex: 1,
-			TaskStatusIndex: map[api.TaskStatus]api.TasksMap{
-				api.Pending: {t1.UID: t1},
-			},
-		},
+func TestGangEvictionTarget_StartupPrefix(t *testing.T) {
+	ensureServerOptsForTest()
+	for _, minimum := range []int32{1, 2, 3} {
+		t.Run(fmt.Sprint(minimum), func(t *testing.T) {
+			res := api.BuildResourceList("1", "1Gi")
+			enabled := true
+			fixture := &uthelper.TestCommonStruct{
+				Plugins:   map[string]framework.PluginBuilder{gang.PluginName: gang.New},
+				Nodes:     []*v1.Node{util.BuildNode("n1", api.BuildResourceList("2", "2Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)},
+				Queues:    []*v1beta1.Queue{util.BuildQueue("q", 1, nil)},
+				PodGroups: []*v1beta1.PodGroup{util.BuildPodGroup("target", "ns", "q", minimum, nil, v1beta1.PodGroupInqueue)},
+			}
+			for i := 0; i < 4; i++ {
+				fixture.Pods = append(fixture.Pods, util.BuildPod("ns", fmt.Sprintf("p%d", i), "", v1.PodPending, res, "target", nil, nil))
+			}
+			ssn := fixture.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{{
+				Name: gang.PluginName, EnabledJobReady: &enabled, EnabledJobPipelined: &enabled,
+			}}}}, nil)
+			defer fixture.Close()
+			job := ssn.Jobs["ns/target"]
+			require.NotNil(t, job)
+			target := CollectPendingTasksForGangEviction(ssn, job)
+			require.Len(t, target, int(minimum))
+			assert.Len(t, job.TaskStatusIndex[api.Pending], 4, "target discovery must not mutate session")
+			assert.Empty(t, job.TaskStatusIndex[api.Pipelined])
+
+			hn := testDomainHyperNode(ssn, framework.ClusterTopHyperNode, []*api.NodeInfo{ssn.Nodes["n1"]})
+			plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, target, nil, "test", true)
+			assert.Equal(t, minimum <= 2, ok, "optional tasks must not enlarge placement demand")
+			if ok {
+				require.NotNil(t, plan)
+				assert.Len(t, plan.Operations(), int(minimum))
+				stmt := framework.NewStatement(ssn)
+				require.NoError(t, stmt.RecoverOperations(plan))
+				for _, task := range target {
+					assert.Equal(t, api.Pipelined, job.Tasks[task.UID].Status, "placement must use exactly the supplied target")
+				}
+				stmt.Discard()
+			}
+			assert.Len(t, job.TaskStatusIndex[api.Pending], 4, "simulation must roll back")
+			assert.Empty(t, job.TaskStatusIndex[api.Pipelined])
+			job.MinAvailable = 5
+			assert.Nil(t, CollectPendingTasksForGangEviction(ssn, job), "an unreachable gang target must not authorize eviction")
+		})
 	}
-	ssn := &framework.Session{}
-	out := collectPendingTasksForJobStartup(ssn, job)
-	assert.Equal(t, 2, len(out))
-	assert.Equal(t, api.TaskID("t1"), out[0].UID)
-	assert.Equal(t, api.TaskID("t2"), out[1].UID)
+}
+
+func TestGangEvictionTarget_SubJobAtomicityAndExactPlacement(t *testing.T) {
+	ensureServerOptsForTest()
+	size, minimum := int32(2), int32(1)
+	pg := util.BuildPodGroup("target", "ns", "q", 1, nil, v1beta1.PodGroupInqueue)
+	pg.Spec.SubGroupPolicy = []v1beta1.SubGroupPolicySpec{{
+		Name: "groups", SubGroupSize: &size, MinSubGroups: &minimum, MatchLabelKeys: []string{"group"},
+	}}
+	fixture := &uthelper.TestCommonStruct{
+		Plugins:   map[string]framework.PluginBuilder{gang.PluginName: gang.New},
+		Nodes:     []*v1.Node{util.BuildNode("n1", api.BuildResourceList("4", "4Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)},
+		Queues:    []*v1beta1.Queue{util.BuildQueue("q", 1, nil)},
+		PodGroups: []*v1beta1.PodGroup{pg},
+	}
+	for i := 0; i < 4; i++ {
+		pod := util.BuildPod("ns", fmt.Sprintf("p%d", i), "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "target", nil, nil)
+		pod.Labels = map[string]string{"group": fmt.Sprint(i / 2)}
+		fixture.Pods = append(fixture.Pods, pod)
+	}
+	enabled := true
+	ssn := fixture.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{{
+		Name: gang.PluginName, EnabledJobReady: &enabled, EnabledJobPipelined: &enabled,
+		EnabledSubJobReady: &enabled, EnabledSubJobPipelined: &enabled,
+	}}}}, nil)
+	defer fixture.Close()
+	job := ssn.Jobs["ns/target"]
+	require.NotNil(t, job)
+	target := CollectPendingTasksForGangEviction(ssn, job)
+	require.Len(t, target, 2, "explicit sub-job remains atomic even though job minMember is one")
+	assert.Equal(t, job.TaskToSubJob[target[0].UID], job.TaskToSubJob[target[1].UID])
+
+	var allPending []*api.TaskInfo
+	for _, task := range job.TaskStatusIndex[api.Pending] {
+		allPending = append(allPending, task)
+	}
+	hn := testDomainHyperNode(ssn, framework.ClusterTopHyperNode, []*api.NodeInfo{ssn.Nodes["n1"]})
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, allPending, nil, "test", true)
+	require.True(t, ok)
+	assert.Len(t, plan.Operations(), 4, "simulation must not silently shrink a supplied target after the first ready sub-job")
+	assert.Len(t, job.TaskStatusIndex[api.Pending], 4)
+	assert.Empty(t, job.TaskStatusIndex[api.Pipelined])
+	_, _, ok = BuildNominationPlanInDomain(ssn, nil, job, hn, []*api.TaskInfo{makeTask(job.UID, "missing")}, nil, "test", true)
+	assert.False(t, ok, "a missing target task must invalidate the plan")
 }
 
 func TestCollectPendingTasksForRunningJob_FirstWorksheetSubJobOnly(t *testing.T) {
@@ -143,7 +211,7 @@ func TestBuildNominationPlanInDomain_Success(t *testing.T) {
 		Nodes: map[string]*api.NodeInfo{node.Name: node},
 	}
 	hn := testDomainHyperNode(ssn, framework.ClusterTopHyperNode, []*api.NodeInfo{node})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, CollectPendingTasksForGangEviction(ssn, job), nil, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 	assert.Equal(t, 1, len(plan.Operations()))
@@ -176,7 +244,7 @@ func TestBuildNominationPlanInDomain_WithVictimIncludesEvictAndPipeline(t *testi
 		Nodes: map[string]*api.NodeInfo{node.Name: node},
 	}
 	hn := testDomainHyperNode(ssn, framework.ClusterTopHyperNode, []*api.NodeInfo{node})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, []*api.TaskInfo{victim}, "test", true)
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, CollectPendingTasksForGangEviction(ssn, job), []*api.TaskInfo{victim}, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 	assert.Equal(t, 2, len(plan.Operations()))
@@ -198,7 +266,7 @@ func TestBuildNominationPlanInDomain_NoFeasibleNode(t *testing.T) {
 		Nodes: map[string]*api.NodeInfo{node.Name: node},
 	}
 	hn := testDomainHyperNode(ssn, framework.ClusterTopHyperNode, []*api.NodeInfo{node})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, CollectPendingTasksForGangEviction(ssn, job), nil, "test", true)
 	assert.False(t, ok)
 	assert.Nil(t, plan)
 }
@@ -238,7 +306,7 @@ func TestBuildNominationPlanInDomain_PipelineFailureRollsBackEviction(t *testing
 		Nodes: map[string]*api.NodeInfo{node.Name: node},
 	}
 	hn := testDomainHyperNode(ssn, "sim-domain", []*api.NodeInfo{ghostNode})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, []*api.TaskInfo{victim}, "test", true)
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, CollectPendingTasksForGangEviction(ssn, job), []*api.TaskInfo{victim}, "test", true)
 	assert.False(t, ok)
 	assert.Nil(t, plan)
 
@@ -283,7 +351,7 @@ func TestBuildNominationPlanInDomain_PrefersIdleNodeOverFutureIdle(t *testing.T)
 	}
 
 	hn := testDomainHyperNode(ssn, "sim-domain", []*api.NodeInfo{futureNode, idleNode})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, CollectPendingTasksForGangEviction(ssn, job), nil, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 
@@ -328,7 +396,7 @@ func TestBuildNominationPlanInDomain_NominatedHintDoesNotShortCircuitPredicate(t
 	}
 
 	hn := testDomainHyperNode(ssn, "sim-domain", []*api.NodeInfo{other, nominated})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, CollectPendingTasksForGangEviction(ssn, job), nil, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 	stmt := framework.NewStatement(ssn)
@@ -373,7 +441,7 @@ func TestBuildNominationPlanInDomain_IgnoresNominatedNodeOutsideDomain(t *testin
 	}
 
 	hn := testDomainHyperNode(ssn, "sim-domain", []*api.NodeInfo{inDomain})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, CollectPendingTasksForGangEviction(ssn, job), nil, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 	stmt := framework.NewStatement(ssn)
@@ -410,7 +478,7 @@ func TestBuildNominationPlanInDomain_FallbackWhenNominatedMissing(t *testing.T) 
 	}
 
 	hn := testDomainHyperNode(ssn, framework.ClusterTopHyperNode, []*api.NodeInfo{node})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, CollectPendingTasksForGangEviction(ssn, job), nil, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 }
@@ -447,7 +515,7 @@ func TestBuildNominationPlanInDomain_FallbackWhenNominatedInfeasible(t *testing.
 	}
 
 	hn := testDomainHyperNode(ssn, "sim-domain", []*api.NodeInfo{nominated, other})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
+	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, CollectPendingTasksForGangEviction(ssn, job), nil, "test", true)
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 	stmt := framework.NewStatement(ssn)
