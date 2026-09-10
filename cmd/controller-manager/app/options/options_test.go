@@ -191,3 +191,90 @@ func TestCheckControllers(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateWorkerThreads(t *testing.T) {
+	validOptions := &ServerOption{
+		WorkerThreads:           defaultWorkers,
+		WorkerThreadsForCronJob: defaultCronJobWorkers,
+		WorkerThreadsForPG:      defaultPodGroupWorkers,
+		WorkerThreadsForQueue:   defaultQueueWorkers,
+		WorkerThreadsForGC:      defaultGCWorkers,
+	}
+
+	testCases := []struct {
+		name        string
+		configure   func(*ServerOption)
+		expectedErr string
+	}{
+		{
+			name: "all worker threads are positive",
+			configure: func(*ServerOption) {
+			},
+		},
+		{
+			name: "worker-threads is zero",
+			configure: func(option *ServerOption) {
+				option.WorkerThreads = 0
+			},
+			expectedErr: "worker-threads must be greater than 0",
+		},
+		{
+			name: "worker-threads-for-cronjob is zero",
+			configure: func(option *ServerOption) {
+				option.WorkerThreadsForCronJob = 0
+			},
+			expectedErr: "worker-threads-for-cronjob must be greater than 0",
+		},
+		{
+			name: "worker-threads-for-podgroup is zero",
+			configure: func(option *ServerOption) {
+				option.WorkerThreadsForPG = 0
+			},
+			expectedErr: "worker-threads-for-podgroup must be greater than 0",
+		},
+		{
+			name: "worker-threads-for-queue is zero",
+			configure: func(option *ServerOption) {
+				option.WorkerThreadsForQueue = 0
+			},
+			expectedErr: "worker-threads-for-queue must be greater than 0",
+		},
+		{
+			name: "worker-threads-for-gc is zero",
+			configure: func(option *ServerOption) {
+				option.WorkerThreadsForGC = 0
+			},
+			expectedErr: "worker-threads-for-gc must be greater than 0",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			option := *validOptions
+			testCase.configure(&option)
+
+			err := option.validateWorkerThreads()
+			if testCase.expectedErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			assert.EqualError(t, err, testCase.expectedErr)
+		})
+	}
+}
+
+func TestCheckOptionOrDieRejectsZeroWorkerThreads(t *testing.T) {
+	s := &ServerOption{
+		WorkerThreads:           defaultWorkers,
+		WorkerThreadsForCronJob: defaultCronJobWorkers,
+		WorkerThreadsForPG:      defaultPodGroupWorkers,
+		WorkerThreadsForQueue:   defaultQueueWorkers,
+		WorkerThreadsForGC:      defaultGCWorkers,
+	}
+	commonutil.LeaderElectionDefault(&s.LeaderElection)
+	s.LeaderElection.ResourceName = "vc-controller-manager"
+	s.WorkerThreads = 0
+
+	err := s.CheckOptionOrDie()
+	assert.EqualError(t, err, "worker-threads must be greater than 0")
+}

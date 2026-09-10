@@ -145,6 +145,10 @@ func (s *ServerOption) CheckOptionOrDie() error {
 		allErrors = append(allErrors, err)
 	}
 
+	if err := s.validateWorkerThreads(); err != nil {
+		allErrors = append(allErrors, err)
+	}
+
 	// Check leader election flag when LeaderElection is enabled.
 	leaderElectionErr := componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(
 		&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
@@ -175,6 +179,27 @@ func (s *ServerOption) checkControllers() error {
 		}
 	}
 	return nil
+}
+
+func (s *ServerOption) validateWorkerThreads() error {
+	workerThreads := []struct {
+		name  string
+		value uint32
+	}{
+		{name: "worker-threads", value: s.WorkerThreads},
+		{name: "worker-threads-for-cronjob", value: s.WorkerThreadsForCronJob},
+		{name: "worker-threads-for-podgroup", value: s.WorkerThreadsForPG},
+		{name: "worker-threads-for-queue", value: s.WorkerThreadsForQueue},
+		{name: "worker-threads-for-gc", value: s.WorkerThreadsForGC},
+	}
+
+	var allErrors []error
+	for _, workerThread := range workerThreads {
+		if workerThread.value <= 0 {
+			allErrors = append(allErrors, fmt.Errorf("%s must be greater than 0", workerThread.name))
+		}
+	}
+	return errors.NewAggregate(allErrors)
 }
 
 // readCAFiles read data from ca file path
