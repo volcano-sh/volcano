@@ -17,6 +17,7 @@ limitations under the License.
 package framework
 
 import (
+	"strings"
 	"sync"
 
 	k8sframework "k8s.io/kube-scheduler/framework"
@@ -228,7 +229,7 @@ func RegisterAction(act Action) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 
-	actionMap[act.Name()] = act
+	actionMap[strings.ToLower(act.Name())] = act
 }
 
 // GetAction get the action by name
@@ -236,6 +237,6 @@ func GetAction(name string) (Action, bool) {
 	pluginMutex.RLock()
 	defer pluginMutex.RUnlock()
 
-	act, found := actionMap[name]
+	act, found := actionMap[strings.ToLower(name)]
 	return act, found
 }

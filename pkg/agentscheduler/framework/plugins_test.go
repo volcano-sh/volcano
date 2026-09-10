@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,14 +19,18 @@ package framework
 import (
 	"strings"
 	"testing"
+
+	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 )
 
 type fakeAction struct{}
 
-func (fakeAction) Name() string     { return "FakeAction" }
-func (fakeAction) Initialize()      {}
-func (fakeAction) Execute(*Session) {}
-func (fakeAction) UnInitialize()    {}
+func (fakeAction) Name() string                                                 { return "FakeAction" }
+func (fakeAction) OnActionInit(configurations []conf.Configuration)             {}
+func (fakeAction) Initialize()                                                  {}
+func (fakeAction) Execute(fwk *Framework, schedCtx *agentapi.SchedulingContext) {}
+func (fakeAction) UnInitialize()                                                {}
 
 func TestGetActionCaseInsensitive(t *testing.T) {
 	RegisterAction(fakeAction{})
@@ -45,40 +49,5 @@ func TestGetActionCaseInsensitive(t *testing.T) {
 
 	if _, found := GetAction("notregistered"); found {
 		t.Errorf("expected not to find action for unregistered name")
-	}
-}
-
-func TestGetPluginName(t *testing.T) {
-	cases := []struct {
-		pluginPath string
-		pluginName string
-	}{
-		{
-			pluginPath: "magic.so",
-			pluginName: "magic",
-		},
-		{
-			pluginPath: "./magic.so",
-			pluginName: "magic",
-		},
-		{
-			pluginPath: "./plugins/magic.so",
-			pluginName: "magic",
-		},
-		{
-			pluginPath: "/plugins/magic.so",
-			pluginName: "magic",
-		},
-		{
-			pluginPath: "a/b/c/plugins/magic.so",
-			pluginName: "magic",
-		},
-	}
-
-	for index, c := range cases {
-		pluginName := getPluginName(c.pluginPath)
-		if pluginName != c.pluginName {
-			t.Errorf("index %d value should be %v, but not %v", index, c.pluginName, pluginName)
-		}
 	}
 }
