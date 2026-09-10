@@ -162,6 +162,30 @@ See the `ResourceName` table in the [Usage](#usage) section above for the suppor
 
 **Note**: If the pod's annotations do not specify `hami-core`, the device will be allocated in the template vNPU mode even if the `hami-core` feature is enabled in the configuration file.
 
+#### Specify or ignore devices by UUID
+
+You can specify or ignore the corresponding UUIDs via `hami.io/use-Ascend{ChipName}-uuid` and `hami.io/no-use-Ascend{ChipName}-uuid`.
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ascend-pod
+  annotations:
+    hami.io/use-Ascend310P-uuid: "68496E64-20E05477-92C31323-6E78030A-BD003019"
+spec:
+  schedulerName: volcano
+  containers:
+    - name: ubuntu-container
+      image: swr.cn-south-1.myhuaweicloud.com/ascendhub/ascend-pytorch:24.0.RC1-A2-1.11.0-ubuntu20.04
+      command: ["sleep"]
+      args: ["100000"]
+      resources:
+        limits:
+          huawei.com/Ascend310P: "1"
+          huawei.com/Ascend310P-memory: "4096"
+```
+
 ### Monitoring
 
 When a node runs in **`hami-core` (soft slicing) mode**, `ascend-device-plugin` starts an **embedded Prometheus exporter** on **`:9395/metrics`** that reports physical-device and per-container vNPU usage. It is **not** started for the template vNPU (or whole-card) path. 
