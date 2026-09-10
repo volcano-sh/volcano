@@ -410,6 +410,65 @@ func TestSnapshot_UpdateAffinityLists(t *testing.T) {
 	}
 }
 
+func TestSnapshot_AddOrUpdateNodes_ImageStates(t *testing.T) {
+	node := api.NewNodeInfo(&v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node-1",
+		},
+		Status: v1.NodeStatus{
+			Allocatable: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("4"),
+				v1.ResourceMemory: resource.MustParse("8Gi"),
+			},
+		},
+	})
+	node.ImageStates = map[string]*fwk.ImageStateSummary{
+		"docker.io/library/nginx:latest": {
+			Size:     100 * 1024 * 1024,
+			NumNodes: 3,
+		},
+		"docker.io/library/redis:7": {
+			Size:     50 * 1024 * 1024,
+			NumNodes: 5,
+		},
+	}
+
+	snapshot := NewEmptySnapshot()
+	snapshot.AddOrUpdateNodes([]*api.NodeInfo{node})
+
+	k8sNodeInfo, err := snapshot.GetK8sNodeInfo("node-1")
+	if err != nil {
+		t.Fatalf("unexpected error getting k8s node info: %v", err)
+	}
+
+	imageStates := k8sNodeInfo.GetImageStates()
+	if len(imageStates) != 2 {
+		t.Fatalf("expected 2 image states in fwk NodeInfo, got %d", len(imageStates))
+	}
+
+	nginxState, ok := imageStates["docker.io/library/nginx:latest"]
+	if !ok {
+		t.Fatalf("expected nginx image state")
+	}
+	if nginxState.Size != 100*1024*1024 {
+		t.Errorf("expected nginx size 100MB, got %d", nginxState.Size)
+	}
+	if nginxState.NumNodes != 3 {
+		t.Errorf("expected nginx NumNodes 3, got %d", nginxState.NumNodes)
+	}
+
+	redisState, ok := imageStates["docker.io/library/redis:7"]
+	if !ok {
+		t.Fatalf("expected redis image state")
+	}
+	if redisState.Size != 50*1024*1024 {
+		t.Errorf("expected redis size 50MB, got %d", redisState.Size)
+	}
+	if redisState.NumNodes != 5 {
+		t.Errorf("expected redis NumNodes 5, got %d", redisState.NumNodes)
+	}
+}
+
 func TestSnapshot_DeleteNode(t *testing.T) {
 	tests := []struct {
 		name        string
