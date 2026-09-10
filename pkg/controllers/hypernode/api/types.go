@@ -21,8 +21,9 @@ import (
 )
 
 const (
-	NetworkTopologySourceLabelKey = "volcano.sh/network-topology-source"
-	DefaultDiscoveryInterval      = time.Hour
+	NetworkTopologySourceLabelKey  = "volcano.sh/network-topology-source"
+	NetworkTopologyProfileLabelKey = "volcano.sh/network-topology-profile"
+	DefaultDiscoveryInterval       = time.Hour
 )
 
 // NetworkTopologyConfig represents the configuration for network topology

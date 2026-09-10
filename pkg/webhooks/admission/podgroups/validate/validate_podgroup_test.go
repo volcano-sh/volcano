@@ -288,3 +288,30 @@ func TestValidatePodGroup(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateNetworkTopology(t *testing.T) {
+	t.Run("rejects empty hard podgroup topology", func(t *testing.T) {
+		msg := validateNetworkTopology(
+			&schedulingv1beta1.NetworkTopologySpec{Mode: schedulingv1beta1.HardNetworkTopologyMode}, nil)
+		assert.Contains(t, msg, "must specify either 'highestTierAllowed' or 'highestTierName'")
+	})
+
+	t.Run("allows empty soft podgroup topology", func(t *testing.T) {
+		msg := validateNetworkTopology(
+			&schedulingv1beta1.NetworkTopologySpec{Mode: schedulingv1beta1.SoftNetworkTopologyMode}, nil)
+		assert.Empty(t, msg)
+	})
+
+	t.Run("rejects empty hard subgroup topology", func(t *testing.T) {
+		msg := validateNetworkTopology(nil, []schedulingv1beta1.SubGroupPolicySpec{
+			{
+				Name: "workers",
+				NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+					Mode: schedulingv1beta1.HardNetworkTopologyMode,
+				},
+			},
+		})
+		assert.Contains(t, msg, "in subGroupPolicy 'workers'")
+		assert.Contains(t, msg, "must specify either 'highestTierAllowed' or 'highestTierName'")
+	})
+}

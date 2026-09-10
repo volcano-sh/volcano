@@ -1492,7 +1492,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			MinimalBindCheck: true,
 		},
 		{
-			Name: "hard network topology constrain and tasks in job rescheduled, can allocate job when LCAHyperNode is empty",
+			Name: "hard network topology constrain and tasks in job rescheduled, cannot escape the allocated real tree when it is full",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s0", "q1", 2, nil, schedulingv1.PodGroupInqueue, "hard", 2),
 			},
@@ -1542,7 +1542,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			Queues: []*schedulingv1.Queue{
 				util.BuildQueue("q1", 1, nil),
 			},
-			ExpectBindsNum:   1,
+			ExpectBindsNum:   0,
 			MinimalBindCheck: true,
 		},
 		{
@@ -2080,7 +2080,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			MinimalBindCheck: true,
 		},
 		{
-			Name: "hard network topology with highestTierName constrain and tasks in job rescheduled, can allocate job when here is no corresponding highestTierAllowed for highestTierName",
+			Name: "hard network topology with missing highestTierName remains pending",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroupUsingNetWorkTopologiesWithTierName("pg1", "c1", "s0", "q1", 2, nil, schedulingv1.PodGroupInqueue, "hard", "volcano.sh/hypercluster"),
 			},
@@ -2131,7 +2131,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			Queues: []*schedulingv1.Queue{
 				util.BuildQueue("q1", 1, nil),
 			},
-			ExpectBindsNum:   1,
+			ExpectBindsNum:   0,
 			MinimalBindCheck: true,
 		},
 	}
@@ -4415,7 +4415,7 @@ func TestAllocateWithPartitionPolicyNetworkTopology(t *testing.T) {
 			MinimalBindCheck: true,
 		},
 		{
-			Name: "podgroup hard network topology constrain and subGroup hard network topology constrain and tasks in job rescheduled, can allocate job when LCAHyperNode is empty",
+			Name: "podgroup and subgroup hard network topology constrain and tasks rescheduled, cannot escape the allocated real tree when it is full",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "s0", "q1", 2, nil, schedulingv1.PodGroupInqueue, "hard", 3,
 					[]schedulingv1.SubGroupPolicySpec{
@@ -4468,7 +4468,7 @@ func TestAllocateWithPartitionPolicyNetworkTopology(t *testing.T) {
 			Queues: []*schedulingv1.Queue{
 				util.BuildQueue("q1", 1, nil),
 			},
-			ExpectBindsNum:   1,
+			ExpectBindsNum:   0,
 			MinimalBindCheck: true,
 		},
 		{

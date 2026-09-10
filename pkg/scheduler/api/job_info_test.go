@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -618,6 +619,54 @@ func TestHasTopologyHardConstrain(t *testing.T) {
 			hasHard, tier := tt.jobInfo.IsHardTopologyMode()
 			assert.Equal(t, tt.expectedHasHard, hasHard)
 			assert.Equal(t, tt.expectedTier, tier)
+		})
+	}
+}
+
+func TestJobInfo_HardTopologyConstraint(t *testing.T) {
+	tests := []struct {
+		name       string
+		topology   *scheduling.NetworkTopologySpec
+		constraint bool
+	}{
+		{
+			name: "hard numeric boundary",
+			topology: &scheduling.NetworkTopologySpec{
+				Mode:               scheduling.HardNetworkTopologyMode,
+				HighestTierAllowed: ptr.To(1),
+			},
+			constraint: true,
+		},
+		{
+			name: "hard name boundary",
+			topology: &scheduling.NetworkTopologySpec{
+				Mode:            scheduling.HardNetworkTopologyMode,
+				HighestTierName: "volcano.sh/hypernode",
+			},
+			constraint: true,
+		},
+		{
+			name: "soft boundary",
+			topology: &scheduling.NetworkTopologySpec{
+				Mode:            scheduling.SoftNetworkTopologyMode,
+				HighestTierName: "volcano.sh/hypernode",
+			},
+		},
+		{
+			name:       "hard mode without boundary",
+			topology:   &scheduling.NetworkTopologySpec{Mode: scheduling.HardNetworkTopologyMode},
+			constraint: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			job := &JobInfo{NetworkTopology: tt.topology}
+			if tt.constraint {
+				assert.Same(t, tt.topology, job.HardTopologyConstraint())
+				return
+			}
+			assert.Nil(t, job.HardTopologyConstraint())
 		})
 	}
 }

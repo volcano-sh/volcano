@@ -96,6 +96,33 @@ func TestHyperNodesInfo_UpdateHyperNode_Normal(t *testing.T) {
 	}
 }
 
+func TestHyperNodesInfoTierNameMapOmitsAmbiguousLocalTiers(t *testing.T) {
+	makeHyperNodeInfo := func(name string, tier int, tierName string) *HyperNodeInfo {
+		hyperNode := BuildHyperNode(name, tier, nil)
+		hyperNode.Spec.TierName = tierName
+		return NewHyperNodeInfo(hyperNode)
+	}
+
+	hni := NewHyperNodesInfoWithCache(
+		HyperNodeInfoMap{
+			"shallow-hypernode": makeHyperNodeInfo("shallow-hypernode", 1, "volcano.sh/hypernode"),
+			"deep-hypernode":    makeHyperNodeInfo("deep-hypernode", 2, "volcano.sh/hypernode"),
+			"hypercluster":      makeHyperNodeInfo("hypercluster", 3, "volcano.sh/hypercluster"),
+		},
+		map[int]sets.Set[string]{
+			1: sets.New[string]("shallow-hypernode"),
+			2: sets.New[string]("deep-hypernode"),
+			3: sets.New[string]("hypercluster"),
+		},
+		map[string]sets.Set[string]{},
+		new(atomic.Bool),
+	)
+
+	assert.Equal(t, HyperNodeTierNameMap{
+		"volcano.sh/hypercluster": 3,
+	}, hni.HyperNodeTierNameMap())
+}
+
 func TestHyperNodesInfo_UpdateHyperNode_NoSpecChange(t *testing.T) {
 	// Exact-match HyperNode: realNodesSet is purely spec-driven, so an unchanged
 	// spec (only metadata changed) must NOT trigger a rebuild.

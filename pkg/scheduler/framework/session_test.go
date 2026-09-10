@@ -5,12 +5,223 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/utils/ptr"
 
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
+
+func TestSessionEnsureTopologyTrees(t *testing.T) {
+	newHyperNode := func(name string, tier int, children ...string) *api.HyperNodeInfo {
+		info := api.NewHyperNodeInfo(api.BuildHyperNode(name, tier, nil))
+		info.Children.Insert(children...)
+		return info
+	}
+
+	hyperNodes := api.HyperNodeInfoMap{
+		"shallow-leaf":      newHyperNode("shallow-leaf", 1),
+		"shallow-root":      newHyperNode("shallow-root", 2, "shallow-leaf"),
+		"deep-leaf":         newHyperNode("deep-leaf", 1),
+		"deep-middle":       newHyperNode("deep-middle", 2, "deep-leaf"),
+		"deep-root":         newHyperNode("deep-root", 3, "deep-middle"),
+		"single-tier":       newHyperNode("single-tier", 1),
+		ClusterTopHyperNode: newHyperNode(ClusterTopHyperNode, 4, "shallow-root", "deep-root", "single-tier"),
+	}
+	for _, parent := range hyperNodes {
+		for child := range parent.Children {
+			hyperNodes[child].Parent = parent.Name
+		}
+	}
+
+	ssn := &Session{
+		HyperNodes: hyperNodes,
+		RealNodesSet: map[string]sets.Set[string]{
+			"shallow-leaf": sets.New("shallow-node"),
+			"shallow-root": sets.New("shallow-node"),
+			"deep-leaf":    sets.New("deep-node"),
+			"deep-middle":  sets.New("deep-node"),
+			"deep-root":    sets.New("deep-node"),
+			"single-tier":  sets.New("single-tier-node"),
+		},
+	}
+	ssn.EnsureTopologyTrees()
+
+	assert.Equal(t, sets.New("shallow-root", "deep-root", "single-tier"), sets.KeySet(ssn.TopologyTrees))
+	assert.Equal(t, []int{1, 2}, ssn.TopologyTrees["shallow-root"].Tiers)
+	assert.Equal(t, []int{1, 2, 3}, ssn.TopologyTrees["deep-root"].Tiers)
+	assert.Equal(t, []int{1}, ssn.TopologyTrees["single-tier"].Tiers)
+	assert.Equal(t, sets.New("shallow-root", "shallow-leaf"), ssn.TopologyTrees["shallow-root"].HyperNodes)
+	assert.Equal(t, sets.New("deep-root", "deep-middle", "deep-leaf"), ssn.TopologyTrees["deep-root"].HyperNodes)
+	assert.Equal(t, sets.New("single-tier"), ssn.TopologyTrees["single-tier"].HyperNodes)
+	assert.Equal(t, sets.New("shallow-node"), ssn.TopologyTrees["shallow-root"].RealNodes)
+	assert.Equal(t, sets.New("deep-node"), ssn.TopologyTrees["deep-root"].RealNodes)
+	assert.Equal(t, sets.New("single-tier-node"), ssn.TopologyTrees["single-tier"].RealNodes)
+	assert.Equal(t, "shallow-root", ssn.HyperNodeToTopologyTree["shallow-leaf"])
+	assert.Equal(t, "deep-root", ssn.HyperNodeToTopologyTree["deep-middle"])
+	assert.Equal(t, "single-tier", ssn.HyperNodeToTopologyTree["single-tier"])
+	_, clusterRootIndexed := ssn.HyperNodeToTopologyTree[ClusterTopHyperNode]
+	assert.False(t, clusterRootIndexed)
+	assert.Equal(t, "shallow-leaf", ssn.FindHyperNodeForNode("shallow-node"))
+	assert.Equal(t, "deep-leaf", ssn.FindHyperNodeForNode("deep-node"))
+	assert.Equal(t, "single-tier", ssn.FindHyperNodeForNode("single-tier-node"))
+	assert.Empty(t, ssn.FindHyperNodeForNode("outside-node"))
+}
+
+func TestSessionAddClusterTopHyperNodeUsesNumericBoundary(t *testing.T) {
+	newHyperNode := func(name string, tier int) *api.HyperNodeInfo {
+		return api.NewHyperNodeInfo(api.BuildHyperNode(name, tier, nil))
+	}
+
+	ssn := &Session{
+		HyperNodes: api.HyperNodeInfoMap{
+			"root-a": newHyperNode("root-a", 1),
+			"root-b": newHyperNode("root-b", 3),
+		},
+		HyperNodesSetByTier: map[int]sets.Set[string]{
+			1: sets.New[string]("root-a"),
+			3: sets.New[string]("root-b"),
+		},
+		RealNodesList: map[string][]*api.NodeInfo{},
+		RealNodesSet:  map[string]sets.Set[string]{},
+	}
+	nodes := []*api.NodeInfo{{Name: "node-a"}}
+
+	ssn.addClusterTopHyperNode(nodes)
+
+	topHn := ssn.HyperNodes[ClusterTopHyperNode]
+	if assert.NotNil(t, topHn) {
+		assert.Equal(t, 4, topHn.Tier(), "virtual root must be one tier above the highest real tier")
+		assert.Equal(t, sets.New[string]("root-a", "root-b"), topHn.Children)
+	}
+	assert.Equal(t, ClusterTopHyperNode, ssn.HyperNodes["root-a"].Parent)
+	assert.Equal(t, ClusterTopHyperNode, ssn.HyperNodes["root-b"].Parent)
+	assert.Equal(t, sets.New[string](ClusterTopHyperNode), ssn.HyperNodesSetByTier[4])
+	assert.Equal(t, nodes, ssn.RealNodesList[ClusterTopHyperNode])
+	assert.Equal(t, sets.New[string]("node-a"), ssn.RealNodesSet[ClusterTopHyperNode])
+}
+
+func TestSessionRecoverAllocatedHyperNodeAcrossMixedTopology(t *testing.T) {
+	newHyperNode := func(name string, tier int, children ...string) *api.HyperNodeInfo {
+		info := api.NewHyperNodeInfo(api.BuildHyperNode(name, tier, nil))
+		info.Children.Insert(children...)
+		return info
+	}
+
+	hyperNodes := api.HyperNodeInfoMap{
+		"shallow-hypernode-0": newHyperNode("shallow-hypernode-0", 1),
+		"shallow-hypernode-1": newHyperNode("shallow-hypernode-1", 1),
+		"shallow-hypercluster": newHyperNode(
+			"shallow-hypercluster", 2, "shallow-hypernode-0", "shallow-hypernode-1"),
+		"deep-superpod-0": newHyperNode("deep-superpod-0", 1),
+		"deep-superpod-1": newHyperNode("deep-superpod-1", 1),
+		"deep-hypernode": newHyperNode(
+			"deep-hypernode", 2, "deep-superpod-0", "deep-superpod-1"),
+		"deep-hypercluster": newHyperNode("deep-hypercluster", 3, "deep-hypernode"),
+		ClusterTopHyperNode: newHyperNode(
+			ClusterTopHyperNode, 4, "shallow-hypercluster", "deep-hypercluster"),
+	}
+	for _, parent := range hyperNodes {
+		for child := range parent.Children {
+			hyperNodes[child].Parent = parent.Name
+		}
+	}
+
+	realNodes := map[string]sets.Set[string]{
+		"shallow-hypernode-0": sets.New("shallow-node-0", "shallow-node-1"),
+		"shallow-hypernode-1": sets.New("shallow-node-2", "shallow-node-3"),
+		"shallow-hypercluster": sets.New(
+			"shallow-node-0", "shallow-node-1", "shallow-node-2", "shallow-node-3"),
+		"deep-superpod-0": sets.New("deep-node-0", "deep-node-1"),
+		"deep-superpod-1": sets.New("deep-node-2", "deep-node-3"),
+		"deep-hypernode": sets.New(
+			"deep-node-0", "deep-node-1", "deep-node-2", "deep-node-3"),
+		"deep-hypercluster": sets.New(
+			"deep-node-0", "deep-node-1", "deep-node-2", "deep-node-3"),
+		ClusterTopHyperNode: sets.New(
+			"shallow-node-0", "shallow-node-1", "shallow-node-2", "shallow-node-3",
+			"deep-node-0", "deep-node-1", "deep-node-2", "deep-node-3"),
+	}
+
+	const (
+		namespace    = "test"
+		podGroupName = "mixed-recovery"
+		taskName     = "worker"
+	)
+	jobID := api.JobID(namespace + "/" + podGroupName)
+	subGroupSize := int32(2)
+	minSubGroups := int32(2)
+	job := api.NewJobInfo(jobID)
+	job.SetPodGroup(&api.PodGroup{PodGroup: scheduling.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: podGroupName, Namespace: namespace},
+		Spec: scheduling.PodGroupSpec{
+			MinMember: 4,
+			NetworkTopology: &scheduling.NetworkTopologySpec{
+				Mode:            scheduling.HardNetworkTopologyMode,
+				HighestTierName: "volcano.sh/hypercluster",
+			},
+			SubGroupPolicy: []scheduling.SubGroupPolicySpec{{
+				Name:         taskName,
+				SubGroupSize: &subGroupSize,
+				MinSubGroups: &minSubGroups,
+				LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{
+					batchv1alpha1.TaskSpecKey: taskName,
+				}},
+				MatchLabelKeys: []string{batchv1alpha1.TaskPartitionID},
+				NetworkTopology: &scheduling.NetworkTopologySpec{
+					Mode:            scheduling.HardNetworkTopologyMode,
+					HighestTierName: "volcano.sh/superpod",
+				},
+			}},
+		},
+	}})
+
+	for partition, nodes := range [][]string{
+		{"deep-node-0", "deep-node-1"},
+		{"deep-node-2", "deep-node-3"},
+	} {
+		for index, nodeName := range nodes {
+			podName := fmt.Sprintf("worker-%d-%d", partition, index)
+			pod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      podName,
+					Namespace: namespace,
+					UID:       types.UID(podName),
+					Labels: map[string]string{
+						batchv1alpha1.TaskSpecKey:     taskName,
+						batchv1alpha1.TaskPartitionID: fmt.Sprint(partition),
+					},
+					Annotations: map[string]string{
+						schedulingv1beta1.KubeGroupNameAnnotationKey: podGroupName,
+					},
+				},
+				Spec:   v1.PodSpec{NodeName: nodeName},
+				Status: v1.PodStatus{Phase: v1.PodRunning},
+			}
+			job.AddTaskInfo(api.NewTaskInfo(pod))
+		}
+	}
+
+	ssn := &Session{DirtyJobs: sets.New[api.JobID]()}
+	ssn.recoverAllocatedHyperNode(job, sets.KeySet(hyperNodes), hyperNodes, realNodes)
+
+	assert.Equal(t, "deep-hypernode", job.AllocatedHyperNode)
+	assert.Len(t, job.SubJobs, 2)
+	expectedSubGroupHyperNodes := map[int]string{
+		0: "deep-superpod-0",
+		1: "deep-superpod-1",
+	}
+	for _, subJob := range job.SubJobs {
+		assert.Equal(t, expectedSubGroupHyperNodes[subJob.MatchIndex], subJob.AllocatedHyperNode)
+	}
+	assert.True(t, ssn.DirtyJobs.Has(jobID))
+}
 
 func TestSession_adjustNetworkTopologySpec(t *testing.T) {
 	tests := []struct {
@@ -87,7 +298,7 @@ func TestSession_adjustNetworkTopologySpec(t *testing.T) {
 			},
 		},
 		{
-			name: "job with highestTierName, need translation",
+			name: "job with highestTierName is preserved for branch resolution",
 			jobs: map[api.JobID]*api.JobInfo{
 				"test-uid": {
 					PodGroup: &api.PodGroup{
@@ -128,14 +339,14 @@ func TestSession_adjustNetworkTopologySpec(t *testing.T) {
 						PodGroup: scheduling.PodGroup{
 							Spec: scheduling.PodGroupSpec{
 								NetworkTopology: &scheduling.NetworkTopologySpec{
-									HighestTierName:    "",
-									HighestTierAllowed: ptr.To(2),
+									HighestTierName:    "volcano.sh/hypercluster",
+									HighestTierAllowed: nil,
 								},
 								SubGroupPolicy: []scheduling.SubGroupPolicySpec{
 									{
 										NetworkTopology: &scheduling.NetworkTopologySpec{
-											HighestTierName:    "",
-											HighestTierAllowed: ptr.To(1),
+											HighestTierName:    "volcano.sh/hypernode",
+											HighestTierAllowed: nil,
 										},
 									},
 								},
@@ -145,8 +356,8 @@ func TestSession_adjustNetworkTopologySpec(t *testing.T) {
 					SubJobs: map[api.SubJobID]*api.SubJobInfo{
 						"test-uid": {
 							NetworkTopology: &scheduling.NetworkTopologySpec{
-								HighestTierName:    "",
-								HighestTierAllowed: ptr.To(1),
+								HighestTierName:    "volcano.sh/hypernode",
+								HighestTierAllowed: nil,
 							},
 						},
 					},
@@ -579,8 +790,8 @@ func TestConvertSoftToHardTopology_NilPodGroup(t *testing.T) {
 }
 
 func TestAdjustNetworkTopologySpec_SoftToHardConversion(t *testing.T) {
-	// This test verifies that adjustNetworkTopologySpec performs both tier name translation
-	// and soft→hard conversion in the same place.
+	// This test verifies that adjustNetworkTopologySpec converts soft mode while
+	// preserving hard tier names for branch-local resolution.
 	maxTier := 4 // ClusterTopHyperNode tier will be max(existing tiers) + 1 = 3 + 1 = 4
 
 	topHn := &topologyv1alpha1.HyperNode{}
@@ -594,9 +805,10 @@ func TestAdjustNetworkTopologySpec_SoftToHardConversion(t *testing.T) {
 		hyperNodes  api.HyperNodeInfoMap
 		wantJobMode scheduling.NetworkTopologyMode
 		wantJobTier *int
+		wantJobName string
 	}{
 		{
-			name: "soft topology with tierName: both translated and converted",
+			name: "soft topology with tierName is converted to an unrestricted numeric boundary",
 			jobs: map[api.JobID]*api.JobInfo{
 				"test-uid": {
 					PodGroup: &api.PodGroup{
@@ -619,7 +831,6 @@ func TestAdjustNetworkTopologySpec_SoftToHardConversion(t *testing.T) {
 			hyperNodes: api.HyperNodeInfoMap{
 				ClusterTopHyperNode: api.NewHyperNodeInfo(topHn),
 			},
-			// tierName is translated first (HighestTierAllowed=2), then soft→hard uses that tier
 			wantJobMode: scheduling.HardNetworkTopologyMode,
 			wantJobTier: ptr.To(maxTier),
 		},
@@ -647,7 +858,7 @@ func TestAdjustNetworkTopologySpec_SoftToHardConversion(t *testing.T) {
 			wantJobTier: ptr.To(maxTier),
 		},
 		{
-			name: "hard topology with tierName: only translated, not re-converted",
+			name: "hard topology with tierName is preserved",
 			jobs: map[api.JobID]*api.JobInfo{
 				"test-uid": {
 					PodGroup: &api.PodGroup{
@@ -671,7 +882,8 @@ func TestAdjustNetworkTopologySpec_SoftToHardConversion(t *testing.T) {
 				ClusterTopHyperNode: api.NewHyperNodeInfo(topHn),
 			},
 			wantJobMode: scheduling.HardNetworkTopologyMode,
-			wantJobTier: ptr.To(1), // translated from tierName, not overwritten by maxTier
+			wantJobTier: nil,
+			wantJobName: "volcano.sh/hypernode",
 		},
 	}
 
@@ -692,8 +904,37 @@ func TestAdjustNetworkTopologySpec_SoftToHardConversion(t *testing.T) {
 			gotJob := ssn.Jobs["test-uid"]
 			assert.Equal(t, tt.wantJobMode, gotJob.NetworkTopology.Mode, "job mode mismatch")
 			assert.Equal(t, tt.wantJobTier, gotJob.NetworkTopology.HighestTierAllowed, "job tier mismatch")
+			assert.Equal(t, tt.wantJobName, gotJob.NetworkTopology.HighestTierName, "job tier name mismatch")
 		})
 	}
+}
+
+func TestAdjustNetworkTopologySpecRecordsSoftConversionProvenance(t *testing.T) {
+	maxTier := 2
+	topHn := &topologyv1alpha1.HyperNode{}
+	topHn.Name = ClusterTopHyperNode
+	topHn.Spec.Tier = maxTier
+
+	job := api.NewJobInfo("soft-provenance")
+	job.PodGroup = &api.PodGroup{PodGroup: scheduling.PodGroup{Spec: scheduling.PodGroupSpec{
+		NetworkTopology: &scheduling.NetworkTopologySpec{Mode: scheduling.SoftNetworkTopologyMode},
+	}}}
+	job.NetworkTopology = job.PodGroup.Spec.NetworkTopology.DeepCopy()
+	job.SubJobs[api.SubJobID("soft-provenance/default")] = &api.SubJobInfo{
+		UID:             api.SubJobID("soft-provenance/default"),
+		NetworkTopology: &scheduling.NetworkTopologySpec{Mode: scheduling.SoftNetworkTopologyMode},
+	}
+
+	ssn := &Session{
+		Jobs: map[api.JobID]*api.JobInfo{job.UID: job},
+		HyperNodes: api.HyperNodeInfoMap{
+			ClusterTopHyperNode: api.NewHyperNodeInfo(topHn),
+		},
+	}
+	ssn.adjustNetworkTopologySpec()
+
+	assert.True(t, job.IsSoftTopologyConverted())
+	assert.True(t, job.SubJobs[api.SubJobID("soft-provenance/default")].IsSoftTopologyConverted())
 }
 
 func TestGetPodGroupPhase(t *testing.T) {
