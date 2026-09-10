@@ -32,6 +32,8 @@ const (
 	MaxDomainsKey = "maxDomains"
 	// AllowWholeBundleKey toggles whether whole-job ("whole-bundle") victim bundles may be selected.
 	AllowWholeBundleKey = "allowWholeBundle"
+	// VictimOrderPolicyKey selects safe-first or priority-first victim bundle ordering.
+	VictimOrderPolicyKey = "victimOrderPolicy"
 	// defaultMaxDomains is used when maxDomains is unset or invalid (<= 0).
 	defaultMaxDomains = 8
 	// defaultWholeBundleOn is the default for allowWholeBundle.
@@ -43,14 +45,17 @@ type Action struct {
 	maxDomains int
 	// allowWholeBundle permits selecting whole-job victim bundles when true.
 	allowWholeBundle bool
+	// victimOrderPolicy controls whether safe bundles or lower-priority workloads are considered first.
+	victimOrderPolicy utils.VictimOrderPolicy
 	// configured flag for predicate error cache
 	enablePredicateErrorCache bool
 }
 
 func New() *Action {
 	return &Action{
-		maxDomains:       defaultMaxDomains,
-		allowWholeBundle: defaultWholeBundleOn,
+		maxDomains:        defaultMaxDomains,
+		allowWholeBundle:  defaultWholeBundleOn,
+		victimOrderPolicy: utils.VictimOrderSafeFirst,
 	}
 }
 
@@ -69,6 +74,14 @@ func (gr *Action) parseArguments(ssn *framework.Session) {
 		gr.maxDomains = defaultMaxDomains
 	}
 	arguments.GetBool(&gr.allowWholeBundle, AllowWholeBundleKey)
+	configuredPolicy := string(utils.VictimOrderSafeFirst)
+	arguments.GetString(&configuredPolicy, VictimOrderPolicyKey)
+	policy, valid := utils.ParseVictimOrderPolicy(configuredPolicy)
+	if !valid {
+		klog.Warningf("Invalid %s value %q for action %s, falling back to %q",
+			VictimOrderPolicyKey, configuredPolicy, gr.Name(), utils.VictimOrderSafeFirst)
+	}
+	gr.victimOrderPolicy = policy
 
 	// Honor allocate's predicateErrorCacheEnable for the per-sub-job simulation, defaulting to
 	// enabled when allocate is not configured.
@@ -158,11 +171,21 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 		if len(nodes) == 0 {
 			continue
 		}
+		jobHN := ssn.HyperNodes[domain]
+		if jobHN == nil {
+			jobHN = ssn.HyperNodes[framework.ClusterTopHyperNode]
+		}
+		domainIdle := utils.SumIdleAndReleasing(nodes)
+		if jobNeed.LessEqual(domainIdle, api.Zero) {
+			plan, nominations, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, nil, utils.ReasonGangReclaim, gr.enablePredicateErrorCache)
+			if ok && utils.RecoverNominationPlan(ssn, stmt, plan) == nil {
+				return nominations
+			}
+		}
 		domainBundles := gr.selectDomainBundles(ssn, queueLessFn(ssn, job.Queue), job, pending, jobNeed, domain)
 		if len(domainBundles) == 0 {
 			continue
 		}
-		domainIdle := utils.SumIdleAndReleasing(nodes)
 		selectedVictims := make([]*api.TaskInfo, 0)
 		for _, bundle := range domainBundles {
 			selectedVictims = append(selectedVictims, bundle.Tasks...)
@@ -174,15 +197,11 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 
 			attemptVictims := append([]*api.TaskInfo(nil), selectedVictims...)
 
-			jobHN := ssn.HyperNodes[domain]
-			if jobHN == nil {
-				jobHN = ssn.HyperNodes[framework.ClusterTopHyperNode]
-			}
 			plan, subJobHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, attemptVictims, utils.ReasonGangReclaim, gr.enablePredicateErrorCache)
 			if !ok {
 				continue
 			}
-			if err := stmt.RecoverOperations(plan); err != nil {
+			if err := utils.RecoverNominationPlan(ssn, stmt, plan); err != nil {
 				continue
 			}
 			return subJobHyperNodes
@@ -226,35 +245,18 @@ func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l
 	if len(bundles) == 0 {
 		return nil
 	}
-	utils.SortBundlesForReclaim(bundles, jobNeed, lessQueueFn, ssn.Queues)
+	utils.SortBundlesForReclaim(bundles, jobNeed, gr.victimOrderPolicy, lessQueueFn, ssn.Queues)
 
 	evictCtx := &api.EvictionContext{
 		Kind:      api.EvictionKindGangReclaim,
 		Job:       reclaimerJob,
 		HyperNode: domain,
 	}
-	orderedCandidates := utils.FlattenBundles(bundles)
-	allowed := ssn.UnifiedEvictable(evictCtx, orderedCandidates)
-	if len(allowed) == 0 {
-		return nil
-	}
-	allowedSet := make(map[api.TaskID]struct{}, len(allowed))
-	for _, t := range allowed {
-		allowedSet[t.UID] = struct{}{}
-	}
-	valid := utils.ApplyAllowedTasks(bundles, allowedSet)
-	if len(valid) == 0 {
-		return nil
-	}
-	utils.SortBundlesForReclaim(valid, jobNeed, lessQueueFn, ssn.Queues)
-	selected := make([]*utils.Bundle, 0, len(valid))
-	for _, bundle := range valid {
-		if bundle.Type == utils.BundleWhole && !gr.allowWholeBundle {
-			continue
-		}
-		selected = append(selected, bundle)
-	}
-	return selected
+	valid := utils.FilterOrderedBundles(bundles, gr.allowWholeBundle, func(tasks []*api.TaskInfo) []*api.TaskInfo {
+		return ssn.UnifiedEvictable(evictCtx, tasks)
+	})
+	utils.SortBundlesForReclaim(valid, jobNeed, gr.victimOrderPolicy, lessQueueFn, ssn.Queues)
+	return valid
 }
 
 func queueLessFn(ssn *framework.Session, preemptorQueue api.QueueID) func(l, r *api.QueueInfo) bool {

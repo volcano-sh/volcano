@@ -346,6 +346,9 @@ type EvictionContext struct {
 
 // UnifiedEvictableFn is the victim-filter callback for gang-aware eviction.
 // Plugins use EvictionContext.Kind to branch between gang and legacy modes.
+// Each invocation evaluates the complete candidate trial against the current
+// session snapshot without persisting accounting changes between invocations.
+// Gang actions replay accepted prefixes so quota usage remains cumulative.
 type UnifiedEvictableFn func(ctx *EvictionContext, candidates []*TaskInfo) ([]*TaskInfo, int)
 
 // NodeOrderFn is the func declaration used to get priority score for a node for a particular task.

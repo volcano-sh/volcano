@@ -36,7 +36,7 @@ const (
 
 // BuildNominationPlanInDomain dry-runs eviction + placement in jobDomainHyperNode and returns a
 // fresh plan Statement only when the target job reaches JobPipelined. session is clean on return;
-// callers must RecoverOperations(plan) to commit, or may drop the plan if not proceeding.
+// callers must RecoverNominationPlan to apply it, or may drop the plan if not proceeding.
 func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo, jobDomainHyperNode *api.HyperNodeInfo, victims []*api.TaskInfo, reason string, enablePredCache bool) (*framework.Statement, map[api.SubJobID]string, bool) {
 	if ssn == nil || job == nil || jobDomainHyperNode == nil {
 		return nil, nil, false
@@ -132,6 +132,19 @@ func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, j
 	}
 	plan := framework.SaveOperations(chain...)
 	return plan, subJobHyperNodes, true
+}
+
+// RecoverNominationPlan applies a plan atomically to the parent statement:
+// failed recovery discards every operation of the attempt, leaving the parent
+// unchanged. Successful recovery transfers ownership of all operations.
+func RecoverNominationPlan(ssn *framework.Session, parent, plan *framework.Statement) error {
+	trial := framework.NewStatement(ssn)
+	if err := trial.RecoverOperations(plan); err != nil {
+		trial.Discard()
+		return err
+	}
+	parent.Merge(trial)
+	return nil
 }
 
 func hyperNodeKeyForFlat(jobHN *api.HyperNodeInfo) string {
