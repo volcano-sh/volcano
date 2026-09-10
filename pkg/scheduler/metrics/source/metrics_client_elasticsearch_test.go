@@ -81,9 +81,89 @@ func TestElasticsearchMetricsClientNodeMetricsAvg_MaxBodySizeExceeded(t *testing
 
 	if err == nil {
 		t.Error("Expected error due to response exceeding maxBodySize, but got nil")
-	} else {
-		if !strings.Contains(err.Error(), "body size limit") && !strings.Contains(err.Error(), "too large") {
-			t.Errorf("Expected error about body size limit, got: %v", err)
+	} else if (!strings.Contains(err.Error(), "body size limit") && !strings.Contains(err.Error(), "too large")) || !strings.Contains(err.Error(), "test-node") {
+		t.Errorf("Expected error about body size limit for test-node, got: %v", err)
+	}
+}
+
+func TestElasticsearchMetricsClientNodeMetricsAvg_ErrorResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Elastic-Product", "Elasticsearch")
+		// The client issues an info request against "/" to verify the cluster
+		// before running the search; answer it successfully so the search itself
+		// is exercised.
+		if r.URL.Path == "/" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"version": {"number": "7.17.7"}}`))
+			return
 		}
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error": {"type": "search_phase_execution_exception", "reason": "all shards failed"}, "status": 500}`))
+	}))
+	defer server.Close()
+
+	client, err := NewElasticsearchMetricsClient(map[string]string{
+		"address": server.URL,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	esClient, err := elasticsearch.NewClient(elasticsearch.Config{
+		Addresses: []string{server.URL},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create ES client: %v", err)
+	}
+	client.es = esClient
+
+	_, err = client.NodeMetricsAvg(context.Background(), "test-node")
+
+	if err == nil {
+		t.Error("Expected error due to Elasticsearch returning an error response, but got nil")
+	} else if !strings.Contains(err.Error(), "500 Internal Server Error") ||
+		!strings.Contains(err.Error(), "test-node") ||
+		!strings.Contains(err.Error(), "all shards failed") {
+		t.Errorf("Expected error mentioning the status, node, and Elasticsearch failure reason, got: %v", err)
+	}
+}
+
+func TestElasticsearchMetricsClientNodeMetricsAvg_ErrorResponseBodyBounded(t *testing.T) {
+	const omittedReason = "reason after body limit"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Elastic-Product", "Elasticsearch")
+		if r.URL.Path == "/" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"version": {"number": "7.17.7"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(strings.Repeat("a", maxBodySize) + omittedReason))
+	}))
+	defer server.Close()
+
+	client, err := NewElasticsearchMetricsClient(map[string]string{
+		"address": server.URL,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	esClient, err := elasticsearch.NewClient(elasticsearch.Config{
+		Addresses: []string{server.URL},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create ES client: %v", err)
+	}
+	client.es = esClient
+
+	_, err = client.NodeMetricsAvg(context.Background(), "test-node")
+
+	if err == nil {
+		t.Error("Expected error due to Elasticsearch returning an error response, but got nil")
+	} else if strings.Contains(err.Error(), omittedReason) || !strings.Contains(err.Error(), "test-node") {
+		t.Errorf("Expected error response body for test-node to be limited to maxBodySize, got: %v", err)
 	}
 }
