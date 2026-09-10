@@ -170,6 +170,7 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 	}
 
 	task.NodeName = hostname
+	task.Pod.Spec.NodeName = hostname
 	task.EvictionOccurred = evictionOccurred
 
 	if node, found := s.ssn.Nodes[hostname]; found {
