@@ -164,13 +164,14 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 		for _, weight := range weights {
 			weightFloat, err := strconv.ParseFloat(weight, 64)
 			if err != nil {
-				return append(errs, field.Invalid(fldPath, hierarchicalWeights,
+				errs = append(errs, field.Invalid(fldPath, hierarchicalWeights,
 					fmt.Sprintf("%s in the %s is invalid number: %v",
 						weight, hierarchicalWeights, err,
 					)))
+				continue
 			}
 			if weightFloat <= 0 {
-				return append(errs, field.Invalid(fldPath, hierarchicalWeights,
+				errs = append(errs, field.Invalid(fldPath, hierarchicalWeights,
 					fmt.Sprintf("%s in the %s must be larger than 0",
 						weight, hierarchicalWeights,
 					)))
@@ -193,7 +194,7 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 			// For example if we have in the cluster queue /root/scidev and wants to create a /root/sci
 			if hierarchyInTree != "" && queue.Name != queueInTree.Name &&
 				strings.HasPrefix(hierarchyInTree, hierarchy+"/") {
-				return append(errs, field.Invalid(fldPath, hierarchy,
+				errs = append(errs, field.Invalid(fldPath, hierarchy,
 					fmt.Sprintf("%s is not allowed to be in the sub path of %s of queue %s",
 						hierarchy, hierarchyInTree, queueInTree.Name)))
 			}
