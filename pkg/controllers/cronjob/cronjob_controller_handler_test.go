@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
@@ -404,6 +405,135 @@ func TestUpdateCronJob(t *testing.T) {
 			controller.updateCronJob(tt.oldCronJob, tt.newCronJob)
 			if queue.delay.Seconds() != tt.expectedDelay.Seconds() {
 				t.Errorf("Expected delay %#v got %#v", tt.expectedDelay.Seconds(), queue.delay.Seconds())
+			}
+		})
+	}
+}
+
+func TestProcessFinishedJobs(t *testing.T) {
+	now := time.Now()
+
+	testCases := []struct {
+		name                   string
+		failedJobsHistoryLimit *int32
+		activeJobs             []corev1.ObjectReference
+		jobs                   []*batchv1.Job
+		expectedActiveLen      int
+		expectedDeletedJobs    []string
+		expectedUpdateStatus   bool
+	}{
+		{
+			name:                   "terminated job should be appended to failedJobs and cleaned up if it exceeds the limit",
+			failedJobsHistoryLimit: ptr.To[int32](1),
+			activeJobs: []corev1.ObjectReference{
+				{
+					Name:      "job-terminated-1",
+					Namespace: "default",
+					UID:       "uid-1",
+				},
+				{
+					Name:      "job-terminated-2",
+					Namespace: "default",
+					UID:       "uid-2",
+				},
+			},
+			jobs: []*batchv1.Job{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "job-terminated-1",
+						Namespace:         "default",
+						UID:               "uid-1",
+						CreationTimestamp: metav1.Time{Time: now.Add(-10 * time.Minute)},
+					},
+					Status: batchv1.JobStatus{
+						State: batchv1.JobState{
+							Phase: batchv1.Terminated,
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "job-terminated-2",
+						Namespace:         "default",
+						UID:               "uid-2",
+						CreationTimestamp: metav1.Time{Time: now.Add(-5 * time.Minute)},
+					},
+					Status: batchv1.JobStatus{
+						State: batchv1.JobState{
+							Phase: batchv1.Terminated,
+						},
+					},
+				},
+			},
+			expectedActiveLen:    0,
+			expectedDeletedJobs:  []string{"job-terminated-1"},
+			expectedUpdateStatus: true,
+		},
+		{
+			name:                   "terminated job is removed from active list but not deleted if within limit",
+			failedJobsHistoryLimit: ptr.To[int32](2),
+			activeJobs: []corev1.ObjectReference{
+				{
+					Name:      "job-terminated-1",
+					Namespace: "default",
+					UID:       "uid-1",
+				},
+			},
+			jobs: []*batchv1.Job{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "job-terminated-1",
+						Namespace: "default",
+						UID:       "uid-1",
+					},
+					Status: batchv1.JobStatus{
+						State: batchv1.JobState{
+							Phase: batchv1.Terminated,
+						},
+					},
+				},
+			},
+			expectedActiveLen:    0,
+			expectedDeletedJobs:  nil,
+			expectedUpdateStatus: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			controller, _ := setupTestController()
+			cronJob := &batchv1.CronJob{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cronjob",
+					Namespace: "default",
+				},
+				Spec: batchv1.CronJobSpec{
+					FailedJobsHistoryLimit: tc.failedJobsHistoryLimit,
+				},
+				Status: batchv1.CronJobStatus{
+					Active: tc.activeJobs,
+				},
+			}
+
+			updateStatus := controller.processFinishedJobs(cronJob, tc.jobs)
+
+			if len(cronJob.Status.Active) != tc.expectedActiveLen {
+				t.Errorf("expected active list len to be %d, got %d", tc.expectedActiveLen, len(cronJob.Status.Active))
+			}
+
+			fakeJobClient := controller.jobClient.(*fakeJobClient)
+			if len(fakeJobClient.DeleteJobName) != len(tc.expectedDeletedJobs) {
+				t.Errorf("expected deleted jobs %v, got %v", tc.expectedDeletedJobs, fakeJobClient.DeleteJobName)
+			} else {
+				for i, name := range tc.expectedDeletedJobs {
+					if fakeJobClient.DeleteJobName[i] != name {
+						t.Errorf("expected deleted job at %d to be %s, got %s", i, name, fakeJobClient.DeleteJobName[i])
+					}
+				}
+			}
+
+			if updateStatus != tc.expectedUpdateStatus {
+				t.Errorf("expected updateStatus to be %v, got %v", tc.expectedUpdateStatus, updateStatus)
 			}
 		})
 	}
