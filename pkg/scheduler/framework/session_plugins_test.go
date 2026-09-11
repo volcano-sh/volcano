@@ -18,6 +18,7 @@ package framework
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -315,3 +316,109 @@ func TestHyperNodeGradientForJobFn_NoPluginKeepsCurrentFallback(t *testing.T) {
 	result := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
 	assert.Equal(t, [][]*api.HyperNodeInfo{{root}}, result)
 }
+
+func TestSubJobOrderCompareFn_PluginOrder(t *testing.T) {
+	enabled := true
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{
+				Plugins: []conf.PluginOption{
+					{Name: "p1", EnabledSubJobOrder: &enabled},
+					{Name: "p2", EnabledSubJobOrder: &enabled},
+				},
+			},
+		},
+		subJobOrderFns: map[string]api.CompareFn{},
+	}
+
+	sj1 := &api.SubJobInfo{UID: "sj1"}
+	sj2 := &api.SubJobInfo{UID: "sj2"}
+
+	// When no plugins are registered, returns 0.
+	assert.Equal(t, 0, ssn.SubJobOrderCompareFn(sj1, sj2))
+
+	// Register p1 returning 0, p2 returning -1 (sj1 < sj2).
+	ssn.AddSubJobOrderFn("p1", func(l, r interface{}) int { return 0 })
+	ssn.AddSubJobOrderFn("p2", func(l, r interface{}) int { return -1 })
+	assert.Equal(t, -1, ssn.SubJobOrderCompareFn(sj1, sj2))
+	assert.True(t, ssn.SubJobOrderFn(sj1, sj2))
+}
+
+func TestSubJobCompareFn_ReflexivityAndAntiSymmetry(t *testing.T) {
+	ssn := &Session{
+		subJobOrderFns: map[string]api.CompareFn{},
+	}
+
+	sj1 := &api.SubJobInfo{UID: "sj-1", MatchIndex: 0}
+	sj2 := &api.SubJobInfo{UID: "sj-2", MatchIndex: 1}
+	sj3 := &api.SubJobInfo{UID: "sj-1", MatchIndex: 0} // equivalent to sj1
+
+	// Reflexivity: cmp(a, a) == 0
+	assert.Equal(t, 0, ssn.SubJobCompareFn(sj1, sj1))
+	assert.Equal(t, 0, ssn.SubJobCompareFn(sj2, sj2))
+	assert.Equal(t, 0, ssn.SubJobCompareFn(sj1, sj3))
+
+	// Anti-symmetry: cmp(a, b) == -cmp(b, a)
+	cmp12 := ssn.SubJobCompareFn(sj1, sj2)
+	cmp21 := ssn.SubJobCompareFn(sj2, sj1)
+	assert.Equal(t, -1, cmp12)
+	assert.Equal(t, 1, cmp21)
+	assert.Equal(t, cmp12, -cmp21)
+
+	// Boolean helper
+	assert.False(t, ssn.SubJobOrderFn(sj1, sj1))
+	assert.True(t, ssn.SubJobOrderFn(sj1, sj2))
+	assert.False(t, ssn.SubJobOrderFn(sj2, sj1))
+}
+
+func TestSubJobCompareFn_TieBreaking(t *testing.T) {
+	ssn := &Session{
+		subJobOrderFns: map[string]api.CompareFn{},
+	}
+
+	// Case 1: different MatchIndex, same UID
+	sjA := &api.SubJobInfo{UID: "same", MatchIndex: 1}
+	sjB := &api.SubJobInfo{UID: "same", MatchIndex: 2}
+	assert.Equal(t, -1, ssn.SubJobCompareFn(sjA, sjB))
+	assert.Equal(t, 1, ssn.SubJobCompareFn(sjB, sjA))
+
+	// Case 2: same MatchIndex, different UID
+	sjC := &api.SubJobInfo{UID: "alpha", MatchIndex: 1}
+	sjD := &api.SubJobInfo{UID: "beta", MatchIndex: 1}
+	assert.Equal(t, -1, ssn.SubJobCompareFn(sjC, sjD))
+	assert.Equal(t, 1, ssn.SubJobCompareFn(sjD, sjC))
+}
+
+func TestSubJobSorting_SlicesSortFunc(t *testing.T) {
+	ssn := &Session{
+		subJobOrderFns: map[string]api.CompareFn{},
+	}
+
+	subJobs := []*api.SubJobInfo{
+		{UID: "sj-3", MatchIndex: 2},
+		{UID: "sj-1", MatchIndex: 1},
+		{UID: "sj-2", MatchIndex: 1},
+		{UID: "sj-1", MatchIndex: 1}, // duplicate entry to test reflexivity under sorting
+		{UID: "sj-0", MatchIndex: 0},
+	}
+
+	// slices.SortFunc must sort stably and without panic/undefined behavior
+	slices.SortFunc(subJobs, ssn.SubJobCompareFn)
+
+	expectedOrder := []struct {
+		uid        api.SubJobID
+		matchIndex int
+	}{
+		{uid: "sj-0", matchIndex: 0},
+		{uid: "sj-1", matchIndex: 1},
+		{uid: "sj-1", matchIndex: 1},
+		{uid: "sj-2", matchIndex: 1},
+		{uid: "sj-3", matchIndex: 2},
+	}
+
+	for i, exp := range expectedOrder {
+		assert.Equal(t, exp.uid, subJobs[i].UID)
+		assert.Equal(t, exp.matchIndex, subJobs[i].MatchIndex)
+	}
+}
+

@@ -21,6 +21,7 @@ limitations under the License.
 package framework
 
 import (
+	"cmp"
 	"context"
 
 	fwk "k8s.io/kube-scheduler/framework"
@@ -686,7 +687,10 @@ func (ssn *Session) ReservedNodes() {
 	}
 }
 
-func (ssn *Session) SubJobOrderFn(l, r interface{}) bool {
+// SubJobOrderCompareFn compares l and r by running enabled SubJobOrder plugins in
+// order and returning the first non-zero comparison result. It returns 0 if
+// all plugins consider l and r equal.
+func (ssn *Session) SubJobOrderCompareFn(l, r interface{}) int {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledSubJobOrder) {
@@ -697,18 +701,34 @@ func (ssn *Session) SubJobOrderFn(l, r interface{}) bool {
 				continue
 			}
 			if j := fn(l, r); j != 0 {
-				return j < 0
+				return j
 			}
 		}
 	}
 
-	// If no subJob order funcs, order subJob by MatchIndex and UID.
-	lv := l.(*api.SubJobInfo)
-	rv := r.(*api.SubJobInfo)
-	if lv.MatchIndex != rv.MatchIndex {
-		return lv.MatchIndex < rv.MatchIndex
+	return 0
+}
+
+// SubJobCompareFn compares l and r SubJobInfo by running SubJobOrder plugins first,
+// and falling back to MatchIndex and UID as tie-breakers. It returns <0 if l < r,
+// >0 if l > r, and 0 if l == r.
+func (ssn *Session) SubJobCompareFn(l, r *api.SubJobInfo) int {
+	if res := ssn.SubJobOrderCompareFn(l, r); res != 0 {
+		return res
 	}
-	return lv.UID < rv.UID
+	if l.MatchIndex != r.MatchIndex {
+		return cmp.Compare(l.MatchIndex, r.MatchIndex)
+	}
+	return cmp.Compare(l.UID, r.UID)
+}
+
+func (ssn *Session) SubJobOrderFn(l, r interface{}) bool {
+	lv, lok := l.(*api.SubJobInfo)
+	rv, rok := r.(*api.SubJobInfo)
+	if !lok || !rok {
+		return false
+	}
+	return ssn.SubJobCompareFn(lv, rv) < 0
 }
 
 // JobOrderCompareFn compares l and r by running enabled JobOrder plugins in
