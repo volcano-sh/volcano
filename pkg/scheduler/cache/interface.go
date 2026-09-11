@@ -45,6 +45,13 @@ type Cache interface {
 	// Snapshot deep copy overall cache information into snapshot
 	Snapshot() *api.ClusterInfo
 
+	// AddUnschedulableJob marks an Inqueue job Pending in the cache and prevents
+	// enqueue from admitting it until its maximum unschedulable duration expires.
+	AddUnschedulableJob(jobID api.JobID, reason string)
+
+	// IsJobUnschedulable reports whether a job should be skipped by enqueue.
+	IsJobUnschedulable(jobID api.JobID) bool
+
 	// WaitForCacheSync waits for all cache synced
 	WaitForCacheSync(stopCh <-chan struct{})
 

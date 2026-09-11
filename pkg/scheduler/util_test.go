@@ -253,3 +253,20 @@ tiers:
 			expectedConfigurations, configurations)
 	}
 }
+
+func TestLoadSchedulerConfWithDequeue(t *testing.T) {
+	actions, _, _, _, err := UnmarshalSchedulerConf(`actions: "enqueue, allocate, backfill, dequeue"`)
+	if err != nil {
+		t.Fatalf("failed to load scheduler configuration with dequeue: %v", err)
+	}
+
+	expected := []string{"enqueue", "allocate", "backfill", "dequeue"}
+	if len(actions) != len(expected) {
+		t.Fatalf("action count = %d, want %d", len(actions), len(expected))
+	}
+	for i, action := range actions {
+		if action.Name() != expected[i] {
+			t.Errorf("action[%d] = %q, want %q", i, action.Name(), expected[i])
+		}
+	}
+}

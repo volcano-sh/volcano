@@ -890,6 +890,7 @@ func (sc *SchedulerCache) deletePodGroup(id schedulingapi.JobID) error {
 
 	// Unset SchedulingSpec
 	job.UnsetPodGroup()
+	sc.unschedulableJobs.Delete(id)
 
 	sc.deleteJob(job)
 

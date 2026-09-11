@@ -114,11 +114,12 @@ type TestCommonStruct struct {
 	NodesInShard []string
 
 	// fake interface instance when check results need
-	stop       chan struct{}
-	binder     cache.Binder
-	evictor    cache.Evictor
-	stsUpdator cache.StatusUpdater
-	ssn        *framework.Session // store opened session
+	stop           chan struct{}
+	binder         cache.Binder
+	evictor        cache.Evictor
+	stsUpdator     cache.StatusUpdater
+	ssn            *framework.Session // store opened session
+	schedulerCache *cache.SchedulerCache
 }
 
 var _ Interface = &TestCommonStruct{}
@@ -131,6 +132,11 @@ func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.C
 	return test.ssn
 }
 
+// SchedulerCache returns the cache backing the registered test session.
+func (test *TestCommonStruct) SchedulerCache() *cache.SchedulerCache {
+	return test.schedulerCache
+}
+
 // createSchedulerCache create scheduler cache
 func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	binder := util.NewFakeBinder(0)
@@ -141,6 +147,7 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	test.stop = make(chan struct{})
 	// Create scheduler cache with self-defined binder and evictor
 	schedulerCache := cache.NewCustomMockSchedulerCache("utmock-scheduler", binder, evictor, test.stsUpdator, nil, nil)
+	test.schedulerCache = schedulerCache
 
 	// Initial provisioning resources
 	kubeClient := schedulerCache.Client()

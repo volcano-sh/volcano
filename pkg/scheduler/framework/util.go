@@ -53,6 +53,51 @@ type PodAffinityLister struct {
 	pl *PodLister
 }
 
+// ReleaseJobReservedTasks releases partial reservations held by a job that
+// failed to become ready or pipelined in the current scheduling session.
+func (ssn *Session) ReleaseJobReservedTasks(job *api.JobInfo, reason string) {
+	if job == nil {
+		return
+	}
+
+	pipelinedTasks := make([]*api.TaskInfo, 0, len(job.TaskStatusIndex[api.Pipelined]))
+	for _, task := range job.TaskStatusIndex[api.Pipelined] {
+		pipelinedTasks = append(pipelinedTasks, task)
+	}
+
+	allocatedTasks := make([]*api.TaskInfo, 0, len(job.TaskStatusIndex[api.Allocated]))
+	for _, task := range job.TaskStatusIndex[api.Allocated] {
+		allocatedTasks = append(allocatedTasks, task)
+	}
+
+	stmt := NewStatement(ssn)
+	for _, task := range pipelinedTasks {
+		nodeName := task.NodeName
+		if err := stmt.unPipeline(task); err != nil {
+			klog.ErrorS(err, "Failed to release pipelined task",
+				"job", task.Job, "task", klog.KRef(task.Namespace, task.Name),
+				"node", nodeName, "reason", reason)
+			continue
+		}
+		klog.V(3).InfoS("Released pipelined task",
+			"job", task.Job, "task", klog.KRef(task.Namespace, task.Name),
+			"node", nodeName, "reason", reason)
+	}
+
+	for _, task := range allocatedTasks {
+		nodeName := task.NodeName
+		if err := stmt.unallocate(task); err != nil {
+			klog.ErrorS(err, "Failed to release allocated task",
+				"job", task.Job, "task", klog.KRef(task.Namespace, task.Name),
+				"node", nodeName, "reason", reason)
+			continue
+		}
+		klog.V(3).InfoS("Released allocated task",
+			"job", task.Job, "task", klog.KRef(task.Namespace, task.Name),
+			"node", nodeName, "reason", reason)
+	}
+}
+
 // HaveAffinity checks pod have affinity or not
 func HaveAffinity(pod *v1.Pod) bool {
 	affinity := pod.Spec.Affinity
