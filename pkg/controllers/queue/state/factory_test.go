@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
@@ -71,7 +72,7 @@ func TestNewState(t *testing.T) {
 				},
 			}
 
-			s := NewState(queue)
+			s := NewState(queue, busv1alpha1.CommandIssuedEvent)
 
 			var actualType string
 			if s == nil {
