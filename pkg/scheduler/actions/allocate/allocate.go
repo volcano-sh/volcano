@@ -111,14 +111,20 @@ func (w *SubJobWorksheet) Clone() *SubJobWorksheet {
 type Action struct {
 	session *framework.Session
 	// configured flag for error cache
-	enablePredicateErrorCache bool
+	enablePredicateErrorCache   bool
+	enableTopologyAwareAllocate bool
 
 	recorder *Recorder
 }
 
+const (
+	EnableTopologyAwareAllocateKey = "enableTopologyAwareAllocate"
+)
+
 func New() *Action {
 	return &Action{
-		enablePredicateErrorCache: true, // default to enable it
+		enablePredicateErrorCache:   true, // default to enable it
+		enableTopologyAwareAllocate: false,
 	}
 }
 
@@ -131,6 +137,7 @@ func (alloc *Action) Initialize() {}
 func (alloc *Action) parseArguments(ssn *framework.Session) {
 	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, alloc.Name())
 	arguments.GetBool(&alloc.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
+	arguments.GetBool(&alloc.enableTopologyAwareAllocate, EnableTopologyAwareAllocateKey)
 }
 
 func (alloc *Action) Execute(ssn *framework.Session) {
@@ -851,10 +858,13 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 		// "NominatedNodeName" can potentially be set in a previous scheduling cycle as a result of preemption.
 		// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
 		// Only honor it when the nominated node belongs to this iteration's leaf set (defense in depth against cross-domain leaks).
-		if nominated := task.Pod.Status.NominatedNodeName; len(nominated) > 0 {
+		// SuperPod jobs with topology-aware allocate skip NominatedNodeName so the ascend plugin can evaluate all nodes.
+		klog.V(4).Infof("[pod] %s get NominatedNodeName %s", task.Name, task.Pod.Status.NominatedNodeName)
+		if nominated := task.Pod.Status.NominatedNodeName; !(alloc.enableTopologyAwareAllocate && job.IsSuperPodJob()) && len(nominated) > 0 {
 			if _, inLeafSet := nodeNameSet[nominated]; inLeafSet {
 				if nominatedNodeInfo, ok := ssn.Nodes[nominated]; ok && task.InitResreq.LessEqual(nominatedNodeInfo.FutureIdle(), api.Zero) {
 					predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
+					klog.V(4).Infof("[pod] %s predicate with NominatedNodeName %s return error: %v", task.Name, nominated, fitErrors)
 				}
 			}
 		}
