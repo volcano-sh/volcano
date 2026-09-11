@@ -464,7 +464,13 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 			ni.Pipelined.Add(ti.Resreq)
 		case Binding:
 			// When task in Binding status, it will bind to node, we should double-check whether idle resources are enough to put task before bind to apiserver.
-			if ok, resNames := ti.Resreq.LessEqualWithResourcesName(ni.Idle, Zero); !ok {
+			// A shortfall confined to resource dimensions ni.Allocatable has no entry for at all
+			// (like volcano.sh/vgpu-memory-percentage, tracked entirely by a device plugin's own
+			// ledger rather than advertised node-wide) can never pass this arithmetic, no matter
+			// how much room the device plugin's predicate already confirmed earlier in scheduling.
+			// This is the final gate before every bind, real or simulated, across every action, so
+			// treat that case as inconclusive rather than a hard no instead of rejecting outright.
+			if ok, resNames := ti.Resreq.LessEqualWithResourcesName(ni.Idle, Zero); !ok && !AllUntrackedByAllocatable(resNames, ni) {
 				return fmt.Errorf("node %s resources %v are not enough to put task <%s/%s>, idle: %s, req: %s", ni.Name, resNames, ti.Namespace, ti.Name, ni.Idle.String(), ti.Resreq.String())
 			}
 			ni.allocateIdleResource(ti)
