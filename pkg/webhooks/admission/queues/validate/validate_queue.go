@@ -18,6 +18,7 @@ package validate
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -28,12 +29,14 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	k8score "k8s.io/kubernetes/pkg/apis/core"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
@@ -80,16 +83,21 @@ func AdmitQueues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse 
 
 	switch ar.Request.Operation {
 	case admissionv1.Create, admissionv1.Update:
-		err = validateQueue(queue)
-		if err != nil {
-			return util.ToAdmissionResponse(err)
-		}
 		var oldQueue *schedulingv1beta1.Queue
 		if ar.Request.Operation == admissionv1.Update {
 			oldQueue, err = schema.DecodeQueue(ar.Request.OldObject, ar.Request.Resource)
 			if err != nil {
 				return util.ToAdmissionResponse(err)
 			}
+		}
+
+		err = validateQueue(queue)
+		if err != nil {
+			return util.ToAdmissionResponse(err)
+		}
+		err = validateQueueScopedOvercommit(queue, oldQueue, ar.Request.Operation)
+		if err != nil {
+			return util.ToAdmissionResponse(err)
 		}
 
 		if ar.Request.Operation == admissionv1.Create || oldQueue.Spec.Parent != queue.Spec.Parent {
@@ -142,6 +150,41 @@ func validateQueue(queue *schedulingv1beta1.Queue) error {
 	}
 
 	return nil
+}
+
+func validateQueueScopedOvercommit(queue, oldQueue *schedulingv1beta1.Queue, operation admissionv1.Operation) error {
+	annotationPath := field.NewPath("requestBody", "metadata", "annotations").Key(schedulingv1beta1.QueueOvercommitFactorAnnotationKey)
+	value, configured := queue.Annotations[schedulingv1beta1.QueueOvercommitFactorAnnotationKey]
+
+	if !utilfeature.DefaultFeatureGate.Enabled(features.QueueScopedOvercommit) {
+		if !configured {
+			return nil
+		}
+		if operation == admissionv1.Update && oldQueue != nil {
+			oldValue, wasConfigured := oldQueue.Annotations[schedulingv1beta1.QueueOvercommitFactorAnnotationKey]
+			if wasConfigured && value == oldValue {
+				return nil
+			}
+		}
+		return field.Forbidden(annotationPath, "QueueScopedOvercommit feature gate is disabled")
+	}
+
+	if !configured {
+		return nil
+	}
+
+	factor, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsNaN(factor) || math.IsInf(factor, 0) || factor < 1 {
+		return field.Invalid(annotationPath, value, "must be a finite decimal number greater than or equal to 1")
+	}
+
+	for _, quantity := range queue.Spec.Deserved {
+		if quantity.Sign() > 0 {
+			return nil
+		}
+	}
+
+	return field.Invalid(annotationPath, value, "requires spec.deserved to include at least one positive resource quantity")
 }
 
 func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *field.Path) field.ErrorList {

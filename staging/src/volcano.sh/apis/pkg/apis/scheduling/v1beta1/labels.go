@@ -51,6 +51,10 @@ const QueueNameAnnotationKey = GroupName + "/queue-name"
 // gate management and the name of the scheduling gate that controls queue admission.
 const QueueAllocationGateKey = GroupName + "/queue-allocation-gate"
 
+// QueueOvercommitFactorAnnotationKey is the annotation key of Queue to configure
+// its overcommit admission factor.
+const QueueOvercommitFactorAnnotationKey = AnnotationPrefix + "overcommit-factor"
+
 // NodeGroupNameKey is the label key of Node to identify which nodegroup it belongs to.
 const NodeGroupNameKey = AnnotationPrefix + "nodegroup-name"
 

@@ -53,6 +53,9 @@ const (
 	// capacity, preventing cluster autoscalers from triggering unnecessary
 	// scale-ups for pods that are simply waiting for queue admission.
 	SchedulingGatesQueueAdmission featuregate.Feature = "SchedulingGatesQueueAdmission"
+
+	// QueueScopedOvercommit enables queue-level overcommit admission limits.
+	QueueScopedOvercommit featuregate.Feature = "QueueScopedOvercommit"
 )
 
 func init() {
@@ -70,4 +73,5 @@ var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec
 	ResourceTopology:              {Default: true, PreRelease: featuregate.Alpha},
 	CronVolcanoJobSupport:         {Default: true, PreRelease: featuregate.Alpha},
 	SchedulingGatesQueueAdmission: {Default: false, PreRelease: featuregate.Alpha},
+	QueueScopedOvercommit:         {Default: false, PreRelease: featuregate.Alpha},
 }

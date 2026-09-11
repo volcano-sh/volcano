@@ -21,9 +21,12 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -135,4 +138,131 @@ func TestOvercommitPlugin(t *testing.T) {
 		})
 	}
 
+}
+
+func TestQueueScopedOvercommitAdmission(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.QueueScopedOvercommit, true)
+
+	node := util.BuildNode("n1", api.BuildResourceList("10", "16Gi"), map[string]string{})
+	queue := util.BuildQueue("batch", 1, nil)
+	queue.Spec.Deserved = api.BuildResourceList("2", "2Gi")
+	queue.Annotations = map[string]string{
+		schedulingv1.QueueOvercommitFactorAnnotationKey: "2",
+	}
+
+	minResources := api.BuildResourceList("5", "1Gi")
+	podGroup := util.BuildPodGroup("queue-limited", "default", queue.Name, 1, nil, schedulingv1.PodGroupPending)
+	podGroup.Spec.MinResources = &minResources
+
+	trueValue := true
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{{
+		Name:               PluginName,
+		EnabledJobEnqueued: &trueValue,
+		Arguments: framework.Arguments{
+			overCommitFactor:         2.0,
+			maxQueueOverCommitFactor: 1.0,
+		},
+	}}}}
+
+	test := uthelper.TestCommonStruct{
+		Name:      "queue-scoped-overcommit",
+		Plugins:   map[string]framework.PluginBuilder{PluginName: New},
+		PodGroups: []*schedulingv1.PodGroup{podGroup},
+		Queues:    []*schedulingv1.Queue{queue},
+		Nodes:     []*v1.Node{node},
+	}
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	for _, job := range ssn.Jobs {
+		if ssn.JobEnqueueable(job) {
+			t.Fatalf("expected queue-scoped overcommit to reject job %s", job.Name)
+		}
+	}
+}
+
+func TestQueueScopedOvercommitDisabledPreservesGlobalAdmission(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.QueueScopedOvercommit, false)
+
+	node := util.BuildNode("n1", api.BuildResourceList("10", "16Gi"), map[string]string{})
+	queue := util.BuildQueue("batch", 1, nil)
+	queue.Spec.Deserved = api.BuildResourceList("2", "2Gi")
+	queue.Annotations = map[string]string{
+		schedulingv1.QueueOvercommitFactorAnnotationKey: "1",
+	}
+
+	minResources := api.BuildResourceList("5", "1Gi")
+	podGroup := util.BuildPodGroup("global-only", "default", queue.Name, 1, nil, schedulingv1.PodGroupPending)
+	podGroup.Spec.MinResources = &minResources
+
+	trueValue := true
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{{
+		Name:               PluginName,
+		EnabledJobEnqueued: &trueValue,
+		Arguments: framework.Arguments{
+			overCommitFactor: 2.0,
+		},
+	}}}}
+
+	test := uthelper.TestCommonStruct{
+		Name:      "queue-scoped-overcommit-disabled",
+		Plugins:   map[string]framework.PluginBuilder{PluginName: New},
+		PodGroups: []*schedulingv1.PodGroup{podGroup},
+		Queues:    []*schedulingv1.Queue{queue},
+		Nodes:     []*v1.Node{node},
+	}
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	for _, job := range ssn.Jobs {
+		if !ssn.JobEnqueueable(job) {
+			t.Fatalf("expected global overcommit admission to ignore queue annotation when feature gate is disabled")
+		}
+	}
+}
+
+func TestQueueScopedOvercommitChecksAnnotatedAncestors(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.QueueScopedOvercommit, true)
+
+	node := util.BuildNode("n1", api.BuildResourceList("10", "16Gi"), map[string]string{})
+	root := util.BuildQueue("root", 1, nil)
+	parent := util.BuildQueue("research", 1, nil)
+	parent.Spec.Parent = root.Name
+	parent.Spec.Deserved = api.BuildResourceList("2", "2Gi")
+	parent.Annotations = map[string]string{
+		schedulingv1.QueueOvercommitFactorAnnotationKey: "1",
+	}
+	leaf := util.BuildQueue("batch", 1, nil)
+	leaf.Spec.Parent = parent.Name
+
+	minResources := api.BuildResourceList("3", "1Gi")
+	podGroup := util.BuildPodGroup("parent-limited", "default", leaf.Name, 1, nil, schedulingv1.PodGroupPending)
+	podGroup.Spec.MinResources = &minResources
+
+	trueValue := true
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{{
+		Name:               PluginName,
+		EnabledJobEnqueued: &trueValue,
+		EnabledHierarchy:   &trueValue,
+		Arguments: framework.Arguments{
+			overCommitFactor:         2.0,
+			maxQueueOverCommitFactor: 1.0,
+		},
+	}}}}
+
+	test := uthelper.TestCommonStruct{
+		Name:      "queue-scoped-overcommit-ancestor",
+		Plugins:   map[string]framework.PluginBuilder{PluginName: New},
+		PodGroups: []*schedulingv1.PodGroup{podGroup},
+		Queues:    []*schedulingv1.Queue{root, parent, leaf},
+		Nodes:     []*v1.Node{node},
+	}
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	for _, job := range ssn.Jobs {
+		if ssn.JobEnqueueable(job) {
+			t.Fatalf("expected annotated ancestor to reject job %s", job.Name)
+		}
+	}
 }
