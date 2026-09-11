@@ -97,6 +97,17 @@ type fakePreScorePlugin struct {
 	preScoreCalls  int
 }
 
+type fakeScoreOnlyPlugin struct {
+	name       string
+	score      int64
+	scoreCalls int
+	extensions *fakeScoreExtensions
+}
+
+type fakeScoreExtensions struct {
+	calls int
+}
+
 func (p *fakePreScorePlugin) Name() string {
 	return p.name
 }
@@ -111,6 +122,25 @@ func (p *fakePreScorePlugin) Score(_ context.Context, _ k8sframework.CycleState,
 }
 
 func (p *fakePreScorePlugin) ScoreExtensions() k8sframework.ScoreExtensions {
+	return nil
+}
+
+func (p *fakeScoreOnlyPlugin) Name() string {
+	return p.name
+}
+
+func (p *fakeScoreOnlyPlugin) Score(_ context.Context, _ k8sframework.CycleState, _ *apiv1.Pod, _ k8sframework.NodeInfo) (int64, *k8sframework.Status) {
+	p.scoreCalls++
+	return p.score, nil
+}
+
+func (p *fakeScoreOnlyPlugin) ScoreExtensions() k8sframework.ScoreExtensions {
+	return p.extensions
+}
+
+func (e *fakeScoreExtensions) NormalizeScore(_ context.Context, _ k8sframework.CycleState, _ *apiv1.Pod, scores k8sframework.NodeScoreList) *k8sframework.Status {
+	e.calls++
+	scores[0].Score = 40
 	return nil
 }
 
@@ -732,7 +762,68 @@ func TestBatchNodeOrderRunsPreScorePlugins(t *testing.T) {
 			if scored != tt.wantScore {
 				t.Errorf("expected node score presence to be %t, got %t", tt.wantScore, scored)
 			}
+			if tt.wantScore && scores["node-a"] != 50 {
+				t.Errorf("expected node score 50, got %v", scores["node-a"])
+			}
 		})
+	}
+}
+
+func TestBatchNodeOrderRunsScoreOnlyPluginsInConfiguredOrder(t *testing.T) {
+	plugin := &fakeScoreOnlyPlugin{
+		name:       "score-only",
+		score:      25,
+		extensions: &fakeScoreExtensions{},
+	}
+	ignored := &fakeScoreOnlyPlugin{name: "ignored", score: 100}
+	pp := &PredicatesPlugin{
+		ScorePlugins: map[string]nodescore.BaseScorePlugin{
+			plugin.Name():  plugin,
+			ignored.Name(): ignored,
+		},
+		ScoreWeights: map[string]int{plugin.Name(): 2},
+		ScoreOrder:   []string{"missing", plugin.Name()},
+	}
+	nodeInfo := schedframework.NewNodeInfo()
+	nodeInfo.SetNode(&apiv1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-a"}})
+
+	scores, err := pp.BatchNodeOrder(
+		&api.TaskInfo{Pod: &apiv1.Pod{}},
+		[]k8sframework.NodeInfo{nodeInfo},
+		schedframework.NewCycleState(),
+	)
+	if err != nil {
+		t.Fatalf("BatchNodeOrder returned an error: %v", err)
+	}
+	if scores["node-a"] != 80 {
+		t.Fatalf("expected normalized weighted score 80, got %v", scores["node-a"])
+	}
+	if plugin.scoreCalls != 1 || plugin.extensions.calls != 1 {
+		t.Fatalf("expected score and normalize once, got Score=%d Normalize=%d", plugin.scoreCalls, plugin.extensions.calls)
+	}
+	if ignored.scoreCalls != 0 {
+		t.Fatalf("plugin absent from ScoreOrder ran %d times", ignored.scoreCalls)
+	}
+
+	defaultWeightPlugin := &fakeScoreOnlyPlugin{
+		name:       "default-weight",
+		score:      25,
+		extensions: &fakeScoreExtensions{},
+	}
+	pp = &PredicatesPlugin{
+		ScorePlugins: map[string]nodescore.BaseScorePlugin{defaultWeightPlugin.Name(): defaultWeightPlugin},
+		ScoreOrder:   []string{defaultWeightPlugin.Name()},
+	}
+	scores, err = pp.BatchNodeOrder(
+		&api.TaskInfo{Pod: &apiv1.Pod{}},
+		[]k8sframework.NodeInfo{nodeInfo},
+		schedframework.NewCycleState(),
+	)
+	if err != nil {
+		t.Fatalf("BatchNodeOrder with default weight returned an error: %v", err)
+	}
+	if scores["node-a"] != 40 {
+		t.Fatalf("expected normalized default-weight score 40, got %v", scores["node-a"])
 	}
 }
 

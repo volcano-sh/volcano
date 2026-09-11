@@ -22,14 +22,34 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 type BaseScorePlugin interface {
 	fwk.ScorePlugin
+}
+
+// PreScorePluginSpec identifies a registered PreScore plugin by its logical name.
+type PreScorePluginSpec struct {
+	Name   string
+	Plugin fwk.PreScorePlugin
+}
+
+// ScorePluginSpec identifies a registered Score plugin and its configured weight.
+type ScorePluginSpec struct {
+	Name   string
+	Plugin BaseScorePlugin
+	Weight int
+}
+
+const scoreWorkerNum = parallelize.DefaultParallelism
+
+type activeScorePlugin struct {
+	spec   ScorePluginSpec
+	scores fwk.NodeScoreList
 }
 
 func NodeInfosForCandidateNodes(nodes []*api.NodeInfo, nodeMap map[string]fwk.NodeInfo) []fwk.NodeInfo {
@@ -45,79 +65,129 @@ func NodeInfosForCandidateNodes(nodes []*api.NodeInfo, nodeMap map[string]fwk.No
 	return nodeInfos
 }
 
-// RunPreScorePlugin runs a pre-score plugin.
-// It returns whether the plugin requested its Score phase to be skipped and any error from PreScore.
-func RunPreScorePlugin(plugin fwk.PreScorePlugin, cycleState fwk.CycleState, pod *v1.Pod, nodeInfos []fwk.NodeInfo) (skipScore bool, err error) {
-	status := plugin.PreScore(context.TODO(), cycleState, pod, nodeInfos)
-	if status.IsSkip() {
-		return true, nil
-	}
-	if !status.IsSuccess() {
-		return false, status.AsError()
-	}
-	return false, nil
-}
-
-func CalculatePluginScore(
-	pluginName string,
-	plugin BaseScorePlugin,
+// RunScorePlugins runs PreScore plugins in order, then runs all active Score plugins
+// with a single parallel node traversal.
+func RunScorePlugins(
+	ctx context.Context,
+	preScorePlugins []PreScorePluginSpec,
+	scorePlugins []ScorePluginSpec,
 	cycleState fwk.CycleState,
 	pod *v1.Pod,
 	nodeInfos []fwk.NodeInfo,
-	weight int,
 ) (map[string]float64, error) {
-	nodeScoreList := make(fwk.NodeScoreList, len(nodeInfos))
-	// the default parallelization worker number is 16.
-	// the whole scoring will fail if one of the processes failed.
-	// so just create a parallelizeContext to control the whole ParallelizeUntil process.
-	// if the parallelizeCancel is invoked, the whole "ParallelizeUntil" goes to the end.
-	// this could avoid extra computation, especially in huge cluster.
-	// and the ParallelizeUntil guarantees only "workerNum" goroutines will be working simultaneously.
-	// so it's enough to allocate workerNum size for errCh.
-	// note that, in such case, size of errCh should be no less than parallelization number
-	workerNum := 16
-	errCh := make(chan error, workerNum)
-	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
-	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodeInfos), func(index int) {
-		nodeInfo := nodeInfos[index]
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		s, status := plugin.Score(ctx, cycleState, pod, nodeInfo)
-		if !status.IsSuccess() {
-			parallelizeCancel()
-			errCh <- fmt.Errorf("calculate %s priority failed %v", pluginName, status.Message())
-			return
-		}
-		nodeScoreList[index] = fwk.NodeScore{
-			Name:  nodeInfo.Node().Name,
-			Score: s,
-		}
-	})
-
-	select {
-	case err := <-errCh:
+	if err := ctx.Err(); err != nil {
 		return nil, err
-	default:
 	}
 
-	if extensions := plugin.ScoreExtensions(); extensions != nil {
-		normalizeStatus := extensions.NormalizeScore(context.TODO(), cycleState, pod, nodeScoreList)
-		if !normalizeStatus.IsSuccess() {
-			return nil, fmt.Errorf("normalize %s score failed %v", pluginName, normalizeStatus.Message())
+	skippedScorePlugins := make(map[string]struct{}, len(preScorePlugins))
+	for _, spec := range preScorePlugins {
+		status := spec.Plugin.PreScore(ctx, cycleState, pod, nodeInfos)
+		if status.IsSkip() {
+			skippedScorePlugins[spec.Name] = struct{}{}
+			continue
 		}
+		if !status.IsSuccess() {
+			return nil, fmt.Errorf("running PreScore plugin %q failed: %w", spec.Name, status.AsError())
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	activePlugins := make([]activeScorePlugin, 0, len(scorePlugins))
+	for _, spec := range scorePlugins {
+		if _, skipped := skippedScorePlugins[spec.Name]; skipped {
+			continue
+		}
+		activePlugins = append(activePlugins, activeScorePlugin{
+			spec:   spec,
+			scores: make(fwk.NodeScoreList, len(nodeInfos)),
+		})
+	}
+
+	if len(activePlugins) == 0 {
+		return map[string]float64{}, nil
+	}
+
+	parallelCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	errCh := parallelize.NewResultChannel[error]()
+
+	// Score nodes in parallel. Each worker owns one node index and runs every
+	// active plugin for that node.
+	workqueue.ParallelizeUntil(parallelCtx, scoreWorkerNum, len(nodeInfos), func(index int) {
+		nodeInfo := nodeInfos[index]
+		nodeName := nodeInfo.Node().Name
+		for pluginIndex := range activePlugins {
+			plugin := &activePlugins[pluginIndex]
+			score, status := plugin.spec.Plugin.Score(parallelCtx, cycleState, pod, nodeInfo)
+			if !status.IsSuccess() {
+				errCh.SendWithCancel(
+					fmt.Errorf("running Score plugin %q for node %q failed: %s", plugin.spec.Name, nodeName, status.Message()),
+					cancel,
+				)
+				return
+			}
+			plugin.scores[index] = fwk.NodeScore{Name: nodeName, Score: score}
+		}
+	})
+	if err := errCh.Receive(); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	// Each normalizer owns one score list, so plugins can normalize in parallel.
+	workqueue.ParallelizeUntil(parallelCtx, scoreWorkerNum, len(activePlugins), func(index int) {
+		plugin := &activePlugins[index]
+		extensions := plugin.spec.Plugin.ScoreExtensions()
+		if extensions == nil {
+			return
+		}
+		status := extensions.NormalizeScore(parallelCtx, cycleState, pod, plugin.scores)
+		if !status.IsSuccess() {
+			errCh.SendWithCancel(
+				fmt.Errorf("running NormalizeScore plugin %q failed: %s", plugin.spec.Name, status.Message()),
+				cancel,
+			)
+		}
+	})
+	if err := errCh.Receive(); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	// Validate normalized scores and aggregate weighted totals by node index.
+	nodeTotalScores := make([]float64, len(nodeInfos))
+	workqueue.ParallelizeUntil(parallelCtx, scoreWorkerNum, len(nodeInfos), func(index int) {
+		var total float64
+		for pluginIndex := range activePlugins {
+			plugin := &activePlugins[pluginIndex]
+			nodeScore := plugin.scores[index]
+			if nodeScore.Score > fwk.MaxNodeScore || nodeScore.Score < fwk.MinNodeScore {
+				errCh.SendWithCancel(
+					fmt.Errorf("plugin %q returns an invalid score %v for node %q", plugin.spec.Name, nodeScore.Score, nodeScore.Name),
+					cancel,
+				)
+				return
+			}
+			total += float64(nodeScore.Score * int64(plugin.spec.Weight))
+		}
+		nodeTotalScores[index] = total
+	})
+	if err := errCh.Receive(); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	nodeScores := make(map[string]float64, len(nodeInfos))
-	for i, nodeScore := range nodeScoreList {
-		// return error if score plugin returns invalid score.
-		if nodeScore.Score > fwk.MaxNodeScore || nodeScore.Score < fwk.MinNodeScore {
-			return nil, fmt.Errorf("%s returns an invalid score %v for node %s", pluginName, nodeScore.Score, nodeScore.Name)
-		}
-		nodeScore.Score *= int64(weight)
-		nodeScoreList[i] = nodeScore
-		nodeScores[nodeScore.Name] = float64(nodeScore.Score)
+	for index, nodeInfo := range nodeInfos {
+		nodeScores[nodeInfo.Node().Name] = nodeTotalScores[index]
 	}
-
-	klog.V(4).Infof("%s Score for task %s/%s is: %v", pluginName, pod.Namespace, pod.Name, nodeScores)
 	return nodeScores, nil
 }
