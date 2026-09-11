@@ -63,6 +63,16 @@ vulnerability-reporting:
   accepts-vulnerability-reports: true
   email-contact: 'volcano-security@googlegroups.com'
   security-policy: 'https://github.com/volcano-sh/community/blob/master/SECURITY.md'
+  in-scope:
+    - 'Privilege escalation or scheduling-decision bypass in the Volcano scheduler, controller-manager, and admission webhooks'
+    - 'Tenant isolation breakout across Queues, PodGroups, and namespaces (e.g. quota, fair-share, or preemption affecting another tenant''s workloads)'
+    - 'Improper RBAC defaults in the shipped manifests and Helm charts that grant excessive permissions to Volcano components'
+    - 'Insecure handling of user-controlled CRD fields (Job, Queue, PodGroup) that leads to host or cluster compromise'
+  out-of-scope:
+    - 'Vulnerabilities in Kubernetes core, the kube-apiserver, or other core Kubernetes components, which are handled by the Kubernetes security process at https://kubernetes.io/security/'
+    - 'Issues that only affect unsupported Volcano releases; only the latest supported releases receive fixes'
+    - 'Insecure configuration in a consuming cluster, such as disabling admission webhooks, relaxing the provided RBAC, or running components with custom privileges'
+    - 'Reports requiring pre-existing cluster-admin or equivalent privileged access, since such access already permits the reported impact'
 
 dependencies:
   dependencies-lists:
