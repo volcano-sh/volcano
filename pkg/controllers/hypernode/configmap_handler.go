@@ -19,6 +19,7 @@ package hypernode
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -59,7 +60,6 @@ func (hn *hyperNodeController) setupConfigMapInformer() {
 		return filteredInformer
 	})
 	hn.configMapInformer = hn.informerFactory.Core().V1().ConfigMaps()
-	// TODO: Only trigger handler when networkTopologyDiscovery config changed.
 	hn.configMapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    hn.addConfigMap,
 		UpdateFunc: hn.updateConfigMap,
@@ -78,13 +78,46 @@ func (hn *hyperNodeController) addConfigMap(obj interface{}) {
 }
 
 func (hn *hyperNodeController) updateConfigMap(oldObj, newObj interface{}) {
-	cm, ok := newObj.(*v1.ConfigMap)
+	newCM, ok := newObj.(*v1.ConfigMap)
 	if !ok {
 		klog.ErrorS(nil, "Cannot convert to *v1.ConfigMap", "obj", newObj)
 		return
 	}
-	klog.V(3).InfoS("Update ConfigMap", "namespace", cm.Namespace, "name", cm.Name)
-	hn.enqueueConfigMap(cm)
+	oldCM, ok := oldObj.(*v1.ConfigMap)
+	if !ok {
+		klog.ErrorS(nil, "Cannot convert to *v1.ConfigMap", "obj", oldObj)
+		return
+	}
+	if !configChanged(oldCM, newCM) {
+		klog.V(3).InfoS("ConfigMap update without network topology discovery config change, skip",
+			"namespace", newCM.Namespace, "name", newCM.Name)
+		return
+	}
+	klog.V(3).InfoS("Update ConfigMap", "namespace", newCM.Namespace, "name", newCM.Name)
+	hn.enqueueConfigMap(newCM)
+}
+
+// configChanged returns true if the network topology discovery config in the
+// ConfigMap data changed between the old and new ConfigMaps.
+func configChanged(oldCM, newCM *v1.ConfigMap) bool {
+	oldConfig, oldOK := oldCM.Data[config.DefaultConfigKey]
+	newConfig, newOK := newCM.Data[config.DefaultConfigKey]
+
+	if oldOK != newOK {
+		return true
+	}
+	if !oldOK || oldConfig == newConfig {
+		return false
+	}
+
+	// Compare the parsed configs to ignore changes that do not affect the
+	// network topology discovery, such as whitespace or unrelated fields.
+	oldCfg, oldErr := config.ParseConfig(oldConfig)
+	newCfg, newErr := config.ParseConfig(newConfig)
+	if oldErr != nil || newErr != nil {
+		return true
+	}
+	return !reflect.DeepEqual(oldCfg, newCfg)
 }
 
 func (hn *hyperNodeController) deleteConfigMap(obj interface{}) {

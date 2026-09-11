@@ -70,8 +70,13 @@ func (l *loader) LoadConfig() (*api.NetworkTopologyConfig, error) {
 		return nil, fmt.Errorf("config key not found in ConfigMap: %s", l.configKey)
 	}
 
+	return ParseConfig(configYaml)
+}
+
+// ParseConfig parses the network topology config from YAML.
+func ParseConfig(configYaml string) (*api.NetworkTopologyConfig, error) {
 	config := &api.NetworkTopologyConfig{}
-	if err = yaml.Unmarshal([]byte(configYaml), config); err != nil {
+	if err := yaml.Unmarshal([]byte(configYaml), config); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %v", err)
 	}
 	return config, nil
