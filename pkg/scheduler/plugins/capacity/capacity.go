@@ -36,6 +36,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/plugins/capacity/hintprovider"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
@@ -436,6 +437,10 @@ func (cp *capacityPlugin) Name() string {
 
 func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	cp.parseArguments()
+
+	// Register this plugin as a HintProvider so quota-rejected Jobs are woken by
+	// queue/podgroup/pod events.
+	ssn.AddHintProvider(cp.Name(), &hintprovider.CapacityHintProvider{})
 
 	// Prepare scheduling data for this session.
 	cp.totalResource.Add(ssn.TotalResource)
