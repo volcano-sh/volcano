@@ -502,6 +502,7 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 		finalStmt := framework.NewStatement(ssn)
 		if err = finalStmt.RecoverOperations(bestStmt); err != nil {
 			klog.ErrorS(err, "Failed to recover operations", "job", job.UID, "hyperNode", bestHyperNode)
+			finalStmt.Discard()
 			return nil
 		}
 
@@ -575,6 +576,7 @@ func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *
 		finalStmt := framework.NewStatement(ssn)
 		if err = finalStmt.RecoverOperations(bestStmt); err != nil {
 			klog.ErrorS(err, "Failed to recover operations", "subJob", subJob.UID, "hyperNode", bestHyperNode)
+			finalStmt.Discard()
 			return nil, 0
 		}
 		newAllocatedHyperNode := ssn.HyperNodes.GetLCAHyperNode(subJob.AllocatedHyperNode, bestHyperNode)
