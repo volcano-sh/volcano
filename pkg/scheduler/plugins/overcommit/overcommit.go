@@ -141,6 +141,18 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 		jobMinReq := job.GetMinResources()
 		op.inqueueResource.Add(job.DeductSchGatedResources(jobMinReq))
 	})
+
+	ssn.AddJobInqueueEvictedFn(op.Name(), func(obj interface{}) {
+		job, ok := obj.(*api.JobInfo)
+		if !ok || job == nil || job.PodGroup == nil {
+			return
+		}
+		if job.PodGroup.Spec.MinResources == nil {
+			return
+		}
+		inqueued := util.GetInqueueResource(job, job.Allocated)
+		op.inqueueResource.Sub(job.DeductSchGatedResources(inqueued))
+	})
 }
 
 func (op *overcommitPlugin) OnSessionClose(ssn *framework.Session) {
