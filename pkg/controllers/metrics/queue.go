@@ -100,10 +100,28 @@ func DeleteQueueMetrics(queueName string) {
 	queuePodGroupCompleted.DeleteLabelValues(queueName)
 }
 
+// UpdateQueueMetrics updates queue workload metrics from the latest status.
 func UpdateQueueMetrics(queueName string, queueStatus *v1beta1.QueueStatus) {
-	UpdateQueuePodGroupPendingCount(queueName, queueStatus.Pending)
-	UpdateQueuePodGroupRunningCount(queueName, queueStatus.Running)
-	UpdateQueuePodGroupUnknownCount(queueName, queueStatus.Unknown)
-	UpdateQueuePodGroupInqueueCount(queueName, queueStatus.Inqueue)
-	UpdateQueuePodGroupCompletedCount(queueName, queueStatus.Completed)
+	UpdateQueuePodGroupCounts(
+		queueName,
+		queueStatus.Inqueue,
+		queueStatus.Pending,
+		queueStatus.Running,
+		queueStatus.Unknown,
+		queueStatus.Completed,
+	)
+}
+
+// UpdateQueuePodGroupCounts records PodGroup phase counts for either a
+// cluster-scoped Queue or a NamespaceQueue. queueName must be the canonical
+// queue identifier used by scheduler metrics.
+func UpdateQueuePodGroupCounts(
+	queueName string,
+	inqueue, pending, running, unknown, completed int32,
+) {
+	UpdateQueuePodGroupPendingCount(queueName, pending)
+	UpdateQueuePodGroupRunningCount(queueName, running)
+	UpdateQueuePodGroupUnknownCount(queueName, unknown)
+	UpdateQueuePodGroupInqueueCount(queueName, inqueue)
+	UpdateQueuePodGroupCompletedCount(queueName, completed)
 }

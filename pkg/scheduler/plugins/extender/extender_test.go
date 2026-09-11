@@ -17,6 +17,7 @@ limitations under the License.
 package extender
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/sets"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -51,6 +53,41 @@ func TestMaxBodySizeLimit2(t *testing.T) {
 		t.Error("Expected error due to request body size limit, but got nil")
 	} else if !strings.Contains(err.Error(), "http: request body too large") {
 		t.Errorf("Expected 'http: request body too large' error, got: %v", err)
+	}
+}
+
+func TestNamespaceQueueRequestUsesNormalizedQueueInfo(t *testing.T) {
+	queue := &api.QueueInfo{
+		UID:       api.NamespaceQueueID("team-a", "training"),
+		Name:      "training",
+		Scope:     api.NamespaceQueueScope,
+		Namespace: "team-a",
+		State:     scheduling.QueueStateOpen,
+		Capability: corev1.ResourceList{
+			corev1.ResourceCPU: resource.MustParse("2"),
+		},
+	}
+
+	payload, err := json.Marshal(&QueueOverusedRequest{Queue: queue})
+	if err != nil {
+		t.Fatalf("failed to marshal NamespaceQueue extender request: %v", err)
+	}
+
+	var decoded QueueOverusedRequest
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal NamespaceQueue extender request: %v", err)
+	}
+	if decoded.Queue == nil {
+		t.Fatal("decoded QueueInfo is nil")
+	}
+	if decoded.Queue.Scope != api.NamespaceQueueScope ||
+		decoded.Queue.Namespace != "team-a" ||
+		decoded.Queue.Queue != nil ||
+		decoded.Queue.NamespaceQueue != nil {
+		t.Fatalf("unexpected normalized NamespaceQueue request: %#v", decoded.Queue)
+	}
+	if got := decoded.Queue.Capability[corev1.ResourceCPU]; got.Cmp(resource.MustParse("2")) != 0 {
+		t.Fatalf("decoded capability = %s, want 2", got.String())
 	}
 }
 

@@ -57,6 +57,7 @@ import (
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 var DefaultAttachableVolumeQuantity int64 = math.MaxInt32
@@ -859,20 +860,37 @@ func getJobID(pg *schedulingapi.PodGroup) schedulingapi.JobID {
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) setPodGroup(ss *schedulingapi.PodGroup) error {
-	job := getJobID(ss)
-	if _, found := sc.Jobs[job]; !found {
-		sc.Jobs[job] = schedulingapi.NewJobInfo(job)
+	queueID, err := resolveQueueReference(
+		ss.Namespace,
+		ss.Spec.Queue,
+		sc.defaultQueue,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to resolve queue reference %q for PodGroup %s/%s: %w",
+			ss.Spec.Queue,
+			ss.Namespace,
+			ss.Name,
+			err,
+		)
 	}
 
-	sc.Jobs[job].SetPodGroup(ss)
-
-	// TODO(k82cn): set default queue in admission.
-	if len(ss.Spec.Queue) == 0 {
-		sc.Jobs[job].Queue = schedulingapi.QueueID(sc.defaultQueue)
+	jobID := getJobID(ss)
+	if _, found := sc.Jobs[jobID]; !found {
+		sc.Jobs[jobID] = schedulingapi.NewJobInfo(jobID)
 	}
 
-	metrics.UpdateE2eSchedulingStartTimeByJob(sc.Jobs[job].Name, string(sc.Jobs[job].Queue), sc.Jobs[job].Namespace,
-		sc.Jobs[job].CreationTimestamp.Time)
+	sc.Jobs[jobID].SetPodGroup(ss)
+
+	sc.Jobs[jobID].Queue = queueID
+
+	metrics.UpdateE2eSchedulingStartTimeByJob(
+		sc.Jobs[jobID].Name,
+		string(sc.Jobs[jobID].Queue),
+		sc.Jobs[jobID].Namespace,
+		sc.Jobs[jobID].CreationTimestamp.Time,
+	)
+
 	return nil
 }
 
@@ -1061,9 +1079,104 @@ func (sc *SchedulerCache) DeleteQueueV1beta1(obj interface{}) {
 	sc.deleteQueue(schedulingapi.QueueID(ss.Name))
 }
 
+// AddNamespaceQueueV1beta1 adds a NamespaceQueue to accounting and adds it to
+// the active cache only when its lifecycle and Ready condition permit scheduling.
+func (sc *SchedulerCache) AddNamespaceQueueV1beta1(obj interface{}) {
+	namespaceQueue, ok := obj.(*schedulingv1beta1.NamespaceQueue)
+	if !ok {
+		klog.Errorf("Cannot convert to *schedulingv1beta1.NamespaceQueue: %v", obj)
+		return
+	}
+
+	internalNamespaceQueue := &scheduling.NamespaceQueue{}
+	if err := scheme.Scheme.Convert(namespaceQueue, internalNamespaceQueue, nil); err != nil {
+		klog.Errorf("Failed to convert NamespaceQueue %s/%s: %v",
+			namespaceQueue.Namespace, namespaceQueue.Name, err)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	if err := sc.addNamespaceQueue(internalNamespaceQueue); err != nil {
+		klog.Errorf("Failed to add NamespaceQueue %s/%s to cache: %v",
+			namespaceQueue.Namespace, namespaceQueue.Name, err)
+	}
+}
+
+// UpdateNamespaceQueueV1beta1 replaces the cached NamespaceQueue snapshot after
+// an informer resource-version change.
+func (sc *SchedulerCache) UpdateNamespaceQueueV1beta1(oldObj, newObj interface{}) {
+	oldNamespaceQueue, ok := oldObj.(*schedulingv1beta1.NamespaceQueue)
+	if !ok {
+		klog.Errorf("Cannot convert oldObj to *schedulingv1beta1.NamespaceQueue: %v", oldObj)
+		return
+	}
+
+	newNamespaceQueue, ok := newObj.(*schedulingv1beta1.NamespaceQueue)
+	if !ok {
+		klog.Errorf("Cannot convert newObj to *schedulingv1beta1.NamespaceQueue: %v", newObj)
+		return
+	}
+
+	if oldNamespaceQueue.ResourceVersion == newNamespaceQueue.ResourceVersion {
+		return
+	}
+
+	internalNamespaceQueue := &scheduling.NamespaceQueue{}
+	if err := scheme.Scheme.Convert(newNamespaceQueue, internalNamespaceQueue, nil); err != nil {
+		klog.Errorf("Failed to convert NamespaceQueue %s/%s: %v",
+			newNamespaceQueue.Namespace, newNamespaceQueue.Name, err)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	if err := sc.updateNamespaceQueue(internalNamespaceQueue); err != nil {
+		klog.Errorf("Failed to update NamespaceQueue %s/%s in cache: %v",
+			newNamespaceQueue.Namespace, newNamespaceQueue.Name, err)
+	}
+}
+
+// DeleteNamespaceQueueV1beta1 removes a NamespaceQueue from active and
+// accounting views, including informer tombstones.
+func (sc *SchedulerCache) DeleteNamespaceQueueV1beta1(obj interface{}) {
+	var namespaceQueue *schedulingv1beta1.NamespaceQueue
+
+	switch value := obj.(type) {
+	case *schedulingv1beta1.NamespaceQueue:
+		namespaceQueue = value
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		namespaceQueue, ok = value.Obj.(*schedulingv1beta1.NamespaceQueue)
+		if !ok {
+			klog.Errorf(
+				"Cannot convert tombstone to *schedulingv1beta1.NamespaceQueue: %v",
+				value.Obj,
+			)
+			return
+		}
+	default:
+		klog.Errorf("Cannot convert to *schedulingv1beta1.NamespaceQueue: %v", obj)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	sc.deleteQueue(
+		schedulingapi.NamespaceQueueID(namespaceQueue.Namespace, namespaceQueue.Name),
+	)
+}
+
 func (sc *SchedulerCache) addQueue(queue *scheduling.Queue) {
 	qi := schedulingapi.NewQueueInfo(queue)
 	sc.Queues[qi.UID] = qi
+	if sc.AccountingQueues == nil {
+		sc.AccountingQueues = make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo)
+	}
+	sc.AccountingQueues[qi.UID] = qi
 }
 
 func (sc *SchedulerCache) updateQueue(queue *scheduling.Queue) {
@@ -1073,8 +1186,50 @@ func (sc *SchedulerCache) updateQueue(queue *scheduling.Queue) {
 func (sc *SchedulerCache) deleteQueue(id schedulingapi.QueueID) {
 	if queue, ok := sc.Queues[id]; ok {
 		delete(sc.Queues, id)
-		metrics.DeleteQueueMetrics(queue.Name)
+		metrics.DeleteQueueMetrics(string(queue.UID))
 	}
+	delete(sc.AccountingQueues, id)
+}
+
+func (sc *SchedulerCache) addNamespaceQueue(
+	namespaceQueue *scheduling.NamespaceQueue,
+) error {
+	queueInfo, err := schedulingapi.NewNamespaceQueueInfo(namespaceQueue)
+	if err != nil {
+		return err
+	}
+
+	sc.Queues[queueInfo.UID] = queueInfo
+	if sc.AccountingQueues == nil {
+		sc.AccountingQueues = make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo)
+	}
+	sc.AccountingQueues[queueInfo.UID] = queueInfo
+	if !isInternalNamespaceQueueSchedulable(namespaceQueue) {
+		delete(sc.Queues, queueInfo.UID)
+		metrics.DeleteQueueMetrics(string(queueInfo.UID))
+	}
+	return nil
+}
+
+// isInternalNamespaceQueueSchedulable applies the scheduler-side readiness
+// guard. The controller remains the source of truth for conditions, while the
+// scheduler rechecks generation and lifecycle to protect against stale events.
+func isInternalNamespaceQueueSchedulable(namespaceQueue *scheduling.NamespaceQueue) bool {
+	if namespaceQueue == nil {
+		return false
+	}
+
+	return commonutil.IsNamespaceQueueSchedulable(
+		namespaceQueue.Generation,
+		string(namespaceQueue.Status.State),
+		namespaceQueue.Status.Conditions,
+	)
+}
+
+func (sc *SchedulerCache) updateNamespaceQueue(
+	namespaceQueue *scheduling.NamespaceQueue,
+) error {
+	return sc.addNamespaceQueue(namespaceQueue)
 }
 
 // DeletePriorityClass delete priorityclass from the scheduler cache

@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/tools/cache"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/kubernetes/pkg/features"
 
@@ -34,7 +35,119 @@ import (
 	schedulingv1beta2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
+	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
+	volcanofeatures "volcano.sh/volcano/pkg/features"
 )
+
+func TestValidateJobQueue(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, volcanofeatures.NamespaceQueue, true)
+	tests := []struct {
+		name            string
+		namespace       string
+		reference       string
+		queue           *schedulingv1beta2.Queue
+		namespaceQueue  *schedulingv1beta2.NamespaceQueue
+		expectedMessage string
+	}{
+		{
+			name:      "open cluster queue",
+			namespace: "team-a",
+			reference: "research",
+			queue: &schedulingv1beta2.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: "research"},
+				Status: schedulingv1beta2.QueueStatus{
+					State: schedulingv1beta2.QueueStateOpen,
+				},
+			},
+		},
+		{
+			name:      "open namespace queue",
+			namespace: "team-a",
+			reference: "namespace/training",
+			namespaceQueue: &schedulingv1beta2.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a", Generation: 1},
+				Status: schedulingv1beta2.NamespaceQueueStatus{
+					State: schedulingv1beta2.QueueStateOpen,
+					Conditions: []metav1.Condition{
+						{Type: "Authorized", Status: metav1.ConditionTrue, ObservedGeneration: 1},
+						{Type: "Ready", Status: metav1.ConditionTrue, ObservedGeneration: 1},
+					},
+				},
+			},
+		},
+		{
+			name:      "open namespace queue pending readiness reconciliation",
+			namespace: "team-a",
+			reference: "namespace/training",
+			namespaceQueue: &schedulingv1beta2.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a", Generation: 2},
+				Status: schedulingv1beta2.NamespaceQueueStatus{
+					State: schedulingv1beta2.QueueStateOpen,
+					Conditions: []metav1.Condition{
+						{Type: "Authorized", Status: metav1.ConditionTrue, ObservedGeneration: 2},
+						{Type: "Ready", Status: metav1.ConditionFalse, ObservedGeneration: 2},
+					},
+				},
+			},
+			expectedMessage: "not ready",
+		},
+		{
+			name:      "closed namespace queue",
+			namespace: "team-a",
+			reference: "namespace/training",
+			namespaceQueue: &schedulingv1beta2.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{Name: "training", Namespace: "team-a"},
+				Status: schedulingv1beta2.NamespaceQueueStatus{
+					State: schedulingv1beta2.QueueStateClosed,
+				},
+			},
+			expectedMessage: "status is `Closed`",
+		},
+		{
+			name:            "missing namespace queue",
+			namespace:       "team-a",
+			reference:       "namespace/training",
+			expectedMessage: "unable to find NamespaceQueue",
+		},
+		{
+			name:            "malformed namespace queue reference",
+			namespace:       "team-a",
+			reference:       "namespace/department/training",
+			expectedMessage: "invalid job queue reference",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queueIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+			if tt.queue != nil {
+				if err := queueIndexer.Add(tt.queue); err != nil {
+					t.Fatalf("failed to add Queue to indexer: %v", err)
+				}
+			}
+			config.QueueLister = schedulinglister.NewQueueLister(queueIndexer)
+			config.QueueInformer = nil
+
+			namespaceQueueIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+				cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
+			})
+			if tt.namespaceQueue != nil {
+				if err := namespaceQueueIndexer.Add(tt.namespaceQueue); err != nil {
+					t.Fatalf("failed to add NamespaceQueue to indexer: %v", err)
+				}
+			}
+			config.NamespaceQueueLister = schedulinglister.NewNamespaceQueueLister(namespaceQueueIndexer)
+
+			message := validateJobQueue(tt.namespace, tt.reference)
+			if tt.expectedMessage == "" && message != "" {
+				t.Fatalf("expected queue reference to be accepted, got %q", message)
+			}
+			if tt.expectedMessage != "" && !strings.Contains(message, tt.expectedMessage) {
+				t.Fatalf("expected message to contain %q, got %q", tt.expectedMessage, message)
+			}
+		})
+	}
+}
 
 func TestValidateJobCreate(t *testing.T) {
 	var policyExitCode int32 = -1
@@ -956,7 +1069,7 @@ func TestValidateJobCreate(t *testing.T) {
 				},
 				Spec: v1alpha1.JobSpec{
 					MinAvailable: 1,
-					Queue:        "jobQueue",
+					Queue:        "job-queue",
 					Tasks: []v1alpha1.TaskSpec{
 						{
 							Name:     "task-1",
@@ -979,7 +1092,7 @@ func TestValidateJobCreate(t *testing.T) {
 				},
 			},
 			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "unable to find job queue",
+			ret:            "unable to find queue",
 			ExpectErr:      true,
 		},
 		{
@@ -2120,20 +2233,20 @@ func TestValidateHierarchyCreate(t *testing.T) {
 				},
 			},
 			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "can not submit job to root queue",
+			ret:            "can not submit workload to root queue",
 			ExpectErr:      true,
 		},
 		// job with non leaf queue created
 		{
-			Name: "job-with-parentQueue",
+			Name: "job-with-parent-queue",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job-with-parentQueue",
+					Name:      "job-with-parent-queue",
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.JobSpec{
 					MinAvailable: 1,
-					Queue:        "parentQueue",
+					Queue:        "parent-queue",
 					Tasks: []v1alpha1.TaskSpec{
 						{
 							Name:     "task-1",
@@ -2156,7 +2269,7 @@ func TestValidateHierarchyCreate(t *testing.T) {
 				},
 			},
 			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "can only submit job to leaf queue",
+			ret:            "can only submit workload to leaf queue",
 			ExpectErr:      true,
 		},
 		// job with leaf queue created
@@ -2169,7 +2282,7 @@ func TestValidateHierarchyCreate(t *testing.T) {
 				},
 				Spec: v1alpha1.JobSpec{
 					MinAvailable: 1,
-					Queue:        "childQueue",
+					Queue:        "child-queue",
 					Tasks: []v1alpha1.TaskSpec{
 						{
 							Name:     "task-1",
@@ -2208,7 +2321,7 @@ func TestValidateHierarchyCreate(t *testing.T) {
 	}
 	parentQueue := &schedulingv1beta2.Queue{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "parentQueue",
+			Name: "parent-queue",
 		},
 		Spec: schedulingv1beta2.QueueSpec{
 			Parent: "root",
@@ -2220,10 +2333,10 @@ func TestValidateHierarchyCreate(t *testing.T) {
 
 	childQueue := &schedulingv1beta2.Queue{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "childQueue",
+			Name: "child-queue",
 		},
 		Spec: schedulingv1beta2.QueueSpec{
-			Parent: "parentQueue",
+			Parent: "parent-queue",
 		},
 		Status: schedulingv1beta2.QueueStatus{
 			State: schedulingv1beta2.QueueStateOpen,

@@ -111,7 +111,7 @@ spec:
               queue:
                 default: default
                 maxLength: 253
-                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                pattern: ^(namespace/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               runningEstimate:
                 type: string

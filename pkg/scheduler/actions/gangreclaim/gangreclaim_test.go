@@ -128,8 +128,8 @@ func TestSelectDomainVictims_ReclaimableCrossQueueOnly(t *testing.T) {
 		},
 		Queues: map[api.QueueID]*api.QueueInfo{
 			"q1": {UID: "q1", Name: "q1"},
-			"q2": {UID: "q2", Name: "q2", Queue: &schedulingapi.Queue{Spec: schedulingapi.QueueSpec{Reclaimable: &reclaimable}}},
-			"q3": {UID: "q3", Name: "q3", Queue: &schedulingapi.Queue{Spec: schedulingapi.QueueSpec{Reclaimable: &nonReclaimable}}},
+			"q2": {UID: "q2", Name: "q2", ReclaimableFlag: &reclaimable},
+			"q3": {UID: "q3", Name: "q3", ReclaimableFlag: &nonReclaimable},
 		},
 		Tiers: []conf.Tier{
 			{
@@ -194,7 +194,7 @@ func TestSelectDomainVictims_RespectVictimJobPreemptable(t *testing.T) {
 		},
 		Queues: map[api.QueueID]*api.QueueInfo{
 			"q1": {UID: "q1", Name: "q1"},
-			"q2": {UID: "q2", Name: "q2", Queue: &schedulingapi.Queue{Spec: schedulingapi.QueueSpec{Reclaimable: &reclaimable}}},
+			"q2": {UID: "q2", Name: "q2", ReclaimableFlag: &reclaimable},
 		},
 		Tiers: []conf.Tier{
 			{
@@ -252,7 +252,7 @@ func TestSelectDomainVictims_AllowVictimJobWhenPreemptableUnset(t *testing.T) {
 		},
 		Queues: map[api.QueueID]*api.QueueInfo{
 			"q1": {UID: "q1", Name: "q1"},
-			"q2": {UID: "q2", Name: "q2", Queue: &schedulingapi.Queue{Spec: schedulingapi.QueueSpec{Reclaimable: &reclaimable}}},
+			"q2": {UID: "q2", Name: "q2", ReclaimableFlag: &reclaimable},
 		},
 		Tiers: []conf.Tier{
 			{

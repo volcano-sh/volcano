@@ -27,12 +27,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	k8scache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/utils/cpuset"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -234,6 +238,90 @@ func TestSchedulerCache_AddPodGroupV1beta1(t *testing.T) {
 		if test.Expected != nil && (pg.Namespace != test.Expected.Namespace || pg.Name != test.Expected.Name) {
 			t.Errorf("Expected pg to be: %v but got :%v in case %d", test.Expected, pg, i)
 		}
+	}
+}
+
+func TestSchedulerCache_SetPodGroupResolvesQueueReference(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	tests := []struct {
+		name      string
+		namespace string
+		reference string
+		expected  api.QueueID
+		wantErr   bool
+	}{
+		{
+			name:      "empty reference uses configured default queue",
+			namespace: "team-a",
+			reference: "",
+			expected:  api.QueueID("default"),
+		},
+		{
+			name:      "plain reference uses cluster queue",
+			namespace: "team-a",
+			reference: "research",
+			expected:  api.QueueID("research"),
+		},
+		{
+			name:      "namespace reference uses local namespace queue",
+			namespace: "team-a",
+			reference: "namespace/training",
+			expected:  api.QueueID("team-a/training"),
+		},
+		{
+			name:      "invalid reference returns error",
+			namespace: "team-a",
+			reference: "cluster/research",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := &SchedulerCache{
+				Jobs:         make(map[api.JobID]*api.JobInfo),
+				defaultQueue: "default",
+			}
+
+			pg := &api.PodGroup{
+				PodGroup: scheduling.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: tt.namespace,
+						Name:      "job-1",
+					},
+					Spec: scheduling.PodGroupSpec{
+						Queue: tt.reference,
+					},
+				},
+			}
+
+			err := sc.setPodGroup(pg)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("setPodGroup() error = %v, wantErr = %t", err, tt.wantErr)
+			}
+
+			if tt.wantErr {
+				return
+			}
+
+			jobID := api.JobID(tt.namespace + "/job-1")
+			job, found := sc.Jobs[jobID]
+			if !found {
+				t.Fatalf("job %q was not added to cache", jobID)
+			}
+
+			if job.Queue != tt.expected {
+				t.Fatalf("JobInfo.Queue = %q, want %q", job.Queue, tt.expected)
+			}
+
+			if job.PodGroup.Spec.Queue != tt.reference {
+				t.Fatalf(
+					"PodGroup.Spec.Queue = %q, want %q",
+					job.PodGroup.Spec.Queue,
+					tt.reference,
+				)
+			}
+		})
 	}
 }
 
@@ -645,6 +733,298 @@ func TestSchedulerCache_DeleteQueueV1beta1(t *testing.T) {
 		if test.Expected != nil && queue != nil && queue.Queue != nil && (queue.Queue.Namespace != test.Expected.Namespace || queue.Queue.Name != test.Expected.Name) {
 			t.Errorf("Expected: %v but got: %v in case %d", test.Expected, queue.Queue, i)
 		}
+	}
+}
+
+func TestSchedulerCache_AddNamespaceQueueV1beta1(t *testing.T) {
+	tests := []struct {
+		name     string
+		queue    *schedulingv1.NamespaceQueue
+		expected bool
+	}{
+		{
+			name: "open and ready namespace queue is cached",
+			queue: &schedulingv1.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:  "team-a",
+					Name:       "training",
+					Generation: 1,
+				},
+				Spec: schedulingv1.NamespaceQueueSpec{
+					Parent: "cluster/default",
+				},
+				Status: schedulingv1.NamespaceQueueStatus{
+					State: schedulingv1.QueueStateOpen,
+					Conditions: []metav1.Condition{
+						{
+							Type:               "Authorized",
+							Status:             metav1.ConditionTrue,
+							ObservedGeneration: 1,
+						},
+						{
+							Type:               "Ready",
+							Status:             metav1.ConditionTrue,
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "not ready namespace queue is not cached",
+			queue: &schedulingv1.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:  "team-a",
+					Name:       "training",
+					Generation: 1,
+				},
+				Spec: schedulingv1.NamespaceQueueSpec{
+					Parent: "cluster/default",
+				},
+				Status: schedulingv1.NamespaceQueueStatus{
+					State: schedulingv1.QueueStateOpen,
+					Conditions: []metav1.Condition{
+						{
+							Type:               "Authorized",
+							Status:             metav1.ConditionTrue,
+							ObservedGeneration: 1,
+						},
+						{
+							Type:               "Ready",
+							Status:             metav1.ConditionFalse,
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "desired closed namespace queue is not cached before status reconciles",
+			queue: &schedulingv1.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:  "team-a",
+					Name:       "training",
+					Generation: 1,
+				},
+				Spec: schedulingv1.NamespaceQueueSpec{
+					Parent: "cluster/default",
+				},
+				Status: schedulingv1.NamespaceQueueStatus{
+					State: schedulingv1.QueueStateOpen,
+					Conditions: []metav1.Condition{{
+						Type:               "Ready",
+						Status:             metav1.ConditionTrue,
+						ObservedGeneration: 1,
+					}},
+				},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := &SchedulerCache{
+				Queues: make(map[api.QueueID]*api.QueueInfo),
+			}
+
+			sc.AddNamespaceQueueV1beta1(tt.queue)
+
+			queueID := api.NamespaceQueueID(tt.queue.Namespace, tt.queue.Name)
+			queueInfo, found := sc.Queues[queueID]
+
+			if found != tt.expected {
+				t.Fatalf("NamespaceQueue cache presence = %t, want %t", found, tt.expected)
+			}
+			if _, found := sc.AccountingQueues[queueID]; !found {
+				t.Fatal("NamespaceQueue should remain in the accounting cache")
+			}
+
+			if !tt.expected {
+				return
+			}
+
+			if queueInfo.Scope != api.NamespaceQueueScope {
+				t.Fatalf("QueueInfo scope = %q, want %q", queueInfo.Scope, api.NamespaceQueueScope)
+			}
+
+			if queueInfo.Namespace != "team-a" {
+				t.Fatalf("QueueInfo namespace = %q, want %q", queueInfo.Namespace, "team-a")
+			}
+
+			if queueInfo.NamespaceQueue == nil || queueInfo.Queue != nil {
+				t.Fatal("QueueInfo should contain NamespaceQueue only")
+			}
+		})
+	}
+}
+
+func TestSchedulerCache_UpdateNamespaceQueueV1beta1(t *testing.T) {
+	newReadyQueue := func(resourceVersion string) *schedulingv1.NamespaceQueue {
+		return &schedulingv1.NamespaceQueue{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:       "team-a",
+				Name:            "training",
+				Generation:      1,
+				ResourceVersion: resourceVersion,
+			},
+			Spec: schedulingv1.NamespaceQueueSpec{
+				Parent: "cluster/default",
+			},
+			Status: schedulingv1.NamespaceQueueStatus{
+				State: schedulingv1.QueueStateOpen,
+				Conditions: []metav1.Condition{
+					{
+						Type:               "Authorized",
+						Status:             metav1.ConditionTrue,
+						ObservedGeneration: 1,
+					},
+					{
+						Type:               "Ready",
+						Status:             metav1.ConditionTrue,
+						ObservedGeneration: 1,
+					},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name     string
+		oldQueue *schedulingv1.NamespaceQueue
+		newQueue *schedulingv1.NamespaceQueue
+		cached   bool
+		parent   api.QueueID
+	}{
+		{
+			name:     "ready namespace queue is updated",
+			oldQueue: newReadyQueue("1"),
+			newQueue: func() *schedulingv1.NamespaceQueue {
+				queue := newReadyQueue("2")
+				queue.Spec.Parent = "cluster/research"
+				return queue
+			}(),
+			cached: true,
+			parent: api.QueueID("research"),
+		},
+		{
+			name:     "closed namespace queue is removed",
+			oldQueue: newReadyQueue("1"),
+			newQueue: func() *schedulingv1.NamespaceQueue {
+				queue := newReadyQueue("2")
+				queue.Status.State = schedulingv1.QueueStateClosed
+				return queue
+			}(),
+			cached: false,
+		},
+		{
+			name:     "not ready namespace queue is removed",
+			oldQueue: newReadyQueue("1"),
+			newQueue: func() *schedulingv1.NamespaceQueue {
+				queue := newReadyQueue("2")
+				queue.Status.Conditions[0].Status = metav1.ConditionFalse
+				return queue
+			}(),
+			cached: false,
+		},
+		{
+			name: "namespace queue becomes ready and is cached",
+			oldQueue: func() *schedulingv1.NamespaceQueue {
+				queue := newReadyQueue("1")
+				queue.Status.Conditions[0].Status = metav1.ConditionFalse
+				return queue
+			}(),
+			newQueue: newReadyQueue("2"),
+			cached:   true,
+			parent:   api.QueueID("default"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := &SchedulerCache{
+				Queues: make(map[api.QueueID]*api.QueueInfo),
+			}
+
+			sc.AddNamespaceQueueV1beta1(tt.oldQueue)
+			sc.UpdateNamespaceQueueV1beta1(tt.oldQueue, tt.newQueue)
+
+			queueID := api.NamespaceQueueID("team-a", "training")
+			queueInfo, found := sc.Queues[queueID]
+			if found != tt.cached {
+				t.Fatalf("NamespaceQueue cache presence = %t, want %t", found, tt.cached)
+			}
+			accountingQueue, found := sc.AccountingQueues[queueID]
+			if !found {
+				t.Fatal("NamespaceQueue should remain in the accounting cache")
+			}
+			if accountingQueue.Parent != api.QueueID(strings.TrimPrefix(tt.newQueue.Spec.Parent, "cluster/")) {
+				t.Fatalf("accounting QueueInfo parent = %q", accountingQueue.Parent)
+			}
+
+			if tt.cached && queueInfo.Parent != tt.parent {
+				t.Fatalf("QueueInfo parent = %q, want %q", queueInfo.Parent, tt.parent)
+			}
+		})
+	}
+}
+
+func TestSchedulerCache_DeleteNamespaceQueueV1beta1(t *testing.T) {
+	tests := []struct {
+		name string
+		obj  interface{}
+	}{
+		{
+			name: "normal delete",
+			obj: &schedulingv1.NamespaceQueue{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "team-a",
+					Name:      "training",
+				},
+			},
+		},
+		{
+			name: "tombstone delete",
+			obj: k8scache.DeletedFinalStateUnknown{
+				Key: "team-a/training",
+				Obj: &schedulingv1.NamespaceQueue{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "team-a",
+						Name:      "training",
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := &SchedulerCache{
+				Queues: map[api.QueueID]*api.QueueInfo{
+					api.NamespaceQueueID("team-a", "training"): {
+						UID:  api.NamespaceQueueID("team-a", "training"),
+						Name: "training",
+					},
+				},
+				AccountingQueues: map[api.QueueID]*api.QueueInfo{
+					api.NamespaceQueueID("team-a", "training"): {
+						UID:  api.NamespaceQueueID("team-a", "training"),
+						Name: "training",
+					},
+				},
+			}
+
+			sc.DeleteNamespaceQueueV1beta1(tt.obj)
+
+			if _, found := sc.Queues[api.NamespaceQueueID("team-a", "training")]; found {
+				t.Fatal("NamespaceQueue should be removed from cache")
+			}
+			if _, found := sc.AccountingQueues[api.NamespaceQueueID("team-a", "training")]; found {
+				t.Fatal("NamespaceQueue should be removed from accounting cache")
+			}
+		})
 	}
 }
 

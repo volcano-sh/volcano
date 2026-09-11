@@ -157,6 +157,16 @@ func (drf *drfPlugin) HierarchyEnabled(ssn *framework.Session) bool {
 	return false
 }
 
+func clusterQueueInfos(queues map[api.QueueID]*api.QueueInfo) map[api.QueueID]*api.QueueInfo {
+	clusterQueues := make(map[api.QueueID]*api.QueueInfo, len(queues))
+	for queueID, queue := range queues {
+		if queue != nil && queue.Scope == api.ClusterQueueScope {
+			clusterQueues[queueID] = queue
+		}
+	}
+	return clusterQueues
+}
+
 func (drf *drfPlugin) compareQueues(root *hierarchicalNode, lqueue *api.QueueInfo, rqueue *api.QueueInfo) float64 {
 	lnode := root
 	lpaths := strings.Split(lqueue.Hierarchy, "/")
@@ -184,12 +194,18 @@ func (drf *drfPlugin) compareQueues(root *hierarchicalNode, lqueue *api.QueueInf
 }
 
 func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
+	hierarchyEnabled := drf.HierarchyEnabled(ssn)
+	if hierarchyEnabled {
+		if err := util.BuildEffectiveQueueHierarchy(clusterQueueInfos(ssn.Queues)); err != nil {
+			klog.Errorf("failed to build effective queue hierarchy: %v", err)
+			return
+		}
+	}
+
 	// Prepare scheduling data for this session.
 	drf.totalResource.Add(ssn.TotalResource)
 
 	klog.V(4).Infof("Total Allocatable %s", drf.totalResource)
-
-	hierarchyEnabled := drf.HierarchyEnabled(ssn)
 
 	for _, job := range ssn.Jobs {
 		attr := &drfAttr{
@@ -214,8 +230,10 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		if hierarchyEnabled {
 			queue := ssn.Queues[job.Queue]
-			drf.totalAllocated.Add(attr.allocated)
-			drf.UpdateHierarchicalShare(drf.hierarchicalRoot, drf.totalAllocated, job, attr, queue.Hierarchy, queue.Weights)
+			if queue != nil && queue.Scope == api.ClusterQueueScope {
+				drf.totalAllocated.Add(attr.allocated)
+				drf.UpdateHierarchicalShare(drf.hierarchicalRoot, drf.totalAllocated, job, attr, queue.Hierarchy, queue.Weights)
+			}
 		}
 	}
 
@@ -266,6 +284,9 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		queueOrderFn := func(l interface{}, r interface{}) int {
 			lv := l.(*api.QueueInfo)
 			rv := r.(*api.QueueInfo)
+			if lv == nil || rv == nil || lv.Scope != api.ClusterQueueScope || rv.Scope != api.ClusterQueueScope {
+				return 0
+			}
 			ret := drf.compareQueues(drf.hierarchicalRoot, lv, rv)
 			if ret < 0 {
 				return -1
@@ -291,10 +312,10 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 				return nil, util.Permit
 			}
 			lqueue := ssn.Queues[ljob.Queue]
-			if lqueue == nil {
+			if lqueue == nil || lqueue.Scope != api.ClusterQueueScope {
 				klog.V(4).Infof("[drf] Skip reclaim: reclaimer queue <%s> not found in session",
 					ljob.Queue)
-				return nil, util.Permit
+				return nil, util.Abstain
 			}
 			ljob = ljob.Clone()
 			attr := drf.jobAttrs[ljob.UID]
@@ -319,7 +340,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 					continue
 				}
 				rqueue := ssn.Queues[rjob.Queue]
-				if rqueue == nil {
+				if rqueue == nil || rqueue.Scope != api.ClusterQueueScope {
 					klog.V(4).Infof("[drf] Skip reclaimee <%s/%s>: queue <%s> not found in session",
 						preemptee.Namespace, preemptee.Name, rjob.Queue)
 					continue
@@ -411,7 +432,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			nsShare := -1.0
 			if hierarchyEnabled {
 				queue := ssn.Queues[job.Queue]
-				if queue != nil {
+				if queue != nil && queue.Scope == api.ClusterQueueScope {
 					drf.totalAllocated.Add(event.Task.Resreq)
 					drf.UpdateHierarchicalShare(drf.hierarchicalRoot, drf.totalAllocated, job, attr, queue.Hierarchy, queue.Weights)
 				}
@@ -442,7 +463,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			nsShare := -1.0
 			if hierarchyEnabled {
 				queue := ssn.Queues[job.Queue]
-				if queue != nil {
+				if queue != nil && queue.Scope == api.ClusterQueueScope {
 					drf.totalAllocated.Sub(event.Task.Resreq)
 					drf.UpdateHierarchicalShare(drf.hierarchicalRoot, drf.totalAllocated, job, attr, queue.Hierarchy, queue.Weights)
 				}

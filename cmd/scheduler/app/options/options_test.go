@@ -161,3 +161,12 @@ func TestCheckOptionOrDieRejectsNonPositiveUpdaterWorkerNum(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckOptionOrDieRejectsNamespaceQueueDefault(t *testing.T) {
+	option := NewServerOption()
+	option.DefaultQueue = "namespace/training"
+
+	if err := option.CheckOptionOrDie(); err == nil {
+		t.Fatal("CheckOptionOrDie() accepted a NamespaceQueue as default-queue")
+	}
+}

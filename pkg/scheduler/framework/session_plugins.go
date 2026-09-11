@@ -791,10 +791,10 @@ func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 	// If no queue order funcs, order queue by CreationTimestamp first, then by UID.
 	lv := l.(*api.QueueInfo)
 	rv := r.(*api.QueueInfo)
-	if lv.Queue.CreationTimestamp.Equal(&rv.Queue.CreationTimestamp) {
+	if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
 		return lv.UID < rv.UID
 	}
-	return lv.Queue.CreationTimestamp.Before(&rv.Queue.CreationTimestamp)
+	return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
 }
 
 // VictimQueueOrderFn invoke victimqueueorder function of the plugins

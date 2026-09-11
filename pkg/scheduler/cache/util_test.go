@@ -22,8 +22,12 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes/fake"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/features"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
 func TestRemoveVolcanoSchGate(t *testing.T) {
@@ -103,5 +107,90 @@ func TestRemoveVolcanoSchGate(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestResolveQueueReference(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	tests := []struct {
+		name      string
+		namespace string
+		reference string
+		expected  schedulingapi.QueueID
+		wantErr   bool
+	}{
+		{
+			name:      "empty reference uses default cluster queue",
+			namespace: "team-a",
+			reference: "",
+			expected:  "default",
+		},
+		{
+			name:      "plain reference selects cluster queue",
+			namespace: "team-a",
+			reference: "research",
+			expected:  "research",
+		},
+		{
+			name:      "namespace reference selects local namespace queue",
+			namespace: "team-a",
+			reference: "namespace/training",
+			expected:  "team-a/training",
+		},
+		{
+			name:      "cluster prefix is invalid for workload reference",
+			namespace: "team-a",
+			reference: "cluster/research",
+			wantErr:   true,
+		},
+		{
+			name:      "namespace queue name is required",
+			namespace: "team-a",
+			reference: "namespace/",
+			wantErr:   true,
+		},
+		{
+			name:      "cross namespace reference is invalid",
+			namespace: "team-a",
+			reference: "team-b/training",
+			wantErr:   true,
+		},
+		{
+			name:      "namespace queue requires workload namespace",
+			reference: "namespace/training",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queueID, err := resolveQueueReference(
+				tt.namespace,
+				tt.reference,
+				"default",
+			)
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error = %v, wantErr = %t", err, tt.wantErr)
+			}
+
+			if !tt.wantErr && queueID != tt.expected {
+				t.Fatalf("QueueID = %q, want %q", queueID, tt.expected)
+			}
+		})
+	}
+}
+
+func TestResolveQueueReferenceRejectsNamespaceQueueWhenDisabled(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, false)
+	if _, err := resolveQueueReference("team-a", "namespace/training", "default"); err == nil {
+		t.Fatal("resolveQueueReference() accepted NamespaceQueue while feature gate is disabled")
+	}
+}
+
+func TestResolveQueueReferenceRejectsNamespaceDefaultQueueWhenDisabled(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, false)
+	if _, err := resolveQueueReference("team-a", "", "namespace/training"); err == nil {
+		t.Fatal("resolveQueueReference() accepted a NamespaceQueue default while the feature gate was disabled")
 	}
 }
