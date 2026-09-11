@@ -25,11 +25,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
@@ -56,7 +54,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 			},
 		})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		createdJob, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(context.TODO(), jobName, v1.GetOptions{})
+		createdJob, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		gomega.Expect(createdJob.Spec.Queue).Should(gomega.Equal("default"),
 			"Job queue attribute would default to 'default' ")
@@ -104,7 +102,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		}`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 
 	})
@@ -152,7 +150,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 
 	})
@@ -163,11 +161,11 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		defer e2eutil.CleanupTestContext(ctx)
 
 		pod := &corev1.Pod{
-			TypeMeta: v1.TypeMeta{
+			TypeMeta: metav1.TypeMeta{
 				APIVersion: "v1",
 				Kind:       "Pod",
 			},
-			ObjectMeta: v1.ObjectMeta{
+			ObjectMeta: metav1.ObjectMeta{
 				Namespace: ctx.Namespace,
 				Name:      podName,
 			},
@@ -176,7 +174,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 			},
 		}
 
-		_, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, v1.CreateOptions{})
+		_, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = e2eutil.WaitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
@@ -189,11 +187,11 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		defer e2eutil.CleanupTestContext(ctx)
 
 		pod := &corev1.Pod{
-			TypeMeta: v1.TypeMeta{
+			TypeMeta: metav1.TypeMeta{
 				APIVersion: "v1",
 				Kind:       "Pod",
 			},
-			ObjectMeta: v1.ObjectMeta{
+			ObjectMeta: metav1.ObjectMeta{
 				Namespace: ctx.Namespace,
 				Name:      podName,
 			},
@@ -203,7 +201,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 			},
 		}
 
-		_, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, v1.CreateOptions{})
+		_, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = e2eutil.WaitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
@@ -217,7 +215,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		defer e2eutil.CleanupTestContext(ctx)
 
 		pg := &schedulingv1beta1.PodGroup{
-			ObjectMeta: v1.ObjectMeta{
+			ObjectMeta: metav1.ObjectMeta{
 				Namespace: ctx.Namespace,
 				Name:      pgName,
 			},
@@ -228,14 +226,14 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		}
 
 		pod := &corev1.Pod{
-			TypeMeta: v1.TypeMeta{
+			TypeMeta: metav1.TypeMeta{
 				APIVersion: "v1",
 				Kind:       "Pod",
 			},
-			ObjectMeta: v1.ObjectMeta{
+			ObjectMeta: metav1.ObjectMeta{
 				Namespace:   ctx.Namespace,
 				Name:        podName,
-				Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
+				Annotations: map[string]string{schedulingv1beta1.KubeGroupNameAnnotationKey: pgName},
 			},
 			Spec: corev1.PodSpec{
 				Containers:    e2eutil.CreateContainers(e2eutil.DefaultNginxImage, "", "", e2eutil.HalfCPU, e2eutil.HalfCPU, 0),
@@ -243,11 +241,11 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 			},
 		}
 
-		podGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Create(context.TODO(), pg, v1.CreateOptions{})
+		podGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		err = e2eutil.WaitPodGroupPhase(ctx, podGroup, schedulingv1beta1.PodGroupInqueue)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, v1.CreateOptions{})
+		_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		err = e2eutil.WaitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -260,7 +258,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		defer e2eutil.CleanupTestContext(ctx)
 
 		pg := &schedulingv1beta1.PodGroup{
-			ObjectMeta: v1.ObjectMeta{
+			ObjectMeta: metav1.ObjectMeta{
 				Namespace: ctx.Namespace,
 				Name:      pgName,
 			},
@@ -274,11 +272,11 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		}
 
 		pod := &corev1.Pod{
-			TypeMeta: v1.TypeMeta{
+			TypeMeta: metav1.TypeMeta{
 				APIVersion: "v1",
 				Kind:       "Pod",
 			},
-			ObjectMeta: v1.ObjectMeta{
+			ObjectMeta: metav1.ObjectMeta{
 				Namespace:   ctx.Namespace,
 				Name:        podName,
 				Annotations: map[string]string{schedulingv1beta1.KubeGroupNameAnnotationKey: pgName},
@@ -289,10 +287,10 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 			},
 		}
 
-		_, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Create(context.TODO(), pg, v1.CreateOptions{})
+		_, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, v1.CreateOptions{})
+		_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
@@ -355,7 +353,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		}`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		testJob, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		testJob, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		gomega.Expect(testJob.Spec.Queue).Should(gomega.Equal("default"), "Job queue attribute would default to 'default' ")
 		gomega.Expect(testJob.Spec.SchedulerName).Should(gomega.Equal("volcano"), "Job scheduler wolud default to 'volcano'")
@@ -424,7 +422,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		}`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -477,7 +475,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -520,7 +518,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -566,7 +564,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -610,7 +608,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -653,7 +651,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -697,7 +695,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -719,7 +717,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -762,7 +760,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -806,7 +804,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -856,7 +854,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -904,7 +902,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -953,7 +951,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -1002,7 +1000,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -1051,7 +1049,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -1104,7 +1102,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -1152,7 +1150,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -1205,7 +1203,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -1253,7 +1251,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -1301,7 +1299,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -1345,7 +1343,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -1389,7 +1387,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -1441,7 +1439,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
@@ -1487,7 +1485,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 

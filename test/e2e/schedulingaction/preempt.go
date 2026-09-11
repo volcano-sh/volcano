@@ -27,7 +27,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -156,7 +155,7 @@ var _ = Describe("Job E2E Test", func() {
 
 		pgName := "pending-pg"
 		pg := &schedulingv1beta1.PodGroup{
-			ObjectMeta: v1.ObjectMeta{
+			ObjectMeta: metav1.ObjectMeta{
 				Namespace: ctx.Namespace,
 				Name:      pgName,
 			},
@@ -165,7 +164,7 @@ var _ = Describe("Job E2E Test", func() {
 				MinResources: &e2eutil.ThirtyCPU,
 			},
 		}
-		_, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Create(context.TODO(), pg, v1.CreateOptions{})
+		_, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		slot := e2eutil.OneCPU
@@ -187,11 +186,11 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		pod := &corev1.Pod{
-			TypeMeta: v1.TypeMeta{
+			TypeMeta: metav1.TypeMeta{
 				APIVersion: "v1",
 				Kind:       "Pod",
 			},
-			ObjectMeta: v1.ObjectMeta{
+			ObjectMeta: metav1.ObjectMeta{
 				Namespace:   ctx.Namespace,
 				Name:        "preemptor-pod",
 				Annotations: map[string]string{schedulingv1beta1.KubeGroupNameAnnotationKey: pgName},
@@ -203,7 +202,7 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 		// Pod is allowed to be created, preemption does not happen due to PodGroup is in pending state
-		_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, v1.CreateOptions{})
+		_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		// Make sure preempteeJob is not preempted as expected
 		err = e2eutil.WaitTasksReady(ctx, preempteeJob, int(rep))

@@ -30,7 +30,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	v1beta1apply "volcano.sh/apis/pkg/client/applyconfiguration/scheduling/v1beta1"
@@ -131,7 +130,7 @@ func (c *queuecontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateF
 		queueStatusApply := v1beta1apply.QueueStatus().WithState(newQueue.Status.State)
 		queueApply := v1beta1apply.Queue(queue.Name).WithStatus(queueStatusApply)
 		if _, err := c.vcClient.SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: controllerName}); err != nil {
-			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.OpenQueueAction),
+			c.recorder.Event(newQueue, v1.EventTypeWarning, string(busv1alpha1.OpenQueueAction),
 				fmt.Sprintf("Update queue status from %s to %s failed for %v",
 					queue.Status.State, newQueue.Status.State, err))
 			return err
@@ -162,11 +161,11 @@ func (c *queuecontroller) closeQueue(queue *schedulingv1beta1.Queue, updateState
 		queueStatusApply := v1beta1apply.QueueStatus().WithState(newQueue.Status.State)
 		queueApply := v1beta1apply.Queue(queue.Name).WithStatus(queueStatusApply)
 		if _, err := c.vcClient.SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: controllerName}); err != nil {
-			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.CloseQueueAction),
+			c.recorder.Event(newQueue, v1.EventTypeWarning, string(busv1alpha1.CloseQueueAction),
 				fmt.Sprintf("Close queue failed for %v", err))
 			return err
 		}
-		c.recorder.Event(newQueue, v1.EventTypeNormal, string(v1alpha1.CloseQueueAction), "Close queue succeed")
+		c.recorder.Event(newQueue, v1.EventTypeNormal, string(busv1alpha1.CloseQueueAction), "Close queue succeed")
 	}
 
 	return nil

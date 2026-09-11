@@ -26,7 +26,6 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	e2eutil "volcano.sh/volcano/test/e2e/util"
@@ -495,7 +494,7 @@ func createTestCronjob(name, nameSpace, schedule string, concurrency v1alpha1.Co
 										{
 											Name:            "test-container",
 											Image:           e2eutil.DefaultBusyBoxImage,
-											ImagePullPolicy: v1.PullIfNotPresent,
+											ImagePullPolicy: corev1.PullIfNotPresent,
 											Command:         command,
 										},
 									},

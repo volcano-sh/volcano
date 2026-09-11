@@ -21,7 +21,6 @@ import (
 	"path"
 
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	corelisters "k8s.io/client-go/listers/core/v1"
@@ -97,7 +96,7 @@ func (h *MemoryQoSV2Handle) Handle(event interface{}) error {
 
 	cfg, err := parseColocationConfig(cfgStr)
 	if err != nil {
-		h.recorder.Event(pod, v1.EventTypeWarning, "ColocationConfigParseFailed", err.Error())
+		h.recorder.Event(pod, corev1.EventTypeWarning, "ColocationConfigParseFailed", err.Error())
 		klog.ErrorS(err, "Failed to parse memory qos config", "pod", klog.KObj(pod))
 		return nil
 	}
