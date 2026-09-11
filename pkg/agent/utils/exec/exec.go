@@ -28,6 +28,8 @@ import (
 type ExecInterface interface {
 	// CommandContext runs command
 	CommandContext(ctx context.Context, cmd string) (string, error)
+	// CommandContextWithArgs runs command with given name and args without shell
+	CommandContextWithArgs(ctx context.Context, name string, args ...string) (string, error)
 }
 
 var _ ExecInterface = &Executor{}
@@ -54,6 +56,18 @@ func (e *Executor) CommandContext(ctx context.Context, cmd string) (string, erro
 	var outBytes []byte
 	var err error
 	outBytes, err = exec.CommandContext(ctx, "sh", "-c", cmd).CombinedOutput()
+	outputStr := ""
+	if len(outBytes) != 0 {
+		outputStr = string(outBytes)
+	}
+	return outputStr, err
+}
+
+func (e *Executor) CommandContextWithArgs(ctx context.Context, name string, args ...string) (string, error) {
+	if ctx == nil {
+		return "", fmt.Errorf("command failed, nil Context")
+	}
+	outBytes, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
 	outputStr := ""
 	if len(outBytes) != 0 {
 		outputStr = string(outBytes)
