@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/cpuset"
 
+	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
@@ -1774,4 +1775,60 @@ func TestAddPodWithUnresolvedPVCCachesTaskForResync(t *testing.T) {
 	// The task must be queued for resync so it is retried once the PVC
 	// informer catches up.
 	assert.Equal(t, 1, sc.errTasks.Len(), "task must be enqueued for resync")
+}
+
+func TestGetNumaInfo_GPUDetail(t *testing.T) {
+	tests := []struct {
+		name      string
+		srcInfo   *nodeinfov1alpha1.Numatopology
+		expectGPU schedulingapi.GPUDetails
+	}{
+		{
+			name: "gpu detail parsed",
+			srcInfo: &nodeinfov1alpha1.Numatopology{
+				Spec: nodeinfov1alpha1.NumatopoSpec{
+					GPUDetail: map[string]nodeinfov1alpha1.GPUInfo{
+						"0": {NUMANodeID: 0, BusID: "0000:3b:00.0", DeviceModel: "A100"},
+						"1": {NUMANodeID: 0, BusID: "0000:86:00.0", DeviceModel: "A100"},
+						"2": {NUMANodeID: 1, BusID: "0000:af:00.0", DeviceModel: "A100"},
+						"3": {NUMANodeID: 1, BusID: "0000:d8:00.0", DeviceModel: "A100"},
+					},
+				},
+			},
+			expectGPU: schedulingapi.GPUDetails{
+				0: {NUMANodeID: 0},
+				1: {NUMANodeID: 0},
+				2: {NUMANodeID: 1},
+				3: {NUMANodeID: 1},
+			},
+		},
+		{
+			name: "no gpu detail",
+			srcInfo: &nodeinfov1alpha1.Numatopology{
+				Spec: nodeinfov1alpha1.NumatopoSpec{},
+			},
+			expectGPU: schedulingapi.GPUDetails{},
+		},
+		{
+			name: "bad gpu index skipped",
+			srcInfo: &nodeinfov1alpha1.Numatopology{
+				Spec: nodeinfov1alpha1.NumatopoSpec{
+					GPUDetail: map[string]nodeinfov1alpha1.GPUInfo{
+						"0":      {NUMANodeID: 0},
+						"badkey": {NUMANodeID: 1},
+					},
+				},
+			},
+			expectGPU: schedulingapi.GPUDetails{
+				0: {NUMANodeID: 0},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getNumaInfo(tt.srcInfo)
+			assert.Equal(t, tt.expectGPU, got.GPUDetail)
+		})
+	}
 }

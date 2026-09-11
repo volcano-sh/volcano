@@ -59,6 +59,22 @@ spec:
                   Specifies the cpu topology info
                   Key is cpu id
                 type: object
+              gpuDetail:
+                additionalProperties:
+                  description: GPUInfo is the gpu topology detail
+                  properties:
+                    busID:
+                      type: string
+                    deviceModel:
+                      type: string
+                    numa:
+                      minimum: 0
+                      type: integer
+                  type: object
+                description: |-
+                  Specifies the gpu topology info
+                  Key is gpu index (as string)
+                type: object
               numares:
                 additionalProperties:
                   description: ResourceInfo is the sets about resource capacity and
