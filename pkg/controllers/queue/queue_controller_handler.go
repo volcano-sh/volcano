@@ -30,6 +30,24 @@ func (c *queuecontroller) enqueue(req *apis.Request) {
 	c.queue.Add(req)
 }
 
+// initPodGroupIndexers adds an indexer on the PodGroup informer so that
+// PodGroups can be looked up by queue name.
+func (c *queuecontroller) initPodGroupIndexers() error {
+	if _, exists := c.pgInformer.Informer().GetIndexer().GetIndexers()[podGroupQueueIndex]; exists {
+		return nil
+	}
+
+	return c.pgInformer.Informer().AddIndexers(cache.Indexers{
+		podGroupQueueIndex: func(obj interface{}) ([]string, error) {
+			pg, ok := obj.(*schedulingv1beta1.PodGroup)
+			if !ok || pg.Spec.Queue == "" {
+				return nil, nil
+			}
+			return []string{pg.Spec.Queue}, nil
+		},
+	})
+}
+
 func (c *queuecontroller) addQueue(obj interface{}) {
 	queue := obj.(*schedulingv1beta1.Queue)
 
@@ -158,6 +176,59 @@ func (c *queuecontroller) getPodGroups(key string) []string {
 	podGroups := make([]string, 0, len(c.podGroups[key]))
 	for pgKey := range c.podGroups[key] {
 		podGroups = append(podGroups, pgKey)
+	}
+
+	return podGroups
+}
+
+// reconcilePodGroups makes the PodGroup cache of a queue match the
+// PodGroups known to the informer, and returns the current PodGroup keys of
+// the queue.
+//
+// The cache is maintained by PodGroup informer events. When a queue is deleted
+// its cache entry is dropped, and if the queue is then recreated under the same
+// name no event is emitted for the PodGroups that kept running. Rebuilding the
+// cache from the informer lets the sync and close paths observe the
+// PodGroups that still exist instead of an empty cache.
+func (c *queuecontroller) reconcilePodGroups(queueName string) []string {
+	objs, err := c.pgInformer.Informer().GetIndexer().ByIndex(podGroupQueueIndex, queueName)
+	if err != nil {
+		klog.Errorf("Failed to list PodGroups of queue %s from the indexer: %v", queueName, err)
+		return c.getPodGroups(queueName)
+	}
+
+	expected := make(map[string]struct{}, len(objs))
+	for _, obj := range objs {
+		pg, ok := obj.(*schedulingv1beta1.PodGroup)
+		if !ok {
+			continue
+		}
+		key, err := cache.MetaNamespaceKeyFunc(pg)
+		if err != nil {
+			continue
+		}
+		expected[key] = struct{}{}
+	}
+
+	c.pgMutex.Lock()
+	defer c.pgMutex.Unlock()
+
+	if c.podGroups[queueName] == nil {
+		c.podGroups[queueName] = make(map[string]struct{})
+	}
+	current := c.podGroups[queueName]
+	for key := range expected {
+		current[key] = struct{}{}
+	}
+	for key := range current {
+		if _, ok := expected[key]; !ok {
+			delete(current, key)
+		}
+	}
+
+	podGroups := make([]string, 0, len(current))
+	for key := range current {
+		podGroups = append(podGroups, key)
 	}
 
 	return podGroups
