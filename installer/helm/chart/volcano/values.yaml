@@ -66,6 +66,7 @@ custom:
   scheduler_node_worker_threads: 20
   scheduler_job_updater_worker_num: ~
   scheduler_task_updater_worker_num: ~
+  scheduler_queue_updater_worker_num: ~
   scheduler_percentage_nodes_to_find: ~
   agent_scheduler_worker_count: 1
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/validate,/queues/mutate,/queues/validate,/hypernodes/validate,/cronjobs/validate"

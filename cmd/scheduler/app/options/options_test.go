@@ -85,6 +85,7 @@ func TestAddFlags(t *testing.T) {
 		NodeWorkerThreads:             defaultNodeWorkers,
 		JobUpdaterWorkerNum:           defaultJobUpdaterWorkerNum,
 		TaskUpdaterWorkerNum:          defaultTaskUpdaterWorkerNum,
+		QueueUpdaterWorkerNum:         defaultQueueUpdaterWorkerNum,
 		GateRemovalWorkerNum:          5,
 		CacheDumpFileDir:              "/tmp",
 		DisableDefaultSchedulerConfig: false,
@@ -113,6 +114,7 @@ func TestUpdaterWorkerNumFlags(t *testing.T) {
 	ServerOpts = nil
 	assert.Equal(t, defaultJobUpdaterWorkerNum, GetJobUpdaterWorkerNum())
 	assert.Equal(t, defaultTaskUpdaterWorkerNum, GetTaskUpdaterWorkerNum())
+	assert.Equal(t, defaultQueueUpdaterWorkerNum, GetQueueUpdaterWorkerNum())
 
 	fs := pflag.NewFlagSet("updater-worker-num-test", pflag.ExitOnError)
 	s := NewServerOption()
@@ -121,13 +123,16 @@ func TestUpdaterWorkerNumFlags(t *testing.T) {
 	err := fs.Parse([]string{
 		"--job-updater-worker-num=8",
 		"--task-updater-worker-num=4",
+		"--queue-updater-worker-num=2",
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 8, s.JobUpdaterWorkerNum)
 	assert.Equal(t, 4, s.TaskUpdaterWorkerNum)
+	assert.Equal(t, 2, s.QueueUpdaterWorkerNum)
 	ServerOpts = s
 	assert.Equal(t, 8, GetJobUpdaterWorkerNum())
 	assert.Equal(t, 4, GetTaskUpdaterWorkerNum())
+	assert.Equal(t, 2, GetQueueUpdaterWorkerNum())
 }
 
 func TestCheckOptionOrDieRejectsNonPositiveUpdaterWorkerNum(t *testing.T) {
@@ -145,6 +150,16 @@ func TestCheckOptionOrDieRejectsNonPositiveUpdaterWorkerNum(t *testing.T) {
 			name:    "negative task updater workers",
 			args:    []string{"--task-updater-worker-num=-1"},
 			wantErr: "task-updater-worker-num must be greater than 0",
+		},
+		{
+			name:    "zero queue updater workers",
+			args:    []string{"--queue-updater-worker-num=0"},
+			wantErr: "queue-updater-worker-num must be greater than 0",
+		},
+		{
+			name:    "negative queue updater workers",
+			args:    []string{"--queue-updater-worker-num=-1"},
+			wantErr: "queue-updater-worker-num must be greater than 0",
 		},
 	}
 

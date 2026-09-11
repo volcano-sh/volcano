@@ -25,10 +25,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
-func TestAddTaskDRAAllocatedByQueueDeduplicatesSharedClaims(t *testing.T) {
-	queueID := api.QueueID("q1")
-	allocated := make(map[api.QueueID]map[string]*api.DRAResource)
-	resourceClaimRefs := make(map[api.QueueID]map[string]int)
+func TestQueueDRAAllocationDeduplicatesSharedClaims(t *testing.T) {
+	allocated := newQueueDRAAllocation()
 
 	taskA := &api.TaskInfo{
 		ResourceClaimKeys: []string{"ns1/shared"},
@@ -47,12 +45,51 @@ func TestAddTaskDRAAllocatedByQueueDeduplicatesSharedClaims(t *testing.T) {
 		},
 	}
 
-	addTaskDRAAllocatedByQueue(allocated, resourceClaimRefs, queueID, taskA)
-	addTaskDRAAllocatedByQueue(allocated, resourceClaimRefs, queueID, taskB)
+	allocated.addTask(taskA)
+	allocated.addTask(taskB)
 
-	got := allocated[queueID]["gpu.example.com"]
+	got := allocated.total()["gpu.example.com"]
 	if got == nil || got.Count != 1 {
 		t.Fatalf("expected shared claim to be charged once, got %#v", got)
+	}
+}
+
+func TestCalculateQueueAllocatedResourcesDeduplicatesSharedClaimsAcrossSiblingQueues(t *testing.T) {
+	sharedTask := func(uid string) *api.TaskInfo {
+		task := newTaskInfo(uid, api.Running, v1.ResourceList{})
+		task.ResourceClaimKeys = []string{"ns1/shared"}
+		task.ResourceClaimDRAResreq = map[string]map[string]*api.DRAResource{
+			"ns1/shared": {
+				"gpu.example.com": {Count: 1},
+			},
+		}
+		return task
+	}
+
+	ssn := &Session{
+		Jobs: map[api.JobID]*api.JobInfo{
+			"job-a": newJobInfo("job-a", "leaf-a", sharedTask("task-a")),
+			"job-b": newJobInfo("job-b", "leaf-b", sharedTask("task-b")),
+		},
+		Nodes: map[string]*api.NodeInfo{},
+		Queues: map[api.QueueID]*api.QueueInfo{
+			"root":   newQueueInfo("root", ""),
+			"team":   newQueueInfo("team", "root"),
+			"leaf-a": newQueueInfo("leaf-a", "team"),
+			"leaf-b": newQueueInfo("leaf-b", "team"),
+		},
+	}
+
+	_, allocatedDRA, err := calculateQueueAllocatedResources(ssn)
+	if err != nil {
+		t.Fatalf("calculateQueueAllocatedResources returned error: %v", err)
+	}
+
+	for _, queueID := range []api.QueueID{"leaf-a", "leaf-b", "team", "root"} {
+		got := allocatedDRA[queueID]["gpu.example.com"]
+		if got == nil || got.Count != 1 {
+			t.Fatalf("expected queue %q to charge the shared claim once, got %#v", queueID, got)
+		}
 	}
 }
 
