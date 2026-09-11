@@ -21,11 +21,13 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	schedmetrics "volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -655,4 +657,134 @@ func TestNodeGroupResourceLimitAllocationEvent(t *testing.T) {
 	if err := ssn.PredicateFn(task2, node); err == nil {
 		t.Fatalf("second task should exceed nodegroup resource limit after allocation event")
 	}
+}
+
+func TestNodeGroupAllocatedMetricsSnapshot(t *testing.T) {
+	const queueName = "queue-nodegroup-allocation-metrics"
+	schedmetrics.DeleteQueueMetrics(queueName)
+	t.Cleanup(func() { schedmetrics.DeleteQueueMetrics(queueName) })
+
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	trueValue := true
+	tiers := []conf.Tier{{
+		Plugins: []conf.PluginOption{{
+			Name:             PluginName,
+			EnabledNodeOrder: &trueValue,
+			EnabledPredicate: &trueValue,
+		}},
+	}}
+
+	nodeResource := api.BuildResourceList("16", "64Gi",
+		api.ScalarResource{Name: "nvidia.com/gpu", Value: "8"},
+		api.ScalarResource{Name: string(v1.ResourcePods), Value: "32"})
+	n1 := util.BuildNode("metrics-n1", nodeResource, map[string]string{schedulingv1.NodeGroupNameKey: "group1"})
+	n2 := util.BuildNode("metrics-n2", nodeResource, map[string]string{schedulingv1.NodeGroupNameKey: "group2"})
+	n3 := util.BuildNode("metrics-n3", nodeResource, nil)
+
+	affinity := &schedulingv1.Affinity{
+		NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []string{"group1", "group2"},
+		},
+	}
+	queue := util.MakeQueue(queueName).Affinity(affinity).Obj()
+
+	group1Pod := util.BuildPod("metrics", "group1-running", "metrics-n1", v1.PodRunning,
+		api.BuildResourceList("2", "4Gi", api.ScalarResource{Name: "nvidia.com/gpu", Value: "1"}), "pg-group1", nil, nil)
+	group2Pod := util.BuildPod("metrics", "group2-running", "metrics-n2", v1.PodRunning,
+		api.BuildResourceList("1", "2Gi"), "pg-group2", nil, nil)
+	unlabeledPod := util.BuildPod("metrics", "unlabeled-running", "metrics-n3", v1.PodRunning,
+		api.BuildResourceList("3", "6Gi"), "pg-unlabeled", nil, nil)
+	pendingPod := util.BuildPod("metrics", "group2-pending", "", v1.PodPending,
+		api.BuildResourceList("500m", "1Gi"), "pg-pending", nil, nil)
+
+	common := uthelper.TestCommonStruct{
+		Name:   "queue nodegroup allocated metrics snapshot",
+		Queues: []*schedulingv1.Queue{queue},
+		PodGroups: []*schedulingv1.PodGroup{
+			util.BuildPodGroup("pg-group1", "metrics", queueName, 0, nil, schedulingv1.PodGroupRunning),
+			util.BuildPodGroup("pg-group2", "metrics", queueName, 0, nil, schedulingv1.PodGroupRunning),
+			util.BuildPodGroup("pg-unlabeled", "metrics", queueName, 0, nil, schedulingv1.PodGroupRunning),
+			util.BuildPodGroup("pg-pending", "metrics", queueName, 0, nil, ""),
+		},
+		Pods:    []*v1.Pod{group1Pod, group2Pod, unlabeledPod, pendingPod},
+		Nodes:   []*v1.Node{n1, n2, n3},
+		Plugins: plugins,
+	}
+	ssn := common.RegisterSession(tiers, nil)
+	defer common.Close()
+
+	group1Task := ssn.Jobs[api.JobID("metrics/pg-group1")].Tasks[api.TaskID("metrics-group1-running")]
+	group2Task := ssn.Jobs[api.JobID("metrics/pg-group2")].Tasks[api.TaskID("metrics-group2-running")]
+	pendingTask := ssn.Jobs[api.JobID("metrics/pg-pending")].Tasks[api.TaskID("metrics-group2-pending")]
+
+	requireNodeGroupGaugeValue(t, "volcano_queue_nodegroup_allocated_milli_cpu", map[string]string{
+		"queue_name": queueName, "nodegroup_name": "group1",
+	}, group1Task.Resreq.MilliCPU)
+	requireNodeGroupGaugeValue(t, "volcano_queue_nodegroup_allocated_memory_bytes", map[string]string{
+		"queue_name": queueName, "nodegroup_name": "group1",
+	}, group1Task.Resreq.Memory)
+	requireNodeGroupGaugeValue(t, "volcano_queue_nodegroup_allocated_scalar_resources", map[string]string{
+		"queue_name": queueName, "nodegroup_name": "group1", "resource": "nvidia.com/gpu",
+	}, group1Task.Resreq.ScalarResources[v1.ResourceName("nvidia.com/gpu")])
+	requireNodeGroupGaugeValue(t, "volcano_queue_nodegroup_allocated_milli_cpu", map[string]string{
+		"queue_name": queueName, "nodegroup_name": "group2",
+	}, group2Task.Resreq.MilliCPU)
+	if _, found := nodeGroupGaugeValue(t, "volcano_queue_nodegroup_allocated_milli_cpu", map[string]string{
+		"queue_name": queueName, "nodegroup_name": "",
+	}); found {
+		t.Fatal("tasks on unlabeled nodes must not be attributed to a nodegroup")
+	}
+
+	statement := framework.NewStatement(ssn)
+	if err := statement.Allocate(pendingTask, ssn.Nodes["metrics-n2"]); err != nil {
+		t.Fatalf("allocate pending task: %v", err)
+	}
+	// Metrics are a session-input snapshot and must not update in the allocation hot path.
+	requireNodeGroupGaugeValue(t, "volcano_queue_nodegroup_allocated_milli_cpu", map[string]string{
+		"queue_name": queueName, "nodegroup_name": "group2",
+	}, group2Task.Resreq.MilliCPU)
+}
+
+func requireNodeGroupGaugeValue(t *testing.T, metricName string, labels map[string]string, expected float64) {
+	t.Helper()
+	actual, found := nodeGroupGaugeValue(t, metricName, labels)
+	if !found {
+		t.Fatalf("metric %s with labels %v was not found", metricName, labels)
+	}
+	if actual != expected {
+		t.Fatalf("metric %s with labels %v: expected %v, got %v", metricName, labels, expected, actual)
+	}
+}
+
+func nodeGroupGaugeValue(t *testing.T, metricName string, labels map[string]string) (float64, bool) {
+	t.Helper()
+	metricFamilies, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("gather metrics: %v", err)
+	}
+	for _, metricFamily := range metricFamilies {
+		if metricFamily.GetName() != metricName {
+			continue
+		}
+		for _, metric := range metricFamily.GetMetric() {
+			if len(metric.GetLabel()) != len(labels) {
+				continue
+			}
+			matches := true
+			for _, label := range metric.GetLabel() {
+				expected, found := labels[label.GetName()]
+				if !found || expected != label.GetValue() {
+					matches = false
+					break
+				}
+			}
+			if matches {
+				if metric.GetGauge() == nil {
+					t.Fatalf("metric %s with labels %v is not a gauge", metricName, labels)
+				}
+				return metric.GetGauge().GetValue(), true
+			}
+		}
+	}
+	return 0, false
 }
