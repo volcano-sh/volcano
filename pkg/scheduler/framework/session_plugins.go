@@ -260,6 +260,13 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 				// Update victims to intersection
 				victims = intersection
 			}
+			// An empty intersection means the plugins in this tier agreed on
+			// nothing. Terminate the tier instead of leaving victims nil, which
+			// a later plugin would read as "no vote yet" and refill.
+			if len(victims) == 0 {
+				victims = nil
+				break
+			}
 		}
 		// Plugins in this tier made decision if victims is not nil
 		if victims != nil {
@@ -310,6 +317,13 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 				// Update victims to intersection
 				victims = intersection
 			}
+			// An empty intersection means the plugins in this tier agreed on
+			// nothing. Terminate the tier instead of leaving victims nil, which
+			// a later plugin would read as "no vote yet" and refill.
+			if len(victims) == 0 {
+				victims = nil
+				break
+			}
 		}
 		// Plugins in this tier made decision if victims is not nil
 		if victims != nil {
@@ -351,6 +365,13 @@ func (ssn *Session) UnifiedEvictable(ctx *api.EvictionContext, candidates []*api
 					}
 				}
 				victims = intersection
+			}
+			// An empty intersection means the plugins in this tier agreed on
+			// nothing. Terminate the tier instead of leaving victims nil, which
+			// a later plugin would read as "no vote yet" and refill.
+			if len(victims) == 0 {
+				victims = nil
+				break
 			}
 		}
 		if victims != nil {
