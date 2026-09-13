@@ -246,6 +246,16 @@ func (c *queuecontroller) handleQueue(req *apis.Request) error {
 			req.QueueName, err, req.Event, req.Action)
 	}
 
+	// When a queue is closed explicitly by a command (e.g. via vcctl) rather than
+	// by the propagation from its parent queue, clear the closed-by-parent mark so
+	// that reopening the parent queue later does not override this manual close.
+	if req.Event == busv1alpha1.CommandIssuedEvent && req.Action == busv1alpha1.CloseQueueAction {
+		if _, err := c.updateQueueAnnotation(queue, ClosedByParentAnnotationKey, ClosedByParentAnnotationFalseValue); err != nil {
+			return fmt.Errorf("clear %s annotation of queue %s failed for %v",
+				ClosedByParentAnnotationKey, req.QueueName, err)
+		}
+	}
+
 	return nil
 }
 
