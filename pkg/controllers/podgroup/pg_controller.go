@@ -36,6 +36,7 @@ import (
 	schedulinginformer "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/framework"
+	"volcano.sh/volcano/pkg/controllers/podgroup/options"
 	"volcano.sh/volcano/pkg/features"
 )
 
@@ -67,8 +68,7 @@ type pgcontroller struct {
 	schedulerNames []string
 	workers        uint32
 
-	// To determine whether inherit owner's annotations for pods when create podgroup
-	inheritOwnerAnnotations bool
+	options.Options
 }
 
 func (pg *pgcontroller) Name() string {
@@ -85,7 +85,10 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	pg.schedulerNames = make([]string, len(opt.SchedulerNames))
 	copy(pg.schedulerNames, opt.SchedulerNames)
-	pg.inheritOwnerAnnotations = opt.InheritOwnerAnnotations
+
+	pg.Options = opt.PodGroupControllerOptions
+
+	klog.Infof("Podgroup Controller Options %+v", pg.Options)
 
 	pg.informerFactory = opt.SharedInformerFactory
 	pg.podInformer = opt.SharedInformerFactory.Core().V1().Pods()
