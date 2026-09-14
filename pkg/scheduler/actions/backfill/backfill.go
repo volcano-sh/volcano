@@ -92,7 +92,11 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 				nodeScores := util.PrioritizeNodes(task, nodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 				node = ssn.BestNodeFn(task, nodeScores)
 				if node == nil {
-					node, _ = util.SelectBestNodeAndScore(nodeScores)
+					var score float64
+					node, score = util.SelectBestNodeAndScore(nodeScores)
+					if node == nil {
+						klog.V(4).Infof("SelectBestNodeAndScore returned nil node for task <%v/%v>, best score: %v", task.Namespace, task.Name, score)
+					}
 				}
 				if node != nil {
 					break
