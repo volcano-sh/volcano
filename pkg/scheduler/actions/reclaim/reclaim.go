@@ -29,6 +29,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -160,7 +161,11 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			}
 
 			if ssn.JobPipelined(job) {
+				hasEvictions := stmt.HasEvictions()
 				stmt.Commit()
+				if hasEvictions {
+					metrics.RegisterEvictionTransaction(ra.Name())
+				}
 			} else {
 				stmt.Discard()
 			}
@@ -216,8 +221,8 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		resreq := task.InitResreq.Clone()
 		reclaimed := api.EmptyResource()
 
-		// The reclaimed resources should be added to the remaining available resources of the nodes to avoid over-reclaiming.
 		availableResources := n.FutureIdle()
+		reclaimerFits := reclaimerFitsOnNode(ssn, task, n, resreq, availableResources)
 
 		// Use a per-node statement so that evictions are isolated to this node.
 		// Only merge into the caller's stmt if Pipeline succeeds; otherwise discard
@@ -225,7 +230,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		nodeStmt := framework.NewStatement(ssn)
 		evictionOccurred := false
 		for !victimsQueue.Empty() {
-			if resreq.LessEqual(availableResources, api.Zero) {
+			if reclaimerFits {
 				break
 			}
 			reclaimee := victimsQueue.Pop().(*api.TaskInfo)
@@ -235,11 +240,12 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			reclaimed.Add(reclaimee.Resreq)
 			availableResources.Add(reclaimee.Resreq)
 			evictionOccurred = true
+			reclaimerFits = reclaimerFitsOnNode(ssn, task, n, resreq, availableResources)
 		}
 
 		klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>, and Node <%s> availableResources <%v>.", reclaimed, task.Namespace, task.Name, task.InitResreq, n.Name, availableResources)
 
-		if !resreq.LessEqual(availableResources, api.Zero) {
+		if !reclaimerFits {
 			nodeStmt.Discard()
 			continue
 		}
@@ -253,6 +259,12 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		stmt.Merge(nodeStmt)
 		break
 	}
+}
+
+// reclaimerFitsOnNode verifies available resources and plugin predicates after tentative evictions.
+func reclaimerFitsOnNode(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo, resreq, availableResources *api.Resource) bool {
+	return resreq.LessEqual(availableResources, api.Zero) &&
+		ssn.PredicateFn(task, node) == nil
 }
 
 func (ra *Action) UnInitialize() {

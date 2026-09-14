@@ -16,4 +16,4 @@ RQStatus map[string]v1.ResourceQuotaStatus
 
 2. calc minQuotas in job controller, and backfill to podGroup;
 
-3. add resouceQuota plugin, and register `AddJobEnqueueableFn` function. This plugin will look at pending podgroups and will enqueue them only if there is enough capacity in the namespace according to Kubernetes ResourceQuota. And the plugin also consider podgroups that have already been permitted in the scheduling round to prevent it from enqueueing too many podgroups and exceeding the namespace resource quota.
+3. add resourceQuota plugin, and register `AddJobEnqueueableFn` function. This plugin will look at pending podgroups and will enqueue them only if there is enough capacity in the namespace according to Kubernetes ResourceQuota. And the plugin also consider podgroups that have already been permitted in the scheduling round to prevent it from enqueueing too many podgroups and exceeding the namespace resource quota.

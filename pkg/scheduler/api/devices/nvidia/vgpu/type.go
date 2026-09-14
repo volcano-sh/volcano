@@ -22,6 +22,8 @@ const (
 
 	GPUInUse                         = "nvidia.com/use-gputype"
 	GPUNoUse                         = "nvidia.com/nouse-gputype"
+	VGPUUseUUIDAnnotation            = "volcano.sh/vgpu-use-gpuuuid"
+	VGPUNoUseUUIDAnnotation          = "volcano.sh/vgpu-nouse-gpuuuid"
 	AssignedTimeAnnotations          = "volcano.sh/vgpu-time"
 	AssignedIDsAnnotations           = "volcano.sh/vgpu-ids-new"
 	AssignedIDsToAllocateAnnotations = "volcano.sh/devices-to-allocate"

@@ -235,6 +235,9 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			continue
 		}
 		if !job.IsReady() {
+			if shouldSkipUnschedulableForReleasing(job) {
+				continue
+			}
 			schedulableTaskNum := func() (num int32) {
 				for _, task := range job.TaskStatusIndex[api.Pending] {
 					ctx := task.GetTransactionContext()
@@ -294,4 +297,25 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	}
 
 	metrics.UpdateUnscheduleJobCount(unScheduleJobCount)
+}
+
+// shouldSkipUnschedulableForReleasing reports whether an unready job has enough
+// effective scheduled tasks to satisfy minAvailable. Releasing tasks still
+// assigned to nodes count because their Pods continue to occupy gang slots.
+// Pending or Pipelined tasks prevent this shortcut because they still require
+// scheduling.
+func shouldSkipUnschedulableForReleasing(job *api.JobInfo) bool {
+	scheduledReleasing := job.ReleasingScheduledTaskNum()
+	if scheduledReleasing == 0 {
+		return false
+	}
+
+	// Pending or Pipelined tasks still require the normal gang condition so they
+	// remain visible as work that needs to be scheduled.
+	if len(job.TaskStatusIndex[api.Pending]) > 0 || len(job.TaskStatusIndex[api.Pipelined]) > 0 {
+		return false
+	}
+
+	effectiveScheduled := job.ScheduledTaskNum() + scheduledReleasing
+	return effectiveScheduled >= job.MinAvailable
 }

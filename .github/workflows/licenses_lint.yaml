@@ -2,9 +2,8 @@ name: Licenses Lint
 
 on:
   push:
-    branches:
-      - master
-    tags:
+    branches-ignore:
+      - "dependabot/**"
   pull_request:
 
 permissions: read-all
@@ -18,9 +17,9 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: 1.25.x
+          go-version: 1.26.x
       - name: Checkout code
-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: generate license mirror
         run: |
           make licenses-check

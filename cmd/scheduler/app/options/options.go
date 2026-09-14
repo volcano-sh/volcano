@@ -51,6 +51,8 @@ const (
 	defaultPercentageOfNodesToFind    = 0
 	defaultLockObjectNamespace        = "volcano-system"
 	defaultNodeWorkers                = 20
+	defaultJobUpdaterWorkerNum        = 16
+	defaultTaskUpdaterWorkerNum       = 16
 )
 
 var (
@@ -80,7 +82,9 @@ type ServerOption struct {
 	EnablePprof         bool
 	ListenAddress       string
 	EnablePriorityClass bool
-	EnableCSIStorage    bool
+	// EnableCSIStorage registers CSIDriver and CSIStorageCapacity informers on the scheduler cache.
+	// It does not change upstream VolumeBinding behavior (kube VolumeBinding uses the shared informer factory separately).
+	EnableCSIStorage bool
 	// vc-scheduler will load (not activate) custom plugins which are in this directory
 	PluginsDir    string
 	EnableHealthz bool
@@ -96,6 +100,10 @@ type ServerOption struct {
 	CacheDumpFileDir  string
 	EnableCacheDumper bool
 	NodeWorkerThreads uint32
+	// JobUpdaterWorkerNum is the number of workers updating jobs concurrently.
+	JobUpdaterWorkerNum int
+	// TaskUpdaterWorkerNum is the number of workers updating tasks concurrently for each job.
+	TaskUpdaterWorkerNum int
 
 	// GateRemovalWorkerNum is the number of async workers for scheduling gate removal.
 	// Only used when SchedulingGatesQueueAdmission feature gate is enabled.
@@ -133,9 +141,27 @@ type DecryptFunc func(c *ServerOption) error
 // ServerOpts server options.
 var ServerOpts *ServerOption
 
+// GetJobUpdaterWorkerNum returns the configured job updater worker number.
+func GetJobUpdaterWorkerNum() int {
+	if ServerOpts == nil || ServerOpts.JobUpdaterWorkerNum <= 0 {
+		return defaultJobUpdaterWorkerNum
+	}
+	return ServerOpts.JobUpdaterWorkerNum
+}
+
+// GetTaskUpdaterWorkerNum returns the configured task updater worker number.
+func GetTaskUpdaterWorkerNum() int {
+	if ServerOpts == nil || ServerOpts.TaskUpdaterWorkerNum <= 0 {
+		return defaultTaskUpdaterWorkerNum
+	}
+	return ServerOpts.TaskUpdaterWorkerNum
+}
+
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
-	return &ServerOption{}
+	return &ServerOption{
+		EnableCSIStorage: true,
+	}
 }
 
 // AddFlags adds flags for a specific CMServer to the specified FlagSet.
@@ -173,8 +199,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Int32Var(&s.PercentageOfNodesToFind, "percentage-nodes-to-find", defaultPercentageOfNodesToFind, "The percentage of nodes to find and score, if <=0 will be calculated based on the cluster size")
 
 	fs.StringVar(&s.PluginsDir, "plugins-dir", defaultPluginsDir, "vc-scheduler will load custom plugins which are in this directory")
-	fs.BoolVar(&s.EnableCSIStorage, "csi-storage", false,
-		"Enable tracking of available storage capacity that CSI drivers provide; it is false by default")
+	fs.BoolVar(&s.EnableCSIStorage, "csi-storage", true,
+		"When true (default), register CSIDriver and CSIStorageCapacity informers on the scheduler cache; set false to reduce API watches. Does not disable kube VolumeBinding capacity checks.")
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
 	fs.BoolVar(&s.EnablePprof, "enable-pprof", false, "Enable the pprof endpoint; it is false by default")
@@ -182,6 +208,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
+	fs.IntVar(&s.JobUpdaterWorkerNum, "job-updater-worker-num", defaultJobUpdaterWorkerNum, "The number of workers updating jobs concurrently.")
+	fs.IntVar(&s.TaskUpdaterWorkerNum, "task-updater-worker-num", defaultTaskUpdaterWorkerNum, "The number of workers updating tasks concurrently for each job.")
 	fs.IntVar(&s.GateRemovalWorkerNum, "gate-removal-worker-num", 5, "The number of async workers for scheduling gate removal (used when SchedulingGatesQueueAdmission is enabled).")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 	fs.DurationVar(&s.ResourceSyncTimeout, "resource-sync-timeout", defaultResourceSyncTimeout, "timeout on waiting for handler handling initial resources synchronization before starting scheduler, default is 60s, 0 skip waiting")
@@ -191,10 +219,16 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&s.MaxConcurrentBinds, "max-concurrent-binds", 0, "Maximum number of concurrent Pod bind operations. Zero disables the cap. Positive values protect kube-apiserver from bind-request bursts during large scheduling waves.")
 }
 
-// CheckOptionOrDie check leader election flag when LeaderElection is enabled.
+// CheckOptionOrDie validates scheduler options.
 func (s *ServerOption) CheckOptionOrDie() error {
 	if s.MaxConcurrentBinds < 0 {
-		return fmt.Errorf("invalid --max-concurrent-binds %d: must be zero (disabled) or positive", s.MaxConcurrentBinds)
+		return fmt.Errorf("invalid --max-concurrent-binds %d: must be greater or equal to 0", s.MaxConcurrentBinds)
+  }
+	if s.JobUpdaterWorkerNum <= 0 {
+		return fmt.Errorf("job-updater-worker-num must be greater than 0")
+	}
+	if s.TaskUpdaterWorkerNum <= 0 {
+		return fmt.Errorf("task-updater-worker-num must be greater than 0")
 	}
 	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
 }

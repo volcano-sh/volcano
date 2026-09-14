@@ -412,3 +412,54 @@ func TestValidateCronJobName(t *testing.T) {
 		})
 	}
 }
+
+// When several checks fail at once, the messages should be separated by "; ".
+func TestValidateCronJobSeparatesMultipleErrors(t *testing.T) {
+	cronjob := &v1alpha1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      strings.Repeat("a", 53),
+			Namespace: metav1.NamespaceDefault,
+		},
+		Spec: v1alpha1.CronJobSpec{
+			Schedule:          "error schedule",
+			ConcurrencyPolicy: v1alpha1.AllowConcurrent,
+			JobTemplate: v1alpha1.JobTemplateSpec{
+				Spec: getJobTemplate(),
+			},
+		},
+	}
+
+	msg := validateCronJob(cronjob)
+
+	for _, want := range []string{"schedule is not a valid cron expression", "; ", "must be no more than 52 characters"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("expected %q in combined message, got %q", want, msg)
+		}
+	}
+}
+
+// A single failing check should come back on its own, with no separator.
+func TestValidateCronJobSingleErrorHasNoSeparator(t *testing.T) {
+	cronjob := &v1alpha1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "valid-cronjob",
+			Namespace: metav1.NamespaceDefault,
+		},
+		Spec: v1alpha1.CronJobSpec{
+			Schedule:          "",
+			ConcurrencyPolicy: v1alpha1.AllowConcurrent,
+			JobTemplate: v1alpha1.JobTemplateSpec{
+				Spec: getJobTemplate(),
+			},
+		},
+	}
+
+	msg := validateCronJob(cronjob)
+
+	if want := "schedule is required, but got empty"; msg != want {
+		t.Errorf("expected single-error message %q, got %q", want, msg)
+	}
+	if strings.Contains(msg, "; ") {
+		t.Errorf("single-error message should not contain %q, got %q", "; ", msg)
+	}
+}

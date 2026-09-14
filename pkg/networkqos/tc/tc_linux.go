@@ -52,7 +52,7 @@ func (t *TCCmd) PreAddFilter(netns, ifName string) (bool, error) {
 
 		qdiscs, err := netlink.QdiscList(link)
 		if err != nil {
-			return fmt.Errorf("failed to list clsact qdiscs on on ns:ifName(%s:%s): %v", netns, ifName, err)
+			return fmt.Errorf("failed to list clsact qdiscs on ns:ifName(%s:%s): %v", netns, ifName, err)
 		}
 
 		for _, qdisc := range qdiscs {
@@ -109,7 +109,7 @@ func (t *TCCmd) AddFilter(netns, ifName string) error {
 			QdiscType: QdiscTypeClsact,
 		}
 		if err = netlink.QdiscAdd(clsact); err != nil {
-			return fmt.Errorf("failed to create clsact qdisc on on ns:ifName(%s:%s): %v", netns, ifName, err)
+			return fmt.Errorf("failed to create clsact qdisc on ns:ifName(%s:%s): %v", netns, ifName, err)
 		}
 		klog.InfoS("Successfully added qdisc", "type", QdiscTypeClsact, "netns", netns, "ifName", ifName)
 

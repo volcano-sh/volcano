@@ -17,18 +17,14 @@ limitations under the License.
 package vgpu
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8stypes "k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -263,6 +259,42 @@ func checkGPUtype(annos map[string]string, cardtype string) bool {
 	return true
 }
 
+type gpuUUIDFilter struct {
+	allowlist []string
+	denylist  []string
+}
+
+func newGPUUUIDFilter(annos map[string]string) gpuUUIDFilter {
+	return gpuUUIDFilter{
+		allowlist: parseGPUUUIDList(annos[VGPUUseUUIDAnnotation]),
+		denylist:  parseGPUUUIDList(annos[VGPUNoUseUUIDAnnotation]),
+	}
+}
+
+func parseGPUUUIDList(value string) []string {
+	var uuids []string
+	for _, uuid := range strings.Split(value, ",") {
+		if uuid = strings.TrimSpace(uuid); uuid != "" {
+			uuids = append(uuids, uuid)
+		}
+	}
+	return uuids
+}
+
+func (f gpuUUIDFilter) enabled() bool {
+	return len(f.allowlist) > 0 || len(f.denylist) > 0
+}
+
+func (f gpuUUIDFilter) matches(id string) bool {
+	if id == "" && f.enabled() {
+		return false
+	}
+	if len(f.allowlist) > 0 && !slices.Contains(f.allowlist, id) {
+		return false
+	}
+	return !slices.Contains(f.denylist, id)
+}
+
 func checkType(annos map[string]string, d GPUDevice, n devices.ContainerDeviceRequest) bool {
 	//General type check, NVIDIA->NVIDIA MLU->MLU
 	if !strings.Contains(d.Type, n.Type) {
@@ -402,8 +434,10 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 
 	tentativeAllocs := []tentativeAlloc{}
 	ctrdevs := []ContainerDevices{}
+	uuidFilter := newGPUUUIDFilter(pod.Annotations)
 	for _, val := range ctrReq {
 		devs := []ContainerDevice{}
+		uuidMatched := false
 		if int(val.Nums) > len(gs.Device) {
 			rollbackTentative(tentativeAllocs)
 			return false, []ContainerDevices{}, 0, fmt.Errorf("no enough gpu cards on node %s", gs.Name)
@@ -413,6 +447,10 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 		for _, i := range sortedDeviceIndicesByPolicy(gs, schedulePolicy) {
 			klog.V(3).InfoS("Scoring pod request", "memReq", val.Memreq, "memPercentageReq", val.MemPercentagereq, "coresReq", val.Coresreq, "Nums", val.Nums, "Index", i, "ID", gs.Device[i].ID)
 			klog.V(3).InfoS("Current Device", "Index", i, "TotalMemory", gs.Device[i].Memory, "UsedMemory", gs.Device[i].UsedMem, "UsedCores", gs.Device[i].UsedCore, "UsedNum", gs.Device[i].UsedNum, "Number", gs.Device[i].Number, "replicate", replicate)
+			if !uuidFilter.matches(gs.Device[i].UUID) {
+				continue
+			}
+			uuidMatched = true
 			if gs.Device[i].Number <= uint(gs.Device[i].UsedNum) {
 				continue
 			}
@@ -473,6 +511,14 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 		}
 		if val.Nums > 0 {
 			rollbackTentative(tentativeAllocs)
+			if uuidFilter.enabled() && !uuidMatched {
+				return false, []ContainerDevices{}, 0, fmt.Errorf(
+					"no GPU matches UUID constraints %s=%q, %s=%q on node %s",
+					VGPUUseUUIDAnnotation, pod.Annotations[VGPUUseUUIDAnnotation],
+					VGPUNoUseUUIDAnnotation, pod.Annotations[VGPUNoUseUUIDAnnotation],
+					gs.Name,
+				)
+			}
 			return false, []ContainerDevices{}, 0, fmt.Errorf("not enough gpu fitted on this node")
 		}
 		ctrdevs = append(ctrdevs, devs)
@@ -527,31 +573,6 @@ func GPUScore(schedulePolicy string, device *GPUDevice) float64 {
 		score = float64(0)
 	}
 	return score
-}
-
-func patchPodAnnotations(kubeClient kubernetes.Interface, pod *v1.Pod, annotations map[string]string) error {
-	type patchMetadata struct {
-		Annotations map[string]string `json:"annotations,omitempty"`
-	}
-	type patchPod struct {
-		Metadata patchMetadata `json:"metadata"`
-		//Spec     patchSpec     `json:"spec,omitempty"`
-	}
-
-	p := patchPod{}
-	p.Metadata.Annotations = annotations
-
-	bytes, err := json.Marshal(p)
-	if err != nil {
-		return err
-	}
-	_, err = kubeClient.CoreV1().Pods(pod.Namespace).
-		Patch(context.Background(), pod.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
-	if err != nil {
-		klog.Errorf("patch pod %v failed, %v", pod.Name, err)
-	}
-
-	return err
 }
 
 func getConfig() config.NvidiaConfig {

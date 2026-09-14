@@ -51,6 +51,51 @@ func init() {
 	flag.Set("v", "4")
 }
 
+const deviceFitAfterEvictionPluginName = "device-fit-after-eviction"
+
+const normalPreemptBenchmarkPredicatePluginName = "normal-preempt-benchmark-predicate"
+
+type deviceFitAfterEvictionPlugin struct{}
+
+func (p *deviceFitAfterEvictionPlugin) Name() string {
+	return deviceFitAfterEvictionPluginName
+}
+
+func (p *deviceFitAfterEvictionPlugin) OnSessionOpen(ssn *framework.Session) {
+	ssn.AddPredicateFn(p.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+		if task.Name != "preemptor" {
+			return nil
+		}
+
+		for _, nodeTask := range node.Tasks {
+			if nodeTask.Name == "preemptee" && nodeTask.Status != api.Releasing {
+				return api.NewFitErrWithStatus(task, node, &api.Status{
+					Code:   api.Unschedulable,
+					Reason: "hidden device capacity is occupied",
+				})
+			}
+		}
+
+		return nil
+	})
+}
+
+func (p *deviceFitAfterEvictionPlugin) OnSessionClose(ssn *framework.Session) {}
+
+type normalPreemptBenchmarkPredicatePlugin struct{}
+
+func (p *normalPreemptBenchmarkPredicatePlugin) Name() string {
+	return normalPreemptBenchmarkPredicatePluginName
+}
+
+func (p *normalPreemptBenchmarkPredicatePlugin) OnSessionOpen(ssn *framework.Session) {
+	ssn.AddPredicateFn(p.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+		return nil
+	})
+}
+
+func (p *normalPreemptBenchmarkPredicatePlugin) OnSessionClose(ssn *framework.Session) {}
+
 func TestPreempt(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{
 		conformance.PluginName: conformance.New,
@@ -422,6 +467,148 @@ func TestPreempt(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNormalPreemptRechecksPredicateAfterEviction(t *testing.T) {
+	test, tiers := newNormalPreemptDeviceFitFixture()
+	test.RegisterSession(tiers, []conf.Configuration{{
+		Name:      New().Name(),
+		Arguments: map[string]interface{}{EnableTopologyAwarePreemptionKey: false},
+	}})
+	defer test.Close()
+	test.Run([]framework.Action{New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func newNormalPreemptDeviceFitFixture() (uthelper.TestCommonStruct, []conf.Tier) {
+	plugins := map[string]framework.PluginBuilder{
+		conformance.PluginName: conformance.New,
+		gang.PluginName:        gang.New,
+		priority.PluginName:    priority.New,
+		proportion.PluginName:  proportion.New,
+		deviceFitAfterEvictionPluginName: func(framework.Arguments) framework.Plugin {
+			return &deviceFitAfterEvictionPlugin{}
+		},
+	}
+	highPrio := util.BuildPriorityClass("high-priority", 100000)
+	lowPrio := util.BuildPriorityClass("low-priority", 10)
+	trueValue := true
+	falseValue := false
+	test := uthelper.TestCommonStruct{
+		Name:    "normal preemption evicts a victim when hidden device capacity remains unavailable",
+		Plugins: plugins,
+		PodGroups: []*schedulingv1beta1.PodGroup{
+			util.BuildPodGroupWithPrio("pg-low", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+			util.BuildPodGroupWithPrio("pg-high", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+		},
+		Pods: []*v1.Pod{
+			util.BuildPod("c1", "preemptee", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-low", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+			util.BuildPod("c1", "preemptor", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg-high", make(map[string]string), make(map[string]string)),
+		},
+		Nodes: []*v1.Node{
+			util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+		},
+		Queues: []*schedulingv1beta1.Queue{
+			util.BuildQueue("q1", 1, nil),
+		},
+		PriClass:       []*schedulingv1.PriorityClass{highPrio, lowPrio},
+		ExpectEvicted:  []string{"c1/preemptee"},
+		ExpectEvictNum: 1,
+	}
+	tiers := []conf.Tier{{
+		Plugins: []conf.PluginOption{
+			{Name: conformance.PluginName, EnabledPreemptable: &trueValue},
+			{Name: gang.PluginName, EnabledPreemptable: &falseValue, EnabledJobPipelined: &trueValue, EnabledJobStarving: &trueValue},
+			{Name: priority.PluginName, EnabledTaskOrder: &trueValue, EnabledJobOrder: &trueValue, EnabledPreemptable: &trueValue, EnabledJobPipelined: &trueValue, EnabledJobStarving: &trueValue},
+			{Name: proportion.PluginName, EnabledOverused: &trueValue, EnabledAllocatable: &trueValue, EnabledQueueOrder: &trueValue},
+			{Name: deviceFitAfterEvictionPluginName, EnabledPredicate: &trueValue},
+		},
+	}}
+
+	return test, tiers
+}
+
+func newNormalPreemptBenchmarkFixture() (uthelper.TestCommonStruct, []conf.Tier) {
+	test, tiers := newNormalPreemptDeviceFitFixture()
+	test.Name = "normal preemption benchmark with one required victim"
+	test.Nodes = []*v1.Node{
+		util.BuildNode("n1", api.BuildResourceList("1", "1G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+	}
+	test.Plugins[normalPreemptBenchmarkPredicatePluginName] = func(framework.Arguments) framework.Plugin {
+		return &normalPreemptBenchmarkPredicatePlugin{}
+	}
+
+	benchmarkPlugins := make([]conf.PluginOption, 0, len(tiers[0].Plugins))
+	for _, plugin := range tiers[0].Plugins {
+		if plugin.Name != deviceFitAfterEvictionPluginName {
+			benchmarkPlugins = append(benchmarkPlugins, plugin)
+		}
+	}
+	trueValue := true
+	benchmarkPlugins = append(benchmarkPlugins, conf.PluginOption{
+		Name:             normalPreemptBenchmarkPredicatePluginName,
+		EnabledPredicate: &trueValue,
+	})
+	tiers[0].Plugins = benchmarkPlugins
+
+	return test, tiers
+}
+
+// BenchmarkNormalPreemptPredicateRecheck measures the direct normalPreempt
+// call when both revisions must evict one victim.
+func BenchmarkNormalPreemptPredicateRecheck(b *testing.B) {
+	previousVerbosity := flag.Lookup("v").Value.String()
+	if err := flag.Set("v", "0"); err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		_ = flag.Set("v", previousVerbosity)
+	})
+
+	test, tiers := newNormalPreemptBenchmarkFixture()
+	ssn := test.RegisterSession(tiers, []conf.Configuration{{
+		Name:      New().Name(),
+		Arguments: map[string]interface{}{EnableTopologyAwarePreemptionKey: false},
+	}})
+	defer test.Close()
+
+	preemptor := benchmarkPreemptor(ssn)
+	if preemptor == nil {
+		b.Fatal("benchmark preemptor was not found")
+	}
+	node := ssn.Nodes["n1"]
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for iteration := 0; iteration < b.N; iteration++ {
+		stmt := framework.NewStatement(ssn)
+
+		assigned, err := New().normalPreempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
+			return api.PreemptableStatus(task.Status) && task.Preemptable && task.Job != preemptor.Job
+		}, []*api.NodeInfo{node})
+
+		if err != nil {
+			b.Fatal(err)
+		}
+		if !assigned {
+			b.Fatal("normal preemption did not assign the preemptor")
+		}
+		stmt.Discard()
+	}
+}
+
+func benchmarkPreemptor(ssn *framework.Session) *api.TaskInfo {
+	for _, jobInfo := range ssn.Jobs {
+		for _, task := range jobInfo.TaskStatusIndex[api.Pending] {
+			if task.Name == "preemptor" {
+				return task
+			}
+		}
+	}
+
+	return nil
 }
 
 func TestTopologyAwarePreempt(t *testing.T) {

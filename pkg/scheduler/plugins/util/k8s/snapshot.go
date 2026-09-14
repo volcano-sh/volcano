@@ -29,6 +29,8 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
@@ -247,14 +249,17 @@ func (s *Snapshot) RemoveDeletedNodesFromSnapshot(currentNodeNames map[string]bo
 // updateAffinityList updates an affinity list based on node changes
 func (s *Snapshot) updateAffinityList(nodeName string) {
 	hasAffinity := len(s.fwkInfo.nodeInfoMap[nodeName].GetPodsWithAffinity()) > 0
-	_, exists := s.affinityNodeIndex[nodeName]
+	idx, exists := s.affinityNodeIndex[nodeName]
 
 	switch {
 	case hasAffinity && !exists:
-		idx := len(s.fwkInfo.havePodsWithAffinityNodeInfoList)
+		idx = len(s.fwkInfo.havePodsWithAffinityNodeInfoList)
 		s.fwkInfo.havePodsWithAffinityNodeInfoList =
 			append(s.fwkInfo.havePodsWithAffinityNodeInfoList, s.fwkInfo.nodeInfoMap[nodeName])
 		s.affinityNodeIndex[nodeName] = idx
+
+	case hasAffinity && exists:
+		s.fwkInfo.havePodsWithAffinityNodeInfoList[idx] = s.fwkInfo.nodeInfoMap[nodeName]
 
 	case !hasAffinity && exists:
 		s.removeNodeFromAffinityList(nodeName)
@@ -264,14 +269,17 @@ func (s *Snapshot) updateAffinityList(nodeName string) {
 // updateAffinityList updates an affinity list based on node changes
 func (s *Snapshot) updateRequiredAntiAffinity(nodeName string) {
 	hasRequiredAntiAffinity := len(s.fwkInfo.nodeInfoMap[nodeName].GetPodsWithRequiredAntiAffinity()) > 0
-	_, exists := s.antiAffinityNodeIndex[nodeName]
+	idx, exists := s.antiAffinityNodeIndex[nodeName]
 
 	switch {
 	case hasRequiredAntiAffinity && !exists:
-		idx := len(s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList)
+		idx = len(s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList)
 		s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList =
 			append(s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList, s.fwkInfo.nodeInfoMap[nodeName])
 		s.antiAffinityNodeIndex[nodeName] = idx
+
+	case hasRequiredAntiAffinity && exists:
+		s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList[idx] = s.fwkInfo.nodeInfoMap[nodeName]
 
 	case !hasRequiredAntiAffinity && exists:
 		s.removeNodeFromAntiAffinityList(nodeName)
@@ -291,6 +299,29 @@ func (s *Snapshot) NodeInfos() fwk.NodeInfoLister {
 // StorageInfos returns a StorageInfoLister.
 func (s *Snapshot) StorageInfos() fwk.StorageInfoLister {
 	return s
+}
+
+// Volcano does not track kube-scheduler PodGroup state in this snapshot; return an empty state so
+// in-tree plugins that consult PodGroupStates keep working.
+type emptyPodGroupState struct{}
+
+func (emptyPodGroupState) AllPods() sets.Set[types.UID]        { return sets.Set[types.UID]{} }
+func (emptyPodGroupState) AllPodsCount() int                   { return 0 }
+func (emptyPodGroupState) UnscheduledPods() map[string]*v1.Pod { return nil }
+func (emptyPodGroupState) AssumedPods() sets.Set[types.UID]    { return sets.Set[types.UID]{} }
+func (emptyPodGroupState) AssignedPods() sets.Set[types.UID]   { return sets.Set[types.UID]{} }
+func (emptyPodGroupState) ScheduledPods() []*v1.Pod            { return nil }
+func (emptyPodGroupState) ScheduledPodsCount() int             { return 0 }
+
+type snapshotPodGroupStateLister struct{}
+
+func (snapshotPodGroupStateLister) Get(string, string) (fwk.PodGroupState, error) {
+	return emptyPodGroupState{}, nil
+}
+
+// PodGroupStates implements fwk.SharedLister (Kubernetes 1.36+).
+func (s *Snapshot) PodGroupStates() fwk.PodGroupStateLister {
+	return snapshotPodGroupStateLister{}
 }
 
 // VolcanoNodeInfos returns a list of volcano NodeInfo.

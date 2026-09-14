@@ -20,15 +20,11 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/tools/cache"
-	watchtools "k8s.io/client-go/tools/watch"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	e2eutil "volcano.sh/volcano/test/e2e/util"
@@ -151,79 +147,54 @@ var _ = Describe("Queue Job Status Transition", func() {
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue Pending")
 	})
 
-	It("Transform from running to unknown should succeed", func() {
-		By("Prepare 2 job")
+	It("Transform from running to unknown after a member is gone should succeed", func() {
+		const pgName = "queue-podgroup-status-transition-unknown"
 
-		podNamespace = testCtx.Namespace
-		slot := e2eutil.HalfCPU
-		rep = e2eutil.ClusterSize(testCtx, slot)
+		By("Creating a PodGroup with two standalone members")
+		pg, err := testCtx.Vcclient.SchedulingV1beta1().PodGroups(testCtx.Namespace).Create(context.TODO(), &v1beta1.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      pgName,
+				Namespace: testCtx.Namespace,
+			},
+			Spec: v1beta1.PodGroupSpec{
+				MinMember: 2,
+				Queue:     q1,
+			},
+		}, metav1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
 
-		if rep < 4 {
-			err := fmt.Errorf("You need at least 2 logical cpu for this test case, please skip 'Queue Job Status Transition' when you see this message")
+		pods := make([]*corev1.Pod, 0, 2)
+		for i := 0; i < 2; i++ {
+			pods = append(pods, e2eutil.CreatePod(testCtx, e2eutil.PodSpec{
+				Name:          fmt.Sprintf("queue-podgroup-status-transition-%d", i),
+				SchedulerName: "volcano",
+				RestartPolicy: corev1.RestartPolicyNever,
+				Req:           e2eutil.HalfCPU,
+				Annotations: map[string]string{
+					v1beta1.KubeGroupNameAnnotationKey: pgName,
+				},
+			}))
+		}
+
+		By("Waiting for both members and the PodGroup to be Running")
+		for _, pod := range pods {
+			err = e2eutil.WaitPodReady(testCtx, pod)
 			Expect(err).NotTo(HaveOccurred())
 		}
+		err = e2eutil.WaitPodGroupPhase(testCtx, pg, v1beta1.PodGroupRunning)
+		Expect(err).NotTo(HaveOccurred())
 
-		for i := 0; i < 2; i++ {
-			spec := &e2eutil.JobSpec{
-				Tasks: []e2eutil.TaskSpec{
-					{
-						Name: "queue-job",
-						Img:  e2eutil.DefaultNginxImage,
-						Req:  slot,
-						Min:  rep,
-						Rep:  rep,
-					},
-				},
-			}
-			spec.Name = "queue-job-status-transition-test-job-" + strconv.Itoa(i)
-			spec.Queue = q1
-			e2eutil.CreateJob(testCtx, spec)
-		}
-
-		By("Verify queue have pod groups running")
-		err := e2eutil.WaitQueueStatus(func() (bool, error) {
-			pgStats := e2eutil.GetPodGroupStatistics(testCtx, testCtx.Namespace, q1)
-			return pgStats.Running > 0, nil
+		By("Force deleting one member so it is gone rather than Releasing")
+		zero := int64(0)
+		err = testCtx.Kubeclient.CoreV1().Pods(testCtx.Namespace).Delete(context.TODO(), pods[0].Name, metav1.DeleteOptions{
+			GracePeriodSeconds: &zero,
 		})
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
+		Expect(err).NotTo(HaveOccurred())
+		err = e2eutil.WaitPodGone(testCtx, pods[0].Name, testCtx.Namespace)
+		Expect(err).NotTo(HaveOccurred())
 
-		By("Delete some of pod which will case pod group status transform from running to unknown.")
-		podDeleteNum := 0
-
-		err = e2eutil.WaitPodPhaseRunningMoreThanNum(testCtx, podNamespace, 2)
-		Expect(err).NotTo(HaveOccurred(), "Failed waiting for pods")
-
-		clusterPods, err := testCtx.Kubeclient.CoreV1().Pods(podNamespace).List(context.TODO(), metav1.ListOptions{})
-		for _, pod := range clusterPods.Items {
-			if pod.Status.Phase == corev1.PodRunning {
-				err = testCtx.Kubeclient.CoreV1().Pods(podNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
-				Expect(err).NotTo(HaveOccurred(), "Failed to delete pod %s", pod.Name)
-				podDeleteNum = podDeleteNum + 1
-			}
-			if podDeleteNum >= int(rep/2) {
-				break
-			}
-		}
-
-		By("Verify queue have pod groups unknown")
-		w := &cache.ListWatch{
-			WatchFunc: func(options metav1.ListOptions) (i watch.Interface, e error) {
-				return testCtx.Vcclient.SchedulingV1beta1().PodGroups(podNamespace).Watch(context.TODO(), options)
-			},
-		}
-		wctx, cancel := watchtools.ContextWithOptionalTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-
-		_, err = watchtools.Until(wctx, clusterPods.ResourceVersion, w, func(event watch.Event) (bool, error) {
-			switch t := event.Object.(type) {
-			case *v1beta1.PodGroup:
-				if t.Status.Phase == v1beta1.PodGroupUnknown {
-					return true, nil
-				}
-			}
-			return false, nil
-		})
-
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue unknown")
+		By("Verifying the PodGroup becomes Unknown because a required member is missing")
+		err = e2eutil.WaitPodGroupPhase(testCtx, pg, v1beta1.PodGroupUnknown)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for PodGroup Unknown")
 	})
 })

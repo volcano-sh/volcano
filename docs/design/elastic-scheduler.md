@@ -40,7 +40,7 @@ spec:
 ```
 
 In detail, there are some principles for elastic schedule
-1. if job1-1 and job1-2 are submited at the same time, `job1.minAvailable` pods and `job2.minAvailable` pods will be created first. And then `job1/job2.elastic` pods will be created if there are extra resource.
+1. if job1-1 and job1-2 are submitted at the same time, `job1.minAvailable` pods and `job2.minAvailable` pods will be created first. And then `job1/job2.elastic` pods will be created if there are extra resource.
    ![](images/elastic-scheduler-job1-1-2.png)
 2. if submit job1-1 and then submit job1-2 in queue1, elastic pods in job1-1 will be preempted
    ![](images/elastic-scheduler-job1-2.png)

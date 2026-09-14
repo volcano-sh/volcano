@@ -43,3 +43,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action/*"
+    ignore:
+      # Newer versions require a gh-pages branch when uploading preview releases.
+      - dependency-name: "helm/chart-releaser-action"

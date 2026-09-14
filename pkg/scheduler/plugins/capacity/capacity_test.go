@@ -18,6 +18,7 @@ package capacity
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -2077,5 +2078,33 @@ func TestJobEnqueuedUpdatesDRAInqueueForDRAOnlyJob(t *testing.T) {
 	test.Run([]framework.Action{enqueue.New()})
 	if err := test.CheckAll(0); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A job whose DRA device count, summed with the queue's existing inqueue total,
+// overflows int64 must still be rejected by the capacity check. Before the fix
+// the raw sum (0 + MaxInt64 + MaxInt64) wrapped to a negative value, which is
+// not greater than the capability, so the job was wrongly admitted.
+func TestCheckDRAAllocatable_overflowRejected(t *testing.T) {
+	const dc = "gpu.example.com"
+
+	poisoned := &draQuotaAttr{
+		capability: map[string]*api.DRAResource{dc: {Count: 8}},
+		allocated:  map[string]*api.DRAResource{},
+		inqueue:    map[string]*api.DRAResource{dc: {Count: math.MaxInt64}},
+	}
+	overflowing := map[string]*api.DRAResource{dc: {Count: math.MaxInt64}}
+	if checkDRAAllocatable(poisoned, overflowing, false, true) {
+		t.Fatalf("checkDRAAllocatable admitted an overflowing request (inqueue=MaxInt64 + request=MaxInt64) against capability 8; want rejected")
+	}
+
+	// Sanity: a request within the remaining capability is still admitted.
+	fresh := &draQuotaAttr{
+		capability: map[string]*api.DRAResource{dc: {Count: 8}},
+		allocated:  map[string]*api.DRAResource{},
+		inqueue:    map[string]*api.DRAResource{},
+	}
+	if !checkDRAAllocatable(fresh, map[string]*api.DRAResource{dc: {Count: 4}}, false, true) {
+		t.Fatalf("checkDRAAllocatable rejected a valid request (4 <= 8); want admitted")
 	}
 }

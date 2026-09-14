@@ -164,6 +164,13 @@ func (sc *SchedulerCache) initMockInformers() {
 	// Create node informer
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
 
+	// Create PVC informer (required by addPodCSIVolumesToTask for pods
+	// referencing a PersistentVolumeClaim). Materialise via Informer() so
+	// SharedInformerFactory.Start actually starts it — matches the real
+	// newSchedulerCache wiring.
+	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
+	sc.pvcInformer.Informer()
+
 	// Initialize DRA manager if feature is enabled
 	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
 		ctx := context.TODO()
@@ -172,14 +179,14 @@ func (sc *SchedulerCache) initMockInformers() {
 		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
 		sc.resourceClaimCache = resourceClaimCache
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
-			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
+			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaintRules),
 			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
 			KubeClient:             sc.kubeClient,
 		}
 		// If device taints are disabled, the additional informers are not needed and
 		// the tracker turns into a simple wrapper around the slice informer.
 		if resourceSliceTrackerOpts.EnableDeviceTaintRules {
-			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
+			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1beta2().DeviceTaintRules()
 			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
 		}
 		resourceSliceTracker, err := resourceslicetracker.StartTracker(ctx, resourceSliceTrackerOpts)

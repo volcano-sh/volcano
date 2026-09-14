@@ -210,7 +210,7 @@ func (cc *cronjobcontroller) sync(cronJobKey string) (*time.Duration, error) {
 	if updateStatus {
 		if _, err := cc.vcClient.BatchV1alpha1().CronJobs(ns).UpdateStatus(context.TODO(), cronJob, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("Failed to update status for CronJob <%s>, err: %v", cronJobKey, err)
-			return nil, syncErr
+			return nil, err
 		}
 	}
 	return requeueAfter, nil

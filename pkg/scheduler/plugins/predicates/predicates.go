@@ -43,11 +43,11 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
-	vbcap "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
@@ -90,7 +90,7 @@ const (
 )
 
 var (
-	volumeBindingPluginInstance *vbcap.VolumeBinding
+	volumeBindingPluginInstance *volumebinding.VolumeBinding
 	volumeBindingPluginOnce     sync.Once
 )
 
@@ -105,6 +105,7 @@ type PredicatesPlugin struct {
 	FilterPlugins       map[string]fwk.FilterPlugin
 	StableFilterPlugins map[string]fwk.FilterPlugin // Subset of FilterPlugins for cache-stable filters
 	PreFilterPlugins    map[string]fwk.PreFilterPlugin
+	PreScorePlugins     map[string]fwk.PreScorePlugin
 	ReservePlugins      map[string]fwk.ReservePlugin
 	PreBindPlugins      map[string]fwk.PreBindPlugin
 	ScorePlugins        map[string]nodescore.BaseScorePlugin
@@ -112,6 +113,7 @@ type PredicatesPlugin struct {
 	FilterOrder         []string
 	StableFilterOrder   []string
 	PreFilterOrder      []string
+	PreScoreOrder       []string
 	ReserveOrder        []string
 	PreBindOrder        []string
 	ScoreOrder          []string
@@ -154,7 +156,6 @@ func New(arguments framework.Arguments) framework.Plugin {
 		EnableDRAAdminAccess:                         utilFeature.DefaultFeatureGate.Enabled(features.DRAAdminAccess),
 		EnableDynamicResourceAllocation:              utilFeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation),
 		EnableVolumeAttributesClass:                  utilFeature.DefaultFeatureGate.Enabled(features.VolumeAttributesClass),
-		EnableCSIMigrationPortworx:                   utilFeature.DefaultFeatureGate.Enabled(features.CSIMigrationPortworx),
 		EnableDRAExtendedResource:                    utilFeature.DefaultFeatureGate.Enabled(features.DRAExtendedResource),
 		EnableDRAPrioritizedList:                     utilFeature.DefaultFeatureGate.Enabled(features.DRAPrioritizedList),
 		EnableDRAConsumableCapacity:                  utilFeature.DefaultFeatureGate.Enabled(features.DRAConsumableCapacity),
@@ -239,11 +240,14 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 						continue
 					}
 
-					err := devices.Allocate(ssn.KubeClient(), pod)
+					reservation, err := devices.Allocate(ssn.KubeClient(), pod)
 					if err != nil {
 						klog.Errorf("AllocateToPod failed %s", err.Error())
 						event.Err = err
 						return
+					}
+					if reservation != nil && len(reservation.Annotations) > 0 {
+						event.Task.MergePodAnnotations(reservation.Annotations)
 					}
 				} else {
 					klog.Warningf("Devices %s assertion conversion failed, skip", val)
@@ -285,10 +289,15 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					}
 
 					// deallocate pod gpu id
-					err := devices.Release(ssn.KubeClient(), pod)
+					reservation, err := devices.Release(ssn.KubeClient(), pod)
 					if err != nil {
 						klog.Errorf("Device %s release failed for pod %s/%s, err:%s", val, pod.Namespace, pod.Name, err.Error())
 						return
+					}
+					if reservation != nil {
+						if keys := reservation.AnnotationKeys(); len(keys) > 0 {
+							event.Task.DeletePodAnnotations(keys...)
+						}
 					}
 				} else {
 					klog.Warningf("Devices %s assertion conversion failed, skip", val)
@@ -466,6 +475,7 @@ func (pp *PredicatesPlugin) InitPlugin() {
 	filterPlugins := map[string]fwk.FilterPlugin{}
 	stableFilterPlugins := map[string]fwk.FilterPlugin{} // Subset for cache-stable filters
 	prefilterPlugins := map[string]fwk.PreFilterPlugin{}
+	preScorePlugins := map[string]fwk.PreScorePlugin{}
 	reservePlugins := map[string]fwk.ReservePlugin{}
 	scorePlugins := map[string]nodescore.BaseScorePlugin{}
 	preBindPlugins := map[string]fwk.PreBindPlugin{}
@@ -473,6 +483,7 @@ func (pp *PredicatesPlugin) InitPlugin() {
 	var filterOrder []string
 	var stableFilterOrder []string
 	var preFilterOrder []string
+	var preScoreOrder []string
 	var reserveOrder []string
 	var preBindOrder []string
 	var scoreOrder []string
@@ -488,6 +499,10 @@ func (pp *PredicatesPlugin) InitPlugin() {
 	addPreFilterPlugin := func(name string, plugin fwk.PreFilterPlugin) {
 		prefilterPlugins[name] = plugin
 		preFilterOrder = append(preFilterOrder, name)
+	}
+	addPreScorePlugin := func(name string, plugin fwk.PreScorePlugin) {
+		preScorePlugins[name] = plugin
+		preScoreOrder = append(preScoreOrder, name)
 	}
 	addReservePlugin := func(name string, plugin fwk.ReservePlugin) {
 		reservePlugins[name] = plugin
@@ -601,18 +616,19 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		volumeBindingPluginOnce.Do(func() {
 			setUpVolumeBindingArgs(vbArgs, pp.pluginArguments)
 
-			plugin, err := vbcap.New(context.TODO(), vbArgs.VolumeBindingArgs, pp.Handle, pp.features)
+			plugin, err := volumebinding.New(context.TODO(), vbArgs.VolumeBindingArgs, pp.Handle, pp.features)
 			if err != nil {
 				klog.Fatalf("failed to create volume binding plugin with args %+v: %v", vbArgs, err)
 			}
-			volumeBindingPluginInstance = plugin.(*vbcap.VolumeBinding)
+			volumeBindingPluginInstance = plugin.(*volumebinding.VolumeBinding)
 		})
 
-		addFilterPlugin(vbcap.Name, volumeBindingPluginInstance)
-		addPreFilterPlugin(vbcap.Name, volumeBindingPluginInstance)
-		addReservePlugin(vbcap.Name, volumeBindingPluginInstance)
-		addPreBindPlugin(vbcap.Name, volumeBindingPluginInstance)
-		addScorePlugin(vbcap.Name, volumeBindingPluginInstance, vbArgs.Weight)
+		addFilterPlugin(volumebinding.Name, volumeBindingPluginInstance)
+		addPreFilterPlugin(volumebinding.Name, volumeBindingPluginInstance)
+		addReservePlugin(volumebinding.Name, volumeBindingPluginInstance)
+		addPreBindPlugin(volumebinding.Name, volumeBindingPluginInstance)
+		addPreScorePlugin(volumebinding.Name, volumeBindingPluginInstance)
+		addScorePlugin(volumebinding.Name, volumeBindingPluginInstance, vbArgs.Weight)
 	}
 	// 10. DRA
 	if pp.enabledPredicates.dynamicResourceAllocationEnable {
@@ -627,11 +643,13 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		addPreFilterPlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addReservePlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addPreBindPlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
+		addScorePlugin(dynamicresources.Name, dynamicResourceAllocationPlugin, 1)
 	}
 
 	pp.FilterPlugins = filterPlugins
 	pp.StableFilterPlugins = stableFilterPlugins
 	pp.PreFilterPlugins = prefilterPlugins
+	pp.PreScorePlugins = preScorePlugins
 	pp.ReservePlugins = reservePlugins
 	pp.PreBindPlugins = preBindPlugins
 	pp.ScorePlugins = scorePlugins
@@ -639,6 +657,7 @@ func (pp *PredicatesPlugin) InitPlugin() {
 	pp.FilterOrder = filterOrder
 	pp.StableFilterOrder = stableFilterOrder
 	pp.PreFilterOrder = preFilterOrder
+	pp.PreScoreOrder = preScoreOrder
 	pp.ReserveOrder = reserveOrder
 	pp.PreBindOrder = preBindOrder
 	pp.ScoreOrder = scoreOrder
@@ -757,16 +776,32 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 // BatchNodeOrder runs all Score plugins for the given task and nodes.
 func (pp *PredicatesPlugin) BatchNodeOrder(task *api.TaskInfo, nodes []fwk.NodeInfo, state *k8sframework.CycleState) (map[string]float64, error) {
 	nodeScores := make(map[string]float64, len(nodes))
+	skippedScorePlugins := map[string]struct{}{}
+
+	for _, name := range pp.PreScoreOrder {
+		plugin, exists := pp.PreScorePlugins[name]
+		if !exists {
+			continue
+		}
+
+		skipScore, err := nodescore.RunPreScorePlugin(plugin, state, task.Pod, nodes)
+		if err != nil {
+			return nil, fmt.Errorf("pre-score plugin %s failed: %w", name, err)
+		}
+		if skipScore {
+			skippedScorePlugins[name] = struct{}{}
+		}
+	}
 
 	// Run all Score plugins
 	for _, name := range pp.ScoreOrder {
+		if _, skipped := skippedScorePlugins[name]; skipped {
+			continue
+		}
 		plugin, exists := pp.ScorePlugins[name]
 		if !exists {
 			continue
 		}
-		// Get normalizer (most plugins don't need normalization, use EmptyNormalizer by default)
-		normalizer := &nodescore.EmptyNormalizer{}
-
 		// Get weight from ScoreWeights map, default to 1 if not set
 		weight := 1
 		if w, exists := pp.ScoreWeights[name]; exists {
@@ -774,7 +809,7 @@ func (pp *PredicatesPlugin) BatchNodeOrder(task *api.TaskInfo, nodes []fwk.NodeI
 		}
 
 		// Calculate score using the helper function
-		pluginScores, err := nodescore.CalculatePluginScore(name, plugin, normalizer, state, task.Pod, nodes, weight)
+		pluginScores, err := nodescore.CalculatePluginScore(name, plugin, state, task.Pod, nodes, weight)
 		if err != nil {
 			return nil, err
 		}

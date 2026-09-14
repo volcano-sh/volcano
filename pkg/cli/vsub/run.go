@@ -82,7 +82,7 @@ func InitRunFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&launchJobFlags.SchedulerName, "scheduler", "S", "",
 		fmt.Sprintf("the scheduler for this job, overwrite the value of '%s' (default \"%s\")",
 			SchedulerNameEnv, defaultSchedulerName))
-	cmd.Flags().StringVarP(&launchJobFlags.Command, "command", "c", "", "the command of of job")
+	cmd.Flags().StringVarP(&launchJobFlags.Command, "command", "c", "", "the command of job")
 
 	setDefaultArgs()
 }

@@ -42,7 +42,6 @@ import (
 	infov1 "k8s.io/client-go/informers/core/v1"
 	schedv1 "k8s.io/client-go/informers/scheduling/v1"
 	storagev1 "k8s.io/client-go/informers/storage/v1"
-	storagev1beta1 "k8s.io/client-go/informers/storage/v1beta1"
 	"k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
@@ -83,8 +82,6 @@ import (
 const (
 	// default interval for sync data from metrics server, the value is 30s
 	defaultMetricsInternal = 30 * time.Second
-
-	taskUpdaterWorker = 16
 
 	handlerSyncPollPeriod = 100 * time.Millisecond
 )
@@ -132,7 +129,7 @@ type SchedulerCache struct {
 	quotaInformer              infov1.ResourceQuotaInformer
 	csiNodeInformer            storagev1.CSINodeInformer
 	csiDriverInformer          storagev1.CSIDriverInformer
-	csiStorageCapacityInformer storagev1beta1.CSIStorageCapacityInformer
+	csiStorageCapacityInformer storagev1.CSIStorageCapacityInformer
 	cpuInformer                cpuinformerv1.NumatopologyInformer
 	nodeShardInformer          shardinformerv1alpha1.NodeShardInformer
 
@@ -239,9 +236,10 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 	for _, task := range tasks {
 		p := task.Pod
 		startTime := time.Now()
+		// The apiserver overlays Binding annotations onto the Pod during bind.
 		if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
 			&v1.Binding{
-				ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID, Annotations: p.Annotations},
+				ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID, Annotations: task.PodAnnotations},
 				Target: v1.ObjectReference{
 					Kind: "Node",
 					Name: task.NodeName,
@@ -279,7 +277,7 @@ func (de *defaultEvictor) Evict(p *v1.Pod, reason string) error {
 	evictMsg := fmt.Sprintf("Pod is evicted, because of %v", reason)
 	annotations := map[string]string{}
 	// record that we are evicting the pod
-	de.recorder.AnnotatedEventf(p, annotations, v1.EventTypeWarning, "Evict", evictMsg)
+	de.recorder.AnnotatedEventf(p, annotations, v1.EventTypeWarning, "Evict", "%s", evictMsg)
 
 	pod := p.DeepCopy()
 	condition := &v1.PodCondition{
@@ -685,7 +683,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	)
 	//real node sync is handled in queue instead of event handler, use tracker to track the handling status in node queue
 	sc.nodeInitialEventTracker = schedulercache.NewQueueHandlerTracker(handlerRegistration)
-	handlers["node"] = sc.nodeInitialEventTracker
+	handlers["node"] = schedulercache.NewInitialEventHandlerRegistration(handlerRegistration, sc.nodeInitialEventTracker)
 
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
 	sc.pvcInformer.Informer()
@@ -705,10 +703,10 @@ func (sc *SchedulerCache) addEventHandler() {
 	)
 	handlers["csiNode"] = handlerRegistration
 
-	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
+	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage {
 		sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
 		sc.csiDriverInformer.Informer()
-		sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
+		sc.csiStorageCapacityInformer = informerFactory.Storage().V1().CSIStorageCapacities()
 		sc.csiStorageCapacityInformer.Informer()
 	}
 
@@ -826,7 +824,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	})
 	//real hypernode sync is handled in queue instead of event handler, use tracker to track the handling status in hypenode queue
 	sc.hyperNodesInitialEventTracker = schedulercache.NewQueueHandlerTracker(handlerRegistration)
-	handlers["hypernode"] = sc.hyperNodesInitialEventTracker
+	handlers["hypernode"] = schedulercache.NewInitialEventHandlerRegistration(handlerRegistration, sc.hyperNodesInitialEventTracker)
 
 	if options.ServerOpts.ShardingMode == util.HardShardingMode || options.ServerOpts.ShardingMode == util.SoftShardingMode {
 		sc.nodeShardInformer = sc.vcInformerFactory.Shard().V1alpha1().NodeShards()
@@ -844,14 +842,14 @@ func (sc *SchedulerCache) addEventHandler() {
 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
 		sc.resourceClaimCache = assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
-			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
+			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaintRules),
 			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
 			KubeClient:             sc.kubeClient,
 		}
 		// If device taints are disabled, the additional informers are not needed and
 		// the tracker turns into a simple wrapper around the slice informer.
 		if resourceSliceTrackerOpts.EnableDeviceTaintRules {
-			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
+			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1beta2().DeviceTaintRules()
 			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
 		}
 		resourceSliceTracker, err := resourceslicetracker.StartTracker(ctx, resourceSliceTrackerOpts)
@@ -986,7 +984,7 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 		}
 	}()
 
-	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", reason)
+	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", "%s", reason)
 	return nil
 }
 
@@ -1059,22 +1057,24 @@ func (sc *SchedulerCache) SetSharedInformerFactory(factory informers.SharedInfor
 	sc.informerFactory = factory
 }
 
-// UpdateSchedulerNumaInfo used to update scheduler node cache NumaSchedulerInfo
-func (sc *SchedulerCache) UpdateSchedulerNumaInfo(AllocatedSets map[string]schedulingapi.ResNumaSets) error {
+// AddUnassignedNumaPods adds the pods that are newly-scheduled but has not been allocated resources to nodes' UnassignedNumaPods
+func (sc *SchedulerCache) AddUnassignedNumaPods(allocatedSets map[schedulingapi.PodMeta]map[string]schedulingapi.ResNumaSets) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	for nodeName, sets := range AllocatedSets {
-		if _, found := sc.Nodes[nodeName]; !found {
-			continue
+	for podMeta, podAlloc := range allocatedSets {
+		for nodeName, resSets := range podAlloc {
+			node, found := sc.Nodes[nodeName]
+			if !found || node == nil {
+				klog.Warningf("failed to find node %s, skip adding unassigned pod %v with resourceSet %v to it", nodeName, podMeta, resSets)
+				continue
+			}
+			if node.UnassignedNumaPods == nil {
+				node.UnassignedNumaPods = make(map[schedulingapi.PodMeta]schedulingapi.ResNumaSets)
+			}
+			node.UnassignedNumaPods[podMeta] = resSets
+			klog.V(3).Infof("added pod %v with resourceSet %v to the unassigned numa pods of node %s", podMeta, resSets, nodeName)
 		}
-
-		numaInfo := sc.Nodes[nodeName].NumaSchedulerInfo
-		if numaInfo == nil {
-			continue
-		}
-
-		numaInfo.Allocate(sets)
 	}
 	return nil
 }
@@ -1121,15 +1121,38 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 		// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
 		// k8s core, so using the same string here.
 		// The reason field in PodCondition can be "Unschedulable"
-		sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", message)
-		if _, err := sc.StatusUpdater.UpdatePodStatus(pod); err != nil {
+		sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", "%s", message)
+		updatedPod, err := sc.StatusUpdater.UpdatePodStatus(pod)
+		if err != nil {
 			return err
+		}
+
+		// Sync pod to cache so the next Snapshot sees NominatedNodeName aligned
+		// with NominatedHyperNode, without waiting on the pod-status informer.
+		if updateNomiNode && updatedPod != nil {
+			sc.syncTaskPodToCache(task, updatedPod)
 		}
 	} else {
 		klog.V(4).Infof("task unscheduleable %s/%s, message: %s, skip by no condition update", pod.Namespace, pod.Name, message)
 	}
 
 	return nil
+}
+
+// syncTaskPodToCache swaps the cache task's Pod pointer to updatedPod
+// synchronously, avoiding the pod-status informer round-trip.
+func (sc *SchedulerCache) syncTaskPodToCache(task *schedulingapi.TaskInfo, updatedPod *v1.Pod) {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	jobInCache, ok := sc.Jobs[task.Job]
+	if !ok {
+		return
+	}
+	taskInCache, ok := jobInCache.Tasks[task.UID]
+	if !ok {
+		return
+	}
+	taskInCache.Pod = updatedPod
 }
 
 func (sc *SchedulerCache) deleteJob(job *schedulingapi.JobInfo) {
@@ -1697,7 +1720,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 			taskInfos = append(taskInfos, task)
 		}
 
-		workqueue.ParallelizeUntil(context.TODO(), taskUpdaterWorker, len(taskInfos), func(index int) {
+		workqueue.ParallelizeUntil(context.TODO(), options.GetTaskUpdaterWorkerNum(), len(taskInfos), func(index int) {
 			taskInfo := taskInfos[index]
 
 			// The pod of a scheduling gated task is given
@@ -1770,6 +1793,7 @@ func (sc *SchedulerCache) updateJobInfo(job *schedulingapi.JobInfo) {
 		for subJobID, subJobInCache := range jobInCache.SubJobs {
 			if subJob, found := job.SubJobs[subJobID]; found {
 				subJobInCache.AllocatedHyperNode = subJob.AllocatedHyperNode
+				subJobInCache.NominatedHyperNode = subJob.NominatedHyperNode
 			}
 		}
 	}
@@ -1790,7 +1814,7 @@ func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, 
 		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
 		return
 	}
-	sc.Recorder.Eventf(pg, eventType, reason, msg)
+	sc.Recorder.Eventf(pg, eventType, reason, "%s", msg)
 }
 
 func (sc *SchedulerCache) SetMetricsConf(conf map[string]string) {
@@ -1909,6 +1933,27 @@ func isPendingDRAResourceClaimError(err error) bool {
 	return ok
 }
 
+// pendingPVCError marks a NewTaskInfo failure caused by a
+// PersistentVolumeClaim the pod references not yet being present in the
+// scheduler's PVC informer (a not-found lookup). It is treated like
+// pendingDRAResourceClaimError: the task is still added to the cache and
+// re-queued for resync so it is retried once the PVC informer catches up,
+// rather than being dropped. Using a dedicated type, created only for the
+// not-found case, keeps the retry path scoped to exactly this race and does
+// not swallow other lookup errors.
+type pendingPVCError struct {
+	err error
+}
+
+func (e *pendingPVCError) Error() string {
+	return e.err.Error()
+}
+
+func isPendingPVCError(err error) bool {
+	_, ok := err.(*pendingPVCError)
+	return ok
+}
+
 func addDRAResource(dst map[string]*schedulingapi.DRAResource, deviceClass string, count int64, capacity map[string]resource.Quantity) {
 	if dst[deviceClass] == nil {
 		dst[deviceClass] = &schedulingapi.DRAResource{}
@@ -1918,12 +1963,11 @@ func addDRAResource(dst map[string]*schedulingapi.DRAResource, deviceClass strin
 	}
 	dst[deviceClass].Count += count
 	for dim, reqQty := range capacity {
-		totalQty := reqQty.DeepCopy()
-		for i := int64(1); i < count; i++ {
-			totalQty.Add(reqQty)
-		}
+		// Add the capacity contributed by count devices.
+		total := reqQty.DeepCopy()
+		total.Mul(count)
 		capQty := dst[deviceClass].Capacity[dim]
-		capQty.Add(totalQty)
+		capQty.Add(total)
 		dst[deviceClass].Capacity[dim] = capQty
 	}
 }

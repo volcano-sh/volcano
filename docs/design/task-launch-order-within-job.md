@@ -21,7 +21,7 @@ This feature provides the ability to customize the order in which tasks are laun
 
 ## Scenarios
 
-* MPI Job. The worker pods need to be started first and then the master pod can run. Elsewise, the master pod can't setup the ssh tunnel and thus failed, this will add unnecessary waste of resources. In this case, MPI worker pods need to be in the running state, and then the master pod can start. Very similary, for the TensorFlow job, the TF master pod must be started first and then the TF worker pods.
+* MPI Job. The worker pods need to be started first and then the master pod can run. Otherwise, the master pod can't setup the ssh tunnel and thus failed, this will add unnecessary waste of resources. In this case, MPI worker pods need to be in the running state, and then the master pod can start. Similarly, for the TensorFlow job, the TF master pod must be started first and then the TF worker pods.
 
 ## Scene Comparison
 
@@ -38,7 +38,7 @@ Based on the scenarios listed above, the dependencies can be abstracted as:
 * Task-A depends on task-B, which means A must be started first and then B.
 * Triggering policy, in our cases, there may be only one trigger policy, which is the running state
 
-For the ease of end user's experince, we need to unify the way of composing a complicated jobs with lots of tasks, instead of letting user handle the complexcity themselvs using init-containers or other workflow tools. So we need to  have an more advanced VCJob that has below abilities:
+To improve the end-user experience, we need to unify the way of composing complex jobs with many tasks, instead of letting user handle the complexity themselves using init-containers or other workflow tools. So we need to have a more advanced VCJob that has below abilities:
 
 ## Design
 
@@ -95,10 +95,10 @@ spec:
 
 ### Usage
 * create a job that contains at least two tasks, fill in the task name in the `vcjob.spec.task.dependsOn` field, this name indicates the task that this task wants to rely on.
-* If there are multiple dependent tasks, you need to fill in the `iteration` field, the value can be `any` or `all`, `any` means that one of the multiple tasks reach the running state then run this task, `all` means that all tasks reach the runnig state before running this task.
+* If there are multiple dependent tasks, you need to fill in the `iteration` field, the value can be `any` or `all`, `any` means that one of the multiple tasks reach the running state then run this task, `all` means that all tasks reach the running state before running this task.
 * get task status to check if it is correct order
 
-### Implementaion
+### Implementation
 * create a new field in vcjob
 * create admission for this field
 

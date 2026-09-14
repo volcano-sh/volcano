@@ -68,6 +68,16 @@ func (s *Statement) Operations() []operation {
 	return s.operations
 }
 
+// HasEvictions returns whether the statement contains at least one eviction operation.
+func (s *Statement) HasEvictions() bool {
+	for _, op := range s.operations {
+		if op.name == Evict {
+			return true
+		}
+	}
+	return false
+}
+
 // Evict the pod
 func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) {
 	// Update status in session

@@ -105,21 +105,31 @@ func AdmitCronjobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionRespons
 	return &reviewResponse
 }
 func validateCronJobCreate(cronjob *v1alpha1.CronJob, reviewResponse *admissionv1.AdmissionResponse) string {
-	msg := validateCronjobSpec(&cronjob.Spec, cronjob.Namespace)
-	msg += validateCronJobName(cronjob.Name)
+	msg := validateCronJob(cronjob)
 	if msg != "" {
 		reviewResponse.Allowed = false
 	}
 	return msg
 }
 func validateCronJobUpdate(new *v1alpha1.CronJob) error {
-	msg := validateCronjobSpec(&new.Spec, new.Namespace)
-	msg += validateCronJobName(new.Name)
-
-	if msg != "" {
+	if msg := validateCronJob(new); msg != "" {
 		return errors.New(msg)
 	}
 	return nil
+}
+
+// validateCronJob runs the validators and joins their non-empty messages with
+// "; " so that multiple failures don't run together in a single line. Each
+// message is trimmed so the result has no stray leading or trailing spaces.
+func validateCronJob(cronjob *v1alpha1.CronJob) string {
+	var errs []string
+	if msg := strings.TrimSpace(validateCronjobSpec(&cronjob.Spec, cronjob.Namespace)); msg != "" {
+		errs = append(errs, msg)
+	}
+	if msg := strings.TrimSpace(validateCronJobName(cronjob.Name)); msg != "" {
+		errs = append(errs, msg)
+	}
+	return strings.Join(errs, "; ")
 }
 func validateCronjobSpec(spec *v1alpha1.CronJobSpec, nameSpace string) string {
 	var msg string

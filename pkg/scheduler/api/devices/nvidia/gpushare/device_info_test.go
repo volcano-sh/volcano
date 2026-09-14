@@ -21,6 +21,8 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestGetGPUMemoryOfPod(t *testing.T) {
@@ -170,5 +172,46 @@ func TestGetGPUNumberOfPod(t *testing.T) {
 				t.Errorf("unexpected result, want: %v, got: %v", tc.want, got)
 			}
 		})
+	}
+}
+
+func TestReleaseReturnsRemovedAnnotationKeys(t *testing.T) {
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "worker-0",
+			Namespace: "default",
+			UID:       "pod-uid",
+			Annotations: map[string]string{
+				PredicateTime: "1700000000",
+				GPUIndex:      "0",
+			},
+		},
+	}
+	client := fake.NewSimpleClientset(pod)
+	gs := &GPUDevices{
+		Name: "node-a",
+		Device: map[int]*GPUDevice{
+			0: {
+				ID:     0,
+				PodMap: map[string]*v1.Pod{string(pod.UID): pod},
+			},
+		},
+	}
+
+	reservation, err := gs.Release(client, pod)
+	if err != nil {
+		t.Fatalf("Release returned error: %v", err)
+	}
+	if _, ok := gs.Device[0].PodMap[string(pod.UID)]; ok {
+		t.Fatalf("Release should remove pod from GPU device map")
+	}
+	if reservation == nil || reservation.Annotations == nil {
+		t.Fatalf("Release should return annotation keys removed from TaskInfo.PodAnnotations")
+	}
+	if _, ok := reservation.Annotations[GPUIndex]; !ok {
+		t.Fatalf("reservation should request deletion of annotation %s", GPUIndex)
+	}
+	if _, ok := reservation.Annotations[PredicateTime]; !ok {
+		t.Fatalf("reservation should request deletion of annotation %s", PredicateTime)
 	}
 }

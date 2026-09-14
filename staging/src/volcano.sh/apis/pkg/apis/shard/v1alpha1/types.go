@@ -27,6 +27,7 @@ import (
 // NodeShard is a collection of nodes dedicated to a specific scheduler
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:path=nodeshards,scope=Cluster,shortName=nsh
+// +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="AGE",type=date,JSONPath=`.metadata.creationTimestamp`
 type NodeShard struct {

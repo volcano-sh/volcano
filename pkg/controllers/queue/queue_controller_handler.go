@@ -121,7 +121,7 @@ func (c *queuecontroller) deletePodGroup(obj interface{}) {
 		}
 	}
 
-	key, _ := cache.MetaNamespaceKeyFunc(obj)
+	key, _ := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 
 	c.pgMutex.Lock()
 	defer c.pgMutex.Unlock()

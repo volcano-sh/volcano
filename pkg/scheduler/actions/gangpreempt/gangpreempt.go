@@ -23,6 +23,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -124,8 +125,12 @@ func (gp *Action) Execute(ssn *framework.Session) {
 
 			// Mirror legacy commit behavior: commit only when the job becomes pipelined.
 			if ssn.JobPipelined(preemptorJob) {
+				hasEvictions := stmt.HasEvictions()
 				stmt.Commit()
-				utils.ApplySubJobNominations(preemptorJob, subJobHyperNodes)
+				if hasEvictions {
+					metrics.RegisterEvictionTransaction(gp.Name())
+				}
+				utils.ApplySubJobNominations(ssn, preemptorJob, subJobHyperNodes)
 			} else {
 				stmt.Discard()
 			}

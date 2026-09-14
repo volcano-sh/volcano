@@ -135,7 +135,7 @@ func (jf *jobflowcontroller) createJob(jobFlow *v1alpha1flow.JobFlow, flow v1alp
 		}
 		return err
 	}
-	jf.recorder.Eventf(jobFlow, corev1.EventTypeNormal, "Created", fmt.Sprintf("create a job named %v!", job.Name))
+	jf.recorder.Eventf(jobFlow, corev1.EventTypeNormal, "Created", "create a job named %s!", job.Name)
 	return nil
 }
 

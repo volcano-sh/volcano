@@ -37,6 +37,7 @@ type JobTemplateStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 //+kubebuilder:object:root=true
 // +kubebuilder:resource:path=jobtemplates,shortName=jt
+// +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 //+kubebuilder:subresource:status
 
 // JobTemplate is the Schema for the jobtemplates API

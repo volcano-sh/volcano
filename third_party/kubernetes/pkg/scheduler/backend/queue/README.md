@@ -34,7 +34,7 @@ For small version bumps:
 
 ```bash
 # In kubernetes repo
-git diff v1.34.0..v1.35.0 -- pkg/scheduler/backend/queue
+git diff v1.35.0..v1.36.0 -- pkg/scheduler/backend/queue
 ```
 
 Then manually apply changes.

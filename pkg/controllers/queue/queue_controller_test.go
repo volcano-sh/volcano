@@ -188,6 +188,12 @@ func TestDeletePodGroup(t *testing.T) {
 		if _, ok := c.podGroups[testcase.podGroup.Spec.Queue][key]; ok != testcase.ExpectValue {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, ok)
 		}
+
+		c.podGroups[testcase.podGroup.Spec.Queue][key] = struct{}{}
+		c.deletePodGroup(cache.DeletedFinalStateUnknown{Key: key, Obj: testcase.podGroup})
+		if _, ok := c.podGroups[testcase.podGroup.Spec.Queue][key]; ok != testcase.ExpectValue {
+			t.Errorf("case %d (%s) tombstone: expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, ok)
+		}
 	}
 }
 

@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
@@ -28,6 +29,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
@@ -398,6 +400,73 @@ func Test_fit(t *testing.T) {
 	}
 }
 
+func TestAscendDevicesFilterNodeErrorClassification(t *testing.T) {
+	newPod := func(deviceCount, deviceMemory string) *v1.Pod {
+		return &v1.Pod{
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{{
+					Name: "worker",
+					Resources: v1.ResourceRequirements{
+						Limits: v1.ResourceList{
+							"huawei.com/Ascend910A":        resource.MustParse(deviceCount),
+							"huawei.com/Ascend910A-memory": resource.MustParse(deviceMemory),
+						},
+					},
+				}},
+			},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		devices map[string]*AscendDevice
+		pod     *v1.Pod
+		status  int
+	}{
+		{
+			name: "insufficient device capacity is retryable",
+			devices: map[string]*AscendDevice{
+				"device-1": func() *AscendDevice {
+					device := createTestAscendAllocateDevice("device-1")
+					device.DeviceUsage.Used = 1
+					device.DeviceUsage.Usedmem = 32768
+					return device
+				}(),
+			},
+			pod:    newPod("1", "32768"),
+			status: devices.Unschedulable,
+		},
+		{
+			name:    "missing device inventory is an error",
+			devices: map[string]*AscendDevice{},
+			pod:     newPod("1", "32768"),
+			status:  devices.Error,
+		},
+		{
+			name: "invalid multi-device partial memory request is an error",
+			devices: map[string]*AscendDevice{
+				"device-1": func() *AscendDevice {
+					device := createTestAscendAllocateDevice("device-1")
+					device.config.Templates = []config.Template{{Name: "vir01", Memory: 4096, AICore: 1}}
+					return device
+				}(),
+			},
+			pod:    newPod("2", "4096"),
+			status: devices.Error,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ascendDevices := createTestAscendDevices("node-a", "Ascend910A", test.devices)
+			status, _, err := ascendDevices.FilterNode(test.pod, binpackPolicy)
+
+			assert.Error(t, err)
+			assert.Equal(t, test.status, status)
+		})
+	}
+}
+
 func TestAscendDevice_GetNodeDevices_HAMiVnpuCore(t *testing.T) {
 	deviceRegisterAnno := fmt.Sprintf("%s/node-register-%s", util.HAMiAnnotationsPrefix, "Ascend910A")
 	testNodeDevicesJSON := `[{"id":"dev-1","index":0,"count":1,"devmem":32768,"devcore":30}]`
@@ -722,6 +791,44 @@ func TestAscendDevices_AddResource(t *testing.T) {
 	}
 }
 
+func TestAllocateAddsNodeLockAscendWhenEnabled(t *testing.T) {
+	prev := NodeLockEnable
+	NodeLockEnable = true
+	defer func() {
+		NodeLockEnable = prev
+	}()
+	cleanupKeys := setupReleaseTestKeys()
+	defer cleanupKeys()
+
+	nodeName := "test-node-lock-enabled"
+	pod := createTestPod("allocate-node-lock", "default", map[string]string{})
+	client := fake.NewSimpleClientset(&v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        nodeName,
+			Annotations: map[string]string{},
+		},
+	}, pod.DeepCopy())
+
+	ads := &AscendDevices{
+		NodeName: nodeName,
+		Type:     "Ascend910A",
+		Devices: map[string]*AscendDevice{
+			"device-1": createTestAscendAllocateDevice("device-1"),
+		},
+	}
+	_, err := ads.Allocate(client, pod)
+	assert.NoError(t, err)
+
+	gotNode, getErr := client.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+	assert.NoError(t, getErr)
+
+	lockValue, ok := gotNode.Annotations[NodeLockAscend]
+	assert.True(t, ok, "expected node annotation %q to be set", NodeLockAscend)
+	assert.NotEmpty(t, lockValue)
+	_, parseErr := time.Parse(time.RFC3339, lockValue)
+	assert.NoError(t, parseErr, "lock annotation should be an RFC3339 timestamp")
+}
+
 func createTestAscendDevices(nodeName, deviceType string, devices map[string]*AscendDevice) *AscendDevices {
 	return &AscendDevices{
 		NodeName: nodeName,
@@ -764,6 +871,30 @@ func createTestAscendDevice(id string, totalCores, totalMem int32, used, usedmem
 	}
 
 	return device
+}
+
+func createTestAscendAllocateDevice(id string) *AscendDevice {
+	return &AscendDevice{
+		DeviceInfo: &devices.DeviceInfo{
+			ID:      id,
+			Devcore: 30,
+			Devmem:  32768,
+			Count:   1,
+		},
+		DeviceUsage: &devices.DeviceUsage{
+			Used:      0,
+			Usedmem:   0,
+			Usedcores: 0,
+		},
+		PodMap: make(map[string]*devices.DeviceUsage),
+		config: config.VNPUConfig{
+			CommonWord:         "Ascend910A",
+			ResourceName:       "huawei.com/Ascend910A",
+			ResourceMemoryName: "huawei.com/Ascend910A-memory",
+			MemoryCapacity:     32768,
+			MemoryAllocatable:  32768,
+		},
+	}
 }
 
 func createTestPod(name, namespace string, annotations map[string]string) *v1.Pod {
@@ -835,7 +966,7 @@ func hamiPodWithAnnotations(phase string) *v1.Pod {
 	}
 }
 
-func TestHAMiReleaseCleansSpeculativeAnnotations(t *testing.T) {
+func TestHAMiReleaseReturnsSpeculativeAnnotationKeys(t *testing.T) {
 	cleanup := setupReleaseTestKeys()
 	defer cleanup()
 
@@ -843,7 +974,8 @@ func TestHAMiReleaseCleansSpeculativeAnnotations(t *testing.T) {
 	client := fake.NewSimpleClientset(pod)
 	ads := &AscendDevices{NodeName: "node-a"}
 
-	if err := ads.Release(client, pod); err != nil {
+	reservation, err := ads.Release(client, pod)
+	if err != nil {
 		t.Fatalf("Release returned error: %v", err)
 	}
 
@@ -855,8 +987,14 @@ func TestHAMiReleaseCleansSpeculativeAnnotations(t *testing.T) {
 		testSupportKey,
 		testHuaweiKey,
 	} {
-		if _, ok := pod.Annotations[k]; ok {
-			t.Errorf("in-memory annotation %s should have been removed", k)
+		if _, ok := pod.Annotations[k]; !ok {
+			t.Errorf("in-memory annotation %s should not be removed during Release", k)
+		}
+		if reservation == nil || reservation.Annotations == nil {
+			t.Fatalf("Release should return annotation keys removed from TaskInfo.PodAnnotations")
+		}
+		if _, ok := reservation.Annotations[k]; !ok {
+			t.Errorf("reservation should request deletion of annotation %s", k)
 		}
 	}
 	if pod.Annotations["keep-me"] != "yes" {
@@ -867,8 +1005,8 @@ func TestHAMiReleaseCleansSpeculativeAnnotations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get pod: %v", err)
 	}
-	if _, ok := got.Annotations[util.AssignedNodeAnnotations]; ok {
-		t.Errorf("apiserver annotation %s should have been removed", util.AssignedNodeAnnotations)
+	if _, ok := got.Annotations[util.AssignedNodeAnnotations]; !ok {
+		t.Errorf("apiserver annotation %s should not be removed during Release", util.AssignedNodeAnnotations)
 	}
 	if got.Annotations["keep-me"] != "yes" {
 		t.Errorf("non-device annotation must be preserved on apiserver")
@@ -883,7 +1021,7 @@ func TestHAMiReleaseKeepsCommittedAnnotations(t *testing.T) {
 	client := fake.NewSimpleClientset(pod)
 	ads := &AscendDevices{NodeName: "node-a"}
 
-	if err := ads.Release(client, pod); err != nil {
+	if _, err := ads.Release(client, pod); err != nil {
 		t.Fatalf("Release returned error: %v", err)
 	}
 	if pod.Annotations[util.AssignedNodeAnnotations] != "node-a" {

@@ -110,6 +110,9 @@ rules:
   - apiGroups: ["resource.k8s.io"]
     resources: ["deviceclasses","resourceslices"]
     verbs: ["get", "list", "watch", "create"]
+  - apiGroups: [ "resource.k8s.io" ]
+    resources: [ "devicetaintrules" ]
+    verbs: [ "get", "list", "watch" ]
   - apiGroups: ["shard.volcano.sh"]
     resources: ["nodeshards"]
     verbs: ["list", "watch", "get"]
@@ -146,7 +149,7 @@ metadata:
     {{- mustMerge (.Values.custom.scheduler_labels | default (dict)) (.Values.custom.common_labels | default (dict)) | toYaml | nindent 4 }}
     {{- end }}
 spec:
-  replicas: {{ .Values.custom.scheduler_replicas }}
+  replicas: {{ .Values.custom.agent_scheduler_replicas }}
   selector:
     matchLabels:
       app: agent-scheduler

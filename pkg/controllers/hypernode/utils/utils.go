@@ -18,14 +18,16 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
-	"volcano.sh/apis/pkg/client/listers/topology/v1alpha1"
+	"volcano.sh/volcano/pkg/controllers/hypernode/api"
 )
 
 func CreateHyperNode(vcClient vcclientset.Interface, node *topologyv1alpha1.HyperNode) error {
@@ -39,10 +41,27 @@ func CreateHyperNode(vcClient vcclientset.Interface, node *topologyv1alpha1.Hype
 	})
 }
 
-func UpdateHyperNode(vcClient vcclientset.Interface, lister v1alpha1.HyperNodeLister, updated *topologyv1alpha1.HyperNode) error {
+// CreateOrUpdateHyperNode handles a stale informer cache by treating an
+// AlreadyExists response as an update of the latest API object.
+func CreateOrUpdateHyperNode(vcClient vcclientset.Interface, node *topologyv1alpha1.HyperNode) error {
+	err := CreateHyperNode(vcClient, node)
+	if err == nil {
+		return nil
+	}
+	if !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	return UpdateHyperNode(vcClient, node)
+}
+
+func UpdateHyperNode(vcClient vcclientset.Interface, updated *topologyv1alpha1.HyperNode) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		current, err := lister.Get(updated.Name)
+		current, err := vcClient.TopologyV1alpha1().HyperNodes().Get(
+			context.Background(), updated.Name, metav1.GetOptions{})
 		if err != nil {
+			return err
+		}
+		if err := validateHyperNodeOwnership(current, updated); err != nil {
 			return err
 		}
 
@@ -63,13 +82,28 @@ func UpdateHyperNode(vcClient vcclientset.Interface, lister v1alpha1.HyperNodeLi
 			current.Annotations[k] = v
 		}
 
-		_, err = vcClient.TopologyV1alpha1().HyperNodes().Update(context.Background(), current, metav1.UpdateOptions{})
+		current, err = vcClient.TopologyV1alpha1().HyperNodes().Update(context.Background(), current, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
+		// Status subresources are not persisted by the regular Update call.
+		current.Status = updated.Status
 		_, err = vcClient.TopologyV1alpha1().HyperNodes().UpdateStatus(context.Background(), current, metav1.UpdateOptions{})
 		return err
 	})
+}
+
+func validateHyperNodeOwnership(current, updated *topologyv1alpha1.HyperNode) error {
+	desiredSource, exists := updated.Labels[api.NetworkTopologySourceLabelKey]
+	if !exists || desiredSource == "" {
+		return fmt.Errorf("HyperNode %q is missing the required %q label", updated.Name, api.NetworkTopologySourceLabelKey)
+	}
+	currentSource := current.Labels[api.NetworkTopologySourceLabelKey]
+	if currentSource == desiredSource {
+		return nil
+	}
+	return fmt.Errorf("refusing to update HyperNode %q owned by discovery source %q with result from %q",
+		current.Name, currentSource, desiredSource)
 }
 
 func DeleteHyperNode(vcClient vcclientset.Interface, name string) error {

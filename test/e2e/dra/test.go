@@ -429,11 +429,66 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 		})
 	}
 
+	prioritizedListScoreTests := func() {
+		nodes := drautils.NewNodes(f, 2, 8)
+		driver := drautils.NewDriver(f, nodes, drautils.DriverResources(
+			-1,
+			map[string]map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
+				"device-1": {},
+				"device-2": {},
+			},
+			map[string]map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
+				"device-1": {},
+			},
+		))
+		b := newBuilder(f, driver)
+
+		ginkgo.It("prefers nodes that satisfy higher-priority device subrequests", func(ctx context.Context) {
+			claim := b.externalClaim()
+			claim.Spec.Devices.Requests = []resourceapi.DeviceRequest{{
+				Name: "my-request",
+				FirstAvailable: []resourceapi.DeviceSubRequest{
+					{
+						Name:            "preferred",
+						DeviceClassName: b.className(),
+						AllocationMode:  resourceapi.DeviceAllocationModeExactCount,
+						Count:           2,
+					},
+					{
+						Name:            "fallback",
+						DeviceClassName: b.className(),
+						AllocationMode:  resourceapi.DeviceAllocationModeExactCount,
+						Count:           1,
+					},
+				},
+			}}
+			pod := b.podExternal()
+			b.create(ctx, claim, pod)
+			b.testPod(ctx, f, pod)
+
+			scheduledPod, err := f.ClientSet.CoreV1().Pods(pod.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
+			framework.ExpectNoError(err)
+			gomega.Expect(scheduledPod.Spec.NodeName).To(gomega.Equal(nodes.NodeNames[0]))
+
+			allocatedClaim, err := f.ClientSet.ResourceV1().ResourceClaims(pod.Namespace).Get(ctx, claim.Name, metav1.GetOptions{})
+			framework.ExpectNoError(err)
+			gomega.Expect(allocatedClaim.Status.Allocation).ToNot(gomega.BeNil())
+			gomega.Expect(allocatedClaim.Status.Allocation.Devices.Results).To(gomega.HaveLen(2))
+			for _, result := range allocatedClaim.Status.Allocation.Devices.Results {
+				gomega.Expect(result.Request).To(gomega.Equal("my-request/preferred"))
+			}
+		})
+	}
+
 	ginkgo.Context("on single node", func() {
 		singleNodeTests()
 	})
 
 	ginkgo.Context("on multiple nodes", func() {
 		multiNodeTests()
+	})
+
+	ginkgo.Context("with prioritized device requests", func() {
+		prioritizedListScoreTests()
 	})
 })

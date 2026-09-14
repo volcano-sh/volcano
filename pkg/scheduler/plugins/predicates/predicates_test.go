@@ -39,6 +39,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -48,12 +49,12 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/actions/preempt"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
-	vbcap "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodescore"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -90,6 +91,29 @@ type fakeReservePlugin struct {
 	calls *[]string
 }
 
+type fakePreScorePlugin struct {
+	name           string
+	preScoreStatus *k8sframework.Status
+	preScoreCalls  int
+}
+
+func (p *fakePreScorePlugin) Name() string {
+	return p.name
+}
+
+func (p *fakePreScorePlugin) PreScore(_ context.Context, _ k8sframework.CycleState, _ *apiv1.Pod, _ []k8sframework.NodeInfo) *k8sframework.Status {
+	p.preScoreCalls++
+	return p.preScoreStatus
+}
+
+func (p *fakePreScorePlugin) Score(_ context.Context, _ k8sframework.CycleState, _ *apiv1.Pod, _ k8sframework.NodeInfo) (int64, *k8sframework.Status) {
+	return 50, k8sframework.NewStatus(k8sframework.Success)
+}
+
+func (p *fakePreScorePlugin) ScoreExtensions() k8sframework.ScoreExtensions {
+	return nil
+}
+
 func (p *fakeReservePlugin) Name() string {
 	return p.name
 }
@@ -121,6 +145,38 @@ func getWorkerAffinity() *apiv1.Affinity {
 				},
 			},
 		},
+	}
+}
+
+// TestTaskPodAnnotations verifies device allocation annotations flow through
+// TaskInfo's scheduler-owned Pod annotation map.
+func TestTaskPodAnnotations(t *testing.T) {
+	task := &api.TaskInfo{}
+
+	task.MergePodAnnotations(map[string]string{
+		"volcano.sh/vgpu-node":    "node-a",
+		"volcano.sh/vgpu-ids-new": "gpu-a",
+	})
+	got := task.PodAnnotations
+	if got["volcano.sh/vgpu-node"] != "node-a" {
+		t.Fatalf("expected vgpu-node=node-a, got %q", got["volcano.sh/vgpu-node"])
+	}
+
+	task.MergePodAnnotations(map[string]string{
+		"volcano.sh/vgpu-node": "node-b",
+	})
+	got = task.PodAnnotations
+	if got["volcano.sh/vgpu-node"] != "node-b" {
+		t.Fatalf("expected vgpu-node overwritten to node-b, got %q", got["volcano.sh/vgpu-node"])
+	}
+
+	task.DeletePodAnnotations("volcano.sh/vgpu-node")
+	got = task.PodAnnotations
+	if _, ok := got["volcano.sh/vgpu-node"]; ok {
+		t.Fatalf("expected vgpu-node removed")
+	}
+	if got["volcano.sh/vgpu-ids-new"] != "gpu-a" {
+		t.Fatalf("expected unrelated bind annotation preserved")
 	}
 }
 
@@ -400,10 +456,12 @@ func TestInitPlugin(t *testing.T) {
 		expectInFilter          []string
 		expectInStableFilter    []string
 		expectInPrefilter       []string
+		expectInPreScore        []string
 		expectInReserve         []string
 		expectInPreBind         []string
 		expectInScore           []string
 		expectNotInFilter       []string
+		expectNotInPreScore     []string
 		expectNotInReserve      []string
 		expectNotInPreBind      []string
 		expectNotInScore        []string
@@ -422,13 +480,14 @@ func TestInitPlugin(t *testing.T) {
 			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumezone.Name, podtopologyspread.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
 			expectInPrefilter:       []string{nodeaffinity.Name, nodeports.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumezone.Name, podtopologyspread.Name},
+			expectNotInPreScore:     []string{volumebinding.Name, dynamicresources.Name},
 			expectInReserve:         []string{},
 			expectInPreBind:         []string{},
 			expectInScore:           []string{},
-			expectNotInFilter:       []string{vbcap.Name, dynamicresources.Name},
-			expectNotInReserve:      []string{vbcap.Name, dynamicresources.Name},
-			expectNotInPreBind:      []string{vbcap.Name, dynamicresources.Name},
-			expectNotInScore:        []string{vbcap.Name},
+			expectNotInFilter:       []string{volumebinding.Name, dynamicresources.Name},
+			expectNotInReserve:      []string{volumebinding.Name, dynamicresources.Name},
+			expectNotInPreBind:      []string{volumebinding.Name, dynamicresources.Name},
+			expectNotInScore:        []string{dynamicresources.Name, volumebinding.Name},
 		},
 		{
 			name:                    "volume binding enabled",
@@ -441,12 +500,14 @@ func TestInitPlugin(t *testing.T) {
 			enablePodTopologySpread: false,
 			enableVolumeBinding:     true,
 			enableDRA:               false,
-			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, vbcap.Name},
+			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, volumebinding.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
-			expectInPrefilter:       []string{nodeaffinity.Name, vbcap.Name},
-			expectInReserve:         []string{vbcap.Name},
-			expectInPreBind:         []string{vbcap.Name},
-			expectInScore:           []string{vbcap.Name},
+			expectInPrefilter:       []string{volumebinding.Name},
+			expectInPreScore:        []string{volumebinding.Name},
+			expectNotInPreScore:     []string{dynamicresources.Name},
+			expectInReserve:         []string{volumebinding.Name},
+			expectInPreBind:         []string{volumebinding.Name},
+			expectInScore:           []string{volumebinding.Name},
 			expectNotInFilter:       []string{nodeports.Name, interpodaffinity.Name, dynamicresources.Name},
 			expectNotInReserve:      []string{dynamicresources.Name},
 			expectNotInPreBind:      []string{dynamicresources.Name},
@@ -465,13 +526,14 @@ func TestInitPlugin(t *testing.T) {
 			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, dynamicresources.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
 			expectInPrefilter:       []string{nodeaffinity.Name, dynamicresources.Name},
+			expectNotInPreScore:     []string{volumebinding.Name, dynamicresources.Name},
 			expectInReserve:         []string{dynamicresources.Name},
 			expectInPreBind:         []string{dynamicresources.Name},
-			expectInScore:           []string{},
-			expectNotInFilter:       []string{vbcap.Name},
-			expectNotInReserve:      []string{vbcap.Name},
-			expectNotInPreBind:      []string{vbcap.Name},
-			expectNotInScore:        []string{dynamicresources.Name, vbcap.Name},
+			expectInScore:           []string{dynamicresources.Name},
+			expectNotInFilter:       []string{volumebinding.Name},
+			expectNotInReserve:      []string{volumebinding.Name},
+			expectNotInPreBind:      []string{volumebinding.Name},
+			expectNotInScore:        []string{volumebinding.Name},
 		},
 		{
 			name:                    "both volume binding and dra enabled",
@@ -484,13 +546,14 @@ func TestInitPlugin(t *testing.T) {
 			enablePodTopologySpread: true,
 			enableVolumeBinding:     true,
 			enableDRA:               true,
-			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumezone.Name, podtopologyspread.Name, vbcap.Name, dynamicresources.Name},
+			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumezone.Name, podtopologyspread.Name, volumebinding.Name, dynamicresources.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
-			expectInPrefilter:       []string{nodeaffinity.Name, nodeports.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumezone.Name, podtopologyspread.Name, vbcap.Name, dynamicresources.Name},
-			expectInReserve:         []string{vbcap.Name, dynamicresources.Name},
-			expectInPreBind:         []string{vbcap.Name, dynamicresources.Name},
-			expectInScore:           []string{vbcap.Name},
-			expectNotInScore:        []string{dynamicresources.Name},
+			expectInPrefilter:       []string{nodeports.Name, interpodaffinity.Name, podtopologyspread.Name, volumebinding.Name, dynamicresources.Name},
+			expectInPreScore:        []string{volumebinding.Name},
+			expectNotInPreScore:     []string{dynamicresources.Name},
+			expectInReserve:         []string{volumebinding.Name, dynamicresources.Name},
+			expectInPreBind:         []string{volumebinding.Name, dynamicresources.Name},
+			expectInScore:           []string{volumebinding.Name, dynamicresources.Name},
 		},
 	}
 
@@ -547,6 +610,17 @@ func TestInitPlugin(t *testing.T) {
 				}
 			}
 
+			for _, pluginName := range tt.expectInPreScore {
+				if _, exists := pp.PreScorePlugins[pluginName]; !exists {
+					t.Errorf("expected %s in PreScorePlugins, but not found", pluginName)
+				}
+			}
+			for _, pluginName := range tt.expectNotInPreScore {
+				if _, exists := pp.PreScorePlugins[pluginName]; exists {
+					t.Errorf("expected %s not in PreScorePlugins, but found", pluginName)
+				}
+			}
+
 			// Verify ReservePlugins
 			for _, pluginName := range tt.expectInReserve {
 				if _, exists := pp.ReservePlugins[pluginName]; !exists {
@@ -585,9 +659,78 @@ func TestInitPlugin(t *testing.T) {
 
 			// Verify VolumeBinding weight if enabled
 			if tt.enableVolumeBinding {
-				if weight, exists := pp.ScoreWeights[vbcap.Name]; !exists || weight == 0 {
+				if weight, exists := pp.ScoreWeights[volumebinding.Name]; !exists || weight == 0 {
 					t.Errorf("expected VolumeBinding to have non-zero weight in ScoreWeights")
 				}
+			}
+			if tt.enableDRA {
+				if weight, exists := pp.ScoreWeights[dynamicresources.Name]; !exists || weight != 1 {
+					t.Errorf("expected DynamicResources to have weight 1 in ScoreWeights")
+				}
+			}
+		})
+	}
+}
+
+func TestBatchNodeOrderRunsPreScorePlugins(t *testing.T) {
+	tests := []struct {
+		name          string
+		preScoreState *k8sframework.Status
+		wantScore     bool
+		wantError     bool
+	}{
+		{
+			name:          "runs score after successful pre-score",
+			preScoreState: k8sframework.NewStatus(k8sframework.Success),
+			wantScore:     true,
+		},
+		{
+			name:          "skips matching score when pre-score skips",
+			preScoreState: k8sframework.NewStatus(k8sframework.Skip),
+		},
+		{
+			name:          "returns pre-score error",
+			preScoreState: k8sframework.NewStatus(k8sframework.Error, "pre-score failed"),
+			wantError:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plugin := &fakePreScorePlugin{
+				name:           "test-pre-score-plugin",
+				preScoreStatus: tt.preScoreState,
+			}
+			pp := &PredicatesPlugin{
+				PreScorePlugins: map[string]k8sframework.PreScorePlugin{plugin.Name(): plugin},
+				PreScoreOrder:   []string{plugin.Name()},
+				ScorePlugins:    map[string]nodescore.BaseScorePlugin{plugin.Name(): plugin},
+				ScoreWeights:    map[string]int{plugin.Name(): 1},
+				ScoreOrder:      []string{plugin.Name()},
+			}
+			nodeInfo := schedframework.NewNodeInfo()
+			nodeInfo.SetNode(&apiv1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-a"}})
+
+			scores, err := pp.BatchNodeOrder(
+				&api.TaskInfo{Pod: &apiv1.Pod{}},
+				[]k8sframework.NodeInfo{nodeInfo},
+				schedframework.NewCycleState(),
+			)
+			if tt.wantError {
+				if err == nil {
+					t.Fatal("expected pre-score error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("BatchNodeOrder returned an error: %v", err)
+			}
+			if plugin.preScoreCalls != 1 {
+				t.Errorf("expected PreScore to be called once, got %d", plugin.preScoreCalls)
+			}
+			_, scored := scores["node-a"]
+			if scored != tt.wantScore {
+				t.Errorf("expected node score presence to be %t, got %t", tt.wantScore, scored)
 			}
 		})
 	}
@@ -719,10 +862,10 @@ func TestReserveRollbackOrderStable(t *testing.T) {
 		dynamicResourceAllocationEnable: true,
 	}
 	pp.ReservePlugins = map[string]k8sframework.ReservePlugin{
-		vbcap.Name:            &fakeReservePlugin{name: vbcap.Name, calls: &calls},
+		volumebinding.Name:    &fakeReservePlugin{name: volumebinding.Name, calls: &calls},
 		dynamicresources.Name: &fakeReservePlugin{name: dynamicresources.Name, calls: &calls},
 	}
-	pp.ReserveOrder = []string{vbcap.Name, dynamicresources.Name}
+	pp.ReserveOrder = []string{volumebinding.Name, dynamicresources.Name}
 
 	pod := util.BuildPod("ns", "p1", "", apiv1.PodPending, nil, "pg", nil, nil)
 	pod.Spec.NodeName = "node-1"

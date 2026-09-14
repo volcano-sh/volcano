@@ -25,8 +25,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/utils/cpuset"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -1572,4 +1574,204 @@ func TestSchedulerCache_SyncHyperNode(t *testing.T) {
 			assert.Equal(t, tt.ready, sc.HyperNodesInfo.Ready())
 		})
 	}
+}
+
+// --- helpers shared with cache_test.go numa tests ---
+
+func newCacheWithNodes(names ...string) *SchedulerCache {
+	sc := &SchedulerCache{
+		Nodes: make(map[string]*schedulingapi.NodeInfo),
+		Jobs:  make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+	}
+	for _, n := range names {
+		sc.Nodes[n] = schedulingapi.NewNodeInfo(buildNode(n, nil))
+	}
+	return sc
+}
+
+func resSets(cpuSet string) schedulingapi.ResNumaSets {
+	return schedulingapi.ResNumaSets{"cpu": mustParseCPUSet(cpuSet)}
+}
+
+func mustParseCPUSet(s string) cpuset.CPUSet {
+	c, err := cpuset.Parse(s)
+	if err != nil {
+		panic(err)
+	}
+	return c
+}
+
+// podMetaFrom returns the PodMeta matching buildPod's UID convention so we look
+// up the same key that clearUnassignedNumaTask derives from the pod.
+func podMetaFrom(pod *v1.Pod) schedulingapi.PodMeta {
+	return schedulingapi.PodMeta{UID: pod.UID, Name: pod.Name, Namespace: pod.Namespace}
+}
+
+func TestClearUnassignedNumaTask_RemovesEntry(t *testing.T) {
+	sc := newCacheWithNodes("n1")
+	node := sc.Nodes["n1"]
+
+	pod := buildPod("ns1", "p1", "n1", v1.PodRunning, nil, nil, nil)
+	node.UnassignedNumaPods = map[schedulingapi.PodMeta]schedulingapi.ResNumaSets{
+		podMetaFrom(pod): resSets("0-1"),
+	}
+	task := schedulingapi.NewTaskInfo(pod)
+
+	sc.clearUnassignedNumaTask(task)
+
+	if len(node.UnassignedNumaPods) != 0 {
+		t.Errorf("expected entry to be cleared, got %v", node.UnassignedNumaPods)
+	}
+}
+
+func TestClearUnassignedNumaTask_NoOpWhenTaskHasNoNode(t *testing.T) {
+	sc := newCacheWithNodes("n1")
+	node := sc.Nodes["n1"]
+
+	pod := buildPod("ns1", "p1", "", v1.PodRunning, nil, nil, nil)
+	node.UnassignedNumaPods = map[schedulingapi.PodMeta]schedulingapi.ResNumaSets{
+		podMetaFrom(pod): resSets("0-1"),
+	}
+	task := schedulingapi.NewTaskInfo(pod)
+
+	sc.clearUnassignedNumaTask(task)
+
+	if len(node.UnassignedNumaPods) != 1 {
+		t.Errorf("expected entry to remain when task has no node, got %v", node.UnassignedNumaPods)
+	}
+}
+
+func TestClearUnassignedNumaTask_NoOpWhenEntryMissing(t *testing.T) {
+	sc := newCacheWithNodes("n1")
+	node := sc.Nodes["n1"]
+	otherPod := buildPod("ns1", "pother", "n1", v1.PodRunning, nil, nil, nil)
+	node.UnassignedNumaPods = map[schedulingapi.PodMeta]schedulingapi.ResNumaSets{
+		podMetaFrom(otherPod): resSets("0-1"),
+	}
+
+	pod := buildPod("ns1", "p1", "n1", v1.PodRunning, nil, nil, nil)
+	task := schedulingapi.NewTaskInfo(pod)
+
+	sc.clearUnassignedNumaTask(task)
+
+	if len(node.UnassignedNumaPods) != 1 {
+		t.Errorf("expected unrelated entry to remain, got %v", node.UnassignedNumaPods)
+	}
+}
+
+func TestClearUnassignedNumaTask_NoOpWhenNodeMissing(t *testing.T) {
+	sc := newCacheWithNodes()
+	pod := buildPod("ns1", "p1", "ghost", v1.PodRunning, nil, nil, nil)
+	task := schedulingapi.NewTaskInfo(pod)
+
+	// Must not panic.
+	sc.clearUnassignedNumaTask(task)
+}
+
+func TestClearUnassignedNumaPod_FallsBackToPodInfoWhenTaskNotInJob(t *testing.T) {
+	sc := newCacheWithNodes("n1")
+	node := sc.Nodes["n1"]
+
+	pod := buildPod("ns1", "p1", "n1", v1.PodRunning, nil, nil, nil)
+	node.UnassignedNumaPods = map[schedulingapi.PodMeta]schedulingapi.ResNumaSets{
+		podMetaFrom(pod): resSets("0-1"),
+	}
+	// No job registered in sc.Jobs, so clearUnassignedNumaPod falls back to the
+	// TaskInfo built directly from the pod.
+	sc.clearUnassignedNumaPod(pod)
+
+	if len(node.UnassignedNumaPods) != 0 {
+		t.Errorf("expected entry cleared via fallback path, got %v", node.UnassignedNumaPods)
+	}
+}
+
+func TestClearUnassignedNumaPod_UsesTaskFromJobWhenPresent(t *testing.T) {
+	sc := newCacheWithNodes("n1")
+	nodeN1 := sc.Nodes["n1"]
+
+	sc.Nodes["n2"] = schedulingapi.NewNodeInfo(buildNode("n2", nil))
+	nodeN2 := sc.Nodes["n2"]
+
+	pod := buildPod("ns1", "p1", "n1", v1.PodRunning, nil, nil, nil)
+	podMeta := podMetaFrom(pod)
+	nodeN1.UnassignedNumaPods = map[schedulingapi.PodMeta]schedulingapi.ResNumaSets{podMeta: resSets("0-1")}
+	nodeN2.UnassignedNumaPods = map[schedulingapi.PodMeta]schedulingapi.ResNumaSets{podMeta: resSets("2-3")}
+
+	fallbackTask := schedulingapi.NewTaskInfo(pod)
+	// Register a job whose task points at n2 (different from the pod's nn=n1 so
+	// the fallback TaskInfo would clear the wrong node). clearUnassignedNumaPod
+	// must prefer the job's task.
+	standalone := schedulingapi.NewTaskInfo(pod)
+	jobTask := *standalone
+	jobTask.NodeName = "n2"
+	job := &schedulingapi.JobInfo{Tasks: map[schedulingapi.TaskID]*schedulingapi.TaskInfo{fallbackTask.UID: &jobTask}}
+	sc.Jobs[fallbackTask.Job] = job
+
+	sc.clearUnassignedNumaPod(pod)
+
+	if len(nodeN1.UnassignedNumaPods) != 1 {
+		t.Errorf("n1 entry should remain since job task points to n2, got %v", nodeN1.UnassignedNumaPods)
+	}
+	if len(nodeN2.UnassignedNumaPods) != 0 {
+		t.Errorf("n2 entry should have been cleared, got %v", nodeN2.UnassignedNumaPods)
+	}
+}
+
+// TestAddPodWithUnresolvedPVCCachesTaskForResync verifies that when a Pod
+// ADD races ahead of its referenced PVC arriving in the scheduler PVC
+// informer, addPod does not drop the pod: it builds the TaskInfo, adds it
+// to the cache (so it carries the pod reference and can be scheduled once
+// the PVC syncs), and enqueues it for resync. Mirrors the DRA counterpart
+// TestAddPodWithUnresolvedResourceClaimTemplateCachesTaskForResync.
+func TestAddPodWithUnresolvedPVCCachesTaskForResync(t *testing.T) {
+	sc := newMockSchedulerCache("volcano")
+
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pod-with-pvc",
+			Namespace: "default",
+			UID:       types.UID("pod-with-pvc-uid"),
+			Annotations: map[string]string{
+				schedulingv1.KubeGroupNameAnnotationKey: "pg-with-pvc",
+			},
+		},
+		Spec: v1.PodSpec{
+			SchedulerName: "volcano",
+			Volumes: []v1.Volume{
+				{
+					Name: "scratch",
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "not-yet-in-informer",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// The PVC informer is empty, so NewTaskInfo returns a pendingPVCError.
+	// addPod must still succeed (nil error) by adding the task and
+	// scheduling a resync.
+	err := sc.addPod(pod)
+	assert.NoError(t, err, "addPod must not fail when the PVC is not yet in the informer; it should cache the task and retry")
+
+	// The task must exist in the cache as a proper TaskInfo carrying the
+	// pod reference, so it can be scheduled once the PVC informer syncs.
+	job, found := sc.Jobs[schedulingapi.JobID("default/pg-with-pvc")]
+	assert.True(t, found, "job must be present in the cache")
+	if !assert.NotNil(t, job) {
+		return
+	}
+	task, found := job.Tasks[schedulingapi.TaskID("pod-with-pvc-uid")]
+	assert.True(t, found, "task must be added to the cache")
+	if assert.NotNil(t, task) {
+		assert.NotNil(t, task.Pod, "cached task must carry its pod reference")
+		assert.Equal(t, "pod-with-pvc", task.Name)
+		assert.Equal(t, "default", task.Namespace)
+	}
+
+	// The task must be queued for resync so it is retried once the PVC
+	// informer catches up.
+	assert.Equal(t, 1, sc.errTasks.Len(), "task must be enqueued for resync")
 }

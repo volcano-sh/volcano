@@ -273,6 +273,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: jobs.batch.volcano.sh
 spec:
   group: batch.volcano.sh
@@ -3327,6 +3328,11 @@ spec:
                               x-kubernetes-list-map-keys:
                               - name
                               x-kubernetes-list-type: map
+                            schedulingGroup:
+                              properties:
+                                podGroupName:
+                                  type: string
+                              type: object
                             securityContext:
                               properties:
                                 appArmorProfile:
@@ -4318,18 +4324,6 @@ spec:
                               x-kubernetes-list-map-keys:
                               - name
                               x-kubernetes-list-type: map
-                            workloadRef:
-                              properties:
-                                name:
-                                  type: string
-                                podGroup:
-                                  type: string
-                                podGroupReplicaKey:
-                                  type: string
-                              required:
-                              - name
-                              - podGroup
-                              type: object
                           required:
                           - containers
                           type: object
@@ -4553,6 +4547,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: cronjobs.batch.volcano.sh
 spec:
   group: batch.volcano.sh
@@ -7625,6 +7620,11 @@ spec:
                                       x-kubernetes-list-map-keys:
                                       - name
                                       x-kubernetes-list-type: map
+                                    schedulingGroup:
+                                      properties:
+                                        podGroupName:
+                                          type: string
+                                      type: object
                                     securityContext:
                                       properties:
                                         appArmorProfile:
@@ -8616,18 +8616,6 @@ spec:
                                       x-kubernetes-list-map-keys:
                                       - name
                                       x-kubernetes-list-type: map
-                                    workloadRef:
-                                      properties:
-                                        name:
-                                          type: string
-                                        podGroup:
-                                          type: string
-                                        podGroupReplicaKey:
-                                          type: string
-                                      required:
-                                      - name
-                                      - podGroup
-                                      type: object
                                   required:
                                   - containers
                                   type: object
@@ -8812,6 +8800,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: commands.bus.volcano.sh
 spec:
   group: bus.volcano.sh
@@ -8906,15 +8895,6 @@ kind: ServiceAccount
 metadata:
   name: volcano-controllers
   namespace: volcano-system
----
-# Source: volcano/templates/controllers.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: volcano-controller-configmap
-  namespace: volcano-system
-data:
-  volcano-controller.conf: |
 ---
 # Source: volcano/templates/controllers.yaml
 apiVersion: v1
@@ -9103,6 +9083,15 @@ spec:
             value: volcano-system
           - name: HELM_RELEASE_NAME
             value: volcano
+---
+# Source: volcano/templates/controller_configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volcano-controller-configmap
+  namespace: volcano-system
+data:
+  volcano-controller.conf: |
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
@@ -9339,6 +9328,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: podgroups.scheduling.volcano.sh
 spec:
   group: scheduling.volcano.sh
@@ -9654,6 +9644,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: queues.scheduling.volcano.sh
 spec:
   group: scheduling.volcano.sh
@@ -9898,6 +9889,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: numatopologies.nodeinfo.volcano.sh
 spec:
   group: nodeinfo.volcano.sh
@@ -10029,6 +10021,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: hypernodes.topology.volcano.sh
 spec:
   group: topology.volcano.sh
@@ -10272,6 +10265,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: nodeshards.shard.volcano.sh
 spec:
   group: shard.volcano.sh
@@ -10364,6 +10358,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: colocationconfigurations.config.volcano.sh
 spec:
   group: config.volcano.sh
@@ -10823,6 +10818,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: jobtemplates.flow.volcano.sh
 spec:
   group: flow.volcano.sh
@@ -13859,6 +13855,11 @@ spec:
                               x-kubernetes-list-map-keys:
                               - name
                               x-kubernetes-list-type: map
+                            schedulingGroup:
+                              properties:
+                                podGroupName:
+                                  type: string
+                              type: object
                             securityContext:
                               properties:
                                 appArmorProfile:
@@ -14850,18 +14851,6 @@ spec:
                               x-kubernetes-list-map-keys:
                               - name
                               x-kubernetes-list-type: map
-                            workloadRef:
-                              properties:
-                                name:
-                                  type: string
-                                podGroup:
-                                  type: string
-                                podGroupReplicaKey:
-                                  type: string
-                              required:
-                              - name
-                              - podGroup
-                              type: object
                           required:
                           - containers
                           type: object
@@ -15002,6 +14991,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
+    helm.sh/resource-policy: keep
   name: jobflows.flow.volcano.sh
 spec:
   group: flow.volcano.sh
@@ -18114,6 +18104,11 @@ spec:
                                             x-kubernetes-list-map-keys:
                                             - name
                                             x-kubernetes-list-type: map
+                                          schedulingGroup:
+                                            properties:
+                                              podGroupName:
+                                                type: string
+                                            type: object
                                           securityContext:
                                             properties:
                                               appArmorProfile:
@@ -19105,18 +19100,6 @@ spec:
                                             x-kubernetes-list-map-keys:
                                             - name
                                             x-kubernetes-list-type: map
-                                          workloadRef:
-                                            properties:
-                                              name:
-                                                type: string
-                                              podGroup:
-                                                type: string
-                                              podGroupReplicaKey:
-                                                type: string
-                                            required:
-                                            - name
-                                            - podGroup
-                                            type: object
                                         required:
                                         - containers
                                         type: object

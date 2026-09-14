@@ -352,6 +352,64 @@ func TestSnapshot_AddOrUpdateNodes(t *testing.T) {
 	}
 }
 
+func TestSnapshot_UpdateAffinityLists(t *testing.T) {
+	affinity := &v1.Affinity{
+		PodAffinity: &v1.PodAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+				{
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "test"},
+					},
+					TopologyKey: "kubernetes.io/hostname",
+				},
+			},
+		},
+		PodAntiAffinity: &v1.PodAntiAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+				{
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "test"},
+					},
+					TopologyKey: "kubernetes.io/hostname",
+				},
+			},
+		},
+	}
+	newNodeInfo := func(podName string) *api.NodeInfo {
+		node := api.NewNodeInfo(util.BuildNode("node-1", api.BuildResourceList("4", "8Gi"), nil))
+		pod := util.BuildPodWithAffinity("default", podName, "node-1", v1.PodPending,
+			api.BuildResourceList("100m", "100Mi"), "pg1", nil, nil, affinity)
+		node.AddTask(api.NewTaskInfo(pod))
+		return node
+	}
+
+	snapshot := NewEmptySnapshot()
+	snapshot.addOrUpdateNode(newNodeInfo("pod-old"))
+	snapshot.addOrUpdateNode(newNodeInfo("pod-new"))
+
+	affinityList, err := snapshot.HavePodsWithAffinityList()
+	if err != nil {
+		t.Fatalf("unexpected affinity list error: %v", err)
+	}
+	if len(affinityList) != 1 {
+		t.Fatalf("expected 1 affinity node info, got %d", len(affinityList))
+	}
+	if got := affinityList[0].GetPods()[0].GetPod().Name; got != "pod-new" {
+		t.Fatalf("expected updated affinity pod pod-new, got %s", got)
+	}
+
+	antiAffinityList, err := snapshot.HavePodsWithRequiredAntiAffinityList()
+	if err != nil {
+		t.Fatalf("unexpected anti-affinity list error: %v", err)
+	}
+	if len(antiAffinityList) != 1 {
+		t.Fatalf("expected 1 anti-affinity node info, got %d", len(antiAffinityList))
+	}
+	if got := antiAffinityList[0].GetPods()[0].GetPod().Name; got != "pod-new" {
+		t.Fatalf("expected updated anti-affinity pod pod-new, got %s", got)
+	}
+}
+
 func TestSnapshot_DeleteNode(t *testing.T) {
 	tests := []struct {
 		name        string

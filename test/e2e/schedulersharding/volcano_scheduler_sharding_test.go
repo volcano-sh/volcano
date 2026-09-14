@@ -51,6 +51,8 @@ const (
 	holdResourcesCommand    = "sleep 3600"
 )
 
+var lightCPU = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")}
+
 var _ = Describe("Volcano Scheduler Sharding E2E Test", func() {
 	var ctx *e2eutil.TestContext
 
@@ -246,25 +248,30 @@ var _ = Describe("Volcano Scheduler Sharding E2E Test", func() {
 		It("should not force placement onto the shard node", func() {
 			volcanoNode, agentOnlyNodes, restore := prepareSingleWorkerShard()
 			defer restore()
-			createBoundPlaceholderPod(ctx, "none-make-shard-less-preferred", volcanoNode, fractionOfAllocatableCPU(ctx, volcanoNode, 2))
+			// Leave room for only one light task on the shard node. With volcano
+			// binpack and leastrequested weights cancelling for a single pod, use
+			// two replicas so the second must land outside the shard in none mode.
+			// Omit control-plane tolerations so the follow-up pods stay on workers;
+			// CI otherwise places the second replica on integration-control-plane.
+			placeholderReq := shardPlaceholderCPU(ctx, volcanoNode, lightCPU, 0)
+			createVolcanoShardPlaceholderJob(ctx, "none-ph", volcanoNode, placeholderReq)
 
 			By("Creating a job that can still fit on the shard node but has better outside-shard scores")
 			job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 				Name: "none-score-outside",
 				Tasks: []e2eutil.TaskSpec{
 					{
-						Img:         e2eutil.DefaultBusyBoxImage,
-						Command:     holdResourcesCommand,
-						Req:         e2eutil.HalfCPU,
-						Min:         1,
-						Rep:         1,
-						Tolerations: controlPlaneTolerations(),
+						Img:     e2eutil.DefaultBusyBoxImage,
+						Command: holdResourcesCommand,
+						Req:     lightCPU,
+						Min:     2,
+						Rep:     2,
 					},
 				},
 			})
 			err := e2eutil.WaitJobReady(ctx, job)
 			Expect(err).NotTo(HaveOccurred(), "job should become ready")
-			expectJobPodsOnNodes(ctx, job.Name, stringSet(agentOnlyNodes))
+			expectAtLeastOneJobPodOnNodes(ctx, job.Name, stringSet(agentOnlyNodes))
 		})
 
 		It("should schedule outside the shard when in-shard resources are exhausted", func() {
@@ -620,6 +627,26 @@ func createBoundPlaceholderPod(ctx *e2eutil.TestContext, name, nodeName string, 
 	Expect(err).NotTo(HaveOccurred(), "placeholder pod %s should run on %s", name, nodeName)
 }
 
+func createVolcanoShardPlaceholderJob(ctx *e2eutil.TestContext, jobName, volcanoNode string, req corev1.ResourceList) {
+	job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+		Name:     jobName,
+		NodeName: volcanoNode,
+		Tasks: []e2eutil.TaskSpec{
+			{
+				Name:    "ph",
+				Img:     e2eutil.DefaultBusyBoxImage,
+				Command: holdResourcesCommand,
+				Req:     req,
+				Min:     1,
+				Rep:     1,
+			},
+		},
+	})
+	err := e2eutil.WaitJobReady(ctx, job)
+	Expect(err).NotTo(HaveOccurred(), "placeholder job %s should run on %s", jobName, volcanoNode)
+	waitForNodeCPURequestsAtLeast(ctx, volcanoNode, req.Cpu().MilliValue())
+}
+
 func allocatableCPU(ctx *e2eutil.TestContext, nodeName string) corev1.ResourceList {
 	return availableCPU(ctx, nodeName, 50)
 }
@@ -637,6 +664,38 @@ func fractionOfAllocatableCPU(ctx *e2eutil.TestContext, nodeName string, divisor
 	return corev1.ResourceList{
 		corev1.ResourceCPU: resource.MustParse(fmt.Sprintf("%dm", requestMilliCPU)),
 	}
+}
+
+// shardPlaceholderCPU returns a CPU request that fills the shard node while leaving
+// room for a follow-up job (jobReq) plus reserveMilliCPU headroom.
+func shardPlaceholderCPU(ctx *e2eutil.TestContext, nodeName string, jobReq corev1.ResourceList, reserveMilliCPU int64) corev1.ResourceList {
+	jobMilli := jobReq.Cpu().MilliValue()
+	return availableCPU(ctx, nodeName, jobMilli+reserveMilliCPU)
+}
+
+func waitForNodeCPURequestsAtLeast(ctx *e2eutil.TestContext, nodeName string, minMilliCPU int64) {
+	err := wait.PollUntilContextTimeout(context.TODO(), pollInterval, nodeShardRefreshTimeout, true,
+		func(c context.Context) (bool, error) {
+			pods, err := ctx.Kubeclient.CoreV1().Pods("").List(c, metav1.ListOptions{
+				FieldSelector: "spec.nodeName=" + nodeName,
+			})
+			if err != nil {
+				return false, nil
+			}
+			var requestedMilliCPU int64
+			for _, pod := range pods.Items {
+				if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+					continue
+				}
+				for _, container := range pod.Spec.Containers {
+					requestedMilliCPU += container.Resources.Requests.Cpu().MilliValue()
+				}
+			}
+			GinkgoWriter.Printf("Node %s CPU requests: %dm (want >= %dm)\n", nodeName, requestedMilliCPU, minMilliCPU)
+			return requestedMilliCPU >= minMilliCPU, nil
+		})
+	Expect(err).NotTo(HaveOccurred(),
+		"node %s should report at least %dm CPU requests before scheduling the test job", nodeName, minMilliCPU)
 }
 
 func availableCPU(ctx *e2eutil.TestContext, nodeName string, reserveMilliCPU int64) corev1.ResourceList {
@@ -710,6 +769,20 @@ func expectJobPodsOnNodes(ctx *e2eutil.TestContext, jobName string, allowedNodes
 			fmt.Sprintf("pod %s scheduled to node %q outside expected nodes %v",
 				pod.Name, pod.Spec.NodeName, allowedNodes))
 	}
+}
+
+func expectAtLeastOneJobPodOnNodes(ctx *e2eutil.TestContext, jobName string, allowedNodes map[string]struct{}) {
+	pods := listJobPods(ctx, jobName)
+	found := false
+	for _, pod := range pods {
+		GinkgoWriter.Printf("Pod %s scheduled to %s\n", pod.Name, pod.Spec.NodeName)
+		Expect(pod.Spec.NodeName).NotTo(BeEmpty())
+		if _, ok := allowedNodes[pod.Spec.NodeName]; ok {
+			found = true
+		}
+	}
+	Expect(found).To(BeTrue(),
+		"at least one pod from job %s should schedule onto nodes %v", jobName, allowedNodes)
 }
 
 func expectJobPodsNotOnNodes(ctx *e2eutil.TestContext, jobName string, forbiddenNodes map[string]struct{}) {

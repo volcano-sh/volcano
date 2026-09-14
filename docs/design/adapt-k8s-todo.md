@@ -59,9 +59,9 @@ The main things that need to be done are as follows:
    bash hack/verify-gencode.sh  # Verify generated code is up to date
    ```
 
-4. **Synchronize volumebinding changes from k8s**:
-    - Volcano maintains volumebinding separately for compatibility with lower version kubernetes's access to the volumebinding API
-    - Review k8s volumebinding changes and apply necessary updates
+4. **VolumeBinding**:
+    - Use upstream `k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding` directly (no fork under `pkg/scheduler/capabilities/`). Track kube-scheduler behavior when bumping `k8s.io/kubernetes`.
+    - **Release note / operator hint**: whether the scheduler (and agent-scheduler) cache watches `CSIDriver` and `CSIStorageCapacity` is controlled only by `--csi-storage` (default on). The Volcano `CSIStorage` feature gate is not required for those informers.
 
 5. **Fix compilation and adaptation issues**:
     - Address API changes, scheduling policy updates, function name changes, etc.

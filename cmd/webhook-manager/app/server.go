@@ -34,7 +34,6 @@ import (
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
 	"volcano.sh/volcano/pkg/kube"
-	devconfig "volcano.sh/volcano/pkg/scheduler/api/devices/config"
 	"volcano.sh/volcano/pkg/signals"
 	commonutil "volcano.sh/volcano/pkg/util"
 	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
@@ -69,9 +68,6 @@ func Run(config *options.Config) error {
 		klog.Errorf("loadAdmissionConf failed.")
 	} else {
 		klog.V(2).Infof("loadAdmissionConf:%v", admissionConf)
-		if admissionConf.DeviceMutatorConf.Enable {
-			devconfig.InitDevicesConfig(admissionConf.DeviceMutatorConf.KnownGeometriesCMName, admissionConf.DeviceMutatorConf.KnownGeometriesCMNamespace)
-		}
 	}
 
 	vClient := getVolcanoClient(restConfig)

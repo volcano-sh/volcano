@@ -29,7 +29,8 @@ func (p *runningState) Execute(action v1alpha1.Action) error {
 			if len(status.CompletedJobs) == allJobList {
 				UpdateJobFlowSucceed(p.jobFlow.Namespace)
 				status.State.Phase = v1alpha1.Succeed
-			} else if len(status.FailedJobs) > 0 { // TODO(dongjiang199) Modify it when the if condition judgment is implemented
+			} else if len(status.FailedJobs) > 0 || len(status.TerminatedJobs) > 0 { // TODO(dongjiang199) Modify it when the if condition judgment is implemented
+				UpdateJobFlowFailed(p.jobFlow.Namespace)
 				status.State.Phase = v1alpha1.Failed
 			}
 		})

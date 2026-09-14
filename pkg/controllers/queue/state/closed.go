@@ -44,7 +44,11 @@ func (cs *closedState) Execute(action v1alpha1.Action) error {
 			}
 
 			if specState == v1beta1.QueueStateClosed {
-				status.State = v1beta1.QueueStateClosed
+				if len(podGroupList) == 0 {
+					status.State = v1beta1.QueueStateClosed
+					return
+				}
+				status.State = v1beta1.QueueStateClosing
 				return
 			}
 

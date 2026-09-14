@@ -24,7 +24,7 @@
 - Case:
   + 3 nodes: node1, node2, node3;
   + 6 tasks in the PodGroup(`minAvailable = 6`);
-    + 3 tasks(Task1 ~ 3) can be scheduled and other 3 tasks(Task4 ~ 6) is unschedulable, thus the whole job is unscheduable.
+    + 3 tasks(Task1 ~ 3) can be scheduled and other 3 tasks(Task4 ~ 6) is unschedulable, thus the whole job is unschedulable.
   
 - Current information:
   +  | Tasks     | Reason             | Message                                                                                                                                                                                         |
@@ -37,9 +37,9 @@
   + | Tasks     | Reason             | Message                                                                                                                                                                                         |
     |-----------|--------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
     | PodGroup  | NotEnoughResources | **3/6** tasks in gang unschedulable: pod group is not ready, 6 Pending, 6 minAvailable; **Pending: 3 Unschedulable, 3 Schedulable**                                                             |
-    | Task1     | **Schedulable**    | **Pod ns1/task-1 can possibly be assgined to node1, once minAvailable is satisfied**                                                                                                            |
-    | Task2     | **Schedulable**    | **Pod ns1/task-2 can possibly be assgined to node2, once minAvailable is satisfied**                                                                                                            |
-    | Task3     | **Schedulable**    | **Pod ns1/task-3 can possibly be assgined to node3, once minAvailable is satisfied**                                                                                                            |
+    | Task1     | **Schedulable**    | **Pod ns1/task-1 can possibly be assigned to node1, once minAvailable is satisfied**                                                                                                            |
+    | Task2     | **Schedulable**    | **Pod ns1/task-2 can possibly be assigned to node2, once minAvailable is satisfied**                                                                                                            |
+    | Task3     | **Schedulable**    | **Pod ns1/task-3 can possibly be assigned to node3, once minAvailable is satisfied**                                                                                                            |
     | Task4     | Unschedulable      | all nodes are unavailable: 1 plugin InterPodAffinity predicates failed node(s) didn't match pod affinity/anti-affinity, node(s) didn't match pod affinity rules, 2 node(s) resource fit failed. |
     | Task5 ~ 6 | Unschedulable      | **3/6** tasks in gang unschedulable: pod group is not ready, 6 Pending, 6 minAvailable; **Pending: 3 Unschedulable, 3 Schedulable**                                                             |
 

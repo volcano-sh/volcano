@@ -2,11 +2,11 @@
 
 ## Backgrounds
 
-Currently, there are only two podgroup condition type: `Unschedulable` and `Scheduled`. If job is not enqueued, it has not been scheduled. And the event reason is `Unschedulable` and podgroup condition reason is `NotEnoughResources`. These reasons is not coresponding with the real reason `job is not enqueued`
+Currently, there are only two podgroup condition type: `Unschedulable` and `Scheduled`. If job is not enqueued, it has not been scheduled. And the event reason is `Unschedulable` and podgroup condition reason is `NotEnoughResources`. These reasons is not corresponding with the real reason `job is not enqueued`
 
 ## Motivation
 
-In order to classify the uninqueueable reason from other unscheduleable reasons
+In order to classify the uninqueueable reason from other unschedulable reasons
 
 ## Design
 

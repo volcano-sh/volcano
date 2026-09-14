@@ -17,13 +17,16 @@
 package api
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fwk "k8s.io/kube-scheduler/framework"
+	"k8s.io/utils/cpuset"
 
+	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/mindcluster/ascend310p/vnpu"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
@@ -286,6 +289,55 @@ func TestNodeInfo_SetNode(t *testing.T) {
 	}
 }
 
+func BenchmarkSetNode(b *testing.B) {
+	node1 := buildNode("n1", nil, BuildResourceList("16", "32G", []ScalarResource{{Name: "pods", Value: "110"}}...))
+	node2 := buildNode("n1", nil, BuildResourceList("16", "32G", []ScalarResource{{Name: "pods", Value: "110"}}...))
+
+	pods := make([]*v1.Pod, 20)
+	for i := range pods {
+		pods[i] = buildPod("default", fmt.Sprintf("p%d", i), "n1", v1.PodRunning,
+			BuildResourceList("100m", "128Mi"), []metav1.OwnerReference{}, make(map[string]string))
+	}
+
+	ni := NewNodeInfo(node1)
+	for _, pod := range pods {
+		_ = ni.AddTask(NewTaskInfo(pod))
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if i%2 == 0 {
+			ni.SetNode(node2)
+		} else {
+			ni.SetNode(node1)
+		}
+	}
+}
+
+// BenchmarkNodeInfoClone measures the per-call cost of Clone() to show what
+// SetNode was paying on every invocation before this optimization.
+func BenchmarkNodeInfoClone(b *testing.B) {
+	node := buildNode("n1", nil, BuildResourceList("16", "32G", []ScalarResource{{Name: "pods", Value: "110"}}...))
+
+	pods := make([]*v1.Pod, 20)
+	for i := range pods {
+		pods[i] = buildPod("default", fmt.Sprintf("p%d", i), "n1", v1.PodRunning,
+			BuildResourceList("100m", "128Mi"), []metav1.OwnerReference{}, make(map[string]string))
+	}
+
+	ni := NewNodeInfo(node)
+	for _, pod := range pods {
+		_ = ni.AddTask(NewTaskInfo(pod))
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = ni.Clone()
+	}
+}
+
 func TestCloneOthersPreservesTypedNilDevices(t *testing.T) {
 	ni := &NodeInfo{
 		Name: "test-node",
@@ -312,5 +364,143 @@ func TestCloneOthersPreservesTypedNilDevices(t *testing.T) {
 		if !IsNilDevice(d) {
 			t.Errorf("cloned[%q] should be a typed-nil pointer", k)
 		}
+	}
+}
+
+// buildNodeInfoWithNuma constructs a NodeInfo whose NumaInfo/UnassignedNumaPods are
+// set up for RefreshNumaSchedulerInfoByCrd testing.
+func buildNodeInfoWithNuma(numaInfo *NumatopoInfo, unassigned map[PodMeta]ResNumaSets) *NodeInfo {
+	ni := NewNodeInfo(buildNode("n1", nil, BuildResourceList("4000m", "4G")))
+	ni.NumaInfo = numaInfo
+	ni.UnassignedNumaPods = unassigned
+	return ni
+}
+
+func TestRefreshNumaSchedulerInfoByCrd_NilNumaInfo(t *testing.T) {
+	ni := NewNodeInfo(buildNode("n1", nil, BuildResourceList("4000m", "4G")))
+	ni.NumaInfo = nil
+	ni.NumaSchedulerInfo = newNumatopoInfoForTest(nil)
+
+	ni.RefreshNumaSchedulerInfoByCrd()
+
+	if ni.NumaSchedulerInfo != nil {
+		t.Fatalf("expected NumaSchedulerInfo to be nil, got %+v", ni.NumaSchedulerInfo)
+	}
+}
+
+func TestRefreshNumaSchedulerInfoByCrd_AllAssignedClearsUnassigned(t *testing.T) {
+	numaInfo := newNumatopoInfoForTest([]nodeinfov1alpha1.PodAllocation{
+		{UID: "uid-1", Name: "p1", Namespace: "ns1"},
+	})
+	assigned := PodMeta{UID: "uid-1", Name: "p1", Namespace: "ns1"}
+	// Even though the pod is in UnassignedNumaPods, it has already been assigned by kubelet,
+	// so RefreshNumaSchedulerInfoByCrd must clear the pre-occupy map and NOT subtract the resource.
+	unassigned := map[PodMeta]ResNumaSets{assigned: {"cpu": cpuset.New(0, 1)}}
+
+	ni := buildNodeInfoWithNuma(numaInfo, unassigned)
+	ni.RefreshNumaSchedulerInfoByCrd()
+
+	if ni.UnassignedNumaPods != nil {
+		t.Errorf("expected UnassignedNumaPods to be cleared, got %+v", ni.UnassignedNumaPods)
+	}
+	got := ni.NumaSchedulerInfo.NumaResMap["cpu"].Allocatable
+	want := cpuset.New(0, 1, 2, 3)
+	if !got.Equals(want) {
+		t.Errorf("Allocatable should remain unchanged when all pods are assigned: got %v, want %v", got, want)
+	}
+}
+
+func TestRefreshNumaSchedulerInfoByCrd_UnassignedPodPreOccupiesResources(t *testing.T) {
+	numaInfo := newNumatopoInfoForTest([]nodeinfov1alpha1.PodAllocation{
+		{UID: "uid-1", Name: "p1", Namespace: "ns1"},
+	})
+	unassignedPod := PodMeta{UID: "uid-2", Name: "p2", Namespace: "ns1"}
+	// p2 is scheduled by volcano but not yet assigned NUMA resources by kubelet.
+	// Its allocation decision {cpu:[0,1]} must be subtracted to keep the scheduler cache accurate.
+	unassigned := map[PodMeta]ResNumaSets{unassignedPod: {"cpu": cpuset.New(0, 1)}}
+
+	ni := buildNodeInfoWithNuma(numaInfo, unassigned)
+	ni.RefreshNumaSchedulerInfoByCrd()
+
+	if ni.UnassignedNumaPods == nil {
+		t.Fatalf("expected UnassignedNumaPods to be preserved when pod is still unassigned")
+	}
+	if _, ok := ni.UnassignedNumaPods[unassignedPod]; !ok {
+		t.Errorf("expected entry for %v to remain in UnassignedNumaPods", unassignedPod)
+	}
+	got := ni.NumaSchedulerInfo.NumaResMap["cpu"].Allocatable
+	want := cpuset.New(2, 3)
+	if !got.Equals(want) {
+		t.Errorf("Allocatable should reflect pre-occupied subtract: got %v, want %v", got, want)
+	}
+}
+
+func TestRefreshNumaSchedulerInfoByCrd_MixedAssignedAndUnassigned(t *testing.T) {
+	numaInfo := newNumatopoInfoForTest([]nodeinfov1alpha1.PodAllocation{
+		{UID: "uid-1", Name: "p1", Namespace: "ns1"},
+	})
+	// p1 already assigned by kubelet. p2 not yet.
+	// Per commit message: as long as ANY entry is still unassigned, the entire
+	// UnassignedNumaPods map is preserved (including already-assigned pods) and
+	// ALL its entries pre-occupy resources. This conservative policy prevents
+	// volcano from losing allocation info and dispatching a pod that kubelet
+	// rejects with TopologyAffinityError.
+	assignedPod := PodMeta{UID: "uid-1", Name: "p1", Namespace: "ns1"}
+	unassignedPod := PodMeta{UID: "uid-2", Name: "p2", Namespace: "ns1"}
+	unassigned := map[PodMeta]ResNumaSets{
+		assignedPod:   {"cpu": cpuset.New(3)},
+		unassignedPod: {"cpu": cpuset.New(0, 1)},
+	}
+
+	ni := buildNodeInfoWithNuma(numaInfo, unassigned)
+	ni.RefreshNumaSchedulerInfoByCrd()
+
+	if ni.UnassignedNumaPods == nil {
+		t.Fatalf("expected UnassignedNumaPods to be preserved when any pod is still unassigned")
+	}
+	if len(ni.UnassignedNumaPods) != 2 {
+		t.Errorf("expected both entries to remain, got %v", ni.UnassignedNumaPods)
+	}
+	if _, ok := ni.UnassignedNumaPods[unassignedPod]; !ok {
+		t.Errorf("expected %v to remain in UnassignedNumaPods", unassignedPod)
+	}
+	if _, ok := ni.UnassignedNumaPods[assignedPod]; !ok {
+		t.Errorf("expected %v to also remain in UnassignedNumaPods (conservative policy)", assignedPod)
+	}
+	got := ni.NumaSchedulerInfo.NumaResMap["cpu"].Allocatable
+	// Original {0,1,2,3} - p1's decision {3} - p2's decision {0,1} = {2}.
+	// Both entries' decisions are subtracted because the conservative policy
+	// keeps them all pre-occupied until every pod has been assigned.
+	want := cpuset.New(2)
+	if !got.Equals(want) {
+		t.Errorf("Allocatable with mixed assignment: got %v, want %v", got, want)
+	}
+}
+
+func TestNodeInfoClonePreservesUnassignedNumaPods(t *testing.T) {
+	numaInfo := newNumatopoInfoForTest([]nodeinfov1alpha1.PodAllocation{})
+	unassigned := map[PodMeta]ResNumaSets{
+		{UID: "uid-2", Name: "p2", Namespace: "ns1"}: {"cpu": cpuset.New(0, 1)},
+	}
+	ni := buildNodeInfoWithNuma(numaInfo, unassigned)
+	ni.NumaSchedulerInfo = numaInfo.DeepCopy()
+
+	clone := ni.Clone()
+
+	if clone.UnassignedNumaPods == nil {
+		t.Fatalf("Clone did not preserve UnassignedNumaPods")
+	}
+	got, ok := clone.UnassignedNumaPods[PodMeta{UID: "uid-2", Name: "p2", Namespace: "ns1"}]
+	if !ok {
+		t.Fatalf("Clone lost the unassigned pod entry")
+	}
+	if !got["cpu"].Equals(cpuset.New(0, 1)) {
+		t.Errorf("Cloned CPUSet mismatch: got %v", got["cpu"])
+	}
+
+	// Mutating the clone must not affect the original.
+	clone.UnassignedNumaPods[PodMeta{UID: "uid-2", Name: "p2", Namespace: "ns1"}] = ResNumaSets{"cpu": cpuset.New(9)}
+	if !ni.UnassignedNumaPods[PodMeta{UID: "uid-2", Name: "p2", Namespace: "ns1"}]["cpu"].Equals(cpuset.New(0, 1)) {
+		t.Errorf("Clone mutation leaked back into original: %v", ni.UnassignedNumaPods)
 	}
 }

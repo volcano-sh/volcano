@@ -145,6 +145,7 @@ const (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:path=podgroups,shortName=pg;podgroup-v1beta1
+// +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 // +kubebuilder:printcolumn:name="STATUS",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="minMember",type=integer,JSONPath=`.spec.minMember`
 // +kubebuilder:printcolumn:name="RUNNINGS",type=integer,JSONPath=`.status.running`
@@ -347,6 +348,7 @@ const (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:path=queues,scope=Cluster,shortName=q;queue-v1beta1
+// +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="PARENT",type=string,JSONPath=`.spec.parent`
 

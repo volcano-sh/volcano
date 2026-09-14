@@ -109,10 +109,10 @@ the more idle resources on the nodes,the priority is higher. and the weight is 0
 * n     :  the nums of the combination nodes.
 * idle  :  the sum idle of resources on the nodes.
 
-* We hope the value of (sum-target) is as less as possible to avoid wasting of the cluster resources. and this should have the hightest weight. 
-* We condider the element 'used' will effect the locking nodes's efficiency and stable. 
-* When the above two conditions's score are almost close. we preffer the The least number of combination nodes as the best choice,cause the fewer nodes
-lokced,The smaller the impact on the cluster.
+* We hope the value of (sum-target) is as less as possible to avoid wasting of the cluster resources. and this should have the highest weight.
+* We consider that the 'used' element will affect the efficiency and stability of the locked nodes.
+* When the above two conditions's score are almost close. we prefer the The least number of combination nodes as the best choice, because the fewer nodes
+locked, the smaller the impact on the cluster.
 * The least important condition is the idle of the nodes,the more idle the nodes are, the more efficient it is to lock on.
 ```
 0.4*1/(sum-target)/[(sum-target)+used+n+idle] + 0.35*used/[(sum-target)+used+n+idle] + 0.15*1/n/[(sum-target)+used+n+idle] + 0.1*idle/[(sum-target)+used+n+idle]
@@ -122,7 +122,7 @@ lokced,The smaller the impact on the cluster.
 * schedule relock
 
 for every 5s or 10s. the worker in the  queueController  will find the best combination nodes for a queue.
-and update the queue's locked nodes,and caculate the idle resources on the locked nodes.
+and update the queue's locked nodes,and calculate the idle resources on the locked nodes.
 
 
 ## Implementation

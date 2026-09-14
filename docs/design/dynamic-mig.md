@@ -106,7 +106,7 @@ data:
 
 ## Examples
 
-Dynamic mig is compatable with volcano-vgpu tasks, as the example below: 
+Dynamic mig is compatible with volcano-vgpu tasks, as the example below:
 Just Setting `volcano.sh/vgpu-number` and `volcano.sh/vgpu-memory`.
 
 ```yaml
@@ -151,7 +151,7 @@ The Procedure of a vGPU task which uses dynamic-mig is shown below:
 
 <img src="./images/volcano-dynamic-mig-procedure.png" width = "800" /> 
 
-Note that after submited a task, deviceshare plugin will iterate over templates defined in configMap `volcano-device-share`, and find the first available template to fit. You can always change the content of that configMap, and restart vc-scheduler to customize.
+Note that after submitted a task, deviceshare plugin will iterate over templates defined in configMap `volcano-device-share`, and find the first available template to fit. You can always change the content of that configMap, and restart vc-scheduler to customize.
 
 If you submit the example above(a pod requests 2 * 8G GPUs) to a cluster, which has an empty A100-PCIE-40GB node, then it will follow the procedure below:
 
@@ -159,7 +159,7 @@ If you submit the example above(a pod requests 2 * 8G GPUs) to a cluster, which 
 
 The walkthrough will be shown in bold line
 
-As the figure shows, after the procedure, it will adopt geometry 'group2' to that GPU with the definiation below:
+As the figure shows, after the procedure, it will adopt geometry 'group2' to that GPU with the definition below:
 
 ```yaml
 group2:

@@ -27,6 +27,44 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
+func TestStatementHasEvictions(t *testing.T) {
+	task := &api.TaskInfo{Name: "task"}
+
+	tests := []struct {
+		name       string
+		operations []operation
+		want       bool
+	}{
+		{
+			name: "empty statement",
+		},
+		{
+			name: "statement without eviction",
+			operations: []operation{
+				{name: Pipeline, task: task},
+				{name: Allocate, task: task},
+			},
+		},
+		{
+			name: "statement with eviction",
+			operations: []operation{
+				{name: Pipeline, task: task},
+				{name: Evict, task: task, reason: "preempt"},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stmt := &Statement{operations: tt.operations}
+			if got := stmt.HasEvictions(); got != tt.want {
+				t.Fatalf("HasEvictions() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStatementMerge(t *testing.T) {
 	makeTask := func(name string) *api.TaskInfo {
 		return &api.TaskInfo{

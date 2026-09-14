@@ -273,7 +273,7 @@ func checkDRAAllocatable(dra *draQuotaAttr, taskDRA map[string]*api.DRAResource,
 		klog.V(5).Infof("checkDRAAllocatable: deviceClass=%s, allocated=%d, inqueue=%d, request=%d, capability=%d",
 			deviceClass, allocatedCount, inqueueCount, request.Count, capability.Count)
 
-		if capability.Count > 0 && allocatedCount+inqueueCount+request.Count > capability.Count {
+		if capability.Count > 0 && api.SaturatingAdd(api.SaturatingAdd(allocatedCount, inqueueCount), request.Count) > capability.Count {
 			klog.V(3).Infof("checkDRAAllocatable: count exceeded for %s: allocated=%d, inqueue=%d, requested=%d, capability=%d",
 				deviceClass, allocatedCount, inqueueCount, request.Count, capability.Count)
 			return false

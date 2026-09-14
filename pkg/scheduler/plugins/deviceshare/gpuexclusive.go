@@ -24,6 +24,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
@@ -301,7 +302,7 @@ func (a *exclusiveGPUDevices) ScoreNode(pod *v1.Pod, policy string) float64 {
 	return a.inner.ScoreNode(pod, policy)
 }
 
-func (a *exclusiveGPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
+func (a *exclusiveGPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) (*devices.DeviceReservation, error) {
 	matched := matchingRules(pod, a.cfg.rules)
 	if len(matched) == 0 {
 		return a.inner.Allocate(kubeClient, pod)
@@ -309,16 +310,18 @@ func (a *exclusiveGPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.
 
 	reserved := a.reservedGPUsForPod(pod)
 	klog.V(4).Infof("gpuexclusive: Allocate pod=%s, matched=%v, reserved=%v, ruleGPUs=%v", pod.Name, matched, reserved, a.ruleGPUs)
+	var reservation *devices.DeviceReservation
+	var err error
 	if len(reserved) > 0 {
 		saved := a.capGPUs(reserved)
-		err := a.inner.Allocate(kubeClient, pod)
+		reservation, err = a.inner.Allocate(kubeClient, pod)
 		a.restoreGPUs(saved)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	} else {
-		if err := a.inner.Allocate(kubeClient, pod); err != nil {
-			return err
+		if reservation, err = a.inner.Allocate(kubeClient, pod); err != nil {
+			return nil, err
 		}
 	}
 
@@ -365,16 +368,16 @@ func (a *exclusiveGPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.
 
 	klog.V(4).Infof("gpuexclusive: allocated pod %s, newGPUs=%v, ruleGPUs=%v",
 		pk, newGPUs, a.ruleGPUs)
-	return nil
+	return reservation, nil
 }
 
-func (a *exclusiveGPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	err := a.inner.Release(kubeClient, pod)
+func (a *exclusiveGPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) (*devices.DeviceReservation, error) {
+	reservation, err := a.inner.Release(kubeClient, pod)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	a.untrackPod(pod)
-	return nil
+	return reservation, nil
 }
 
 func (a *exclusiveGPUDevices) GetIgnoredDevices() []string {

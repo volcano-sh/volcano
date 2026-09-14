@@ -27,7 +27,7 @@ import (
 	"k8s.io/klog/v2"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
-	"volcano.sh/volcano/pkg/scheduler/api"
+	hypernodeutil "volcano.sh/volcano/pkg/util/hypernode"
 )
 
 func (hn *hyperNodeController) addHyperNode(obj interface{}) {
@@ -126,7 +126,7 @@ func (hn *hyperNodeController) actualNodeCnt(hyperNode *topologyv1alpha1.HyperNo
 	}
 	members := sets.New[string]()
 	for _, member := range hyperNode.Spec.Members {
-		members.Insert(api.GetMembers(member.Selector, nodes).UnsortedList()...)
+		members.Insert(hypernodeutil.GetMembers(member.Selector, nodes).UnsortedList()...)
 	}
 	return len(members)
 }

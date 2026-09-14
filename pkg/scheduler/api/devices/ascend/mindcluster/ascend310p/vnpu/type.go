@@ -43,6 +43,11 @@ type NPUDevice struct {
 	// for Concurrent task. not same core request task only has one on a node in same time.
 	// nodeName: templateName:taskUID
 	ConCache map[string]map[types.UID]struct{} //types.UID equals to pod.UID
+
+	// PodAllocation records scheduler-owned chip assignment annotations for pods
+	// allocated in the current session. It lets Release roll back in-memory state
+	// without depending on Pod.Annotations being mutated before bind.
+	PodAllocation map[types.UID]string
 }
 
 type NodeInf struct {

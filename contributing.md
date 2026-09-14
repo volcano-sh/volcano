@@ -70,6 +70,29 @@ Issues should be filed under the appropriate Volcano sub-repository.
 
 Please follow the prompted submission guidelines while opening an issue.
 
+Every bug report must include evidence. State the affected version and
+configuration. Provide the evidence that matches the type of report:
+
+1. For a bug observed in a cluster, include the workload or configuration.
+   Include the relevant logs, events, or stack trace.
+2. For a race, panic, or deadlock, include a race report, panic stack, or
+   reproducer. A complete concurrent execution path is also acceptable.
+3. For a performance problem, include a profile or representative benchmark.
+   State the scale used for the test.
+4. For validation or hardening, explain why the input is valid or expected in
+   normal use. Describe the failure it causes. Malformed input or an artificial
+   call to an internal function is not enough if the system rejects it safely.
+
+If the report includes source code analysis, use permalinks that point to the
+exact commit. Do not replace these links with copied code blocks. If the problem
+has not been reproduced, state that clearly. Use the permalinks to explain the
+complete path from a user action or cluster event to the failure.
+
+A suggested fix is optional. A patch plan does not replace evidence. A unit test
+that calls an internal function does not prove that users can reach the bug.
+
+Maintainers may ask for missing information or evidence. They may close an issue that does not follow the issue template or these requirements. They may also close it if the requested information is not provided.
+
 # Contributor Workflow
 
 Please do not ever hesitate to ask a question or send a pull request.
@@ -94,15 +117,35 @@ The bot may also make some helpful suggestions for commands to run in your PR to
 These `/command` options can be entered in comments to trigger auto-labeling and notifications.
 Refer to its [command reference documentation](https://go.k8s.io/bot-commands).
 
+A bug-fix PR should link to an issue that meets the bug-reporting requirements. If there is no issue, follow the evidence requirements in [File an Issue](#file-an-issue). Include the affected version, the user path to the failure, and the relevant logs, events, stack trace, reproducer, profile, or benchmark. A patch or new test does not prove that the reported bug is valid.
+
+Maintainers may ask for missing information or changes. They may close a PR that does not follow the PR template or these contribution requirements. They may also close it if the author does not provide the requested information or cannot explain the change.
+
 ## AI Guidance
 
-Using AI tools to help write your PR is acceptable, but as the author, you are responsible for understanding every change. 
-Do not leave the first review of AI generated changes to the reviewers, verify the changes (code review, testing, etc.) before submitting your PR.
-Reviewers may ask questions about your AI-assisted code, and if you cannot explain why a change was made, the PR will be closed.
-When responding to review comments, please do so without relying on AI tools. Reviewers want to engage directly with you, not with generated responses.
-If you used AI tools in preparing your PR, please disclose this in the "Special notes for your reviewer" section.
-All contributions must follow the contributions policies and use commit messages that align with [the policy](#format-of-the-commit-message). 
-[Large AI generated](https://github.com/kubernetes/community/blob/master/contributors/guide/pull-requests.md#large-or-automatic-edits) PRs and AI generated commit messages are discouraged.
+Using AI tools to help prepare an issue or PR is acceptable. The author remains
+responsible for every claim and change.
+
+For an AI-assisted issue, verify the affected version, code references,
+production path, and supporting evidence before submission. AI output and
+static analysis are starting points. They do not prove that a bug exists. Bug
+reports must follow the requirements in [File an Issue](#file-an-issue).
+
+For an AI-assisted PR, review every change and run the appropriate tests before
+submission. Do not leave the first code review to the maintainers.
+
+Reviewers may ask you to explain the analysis or code. The issue or PR may be
+closed if you cannot support its claims or explain its changes. Opening a PR
+does not prove that the linked issue is valid.
+
+Do not rely on AI tools when responding to review comments. Reviewers want to
+engage with you directly, not with generated responses.
+
+Disclose the use of AI tools in the issue or in the PR's "Special notes for your
+reviewer" section. All contributions must follow the contribution policies and
+use commit messages that follow [the policy](#format-of-the-commit-message).
+[Large AI-generated PRs](https://github.com/kubernetes/community/blob/master/contributors/guide/pull-requests.md#large-or-automatic-edits)
+and AI-generated commit messages are discouraged.
 
 ## Code Review
 

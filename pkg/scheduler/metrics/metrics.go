@@ -35,6 +35,11 @@ const (
 	// OnSessionClose label
 	OnSessionClose = "OnSessionClose"
 
+	evictionActionPreempt     = "preempt"
+	evictionActionReclaim     = "reclaim"
+	evictionActionGangPreempt = "gangpreempt"
+	evictionActionGangReclaim = "gangreclaim"
+
 	// Task Scheduling Stages (used for taskSchedulingLatency)
 	TaskStageWatched  = "Watched"
 	TaskStageAssumed  = "Assumed"  // The time when a task is logically allocated to a node(in the memory but hasn't been bound yet)
@@ -163,6 +168,15 @@ var (
 		},
 	)
 
+	evictionTransactions = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "eviction_transactions_total",
+			Help:      "Total number of committed eviction transactions, by action",
+		},
+		[]string{"action"},
+	)
+
 	unscheduleTaskCount = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
@@ -252,6 +266,20 @@ func UpdatePreemptionVictimsCount(victimsCount int) {
 // RegisterPreemptionAttempts records number of attempts for preemtion
 func RegisterPreemptionAttempts() {
 	preemptionAttempts.Inc()
+}
+
+// RegisterEvictionTransaction records a committed scheduler transaction containing at least one eviction.
+// Unsupported actions are ignored to keep the action label cardinality bounded.
+func RegisterEvictionTransaction(action string) {
+	switch action {
+	case evictionActionPreempt,
+		evictionActionReclaim,
+		evictionActionGangPreempt,
+		evictionActionGangReclaim:
+	default:
+		return
+	}
+	evictionTransactions.WithLabelValues(action).Inc()
 }
 
 // UpdateUnscheduleTaskCount records total number of unscheduleable tasks

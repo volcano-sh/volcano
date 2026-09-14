@@ -100,6 +100,28 @@ metadata:
 
 ---
 
+### Selecting vGPU Devices by UUID
+
+Use `volcano.sh/vgpu-use-gpuuuid` as a comma-separated allowlist of physical GPU UUIDs:
+
+```yaml
+metadata:
+  annotations:
+    volcano.sh/vgpu-use-gpuuuid: "GPU-03f69c50-207a-2038-9b45-23cac89cb67d"
+```
+
+Use `volcano.sh/vgpu-nouse-gpuuuid` to exclude physical GPU UUIDs:
+
+```yaml
+metadata:
+  annotations:
+    volcano.sh/vgpu-nouse-gpuuuid: "GPU-03f69c50-207a-2038-9b45-23cac89cb67d"
+```
+
+UUIDs are matched exactly after trimming whitespace. If no permitted device can satisfy the request, the pod remains unschedulable. When the same UUID appears in both annotations, the denylist takes precedence.
+
+---
+
 ### HAMI-core Usage
 
 * **Pod Spec**:
@@ -242,4 +264,3 @@ Metrics include GPU utilization, pod memory usage, and limits.
 
 * File bugs: [Volcano Issues](https://github.com/volcano-sh/volcano/issues)
 * Contribute: [Pull Requests Guide](https://help.github.com/articles/using-pull-requests/)
-

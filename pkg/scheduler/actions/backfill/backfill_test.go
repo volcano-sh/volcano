@@ -17,6 +17,7 @@ limitations under the License.
 package backfill
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,6 +34,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
+	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -174,5 +176,64 @@ func TestPickUpPendingTasks(t *testing.T) {
 		if !assert.Equal(t, tc.expectedResult, actualResult) {
 			t.Errorf("unexpected test; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedResult, actualResult)
 		}
+	}
+}
+
+type batchNodeOrderErrPlugin struct{}
+
+func (p *batchNodeOrderErrPlugin) Name() string { return "batch-node-order-err" }
+
+func (p *batchNodeOrderErrPlugin) OnSessionOpen(ssn *framework.Session) {
+	ssn.AddBatchNodeOrderFn(p.Name(), func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+		return nil, errors.New("batch node order failed")
+	})
+}
+
+func (p *batchNodeOrderErrPlugin) OnSessionClose(ssn *framework.Session) {}
+
+// TestBackfillSkipsTaskWhenNoBestNode verifies that backfill skips a task
+// instead of panicking when node scoring fails and no best node is selected.
+func TestBackfillSkipsTaskWhenNoBestNode(t *testing.T) {
+	test := uthelper.TestCommonStruct{
+		Name: "scoring failure leaves task unscheduled without panic",
+		Plugins: map[string]framework.PluginBuilder{
+			"batch-node-order-err": func(arguments framework.Arguments) framework.Plugin {
+				return &batchNodeOrderErrPlugin{}
+			},
+		},
+		PodGroups: []*schedulingv1beta1.PodGroup{
+			util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1beta1.PodGroupInqueue),
+		},
+		Pods: []*v1.Pod{
+			util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("0", "0"), "pg1", make(map[string]string), make(map[string]string)),
+		},
+		Nodes: []*v1.Node{
+			util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			util.BuildNode("n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+		},
+		Queues: []*schedulingv1beta1.Queue{
+			util.BuildQueue("c1", 1, nil),
+		},
+		ExpectBindsNum: 0,
+		ExpectBindMap:  map[string]string{},
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:             "batch-node-order-err",
+					EnabledNodeOrder: &trueValue,
+				},
+			},
+		},
+	}
+
+	test.RegisterSession(tiers, nil)
+	defer test.Close()
+	test.Run([]framework.Action{New()})
+	if err := test.CheckBind(0); err != nil {
+		t.Fatal(err)
 	}
 }

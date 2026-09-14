@@ -8,7 +8,7 @@ on:
   push:
     branches:
       - master
-    tags:
+      - "e2e/**"
   pull_request:
 
 permissions: read-all
