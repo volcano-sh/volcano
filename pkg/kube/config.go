@@ -31,17 +31,12 @@ type ClientOptions struct {
 
 // BuildConfig builds kube rest config with the given options.
 func BuildConfig(opt ClientOptions) (*rest.Config, error) {
-	var cfg *rest.Config
-	var err error
-
-	master := opt.Master
-	kubeconfig := opt.KubeConfig
-	cfg, err = clientcmd.BuildConfigFromFlags(master, kubeconfig)
+	cfg, err := clientcmd.BuildConfigFromFlags(opt.Master, opt.KubeConfig)
 	if err != nil {
 		return nil, err
 	}
+
 	cfg.QPS = opt.QPS
 	cfg.Burst = opt.Burst
-
 	return cfg, nil
 }
