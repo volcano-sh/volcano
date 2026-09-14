@@ -829,6 +829,64 @@ func TestAllocateAddsNodeLockAscendWhenEnabled(t *testing.T) {
 	assert.NoError(t, parseErr, "lock annotation should be an RFC3339 timestamp")
 }
 
+func TestAscendDevicesSelectDevicesCheckUUID(t *testing.T) {
+	useKey := fmt.Sprintf("%s/use-%s-uuid", util.HAMiAnnotationsPrefix, "Ascend910")
+	noUseKey := fmt.Sprintf("%s/no-use-%s-uuid", util.HAMiAnnotationsPrefix, "Ascend910")
+	newAds := func() *AscendDevices {
+		dev := createTestAscendDevice("device-1", 100, 32000, 0, 0, 0, nil)
+		dev.useUUIDAnno = useKey
+		dev.noUseUUIDAnno = noUseKey
+		return createTestAscendDevices("node1", "Ascend910", map[string]*AscendDevice{
+			"device-1": dev,
+		})
+	}
+
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		wantErr     bool
+	}{
+		{
+			name:        "use uuid matches selected device",
+			annotations: map[string]string{useKey: "device-1"},
+			wantErr:     false,
+		},
+		{
+			name:        "use uuid does not match selected device",
+			annotations: map[string]string{useKey: "device-2"},
+			wantErr:     true,
+		},
+		{
+			name:        "no use uuid excludes selected device",
+			annotations: map[string]string{noUseKey: "device-1"},
+			wantErr:     true,
+		},
+		{
+			name:        "whitespace only use/no-use uuid does not filter device",
+			annotations: map[string]string{useKey: "   ", noUseKey: " "},
+			wantErr:     false,
+		},
+		{
+			name:        "uuid list with spaces still matches",
+			annotations: map[string]string{useKey: "  device-1 , device-2  "},
+			wantErr:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ads := newAds()
+			pod := createTestAscendSchedulingPod("select-device", "default", tt.annotations)
+
+			_, err := ads.selectDevices(pod, ads.Policy)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
 func createTestAscendDevices(nodeName, deviceType string, devices map[string]*AscendDevice) *AscendDevices {
 	return &AscendDevices{
 		NodeName: nodeName,
@@ -897,6 +955,16 @@ func createTestAscendAllocateDevice(id string) *AscendDevice {
 	}
 }
 
+func createTestAscendSchedulingPod(name, namespace string, annotations map[string]string) *v1.Pod {
+	pod := createTestPod(name, namespace, annotations)
+	pod.Spec.Containers[0].Resources = v1.ResourceRequirements{
+		Limits: v1.ResourceList{
+			v1.ResourceName("huawei.com/Ascend910"):       resource.MustParse("1"),
+			v1.ResourceName("huawei.com/Ascend910Memory"): resource.MustParse("1024"),
+		},
+	}
+	return pod
+}
 func createTestPod(name, namespace string, annotations map[string]string) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
