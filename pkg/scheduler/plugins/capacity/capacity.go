@@ -1092,12 +1092,11 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
 				attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
 			}
-			realCapability := api.ExceededPart(cp.totalResource, cp.totalGuarantee).Add(attr.guarantee)
+			realCapability := util.CalculateQueueRealCapability(cp.totalResource, cp.totalGuarantee, attr.capability, attr.guarantee)
 			if attr.capability == nil {
 				attr.capability = api.EmptyResource()
 				attr.realCapability = realCapability
 			} else {
-				realCapability.MinDimensionResource(attr.capability, api.Infinity)
 				attr.realCapability = realCapability
 			}
 			cp.queueOpts[job.Queue] = attr
@@ -1525,12 +1524,11 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 	}
 
 	for _, childAttr := range attr.children {
-		realCapability := api.ExceededPart(attr.realCapability, totalGuarantee).Add(childAttr.guarantee)
+		realCapability := util.CalculateQueueRealCapability(attr.realCapability, totalGuarantee, childAttr.capability, childAttr.guarantee)
 		if childAttr.capability == nil {
 			childAttr.capability = api.EmptyResource()
 			childAttr.realCapability = realCapability
 		} else {
-			realCapability.MinDimensionResource(childAttr.capability, api.Infinity)
 			childAttr.realCapability = realCapability
 		}
 	}

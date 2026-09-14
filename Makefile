@@ -215,6 +215,9 @@ e2e-test-schedulingaction: images
 e2e-test-schedulinggates: images
 	E2E_TYPE=SCHEDULINGGATES FEATURE_GATES="SchedulingGatesQueueAdmission=true" ./hack/run-e2e-kind.sh
 
+e2e-test-queue-overcommit: images
+	E2E_TYPE=QUEUEOVERC FEATURE_GATES="QueueScopedOvercommit=true" ./hack/run-e2e-kind.sh
+
 e2e-test-jobp: images
 	E2E_TYPE=JOBP ./hack/run-e2e-kind.sh
 

@@ -41,6 +41,18 @@ const (
 	Reject = -1
 )
 
+// CalculateQueueRealCapability returns the effective hard limit for a queue.
+// The calculation matches the Capacity plugin: reserve sibling guarantees from
+// the parent capacity, restore this queue's guarantee, then apply its explicit
+// capability when one is configured.
+func CalculateQueueRealCapability(parentCapability, totalGuarantee, capability, guarantee *api.Resource) *api.Resource {
+	realCapability := api.ExceededPart(parentCapability, totalGuarantee).Add(guarantee)
+	if capability != nil {
+		realCapability.MinDimensionResource(capability, api.Infinity)
+	}
+	return realCapability
+}
+
 // NormalizeScore normalizes the score for each filteredNode
 func NormalizeScore(maxPriority int64, reverse bool, scores []api.ScoredNode) {
 	var maxCount int64
