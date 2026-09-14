@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -227,4 +229,27 @@ func CreateTestServer(response interface{}) *httptest.Server {
 
 	server := httptest.NewServer(handler)
 	return server
+}
+
+// SupportsCustomResourceFieldSelectors checks if the Kubernetes cluster version
+// supports CustomResourceFieldSelectors feature gate (v1.31+).
+// Returns true if version >= v1.31, false otherwise.
+func SupportsCustomResourceFieldSelectors(clientset kubernetes.Interface) (bool, error) {
+	serverVersion, err := clientset.Discovery().ServerVersion()
+	if err != nil {
+		return false, fmt.Errorf("failed to get server version: %v", err)
+	}
+
+	major, err := strconv.Atoi(serverVersion.Major)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse major version: %v", err)
+	}
+
+	minor, err := strconv.Atoi(strings.TrimSuffix(serverVersion.Minor, "+"))
+	if err != nil {
+		return false, fmt.Errorf("failed to parse minor version: %v", err)
+	}
+
+	// CustomResourceFieldSelectors is enabled by default in v1.31+
+	return major > 1 || (major == 1 && minor >= 31), nil
 }
