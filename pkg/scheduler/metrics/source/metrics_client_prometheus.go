@@ -22,8 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/api"
@@ -82,34 +80,42 @@ func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName s
 	cpuQueryStr := fmt.Sprintf(`avg_over_time(clamp_min(100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle",instance="%s"}[5m])) * 100), 0)[%s:30s])`, nodeName, NODE_METRICS_PERIOD)
 	memQueryStr := fmt.Sprintf("100*avg_over_time(((1-node_memory_MemAvailable_bytes{instance=\"%s\"}/node_memory_MemTotal_bytes{instance=\"%s\"}))[%s:30s])", nodeName, nodeName, NODE_METRICS_PERIOD)
 
+	fetched := 0
 	for _, metric := range []string{cpuQueryStr, memQueryStr} {
 		res, warnings, err := v1api.Query(ctx, metric, time.Now())
 		if err != nil {
-			klog.Errorf("Error querying Prometheus: %v", err)
+			return nil, fmt.Errorf("querying prometheus for node %q: %w", nodeName, err)
 		}
 		if len(warnings) > 0 {
 			klog.V(3).Infof("Warning querying Prometheus: %v", warnings)
 		}
-		if res == nil || res.String() == "" {
+		if res == nil {
 			klog.Warningf("Warning querying Prometheus: no data found for %s", metric)
 			continue
 		}
-		// plugin.usage only need type pmodel.ValVector in Prometheus.rulues
 		if res.Type() != pmodel.ValVector {
+			klog.Warningf("Unexpected prometheus result type %v for node %q, query %s", res.Type(), nodeName, metric)
 			continue
 		}
-		// only method res.String() can get data, dataType []pmodel.ValVector, eg: "{k1:v1, ...} => #[value] @#[timespace]\n {k2:v2, ...} => ..."
-		firstRowValVector := strings.Split(res.String(), "\n")[0]
-		rowValues := strings.Split(strings.TrimSpace(firstRowValVector), "=>")
-		value := strings.Split(strings.TrimSpace(rowValues[1]), " ")
+		vector, ok := res.(pmodel.Vector)
+		if !ok {
+			return nil, fmt.Errorf("unexpected prometheus result type %T for node %q", res, nodeName)
+		}
+		if len(vector) == 0 {
+			klog.Warningf("Warning querying Prometheus: no data found for %s", metric)
+			continue
+		}
+		parsed := float64(vector[0].Value)
 		switch metric {
 		case cpuQueryStr:
-			cpuUsage, _ := strconv.ParseFloat(value[0], 64)
-			nodeMetrics.CPU = cpuUsage
+			nodeMetrics.CPU = parsed
 		case memQueryStr:
-			memUsage, _ := strconv.ParseFloat(value[0], 64)
-			nodeMetrics.Memory = memUsage
+			nodeMetrics.Memory = parsed
 		}
+		fetched++
+	}
+	if fetched == 0 {
+		return nil, fmt.Errorf("no metrics data returned from prometheus for node %q", nodeName)
 	}
 	nodeMetrics.MetricsTime = time.Now()
 	return nodeMetrics, nil
