@@ -122,6 +122,9 @@ basic:
   crd_version: ${crd_version}
 
 custom:
+  admission_replicas: 3
+  controller_replicas: 3
+  scheduler_replicas: 3
   scheduler_log_level: 5
   admission_tolerations:
     - key: "node-role.kubernetes.io/control-plane"
@@ -168,6 +171,9 @@ basic:
   crd_version: ${crd_version}
 
 custom:
+  admission_replicas: 3
+  controller_replicas: 3
+  scheduler_replicas: 3
   scheduler_log_level: 5
   admission_tolerations:
     - key: "node-role.kubernetes.io/control-plane"
@@ -366,6 +372,9 @@ basic:
   crd_version: ${crd_version}
 
 custom:
+  admission_replicas: 3
+  controller_replicas: 3
+  scheduler_replicas: 3
   scheduler_log_level: 5
   hypernode_controller_mode: ${HYPERNODE_CONTROLLER_MODE:-controller-manager}
   controller_enable: ${VOLCANO_CONTROLLER_ENABLE:-true}
