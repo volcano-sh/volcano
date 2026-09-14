@@ -32,6 +32,12 @@ import (
 )
 
 func makePod(labels map[string]string, annotations map[string]string, podScheduledTime time.Time) *v1.Pod {
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
 	annotations[v1beta1.KubeGroupNameAnnotationKey] = "test-group"
 	phase := v1.PodPending
 	conditions := []v1.PodCondition{}
@@ -60,104 +66,177 @@ func makePod(labels map[string]string, annotations map[string]string, podSchedul
 			},
 		},
 	}
-
 }
 
-func Test_CooldownTimePlugin_podPreemptStableTime(t *testing.T) {
-	type args struct {
-		pod *v1.Pod
+func openCDPSession(t *testing.T) *framework.Session {
+	t.Helper()
+
+	framework.RegisterPluginBuilder(PluginName, New)
+	t.Cleanup(framework.CleanupPluginBuilders)
+
+	enabled := true
+	schedulerCache := cache.NewDefaultMockSchedulerCache("volcano")
+
+	return framework.OpenSession(schedulerCache, []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledPreemptable: &enabled,
+					EnabledReclaimable: &enabled,
+				},
+			},
+		},
+	}, []conf.Configuration{
+		{
+			Name: "preempt",
+		},
+		{
+			Name: "reclaim",
+		},
+	})
+}
+
+func TestNew(t *testing.T) {
+	plugin := New(nil)
+	cdpPlugin, ok := plugin.(*CooldownProtectionPlugin)
+	if !ok {
+		t.Fatalf("expected plugin type %T, got %T", &CooldownProtectionPlugin{}, plugin)
 	}
-	plugin := &CooldownProtectionPlugin{}
+	if cdpPlugin.Name() != PluginName {
+		t.Fatalf("expected plugin name %q, got %q", PluginName, cdpPlugin.Name())
+	}
+}
+
+func TestPodCooldownTime(t *testing.T) {
 	tests := []struct {
 		name        string
-		sp          *CooldownProtectionPlugin
-		args        args
+		pod         *v1.Pod
 		wantEnabled bool
 		wantValue   time.Duration
 	}{
 		{
-			name: "normal",
-			sp:   plugin,
-			args: args{
-				pod: makePod(map[string]string{},
-					map[string]string{v1beta1.CooldownTime: "600s"},
-					time.Now().Add(time.Second*-100)),
-			},
+			name: "annotation cooldown is parsed",
+			pod: makePod(nil,
+				map[string]string{v1beta1.CooldownTime: "600s"},
+				time.Now().Add(-100*time.Second)),
 			wantEnabled: true,
-			wantValue:   time.Second * 600,
+			wantValue:   600 * time.Second,
 		},
 		{
-			name: "not-enabled",
-			sp:   plugin,
-			args: args{
-				pod: makePod(map[string]string{},
-					map[string]string{v1beta1.CooldownTime: "600abcde"},
-					time.Now().Add(time.Second*-100)),
-			},
+			name: "label cooldown is parsed",
+			pod: makePod(
+				map[string]string{v1beta1.CooldownTime: "300s"},
+				nil,
+				time.Now().Add(-100*time.Second)),
+			wantEnabled: true,
+			wantValue:   300 * time.Second,
+		},
+		{
+			name: "invalid cooldown is ignored",
+			pod: makePod(nil,
+				map[string]string{v1beta1.CooldownTime: "600abcde"},
+				time.Now().Add(-100*time.Second)),
+			wantEnabled: false,
+			wantValue:   0,
+		},
+		{
+			name:        "missing cooldown is disabled",
+			pod:         makePod(nil, nil, time.Now().Add(-100*time.Second)),
 			wantEnabled: false,
 			wantValue:   0,
 		},
 	}
+
+	plugin := &CooldownProtectionPlugin{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sp := &CooldownProtectionPlugin{}
-			gotValue, gotEnabled := sp.podCooldownTime(tt.args.pod)
+			gotValue, gotEnabled := plugin.podCooldownTime(tt.pod)
 			if gotEnabled != tt.wantEnabled {
-				t.Errorf("CooldownTimePlugin.podPreemptStableTime() gotEnabled = %v, want %v", gotEnabled, tt.wantEnabled)
+				t.Errorf("podCooldownTime() got enabled=%v, want %v", gotEnabled, tt.wantEnabled)
 			}
 			if gotValue != tt.wantValue {
-				t.Errorf("CooldownTimePlugin.podPreemptStableTime() gotValue = %v, want %v", gotValue, tt.wantValue)
+				t.Errorf("podCooldownTime() got value=%v, want %v", gotValue, tt.wantValue)
 			}
 		})
 	}
 }
 
-func TestPreemptableFn(t *testing.T) {
+func TestPreemptableAndReclaimable(t *testing.T) {
 	plugin := &CooldownProtectionPlugin{}
-	enabledPreemptable := true
-	pluginOption := conf.PluginOption{
-		Name:               PluginName,
-		EnabledPreemptable: &enabledPreemptable,
-	}
-	schedulerCache := cache.NewDefaultMockSchedulerCache("volcano")
-	ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+	now := time.Now()
+	taskCooldownNotExpired := api.NewTaskInfo(
+		makePod(
+			map[string]string{v1beta1.PodPreemptable: "true", v1beta1.CooldownTime: "10m"},
+			nil,
+			now.Add(-100*time.Second),
+		),
+	)
+	taskCooldownExpired := api.NewTaskInfo(
+		makePod(
+			map[string]string{v1beta1.PodPreemptable: "true"},
+			map[string]string{v1beta1.CooldownTime: "10m"},
+			now.Add(-800*time.Second),
+		),
+	)
+	taskNoCooldown := api.NewTaskInfo(
+		makePod(
+			map[string]string{v1beta1.PodPreemptable: "true"},
+			nil,
+			now.Add(-100*time.Second),
+		),
+	)
+
+	tests := []struct {
+		name          string
+		preemptees    []*api.TaskInfo
+		expectVictims []*api.TaskInfo
+	}{
 		{
-			Plugins: []conf.PluginOption{pluginOption},
+			name:          "cooldown not expired filters victim",
+			preemptees:    []*api.TaskInfo{taskCooldownNotExpired},
+			expectVictims: nil,
 		},
-	},
-		[]conf.Configuration{
-			{
-				Name: "preempt",
+		{
+			name:          "cooldown expired allows victim",
+			preemptees:    []*api.TaskInfo{taskCooldownExpired},
+			expectVictims: []*api.TaskInfo{taskCooldownExpired},
+		},
+		{
+			name:          "no cooldown uses default preemptable behavior",
+			preemptees:    []*api.TaskInfo{taskNoCooldown},
+			expectVictims: []*api.TaskInfo{taskNoCooldown},
+		},
+		{
+			name: "mixed victims keep only eligible tasks",
+			preemptees: []*api.TaskInfo{
+				taskCooldownNotExpired,
+				taskCooldownExpired,
+				taskNoCooldown,
+			},
+			expectVictims: []*api.TaskInfo{
+				taskCooldownExpired,
+				taskNoCooldown,
 			},
 		},
-	)
+	}
 
-	plugin.OnSessionOpen(ssn) // register preempt fn
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ssn := openCDPSession(t)
+			defer framework.CloseSession(ssn)
 
-	// prepare preemptor and preemptees
-	// task1: should be filtered
-	task1 := api.NewTaskInfo(
-		makePod(map[string]string{v1beta1.PodPreemptable: "true"},
-			map[string]string{v1beta1.CooldownTime: "600s"},
-			time.Now().Add(time.Second*-100)),
-	)
-	// task2: invalid label, not enabled
-	task2 := api.NewTaskInfo(
-		makePod(map[string]string{v1beta1.PodPreemptable: "true"},
-			map[string]string{v1beta1.CooldownTime: "600abcde"},
-			time.Now().Add(time.Second*-100)),
-	)
-	// task3: after stable time, can be preempted
-	task3 := api.NewTaskInfo(
-		makePod(map[string]string{v1beta1.PodPreemptable: "true"},
-			map[string]string{v1beta1.CooldownTime: "600s"},
-			time.Now().Add(time.Second*-800)),
-	)
-	preemptees := []*api.TaskInfo{task1, task2, task3}
-	victims := ssn.Preemptable(&api.TaskInfo{}, preemptees)
+			plugin.OnSessionOpen(ssn)
 
-	expectVictims := []*api.TaskInfo{task2, task3}
-	if !equality.Semantic.DeepEqual(victims, expectVictims) {
-		t.Errorf("stable preempt test not equal! expect victims %v, actual %v", expectVictims, victims)
+			preemptableVictims := ssn.Preemptable(&api.TaskInfo{}, tt.preemptees)
+			if !equality.Semantic.DeepEqual(preemptableVictims, tt.expectVictims) {
+				t.Errorf("Preemptable() got victims %v, want %v", preemptableVictims, tt.expectVictims)
+			}
+
+			reclaimableVictims := ssn.Reclaimable(&api.TaskInfo{}, tt.preemptees)
+			if !equality.Semantic.DeepEqual(reclaimableVictims, tt.expectVictims) {
+				t.Errorf("Reclaimable() got victims %v, want %v", reclaimableVictims, tt.expectVictims)
+			}
+		})
 	}
 }
