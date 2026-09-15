@@ -142,6 +142,7 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 		NodeShards:             make(map[string]*schedulingapi.NodeShardInfo),
 
 		NodeList:       []string{},
+		nodeListIndex:  make(map[string]int),
 		binderRegistry: NewBinderRegistry(),
 		resyncPeriod:   0,
 	}
