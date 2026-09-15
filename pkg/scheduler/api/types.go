@@ -252,7 +252,7 @@ func (s StatusSets) Message() string {
 	}
 	all := make([]string, 0, len(s))
 	for _, status := range s {
-		if status.Reason == "" {
+		if status == nil || status.Reason == "" {
 			continue
 		}
 		all = append(all, status.Reason)
@@ -267,7 +267,7 @@ func (s StatusSets) Reasons() []string {
 	}
 	all := make([]string, 0, len(s))
 	for _, status := range s {
-		if status.Reason == "" {
+		if status == nil || status.Reason == "" {
 			continue
 		}
 		all = append(all, status.Reason)
