@@ -309,7 +309,15 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			allocated := allocations[job.Queue]
 
-			if !allocated.LessEqual(attr.deserved, api.Zero) {
+			// A resource dimension attr.deserved has no entry for at all, such as one tracked
+			// entirely by a device plugin (volcano.sh/vgpu-memory-percentage from HAMi, for
+			// example), always reads as an "over deserved" violation here since deserved defaults
+			// to zero capacity for it. That would make a queue running any amount of an untracked
+			// resource look perpetually over its share on that dimension alone, regardless of its
+			// actual cpu/memory usage, so a shortfall confined to untracked dimensions doesn't
+			// count as a real violation.
+			ok, failing := allocated.LessEqualWithResourcesName(attr.deserved, api.Zero)
+			if !ok && !api.AllUntrackedByResource(failing, attr.deserved) {
 				allocated.Sub(reclaimee.Resreq)
 				victims = append(victims, reclaimee)
 			}
@@ -347,7 +355,14 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		futureUsed := attr.allocated.Clone().Add(totalReq)
-		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, totalReq)
+		// A shortfall confined to dimensions attr.deserved has no entry for at all, such as one
+		// tracked entirely by a device plugin, can never pass this arithmetic no matter how much
+		// room the device plugin's own predicate would allow, so it doesn't count as a real
+		// violation of the queue's share.
+		allocatable, resources := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, totalReq)
+		if !allocatable && api.AllUntrackedByResource(resources, attr.deserved) {
+			allocatable = true
+		}
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidates total request <%v>",
 				queue.Name, attr.deserved, attr.allocated, totalReq)
@@ -373,7 +388,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
-		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, candidate.Resreq)
+		// Same fallback as queueAllocatable above: a shortfall confined to dimensions
+		// attr.deserved has no entry for at all doesn't count as a real violation.
+		allocatable, resources := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, candidate.Resreq)
+		if !allocatable && api.AllUntrackedByResource(resources, attr.deserved) {
+			allocatable = true
+		}
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
