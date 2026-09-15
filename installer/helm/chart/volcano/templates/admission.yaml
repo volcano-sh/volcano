@@ -5,6 +5,7 @@
 {{ $admission_main_csc := or .Values.custom.admission_main_csc .Values.custom.default_csc }}
 {{ $admission_ns := or .Values.custom.admission_ns .Values.custom.default_ns }}
 {{ $scheduler_name := .Values.custom.scheduler_name }}
+{{ $default_queue := .Values.custom.default_queue }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -144,6 +145,9 @@ spec:
             - --webhook-service-name={{ .Release.Name }}-admission-service
             {{- if $scheduler_name }}
             - --scheduler-name={{- $scheduler_name }}
+            {{- end }}
+            {{- if $default_queue }}
+            - --default-queue={{- $default_queue }}
             {{- end }}
             {{- if .Values.custom.admission_feature_gates }}
             - --feature-gates={{ .Values.custom.admission_feature_gates }}

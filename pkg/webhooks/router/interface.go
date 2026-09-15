@@ -42,6 +42,7 @@ type AdmissionServiceConfig struct {
 	EnableQueueAllocatedPodsCheck bool
 	MaxQueueDepth                 int
 	EnableRootQueueProtection     bool
+	DefaultQueue                  string
 }
 
 type AdmissionService struct {

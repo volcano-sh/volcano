@@ -34,6 +34,7 @@ const (
 	defaultHealthzAddress       = ":11251"
 	defaultGracefulShutdownTime = time.Second * 30
 	defaultMaxQueueDepth        = 5
+	defaultQueue                = "default"
 )
 
 // Config admission-controller server config.
@@ -67,6 +68,8 @@ type Config struct {
 	MaxQueueDepth int
 	// EnableRootQueueProtection if true, root queue's resource attributes (capability, deserved, guarantee) cannot be modified
 	EnableRootQueueProtection bool
+	// DefaultQueue is the queue assigned to a Job/PodGroup that does not specify one. It defaults to "default" when empty.
+	DefaultQueue string
 }
 
 type DecryptFunc func(c *Config) error
@@ -103,6 +106,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&c.EnableQueueAllocatedPodsCheck, "enable-queue-allocated-pods-check", false, "If true, queue deletion will be rejected when the queue has allocated pods.")
 	fs.IntVar(&c.MaxQueueDepth, "max-queue-depth", defaultMaxQueueDepth, "The maximum depth of hierarchical queues.")
 	fs.BoolVar(&c.EnableRootQueueProtection, "enable-root-queue-protection", true, "If true, root queue's resource attributes (capability, deserved, guarantee) cannot be modified.")
+	fs.StringVar(&c.DefaultQueue, "default-queue", defaultQueue, "The default queue name assigned to a Job/PodGroup that does not specify one. Passing an empty value falls back to \"default\" to preserve backward-compatible behavior of always defaulting an unset queue.")
 }
 
 // CheckPortOrDie check valid port range.

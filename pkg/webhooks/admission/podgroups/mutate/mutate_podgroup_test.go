@@ -35,6 +35,7 @@ func Test_createPodGroupPatch(t *testing.T) {
 		name          string
 		podgroup      *schedulingv1beta1.PodGroup
 		nsAnnotations map[string]string
+		configDefault string
 		wantPatch     []patchOperation
 		wantErr       bool
 	}{
@@ -88,6 +89,44 @@ func Test_createPodGroupPatch(t *testing.T) {
 			wantPatch:     nil,
 			wantErr:       false,
 		},
+		{
+			name: "empty queue patched to configured default",
+			podgroup: &schedulingv1beta1.PodGroup{
+				Spec: schedulingv1beta1.PodGroupSpec{},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
+			},
+			nsAnnotations: nil,
+			configDefault: "team-a",
+			wantPatch: []patchOperation{
+				{
+					Op:    "add",
+					Path:  "/spec/queue",
+					Value: "team-a",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty queue patched to hardcoded default when no configured default",
+			podgroup: &schedulingv1beta1.PodGroup{
+				Spec: schedulingv1beta1.PodGroupSpec{},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
+			},
+			nsAnnotations: nil,
+			configDefault: "",
+			wantPatch: []patchOperation{
+				{
+					Op:    "add",
+					Path:  "/spec/queue",
+					Value: schedulingv1beta1.DefaultQueue,
+				},
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -108,7 +147,8 @@ func Test_createPodGroupPatch(t *testing.T) {
 			}
 
 			config = &router.AdmissionServiceConfig{
-				KubeClient: client,
+				KubeClient:   client,
+				DefaultQueue: tt.configDefault,
 			}
 
 			got, err := createPodGroupPatch(tt.podgroup)
