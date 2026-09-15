@@ -47,4 +47,7 @@ const (
 	// to which the job is allocated. This typically represents the lowest common ancestor
 	// HyperNode in the scheduling hierarchy.
 	JobAllocatedHyperNode = "volcano.sh/job-allocated-hypernode"
+
+	// JobInqueueTimeoutAnnotation is the annotation key to specify how long a job is permitted to stay in the Inqueue state
+	JobInqueueTimeoutAnnotation = "volcano.sh/inqueue-timeout"
 )

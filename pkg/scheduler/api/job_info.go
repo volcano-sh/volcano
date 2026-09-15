@@ -433,6 +433,7 @@ type JobInfo struct {
 	PodGroup          *PodGroup
 
 	ScheduleStartTimestamp metav1.Time
+	EnqueueTimestamp       metav1.Time
 
 	Preemptable bool
 
@@ -799,6 +800,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
+	ji.EnqueueTimestamp.DeepCopyInto(&info.EnqueueTimestamp)
 
 	for task, minAvailable := range ji.TaskMinAvailable {
 		info.TaskMinAvailable[task] = minAvailable
