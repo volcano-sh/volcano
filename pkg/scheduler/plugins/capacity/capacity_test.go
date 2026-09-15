@@ -2108,3 +2108,199 @@ func TestCheckDRAAllocatable_overflowRejected(t *testing.T) {
 		t.Fatalf("checkDRAAllocatable rejected a valid request (4 <= 8); want admitted")
 	}
 }
+
+func Test_capacityPlugin_IgnoreClusterResourceLimit(t *testing.T) {
+	nodeRes := func(gpus int64) corev1.ResourceList {
+		return api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: fmt.Sprintf("%d", gpus)}}...)
+	}
+	podRes := func(gpus int64) corev1.ResourceList {
+		return api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: fmt.Sprintf("%d", gpus)}}...)
+	}
+	jobMinRes := func(gpus int64) corev1.ResourceList {
+		return api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: fmt.Sprintf("%d", gpus)}}...)
+	}
+
+	// 4 nodes: total 31 GPUs (Node 1 has 7 GPUs due to device failure; Nodes 2, 3, 4 have 8 GPUs each)
+	n1 := util.BuildNode("n1", nodeRes(7), nil)
+	n2 := util.BuildNode("n2", nodeRes(8), nil)
+	n3 := util.BuildNode("n3", nodeRes(8), nil)
+	n4 := util.BuildNode("n4", nodeRes(8), nil)
+
+	// Existing running job: 2 pods requesting 8 GPUs each = 16 GPUs allocated in queue q1
+	p1 := util.BuildPod("ns1", "p1", "n1", corev1.PodRunning, podRes(8), "pg1", nil, nil)
+	p2 := util.BuildPod("ns1", "p2", "n2", corev1.PodRunning, podRes(8), "pg1", nil, nil)
+	pg1MinRes := jobMinRes(16)
+	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 2, nil, schedulingv1beta1.PodGroupRunning)
+	pg1.Spec.MinResources = &pg1MinRes
+
+	// New candidate job requesting 16 GPUs (2 pods x 8 GPUs)
+	p3 := util.BuildPod("ns1", "p3", "", corev1.PodPending, podRes(8), "pg2", nil, nil)
+	p4 := util.BuildPod("ns1", "p4", "", corev1.PodPending, podRes(8), "pg2", nil, nil)
+	pg2MinRes := jobMinRes(16)
+	pg2 := util.BuildPodGroup("pg2", "ns1", "q1", 2, nil, schedulingv1beta1.PodGroupPending)
+	pg2.Spec.MinResources = &pg2MinRes
+
+	// Queue configured with capability of 32 GPUs
+	queueCap := api.BuildResourceList("16", "32Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "32"}}...)
+	queue1 := util.BuildQueueWithResourcesQuantity("q1", nil, queueCap)
+
+	trueValue := true
+
+	tests := []struct {
+		name         string
+		args         framework.Arguments
+		expectStatus scheduling.PodGroupPhase
+	}{
+		{
+			name:         "Default (ignoreClusterResourceLimit=false): job rejected because realCapability=31 < 16+16",
+			args:         framework.Arguments{},
+			expectStatus: scheduling.PodGroupPending,
+		},
+		{
+			name: "Opt-in (capacity.IgnoreClusterResourceLimit=true): job enqueued because realCapability=32 >= 16+16",
+			args: framework.Arguments{
+				IgnoreClusterResourceLimit: true,
+			},
+			expectStatus: scheduling.PodGroupInqueue,
+		},
+		{
+			name: "Opt-in (ignoreClusterResourceLimit=true alias): job enqueued because realCapability=32 >= 16+16",
+			args: framework.Arguments{
+				"ignoreClusterResourceLimit": true,
+			},
+			expectStatus: scheduling.PodGroupInqueue,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pg1Clone := pg1.DeepCopy()
+			pg2Clone := pg2.DeepCopy()
+			p1Clone := p1.DeepCopy()
+			p2Clone := p2.DeepCopy()
+			p3Clone := p3.DeepCopy()
+			p4Clone := p4.DeepCopy()
+
+			tiers := []conf.Tier{
+				{
+					Plugins: []conf.PluginOption{
+						{
+							Name:               PluginName,
+							EnabledAllocatable: &trueValue,
+							EnabledJobEnqueued: &trueValue,
+							Arguments:          tt.args,
+						},
+					},
+				},
+			}
+
+			test := uthelper.TestCommonStruct{
+				Name:      tt.name,
+				Plugins:   map[string]framework.PluginBuilder{PluginName: New},
+				Pods:      []*corev1.Pod{p1Clone, p2Clone, p3Clone, p4Clone},
+				Nodes:     []*corev1.Node{n1, n2, n3, n4},
+				PodGroups: []*schedulingv1beta1.PodGroup{pg1Clone, pg2Clone},
+				Queues:    []*schedulingv1beta1.Queue{queue1},
+				ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+					"ns1/pg2": tt.expectStatus,
+				},
+			}
+
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run([]framework.Action{enqueue.New()})
+			if err := test.CheckAll(0); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func Test_capacityPlugin_IgnoreClusterResourceLimit_CPUAndMemory(t *testing.T) {
+	// 4 nodes: total 28 CPU and 56Gi Memory (Node 1 has 4 CPU / 8Gi; Nodes 2, 3, 4 have 8 CPU / 16Gi each)
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi"), nil)
+	n2 := util.BuildNode("n2", api.BuildResourceList("8", "16Gi"), nil)
+	n3 := util.BuildNode("n3", api.BuildResourceList("8", "16Gi"), nil)
+	n4 := util.BuildNode("n4", api.BuildResourceList("8", "16Gi"), nil)
+
+	// Existing running job: 2 pods requesting 8 CPU / 16Gi each = 16 CPU / 32Gi allocated in queue q1
+	p1 := util.BuildPod("ns1", "p1", "n1", corev1.PodRunning, api.BuildResourceList("8", "16Gi"), "pg1", nil, nil)
+	p2 := util.BuildPod("ns1", "p2", "n2", corev1.PodRunning, api.BuildResourceList("8", "16Gi"), "pg1", nil, nil)
+	pg1MinRes := api.BuildResourceList("16", "32Gi")
+	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 2, nil, schedulingv1beta1.PodGroupRunning)
+	pg1.Spec.MinResources = &pg1MinRes
+
+	// New candidate job requesting 16 CPU / 32Gi (2 pods x 8 CPU / 16Gi)
+	p3 := util.BuildPod("ns1", "p3", "", corev1.PodPending, api.BuildResourceList("8", "16Gi"), "pg2", nil, nil)
+	p4 := util.BuildPod("ns1", "p4", "", corev1.PodPending, api.BuildResourceList("8", "16Gi"), "pg2", nil, nil)
+	pg2MinRes := api.BuildResourceList("16", "32Gi")
+	pg2 := util.BuildPodGroup("pg2", "ns1", "q1", 2, nil, schedulingv1beta1.PodGroupPending)
+	pg2.Spec.MinResources = &pg2MinRes
+
+	// Queue configured with capability of 32 CPU and 64Gi Memory
+	queue1 := util.BuildQueueWithResourcesQuantity("q1", nil, api.BuildResourceList("32", "64Gi"))
+
+	trueValue := true
+
+	tests := []struct {
+		name         string
+		args         framework.Arguments
+		expectStatus scheduling.PodGroupPhase
+	}{
+		{
+			name:         "Default (ignoreClusterResourceLimit=false): job rejected because realCapability=28CPU < 16+16",
+			args:         framework.Arguments{},
+			expectStatus: scheduling.PodGroupPending,
+		},
+		{
+			name: "Opt-in (capacity.IgnoreClusterResourceLimit=true): job enqueued because realCapability=32CPU >= 16+16",
+			args: framework.Arguments{
+				IgnoreClusterResourceLimit: true,
+			},
+			expectStatus: scheduling.PodGroupInqueue,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pg1Clone := pg1.DeepCopy()
+			pg2Clone := pg2.DeepCopy()
+			p1Clone := p1.DeepCopy()
+			p2Clone := p2.DeepCopy()
+			p3Clone := p3.DeepCopy()
+			p4Clone := p4.DeepCopy()
+
+			tiers := []conf.Tier{
+				{
+					Plugins: []conf.PluginOption{
+						{
+							Name:               PluginName,
+							EnabledAllocatable: &trueValue,
+							EnabledJobEnqueued: &trueValue,
+							Arguments:          tt.args,
+						},
+					},
+				},
+			}
+
+			test := uthelper.TestCommonStruct{
+				Name:      tt.name,
+				Plugins:   map[string]framework.PluginBuilder{PluginName: New},
+				Pods:      []*corev1.Pod{p1Clone, p2Clone, p3Clone, p4Clone},
+				Nodes:     []*corev1.Node{n1, n2, n3, n4},
+				PodGroups: []*schedulingv1beta1.PodGroup{pg1Clone, pg2Clone},
+				Queues:    []*schedulingv1beta1.Queue{queue1},
+				ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+					"ns1/pg2": tt.expectStatus,
+				},
+			}
+
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run([]framework.Action{enqueue.New()})
+			if err := test.CheckAll(0); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

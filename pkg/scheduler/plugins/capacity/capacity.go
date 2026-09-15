@@ -54,6 +54,9 @@ const (
 	// DRAConsumableCapacityEnable is the key for enabling DRA consumable capacity quota in the capacity plugin
 	DRAConsumableCapacityEnable = "capacity.DRAConsumableCapacityEnable"
 
+	// IgnoreClusterResourceLimit is the key for skipping reducing queue's realCapability by cluster total resource in capacity plugin
+	IgnoreClusterResourceLimit = "capacity.IgnoreClusterResourceLimit"
+
 	DeviceClassCountPrefix = "deviceclass/"
 	DeviceClassCapacitySep = ".deviceclass/"
 )
@@ -76,6 +79,8 @@ type capacityPlugin struct {
 	dynamicResourceAllocationEnable bool
 	// draConsumableCapacityEnable controls whether Capacity dimensions inside DRA are enforced
 	draConsumableCapacityEnable bool
+	// ignoreClusterResourceLimit controls whether queue realCapability is limited by cluster total resource
+	ignoreClusterResourceLimit bool
 }
 
 type queueAttr struct {
@@ -414,9 +419,20 @@ func New(arguments framework.Arguments) framework.Plugin {
 	// Default to k8s feature gate values, allow override via plugin arguments
 	dynamicResourceAllocationEnable := utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation)
 	draConsumableCapacityEnable := utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRAConsumableCapacity)
+	ignoreClusterResourceLimit := false
 
 	arguments.GetBool(&dynamicResourceAllocationEnable, DynamicResourceAllocationEnable)
 	arguments.GetBool(&draConsumableCapacityEnable, DRAConsumableCapacityEnable)
+	arguments.GetBool(&ignoreClusterResourceLimit, IgnoreClusterResourceLimit)
+	if !ignoreClusterResourceLimit {
+		arguments.GetBool(&ignoreClusterResourceLimit, "ignoreClusterResourceLimit")
+	}
+	if !ignoreClusterResourceLimit {
+		arguments.GetBool(&ignoreClusterResourceLimit, "capacity.StrictCapability")
+	}
+	if !ignoreClusterResourceLimit {
+		arguments.GetBool(&ignoreClusterResourceLimit, "strictCapability")
+	}
 
 	return &capacityPlugin{
 		totalResource:                   api.EmptyResource(),
@@ -427,6 +443,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 		queueGateReservedTasks:          make(map[api.QueueID]map[api.TaskID]*api.TaskInfo),
 		dynamicResourceAllocationEnable: dynamicResourceAllocationEnable,
 		draConsumableCapacityEnable:     draConsumableCapacityEnable,
+		ignoreClusterResourceLimit:      ignoreClusterResourceLimit,
 	}
 }
 
@@ -1014,6 +1031,20 @@ func (cp *capacityPlugin) parseArguments() {
 
 	cp.ancestorReclaimLevel = ancestorReclaimLevel
 	klog.V(4).Infof("[capacity] reclaim ancestor level configured as %d", cp.ancestorReclaimLevel)
+
+	ignoreClusterResourceLimit := false
+	cp.pluginArguments.GetBool(&ignoreClusterResourceLimit, IgnoreClusterResourceLimit)
+	if !ignoreClusterResourceLimit {
+		cp.pluginArguments.GetBool(&ignoreClusterResourceLimit, "ignoreClusterResourceLimit")
+	}
+	if !ignoreClusterResourceLimit {
+		cp.pluginArguments.GetBool(&ignoreClusterResourceLimit, "capacity.StrictCapability")
+	}
+	if !ignoreClusterResourceLimit {
+		cp.pluginArguments.GetBool(&ignoreClusterResourceLimit, "strictCapability")
+	}
+	cp.ignoreClusterResourceLimit = ignoreClusterResourceLimit
+	klog.V(4).Infof("[capacity] ignore cluster resource limit configured as %v", cp.ignoreClusterResourceLimit)
 }
 
 func (cp *capacityPlugin) getReclaimeeAncestorToCheck(reclaimerAttr, reclaimeeAttr *queueAttr, level int) (*queueAttr, bool) {
@@ -1097,8 +1128,12 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 				attr.capability = api.EmptyResource()
 				attr.realCapability = realCapability
 			} else {
-				realCapability.MinDimensionResource(attr.capability, api.Infinity)
-				attr.realCapability = realCapability
+				if cp.ignoreClusterResourceLimit {
+					attr.realCapability = attr.capability.Clone()
+				} else {
+					realCapability.MinDimensionResource(attr.capability, api.Infinity)
+					attr.realCapability = realCapability
+				}
 			}
 			cp.queueOpts[job.Queue] = attr
 			klog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
@@ -1190,7 +1225,11 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		realCapacity := api.ExceededPart(cp.totalResource, cp.totalGuarantee).Add(guarantee)
 		if len(queue.Queue.Spec.Capability) > 0 {
 			capacity := api.NewResource(queue.Queue.Spec.Capability)
-			realCapacity.MinDimensionResource(capacity, api.Infinity)
+			if cp.ignoreClusterResourceLimit {
+				realCapacity = capacity
+			} else {
+				realCapacity.MinDimensionResource(capacity, api.Infinity)
+			}
 			metrics.UpdateQueueCapacity(queueInfo.Name, capacity.MilliCPU, capacity.Memory, capacity.ScalarResources)
 		}
 		metrics.UpdateQueueRealCapacity(queueInfo.Name, realCapacity.MilliCPU, realCapacity.Memory, realCapacity.ScalarResources)
@@ -1530,8 +1569,12 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 			childAttr.capability = api.EmptyResource()
 			childAttr.realCapability = realCapability
 		} else {
-			realCapability.MinDimensionResource(childAttr.capability, api.Infinity)
-			childAttr.realCapability = realCapability
+			if cp.ignoreClusterResourceLimit {
+				childAttr.realCapability = childAttr.capability.Clone()
+			} else {
+				realCapability.MinDimensionResource(childAttr.capability, api.Infinity)
+				childAttr.realCapability = realCapability
+			}
 		}
 	}
 
