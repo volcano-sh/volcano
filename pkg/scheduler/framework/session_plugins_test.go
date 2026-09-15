@@ -315,3 +315,106 @@ func TestHyperNodeGradientForJobFn_NoPluginKeepsCurrentFallback(t *testing.T) {
 	result := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
 	assert.Equal(t, [][]*api.HyperNodeInfo{{root}}, result)
 }
+
+func TestUnifiedEvictable_EmptyIntersectionTerminatesTier(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	taskB := &api.TaskInfo{UID: "b"}
+	candidates := []*api.TaskInfo{taskA, taskB}
+	ctx := &api.EvictionContext{Kind: api.EvictionKindGangReclaim}
+
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{
+				Plugins: []conf.PluginOption{
+					{Name: "filterA"},
+					{Name: "filterB"},
+					{Name: "permitAll"},
+				},
+			},
+		},
+		unifiedEvictableFns: map[string]api.UnifiedEvictableFn{},
+	}
+
+	ssn.AddUnifiedEvictableFn("filterA", func(_ *api.EvictionContext, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	ssn.AddUnifiedEvictableFn("filterB", func(_ *api.EvictionContext, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskB}, 1 // disjoint from filterA => empty intersection
+	})
+	ssn.AddUnifiedEvictableFn("permitAll", func(_ *api.EvictionContext, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return c, 1
+	})
+
+	// filterA and filterB agree on nothing, so the tier must terminate empty
+	// instead of letting permitAll refill victims from its own raw result.
+	result := ssn.UnifiedEvictable(ctx, candidates)
+	assert.Empty(t, result)
+}
+
+func TestPreemptable_EmptyIntersectionTerminatesTier(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	taskB := &api.TaskInfo{UID: "b"}
+	preemptor := &api.TaskInfo{UID: "p"}
+	preemptees := []*api.TaskInfo{taskA, taskB}
+	on := true
+
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{
+				Plugins: []conf.PluginOption{
+					{Name: "filterA", EnabledPreemptable: &on},
+					{Name: "filterB", EnabledPreemptable: &on},
+					{Name: "permitAll", EnabledPreemptable: &on},
+				},
+			},
+		},
+		preemptableFns: map[string]api.EvictableFn{},
+	}
+
+	ssn.AddPreemptableFn("filterA", func(_ *api.TaskInfo, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	ssn.AddPreemptableFn("filterB", func(_ *api.TaskInfo, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskB}, 1 // disjoint from filterA => empty intersection
+	})
+	ssn.AddPreemptableFn("permitAll", func(_ *api.TaskInfo, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return c, 1
+	})
+
+	result := ssn.Preemptable(preemptor, preemptees)
+	assert.Empty(t, result)
+}
+
+func TestReclaimable_EmptyIntersectionTerminatesTier(t *testing.T) {
+	taskA := &api.TaskInfo{UID: "a"}
+	taskB := &api.TaskInfo{UID: "b"}
+	reclaimer := &api.TaskInfo{UID: "r"}
+	reclaimees := []*api.TaskInfo{taskA, taskB}
+	on := true
+
+	ssn := &Session{
+		Tiers: []conf.Tier{
+			{
+				Plugins: []conf.PluginOption{
+					{Name: "filterA", EnabledReclaimable: &on},
+					{Name: "filterB", EnabledReclaimable: &on},
+					{Name: "permitAll", EnabledReclaimable: &on},
+				},
+			},
+		},
+		reclaimableFns: map[string]api.EvictableFn{},
+	}
+
+	ssn.AddReclaimableFn("filterA", func(_ *api.TaskInfo, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskA}, 1
+	})
+	ssn.AddReclaimableFn("filterB", func(_ *api.TaskInfo, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return []*api.TaskInfo{taskB}, 1 // disjoint from filterA => empty intersection
+	})
+	ssn.AddReclaimableFn("permitAll", func(_ *api.TaskInfo, c []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return c, 1
+	})
+
+	result := ssn.Reclaimable(reclaimer, reclaimees)
+	assert.Empty(t, result)
+}
