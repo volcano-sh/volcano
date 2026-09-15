@@ -80,6 +80,14 @@ func (pg *pgcontroller) addReplicaSet(obj interface{}) {
 
 	if *rs.Spec.Replicas == 0 {
 		pgName := batchv1alpha1.PodgroupNamePrefix + string(rs.UID)
+		// Re-check the current ReplicaSet before deleting: a stale
+		// replicas=0 event queued behind a rapid scale-up must not delete
+		// the PodGroup that was just recreated for the current replicas.
+		if !pg.replicaSetStillScaledToZero(rs) {
+			klog.V(4).Infof("ReplicaSet %s/%s is no longer scaled to zero, skip deleting podgroup %s",
+				rs.Namespace, rs.Name, pgName)
+			return
+		}
 		klog.V(4).Infof("Delete podgroup %s for replicaset %s/%s spec.replicas == 0",
 			pgName, rs.Namespace, rs.Name)
 		err := pg.vcClient.SchedulingV1beta1().PodGroups(rs.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{})
@@ -133,6 +141,14 @@ func (pg *pgcontroller) addStatefulSet(obj interface{}) {
 
 	if *sts.Spec.Replicas == 0 {
 		pgName := batchv1alpha1.PodgroupNamePrefix + string(sts.UID)
+		// Re-check the current StatefulSet before deleting: a stale
+		// replicas=0 event queued behind a rapid scale-up must not delete
+		// the PodGroup that was just recreated for the current replicas.
+		if !pg.statefulSetStillScaledToZero(sts) {
+			klog.V(4).Infof("StatefulSet %s/%s is no longer scaled to zero, skip deleting podgroup %s",
+				sts.Namespace, sts.Name, pgName)
+			return
+		}
 		err := pg.vcClient.SchedulingV1beta1().PodGroups(sts.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{})
 		if err != nil && !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to delete PodGroup <%s/%s>: %v", sts.Namespace, pgName, err)
@@ -184,6 +200,64 @@ func (pg *pgcontroller) addStatefulSet(obj interface{}) {
 
 func (pg *pgcontroller) updateStatefulSet(oldObj, newObj interface{}) {
 	pg.addStatefulSet(newObj)
+}
+
+// replicaSetStillScaledToZero reports whether the ReplicaSet is still scaled
+// to zero, re-checking the current object rather than trusting the event that
+// triggered this handler. A stale replicas=0 event (queued behind a rapid
+// scale-up) would otherwise delete a PodGroup that has just been recreated.
+func (pg *pgcontroller) replicaSetStillScaledToZero(rs *appsv1.ReplicaSet) bool {
+	// Fast path: if the informer cache already reflects the scale-up, the
+	// PodGroup must be kept.
+	if latest, err := pg.rsInformer.Lister().ReplicaSets(rs.Namespace).Get(rs.Name); err == nil &&
+		latest.Spec.Replicas != nil && *latest.Spec.Replicas > 0 {
+		return false
+	}
+
+	// The informer cache can lag the API server. Verify directly.
+	latest, err := pg.kubeClient.AppsV1().ReplicaSets(rs.Namespace).Get(context.TODO(), rs.Name, metav1.GetOptions{})
+	if err != nil {
+		// If the ReplicaSet no longer exists, its PodGroup is orphaned and
+		// safe to delete (it is otherwise GC'd via the Pod owner reference).
+		if apierrors.IsNotFound(err) {
+			return true
+		}
+		// On any transient error, keep the PodGroup rather than risk
+		// deleting one a concurrent scale-up still needs.
+		klog.Errorf("Failed to get ReplicaSet <%s/%s> before deleting its PodGroup: %v",
+			rs.Namespace, rs.Name, err)
+		return false
+	}
+	return latest.Spec.Replicas != nil && *latest.Spec.Replicas == 0
+}
+
+// statefulSetStillScaledToZero reports whether the StatefulSet is still scaled
+// to zero, re-checking the current object rather than trusting the event that
+// triggered this handler. A stale replicas=0 event (queued behind a rapid
+// scale-up) would otherwise delete a PodGroup that has just been recreated.
+func (pg *pgcontroller) statefulSetStillScaledToZero(sts *appsv1.StatefulSet) bool {
+	// Fast path: if the informer cache already reflects the scale-up, the
+	// PodGroup must be kept.
+	if latest, err := pg.stsInformer.Lister().StatefulSets(sts.Namespace).Get(sts.Name); err == nil &&
+		latest.Spec.Replicas != nil && *latest.Spec.Replicas > 0 {
+		return false
+	}
+
+	// The informer cache can lag the API server. Verify directly.
+	latest, err := pg.kubeClient.AppsV1().StatefulSets(sts.Namespace).Get(context.TODO(), sts.Name, metav1.GetOptions{})
+	if err != nil {
+		// If the StatefulSet no longer exists, its PodGroup is orphaned and
+		// safe to delete (it is otherwise GC'd via the Pod owner reference).
+		if apierrors.IsNotFound(err) {
+			return true
+		}
+		// On any transient error, keep the PodGroup rather than risk
+		// deleting one a concurrent scale-up still needs.
+		klog.Errorf("Failed to get StatefulSet <%s/%s> before deleting its PodGroup: %v",
+			sts.Namespace, sts.Name, err)
+		return false
+	}
+	return latest.Spec.Replicas != nil && *latest.Spec.Replicas == 0
 }
 
 func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
