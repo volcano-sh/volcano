@@ -45,6 +45,13 @@ import (
 	agentmetrics "volcano.sh/volcano/pkg/agentscheduler/metrics"
 )
 
+type configSnapshot struct {
+	actions        []framework.Action
+	tiers          []conf.Tier
+	configurations []conf.Configuration
+	version        uint64
+}
+
 // Scheduler represents a "Volcano Agent Scheduler".
 // Scheduler watches for new unscheduled pods.
 // It attempts to find nodes that can accommodate these pods and writes the binding information back to the API server.
@@ -63,11 +70,34 @@ type Scheduler struct {
 	disableDefaultConf bool
 	workerCount        int
 	shardingMode       string
+	confSnapshot       *configSnapshot
+}
+
+func (sched *Scheduler) getConfSnapshot() *configSnapshot {
+	sched.mutex.Lock()
+	defer sched.mutex.Unlock()
+	return sched.confSnapshot
 }
 
 type Worker struct {
-	framework *framework.Framework
-	index     int
+	framework   *framework.Framework
+	index       int
+	sched       *Scheduler
+	confVersion uint64
+}
+
+func (worker *Worker) updateFrameworkIfNeeded() {
+	if worker.sched == nil {
+		return
+	}
+
+	snap := worker.sched.getConfSnapshot()
+	if snap == nil || snap.version == worker.confVersion {
+		return
+	}
+
+	worker.framework = framework.NewFramework(snap.actions, snap.tiers, worker.sched.cache, snap.configurations)
+	worker.confVersion = snap.version
 }
 
 // NewAgentScheduler returns a Scheduler
@@ -104,14 +134,15 @@ func (sched *Scheduler) Run(stopCh <-chan struct{}) {
 	sched.cache.SetMetricsConf(sched.metricsConf)
 	sched.cache.Run(stopCh)
 
-	for _, action := range sched.actions {
-		action.OnActionInit(sched.configurations)
-	}
-
+	snap := sched.getConfSnapshot()
 	klog.V(2).Infof("Scheduler completes Initialization and start to run %d workers", sched.workerCount)
 	for i := range sched.workerCount {
-		worker := &Worker{index: i}
-		worker.framework = framework.NewFramework(sched.actions, sched.tiers, sched.cache, sched.configurations)
+		worker := &Worker{
+			index:       i,
+			sched:       sched,
+			confVersion: snap.version,
+		}
+		worker.framework = framework.NewFramework(snap.actions, snap.tiers, sched.cache, snap.configurations)
 		go func() {
 			for {
 				select {
@@ -145,6 +176,8 @@ func (worker *Worker) runOnce() {
 		klog.Warningf("No task to schedule")
 		return
 	}
+
+	worker.updateFrameworkIfNeeded()
 
 	scheduleStartTime := time.Now()
 
@@ -228,9 +261,26 @@ func (sched *Scheduler) loadSchedulerConf() {
 	var err error
 	if !sched.disableDefaultConf {
 		sched.once.Do(func() {
-			sched.actions, sched.tiers, sched.configurations, sched.metricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
+			var dActions []framework.Action
+			var dTiers []conf.Tier
+			var dConfigurations []conf.Configuration
+			var dMetricsConf map[string]string
+			dActions, dTiers, dConfigurations, dMetricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
 			if err != nil {
 				klog.Fatalf("Invalid default configuration: unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
+			}
+			for _, action := range dActions {
+				action.OnActionInit(dConfigurations)
+			}
+			sched.actions = dActions
+			sched.tiers = dTiers
+			sched.configurations = dConfigurations
+			sched.metricsConf = dMetricsConf
+			sched.confSnapshot = &configSnapshot{
+				actions:        dActions,
+				tiers:          dTiers,
+				configurations: dConfigurations,
+				version:        1,
 			}
 		})
 	}
@@ -258,12 +308,27 @@ func (sched *Scheduler) loadSchedulerConf() {
 		return
 	}
 
+	for _, action := range actions {
+		action.OnActionInit(configurations)
+	}
+
 	sched.mutex.Lock()
 	sched.actions = actions
 	sched.tiers = tiers
 	sched.configurations = configurations
 	sched.metricsConf = metricsConf
-	defer sched.mutex.Unlock()
+	newVersion := uint64(1)
+	if sched.confSnapshot != nil {
+		newVersion = sched.confSnapshot.version + 1
+	}
+	sched.confSnapshot = &configSnapshot{
+		actions:        actions,
+		tiers:          tiers,
+		configurations: configurations,
+		version:        newVersion,
+	}
+	sched.mutex.Unlock()
+
 }
 
 func (sched *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
