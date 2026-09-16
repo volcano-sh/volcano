@@ -158,6 +158,10 @@ func (pg *pgcontroller) processNextReq() bool {
 		klog.Errorf("Failed to get pod by <%v> from cache: %v", req, err)
 		return true
 	}
+	if pod.UID != req.podUID {
+		klog.V(5).Infof("pod %v/%v UID is not matched, maybe pod has been recreated, skip it", pod.Namespace, pod.Name)
+		return true
+	}
 
 	if !slices.Contains(pg.schedulerNames, pod.Spec.SchedulerName) {
 		klog.V(5).Infof("pod %v/%v field SchedulerName is not matched", pod.Namespace, pod.Name)
