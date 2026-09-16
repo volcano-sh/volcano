@@ -126,6 +126,13 @@ type ServerOption struct {
 
 	//Shard name for this scheduler
 	ShardName string
+
+	// MaxConcurrentBinds caps the number of Pod bind operations that can be
+	// in flight simultaneously. Zero disables the cap (default). A positive
+	// value protects kube-apiserver from bind-request bursts during large
+	// scheduling waves — the scheduler acquires a slot before starting each
+	// bind goroutine and releases it when the goroutine returns.
+	MaxConcurrentBinds int
 }
 
 // DecryptFunc is custom function to parse ca file
@@ -209,10 +216,14 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
 	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling, none(default)|hard|soft mode is supported")
 	fs.StringVar(&s.ShardName, "scheduler-sharding-name", defaultShardName, "The name of shard used for this scheduler")
+	fs.IntVar(&s.MaxConcurrentBinds, "max-concurrent-binds", 0, "Maximum number of concurrent Pod bind operations. Zero disables the cap. Positive values protect kube-apiserver from bind-request bursts during large scheduling waves.")
 }
 
 // CheckOptionOrDie validates scheduler options.
 func (s *ServerOption) CheckOptionOrDie() error {
+	if s.MaxConcurrentBinds < 0 {
+		return fmt.Errorf("invalid --max-concurrent-binds %d: must be greater or equal to 0", s.MaxConcurrentBinds)
+  }
 	if s.JobUpdaterWorkerNum <= 0 {
 		return fmt.Errorf("job-updater-worker-num must be greater than 0")
 	}

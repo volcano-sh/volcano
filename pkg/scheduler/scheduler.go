@@ -79,7 +79,7 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 		}
 	}
 
-	cache := schedcache.New(config, opt.SchedulerNames, opt.DefaultQueue, opt.NodeSelector, opt.NodeWorkerThreads, opt.IgnoredCSIProvisioners, opt.ResyncPeriod, opt.ResourceSyncTimeout)
+	cache := schedcache.New(config, opt.SchedulerNames, opt.DefaultQueue, opt.NodeSelector, opt.NodeWorkerThreads, opt.IgnoredCSIProvisioners, opt.ResyncPeriod, opt.ResourceSyncTimeout, opt.MaxConcurrentBinds)
 	scheduler := &Scheduler{
 		schedulerConf:      opt.SchedulerConf,
 		fileWatcher:        watcher,
