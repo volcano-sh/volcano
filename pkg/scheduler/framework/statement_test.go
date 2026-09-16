@@ -432,3 +432,23 @@ func TestDiscardReversesOperations(t *testing.T) {
 		}
 	})
 }
+
+func TestAllocateUnallocateSpecNodeName(t *testing.T) {
+	ssn, _, task, node := newTestSession(t)
+	stmt := NewStatement(ssn)
+
+	originalSpecNodeName := task.Pod.Spec.NodeName
+	if err := stmt.Allocate(task, node); err != nil {
+		t.Fatalf("Allocate failed: %v", err)
+	}
+	if task.Pod.Spec.NodeName != node.Name {
+		t.Fatalf("expected Spec.NodeName %s, got %s", node.Name, task.Pod.Spec.NodeName)
+	}
+
+	stmt.Discard()
+
+	if task.Pod.Spec.NodeName != originalSpecNodeName {
+		t.Errorf("expected Spec.NodeName to be restored to %q after Discard, got %q",
+			originalSpecNodeName, task.Pod.Spec.NodeName)
+	}
+}

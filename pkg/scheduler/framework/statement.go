@@ -367,6 +367,7 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 	}
 	task.NodeName = ""
 	task.JobAllocatedHyperNode = ""
+	task.Pod.Spec.NodeName = ""
 
 	return nil
 }
