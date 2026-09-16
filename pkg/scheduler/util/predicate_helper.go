@@ -19,7 +19,6 @@ package util
 import (
 	"context"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -43,7 +42,6 @@ type predicateHelper struct {
 
 // PredicateNodes returns the specified number of nodes that fit a task
 func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn, enableErrorCache bool, nodesInShard sets.Set[string]) ([]*api.NodeInfo, *api.FitErrors) {
-	var errorLock sync.RWMutex
 	fe := api.NewFitErrors()
 
 	// don't enable error cache if task's TaskRole is empty, because different pods with empty TaskRole will all
@@ -70,6 +68,11 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 	if nodeErrorCache == nil {
 		nodeErrorCache = map[string]error{}
 	}
+	type nodePredicateError struct {
+		nodeName string
+		err      error
+	}
+	nodeErrors := make([]nodePredicateError, allNodes)
 
 	startIndex := int(lastProcessedNodeIndex.Load())
 
@@ -87,37 +90,23 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 		// Check if the task had "predicate" failure before.
 		// And then check if the task failed to predict on this node before.
 		if enableErrorCache && taskFailedBefore {
-			errorLock.RLock()
 			errC, ok := nodeErrorCache[node.Name]
-			errorLock.RUnlock()
 
 			if ok {
-				errorLock.Lock()
-				fe.SetNodeError(node.Name, errC)
-				errorLock.Unlock()
+				nodeErrors[index] = nodePredicateError{nodeName: node.Name, err: errC}
 				return
 			}
 		}
 
 		if options.ServerOpts.ShardingMode == util.HardShardingMode && !nodesInShard.Has(node.Name) {
-			klog.V(3).Infof("Predicates failed: node %s is not in scheduler shard", node.Name)
 			err := fmt.Errorf("node isn't in scheduler node shard")
-			errorLock.Lock()
-			nodeErrorCache[node.Name] = err
-			ph.taskPredicateErrorCache[taskGroupid] = nodeErrorCache
-			fe.SetNodeError(node.Name, err)
-			errorLock.Unlock()
+			nodeErrors[index] = nodePredicateError{nodeName: node.Name, err: err}
 			return
 		}
 
 		// TODO (k82cn): Enable eCache for performance improvement.
 		if err := fn(task, node); err != nil {
-			klog.V(3).Infof("Predicates failed: %v", err)
-			errorLock.Lock()
-			nodeErrorCache[node.Name] = err
-			ph.taskPredicateErrorCache[taskGroupid] = nodeErrorCache
-			fe.SetNodeError(node.Name, err)
-			errorLock.Unlock()
+			nodeErrors[index] = nodePredicateError{nodeName: node.Name, err: err}
 			return
 		}
 
@@ -136,10 +125,25 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 	workqueue.ParallelizeUntil(ctx, 16, allNodes, checkNode)
 	metrics.UpdateSchedulingStageDuration(metrics.SchedulingStagePredicate, time.Since(predicateStart))
 
+	predicateNodes = predicateNodes[:numFoundNodes]
+	for _, nodeErr := range nodeErrors {
+		if nodeErr.err == nil {
+			continue
+		}
+		if enableErrorCache {
+			nodeErrorCache[nodeErr.nodeName] = nodeErr.err
+		}
+		if len(predicateNodes) == 0 {
+			fe.SetNodeError(nodeErr.nodeName, nodeErr.err)
+		}
+	}
+	if enableErrorCache && len(nodeErrorCache) > 0 {
+		ph.taskPredicateErrorCache[taskGroupid] = nodeErrorCache
+	}
+
 	newIndex := int64((startIndex + int(processedNodes)) % allNodes)
 	lastProcessedNodeIndex.Store(newIndex)
 
-	predicateNodes = predicateNodes[:numFoundNodes]
 	return predicateNodes, fe
 }
 
