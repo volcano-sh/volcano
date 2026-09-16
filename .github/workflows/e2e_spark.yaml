@@ -72,7 +72,8 @@ jobs:
     - name: start minikube
       run: |
         # Use pre-install minikube
-        minikube start --cpus max --memory max
+        # Image builds use minikube docker-env and require the Docker runtime.
+        minikube start --cpus max --memory max --container-runtime=docker
     - name: Load and Deploy volcano images
       run: |
         eval $(minikube docker-env)
