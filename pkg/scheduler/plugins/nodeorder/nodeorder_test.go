@@ -17,7 +17,6 @@ limitations under the License.
 package nodeorder
 
 import (
-	"context"
 	"os"
 	"reflect"
 	"testing"
@@ -44,7 +43,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
-	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodescore"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -448,132 +446,90 @@ func TestInitPlugin(t *testing.T) {
 	}
 }
 
-func TestBatchNodeOrderFnWithMultipleScorePlugins(t *testing.T) {
-	nodeA := util.BuildNode("node-a", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
-	nodeB := util.BuildNode("node-b", api.BuildResourceList("8", "16Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
-	nodeB.Spec.Taints = []v1.Taint{{Key: "dedicated", Effect: v1.TaintEffectPreferNoSchedule}}
-
-	nodeInfoA := schedframework.NewNodeInfo()
-	nodeInfoA.SetNode(nodeA)
-	nodeInfoB := schedframework.NewNodeInfo()
-	nodeInfoB.SetNode(nodeB)
-	nodeInfos := []k8sframework.NodeInfo{nodeInfoA, nodeInfoB}
-	nodeMap := map[string]k8sframework.NodeInfo{"node-a": nodeInfoA, "node-b": nodeInfoB}
-
-	client := k8sfake.NewSimpleClientset()
-	informerFactory := informers.NewSharedInformerFactory(client, 0)
-	pp := New(nil).(*NodeOrderPlugin)
-	pp.weight = priorityWeight{
-		leastReqWeight:         1,
-		balancedResourceWeight: 1,
-		taintTolerationWeight:  3,
-	}
-	pp.Handle = k8s.NewFramework(
-		nodeMap,
-		k8s.WithClientSet(client),
-		k8s.WithInformerFactory(informerFactory),
-	)
-	pp.InitPlugin()
-	if len(pp.ScorePlugins) != 3 {
-		t.Fatalf("expected LeastAllocated, BalancedAllocation, and TaintToleration plugins, got %d", len(pp.ScorePlugins))
-	}
-	pod := util.BuildPod("ns", "pod", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "", nil, nil)
-
-	scores, err := pp.BatchNodeOrderFn(
-		&api.TaskInfo{Pod: pod},
-		[]*api.NodeInfo{api.NewNodeInfo(nodeA), api.NewNodeInfo(nodeB)},
-		nodeMap,
-		schedframework.NewCycleState(),
-	)
-	if err != nil {
-		t.Fatalf("BatchNodeOrderFn returned an error: %v", err)
-	}
-
-	legacyScores := runScorePluginsSequentially(t, pp.ScorePlugins, pod, nodeInfos)
-
-	if !reflect.DeepEqual(scores, legacyScores) {
-		t.Fatalf("fused scores differ from sequential scores: fused=%v sequential=%v", scores, legacyScores)
-	}
-	if len(scores) != 2 || scores["node-a"] == scores["node-b"] {
-		t.Fatalf("expected distinct scores for both nodes, got %v", scores)
-	}
-}
-
-func TestBatchNodeOrderFnWithLeastAndMostAllocated(t *testing.T) {
-	nodeA := util.BuildNode("node-a", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
-	nodeB := util.BuildNode("node-b", api.BuildResourceList("8", "16Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
-	nodeInfoA := schedframework.NewNodeInfo()
-	nodeInfoA.SetNode(nodeA)
-	nodeInfoB := schedframework.NewNodeInfo()
-	nodeInfoB.SetNode(nodeB)
-	nodeInfos := []k8sframework.NodeInfo{nodeInfoA, nodeInfoB}
-	nodeMap := map[string]k8sframework.NodeInfo{"node-a": nodeInfoA, "node-b": nodeInfoB}
-
-	client := k8sfake.NewSimpleClientset()
-	informerFactory := informers.NewSharedInformerFactory(client, 0)
-	pp := New(nil).(*NodeOrderPlugin)
-	pp.weight = priorityWeight{leastReqWeight: 2, mostReqWeight: 1}
-	pp.Handle = k8s.NewFramework(
-		nodeMap,
-		k8s.WithClientSet(client),
-		k8s.WithInformerFactory(informerFactory),
-	)
-	pp.InitPlugin()
-	if len(pp.ScorePlugins) != 2 {
-		t.Fatalf("expected LeastAllocated and MostAllocated plugins, got %d", len(pp.ScorePlugins))
-	}
-	for _, name := range []string{
-		noderesources.Name + "_LeastAllocated",
-		noderesources.Name + "_MostAllocated",
-	} {
-		if _, exists := pp.ScorePlugins[name]; !exists {
-			t.Fatalf("expected score plugin %q to be registered", name)
-		}
+func TestBatchNodeOrderFn(t *testing.T) {
+	tests := []struct {
+		name               string
+		weight             priorityWeight
+		nodeBTaints        []v1.Taint
+		expectScorePlugins []string
+		expectScores       map[string]float64
+	}{
+		{
+			name: "multiple score plugins",
+			weight: priorityWeight{
+				leastReqWeight:         1,
+				balancedResourceWeight: 1,
+				taintTolerationWeight:  3,
+			},
+			nodeBTaints: []v1.Taint{{Key: "dedicated", Effect: v1.TaintEffectPreferNoSchedule}},
+			expectScorePlugins: []string{
+				noderesources.Name + "_LeastAllocated",
+				noderesources.BalancedAllocationName,
+				tainttoleration.Name,
+			},
+			expectScores: map[string]float64{
+				"node-a": 452, // LeastAllocated 81 + BalancedAllocation 71 + TaintToleration 100 * 3.
+				"node-b": 163, // LeastAllocated 90 + BalancedAllocation 73 + TaintToleration 0 * 3.
+			},
+		},
+		{
+			name:   "least and most allocated",
+			weight: priorityWeight{leastReqWeight: 2, mostReqWeight: 1},
+			expectScorePlugins: []string{
+				noderesources.Name + "_LeastAllocated",
+				noderesources.Name + "_MostAllocated",
+			},
+			expectScores: map[string]float64{
+				"node-a": 180, // LeastAllocated 81 * 2 + MostAllocated 18.
+				"node-b": 189, // LeastAllocated 90 * 2 + MostAllocated 9.
+			},
+		},
 	}
 
-	pod := util.BuildPod("ns", "pod", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "", nil, nil)
-	fusedScores, err := pp.BatchNodeOrderFn(
-		&api.TaskInfo{Pod: pod},
-		[]*api.NodeInfo{api.NewNodeInfo(nodeA), api.NewNodeInfo(nodeB)},
-		nodeMap,
-		schedframework.NewCycleState(),
-	)
-	if err != nil {
-		t.Fatalf("BatchNodeOrderFn returned an error: %v", err)
-	}
-	legacyScores := runScorePluginsSequentially(t, pp.ScorePlugins, pod, nodeInfos)
-	if !reflect.DeepEqual(fusedScores, legacyScores) {
-		t.Fatalf("Least/Most fused scores differ from sequential scores: fused=%v sequential=%v", fusedScores, legacyScores)
-	}
-	if fusedScores["node-a"] == fusedScores["node-b"] {
-		t.Fatalf("expected asymmetric weights to produce distinct node scores, got %v", fusedScores)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodeA := util.BuildNode("node-a", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+			nodeB := util.BuildNode("node-b", api.BuildResourceList("8", "16Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+			nodeB.Spec.Taints = tt.nodeBTaints
 
-func runScorePluginsSequentially(t *testing.T, plugins map[string]scorePluginEntry, pod *v1.Pod, nodeInfos []k8sframework.NodeInfo) map[string]float64 {
-	t.Helper()
+			nodeInfoA := schedframework.NewNodeInfo()
+			nodeInfoA.SetNode(nodeA)
+			nodeInfoB := schedframework.NewNodeInfo()
+			nodeInfoB.SetNode(nodeB)
+			nodeMap := map[string]k8sframework.NodeInfo{"node-a": nodeInfoA, "node-b": nodeInfoB}
 
-	scores := make(map[string]float64, len(nodeInfos))
-	state := schedframework.NewCycleState()
-	for name, entry := range plugins {
-		var preScorePlugins []nodescore.PreScorePluginSpec
-		if preScorePlugin, ok := entry.plugin.(k8sframework.PreScorePlugin); ok {
-			preScorePlugins = append(preScorePlugins, nodescore.PreScorePluginSpec{Name: name, Plugin: preScorePlugin})
-		}
-		pluginScores, err := nodescore.RunScorePlugins(
-			context.TODO(),
-			preScorePlugins,
-			[]nodescore.ScorePluginSpec{{Name: name, Plugin: entry.plugin, Weight: entry.weight}},
-			state,
-			pod,
-			nodeInfos,
-		)
-		if err != nil {
-			t.Fatalf("sequential score plugin %s returned an error: %v", name, err)
-		}
-		for node, score := range pluginScores {
-			scores[node] += score
-		}
+			client := k8sfake.NewSimpleClientset()
+			informerFactory := informers.NewSharedInformerFactory(client, 0)
+			pp := New(nil).(*NodeOrderPlugin)
+			pp.weight = tt.weight
+			pp.Handle = k8s.NewFramework(
+				nodeMap,
+				k8s.WithClientSet(client),
+				k8s.WithInformerFactory(informerFactory),
+			)
+			pp.InitPlugin()
+			if len(pp.ScorePlugins) != len(tt.expectScorePlugins) {
+				t.Fatalf("expected %d score plugins, got %d", len(tt.expectScorePlugins), len(pp.ScorePlugins))
+			}
+			for _, name := range tt.expectScorePlugins {
+				if _, exists := pp.ScorePlugins[name]; !exists {
+					t.Fatalf("expected score plugin %q to be registered", name)
+				}
+			}
+
+			pod := util.BuildPod("ns", "pod", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "", nil, nil)
+			scores, err := pp.BatchNodeOrderFn(
+				&api.TaskInfo{Pod: pod},
+				[]*api.NodeInfo{api.NewNodeInfo(nodeA), api.NewNodeInfo(nodeB)},
+				nodeMap,
+				schedframework.NewCycleState(),
+			)
+			if err != nil {
+				t.Fatalf("BatchNodeOrderFn returned an error: %v", err)
+			}
+			if !reflect.DeepEqual(scores, tt.expectScores) {
+				t.Fatalf("expected node scores %v, got %v", tt.expectScores, scores)
+			}
+		})
 	}
-	return scores
 }
