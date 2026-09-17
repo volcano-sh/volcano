@@ -18,6 +18,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -1970,20 +1971,17 @@ func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulinga
 
 		obj, err := sc.resourceClaimCache.Get(claimKey)
 		if err != nil || obj == nil {
-			if templateClaim {
-				if err != nil {
-					return nil, nil, nil, &pendingDRAResourceClaimError{
-						err: fmt.Errorf("ResourceClaim %s for pod %s/%s is not synced yet: %w", claimKey, pod.Namespace, pod.Name, err),
-					}
-				}
+			if err == nil {
 				return nil, nil, nil, &pendingDRAResourceClaimError{
 					err: fmt.Errorf("ResourceClaim %s for pod %s/%s is not synced yet", claimKey, pod.Namespace, pod.Name),
 				}
 			}
-			if err != nil {
-				return nil, nil, nil, fmt.Errorf("failed to get ResourceClaim %s: %w", claimKey, err)
+			if errors.Is(err, assumecache.ErrNotFound) {
+				return nil, nil, nil, &pendingDRAResourceClaimError{
+					err: fmt.Errorf("ResourceClaim %s for pod %s/%s is not synced yet: %w", claimKey, pod.Namespace, pod.Name, err),
+				}
 			}
-			return nil, nil, nil, fmt.Errorf("failed to get ResourceClaim %s: cache returned nil object", claimKey)
+			return nil, nil, nil, fmt.Errorf("failed to get ResourceClaim %s: %w", claimKey, err)
 		}
 		claim, ok := obj.(*resourcev1.ResourceClaim)
 		if !ok {
