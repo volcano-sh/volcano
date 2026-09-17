@@ -338,6 +338,39 @@ func TestAddPodWithUnresolvedResourceClaimTemplateCachesTaskForResync(t *testing
 	assert.Equal(t, 1, sc.errTasks.Len())
 }
 
+func TestAddPodWithUnresolvedResourceClaimCachesTaskForResync(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, kubefeatures.DynamicResourceAllocation, true)
+
+	sc := newMockSchedulerCache("volcano")
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pod-claim",
+			Namespace: "default",
+			UID:       types.UID("pod-claim-uid"),
+			Annotations: map[string]string{
+				schedulingv1beta1.KubeGroupNameAnnotationKey: "pg-claim",
+			},
+		},
+		Spec: v1.PodSpec{
+			SchedulerName: "volcano",
+			ResourceClaims: []v1.PodResourceClaim{
+				{Name: "claim1", ResourceClaimName: pointerString("claim")},
+			},
+		},
+	}
+
+	err := sc.addPod(pod)
+	assert.NoError(t, err)
+
+	job, found := sc.Jobs[schedulingapi.JobID("default/pg-claim")]
+	assert.True(t, found)
+	if assert.NotNil(t, job) {
+		_, found = job.Tasks[schedulingapi.TaskID("pod-claim-uid")]
+		assert.True(t, found)
+	}
+	assert.Equal(t, 1, sc.errTasks.Len())
+}
+
 func pointerString(s string) *string {
 	return &s
 }
