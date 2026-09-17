@@ -947,14 +947,23 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 	var futureIdleCandidateNodes []*api.NodeInfo
 	var idleCandidateNodesInOtherShards []*api.NodeInfo
 	var futureIdleCandidateNodesInOtherShards []*api.NodeInfo
+	// fitsResourcePool reports whether task fits in pool, treating a shortfall confined to
+	// resource dimensions node.Allocatable has no entry for at all as fitting. Every node reaching
+	// this loop already passed alloc.predicate, which applies the identical fallback, so a node
+	// filtered out here purely by an untracked dimension would otherwise be dropped from every
+	// candidate bucket and never scored, even though the real predicate already accepted it.
+	fitsResourcePool := func(pool *api.Resource, node *api.NodeInfo) bool {
+		ok, resources := task.InitResreq.LessEqualWithResourcesName(pool, api.Zero)
+		return ok || api.AllUntrackedByAllocatable(resources, node)
+	}
 	for _, n := range predicateNodes {
-		if task.InitResreq.LessEqual(n.Idle, api.Zero) {
+		if fitsResourcePool(n.Idle, n) {
 			if shardingMode == commonutil.SoftShardingMode && !ssn.NodesInShard.Has(n.Name) {
 				idleCandidateNodesInOtherShards = append(idleCandidateNodesInOtherShards, n)
 			} else {
 				idleCandidateNodes = append(idleCandidateNodes, n)
 			}
-		} else if task.InitResreq.LessEqual(n.FutureIdle(), api.Zero) {
+		} else if fitsResourcePool(n.FutureIdle(), n) {
 			if shardingMode == commonutil.SoftShardingMode && !ssn.NodesInShard.Has(n.Name) {
 				futureIdleCandidateNodesInOtherShards = append(futureIdleCandidateNodesInOtherShards, n)
 			} else {
@@ -1008,7 +1017,12 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 
 func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo, job *api.JobInfo) (err error) {
 	// Allocate idle resource to the task.
-	if task.InitResreq.LessEqual(node.Idle, api.Zero) {
+	// Same fallback as alloc.predicate: a resource dimension node.Allocatable has no entry for
+	// at all can never pass this arithmetic, no matter how much room the device-aware predicate
+	// (already consulted for this node back in alloc.predicate) actually allows. Without it, a
+	// node that predicate/prioritizeNodes correctly selected would silently fail to bind here,
+	// with neither an error nor any task movement.
+	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.Idle, api.Zero); ok || api.AllUntrackedByAllocatable(resources, node) {
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
 		if err = stmt.Allocate(task, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
@@ -1024,7 +1038,7 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 		task.Namespace, task.Name, node.Name)
 
 	// Allocate releasing resource to the task if any.
-	if task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); ok || api.AllUntrackedByAllocatable(resources, node) {
 		klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 			task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
 		if err = stmt.Pipeline(task, node.Name, false); err != nil {
@@ -1039,9 +1053,16 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 }
 
 func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
-	// Check for Resource Predicate
+	// Check for Resource Predicate. This generic scalar-resource comparison is only trustworthy
+	// for resources node.Allocatable actually carries a capacity number for (cpu, memory,
+	// volcano.sh/vgpu-number, ...). A resource a device plugin tracks entirely through its own
+	// ledger instead (like volcano.sh/vgpu-memory-percentage, a pure request-side modifier with
+	// no coherent node-wide total to advertise) can never pass this check, no matter how much
+	// room the device plugin's own predicate would actually allow. When the shortfall is confined
+	// to dimensions node.Allocatable has no entry for at all, treat that as inconclusive rather
+	// than a hard no and let the real predicate, called right below, decide instead.
 	var statusSets api.StatusSets
-	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {
+	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok && !api.AllUntrackedByAllocatable(resources, node) {
 		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.WrapInsufficientResourceReason(resources)})
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}

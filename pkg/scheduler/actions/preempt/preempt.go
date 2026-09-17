@@ -429,12 +429,20 @@ func (pmpt *Action) normalPreempt(
 // 2. The cluster has no free resources, and the queue is not allocatable.
 // 3. The cluster has no free resources, but the queue is allocatable.
 // 4. The node has sufficient aggregate resources, but PredicateFn fails because vNPU or vGPU resources are fragmented.
-// Same-queue preemption handles cases 1 and 2. Reclaim handles case 3. For case 4, normal preemption continues until
-// the predicate passes after enough victims are evicted.
+// 5. The preemptor requests a resource dimension no node advertises in Allocatable at all, such as
+// volcano.sh/vgpu-memory-percentage, which a device plugin tracks entirely on its own. The generic
+// resource comparison below can't tell that apart from a genuine shortfall, so it treats a shortfall
+// confined to untracked dimensions as inconclusive and defers to PredicateFn instead of rejecting outright.
+// Same-queue preemption handles cases 1 and 2. Reclaim handles case 3. For cases 4 and 5, normal preemption
+// continues until the predicate passes after enough victims are evicted.
 func preemptorFitsOnNode(ssn *framework.Session, queue *api.QueueInfo, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
-	return ssn.Allocatable(queue, preemptor) &&
-		preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) &&
-		ssn.PredicateFn(preemptor, node) == nil
+	if !ssn.Allocatable(queue, preemptor) {
+		return false
+	}
+	if ok, failing := preemptor.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok && !api.AllUntrackedByAllocatable(failing, node) {
+		return false
+	}
+	return ssn.PredicateFn(preemptor, node) == nil
 }
 
 func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {
