@@ -32,6 +32,7 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	setDefaultIfNil(&option.EnabledJobPipelined)
 	setDefaultIfNil(&option.EnabledJobEnqueued)
 	setDefaultIfNil(&option.EnabledTaskOrder)
+	setDefaultIfNil(&option.EnabledVictimOrder)
 	setDefaultIfNil(&option.EnabledPreemptable)
 	setDefaultIfNil(&option.EnabledReclaimable)
 	setDefaultIfNil(&option.EnablePreemptive)

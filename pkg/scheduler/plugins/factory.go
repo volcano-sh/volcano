@@ -25,6 +25,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/binpack"
 	"volcano.sh/volcano/pkg/scheduler/plugins/capacity"
 	"volcano.sh/volcano/pkg/scheduler/plugins/cdp"
+	"volcano.sh/volcano/pkg/scheduler/plugins/checkpoint"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/deviceshare"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
@@ -56,6 +57,7 @@ func init() {
 	framework.RegisterPluginBuilder(deviceshare.PluginName, deviceshare.New)
 	framework.RegisterPluginBuilder(predicates.PluginName, predicates.New)
 	framework.RegisterPluginBuilder(priority.PluginName, priority.New)
+	framework.RegisterPluginBuilder(checkpoint.PluginName, checkpoint.New)
 	framework.RegisterPluginBuilder(nodeorder.PluginName, nodeorder.New)
 	framework.RegisterPluginBuilder(conformance.PluginName, conformance.New)
 	framework.RegisterPluginBuilder(binpack.PluginName, binpack.New)
