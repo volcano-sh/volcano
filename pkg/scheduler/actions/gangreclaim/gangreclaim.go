@@ -163,28 +163,11 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 			continue
 		}
 		domainIdle := utils.SumIdleAndReleasing(nodes)
-		selectedVictims := make([]*api.TaskInfo, 0)
-		for _, bundle := range domainBundles {
-			selectedVictims = append(selectedVictims, bundle.Tasks...)
-			available := domainIdle.Clone()
-			available.Add(utils.SumResreq(selectedVictims))
-			if !jobNeed.LessEqual(available, api.Zero) {
-				continue
-			}
-
-			attemptVictims := append([]*api.TaskInfo(nil), selectedVictims...)
-
-			jobHN := ssn.HyperNodes[domain]
-			if jobHN == nil {
-				jobHN = ssn.HyperNodes[framework.ClusterTopHyperNode]
-			}
-			plan, subJobHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, attemptVictims, utils.ReasonGangReclaim, gr.enablePredicateErrorCache)
-			if !ok {
-				continue
-			}
-			if err := stmt.RecoverOperations(plan); err != nil {
-				continue
-			}
+		jobHN := ssn.HyperNodes[domain]
+		if jobHN == nil {
+			jobHN = ssn.HyperNodes[framework.ClusterTopHyperNode]
+		}
+		if subJobHyperNodes, ok := utils.SelectMinimalVictimsAndPlan(ssn, stmt, queue, job, jobHN, domainBundles, domainIdle, jobNeed, utils.ReasonGangReclaim, gr.enablePredicateErrorCache); ok {
 			return subJobHyperNodes
 		}
 	}

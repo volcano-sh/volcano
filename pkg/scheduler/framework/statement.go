@@ -78,6 +78,18 @@ func (s *Statement) HasEvictions() bool {
 	return false
 }
 
+// PlacedNodes returns the names of the nodes that the statement's Pipeline and Allocate
+// operations place tasks on.
+func (s *Statement) PlacedNodes() map[string]struct{} {
+	nodes := map[string]struct{}{}
+	for _, op := range s.operations {
+		if (op.name == Pipeline || op.name == Allocate) && op.task != nil && op.task.NodeName != "" {
+			nodes[op.task.NodeName] = struct{}{}
+		}
+	}
+	return nodes
+}
+
 // Evict the pod
 func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) {
 	// Update status in session
