@@ -590,6 +590,17 @@ func closeSession(ssn *Session) {
 }
 
 func getPodGroupPhase(jobInfo *api.JobInfo, unschedulable bool) scheduling.PodGroupPhase {
+	// Latch the terminal phase: once a PodGroup reached Completed and all its
+	// member tasks have been removed afterwards (e.g. TTL/GC deleted the
+	// finished Pods), there is nothing left to recompute from. Without this
+	// latch the phase is downgraded back to Pending/Inqueue on the next
+	// session, so the enqueue action re-admits the dead group and the
+	// capacity/proportion plugins reserve its MinResources queue quota again.
+	if jobInfo.PodGroup.Status.Phase == scheduling.PodGroupCompleted &&
+		len(jobInfo.Tasks) == 0 {
+		return scheduling.PodGroupCompleted
+	}
+
 	// If running tasks && unschedulable, unknown phase
 	if len(jobInfo.TaskStatusIndex[api.Running]) != 0 && unschedulable {
 		return scheduling.PodGroupUnknown
