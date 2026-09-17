@@ -56,6 +56,12 @@ func (ssn *Session) AddTaskOrderFn(name string, cf api.CompareFn) {
 	ssn.taskOrderFns[name] = cf
 }
 
+// AddVictimOrderFn add victim task order function. It is consumed only on the
+// eviction path (preempt/reclaim) and never affects allocate/backfill ordering.
+func (ssn *Session) AddVictimOrderFn(name string, cf api.CompareFn) {
+	ssn.victimOrderFns[name] = cf
+}
+
 // AddPreemptableFn add preemptable function
 func (ssn *Session) AddPreemptableFn(name string, cf api.EvictableFn) {
 	if ssn.preemptableFns == nil {
@@ -846,6 +852,44 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 	return helpers.CompareTask(lv, rv)
 }
 
+// VictimCompareFns invoke victimOrderFn of the plugins in tier/plugin order,
+// returning the first non-zero comparison. Only plugins with enableVictimOrder
+// set contribute. Used exclusively by the eviction path.
+func (ssn *Session) VictimCompareFns(l, r interface{}) int {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledVictimOrder) {
+				continue
+			}
+			vof, found := ssn.victimOrderFns[plugin.Name]
+			if !found {
+				continue
+			}
+			if j := vof(l, r); j != 0 {
+				return j
+			}
+		}
+	}
+
+	return 0
+}
+
+// VictimOrderFn decides the order in which victim tasks are evicted on the
+// preempt/reclaim paths. It first consults the victim-order plugin set; if no
+// victim-order plugin decides, it falls back to the standard TaskOrderFn
+// (priority + creation-time). This makes the eviction path identical to the
+// legacy `!TaskOrderFn` behavior whenever no victim-order plugin is enabled,
+// while allowing victim ordering to be customized without affecting
+// allocate/backfill.
+func (ssn *Session) VictimOrderFn(l, r interface{}) bool {
+	if res := ssn.VictimCompareFns(l, r); res != 0 {
+		return res < 0
+	}
+
+	// No victim order func decided; preserve legacy task ordering.
+	return ssn.TaskOrderFn(l, r)
+}
+
 // PredicateFn invoke predicate function of the plugins
 func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 	for _, tier := range ssn.Tiers {
@@ -1165,14 +1209,14 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor
 		if cmp := ssn.JobOrderCompareFn(lvJob, rvJob); cmp != 0 {
 			return cmp > 0
 		}
-		return !ssn.TaskOrderFn(l, r)
+		return !ssn.VictimOrderFn(l, r)
 	}
 
 	victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
 		if lv.Job == rv.Job {
-			return !ssn.TaskOrderFn(l, r)
+			return !ssn.VictimOrderFn(l, r)
 		}
 
 		lvJob, lvJobFound := ssn.Jobs[lv.Job]
@@ -1188,12 +1232,12 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor
 		// 3. Here, ssn.Jobs[task.Job] returns nil for the orphaned task
 		//
 		// Sorting priority:
-		// - Both jobs missing: compare using TaskOrderFn (creation timestamp)
+		// - Both jobs missing: compare using VictimOrderFn (creation timestamp)
 		// - One job missing: evict orphaned task first (its PodGroup is gone anyway)
 		// - Both jobs present: use normal JobOrderFn comparison below
 		if !lvJobFound || !rvJobFound {
 			if !lvJobFound && !rvJobFound {
-				return !ssn.TaskOrderFn(l, r)
+				return !ssn.VictimOrderFn(l, r)
 			}
 			return !lvJobFound
 		}

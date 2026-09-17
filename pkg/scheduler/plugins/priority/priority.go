@@ -68,6 +68,14 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Add Task Order function
 	ssn.AddTaskOrderFn(pp.Name(), taskOrderFn)
 
+	// Mirror the priority comparator onto the victim-order path so that priority
+	// participates in victim (preempt/reclaim) ordering instead of being skipped
+	// entirely. Its precedence relative to other victim-order plugins (e.g.
+	// checkpoint) is determined by plugin order in the scheduler config; when
+	// priority is listed before them, lower-priority tasks are evicted first and
+	// such plugins only act as tie-breakers.
+	ssn.AddVictimOrderFn(pp.Name(), taskOrderFn)
+
 	jobOrderFn := func(l, r interface{}) int {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
