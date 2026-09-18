@@ -79,7 +79,7 @@ func TestValidateJobFlowCreate(t *testing.T) {
 					JobRetainPolicy: flowv1alpha1.RetainPolicy("retain"),
 				},
 			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
 			ret:            "",
 			ExpectErr:      false,
 		},
@@ -127,9 +127,9 @@ func TestValidateJobFlowCreate(t *testing.T) {
 					JobRetainPolicy: flowv1alpha1.RetainPolicy("retain"),
 				},
 			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "",
-			ExpectErr:      false,
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "jobflow Flow names must be unique",
+			ExpectErr:      true,
 		},
 		// 	Miss flow name a
 		{
@@ -221,7 +221,7 @@ func TestValidateJobFlowCreate(t *testing.T) {
 			ret:            "jobflow Flow is not DAG",
 			ExpectErr:      true,
 		},
-		// 	jobflow flows with muti c
+		// 	jobflow flows with duplicate name c
 		{
 			Name: "validate valid-jobflow with lows with muti c",
 			JobFlow: flowv1alpha1.JobFlow{
@@ -256,9 +256,9 @@ func TestValidateJobFlowCreate(t *testing.T) {
 					JobRetainPolicy: flowv1alpha1.RetainPolicy("retain"),
 				},
 			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "",
-			ExpectErr:      false,
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "jobflow Flow names must be unique",
+			ExpectErr:      true,
 		},
 	}
 
@@ -293,7 +293,6 @@ func TestValidateJobFlowCreate(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			ret := validateJobFlowDAG(&testCase.JobFlow, &testCase.reviewResponse)
-			//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
 			if testCase.ExpectErr == true && ret == "" {
 				t.Errorf("Expect error msg :%s, but got nil.", testCase.ret)
 			}
