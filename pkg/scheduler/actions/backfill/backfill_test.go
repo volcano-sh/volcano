@@ -18,6 +18,7 @@ package backfill
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,15 +26,20 @@ import (
 	schedulingapi "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/record"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
+	volcanofeatures "volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -236,4 +242,147 @@ func TestBackfillSkipsTaskWhenNoBestNode(t *testing.T) {
 	if err := test.CheckBind(0); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// fakeUnschedulableCacheForBackfill is a minimal session cache used
+// to observe the rejections recorded at CloseSession without exercising the
+// real cache's event-index bookkeeping.
+type fakeUnschedulableCacheForBackfill struct {
+	recorded map[api.JobID][]unschedulable.Rejection
+}
+
+func (f *fakeUnschedulableCacheForBackfill) BeginSession() {}
+
+func (f *fakeUnschedulableCacheForBackfill) AddHintProvider(string, unschedulable.HintProvider) {}
+
+func (f *fakeUnschedulableCacheForBackfill) Record(job *api.JobInfo, rejections []unschedulable.Rejection) {
+	if f.recorded == nil {
+		f.recorded = map[api.JobID][]unschedulable.Rejection{}
+	}
+	f.recorded[job.UID] = rejections
+}
+
+func (f *fakeUnschedulableCacheForBackfill) CachedRejections(*api.JobInfo) []unschedulable.Rejection {
+	return nil
+}
+
+func (f *fakeUnschedulableCacheForBackfill) Forget(api.JobID) {}
+
+// TestBackfillResourceFitRejectionCarriesHintKeys proves that backfill's
+// fitErrors.UnschedulablePlugins() loop calls AddRejectionWithKeys for the
+// resource-fit plugin, while a different rejecting plugin on the same task
+// still falls back to the plain, key-less AddRejection. The resource-fit rejection is synthesized directly (rather
+// than routed through the real "predicates" plugin's NodePodNumberExceeded
+// check) because backfill only schedules BestEffort tasks, whose zero CPU/Mem
+// request never fails a resource check; only "pods" fits that description,
+// and driving it end-to-end would additionally require a live k8s snapshot
+// lister. The synthesized Status carries InsufficientResources: []string{"pods"},
+// matching how the real predicates Pod-count check populates it, since
+// ResourceFitRejectionKeys now reads dimensions from that structured field
+// rather than recomputing them from node.FutureIdle().
+func TestBackfillResourceFitRejectionCarriesHintKeys(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, volcanofeatures.UnschedulableJobCache, true)
+
+	binder := util.NewFakeBinder(0)
+	evictor := util.NewFakeEvictor(0)
+	statusUpdater := &util.FakeStatusUpdater{}
+	schedulerCache := cache.NewCustomMockSchedulerCache("ut-backfill-resource-fit-hint-keys", binder, evictor, statusUpdater, nil, nil)
+	stop := make(chan struct{})
+	defer close(stop)
+	schedulerCache.Run(stop)
+	schedulerCache.WaitForCacheSync(stop)
+
+	// node-small has plenty of total allocatable "pods" capacity (100), but
+	// the fake resource-fit predicate rejects it anyway with a structured
+	// "pods" dimension — mirroring the real predicates Pod-count check, whose
+	// verdict is driven by the live k8s snapshot's Pod count rather than
+	// Volcano's own Idle/Releasing bookkeeping. Because the node's *total*
+	// allocatable capacity (100) comfortably exceeds the task's 1-pod
+	// request, the Pod-release key must still be produced.
+	if err := schedulerCache.AddOrUpdateNode(util.BuildNode("node-small",
+		api.BuildResourceList("1", "4Gi", []api.ScalarResource{{Name: "pods", Value: "100"}}...), nil)); err != nil {
+		t.Fatalf("AddOrUpdateNode(node-small) error = %v", err)
+	}
+	// node-other has an idle pod slot, so it passes the fake resource-fit
+	// predicate and reaches the fake "fake-other" predicate, which rejects it.
+	if err := schedulerCache.AddOrUpdateNode(util.BuildNode("node-other",
+		api.BuildResourceList("1", "4Gi", []api.ScalarResource{{Name: "pods", Value: "100"}}...), nil)); err != nil {
+		t.Fatalf("AddOrUpdateNode(node-other) error = %v", err)
+	}
+
+	schedulerCache.AddQueueV1beta1(util.BuildQueue("q1", 1, nil))
+	schedulerCache.AddPodGroupV1beta1(util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue))
+	// nil resource requests makes the task BestEffort, which is required for
+	// backfill.pickUpPendingTasks to consider it at all.
+	schedulerCache.AddPod(util.BuildPod("ns1", "task1", "", v1.PodPending, nil, "pg1", nil, nil))
+
+	trueValue := true
+	tilers := []conf.Tier{{Plugins: []conf.PluginOption{
+		{Name: resourcefit.ProviderName, EnabledPredicate: &trueValue},
+		{Name: "fake-other", EnabledPredicate: &trueValue},
+	}}}
+
+	fakeCache := &fakeUnschedulableCacheForBackfill{}
+	ssn := framework.OpenSession(schedulerCache, tilers, []conf.Configuration{}, framework.WithUnschedulableJobCache(fakeCache))
+
+	ssn.AddPredicateFn(resourcefit.ProviderName, func(task *api.TaskInfo, node *api.NodeInfo) error {
+		if node.Name == "node-small" {
+			return api.NewFitErrWithStatus(task, node, &api.Status{
+				Code:                  api.Unschedulable,
+				Plugin:                resourcefit.ProviderName,
+				InsufficientResources: []string{"pods"},
+			})
+		}
+		return nil
+	})
+	ssn.AddPredicateFn("fake-other", func(task *api.TaskInfo, node *api.NodeInfo) error {
+		if node.Name == "node-other" {
+			return api.NewFitErrWithStatus(task, node, &api.Status{Code: api.UnschedulableAndUnresolvable, Plugin: "fake-other"})
+		}
+		return nil
+	})
+
+	New().Execute(ssn)
+	framework.CloseSession(ssn)
+
+	rejections := fakeCache.recorded["ns1/pg1"]
+	if !assert.NotEmpty(t, rejections, "expected rejections to be recorded for job ns1/pg1") {
+		return
+	}
+
+	var resourceFit, other *unschedulable.Rejection
+	for i := range rejections {
+		switch rejections[i].Plugin {
+		case resourcefit.ProviderName:
+			resourceFit = &rejections[i]
+		case "fake-other":
+			other = &rejections[i]
+		}
+	}
+
+	if assert.NotNil(t, resourceFit, "expected a resource-fit rejection") {
+		assert.NotEmpty(t, resourceFit.HintKeys, "resource-fit rejection must carry hint keys")
+		assert.True(t, hasPodReleaseKeyForDimension(resourceFit.HintKeys, "node-small", "pods"),
+			"resource-fit rejection must carry a pod-release key for node-small's pods dimension; "+
+				"got %v", resourceFit.HintKeys)
+	}
+	if assert.NotNil(t, other, "expected a fake-other rejection") {
+		assert.Empty(t, other.HintKeys, "non-resource-fit rejection must not carry hint keys")
+	}
+}
+
+// hasPodReleaseKeyForDimension reports whether keys contains a Pod-release
+// hint key for the given node and resource dimension. It mirrors the
+// slash-separated encoding resourcefit key produces
+// ("pod-release/<node>/<dimension>") without importing the unexported
+// constructor, so this test observes the same externally-visible key the
+// unschedulable cache would use to narrow dispatch.
+func hasPodReleaseKeyForDimension(keys []unschedulable.HintKey, node, dimension string) bool {
+	want := fmt.Sprintf("pod-release/%s/%s", node, dimension)
+	for _, k := range keys {
+		if string(k) == want {
+			return true
+		}
+	}
+	return false
 }

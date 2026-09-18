@@ -22,12 +22,16 @@ package framework
 
 import (
 	"context"
+	"errors"
 
 	fwk "k8s.io/kube-scheduler/framework"
+
+	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -413,6 +417,9 @@ func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) b
 				continue
 			}
 			if !af(queue, candidate) {
+				if ssn.unschedulableJobCacheEnabled && candidate.Job != "" {
+					ssn.AddRejection(candidate.Job, plugin.Name, unschedulable.RejectionAllocatable, candidate.UID)
+				}
 				return false
 			}
 		}
@@ -593,6 +600,11 @@ func (ssn *Session) JobEnqueueable(obj interface{}) bool {
 
 			res := fn(obj)
 			if res < 0 {
+				if ssn.unschedulableJobCacheEnabled {
+					if job, ok := obj.(*api.JobInfo); ok {
+						ssn.AddRejection(job.UID, plugin.Name, unschedulable.RejectionEnqueue)
+					}
+				}
 				return false
 			}
 			if res > 0 {
@@ -958,9 +970,16 @@ func (ssn *Session) PrePredicateFn(task *api.TaskInfo) error {
 				continue
 			}
 			err := pfn(task)
-			if err != nil {
-				return err
+			if err == nil {
+				continue
 			}
+			if ssn.unschedulableJobCacheEnabled {
+				var rejection *api.PrePredicateError
+				if errors.As(err, &rejection) {
+					ssn.AddRejection(task.Job, rejection.Plugin, unschedulable.RejectionPredicate, task.UID)
+				}
+			}
+			return err
 		}
 	}
 	return nil
@@ -1217,4 +1236,92 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor
 // RegisterBinder registers the passed binder to the cache, the binder type can be such as pre-binder, post-binder
 func (ssn *Session) RegisterBinder(name string, binder interface{}) {
 	ssn.cache.RegisterBinder(name, binder)
+}
+
+// AddHintProvider registers events that may make Jobs rejected by a plugin schedulable.
+func (ssn *Session) AddHintProvider(pluginName string, p unschedulable.HintProvider) {
+	if !ssn.unschedulableJobCacheEnabled {
+		return
+	}
+	ssn.unschedulableJobCache.AddHintProvider(pluginName, p)
+}
+
+// applyCachedSkips derives each pending Job's Skip decision from the
+// unschedulable-job cache at OpenSession. Jobs without a cached record keep the
+// zero-value Skip and are evaluated normally.
+func (ssn *Session) applyCachedSkips() {
+	if !ssn.unschedulableJobCacheEnabled {
+		return
+	}
+	for _, job := range ssn.Jobs {
+		rejections := ssn.unschedulableJobCache.CachedRejections(job)
+		if len(rejections) == 0 {
+			continue
+		}
+		job.Skip = unschedulable.ComputeSkip(job, rejections)
+		klog.V(4).Infof("Job %s cached skip: enqueue=%v allocate=%v tasks=%d",
+			job.UID, job.Skip.Enqueue, job.Skip.Allocate, len(job.Skip.Tasks))
+	}
+}
+
+// reconcileUnschedulableCache updates the unschedulable-job cache at CloseSession
+// to match what actually happened to each Job this session.
+func (ssn *Session) reconcileUnschedulableCache() {
+	if !ssn.unschedulableJobCacheEnabled {
+		return
+	}
+	for jobID, job := range ssn.Jobs {
+		// A pipelined Job must remain visible to allocate/preempt in the next
+		// session. Do not cache even if another task was freshly rejected.
+		if len(job.TaskStatusIndex[api.Pipelined]) > 0 {
+			ssn.unschedulableJobCache.Forget(jobID)
+			continue
+		}
+
+		// Cache fresh rejections even when an elastic Job is already ready. Its
+		// rejected surplus tasks are still redundant work, while ComputeSkip
+		// keeps the Job eligible to schedule every other pending task.
+		if rejections := ssn.rejectionsForJob(jobID); len(rejections) > 0 {
+			scope := ssn.queueScope(job.Queue)
+			for i := range rejections {
+				rejections[i].Queues = scope
+			}
+			ssn.unschedulableJobCache.Record(job, rejections)
+			continue
+		}
+
+		// No fresh rejections: if the Job was skipped this session, leave its
+		// existing record untouched. This includes ready elastic Jobs whose
+		// surplus rejected tasks were intentionally skipped.
+		if job.Skip.Skipped() {
+			continue
+		}
+
+		ssn.unschedulableJobCache.Forget(jobID)
+	}
+}
+
+// queueScope returns queueID together with its ancestor queues, walking
+// Queue.Spec.Parent through ssn.Queues. The result scopes quota-plugin hint
+// wakeups: only resource changes within these queues can affect a quota
+// decision for a Job in queueID. The walk stops at the root, a missing parent,
+// or a cycle.
+func (ssn *Session) queueScope(queueID api.QueueID) []api.QueueID {
+	scope := []api.QueueID{queueID}
+	seen := map[api.QueueID]struct{}{queueID: {}}
+	current := queueID
+	for {
+		qi, ok := ssn.Queues[current]
+		if !ok || qi.Queue == nil || qi.Queue.Spec.Parent == "" {
+			break
+		}
+		parent := api.QueueID(qi.Queue.Spec.Parent)
+		if _, dup := seen[parent]; dup {
+			break
+		}
+		seen[parent] = struct{}{}
+		scope = append(scope, parent)
+		current = parent
+	}
+	return scope
 }
