@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,17 +31,369 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 
 	"k8s.io/client-go/tools/cache"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	volcanoversioned "volcano.sh/apis/pkg/client/clientset/versioned"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 	schedulingv1beta1informers "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
+
+func TestValidateAllowedNamespacesUpdate(t *testing.T) {
+	oldNamespaceQueueLister := config.NamespaceQueueLister
+	t.Cleanup(func() {
+		config.NamespaceQueueLister = oldNamespaceQueueLister
+	})
+
+	tests := []struct {
+		name            string
+		oldAllowed      []string
+		newAllowed      []string
+		namespaceQueues []*schedulingv1beta1.NamespaceQueue
+		expectedMessage string
+	}{
+		{
+			name:       "adding authorization is allowed",
+			oldAllowed: []string{"team-a"},
+			newAllowed: []string{"team-a", "team-b"},
+			namespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+				newNamespaceQueueForAuthorizationTest("team-a", "training", "cluster/research", schedulingv1beta1.QueueStateOpen),
+			},
+		},
+		{
+			name:       "revoking authorization from active namespace queue is rejected",
+			oldAllowed: []string{"team-a", "team-b"},
+			newAllowed: []string{"team-b"},
+			namespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+				newNamespaceQueueForAuthorizationTest("team-a", "training", "cluster/research", schedulingv1beta1.QueueStateOpen),
+			},
+			expectedMessage: "team-a/training",
+		},
+		{
+			name:       "replacing wildcard with explicit namespace rejects other active namespaces",
+			oldAllowed: []string{"*"},
+			newAllowed: []string{"team-a"},
+			namespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+				newNamespaceQueueForAuthorizationTest("team-a", "training", "cluster/research", schedulingv1beta1.QueueStateOpen),
+				newNamespaceQueueForAuthorizationTest("team-b", "training", "cluster/research", schedulingv1beta1.QueueStateOpen),
+			},
+			expectedMessage: "team-b/training",
+		},
+		{
+			name:       "namespace queue attached to another cluster queue is ignored",
+			oldAllowed: []string{"team-a"},
+			newAllowed: nil,
+			namespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+				newNamespaceQueueForAuthorizationTest("team-a", "training", "cluster/production", schedulingv1beta1.QueueStateOpen),
+			},
+		},
+		{
+			name:       "local namespace parent is ignored",
+			oldAllowed: []string{"team-a"},
+			newAllowed: nil,
+			namespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+				newNamespaceQueueForAuthorizationTest("team-a", "training", "department", schedulingv1beta1.QueueStateOpen),
+			},
+		},
+		{
+			name:       "preexisting unauthorized namespace queue does not block unrelated update",
+			oldAllowed: []string{"team-b"},
+			newAllowed: []string{"team-c"},
+			namespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+				newNamespaceQueueForAuthorizationTest("team-a", "training", "cluster/research", schedulingv1beta1.QueueStateOpen),
+			},
+		},
+		{
+			name:       "closed and drained namespace queue can be detached",
+			oldAllowed: []string{"team-a"},
+			newAllowed: nil,
+			namespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+				newNamespaceQueueForAuthorizationTest("team-a", "training", "cluster/research", schedulingv1beta1.QueueStateClosed),
+			},
+		},
+		{
+			name:       "closed namespace queue with active workload cannot be detached",
+			oldAllowed: []string{"team-a"},
+			newAllowed: nil,
+			namespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+				func() *schedulingv1beta1.NamespaceQueue {
+					namespaceQueue := newNamespaceQueueForAuthorizationTest(
+						"team-a",
+						"training",
+						"cluster/research",
+						schedulingv1beta1.QueueStateClosed,
+					)
+					namespaceQueue.Status.Running = 1
+					return namespaceQueue
+				}(),
+			},
+			expectedMessage: "team-a/training",
+		},
+		{
+			name:       "invalid empty parent does not attach to default queue",
+			oldAllowed: []string{"team-a"},
+			newAllowed: nil,
+			namespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+				newNamespaceQueueForAuthorizationTest("team-a", "training", "", schedulingv1beta1.QueueStateOpen),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+				cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
+			})
+			for _, namespaceQueue := range tt.namespaceQueues {
+				if err := indexer.Add(namespaceQueue); err != nil {
+					t.Fatalf("failed to add NamespaceQueue to indexer: %v", err)
+				}
+			}
+			config.NamespaceQueueLister = schedulinglister.NewNamespaceQueueLister(indexer)
+
+			queueName := "research"
+			oldQueue := &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: queueName},
+				Spec: schedulingv1beta1.QueueSpec{
+					AllowedNamespaces: tt.oldAllowed,
+				},
+			}
+			newQueue := oldQueue.DeepCopy()
+			newQueue.Spec.AllowedNamespaces = tt.newAllowed
+
+			err := validateAllowedNamespacesUpdate(oldQueue, newQueue)
+			if tt.expectedMessage == "" {
+				if err != nil {
+					t.Fatalf("expected update to be allowed, got %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.expectedMessage) {
+				t.Fatalf("expected error containing %q, got %v", tt.expectedMessage, err)
+			}
+		})
+	}
+}
+
+func newNamespaceQueueForAuthorizationTest(
+	namespace,
+	name,
+	parent string,
+	state schedulingv1beta1.QueueState,
+) *schedulingv1beta1.NamespaceQueue {
+	return &schedulingv1beta1.NamespaceQueue{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name},
+		Spec:       schedulingv1beta1.NamespaceQueueSpec{Parent: parent},
+		Status:     schedulingv1beta1.NamespaceQueueStatus{State: state},
+	}
+}
+
+func TestAdmitQueuesRejectsNamespaceAuthorizationRevocation(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	oldNamespaceQueueLister := config.NamespaceQueueLister
+	t.Cleanup(func() {
+		config.NamespaceQueueLister = oldNamespaceQueueLister
+	})
+
+	oldQueue := &schedulingv1beta1.Queue{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: schedulingv1beta1.SchemeGroupVersion.String(),
+			Kind:       "Queue",
+		},
+		ObjectMeta: metav1.ObjectMeta{Name: "research"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight:            1,
+			AllowedNamespaces: []string{"team-a"},
+		},
+		Status: schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateOpen},
+	}
+	newQueue := oldQueue.DeepCopy()
+	newQueue.Spec.AllowedNamespaces = nil
+
+	oldQueueJSON, err := json.Marshal(oldQueue)
+	if err != nil {
+		t.Fatalf("failed to marshal old Queue: %v", err)
+	}
+	newQueueJSON, err := json.Marshal(newQueue)
+	if err != nil {
+		t.Fatalf("failed to marshal new Queue: %v", err)
+	}
+
+	namespaceQueueIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+		cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
+	})
+	if err := namespaceQueueIndexer.Add(newNamespaceQueueForAuthorizationTest(
+		"team-a",
+		"training",
+		"cluster/research",
+		schedulingv1beta1.QueueStateOpen,
+	)); err != nil {
+		t.Fatalf("failed to add NamespaceQueue to indexer: %v", err)
+	}
+	config.NamespaceQueueLister = schedulinglister.NewNamespaceQueueLister(namespaceQueueIndexer)
+
+	response := AdmitQueues(admissionv1.AdmissionReview{
+		Request: &admissionv1.AdmissionRequest{
+			Resource: metav1.GroupVersionResource{
+				Group:    schedulingv1beta1.SchemeGroupVersion.Group,
+				Version:  schedulingv1beta1.SchemeGroupVersion.Version,
+				Resource: "queues",
+			},
+			Name:      newQueue.Name,
+			Operation: admissionv1.Update,
+			Object:    runtime.RawExtension{Raw: newQueueJSON},
+			OldObject: runtime.RawExtension{Raw: oldQueueJSON},
+		},
+	})
+
+	if response.Allowed {
+		t.Fatal("expected Queue update to be rejected")
+	}
+	if response.Result == nil || !strings.Contains(response.Result.Message, "team-a/training") {
+		t.Fatalf("expected response to identify the affected NamespaceQueue, got %#v", response.Result)
+	}
+}
+
+func TestValidateQueueDeletingNamespaceQueueReferences(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	oldQueueLister := config.QueueLister
+	oldNamespaceQueueLister := config.NamespaceQueueLister
+	t.Cleanup(func() {
+		config.QueueLister = oldQueueLister
+		config.NamespaceQueueLister = oldNamespaceQueueLister
+	})
+
+	tests := []struct {
+		name            string
+		queueName       string
+		namespaceQueues []*schedulingv1beta1.NamespaceQueue
+		expectedMessage string
+	}{
+		{
+			name:      "queue with namespace queue child is rejected",
+			queueName: "research",
+			namespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+				newNamespaceQueueForAuthorizationTest("team-a", "training", "cluster/research", schedulingv1beta1.QueueStateOpen),
+			},
+			expectedMessage: "team-a/training",
+		},
+		{
+			name:      "local parent is ignored",
+			queueName: "research",
+			namespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+				newNamespaceQueueForAuthorizationTest("team-a", "training", "research", schedulingv1beta1.QueueStateOpen),
+			},
+		},
+		{
+			name:      "namespace queue using another cluster queue is ignored",
+			queueName: "research",
+			namespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+				newNamespaceQueueForAuthorizationTest("team-a", "training", "cluster/production", schedulingv1beta1.QueueStateOpen),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queueIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+			queue := &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: tt.queueName},
+				Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateClosed},
+			}
+			if err := queueIndexer.Add(queue); err != nil {
+				t.Fatalf("failed to add Queue to indexer: %v", err)
+			}
+			config.QueueLister = schedulinglister.NewQueueLister(queueIndexer)
+
+			namespaceQueueIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+				cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
+			})
+			for _, namespaceQueue := range tt.namespaceQueues {
+				if err := namespaceQueueIndexer.Add(namespaceQueue); err != nil {
+					t.Fatalf("failed to add NamespaceQueue to indexer: %v", err)
+				}
+			}
+			config.NamespaceQueueLister = schedulinglister.NewNamespaceQueueLister(namespaceQueueIndexer)
+
+			err := validateQueueDeleting(tt.queueName)
+			if tt.expectedMessage == "" {
+				if err != nil {
+					t.Fatalf("expected deletion to be allowed, got %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.expectedMessage) {
+				t.Fatalf("expected error containing %q, got %v", tt.expectedMessage, err)
+			}
+		})
+	}
+}
+
+func TestAdmitQueuesRejectsDeleteWithNamespaceQueueReference(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	oldQueueLister := config.QueueLister
+	oldNamespaceQueueLister := config.NamespaceQueueLister
+	t.Cleanup(func() {
+		config.QueueLister = oldQueueLister
+		config.NamespaceQueueLister = oldNamespaceQueueLister
+	})
+
+	queue := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "research"},
+		Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateClosed},
+	}
+	queueJSON, err := json.Marshal(queue)
+	if err != nil {
+		t.Fatalf("failed to marshal Queue: %v", err)
+	}
+
+	queueIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	if err := queueIndexer.Add(queue); err != nil {
+		t.Fatalf("failed to add Queue to indexer: %v", err)
+	}
+	config.QueueLister = schedulinglister.NewQueueLister(queueIndexer)
+
+	namespaceQueueIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+		cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
+	})
+	if err := namespaceQueueIndexer.Add(newNamespaceQueueForAuthorizationTest(
+		"team-a",
+		"training",
+		"cluster/research",
+		schedulingv1beta1.QueueStateOpen,
+	)); err != nil {
+		t.Fatalf("failed to add NamespaceQueue to indexer: %v", err)
+	}
+	config.NamespaceQueueLister = schedulinglister.NewNamespaceQueueLister(namespaceQueueIndexer)
+
+	response := AdmitQueues(admissionv1.AdmissionReview{
+		Request: &admissionv1.AdmissionRequest{
+			Resource: metav1.GroupVersionResource{
+				Group:    schedulingv1beta1.SchemeGroupVersion.Group,
+				Version:  schedulingv1beta1.SchemeGroupVersion.Version,
+				Resource: "queues",
+			},
+			Name:      queue.Name,
+			Operation: admissionv1.Delete,
+			Object:    runtime.RawExtension{Raw: queueJSON},
+		},
+	})
+
+	if response.Allowed {
+		t.Fatal("expected Queue deletion to be rejected")
+	}
+	if response.Result == nil || !strings.Contains(response.Result.Message, "team-a/training") {
+		t.Fatalf("expected response to identify the NamespaceQueue reference, got %#v", response.Result)
+	}
+}
 
 func TestAdmitQueues(t *testing.T) {
 	config.MaxQueueDepth = 5
@@ -353,7 +706,12 @@ func TestAdmitQueues(t *testing.T) {
 	if err != nil {
 		t.Errorf("Marshal  hierarchicalQueueWithNameThatIsSubstringOfOtherQueue failed for %v.", err)
 	}
-	config.VolcanoClient = fakeclient.NewSimpleClientset()
+	config.VolcanoClient = fakeclient.NewSimpleClientset(
+		&openStateForDelete,
+		&closedStateForDelete,
+		&ordinaryHierchicalQueue,
+		&positiveWeightForUpdate,
+	)
 	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
 	queueInformer := informerFactory.Scheduling().V1beta1().Queues()
 	config.QueueLister = queueInformer.Lister()
@@ -365,25 +723,6 @@ func TestAdmitQueues(t *testing.T) {
 		if !ok {
 			panic(fmt.Errorf("failed to sync cache: %v", informerType))
 		}
-	}
-
-	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &openStateForDelete, metav1.CreateOptions{})
-	if err != nil {
-		t.Errorf("Create queue with open state failed for %v.", err)
-	}
-
-	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &closedStateForDelete, metav1.CreateOptions{})
-	if err != nil {
-		t.Errorf("Create queue with closed state failed for %v.", err)
-	}
-
-	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &ordinaryHierchicalQueue, metav1.CreateOptions{})
-	if err != nil {
-		t.Errorf("Create hierarchical queue failed for %v.", err)
-	}
-	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &positiveWeightForUpdate, metav1.CreateOptions{})
-	if err != nil {
-		t.Errorf("Crate queue with positive weight failed for %v.", err)
 	}
 
 	defer func() {

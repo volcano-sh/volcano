@@ -199,28 +199,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		b.WriteString(err.Error())
 	}
 
-	queue, err := config.QueueLister.Get(job.Spec.Queue)
-	if err != nil {
-		fmt.Fprintf(&b, " unable to find job queue: %v;", err)
-	} else {
-		if queue.Status.State != schedulingv1beta1.QueueStateOpen {
-			fmt.Fprintf(&b, " can only submit job to queue with state `Open`, "+
-				"queue `%s` status is `%s`;", queue.Name, queue.Status.State)
-		}
-
-		// validate hierarchical queue
-		if queue.Name == "root" {
-			b.WriteString(" can not submit job to root queue;")
-		} else {
-			childQueues, err := config.GetQueuesByParent(queue.Name)
-			if err != nil {
-				fmt.Fprintf(&b, "failed to get child queues for queue %s: %v;", queue.Name, err)
-			}
-			if len(childQueues) > 0 {
-				fmt.Fprintf(&b, " can only submit job to leaf queue, "+"queue `%s` has %d child queues;", queue.Name, len(childQueues))
-			}
-		}
-	}
+	b.WriteString(validateJobQueue(job.Namespace, job.Spec.Queue))
 
 	if hasDependenciesBetweenTasks {
 		_, isDag := topoSort(job)
@@ -234,6 +213,22 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	}
 
 	return b.String()
+}
+
+func validateJobQueue(workloadNamespace, queueReference string) string {
+	err := router.ValidateWorkloadQueueReference(
+		workloadNamespace,
+		queueReference,
+		schedulingv1beta1.DefaultQueue,
+		config,
+		router.QueueReferenceValidationOptions{
+			RequireClusterQueueLeaf: true,
+		},
+	)
+	if err != nil {
+		return fmt.Sprintf(" invalid job queue reference: %v;", err)
+	}
+	return ""
 }
 
 func validateJobUpdate(old, new *v1alpha1.Job) error {

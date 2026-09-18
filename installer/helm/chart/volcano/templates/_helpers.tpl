@@ -10,6 +10,15 @@ bases
 {{- end -}}
 {{- end -}}
 
+{{/* Validate and return the NamespaceQueue hierarchy depth limit. */}}
+{{- define "volcano.namespaceQueueMaxDepth" -}}
+{{- $depth := int .Values.custom.namespace_queue_max_depth -}}
+{{- if lt $depth 1 -}}
+{{- fail "custom.namespace_queue_max_depth must be greater than zero" -}}
+{{- end -}}
+{{- $depth -}}
+{{- end -}}
+
 {{/* Validate and return the HyperNode controller deployment mode. */}}
 {{- define "hypernodeControllerMode" -}}
 {{- $mode := .Values.custom.hypernode_controller_mode | default "controller-manager" -}}
@@ -20,4 +29,26 @@ bases
 {{- fail "custom.hypernode_controller_replicas must be at least 1 in standalone mode; use disabled mode to stop HyperNode reconciliation" -}}
 {{- end -}}
 {{- $mode -}}
+{{- end -}}
+
+{{/*
+Merge the NamespaceQueue feature gate into a component's existing gates.
+The chart-level switch takes precedence over an explicitly configured
+NamespaceQueue value while preserving all unrelated gates.
+*/}}
+{{- define "volcano.featureGates" -}}
+{{- $configured := .gates | default "" -}}
+{{- if .namespaceQueueEnabled -}}
+{{- $merged := list -}}
+{{- range $gate := splitList "," $configured -}}
+{{- $gate = trim $gate -}}
+{{- if and $gate (not (hasPrefix "NamespaceQueue=" $gate)) -}}
+{{- $merged = append $merged $gate -}}
+{{- end -}}
+{{- end -}}
+{{- $merged = append $merged "NamespaceQueue=true" -}}
+{{- join "," $merged -}}
+{{- else -}}
+{{- $configured -}}
+{{- end -}}
 {{- end -}}

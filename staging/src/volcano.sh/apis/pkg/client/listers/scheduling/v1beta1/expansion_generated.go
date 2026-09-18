@@ -17,6 +17,14 @@ limitations under the License.
 
 package v1beta1
 
+// NamespaceQueueListerExpansion allows custom methods to be added to
+// NamespaceQueueLister.
+type NamespaceQueueListerExpansion interface{}
+
+// NamespaceQueueNamespaceListerExpansion allows custom methods to be added to
+// NamespaceQueueNamespaceLister.
+type NamespaceQueueNamespaceListerExpansion interface{}
+
 // PodGroupListerExpansion allows custom methods to be added to
 // PodGroupLister.
 type PodGroupListerExpansion interface{}

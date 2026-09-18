@@ -22,15 +22,21 @@ import (
 	"strings"
 	"testing"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/tools/cache"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/utils/ptr"
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
+	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/features"
 )
 
 func TestValidateCronjobSpec(t *testing.T) {
@@ -371,6 +377,57 @@ func getJobTemplate() v1alpha1.JobSpec {
 				Action: busv1alpha1.RestartTaskAction,
 			},
 		},
+	}
+}
+
+func TestValidateCronJobRejectsNamespaceQueueThatIsNotReady(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	oldQueueLister := config.QueueLister
+	oldNamespaceQueueLister := config.NamespaceQueueLister
+	defer func() {
+		config.QueueLister = oldQueueLister
+		config.NamespaceQueueLister = oldNamespaceQueueLister
+	}()
+
+	config.QueueLister = schedulinglister.NewQueueLister(
+		cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}),
+	)
+	namespaceQueueIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+		cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
+	})
+	config.NamespaceQueueLister = schedulinglister.NewNamespaceQueueLister(namespaceQueueIndexer)
+	if err := namespaceQueueIndexer.Add(&schedulingv1beta2.NamespaceQueue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "training",
+			Namespace:  "team-a",
+			Generation: 1,
+		},
+		Status: schedulingv1beta2.NamespaceQueueStatus{
+			State: schedulingv1beta2.QueueStateOpen,
+			Conditions: []metav1.Condition{
+				{Type: "Authorized", Status: metav1.ConditionTrue, ObservedGeneration: 1},
+				{Type: "Ready", Status: metav1.ConditionFalse, ObservedGeneration: 1},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cronjob := &v1alpha1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "training-cronjob", Namespace: "team-a"},
+		Spec: v1alpha1.CronJobSpec{
+			Schedule: "* * * * *",
+			JobTemplate: v1alpha1.JobTemplateSpec{Spec: func() v1alpha1.JobSpec {
+				spec := getJobTemplate()
+				spec.Queue = "namespace/training"
+				return spec
+			}()},
+		},
+	}
+	response := admissionv1.AdmissionResponse{Allowed: true}
+	message := validateCronJobCreate(cronjob, &response)
+	if response.Allowed || !strings.Contains(message, "is not ready") {
+		t.Fatalf("unexpected validation result: allowed=%t message=%q", response.Allowed, message)
 	}
 }
 func TestValidateCronJobName(t *testing.T) {

@@ -5,6 +5,21 @@
 {{ $scheduler_main_csc := or .Values.custom.scheduler_main_csc .Values.custom.default_csc }}
 {{ $scheduler_ns := or .Values.custom.scheduler_ns .Values.custom.default_ns }}
 {{ $scheduler_name := .Values.custom.scheduler_name }}
+{{ $scheduler_feature_gates := include "volcano.featureGates" (dict "gates" .Values.custom.scheduler_feature_gates "namespaceQueueEnabled" .Values.custom.namespace_queue_enable) }}
+{{ $scheduler_config_file := .Values.basic.scheduler_config_file }}
+{{ if and .Values.custom.namespace_queue_enable (not .Values.custom.scheduler_config_override) }}
+{{ if eq $scheduler_config_file "config/volcano-scheduler.conf" }}
+{{ $scheduler_config_file = .Values.basic.namespace_queue_scheduler_config_file }}
+{{ end }}
+{{ $scheduler_config := .Files.Get $scheduler_config_file }}
+{{ if or (not (contains "name: capacity" $scheduler_config)) (not (contains "enableHierarchy: true" $scheduler_config)) }}
+{{ fail (printf "scheduler config %q must enable the hierarchical capacity plugin when NamespaceQueue is enabled" $scheduler_config_file) }}
+{{ end }}
+{{ else if and .Values.custom.namespace_queue_enable .Values.custom.scheduler_config_override }}
+{{ if or (not (contains "name: capacity" .Values.custom.scheduler_config_override)) (not (contains "enableHierarchy: true" .Values.custom.scheduler_config_override)) }}
+{{ fail "scheduler_config_override must enable the hierarchical capacity plugin when NamespaceQueue is enabled" }}
+{{ end }}
+{{ end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -19,7 +34,7 @@ data:
   volcano-scheduler.conf: |
     {{- .Values.custom.scheduler_config_override | nindent 4 }}
   {{- else }}
-  {{- (.Files.Glob .Values.basic.scheduler_config_file).AsConfig | nindent 2}}
+  {{- (.Files.Glob $scheduler_config_file).AsConfig | nindent 2}}
   {{- end }}
 ---
 apiVersion: v1
@@ -91,6 +106,12 @@ rules:
     verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues/status"]
+    verbs: ["update"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues/status"]
     verbs: ["update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
@@ -202,7 +223,7 @@ spec:
           {{- end }}
           args:
             - --logtostderr
-            - --scheduler-conf=/volcano.scheduler/{{base .Values.basic.scheduler_config_file}}
+            - --scheduler-conf=/volcano.scheduler/{{base $scheduler_config_file}}
             {{- if $scheduler_name }}
             - --scheduler-name={{- $scheduler_name }}
             {{- end }}
@@ -241,8 +262,8 @@ spec:
             {{- if .Values.custom.scheduler_plugins_dir }}
             - --plugins-dir={{ .Values.custom.scheduler_plugins_dir }}
             {{- end }}
-            {{- if .Values.custom.scheduler_feature_gates }}
-            - --feature-gates={{ .Values.custom.scheduler_feature_gates }}
+            {{- if $scheduler_feature_gates }}
+            - --feature-gates={{ $scheduler_feature_gates }}
             {{- end }}
             {{- if .Values.custom.ignored_provisioners }}
             - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}

@@ -8,6 +8,7 @@ basic:
   admission_secret_name: "volcano-admission-secret"
   admission_config_file: "config/volcano-admission.conf"
   scheduler_config_file: "config/volcano-scheduler.conf"
+  namespace_queue_scheduler_config_file: "config/volcano-scheduler-namespacequeue.conf"
   agent_scheduler_config_file: "config/agent-scheduler.conf"
   image_pull_secret: ""
   image_pull_policy: "Always"
@@ -68,7 +69,7 @@ custom:
   scheduler_task_updater_worker_num: ~
   scheduler_percentage_nodes_to_find: ~
   agent_scheduler_worker_count: 1
-  enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/validate,/queues/mutate,/queues/validate,/hypernodes/validate,/cronjobs/validate"
+  enabled_admissions: "/jobs/mutate,/jobs/validate,/namespacequeues/validate,/podgroups/mutate,/podgroups/validate,/queues/mutate,/queues/validate,/hypernodes/validate,/cronjobs/validate"
   colocation_enable: false
   ignored_provisioners: ~
 # Override the configuration for agent.
@@ -293,6 +294,9 @@ custom:
   # Specify feature gates for components
   scheduler_feature_gates: ~
   admission_feature_gates: ~
+  controller_feature_gates: ~
+  namespace_queue_enable: false
+  namespace_queue_max_depth: 5
 
 # Specify options for scheduler sharding
   agent_scheduler_sharding_mode: ~

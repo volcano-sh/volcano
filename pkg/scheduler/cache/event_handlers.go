@@ -859,17 +859,17 @@ func getJobID(pg *schedulingapi.PodGroup) schedulingapi.JobID {
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) setPodGroup(ss *schedulingapi.PodGroup) error {
+	queueID, err := resolveQueueReference(ss.Namespace, ss.Spec.Queue, sc.defaultQueue)
+	if err != nil {
+		return err
+	}
 	job := getJobID(ss)
 	if _, found := sc.Jobs[job]; !found {
 		sc.Jobs[job] = schedulingapi.NewJobInfo(job)
 	}
 
 	sc.Jobs[job].SetPodGroup(ss)
-
-	// TODO(k82cn): set default queue in admission.
-	if len(ss.Spec.Queue) == 0 {
-		sc.Jobs[job].Queue = schedulingapi.QueueID(sc.defaultQueue)
-	}
+	sc.Jobs[job].Queue = queueID
 
 	metrics.UpdateE2eSchedulingStartTimeByJob(sc.Jobs[job].Name, string(sc.Jobs[job].Queue), sc.Jobs[job].Namespace,
 		sc.Jobs[job].CreationTimestamp.Time)
@@ -1073,8 +1073,60 @@ func (sc *SchedulerCache) updateQueue(queue *scheduling.Queue) {
 func (sc *SchedulerCache) deleteQueue(id schedulingapi.QueueID) {
 	if queue, ok := sc.Queues[id]; ok {
 		delete(sc.Queues, id)
-		metrics.DeleteQueueMetrics(queue.Name)
+		metrics.DeleteQueueMetrics(string(queue.UID))
 	}
+}
+
+func (sc *SchedulerCache) AddNamespaceQueueV1beta1(obj interface{}) {
+	queue, ok := obj.(*schedulingv1beta1.NamespaceQueue)
+	if !ok {
+		klog.Errorf("Cannot convert to NamespaceQueue: %v", obj)
+		return
+	}
+	internal := &scheduling.NamespaceQueue{}
+	if err := scheme.Scheme.Convert(queue, internal, nil); err != nil {
+		klog.Errorf("Failed to convert NamespaceQueue %s/%s: %v", queue.Namespace, queue.Name, err)
+		return
+	}
+	info, err := schedulingapi.NewNamespaceQueueInfo(internal)
+	if err != nil {
+		klog.Errorf("Failed to build NamespaceQueueInfo %s/%s: %v", queue.Namespace, queue.Name, err)
+		return
+	}
+	sc.Mutex.Lock()
+	sc.Queues[info.UID] = info
+	sc.Mutex.Unlock()
+}
+
+func (sc *SchedulerCache) UpdateNamespaceQueueV1beta1(oldObj, newObj interface{}) {
+	oldQueue, ok := oldObj.(*schedulingv1beta1.NamespaceQueue)
+	if !ok {
+		return
+	}
+	newQueue, ok := newObj.(*schedulingv1beta1.NamespaceQueue)
+	if !ok || oldQueue.ResourceVersion == newQueue.ResourceVersion {
+		return
+	}
+	sc.AddNamespaceQueueV1beta1(newQueue)
+}
+
+func (sc *SchedulerCache) DeleteNamespaceQueueV1beta1(obj interface{}) {
+	var queue *schedulingv1beta1.NamespaceQueue
+	switch value := obj.(type) {
+	case *schedulingv1beta1.NamespaceQueue:
+		queue = value
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		queue, ok = value.Obj.(*schedulingv1beta1.NamespaceQueue)
+		if !ok {
+			return
+		}
+	default:
+		return
+	}
+	sc.Mutex.Lock()
+	delete(sc.Queues, schedulingapi.NamespaceQueueID(queue.Namespace, queue.Name))
+	sc.Mutex.Unlock()
 }
 
 // DeletePriorityClass delete priorityclass from the scheduler cache

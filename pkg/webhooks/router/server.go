@@ -18,11 +18,12 @@ package router
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"mime"
 	"net/http"
 
 	admissionv1 "k8s.io/api/admission/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/webhooks/schema"
@@ -41,6 +42,18 @@ const MaxRequestBody int64 = 3 * 1024 * 1024
 
 // serve the http request.
 func serve(w http.ResponseWriter, r *http.Request, admit AdmitFunc) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	contentType, _, err := mime.ParseMediaType(r.Header.Get(CONTENTTYPE))
+	if err != nil || contentType != APPLICATIONJSON {
+		http.Error(w, "unsupported media type", http.StatusUnsupportedMediaType)
+		return
+	}
+
 	var body []byte
 	if r.Body != nil {
 		r.Body = http.MaxBytesReader(w, r.Body, MaxRequestBody)
@@ -53,18 +66,15 @@ func serve(w http.ResponseWriter, r *http.Request, admit AdmitFunc) {
 		body = data
 	}
 
-	// verify the content type is accurate
-	contentType := r.Header.Get(CONTENTTYPE)
-	if contentType != APPLICATIONJSON {
-		klog.Errorf("contentType is not application/json")
-		return
-	}
-
 	var reviewResponse *admissionv1.AdmissionResponse
 	ar := admissionv1.AdmissionReview{}
 	deserializer := schema.Codecs.UniversalDeserializer()
 	if _, _, err := deserializer.Decode(body, nil, &ar); err != nil {
 		reviewResponse = util.ToAdmissionResponse(err)
+	} else if ar.Request == nil {
+		reviewResponse = util.ToAdmissionResponse(
+			fmt.Errorf("admission review request must not be nil"),
+		)
 	} else {
 		reviewResponse = admit(ar)
 	}
@@ -73,8 +83,10 @@ func serve(w http.ResponseWriter, r *http.Request, admit AdmitFunc) {
 	response := createResponse(reviewResponse, &ar)
 	resp, err := json.Marshal(response)
 	if err != nil {
-		klog.Error(err)
+		http.Error(w, "failed to encode admission response", http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set(CONTENTTYPE, APPLICATIONJSON)
 	if _, err := w.Write(resp); err != nil {
 		klog.Error(err)
 	}
@@ -86,11 +98,10 @@ func createResponse(reviewResponse *admissionv1.AdmissionResponse, ar *admission
 		response.APIVersion = "admission.k8s.io/v1"
 		response.Kind = "AdmissionReview"
 		response.Response = reviewResponse
-		response.Response.UID = ar.Request.UID
+		if ar != nil && ar.Request != nil {
+			response.Response.UID = ar.Request.UID
+		}
 	}
-	// reset the Object and OldObject, they are not needed in a response.
-	ar.Request.Object = runtime.RawExtension{}
-	ar.Request.OldObject = runtime.RawExtension{}
 
 	return response
 }

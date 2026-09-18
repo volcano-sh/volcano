@@ -115,23 +115,24 @@ type SchedulerCache struct {
 	nodeSelectorLabels map[string]sets.Empty
 	metricsConf        map[string]string
 
-	resyncPeriod               time.Duration
-	podInformer                infov1.PodInformer
-	nodeInformer               infov1.NodeInformer
-	hyperNodeInformer          topologyinformerv1alpha1.HyperNodeInformer
-	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
-	queueInformerV1beta1       vcinformerv1.QueueInformer
-	pvInformer                 infov1.PersistentVolumeInformer
-	pvcInformer                infov1.PersistentVolumeClaimInformer
-	scInformer                 storagev1.StorageClassInformer
-	vaInformer                 storagev1.VolumeAttachmentInformer
-	pcInformer                 schedv1.PriorityClassInformer
-	quotaInformer              infov1.ResourceQuotaInformer
-	csiNodeInformer            storagev1.CSINodeInformer
-	csiDriverInformer          storagev1.CSIDriverInformer
-	csiStorageCapacityInformer storagev1.CSIStorageCapacityInformer
-	cpuInformer                cpuinformerv1.NumatopologyInformer
-	nodeShardInformer          shardinformerv1alpha1.NodeShardInformer
+	resyncPeriod                  time.Duration
+	podInformer                   infov1.PodInformer
+	nodeInformer                  infov1.NodeInformer
+	hyperNodeInformer             topologyinformerv1alpha1.HyperNodeInformer
+	podGroupInformerV1beta1       vcinformerv1.PodGroupInformer
+	queueInformerV1beta1          vcinformerv1.QueueInformer
+	namespaceQueueInformerV1beta1 vcinformerv1.NamespaceQueueInformer
+	pvInformer                    infov1.PersistentVolumeInformer
+	pvcInformer                   infov1.PersistentVolumeClaimInformer
+	scInformer                    storagev1.StorageClassInformer
+	vaInformer                    storagev1.VolumeAttachmentInformer
+	pcInformer                    schedv1.PriorityClassInformer
+	quotaInformer                 infov1.ResourceQuotaInformer
+	csiNodeInformer               storagev1.CSINodeInformer
+	csiDriverInformer             storagev1.CSIDriverInformer
+	csiStorageCapacityInformer    storagev1.CSIStorageCapacityInformer
+	cpuInformer                   cpuinformerv1.NumatopologyInformer
+	nodeShardInformer             shardinformerv1alpha1.NodeShardInformer
 
 	Binder         Binder
 	Evictor        Evictor
@@ -375,6 +376,21 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 
 // UpdateQueueStatus will update the status of queue
 func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
+	if queue != nil && queue.NamespaceQueue != nil {
+		updated := queue.NamespaceQueue.DeepCopy()
+		updated.Status.Allocated = queue.Queue.Status.Allocated.DeepCopy()
+		updated.Status.Reservation = scheduling.Reservation{
+			Nodes:    append([]string(nil), queue.Queue.Status.Reservation.Nodes...),
+			Resource: queue.Queue.Status.Reservation.Resource.DeepCopy(),
+		}
+		newNamespaceQueue := &vcv1beta1.NamespaceQueue{}
+		if err := schedulingscheme.Scheme.Convert(updated, newNamespaceQueue, nil); err != nil {
+			return err
+		}
+		_, err := su.vcclient.SchedulingV1beta1().NamespaceQueues(updated.Namespace).
+			UpdateStatus(context.TODO(), newNamespaceQueue, metav1.UpdateOptions{})
+		return err
+	}
 	newQueue := &vcv1beta1.Queue{}
 	if err := schedulingscheme.Scheme.Convert(queue.Queue, newQueue, nil); err != nil {
 		klog.Errorf("error occurred in converting scheduling.Queue to v1beta1.Queue: %s", err.Error())
@@ -795,6 +811,16 @@ func (sc *SchedulerCache) addEventHandler() {
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
 	handlers["queue"] = handlerRegistration
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) {
+		sc.namespaceQueueInformerV1beta1 = vcinformers.Scheduling().V1beta1().NamespaceQueues()
+		handlerRegistration, _ = sc.namespaceQueueInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddNamespaceQueueV1beta1,
+			UpdateFunc: sc.UpdateNamespaceQueueV1beta1,
+			DeleteFunc: sc.DeleteNamespaceQueueV1beta1,
+		})
+		handlers["namespacequeue"] = handlerRegistration
+	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.ResourceTopology) {
 		sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()

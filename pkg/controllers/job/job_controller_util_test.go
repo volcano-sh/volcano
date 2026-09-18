@@ -118,10 +118,16 @@ func TestCreateJobPod_Basic(t *testing.T) {
 	if pod.Labels[v1alpha1.TaskIndex] != "0" {
 		t.Errorf("expected task index '0', got %s", pod.Labels[v1alpha1.TaskIndex])
 	}
+	if pod.Labels[v1alpha1.QueueNameKey] != "test-queue" {
+		t.Errorf("expected queue label 'test-queue', got %s", pod.Labels[v1alpha1.QueueNameKey])
+	}
 
 	// Verify annotations
 	if pod.Annotations[v1alpha1.JobVersion] != "1" {
 		t.Errorf("expected job version '1', got %s", pod.Annotations[v1alpha1.JobVersion])
+	}
+	if pod.Annotations[v1alpha1.QueueNameKey] != "test-queue" {
+		t.Errorf("expected queue annotation 'test-queue', got %s", pod.Annotations[v1alpha1.QueueNameKey])
 	}
 	if pod.Annotations[schedulingv1beta1.KubeGroupNameAnnotationKey] != "test-job-"+string(job.UID) {
 		t.Errorf("expected pod group annotation 'test-job-%s', got %s", job.UID, pod.Annotations[schedulingv1beta1.KubeGroupNameAnnotationKey])
