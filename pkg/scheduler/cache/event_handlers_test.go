@@ -34,7 +34,6 @@ import (
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -650,8 +649,8 @@ func TestSchedulerCache_DeleteQueueV1beta1(t *testing.T) {
 
 func TestSchedulerCache_SyncNode(t *testing.T) {
 	n1 := util.BuildNode("n1", nil, map[string]string{"label-key": "label-value"})
-	expectedNodeInfo := schedulingapi.NewNodeInfo(n1)
-	expectedNodeInfo.State.Phase = schedulingapi.Ready
+	expectedNodeInfo := api.NewNodeInfo(n1)
+	expectedNodeInfo.State.Phase = api.Ready
 
 	tests := []struct {
 		name          string
@@ -659,13 +658,13 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 		nodes         []*v1.Node
 		nodeName      string
 		nodeSelector  map[string]sets.Empty
-		expectedNodes map[string]*schedulingapi.NodeInfo
+		expectedNodes map[string]*api.NodeInfo
 		wantErr       bool
 	}{
 		{
 			name:          "Node not exists",
 			nodeName:      "n1",
-			expectedNodes: map[string]*schedulingapi.NodeInfo{},
+			expectedNodes: map[string]*api.NodeInfo{},
 			wantErr:       true,
 		},
 		{
@@ -677,7 +676,7 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 			nodeSelector: map[string]sets.Empty{
 				"label-key:label-value": {},
 			},
-			expectedNodes: map[string]*schedulingapi.NodeInfo{"n1": expectedNodeInfo},
+			expectedNodes: map[string]*api.NodeInfo{"n1": expectedNodeInfo},
 			wantErr:       false,
 		},
 		{
@@ -689,7 +688,7 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 			nodeSelector: map[string]sets.Empty{
 				"label-key:label-value": {},
 			},
-			expectedNodes: map[string]*schedulingapi.NodeInfo{},
+			expectedNodes: map[string]*api.NodeInfo{},
 			wantErr:       false,
 		},
 	}
@@ -706,7 +705,7 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 				t.Errorf("SyncNode() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			actualNodes := make(map[string]*schedulingapi.NodeInfo)
+			actualNodes := make(map[string]*api.NodeInfo)
 			for n, i := range sc.Nodes {
 				actualNodes[n] = i
 			}
@@ -717,45 +716,45 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 
 func TestSchedulerCache_AddHyperNode(t *testing.T) {
 	exactSelector := "exact"
-	s5 := schedulingapi.BuildHyperNode("s5", 2, []schedulingapi.MemberConfig{
+	s5 := api.BuildHyperNode("s5", 2, []api.MemberConfig{
 		{"s2", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 		{"s3", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
-	s4 := schedulingapi.BuildHyperNode("s4", 2, []schedulingapi.MemberConfig{
+	s4 := api.BuildHyperNode("s4", 2, []api.MemberConfig{
 		{"s0", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 		{"s1", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
-	s3 := schedulingapi.BuildHyperNode("s3", 1, []schedulingapi.MemberConfig{
+	s3 := api.BuildHyperNode("s3", 1, []api.MemberConfig{
 		{"node-6", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-7", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s1 := schedulingapi.BuildHyperNode("s1", 1, []schedulingapi.MemberConfig{
+	s1 := api.BuildHyperNode("s1", 1, []api.MemberConfig{
 		{"node-2", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-3", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s2 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
+	s2 := api.BuildHyperNode("s2", 1, []api.MemberConfig{
 		{"node-4", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-5", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s0 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
+	s0 := api.BuildHyperNode("s0", 1, []api.MemberConfig{
 		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
 	initialHyperNodes0 := []*topologyv1alpha1.HyperNode{s5, s0, s4, s3, s1, s2}
 
 	regexSelector := "regex"
-	s00 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
+	s00 := api.BuildHyperNode("s0", 1, []api.MemberConfig{
 		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s10 := schedulingapi.BuildHyperNode("s1", 1, []schedulingapi.MemberConfig{
+	s10 := api.BuildHyperNode("s1", 1, []api.MemberConfig{
 		{"node-[2-3]", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
 	})
-	s20 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
+	s20 := api.BuildHyperNode("s2", 1, []api.MemberConfig{
 		{"^prefix", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
 	})
 	initialHyperNodes1 := []*topologyv1alpha1.HyperNode{s5, s00, s4, s3, s10, s20}
-	s6 := schedulingapi.BuildHyperNode("s6", 3, []schedulingapi.MemberConfig{
+	s6 := api.BuildHyperNode("s6", 3, []api.MemberConfig{
 		{"s4", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 		{"s5", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
@@ -888,31 +887,31 @@ func TestSchedulerCache_AddHyperNode(t *testing.T) {
 func TestSchedulerCache_Delete_Then_AddBack(t *testing.T) {
 	exactSelector := "exact"
 
-	s5 := schedulingapi.BuildHyperNode("s5", 2, []schedulingapi.MemberConfig{
+	s5 := api.BuildHyperNode("s5", 2, []api.MemberConfig{
 		{"s2", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 		{"s3", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
-	s4 := schedulingapi.BuildHyperNode("s4", 2, []schedulingapi.MemberConfig{
+	s4 := api.BuildHyperNode("s4", 2, []api.MemberConfig{
 		{"s0", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 		{"s1", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
-	s3 := schedulingapi.BuildHyperNode("s3", 1, []schedulingapi.MemberConfig{
+	s3 := api.BuildHyperNode("s3", 1, []api.MemberConfig{
 		{"node-6", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-7", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s1 := schedulingapi.BuildHyperNode("s1", 1, []schedulingapi.MemberConfig{
+	s1 := api.BuildHyperNode("s1", 1, []api.MemberConfig{
 		{"node-2", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-3", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s2 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
+	s2 := api.BuildHyperNode("s2", 1, []api.MemberConfig{
 		{"node-4", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-5", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s0 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
+	s0 := api.BuildHyperNode("s0", 1, []api.MemberConfig{
 		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s6 := schedulingapi.BuildHyperNode("s6", 3, []schedulingapi.MemberConfig{
+	s6 := api.BuildHyperNode("s6", 3, []api.MemberConfig{
 		{"s4", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 		{"s5", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
@@ -999,33 +998,33 @@ func TestSchedulerCache_UpdateHyperNode(t *testing.T) {
 	exactSelector := "exact"
 	regexSelector := "regex"
 
-	s0 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
+	s0 := api.BuildHyperNode("s0", 1, []api.MemberConfig{
 		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s1 := schedulingapi.BuildHyperNode("s1", 1, []schedulingapi.MemberConfig{
+	s1 := api.BuildHyperNode("s1", 1, []api.MemberConfig{
 		{"node-2", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-3", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s2 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
+	s2 := api.BuildHyperNode("s2", 1, []api.MemberConfig{
 		{"node-4", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-5", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s3 := schedulingapi.BuildHyperNode("s3", 1, []schedulingapi.MemberConfig{
+	s3 := api.BuildHyperNode("s3", 1, []api.MemberConfig{
 		{"node-6", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-7", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s4 := schedulingapi.BuildHyperNode("s4", 2, []schedulingapi.MemberConfig{
+	s4 := api.BuildHyperNode("s4", 2, []api.MemberConfig{
 		{"s0", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 		{"s1", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
 
-	s5 := schedulingapi.BuildHyperNode("s5", 2, []schedulingapi.MemberConfig{
+	s5 := api.BuildHyperNode("s5", 2, []api.MemberConfig{
 		{"s2", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 		{"s3", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
-	s6 := schedulingapi.BuildHyperNode("s6", 3,
-		[]schedulingapi.MemberConfig{
+	s6 := api.BuildHyperNode("s6", 3,
+		[]api.MemberConfig{
 			{"s4", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 			{"s5", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 		})
@@ -1046,11 +1045,11 @@ func TestSchedulerCache_UpdateHyperNode(t *testing.T) {
 			initialHyperNodes: initialHyperNodes,
 			hyperNodesToUpdated: []*topologyv1alpha1.HyperNode{
 				// first remove s2 from s5.
-				schedulingapi.BuildHyperNode("s5", 2, []schedulingapi.MemberConfig{
+				api.BuildHyperNode("s5", 2, []api.MemberConfig{
 					{"s3", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 				}),
 				// second add s2 to s4.
-				schedulingapi.BuildHyperNode("s4", 2, []schedulingapi.MemberConfig{
+				api.BuildHyperNode("s4", 2, []api.MemberConfig{
 					{"s0", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 					{"s1", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 					{"s2", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
@@ -1114,7 +1113,7 @@ func TestSchedulerCache_UpdateHyperNode(t *testing.T) {
 			name:              "Remove hyperNode s3's members node-6 and node-7.",
 			initialHyperNodes: initialHyperNodes,
 			hyperNodesToUpdated: []*topologyv1alpha1.HyperNode{
-				schedulingapi.BuildHyperNode("s3", 1, []schedulingapi.MemberConfig{}),
+				api.BuildHyperNode("s3", 1, []api.MemberConfig{}),
 			},
 			expectedHyperNodesSetByTier: []map[int]sets.Set[string]{
 				{
@@ -1155,7 +1154,7 @@ func TestSchedulerCache_UpdateHyperNode(t *testing.T) {
 			},
 			initialHyperNodes: initialHyperNodes,
 			hyperNodesToUpdated: []*topologyv1alpha1.HyperNode{
-				schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
+				api.BuildHyperNode("s2", 1, []api.MemberConfig{
 					{"-suffix", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
 				}),
 			},
@@ -1219,31 +1218,31 @@ func TestSchedulerCache_UpdateHyperNode(t *testing.T) {
 
 func TestSchedulerCache_DeleteHyperNode(t *testing.T) {
 	selector := "exact"
-	s0 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
+	s0 := api.BuildHyperNode("s0", 1, []api.MemberConfig{
 		{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil},
 		{"node-1", topologyv1alpha1.MemberTypeNode, selector, nil},
 	})
-	s1 := schedulingapi.BuildHyperNode("s1", 1, []schedulingapi.MemberConfig{
+	s1 := api.BuildHyperNode("s1", 1, []api.MemberConfig{
 		{"node-2", topologyv1alpha1.MemberTypeNode, selector, nil},
 		{"node-3", topologyv1alpha1.MemberTypeNode, selector, nil},
 	})
-	s2 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
+	s2 := api.BuildHyperNode("s2", 1, []api.MemberConfig{
 		{"node-4", topologyv1alpha1.MemberTypeNode, selector, nil},
 		{"node-5", topologyv1alpha1.MemberTypeNode, selector, nil},
 	})
-	s3 := schedulingapi.BuildHyperNode("s3", 1, []schedulingapi.MemberConfig{
+	s3 := api.BuildHyperNode("s3", 1, []api.MemberConfig{
 		{"node-6", topologyv1alpha1.MemberTypeNode, selector, nil},
 		{"node-7", topologyv1alpha1.MemberTypeNode, selector, nil},
 	})
-	s4 := schedulingapi.BuildHyperNode("s4", 2, []schedulingapi.MemberConfig{
+	s4 := api.BuildHyperNode("s4", 2, []api.MemberConfig{
 		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 		{"s1", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 	})
-	s5 := schedulingapi.BuildHyperNode("s5", 2, []schedulingapi.MemberConfig{
+	s5 := api.BuildHyperNode("s5", 2, []api.MemberConfig{
 		{"s2", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 		{"s3", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 	})
-	s6 := schedulingapi.BuildHyperNode("s6", 3, []schedulingapi.MemberConfig{
+	s6 := api.BuildHyperNode("s6", 3, []api.MemberConfig{
 		{"s4", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 		{"s5", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 	})
@@ -1361,49 +1360,49 @@ func TestSchedulerCache_DeleteHyperNode(t *testing.T) {
 func TestSchedulerCache_SyncHyperNode(t *testing.T) {
 	exactSelector := "exact"
 	regexSelector := "regex"
-	s6 := schedulingapi.BuildHyperNode("s6", 3, []schedulingapi.MemberConfig{
+	s6 := api.BuildHyperNode("s6", 3, []api.MemberConfig{
 		{"s4", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 		{"s5", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
-	s5 := schedulingapi.BuildHyperNode("s5", 2, []schedulingapi.MemberConfig{
+	s5 := api.BuildHyperNode("s5", 2, []api.MemberConfig{
 		{"s2", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 		{"s3", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
-	s4 := schedulingapi.BuildHyperNode("s4", 2, []schedulingapi.MemberConfig{
+	s4 := api.BuildHyperNode("s4", 2, []api.MemberConfig{
 		{"s0", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 		{"s1", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
-	s3 := schedulingapi.BuildHyperNode("s3", 1, []schedulingapi.MemberConfig{
+	s3 := api.BuildHyperNode("s3", 1, []api.MemberConfig{
 		{"node-6", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-7", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s2 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
+	s2 := api.BuildHyperNode("s2", 1, []api.MemberConfig{
 		{"node-4", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-5", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s20 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
+	s20 := api.BuildHyperNode("s2", 1, []api.MemberConfig{
 		{"node-4", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-5", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-9", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
 	})
-	s21 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
+	s21 := api.BuildHyperNode("s2", 1, []api.MemberConfig{
 		{"node-4", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-5", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
 	})
-	s1 := schedulingapi.BuildHyperNode("s1", 1, []schedulingapi.MemberConfig{
+	s1 := api.BuildHyperNode("s1", 1, []api.MemberConfig{
 		{"node-2", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-3", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s0 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
+	s0 := api.BuildHyperNode("s0", 1, []api.MemberConfig{
 		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
-	s00 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
+	s00 := api.BuildHyperNode("s0", 1, []api.MemberConfig{
 		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 		{"^prefix", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
 	})
-	s01 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
+	s01 := api.BuildHyperNode("s0", 1, []api.MemberConfig{
 		{"node-[01]", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
 	})
 	initialHyperNodes0 := []*topologyv1alpha1.HyperNode{s5, s0, s4, s3, s1, s2, s6}
@@ -1580,17 +1579,17 @@ func TestSchedulerCache_SyncHyperNode(t *testing.T) {
 
 func newCacheWithNodes(names ...string) *SchedulerCache {
 	sc := &SchedulerCache{
-		Nodes: make(map[string]*schedulingapi.NodeInfo),
-		Jobs:  make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Nodes: make(map[string]*api.NodeInfo),
+		Jobs:  make(map[api.JobID]*api.JobInfo),
 	}
 	for _, n := range names {
-		sc.Nodes[n] = schedulingapi.NewNodeInfo(buildNode(n, nil))
+		sc.Nodes[n] = api.NewNodeInfo(buildNode(n, nil))
 	}
 	return sc
 }
 
-func resSets(cpuSet string) schedulingapi.ResNumaSets {
-	return schedulingapi.ResNumaSets{"cpu": mustParseCPUSet(cpuSet)}
+func resSets(cpuSet string) api.ResNumaSets {
+	return api.ResNumaSets{"cpu": mustParseCPUSet(cpuSet)}
 }
 
 func mustParseCPUSet(s string) cpuset.CPUSet {
@@ -1603,8 +1602,8 @@ func mustParseCPUSet(s string) cpuset.CPUSet {
 
 // podMetaFrom returns the PodMeta matching buildPod's UID convention so we look
 // up the same key that clearUnassignedNumaTask derives from the pod.
-func podMetaFrom(pod *v1.Pod) schedulingapi.PodMeta {
-	return schedulingapi.PodMeta{UID: pod.UID, Name: pod.Name, Namespace: pod.Namespace}
+func podMetaFrom(pod *v1.Pod) api.PodMeta {
+	return api.PodMeta{UID: pod.UID, Name: pod.Name, Namespace: pod.Namespace}
 }
 
 func TestClearUnassignedNumaTask_RemovesEntry(t *testing.T) {
@@ -1612,10 +1611,10 @@ func TestClearUnassignedNumaTask_RemovesEntry(t *testing.T) {
 	node := sc.Nodes["n1"]
 
 	pod := buildPod("ns1", "p1", "n1", v1.PodRunning, nil, nil, nil)
-	node.UnassignedNumaPods = map[schedulingapi.PodMeta]schedulingapi.ResNumaSets{
+	node.UnassignedNumaPods = map[api.PodMeta]api.ResNumaSets{
 		podMetaFrom(pod): resSets("0-1"),
 	}
-	task := schedulingapi.NewTaskInfo(pod)
+	task := api.NewTaskInfo(pod)
 
 	sc.clearUnassignedNumaTask(task)
 
@@ -1629,10 +1628,10 @@ func TestClearUnassignedNumaTask_NoOpWhenTaskHasNoNode(t *testing.T) {
 	node := sc.Nodes["n1"]
 
 	pod := buildPod("ns1", "p1", "", v1.PodRunning, nil, nil, nil)
-	node.UnassignedNumaPods = map[schedulingapi.PodMeta]schedulingapi.ResNumaSets{
+	node.UnassignedNumaPods = map[api.PodMeta]api.ResNumaSets{
 		podMetaFrom(pod): resSets("0-1"),
 	}
-	task := schedulingapi.NewTaskInfo(pod)
+	task := api.NewTaskInfo(pod)
 
 	sc.clearUnassignedNumaTask(task)
 
@@ -1645,12 +1644,12 @@ func TestClearUnassignedNumaTask_NoOpWhenEntryMissing(t *testing.T) {
 	sc := newCacheWithNodes("n1")
 	node := sc.Nodes["n1"]
 	otherPod := buildPod("ns1", "pother", "n1", v1.PodRunning, nil, nil, nil)
-	node.UnassignedNumaPods = map[schedulingapi.PodMeta]schedulingapi.ResNumaSets{
+	node.UnassignedNumaPods = map[api.PodMeta]api.ResNumaSets{
 		podMetaFrom(otherPod): resSets("0-1"),
 	}
 
 	pod := buildPod("ns1", "p1", "n1", v1.PodRunning, nil, nil, nil)
-	task := schedulingapi.NewTaskInfo(pod)
+	task := api.NewTaskInfo(pod)
 
 	sc.clearUnassignedNumaTask(task)
 
@@ -1662,7 +1661,7 @@ func TestClearUnassignedNumaTask_NoOpWhenEntryMissing(t *testing.T) {
 func TestClearUnassignedNumaTask_NoOpWhenNodeMissing(t *testing.T) {
 	sc := newCacheWithNodes()
 	pod := buildPod("ns1", "p1", "ghost", v1.PodRunning, nil, nil, nil)
-	task := schedulingapi.NewTaskInfo(pod)
+	task := api.NewTaskInfo(pod)
 
 	// Must not panic.
 	sc.clearUnassignedNumaTask(task)
@@ -1673,7 +1672,7 @@ func TestClearUnassignedNumaPod_FallsBackToPodInfoWhenTaskNotInJob(t *testing.T)
 	node := sc.Nodes["n1"]
 
 	pod := buildPod("ns1", "p1", "n1", v1.PodRunning, nil, nil, nil)
-	node.UnassignedNumaPods = map[schedulingapi.PodMeta]schedulingapi.ResNumaSets{
+	node.UnassignedNumaPods = map[api.PodMeta]api.ResNumaSets{
 		podMetaFrom(pod): resSets("0-1"),
 	}
 	// No job registered in sc.Jobs, so clearUnassignedNumaPod falls back to the
@@ -1689,22 +1688,22 @@ func TestClearUnassignedNumaPod_UsesTaskFromJobWhenPresent(t *testing.T) {
 	sc := newCacheWithNodes("n1")
 	nodeN1 := sc.Nodes["n1"]
 
-	sc.Nodes["n2"] = schedulingapi.NewNodeInfo(buildNode("n2", nil))
+	sc.Nodes["n2"] = api.NewNodeInfo(buildNode("n2", nil))
 	nodeN2 := sc.Nodes["n2"]
 
 	pod := buildPod("ns1", "p1", "n1", v1.PodRunning, nil, nil, nil)
 	podMeta := podMetaFrom(pod)
-	nodeN1.UnassignedNumaPods = map[schedulingapi.PodMeta]schedulingapi.ResNumaSets{podMeta: resSets("0-1")}
-	nodeN2.UnassignedNumaPods = map[schedulingapi.PodMeta]schedulingapi.ResNumaSets{podMeta: resSets("2-3")}
+	nodeN1.UnassignedNumaPods = map[api.PodMeta]api.ResNumaSets{podMeta: resSets("0-1")}
+	nodeN2.UnassignedNumaPods = map[api.PodMeta]api.ResNumaSets{podMeta: resSets("2-3")}
 
-	fallbackTask := schedulingapi.NewTaskInfo(pod)
+	fallbackTask := api.NewTaskInfo(pod)
 	// Register a job whose task points at n2 (different from the pod's nn=n1 so
 	// the fallback TaskInfo would clear the wrong node). clearUnassignedNumaPod
 	// must prefer the job's task.
-	standalone := schedulingapi.NewTaskInfo(pod)
+	standalone := api.NewTaskInfo(pod)
 	jobTask := *standalone
 	jobTask.NodeName = "n2"
-	job := &schedulingapi.JobInfo{Tasks: map[schedulingapi.TaskID]*schedulingapi.TaskInfo{fallbackTask.UID: &jobTask}}
+	job := &api.JobInfo{Tasks: map[api.TaskID]*api.TaskInfo{fallbackTask.UID: &jobTask}}
 	sc.Jobs[fallbackTask.Job] = job
 
 	sc.clearUnassignedNumaPod(pod)
@@ -1758,12 +1757,12 @@ func TestAddPodWithUnresolvedPVCCachesTaskForResync(t *testing.T) {
 
 	// The task must exist in the cache as a proper TaskInfo carrying the
 	// pod reference, so it can be scheduled once the PVC informer syncs.
-	job, found := sc.Jobs[schedulingapi.JobID("default/pg-with-pvc")]
+	job, found := sc.Jobs[api.JobID("default/pg-with-pvc")]
 	assert.True(t, found, "job must be present in the cache")
 	if !assert.NotNil(t, job) {
 		return
 	}
-	task, found := job.Tasks[schedulingapi.TaskID("pod-with-pvc-uid")]
+	task, found := job.Tasks[api.TaskID("pod-with-pvc-uid")]
 	assert.True(t, found, "task must be added to the cache")
 	if assert.NotNil(t, task) {
 		assert.NotNil(t, task.Pod, "cached task must carry its pod reference")

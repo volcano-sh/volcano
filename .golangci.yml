@@ -29,7 +29,6 @@ linters:
         - "-ST1005" # Error strings should not be capitalized or end with punctuation
         - "-ST1012" # Poorly chosen name for error variable
         - "-ST1016" # Methods on the same type should have the same receiver name
-        - "-ST1019" # Import the same package multiple times
         - "-ST1020" # The documentation of an exported function should start with function's name
         - "-ST1021" # The documentation of an exported type should start with type's name
         - "-QF1001" # Apply De Morgan's law

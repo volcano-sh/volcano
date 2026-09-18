@@ -48,7 +48,6 @@ import (
 	admissionapi "k8s.io/pod-security-admission/api"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
-	volcanotestutil "volcano.sh/volcano/test/e2e/util"
 )
 
 type localTestConfig struct {
@@ -859,12 +858,12 @@ func createStatefulSet(ctx context.Context, config *localTestConfig, ssReplicas 
 	ss, err := config.client.AppsV1().StatefulSets(config.ns).Create(ctx, spec, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
 
-	volcanotestutil.WaitForRunningAndReady(ctx, config.client, ssReplicas, ss)
+	e2eutil.WaitForRunningAndReady(ctx, config.client, ssReplicas, ss)
 	return ss
 }
 
 func validateStatefulSet(ctx context.Context, config *localTestConfig, ss *appsv1.StatefulSet, anti bool) {
-	pods := volcanotestutil.GetPodList(ctx, config.client, ss.Namespace, ss.Spec.Selector)
+	pods := e2eutil.GetPodList(ctx, config.client, ss.Namespace, ss.Spec.Selector)
 
 	nodes := sets.NewString()
 	for _, pod := range pods.Items {
