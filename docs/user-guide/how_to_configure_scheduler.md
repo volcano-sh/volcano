@@ -26,7 +26,7 @@ requirement to decide how to combine these functions. That's why `tier` is requi
 ## Actions
 * `Action` implements the main logic of scheduling. 
 * Volcano allow users to make self-defined actions.
-* Volcano provides 7 built-in actions until April 2022. The details are as follows.
+* Volcano provides the following built-in actions.
 
 | ID  | Name     | Required | Description                                                                                                                                                                                                                                                           |
 |-----|----------|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -37,6 +37,7 @@ requirement to decide how to combine these functions. That's why `tier` is requi
 | 5   | reclaim  | N        | Pick out queues whose resources have been borrowed by other queues and reclaim them back.                                                                                                                                                                             |
 | 6   | elect    | N        | Select a workload satisfying some conditions. It is designed to work with resource reservation for target workload. Will deprecated at future releases.                                                                                                               |
 | 7   | reserve  | N        | Select a series of nodes and reserve resource. It is designed to work with resource reservation for target workload. Will deprecated at future releases.                                                                                                              |
+| 8   | dequeue  | N        | Move an `Inqueue` workload that is neither ready nor pipelined back to `Pending`, releasing any partial reservations. Configure it after all actions that can allocate or pipeline tasks.                                                                                |
 
 ## Tiers and Plugins
 * `Plugin` provides implementation details about scheduling algorithms by registering a series of functions. These functions
@@ -94,6 +95,19 @@ graph LR
     1(Start) --> 2(OpenSession) --> 3(enqueue) --> 4(allocate) --> 5(backfill) --> 6(CloseSession) --> 7(End)
 ```
 
+* `dequeue` is opt-in. When enabled, it must be the final action, after any configured `allocate`, `backfill`, `reclaim`,
+`preempt`, `gangpreempt`, and `gangreclaim` actions, so that all scheduling attempts complete before the scheduler decides
+that an `Inqueue` workload made no progress:
+
+```yaml
+actions: "enqueue, allocate, backfill, dequeue"
+```
+
+  A dequeued workload is kept in the scheduler's in-memory unschedulable job cache for five minutes. While cached, the
+  `enqueue` action skips it, so it cannot reclaim the queue quota it just released. The workload remains visible to the
+  session for status and allocated-resource accounting. After five minutes, `enqueue` retries it. Restarting the scheduler
+  clears this cache.
+
 * All the functions in the configured plugins will be registered when executing `OpenSession` and called when executing
 the configured actions. For example, `jobEnqueueable` function, which is registered in `overcommit` plugin and called at
 `enqueue` action, aims to judge whether the idle resource of the cluster can satisfy the minimal demand of a workload. 
@@ -113,4 +127,3 @@ In order to reduce the influence to users' business, it is reasonable to pick ou
 configure the plugins evicting the least pods in the first tier. And configure other plugins with eviction at the second tier.
 If the first tier can pick out victims, it will not call the functions registered in the plugins, which is configured at
 the second tier.
-

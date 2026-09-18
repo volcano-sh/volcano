@@ -165,3 +165,35 @@ func TestEnqueue(t *testing.T) {
 		})
 	}
 }
+
+func TestEnqueueSkipsUnschedulableJob(t *testing.T) {
+	options.Default()
+	test := uthelper.TestCommonStruct{
+		PodGroups: []*schedulingv1.PodGroup{
+			util.BuildPodGroup("cached", "default", "queue", 1, nil, schedulingv1.PodGroupPending),
+			util.BuildPodGroup("eligible", "default", "queue", 1, nil, schedulingv1.PodGroupPending),
+		},
+		Pods: []*v1.Pod{
+			util.BuildPod("default", "cached-task", "", v1.PodPending,
+				api.BuildResourceList("1", "1Gi"), "cached", nil, nil),
+			util.BuildPod("default", "eligible-task", "", v1.PodPending,
+				api.BuildResourceList("1", "1Gi"), "eligible", nil, nil),
+		},
+		Queues: []*schedulingv1.Queue{
+			util.BuildQueue("queue", 1, nil),
+		},
+	}
+
+	ssn := test.RegisterSession(nil, nil)
+	defer test.Close()
+	test.SchedulerCache().AddUnschedulableJob(api.JobID("default/cached"), "dequeue")
+
+	New().Execute(ssn)
+
+	if phase := ssn.Jobs[api.JobID("default/cached")].PodGroup.Status.Phase; phase != scheduling.PodGroupPending {
+		t.Fatalf("cached job phase = %v, want %v", phase, scheduling.PodGroupPending)
+	}
+	if phase := ssn.Jobs[api.JobID("default/eligible")].PodGroup.Status.Phase; phase != scheduling.PodGroupInqueue {
+		t.Fatalf("eligible job phase = %v, want %v", phase, scheduling.PodGroupInqueue)
+	}
+}

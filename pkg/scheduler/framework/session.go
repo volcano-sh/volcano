@@ -1030,6 +1030,18 @@ func (ssn *Session) MarkJobDirty(jobID api.JobID) {
 	ssn.DirtyJobs.Insert(jobID)
 }
 
+// AddUnschedulableJob marks an Inqueue job Pending in the scheduler cache and
+// prevents enqueue from admitting it until the maximum unschedulable duration
+// expires.
+func (ssn *Session) AddUnschedulableJob(jobID api.JobID, reason string) {
+	ssn.cache.AddUnschedulableJob(jobID, reason)
+}
+
+// IsJobUnschedulable reports whether enqueue should skip a job.
+func (ssn *Session) IsJobUnschedulable(jobID api.JobID) bool {
+	return ssn.cache.IsJobUnschedulable(jobID)
+}
+
 // String return nodes and jobs information in the session
 func (ssn *Session) String() string {
 	var b strings.Builder
