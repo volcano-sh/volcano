@@ -395,6 +395,11 @@ func (in *QueueSpec) DeepCopyInto(out *QueueSpec) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.Preemptable != nil {
+		in, out := &in.Preemptable, &out.Preemptable
+		*out = new(bool)
+		**out = **in
+	}
 	if in.ExtendClusters != nil {
 		in, out := &in.ExtendClusters, &out.ExtendClusters
 		*out = make([]Cluster, len(*in))

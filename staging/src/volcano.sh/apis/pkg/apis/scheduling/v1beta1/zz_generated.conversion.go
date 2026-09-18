@@ -546,6 +546,7 @@ func autoConvert_v1beta1_QueueSpec_To_scheduling_QueueSpec(in *QueueSpec, out *s
 	out.Weight = in.Weight
 	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
 	out.Reclaimable = (*bool)(unsafe.Pointer(in.Reclaimable))
+	out.Preemptable = (*bool)(unsafe.Pointer(in.Preemptable))
 	out.ExtendClusters = *(*[]scheduling.Cluster)(unsafe.Pointer(&in.ExtendClusters))
 	if err := Convert_v1beta1_Guarantee_To_scheduling_Guarantee(&in.Guarantee, &out.Guarantee, s); err != nil {
 		return err
@@ -568,6 +569,7 @@ func autoConvert_scheduling_QueueSpec_To_v1beta1_QueueSpec(in *scheduling.QueueS
 	out.Weight = in.Weight
 	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
 	out.Reclaimable = (*bool)(unsafe.Pointer(in.Reclaimable))
+	out.Preemptable = (*bool)(unsafe.Pointer(in.Preemptable))
 	out.ExtendClusters = *(*[]Cluster)(unsafe.Pointer(&in.ExtendClusters))
 	if err := Convert_scheduling_Guarantee_To_v1beta1_Guarantee(&in.Guarantee, &out.Guarantee, s); err != nil {
 		return err
