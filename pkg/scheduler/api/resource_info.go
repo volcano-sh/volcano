@@ -83,6 +83,20 @@ func InfiniteResource() *Resource {
 	}
 }
 
+// quantityToMilliFloat64 converts a resource.Quantity to milli-units as float64.
+// Quantity.MilliValue() overflows int64 for very large quantities (e.g. "10P"
+// ephemeral-storage), which would otherwise be stored as a broken, non-positive
+// value and make the resource appear unavailable. This conversion falls back to
+// a float64 path for such quantities so the value is preserved.
+func quantityToMilliFloat64(q resource.Quantity) float64 {
+	// Fast path: exact int64 milli value when it cannot overflow.
+	if v, ok := q.AsInt64(); ok && v <= math.MaxInt64/1000 && v >= math.MinInt64/1000 {
+		return float64(q.MilliValue())
+	}
+	// Fall back to a float64 representation for values too large for int64.
+	return q.AsApproximateFloat64() * 1000
+}
+
 // NewResource creates a new resource object from resource list
 func NewResource(rl v1.ResourceList) *Resource {
 	r := EmptyResource()
@@ -96,7 +110,7 @@ func NewResource(rl v1.ResourceList) *Resource {
 			r.MaxTaskNum += int(rQuant.Value())
 			r.AddScalar(rName, float64(rQuant.Value()))
 		case v1.ResourceEphemeralStorage:
-			r.AddScalar(rName, float64(rQuant.MilliValue()))
+			r.AddScalar(rName, quantityToMilliFloat64(rQuant))
 		default:
 			if IsCountQuota(rName) {
 				continue
@@ -112,7 +126,7 @@ func NewResource(rl v1.ResourceList) *Resource {
 					return true
 				})
 				if !ignore {
-					r.AddScalar(rName, float64(rQuant.MilliValue()))
+					r.AddScalar(rName, quantityToMilliFloat64(rQuant))
 				} else {
 					klog.V(4).Infof("Ignoring resource %s", rName.String())
 				}
