@@ -169,10 +169,17 @@ func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
 	if _, found := ji.Pods[taskName]; !found {
 		return fmt.Errorf("can not find task %s in cache", taskName)
 	}
-	if _, found := ji.Pods[taskName][pod.Name]; !found {
+	cachedPod, found := ji.Pods[taskName][pod.Name]
+	if !found {
 		return fmt.Errorf("can not find pod <%s/%s> in cache",
 			pod.Namespace, pod.Name)
 	}
+
+	// Ignore stale informer events for an older Pod with the same name.
+	if cachedPod.UID != pod.UID {
+		return nil
+	}
+
 	ji.Pods[taskName][pod.Name] = pod
 
 	if ji.Partitions != nil {
@@ -205,9 +212,16 @@ func (ji *JobInfo) DeletePod(pod *v1.Pod) error {
 	}
 
 	if pods, found := ji.Pods[taskName]; found {
-		delete(pods, pod.Name)
-		if len(pods) == 0 {
-			delete(ji.Pods, taskName)
+		if cachedPod, found := pods[pod.Name]; found {
+			// Ignore stale informer events for an older Pod with the same name.
+			if cachedPod.UID != pod.UID {
+				return nil
+			}
+
+			delete(pods, pod.Name)
+			if len(pods) == 0 {
+				delete(ji.Pods, taskName)
+			}
 		}
 	}
 

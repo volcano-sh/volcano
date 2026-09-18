@@ -590,6 +590,124 @@ func TestJobCache_DeletePod(t *testing.T) {
 	}
 }
 
+func TestJobCache_DeletePodIgnoresStalePodUID(t *testing.T) {
+	namespace := "test"
+	jobCache := New()
+
+	job := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "job1", Namespace: namespace, UID: "new-job-uid",
+		},
+		Status: v1alpha1.JobStatus{
+			State: v1alpha1.JobState{Phase: v1alpha1.Running},
+		},
+	}
+
+	if err := jobCache.Add(job); err != nil {
+		t.Fatalf("failed to add job: %v", err)
+	}
+
+	currentPod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "pod1", Namespace: namespace, UID: "new-pod-uid",
+			Annotations: map[string]string{
+				v1alpha1.JobNameKey:  "job1",
+				v1alpha1.TaskSpecKey: "task1",
+				v1alpha1.JobVersion:  "1",
+			},
+		},
+		Status: v1.PodStatus{Phase: v1.PodRunning},
+	}
+
+	if err := jobCache.AddPod(currentPod); err != nil {
+		t.Fatalf("failed to add current pod: %v", err)
+	}
+
+	stalePod := currentPod.DeepCopy()
+	stalePod.UID = "old-pod-uid"
+
+	if err := jobCache.DeletePod(stalePod); err != nil {
+		t.Fatalf("stale delete returned error: %v", err)
+	}
+
+	cachedJob, err := jobCache.Get(JobKeyByName(namespace, "job1"))
+	if err != nil {
+		t.Fatalf("failed to get job: %v", err)
+	}
+
+	cachedPod, found := cachedJob.Pods["task1"]["pod1"]
+	if !found {
+		t.Fatalf("current pod was incorrectly removed by stale delete event")
+	}
+
+	if cachedPod.UID != currentPod.UID {
+		t.Fatalf("expected cached pod UID %q, got %q",
+			currentPod.UID, cachedPod.UID)
+	}
+}
+
+func TestJobCache_UpdatePodIgnoresStalePodUID(t *testing.T) {
+	namespace := "test"
+	jobCache := New()
+
+	job := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "job1", Namespace: namespace, UID: "new-job-uid",
+		},
+		Status: v1alpha1.JobStatus{
+			State: v1alpha1.JobState{Phase: v1alpha1.Running},
+		},
+	}
+
+	if err := jobCache.Add(job); err != nil {
+		t.Fatalf("failed to add job: %v", err)
+	}
+
+	currentPod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "pod1", Namespace: namespace, UID: "new-pod-uid",
+			Annotations: map[string]string{
+				v1alpha1.JobNameKey:  "job1",
+				v1alpha1.TaskSpecKey: "task1",
+				v1alpha1.JobVersion:  "1",
+			},
+		},
+		Status: v1.PodStatus{Phase: v1.PodRunning},
+	}
+
+	if err := jobCache.AddPod(currentPod); err != nil {
+		t.Fatalf("failed to add current pod: %v", err)
+	}
+
+	stalePod := currentPod.DeepCopy()
+	stalePod.UID = "old-pod-uid"
+	stalePod.Status.Phase = v1.PodSucceeded
+
+	if err := jobCache.UpdatePod(stalePod); err != nil {
+		t.Fatalf("stale update returned error: %v", err)
+	}
+
+	cachedJob, err := jobCache.Get(JobKeyByName(namespace, "job1"))
+	if err != nil {
+		t.Fatalf("failed to get job: %v", err)
+	}
+
+	cachedPod, found := cachedJob.Pods["task1"]["pod1"]
+	if !found {
+		t.Fatalf("current pod disappeared from cache")
+	}
+
+	if cachedPod.UID != currentPod.UID {
+		t.Fatalf("stale update replaced current pod: expected UID %q, got %q",
+			currentPod.UID, cachedPod.UID)
+	}
+
+	if cachedPod.Status.Phase != currentPod.Status.Phase {
+		t.Fatalf("stale update changed current pod status from %q to %q",
+			currentPod.Status.Phase, cachedPod.Status.Phase)
+	}
+}
+
 func TestJobCache_UpdatePod(t *testing.T) {
 	namespace := "test"
 
