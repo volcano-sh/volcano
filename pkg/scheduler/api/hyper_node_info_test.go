@@ -409,6 +409,36 @@ func TestHyperNodesInfo_GetRegexSelectorLeafHyperNodes(t *testing.T) {
 	}
 }
 
+// A HyperNode member selected by anything other than exactMatch is rejected by the
+// CRD, but a HyperNode created before that rule can still be in the cluster. Walking
+// the tree must skip such a member rather than dereference a nil ExactMatch, which is
+// what getChildren already does for the same input.
+func TestHyperNodesInfo_GetLeafNodesWithNonExactMatchHyperNodeMember(t *testing.T) {
+	leaf := BuildHyperNode("s0", 1, []MemberConfig{
+		{"node-0", topologyv1alpha1.MemberTypeNode, "exact", nil},
+	})
+	parent := BuildHyperNode("s1", 2, []MemberConfig{
+		{"s0.*", topologyv1alpha1.MemberTypeHyperNode, "regex", nil},
+	})
+
+	informerFactory := informers.NewSharedInformerFactory(fakeclientset.NewClientset(), 0)
+	hni := NewHyperNodesInfo(informerFactory.Core().V1().Nodes().Lister())
+	assert.NoError(t, hni.UpdateHyperNode(leaf))
+	assert.NoError(t, hni.UpdateHyperNode(parent))
+
+	// The member is unusable, so the parent contributes no leaves and is not itself
+	// reported as one, matching the empty child set getChildren returns.
+	assert.Equal(t, sets.New[string](), hni.GetLeafNodes("s1"))
+	assert.Equal(t, sets.New[string](), hni.getChildren("s1"))
+
+	// A sibling selected by exactMatch is still resolved.
+	parentOK := BuildHyperNode("s2", 2, []MemberConfig{
+		{"s0", topologyv1alpha1.MemberTypeHyperNode, "exact", nil},
+	})
+	assert.NoError(t, hni.UpdateHyperNode(parentOK))
+	assert.Equal(t, sets.New[string]("s0"), hni.GetLeafNodes("s2"))
+}
+
 func TestHyperNodesInfo_GetLeafNodes(t *testing.T) {
 	selector := "exact"
 	s0 := BuildHyperNode("s0", 1, []MemberConfig{
