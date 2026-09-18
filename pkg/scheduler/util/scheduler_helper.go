@@ -27,7 +27,6 @@ import (
 	"math"
 	"math/rand"
 	"sort"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -50,6 +49,13 @@ const (
 )
 
 var lastProcessedNodeIndex atomic.Int64
+
+// nodeScoreResult holds the per-node scoring output collected by parallel workers.
+type nodeScoreResult struct {
+	pluginScores map[string]float64
+	orderScore   float64
+	err          error
+}
 
 // CalculateNumOfFeasibleNodesToFind returns the number of feasible nodes that once found,
 // the scheduler stops its search for more feasible nodes.
@@ -76,34 +82,41 @@ func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
 
 // PrioritizeNodes returns a map whose key is node's score and value are corresponding nodes
 func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.BatchNodeOrderFn, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
-	pluginNodeScoreMap := map[string]fwk.NodeScoreList{}
-	nodeOrderScoreMap := map[string]float64{}
 	nodeScores := map[float64][]*api.NodeInfo{}
-	var workerLock sync.Mutex
+
+	results := make([]nodeScoreResult, len(nodes))
+
 	scoreNode := func(index int) {
 		node := nodes[index]
-		mapScores, orderScore, err := mapFn(task, node)
+		pluginScores, orderScore, err := mapFn(task, node)
 		if err != nil {
+			results[index].err = err
 			klog.Errorf("Error in Calculating Priority for the node:%v", err)
 			return
 		}
-
-		workerLock.Lock()
-		for plugin, score := range mapScores {
-			nodeScoreList, ok := pluginNodeScoreMap[plugin]
-			if !ok {
-				nodeScoreList = fwk.NodeScoreList{}
-			}
-			hp := fwk.NodeScore{}
-			hp.Name = node.Name
-			hp.Score = int64(math.Floor(score))
-			pluginNodeScoreMap[plugin] = append(nodeScoreList, hp)
-		}
-		nodeOrderScoreMap[node.Name] = orderScore
-		workerLock.Unlock()
+		// Lock-free write to pre-allocated slice at unique index
+		results[index].pluginScores = pluginScores
+		results[index].orderScore = orderScore
 	}
 	scoreStart := time.Now()
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), scoreNode)
+
+	pluginNodeScoreMap := map[string]fwk.NodeScoreList{}
+	nodeOrderScoreMap := make(map[string]float64, len(nodes))
+	for index, res := range results {
+		if res.err != nil {
+			continue
+		}
+		nodeName := nodes[index].Name
+		for plugin, score := range res.pluginScores {
+			pluginNodeScoreMap[plugin] = append(pluginNodeScoreMap[plugin], fwk.NodeScore{
+				Name:  nodeName,
+				Score: int64(math.Floor(score)),
+			})
+		}
+		nodeOrderScoreMap[nodeName] = res.orderScore
+	}
+
 	reduceScores, err := reduceFn(task, pluginNodeScoreMap)
 	if err != nil {
 		klog.Errorf("Error in Calculating Priority for the node:%v", err)
