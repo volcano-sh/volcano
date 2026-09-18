@@ -209,6 +209,8 @@ func (cc *cronjobcontroller) processFinishedJobs(cronJob *batchv1.CronJob, jobsB
 				successfulJobs = append(successfulJobs, job)
 			case batchv1.Failed:
 				failedJobs = append(failedJobs, job)
+			case batchv1.Terminated:
+				failedJobs = append(failedJobs, job)
 			}
 		}
 	}
