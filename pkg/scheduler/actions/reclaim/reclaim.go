@@ -262,9 +262,15 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 }
 
 // reclaimerFitsOnNode verifies available resources and plugin predicates after tentative evictions.
+// The arithmetic check alone can't be trusted when the shortfall is confined to a resource
+// dimension node.Allocatable has no entry for at all, such as volcano.sh/vgpu-memory-percentage,
+// which a device plugin tracks entirely through its own ledger. In that case defer to the real
+// predicate instead of rejecting outright.
 func reclaimerFitsOnNode(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo, resreq, availableResources *api.Resource) bool {
-	return resreq.LessEqual(availableResources, api.Zero) &&
-		ssn.PredicateFn(task, node) == nil
+	if ok, failing := resreq.LessEqualWithResourcesName(availableResources, api.Zero); !ok && !api.AllUntrackedByAllocatable(failing, node) {
+		return false
+	}
+	return ssn.PredicateFn(task, node) == nil
 }
 
 func (ra *Action) UnInitialize() {
