@@ -63,6 +63,10 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["get", "list", "watch"]
+  # Rule below is used to record events for objects rejected by admission
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
   {{- if .Values.custom.enabled_admissions | regexMatch "/podgroups/mutate" }}
   - apiGroups: [""]
     resources: ["namespaces"]
