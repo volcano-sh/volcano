@@ -27,15 +27,12 @@ import (
 	volcanoclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 )
 
-// getJobFromTemplate leaves ObjectMeta.Namespace empty, so the AlreadyExists
-// branch of createJob must refetch with the CronJob's namespace.
-func TestCreateJobRefetchesConflictingJobInCronJobNamespace(t *testing.T) {
+func TestCreateJobRefetchesConflictingJob(t *testing.T) {
 	scheduledTime := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
 	cronJob := &batchv1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{Name: "cj", Namespace: "team-a", UID: "cj-uid"},
 	}
 
-	// The job the previous reconcile already created, in the CronJob's namespace.
 	existing := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            getJobName(cronJob, scheduledTime),
