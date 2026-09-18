@@ -89,7 +89,7 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 		if len(predicateNodes) > 1 {
 			candidateNodes := util.GetPredicatedNodeByShard(predicateNodes, ssn.NodesInShard)
 			for _, nodes := range candidateNodes {
-				nodeScores := util.PrioritizeNodes(task, nodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+				nodeScores := util.PrioritizeNodes(task, nodes, ssn.BatchNodeOrderFn, ssn.NodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 				node = ssn.BestNodeFn(task, nodeScores)
 				if node == nil {
 					node, _ = util.SelectBestNodeAndScore(nodeScores)
