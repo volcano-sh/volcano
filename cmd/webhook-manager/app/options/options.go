@@ -38,23 +38,30 @@ const (
 
 // Config admission-controller server config.
 type Config struct {
-	KubeClientOptions    kube.ClientOptions
-	CertFile             string
-	KeyFile              string
-	CaCertFile           string
-	CertData             []byte
-	KeyData              []byte
-	CaCertData           []byte
-	ListenAddress        string
-	Port                 int
-	PrintVersion         bool
-	WebhookName          string
-	WebhookNamespace     string
-	SchedulerNames       []string
-	WebhookURL           string
-	ConfigPath           string
-	EnabledAdmission     string
-	GracefulShutdownTime time.Duration
+	KubeClientOptions kube.ClientOptions
+	CertFile          string
+	KeyFile           string
+	CaCertFile        string
+	CertData          []byte
+	KeyData           []byte
+	CaCertData        []byte
+	ListenAddress     string
+	Port              int
+	PrintVersion      bool
+	WebhookName       string
+	WebhookNamespace  string
+	SchedulerNames    []string
+	WebhookURL        string
+	ConfigPath        string
+	EnabledAdmission  string
+	// ReconcileAdmissionWebhook, when true, makes the webhook-manager
+	// list existing ValidatingWebhookConfigurations and
+	// MutatingWebhookConfigurations that were previously produced by
+	// this manager and delete the ones that are no longer in
+	// --enabled-admission. Off by default so existing deployments
+	// remain unchanged.
+	ReconcileAdmissionWebhook bool
+	GracefulShutdownTime      time.Duration
 
 	EnableHealthz bool
 	// HealthzBindAddress is the IP address and port for the health check server to serve on
@@ -95,6 +102,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.WebhookName, "webhook-service-name", "", "The name of this webhook")
 	fs.StringVar(&c.WebhookURL, "webhook-url", "", "The url of this webhook")
 	fs.StringVar(&c.EnabledAdmission, "enabled-admission", defaultEnabledAdmission, "enabled admission webhooks, if this parameter is modified, make sure corresponding webhook configurations are the same.")
+	fs.BoolVar(&c.ReconcileAdmissionWebhook, "reconcile-admission-webhook", false, "When set, on startup the webhook-manager deletes ValidatingWebhookConfigurations / MutatingWebhookConfigurations produced by this manager that are no longer listed in --enabled-admission. Off by default.")
 	fs.StringArrayVar(&c.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&c.ConfigPath, "admission-conf", "", "The configmap file of this webhook")
 	fs.BoolVar(&c.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")

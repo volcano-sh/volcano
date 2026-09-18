@@ -168,3 +168,103 @@ func configTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
 	klog.Fatal("tls: failed to find any tls config data")
 	return &tls.Config{}
 }
+
+// SyncAdmissionWebhooks reconciles Validating/Mutating webhook
+// configurations previously produced by this manager against
+// --enabled-admission. Configurations whose name matches the
+// "volcano-admission-service-*" prefix but that are not in the
+// enabled set are deleted, so operators can disable a webhook by
+// removing it from --enabled-admission without leaving orphaned
+// configurations behind.
+//
+// Only invoked when --reconcile-admission-webhook is set.
+func SyncAdmissionWebhooks(kubeClient kubernetes.Interface, enabledAdmission string) error {
+	// Collect the configuration names this manager would create for the
+	// enabled entries. Validating and mutating webhooks have distinct names
+	// (…-validate vs …-mutate), so a single set keyed by full name is
+	// unambiguous and does not depend on the path suffix.
+	enabledWebhooks := make(map[string]struct{})
+	for _, entry := range strings.Split(strings.TrimSpace(enabledAdmission), ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		// --enabled-admission entries have the shape "/jobs/validate";
+		// mirror addCaCertForWebhook's naming: prefix + path with "/"
+		// replaced by "-".
+		name := volcanoAdmissionPrefix + strings.ReplaceAll(entry, "/", "-")
+		enabledWebhooks[name] = struct{}{}
+	}
+
+	// The delete path is destructive: an empty enabled set would prune every
+	// configuration this manager owns. That only happens when
+	// --enabled-admission is blank or malformed, which is a misconfiguration,
+	// not an intentional "disable everything". Refuse rather than sweep.
+	if len(enabledWebhooks) == 0 {
+		return fmt.Errorf("--reconcile-admission-webhook is set but --enabled-admission yielded no webhook names (value: %q); refusing to delete all volcano admission webhook configurations", enabledAdmission)
+	}
+
+	ctx := context.Background()
+	if err := deleteDisabledValidatingWebhooks(ctx, kubeClient, enabledWebhooks); err != nil {
+		return err
+	}
+	return deleteDisabledMutatingWebhooks(ctx, kubeClient, enabledWebhooks)
+}
+
+// deleteDisabledValidatingWebhooks lists ValidatingWebhookConfigurations
+// whose name has the volcano-admission-service- prefix and deletes any
+// that are not in the enabled set.
+func deleteDisabledValidatingWebhooks(ctx context.Context, kubeClient kubernetes.Interface, enabled map[string]struct{}) error {
+	client := kubeClient.AdmissionregistrationV1().ValidatingWebhookConfigurations()
+	list, err := client.List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list ValidatingWebhookConfigurations: %v", err)
+	}
+	for i := range list.Items {
+		name := list.Items[i].Name
+		// Match the exact prefix the manager uses, including the trailing
+		// hyphen, so names like "volcano-admission-service" or
+		// "volcano-admission-serviceX" that this manager never generated are
+		// left untouched.
+		if !strings.HasPrefix(name, volcanoAdmissionPrefix+"-") {
+			continue
+		}
+		if _, ok := enabled[name]; ok {
+			continue
+		}
+		klog.V(2).Infof("Deleting disabled ValidatingWebhookConfiguration %q", name)
+		if err := client.Delete(ctx, name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete ValidatingWebhookConfiguration %q: %v", name, err)
+		}
+	}
+	return nil
+}
+
+// deleteDisabledMutatingWebhooks lists MutatingWebhookConfigurations
+// whose name has the volcano-admission-service- prefix and deletes any
+// that are not in the enabled set.
+func deleteDisabledMutatingWebhooks(ctx context.Context, kubeClient kubernetes.Interface, enabled map[string]struct{}) error {
+	client := kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations()
+	list, err := client.List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list MutatingWebhookConfigurations: %v", err)
+	}
+	for i := range list.Items {
+		name := list.Items[i].Name
+		// Match the exact prefix the manager uses, including the trailing
+		// hyphen, so names like "volcano-admission-service" or
+		// "volcano-admission-serviceX" that this manager never generated are
+		// left untouched.
+		if !strings.HasPrefix(name, volcanoAdmissionPrefix+"-") {
+			continue
+		}
+		if _, ok := enabled[name]; ok {
+			continue
+		}
+		klog.V(2).Infof("Deleting disabled MutatingWebhookConfiguration %q", name)
+		if err := client.Delete(ctx, name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete MutatingWebhookConfiguration %q: %v", name, err)
+		}
+	}
+	return nil
+}
