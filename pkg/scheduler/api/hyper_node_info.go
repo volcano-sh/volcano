@@ -507,10 +507,20 @@ func (hni *HyperNodesInfo) findLeafNodesWithCycleCheck(hyperNodeName string, lea
 
 	isLeaf := true
 	for _, member := range hn.HyperNode.Spec.Members {
-		if member.Type == topologyv1alpha1.MemberTypeHyperNode {
-			isLeaf = false
-			hni.findLeafNodesWithCycleCheck(member.Selector.ExactMatch.Name, leafNodes, ancestorsChain)
+		if member.Type != topologyv1alpha1.MemberTypeHyperNode {
+			continue
 		}
+		isLeaf = false
+		// A HyperNode member is only ever reached by exact match, the same
+		// assumption getChildren and BuildHyperNodeCache make. The selector is
+		// constrained to exactMatch for this member type, so anything else is a
+		// HyperNode that predates that rule, and dereferencing it would panic.
+		if member.Selector.ExactMatch == nil {
+			klog.V(3).InfoS("Skipping HyperNode member that is not selected by exactMatch",
+				"hyperNode", hyperNodeName)
+			continue
+		}
+		hni.findLeafNodesWithCycleCheck(member.Selector.ExactMatch.Name, leafNodes, ancestorsChain)
 	}
 
 	if isLeaf {
