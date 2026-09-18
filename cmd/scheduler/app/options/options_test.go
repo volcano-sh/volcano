@@ -77,6 +77,12 @@ func TestAddFlags(t *testing.T) {
 			QPS:        defaultQPS,
 			Burst:      defaultBurst,
 		},
+		KubeClientVolumeBindingOptions: kube.ClientOptions{
+			Master:     "",
+			KubeConfig: "",
+			QPS:        defaultQPS,
+			Burst:      defaultBurst,
+		},
 		PluginsDir:                    defaultPluginsDir,
 		HealthzBindAddress:            ":11251",
 		MinNodesToFind:                defaultMinNodesToFind,
