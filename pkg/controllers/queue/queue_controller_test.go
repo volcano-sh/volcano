@@ -308,6 +308,27 @@ func TestSyncQueue(t *testing.T) {
 	}
 }
 
+func TestClearClosedByParentAnnotation(t *testing.T) {
+	queue := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "child",
+			Annotations: map[string]string{ClosedByParentAnnotationKey: ClosedByParentAnnotationTrueValue},
+		},
+		Status: schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateClosed},
+	}
+
+	c := newFakeController()
+	_, err := c.vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
+	assert.NoError(t, err)
+
+	_, err = c.clearClosedByParentAnnotation(queue)
+	assert.NoError(t, err)
+
+	item, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue.Name, metav1.GetOptions{})
+	assert.NoError(t, err)
+	assert.Equal(t, ClosedByParentAnnotationFalseValue, item.Annotations[ClosedByParentAnnotationKey])
+}
+
 func TestProcessNextWorkItem(t *testing.T) {
 	testCases := []struct {
 		Name        string
