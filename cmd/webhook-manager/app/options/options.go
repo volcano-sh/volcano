@@ -57,6 +57,9 @@ type Config struct {
 	GracefulShutdownTime time.Duration
 
 	EnableHealthz bool
+	// ManageWebhookCABundle controls whether the webhook manager writes CA data
+	// into webhook configurations. cert-manager mode delegates this to cainjector.
+	ManageWebhookCABundle bool
 	// HealthzBindAddress is the IP address and port for the health check server to serve on
 	// defaulting to :11251
 	HealthzBindAddress string
@@ -98,6 +101,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringArrayVar(&c.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&c.ConfigPath, "admission-conf", "", "The configmap file of this webhook")
 	fs.BoolVar(&c.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
+	fs.BoolVar(&c.ManageWebhookCABundle, "manage-webhook-ca-bundle", true, "Update webhook caBundle from the configured CA; disable when cert-manager cainjector manages it.")
 	fs.StringVar(&c.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
 	fs.DurationVar(&c.GracefulShutdownTime, "graceful-shutdown-time", defaultGracefulShutdownTime, "The duration to wait during graceful shutdown before forcing termination.")
 	fs.BoolVar(&c.EnableQueueAllocatedPodsCheck, "enable-queue-allocated-pods-check", false, "If true, queue deletion will be rejected when the queue has allocated pods.")

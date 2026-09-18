@@ -149,6 +149,7 @@ spec:
             - --admission-conf=/admission.local.config/configmap/volcano-admission.conf
             - --webhook-namespace=volcano-system
             - --webhook-service-name=volcano-admission-service
+            - --manage-webhook-ca-bundle=true
             - --enable-healthz=true
             - --logtostderr
             - --port=8443
@@ -188,8 +189,8 @@ metadata:
   name: volcano-admission-init
   namespace: volcano-system
   annotations:
-    "helm.sh/hook": pre-install,pre-upgrade
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-delete-policy": before-hook-creation
     "helm.sh/hook-weight": "0"
 ---
 # Source: volcano/templates/admission-init.yaml
@@ -199,8 +200,8 @@ metadata:
   name: volcano-admission-init
   namespace: volcano-system
   annotations:
-    "helm.sh/hook": pre-install,pre-upgrade
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-delete-policy": before-hook-creation
     "helm.sh/hook-weight": "0"
 rules:
   - apiGroups: [""]
@@ -214,8 +215,8 @@ metadata:
   name: volcano-admission-init-role
   namespace: volcano-system
   annotations:
-    "helm.sh/hook": pre-install,pre-upgrade
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-delete-policy": before-hook-creation
     "helm.sh/hook-weight": "0"
 subjects:
   - kind: ServiceAccount
@@ -233,7 +234,7 @@ metadata:
   name: volcano-admission-init
   namespace: volcano-system
   annotations:
-    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook": pre-install
     "helm.sh/hook-delete-policy": before-hook-creation
     "helm.sh/hook-weight": "5" # set a higher weight to reserve buffers.
   labels:

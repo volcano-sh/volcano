@@ -94,6 +94,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`basic.scheduler_app_name`|Scheduler App Name|`volcano-scheduler`|
 |`custom.metrics_enable`|Whether to Enable Metrics|`false`|
 |`custom.admission_enable`|Whether to Enable Admission|`true`|
+|`custom.certManager.enabled`|Use cert-manager for admission TLS; when false, use the self-signed fallback hook|`false`|
 |`custom.admission_replicas`|The number of Admission pods to run|`1`|
 |`custom.controller_enable`|Whether to Enable Controller|`true`|
 |`custom.controller_replicas`|The number of Controller pods to run|`1`|
