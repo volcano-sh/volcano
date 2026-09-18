@@ -1608,3 +1608,24 @@ func (ji *JobInfo) GetMinDRAResources() map[string]*DRAResource {
 	}
 	return result
 }
+
+// IsSuperPodJob reports whether the job is an Ascend-plugin SuperPod job,
+// identified by a valid sp-block PodGroup annotation.
+func (ji *JobInfo) IsSuperPodJob() bool {
+	if ji.PodGroup == nil {
+		return false
+	}
+	value, found := ji.PodGroup.Annotations[spBlockAnnotationKey]
+	if !found {
+		return false
+	}
+
+	block, err := strconv.Atoi(value)
+	if err != nil {
+		klog.V(4).Infof("Job <%s/%s> has invalid %s annotation value %q.",
+			ji.Namespace, ji.Name, spBlockAnnotationKey, value)
+		return false
+	}
+
+	return block > 0 && block%blockUnit == 0
+}

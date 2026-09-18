@@ -26,6 +26,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/pkg/scheduler/actions/utils"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -33,13 +34,30 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
+const (
+	EnableTopologyAwareReclamationKey = "enableTopologyAwareReclamation"
+
+	TopologyAwareReclaimWorkerNumKey = "topologyAwareReclaimWorkerNum"
+)
+
 type Action struct {
 	enablePredicateErrorCache bool
+
+	enableTopologyAwareReclamation bool
+	topologyAwareReclaimWorkerNum  int
+	minCandidateNodesPercentage    int
+	minCandidateNodesAbsolute      int
+	maxCandidateNodesAbsolute      int
 }
 
 func New() *Action {
 	return &Action{
-		enablePredicateErrorCache: true,
+		enablePredicateErrorCache:      true,
+		enableTopologyAwareReclamation: false,
+		topologyAwareReclaimWorkerNum:  16,
+		minCandidateNodesPercentage:    10,
+		minCandidateNodesAbsolute:      1,
+		maxCandidateNodesAbsolute:      100,
 	}
 }
 
@@ -52,6 +70,11 @@ func (ra *Action) Initialize() {}
 func (ra *Action) parseArguments(ssn *framework.Session) {
 	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, ra.Name())
 	arguments.GetBool(&ra.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
+	arguments.GetBool(&ra.enableTopologyAwareReclamation, EnableTopologyAwareReclamationKey)
+	arguments.GetInt(&ra.topologyAwareReclaimWorkerNum, TopologyAwareReclaimWorkerNumKey)
+	arguments.GetInt(&ra.minCandidateNodesPercentage, utils.MinCandidateNodesPercentageKey)
+	arguments.GetInt(&ra.minCandidateNodesAbsolute, utils.MinCandidateNodesAbsoluteKey)
+	arguments.GetInt(&ra.maxCandidateNodesAbsolute, utils.MaxCandidateNodesAbsoluteKey)
 }
 
 func (ra *Action) Execute(ssn *framework.Session) {
@@ -157,6 +180,11 @@ func (ra *Action) Execute(ssn *framework.Session) {
 					continue
 				}
 
+				if ra.enableTopologyAwareReclamation {
+					ra.topologyAwareReclaim(ssn, stmt, task, job)
+					continue
+				}
+
 				ra.reclaimForTask(ssn, stmt, task, job)
 			}
 
@@ -191,19 +219,11 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 
 		var reclaimees []*api.TaskInfo
 		for _, taskOnNode := range n.Tasks {
-			if taskOnNode.Status != api.Running || !taskOnNode.Preemptable {
+			if !isReclaimVictimTask(ssn, taskOnNode, job) {
+				klog.V(5).Infof("Task %s/%s skipped as non-reclaim victim", taskOnNode.Namespace, taskOnNode.Name)
 				continue
 			}
-
-			if j, found := ssn.Jobs[taskOnNode.Job]; !found {
-				continue
-			} else if j.Queue != job.Queue {
-				q := ssn.Queues[j.Queue]
-				if !q.Reclaimable() {
-					continue
-				}
-				reclaimees = append(reclaimees, taskOnNode.Clone())
-			}
+			reclaimees = append(reclaimees, taskOnNode.Clone())
 		}
 
 		if len(reclaimees) == 0 {
