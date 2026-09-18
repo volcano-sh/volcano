@@ -620,7 +620,9 @@ xPU topology scheduling applies only to Pods whose `spec.schedulerName` is `volc
 
 This lets Deployments, StatefulSets, and other controllers use xPU topology scheduling by setting `schedulerName: volcano` and the xPU annotation in their Pod template. `volcano.sh/group-min-member` defines the gang size when such a workload needs gang-wide xPU planning. A workload without that annotation still receives the existing Volcano scheduling behavior.
 
-The alpha policy applies uniformly to the PodGroup scheduling unit. Every Task admitted under the policy must resolve every declared extended-resource requirement to exactly one regular container with an integral whole-device request. A Task that does not request that resource is not silently skipped, it makes the PodGroup ineligible with `XPUTopologyUnsupportedPodRequest`. Different task-group policies, heterogeneous accelerator Task templates, init-container accelerator requests, and per-container policy targeting are deferred because they require explicit inheritance and allocation-lifecycle semantics. Exact API names and versions require API review, the following Job YAML is illustrative:
+The alpha policy applies uniformly to the PodGroup scheduling unit. Every Task admitted under the policy must resolve every declared extended-resource requirement to exactly one regular container with an integral whole-device request. A Task that does not request that resource is not silently skipped, it makes the PodGroup ineligible with `XPUTopologyUnsupportedPodRequest`. Different task-group policies, heterogeneous accelerator Task templates, init-container accelerator requests, and per-container policy targeting are deferred because they require explicit inheritance and allocation-lifecycle semantics. Exact API names and versions require API review. The following examples are illustrative.
+
+**Volcano Job:**
 
 ```yaml
 apiVersion: batch.volcano.sh/v1alpha1
@@ -651,7 +653,48 @@ spec:
 
 The corresponding PodGroup policy applies to the generated worker Pod. It is eligible only if one local domain has eight healthy, free, enforceable devices.
 
-For example, a Deployment can request the same policy for every Pod in its template:
+**Direct PodGroup:**
+
+```yaml
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: PodGroup
+metadata:
+  name: direct-workers
+spec:
+  minMember: 2
+  xpuTopology:
+    resources:
+    - resource:
+        extendedResourceName: nvidia.com/gpu
+      mode: hard
+      allocationStrategy: Compact
+```
+
+A user who manages Pods and the PodGroup directly sets the same typed policy on the PodGroup.
+
+**Standalone Volcano-scheduled Pod:**
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: single-trainer
+  annotations:
+    volcano.sh/xpu-topology: >-
+      {"resources":[{"resource":{"extendedResourceName":"nvidia.com/gpu"},"mode":"hard","allocationStrategy":"Compact"}]}
+spec:
+  schedulerName: volcano
+  containers:
+  - name: trainer
+    image: example/trainer:latest
+    resources:
+      requests:
+        nvidia.com/gpu: 2
+```
+
+The PodGroup controller converts the annotation into a generated PodGroup policy.
+
+**Deployment, StatefulSet, Kubernetes Job, or other Pod template:**
 
 ```yaml
 apiVersion: apps/v1
@@ -676,7 +719,7 @@ spec:
             nvidia.com/gpu: 1
 ```
 
-The annotation value is a serialized `XPUTopologySpec`. The PodGroup controller validates and normalizes it before writing the generated PodGroup field. Every Pod that resolves to the same generated PodGroup must have the same normalized policy. A malformed or conflicting annotation must fail closed rather than producing an incomplete gang policy.
+The same template form works for Deployments, StatefulSets, ReplicaSets, Kubernetes Jobs, CronJobs, and custom controllers that create Pods. The annotation value is a serialized `XPUTopologySpec`. The PodGroup controller validates and normalizes it before writing the generated PodGroup field. Every Pod that resolves to the same generated PodGroup must have the same normalized policy. A malformed or conflicting annotation must fail closed rather than producing an incomplete gang policy.
 
 `claimName` is reserved for a future DRA-backed version of this API. It will identify the matching entry in each Pod's `spec.resourceClaims` once Volcano has a compatible ResourceSlice provider and DRA allocation adapter:
 
