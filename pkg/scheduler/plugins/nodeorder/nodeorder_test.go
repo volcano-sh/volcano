@@ -18,6 +18,7 @@ package nodeorder
 
 import (
 	"os"
+	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -25,6 +26,7 @@ import (
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8sframework "k8s.io/kube-scheduler/framework"
+	schedframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/imagelocality"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
@@ -439,6 +441,94 @@ func TestInitPlugin(t *testing.T) {
 				if _, exists := pp.ScorePlugins[pluginName]; exists {
 					t.Errorf("expected %s not in ScorePlugins, but found", pluginName)
 				}
+			}
+		})
+	}
+}
+
+func TestBatchNodeOrderFn(t *testing.T) {
+	tests := []struct {
+		name               string
+		weight             priorityWeight
+		nodeBTaints        []v1.Taint
+		expectScorePlugins []string
+		expectScores       map[string]float64
+	}{
+		{
+			name: "multiple score plugins",
+			weight: priorityWeight{
+				leastReqWeight:         1,
+				balancedResourceWeight: 1,
+				taintTolerationWeight:  3,
+			},
+			nodeBTaints: []v1.Taint{{Key: "dedicated", Effect: v1.TaintEffectPreferNoSchedule}},
+			expectScorePlugins: []string{
+				noderesources.Name + "_LeastAllocated",
+				noderesources.BalancedAllocationName,
+				tainttoleration.Name,
+			},
+			expectScores: map[string]float64{
+				"node-a": 452, // LeastAllocated 81 + BalancedAllocation 71 + TaintToleration 100 * 3.
+				"node-b": 163, // LeastAllocated 90 + BalancedAllocation 73 + TaintToleration 0 * 3.
+			},
+		},
+		{
+			name:   "least and most allocated",
+			weight: priorityWeight{leastReqWeight: 2, mostReqWeight: 1},
+			expectScorePlugins: []string{
+				noderesources.Name + "_LeastAllocated",
+				noderesources.Name + "_MostAllocated",
+			},
+			expectScores: map[string]float64{
+				"node-a": 180, // LeastAllocated 81 * 2 + MostAllocated 18.
+				"node-b": 189, // LeastAllocated 90 * 2 + MostAllocated 9.
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodeA := util.BuildNode("node-a", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+			nodeB := util.BuildNode("node-b", api.BuildResourceList("8", "16Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+			nodeB.Spec.Taints = tt.nodeBTaints
+
+			nodeInfoA := schedframework.NewNodeInfo()
+			nodeInfoA.SetNode(nodeA)
+			nodeInfoB := schedframework.NewNodeInfo()
+			nodeInfoB.SetNode(nodeB)
+			nodeMap := map[string]k8sframework.NodeInfo{"node-a": nodeInfoA, "node-b": nodeInfoB}
+
+			client := k8sfake.NewSimpleClientset()
+			informerFactory := informers.NewSharedInformerFactory(client, 0)
+			pp := New(nil).(*NodeOrderPlugin)
+			pp.weight = tt.weight
+			pp.Handle = k8s.NewFramework(
+				nodeMap,
+				k8s.WithClientSet(client),
+				k8s.WithInformerFactory(informerFactory),
+			)
+			pp.InitPlugin()
+			if len(pp.ScorePlugins) != len(tt.expectScorePlugins) {
+				t.Fatalf("expected %d score plugins, got %d", len(tt.expectScorePlugins), len(pp.ScorePlugins))
+			}
+			for _, name := range tt.expectScorePlugins {
+				if _, exists := pp.ScorePlugins[name]; !exists {
+					t.Fatalf("expected score plugin %q to be registered", name)
+				}
+			}
+
+			pod := util.BuildPod("ns", "pod", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "", nil, nil)
+			scores, err := pp.BatchNodeOrderFn(
+				&api.TaskInfo{Pod: pod},
+				[]*api.NodeInfo{api.NewNodeInfo(nodeA), api.NewNodeInfo(nodeB)},
+				nodeMap,
+				schedframework.NewCycleState(),
+			)
+			if err != nil {
+				t.Fatalf("BatchNodeOrderFn returned an error: %v", err)
+			}
+			if !reflect.DeepEqual(scores, tt.expectScores) {
+				t.Fatalf("expected node scores %v, got %v", tt.expectScores, scores)
 			}
 		})
 	}
