@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
+	clienttesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -38,6 +39,7 @@ import (
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 	schedulingv1beta1informers "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
@@ -2689,4 +2691,250 @@ func searchSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestValidateHierarchicalQueueStateTransition(t *testing.T) {
+	savedConfig := saveQueueValidateTestConfig()
+	defer savedConfig.restore()
+
+	config.EnableCascadeChildQueueClose = true
+
+	parentQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "parent-queue"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "root"},
+		Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateClosed},
+	}
+	childQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "child-queue"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "parent-queue"},
+		Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateClosed},
+	}
+	grandchildQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "grandchild-queue"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "child-queue"},
+		Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateOpen},
+	}
+
+	config.VolcanoClient = fakeclient.NewSimpleClientset(&parentQueue, &childQueue, &grandchildQueue)
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := setupQueueInformerWithIndex(informerFactory)
+	config.QueueInformer = queueInformer
+	config.QueueLister = informerFactory.Scheduling().V1beta1().Queues().Lister()
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	informerFactory.Start(stopCh)
+	for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			t.Fatalf("failed to sync cache: %v", informerType)
+		}
+	}
+
+	t.Run("reject open child when parent is closed", func(t *testing.T) {
+		oldChild := childQueue.DeepCopy()
+		newChild := childQueue.DeepCopy()
+		newChild.Status.State = schedulingv1beta1.QueueStateOpen
+
+		err := validateHierarchicalQueueStateTransition(newChild, oldChild)
+		if err == nil {
+			t.Fatal("expected error when opening child with closed parent")
+		}
+		if !contains(err.Error(), "parent queue parent-queue is closing or closed") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("skip cascade when queue is closed by parent", func(t *testing.T) {
+		oldChild := childQueue.DeepCopy()
+		oldChild.Status.State = schedulingv1beta1.QueueStateOpen
+		newChild := childQueue.DeepCopy()
+		newChild.Status.State = schedulingv1beta1.QueueStateClosed
+		if newChild.Annotations == nil {
+			newChild.Annotations = make(map[string]string)
+		}
+		newChild.Annotations[schedulingv1beta1.QueueClosedByParentAnnotationKey] = schedulingv1beta1.QueueClosedByParentAnnotationTrueValue
+
+		if err := validateHierarchicalQueueStateTransition(newChild, oldChild); err != nil {
+			t.Fatalf("expected no error when skipping cascade for parent-closed child: %v", err)
+		}
+
+		updatedGrandchild, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), grandchildQueue.Name, metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("failed to get grandchild queue: %v", err)
+		}
+		if updatedGrandchild.Status.State != schedulingv1beta1.QueueStateOpen {
+			t.Fatalf("expected grandchild to remain open when cascade is skipped, got %s", updatedGrandchild.Status.State)
+		}
+	})
+
+	t.Run("cascade close descendants when parent closes", func(t *testing.T) {
+		oldParent := parentQueue.DeepCopy()
+		oldParent.Status.State = schedulingv1beta1.QueueStateOpen
+		newParent := parentQueue.DeepCopy()
+		newParent.Status.State = schedulingv1beta1.QueueStateClosed
+
+		if err := validateHierarchicalQueueStateTransition(newParent, oldParent); err != nil {
+			t.Fatalf("unexpected cascade close error: %v", err)
+		}
+
+		updatedGrandchild, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), grandchildQueue.Name, metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("failed to get grandchild queue: %v", err)
+		}
+		if updatedGrandchild.Status.State != schedulingv1beta1.QueueStateClosed {
+			t.Fatalf("expected grandchild queue to be closed, got %s", updatedGrandchild.Status.State)
+		}
+		if updatedGrandchild.Annotations[schedulingv1beta1.QueueClosedByParentAnnotationKey] != schedulingv1beta1.QueueClosedByParentAnnotationTrueValue {
+			t.Fatalf("expected closed-by-parent annotation on grandchild queue")
+		}
+	})
+}
+
+// TestValidateHierarchicalQueueStateTransitionCascadePartialFailure ensures that a
+// descendant failing to cascade-close does not deny admission of the parent's own,
+// already-valid close transition: the parent update must still be allowed, and
+// descendants that did close successfully must not be reverted. See the discussion
+// on volcano-sh/volcano#5351 about cascade-close having no cross-object rollback.
+func TestValidateHierarchicalQueueStateTransitionCascadePartialFailure(t *testing.T) {
+	savedConfig := saveQueueValidateTestConfig()
+	defer savedConfig.restore()
+
+	config.EnableCascadeChildQueueClose = true
+
+	parentQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "parent-queue-2"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "root"},
+		Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateOpen},
+	}
+	okChild := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "ok-child-queue"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "parent-queue-2"},
+		Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateOpen},
+	}
+	failingChild := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "failing-child-queue"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "parent-queue-2"},
+		Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateOpen},
+	}
+
+	fakeVolcanoClient := fakeclient.NewSimpleClientset(&parentQueue, &okChild, &failingChild)
+	fakeVolcanoClient.PrependReactor("update", "queues", func(action clienttesting.Action) (bool, runtime.Object, error) {
+		updateAction, ok := action.(clienttesting.UpdateAction)
+		if !ok {
+			return false, nil, nil
+		}
+		obj, ok := updateAction.GetObject().(*schedulingv1beta1.Queue)
+		if ok && obj.Name == failingChild.Name {
+			return true, nil, fmt.Errorf("simulated conflict closing %s", failingChild.Name)
+		}
+		return false, nil, nil
+	})
+	config.VolcanoClient = fakeVolcanoClient
+
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := setupQueueInformerWithIndex(informerFactory)
+	config.QueueInformer = queueInformer
+	config.QueueLister = informerFactory.Scheduling().V1beta1().Queues().Lister()
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	informerFactory.Start(stopCh)
+	for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			t.Fatalf("failed to sync cache: %v", informerType)
+		}
+	}
+
+	oldParent := parentQueue.DeepCopy()
+	newParent := parentQueue.DeepCopy()
+	newParent.Status.State = schedulingv1beta1.QueueStateClosed
+
+	if err := validateHierarchicalQueueStateTransition(newParent, oldParent); err != nil {
+		t.Fatalf("parent's own close must be admitted even if a descendant fails to cascade-close, got error: %v", err)
+	}
+
+	updatedOkChild, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), okChild.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("failed to get ok child queue: %v", err)
+	}
+	if updatedOkChild.Status.State != schedulingv1beta1.QueueStateClosed {
+		t.Fatalf("expected ok child queue to be closed, got %s", updatedOkChild.Status.State)
+	}
+
+	updatedFailingChild, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), failingChild.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("failed to get failing child queue: %v", err)
+	}
+	if updatedFailingChild.Status.State != schedulingv1beta1.QueueStateOpen {
+		t.Fatalf("expected failing child queue to remain open after its cascade-close failed, got %s", updatedFailingChild.Status.State)
+	}
+}
+
+func TestValidateQueueDeletingClosedBeforeDeleteCheck(t *testing.T) {
+	savedConfig := saveQueueValidateTestConfig()
+	defer savedConfig.restore()
+
+	config.EnableQueueClosedBeforeDeleteCheck = true
+
+	openQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "open-queue"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "root"},
+		Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateOpen},
+	}
+	closedQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "closed-queue"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "root"},
+		Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateClosed},
+	}
+
+	config.VolcanoClient = fakeclient.NewSimpleClientset(&openQueue, &closedQueue)
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := setupQueueInformerWithIndex(informerFactory)
+	config.QueueInformer = queueInformer
+	config.QueueLister = informerFactory.Scheduling().V1beta1().Queues().Lister()
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	informerFactory.Start(stopCh)
+	for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			t.Fatalf("failed to sync cache: %v", informerType)
+		}
+	}
+
+	if err := validateQueueDeleting(openQueue.Name); err == nil {
+		t.Fatal("expected delete of open queue to be rejected")
+	} else if !contains(err.Error(), "cannot be deleted while its state is Open") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := validateQueueDeleting(closedQueue.Name); err != nil {
+		t.Fatalf("expected delete of closed queue to succeed, got %v", err)
+	}
+}
+
+type queueValidateTestConfig struct {
+	enableCascadeChildQueueClose       bool
+	enableQueueClosedBeforeDeleteCheck bool
+	volcanoClient                      volcanoversioned.Interface
+	queueInformer                      cache.SharedIndexInformer
+	queueLister                        schedulinglister.QueueLister
+}
+
+func saveQueueValidateTestConfig() queueValidateTestConfig {
+	return queueValidateTestConfig{
+		enableCascadeChildQueueClose:       config.EnableCascadeChildQueueClose,
+		enableQueueClosedBeforeDeleteCheck: config.EnableQueueClosedBeforeDeleteCheck,
+		volcanoClient:                      config.VolcanoClient,
+		queueInformer:                      config.QueueInformer,
+		queueLister:                        config.QueueLister,
+	}
+}
+
+func (c queueValidateTestConfig) restore() {
+	config.EnableCascadeChildQueueClose = c.enableCascadeChildQueueClose
+	config.EnableQueueClosedBeforeDeleteCheck = c.enableQueueClosedBeforeDeleteCheck
+	config.VolcanoClient = c.volcanoClient
+	config.QueueInformer = c.queueInformer
+	config.QueueLister = c.queueLister
 }
