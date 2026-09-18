@@ -232,6 +232,54 @@ func TestSubJobInfo_IsHardTopologyMode(t *testing.T) {
 	}
 }
 
+func TestSubJobInfo_HardTopologyConstraint(t *testing.T) {
+	tests := []struct {
+		name       string
+		topology   *scheduling.NetworkTopologySpec
+		constraint bool
+	}{
+		{
+			name: "hard numeric boundary",
+			topology: &scheduling.NetworkTopologySpec{
+				Mode:               scheduling.HardNetworkTopologyMode,
+				HighestTierAllowed: ptr.To(1),
+			},
+			constraint: true,
+		},
+		{
+			name: "hard name boundary",
+			topology: &scheduling.NetworkTopologySpec{
+				Mode:            scheduling.HardNetworkTopologyMode,
+				HighestTierName: "volcano.sh/hypernode",
+			},
+			constraint: true,
+		},
+		{
+			name: "soft boundary",
+			topology: &scheduling.NetworkTopologySpec{
+				Mode:            scheduling.SoftNetworkTopologyMode,
+				HighestTierName: "volcano.sh/hypernode",
+			},
+		},
+		{
+			name:       "hard mode without boundary",
+			topology:   &scheduling.NetworkTopologySpec{Mode: scheduling.HardNetworkTopologyMode},
+			constraint: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			subJob := &SubJobInfo{NetworkTopology: tt.topology}
+			if tt.constraint {
+				assert.Same(t, tt.topology, subJob.HardTopologyConstraint())
+				return
+			}
+			assert.Nil(t, subJob.HardTopologyConstraint())
+		})
+	}
+}
+
 func TestSubJobInfo_IsSoftTopologyMode(t *testing.T) {
 	type fields struct {
 		UID               SubJobID

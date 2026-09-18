@@ -265,8 +265,8 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 		return fmt.Errorf("job 'minAvailable' must be >= 0")
 	}
 	networkTopology := new.Spec.NetworkTopology
-	if networkTopology != nil && networkTopology.HighestTierAllowed != nil && networkTopology.HighestTierName != "" {
-		return fmt.Errorf("must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously")
+	if msg := validateNetworkTopology(networkTopology); msg != "" {
+		return fmt.Errorf("%s", msg)
 	}
 
 	if len(old.Spec.Tasks) != len(new.Spec.Tasks) {
@@ -325,8 +325,15 @@ func validatePartitionPolicy(task v1alpha1.TaskSpec, job *v1alpha1.Job) string {
 }
 
 func validateNetworkTopology(networkTopology *v1alpha1.NetworkTopologySpec) string {
-	if networkTopology != nil && networkTopology.HighestTierAllowed != nil && networkTopology.HighestTierName != "" {
+	if networkTopology == nil {
+		return ""
+	}
+	if networkTopology.HighestTierAllowed != nil && networkTopology.HighestTierName != "" {
 		return "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously"
+	}
+	if (networkTopology.Mode == "" || networkTopology.Mode == v1alpha1.HardNetworkTopologyMode) &&
+		networkTopology.HighestTierAllowed == nil && networkTopology.HighestTierName == "" {
+		return "must specify either 'highestTierAllowed' or 'highestTierName' in hard networkTopology"
 	}
 	return ""
 }

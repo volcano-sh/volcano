@@ -58,6 +58,9 @@ type SubJobInfo struct {
 	NominatedHyperNode string
 
 	NetworkTopology *scheduling.NetworkTopologySpec
+	// softTopologyConverted records scheduler-internal Soft-to-Hard conversion
+	// provenance. It is intentionally not part of the Kubernetes-facing API.
+	softTopologyConverted bool
 }
 
 func NewSubJobInfo(gid SubJobGID, uid SubJobID, job JobID, policy *scheduling.SubGroupPolicySpec, matchValues []string) *SubJobInfo {
@@ -86,7 +89,8 @@ func NewSubJobInfo(gid SubJobGID, uid SubJobID, job JobID, policy *scheduling.Su
 	return sji
 }
 
-// IsHardTopologyMode return whether the subJob's network topology mode is hard and also return the highest allowed tier
+// IsHardTopologyMode reports a numeric hard topology constraint and returns its
+// tier. Use HardTopologyConstraint when tier names are supported by the caller.
 func (sji *SubJobInfo) IsHardTopologyMode() (bool, int) {
 	if sji.NetworkTopology == nil || sji.NetworkTopology.HighestTierAllowed == nil {
 		return false, 0
@@ -95,12 +99,28 @@ func (sji *SubJobInfo) IsHardTopologyMode() (bool, int) {
 	return sji.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode, *sji.NetworkTopology.HighestTierAllowed
 }
 
+// HardTopologyConstraint returns the configured hard topology constraint without
+// validating its boundary. Tier names are resolved within the candidate topology
+// branch by the scheduler.
+func (sji *SubJobInfo) HardTopologyConstraint() *scheduling.NetworkTopologySpec {
+	if sji.NetworkTopology == nil || sji.NetworkTopology.Mode != scheduling.HardNetworkTopologyMode {
+		return nil
+	}
+	return sji.NetworkTopology
+}
+
 // IsSoftTopologyMode returns whether the subJob has configured network topologies with soft mode.
 func (sji *SubJobInfo) IsSoftTopologyMode() bool {
 	if sji.NetworkTopology == nil {
 		return false
 	}
 	return sji.NetworkTopology.Mode == scheduling.SoftNetworkTopologyMode
+}
+
+// IsSoftTopologyConverted reports whether this subJob's Hard constraint
+// originated from scheduler Soft-to-Hard conversion.
+func (sji *SubJobInfo) IsSoftTopologyConverted() bool {
+	return sji.softTopologyConverted
 }
 
 // WithNetworkTopology returns whether the subJob has configured network topologies
@@ -118,6 +138,7 @@ func (sji *SubJobInfo) ConvertToHardTopology(maxTier int) {
 	sji.NetworkTopology.Mode = scheduling.HardNetworkTopologyMode
 	sji.NetworkTopology.HighestTierAllowed = &maxTier
 	sji.NetworkTopology.HighestTierName = ""
+	sji.softTopologyConverted = true
 }
 
 func (sji *SubJobInfo) addTask(ti *TaskInfo) {
@@ -283,6 +304,7 @@ func (sji *SubJobInfo) AllocatedTaskNum() int32 {
 func (sji *SubJobInfo) CloneStatusFrom(source *SubJobInfo) {
 	sji.AllocatedHyperNode = source.AllocatedHyperNode
 	sji.NominatedHyperNode = source.NominatedHyperNode
+	sji.softTopologyConverted = source.softTopologyConverted
 }
 
 // GetMinResources The current sub job is constrained to gang scheduling,

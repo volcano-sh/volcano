@@ -420,7 +420,7 @@ func (test *TestCommonStruct) CheckBindInHyperNode(caseIndex int) error {
 
 	realHyperNode := make(map[string]int, 0)
 	for _, node := range binds {
-		hyperNode := util.FindHyperNodeForNode(node, test.ssn.RealNodesList, test.ssn.HyperNodesTiers, test.ssn.HyperNodesSetByTier)
+		hyperNode := test.ssn.FindHyperNodeForNode(node)
 		realHyperNode[hyperNode] += 1
 	}
 

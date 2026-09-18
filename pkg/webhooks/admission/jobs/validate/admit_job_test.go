@@ -2487,3 +2487,52 @@ func TestValidateTaskTopoPolicy(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateNetworkTopology(t *testing.T) {
+	highestTierAllowed := 1
+	tests := []struct {
+		name     string
+		topology *v1alpha1.NetworkTopologySpec
+		want     string
+	}{
+		{name: "nil topology"},
+		{
+			name:     "hard topology without boundary",
+			topology: &v1alpha1.NetworkTopologySpec{Mode: v1alpha1.HardNetworkTopologyMode},
+			want:     "must specify either 'highestTierAllowed' or 'highestTierName' in hard networkTopology",
+		},
+		{
+			name:     "default hard topology without boundary",
+			topology: &v1alpha1.NetworkTopologySpec{},
+			want:     "must specify either 'highestTierAllowed' or 'highestTierName' in hard networkTopology",
+		},
+		{
+			name:     "soft topology without boundary",
+			topology: &v1alpha1.NetworkTopologySpec{Mode: v1alpha1.SoftNetworkTopologyMode},
+		},
+		{
+			name: "hard topology with numeric boundary",
+			topology: &v1alpha1.NetworkTopologySpec{
+				Mode:               v1alpha1.HardNetworkTopologyMode,
+				HighestTierAllowed: &highestTierAllowed,
+			},
+		},
+		{
+			name: "topology with both boundaries",
+			topology: &v1alpha1.NetworkTopologySpec{
+				Mode:               v1alpha1.HardNetworkTopologyMode,
+				HighestTierAllowed: &highestTierAllowed,
+				HighestTierName:    "volcano.sh/hypernode",
+			},
+			want: "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := validateNetworkTopology(tt.topology); got != tt.want {
+				t.Fatalf("validateNetworkTopology() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
