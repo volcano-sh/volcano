@@ -269,6 +269,7 @@ func getJobFromTemplate(cj *batchv1.CronJob, scheduledTime time.Time) (*batchv1.
 			Labels:          labels,
 			Annotations:     annotations,
 			Name:            name,
+			Namespace:       cj.Namespace,
 			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(cj, controllerKind)},
 		},
 	}
