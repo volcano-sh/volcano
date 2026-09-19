@@ -342,12 +342,16 @@ func (ssn *Session) UnifiedEvictable(ctx *api.EvictionContext, candidates []*api
 			if victims == nil {
 				victims = result
 			} else {
+				// Prefix trials repeat this intersection. Index the plugin result
+				// so each trial remains linear while preserving victim order.
+				allowed := make(map[api.TaskID]struct{}, len(result))
+				for _, candidate := range result {
+					allowed[candidate.UID] = struct{}{}
+				}
 				var intersection []*api.TaskInfo
-				for _, v := range victims {
-					for _, c := range result {
-						if v.UID == c.UID {
-							intersection = append(intersection, v)
-						}
+				for _, victim := range victims {
+					if _, ok := allowed[victim.UID]; ok {
+						intersection = append(intersection, victim)
 					}
 				}
 				victims = intersection

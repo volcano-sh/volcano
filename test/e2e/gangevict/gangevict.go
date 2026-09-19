@@ -81,6 +81,35 @@ tiers:
   - name: network-topology-aware
 `
 
+const gangEvictPriorityFirstConfig = `actions: "allocate, backfill, gangreclaim, gangpreempt"
+configurations:
+- name: gangpreempt
+  arguments:
+    victimOrderPolicy: priority-first
+- name: gangreclaim
+  arguments:
+    victimOrderPolicy: priority-first
+tiers:
+- plugins:
+  - name: priority
+  - name: gang
+    enablePreemptable: false
+  - name: conformance
+  - name: sla
+  - name: capacity
+    enableHierarchy: false
+- plugins:
+  - name: overcommit
+  - name: drf
+    enablePreemptable: false
+  - name: predicates
+    arguments:
+      predicate.DynamicResourceAllocationEnable: true
+  - name: nodeorder
+  - name: binpack
+  - name: network-topology-aware
+`
+
 // applySchedulerConfig returns a ChangeBy-compatible function that
 // replaces the scheduler ConfigMap with the given YAML config.
 func applySchedulerConfig(config string) func(map[string]string) (bool, map[string]string) {
@@ -1612,6 +1641,139 @@ var _ = Describe("GangReclaim E2E Test", func() {
 			By("Expecting the racer in the higher-priority queue to NOT run (its capacity went to the pinned reclaimer)")
 			waitTasksNotReady(ctx, racer, 2, "high-priority-queue racer must not steal nodes pinned to the gangreclaim-pipelined reclaimer in the lower-priority queue")
 		})
+	})
+})
+
+var _ = Describe("Gang-aware priority-first victim ordering E2E Test", func() {
+	const (
+		priorityFirstHigh    = "victim-order-high"
+		priorityFirstMedium  = "victim-order-medium"
+		priorityFirstLow     = "victim-order-low"
+		priorityFirstHighVal = int32(100)
+		priorityFirstMedVal  = int32(50)
+		priorityFirstLowVal  = int32(10)
+	)
+
+	var ctx *e2eutil.TestContext
+	var cmc *e2eutil.ConfigMapCase
+
+	BeforeEach(func() {
+		cmc = e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
+		Expect(cmc.ChangeBy(applySchedulerConfig(gangEvictPriorityFirstConfig))).To(Succeed())
+	})
+
+	AfterEach(func() {
+		if ctx != nil {
+			e2eutil.CleanupTestContext(ctx)
+		}
+		Expect(cmc.UndoChanged()).To(Succeed())
+	})
+
+	It("GP-P1: preemption exhausts the lower-priority workload before touching the next workload", func() {
+		queue := "gp-priority-first-q"
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{queue},
+			NodesNumLimit:      4,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
+			DeservedResource: map[string]v1.ResourceList{
+				queue: deservedCPU(4),
+			},
+			PriorityClasses: map[string]int32{
+				priorityFirstHigh:   priorityFirstHighVal,
+				priorityFirstMedium: priorityFirstMedVal,
+				priorityFirstLow:    priorityFirstLowVal,
+			},
+		})
+
+		By("Filling the cluster with low- and medium-priority workloads that each have one safe task")
+		lowVictim := createGangJob(ctx, "low-victim-gpp1", queue, priorityFirstLow, e2eutil.CPU1Mem1, 2, 1, true)
+		Expect(e2eutil.WaitTasksReady(ctx, lowVictim, 2)).To(Succeed())
+		mediumVictim := createGangJob(ctx, "medium-victim-gpp1", queue, priorityFirstMedium, e2eutil.CPU1Mem1, 2, 1, true)
+		Expect(e2eutil.WaitTasksReady(ctx, mediumVictim, 2)).To(Succeed())
+
+		By("Submitting a high-priority gang that needs two slots")
+		preemptor := createGangJob(ctx, "preemptor-gpp1", queue, priorityFirstHigh, e2eutil.CPU1Mem1, 2, 2, false)
+		Expect(e2eutil.WaitTasksReady(ctx, preemptor, 2)).To(Succeed())
+
+		By("Expecting the low-priority workload's safe and whole bundles to be used before the medium-priority workload")
+		time.Sleep(10 * time.Second)
+		Expect(countReadyTasks(ctx, lowVictim)).To(Equal(0))
+		Expect(countReadyTasks(ctx, mediumVictim)).To(Equal(2))
+	})
+
+	It("GR-P1: reclamation exhausts the lower-priority workload within the victim queue first", func() {
+		reclaimerQueue := "gr-priority-first-reclaimer-q"
+		victimQueue := "gr-priority-first-victim-q"
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{reclaimerQueue, victimQueue},
+			NodesNumLimit:      4,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
+			DeservedResource: map[string]v1.ResourceList{
+				reclaimerQueue: deservedCPU(2),
+				victimQueue:    deservedCPU(2),
+			},
+			PriorityClasses: map[string]int32{
+				priorityFirstHigh:   priorityFirstHighVal,
+				priorityFirstMedium: priorityFirstMedVal,
+				priorityFirstLow:    priorityFirstLowVal,
+			},
+		})
+
+		By("Overusing the victim queue with low- and medium-priority workloads that each have one safe task")
+		lowVictim := createGangJob(ctx, "low-victim-grp1", victimQueue, priorityFirstLow, e2eutil.CPU1Mem1, 2, 1, true)
+		Expect(e2eutil.WaitTasksReady(ctx, lowVictim, 2)).To(Succeed())
+		mediumVictim := createGangJob(ctx, "medium-victim-grp1", victimQueue, priorityFirstMedium, e2eutil.CPU1Mem1, 2, 1, true)
+		Expect(e2eutil.WaitTasksReady(ctx, mediumVictim, 2)).To(Succeed())
+
+		By("Submitting a gang to the underused queue that needs two slots")
+		reclaimer := createGangJob(ctx, "reclaimer-grp1", reclaimerQueue, priorityFirstHigh, e2eutil.CPU1Mem1, 2, 2, false)
+		Expect(e2eutil.WaitTasksReady(ctx, reclaimer, 2)).To(Succeed())
+
+		By("Expecting reclamation to use the low-priority workload's safe and whole bundles first")
+		time.Sleep(10 * time.Second)
+		Expect(countReadyTasks(ctx, lowVictim)).To(Equal(0))
+		Expect(countReadyTasks(ctx, mediumVictim)).To(Equal(2))
+	})
+
+	It("GR-P2: victim queue priority remains outside the queue-local bundle policy", func() {
+		reclaimerQueue := "gr-queue-order-reclaimer-q"
+		lowPriorityVictimQueue := "gr-queue-order-low-q"
+		highPriorityVictimQueue := "gr-queue-order-high-q"
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{reclaimerQueue, lowPriorityVictimQueue, highPriorityVictimQueue},
+			NodesNumLimit:      4,
+			NodesResourceLimit: e2eutil.CPU2Mem2,
+			DeservedResource: map[string]v1.ResourceList{
+				reclaimerQueue:          deservedCPU(2),
+				highPriorityVictimQueue: deservedCPU(4),
+			},
+			PriorityClasses: map[string]int32{
+				priorityFirstHigh: priorityFirstHighVal,
+				priorityFirstLow:  priorityFirstLowVal,
+			},
+		})
+
+		By("Making the reclaimer queue highest priority and protecting one victim queue over the other")
+		setQueuePriority(ctx, reclaimerQueue, 200)
+		setQueuePriority(ctx, highPriorityVictimQueue, 100)
+		setQueuePriority(ctx, lowPriorityVictimQueue, 10)
+
+		By("Creating a tight gang in the lower-priority victim queue, so it only offers a Whole bundle")
+		lowQueueVictim := createGangJob(ctx, "low-queue-victim-grp2", lowPriorityVictimQueue, priorityFirstLow, e2eutil.CPU1Mem1, 2, 2, true)
+		Expect(e2eutil.WaitTasksReady(ctx, lowQueueVictim, 2)).To(Succeed())
+
+		By("Creating an elastic gang in the higher-priority victim queue, so it offers a Safe bundle")
+		highQueueVictim := createGangJob(ctx, "high-queue-victim-grp2", highPriorityVictimQueue, priorityFirstLow, e2eutil.CPU1Mem1, 6, 4, true)
+		Expect(e2eutil.WaitTasksReady(ctx, highQueueVictim, 6)).To(Succeed())
+
+		By("Submitting a two-task gang to the underused reclaimer queue")
+		reclaimer := createGangJob(ctx, "reclaimer-grp2", reclaimerQueue, priorityFirstHigh, e2eutil.CPU1Mem1, 2, 2, false)
+		Expect(e2eutil.WaitTasksReady(ctx, reclaimer, 2)).To(Succeed())
+
+		By("Expecting the lower-priority victim queue's Whole bundle to precede the higher-priority queue's Safe bundle")
+		time.Sleep(10 * time.Second)
+		Expect(countReadyTasks(ctx, lowQueueVictim)).To(Equal(0))
+		Expect(countReadyTasks(ctx, highQueueVictim)).To(Equal(6))
 	})
 })
 

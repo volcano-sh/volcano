@@ -17,12 +17,83 @@ limitations under the License.
 package utils
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
+	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
+
+func TestSafeTaskPrioritySurvivesSecondSort(t *testing.T) {
+	for _, action := range []string{"preempt", "reclaim"} {
+		for _, policy := range []VictimOrderPolicy{VictimOrderSafeFirst, VictimOrderPriorityFirst} {
+			for _, equalPriority := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/equal-priority-%t", action, policy, equalPriority), func(t *testing.T) {
+					low := &api.TaskInfo{UID: "z-low", Job: "job", Priority: 1, Resreq: &api.Resource{MilliCPU: 1000}}
+					high := &api.TaskInfo{UID: "a-high", Job: "job", Priority: 2, Resreq: &api.Resource{MilliCPU: 1000}}
+					core := &api.TaskInfo{UID: "core", Job: "job", Priority: 3, Resreq: &api.Resource{MilliCPU: 1000}}
+					low.Status, high.Status, core.Status = api.Running, api.Running, api.Running
+					want := low.UID
+					if equalPriority {
+						high.Priority = low.Priority
+						want = high.UID // UID breaks ties only after task priority.
+					}
+					job := api.NewJobInfo("job", low, high, core)
+					job.MinAvailable, job.Queue = 1, "queue"
+					need := &api.Resource{MilliCPU: 1000}
+					queues := map[api.QueueID]*api.QueueInfo{"queue": {UID: "queue"}}
+					sortBundles := func(bundles []*Bundle) {
+						if action == "preempt" {
+							SortBundlesForPreempt(bundles, need, policy, nil)
+						} else {
+							SortBundlesForReclaim(bundles, need, policy, nil, queues)
+						}
+					}
+					bundles := CreateJobBundles(job, []*api.TaskInfo{core, high, low})
+					sortBundles(bundles)
+					require.Equal(t, want, bundles[0].Tasks[0].UID)
+					valid := FilterOrderedBundles(bundles, false, func(tasks []*api.TaskInfo) []*api.TaskInfo { return tasks })
+					require.Len(t, valid, 2)
+					require.Equal(t, want, valid[0].Tasks[0].UID)
+					sortBundles(valid)
+					selected := SelectBundles(valid, need, false)
+					require.Len(t, selected, 1)
+					assert.Equal(t, want, selected[0].Tasks[0].UID)
+				})
+			}
+		}
+	}
+}
+
+func BenchmarkFilterOrderedBundles(b *testing.B) {
+	for _, count := range []int{32, 128, 512} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			ssn := &framework.Session{Tiers: []conf.Tier{{Plugins: []conf.PluginOption{{Name: "first"}, {Name: "second"}}}}}
+			for _, name := range []string{"first", "second"} {
+				ssn.AddUnifiedEvictableFn(name, func(_ *api.EvictionContext, tasks []*api.TaskInfo) ([]*api.TaskInfo, int) {
+					return tasks, util.Permit
+				})
+			}
+			tasks := make([]*api.TaskInfo, count)
+			for i := range tasks {
+				tasks[i] = &api.TaskInfo{UID: api.TaskID(fmt.Sprint(i)), Resreq: &api.Resource{MilliCPU: 1000}}
+			}
+			bundles := []*Bundle{{Type: BundleSafe, Tasks: tasks}}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				FilterOrderedBundles(bundles, true, func(trial []*api.TaskInfo) []*api.TaskInfo {
+					return ssn.UnifiedEvictable(&api.EvictionContext{}, trial)
+				})
+			}
+		})
+	}
+}
 
 func TestCreateJobBundles_SafeAndWhole(t *testing.T) {
 	job := &api.JobInfo{
@@ -78,6 +149,71 @@ func TestApplyAllowedTasks_WholeAtomicAndSafeShrink(t *testing.T) {
 	assert.Equal(t, api.TaskID("t1"), valid[0].Tasks[0].UID)
 }
 
+func TestFilterOrderedBundles_WholeDoesNotConsumeRejectedAllowance(t *testing.T) {
+	task := func(id api.TaskID) *api.TaskInfo {
+		return &api.TaskInfo{UID: id, Resreq: &api.Resource{MilliCPU: 1000}}
+	}
+	first, w1, w2, later := task("first"), task("w1"), task("w2"), task("later")
+	bundles := []*Bundle{
+		{Type: BundleSafe, Tasks: []*api.TaskInfo{first}},
+		{Type: BundleWhole, Tasks: []*api.TaskInfo{w1, w2}},
+		{Type: BundleSafe, Tasks: []*api.TaskInfo{later}},
+	}
+	for _, allowWhole := range []bool{false, true} {
+		// Each invocation evaluates cumulative victims against the same quota
+		// snapshot. Only two tasks may be reclaimed in total.
+		filter := func(tasks []*api.TaskInfo) []*api.TaskInfo {
+			if !allowWhole {
+				for _, candidate := range tasks {
+					assert.NotEqual(t, w1.UID, candidate.UID)
+					assert.NotEqual(t, w2.UID, candidate.UID)
+				}
+			}
+			if len(tasks) > 2 {
+				return tasks[:2]
+			}
+			return tasks
+		}
+		valid := FilterOrderedBundles(bundles, allowWhole, filter)
+		assert.Equal(t, []*api.TaskInfo{first, later}, FlattenBundles(valid))
+	}
+}
+
+func TestFilterOrderedBundles_SafeSelectionIsIncremental(t *testing.T) {
+	tasks := []*api.TaskInfo{
+		{UID: "s1", Resreq: &api.Resource{MilliCPU: 1000}},
+		{UID: "s2", Resreq: &api.Resource{MilliCPU: 1000}},
+		{UID: "s3", Resreq: &api.Resource{MilliCPU: 1000}},
+	}
+	bundles := []*Bundle{{Type: BundleSafe, Tasks: tasks, LocalRes: sumTasks(tasks)}}
+	valid := FilterOrderedBundles(bundles, true, func(tasks []*api.TaskInfo) []*api.TaskInfo { return tasks })
+	assert.Len(t, valid, 3)
+	selected := SelectBundles(valid, &api.Resource{MilliCPU: 1000}, true)
+	assert.Equal(t, tasks[:1], FlattenBundles(selected), "one required task must not evict all surplus")
+	assert.Len(t, bundles[0].Tasks, 3, "do not mutate raw bundles")
+}
+
+func TestFilterOrderedBundles_KeepsWholeAtomicAndReplaysPrefix(t *testing.T) {
+	tasks := []*api.TaskInfo{
+		{UID: "w1", Resreq: &api.Resource{MilliCPU: 1000}},
+		{UID: "w2", Resreq: &api.Resource{MilliCPU: 1000}},
+		{UID: "s1", Resreq: &api.Resource{MilliCPU: 1000}},
+	}
+	bundles := []*Bundle{
+		{Type: BundleWhole, Tasks: tasks[:2], LocalRes: sumTasks(tasks[:2])},
+		{Type: BundleSafe, Tasks: tasks[2:]},
+	}
+	valid := FilterOrderedBundles(bundles, true, func(trial []*api.TaskInfo) []*api.TaskInfo {
+		if len(trial) > 2 {
+			return trial[:2]
+		}
+		return trial
+	})
+	assert.Len(t, valid, 1)
+	assert.Equal(t, bundles[0], valid[0])
+	assert.Equal(t, tasks[:2], FlattenBundles(SelectBundles(valid, &api.Resource{MilliCPU: 1000}, true)))
+}
+
 func TestSelectBundles_RespectsAllowWhole(t *testing.T) {
 	job := &api.JobInfo{}
 	safe := &Bundle{
@@ -127,7 +263,7 @@ func TestSortBundlesForPreempt_TypePriorityAndROI(t *testing.T) {
 	}
 	bundles := []*Bundle{wholeLowROI, safe, wholeHighROI}
 
-	SortBundlesForPreempt(bundles, (&api.Resource{MilliCPU: 1000}).Clone(), func(l, r *api.JobInfo) bool {
+	SortBundlesForPreempt(bundles, (&api.Resource{MilliCPU: 1000}).Clone(), VictimOrderSafeFirst, func(l, r *api.JobInfo) bool {
 		return l.Priority < r.Priority
 	})
 
@@ -160,7 +296,7 @@ func TestSortBundlesForReclaim_UsesQueueOrderThenROI(t *testing.T) {
 	lessQueue := func(l, r *api.QueueInfo) bool { return l.Name < r.Name }
 	bundles := []*Bundle{bB, bA}
 
-	SortBundlesForReclaim(bundles, (&api.Resource{MilliCPU: 1000}).Clone(), lessQueue, queues)
+	SortBundlesForReclaim(bundles, (&api.Resource{MilliCPU: 1000}).Clone(), VictimOrderSafeFirst, lessQueue, queues)
 	assert.Equal(t, api.TaskID("a"), bundles[0].Tasks[0].UID)
 
 	// If queue order ties/absent, ROI should be used.
@@ -181,7 +317,7 @@ func TestSortBundlesForReclaim_UsesQueueOrderThenROI(t *testing.T) {
 		GlobalRes: (&api.Resource{MilliCPU: 2000}).Clone(),
 	}
 	bundles = []*Bundle{bC, bD}
-	SortBundlesForReclaim(bundles, (&api.Resource{MilliCPU: 1000}).Clone(), nil, queues)
+	SortBundlesForReclaim(bundles, (&api.Resource{MilliCPU: 1000}).Clone(), VictimOrderSafeFirst, nil, queues)
 	assert.Equal(t, api.TaskID("d"), bundles[0].Tasks[0].UID)
 }
 
@@ -205,7 +341,7 @@ func TestSortBundlesForPreempt_UsesVictimJobOrder(t *testing.T) {
 	}
 	bundles := []*Bundle{a, b}
 
-	SortBundlesForPreempt(bundles, (&api.Resource{MilliCPU: 1000}).Clone(), func(l, r *api.JobInfo) bool {
+	SortBundlesForPreempt(bundles, (&api.Resource{MilliCPU: 1000}).Clone(), VictimOrderSafeFirst, func(l, r *api.JobInfo) bool {
 		return l.UID > r.UID
 	})
 
@@ -234,9 +370,190 @@ func TestSortBundlesForReclaim_DeterministicTieBreaker(t *testing.T) {
 	}
 	bundles := []*Bundle{b, a}
 
-	SortBundlesForReclaim(bundles, (&api.Resource{MilliCPU: 1000}).Clone(), nil, queues)
+	SortBundlesForReclaim(bundles, (&api.Resource{MilliCPU: 1000}).Clone(), VictimOrderSafeFirst, nil, queues)
 	assert.Equal(t, api.TaskID("a"), bundles[0].Tasks[0].UID)
 	assert.Equal(t, api.TaskID("b"), bundles[1].Tasks[0].UID)
+}
+
+func TestParseVictimOrderPolicy(t *testing.T) {
+	tests := []struct {
+		value string
+		want  VictimOrderPolicy
+		valid bool
+	}{
+		{value: string(VictimOrderSafeFirst), want: VictimOrderSafeFirst, valid: true},
+		{value: string(VictimOrderPriorityFirst), want: VictimOrderPriorityFirst, valid: true},
+		{value: "unknown", want: VictimOrderSafeFirst, valid: false},
+	}
+
+	for _, test := range tests {
+		policy, valid := ParseVictimOrderPolicy(test.value)
+		assert.Equal(t, test.want, policy)
+		assert.Equal(t, test.valid, valid)
+	}
+}
+
+func TestSortBundlesForPreempt_VictimOrderPolicy(t *testing.T) {
+	lowPriorityJob := &api.JobInfo{UID: "low", Priority: 10}
+	highPriorityJob := &api.JobInfo{UID: "high", Priority: 50}
+	lowWhole := testBundle(BundleWhole, lowPriorityJob, "low-whole", 1000, 2000)
+	highSafe := testBundle(BundleSafe, highPriorityJob, "high-safe", 1000, 0)
+	need := (&api.Resource{MilliCPU: 1000}).Clone()
+	lessVictimJob := func(l, r *api.JobInfo) bool { return l.Priority < r.Priority }
+
+	safeFirst := []*Bundle{lowWhole, highSafe}
+	SortBundlesForPreempt(safeFirst, need, VictimOrderSafeFirst, lessVictimJob)
+	assert.Equal(t, api.TaskID("high-safe"), safeFirst[0].Tasks[0].UID)
+
+	priorityFirst := []*Bundle{highSafe, lowWhole}
+	SortBundlesForPreempt(priorityFirst, need, VictimOrderPriorityFirst, lessVictimJob)
+	assert.Equal(t, api.TaskID("low-whole"), priorityFirst[0].Tasks[0].UID)
+}
+
+func TestSortBundlesForReclaim_VictimOrderPolicy(t *testing.T) {
+	lowPriorityJob := &api.JobInfo{UID: "low", Queue: "q", Priority: 10}
+	highPriorityJob := &api.JobInfo{UID: "high", Queue: "q", Priority: 50}
+	queues := map[api.QueueID]*api.QueueInfo{
+		"q": {UID: "q", Name: "q"},
+	}
+	lowWhole := testBundle(BundleWhole, lowPriorityJob, "low-whole", 1000, 2000)
+	highSafe := testBundle(BundleSafe, highPriorityJob, "high-safe", 1000, 0)
+	need := (&api.Resource{MilliCPU: 1000}).Clone()
+
+	safeFirst := []*Bundle{lowWhole, highSafe}
+	SortBundlesForReclaim(safeFirst, need, VictimOrderSafeFirst, nil, queues)
+	assert.Equal(t, api.TaskID("high-safe"), safeFirst[0].Tasks[0].UID)
+
+	priorityFirst := []*Bundle{highSafe, lowWhole}
+	SortBundlesForReclaim(priorityFirst, need, VictimOrderPriorityFirst, nil, queues)
+	assert.Equal(t, api.TaskID("low-whole"), priorityFirst[0].Tasks[0].UID)
+}
+
+func TestSortBundlesForReclaim_VictimQueuePrecedesBundlePolicy(t *testing.T) {
+	preferredJob := &api.JobInfo{UID: "preferred", Queue: "preferred", Priority: 50}
+	otherJob := &api.JobInfo{UID: "other", Queue: "other", Priority: 10}
+	queues := map[api.QueueID]*api.QueueInfo{
+		"preferred": {UID: "preferred", Name: "preferred"},
+		"other":     {UID: "other", Name: "other"},
+	}
+	preferredWhole := testBundle(BundleWhole, preferredJob, "preferred-whole", 1000, 2000)
+	otherSafe := testBundle(BundleSafe, otherJob, "other-safe", 1000, 0)
+	lessQueue := func(l, r *api.QueueInfo) bool { return l.UID == "preferred" }
+	need := (&api.Resource{MilliCPU: 1000}).Clone()
+
+	for _, policy := range []VictimOrderPolicy{VictimOrderSafeFirst, VictimOrderPriorityFirst} {
+		bundles := []*Bundle{otherSafe, preferredWhole}
+		SortBundlesForReclaim(bundles, need, policy, lessQueue, queues)
+		assert.Equal(t, api.TaskID("preferred-whole"), bundles[0].Tasks[0].UID)
+	}
+}
+
+func TestSortBundlesForReclaim_TiedVictimQueuesRemainGrouped(t *testing.T) {
+	jobA := &api.JobInfo{UID: "job-a", Queue: "a", Priority: 50}
+	jobB := &api.JobInfo{UID: "job-b", Queue: "b", Priority: 10}
+	queues := map[api.QueueID]*api.QueueInfo{
+		"a": {UID: "a", Name: "a"},
+		"b": {UID: "b", Name: "b"},
+	}
+	queueAWhole := testBundle(BundleWhole, jobA, "a-whole", 1000, 2000)
+	queueBSafe := testBundle(BundleSafe, jobB, "b-safe", 1000, 0)
+	tiedQueueOrder := func(l, r *api.QueueInfo) bool { return false }
+
+	for _, policy := range []VictimOrderPolicy{VictimOrderSafeFirst, VictimOrderPriorityFirst} {
+		bundles := []*Bundle{queueBSafe, queueAWhole}
+		SortBundlesForReclaim(bundles, (&api.Resource{MilliCPU: 1000}).Clone(), policy, tiedQueueOrder, queues)
+		assert.Equal(t, api.TaskID("a-whole"), bundles[0].Tasks[0].UID)
+	}
+}
+
+func TestSafeFirstUsesPriorityWithinTypeAndQueue(t *testing.T) {
+	low := &api.JobInfo{UID: "low", Queue: "a", Priority: 10}
+	high := &api.JobInfo{UID: "high", Queue: "b", Priority: 50}
+	l := testBundle(BundleWhole, low, "low", 1000, 4000)
+	h := testBundle(BundleWhole, high, "high", 1000, 2000)
+	need := &api.Resource{MilliCPU: 1000}
+	queues := map[api.QueueID]*api.QueueInfo{"a": {UID: "a"}, "b": {UID: "b"}}
+
+	t.Run("preempt compares numeric priority before existing job order", func(t *testing.T) {
+		bundles := []*Bundle{l, h}
+		SortBundlesForPreempt(bundles, need, VictimOrderSafeFirst, func(l, r *api.JobInfo) bool {
+			return l.Priority > r.Priority
+		})
+		assert.Equal(t, api.TaskID("low"), bundles[0].Tasks[0].UID)
+	})
+	for _, tc := range []struct {
+		name string
+		less func(l, r *api.QueueInfo) bool
+	}{
+		{name: "absent queue comparator"},
+		{name: "tied queues", less: func(l, r *api.QueueInfo) bool { return false }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bundles := []*Bundle{l, h}
+			SortBundlesForReclaim(bundles, need, VictimOrderSafeFirst, tc.less, queues)
+			assert.Equal(t, api.TaskID("low"), bundles[0].Tasks[0].UID)
+		})
+	}
+	t.Run("reclaim compares numeric priority before ROI within a queue", func(t *testing.T) {
+		high.Queue = low.Queue
+		bundles := []*Bundle{l, h}
+		SortBundlesForReclaim(bundles, need, VictimOrderSafeFirst, nil, queues)
+		assert.Equal(t, api.TaskID("low"), bundles[0].Tasks[0].UID)
+	})
+}
+
+func TestSortBundlesForPreempt_BothPoliciesPreferSafeAtEqualPriority(t *testing.T) {
+	jobA := &api.JobInfo{UID: "a", Priority: 10}
+	jobB := &api.JobInfo{UID: "b", Priority: 10}
+	bundles := []*Bundle{
+		testBundle(BundleSafe, jobA, "a-safe", 1000, 0),
+		testBundle(BundleWhole, jobB, "b-whole", 1000, 2000),
+		testBundle(BundleWhole, jobA, "a-whole", 1000, 2000),
+		testBundle(BundleSafe, jobB, "b-safe", 1000, 0),
+	}
+	lessVictimJob := func(l, r *api.JobInfo) bool { return l.UID > r.UID }
+
+	for _, policy := range []VictimOrderPolicy{VictimOrderSafeFirst, VictimOrderPriorityFirst} {
+		ordered := append([]*Bundle(nil), bundles...)
+		SortBundlesForPreempt(ordered, (&api.Resource{MilliCPU: 1000}).Clone(), policy, lessVictimJob)
+		assert.Equal(t, []api.TaskID{"b-safe", "a-safe", "b-whole", "a-whole"}, bundleTaskIDs(ordered))
+	}
+}
+
+func TestSortBundlesForReclaim_BothPoliciesPreferSafeAtEqualPriority(t *testing.T) {
+	jobA := &api.JobInfo{UID: "a", Queue: "q", Priority: 10}
+	jobB := &api.JobInfo{UID: "b", Queue: "q", Priority: 10}
+	bundles := []*Bundle{
+		testBundle(BundleSafe, jobB, "b-safe", 1000, 0),
+		testBundle(BundleWhole, jobA, "a-whole", 1000, 2000),
+		testBundle(BundleWhole, jobB, "b-whole", 1000, 2000),
+		testBundle(BundleSafe, jobA, "a-safe", 1000, 0),
+	}
+	queues := map[api.QueueID]*api.QueueInfo{"q": {UID: "q", Name: "q"}}
+
+	for _, policy := range []VictimOrderPolicy{VictimOrderSafeFirst, VictimOrderPriorityFirst} {
+		ordered := append([]*Bundle(nil), bundles...)
+		SortBundlesForReclaim(ordered, (&api.Resource{MilliCPU: 1000}).Clone(), policy, nil, queues)
+		assert.Equal(t, []api.TaskID{"a-safe", "b-safe", "a-whole", "b-whole"}, bundleTaskIDs(ordered))
+	}
+}
+
+func testBundle(bundleType BundleType, job *api.JobInfo, taskID api.TaskID, localCPU, globalCPU float64) *Bundle {
+	return &Bundle{
+		Type:      bundleType,
+		Job:       job,
+		Tasks:     []*api.TaskInfo{{UID: taskID, Resreq: (&api.Resource{MilliCPU: localCPU}).Clone()}},
+		LocalRes:  (&api.Resource{MilliCPU: localCPU}).Clone(),
+		GlobalRes: (&api.Resource{MilliCPU: globalCPU}).Clone(),
+	}
+}
+
+func bundleTaskIDs(bundles []*Bundle) []api.TaskID {
+	ids := make([]api.TaskID, 0, len(bundles))
+	for _, bundle := range bundles {
+		ids = append(ids, bundle.Tasks[0].UID)
+	}
+	return ids
 }
 
 // addRunningTaskToSubJob wires a Running task into both the job-level indexes
