@@ -590,6 +590,11 @@ func validateSiblingsSum(queue, parent *schedulingv1beta1.Queue, siblings []*sch
 	totalGuarantee := api.EmptyResource()
 	totalDeserved := api.EmptyResource()
 
+	// A parent that never set guarantee/deserved has no limit on that dimension,
+	// not a limit of zero, so skip the corresponding check entirely.
+	checkGuarantee := parent.Spec.Guarantee.Resource != nil
+	checkDeserved := parent.Spec.Deserved != nil
+
 	parentGuarantee := api.NewResource(parent.Spec.Guarantee.Resource)
 	parentDeserved := api.NewResource(parent.Spec.Deserved)
 
@@ -597,13 +602,13 @@ func validateSiblingsSum(queue, parent *schedulingv1beta1.Queue, siblings []*sch
 	for _, sibling := range siblings {
 		if sibling.Name != queue.Name {
 			totalGuarantee.Add(api.NewResource(sibling.Spec.Guarantee.Resource))
-			if parentGuarantee.LessPartly(totalGuarantee, api.Zero) {
+			if checkGuarantee && parentGuarantee.LessPartly(totalGuarantee, api.Zero) {
 				return fmt.Errorf("parent queue %s validation failed: sum of children's guarantee (%s) exceeds parent's guarantee limit (%s)",
 					parent.Name, totalGuarantee, parentGuarantee)
 			}
 
 			totalDeserved.Add(api.NewResource(sibling.Spec.Deserved))
-			if parentDeserved.LessPartly(totalDeserved, api.Zero) {
+			if checkDeserved && parentDeserved.LessPartly(totalDeserved, api.Zero) {
 				return fmt.Errorf("parent queue %s validation failed: sum of children's deserved (%s) exceeds parent's deserved limit (%s)",
 					parent.Name, totalDeserved, parentDeserved)
 			}
@@ -612,13 +617,13 @@ func validateSiblingsSum(queue, parent *schedulingv1beta1.Queue, siblings []*sch
 
 	// Add the current queue's resources
 	totalGuarantee.Add(api.NewResource(queue.Spec.Guarantee.Resource))
-	if parentGuarantee.LessPartly(totalGuarantee, api.Zero) {
+	if checkGuarantee && parentGuarantee.LessPartly(totalGuarantee, api.Zero) {
 		return fmt.Errorf("parent queue %s validation failed: sum of children's guarantee (%s) exceeds parent's guarantee limit (%s)",
 			parent.Name, totalGuarantee, parentGuarantee)
 	}
 
 	totalDeserved.Add(api.NewResource(queue.Spec.Deserved))
-	if parentDeserved.LessPartly(totalDeserved, api.Zero) {
+	if checkDeserved && parentDeserved.LessPartly(totalDeserved, api.Zero) {
 		return fmt.Errorf("parent queue %s validation failed: sum of children's deserved (%s) exceeds parent's deserved limit (%s)",
 			parent.Name, totalDeserved, parentDeserved)
 	}
@@ -659,19 +664,24 @@ func validateChildrenConstraints(parent *schedulingv1beta1.Queue, children []*sc
 		}
 	}
 
+	// A parent that never set guarantee/deserved has no limit on that dimension,
+	// not a limit of zero, so skip the corresponding check entirely.
+	checkGuarantee := parent.Spec.Guarantee.Resource != nil
+	checkDeserved := parent.Spec.Deserved != nil
+
 	parentGuarantee := api.NewResource(parent.Spec.Guarantee.Resource)
 	parentDeserved := api.NewResource(parent.Spec.Deserved)
 
 	for _, child := range children {
 		// Accumulate children's guarantee and deserved
 		totalGuarantee.Add(api.NewResource(child.Spec.Guarantee.Resource))
-		if parentGuarantee.LessPartly(totalGuarantee, api.Zero) {
+		if checkGuarantee && parentGuarantee.LessPartly(totalGuarantee, api.Zero) {
 			return fmt.Errorf("queue %s validation failed: sum of children's guarantee (%s) exceeds parent's guarantee limit (%s)",
 				parent.Name, totalGuarantee, parentGuarantee)
 		}
 
 		totalDeserved.Add(api.NewResource(child.Spec.Deserved))
-		if parentDeserved.LessPartly(totalDeserved, api.Zero) {
+		if checkDeserved && parentDeserved.LessPartly(totalDeserved, api.Zero) {
 			return fmt.Errorf("queue %s validation failed: sum of children's deserved (%s) exceeds parent's deserved limit (%s)",
 				parent.Name, totalDeserved, parentDeserved)
 		}
