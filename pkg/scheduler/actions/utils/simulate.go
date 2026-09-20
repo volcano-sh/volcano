@@ -90,7 +90,7 @@ func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, j
 		var winnerStmt *framework.Statement
 		var winnerHN string
 		if job.ContainsHardTopology() {
-			gradients := ssn.HyperNodeGradientForSubJobFn(subJob, jobDomainHyperNode, api.PurposeEvict)
+			gradients, _ := ssn.HyperNodeGradientForSubJobFn(subJob, jobDomainHyperNode, api.PurposeEvict)
 		gradientSearch:
 			for _, row := range gradients {
 				for _, hn := range row {

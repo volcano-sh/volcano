@@ -23,10 +23,11 @@ package framework
 import (
 	"context"
 	"errors"
+	"sort"
 
-	fwk "k8s.io/kube-scheduler/framework"
-
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
@@ -1129,10 +1130,9 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 	return nodeScoreMap, nil
 }
 
-// HyperNodeGradientForJobFn group hyperNodes into several gradients,
-// and discard hyperNodes that unmatched the job topology requirements.
-// The result is determined by the first plugin that registered this fn.
-func (ssn *Session) HyperNodeGradientForJobFn(job *api.JobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
+// HyperNodeGradientForJobFn intersects gradients from every enabled registered plugin.
+func (ssn *Session) HyperNodeGradientForJobFn(job *api.JobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) ([][]*api.HyperNodeInfo, *api.HyperNodeGradientStats) {
+	var gradientByPlugin []api.HyperNodePluginGradient
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledHyperNodeGradient) {
@@ -1142,18 +1142,23 @@ func (ssn *Session) HyperNodeGradientForJobFn(job *api.JobInfo, hyperNode *api.H
 			if !found {
 				continue
 			}
-			return fn(job, hyperNode, purpose)
+			gradients := fn(job, hyperNode, purpose)
+			if gradients == nil {
+				klog.ErrorS(nil, "HyperNode gradient callback returned nil; treating as rejected", "plugin", plugin.Name, "purpose", purpose)
+				gradients = [][]*api.HyperNodeInfo{}
+			}
+			gradientByPlugin = append(gradientByPlugin, api.HyperNodePluginGradient{PluginName: plugin.Name, Gradients: gradients})
 		}
 	}
-
-	// If there is no hyperNode gradient functions, only the input hyperNode is returned.
-	return [][]*api.HyperNodeInfo{{hyperNode}}
+	if len(gradientByPlugin) == 0 {
+		return [][]*api.HyperNodeInfo{{hyperNode}}, nil
+	}
+	return intersectHyperNodeGradients(gradientByPlugin, purpose)
 }
 
-// HyperNodeGradientForSubJobFn group hyperNodes into several gradients,
-// and discard hyperNodes that unmatched the subJob topology requirements.
-// The result is determined by the first plugin that registered this fn.
-func (ssn *Session) HyperNodeGradientForSubJobFn(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
+// HyperNodeGradientForSubJobFn intersects gradients from every enabled registered plugin.
+func (ssn *Session) HyperNodeGradientForSubJobFn(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) ([][]*api.HyperNodeInfo, *api.HyperNodeGradientStats) {
+	var gradientByPlugin []api.HyperNodePluginGradient
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledHyperNodeGradient) {
@@ -1163,12 +1168,84 @@ func (ssn *Session) HyperNodeGradientForSubJobFn(subJob *api.SubJobInfo, hyperNo
 			if !found {
 				continue
 			}
-			return fn(subJob, hyperNode, purpose)
+			gradients := fn(subJob, hyperNode, purpose)
+			if gradients == nil {
+				klog.ErrorS(nil, "HyperNode gradient callback returned nil; treating as rejected", "plugin", plugin.Name, "purpose", purpose)
+				gradients = [][]*api.HyperNodeInfo{}
+			}
+			gradientByPlugin = append(gradientByPlugin, api.HyperNodePluginGradient{PluginName: plugin.Name, Gradients: gradients})
 		}
 	}
+	if len(gradientByPlugin) == 0 {
+		return [][]*api.HyperNodeInfo{{hyperNode}}, nil
+	}
+	return intersectHyperNodeGradients(gradientByPlugin, purpose)
+}
 
-	// If there is no hyperNode gradient functions, only the input hyperNode is returned.
-	return [][]*api.HyperNodeInfo{{hyperNode}}
+func hyperNodeCountByTier(gradients [][]*api.HyperNodeInfo) map[int]int {
+	counts := make(map[int]int)
+	for _, layer := range gradients {
+		for _, hn := range layer {
+			if hn != nil {
+				counts[hn.Tier()]++
+			}
+		}
+	}
+	return counts
+}
+
+func intersectHyperNodeGradients(gradientByPlugin []api.HyperNodePluginGradient, purpose api.SearchPurpose) ([][]*api.HyperNodeInfo, *api.HyperNodeGradientStats) {
+	stats := &api.HyperNodeGradientStats{PluginEligibleByTier: make(map[string]map[int]int, len(gradientByPlugin))}
+	for _, pluginGradient := range gradientByPlugin {
+		stats.PluginEligibleByTier[pluginGradient.PluginName] = hyperNodeCountByTier(pluginGradient.Gradients)
+	}
+
+	eligible := api.HyperNodeNamesInGradients(gradientByPlugin[0].Gradients)
+	for i := 1; i < len(gradientByPlugin); i++ {
+		eligible = eligible.Intersection(api.HyperNodeNamesInGradients(gradientByPlugin[i].Gradients))
+	}
+	stats.ExcludedByReason = api.ComputePluginExcludedHyperNodes(gradientByPlugin, eligible)
+	if eligible.Len() == 0 {
+		stats.IntersectedByTier = map[int]int{}
+		return [][]*api.HyperNodeInfo{}, stats
+	}
+
+	hyperNodeByName := make(map[string]*api.HyperNodeInfo, eligible.Len())
+	for _, pluginGradient := range gradientByPlugin {
+		for _, layer := range pluginGradient.Gradients {
+			for _, hn := range layer {
+				if hn != nil && eligible.Has(hn.Name) {
+					hyperNodeByName[hn.Name] = hn
+				}
+			}
+		}
+	}
+	result := rebuildGradientsByTier(hyperNodeByName, eligible, purpose)
+	stats.IntersectedByTier = hyperNodeCountByTier(result)
+	return result, stats
+}
+
+func rebuildGradientsByTier(hyperNodeByName map[string]*api.HyperNodeInfo, eligible sets.Set[string], purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
+	byTier := make(map[int][]*api.HyperNodeInfo)
+	for name := range eligible {
+		if hn := hyperNodeByName[name]; hn != nil {
+			byTier[hn.Tier()] = append(byTier[hn.Tier()], hn)
+		}
+	}
+	tiers := make([]int, 0, len(byTier))
+	for tier := range byTier {
+		tiers = append(tiers, tier)
+		sort.Slice(byTier[tier], func(i, j int) bool { return byTier[tier][i].Name < byTier[tier][j].Name })
+	}
+	sort.Ints(tiers)
+	if purpose == api.PurposeEvict {
+		sort.Sort(sort.Reverse(sort.IntSlice(tiers)))
+	}
+	result := make([][]*api.HyperNodeInfo, 0, len(tiers))
+	for _, tier := range tiers {
+		result = append(result, byTier[tier])
+	}
+	return result
 }
 
 // BuildVictimsPriorityQueue returns a priority queue with victims sorted by:
