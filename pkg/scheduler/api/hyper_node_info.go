@@ -333,6 +333,20 @@ func (hni *HyperNodesInfo) UpdateHyperNode(hn *topologyv1alpha1.HyperNode) error
 		return nil
 	}
 
+	// For selector-backed HyperNodes, an unchanged spec can still require a
+	// rebuild after a Node add/delete/label update. Snapshot the resolved
+	// membership of the affected ancestor chain so generation only advances
+	// when that rebuild changes the effective topology.
+	var previousResolvedNodes map[string]sets.Set[string]
+	if !specChanged && exists && hyperNodeHasRegexOrLabelMember(hn) {
+		previousResolvedNodes = make(map[string]sets.Set[string])
+		for _, ancestor := range hni.hyperNodes.GetAncestors(name) {
+			if nodes, found := hni.realNodesSet[ancestor]; found {
+				previousResolvedNodes[ancestor] = nodes.Clone()
+			}
+		}
+	}
+
 	// Release any children removed from this node's member list and record them so
 	// that we can immediately rebuild any other HyperNode that spec-claims one of
 	// those newly-freed members (they may have previously failed to adopt the member
@@ -386,7 +400,20 @@ func (hni *HyperNodesInfo) UpdateHyperNode(hn *topologyv1alpha1.HyperNode) error
 
 		hni.setReady(true)
 	}
-	hni.generation.Add(1)
+	effectiveTopologyChanged := specChanged
+	if previousResolvedNodes != nil {
+		for _, ancestor := range hni.hyperNodes.GetAncestors(name) {
+			before, existedBefore := previousResolvedNodes[ancestor]
+			after, existsAfter := hni.realNodesSet[ancestor]
+			if existedBefore != existsAfter || !before.Equal(after) {
+				effectiveTopologyChanged = true
+				break
+			}
+		}
+	}
+	if effectiveTopologyChanged {
+		hni.generation.Add(1)
+	}
 	return nil
 }
 

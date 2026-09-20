@@ -938,6 +938,7 @@ func (sc *SchedulerCache) triggerUpdateHyperNode(name string) error {
 		klog.V(3).InfoS("No need to update hyperNode cache when node added or deleted")
 		return nil
 	}
+	resolvedNodesBeforeUpdate := sc.HyperNodesInfo.RealNodesSet()
 
 	for leafNode := range leafNodes {
 		hn := sc.HyperNodesInfo.HyperNode(leafNode)
@@ -950,7 +951,12 @@ func (sc *SchedulerCache) triggerUpdateHyperNode(name string) error {
 			klog.ErrorS(err, "Failed to get node regex match leaf hyperNode", "nodeName", name, "hyperNodeName", hn.Name)
 			continue
 		}
-		if !match {
+		// Rebuild both newly matching HyperNodes and HyperNodes that contained
+		// the Node before this event. The latter is required when a label update
+		// moves a Node out of a label selector, or when a deleted Node can no
+		// longer be read from the informer lister.
+		wasMember := resolvedNodesBeforeUpdate[leafNode].Has(name)
+		if !match && !wasMember {
 			continue
 		}
 
