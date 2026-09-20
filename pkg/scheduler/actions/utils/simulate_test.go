@@ -23,11 +23,35 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
+
+const antiAffinitySimulationGradientPluginName = "anti-affinity-simulation-gradient"
+
+type antiAffinitySimulationGradientPlugin struct{}
+
+func (p *antiAffinitySimulationGradientPlugin) Name() string {
+	return antiAffinitySimulationGradientPluginName
+}
+
+func (p *antiAffinitySimulationGradientPlugin) OnSessionOpen(ssn *framework.Session) {
+	ssn.AddHyperNodeGradientForSubJobFn(p.Name(), func(*api.SubJobInfo, *api.HyperNodeInfo, api.SearchPurpose) [][]*api.HyperNodeInfo {
+		allowed := ssn.HyperNodes["hn-allowed"]
+		if allowed == nil {
+			return nil
+		}
+		return [][]*api.HyperNodeInfo{{allowed}}
+	})
+}
+
+func (p *antiAffinitySimulationGradientPlugin) OnSessionClose(*framework.Session) {}
 
 // testDomainHyperNode registers nodes under a hypernode name in ssn.RealNodesList and returns a
 // minimal HyperNodeInfo for BuildNominationPlanInDomain.
@@ -180,6 +204,85 @@ func TestBuildNominationPlanInDomain_WithVictimIncludesEvictAndPipeline(t *testi
 	assert.True(t, ok)
 	assert.NotNil(t, plan)
 	assert.Equal(t, 2, len(plan.Operations()))
+}
+
+func TestBuildNominationPlanInDomain_HardPodGroupAntiAffinityUsesGradient(t *testing.T) {
+	ensureServerOptsForTest()
+	originalMinNodesToFind := options.ServerOpts.MinNodesToFind
+	options.ServerOpts.MinNodesToFind = 2
+	defer func() { options.ServerOpts.MinNodesToFind = originalMinNodesToFind }()
+
+	framework.RegisterPluginBuilder(antiAffinitySimulationGradientPluginName, func(framework.Arguments) framework.Plugin {
+		return &antiAffinitySimulationGradientPlugin{}
+	})
+	defer framework.CleanupPluginBuilders()
+
+	for _, reason := range []string{ReasonGangPreempt, ReasonGangReclaim} {
+		t.Run(reason, func(t *testing.T) {
+			jobID := api.JobID("ns/" + reason)
+			task := makeTask(jobID, "t1")
+			job := api.NewJobInfo(jobID, task)
+			tier := int32(2)
+			job.PodGroup = &api.PodGroup{PodGroup: scheduling.PodGroup{
+				Spec: scheduling.PodGroupSpec{
+					TopologyAffinity: &scheduling.TopologyAffinitySpec{
+						PodGroupAntiAffinity: &scheduling.PodGroupAntiAffinity{
+							Required: []scheduling.PodGroupAffinityTerm{{
+								PodGroupSelector: &metav1.LabelSelector{},
+								TopologyTier:     &tier,
+							}},
+						},
+					},
+				},
+			}}
+
+			deniedNode := api.NewNodeInfo(nil)
+			deniedNode.Name = "node-denied"
+			deniedNode.Idle = (&api.Resource{MilliCPU: 2000}).Clone()
+			deniedNode.Releasing = api.EmptyResource()
+			deniedNode.Pipelined = api.EmptyResource()
+			allowedNode := api.NewNodeInfo(nil)
+			allowedNode.Name = "node-allowed"
+			allowedNode.Idle = (&api.Resource{MilliCPU: 2000}).Clone()
+			allowedNode.Releasing = api.EmptyResource()
+			allowedNode.Pipelined = api.EmptyResource()
+
+			schedulerCache := &cache.SchedulerCache{
+				Nodes: map[string]*api.NodeInfo{
+					deniedNode.Name:  deniedNode,
+					allowedNode.Name: allowedNode,
+				},
+				Jobs:              map[api.JobID]*api.JobInfo{jobID: job},
+				Queues:            map[api.QueueID]*api.QueueInfo{},
+				HyperNodesInfo:    api.NewHyperNodesInfo(nil),
+				InUseNodesInShard: sets.Set[string]{},
+			}
+			ssn := framework.OpenSession(schedulerCache, []conf.Tier{{Plugins: []conf.PluginOption{{
+				Name:                     antiAffinitySimulationGradientPluginName,
+				EnabledHyperNodeGradient: boolPtr(true),
+			}}}}, nil)
+			ssn.Jobs = map[api.JobID]*api.JobInfo{jobID: job}
+			ssn.Nodes = map[string]*api.NodeInfo{
+				deniedNode.Name:  deniedNode,
+				allowedNode.Name: allowedNode,
+			}
+
+			root := testDomainHyperNode(ssn, framework.ClusterTopHyperNode, []*api.NodeInfo{deniedNode, allowedNode})
+			allowed := testDomainHyperNode(ssn, "hn-allowed", []*api.NodeInfo{allowedNode})
+			ssn.HyperNodes = api.HyperNodeInfoMap{
+				root.Name:    root,
+				allowed.Name: allowed,
+			}
+
+			plan, placements, ok := BuildNominationPlanInDomain(ssn, nil, job, root, nil, reason, true)
+			if !assert.True(t, ok) || !assert.NotNil(t, plan) {
+				return
+			}
+			assert.Equal(t, 1, len(plan.Operations()))
+			assert.Equal(t, "hn-allowed", placements[job.DefaultSubJobID()])
+			assert.Empty(t, task.NodeName, "simulation must leave the session clean")
+		})
+	}
 }
 
 func TestBuildNominationPlanInDomain_NoFeasibleNode(t *testing.T) {

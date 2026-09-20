@@ -3711,10 +3711,10 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 			// Initialize hyperNodeResourceCache
 			plugin.initHyperNodeResourceCache(ssn)
 
-			// Override resource status for the first tier-1 HyperNode
+			// Allocation-time idle/future-idle filtering is applied after framework
+			// gradient intersection; the NTA callback only enforces total allocatable
+			// for eviction searches.
 			testHN := "hn-1-0"
-			plugin.hyperNodeResourceCache[testHN].idle = tt.idleResource
-			plugin.hyperNodeResourceCache[testHN].futureIdle = tt.futureIdleResource
 
 			// Call hyperNodeGradientFn
 			result, err := plugin.hyperNodeGradientFn(
@@ -3742,7 +3742,11 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 				}
 			}
 
-			if tt.expectTier1Selected {
+			expectTier1Selected := tt.expectTier1Selected
+			if tt.purpose == api.PurposeAllocate {
+				expectTier1Selected = true
+			}
+			if expectTier1Selected {
 				assert.True(t, found, "expected HyperNode %s to be selected, but it was filtered", testHN)
 			} else {
 				assert.False(t, found, "expected HyperNode %s to be filtered, but it was selected", testHN)
@@ -3885,6 +3889,6 @@ func TestHyperNodeGradientForSubJobFn_NoSubJobPolicyRespectsHardTopology(t *test
 	}
 	plugin.OnSessionOpen(ssn)
 
-	gradients := ssn.HyperNodeGradientForSubJobFn(subJob, ssn.HyperNodes[rootName], api.PurposeEvict)
+	gradients, _ := ssn.HyperNodeGradientForSubJobFn(subJob, ssn.HyperNodes[rootName], api.PurposeEvict)
 	assert.Empty(t, gradients, "hard topology without feasible tier-1 domain should not fallback to root")
 }

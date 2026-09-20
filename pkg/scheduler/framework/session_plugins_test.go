@@ -279,7 +279,7 @@ func TestUnifiedEvictable_ContextPassedThrough(t *testing.T) {
 	assert.Equal(t, "hn1", receivedCtx.HyperNode)
 }
 
-func TestHyperNodeGradientForJobFn_ForwardsPurposeAndKeepsWinnerTakesAll(t *testing.T) {
+func TestHyperNodeGradientForJobFn_ForwardsPurposeAndIntersectsPlugins(t *testing.T) {
 	enabled := true
 	ssn := &Session{
 		Tiers: []conf.Tier{
@@ -306,9 +306,10 @@ func TestHyperNodeGradientForJobFn_ForwardsPurposeAndKeepsWinnerTakesAll(t *test
 		return [][]*api.HyperNodeInfo{{hn2}}
 	})
 
-	result := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
+	result, stats := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
 	assert.Equal(t, api.PurposeEvict, gotPurpose)
-	assert.Equal(t, [][]*api.HyperNodeInfo{{hn1}}, result)
+	assert.Empty(t, result)
+	assert.NotNil(t, stats)
 }
 
 func TestHyperNodeGradientForJobFn_NoPluginKeepsCurrentFallback(t *testing.T) {
@@ -316,7 +317,7 @@ func TestHyperNodeGradientForJobFn_NoPluginKeepsCurrentFallback(t *testing.T) {
 		hyperNodeGradientForJobFns: map[string]api.HyperNodeGradientForJobFn{},
 	}
 	root := &api.HyperNodeInfo{Name: "root"}
-	result := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
+	result, _ := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
 	assert.Equal(t, [][]*api.HyperNodeInfo{{root}}, result)
 }
 
@@ -540,4 +541,19 @@ func TestQueueScope(t *testing.T) {
 			assert.Equal(t, test.want, ssn.queueScope("child"))
 		})
 	}
+}
+
+func TestHyperNodeGradientForJobFn_NilCallbackFailsClosed(t *testing.T) {
+	enabled := true
+	ssn := &Session{
+		Tiers:                      []conf.Tier{{Plugins: []conf.PluginOption{{Name: "nil-gradient", EnabledHyperNodeGradient: &enabled}}}},
+		hyperNodeGradientForJobFns: map[string]api.HyperNodeGradientForJobFn{},
+	}
+	ssn.AddHyperNodeGradientForJobFn("nil-gradient", func(*api.JobInfo, *api.HyperNodeInfo, api.SearchPurpose) [][]*api.HyperNodeInfo {
+		return nil
+	})
+	result, stats := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, &api.HyperNodeInfo{Name: "root"}, api.PurposeAllocate)
+	assert.NotNil(t, result)
+	assert.Empty(t, result)
+	assert.NotNil(t, stats)
 }

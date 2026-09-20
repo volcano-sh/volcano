@@ -5,12 +5,129 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
+
+func TestRefreshAllocatedHyperNodeOnTopologyGenerationChange(t *testing.T) {
+	root := api.NewHyperNodeInfo(&topologyv1alpha1.HyperNode{
+		ObjectMeta: metav1.ObjectMeta{Name: "root"},
+		Spec:       topologyv1alpha1.HyperNodeSpec{Tier: 2},
+	})
+	root.Children = sets.New("domain-a", "domain-b")
+	domainA := api.NewHyperNodeInfo(&topologyv1alpha1.HyperNode{
+		ObjectMeta: metav1.ObjectMeta{Name: "domain-a"},
+		Spec:       topologyv1alpha1.HyperNodeSpec{Tier: 1},
+	}, api.ParentOpt("root"))
+	domainB := api.NewHyperNodeInfo(&topologyv1alpha1.HyperNode{
+		ObjectMeta: metav1.ObjectMeta{Name: "domain-b"},
+		Spec:       topologyv1alpha1.HyperNodeSpec{Tier: 1},
+	}, api.ParentOpt("root"))
+
+	task := &api.TaskInfo{
+		UID: api.TaskID("task-1"),
+		Job: api.JobID("job-1"),
+		TransactionContext: api.TransactionContext{
+			Status:   api.Running,
+			NodeName: "node-b",
+		},
+	}
+	subJob := &api.SubJobInfo{
+		UID:                api.SubJobID("subjob-1"),
+		Job:                task.Job,
+		AllocatedHyperNode: "domain-a",
+		Tasks:              map[api.TaskID]*api.TaskInfo{task.UID: task},
+		TaskStatusIndex: map[api.TaskStatus]api.TasksMap{
+			api.Running: {task.UID: task},
+		},
+	}
+	job := &api.JobInfo{
+		UID:                          task.Job,
+		AllocatedHyperNode:           "domain-a",
+		AllocatedHyperNodeGeneration: 1,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subJob.UID: subJob,
+		},
+	}
+	ssn := &Session{
+		HyperNodes: api.HyperNodeInfoMap{
+			root.Name:    root,
+			domainA.Name: domainA,
+			domainB.Name: domainB,
+		},
+		RealNodesSet: map[string]sets.Set[string]{
+			"root":     sets.New("node-a", "node-b"),
+			"domain-a": sets.New("node-a"),
+			"domain-b": sets.New("node-b"),
+		},
+		HyperNodeGeneration: 2,
+		DirtyJobs:           sets.New[api.JobID](),
+	}
+
+	ssn.refreshAllocatedHyperNode(job)
+	assert.Equal(t, "domain-b", subJob.AllocatedHyperNode)
+	assert.Equal(t, "domain-b", job.AllocatedHyperNode)
+	assert.Equal(t, uint64(2), job.AllocatedHyperNodeGeneration)
+	assert.True(t, ssn.DirtyJobs.Has(job.UID))
+
+	// Once the generation has been acknowledged, the next session takes the
+	// existing cheap validity/recovery path instead of scanning task placement.
+	job.AllocatedHyperNode = "domain-a"
+	subJob.AllocatedHyperNode = "domain-a"
+	ssn.refreshAllocatedHyperNode(job)
+	assert.Equal(t, "domain-a", subJob.AllocatedHyperNode)
+	assert.Equal(t, "domain-a", job.AllocatedHyperNode)
+}
+
+func TestRefreshAllocatedHyperNodeRetriesIncompleteTopology(t *testing.T) {
+	task := &api.TaskInfo{
+		UID: api.TaskID("task-1"),
+		Job: api.JobID("job-1"),
+		TransactionContext: api.TransactionContext{
+			Status:   api.Running,
+			NodeName: "missing-node",
+		},
+	}
+	subJob := &api.SubJobInfo{
+		UID:                api.SubJobID("subjob-1"),
+		Job:                task.Job,
+		AllocatedHyperNode: "old-domain",
+		Tasks:              map[api.TaskID]*api.TaskInfo{task.UID: task},
+		TaskStatusIndex: map[api.TaskStatus]api.TasksMap{
+			api.Running: {task.UID: task},
+		},
+	}
+	job := &api.JobInfo{
+		UID:                          task.Job,
+		AllocatedHyperNode:           "old-domain",
+		AllocatedHyperNodeGeneration: 1,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subJob.UID: subJob,
+		},
+	}
+	ssn := &Session{
+		HyperNodes: api.HyperNodeInfoMap{
+			"old-domain": api.NewHyperNodeInfo(&topologyv1alpha1.HyperNode{
+				ObjectMeta: metav1.ObjectMeta{Name: "old-domain"},
+				Spec:       topologyv1alpha1.HyperNodeSpec{Tier: 1},
+			}),
+		},
+		RealNodesSet:        map[string]sets.Set[string]{"old-domain": sets.New[string]()},
+		HyperNodeGeneration: 2,
+		DirtyJobs:           sets.New[api.JobID](),
+	}
+
+	ssn.refreshAllocatedHyperNode(job)
+	assert.Equal(t, "old-domain", subJob.AllocatedHyperNode)
+	assert.Equal(t, "old-domain", job.AllocatedHyperNode)
+	assert.Equal(t, uint64(1), job.AllocatedHyperNodeGeneration)
+	assert.False(t, ssn.DirtyJobs.Has(job.UID))
+}
 
 func TestSession_adjustNetworkTopologySpec(t *testing.T) {
 	tests := []struct {

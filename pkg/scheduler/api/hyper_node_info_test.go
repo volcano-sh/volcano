@@ -126,6 +126,31 @@ func TestHyperNodesInfo_UpdateHyperNode_NoSpecChange(t *testing.T) {
 	assert.Equal(t, "test", hni.hyperNodes["s0"].HyperNode.Labels["env"])
 }
 
+func TestHyperNodesInfoGeneration(t *testing.T) {
+	informerFactory := informers.NewSharedInformerFactory(fakeclientset.NewClientset(), 0)
+	hni := NewHyperNodesInfo(informerFactory.Core().V1().Nodes().Lister())
+
+	s0 := BuildHyperNode("s0", 1, []MemberConfig{{"node-0", topologyv1alpha1.MemberTypeNode, "exact", nil}})
+	assert.NoError(t, hni.UpdateHyperNode(s0))
+	assert.Equal(t, uint64(1), hni.Generation())
+
+	// Metadata-only updates do not change the effective topology.
+	metadataOnly := s0.DeepCopy()
+	metadataOnly.Labels = map[string]string{"env": "test"}
+	assert.NoError(t, hni.UpdateHyperNode(metadataOnly))
+	assert.Equal(t, uint64(1), hni.Generation())
+
+	membersChanged := BuildHyperNode("s0", 1, []MemberConfig{
+		{"node-0", topologyv1alpha1.MemberTypeNode, "exact", nil},
+		{"node-1", topologyv1alpha1.MemberTypeNode, "exact", nil},
+	})
+	assert.NoError(t, hni.UpdateHyperNode(membersChanged))
+	assert.Equal(t, uint64(2), hni.Generation())
+
+	assert.NoError(t, hni.DeleteHyperNode("s0"))
+	assert.Equal(t, uint64(3), hni.Generation())
+}
+
 func TestHyperNodesInfo_UpdateHyperNode_RegexMember_AlwaysRebuilds(t *testing.T) {
 	// Regex-match HyperNode: even if the spec is unchanged, a rebuild must happen
 	// because the matching node set depends on current cluster state (node add/delete).
@@ -139,11 +164,32 @@ func TestHyperNodesInfo_UpdateHyperNode_RegexMember_AlwaysRebuilds(t *testing.T)
 	assert.NoError(t, err)
 	// No real nodes in the lister yet → realNodesSet for s0 is empty/absent.
 	assert.True(t, hni.Ready())
+	assert.Equal(t, uint64(1), hni.Generation())
 
 	// Same spec, but calling UpdateHyperNode again must still rebuild (node state may differ).
 	err = hni.UpdateHyperNode(s0.DeepCopy())
 	assert.NoError(t, err)
 	assert.True(t, hni.Ready())
+	assert.Equal(t, uint64(1), hni.Generation(), "an unchanged resolved node set must not advance generation")
+
+	node := buildNode("node-0", nil, nil)
+	assert.NoError(t, informerFactory.Core().V1().Nodes().Informer().GetIndexer().Add(node))
+	err = hni.UpdateHyperNode(s0.DeepCopy())
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(2), hni.Generation())
+	assert.Equal(t, sets.New("node-0"), hni.realNodesSet["s0"])
+
+	// Rebuilding again with the same effective membership stays on the cheap
+	// path for the next scheduling session.
+	err = hni.UpdateHyperNode(s0.DeepCopy())
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(2), hni.Generation())
+
+	assert.NoError(t, informerFactory.Core().V1().Nodes().Informer().GetIndexer().Delete(node))
+	err = hni.UpdateHyperNode(s0.DeepCopy())
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(3), hni.Generation())
+	assert.Empty(t, hni.realNodesSet["s0"])
 }
 
 func TestHyperNodesInfo_UpdateHyperNode_TierOnlyChange(t *testing.T) {

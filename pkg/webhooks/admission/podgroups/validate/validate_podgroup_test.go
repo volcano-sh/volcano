@@ -323,3 +323,34 @@ func TestValidatePodGroup(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateTopologyAffinityPhaseOne(t *testing.T) {
+	tier := int32(1)
+	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"team": "ml"}}
+	valid := &schedulingv1beta1.TopologyAffinitySpec{
+		PodGroupAntiAffinity: &schedulingv1beta1.PodGroupAntiAffinity{
+			Required: []schedulingv1beta1.PodGroupAffinityTerm{{
+				PodGroupSelector: selector,
+				TopologyTier:     &tier,
+			}},
+			Preferred: []schedulingv1beta1.PodGroupAffinityTerm{{
+				Weight:           50,
+				PodGroupSelector: selector,
+				TopologyTierName: "rack",
+			}},
+		},
+	}
+	assert.Empty(t, validateTopologyAffinity(valid))
+
+	unsupported := valid.DeepCopy()
+	unsupported.SubGroupAntiAffinity = &schedulingv1beta1.SubGroupAntiAffinity{
+		Required: []schedulingv1beta1.SubGroupAffinityTerm{{SubGroups: []string{"worker"}, TopologyTier: &tier}},
+	}
+	assert.Contains(t, validateTopologyAffinity(unsupported), "not supported in phase 1")
+
+	invalidSelector := valid.DeepCopy()
+	invalidSelector.PodGroupAntiAffinity.Required[0].PodGroupSelector = &metav1.LabelSelector{
+		MatchExpressions: []metav1.LabelSelectorRequirement{{Key: "team", Operator: metav1.LabelSelectorOpIn}},
+	}
+	assert.Contains(t, validateTopologyAffinity(invalidSelector), "invalid podGroupSelector")
+}

@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling"
 
@@ -82,6 +83,42 @@ func TestGetCandidateDomains_EmptyGradient_HardTopologyNoFallback(t *testing.T) 
 
 	domains := GetCandidateDomains(ssn, job, 8)
 	assert.Empty(t, domains)
+}
+
+func TestGetCandidateDomains_EmptyGradient_HardPodGroupAntiAffinityNoFallback(t *testing.T) {
+	framework.RegisterPluginBuilder(emptyGradientPluginName, func(framework.Arguments) framework.Plugin {
+		return &emptyGradientPlugin{}
+	})
+	defer framework.CleanupPluginBuilders()
+
+	schedulerCache := &cache.SchedulerCache{
+		Nodes:             map[string]*api.NodeInfo{},
+		Jobs:              map[api.JobID]*api.JobInfo{},
+		Queues:            map[api.QueueID]*api.QueueInfo{},
+		HyperNodesInfo:    api.NewHyperNodesInfo(nil),
+		InUseNodesInShard: sets.Set[string]{},
+	}
+	ssn := framework.OpenSession(schedulerCache, []conf.Tier{{Plugins: []conf.PluginOption{{
+		Name:                     emptyGradientPluginName,
+		EnabledHyperNodeGradient: boolPtr(true),
+	}}}}, nil)
+	defer framework.CloseSession(ssn)
+
+	ssn.HyperNodes = map[string]*api.HyperNodeInfo{
+		framework.ClusterTopHyperNode: {Name: framework.ClusterTopHyperNode},
+	}
+	tier := int32(1)
+	job := &api.JobInfo{PodGroup: &api.PodGroup{PodGroup: scheduling.PodGroup{
+		Spec: scheduling.PodGroupSpec{TopologyAffinity: &scheduling.TopologyAffinitySpec{
+			PodGroupAntiAffinity: &scheduling.PodGroupAntiAffinity{Required: []scheduling.PodGroupAffinityTerm{{
+				PodGroupSelector: &metav1.LabelSelector{},
+				TopologyTier:     &tier,
+			}}},
+		}},
+	}}}
+
+	domains := GetCandidateDomains(ssn, job, 8)
+	assert.Empty(t, domains, "required PodGroup anti-affinity must not fall back to the cluster root")
 }
 
 func TestGetCandidateDomains_EmptyGradient_NonHardTopologyFallbackToRoot(t *testing.T) {
