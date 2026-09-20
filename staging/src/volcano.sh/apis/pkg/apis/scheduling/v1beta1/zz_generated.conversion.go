@@ -107,6 +107,26 @@ func RegisterConversions(s *runtime.Scheme) error {
 	}); err != nil {
 		return err
 	}
+	if err := s.AddGeneratedConversionFunc((*PodGroupAffinityTerm)(nil), (*scheduling.PodGroupAffinityTerm)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1beta1_PodGroupAffinityTerm_To_scheduling_PodGroupAffinityTerm(a.(*PodGroupAffinityTerm), b.(*scheduling.PodGroupAffinityTerm), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*scheduling.PodGroupAffinityTerm)(nil), (*PodGroupAffinityTerm)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_scheduling_PodGroupAffinityTerm_To_v1beta1_PodGroupAffinityTerm(a.(*scheduling.PodGroupAffinityTerm), b.(*PodGroupAffinityTerm), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*PodGroupAntiAffinity)(nil), (*scheduling.PodGroupAntiAffinity)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1beta1_PodGroupAntiAffinity_To_scheduling_PodGroupAntiAffinity(a.(*PodGroupAntiAffinity), b.(*scheduling.PodGroupAntiAffinity), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*scheduling.PodGroupAntiAffinity)(nil), (*PodGroupAntiAffinity)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_scheduling_PodGroupAntiAffinity_To_v1beta1_PodGroupAntiAffinity(a.(*scheduling.PodGroupAntiAffinity), b.(*PodGroupAntiAffinity), scope)
+	}); err != nil {
+		return err
+	}
 	if err := s.AddGeneratedConversionFunc((*PodGroupCondition)(nil), (*scheduling.PodGroupCondition)(nil), func(a, b interface{}, scope conversion.Scope) error {
 		return Convert_v1beta1_PodGroupCondition_To_scheduling_PodGroupCondition(a.(*PodGroupCondition), b.(*scheduling.PodGroupCondition), scope)
 	}); err != nil {
@@ -197,6 +217,36 @@ func RegisterConversions(s *runtime.Scheme) error {
 	}); err != nil {
 		return err
 	}
+	if err := s.AddGeneratedConversionFunc((*SubGroupAffinity)(nil), (*scheduling.SubGroupAffinity)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1beta1_SubGroupAffinity_To_scheduling_SubGroupAffinity(a.(*SubGroupAffinity), b.(*scheduling.SubGroupAffinity), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*scheduling.SubGroupAffinity)(nil), (*SubGroupAffinity)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_scheduling_SubGroupAffinity_To_v1beta1_SubGroupAffinity(a.(*scheduling.SubGroupAffinity), b.(*SubGroupAffinity), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*SubGroupAffinityTerm)(nil), (*scheduling.SubGroupAffinityTerm)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1beta1_SubGroupAffinityTerm_To_scheduling_SubGroupAffinityTerm(a.(*SubGroupAffinityTerm), b.(*scheduling.SubGroupAffinityTerm), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*scheduling.SubGroupAffinityTerm)(nil), (*SubGroupAffinityTerm)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_scheduling_SubGroupAffinityTerm_To_v1beta1_SubGroupAffinityTerm(a.(*scheduling.SubGroupAffinityTerm), b.(*SubGroupAffinityTerm), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*SubGroupAntiAffinity)(nil), (*scheduling.SubGroupAntiAffinity)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1beta1_SubGroupAntiAffinity_To_scheduling_SubGroupAntiAffinity(a.(*SubGroupAntiAffinity), b.(*scheduling.SubGroupAntiAffinity), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*scheduling.SubGroupAntiAffinity)(nil), (*SubGroupAntiAffinity)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_scheduling_SubGroupAntiAffinity_To_v1beta1_SubGroupAntiAffinity(a.(*scheduling.SubGroupAntiAffinity), b.(*SubGroupAntiAffinity), scope)
+	}); err != nil {
+		return err
+	}
 	if err := s.AddGeneratedConversionFunc((*SubGroupPolicySpec)(nil), (*scheduling.SubGroupPolicySpec)(nil), func(a, b interface{}, scope conversion.Scope) error {
 		return Convert_v1beta1_SubGroupPolicySpec_To_scheduling_SubGroupPolicySpec(a.(*SubGroupPolicySpec), b.(*scheduling.SubGroupPolicySpec), scope)
 	}); err != nil {
@@ -204,6 +254,16 @@ func RegisterConversions(s *runtime.Scheme) error {
 	}
 	if err := s.AddGeneratedConversionFunc((*scheduling.SubGroupPolicySpec)(nil), (*SubGroupPolicySpec)(nil), func(a, b interface{}, scope conversion.Scope) error {
 		return Convert_scheduling_SubGroupPolicySpec_To_v1beta1_SubGroupPolicySpec(a.(*scheduling.SubGroupPolicySpec), b.(*SubGroupPolicySpec), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*TopologyAffinitySpec)(nil), (*scheduling.TopologyAffinitySpec)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1beta1_TopologyAffinitySpec_To_scheduling_TopologyAffinitySpec(a.(*TopologyAffinitySpec), b.(*scheduling.TopologyAffinitySpec), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*scheduling.TopologyAffinitySpec)(nil), (*TopologyAffinitySpec)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_scheduling_TopologyAffinitySpec_To_v1beta1_TopologyAffinitySpec(a.(*scheduling.TopologyAffinitySpec), b.(*TopologyAffinitySpec), scope)
 	}); err != nil {
 		return err
 	}
@@ -376,6 +436,56 @@ func Convert_scheduling_PodGroup_To_v1beta1_PodGroup(in *scheduling.PodGroup, ou
 	return autoConvert_scheduling_PodGroup_To_v1beta1_PodGroup(in, out, s)
 }
 
+func autoConvert_v1beta1_PodGroupAffinityTerm_To_scheduling_PodGroupAffinityTerm(in *PodGroupAffinityTerm, out *scheduling.PodGroupAffinityTerm, s conversion.Scope) error {
+	out.Weight = in.Weight
+	out.PodGroupSelector = (*metav1.LabelSelector)(unsafe.Pointer(in.PodGroupSelector))
+	out.NamespaceSelector = (*metav1.LabelSelector)(unsafe.Pointer(in.NamespaceSelector))
+	out.TopologyTierName = in.TopologyTierName
+	out.TopologyTier = (*int32)(unsafe.Pointer(in.TopologyTier))
+	return nil
+}
+
+// Convert_v1beta1_PodGroupAffinityTerm_To_scheduling_PodGroupAffinityTerm is an autogenerated conversion function.
+func Convert_v1beta1_PodGroupAffinityTerm_To_scheduling_PodGroupAffinityTerm(in *PodGroupAffinityTerm, out *scheduling.PodGroupAffinityTerm, s conversion.Scope) error {
+	return autoConvert_v1beta1_PodGroupAffinityTerm_To_scheduling_PodGroupAffinityTerm(in, out, s)
+}
+
+func autoConvert_scheduling_PodGroupAffinityTerm_To_v1beta1_PodGroupAffinityTerm(in *scheduling.PodGroupAffinityTerm, out *PodGroupAffinityTerm, s conversion.Scope) error {
+	out.Weight = in.Weight
+	out.PodGroupSelector = (*metav1.LabelSelector)(unsafe.Pointer(in.PodGroupSelector))
+	out.NamespaceSelector = (*metav1.LabelSelector)(unsafe.Pointer(in.NamespaceSelector))
+	out.TopologyTierName = in.TopologyTierName
+	out.TopologyTier = (*int32)(unsafe.Pointer(in.TopologyTier))
+	return nil
+}
+
+// Convert_scheduling_PodGroupAffinityTerm_To_v1beta1_PodGroupAffinityTerm is an autogenerated conversion function.
+func Convert_scheduling_PodGroupAffinityTerm_To_v1beta1_PodGroupAffinityTerm(in *scheduling.PodGroupAffinityTerm, out *PodGroupAffinityTerm, s conversion.Scope) error {
+	return autoConvert_scheduling_PodGroupAffinityTerm_To_v1beta1_PodGroupAffinityTerm(in, out, s)
+}
+
+func autoConvert_v1beta1_PodGroupAntiAffinity_To_scheduling_PodGroupAntiAffinity(in *PodGroupAntiAffinity, out *scheduling.PodGroupAntiAffinity, s conversion.Scope) error {
+	out.Required = *(*[]scheduling.PodGroupAffinityTerm)(unsafe.Pointer(&in.Required))
+	out.Preferred = *(*[]scheduling.PodGroupAffinityTerm)(unsafe.Pointer(&in.Preferred))
+	return nil
+}
+
+// Convert_v1beta1_PodGroupAntiAffinity_To_scheduling_PodGroupAntiAffinity is an autogenerated conversion function.
+func Convert_v1beta1_PodGroupAntiAffinity_To_scheduling_PodGroupAntiAffinity(in *PodGroupAntiAffinity, out *scheduling.PodGroupAntiAffinity, s conversion.Scope) error {
+	return autoConvert_v1beta1_PodGroupAntiAffinity_To_scheduling_PodGroupAntiAffinity(in, out, s)
+}
+
+func autoConvert_scheduling_PodGroupAntiAffinity_To_v1beta1_PodGroupAntiAffinity(in *scheduling.PodGroupAntiAffinity, out *PodGroupAntiAffinity, s conversion.Scope) error {
+	out.Required = *(*[]PodGroupAffinityTerm)(unsafe.Pointer(&in.Required))
+	out.Preferred = *(*[]PodGroupAffinityTerm)(unsafe.Pointer(&in.Preferred))
+	return nil
+}
+
+// Convert_scheduling_PodGroupAntiAffinity_To_v1beta1_PodGroupAntiAffinity is an autogenerated conversion function.
+func Convert_scheduling_PodGroupAntiAffinity_To_v1beta1_PodGroupAntiAffinity(in *scheduling.PodGroupAntiAffinity, out *PodGroupAntiAffinity, s conversion.Scope) error {
+	return autoConvert_scheduling_PodGroupAntiAffinity_To_v1beta1_PodGroupAntiAffinity(in, out, s)
+}
+
 func autoConvert_v1beta1_PodGroupCondition_To_scheduling_PodGroupCondition(in *PodGroupCondition, out *scheduling.PodGroupCondition, s conversion.Scope) error {
 	out.Type = scheduling.PodGroupConditionType(in.Type)
 	out.Status = v1.ConditionStatus(in.Status)
@@ -436,6 +546,7 @@ func autoConvert_v1beta1_PodGroupSpec_To_scheduling_PodGroupSpec(in *PodGroupSpe
 	out.MinResources = (*v1.ResourceList)(unsafe.Pointer(in.MinResources))
 	out.NetworkTopology = (*scheduling.NetworkTopologySpec)(unsafe.Pointer(in.NetworkTopology))
 	out.SubGroupPolicy = *(*[]scheduling.SubGroupPolicySpec)(unsafe.Pointer(&in.SubGroupPolicy))
+	out.TopologyAffinity = (*scheduling.TopologyAffinitySpec)(unsafe.Pointer(in.TopologyAffinity))
 	return nil
 }
 
@@ -452,6 +563,7 @@ func autoConvert_scheduling_PodGroupSpec_To_v1beta1_PodGroupSpec(in *scheduling.
 	out.MinResources = (*v1.ResourceList)(unsafe.Pointer(in.MinResources))
 	out.NetworkTopology = (*NetworkTopologySpec)(unsafe.Pointer(in.NetworkTopology))
 	out.SubGroupPolicy = *(*[]SubGroupPolicySpec)(unsafe.Pointer(&in.SubGroupPolicy))
+	out.TopologyAffinity = (*TopologyAffinitySpec)(unsafe.Pointer(in.TopologyAffinity))
 	return nil
 }
 
@@ -646,6 +758,76 @@ func Convert_scheduling_Reservation_To_v1beta1_Reservation(in *scheduling.Reserv
 	return autoConvert_scheduling_Reservation_To_v1beta1_Reservation(in, out, s)
 }
 
+func autoConvert_v1beta1_SubGroupAffinity_To_scheduling_SubGroupAffinity(in *SubGroupAffinity, out *scheduling.SubGroupAffinity, s conversion.Scope) error {
+	out.Required = *(*[]scheduling.SubGroupAffinityTerm)(unsafe.Pointer(&in.Required))
+	out.Preferred = *(*[]scheduling.SubGroupAffinityTerm)(unsafe.Pointer(&in.Preferred))
+	return nil
+}
+
+// Convert_v1beta1_SubGroupAffinity_To_scheduling_SubGroupAffinity is an autogenerated conversion function.
+func Convert_v1beta1_SubGroupAffinity_To_scheduling_SubGroupAffinity(in *SubGroupAffinity, out *scheduling.SubGroupAffinity, s conversion.Scope) error {
+	return autoConvert_v1beta1_SubGroupAffinity_To_scheduling_SubGroupAffinity(in, out, s)
+}
+
+func autoConvert_scheduling_SubGroupAffinity_To_v1beta1_SubGroupAffinity(in *scheduling.SubGroupAffinity, out *SubGroupAffinity, s conversion.Scope) error {
+	out.Required = *(*[]SubGroupAffinityTerm)(unsafe.Pointer(&in.Required))
+	out.Preferred = *(*[]SubGroupAffinityTerm)(unsafe.Pointer(&in.Preferred))
+	return nil
+}
+
+// Convert_scheduling_SubGroupAffinity_To_v1beta1_SubGroupAffinity is an autogenerated conversion function.
+func Convert_scheduling_SubGroupAffinity_To_v1beta1_SubGroupAffinity(in *scheduling.SubGroupAffinity, out *SubGroupAffinity, s conversion.Scope) error {
+	return autoConvert_scheduling_SubGroupAffinity_To_v1beta1_SubGroupAffinity(in, out, s)
+}
+
+func autoConvert_v1beta1_SubGroupAffinityTerm_To_scheduling_SubGroupAffinityTerm(in *SubGroupAffinityTerm, out *scheduling.SubGroupAffinityTerm, s conversion.Scope) error {
+	out.SubGroups = *(*[]string)(unsafe.Pointer(&in.SubGroups))
+	out.Weight = in.Weight
+	out.TopologyTierName = in.TopologyTierName
+	out.TopologyTier = (*int32)(unsafe.Pointer(in.TopologyTier))
+	return nil
+}
+
+// Convert_v1beta1_SubGroupAffinityTerm_To_scheduling_SubGroupAffinityTerm is an autogenerated conversion function.
+func Convert_v1beta1_SubGroupAffinityTerm_To_scheduling_SubGroupAffinityTerm(in *SubGroupAffinityTerm, out *scheduling.SubGroupAffinityTerm, s conversion.Scope) error {
+	return autoConvert_v1beta1_SubGroupAffinityTerm_To_scheduling_SubGroupAffinityTerm(in, out, s)
+}
+
+func autoConvert_scheduling_SubGroupAffinityTerm_To_v1beta1_SubGroupAffinityTerm(in *scheduling.SubGroupAffinityTerm, out *SubGroupAffinityTerm, s conversion.Scope) error {
+	out.SubGroups = *(*[]string)(unsafe.Pointer(&in.SubGroups))
+	out.Weight = in.Weight
+	out.TopologyTierName = in.TopologyTierName
+	out.TopologyTier = (*int32)(unsafe.Pointer(in.TopologyTier))
+	return nil
+}
+
+// Convert_scheduling_SubGroupAffinityTerm_To_v1beta1_SubGroupAffinityTerm is an autogenerated conversion function.
+func Convert_scheduling_SubGroupAffinityTerm_To_v1beta1_SubGroupAffinityTerm(in *scheduling.SubGroupAffinityTerm, out *SubGroupAffinityTerm, s conversion.Scope) error {
+	return autoConvert_scheduling_SubGroupAffinityTerm_To_v1beta1_SubGroupAffinityTerm(in, out, s)
+}
+
+func autoConvert_v1beta1_SubGroupAntiAffinity_To_scheduling_SubGroupAntiAffinity(in *SubGroupAntiAffinity, out *scheduling.SubGroupAntiAffinity, s conversion.Scope) error {
+	out.Required = *(*[]scheduling.SubGroupAffinityTerm)(unsafe.Pointer(&in.Required))
+	out.Preferred = *(*[]scheduling.SubGroupAffinityTerm)(unsafe.Pointer(&in.Preferred))
+	return nil
+}
+
+// Convert_v1beta1_SubGroupAntiAffinity_To_scheduling_SubGroupAntiAffinity is an autogenerated conversion function.
+func Convert_v1beta1_SubGroupAntiAffinity_To_scheduling_SubGroupAntiAffinity(in *SubGroupAntiAffinity, out *scheduling.SubGroupAntiAffinity, s conversion.Scope) error {
+	return autoConvert_v1beta1_SubGroupAntiAffinity_To_scheduling_SubGroupAntiAffinity(in, out, s)
+}
+
+func autoConvert_scheduling_SubGroupAntiAffinity_To_v1beta1_SubGroupAntiAffinity(in *scheduling.SubGroupAntiAffinity, out *SubGroupAntiAffinity, s conversion.Scope) error {
+	out.Required = *(*[]SubGroupAffinityTerm)(unsafe.Pointer(&in.Required))
+	out.Preferred = *(*[]SubGroupAffinityTerm)(unsafe.Pointer(&in.Preferred))
+	return nil
+}
+
+// Convert_scheduling_SubGroupAntiAffinity_To_v1beta1_SubGroupAntiAffinity is an autogenerated conversion function.
+func Convert_scheduling_SubGroupAntiAffinity_To_v1beta1_SubGroupAntiAffinity(in *scheduling.SubGroupAntiAffinity, out *SubGroupAntiAffinity, s conversion.Scope) error {
+	return autoConvert_scheduling_SubGroupAntiAffinity_To_v1beta1_SubGroupAntiAffinity(in, out, s)
+}
+
 func autoConvert_v1beta1_SubGroupPolicySpec_To_scheduling_SubGroupPolicySpec(in *SubGroupPolicySpec, out *scheduling.SubGroupPolicySpec, s conversion.Scope) error {
 	out.Name = in.Name
 	out.NetworkTopology = (*scheduling.NetworkTopologySpec)(unsafe.Pointer(in.NetworkTopology))
@@ -674,4 +856,28 @@ func autoConvert_scheduling_SubGroupPolicySpec_To_v1beta1_SubGroupPolicySpec(in 
 // Convert_scheduling_SubGroupPolicySpec_To_v1beta1_SubGroupPolicySpec is an autogenerated conversion function.
 func Convert_scheduling_SubGroupPolicySpec_To_v1beta1_SubGroupPolicySpec(in *scheduling.SubGroupPolicySpec, out *SubGroupPolicySpec, s conversion.Scope) error {
 	return autoConvert_scheduling_SubGroupPolicySpec_To_v1beta1_SubGroupPolicySpec(in, out, s)
+}
+
+func autoConvert_v1beta1_TopologyAffinitySpec_To_scheduling_TopologyAffinitySpec(in *TopologyAffinitySpec, out *scheduling.TopologyAffinitySpec, s conversion.Scope) error {
+	out.PodGroupAntiAffinity = (*scheduling.PodGroupAntiAffinity)(unsafe.Pointer(in.PodGroupAntiAffinity))
+	out.SubGroupAffinity = (*scheduling.SubGroupAffinity)(unsafe.Pointer(in.SubGroupAffinity))
+	out.SubGroupAntiAffinity = (*scheduling.SubGroupAntiAffinity)(unsafe.Pointer(in.SubGroupAntiAffinity))
+	return nil
+}
+
+// Convert_v1beta1_TopologyAffinitySpec_To_scheduling_TopologyAffinitySpec is an autogenerated conversion function.
+func Convert_v1beta1_TopologyAffinitySpec_To_scheduling_TopologyAffinitySpec(in *TopologyAffinitySpec, out *scheduling.TopologyAffinitySpec, s conversion.Scope) error {
+	return autoConvert_v1beta1_TopologyAffinitySpec_To_scheduling_TopologyAffinitySpec(in, out, s)
+}
+
+func autoConvert_scheduling_TopologyAffinitySpec_To_v1beta1_TopologyAffinitySpec(in *scheduling.TopologyAffinitySpec, out *TopologyAffinitySpec, s conversion.Scope) error {
+	out.PodGroupAntiAffinity = (*PodGroupAntiAffinity)(unsafe.Pointer(in.PodGroupAntiAffinity))
+	out.SubGroupAffinity = (*SubGroupAffinity)(unsafe.Pointer(in.SubGroupAffinity))
+	out.SubGroupAntiAffinity = (*SubGroupAntiAffinity)(unsafe.Pointer(in.SubGroupAntiAffinity))
+	return nil
+}
+
+// Convert_scheduling_TopologyAffinitySpec_To_v1beta1_TopologyAffinitySpec is an autogenerated conversion function.
+func Convert_scheduling_TopologyAffinitySpec_To_v1beta1_TopologyAffinitySpec(in *scheduling.TopologyAffinitySpec, out *TopologyAffinitySpec, s conversion.Scope) error {
+	return autoConvert_scheduling_TopologyAffinitySpec_To_v1beta1_TopologyAffinitySpec(in, out, s)
 }

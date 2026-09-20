@@ -224,6 +224,10 @@ type PodGroupSpec struct {
 	// Concurrent use with minTaskMember is not recommended, and SubGroupPolicy is the long-term evolution direction.
 	// +optional
 	SubGroupPolicy []SubGroupPolicySpec `json:"subGroupPolicy,omitempty" protobuf:"bytes,6,opt,name=subGroupPolicy"`
+
+	// TopologyAffinity expresses inter-group topology affinity and anti-affinity on the HyperNode tree.
+	// +optional
+	TopologyAffinity *TopologyAffinitySpec `json:"topologyAffinity,omitempty" protobuf:"bytes,7,opt,name=topologyAffinity"`
 }
 
 type SubGroupPolicySpec struct {
@@ -294,6 +298,74 @@ type NetworkTopologySpec struct {
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	HighestTierName string `json:"highestTierName,omitempty" protobuf:"bytes,3,opt,name=highestTierName"`
+}
+
+// TopologyAffinitySpec holds group topology affinity and anti-affinity rules.
+type TopologyAffinitySpec struct {
+	// +optional
+	PodGroupAntiAffinity *PodGroupAntiAffinity `json:"podGroupAntiAffinity,omitempty" protobuf:"bytes,1,opt,name=podGroupAntiAffinity"`
+	// +optional
+	SubGroupAffinity *SubGroupAffinity `json:"subGroupAffinity,omitempty" protobuf:"bytes,2,opt,name=subGroupAffinity"`
+	// +optional
+	SubGroupAntiAffinity *SubGroupAntiAffinity `json:"subGroupAntiAffinity,omitempty" protobuf:"bytes,3,opt,name=subGroupAntiAffinity"`
+}
+
+// PodGroupAntiAffinity defines required/preferred anti-affinity against other PodGroups.
+type PodGroupAntiAffinity struct {
+	// +optional
+	Required []PodGroupAffinityTerm `json:"required,omitempty" protobuf:"bytes,1,rep,name=required"`
+	// +optional
+	Preferred []PodGroupAffinityTerm `json:"preferred,omitempty" protobuf:"bytes,2,rep,name=preferred"`
+}
+
+// PodGroupAffinityTerm selects matching PodGroups and the topology tier for HyperNode comparison.
+type PodGroupAffinityTerm struct {
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	Weight int32 `json:"weight,omitempty" protobuf:"varint,1,opt,name=weight"`
+	// +required
+	PodGroupSelector *metav1.LabelSelector `json:"podGroupSelector" protobuf:"bytes,2,opt,name=podGroupSelector"`
+	// +optional
+	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty" protobuf:"bytes,3,opt,name=namespaceSelector"`
+	// +kubebuilder:validation:MaxLength=253
+	// +optional
+	TopologyTierName string `json:"topologyTierName,omitempty" protobuf:"bytes,4,opt,name=topologyTierName"`
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	TopologyTier *int32 `json:"topologyTier,omitempty" protobuf:"varint,5,opt,name=topologyTier"`
+}
+
+// SubGroupAffinity defines required/preferred affinity between SubGroups in one PodGroup.
+type SubGroupAffinity struct {
+	// +optional
+	Required []SubGroupAffinityTerm `json:"required,omitempty" protobuf:"bytes,1,rep,name=required"`
+	// +optional
+	Preferred []SubGroupAffinityTerm `json:"preferred,omitempty" protobuf:"bytes,2,rep,name=preferred"`
+}
+
+// SubGroupAntiAffinity defines required/preferred anti-affinity between SubGroups in one PodGroup.
+type SubGroupAntiAffinity struct {
+	// +optional
+	Required []SubGroupAffinityTerm `json:"required,omitempty" protobuf:"bytes,1,rep,name=required"`
+	// +optional
+	Preferred []SubGroupAffinityTerm `json:"preferred,omitempty" protobuf:"bytes,2,rep,name=preferred"`
+}
+
+// SubGroupAffinityTerm selects SubGroup policies and the topology tier for comparison.
+type SubGroupAffinityTerm struct {
+	// +kubebuilder:validation:MinItems=1
+	SubGroups []string `json:"subGroups" protobuf:"bytes,1,rep,name=subGroups"`
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	Weight int32 `json:"weight,omitempty" protobuf:"varint,2,opt,name=weight"`
+	// +kubebuilder:validation:MaxLength=253
+	// +optional
+	TopologyTierName string `json:"topologyTierName,omitempty" protobuf:"bytes,3,opt,name=topologyTierName"`
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	TopologyTier *int32 `json:"topologyTier,omitempty" protobuf:"varint,4,opt,name=topologyTier"`
 }
 
 // PodGroupStatus represents the current state of a pod group.

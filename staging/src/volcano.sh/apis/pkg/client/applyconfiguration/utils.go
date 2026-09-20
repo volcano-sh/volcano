@@ -179,6 +179,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &schedulingv1beta1.NodeGroupAntiAffinityApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("PodGroup"):
 		return &schedulingv1beta1.PodGroupApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("PodGroupAffinityTerm"):
+		return &schedulingv1beta1.PodGroupAffinityTermApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("PodGroupAntiAffinity"):
+		return &schedulingv1beta1.PodGroupAntiAffinityApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("PodGroupCondition"):
 		return &schedulingv1beta1.PodGroupConditionApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("PodGroupSpec"):
@@ -193,8 +197,16 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &schedulingv1beta1.QueueStatusApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("Reservation"):
 		return &schedulingv1beta1.ReservationApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("SubGroupAffinity"):
+		return &schedulingv1beta1.SubGroupAffinityApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("SubGroupAffinityTerm"):
+		return &schedulingv1beta1.SubGroupAffinityTermApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("SubGroupAntiAffinity"):
+		return &schedulingv1beta1.SubGroupAntiAffinityApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("SubGroupPolicySpec"):
 		return &schedulingv1beta1.SubGroupPolicySpecApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("TopologyAffinitySpec"):
+		return &schedulingv1beta1.TopologyAffinitySpecApplyConfiguration{}
 
 		// Group=shard.volcano.sh, Version=v1alpha1
 	case shardv1alpha1.SchemeGroupVersion.WithKind("NodeShard"):
