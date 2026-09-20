@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -57,6 +58,43 @@ type HyperNodesInfo struct {
 type HyperNodeInfoMap map[string]*HyperNodeInfo
 
 type HyperNodeTierNameMap map[string]int
+
+// NameForTier returns the tier name for a tier number, falling back to tier-N.
+func (m HyperNodeTierNameMap) NameForTier(tier int, hyperNodes HyperNodeInfoMap) string {
+	for name, mappedTier := range m {
+		if mappedTier == tier {
+			return name
+		}
+	}
+	for _, hn := range hyperNodes {
+		if hn.Tier() == tier && hn.TierName() != "" {
+			return hn.TierName()
+		}
+	}
+	return fmt.Sprintf("tier-%d", tier)
+}
+
+// FormatHyperNodeTierListing formats cluster HyperNode tier counts for logging.
+func FormatHyperNodeTierListing(
+	tiers []int,
+	hyperNodesSetByTier map[int]sets.Set[string],
+	tierNameMap HyperNodeTierNameMap,
+	hyperNodes HyperNodeInfoMap,
+) (total int, tierCount int, listing string) {
+	sortedTiers := append([]int(nil), tiers...)
+	sort.Sort(sort.Reverse(sort.IntSlice(sortedTiers)))
+	parts := make([]string, 0, len(sortedTiers))
+	for _, tier := range sortedTiers {
+		names := hyperNodesSetByTier[tier]
+		if names.Len() == 0 {
+			continue
+		}
+		total += names.Len()
+		tierCount++
+		parts = append(parts, fmt.Sprintf("%s(tier=%d): %d", tierNameMap.NameForTier(tier, hyperNodes), tier, names.Len()))
+	}
+	return total, tierCount, strings.Join(parts, "; ")
+}
 
 // NewHyperNodesInfo initializes a new HyperNodesInfo instance.
 func NewHyperNodesInfo(lister listerv1.NodeLister) *HyperNodesInfo {
@@ -158,6 +196,11 @@ func (hni *HyperNodeInfo) String() string {
 // Tier returns the tier of the hypernode
 func (hni *HyperNodeInfo) Tier() int {
 	return hni.tier
+}
+
+// TierName returns the configured tier name of the HyperNode.
+func (hni *HyperNodeInfo) TierName() string {
+	return hni.tierName
 }
 
 func (hni *HyperNodeInfo) DeepCopy() *HyperNodeInfo {
@@ -818,6 +861,58 @@ func (hnim HyperNodeInfoMap) GetAncestors(name string) []string {
 		}
 	}
 	return ancestors
+}
+
+// GetAncestorHyperNode returns the ancestor HyperNode name at the given tier.
+func (hnim HyperNodeInfoMap) GetAncestorHyperNode(hyperNodeName string, tier int) string {
+	for _, ancestor := range hnim.GetAncestors(hyperNodeName) {
+		if hn, ok := hnim[ancestor]; ok && hn.Tier() == tier {
+			return ancestor
+		}
+	}
+	return ""
+}
+
+// ResolveHyperNodesAtTier maps a placed HyperNode to topology domains at tier.
+func (hnim HyperNodeInfoMap) ResolveHyperNodesAtTier(hyperNodeName string, tier int) []string {
+	hn, ok := hnim[hyperNodeName]
+	if !ok {
+		return nil
+	}
+	if hn.Tier() > tier {
+		return hnim.hyperNodesAtTierUnder(hyperNodeName, tier)
+	}
+	if ancestor := hnim.GetAncestorHyperNode(hyperNodeName, tier); ancestor != "" {
+		return []string{ancestor}
+	}
+	return nil
+}
+
+func (hnim HyperNodeInfoMap) hyperNodesAtTierUnder(root string, tier int) []string {
+	names := make([]string, 0)
+	for name, hn := range hnim {
+		if hn.Tier() != tier {
+			continue
+		}
+		for _, ancestor := range hnim.GetAncestors(name) {
+			if ancestor == root {
+				names = append(names, name)
+				break
+			}
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// GetAncestorHyperNodeByTierName returns the ancestor at the configured tier name.
+func (hnim HyperNodeInfoMap) GetAncestorHyperNodeByTierName(hyperNodeName, tierName string) string {
+	for _, ancestor := range hnim.GetAncestors(hyperNodeName) {
+		if hn, ok := hnim[ancestor]; ok && hn.TierName() == tierName {
+			return ancestor
+		}
+	}
+	return ""
 }
 
 // getParent returns hyperNode's parent, this is usually used when a new hyperNode is added

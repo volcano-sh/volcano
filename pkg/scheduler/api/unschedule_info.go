@@ -32,6 +32,14 @@ const (
 
 	// AllNodeUnavailableMsg is the default error message
 	AllNodeUnavailableMsg = "all nodes are unavailable"
+
+	// HyperNodeFitSummaryPrefix labels HyperNode-tier scheduling diagnostics.
+	HyperNodeFitSummaryPrefix = "HyperNode"
+	// NodeFitSummaryPrefix labels node-level predicate diagnostics.
+	NodeFitSummaryPrefix = "Node"
+
+	// maxSchedulingDimensions is the upper bound of HyperNode + Node fit summaries joined by FormatSchedulingDimensions.
+	maxSchedulingDimensions = 2
 )
 
 // These are reasons for a pod's transition to a condition.
@@ -49,6 +57,238 @@ const (
 	// for example bind pod return error.
 	PodReasonSchedulerError = "SchedulerError"
 )
+
+// FormatSchedulingDimensions joins HyperNode-tier and node-level diagnostics.
+func FormatSchedulingDimensions(hyperNodeSummary, nodeSummary string) string {
+	parts := make([]string, 0, maxSchedulingDimensions)
+	if hyperNodeSummary != "" {
+		parts = append(parts, fmt.Sprintf("%s: %s", HyperNodeFitSummaryPrefix, hyperNodeSummary))
+	}
+	if nodeSummary != "" {
+		parts = append(parts, fmt.Sprintf("%s: %s", NodeFitSummaryPrefix, nodeSummary))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// AppendSchedulingDimensions appends HyperNode-tier and node-level diagnostics to base.
+func AppendSchedulingDimensions(base, hyperNodeSummary, nodeSummary string) string {
+	dimensions := FormatSchedulingDimensions(hyperNodeSummary, nodeSummary)
+	if base == "" {
+		return dimensions
+	}
+	if dimensions == "" {
+		return base
+	}
+	return base + "; " + dimensions
+}
+
+// HyperNodeGradientStats carries per-plugin and intersected tier counts from gradient planning.
+type HyperNodeGradientStats struct {
+	PluginEligibleByTier map[string]map[int]int
+	IntersectedByTier    map[int]int
+	// ExcludedByReason maps excluded HyperNode name to plugin exclusion labels (comma-separated).
+	ExcludedByReason map[string]string
+}
+
+// HyperNodePluginGradient carries one plugin's HyperNode gradient result for intersection.
+type HyperNodePluginGradient struct {
+	PluginName string
+	Gradients  [][]*HyperNodeInfo
+}
+
+// HyperNodeMinResourceFilterStats captures minResource filtering on intersected HyperNodes.
+type HyperNodeMinResourceFilterStats struct {
+	FinalByTier      map[int]int
+	ExcludedByTier   map[int]int
+	ExcludedByReason map[string]string
+}
+
+var hyperNodeExclusionLabels = map[string]string{
+	"group-topology-affinity": "podGroupAntiAffinity",
+	"network-topology-aware":  "networkTopology",
+}
+
+const hyperNodeMinResourceExclusionLabel = "minResource"
+
+// HyperNodeNamesInGradients flattens gradient layers into a set of HyperNode names.
+func HyperNodeNamesInGradients(gradients [][]*HyperNodeInfo) sets.Set[string] {
+	names := sets.New[string]()
+	for _, layer := range gradients {
+		for _, hn := range layer {
+			names.Insert(hn.Name)
+		}
+	}
+	return names
+}
+
+// ComputePluginExcludedHyperNodes returns HyperNodes present in any plugin gradient but removed by intersection.
+func ComputePluginExcludedHyperNodes(
+	gradientByPlugin []HyperNodePluginGradient,
+	eligible sets.Set[string],
+) map[string]string {
+	if len(gradientByPlugin) <= 1 {
+		return nil
+	}
+
+	pluginSets := make(map[string]sets.Set[string], len(gradientByPlugin))
+	union := sets.New[string]()
+	for _, pluginGradient := range gradientByPlugin {
+		names := HyperNodeNamesInGradients(pluginGradient.Gradients)
+		pluginSets[pluginGradient.PluginName] = names
+		union = union.Union(names)
+	}
+
+	excluded := make(map[string]string)
+	for name := range union {
+		if eligible.Has(name) {
+			continue
+		}
+		reasons := make([]string, 0, len(gradientByPlugin))
+		for _, pluginGradient := range gradientByPlugin {
+			if !pluginSets[pluginGradient.PluginName].Has(name) {
+				label := hyperNodeExclusionLabels[pluginGradient.PluginName]
+				if label == "" {
+					label = pluginGradient.PluginName
+				}
+				reasons = append(reasons, label)
+			}
+		}
+		sort.Strings(reasons)
+		excluded[name] = strings.Join(reasons, ", ")
+	}
+	return excluded
+}
+
+// FormatHyperNodeFitSummary builds the HyperNode-tier portion of JobFitErrors.
+func FormatHyperNodeFitSummary(
+	stats *HyperNodeGradientStats,
+	resourceStats *HyperNodeMinResourceFilterStats,
+	minResource *Resource,
+	hyperNodesSetByTier map[int]sets.Set[string],
+	tierNameMap HyperNodeTierNameMap,
+	hyperNodes HyperNodeInfoMap,
+) string {
+	if stats == nil {
+		return ""
+	}
+
+	finalByTier := stats.IntersectedByTier
+	if resourceStats != nil {
+		finalByTier = resourceStats.FinalByTier
+	}
+
+	totalByTier := make(map[int]int, len(hyperNodesSetByTier))
+	for tier, names := range hyperNodesSetByTier {
+		if count := names.Len(); count > 0 {
+			totalByTier[tier] = count
+		}
+	}
+	if len(totalByTier) == 0 {
+		for tier, count := range stats.IntersectedByTier {
+			if count > totalByTier[tier] {
+				totalByTier[tier] = count
+			}
+		}
+	}
+
+	tiers := sortedHyperNodeTiersWithTotal(totalByTier)
+	if len(tiers) == 0 {
+		return ""
+	}
+
+	totalAll, finalAll := 0, 0
+	tierParts := make([]string, 0, len(tiers))
+	hasResourceExclusion := false
+
+	for _, tier := range tiers {
+		total := totalByTier[tier]
+		final := finalByTier[tier]
+		totalAll += total
+		finalAll += final
+
+		exclusions := hyperNodeTierExclusions(stats.PluginEligibleByTier, resourceStats, tier, total)
+		if resourceStats != nil && resourceStats.ExcludedByTier[tier] > 0 {
+			hasResourceExclusion = true
+		}
+
+		tierName := tierNameMap.NameForTier(tier, hyperNodes)
+		part := fmt.Sprintf("%s %d/%d", tierName, final, total)
+		if len(exclusions) > 0 {
+			part += fmt.Sprintf(" (%s)", strings.Join(exclusions, ", "))
+		}
+		tierParts = append(tierParts, part)
+	}
+
+	message := fmt.Sprintf("%d/%d hyperNodes available", finalAll, totalAll)
+	if minResource != nil && hasResourceExclusion {
+		message += fmt.Sprintf(" (minResource: %s)", minResource.String())
+	}
+	if len(tierParts) > 0 {
+		message += ": " + strings.Join(tierParts, "; ")
+	}
+	return message
+}
+
+// MergeHyperNodeFitSummary layers a subJob-specific summary on the job-level baseline
+// instead of replacing it.
+func MergeHyperNodeFitSummary(baseline, subJobScope, subSummary string) string {
+	if subSummary == "" {
+		return baseline
+	}
+	scoped := subSummary
+	if subJobScope != "" {
+		scoped = fmt.Sprintf("subJob %s: %s", subJobScope, subSummary)
+	}
+	if baseline == "" {
+		return scoped
+	}
+	return baseline + "; " + scoped
+}
+
+func hyperNodeTierExclusions(
+	pluginEligibleByTier map[string]map[int]int,
+	resourceStats *HyperNodeMinResourceFilterStats,
+	tier int,
+	total int,
+) []string {
+	pluginNames := make([]string, 0, len(pluginEligibleByTier))
+	for name := range pluginEligibleByTier {
+		pluginNames = append(pluginNames, name)
+	}
+	sort.Strings(pluginNames)
+
+	exclusions := make([]string, 0, len(pluginNames)+1)
+	for _, pluginName := range pluginNames {
+		eligible := 0
+		if pluginEligibleByTier[pluginName] != nil {
+			eligible = pluginEligibleByTier[pluginName][tier]
+		}
+		if excluded := total - eligible; excluded > 0 {
+			label := hyperNodeExclusionLabels[pluginName]
+			if label == "" {
+				label = pluginName
+			}
+			exclusions = append(exclusions, fmt.Sprintf("%d %s", excluded, label))
+		}
+	}
+	if resourceStats != nil {
+		if excluded := resourceStats.ExcludedByTier[tier]; excluded > 0 {
+			exclusions = append(exclusions, fmt.Sprintf("%d %s", excluded, hyperNodeMinResourceExclusionLabel))
+		}
+	}
+	return exclusions
+}
+
+func sortedHyperNodeTiersWithTotal(totalByTier map[int]int) []int {
+	tiers := make([]int, 0, len(totalByTier))
+	for tier, total := range totalByTier {
+		if total > 0 {
+			tiers = append(tiers, tier)
+		}
+	}
+	sort.Slice(tiers, func(i, j int) bool { return tiers[i] > tiers[j] })
+	return tiers
+}
 
 // FitErrors is set of FitError on many nodes
 type FitErrors struct {
