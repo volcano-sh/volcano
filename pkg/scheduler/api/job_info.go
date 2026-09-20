@@ -442,10 +442,14 @@ type JobInfo struct {
 	NodesFitErrors map[TaskID]*FitErrors
 
 	AllocatedHyperNode string
-	NetworkTopology    *scheduling.NetworkTopologySpec
-	SubJobs            map[SubJobID]*SubJobInfo
-	TaskToSubJob       map[TaskID]SubJobID
-	MinSubJobs         map[SubJobGID]int32 // key is name of "PodGroup.Spec.SubGroupPolicy", value is minSubGroups
+	// AllocatedHyperNodeGeneration records the effective HyperNode topology
+	// generation used to derive Job/SubJob placement. It is scheduler-internal
+	// state and is intentionally not persisted in the PodGroup API.
+	AllocatedHyperNodeGeneration uint64
+	NetworkTopology              *scheduling.NetworkTopologySpec
+	SubJobs                      map[SubJobID]*SubJobInfo
+	TaskToSubJob                 map[TaskID]SubJobID
+	MinSubJobs                   map[SubJobGID]int32 // key is name of "PodGroup.Spec.SubGroupPolicy", value is minSubGroups
 
 	// All tasks of the Job.
 	TaskStatusIndex       map[TaskStatus]TasksMap
@@ -823,11 +827,12 @@ func (ji *JobInfo) Clone() *JobInfo {
 			return nil
 		}(),
 
-		AllocatedHyperNode: ji.AllocatedHyperNode,
-		NetworkTopology:    cloneNetworkTopology(ji.NetworkTopology),
-		SubJobs:            map[SubJobID]*SubJobInfo{},
-		TaskToSubJob:       map[TaskID]SubJobID{},
-		MinSubJobs:         maps.Clone(ji.MinSubJobs),
+		AllocatedHyperNode:           ji.AllocatedHyperNode,
+		AllocatedHyperNodeGeneration: ji.AllocatedHyperNodeGeneration,
+		NetworkTopology:              cloneNetworkTopology(ji.NetworkTopology),
+		SubJobs:                      map[SubJobID]*SubJobInfo{},
+		TaskToSubJob:                 map[TaskID]SubJobID{},
+		MinSubJobs:                   maps.Clone(ji.MinSubJobs),
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)

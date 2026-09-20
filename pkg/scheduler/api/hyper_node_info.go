@@ -53,6 +53,10 @@ type HyperNodesInfo struct {
 
 	// ready indicates whether the HyperNodesInfo is ready (build process is complete).
 	ready *atomic.Bool
+	// generation is incremented after every successful effective topology change.
+	// Consumers use it to refresh derived placement only when the HyperNode tree
+	// or its resolved real-node membership has changed.
+	generation atomic.Uint64
 }
 
 type HyperNodeInfoMap map[string]*HyperNodeInfo
@@ -278,8 +282,14 @@ func (hni *HyperNodesInfo) RealNodesSet() map[string]sets.Set[string] {
 	return copiedRealNodesSet
 }
 
+// Generation returns the current effective HyperNode topology generation.
+func (hni *HyperNodesInfo) Generation() uint64 {
+	return hni.generation.Load()
+}
+
 // DeleteHyperNode deletes a HyperNode from the cache and update hyperNode tree.
 func (hni *HyperNodesInfo) DeleteHyperNode(name string) error {
+	_, exists := hni.hyperNodes[name]
 	hni.markHyperNodeIsDeleting(name)
 	if err := hni.updateAncestors(name); err != nil {
 		return err
@@ -288,6 +298,9 @@ func (hni *HyperNodesInfo) DeleteHyperNode(name string) error {
 
 	// We can safely delete hyperNode after updated ancestors.
 	hni.deleteHyperNode(name)
+	if exists {
+		hni.generation.Add(1)
+	}
 	return nil
 }
 
@@ -373,6 +386,7 @@ func (hni *HyperNodesInfo) UpdateHyperNode(hn *topologyv1alpha1.HyperNode) error
 
 		hni.setReady(true)
 	}
+	hni.generation.Add(1)
 	return nil
 }
 
