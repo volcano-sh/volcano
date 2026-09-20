@@ -376,15 +376,26 @@ func closeSession(ssn *Session) {
 }
 
 func getPodGroupPhase(jobInfo *api.JobInfo, unschedulable bool) scheduling.PodGroupPhase {
-	// Latch the terminal phase: once a PodGroup reached Completed and all its
-	// member tasks have been removed afterwards (e.g. TTL/GC deleted the
-	// finished Pods), there is nothing left to recompute from. Without this
-	// latch the phase is downgraded back to Pending/Inqueue on the next
-	// session, so the enqueue action re-admits the dead group and the
-	// capacity/proportion plugins reserve its MinResources queue quota again.
-	if jobInfo.PodGroup.Status.Phase == scheduling.PodGroupCompleted &&
-		len(jobInfo.Tasks) == 0 {
-		return scheduling.PodGroupCompleted
+	// Latch the terminal phase: once a PodGroup reached Completed, keep it
+	// Completed while every remaining member task is itself in a terminal
+	// state. Pod deletion (TTL/GC/workload controller) is not atomic and
+	// usually spans multiple sessions; without this latch a partially or
+	// fully deleted group is recomputed below minMember, downgraded back to
+	// Pending/Inqueue, re-admitted by the enqueue action, and the
+	// capacity/proportion plugins reserve its MinResources queue quota again
+	// even though it can never run again. A remaining non-completed task
+	// (e.g. a fresh Pending pod) still falls through to the normal recompute.
+	if jobInfo.PodGroup.Status.Phase == scheduling.PodGroupCompleted {
+		allCompleted := true
+		for _, task := range jobInfo.Tasks {
+			if !api.CompletedStatus(task.Status) {
+				allCompleted = false
+				break
+			}
+		}
+		if allCompleted {
+			return scheduling.PodGroupCompleted
+		}
 	}
 
 	// If running tasks && unschedulable, unknown phase
