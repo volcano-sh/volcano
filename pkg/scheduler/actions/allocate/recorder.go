@@ -26,7 +26,8 @@ type Recorder struct {
 	jobDecisions    map[api.JobID]string
 	subJobDecisions map[api.JobID]map[string]map[api.SubJobID]string
 
-	subJobStatusSnapshot map[api.JobID]map[api.SubJobID]*SubJobStatus
+	jobAllocatedHyperNodeSnapshot map[api.JobID]string
+	subJobStatusSnapshot          map[api.JobID]map[api.SubJobID]*SubJobStatus
 }
 
 type SubJobStatus struct {
@@ -35,9 +36,10 @@ type SubJobStatus struct {
 
 func NewRecorder() *Recorder {
 	return &Recorder{
-		jobDecisions:         make(map[api.JobID]string),
-		subJobDecisions:      make(map[api.JobID]map[string]map[api.SubJobID]string),
-		subJobStatusSnapshot: make(map[api.JobID]map[api.SubJobID]*SubJobStatus),
+		jobDecisions:                  make(map[api.JobID]string),
+		subJobDecisions:               make(map[api.JobID]map[string]map[api.SubJobID]string),
+		jobAllocatedHyperNodeSnapshot: make(map[api.JobID]string),
+		subJobStatusSnapshot:          make(map[api.JobID]map[api.SubJobID]*SubJobStatus),
 	}
 }
 
@@ -98,10 +100,14 @@ func (d *Recorder) SnapshotSubJobStatus(job *api.JobInfo, worksheet *JobWorkshee
 			result[subJobID] = &SubJobStatus{AllocatedHyperNode: subJob.AllocatedHyperNode}
 		}
 	}
+	d.jobAllocatedHyperNodeSnapshot[job.UID] = job.AllocatedHyperNode
 	d.subJobStatusSnapshot[job.UID] = result
 }
 
 func (d *Recorder) RecoverSubJobStatus(job *api.JobInfo) {
+	if hyperNode, ok := d.jobAllocatedHyperNodeSnapshot[job.UID]; ok {
+		job.AllocatedHyperNode = hyperNode
+	}
 	snapshot, ok := d.subJobStatusSnapshot[job.UID]
 	if !ok {
 		return

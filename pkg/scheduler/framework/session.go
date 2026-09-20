@@ -356,7 +356,7 @@ func (ssn *Session) removeInvalidAllocatedHyperNode(job *api.JobInfo, hyperNodes
 			remove = true
 			reason = "allocated hyperNode not exist"
 		}
-		if job.AllocatedTaskNum() == 0 {
+		if !job.HasTopologyDomainTasks() {
 			remove = true
 			reason = "there is no allocated task in the job"
 		}
@@ -376,7 +376,7 @@ func (ssn *Session) removeInvalidAllocatedHyperNode(job *api.JobInfo, hyperNodes
 				remove = true
 				reason = "allocated hyperNode not exist"
 			}
-			if subJob.AllocatedTaskNum() == 0 {
+			if !subJob.HasTopologyDomainTasks() {
 				remove = true
 				reason = "there is no allocated task in the subJob"
 			}
@@ -392,112 +392,30 @@ func (ssn *Session) removeInvalidAllocatedHyperNode(job *api.JobInfo, hyperNodes
 // recoverAllocatedHyperNode recover the allocated hyperNode for the job and subJobs in the job with empty AllocatedHyperNode field.
 // When the scheduler reboot, the allocated hyperNode of job will be lost.
 // We recover this information through the nodes that tasks are running on.
-func (ssn *Session) recoverAllocatedHyperNode(job *api.JobInfo, hyperNodeSet sets.Set[string], hyperNodes api.HyperNodeInfoMap, nodesByHyperNode map[string]sets.Set[string]) {
-	if !job.ContainsNetworkTopology() {
-		return
-	}
-
+func (ssn *Session) recoverAllocatedHyperNode(job *api.JobInfo, _ sets.Set[string], hyperNodes api.HyperNodeInfoMap, nodesByHyperNode map[string]sets.Set[string]) {
 	subJobUpdated := false
-
-	// update subJob AllocatedHyperNode based on allocated nodes
 	for _, subJob := range job.SubJobs {
-		if !subJob.WithNetworkTopology() || subJob.AllocatedHyperNode != "" {
+		if subJob.AllocatedHyperNode != "" || !subJob.HasTopologyDomainTasks() {
 			continue
 		}
-
-		// pick up allocated tasks in the subJob
-		allocatedTasks := make([]*api.TaskInfo, 0, subJob.AllocatedTaskNum())
-		for status, tasks := range subJob.TaskStatusIndex {
-			if !api.AllocatedStatus(status) {
-				continue
-			}
-			for _, task := range tasks {
-				allocatedTasks = append(allocatedTasks, task)
-			}
+		minimumHyperNode := api.ComputeSubJobAllocatedHyperNode(subJob, hyperNodes, nodesByHyperNode)
+		if minimumHyperNode == "" {
+			continue
 		}
-
-		// find the allocated hyperNode through the nodes that tasks are running on
-		var subJobAllocatedHyperNode sets.Set[string]
-		for _, task := range allocatedTasks {
-			if task.NodeName == "" {
-				klog.Warningf("task %s/%s in allocated status %s with empty nodeName", task.Namespace, task.Name, task.Status)
-				continue
-			}
-
-			// For the first task, we search among all the hyperNodes.
-			// For the other tasks, we search from the hyperNodes that previous tasks were allocated to.
-			var search sets.Set[string]
-			if subJobAllocatedHyperNode == nil {
-				search = hyperNodeSet
-			} else {
-				search = subJobAllocatedHyperNode
-			}
-
-			taskAllocatedHyperNode := sets.New[string]()
-			for hn := range search {
-				if nodes, found := nodesByHyperNode[hn]; found && nodes.Has(task.NodeName) {
-					taskAllocatedHyperNode.Insert(hn)
-				}
-			}
-			klog.V(4).Infof("find allocated hyperNode %v for task %s/%s by node %s", taskAllocatedHyperNode, task.Namespace, task.Name, task.NodeName)
-
-			subJobAllocatedHyperNode = taskAllocatedHyperNode
-			if subJobAllocatedHyperNode.Len() == 0 {
-				klog.Errorf("failed to find allocated hyperNode for subJob %s by allocated nodes", subJob.UID)
-				break
-			}
-		}
-		minimumHyperNode := getLowestTierHyperNode(subJobAllocatedHyperNode, hyperNodes)
-
-		if subJob.AllocatedHyperNode != minimumHyperNode {
-			subJobUpdated = true
-			subJob.AllocatedHyperNode = minimumHyperNode
-			ssn.MarkJobDirty(subJob.Job)
-			klog.V(3).InfoS("update subJob allocated hyperNode", "subJob", subJob.UID, "AllocatedHyperNode", minimumHyperNode)
-		}
+		subJobUpdated = true
+		subJob.AllocatedHyperNode = minimumHyperNode
+		ssn.MarkJobDirty(subJob.Job)
+		klog.V(3).InfoS("Update subJob allocated HyperNode", "subJob", subJob.UID, "allocatedHyperNode", minimumHyperNode)
 	}
 
-	// update job AllocatedHyperNode based on subJob allocated hyperNode
 	if job.AllocatedHyperNode == "" || subJobUpdated {
-		var lca string
-		for _, subJob := range job.SubJobs {
-			if subJob.AllocatedHyperNode == "" {
-				continue
-			}
-			lca = hyperNodes.GetLCAHyperNode(lca, subJob.AllocatedHyperNode)
-			if lca == "" {
-				klog.Errorf("failed to find allocated hyperNode for job %s by subJob allocated hyperNodes", job.UID)
-				break
-			}
-		}
-		if job.AllocatedHyperNode != lca {
-			job.AllocatedHyperNode = lca
+		jobHyperNode := api.ComputeJobAllocatedHyperNode(job, hyperNodes, nodesByHyperNode)
+		if jobHyperNode != "" && job.AllocatedHyperNode != jobHyperNode {
+			job.AllocatedHyperNode = jobHyperNode
 			ssn.MarkJobDirty(job.UID)
-			klog.V(3).InfoS("update job allocated hyperNode", "job", job.UID, "AllocatedHyperNode", lca)
+			klog.V(3).InfoS("Update job allocated HyperNode", "job", job.UID, "allocatedHyperNode", jobHyperNode)
 		}
 	}
-}
-
-func getLowestTierHyperNode(hyperNodes sets.Set[string], hyperNodeInfos api.HyperNodeInfoMap) string {
-	if hyperNodes == nil || hyperNodes.Len() == 0 {
-		return ""
-	}
-
-	var lowestTierHyperNode *api.HyperNodeInfo
-	for name := range hyperNodes {
-		if hn, found := hyperNodeInfos[name]; found {
-			if lowestTierHyperNode == nil || hn.Tier() < lowestTierHyperNode.Tier() {
-				lowestTierHyperNode = hn
-			}
-		}
-	}
-
-	if lowestTierHyperNode == nil {
-		klog.Warningf("No valid hypernodes found in hyperNodeInfos for the given set: %v", hyperNodes.UnsortedList())
-		return ""
-	}
-
-	return lowestTierHyperNode.Name
 }
 
 func (ssn *Session) parseHyperNodesTiers() {
