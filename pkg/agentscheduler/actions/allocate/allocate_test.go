@@ -176,3 +176,93 @@ func TestConcurrentMultiWorkerScheduling(t *testing.T) {
 		})
 	}
 }
+
+// TestSchedulingGateRemoval verifies that waiting does not produce a binding
+// request and that a pod update can make the same task schedulable again.
+func TestSchedulingGateRemoval(t *testing.T) {
+	agentuthelper.InitTestEnv(t)
+	options.ServerOpts.ShardingMode = commonutil.NoneShardingMode
+	scheduleroptions.ServerOpts.ShardingMode = commonutil.NoneShardingMode
+	action := New()
+	tf, err := agentuthelper.NewTestFramework("test-scheduler", 1,
+		[]framework.Action{action}, agentuthelper.DefaultTiers(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tf.Close()
+	node := util.BuildNode("node", api.BuildResourceList("2", "2Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)
+	tf.MockCache.AddOrUpdateNode(node)
+	pod := util.BuildPod("default", "gated", "", v1.PodPending,
+		api.BuildResourceList("1", "1Gi"), "", nil, nil)
+	pod.Spec.SchedulerName = "test-scheduler"
+	pod.Spec.SchedulingGates = []v1.PodSchedulingGate{{Name: "example.com/hold"}}
+	pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodScheduled, Status: v1.ConditionFalse, Reason: v1.PodReasonSchedulingGated}}
+	task := api.NewTaskInfo(pod)
+	if !task.SchGated {
+		t.Fatal("expected a scheduling-gated task")
+	}
+	tf.MockCache.AddTaskInfo(task)
+	queue := tf.SchedulingQueue
+	logger := klog.Background()
+	queue.Add(logger, pod)
+	info, err := queue.Pop(logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fwk := tf.Frameworks[0]
+	if err := fwk.Cache.UpdateSnapshot(fwk.GetSnapshot()); err != nil {
+		t.Fatal(err)
+	}
+	action.Execute(fwk, &agentapi.SchedulingContext{Task: task, QueuedPodInfo: info})
+	queue.Done(pod.UID)
+	select {
+	case <-tf.MockCache.ConflictAwareBinder.BindCheckChannel:
+		t.Fatal("gated pod reached the binding path")
+	default:
+	}
+	pending, _ := queue.PendingPods()
+	if len(pending) != 1 || pending[0].UID != pod.UID {
+		t.Fatalf("gated pod was not retained in queue: %v", pending)
+	}
+	if task.Pod.Status.Conditions[0].Reason != v1.PodReasonSchedulingGated {
+		t.Fatal("gated pod status changed")
+	}
+
+	updated := pod.DeepCopy()
+	updated.Spec.SchedulingGates = nil
+	task = api.NewTaskInfo(updated)
+	tf.MockCache.UpdateTaskInfo(task)
+	queue.Update(logger, pod, updated)
+	// Bound the wait so a regression that loses the pod update cannot hang the test.
+	popped := make(chan *agentapi.SchedulingContext, 1)
+	go func() {
+		next, popErr := queue.Pop(logger)
+		if popErr != nil {
+			popped <- nil
+			return
+		}
+		popped <- &agentapi.SchedulingContext{Task: task, QueuedPodInfo: next}
+	}()
+	var ctx *agentapi.SchedulingContext
+	select {
+	case ctx = <-popped:
+		if ctx == nil {
+			t.Fatal("queue closed before the released pod was popped")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("gate removal did not requeue the pod")
+	}
+	defer queue.Done(updated.UID)
+	if ctx.QueuedPodInfo.Pod.UID != pod.UID {
+		t.Fatal("expected the original pod after gate removal")
+	}
+	action.Execute(fwk, ctx)
+	select {
+	case result := <-tf.MockCache.ConflictAwareBinder.BindCheckChannel:
+		if result == nil || len(result.SuggestedNodes) == 0 {
+			t.Fatal("released pod has no candidate node")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("released pod did not reach the binding path")
+	}
+}

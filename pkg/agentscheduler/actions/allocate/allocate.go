@@ -72,6 +72,12 @@ func (alloc *Action) Execute(fwk *framework.Framework, schedCtx *agentapi.Schedu
 	klog.V(5).Infof("Enter Allocate ...")
 	defer klog.V(5).Infof("Leaving Allocate ...")
 
+	// Keep gated pods pending until a pod update removes their gates.
+	if schedCtx.Task.SchGated {
+		alloc.failureHandler(fwk, schedCtx)
+		return
+	}
+
 	// the allocation for pod may have many stages
 	// 1. use predicateFn to filter out node that T can not be allocated on.
 	// 2. use ssn.NodeOrderFn to judge the best node and assign it to T
