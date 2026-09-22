@@ -23,6 +23,7 @@ limitations under the License.
 package framework
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"sort"
@@ -38,6 +39,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
@@ -47,6 +49,7 @@ import (
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -509,48 +512,161 @@ func addNodeSharableDeviceUsage(ssn *Session, task *api.TaskInfo) {
 	}
 }
 
-// updateQueueStatus updates allocated field in queue status on session close.
-func updateQueueStatus(ssn *Session) {
+// calculateQueueAllocatedResources adds each task to its queue once,
+// then rolls queue totals up from leaves to root.
+func calculateQueueAllocatedResources(ssn *Session) (
+	map[api.QueueID]*api.Resource,
+	map[api.QueueID]map[string]*api.DRAResource,
+	error,
+) {
 	rootQueue := api.QueueID("root")
-	// calculate allocated resources on each queue
-	var allocatedResources = make(map[api.QueueID]*api.Resource, len(ssn.Queues))
-	var allocatedDRAResources = make(map[api.QueueID]map[string]*api.DRAResource, len(ssn.Queues))
-	var allocatedDRAClaimRefs = make(map[api.QueueID]map[string]int, len(ssn.Queues))
+	allocatedResources := make(map[api.QueueID]*api.Resource, len(ssn.Queues))
+	var allocatedDRAResources map[api.QueueID]*queueDRAAllocation
 	for queueID := range ssn.Queues {
-		allocatedResources[queueID] = &api.Resource{}
+		allocatedResources[queueID] = api.EmptyResource()
 	}
-	for _, job := range ssn.Jobs {
-		for status, tasks := range job.TaskStatusIndex {
-			if api.AllocatedStatus(status) {
-				for _, task := range tasks {
-					addNodeSharableDeviceUsage(ssn, task)
-					allocatedResources[job.Queue].Add(task.Resreq)
-					addTaskDRAAllocatedByQueue(allocatedDRAResources, allocatedDRAClaimRefs, job.Queue, task)
-					// recursively updates the allocated resources of parent queues
-					queue := ssn.Queues[job.Queue].Queue
-					// compatibility unit testing
-					for ssn.Queues[rootQueue] != nil {
-						parent := string(rootQueue)
-						if queue.Spec.Parent != "" {
-							parent = queue.Spec.Parent
-						}
-						allocatedResources[api.QueueID(parent)].Add(task.Resreq)
-						addTaskDRAAllocatedByQueue(allocatedDRAResources, allocatedDRAClaimRefs, api.QueueID(parent), task)
+	if len(ssn.Queues) == 0 {
+		return allocatedResources, nil, nil
+	}
 
-						if parent == string(rootQueue) {
-							break
-						}
-						queue = ssn.Queues[api.QueueID(queue.Spec.Parent)].Queue
+	root, found := ssn.Queues[rootQueue]
+	if !found || root == nil || root.Queue == nil {
+		return nil, nil, fmt.Errorf("queue hierarchy root queue <%s> does not exist", rootQueue)
+	}
+	if root.Queue.Spec.Parent != "" {
+		return nil, nil, fmt.Errorf("root queue <%s> must not have parent <%s>", rootQueue, root.Queue.Spec.Parent)
+	}
+
+	parents := make(map[api.QueueID]api.QueueID, len(ssn.Queues)-1)
+	for queueID, queue := range ssn.Queues {
+		if queue == nil || queue.Queue == nil {
+			return nil, nil, fmt.Errorf("queue <%s> has no queue object", queueID)
+		}
+		if queueID == rootQueue {
+			continue
+		}
+
+		parent := rootQueue
+		if queue.Queue.Spec.Parent != "" {
+			parent = api.QueueID(queue.Queue.Spec.Parent)
+		}
+		if _, found := ssn.Queues[parent]; !found {
+			return nil, nil, fmt.Errorf("parent queue <%s> of queue <%s> does not exist", parent, queueID)
+		}
+		parents[queueID] = parent
+	}
+
+	const (
+		queueVisiting uint8 = iota + 1
+		queueVisited
+	)
+	visitState := make(map[api.QueueID]uint8, len(ssn.Queues))
+	parentFirstOrder := make([]api.QueueID, 0, len(ssn.Queues))
+	var visitQueue func(api.QueueID) error
+	visitQueue = func(queueID api.QueueID) error {
+		switch visitState[queueID] {
+		case queueVisiting:
+			return fmt.Errorf("queue hierarchy contains a cycle at queue <%s>", queueID)
+		case queueVisited:
+			return nil
+		}
+
+		visitState[queueID] = queueVisiting
+		if queueID != rootQueue {
+			if err := visitQueue(parents[queueID]); err != nil {
+				return err
+			}
+		}
+		visitState[queueID] = queueVisited
+		parentFirstOrder = append(parentFirstOrder, queueID)
+		return nil
+	}
+	for queueID := range ssn.Queues {
+		if err := visitQueue(queueID); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	for jobID, job := range ssn.Jobs {
+		if job == nil {
+			return nil, nil, fmt.Errorf("job <%s> has no job object", jobID)
+		}
+		queueValidated := false
+		for status, tasks := range job.TaskStatusIndex {
+			if !api.AllocatedStatus(status) {
+				continue
+			}
+			if len(tasks) > 0 && !queueValidated {
+				if _, found := allocatedResources[job.Queue]; !found {
+					return nil, nil, fmt.Errorf("queue <%s> of job <%s> does not exist", job.Queue, jobID)
+				}
+				queueValidated = true
+			}
+			for taskID, task := range tasks {
+				if task == nil || task.Resreq == nil {
+					return nil, nil, fmt.Errorf("allocated task <%s> of job <%s> has no resource request", taskID, jobID)
+				}
+				addNodeSharableDeviceUsage(ssn, task)
+				allocatedResources[job.Queue].Add(task.Resreq)
+				if len(task.DRAResreq) > 0 || len(task.ResourceClaimDRAResreq) > 0 {
+					if allocatedDRAResources == nil {
+						allocatedDRAResources = make(map[api.QueueID]*queueDRAAllocation)
 					}
+					allocated := allocatedDRAResources[job.Queue]
+					if allocated == nil {
+						allocated = newQueueDRAAllocation()
+						allocatedDRAResources[job.Queue] = allocated
+					}
+					allocated.addTask(task)
 				}
 			}
 		}
 	}
 
-	// update queue status
+	for i := len(parentFirstOrder) - 1; i >= 0; i-- {
+		queueID := parentFirstOrder[i]
+		if queueID == rootQueue {
+			continue
+		}
+		parentID := parents[queueID]
+		allocatedResources[parentID].Add(allocatedResources[queueID])
+		childDRA := allocatedDRAResources[queueID]
+		if childDRA == nil || childDRA.empty() {
+			continue
+		}
+		parentDRA := allocatedDRAResources[parentID]
+		if parentDRA == nil {
+			parentDRA = newQueueDRAAllocation()
+			allocatedDRAResources[parentID] = parentDRA
+		}
+		parentDRA.addChild(childDRA)
+	}
+
+	var queueDRAResources map[api.QueueID]map[string]*api.DRAResource
+	for queueID, allocated := range allocatedDRAResources {
+		total := allocated.total()
+		if len(total) == 0 {
+			continue
+		}
+		if queueDRAResources == nil {
+			queueDRAResources = make(map[api.QueueID]map[string]*api.DRAResource, len(allocatedDRAResources))
+		}
+		queueDRAResources[queueID] = total
+	}
+	return allocatedResources, queueDRAResources, nil
+}
+
+// updateQueueStatus updates allocated field in queue status on session close.
+func updateQueueStatus(ssn *Session) {
+	allocatedResources, allocatedDRAResources, err := calculateQueueAllocatedResources(ssn)
+	if err != nil {
+		klog.Errorf("failed to calculate queue allocated resources: %s", err.Error())
+		return
+	}
+
+	updates := make([]*api.QueueInfo, 0, len(ssn.Queues))
 	for queueID := range ssn.Queues {
-		// convert api.Resource to v1.ResourceList
-		var queueStatus = util.ConvertRes2ResList(allocatedResources[queueID]).DeepCopy()
+		queueStatus := util.ConvertRes2ResList(allocatedResources[queueID]).DeepCopy()
 		queueStatus = mergeDRAAllocatedIntoResourceList(queueStatus, allocatedDRAResources[queueID])
 
 		if equality.Semantic.DeepEqual(ssn.Queues[queueID].Queue.Status.Allocated, queueStatus) {
@@ -560,11 +676,15 @@ func updateQueueStatus(ssn *Session) {
 		}
 
 		ssn.Queues[queueID].Queue.Status.Allocated = queueStatus
-
-		if err := ssn.cache.UpdateQueueStatus(ssn.Queues[queueID]); err != nil {
-			klog.Errorf("failed to update queue <%s> status: %s", ssn.Queues[queueID].Name, err.Error())
-		}
+		updates = append(updates, ssn.Queues[queueID])
 	}
+
+	workqueue.ParallelizeUntil(context.TODO(), options.GetQueueUpdaterWorkerNum(), len(updates), func(piece int) {
+		queue := updates[piece]
+		if err := ssn.cache.UpdateQueueStatus(queue); err != nil {
+			klog.Errorf("failed to update queue <%s> status: %s", queue.Name, err.Error())
+		}
+	})
 }
 
 func closeSession(ssn *Session) {

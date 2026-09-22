@@ -53,6 +53,7 @@ const (
 	defaultNodeWorkers                = 20
 	defaultJobUpdaterWorkerNum        = 16
 	defaultTaskUpdaterWorkerNum       = 16
+	defaultQueueUpdaterWorkerNum      = 4
 )
 
 var (
@@ -104,6 +105,8 @@ type ServerOption struct {
 	JobUpdaterWorkerNum int
 	// TaskUpdaterWorkerNum is the number of workers updating tasks concurrently for each job.
 	TaskUpdaterWorkerNum int
+	// QueueUpdaterWorkerNum is the number of workers updating queues concurrently.
+	QueueUpdaterWorkerNum int
 
 	// GateRemovalWorkerNum is the number of async workers for scheduling gate removal.
 	// Only used when SchedulingGatesQueueAdmission feature gate is enabled.
@@ -148,6 +151,14 @@ func GetTaskUpdaterWorkerNum() int {
 		return defaultTaskUpdaterWorkerNum
 	}
 	return ServerOpts.TaskUpdaterWorkerNum
+}
+
+// GetQueueUpdaterWorkerNum returns the configured queue updater worker number.
+func GetQueueUpdaterWorkerNum() int {
+	if ServerOpts == nil || ServerOpts.QueueUpdaterWorkerNum <= 0 {
+		return defaultQueueUpdaterWorkerNum
+	}
+	return ServerOpts.QueueUpdaterWorkerNum
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -203,6 +214,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.IntVar(&s.JobUpdaterWorkerNum, "job-updater-worker-num", defaultJobUpdaterWorkerNum, "The number of workers updating jobs concurrently.")
 	fs.IntVar(&s.TaskUpdaterWorkerNum, "task-updater-worker-num", defaultTaskUpdaterWorkerNum, "The number of workers updating tasks concurrently for each job.")
+	fs.IntVar(&s.QueueUpdaterWorkerNum, "queue-updater-worker-num", defaultQueueUpdaterWorkerNum, "The number of workers updating queues concurrently.")
 	fs.IntVar(&s.GateRemovalWorkerNum, "gate-removal-worker-num", 5, "The number of async workers for scheduling gate removal (used when SchedulingGatesQueueAdmission is enabled).")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 	fs.DurationVar(&s.ResourceSyncTimeout, "resource-sync-timeout", defaultResourceSyncTimeout, "timeout on waiting for handler handling initial resources synchronization before starting scheduler, default is 60s, 0 skip waiting")
@@ -218,6 +230,9 @@ func (s *ServerOption) CheckOptionOrDie() error {
 	}
 	if s.TaskUpdaterWorkerNum <= 0 {
 		return fmt.Errorf("task-updater-worker-num must be greater than 0")
+	}
+	if s.QueueUpdaterWorkerNum <= 0 {
+		return fmt.Errorf("queue-updater-worker-num must be greater than 0")
 	}
 	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
 }

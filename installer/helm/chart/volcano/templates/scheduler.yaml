@@ -235,6 +235,9 @@ spec:
             {{- if not (kindIs "invalid" .Values.custom.scheduler_task_updater_worker_num) }}
             - --task-updater-worker-num={{.Values.custom.scheduler_task_updater_worker_num}}
             {{- end }}
+            {{- if not (kindIs "invalid" .Values.custom.scheduler_queue_updater_worker_num) }}
+            - --queue-updater-worker-num={{.Values.custom.scheduler_queue_updater_worker_num}}
+            {{- end }}
             {{- if ne .Values.custom.scheduler_percentage_nodes_to_find nil }}
             - --percentage-nodes-to-find={{.Values.custom.scheduler_percentage_nodes_to_find}}
             {{- end }}
