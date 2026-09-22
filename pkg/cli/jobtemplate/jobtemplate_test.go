@@ -317,6 +317,20 @@ status: {}`,
   "status": {}
 }`,
 		},
+		{
+			name: "Invalid format",
+			Response: &flowv1alpha1.JobTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-jobtemplate",
+					Namespace: "default",
+				},
+			},
+			Namespace:      "default",
+			Name:           "test-jobtemplate",
+			Format:         "xml",
+			ExpectedErr:    fmt.Errorf("format xml invalid, valid formats are json and yaml"),
+			ExpectedOutput: "",
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
