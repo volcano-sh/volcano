@@ -56,6 +56,8 @@ type HyperNodesInfo struct {
 
 type HyperNodeInfoMap map[string]*HyperNodeInfo
 
+// HyperNodeTierNameMap is kept for compatibility and diagnostics. Tree-aware Hard
+// scheduling must resolve tier names against each HyperNode branch instead.
 type HyperNodeTierNameMap map[string]int
 
 // NewHyperNodesInfo initializes a new HyperNodesInfo instance.
@@ -160,6 +162,11 @@ func (hni *HyperNodeInfo) Tier() int {
 	return hni.tier
 }
 
+// TierName returns the semantic tier name of the HyperNode.
+func (hni *HyperNodeInfo) TierName() string {
+	return hni.tierName
+}
+
 func (hni *HyperNodeInfo) DeepCopy() *HyperNodeInfo {
 	if hni == nil {
 		return nil
@@ -189,15 +196,33 @@ func (hni *HyperNodesInfo) HyperNodes() HyperNodeInfoMap {
 	return copiedHyperNodes
 }
 
-// HyperNodeTierNameMap returns the mapping of tierName and tier.
+// HyperNodeTierNameMap returns the mapping of unambiguous tierName and tier.
+// A semantic tier name can legitimately have different local numeric tiers in
+// different topology trees. Such names are omitted because a single global
+// numeric value cannot represent them safely; tree-aware scheduling resolves
+// the name on the candidate branch instead.
 func (hni *HyperNodesInfo) HyperNodeTierNameMap() HyperNodeTierNameMap {
-	hyperNodeTierNameMap := make(map[string]int, len(hni.hyperNodes))
+	tiersByName := make(map[string]sets.Set[int])
 	for _, info := range hni.hyperNodes {
-		if info.tierName != "" {
-			if existingTier, ok := hyperNodeTierNameMap[info.tierName]; ok && existingTier != info.tier {
-				klog.Warningf("Conflicting tiers for tierName %s: existing %d, new %d. Using %d.", info.tierName, existingTier, info.tier, info.tier)
-			}
-			hyperNodeTierNameMap[info.tierName] = info.tier
+		if info.tierName == "" {
+			continue
+		}
+		if tiersByName[info.tierName] == nil {
+			tiersByName[info.tierName] = sets.New[int]()
+		}
+		tiersByName[info.tierName].Insert(info.tier)
+	}
+
+	hyperNodeTierNameMap := make(map[string]int, len(tiersByName))
+	for tierName, tiers := range tiersByName {
+		if len(tiers) != 1 {
+			conflictingTiers := tiers.UnsortedList()
+			slices.Sort(conflictingTiers)
+			klog.Warningf("Conflicting tiers for tierName %s: %v. Omitting ambiguous global mapping.", tierName, conflictingTiers)
+			continue
+		}
+		for tier := range tiers {
+			hyperNodeTierNameMap[tierName] = tier
 		}
 	}
 

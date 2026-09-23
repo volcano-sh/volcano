@@ -123,13 +123,25 @@ func checkQueueState(queueName string) string {
 
 func validateNetworkTopology(networkTopology *schedulingv1beta1.NetworkTopologySpec, policies []schedulingv1beta1.SubGroupPolicySpec) string {
 	var errs []string
-	if networkTopology != nil && networkTopology.HighestTierAllowed != nil && networkTopology.HighestTierName != "" {
-		errs = append(errs, "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously.")
+	if networkTopology != nil {
+		if networkTopology.HighestTierAllowed != nil && networkTopology.HighestTierName != "" {
+			errs = append(errs, "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously.")
+		} else if (networkTopology.Mode == "" || networkTopology.Mode == schedulingv1beta1.HardNetworkTopologyMode) &&
+			networkTopology.HighestTierAllowed == nil && networkTopology.HighestTierName == "" {
+			errs = append(errs, "must specify either 'highestTierAllowed' or 'highestTierName' in hard networkTopology.")
+		}
 	}
 	for _, policy := range policies {
-		if policy.NetworkTopology != nil && policy.NetworkTopology.HighestTierAllowed != nil && policy.NetworkTopology.HighestTierName != "" {
-			errs = append(errs, fmt.Sprintf("in subGroupPolicy '%s': must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously.", policy.Name))
-			break
+		if policy.NetworkTopology != nil {
+			if policy.NetworkTopology.HighestTierAllowed != nil && policy.NetworkTopology.HighestTierName != "" {
+				errs = append(errs, fmt.Sprintf("in subGroupPolicy '%s': must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously.", policy.Name))
+				break
+			}
+			if (policy.NetworkTopology.Mode == "" || policy.NetworkTopology.Mode == schedulingv1beta1.HardNetworkTopologyMode) &&
+				policy.NetworkTopology.HighestTierAllowed == nil && policy.NetworkTopology.HighestTierName == "" {
+				errs = append(errs, fmt.Sprintf("in subGroupPolicy '%s': must specify either 'highestTierAllowed' or 'highestTierName' in hard networkTopology.", policy.Name))
+				break
+			}
 		}
 	}
 	return strings.Join(errs, " ")
