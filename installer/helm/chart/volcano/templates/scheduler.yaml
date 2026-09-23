@@ -5,6 +5,7 @@
 {{ $scheduler_main_csc := or .Values.custom.scheduler_main_csc .Values.custom.default_csc }}
 {{ $scheduler_ns := or .Values.custom.scheduler_ns .Values.custom.default_ns }}
 {{ $scheduler_name := .Values.custom.scheduler_name }}
+{{ $default_queue := .Values.custom.default_queue }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -205,6 +206,9 @@ spec:
             - --scheduler-conf=/volcano.scheduler/{{base .Values.basic.scheduler_config_file}}
             {{- if $scheduler_name }}
             - --scheduler-name={{- $scheduler_name }}
+            {{- end }}
+            {{- if $default_queue }}
+            - --default-queue={{- $default_queue }}
             {{- end }}
             - --enable-healthz=true
             {{- if .Values.custom.scheduler_metrics_enable }}

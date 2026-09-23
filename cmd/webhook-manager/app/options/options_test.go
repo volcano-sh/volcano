@@ -61,6 +61,7 @@ func TestAddFlags(t *testing.T) {
 		EnableQueueAllocatedPodsCheck: false,
 		MaxQueueDepth:                 defaultMaxQueueDepth,
 		EnableRootQueueProtection:     true,
+		DefaultQueue:                  defaultQueue,
 	}
 
 	if !equality.Semantic.DeepEqual(expected, s) {
