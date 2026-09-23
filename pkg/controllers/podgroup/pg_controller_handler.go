@@ -183,6 +183,7 @@ func (pg *pgcontroller) reconcileWorkload(workload workloadState) error {
 	if err != nil {
 		return err
 	}
+	reconciled := false
 	for _, pod := range pods {
 		if pod.DeletionTimestamp != nil {
 			continue
@@ -201,7 +202,19 @@ func (pg *pgcontroller) reconcileWorkload(workload workloadState) error {
 		if annotation := pod.Annotations[scheduling.KubeGroupNameAnnotationKey]; annotation != "" && annotation != name {
 			continue
 		}
-		return pg.reconcileManagedPodGroup(pod, workload)
+		if !reconciled {
+			owned, err := pg.reconcileManagedPodGroup(pod, workload)
+			if err != nil {
+				return err
+			}
+			if !owned {
+				return nil
+			}
+			reconciled = true
+		}
+		if err := pg.updatePodAnnotations(pod, name); err != nil {
+			return err
+		}
 	}
 	return nil // A later Pod Add enqueues this owner key.
 }
@@ -227,33 +240,33 @@ func ownedByWorkload(group *scheduling.PodGroup, workload workloadState) bool {
 	return owner != nil && requestKind(owner.Kind) == workload.kind && owner.Name == workload.name && owner.UID == workload.uid
 }
 
-func (pg *pgcontroller) reconcileManagedPodGroup(pod *v1.Pod, workload workloadState) error {
+func (pg *pgcontroller) reconcileManagedPodGroup(pod *v1.Pod, workload workloadState) (bool, error) {
 	name := helpers.GeneratePodgroupName(pod)
 	client := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace)
 	group, err := client.Get(context.TODO(), name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		_, err = client.Create(context.TODO(), pg.buildPodGroupFromPod(pod, name), metav1.CreateOptions{})
 		if err != nil {
-			return err
+			return false, err
 		}
-		return pg.updatePodAnnotations(pod, name)
+		return true, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !ownedByWorkload(group, workload) {
-		return nil
+		return false, nil
 	}
 	if group.DeletionTimestamp != nil {
-		return fmt.Errorf("PodGroup %s/%s is terminating", group.Namespace, group.Name)
+		return false, fmt.Errorf("PodGroup %s/%s is terminating", group.Namespace, group.Name)
 	}
 	updated := group.DeepCopy()
 	if pg.shouldUpdateExistingPodGroup(updated, pod) {
 		if _, err := client.Update(context.TODO(), updated, metav1.UpdateOptions{}); err != nil {
-			return err
+			return false, err
 		}
 	}
-	return pg.updatePodAnnotations(pod, name)
+	return true, nil
 }
 
 func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {

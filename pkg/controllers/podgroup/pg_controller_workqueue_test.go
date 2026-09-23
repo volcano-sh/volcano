@@ -132,6 +132,39 @@ func TestOwnedPodAndStatefulSetShareQueueKey(t *testing.T) {
 	require.True(t, apierrors.IsNotFound(err))
 }
 
+func TestOwnerQueueAnnotatesEveryPod(t *testing.T) {
+	c := newFakeController()
+	rs := &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "owner", Namespace: "test", UID: "owner-uid"},
+		Spec:       appsv1.ReplicaSetSpec{Replicas: ptr.To[int32](3), Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "owner"}}},
+	}
+	_, err := c.kubeClient.AppsV1().ReplicaSets("test").Create(context.Background(), rs, metav1.CreateOptions{})
+	require.NoError(t, err)
+	require.NoError(t, c.rsInformer.Informer().GetIndexer().Add(rs))
+	for _, name := range []string{"owner-a", "owner-b", "owner-c"} {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: name, Namespace: "test", UID: types.UID(name), Labels: map[string]string{"app": "owner"},
+				OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "ReplicaSet", Name: rs.Name, UID: rs.UID, Controller: ptr.To(true)}},
+			},
+			Spec: corev1.PodSpec{SchedulerName: "volcano"},
+		}
+		_, err = c.kubeClient.CoreV1().Pods("test").Create(context.Background(), pod, metav1.CreateOptions{})
+		require.NoError(t, err)
+		require.NoError(t, c.podInformer.Informer().GetIndexer().Add(pod))
+	}
+
+	c.addReplicaSet(rs)
+	require.Equal(t, 1, c.queue.Len())
+	require.True(t, c.processNextReq())
+	groupName := batchv1alpha1.PodgroupNamePrefix + string(rs.UID)
+	for _, name := range []string{"owner-a", "owner-b", "owner-c"} {
+		pod, err := c.kubeClient.CoreV1().Pods("test").Get(context.Background(), name, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, groupName, pod.Annotations[scheduling.KubeGroupNameAnnotationKey], name)
+	}
+}
+
 func TestOwnedPodEventDuringPodGroupCreate(t *testing.T) {
 	c := newFakeController()
 	sts := &appsv1.StatefulSet{
