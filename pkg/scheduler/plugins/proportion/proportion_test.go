@@ -685,3 +685,36 @@ func TestJobEnqueuedOnOtherPluginsReject(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestProportionEmptyQueueAndOrphanedJob(t *testing.T) {
+	uthelper.RegisterPlugins(map[string]framework.PluginBuilder{PluginName: New, gang.PluginName: gang.New, priority.PluginName: priority.New})
+	defer framework.CleanupPluginBuilders()
+
+	queue1 := util.BuildQueue("q1", 0, nil)
+	pg1 := util.BuildPodGroupWithPrio("pg1", "ns1", "missing-queue", 1, nil, "", "")
+	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodPending, api.BuildResourceList("1", "1k"), "pg1", nil, nil)
+
+	binder := util.NewFakeBinder(0)
+	recorder := record.NewFakeRecorder(100)
+	schedulerCache := cache.NewCustomMockSchedulerCache("mock-test", binder, nil, &util.FakeStatusUpdater{}, nil, recorder)
+
+	schedulerCache.AddQueueV1beta1(queue1)
+	schedulerCache.AddPodGroupV1beta1(pg1)
+	schedulerCache.AddPod(w1)
+
+	trueValue := true
+	ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:             PluginName,
+					EnabledPredicate: &trueValue,
+				},
+			},
+		},
+	}, nil)
+	defer framework.CloseSession(ssn)
+
+	allocator := allocate.New()
+	allocator.Execute(ssn)
+}
