@@ -44,8 +44,9 @@ func NewShardUpdateCoordinator() *ShardUpdateCoordinator {
 	}
 }
 
-// RefreshNodeShards update node shards cached in coordinator
-func (sc *SchedulerCache) RefreshNodeShards() {
+// refreshNodeShardsLocked update node shards cached in coordinator.
+// It must be called with sc.Mutex locked.
+func (sc *SchedulerCache) refreshNodeShardsLocked() {
 	if options.ServerOpts.ShardingMode != util.HardShardingMode && options.ServerOpts.ShardingMode != util.SoftShardingMode {
 		return
 	}
@@ -63,6 +64,13 @@ func (sc *SchedulerCache) RefreshNodeShards() {
 	sc.InUseNodesInShard = sc.getAvailableNodesFromShard(nodeShardInfo)
 	klog.V(3).Infof("Try to update NodeShard status after NodeShard refresh")
 	go sc.tryUpdateNodeShardStatus(nodeShardInfo.Name)
+}
+
+// RefreshNodeShards update node shards cached in coordinator
+func (sc *SchedulerCache) RefreshNodeShards() {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	sc.refreshNodeShardsLocked()
 }
 
 func (sc *SchedulerCache) tryUpdateNodeShardStatus(nodeShardName string) {
