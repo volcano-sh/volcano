@@ -246,6 +246,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	cc.pgInformer = factory.Scheduling().V1beta1().PodGroups()
 	cc.pgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    cc.addPodGroup,
 		UpdateFunc: cc.updatePodGroup,
 	})
 	cc.pgLister = cc.pgInformer.Lister()
