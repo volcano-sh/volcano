@@ -438,7 +438,9 @@ func (cc *jobcontroller) CleanPodDelayActionsIfNeed(req apis.Request) {
 
 				if (delayAct.event == busv1alpha1.PodFailedEvent || delayAct.event == busv1alpha1.PodEvictedEvent) &&
 					req.Event == busv1alpha1.PodRunningEvent {
-					shouldCancel = true
+					if req.PodUID == delayAct.podUID || GetActionType(delayAct.action) == PodAction {
+						shouldCancel = true
+					}
 				}
 
 				if shouldCancel {
