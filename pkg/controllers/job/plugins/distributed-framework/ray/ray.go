@@ -77,6 +77,12 @@ func New(client pluginsinterface.PluginClientset, arguments []string) pluginsint
 	return &rp
 }
 
+func NewInstance(arguments []string) *rayPlugin {
+	rp := rayPlugin{rayArguments: arguments}
+	rp.addFlags()
+	return &rp
+}
+
 func (rp *rayPlugin) addFlags() {
 	flagSet := flag.NewFlagSet(rp.Name(), flag.ContinueOnError)
 	flagSet.StringVar(&rp.headName, "head", DefaultHead, "name of head node in ray cluster")
@@ -93,6 +99,10 @@ func (rp *rayPlugin) addFlags() {
 
 func (rp *rayPlugin) Name() string {
 	return RayPluginName
+}
+
+func (rp *rayPlugin) GetHeadName() string {
+	return rp.headName
 }
 
 func (rp *rayPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {

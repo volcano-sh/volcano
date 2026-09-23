@@ -1814,6 +1814,42 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      true,
 		},
 		{
+			Name:                     "job-with-ray-plugin-invalid-head",
+			PodLevelResourcesEnabled: false,
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-ray-plugin-invalid-head",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "worker",
+							Replicas: 2,
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "worker",
+											Image: "ray:latest",
+										},
+									},
+								},
+							},
+						},
+					},
+					Plugins: map[string][]string{
+						"ray": {"--head=head"},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "The specified ray head task was not found",
+			ExpectErr:      true,
+		},
+		{
 			Name:                     "validate invalid-job with pod level resources less than aggregate container resources",
 			PodLevelResourcesEnabled: true,
 			Job: v1alpha1.Job{
