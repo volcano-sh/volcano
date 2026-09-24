@@ -2677,6 +2677,91 @@ func TestValidateChildrenConstraintsForCapability(t *testing.T) {
 	}
 }
 
+func TestValidateChildrenConstraintsForGuaranteeDeserved(t *testing.T) {
+	parentWithLimits := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-parent-with-limits"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root", Weight: 1,
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{v1.ResourceCPU: resource.MustParse("5")},
+			},
+			Deserved: v1.ResourceList{v1.ResourceCPU: resource.MustParse("5")},
+		},
+	}
+	parentWithoutLimits := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-parent-without-limits"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "root", Weight: 1},
+	}
+	childGuarantee10 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-child-guarantee-10"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: parentWithoutLimits.Name, Weight: 1,
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{v1.ResourceCPU: resource.MustParse("10")},
+			},
+		},
+	}
+	childDeserved10 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-child-deserved-10"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: parentWithoutLimits.Name, Weight: 1,
+			Deserved: v1.ResourceList{v1.ResourceCPU: resource.MustParse("10")},
+		},
+	}
+	childGuarantee10Exceeds := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-child-guarantee-10-exceeds"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: parentWithLimits.Name, Weight: 1,
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{v1.ResourceCPU: resource.MustParse("10")},
+			},
+		},
+	}
+
+	tests := []struct {
+		name      string
+		parent    *schedulingv1beta1.Queue
+		children  []*schedulingv1beta1.Queue
+		expectErr bool
+		errSubstr string
+	}{
+		{
+			name:      "parent without guarantee limit does not reject a child's guarantee",
+			parent:    parentWithoutLimits,
+			children:  []*schedulingv1beta1.Queue{childGuarantee10},
+			expectErr: false,
+		},
+		{
+			name:      "parent without deserved limit does not reject a child's deserved",
+			parent:    parentWithoutLimits,
+			children:  []*schedulingv1beta1.Queue{childDeserved10},
+			expectErr: false,
+		},
+		{
+			name:      "parent with a guarantee limit still rejects a child exceeding it",
+			parent:    parentWithLimits,
+			children:  []*schedulingv1beta1.Queue{childGuarantee10Exceeds},
+			expectErr: true,
+			errSubstr: "exceeds parent's guarantee limit",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateChildrenConstraints(tt.parent, tt.children)
+			if tt.expectErr {
+				if err == nil {
+					t.Errorf("expected error containing %q, got nil", tt.errSubstr)
+				} else if !contains(err.Error(), tt.errSubstr) {
+					t.Errorf("expected error containing %q, got %q", tt.errSubstr, err.Error())
+				}
+			} else if err != nil {
+				t.Errorf("expected no error, got %v", err)
+			}
+		})
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > 0 && len(substr) > 0 && searchSubstring(s, substr)))
