@@ -451,6 +451,24 @@ var _ = Describe("CronJob E2E Test", func() {
 			return true
 		}, 3*time.Minute, 10*time.Second).Should(BeTrue())
 
+		By("Suspending CronJob to prevent new jobs from being created during stability check")
+		latestCronJob, err := getCronJob(ctx, ctx.Namespace, cronJobName)
+		Expect(err).NotTo(HaveOccurred())
+		suspend := true
+		latestCronJob.Spec.Suspend = &suspend
+		createdCronJob, err = ctx.Vcclient.BatchV1alpha1().CronJobs(ctx.Namespace).Update(
+			context.TODO(), latestCronJob, metav1.UpdateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Waiting for all active jobs to complete after suspension")
+		Eventually(func() int {
+			count, err := getJobActiveNum(ctx, createdCronJob)
+			if err != nil {
+				return -1
+			}
+			return count
+		}, 3*time.Minute, 10*time.Second).Should(Equal(0))
+
 		By("Ensuring only one fail finished job exists")
 		Consistently(func() int {
 			count, err := getJobFailNum(ctx, createdCronJob)
@@ -458,7 +476,7 @@ var _ = Describe("CronJob E2E Test", func() {
 				Fail(fmt.Sprintf("Failed to get jobs: %v", err))
 			}
 			return count
-		}, 3*time.Minute, 10*time.Second).Should(Equal(1))
+		}, 30*time.Second, 10*time.Second).Should(Equal(1))
 
 		By("Cleaning up test resources")
 		err = deleteCronJob(ctx, ctx.Namespace, cronJobName)
