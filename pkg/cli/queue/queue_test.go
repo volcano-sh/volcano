@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -96,16 +97,31 @@ func TestCreateQueue(t *testing.T) {
 
 	testCases := []struct {
 		Name        string
+		State       string
 		ExpectValue error
 	}{
 		{
 			Name:        "CreateQueue",
+			State:       string(v1beta1.QueueStateOpen),
 			ExpectValue: nil,
+		},
+		{
+			Name:        "CreateQueue, state in the lower case the operate flags use",
+			State:       strings.ToLower(string(v1beta1.QueueStateOpen)),
+			ExpectValue: nil,
+		},
+		{
+			Name:  "Abnormal Case Create Queue Failed For State Invalid",
+			State: string(v1beta1.QueueStateClosed),
+			ExpectValue: fmt.Errorf("state %s invalid, %s is the only state a queue can be created in, "+
+				"use `vcctl queue -a close` to close it", v1beta1.QueueStateClosed, v1beta1.QueueStateOpen),
 		},
 	}
 	for _, testcase := range testCases {
+		createQueueFlags.State = testcase.State
+
 		err := CreateQueue(context.TODO())
-		if err != nil {
+		if false == reflect.DeepEqual(err, testcase.ExpectValue) {
 			t.Errorf("(%s): expected: %v, got %v ", testcase.Name, testcase.ExpectValue, err)
 		}
 	}
