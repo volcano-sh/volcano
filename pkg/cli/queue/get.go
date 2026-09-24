@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
@@ -65,16 +66,39 @@ func GetQueue(ctx context.Context) error {
 		return err
 	}
 
-	// Although the featuregate called CustomResourceFieldSelectors is enabled by default after v1.31, there are still
-	// users using k8s versions lower than v1.31. Therefore we can only get all the podgroups from kube-apiserver
-	// and then filtering them.
-	pgList, err := queueClient.SchedulingV1beta1().PodGroups("").List(ctx, metav1.ListOptions{})
+	var pgList *v1beta1.PodGroupList
+	clientset := kubernetes.NewForConfigOrDie(config)
+	supportsFieldSelector, err := util.SupportsCustomResourceFieldSelectors(clientset)
 	if err != nil {
-		return fmt.Errorf("failed to list podgroup for queue %s with err: %v", getQueueFlags.Name, err)
+		// If version check fails, fall back to the old method
+		supportsFieldSelector = false
+	}
+
+	if supportsFieldSelector {
+		// Use fieldSelector for k8s v1.31+ where CustomResourceFieldSelectors is enabled by default
+		fieldSelector := fmt.Sprintf("spec.queue=%s", getQueueFlags.Name)
+		pgList, err = queueClient.SchedulingV1beta1().PodGroups("").List(ctx, metav1.ListOptions{
+			FieldSelector: fieldSelector,
+		})
+		if err != nil {
+			// If fieldSelector fails (e.g., feature gate disabled), fall back to old method
+			pgList, err = queueClient.SchedulingV1beta1().PodGroups("").List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to list podgroup for queue %s with err: %v", getQueueFlags.Name, err)
+			}
+		}
+	} else {
+		// For k8s versions < v1.31, get all podgroups and filter them
+		pgList, err = queueClient.SchedulingV1beta1().PodGroups("").List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to list podgroup for queue %s with err: %v", getQueueFlags.Name, err)
+		}
 	}
 
 	pgStats := &podgroup.PodGroupStatistics{}
 	for _, pg := range pgList.Items {
+		// For k8s < v1.31, we still need to filter by queue name
+		// For k8s >= v1.31 with fieldSelector, this should already be filtered, but we keep it for safety
 		if pg.Spec.Queue == getQueueFlags.Name {
 			pgStats.StatPodGroupCountsForQueue(&pg)
 		}
