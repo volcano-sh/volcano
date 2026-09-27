@@ -129,7 +129,6 @@ func validateNetworkTopology(networkTopology *schedulingv1beta1.NetworkTopologyS
 	for _, policy := range policies {
 		if policy.NetworkTopology != nil && policy.NetworkTopology.HighestTierAllowed != nil && policy.NetworkTopology.HighestTierName != "" {
 			errs = append(errs, fmt.Sprintf("in subGroupPolicy '%s': must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously.", policy.Name))
-			break
 		}
 	}
 	return strings.Join(errs, " ")
