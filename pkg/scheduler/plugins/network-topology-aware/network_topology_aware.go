@@ -98,8 +98,6 @@ type resourceStatus struct {
 	used        *api.Resource
 }
 
-var emptyHyperNodeGradients = [][]*api.HyperNodeInfo{}
-
 func (h *hyperNodesTier) init(hyperNodesSetByTier []int) {
 	if len(hyperNodesSetByTier) == 0 {
 		return
@@ -286,40 +284,45 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 		return nta.batchNodeOrderFn(ssn, task, nodes)
 	})
 
-	ssn.AddHyperNodeGradientForJobFn(nta.Name(), func(job *api.JobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
+	ssn.AddHyperNodeGradientForJobFn(nta.Name(), func(job *api.JobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) api.HyperNodeGradientResult {
 		highestAllowedTier := nta.hyperNodesTier.maxTier
+		minResource := job.GetMinResources()
 		if hardMode, tier := job.IsHardTopologyMode(); hardMode {
 			highestAllowedTier = tier
+		} else if job.AllocatedHyperNode == "" && (purpose == api.PurposeAllocate || minResource.IsEmpty()) {
+			// Allocation resources are checked after intersection. Eviction still
+			// needs this plugin's total-allocatable filter when a minimum is set.
+			return api.HyperNodeGradientResult{Unconstrained: true}
 		}
-		result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, job.AllocatedHyperNode, job.GetMinResources(), purpose)
+		result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, job.AllocatedHyperNode, minResource, purpose)
 		if err != nil {
 			klog.ErrorS(err, "build HyperNode gradient failed", "job", job.UID, "hyperNode", hyperNode.Name,
 				"highestAllowedTier", highestAllowedTier, "allocatedHyperNode", job.AllocatedHyperNode)
-			return emptyHyperNodeGradients
+			return api.HyperNodeGradientResult{}
 		}
-		return result
+		return api.HyperNodeGradientResult{Gradients: result}
 	})
 
-	ssn.AddHyperNodeGradientForSubJobFn(nta.Name(), func(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
+	ssn.AddHyperNodeGradientForSubJobFn(nta.Name(), func(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) api.HyperNodeGradientResult {
 		if hardMode, highestAllowedTier := subJob.IsHardTopologyMode(); hardMode {
 			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, subJob.AllocatedHyperNode, subJob.GetMinResources(), purpose)
 			if err != nil {
 				klog.ErrorS(err, "build HyperNode gradient failed", "subJob", subJob.UID, "hyperNode", hyperNode.Name,
 					"highestAllowedTier", highestAllowedTier, "allocatedHyperNode", subJob.AllocatedHyperNode)
-				return emptyHyperNodeGradients
+				return api.HyperNodeGradientResult{}
 			}
-			return result
+			return api.HyperNodeGradientResult{Gradients: result}
 		}
 		if job, found := ssn.Jobs[subJob.Job]; found && !job.ContainsSubJobPolicy() {
 			if nta.isEligibleHyperNode(hyperNode, hyperNode.Tier(), subJob.AllocatedHyperNode, subJob.GetMinResources(), purpose) {
-				return [][]*api.HyperNodeInfo{{hyperNode}}
+				return api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{hyperNode}}}
 			}
-			return emptyHyperNodeGradients
+			return api.HyperNodeGradientResult{}
 		}
 		if nta.isEligibleHyperNode(hyperNode, hyperNode.Tier(), subJob.AllocatedHyperNode, subJob.GetMinResources(), purpose) {
-			return [][]*api.HyperNodeInfo{{hyperNode}}
+			return api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{hyperNode}}}
 		}
-		return emptyHyperNodeGradients
+		return api.HyperNodeGradientResult{}
 	})
 
 	ssn.AddEventHandler(&framework.EventHandler{

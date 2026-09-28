@@ -92,8 +92,9 @@ type HyperNodeGradientStats struct {
 
 // HyperNodePluginGradient carries one plugin's HyperNode gradient result for intersection.
 type HyperNodePluginGradient struct {
-	PluginName string
-	Gradients  [][]*HyperNodeInfo
+	PluginName    string
+	Unconstrained bool
+	Gradients     [][]*HyperNodeInfo
 }
 
 // HyperNodeMinResourceFilterStats captures minResource filtering on intersected HyperNodes.

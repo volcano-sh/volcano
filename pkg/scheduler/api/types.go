@@ -427,12 +427,19 @@ const (
 	PurposeEvict
 )
 
-// HyperNodeGradientForJobFn group hyperNodes into several gradients,
-// and discard hyperNodes that unmatched the job topology requirements.
-// Registered plugins must return a non-nil slice; an empty slice means no eligible HyperNodes remain.
-type HyperNodeGradientForJobFn func(job *JobInfo, hyperNode *HyperNodeInfo, purpose SearchPurpose) [][]*HyperNodeInfo
+// HyperNodeGradientResult describes a plugin's constraints within the input search root.
+// Its zero value rejects the search; an unconstrained result must be explicit.
+type HyperNodeGradientResult struct {
+	// Unconstrained means the plugin permits the entire input subtree. Gradients
+	// must be empty when this is true. Preferred policies are evaluated by scoring.
+	Unconstrained bool
+	// Gradients contains eligible HyperNodes when Unconstrained is false.
+	// Both nil and empty gradients mean no feasible candidates remain.
+	Gradients [][]*HyperNodeInfo
+}
 
-// HyperNodeGradientForSubJobFn group hyperNodes into several gradients,
-// and discard hyperNodes that unmatched the subJob topology requirements.
-// Registered plugins must return a non-nil slice; an empty slice means no eligible HyperNodes remain.
-type HyperNodeGradientForSubJobFn func(subJob *SubJobInfo, hyperNode *HyperNodeInfo, purpose SearchPurpose) [][]*HyperNodeInfo
+// HyperNodeGradientForJobFn returns the plugin's topology constraints for a Job.
+type HyperNodeGradientForJobFn func(job *JobInfo, hyperNode *HyperNodeInfo, purpose SearchPurpose) HyperNodeGradientResult
+
+// HyperNodeGradientForSubJobFn returns the plugin's topology constraints for a SubJob.
+type HyperNodeGradientForSubJobFn func(subJob *SubJobInfo, hyperNode *HyperNodeInfo, purpose SearchPurpose) HyperNodeGradientResult

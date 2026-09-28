@@ -37,8 +37,8 @@ type emptyGradientPlugin struct{}
 func (p *emptyGradientPlugin) Name() string { return emptyGradientPluginName }
 
 func (p *emptyGradientPlugin) OnSessionOpen(ssn *framework.Session) {
-	ssn.AddHyperNodeGradientForJobFn(p.Name(), func(*api.JobInfo, *api.HyperNodeInfo, api.SearchPurpose) [][]*api.HyperNodeInfo {
-		return nil
+	ssn.AddHyperNodeGradientForJobFn(p.Name(), func(*api.JobInfo, *api.HyperNodeInfo, api.SearchPurpose) api.HyperNodeGradientResult {
+		return api.HyperNodeGradientResult{}
 	})
 }
 

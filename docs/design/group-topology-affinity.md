@@ -79,12 +79,13 @@ flowchart LR
     DR --> B["Bind"]
 ```
 
-Gradient callbacks follow a two-state contract:
+Gradient callbacks return one of three explicit results:
 
-- a non-empty gradient represents constrained candidates or an explicit pass-through search space
-- a non-nil empty gradient represents rejection, including fail-closed behavior after an internal error
+- `Unconstrained: true` permits the input subtree without enumerating candidates
+- `Unconstrained: false` with non-empty `Gradients` supplies constrained candidates
+- a zero-value result or empty `Gradients` with `Unconstrained: false` rejects the search, including fail-closed behavior after an internal error
 
-`nil` is not a third, no-op state. A registered callback that unexpectedly returns `nil` is treated as rejection and logged as an error. Only when no gradient callback is registered may the Framework fall back to the input root HyperNode.
+Unconstrained plugins do not participate in intersection or exclusion statistics. When all participating plugins are unconstrained, the Framework generates the full input subtree once for preferred scoring. When no enabled gradient callbacks are registered, it preserves the input-root fallback.
 
 ### 5.2 PodGroup API
 
@@ -430,7 +431,7 @@ Placed peer SubJobs establish affinity anchors and anti-affinity exclusion domai
 
 `group-topology-affinity` registers Job and SubJob gradient callbacks. Required PodGroup terms are evaluated at both levels so that an allocated Job or SubJob search root cannot escape the policy. SubGroup terms are evaluated only for SubJob callbacks and only against peer SubJobs from the same PodGroup.
 
-When no required term applies, the plugin returns the full subtree below the current search root. This explicit pass-through behavior supports preferred-only scoring and preserves correct intersection with other plugins.
+Gradient callbacks return a `HyperNodeGradientResult` containing `Unconstrained` and `Gradients`. When no required term applies and the plugin does not narrow the input search root, it returns `Unconstrained: true`. Preferred terms are evaluated by scoring.
 
 The Framework intersects gradients by HyperNode name, not by layer index:
 
@@ -444,10 +445,13 @@ flowchart LR
 
 | Callback result | Meaning | Framework behavior |
 | --- | --- | --- |
-| Non-nil empty slice | Required constraints have no legal candidate, or evaluation failed closed | Participate in statistics and make the final intersection empty |
-| Non-empty gradient | Constrained candidates or explicit pass-through candidates | Intersect names with every other plugin, then rebuild layers by tier |
+| `Unconstrained: true`, with no gradients | No restriction within the input subtree | Skip intersection and exclusion statistics for this plugin |
+| `Unconstrained: false`, with non-empty gradients | Constrained candidates | Intersect names with the other constrained results, then rebuild layers by tier |
+| Zero-value result, or `Unconstrained: false` with nil or empty gradients | No legal candidate, or evaluation failed closed | Participate in statistics and make the final intersection empty |
 
-The Framework treats an unexpected `nil` result from a registered callback like an empty result and logs a contract violation. It never skips that plugin. If no callbacks are registered at all, the input root HyperNode is returned as the compatibility fallback.
+If all participating callbacks return `Unconstrained`, the Framework generates the full input-subtree gradient once so preferred-only scoring still receives candidates. If no enabled callbacks are registered, the input root HyperNode is returned as the compatibility fallback. A result that sets both `Unconstrained` and non-empty `Gradients` is a contract violation and is treated as rejection.
+
+The `network-topology-aware` plugin returns an unconstrained Job result only when neither its topology policy nor existing placement narrows the search, and no total-allocatable filtering is needed. Total-allocatable checks remain in its eviction callback; allocation resource checks still run after intersection.
 
 After intersection, `rebuildGradientsByTier` sorts HyperNodes by name within a tier to keep tests and victim selection deterministic. Tier order depends on `SearchPurpose`:
 
@@ -590,7 +594,7 @@ Admission validates structure and static semantics:
 
 Admission cannot determine which scheduler action will eventually place an optional Pod. Backfill compatibility must therefore be enforced through scheduler configuration until backfill supports the same required filtering and preferred scoring semantics.
 
-At runtime, an unknown or changed tier in a required term returns a non-nil empty gradient. A preferred-tier resolution failure returns an error from `HyperNodeOrderFn`. Neither path silently ignores the term.
+At runtime, an unknown or changed tier in a required term returns a rejected gradient result. A preferred-tier resolution failure returns an error from `HyperNodeOrderFn`. Neither path silently ignores the term.
 
 ### 6.9 Scheduler Configuration
 
@@ -643,7 +647,7 @@ Validation covers API behavior, scheduling semantics, plugin composition, state 
 | Domain resolution | Named and numeric tiers; candidates below, at, or above the comparison tier; heterogeneous trees and missing ancestors; one Job occupying multiple domains |
 | PodGroup rules | Same namespace; `namespaceSelector: {}`; Namespace-label selection; self-exclusion; directional rules; required fail-closed behavior; preferred scoring; preferred-only routing; HyperNode cache readiness |
 | SubGroup rules | Single-name intra-policy spreading; multi-name cross-policy isolation; combined terms; affinity anchors; partial placement; deterministic SubJob order; dry-run rollback |
-| Plugin composition | Pass-through plus constrained; multiple constrained plugins; non-nil empty result; unexpected `nil`; no-callback root fallback; empty intersection; stable ordering; Job and SubJob gradients; exact preferred scores |
+| Plugin composition | Unconstrained plus constrained; all-unconstrained subtree fallback; multiple constrained plugins; zero-value and empty rejection; invalid result rejection; no-callback root fallback; empty intersection; stable ordering; Job and SubJob gradients; exact preferred scores |
 | Resource pre-filter | Explicit Job minimum; absent Job minimum; Pending SubJob requests; rescheduling after membership changes; idle and future-idle; existing placement bypass; missing real-Node membership; statistics |
 | Diagnostics | Job baseline plus SubJob summaries; HyperNode and Node dimensions; stable labels and tier order; PodGroup and Pod Events; status-update deduplication; log levels |
 | Placement lifecycle | Task add and delete; annotation write-back; Pipelined task with NodeName; releasing and terminal tasks; Statement rollback; restart fallback; sibling-domain occupancy |

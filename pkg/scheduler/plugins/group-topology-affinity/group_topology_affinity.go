@@ -43,8 +43,6 @@ const (
 	noAffinityTermIndex = -1
 )
 
-var emptyHyperNodeGradients = [][]*api.HyperNodeInfo{}
-
 type groupTopologyAffinityPlugin struct {
 	pluginArguments framework.Arguments
 	weight          int
@@ -67,14 +65,14 @@ func (gta *groupTopologyAffinityPlugin) Name() string {
 }
 
 func (gta *groupTopologyAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
-	ssn.AddHyperNodeGradientForJobFn(gta.Name(), func(job *api.JobInfo, hyperNode *api.HyperNodeInfo, _ api.SearchPurpose) [][]*api.HyperNodeInfo {
+	ssn.AddHyperNodeGradientForJobFn(gta.Name(), func(job *api.JobInfo, hyperNode *api.HyperNodeInfo, _ api.SearchPurpose) api.HyperNodeGradientResult {
 		return gta.hyperNodeGradientForJob(ssn, job, hyperNode)
 	})
 
-	ssn.AddHyperNodeGradientForSubJobFn(gta.Name(), func(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo, _ api.SearchPurpose) [][]*api.HyperNodeInfo {
+	ssn.AddHyperNodeGradientForSubJobFn(gta.Name(), func(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo, _ api.SearchPurpose) api.HyperNodeGradientResult {
 		job, ok := ssn.Jobs[subJob.Job]
 		if !ok {
-			return emptyHyperNodeGradients
+			return api.HyperNodeGradientResult{}
 		}
 		return gta.hyperNodeGradientForSubJob(ssn, job, subJob, hyperNode)
 	})
@@ -91,13 +89,13 @@ func (gta *groupTopologyAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 func (gta *groupTopologyAffinityPlugin) OnSessionClose(ssn *framework.Session) {}
 
 // hyperNodeGradientForJob returns HyperNode candidates for podGroupAntiAffinity.
-// Hard required terms filter candidates; jobs without hard rules return the full subtree
-// so framework intersection and HyperNodeOrderFn can evaluate preferred terms.
+// Hard required terms filter candidates; jobs without hard rules return an
+// unconstrained result unless their existing placement restricts the search root.
 func (gta *groupTopologyAffinityPlugin) hyperNodeGradientForJob(
 	ssn *framework.Session,
 	job *api.JobInfo,
 	root *api.HyperNodeInfo,
-) [][]*api.HyperNodeInfo {
+) api.HyperNodeGradientResult {
 	return gta.hyperNodeGradient(ssn, job, root, job.AllocatedHyperNode)
 }
 
@@ -106,7 +104,7 @@ func (gta *groupTopologyAffinityPlugin) hyperNodeGradientForSubJob(
 	job *api.JobInfo,
 	subJob *api.SubJobInfo,
 	root *api.HyperNodeInfo,
-) [][]*api.HyperNodeInfo {
+) api.HyperNodeGradientResult {
 	return gta.hyperNodeGradient(ssn, job, root, subJob.AllocatedHyperNode)
 }
 
@@ -115,7 +113,7 @@ func (gta *groupTopologyAffinityPlugin) hyperNodeGradient(
 	job *api.JobInfo,
 	root *api.HyperNodeInfo,
 	allocatedHyperNode string,
-) [][]*api.HyperNodeInfo {
+) api.HyperNodeGradientResult {
 	maxTier := maxHyperNodeTier(ssn.HyperNodesSetByTier)
 	hardTerms := job.RequiredPodGroupAntiAffinityTerms()
 	if len(hardTerms) > 0 {
@@ -126,37 +124,23 @@ func (gta *groupTopologyAffinityPlugin) hyperNodeGradient(
 		)
 		if err != nil {
 			klog.Errorf("build podGroup anti-affinity gradient failed, job=%s, err=%v", job.UID, err)
-			return emptyHyperNodeGradients
+			return api.HyperNodeGradientResult{}
 		}
-		return result
+		return api.HyperNodeGradientResult{Gradients: result}
 	}
 
-	klog.V(3).Infof("podGroup anti-affinity: gradient full-subtree, job=%s, rootHyperNode=%s, allocatedHyperNode=%s",
-		klog.KRef(job.Namespace, job.Name), root.Name, allocatedHyperNode)
-	result, err := gta.buildFullHyperNodeGradient(ssn, root, maxTier, allocatedHyperNode)
-	if err != nil {
-		klog.Errorf("build podGroup anti-affinity full gradient failed, job=%s, err=%v", job.UID, err)
-		return emptyHyperNodeGradients
-	}
-	return result
-}
-
-// buildFullHyperNodeGradient returns every HyperNode under the search root up to highestAllowedTier.
-// Used when hard podGroupAntiAffinity does not filter candidates; preferred terms are scored in HyperNodeOrderFn.
-func (gta *groupTopologyAffinityPlugin) buildFullHyperNodeGradient(
-	ssn *framework.Session,
-	root *api.HyperNodeInfo,
-	highestAllowedTier int,
-	allocatedHyperNode string,
-) ([][]*api.HyperNodeInfo, error) {
 	searchRoot, err := getSearchRootForGradient(
-		ssn.HyperNodes, root, highestAllowedTier, allocatedHyperNode,
+		ssn.HyperNodes, root, maxTier, allocatedHyperNode,
 	)
 	if err != nil {
-		return nil, err
+		klog.ErrorS(err, "Resolve podGroup anti-affinity search root failed", "job", job.UID)
+		return api.HyperNodeGradientResult{}
 	}
-	eligibleHyperNodes := gta.bfsEligibleHyperNodesUnderRoot(ssn, searchRoot, highestAllowedTier)
-	return groupHyperNodesByTierAsc(eligibleHyperNodes), nil
+	if searchRoot.Name == root.Name {
+		return api.HyperNodeGradientResult{Unconstrained: true}
+	}
+	eligibleHyperNodes := gta.bfsEligibleHyperNodesUnderRoot(ssn, searchRoot, maxTier)
+	return api.HyperNodeGradientResult{Gradients: groupHyperNodesByTierAsc(eligibleHyperNodes)}
 }
 
 func (gta *groupTopologyAffinityPlugin) bfsEligibleHyperNodesUnderRoot(

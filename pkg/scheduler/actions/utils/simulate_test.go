@@ -42,12 +42,12 @@ func (p *antiAffinitySimulationGradientPlugin) Name() string {
 }
 
 func (p *antiAffinitySimulationGradientPlugin) OnSessionOpen(ssn *framework.Session) {
-	ssn.AddHyperNodeGradientForSubJobFn(p.Name(), func(*api.SubJobInfo, *api.HyperNodeInfo, api.SearchPurpose) [][]*api.HyperNodeInfo {
+	ssn.AddHyperNodeGradientForSubJobFn(p.Name(), func(*api.SubJobInfo, *api.HyperNodeInfo, api.SearchPurpose) api.HyperNodeGradientResult {
 		allowed := ssn.HyperNodes["hn-allowed"]
 		if allowed == nil {
-			return nil
+			return api.HyperNodeGradientResult{}
 		}
-		return [][]*api.HyperNodeInfo{{allowed}}
+		return api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{allowed}}}
 	})
 }
 

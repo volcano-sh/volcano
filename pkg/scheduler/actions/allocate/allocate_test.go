@@ -6021,8 +6021,8 @@ func TestAllocateFromNomination_HardPodGroupAntiAffinityRejectsStaleDomain(t *te
 			}},
 		},
 	}
-	env.ssn.AddHyperNodeGradientForJobFn(dryRunTestPlugin, func(*api.JobInfo, *api.HyperNodeInfo, api.SearchPurpose) [][]*api.HyperNodeInfo {
-		return [][]*api.HyperNodeInfo{{env.ssn.HyperNodes["sn-b"]}}
+	env.ssn.AddHyperNodeGradientForJobFn(dryRunTestPlugin, func(*api.JobInfo, *api.HyperNodeInfo, api.SearchPurpose) api.HyperNodeGradientResult {
+		return api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{env.ssn.HyperNodes["sn-b"]}}}
 	})
 
 	task := env.job.Tasks[api.TaskID("p1")]

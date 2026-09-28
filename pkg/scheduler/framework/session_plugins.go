@@ -1142,18 +1142,13 @@ func (ssn *Session) HyperNodeGradientForJobFn(job *api.JobInfo, hyperNode *api.H
 			if !found {
 				continue
 			}
-			gradients := fn(job, hyperNode, purpose)
-			if gradients == nil {
-				klog.ErrorS(nil, "HyperNode gradient callback returned nil; treating as rejected", "plugin", plugin.Name, "purpose", purpose)
-				gradients = [][]*api.HyperNodeInfo{}
-			}
-			gradientByPlugin = append(gradientByPlugin, api.HyperNodePluginGradient{PluginName: plugin.Name, Gradients: gradients})
+			result := fn(job, hyperNode, purpose)
+			gradientByPlugin = append(gradientByPlugin, api.HyperNodePluginGradient{
+				PluginName: plugin.Name, Unconstrained: result.Unconstrained, Gradients: result.Gradients,
+			})
 		}
 	}
-	if len(gradientByPlugin) == 0 {
-		return [][]*api.HyperNodeInfo{{hyperNode}}, nil
-	}
-	return intersectHyperNodeGradients(gradientByPlugin, purpose)
+	return ssn.resolveHyperNodeGradients(gradientByPlugin, hyperNode, purpose)
 }
 
 // HyperNodeGradientForSubJobFn intersects gradients from every enabled registered plugin.
@@ -1168,18 +1163,62 @@ func (ssn *Session) HyperNodeGradientForSubJobFn(subJob *api.SubJobInfo, hyperNo
 			if !found {
 				continue
 			}
-			gradients := fn(subJob, hyperNode, purpose)
-			if gradients == nil {
-				klog.ErrorS(nil, "HyperNode gradient callback returned nil; treating as rejected", "plugin", plugin.Name, "purpose", purpose)
-				gradients = [][]*api.HyperNodeInfo{}
-			}
-			gradientByPlugin = append(gradientByPlugin, api.HyperNodePluginGradient{PluginName: plugin.Name, Gradients: gradients})
+			result := fn(subJob, hyperNode, purpose)
+			gradientByPlugin = append(gradientByPlugin, api.HyperNodePluginGradient{
+				PluginName: plugin.Name, Unconstrained: result.Unconstrained, Gradients: result.Gradients,
+			})
 		}
 	}
+	return ssn.resolveHyperNodeGradients(gradientByPlugin, hyperNode, purpose)
+}
+
+// resolveHyperNodeGradients distinguishes absent callbacks, unconstrained results,
+// and constrained results (including rejection). Only constrained plugins
+// participate in intersection and exclusion diagnostics.
+func (ssn *Session) resolveHyperNodeGradients(gradientByPlugin []api.HyperNodePluginGradient, root *api.HyperNodeInfo, purpose api.SearchPurpose) ([][]*api.HyperNodeInfo, *api.HyperNodeGradientStats) {
 	if len(gradientByPlugin) == 0 {
-		return [][]*api.HyperNodeInfo{{hyperNode}}, nil
+		return [][]*api.HyperNodeInfo{{root}}, nil
 	}
-	return intersectHyperNodeGradients(gradientByPlugin, purpose)
+	constrained := gradientByPlugin[:0]
+	for _, result := range gradientByPlugin {
+		if result.Unconstrained {
+			if len(result.Gradients) == 0 {
+				continue
+			}
+			klog.ErrorS(nil, "Unconstrained HyperNode gradient contains candidates; treating as rejected", "plugin", result.PluginName, "purpose", purpose)
+			result.Unconstrained = false
+			result.Gradients = nil
+		}
+		constrained = append(constrained, result)
+	}
+	if len(constrained) > 0 {
+		return intersectHyperNodeGradients(constrained, purpose)
+	}
+
+	// All callbacks permit the input subtree. Expand it once so preferred rules
+	// can still score candidates even when no plugin supplies a concrete gradient.
+	hyperNodeByName := make(map[string]*api.HyperNodeInfo)
+	eligible := sets.New[string]()
+	queue := []*api.HyperNodeInfo{root}
+	for len(queue) > 0 {
+		hn := queue[0]
+		queue = queue[1:]
+		if hn == nil || eligible.Has(hn.Name) {
+			continue
+		}
+		eligible.Insert(hn.Name)
+		hyperNodeByName[hn.Name] = hn
+		for child := range hn.Children {
+			if childHN := ssn.HyperNodes[child]; childHN != nil {
+				queue = append(queue, childHN)
+			}
+		}
+	}
+	gradients := rebuildGradientsByTier(hyperNodeByName, eligible, purpose)
+	return gradients, &api.HyperNodeGradientStats{
+		PluginEligibleByTier: map[string]map[int]int{},
+		IntersectedByTier:    hyperNodeCountByTier(gradients),
+	}
 }
 
 func hyperNodeCountByTier(gradients [][]*api.HyperNodeInfo) map[int]int {
@@ -1211,12 +1250,10 @@ func intersectHyperNodeGradients(gradientByPlugin []api.HyperNodePluginGradient,
 	}
 
 	hyperNodeByName := make(map[string]*api.HyperNodeInfo, eligible.Len())
-	for _, pluginGradient := range gradientByPlugin {
-		for _, layer := range pluginGradient.Gradients {
-			for _, hn := range layer {
-				if hn != nil && eligible.Has(hn.Name) {
-					hyperNodeByName[hn.Name] = hn
-				}
+	for _, layer := range gradientByPlugin[0].Gradients {
+		for _, hn := range layer {
+			if hn != nil && eligible.Has(hn.Name) {
+				hyperNodeByName[hn.Name] = hn
 			}
 		}
 	}

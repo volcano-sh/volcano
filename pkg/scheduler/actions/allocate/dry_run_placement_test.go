@@ -455,8 +455,8 @@ func newDryRunPlacementEnv(t *testing.T, opts dryRunEnvOptions) *dryRunPlacement
 				gradientLayers[i] = append(gradientLayers[i], ssn.HyperNodes[name])
 			}
 		}
-		ssn.AddHyperNodeGradientForSubJobFn(dryRunTestPlugin, func(_ *api.SubJobInfo, _ *api.HyperNodeInfo, _ api.SearchPurpose) [][]*api.HyperNodeInfo {
-			return gradientLayers
+		ssn.AddHyperNodeGradientForSubJobFn(dryRunTestPlugin, func(_ *api.SubJobInfo, _ *api.HyperNodeInfo, _ api.SearchPurpose) api.HyperNodeGradientResult {
+			return api.HyperNodeGradientResult{Gradients: gradientLayers}
 		})
 	}
 

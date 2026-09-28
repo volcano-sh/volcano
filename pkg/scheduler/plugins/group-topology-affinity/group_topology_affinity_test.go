@@ -26,7 +26,10 @@ import (
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 const testGroupLabel = "topology.volcano.sh/group"
@@ -69,28 +72,28 @@ func TestHyperNodeGradientForPodGroupAntiAffinity(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		hn             api.HyperNodeInfoMap
-		setByTier      map[int]sets.Set[string]
-		jobs           map[api.JobID]*api.JobInfo
-		selfJob        *api.JobInfo
-		root           string
-		wantEmpty      bool
-		wantHyperNodes []string
-		wantTierOrder  []int
+		name              string
+		hn                api.HyperNodeInfoMap
+		setByTier         map[int]sets.Set[string]
+		jobs              map[api.JobID]*api.JobInfo
+		selfJob           *api.JobInfo
+		root              string
+		wantEmpty         bool
+		wantUnconstrained bool
+		wantHyperNodes    []string
+		wantTierOrder     []int
 	}{
 		{
-			name:           "no podGroupAntiAffinity passes through full subtree",
-			hn:             buildTwoSupernodeTree(),
-			setByTier:      twoSupernodeSetByTier(),
-			jobs:           map[api.JobID]*api.JobInfo{},
-			selfJob:        jobWithTopologyAffinity(nil, nil),
-			root:           "root",
-			wantHyperNodes: []string{"sn-a", "sn-b", "root"},
-			wantTierOrder:  []int{2, 3},
+			name:              "no podGroupAntiAffinity is unconstrained",
+			hn:                buildTwoSupernodeTree(),
+			setByTier:         twoSupernodeSetByTier(),
+			jobs:              map[api.JobID]*api.JobInfo{},
+			selfJob:           jobWithTopologyAffinity(nil, nil),
+			root:              "root",
+			wantUnconstrained: true,
 		},
 		{
-			name:      "preferred only returns full subtree for hyperNode order",
+			name:      "preferred only is unconstrained",
 			hn:        buildTwoSupernodeTree(),
 			setByTier: twoSupernodeSetByTier(),
 			jobs:      map[api.JobID]*api.JobInfo{},
@@ -101,9 +104,8 @@ func TestHyperNodeGradientForPodGroupAntiAffinity(t *testing.T) {
 					Weight:           50,
 				},
 			}),
-			root:           "root",
-			wantHyperNodes: []string{"sn-a", "sn-b", "root"},
-			wantTierOrder:  []int{2, 3},
+			root:              "root",
+			wantUnconstrained: true,
 		},
 		{
 			name:           "matching PodGroup on sn-a leaves sn-b",
@@ -114,6 +116,30 @@ func TestHyperNodeGradientForPodGroupAntiAffinity(t *testing.T) {
 			root:           "root",
 			wantHyperNodes: []string{"sn-b"},
 			wantTierOrder:  []int{2},
+		},
+		{
+			name:      "unconstrained rules retain compatible placement",
+			hn:        buildTwoSupernodeTree(),
+			setByTier: twoSupernodeSetByTier(),
+			selfJob: func() *api.JobInfo {
+				job := jobWithTopologyAffinity(nil, nil)
+				job.AllocatedHyperNode = "sn-a"
+				return job
+			}(),
+			root:              "sn-a",
+			wantUnconstrained: true,
+		},
+		{
+			name:      "unconstrained rules do not bypass invalid placement",
+			hn:        buildTwoSupernodeTree(),
+			setByTier: twoSupernodeSetByTier(),
+			selfJob: func() *api.JobInfo {
+				job := jobWithTopologyAffinity(nil, nil)
+				job.AllocatedHyperNode = "missing"
+				return job
+			}(),
+			root:      "root",
+			wantEmpty: true,
 		},
 		{
 			name:           "no matching PodGroup label keeps both supernodes",
@@ -271,7 +297,11 @@ func TestHyperNodeGradientForPodGroupAntiAffinity(t *testing.T) {
 			}
 			plugin := New(framework.Arguments{}).(*groupTopologyAffinityPlugin)
 
-			gradients := plugin.hyperNodeGradientForJob(ssn, tt.selfJob, tt.hn[tt.root])
+			result := plugin.hyperNodeGradientForJob(ssn, tt.selfJob, tt.hn[tt.root])
+			if result.Unconstrained != tt.wantUnconstrained {
+				t.Fatalf("unconstrained: want %v, got %v", tt.wantUnconstrained, result.Unconstrained)
+			}
+			gradients := result.Gradients
 			if tt.wantEmpty {
 				if len(gradients) != 0 {
 					t.Fatalf("expected empty gradient, got %#v", gradients)
@@ -319,10 +349,59 @@ func TestHyperNodeGradientForSubJobPreferredOnly(t *testing.T) {
 	}
 	plugin := New(framework.Arguments{}).(*groupTopologyAffinityPlugin)
 
-	gradients := plugin.hyperNodeGradientForSubJob(ssn, selfJob, subJob, hn["root"])
-	gotNames := hyperNodeNamesFromGradients(gradients)
-	if !sets.New("sn-a", "sn-b", "root").Equal(sets.New(gotNames...)) {
-		t.Fatalf("eligible hyperNodes mismatch: got %v", gotNames)
+	result := plugin.hyperNodeGradientForSubJob(ssn, selfJob, subJob, hn["root"])
+	if !result.Unconstrained || len(result.Gradients) != 0 {
+		t.Fatalf("expected an unconstrained result without materialized gradients, got %+v", result)
+	}
+}
+
+func TestPreferredOnlyUsesFrameworkCandidates(t *testing.T) {
+	schedulerCache := cache.NewCustomMockSchedulerCache("gradient-test", util.NewFakeBinder(0), util.NewFakeEvictor(0), &util.FakeStatusUpdater{}, nil, nil)
+	ssn := framework.OpenSession(schedulerCache, nil, nil)
+	defer framework.CloseSession(ssn)
+	ssn.HyperNodes = buildTwoSupernodeTree()
+	ssn.HyperNodesSetByTier = twoSupernodeSetByTier()
+	ssn.HyperNodeTierNameMap = defaultTierNameMap()
+	ssn.RealNodesSet = defaultRealNodesSet()
+	job := jobWithTopologyAffinity(nil, []scheduling.PodGroupAffinityTerm{{
+		PodGroupSelector: &metav1.LabelSelector{MatchLabels: map[string]string{testGroupLabel: "prod"}},
+		TopologyTierName: "supernode",
+		Weight:           50,
+	}})
+	ssn.Jobs = map[api.JobID]*api.JobInfo{job.UID: job, "peer": otherJobOn("peer", "sn-a", "prod")}
+	enabled := true
+	ssn.Tiers = []conf.Tier{{Plugins: []conf.PluginOption{{Name: PluginName, EnabledHyperNodeGradient: &enabled, EnabledHyperNodeOrder: &enabled}}}}
+	plugin := New(framework.Arguments{})
+	plugin.OnSessionOpen(ssn)
+	for _, subJobCallback := range []bool{false, true} {
+		t.Run(fmt.Sprintf("subJob=%t", subJobCallback), func(t *testing.T) {
+			subJob := &api.SubJobInfo{UID: "subjob", Job: job.UID}
+			var gradients [][]*api.HyperNodeInfo
+			var stats *api.HyperNodeGradientStats
+			if subJobCallback {
+				gradients, stats = ssn.HyperNodeGradientForSubJobFn(subJob, ssn.HyperNodes["root"], api.PurposeAllocate)
+			} else {
+				gradients, stats = ssn.HyperNodeGradientForJobFn(job, ssn.HyperNodes["root"], api.PurposeAllocate)
+			}
+			if !sets.New("sn-a", "sn-b", "root").Equal(api.HyperNodeNamesInGradients(gradients)) {
+				t.Fatalf("preferred-only scheduling lost candidates: %v", hyperNodeNamesFromGradients(gradients))
+			}
+			if stats == nil || len(stats.PluginEligibleByTier) != 0 || len(stats.ExcludedByReason) != 0 {
+				t.Fatalf("unconstrained plugin must not be recorded as filtering candidates: %+v", stats)
+			}
+			candidates := map[string][]*api.NodeInfo{}
+			for _, hn := range gradients[0] {
+				candidates[hn.Name] = nil
+			}
+			pluginScores, err := ssn.HyperNodeOrderMapFn(subJob, candidates)
+			if err != nil {
+				t.Fatal(err)
+			}
+			scores := pluginScores[PluginName]
+			if scores["sn-a"] != 0.5*float64(fwk.MaxNodeScore) || scores["sn-b"] != float64(fwk.MaxNodeScore) {
+				t.Fatalf("preferred scores changed: %v", scores)
+			}
+		})
 	}
 }
 
