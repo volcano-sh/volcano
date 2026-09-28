@@ -41,10 +41,24 @@ func NewSchedulingQueue(ctx context.Context, schedulerName string, informerFacto
 	if err != nil {
 		return nil, fmt.Errorf("initialize SchedulingGates: %w", err)
 	}
-	events, err := plugin.(fwk.EnqueueExtensions).EventsToRegister(ctx)
+	gates := plugin.(*schedulinggates.SchedulingGates)
+	events, err := gates.EventsToRegister(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("register SchedulingGates events: %w", err)
 	}
+	opts = append(opts,
+		k8sschedulingqueue.WithPreEnqueuePluginMap(map[string]map[string]fwk.PreEnqueuePlugin{
+			schedulerName: {gates.Name(): gates},
+		}),
+		k8sschedulingqueue.WithQueueingHintMapPerProfile(k8sschedulingqueue.QueueingHintMapPerProfile{
+			schedulerName: buildQueueingHintMap(gates.Name(), events),
+		}),
+	)
+	return k8sschedulingqueue.NewSchedulingQueue(Less, informerFactory, opts...), nil
+}
+
+// buildQueueingHintMap preserves the default wildcard hint and adds named plugin events.
+func buildQueueingHintMap(pluginName string, events []fwk.ClusterEventWithHint) k8sschedulingqueue.QueueingHintMap {
 	hints := k8sschedulingqueue.QueueingHintMap{
 		{Resource: fwk.WildCard, ActionType: fwk.All}: {
 			{QueueingHintFn: func(_ klog.Logger, _ *v1.Pod, _, _ interface{}) (fwk.QueueingHint, error) {
@@ -54,17 +68,9 @@ func NewSchedulingQueue(ctx context.Context, schedulerName string, informerFacto
 	}
 	for _, event := range events {
 		hints[event.Event] = append(hints[event.Event], &k8sschedulingqueue.QueueingHintFunction{
-			PluginName:     plugin.Name(),
+			PluginName:     pluginName,
 			QueueingHintFn: event.QueueingHintFn,
 		})
 	}
-	opts = append(opts,
-		k8sschedulingqueue.WithPreEnqueuePluginMap(map[string]map[string]fwk.PreEnqueuePlugin{
-			schedulerName: {plugin.Name(): plugin.(fwk.PreEnqueuePlugin)},
-		}),
-		k8sschedulingqueue.WithQueueingHintMapPerProfile(k8sschedulingqueue.QueueingHintMapPerProfile{
-			schedulerName: hints,
-		}),
-	)
-	return k8sschedulingqueue.NewSchedulingQueue(Less, informerFactory, opts...), nil
+	return hints
 }

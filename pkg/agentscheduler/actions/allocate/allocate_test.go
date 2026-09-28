@@ -252,34 +252,19 @@ func TestSchedulingGateRemoval(t *testing.T) {
 	if len(queue.PodsInActiveQ()) != 1 {
 		t.Fatal("removing the final gate did not activate the pod")
 	}
-	// Bound the wait so a regression that loses the pod update cannot hang the test.
-	popped := make(chan *agentapi.SchedulingContext, 1)
-	go func() {
-		next, popErr := queue.Pop(logger)
-		if popErr != nil {
-			popped <- nil
-			return
-		}
-		popped <- &agentapi.SchedulingContext{Task: task, QueuedPodInfo: next}
-	}()
-	var ctx *agentapi.SchedulingContext
-	select {
-	case ctx = <-popped:
-		if ctx == nil {
-			t.Fatal("queue closed before the released pod was popped")
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("gate removal did not requeue the pod")
+	info, err := queue.Pop(logger)
+	if err != nil {
+		t.Fatal(err)
 	}
 	defer queue.Done(updated.UID)
-	if ctx.QueuedPodInfo.Pod.UID != pod.UID {
+	if info.Pod.UID != pod.UID {
 		t.Fatal("expected the original pod after gate removal")
 	}
 	fwk := tf.Frameworks[0]
 	if err := fwk.Cache.UpdateSnapshot(fwk.GetSnapshot()); err != nil {
 		t.Fatal(err)
 	}
-	action.Execute(fwk, ctx)
+	action.Execute(fwk, &agentapi.SchedulingContext{Task: task, QueuedPodInfo: info})
 	select {
 	case result := <-tf.MockCache.ConflictAwareBinder.BindCheckChannel:
 		if result == nil || len(result.SuggestedNodes) == 0 {
