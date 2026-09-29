@@ -116,6 +116,11 @@ type Session struct {
 	RealNodesSet              map[string]sets.Set[string]
 	HyperNodesReadyToSchedule bool
 	HyperNodeGeneration       uint64
+	// PodGroupPlacementEnabled opts ordinary peer Jobs into topology tracking
+	// only while an enabled group plugin needs their placement.
+	PodGroupPlacementEnabled bool
+	hyperNodeIndex           *api.HyperNodeIndex
+	hyperNodeIndexGeneration uint64
 
 	plugins             map[string]Plugin
 	eventHandlers       []*EventHandler
@@ -158,6 +163,7 @@ type Session struct {
 	subJobOrderFns                map[string]api.CompareFn
 	hyperNodeGradientForJobFns    map[string]api.HyperNodeGradientForJobFn
 	hyperNodeGradientForSubJobFns map[string]api.HyperNodeGradientForSubJobFn
+	hyperNodeCandidateFns         map[string]api.HyperNodeCandidateFn
 
 	// cycleStatesMap is used to temporarily store the scheduling status of each pod, its life cycle is same as Session.
 	// Because state needs to be passed between different extension points (not only used in PreFilter and Filter),
@@ -282,7 +288,9 @@ func openSession(schedulerCache cache.Cache, unschedulableJobCache unschedulable
 
 	if ssn.HyperNodesReadyToSchedule {
 		for _, job := range ssn.Jobs {
-			ssn.refreshAllocatedHyperNode(job)
+			if job.ContainsNetworkTopology() {
+				ssn.refreshAllocatedHyperNode(job)
+			}
 		}
 	}
 
@@ -341,109 +349,71 @@ func (ssn *Session) addClusterTopHyperNode(nodes []*api.NodeInfo) {
 	}
 }
 
-// removeInvalidAllocatedHyperNode removes the non-existent allocated hyperNode for job and subJobs in the job.
-// The allocated hyperNode will also be removed if there is no allocated task in the job or subJob.
-func (ssn *Session) removeInvalidAllocatedHyperNode(job *api.JobInfo, hyperNodes api.HyperNodeInfoMap) {
-	// remove job AllocatedHyperNode if invalid
-	if job.AllocatedHyperNode != "" {
-		remove := false
-		var reason string
-		if _, found := hyperNodes[job.AllocatedHyperNode]; !found {
-			remove = true
-			reason = "allocated hyperNode not exist"
-		}
-		if !job.HasTopologyDomainTasks() {
-			remove = true
-			reason = "there is no allocated task in the job"
-		}
-		if remove {
-			job.AllocatedHyperNode = ""
-			ssn.MarkJobDirty(job.UID)
-			klog.V(3).InfoS("remove allocated hyperNode for job", "job", job.UID, "AllocatedHyperNode", job.AllocatedHyperNode, "reason", reason)
-		}
+// HyperNodeIndex lazily builds the reverse topology index. Ordinary scheduling
+// without topology consumers does not pay for constructing or querying it.
+func (ssn *Session) HyperNodeIndex() *api.HyperNodeIndex {
+	if ssn.hyperNodeIndex == nil || ssn.hyperNodeIndexGeneration != ssn.HyperNodeGeneration {
+		ssn.hyperNodeIndex = api.NewHyperNodeIndex(ssn.HyperNodes, ssn.RealNodesSet)
+		ssn.hyperNodeIndexGeneration = ssn.HyperNodeGeneration
 	}
-
-	// remove subJob AllocatedHyperNode if invalid
-	for _, subJob := range job.SubJobs {
-		if subJob.AllocatedHyperNode != "" {
-			remove := false
-			var reason string
-			if _, found := hyperNodes[subJob.AllocatedHyperNode]; !found {
-				remove = true
-				reason = "allocated hyperNode not exist"
-			}
-			if !subJob.HasTopologyDomainTasks() {
-				remove = true
-				reason = "there is no allocated task in the subJob"
-			}
-			if remove {
-				subJob.AllocatedHyperNode = ""
-				ssn.MarkJobDirty(subJob.Job)
-				klog.V(3).InfoS("remove allocated hyperNode for subJob", "subJob", subJob.UID, "AllocatedHyperNode", subJob.AllocatedHyperNode, "reason", reason)
-			}
-		}
-	}
+	return ssn.hyperNodeIndex
 }
 
-// recoverAllocatedHyperNode recover the allocated hyperNode for the job and subJobs in the job with empty AllocatedHyperNode field.
-// When the scheduler reboot, the allocated hyperNode of job will be lost.
-// We recover this information through the nodes that tasks are running on.
-func (ssn *Session) recoverAllocatedHyperNode(job *api.JobInfo, hyperNodes api.HyperNodeInfoMap, nodesByHyperNode map[string]sets.Set[string]) {
-	subJobUpdated := false
-	for _, subJob := range job.SubJobs {
-		if subJob.AllocatedHyperNode != "" || !subJob.HasTopologyDomainTasks() {
-			continue
-		}
-		minimumHyperNode := api.ComputeSubJobAllocatedHyperNode(subJob, hyperNodes, nodesByHyperNode)
-		if minimumHyperNode == "" {
-			continue
-		}
-		subJobUpdated = true
-		subJob.AllocatedHyperNode = minimumHyperNode
-		ssn.MarkJobDirty(subJob.Job)
-		klog.V(3).InfoS("Update subJob allocated HyperNode", "subJob", subJob.UID, "allocatedHyperNode", minimumHyperNode)
+// EnablePodGroupPlacement lets a group topology plugin observe ordinary peer
+// Jobs. Reconcile the snapshot before registering callbacks that consume it.
+func (ssn *Session) EnablePodGroupPlacement(pluginName string) {
+	if ssn.PodGroupPlacementEnabled || !ssn.HyperNodesReadyToSchedule {
+		return
 	}
-
-	if job.AllocatedHyperNode == "" || subJobUpdated {
-		jobHyperNode := api.ComputeJobAllocatedHyperNode(job, hyperNodes, nodesByHyperNode)
-		if jobHyperNode != "" && job.AllocatedHyperNode != jobHyperNode {
-			job.AllocatedHyperNode = jobHyperNode
-			ssn.MarkJobDirty(job.UID)
-			klog.V(3).InfoS("Update job allocated HyperNode", "job", job.UID, "allocatedHyperNode", jobHyperNode)
+	enabled := false
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if plugin.Name == pluginName && (isEnabled(plugin.EnabledHyperNodeGradient) || isEnabled(plugin.EnabledHyperNodeOrder)) {
+				enabled = true
+			}
+		}
+	}
+	if !enabled {
+		return
+	}
+	for _, job := range ssn.Jobs {
+		if job.ContainsHardPodGroupAntiAffinity() || job.HasPreferredPodGroupAntiAffinity() {
+			ssn.PodGroupPlacementEnabled = true
+			break
+		}
+	}
+	if ssn.PodGroupPlacementEnabled {
+		for _, job := range ssn.Jobs {
+			ssn.refreshAllocatedHyperNode(job)
 		}
 	}
 }
 
 func (ssn *Session) refreshAllocatedHyperNode(job *api.JobInfo) {
-	if job.AllocatedHyperNodeGeneration != ssn.HyperNodeGeneration {
-		if ssn.reconcileAllocatedHyperNode(job, ssn.HyperNodes, ssn.RealNodesSet) {
-			job.AllocatedHyperNodeGeneration = ssn.HyperNodeGeneration
-			// Persist the internal generation even when the placement itself did
-			// not change, so subsequent sessions stay on the cheap path.
-			ssn.MarkJobDirty(job.UID)
-		}
+	if !job.AllocatedHyperNodeDirty && job.AllocatedHyperNodeGeneration == ssn.HyperNodeGeneration && job.AllocatedTaskPlacementGeneration == job.TaskPlacementGeneration {
 		return
 	}
-
-	ssn.removeInvalidAllocatedHyperNode(job, ssn.HyperNodes)
-	ssn.recoverAllocatedHyperNode(job, ssn.HyperNodes, ssn.RealNodesSet)
+	if ssn.reconcileAllocatedHyperNode(job) {
+		job.AllocatedHyperNodeDirty = false
+		job.AllocatedHyperNodeGeneration = ssn.HyperNodeGeneration
+		job.AllocatedTaskPlacementGeneration = job.TaskPlacementGeneration
+		// Persist the internal generation even when the placement itself did
+		// not change, so subsequent sessions stay on the cheap path.
+		ssn.MarkJobDirty(job.UID)
+	}
 }
 
 // reconcileAllocatedHyperNode refreshes persisted Job/SubJob placement from the
-// tasks' actual nodes after the effective HyperNode topology changes. It returns
+// tasks' actual nodes after task placement or the HyperNode topology changes. It returns
 // false when a placed task cannot yet be mapped into the current topology; in
 // that case the old placement and generation are retained so a later session can
 // retry without temporarily widening the scheduling domain.
-func (ssn *Session) reconcileAllocatedHyperNode(
-	job *api.JobInfo,
-	hyperNodes api.HyperNodeInfoMap,
-	nodesByHyperNode map[string]sets.Set[string],
-) bool {
+func (ssn *Session) reconcileAllocatedHyperNode(job *api.JobInfo) bool {
 	complete := true
 	for _, subJob := range job.SubJobs {
 		expected := ""
 		if subJob.HasTopologyDomainTasks() {
-			expected = api.ComputeSubJobAllocatedHyperNode(subJob, hyperNodes, nodesByHyperNode)
+			expected = ssn.HyperNodeIndex().SubJobAllocatedHyperNode(subJob)
 			if expected == "" {
 				complete = false
 				klog.V(3).InfoS("Defer reconciling subJob allocated HyperNode because task placement cannot be mapped to current topology",
@@ -472,7 +442,7 @@ func (ssn *Session) reconcileAllocatedHyperNode(
 
 	expected := ""
 	if job.HasTopologyDomainTasks() {
-		expected = api.ComputeJobAllocatedHyperNode(job, hyperNodes, nodesByHyperNode)
+		expected = ssn.HyperNodeIndex().JobAllocatedHyperNode(job)
 		if expected == "" {
 			klog.V(3).InfoS("Defer reconciling job allocated HyperNode because task placement cannot be mapped to current topology",
 				"job", job.UID, "allocatedHyperNode", job.AllocatedHyperNode,

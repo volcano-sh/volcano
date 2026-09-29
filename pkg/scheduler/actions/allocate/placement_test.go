@@ -41,6 +41,7 @@ func TestCaptureRestoreHyperNodePlacement(t *testing.T) {
 	placement := captureHyperNodePlacement(job, subJob)
 
 	job.AllocatedHyperNode = "sn-a"
+	job.AllocatedHyperNodeDirty = true
 	subJob.AllocatedHyperNode = "sn-a"
 	restoreHyperNodePlacement(job, subJob, placement)
 
@@ -49,6 +50,17 @@ func TestCaptureRestoreHyperNodePlacement(t *testing.T) {
 	}
 	if subJob.AllocatedHyperNode != "" {
 		t.Fatalf("subJob AllocatedHyperNode = %q, want empty", subJob.AllocatedHyperNode)
+	}
+	if job.AllocatedHyperNodeDirty {
+		t.Fatal("restoring a dry-run must also restore placement validity")
+	}
+
+	job.AllocatedHyperNodeDirty = true
+	placement = captureHyperNodePlacement(job, subJob)
+	job.AllocatedHyperNodeDirty = false
+	restoreHyperNodePlacement(job, subJob, placement)
+	if !job.AllocatedHyperNodeDirty {
+		t.Fatal("restoring a dry-run must not clear an earlier invalidation")
 	}
 }
 
@@ -61,6 +73,7 @@ func TestUpdateJobAllocatedHyperNodeFromSubJob(t *testing.T) {
 	ssn := &framework.Session{
 		HyperNodes:                hn,
 		HyperNodesReadyToSchedule: true,
+		PodGroupPlacementEnabled:  true,
 		DirtyJobs:                 sets.New[api.JobID](),
 	}
 	job := &api.JobInfo{UID: "job-1", AllocatedHyperNode: "sn-a"}
@@ -69,6 +82,17 @@ func TestUpdateJobAllocatedHyperNodeFromSubJob(t *testing.T) {
 	updateJobAllocatedHyperNodeFromSubJob(ssn, job, subJob, "sn-b")
 	if job.AllocatedHyperNode != "root" {
 		t.Fatalf("job AllocatedHyperNode = %q, want root", job.AllocatedHyperNode)
+	}
+	if !job.AllocatedHyperNodeDirty || !ssn.DirtyJobs.Has(job.UID) {
+		t.Fatal("session placement must be invalidated and written back")
+	}
+
+	// A SubJob may move even when the Job's LCA remains the root.
+	job.AllocatedHyperNodeDirty = false
+	ssn.DirtyJobs.Delete(job.UID)
+	updateJobAllocatedHyperNodeFromSubJob(ssn, job, subJob, "sn-a")
+	if !job.AllocatedHyperNodeDirty || !ssn.DirtyJobs.Has(job.UID) {
+		t.Fatal("an unchanged Job LCA must not hide changed SubJob placement")
 	}
 }
 

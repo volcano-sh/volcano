@@ -247,8 +247,8 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 	job := sc.getOrCreateJob(pi)
 	if job != nil {
 		job.AddTaskInfo(pi)
-		if schedulingapi.AllocatedStatus(pi.Status) || (pi.Status == schedulingapi.Pipelined && pi.NodeName != "") {
-			sc.syncJobAllocatedHyperNode(job)
+		if pi.OccupiesTopologyDomain() {
+			job.TaskPlacementGeneration++
 		}
 	}
 
@@ -366,6 +366,14 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 		return nil
 	}
 
+	oldTask := schedulingapi.NewTaskInfo(oldPod)
+	var placementGeneration uint64
+	if job := sc.Jobs[oldTask.Job]; job != nil {
+		placementGeneration = job.TaskPlacementGeneration
+		if cached := job.Tasks[oldTask.UID]; cached != nil {
+			oldTask = cached
+		}
+	}
 	if err := sc.deletePod(oldPod); err != nil {
 		return err
 	}
@@ -373,7 +381,19 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 	if len(utils.GetController(newPod)) == 0 {
 		newPod.OwnerReferences = oldPod.OwnerReferences
 	}
-	return sc.addPod(newPod)
+	if err := sc.addPod(newPod); err != nil {
+		return err
+	}
+	newTask := schedulingapi.NewTaskInfo(newPod)
+	if job := sc.Jobs[newTask.Job]; job != nil && oldTask.Job == newTask.Job && oldTask.UID == newTask.UID {
+		// delete/add is an implementation detail of a Pod update. Coalesce it
+		// when neither occupied Node nor SubJob membership can have changed.
+		if oldTask.NodeName == newTask.NodeName && oldTask.OccupiesTopologyDomain() == newTask.OccupiesTopologyDomain() &&
+			oldTask.TaskRole == newTask.TaskRole && reflect.DeepEqual(oldTask.Pod.Labels, newPod.Labels) {
+			job.TaskPlacementGeneration = placementGeneration
+		}
+	}
+	return nil
 }
 
 func (sc *SchedulerCache) clearUnassignedNumaTask(ti *schedulingapi.TaskInfo) {
@@ -393,7 +413,9 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 	if len(ti.Job) != 0 {
 		if job, found := sc.Jobs[ti.Job]; found {
 			job.DeleteTaskInfo(ti)
-			sc.syncJobAllocatedHyperNode(job)
+			if ti.OccupiesTopologyDomain() {
+				job.TaskPlacementGeneration++
+			}
 		} else {
 			klog.Warningf("Failed to find Job <%v> for Task <%v/%v> in cache.", ti.Job, ti.Namespace, ti.Name)
 		}
@@ -1685,24 +1707,6 @@ func (sc *SchedulerCache) updateHyperNode(hn *topologyv1alpha1.HyperNode) error 
 // It clears current hyperNode and update ancestors' cache.
 func (sc *SchedulerCache) deleteHyperNode(name string) error {
 	return sc.HyperNodesInfo.DeleteHyperNode(name)
-}
-
-func (sc *SchedulerCache) syncJobAllocatedHyperNode(job *schedulingapi.JobInfo) {
-	if job == nil || sc.HyperNodesInfo == nil {
-		return
-	}
-
-	sc.HyperNodesInfo.Lock()
-	hyperNodes := sc.HyperNodesInfo.HyperNodes()
-	nodesByHyperNode := sc.HyperNodesInfo.RealNodesSet()
-	sc.HyperNodesInfo.Unlock()
-
-	oldJobHyperNode := job.AllocatedHyperNode
-	schedulingapi.SyncJobAllocatedHyperNode(job, hyperNodes, nodesByHyperNode)
-	if job.AllocatedHyperNode != oldJobHyperNode {
-		klog.V(3).InfoS("Sync job allocated HyperNode after task change", "job", job.UID,
-			"old", oldJobHyperNode, "new", job.AllocatedHyperNode)
-	}
 }
 
 // AddNodeShard add nodeshard to scheduler cache

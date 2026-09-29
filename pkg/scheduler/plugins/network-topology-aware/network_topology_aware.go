@@ -275,6 +275,34 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 	}()
 	nta.hyperNodesTier.init(ssn.HyperNodesTiers)
 	nta.initHyperNodeResourceCache(ssn)
+	ssn.AddHyperNodeCandidateFn(nta.Name(), func(job *api.JobInfo, subJob *api.SubJobInfo, root *api.HyperNodeInfo, candidates []*api.HyperNodeInfo) api.HyperNodeGradientResult {
+		highestAllowedTier := nta.hyperNodesTier.maxTier
+		placement := job.AllocatedHyperNode
+		if subJob != nil {
+			placement = subJob.AllocatedHyperNode
+			if hard, tier := subJob.IsHardTopologyMode(); hard {
+				highestAllowedTier = tier
+			} else {
+				// The existing non-hard SubJob callback contributes only root.
+				return api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{root}}}
+			}
+		} else if hard, tier := job.IsHardTopologyMode(); hard {
+			highestAllowedTier = tier
+		} else if placement == "" {
+			return api.HyperNodeGradientResult{Unconstrained: true}
+		}
+		searchRoot, err := getSearchRoot(ssn.HyperNodes, root, highestAllowedTier, placement)
+		if err != nil {
+			return api.HyperNodeGradientResult{}
+		}
+		var eligible []*api.HyperNodeInfo
+		for _, candidate := range candidates {
+			if candidate.Tier() <= highestAllowedTier && ssn.HyperNodes.GetLCAHyperNode(searchRoot.Name, candidate.Name) == searchRoot.Name {
+				eligible = append(eligible, candidate)
+			}
+		}
+		return api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{eligible}}
+	})
 
 	ssn.AddHyperNodeOrderFn(nta.Name(), func(subJob *api.SubJobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
 		return nta.HyperNodeOrderFn(ssn, subJob, hyperNodes)
@@ -304,8 +332,12 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.AddHyperNodeGradientForSubJobFn(nta.Name(), func(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) api.HyperNodeGradientResult {
+		var minResource *api.Resource
+		if purpose == api.PurposeEvict {
+			minResource = subJob.GetMinResources()
+		}
 		if hardMode, highestAllowedTier := subJob.IsHardTopologyMode(); hardMode {
-			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, subJob.AllocatedHyperNode, subJob.GetMinResources(), purpose)
+			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, subJob.AllocatedHyperNode, minResource, purpose)
 			if err != nil {
 				klog.ErrorS(err, "build HyperNode gradient failed", "subJob", subJob.UID, "hyperNode", hyperNode.Name,
 					"highestAllowedTier", highestAllowedTier, "allocatedHyperNode", subJob.AllocatedHyperNode)
@@ -313,13 +345,7 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			return api.HyperNodeGradientResult{Gradients: result}
 		}
-		if job, found := ssn.Jobs[subJob.Job]; found && !job.ContainsSubJobPolicy() {
-			if nta.isEligibleHyperNode(hyperNode, hyperNode.Tier(), subJob.AllocatedHyperNode, subJob.GetMinResources(), purpose) {
-				return api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{hyperNode}}}
-			}
-			return api.HyperNodeGradientResult{}
-		}
-		if nta.isEligibleHyperNode(hyperNode, hyperNode.Tier(), subJob.AllocatedHyperNode, subJob.GetMinResources(), purpose) {
+		if nta.isEligibleHyperNode(hyperNode, hyperNode.Tier(), subJob.AllocatedHyperNode, minResource, purpose) {
 			return api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{hyperNode}}}
 		}
 		return api.HyperNodeGradientResult{}

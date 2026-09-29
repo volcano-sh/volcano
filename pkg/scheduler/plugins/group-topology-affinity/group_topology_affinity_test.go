@@ -368,7 +368,7 @@ func TestPreferredOnlyUsesFrameworkCandidates(t *testing.T) {
 		TopologyTierName: "supernode",
 		Weight:           50,
 	}})
-	ssn.Jobs = map[api.JobID]*api.JobInfo{job.UID: job, "peer": otherJobOn("peer", "sn-a", "prod")}
+	ssn.Jobs = map[api.JobID]*api.JobInfo{job.UID: job, "peer": otherJobWithTaskOnNode("peer", "node-a", "prod")}
 	enabled := true
 	ssn.Tiers = []conf.Tier{{Plugins: []conf.PluginOption{{Name: PluginName, EnabledHyperNodeGradient: &enabled, EnabledHyperNodeOrder: &enabled}}}}
 	plugin := New(framework.Arguments{})

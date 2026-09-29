@@ -2203,3 +2203,36 @@ func TestAddPodWithUnresolvedPVCCachesTaskForResync(t *testing.T) {
 	// informer catches up.
 	assert.Equal(t, 1, sc.errTasks.Len(), "task must be enqueued for resync")
 }
+
+func TestPodEventsInvalidatePlacementWithoutRecomputing(t *testing.T) {
+	sc := newMockSchedulerCache("volcano")
+	sc.Nodes["n1"] = schedulingapi.NewNodeInfo(buildNode("n1", schedulingapi.BuildResourceList("8", "8Gi")))
+	pod := buildPod("ns", "p1", "n1", v1.PodRunning, schedulingapi.BuildResourceList("1", "1Gi"), nil, nil)
+	pod.Annotations = map[string]string{schedulingv1.KubeGroupNameAnnotationKey: "pg"}
+	pod.Spec.SchedulerName = "volcano"
+	if err := sc.addPod(pod); err != nil {
+		t.Fatal(err)
+	}
+	job := sc.Jobs[schedulingapi.NewTaskInfo(pod).Job]
+	job.SetPodGroup(&schedulingapi.PodGroup{PodGroup: scheduling.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: "ns"},
+		Spec:       scheduling.PodGroupSpec{MinMember: 1},
+	}})
+	job.AllocatedHyperNode = "persisted"
+	generation := job.TaskPlacementGeneration
+	statusOnly := pod.DeepCopy()
+	statusOnly.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionTrue}}
+	if err := sc.updatePod(pod, statusOnly); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, generation, job.TaskPlacementGeneration, "status-only updates must not trigger topology reconciliation")
+	assert.Equal(t, "persisted", job.AllocatedHyperNode, "Pod events must not recompute placement under the cache lock")
+
+	finished := statusOnly.DeepCopy()
+	finished.Status.Phase = v1.PodSucceeded
+	if err := sc.updatePod(statusOnly, finished); err != nil {
+		t.Fatal(err)
+	}
+	assert.Greater(t, job.TaskPlacementGeneration, generation)
+	assert.Equal(t, "persisted", job.AllocatedHyperNode, "Session reconciliation owns clearing stale placement")
+}

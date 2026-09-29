@@ -443,3 +443,10 @@ type HyperNodeGradientForJobFn func(job *JobInfo, hyperNode *HyperNodeInfo, purp
 
 // HyperNodeGradientForSubJobFn returns the plugin's topology constraints for a SubJob.
 type HyperNodeGradientForSubJobFn func(subJob *SubJobInfo, hyperNode *HyperNodeInfo, purpose SearchPurpose) HyperNodeGradientResult
+
+// HyperNodeCandidateFn is an optional allocation-only fast path for nomination
+// validation. It must return exactly the supplied candidates that would occur in
+// the plugin's full allocation gradient, or Unconstrained for a neutral result.
+// A nil subJob requests the Job-level constraint. It does not replace either
+// gradient callback; plugins without this fast path keep using full gradients.
+type HyperNodeCandidateFn func(job *JobInfo, subJob *SubJobInfo, root *HyperNodeInfo, candidates []*HyperNodeInfo) HyperNodeGradientResult

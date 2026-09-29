@@ -12,6 +12,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 )
 
 func TestRefreshAllocatedHyperNodeOnTopologyGenerationChange(t *testing.T) {
@@ -76,7 +77,7 @@ func TestRefreshAllocatedHyperNodeOnTopologyGenerationChange(t *testing.T) {
 	assert.True(t, ssn.DirtyJobs.Has(job.UID))
 
 	// Once the generation has been acknowledged, the next session takes the
-	// existing cheap validity/recovery path instead of scanning task placement.
+	// version-only fast path instead of scanning task placement.
 	job.AllocatedHyperNode = "domain-a"
 	subJob.AllocatedHyperNode = "domain-a"
 	ssn.refreshAllocatedHyperNode(job)
@@ -106,6 +107,7 @@ func TestRefreshAllocatedHyperNodeRetriesIncompleteTopology(t *testing.T) {
 		UID:                          task.Job,
 		AllocatedHyperNode:           "old-domain",
 		AllocatedHyperNodeGeneration: 1,
+		AllocatedHyperNodeDirty:      true,
 		SubJobs: map[api.SubJobID]*api.SubJobInfo{
 			subJob.UID: subJob,
 		},
@@ -126,6 +128,7 @@ func TestRefreshAllocatedHyperNodeRetriesIncompleteTopology(t *testing.T) {
 	assert.Equal(t, "old-domain", subJob.AllocatedHyperNode)
 	assert.Equal(t, "old-domain", job.AllocatedHyperNode)
 	assert.Equal(t, uint64(1), job.AllocatedHyperNodeGeneration)
+	assert.True(t, job.AllocatedHyperNodeDirty, "incomplete reconciliation must retain the invalidation")
 	assert.False(t, ssn.DirtyJobs.Has(job.UID))
 }
 
@@ -370,6 +373,52 @@ func TestSession_adjustNetworkTopologySpec(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUnchangedPlacementSkipsIndexAndTaskScan(t *testing.T) {
+	job := &api.JobInfo{UID: "job", TaskPlacementGeneration: 3, AllocatedTaskPlacementGeneration: 3,
+		AllocatedHyperNodeGeneration: 2, AllocatedHyperNode: "existing"}
+	ssn := &Session{HyperNodeGeneration: 2, DirtyJobs: sets.New[api.JobID]()}
+	ssn.refreshAllocatedHyperNode(job)
+	assert.Nil(t, ssn.hyperNodeIndex)
+	assert.Empty(t, ssn.DirtyJobs)
+	assert.Equal(t, "existing", job.AllocatedHyperNode)
+
+	job.TaskPlacementGeneration++
+	ssn.refreshAllocatedHyperNode(job)
+	assert.Empty(t, job.AllocatedHyperNode, "a task deletion must clear stale placement even with unchanged topology")
+	assert.Equal(t, job.TaskPlacementGeneration, job.AllocatedTaskPlacementGeneration)
+	assert.True(t, ssn.DirtyJobs.Has(job.UID))
+}
+
+func TestRefreshDirtyPlacementWithUnchangedGenerations(t *testing.T) {
+	job := api.NewJobInfo("job")
+	job.AllocatedHyperNode = "stale-domain"
+	job.AllocatedHyperNodeDirty = true
+	job.SubJobs["sub"] = &api.SubJobInfo{UID: "sub", AllocatedHyperNode: "stale-domain"}
+	ssn := &Session{DirtyJobs: sets.New[api.JobID]()}
+
+	ssn.refreshAllocatedHyperNode(job)
+	assert.Empty(t, job.AllocatedHyperNode)
+	assert.Empty(t, job.SubJobs["sub"].AllocatedHyperNode)
+	assert.False(t, job.AllocatedHyperNodeDirty)
+	assert.True(t, ssn.DirtyJobs.Has(job.UID))
+	assert.Nil(t, ssn.hyperNodeIndex, "clearing an unbound reservation needs no topology index")
+
+	ssn.DirtyJobs.Delete(job.UID)
+	ssn.refreshAllocatedHyperNode(job)
+	assert.False(t, ssn.DirtyJobs.Has(job.UID), "reconciled placement should take the fast path")
+}
+
+func BenchmarkUnchangedHyperNodePlacement(b *testing.B) {
+	ssn := &Session{HyperNodeGeneration: 1}
+	job := &api.JobInfo{AllocatedHyperNodeGeneration: 1}
+	for b.Loop() {
+		ssn.refreshAllocatedHyperNode(job)
+	}
+	if ssn.hyperNodeIndex != nil {
+		b.Fatal("unchanged placement unexpectedly built a topology index")
 	}
 }
 
@@ -900,5 +949,48 @@ func TestGetPodGroupPhase(t *testing.T) {
 			got := getPodGroupPhase(tc.job, tc.unschedulable)
 			assert.Equal(t, tc.expected, got)
 		})
+	}
+}
+
+func TestEnablePodGroupPlacementTracksOrdinaryPeersOnlyWhenNeeded(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		for _, hasPolicy := range []bool{false, true} {
+			t.Run(fmt.Sprintf("enabled=%t/policy=%t", enabled, hasPolicy), func(t *testing.T) {
+				peer := api.NewJobInfo("peer")
+				task := &api.TaskInfo{UID: "task", TransactionContext: api.TransactionContext{Status: api.Running, NodeName: "node"}}
+				peer.TaskStatusIndex[api.Running] = api.TasksMap{task.UID: task}
+				peer.TaskPlacementGeneration = 1
+				job := api.NewJobInfo("self")
+				if hasPolicy {
+					job.PodGroup = &api.PodGroup{PodGroup: scheduling.PodGroup{Spec: scheduling.PodGroupSpec{
+						TopologyAffinity: &scheduling.TopologyAffinitySpec{PodGroupAntiAffinity: &scheduling.PodGroupAntiAffinity{
+							Required: []scheduling.PodGroupAffinityTerm{{TopologyTierName: "rack"}},
+						}},
+					}}}
+				}
+				ssn := &Session{
+					Jobs:  map[api.JobID]*api.JobInfo{job.UID: job, peer.UID: peer},
+					Tiers: []conf.Tier{{Plugins: []conf.PluginOption{{Name: "group", EnabledHyperNodeGradient: ptr.To(enabled)}}}},
+					HyperNodes: api.HyperNodeInfoMap{"rack": api.NewHyperNodeInfo(&topologyv1alpha1.HyperNode{
+						ObjectMeta: metav1.ObjectMeta{Name: "rack"}, Spec: topologyv1alpha1.HyperNodeSpec{Tier: 1},
+					})},
+					RealNodesSet:              map[string]sets.Set[string]{"rack": sets.New("node")},
+					HyperNodesReadyToSchedule: true,
+					HyperNodeGeneration:       1,
+					DirtyJobs:                 sets.New[api.JobID](),
+				}
+				ssn.EnablePodGroupPlacement("group")
+				want := enabled && hasPolicy
+				assert.Equal(t, want, ssn.PodGroupPlacementEnabled)
+				if want {
+					assert.Equal(t, "rack", peer.AllocatedHyperNode, "ordinary peers must be visible to PodGroup selectors")
+					assert.NotNil(t, ssn.hyperNodeIndex)
+					assert.Equal(t, peer.TaskPlacementGeneration, peer.AllocatedTaskPlacementGeneration)
+				} else {
+					assert.Empty(t, peer.AllocatedHyperNode)
+					assert.Nil(t, ssn.hyperNodeIndex, "disabled feature must not build the index")
+				}
+			})
+		}
 	}
 }

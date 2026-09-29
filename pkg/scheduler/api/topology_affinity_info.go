@@ -19,8 +19,6 @@ package api
 
 import (
 	"fmt"
-	"sort"
-	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -47,6 +45,12 @@ func (ji *JobInfo) HasPreferredPodGroupAntiAffinity() bool {
 	}
 	anti := ji.PodGroup.Spec.TopologyAffinity.PodGroupAntiAffinity
 	return anti != nil && len(anti.Preferred) > 0
+}
+
+// RequiresHyperNodeTopology reports whether the job needs a ready topology,
+// including preferred-only policies that are evaluated through domain scoring.
+func (ji *JobInfo) RequiresHyperNodeTopology() bool {
+	return ji.ContainsNetworkTopology() || ji.ContainsHardPodGroupAntiAffinity() || ji.HasPreferredPodGroupAntiAffinity()
 }
 
 // RequiredPodGroupAntiAffinityTerms returns hard cross-PodGroup anti-affinity terms.
@@ -153,11 +157,7 @@ func ComputeSubJobAllocatedHyperNode(
 	if subJob == nil || len(hyperNodes) == 0 || len(nodesByHyperNode) == 0 {
 		return ""
 	}
-	hyperNodeSet := sets.New[string]()
-	for name := range hyperNodes {
-		hyperNodeSet.Insert(name)
-	}
-	return getSubJobAllocatedHyperNodeFromTasks(subJob, hyperNodeSet, nodesByHyperNode, hyperNodes)
+	return NewHyperNodeIndex(hyperNodes, nodesByHyperNode).SubJobAllocatedHyperNode(subJob)
 }
 
 // ComputeJobAllocatedHyperNode returns the HyperNode that contains all allocated tasks in job.
@@ -169,23 +169,7 @@ func ComputeJobAllocatedHyperNode(
 	if job == nil || len(hyperNodes) == 0 || len(nodesByHyperNode) == 0 {
 		return ""
 	}
-	hyperNodeSet := sets.New[string]()
-	for name := range hyperNodes {
-		hyperNodeSet.Insert(name)
-	}
-
-	var lca string
-	for _, subJob := range job.SubJobs {
-		subJobHyperNode := ComputeSubJobAllocatedHyperNode(subJob, hyperNodes, nodesByHyperNode)
-		if subJobHyperNode == "" {
-			continue
-		}
-		lca = hyperNodes.GetLCAHyperNode(lca, subJobHyperNode)
-	}
-	if lca != "" {
-		return lca
-	}
-	return getAllocatedHyperNodeFromTasks(collectJobAllocatedTasks(job), hyperNodeSet, nodesByHyperNode, hyperNodes)
+	return NewHyperNodeIndex(hyperNodes, nodesByHyperNode).JobAllocatedHyperNode(job)
 }
 
 // SyncJobAllocatedHyperNode refreshes job and subJob AllocatedHyperNode from remaining allocated tasks.
@@ -326,6 +310,11 @@ func occupiesTopologyDomain(status TaskStatus, task *TaskInfo) bool {
 	}
 	// With a nil task this is the cheap status-level precheck used by callers.
 	return task == nil || task.NodeName != ""
+}
+
+// OccupiesTopologyDomain reports whether this task contributes a Node to placement.
+func (ti *TaskInfo) OccupiesTopologyDomain() bool {
+	return ti != nil && ti.NodeName != "" && occupiesTopologyDomain(ti.Status, ti)
 }
 
 func getSubJobAllocatedHyperNodeFromTasks(
@@ -517,14 +506,12 @@ func MatchingPodGroupsAllocatedHyperNodesForTermWithNamespaceLister(
 			// matching job not yet placed, it occupies no domain, skip it.
 			continue
 		}
-		resolvedHyperNodes := occupiedHyperNodes.UnsortedList()
-		sort.Strings(resolvedHyperNodes)
-		allocatedHyperNode := getJobAllocatedHyperNode(matchingJob, hyperNodes, nodesByHyperNode)
-		klog.V(3).Infof("podGroup anti-affinity: matching job hyperNode, job=%s, matchingJob=%s, termTier=%d, allocatedHyperNode=%s, resolvedHyperNodes=%s",
-			klog.KRef(selfJob.Namespace, selfJob.Name),
-			klog.KRef(matchingJob.Namespace, matchingJob.Name),
-			tier, allocatedHyperNode, strings.Join(resolvedHyperNodes, ","))
-		for _, hyperNode := range resolvedHyperNodes {
+		if klog.V(5).Enabled() {
+			occupied := sets.List(occupiedHyperNodes)
+			klog.InfoS("PodGroup anti-affinity matching occupancy", "job", selfJob.UID,
+				"matchingJob", matchingJob.UID, "comparisonTier", tier, "occupiedHyperNodes", occupied)
+		}
+		for hyperNode := range occupiedHyperNodes {
 			matchingHyperNodes.Insert(hyperNode)
 		}
 	}

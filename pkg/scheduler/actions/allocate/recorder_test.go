@@ -107,6 +107,26 @@ func TestUpdateDecisionToJob(t *testing.T) {
 	if job.AllocatedHyperNode != "ancestor1" {
 		t.Errorf("Job allocated hyperNode should be updated to ancestor1")
 	}
+	if !job.AllocatedHyperNodeDirty {
+		t.Fatal("a recorded placement change must invalidate reconciled placement")
+	}
+}
+
+func TestUpdateDecisionToJobInvalidatesSubJobOnlyChange(t *testing.T) {
+	job := &api.JobInfo{
+		UID: "job", AllocatedHyperNode: "root",
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{"sub": {UID: "sub"}},
+	}
+	recorder := NewRecorder()
+	recorder.SaveJobDecision(job.UID, "root")
+	recorder.SaveSubJobDecision(job.UID, "root", "sub", "leaf")
+	recorder.UpdateDecisionToJob(job, api.HyperNodeInfoMap{
+		"root": newPlacementTestHyperNode("root", 2, ""),
+		"leaf": newPlacementTestHyperNode("leaf", 1, "root"),
+	})
+	if job.AllocatedHyperNode != "root" || job.SubJobs["sub"].AllocatedHyperNode != "leaf" || !job.AllocatedHyperNodeDirty {
+		t.Fatal("a SubJob-only change must invalidate placement even with an unchanged Job LCA")
+	}
 }
 
 func TestUpdateDecisionToJob_SubJob(t *testing.T) {

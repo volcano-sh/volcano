@@ -89,9 +89,14 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		testCtx = e2eutil.InitTestContext(e2eutil.Options{NodesNumLimit: 8})
 		topology = setupPodGroupAntiAffinityTopology(testCtx, "pg-aa-"+testCtx.Namespace)
 
-		// Do not start a case until the scheduler has observed both the test
-		// configuration and the newly-created HyperNode tree.
-		probePG := createTopologyPodGroup(testCtx, testCtx.Namespace, "topology-ready-probe", map[string]string{"e2e-probe": "true"}, nil, nil, 1)
+		// Use an explicit topology consumer to verify the scheduler has observed
+		// the configuration and HyperNode tree. Do not enable anti-affinity here:
+		// each case must exercise tracking ordinary peers only after adding a policy.
+		networkTopology := &schedulingv1beta1.NetworkTopologySpec{
+			Mode:               schedulingv1beta1.HardNetworkTopologyMode,
+			HighestTierAllowed: ptr.To(1),
+		}
+		probePG := createTopologyPodGroup(testCtx, testCtx.Namespace, "topology-ready-probe", map[string]string{"e2e-probe": "true"}, nil, networkTopology, 1)
 		probePod := createPodGroupPod(testCtx, testCtx.Namespace, "topology-ready-probe", probePG.Name, "kwok-node-7")
 		Expect(e2eutil.WaitPodReady(testCtx, probePod)).To(Succeed())
 		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, probePG.Name, topology.rackB)).To(Succeed())
@@ -123,13 +128,15 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		anchorPG := createTopologyPodGroup(testCtx, testCtx.Namespace, "required-anchor", map[string]string{"workload": "required"}, nil, nil, 1)
 		anchorPod := createPodGroupPod(testCtx, testCtx.Namespace, "required-anchor-pod", anchorPG.Name, "kwok-node-0")
 		Expect(e2eutil.WaitPodReady(testCtx, anchorPod)).To(Succeed())
-		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackA)).To(Succeed())
+		// Ordinary peers have no placement until a policy needs their occupancy.
+		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, "")).To(Succeed())
 
 		term := requiredPodGroupAntiAffinityTerm(map[string]string{"workload": "required"}, nil)
 		challengerPG := createTopologyPodGroup(testCtx, testCtx.Namespace, "required-challenger", nil,
 			&schedulingv1beta1.PodGroupAntiAffinity{Required: []schedulingv1beta1.PodGroupAffinityTerm{term}}, nil, 1)
 		challengerPod := createPodGroupPod(testCtx, testCtx.Namespace, "required-challenger-pod", challengerPG.Name, "")
 
+		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackA)).To(Succeed())
 		Expect(e2eutil.WaitPodReady(testCtx, challengerPod)).To(Succeed())
 		Expect(podNodeName(testCtx, challengerPod)).To(BeElementOf("kwok-node-4", "kwok-node-5", "kwok-node-6", "kwok-node-7"))
 	})
@@ -141,7 +148,7 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		anchorPG := createTopologyPodGroup(testCtx, peerNamespace, "anchor", map[string]string{"workload": "anchor"}, nil, nil, 1)
 		anchorPod := createPodGroupPod(testCtx, peerNamespace, "anchor-pod", anchorPG.Name, "kwok-node-0")
 		Expect(e2eutil.WaitPodReady(testCtx, anchorPod)).To(Succeed())
-		Expect(waitForPodGroupPlacement(testCtx, peerNamespace, anchorPG.Name, topology.rackA)).To(Succeed())
+		Expect(waitForPodGroupPlacement(testCtx, peerNamespace, anchorPG.Name, "")).To(Succeed())
 
 		restartVolcanoScheduler()
 
@@ -159,6 +166,7 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		challengerPodA := createPodGroupPod(testCtx, testCtx.Namespace, "challenger-a", challengerPG.Name, "")
 		challengerPodB := createPodGroupPod(testCtx, testCtx.Namespace, "challenger-b", challengerPG.Name, "")
 
+		Expect(waitForPodGroupPlacement(testCtx, peerNamespace, anchorPG.Name, topology.rackA)).To(Succeed())
 		expectPodsReadyOnNodes(testCtx, []*v1.Pod{challengerPodA, challengerPodB}, rackBNodes)
 		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, challengerPG.Name, topology.rackB)).To(Succeed())
 	})
@@ -167,7 +175,7 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		anchorPG := createTopologyPodGroup(testCtx, testCtx.Namespace, "preferred-anchor", map[string]string{"workload": "preferred-anchor"}, nil, nil, 1)
 		anchorPod := createPodGroupPod(testCtx, testCtx.Namespace, "preferred-anchor-pod", anchorPG.Name, "kwok-node-0")
 		Expect(e2eutil.WaitPodReady(testCtx, anchorPod)).To(Succeed())
-		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackA)).To(Succeed())
+		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, "")).To(Succeed())
 
 		term := requiredPodGroupAntiAffinityTerm(map[string]string{"workload": "preferred-anchor"}, nil)
 		term.Weight = 100
@@ -180,6 +188,7 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		preferredPodA := createPodGroupPod(testCtx, testCtx.Namespace, "preferred-a", preferredPG.Name, "")
 		preferredPodB := createPodGroupPod(testCtx, testCtx.Namespace, "preferred-b", preferredPG.Name, "")
 
+		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackA)).To(Succeed())
 		expectPodsReadyOnNodes(testCtx, []*v1.Pod{preferredPodA, preferredPodB}, rackBNodes)
 		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, preferredPG.Name, topology.rackB)).To(Succeed())
 	})
@@ -188,7 +197,6 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		anchorPG := createTopologyPodGroup(testCtx, testCtx.Namespace, "soft-anchor", map[string]string{"workload": "soft-anchor"}, nil, nil, 1)
 		anchorPod := createPodGroupPod(testCtx, testCtx.Namespace, "soft-anchor-pod", anchorPG.Name, "kwok-node-0")
 		Expect(e2eutil.WaitPodReady(testCtx, anchorPod)).To(Succeed())
-		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackA)).To(Succeed())
 
 		term := requiredPodGroupAntiAffinityTerm(map[string]string{"workload": "soft-anchor"}, nil)
 		term.Weight = 100
@@ -198,6 +206,7 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		challengerPodA := createPodGroupPod(testCtx, testCtx.Namespace, "soft-challenger-a", challengerPG.Name, "kwok-node-1")
 		challengerPodB := createPodGroupPod(testCtx, testCtx.Namespace, "soft-challenger-b", challengerPG.Name, "kwok-node-2")
 
+		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackA)).To(Succeed())
 		expectPodsReadyOnNodes(testCtx, []*v1.Pod{challengerPodA}, []string{"kwok-node-1"})
 		expectPodsReadyOnNodes(testCtx, []*v1.Pod{challengerPodB}, []string{"kwok-node-2"})
 	})
@@ -209,7 +218,6 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		anchorPG := createTopologyPodGroup(testCtx, peerNamespace, "other-namespace-anchor", map[string]string{"workload": "namespace-default"}, nil, nil, 1)
 		anchorPod := createPodGroupPod(testCtx, peerNamespace, "other-namespace-anchor-pod", anchorPG.Name, "kwok-node-0")
 		Expect(e2eutil.WaitPodReady(testCtx, anchorPod)).To(Succeed())
-		Expect(waitForPodGroupPlacement(testCtx, peerNamespace, anchorPG.Name, topology.rackA)).To(Succeed())
 
 		term := requiredPodGroupAntiAffinityTerm(map[string]string{"workload": "namespace-default"}, nil)
 		networkTopology := &schedulingv1beta1.NetworkTopologySpec{
@@ -221,6 +229,7 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		challengerPodA := createPodGroupPod(testCtx, testCtx.Namespace, "namespace-default-challenger-a", challengerPG.Name, "kwok-node-1")
 		challengerPodB := createPodGroupPod(testCtx, testCtx.Namespace, "namespace-default-challenger-b", challengerPG.Name, "kwok-node-2")
 
+		Expect(waitForPodGroupPlacement(testCtx, peerNamespace, anchorPG.Name, topology.rackA)).To(Succeed())
 		expectPodsReadyOnNodes(testCtx, []*v1.Pod{challengerPodA, challengerPodB}, rackANodes)
 		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, challengerPG.Name, topology.rackA)).To(Succeed())
 	})
@@ -230,7 +239,6 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 			map[string]string{"workload": "required-soft"}, nil, nil, 1)
 		anchorPod := createPodGroupPod(testCtx, testCtx.Namespace, "required-soft-anchor-pod", anchorPG.Name, "kwok-node-0")
 		Expect(e2eutil.WaitPodReady(testCtx, anchorPod)).To(Succeed())
-		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackA)).To(Succeed())
 
 		term := requiredPodGroupAntiAffinityTerm(map[string]string{"workload": "required-soft"}, nil)
 		networkTopology := &schedulingv1beta1.NetworkTopologySpec{Mode: schedulingv1beta1.SoftNetworkTopologyMode}
@@ -239,6 +247,7 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		challengerPodA := createPodGroupPod(testCtx, testCtx.Namespace, "required-soft-challenger-a", challengerPG.Name, "")
 		challengerPodB := createPodGroupPod(testCtx, testCtx.Namespace, "required-soft-challenger-b", challengerPG.Name, "")
 
+		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackA)).To(Succeed())
 		expectPodsReadyOnNodes(testCtx, []*v1.Pod{challengerPodA, challengerPodB}, rackBNodes)
 		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, challengerPG.Name, topology.rackB)).To(Succeed())
 	})
@@ -248,7 +257,6 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 			map[string]string{"workload": "tier-name", "environment": "production"}, nil, nil, 1)
 		anchorPod := createPodGroupPod(testCtx, testCtx.Namespace, "tier-name-anchor-pod", anchorPG.Name, "kwok-node-0")
 		Expect(e2eutil.WaitPodReady(testCtx, anchorPod)).To(Succeed())
-		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackA)).To(Succeed())
 
 		term := schedulingv1beta1.PodGroupAffinityTerm{
 			PodGroupSelector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{
@@ -267,6 +275,7 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		challengerPodA := createPodGroupPod(testCtx, testCtx.Namespace, "tier-name-challenger-a", challengerPG.Name, "")
 		challengerPodB := createPodGroupPod(testCtx, testCtx.Namespace, "tier-name-challenger-b", challengerPG.Name, "")
 
+		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackA)).To(Succeed())
 		expectPodsReadyOnNodes(testCtx, []*v1.Pod{challengerPodA, challengerPodB}, rackBNodes)
 		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, challengerPG.Name, topology.rackB)).To(Succeed())
 	})
@@ -278,8 +287,6 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		anchorBPod := createPodGroupPod(testCtx, testCtx.Namespace, "multi-term-anchor-b-pod", anchorBPG.Name, "kwok-node-1")
 		Expect(e2eutil.WaitPodReady(testCtx, anchorAPod)).To(Succeed())
 		Expect(e2eutil.WaitPodReady(testCtx, anchorBPod)).To(Succeed())
-		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorAPG.Name, topology.rackA)).To(Succeed())
-		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorBPG.Name, topology.rackA)).To(Succeed())
 
 		terms := []schedulingv1beta1.PodGroupAffinityTerm{
 			requiredPodGroupAntiAffinityTerm(map[string]string{"workload": "multi-term-a"}, nil),
@@ -289,6 +296,8 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 			&schedulingv1beta1.PodGroupAntiAffinity{Required: terms}, nil, 1)
 		challengerPod := createPodGroupPod(testCtx, testCtx.Namespace, "multi-term-challenger-pod", challengerPG.Name, "")
 
+		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorAPG.Name, topology.rackA)).To(Succeed())
+		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorBPG.Name, topology.rackA)).To(Succeed())
 		Expect(e2eutil.WaitPodReady(testCtx, challengerPod)).To(Succeed())
 		Expect(podNodeName(testCtx, challengerPod)).To(BeElementOf("kwok-node-4", "kwok-node-5", "kwok-node-6", "kwok-node-7"))
 	})
@@ -300,7 +309,6 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		anchorPG := createTopologyPodGroup(testCtx, peerNamespace, "namespace-anchor", map[string]string{"workload": "namespace-anchor"}, nil, nil, 1)
 		anchorPod := createPodGroupPod(testCtx, peerNamespace, "namespace-anchor-pod", anchorPG.Name, "kwok-node-0")
 		Expect(e2eutil.WaitPodReady(testCtx, anchorPod)).To(Succeed())
-		Expect(waitForPodGroupPlacement(testCtx, peerNamespace, anchorPG.Name, topology.rackA)).To(Succeed())
 
 		term := requiredPodGroupAntiAffinityTerm(map[string]string{"workload": "namespace-anchor"}, &metav1.LabelSelector{
 			MatchLabels: map[string]string{"anti-affinity-scope": "selected"},
@@ -309,6 +317,7 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 			&schedulingv1beta1.PodGroupAntiAffinity{Required: []schedulingv1beta1.PodGroupAffinityTerm{term}}, nil, 1)
 		challengerPod := createPodGroupPod(testCtx, testCtx.Namespace, "namespace-challenger-pod", challengerPG.Name, "kwok-node-1")
 
+		Expect(waitForPodGroupPlacement(testCtx, peerNamespace, anchorPG.Name, topology.rackA)).To(Succeed())
 		Expect(waitForPodGroupUnschedulable(testCtx, testCtx.Namespace, challengerPG.Name)).To(Succeed())
 		Expect(podNodeName(testCtx, challengerPod)).To(BeEmpty())
 
@@ -321,13 +330,13 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		anchorPG := createTopologyPodGroup(testCtx, testCtx.Namespace, "label-anchor", map[string]string{"workload": "selected"}, nil, nil, 1)
 		anchorPod := createPodGroupPod(testCtx, testCtx.Namespace, "label-anchor-pod", anchorPG.Name, "kwok-node-0")
 		Expect(e2eutil.WaitPodReady(testCtx, anchorPod)).To(Succeed())
-		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackA)).To(Succeed())
 
 		term := requiredPodGroupAntiAffinityTerm(map[string]string{"workload": "selected"}, nil)
 		challengerPG := createTopologyPodGroup(testCtx, testCtx.Namespace, "label-challenger", nil,
 			&schedulingv1beta1.PodGroupAntiAffinity{Required: []schedulingv1beta1.PodGroupAffinityTerm{term}}, nil, 1)
 		challengerPod := createPodGroupPod(testCtx, testCtx.Namespace, "label-challenger-pod", challengerPG.Name, "kwok-node-1")
 
+		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackA)).To(Succeed())
 		Expect(waitForPodGroupUnschedulable(testCtx, testCtx.Namespace, challengerPG.Name)).To(Succeed())
 		Expect(podNodeName(testCtx, challengerPod)).To(BeEmpty())
 
@@ -340,15 +349,18 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		anchorPG := createTopologyPodGroup(testCtx, testCtx.Namespace, "moving-anchor", map[string]string{"workload": "moving-anchor"}, nil, nil, 1)
 		anchorPod := createPodGroupPod(testCtx, testCtx.Namespace, "moving-anchor-pod", anchorPG.Name, "kwok-node-0")
 		Expect(e2eutil.WaitPodReady(testCtx, anchorPod)).To(Succeed())
+
+		// Activate peer tracking before checking placement, but create the
+		// challenger Pod only after the topology update has been observed.
+		term := requiredPodGroupAntiAffinityTerm(map[string]string{"workload": "moving-anchor"}, nil)
+		challengerPG := createTopologyPodGroup(testCtx, testCtx.Namespace, "moving-challenger", nil,
+			&schedulingv1beta1.PodGroupAntiAffinity{Required: []schedulingv1beta1.PodGroupAffinityTerm{term}}, nil, 1)
 		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackA)).To(Succeed())
 
 		Expect(updateHyperNodeMembers(testCtx, topology.rackA, []string{"kwok-node-4", "kwok-node-5", "kwok-node-6", "kwok-node-7"})).To(Succeed())
 		Expect(updateHyperNodeMembers(testCtx, topology.rackB, []string{"kwok-node-0", "kwok-node-1", "kwok-node-2", "kwok-node-3"})).To(Succeed())
 		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.rackB)).To(Succeed())
 
-		term := requiredPodGroupAntiAffinityTerm(map[string]string{"workload": "moving-anchor"}, nil)
-		challengerPG := createTopologyPodGroup(testCtx, testCtx.Namespace, "moving-challenger", nil,
-			&schedulingv1beta1.PodGroupAntiAffinity{Required: []schedulingv1beta1.PodGroupAffinityTerm{term}}, nil, 1)
 		challengerPod := createPodGroupPod(testCtx, testCtx.Namespace, "moving-challenger-pod", challengerPG.Name, "kwok-node-5")
 
 		Expect(e2eutil.WaitPodReady(testCtx, challengerPod)).To(Succeed())
@@ -372,7 +384,6 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		anchorPodB := createPodGroupPod(testCtx, testCtx.Namespace, "multi-domain-anchor-b", anchorPG.Name, "kwok-node-4")
 		Expect(e2eutil.WaitPodReady(testCtx, anchorPodA)).To(Succeed())
 		Expect(e2eutil.WaitPodReady(testCtx, anchorPodB)).To(Succeed())
-		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.root)).To(Succeed())
 
 		term := requiredPodGroupAntiAffinityTerm(map[string]string{"workload": "multi-domain"}, nil)
 		networkTopology := &schedulingv1beta1.NetworkTopologySpec{
@@ -384,6 +395,7 @@ var _ = Describe("PodGroup Topology Anti-Affinity", Ordered, ContinueOnFailure, 
 		challengerPodA := createPodGroupPod(testCtx, testCtx.Namespace, "no-domain-a", challengerPG.Name, "")
 		challengerPodB := createPodGroupPod(testCtx, testCtx.Namespace, "no-domain-b", challengerPG.Name, "")
 
+		Expect(waitForPodGroupPlacement(testCtx, testCtx.Namespace, anchorPG.Name, topology.root)).To(Succeed())
 		Expect(waitForPodGroupUnschedulable(testCtx, testCtx.Namespace, challengerPG.Name)).To(Succeed())
 		Expect(podNodeName(testCtx, challengerPodA)).To(BeEmpty())
 		Expect(podNodeName(testCtx, challengerPodB)).To(BeEmpty())
@@ -537,6 +549,8 @@ func expectPodsReadyOnNodes(ctx *e2eutil.TestContext, pods []*v1.Pod, expectedNo
 	}
 }
 
+// Ordinary peers are tracked only while an anti-affinity policy is active.
+// Create the policy before waiting for their non-empty placement.
 func waitForPodGroupPlacement(ctx *e2eutil.TestContext, namespace, name, expected string) error {
 	var actual string
 	err := wait.PollUntilContextTimeout(context.TODO(), 500*time.Millisecond, e2eutil.TwoMinute, true,

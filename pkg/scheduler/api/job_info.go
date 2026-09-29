@@ -446,10 +446,19 @@ type JobInfo struct {
 	// generation used to derive Job/SubJob placement. It is scheduler-internal
 	// state and is intentionally not persisted in the PodGroup API.
 	AllocatedHyperNodeGeneration uint64
-	NetworkTopology              *scheduling.NetworkTopologySpec
-	SubJobs                      map[SubJobID]*SubJobInfo
-	TaskToSubJob                 map[TaskID]SubJobID
-	MinSubJobs                   map[SubJobGID]int32 // key is name of "PodGroup.Spec.SubGroupPolicy", value is minSubGroups
+	// AllocatedHyperNodeDirty invalidates placement derived from Session-only
+	// allocations or pipelines. Cache task generations do not reflect these
+	// reservations, so the next Session must reconcile them against actual tasks.
+	AllocatedHyperNodeDirty bool
+	// TaskPlacementGeneration changes only for cache task events that affect
+	// placement. The reconciled generation prevents stale Session writeback from
+	// clearing newer changes that arrived after the scheduling snapshot.
+	TaskPlacementGeneration          uint64
+	AllocatedTaskPlacementGeneration uint64
+	NetworkTopology                  *scheduling.NetworkTopologySpec
+	SubJobs                          map[SubJobID]*SubJobInfo
+	TaskToSubJob                     map[TaskID]SubJobID
+	MinSubJobs                       map[SubJobGID]int32 // key is name of "PodGroup.Spec.SubGroupPolicy", value is minSubGroups
 
 	// All tasks of the Job.
 	TaskStatusIndex       map[TaskStatus]TasksMap
@@ -557,6 +566,8 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.NetworkTopology = cloneNetworkTopology(pg.Spec.NetworkTopology)
 
 	if oldPG == nil || !equality.Semantic.DeepEqual(oldPG.Spec.SubGroupPolicy, pg.Spec.SubGroupPolicy) {
+		// Regrouping invalidates SubJob placement even when task Nodes did not change.
+		ji.TaskPlacementGeneration++
 		clear(ji.SubJobs)
 		for _, task := range ji.Tasks {
 			ji.addTaskToSubJob(task)
@@ -827,12 +838,15 @@ func (ji *JobInfo) Clone() *JobInfo {
 			return nil
 		}(),
 
-		AllocatedHyperNode:           ji.AllocatedHyperNode,
-		AllocatedHyperNodeGeneration: ji.AllocatedHyperNodeGeneration,
-		NetworkTopology:              cloneNetworkTopology(ji.NetworkTopology),
-		SubJobs:                      map[SubJobID]*SubJobInfo{},
-		TaskToSubJob:                 map[TaskID]SubJobID{},
-		MinSubJobs:                   maps.Clone(ji.MinSubJobs),
+		AllocatedHyperNode:               ji.AllocatedHyperNode,
+		AllocatedHyperNodeGeneration:     ji.AllocatedHyperNodeGeneration,
+		AllocatedHyperNodeDirty:          ji.AllocatedHyperNodeDirty,
+		TaskPlacementGeneration:          ji.TaskPlacementGeneration,
+		AllocatedTaskPlacementGeneration: ji.AllocatedTaskPlacementGeneration,
+		NetworkTopology:                  cloneNetworkTopology(ji.NetworkTopology),
+		SubJobs:                          map[SubJobID]*SubJobInfo{},
+		TaskToSubJob:                     map[TaskID]SubJobID{},
+		MinSubJobs:                       maps.Clone(ji.MinSubJobs),
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)

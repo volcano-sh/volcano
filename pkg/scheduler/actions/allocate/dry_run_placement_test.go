@@ -114,6 +114,9 @@ func TestAllocateResourcesForTasks_RestoresPlacementWhenPartialAllocNotPipelined
 	if env.job.AllocatedHyperNode != "" {
 		t.Fatalf("job AllocatedHyperNode = %q, want empty after rollback", env.job.AllocatedHyperNode)
 	}
+	if env.job.AllocatedHyperNodeDirty {
+		t.Fatal("rolled back allocations must not invalidate unchanged placement")
+	}
 }
 
 // TestAllocateResourcesForTasks_KeepsPlacementWhenSubJobPipelined verifies placement is kept
@@ -340,6 +343,7 @@ func TestRecoverSubJobStatus_MultiSubJobIndependentRestore(t *testing.T) {
 	recorder.SnapshotSubJobStatus(job, worksheet)
 
 	job.AllocatedHyperNode = "polluted-job"
+	job.AllocatedHyperNodeDirty = true
 	job.SubJobs[subJobA].AllocatedHyperNode = "polluted-a"
 	job.SubJobs[subJobB].AllocatedHyperNode = "polluted-b"
 
@@ -348,11 +352,22 @@ func TestRecoverSubJobStatus_MultiSubJobIndependentRestore(t *testing.T) {
 	if job.AllocatedHyperNode != "initial-job" {
 		t.Fatalf("job AllocatedHyperNode = %q, want initial-job", job.AllocatedHyperNode)
 	}
+	if job.AllocatedHyperNodeDirty {
+		t.Fatal("recovering a dry-run must restore placement validity")
+	}
 	if job.SubJobs[subJobA].AllocatedHyperNode != "sn-a" {
 		t.Fatalf("subJob-a AllocatedHyperNode = %q, want sn-a", job.SubJobs[subJobA].AllocatedHyperNode)
 	}
 	if job.SubJobs[subJobB].AllocatedHyperNode != "sn-b" {
 		t.Fatalf("subJob-b AllocatedHyperNode = %q, want sn-b", job.SubJobs[subJobB].AllocatedHyperNode)
+	}
+
+	job.AllocatedHyperNodeDirty = true
+	recorder.SnapshotSubJobStatus(job, worksheet)
+	job.AllocatedHyperNodeDirty = false
+	recorder.RecoverSubJobStatus(job)
+	if !job.AllocatedHyperNodeDirty {
+		t.Fatal("recovering a dry-run must retain an earlier invalidation")
 	}
 }
 
@@ -439,6 +454,8 @@ func newDryRunPlacementEnv(t *testing.T, opts dryRunEnvOptions) *dryRunPlacement
 		Spec:       scheduling.QueueSpec{Weight: 1},
 	})
 	ssn.HyperNodesReadyToSchedule = true
+	// These fixtures exercise placement bookkeeping with a synthetic topology plugin.
+	ssn.PodGroupPlacementEnabled = true
 
 	buildDryRunHyperNodeTree(ssn, opts.nodeCPU)
 

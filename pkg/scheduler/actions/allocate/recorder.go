@@ -26,8 +26,13 @@ type Recorder struct {
 	jobDecisions    map[api.JobID]string
 	subJobDecisions map[api.JobID]map[string]map[api.SubJobID]string
 
-	jobAllocatedHyperNodeSnapshot map[api.JobID]string
+	jobAllocatedHyperNodeSnapshot map[api.JobID]jobHyperNodeStatus
 	subJobStatusSnapshot          map[api.JobID]map[api.SubJobID]*SubJobStatus
+}
+
+type jobHyperNodeStatus struct {
+	allocatedHyperNode      string
+	allocatedHyperNodeDirty bool
 }
 
 type SubJobStatus struct {
@@ -38,7 +43,7 @@ func NewRecorder() *Recorder {
 	return &Recorder{
 		jobDecisions:                  make(map[api.JobID]string),
 		subJobDecisions:               make(map[api.JobID]map[string]map[api.SubJobID]string),
-		jobAllocatedHyperNodeSnapshot: make(map[api.JobID]string),
+		jobAllocatedHyperNodeSnapshot: make(map[api.JobID]jobHyperNodeStatus),
 		subJobStatusSnapshot:          make(map[api.JobID]map[api.SubJobID]*SubJobStatus),
 	}
 }
@@ -68,6 +73,7 @@ func (d *Recorder) UpdateDecisionToJob(job *api.JobInfo, hyperNodes api.HyperNod
 		klog.V(3).InfoS("update allocated hyperNode for job", "job", job.UID,
 			"old", job.AllocatedHyperNode, "new", jobAllocatedHyperNode)
 		job.AllocatedHyperNode = jobAllocatedHyperNode
+		job.AllocatedHyperNodeDirty = true
 	}
 
 	for subJobID, hyperNode := range d.subJobDecisions[job.UID][hyperNodeForJob] {
@@ -81,6 +87,7 @@ func (d *Recorder) UpdateDecisionToJob(job *api.JobInfo, hyperNodes api.HyperNod
 			klog.V(3).InfoS("update allocated hyperNode for subJob", "subJob", subJob.UID,
 				"old", subJob.AllocatedHyperNode, "new", allocatedHyperNode)
 			subJob.AllocatedHyperNode = allocatedHyperNode
+			job.AllocatedHyperNodeDirty = true
 		}
 		// The nomination's promise has been redeemed by this commit.
 		// Clearing it prevents the per-subJob fast path from retrying on
@@ -100,13 +107,17 @@ func (d *Recorder) SnapshotSubJobStatus(job *api.JobInfo, worksheet *JobWorkshee
 			result[subJobID] = &SubJobStatus{AllocatedHyperNode: subJob.AllocatedHyperNode}
 		}
 	}
-	d.jobAllocatedHyperNodeSnapshot[job.UID] = job.AllocatedHyperNode
+	d.jobAllocatedHyperNodeSnapshot[job.UID] = jobHyperNodeStatus{
+		allocatedHyperNode:      job.AllocatedHyperNode,
+		allocatedHyperNodeDirty: job.AllocatedHyperNodeDirty,
+	}
 	d.subJobStatusSnapshot[job.UID] = result
 }
 
 func (d *Recorder) RecoverSubJobStatus(job *api.JobInfo) {
-	if hyperNode, ok := d.jobAllocatedHyperNodeSnapshot[job.UID]; ok {
-		job.AllocatedHyperNode = hyperNode
+	if status, ok := d.jobAllocatedHyperNodeSnapshot[job.UID]; ok {
+		job.AllocatedHyperNode = status.allocatedHyperNode
+		job.AllocatedHyperNodeDirty = status.allocatedHyperNodeDirty
 	}
 	snapshot, ok := d.subJobStatusSnapshot[job.UID]
 	if !ok {
