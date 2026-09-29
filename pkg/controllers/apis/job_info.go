@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
@@ -28,6 +29,8 @@ import (
 type JobInfo struct {
 	Namespace string
 	Name      string
+	UID       types.UID
+	Deleted   bool
 
 	Job  *batch.Job
 	Pods map[string]map[string]*v1.Pod
@@ -46,6 +49,8 @@ func (ji *JobInfo) Clone() *JobInfo {
 	job := &JobInfo{
 		Namespace: ji.Namespace,
 		Name:      ji.Name,
+		UID:       ji.UID,
+		Deleted:   ji.Deleted,
 		Job:       ji.Job,
 
 		Pods:       make(map[string]map[string]*v1.Pod, len(ji.Pods)),
@@ -80,6 +85,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 // SetJob sets the volcano jobs values to the JobInfo struct.
 func (ji *JobInfo) SetJob(job *batch.Job) {
+	ji.UID = job.UID
 	ji.Name = job.Name
 	ji.Namespace = job.Namespace
 	ji.Job = job
@@ -173,6 +179,9 @@ func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
 		return fmt.Errorf("can not find pod <%s/%s> in cache",
 			pod.Namespace, pod.Name)
 	}
+	if ji.Pods[taskName][pod.Name].UID != pod.UID {
+		return fmt.Errorf("pod <%s/%s> UID changed", pod.Namespace, pod.Name)
+	}
 	ji.Pods[taskName][pod.Name] = pod
 
 	if ji.Partitions != nil {
@@ -205,6 +214,12 @@ func (ji *JobInfo) DeletePod(pod *v1.Pod) error {
 	}
 
 	if pods, found := ji.Pods[taskName]; found {
+		if current := pods[pod.Name]; current != nil {
+			if current.UID != pod.UID {
+				return nil
+			}
+			pod = current
+		}
 		delete(pods, pod.Name)
 		if len(pods) == 0 {
 			delete(ji.Pods, taskName)
@@ -244,8 +259,8 @@ func (ji *JobInfo) HasPod(pod *v1.Pod) bool {
 	if !found {
 		return false
 	}
-	_, found = pods[pod.Name]
-	return found
+	current, found := pods[pod.Name]
+	return found && current.UID == pod.UID
 }
 
 func GetPartitionID(pod *v1.Pod) string {
