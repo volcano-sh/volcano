@@ -17,6 +17,7 @@ limitations under the License.
 package cache
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -24,19 +25,29 @@ import (
 
 	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+
+	"volcano.sh/apis/pkg/apis/helpers"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
+var (
+	ErrJobNotFound = errors.New("job not found")
+	ErrJobNotReady = errors.New("job not ready")
+	ErrJobDeleted  = errors.New("job deleted")
+)
+
 type jobCache struct {
 	sync.Mutex
 
-	jobs        map[string]*apis.JobInfo
+	jobs        map[types.UID]*apis.JobInfo
 	deletedJobs workqueue.TypedRateLimitingInterface[*apis.JobInfo]
 }
 
@@ -44,7 +55,7 @@ func keyFn(ns, name string) string {
 	return fmt.Sprintf("%s/%s", ns, name)
 }
 
-// JobKeyByName gets the key for the job name.
+// JobKeyByName gets the namespace/name routing key, not a cache identity.
 func JobKeyByName(namespace string, name string) string {
 	return keyFn(namespace, name)
 }
@@ -63,14 +74,25 @@ func jobTerminated(job *apis.JobInfo) bool {
 	return job.Job == nil && len(job.Pods) == 0
 }
 
-func jobKeyOfPod(pod *v1.Pod) (string, error) {
-	jobName, found := pod.Annotations[v1alpha1.JobNameKey]
-	if !found {
-		return "", fmt.Errorf("failed to find job name of pod <%s/%s>",
-			pod.Namespace, pod.Name)
+func jobUIDOfPod(pod *v1.Pod) (types.UID, error) {
+	if pod.UID == "" {
+		return "", fmt.Errorf("pod <%s/%s> has no UID", pod.Namespace, pod.Name)
+	}
+	if _, ok := pod.Annotations[v1alpha1.TaskSpecKey]; !ok {
+		return "", fmt.Errorf("pod <%s/%s> has no task", pod.Namespace, pod.Name)
+	}
+	if _, ok := pod.Annotations[v1alpha1.JobVersion]; !ok {
+		return "", fmt.Errorf("pod <%s/%s> has no job version", pod.Namespace, pod.Name)
 	}
 
-	return keyFn(pod.Namespace, jobName), nil
+	if pod.Annotations[v1alpha1.JobNameKey] == "" {
+		return "", fmt.Errorf("failed to find job name of pod <%s/%s>", pod.Namespace, pod.Name)
+	}
+	owner := metav1.GetControllerOfNoCopy(pod)
+	if owner == nil || owner.UID == "" || owner.Kind != helpers.JobKind.Kind || owner.APIVersion != helpers.JobKind.GroupVersion().String() || owner.Name != pod.Annotations[v1alpha1.JobNameKey] {
+		return "", fmt.Errorf("pod <%s/%s> has no valid Volcano Job owner", pod.Namespace, pod.Name)
+	}
+	return owner.UID, nil
 }
 
 // New gets the job Cache.
@@ -82,38 +104,44 @@ func New() Cache {
 	)
 
 	return &jobCache{
-		jobs:        map[string]*apis.JobInfo{},
+		jobs:        map[types.UID]*apis.JobInfo{},
 		deletedJobs: workqueue.NewTypedRateLimitingQueue(queue),
 	}
 }
 
-func (jc *jobCache) Get(key string) (*apis.JobInfo, error) {
+func (jc *jobCache) Get(key types.UID) (*apis.JobInfo, error) {
 	jc.Lock()
 	defer jc.Unlock()
 
 	job, found := jc.jobs[key]
 	if !found {
-		return nil, fmt.Errorf("failed to find job <%s>", key)
+		return nil, ErrJobNotFound
 	}
 
+	if job.Deleted {
+		return nil, ErrJobDeleted
+	}
 	if job.Job == nil {
-		return nil, fmt.Errorf("job <%s> is not ready", key)
+		return nil, ErrJobNotReady
 	}
 
 	return job.Clone(), nil
 }
 
-func (jc *jobCache) GetStatus(key string) (*v1alpha1.JobStatus, error) {
+func (jc *jobCache) GetStatus(key types.UID) (*v1alpha1.JobStatus, error) {
 	jc.Lock()
 	defer jc.Unlock()
 
 	job, found := jc.jobs[key]
 	if !found {
-		return nil, fmt.Errorf("failed to find job <%s>", key)
+		return nil, ErrJobNotFound
 	}
 
+	if job.Deleted {
+		return nil, ErrJobDeleted
+	}
 	if job.Job == nil {
-		return nil, fmt.Errorf("job <%s> is not ready", key)
+		return nil, ErrJobNotReady
 	}
 
 	status := job.Job.Status
@@ -124,8 +152,14 @@ func (jc *jobCache) GetStatus(key string) (*v1alpha1.JobStatus, error) {
 func (jc *jobCache) Add(job *v1alpha1.Job) error {
 	jc.Lock()
 	defer jc.Unlock()
-	key := JobKey(job)
+	key := job.UID
+	if key == "" {
+		return fmt.Errorf("job <%s/%s> has no UID", job.Namespace, job.Name)
+	}
 	if jobInfo, found := jc.jobs[key]; found {
+		if jobInfo.Deleted {
+			return ErrJobDeleted
+		}
 		if jobInfo.Job == nil {
 			jobInfo.SetJob(job)
 
@@ -136,6 +170,7 @@ func (jc *jobCache) Add(job *v1alpha1.Job) error {
 
 	jc.jobs[key] = &apis.JobInfo{
 		Name:      job.Name,
+		UID:       job.UID,
 		Namespace: job.Namespace,
 
 		Job:  job,
@@ -150,10 +185,16 @@ func (jc *jobCache) Update(obj *v1alpha1.Job) error {
 	jc.Lock()
 	defer jc.Unlock()
 
-	key := JobKey(obj)
+	key := obj.UID
 	job, found := jc.jobs[key]
 	if !found {
-		return fmt.Errorf("failed to find job <%v>", key)
+		return ErrJobNotFound
+	}
+	if job.Deleted {
+		return ErrJobDeleted
+	}
+	if job.Job == nil {
+		return ErrJobNotReady
 	}
 
 	if job.Job != nil {
@@ -178,12 +219,13 @@ func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
 	jc.Lock()
 	defer jc.Unlock()
 
-	key := JobKey(obj)
+	key := obj.UID
 	jobInfo, found := jc.jobs[key]
 	if !found {
-		return fmt.Errorf("failed to find job <%v>", key)
+		return ErrJobNotFound
 	}
 	jobInfo.Job = nil
+	jobInfo.Deleted = true
 	jc.deleteJob(jobInfo)
 
 	return nil
@@ -193,7 +235,7 @@ func (jc *jobCache) AddPod(pod *v1.Pod) error {
 	jc.Lock()
 	defer jc.Unlock()
 
-	key, err := jobKeyOfPod(pod)
+	key, err := jobUIDOfPod(pod)
 	if err != nil {
 		return err
 	}
@@ -201,6 +243,7 @@ func (jc *jobCache) AddPod(pod *v1.Pod) error {
 	job, found := jc.jobs[key]
 	if !found {
 		job = &apis.JobInfo{
+			Namespace: pod.Namespace, Name: pod.Annotations[v1alpha1.JobNameKey], UID: key,
 			Pods: make(map[string]map[string]*v1.Pod),
 		}
 		jc.jobs[key] = job
@@ -213,7 +256,7 @@ func (jc *jobCache) UpdatePod(pod *v1.Pod) error {
 	jc.Lock()
 	defer jc.Unlock()
 
-	key, err := jobKeyOfPod(pod)
+	key, err := jobUIDOfPod(pod)
 	if err != nil {
 		return err
 	}
@@ -221,11 +264,17 @@ func (jc *jobCache) UpdatePod(pod *v1.Pod) error {
 	job, found := jc.jobs[key]
 	if !found {
 		job = &apis.JobInfo{
+			Namespace: pod.Namespace, Name: pod.Annotations[v1alpha1.JobNameKey], UID: key,
 			Pods: make(map[string]map[string]*v1.Pod),
 		}
 		jc.jobs[key] = job
 	}
 
+	// Only informer callbacks update Pod projections. An update can be the
+	// first observation after relist; retain it even if Add was not observed.
+	if job.Pods[pod.Annotations[v1alpha1.TaskSpecKey]][pod.Name] == nil {
+		return job.AddPod(pod)
+	}
 	return job.UpdatePod(pod)
 }
 
@@ -233,7 +282,7 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 	jc.Lock()
 	defer jc.Unlock()
 
-	key, err := jobKeyOfPod(pod)
+	key, err := jobUIDOfPod(pod)
 	if err != nil {
 		return err
 	}
@@ -254,7 +303,7 @@ func (jc *jobCache) HasPod(pod *v1.Pod) bool {
 	jc.Lock()
 	defer jc.Unlock()
 
-	key, err := jobKeyOfPod(pod)
+	key, err := jobUIDOfPod(pod)
 	if err != nil {
 		return false
 	}
@@ -271,7 +320,7 @@ func (jc *jobCache) Run(stopCh <-chan struct{}) {
 	wait.Until(jc.worker, 0, stopCh)
 }
 
-func (jc *jobCache) TaskCompleted(jobKey, taskName string) bool {
+func (jc *jobCache) TaskCompleted(jobKey types.UID, taskName string) bool {
 	jc.Lock()
 	defer jc.Unlock()
 
@@ -306,7 +355,7 @@ func (jc *jobCache) TaskCompleted(jobKey, taskName string) bool {
 	return completed >= taskReplicas
 }
 
-func (jc *jobCache) TaskFailed(jobKey, taskName string) bool {
+func (jc *jobCache) TaskFailed(jobKey types.UID, taskName string) bool {
 	jc.Lock()
 	defer jc.Unlock()
 
@@ -371,9 +420,13 @@ func (jc *jobCache) processCleanupJob() bool {
 	jc.Mutex.Lock()
 	defer jc.Mutex.Unlock()
 
+	key := job.UID
+	if jc.jobs[key] != job {
+		jc.deletedJobs.Forget(job)
+		return true
+	}
 	if jobTerminated(job) {
 		jc.deletedJobs.Forget(job)
-		key := keyFn(job.Namespace, job.Name)
 		delete(jc.jobs, key)
 		klog.V(3).Infof("Job <%s> was deleted.", key)
 	} else {

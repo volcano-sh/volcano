@@ -668,13 +668,13 @@ func TestOutOfSyncJSONPatch(t *testing.T) {
 	}{
 		{
 			name:     "should generate valid JSON patch for out-of-sync annotation",
-			expected: `[{"op":"add","path":"/metadata/annotations/volcano.sh~1controller-out-of-sync","value":"true"}]`,
+			expected: `[{"op":"test","path":"/metadata/uid","value":"pod-uid"},{"op":"add","path":"/metadata/annotations/volcano.sh~1controller-out-of-sync","value":"true"}]`,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := OutOfSyncJSONPatch()
+			result := OutOfSyncJSONPatch("pod-uid")
 			resultStr := string(result)
 
 			if resultStr != tc.expected {

@@ -18,12 +18,16 @@ package job
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -38,6 +42,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/lru"
 
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
@@ -62,9 +67,14 @@ func init() {
 	framework.RegisterController(&jobcontroller{})
 }
 
+// Eviction only causes another identity check; it must not affect correctness.
+const maxAbsentJobUIDs = 1024
+
 type delayAction struct {
 	// The namespacing name of the job
-	jobKey string
+	jobKey     string
+	jobUID     types.UID
+	jobVersion int32
 
 	// The name of the task
 	taskName string
@@ -147,9 +157,12 @@ type jobcontroller struct {
 	maxRequeueNum int
 
 	delayActionMapLock sync.RWMutex
-	// delayActionMap stores delayed actions for jobs, where outer map key is job key (namespace/name),
+	// delayActionMap stores delayed actions for jobs, where outer map key is Job UID,
 	// inner map key is pod name, and value is the delayed action to be performed
-	delayActionMap map[string]map[string]*delayAction
+	delayActionMap  map[types.UID]map[string]*delayAction
+	identityLimiter *rate.Limiter
+	// Only successful API confirmations of an absent UID are retained here.
+	absentJobUIDs *lru.Cache
 }
 
 func (cc *jobcontroller) Name() string {
@@ -173,6 +186,8 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.queueList = make([]workqueue.TypedRateLimitingInterface[any], workers)
 	cc.commandQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 	cc.cache = jobcache.New()
+	cc.identityLimiter = rate.NewLimiter(10, 1)
+	cc.absentJobUIDs = lru.New(maxAbsentJobUIDs)
 	cc.errTasks = newRateLimitingQueue()
 	cc.recorder = recorder
 	cc.workers = workers
@@ -261,7 +276,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.queueLister = cc.queueInformer.Lister()
 	cc.queueSynced = cc.queueInformer.Informer().HasSynced
 
-	cc.delayActionMap = make(map[string]map[string]*delayAction)
+	cc.delayActionMap = make(map[types.UID]map[string]*delayAction)
 
 	// Register actions
 	state.SyncJob = cc.syncJob
@@ -357,10 +372,9 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 
 	cc.CleanPodDelayActionsIfNeed(req)
 
-	jobInfo, err := cc.cache.Get(key)
+	jobInfo, err := cc.cache.Get(req.JobUid)
 	if err != nil {
-		// TODO(k82cn): ignore not-ready error.
-		klog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
+		cc.waitForJob(queue, req, err)
 		return true
 	}
 
@@ -376,7 +390,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	if delayAct.delay != 0 {
 		klog.V(3).Infof("Execute <%v> on Job <%s/%s> after %s",
 			delayAct.action, req.Namespace, req.JobName, delayAct.delay.String())
-		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, batchv1alpha1.ExecuteAction, fmt.Sprintf(
+		cc.recordJobEvent(jobInfo.Job.UID, batchv1alpha1.ExecuteAction, fmt.Sprintf(
 			"Execute action %s after %s", delayAct.action, delayAct.delay.String()))
 		cc.AddDelayActionForJob(req, delayAct)
 		return true
@@ -386,7 +400,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 		delayAct.action, req.Namespace, req.JobName, jobInfo.Job.Status.State.Phase, st)
 
 	if delayAct.action != busv1alpha1.SyncJobAction {
-		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, batchv1alpha1.ExecuteAction, fmt.Sprintf(
+		cc.recordJobEvent(jobInfo.Job.UID, batchv1alpha1.ExecuteAction, fmt.Sprintf(
 			"Start to execute action %s ", delayAct.action))
 	}
 
@@ -418,8 +432,14 @@ func (cc *jobcontroller) CleanPodDelayActionsIfNeed(req apis.Request) {
 		return
 	}
 
+	if req.Event == busv1alpha1.PodRunningEvent && cc.podLister != nil {
+		pod, err := cc.podLister.Pods(req.Namespace).Get(req.PodName)
+		if err != nil || pod.UID != req.PodUID || pod.Status.Phase != v1.PodRunning {
+			return
+		}
+	}
 	if req.Event != busv1alpha1.PodPendingEvent {
-		key := jobcache.JobKeyByReq(&req)
+		key := req.JobUid
 		cc.delayActionMapLock.Lock()
 		defer cc.delayActionMapLock.Unlock()
 
@@ -445,6 +465,9 @@ func (cc *jobcontroller) CleanPodDelayActionsIfNeed(req apis.Request) {
 					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> because of event <%s> of Job <%s>", delayAct.action, req.PodName, req.Event, delayAct.jobKey)
 					delayAct.cancel()
 					delete(taskMap, req.PodName)
+					if len(taskMap) == 0 {
+						delete(cc.delayActionMap, key)
+					}
 				}
 			}
 		}
@@ -462,13 +485,16 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 	cc.delayActionMapLock.Lock()
 	defer cc.delayActionMapLock.Unlock()
 
-	m, ok := cc.delayActionMap[delayAct.jobKey]
+	m, ok := cc.delayActionMap[delayAct.jobUID]
 	if !ok {
 		m = make(map[string]*delayAction)
-		cc.delayActionMap[delayAct.jobKey] = m
+		cc.delayActionMap[delayAct.jobUID] = m
 	}
-	if oldDelayAct, exists := m[req.PodName]; exists && oldDelayAct.action == delayAct.action {
+	if oldDelayAct, exists := m[req.PodName]; exists && oldDelayAct.action == delayAct.action && oldDelayAct.podUID == delayAct.podUID && oldDelayAct.jobVersion == delayAct.jobVersion {
 		return
+	}
+	if old := m[req.PodName]; old != nil && old.cancel != nil {
+		old.cancel()
 	}
 	m[req.PodName] = delayAct
 
@@ -476,6 +502,7 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 	delayAct.cancel = cancel
 
 	go func() {
+		defer cancel()
 		<-ctx.Done()
 		if ctx.Err() == context.Canceled {
 			klog.V(4).Infof("Job<%s/%s>'s delayed action %s is canceled", req.Namespace, req.JobName, delayAct.action)
@@ -484,12 +511,28 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 
 		klog.V(4).Infof("Job<%s/%s>'s delayed action %s is expired, execute it", req.Namespace, req.JobName, delayAct.action)
 
-		jobInfo, err := cc.cache.Get(delayAct.jobKey)
+		defer cc.removeDelayAction(delayAct)
+		cc.delayActionMapLock.RLock()
+		current := cc.delayActionMap[delayAct.jobUID][delayAct.podName] == delayAct
+		cc.delayActionMapLock.RUnlock()
+		if !current {
+			return
+		}
+		jobInfo, err := cc.cache.Get(delayAct.jobUID)
 		if err != nil {
 			klog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
 			return
 		}
 
+		if jobInfo.Job.Status.Version != delayAct.jobVersion {
+			return
+		}
+		if delayAct.event == busv1alpha1.PodPendingEvent {
+			pod := jobInfo.Pods[delayAct.taskName][delayAct.podName]
+			if pod == nil || pod.UID != delayAct.podUID || pod.Status.Phase != v1.PodPending || pod.DeletionTimestamp != nil {
+				return
+			}
+		}
 		st := state.NewState(jobInfo)
 		if st == nil {
 			klog.Errorf("Invalid state <%s> of Job <%v/%v>",
@@ -500,6 +543,7 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 
 		if err := st.Execute(GetStateAction(delayAct)); err != nil {
 			cc.handleJobError(queue, req, st, err, delayAct.action)
+			return
 		}
 
 		queue.Forget(req)
@@ -509,6 +553,10 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 }
 
 func (cc *jobcontroller) handleJobError(queue workqueue.TypedRateLimitingInterface[any], req apis.Request, st state.State, err error, action busv1alpha1.Action) {
+	if errors.Is(err, errWaitForPods) {
+		queue.AddAfter(req, wait.Jitter(2*time.Second, 0.2))
+		return
+	}
 	if cc.maxRequeueNum == -1 || queue.NumRequeues(req) < cc.maxRequeueNum {
 		klog.V(2).Infof("Failed to handle Job <%s/%s>: %v",
 			req.Namespace, req.JobName, err)
@@ -516,7 +564,7 @@ func (cc *jobcontroller) handleJobError(queue workqueue.TypedRateLimitingInterfa
 		return
 	}
 
-	cc.recordJobEvent(req.Namespace, req.JobName, batchv1alpha1.ExecuteAction,
+	cc.recordJobEvent(req.JobUid, batchv1alpha1.ExecuteAction,
 		fmt.Sprintf("Job failed on action %s for retry limit reached", action))
 	klog.Warningf("Terminating Job <%s/%s> and releasing resources", req.Namespace, req.JobName)
 
@@ -543,9 +591,12 @@ func (cc *jobcontroller) cleanupDelayActions(currentDelayAction *delayAction) {
 	cc.delayActionMapLock.Lock()
 	defer cc.delayActionMapLock.Unlock()
 
+	if currentDelayAction.delay != 0 && cc.delayActionMap[currentDelayAction.jobUID][currentDelayAction.podName] != currentDelayAction {
+		return
+	}
 	actionType := GetActionType(currentDelayAction.action)
 
-	if m, exists := cc.delayActionMap[currentDelayAction.jobKey]; exists {
+	if m, exists := cc.delayActionMap[currentDelayAction.jobUID]; exists {
 		for _, delayAct := range m {
 			if GetActionType(delayAct.action) == actionType {
 				// For Task level actions, only cancel delayed actions for the same task
@@ -568,5 +619,80 @@ func (cc *jobcontroller) cleanupDelayActions(currentDelayAction *delayAction) {
 				delete(m, delayAct.podName)
 			}
 		}
+		if len(m) == 0 {
+			delete(cc.delayActionMap, currentDelayAction.jobUID)
+		}
 	}
+}
+
+// waitForJob preserves early Pod policies while the Job informer catches up.
+// Live reads are limited and confined to ambiguous cache misses.
+func (cc *jobcontroller) waitForJob(queue workqueue.TypedRateLimitingInterface[any], req apis.Request, cacheErr error) {
+	if req.JobUid == "" || cc.jobLister == nil || errors.Is(cacheErr, jobcache.ErrJobDeleted) {
+		queue.Forget(req)
+		return
+	}
+	if cc.absentJobUIDs != nil {
+		if _, absent := cc.absentJobUIDs.Get(req.JobUid); absent {
+			// A late Pod callback may have recreated a placeholder after cleanup.
+			_ = cc.cache.Delete(&batchv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: req.Namespace, Name: req.JobName, UID: req.JobUid}})
+			queue.Forget(req)
+			return
+		}
+	}
+	observed, err := cc.jobLister.Jobs(req.Namespace).Get(req.JobName)
+	if err == nil && observed.UID == req.JobUid {
+		queue.AddAfter(req, 2*time.Second)
+		return
+	}
+	if cc.identityLimiter != nil && !cc.identityLimiter.Allow() {
+		queue.AddAfter(req, 2*time.Second)
+		return
+	}
+	live, err := cc.vcClient.BatchV1alpha1().Jobs(req.Namespace).Get(context.TODO(), req.JobName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) || (err == nil && live.UID != req.JobUid) {
+		if cc.absentJobUIDs != nil {
+			cc.absentJobUIDs.Add(req.JobUid, struct{}{})
+		}
+		_ = cc.cache.Delete(&batchv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: req.Namespace, Name: req.JobName, UID: req.JobUid}})
+		queue.Forget(req)
+		return
+	}
+	queue.AddAfter(req, 2*time.Second)
+}
+
+func (cc *jobcontroller) removeDelayAction(action *delayAction) {
+	cc.delayActionMapLock.Lock()
+	defer cc.delayActionMapLock.Unlock()
+	m := cc.delayActionMap[action.jobUID]
+	if m[action.podName] == action {
+		delete(m, action.podName)
+	}
+	if len(m) == 0 {
+		delete(cc.delayActionMap, action.jobUID)
+	}
+}
+
+// Coalesce ordinary Pod wakeups before their first enqueue. Changing the key
+// during a retry would lose the original request's execution failure count.
+func (cc *jobcontroller) enqueueJobRequest(req apis.Request) {
+	if req.Event == busv1alpha1.OutOfSyncEvent && req.Action == "" {
+		req = apis.Request{Namespace: req.Namespace, JobName: req.JobName, JobUid: req.JobUid, Event: req.Event}
+	}
+	cc.getWorkerQueue(jobcache.JobKeyByReq(&req)).Add(req)
+}
+
+func jobSyncRequest(job *batchv1alpha1.Job) apis.Request {
+	return apis.Request{Namespace: job.Namespace, JobName: job.Name, JobUid: job.UID, Event: busv1alpha1.OutOfSyncEvent}
+}
+
+func (cc *jobcontroller) cancelJobDelayActions(uid types.UID) {
+	cc.delayActionMapLock.Lock()
+	defer cc.delayActionMapLock.Unlock()
+	for _, action := range cc.delayActionMap[uid] {
+		if action.cancel != nil {
+			action.cancel()
+		}
+	}
+	delete(cc.delayActionMap, uid)
 }

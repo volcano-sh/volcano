@@ -34,7 +34,6 @@ import (
 	"volcano.sh/apis/pkg/apis/helpers"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
-	jobcache "volcano.sh/volcano/pkg/controllers/cache"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
@@ -59,6 +58,7 @@ func (cc *jobcontroller) addJob(obj interface{}) {
 	req := apis.Request{
 		Namespace: job.Namespace,
 		JobName:   job.Name,
+		JobUid:    job.UID,
 
 		Event: bus.OutOfSyncEvent,
 	}
@@ -86,6 +86,12 @@ func (cc *jobcontroller) updateJob(oldObj, newObj interface{}) {
 		return
 	}
 
+	if oldJob.UID != newJob.UID {
+		cc.deleteJob(oldJob)
+		cc.addJob(newJob)
+		return
+	}
+
 	// No need to update if ResourceVersion is not changed
 	if newJob.ResourceVersion == oldJob.ResourceVersion {
 		klog.V(6).Infof("No need to update because job is not modified.")
@@ -107,6 +113,7 @@ func (cc *jobcontroller) updateJob(oldObj, newObj interface{}) {
 	req := apis.Request{
 		Namespace: newJob.Namespace,
 		JobName:   newJob.Name,
+		JobUid:    newJob.UID,
 		Event:     bus.OutOfSyncEvent,
 	}
 	key := jobhelpers.GetJobKeyByReq(&req)
@@ -134,6 +141,8 @@ func (cc *jobcontroller) deleteJob(obj interface{}) {
 		klog.Errorf("Failed to delete job <%s/%s>: %v in cache",
 			job.Namespace, job.Name, err)
 	}
+
+	cc.cancelJobDelayActions(job.UID)
 
 	// Delete job metrics
 	state.DeleteJobMetrics(fmt.Sprintf("%s/%s", job.Namespace, job.Name), job.Spec.Queue)
@@ -203,9 +212,7 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 		klog.Errorf("Failed to add Pod <%s/%s>: %v to cache",
 			pod.Namespace, pod.Name, err)
 	}
-	key := jobhelpers.GetJobKeyByReq(&req)
-	queue := cc.getWorkerQueue(key)
-	queue.Add(req)
+	cc.enqueueJobRequest(req)
 }
 
 func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
@@ -221,6 +228,13 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		return
 	}
 
+	replaced := oldPod.UID != newPod.UID
+	if replaced {
+		cc.deletePod(oldPod)
+		// UpdatePod also inserts a newly observed instance. Continue below to
+		// dispatch its actual phase, even when both instances have the same phase.
+	}
+
 	var jobUid types.UID
 	// Filter out pods that are not created from volcano job
 	if !isControlledBy(newPod, helpers.JobKind) {
@@ -229,7 +243,7 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		jobUid = metav1.GetControllerOf(newPod).UID
 	}
 
-	if newPod.ResourceVersion == oldPod.ResourceVersion {
+	if !replaced && newPod.ResourceVersion == oldPod.ResourceVersion {
 		return
 	}
 
@@ -271,7 +285,7 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 
 	switch newPod.Status.Phase {
 	case v1.PodFailed:
-		if oldPod.Status.Phase != v1.PodFailed {
+		if replaced || oldPod.Status.Phase != v1.PodFailed {
 			event = bus.PodFailedEvent
 			// TODO: currently only one container pod is supported by volcano
 			// Once multi containers pod is supported, update accordingly.
@@ -280,22 +294,22 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 			}
 		}
 	case v1.PodSucceeded:
-		if oldPod.Status.Phase != v1.PodSucceeded &&
-			cc.cache.TaskCompleted(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
+		if (replaced || oldPod.Status.Phase != v1.PodSucceeded) &&
+			cc.cache.TaskCompleted(jobUid, taskName) {
 			event = bus.TaskCompletedEvent
 		}
 	case v1.PodRunning:
-		if cc.cache.TaskFailed(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
+		if cc.cache.TaskFailed(jobUid, taskName) {
 			event = bus.TaskFailedEvent
 		}
-		if oldPod.Status.Phase != v1.PodRunning {
+		if replaced || oldPod.Status.Phase != v1.PodRunning {
 			event = bus.PodRunningEvent
 		}
 	case v1.PodPending:
-		if cc.cache.TaskFailed(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
+		if cc.cache.TaskFailed(jobUid, taskName) {
 			event = bus.TaskFailedEvent
 		}
-		if oldPod.Status.Phase != v1.PodPending {
+		if replaced || oldPod.Status.Phase != v1.PodPending {
 			event = bus.PodPendingEvent
 		}
 	}
@@ -317,9 +331,7 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		JobVersion:  int32(dVersion),
 	}
 
-	key := jobhelpers.GetJobKeyByReq(&req)
-	queue := cc.getWorkerQueue(key)
-	queue.Add(req)
+	cc.enqueueJobRequest(req)
 }
 
 func (cc *jobcontroller) deletePod(obj interface{}) {
@@ -396,16 +408,14 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 			pod.Namespace, pod.Name, err)
 	}
 
-	key := jobhelpers.GetJobKeyByReq(&req)
-	queue := cc.getWorkerQueue(key)
-	queue.Add(req)
+	cc.enqueueJobRequest(req)
 }
 
-func (cc *jobcontroller) recordJobEvent(namespace, name string, event batch.JobEvent, message string) {
-	job, err := cc.cache.Get(jobcache.JobKeyByName(namespace, name))
+func (cc *jobcontroller) recordJobEvent(uid types.UID, event batch.JobEvent, message string) {
+	job, err := cc.cache.Get(uid)
 	if err != nil {
-		klog.Warningf("Failed to find job in cache when reporting job event <%s/%s>: %v",
-			namespace, name, err)
+		klog.Warningf("Failed to find job in cache when reporting job event <%s>: %v",
+			uid, err)
 		return
 	}
 	cc.recorder.Event(job.Job, v1.EventTypeNormal, string(event), message)
@@ -424,20 +434,40 @@ func (cc *jobcontroller) processNextCommand() bool {
 	cmd := obj.(*bus.Command)
 	defer cc.commandQueue.Done(cmd)
 
+	// Resolve legacy name-only commands once, before deleting the command.
+	if cmd.TargetObject == nil {
+		cc.commandQueue.Forget(cmd)
+		return true
+	}
+	if cmd.TargetObject.UID == "" {
+		job, err := cc.vcClient.BatchV1alpha1().Jobs(cmd.Namespace).Get(context.TODO(), cmd.TargetObject.Name, metav1.GetOptions{})
+		if err != nil {
+			cc.commandQueue.AddRateLimited(cmd)
+			return true
+		}
+		cc.commandQueue.Forget(cmd)
+		cmd = cmd.DeepCopy()
+		cmd.TargetObject.UID = job.UID
+	}
+
 	if err := cc.vcClient.BusV1alpha1().Commands(cmd.Namespace).Delete(context.TODO(), cmd.Name, metav1.DeleteOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to delete Command <%s/%s>.", cmd.Namespace, cmd.Name)
 			cc.commandQueue.AddRateLimited(cmd)
+		} else {
+			cc.commandQueue.Forget(cmd)
 		}
 		return true
 	}
-	cc.recordJobEvent(cmd.Namespace, cmd.TargetObject.Name,
+	cc.commandQueue.Forget(cmd)
+	cc.recordJobEvent(cmd.TargetObject.UID,
 		batch.CommandIssued,
 		fmt.Sprintf(
 			"Start to execute command %s, and clean it up to make sure executed not more than once.", cmd.Action))
 	req := apis.Request{
 		Namespace: cmd.Namespace,
 		JobName:   cmd.TargetObject.Name,
+		JobUid:    cmd.TargetObject.UID,
 		Event:     bus.CommandIssuedEvent,
 		Action:    bus.Action(cmd.Action),
 	}
@@ -462,24 +492,17 @@ func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
 		return
 	}
 
-	jobNameKey := newPG.Name
-	ors := newPG.OwnerReferences
-	for _, or := range ors {
-		if or.Kind == "Job" {
-			jobNameKey = or.Name
-		}
+	owner := metav1.GetControllerOf(newPG)
+	if owner == nil || owner.UID == "" || owner.Kind != helpers.JobKind.Kind || owner.APIVersion != helpers.JobKind.GroupVersion().String() {
+		return
 	}
-
-	_, err := cc.cache.Get(jobcache.JobKeyByName(newPG.Namespace, jobNameKey))
-	if err != nil && newPG.Annotations != nil {
-		klog.Warningf(
-			"Failed to find job in cache by PodGroup(%s/%s), this may not be a PodGroup for volcano job.", newPG.Namespace, newPG.Name)
-	}
+	jobNameKey := owner.Name
 
 	if newPG.Status.Phase != oldPG.Status.Phase {
 		req := apis.Request{
 			Namespace: newPG.Namespace,
 			JobName:   jobNameKey,
+			JobUid:    owner.UID,
 		}
 		switch newPG.Status.Phase {
 		case scheduling.PodGroupUnknown:
