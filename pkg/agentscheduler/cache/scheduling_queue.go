@@ -32,45 +32,67 @@ import (
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 )
 
-// NewSchedulingQueue creates an agent scheduling queue with scheduling gate admission
-// and the events needed to wake gated pods when their gates are removed.
+// queuePlugin provides admission checks and the events that can unblock a pod.
+type queuePlugin interface {
+	fwk.PreEnqueuePlugin
+	fwk.EnqueueExtensions
+}
+
+var _ queuePlugin = (*schedulinggates.SchedulingGates)(nil)
+
+// NewSchedulingQueue creates an agent scheduling queue with its default plugins.
 func NewSchedulingQueue(ctx context.Context, schedulerName string, informerFactory informers.SharedInformerFactory, opts ...k8sschedulingqueue.Option) (k8sschedulingqueue.SchedulingQueue, error) {
+	plugins, err := newDefaultQueuePlugins(ctx)
+	if err != nil {
+		return nil, err
+	}
+	preEnqueue := make(map[string]fwk.PreEnqueuePlugin, len(plugins))
+	hints := buildQueueingHintMap()
+	for _, plugin := range plugins {
+		preEnqueue[plugin.Name()] = plugin
+		events, err := plugin.EventsToRegister(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("register %s events: %w", plugin.Name(), err)
+		}
+		for _, event := range events {
+			hints[event.Event] = append(hints[event.Event], &k8sschedulingqueue.QueueingHintFunction{
+				PluginName:     plugin.Name(),
+				QueueingHintFn: event.QueueingHintFn,
+			})
+		}
+	}
+	opts = append(opts,
+		k8sschedulingqueue.WithPreEnqueuePluginMap(map[string]map[string]fwk.PreEnqueuePlugin{
+			schedulerName: preEnqueue,
+		}),
+		k8sschedulingqueue.WithQueueingHintMapPerProfile(k8sschedulingqueue.QueueingHintMapPerProfile{
+			schedulerName: hints,
+		}),
+	)
+	return k8sschedulingqueue.NewSchedulingQueue(Less, informerFactory, opts...), nil
+}
+
+func newDefaultQueuePlugins(ctx context.Context) ([]queuePlugin, error) {
 	plugin, err := schedulinggates.New(ctx, nil, nil, feature.Features{
 		EnableSchedulingQueueHint: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.SchedulerQueueingHints),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("initialize SchedulingGates: %w", err)
 	}
-	gates := plugin.(*schedulinggates.SchedulingGates)
-	events, err := gates.EventsToRegister(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("register SchedulingGates events: %w", err)
+	gates, ok := plugin.(queuePlugin)
+	if !ok {
+		return nil, fmt.Errorf("SchedulingGates does not implement queuePlugin")
 	}
-	opts = append(opts,
-		k8sschedulingqueue.WithPreEnqueuePluginMap(map[string]map[string]fwk.PreEnqueuePlugin{
-			schedulerName: {gates.Name(): gates},
-		}),
-		k8sschedulingqueue.WithQueueingHintMapPerProfile(k8sschedulingqueue.QueueingHintMapPerProfile{
-			schedulerName: buildQueueingHintMap(gates.Name(), events),
-		}),
-	)
-	return k8sschedulingqueue.NewSchedulingQueue(Less, informerFactory, opts...), nil
+	return []queuePlugin{gates}, nil
 }
 
-// buildQueueingHintMap preserves the default wildcard hint and adds named plugin events.
-func buildQueueingHintMap(pluginName string, events []fwk.ClusterEventWithHint) k8sschedulingqueue.QueueingHintMap {
-	hints := k8sschedulingqueue.QueueingHintMap{
+// buildQueueingHintMap initializes the existing wildcard hint for scheduling failures.
+func buildQueueingHintMap() k8sschedulingqueue.QueueingHintMap {
+	return k8sschedulingqueue.QueueingHintMap{
 		{Resource: fwk.WildCard, ActionType: fwk.All}: {
 			{QueueingHintFn: func(_ klog.Logger, _ *v1.Pod, _, _ interface{}) (fwk.QueueingHint, error) {
 				return fwk.Queue, nil
 			}},
 		},
 	}
-	for _, event := range events {
-		hints[event.Event] = append(hints[event.Event], &k8sschedulingqueue.QueueingHintFunction{
-			PluginName:     pluginName,
-			QueueingHintFn: event.QueueingHintFn,
-		})
-	}
-	return hints
 }
