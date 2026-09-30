@@ -6000,6 +6000,45 @@ func TestAllocateFromNomination_HappyPath(t *testing.T) {
 	assert.Equal(t, "hn-pinned", got)
 }
 
+func TestAllocateFromNomination_HardPodGroupAntiAffinityRejectsStaleDomain(t *testing.T) {
+	env := newDryRunPlacementEnv(t, dryRunEnvOptions{
+		nodeCPU: map[string]string{
+			"node-a": "8",
+			"node-b": "8",
+		},
+		tasks: []dryRunTaskSpec{
+			{name: "p1", cpu: "1", mem: "1G"},
+		},
+		minMember: 1,
+	})
+
+	tier := int32(2)
+	env.job.PodGroup.Spec.TopologyAffinity = &scheduling.TopologyAffinitySpec{
+		PodGroupAntiAffinity: &scheduling.PodGroupAntiAffinity{
+			Required: []scheduling.PodGroupAffinityTerm{{
+				PodGroupSelector: &metav1.LabelSelector{},
+				TopologyTier:     &tier,
+			}},
+		},
+	}
+	env.ssn.AddHyperNodeGradientForJobFn(dryRunTestPlugin, func(*api.JobInfo, *api.HyperNodeInfo, api.SearchPurpose) api.HyperNodeGradientResult {
+		return api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{env.ssn.HyperNodes["sn-b"]}}}
+	})
+
+	task := env.job.Tasks[api.TaskID("p1")]
+	task.Pod.Status.NominatedNodeName = "node-a"
+	env.subJob.NominatedHyperNode = "sn-a"
+	ws := newSubJobWorksheet(task)
+
+	stmt, score, ok := env.action().allocateFromNomination(env.subJob, ws, env.ssn.HyperNodes["root"])
+	assert.False(t, ok)
+	assert.Nil(t, stmt)
+	assert.Equal(t, float64(0), score)
+	assert.Equal(t, "", env.subJob.NominatedHyperNode)
+	assert.Equal(t, "", task.Pod.Status.NominatedNodeName)
+	assert.False(t, ws.Empty(), "fallback must leave the worksheet available for normal allocation")
+}
+
 // TestAllocateFromNomination_AllocateErrorFallsBack: allocateResourcesForTask
 // returns non-nil (because the node already has the task's PodKey, so
 // node.AddTask errors) => stmt.Discard + fall back.

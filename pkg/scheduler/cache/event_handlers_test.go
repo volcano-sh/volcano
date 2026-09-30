@@ -1947,6 +1947,63 @@ func TestSchedulerCache_SyncHyperNode(t *testing.T) {
 	}
 }
 
+func TestSchedulerCache_SyncHyperNode_LabelMembershipMoveAndDelete(t *testing.T) {
+	sc := NewDefaultMockSchedulerCache("volcano")
+	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name:   "node-0",
+		Labels: map[string]string{"rack": "a"},
+	}}
+	assert.NoError(t, sc.nodeInformer.Informer().GetIndexer().Add(node))
+
+	rackA := schedulingapi.BuildHyperNode("rack-a", 1, []schedulingapi.MemberConfig{{
+		Type:     topologyv1alpha1.MemberTypeNode,
+		Selector: "label",
+		LabelSelector: &metav1.LabelSelector{
+			MatchLabels: map[string]string{"rack": "a"},
+		},
+	}})
+	rackB := schedulingapi.BuildHyperNode("rack-b", 1, []schedulingapi.MemberConfig{{
+		Type:     topologyv1alpha1.MemberTypeNode,
+		Selector: "label",
+		LabelSelector: &metav1.LabelSelector{
+			MatchLabels: map[string]string{"rack": "b"},
+		},
+	}})
+	root := schedulingapi.BuildHyperNode("root", 2, []schedulingapi.MemberConfig{
+		{Name: "rack-a", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: "exact"},
+		{Name: "rack-b", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: "exact"},
+	})
+	for _, hyperNode := range []*topologyv1alpha1.HyperNode{rackA, rackB, root} {
+		assert.NoError(t, sc.updateHyperNode(hyperNode))
+	}
+	assert.Equal(t, sets.New("node-0"), sc.HyperNodesInfo.RealNodesSet()["rack-a"])
+	assert.Empty(t, sc.HyperNodesInfo.RealNodesSet()["rack-b"])
+
+	// Move the Node from rack-a to rack-b. Sync receives only the current Node
+	// name, so it must use cached membership to rebuild the old rack as well as
+	// the selector match to rebuild the new rack.
+	moved := node.DeepCopy()
+	moved.Labels = map[string]string{"rack": "b"}
+	assert.NoError(t, sc.nodeInformer.Informer().GetIndexer().Update(moved))
+	generationBeforeMove := sc.HyperNodesInfo.Generation()
+	assert.NoError(t, sc.SyncHyperNode("node/"+moved.Name))
+	afterMove := sc.HyperNodesInfo.RealNodesSet()
+	assert.Empty(t, afterMove["rack-a"])
+	assert.Equal(t, sets.New("node-0"), afterMove["rack-b"])
+	assert.Greater(t, sc.HyperNodesInfo.Generation(), generationBeforeMove)
+
+	// Once the Node has been deleted, label matching cannot query it from the
+	// lister. Historical membership must still cause rack-b to be rebuilt.
+	assert.NoError(t, sc.nodeInformer.Informer().GetIndexer().Delete(moved))
+	generationBeforeDelete := sc.HyperNodesInfo.Generation()
+	assert.NoError(t, sc.SyncHyperNode("node/"+moved.Name))
+	afterDelete := sc.HyperNodesInfo.RealNodesSet()
+	assert.Empty(t, afterDelete["rack-a"])
+	assert.Empty(t, afterDelete["rack-b"])
+	assert.Empty(t, afterDelete["root"])
+	assert.Greater(t, sc.HyperNodesInfo.Generation(), generationBeforeDelete)
+}
+
 // --- helpers shared with cache_test.go numa tests ---
 
 func newCacheWithNodes(names ...string) *SchedulerCache {
@@ -2145,4 +2202,37 @@ func TestAddPodWithUnresolvedPVCCachesTaskForResync(t *testing.T) {
 	// The task must be queued for resync so it is retried once the PVC
 	// informer catches up.
 	assert.Equal(t, 1, sc.errTasks.Len(), "task must be enqueued for resync")
+}
+
+func TestPodEventsInvalidatePlacementWithoutRecomputing(t *testing.T) {
+	sc := newMockSchedulerCache("volcano")
+	sc.Nodes["n1"] = schedulingapi.NewNodeInfo(buildNode("n1", schedulingapi.BuildResourceList("8", "8Gi")))
+	pod := buildPod("ns", "p1", "n1", v1.PodRunning, schedulingapi.BuildResourceList("1", "1Gi"), nil, nil)
+	pod.Annotations = map[string]string{schedulingv1.KubeGroupNameAnnotationKey: "pg"}
+	pod.Spec.SchedulerName = "volcano"
+	if err := sc.addPod(pod); err != nil {
+		t.Fatal(err)
+	}
+	job := sc.Jobs[schedulingapi.NewTaskInfo(pod).Job]
+	job.SetPodGroup(&schedulingapi.PodGroup{PodGroup: scheduling.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: "ns"},
+		Spec:       scheduling.PodGroupSpec{MinMember: 1},
+	}})
+	job.AllocatedHyperNode = "persisted"
+	generation := job.TaskPlacementGeneration
+	statusOnly := pod.DeepCopy()
+	statusOnly.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionTrue}}
+	if err := sc.updatePod(pod, statusOnly); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, generation, job.TaskPlacementGeneration, "status-only updates must not trigger topology reconciliation")
+	assert.Equal(t, "persisted", job.AllocatedHyperNode, "Pod events must not recompute placement under the cache lock")
+
+	finished := statusOnly.DeepCopy()
+	finished.Status.Phase = v1.PodSucceeded
+	if err := sc.updatePod(statusOnly, finished); err != nil {
+		t.Fatal(err)
+	}
+	assert.Greater(t, job.TaskPlacementGeneration, generation)
+	assert.Equal(t, "persisted", job.AllocatedHyperNode, "Session reconciliation owns clearing stale placement")
 }

@@ -247,6 +247,9 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 	job := sc.getOrCreateJob(pi)
 	if job != nil {
 		job.AddTaskInfo(pi)
+		if pi.OccupiesTopologyDomain() {
+			job.TaskPlacementGeneration++
+		}
 	}
 
 	return nil
@@ -363,6 +366,14 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 		return nil
 	}
 
+	oldTask := schedulingapi.NewTaskInfo(oldPod)
+	var placementGeneration uint64
+	if job := sc.Jobs[oldTask.Job]; job != nil {
+		placementGeneration = job.TaskPlacementGeneration
+		if cached := job.Tasks[oldTask.UID]; cached != nil {
+			oldTask = cached
+		}
+	}
 	if err := sc.deletePod(oldPod); err != nil {
 		return err
 	}
@@ -370,7 +381,19 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 	if len(utils.GetController(newPod)) == 0 {
 		newPod.OwnerReferences = oldPod.OwnerReferences
 	}
-	return sc.addPod(newPod)
+	if err := sc.addPod(newPod); err != nil {
+		return err
+	}
+	newTask := schedulingapi.NewTaskInfo(newPod)
+	if job := sc.Jobs[newTask.Job]; job != nil && oldTask.Job == newTask.Job && oldTask.UID == newTask.UID {
+		// delete/add is an implementation detail of a Pod update. Coalesce it
+		// when neither occupied Node nor SubJob membership can have changed.
+		if oldTask.NodeName == newTask.NodeName && oldTask.OccupiesTopologyDomain() == newTask.OccupiesTopologyDomain() &&
+			oldTask.TaskRole == newTask.TaskRole && reflect.DeepEqual(oldTask.Pod.Labels, newPod.Labels) {
+			job.TaskPlacementGeneration = placementGeneration
+		}
+	}
+	return nil
 }
 
 func (sc *SchedulerCache) clearUnassignedNumaTask(ti *schedulingapi.TaskInfo) {
@@ -390,6 +413,9 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 	if len(ti.Job) != 0 {
 		if job, found := sc.Jobs[ti.Job]; found {
 			job.DeleteTaskInfo(ti)
+			if ti.OccupiesTopologyDomain() {
+				job.TaskPlacementGeneration++
+			}
 		} else {
 			klog.Warningf("Failed to find Job <%v> for Task <%v/%v> in cache.", ti.Job, ti.Namespace, ti.Name)
 		}
@@ -934,6 +960,7 @@ func (sc *SchedulerCache) triggerUpdateHyperNode(name string) error {
 		klog.V(3).InfoS("No need to update hyperNode cache when node added or deleted")
 		return nil
 	}
+	resolvedNodesBeforeUpdate := sc.HyperNodesInfo.RealNodesSet()
 
 	for leafNode := range leafNodes {
 		hn := sc.HyperNodesInfo.HyperNode(leafNode)
@@ -946,7 +973,12 @@ func (sc *SchedulerCache) triggerUpdateHyperNode(name string) error {
 			klog.ErrorS(err, "Failed to get node regex match leaf hyperNode", "nodeName", name, "hyperNodeName", hn.Name)
 			continue
 		}
-		if !match {
+		// Rebuild both newly matching HyperNodes and HyperNodes that contained
+		// the Node before this event. The latter is required when a label update
+		// moves a Node out of a label selector, or when a deleted Node can no
+		// longer be read from the informer lister.
+		wasMember := resolvedNodesBeforeUpdate[leafNode].Has(name)
+		if !match && !wasMember {
 			continue
 		}
 

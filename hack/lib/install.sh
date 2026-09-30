@@ -39,6 +39,15 @@ function kind-up-cluster {
   for image_name in "${VOLCANO_IMAGE_NAMES[@]}"; do
     kind load docker-image "${IMAGE_PREFIX}/${image_name}:${TAG}" "${CLUSTER_CONTEXT[@]}" --nodes "${CLUSTER_CONTEXT[1]}-control-plane"
   done
+  if [[ -n "${KWOK_IMAGE_REPOSITORY:-}" && -n "${KWOK_IMAGE_TAG:-}" ]]; then
+    local kwok_image="${KWOK_IMAGE_REPOSITORY}:${KWOK_IMAGE_TAG}"
+    if docker image inspect "${kwok_image}" >/dev/null 2>&1; then
+      echo "Loading cached KWOK image ${kwok_image} into kind cluster"
+      # The KWOK controller is not pinned to the control-plane node, so every
+      # kind node must be able to start it without falling back to a registry pull.
+      kind load docker-image "${kwok_image}" "${CLUSTER_CONTEXT[@]}"
+    fi
+  fi
   if [[ "${E2E_TYPE}" == "DRA" || "${E2E_TYPE}" == "ALL" ]]; then
     ensure-dra-test-images
   fi
@@ -168,8 +177,12 @@ function install-ginkgo-if-not-exist {
 function install-kwok-with-helm {
   helm repo add kwok https://kwok.sigs.k8s.io/charts/
   helm repo update
-  helm upgrade --namespace kube-system --install kwok kwok/kwok
-  helm upgrade --install kwok kwok/stage-fast
+  helm upgrade --namespace kube-system --install kwok kwok/kwok \
+    --version "${KWOK_CHART_VERSION}" \
+    --set image.repository="${KWOK_IMAGE_REPOSITORY}" \
+    --set image.tag="${KWOK_IMAGE_TAG}" \
+    --set image.pullPolicy=IfNotPresent
+  helm upgrade --install kwok kwok/stage-fast --version "${KWOK_CHART_VERSION}"
   # delete pod-complete stage to avoid volcano-job-pod change status to complete.
   kubectl delete stage pod-complete
 }

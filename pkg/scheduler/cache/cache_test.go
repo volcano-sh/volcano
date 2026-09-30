@@ -901,8 +901,9 @@ func TestUpdateJobInfo_PropagatesNominatedHyperNode(t *testing.T) {
 
 	// Session-side copy carries the gangpreempt/gangreclaim decision.
 	sessionView := &api.JobInfo{
-		UID:                jobID,
-		AllocatedHyperNode: "hn-allocated",
+		UID:                          jobID,
+		AllocatedHyperNode:           "hn-allocated",
+		AllocatedHyperNodeGeneration: 7,
 		SubJobs: map[api.SubJobID]*api.SubJobInfo{
 			subID: {
 				UID:                subID,
@@ -916,6 +917,7 @@ func TestUpdateJobInfo_PropagatesNominatedHyperNode(t *testing.T) {
 	sc.updateJobInfo(sessionView)
 
 	assert.Equal(t, "hn-allocated", cached.AllocatedHyperNode)
+	assert.Equal(t, uint64(7), cached.AllocatedHyperNodeGeneration)
 	assert.Equal(t, "hn-allocated", cached.SubJobs[subID].AllocatedHyperNode)
 	assert.Equal(t, "hn-nominated", cached.SubJobs[subID].NominatedHyperNode,
 		"cache must persist NominatedHyperNode so the next cycle honors the gang-eviction pin")
@@ -1031,4 +1033,44 @@ func TestAddDRAResource_saturates(t *testing.T) {
 	if got := m[dc].Count; got != maxInt64 {
 		t.Fatalf("addDRAResource Count = %d for two MaxInt64 requests; want saturated to MaxInt64 (%d)", got, maxInt64)
 	}
+}
+
+func TestUpdateJobInfoPreservesNewerTaskPlacement(t *testing.T) {
+	cached := api.NewJobInfo("job")
+	cached.TaskPlacementGeneration = 4
+	cached.AllocatedTaskPlacementGeneration = 3
+	cached.AllocatedHyperNode = "cached"
+	session := cached.Clone()
+	cached.SubJobs["sub"] = &api.SubJobInfo{UID: "sub", Job: cached.UID, AllocatedHyperNode: "cached"}
+	session.SubJobs["sub"] = &api.SubJobInfo{UID: "sub", Job: cached.UID}
+	session.AllocatedHyperNode = "session"
+	session.SubJobs["sub"].AllocatedHyperNode = "session"
+	session.AllocatedTaskPlacementGeneration = 4
+	session.AllocatedHyperNodeGeneration = 8
+	session.AllocatedHyperNodeDirty = true
+	sc := &SchedulerCache{Jobs: map[api.JobID]*api.JobInfo{cached.UID: cached}}
+
+	// An informer event arrived after the Session snapshot.
+	cached.TaskPlacementGeneration++
+	sc.updateJobInfo(session)
+	assert.Equal(t, "cached", cached.AllocatedHyperNode)
+	assert.Equal(t, "cached", cached.SubJobs["sub"].AllocatedHyperNode)
+	assert.Equal(t, uint64(3), cached.AllocatedTaskPlacementGeneration)
+	assert.Equal(t, uint64(5), cached.TaskPlacementGeneration)
+	assert.False(t, cached.AllocatedHyperNodeDirty)
+
+	// A Session from the current task version can acknowledge reconciliation.
+	session.TaskPlacementGeneration = 5
+	session.AllocatedTaskPlacementGeneration = 5
+	sc.updateJobInfo(session)
+	assert.Equal(t, "session", cached.AllocatedHyperNode)
+	assert.Equal(t, "session", cached.SubJobs["sub"].AllocatedHyperNode)
+	assert.Equal(t, uint64(5), cached.AllocatedTaskPlacementGeneration)
+	assert.Equal(t, uint64(8), cached.AllocatedHyperNodeGeneration)
+	assert.True(t, cached.AllocatedHyperNodeDirty)
+	assert.True(t, cached.Clone().AllocatedHyperNodeDirty)
+
+	session.AllocatedHyperNodeDirty = false
+	sc.updateJobInfo(session)
+	assert.False(t, cached.AllocatedHyperNodeDirty)
 }
