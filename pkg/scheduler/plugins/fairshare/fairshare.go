@@ -69,6 +69,15 @@ type fairShareProcessState struct {
 
 	persistenceInitialized bool
 	lastFlushAt            time.Time
+
+	emittedShares map[metricLabels]struct{}
+	emittedUsage  map[metricLabels]struct{}
+}
+
+type metricLabels struct {
+	namespace string
+	queue     string
+	resource  string
 }
 
 var state = &fairShareProcessState{
@@ -300,6 +309,8 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 	// even as state.usage keeps accumulating for the next cycle.
 	fsp.sessionUsage = snapshotUsage()
 
+	emittedShares := make(map[metricLabels]struct{})
+	emittedUsage := make(map[metricLabels]struct{})
 	for queueName, qs := range fsp.queues {
 		totalDemand := make(map[string]float64)
 		for namespace := range qs.namespaceRunning {
@@ -322,11 +333,14 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 		resourceKey := string(qs.resourceKey)
 		for namespace, share := range qs.fairShares {
 			metrics.UpdateNamespaceShare(namespace, queueName, resourceKey, share)
+			emittedShares[metricLabels{namespace, queueName, resourceKey}] = struct{}{}
 		}
 		for namespace, u := range usage {
 			metrics.UpdateNamespaceDecayedUsage(namespace, queueName, resourceKey, u)
+			emittedUsage[metricLabels{namespace, queueName, resourceKey}] = struct{}{}
 		}
 	}
+	pruneStaleMetrics(emittedShares, emittedUsage)
 
 	ssn.AddJobOrderFn(fsp.Name(), func(l interface{}, r interface{}) int {
 		lJob := l.(*api.JobInfo)
@@ -511,6 +525,21 @@ func snapshotUsage() map[string]map[string]float64 {
 		snap[queue] = namespaceSnap
 	}
 	return snap
+}
+
+func pruneStaleMetrics(emittedShares, emittedUsage map[metricLabels]struct{}) {
+	for l := range state.emittedShares {
+		if _, ok := emittedShares[l]; !ok {
+			metrics.DeleteNamespaceShare(l.namespace, l.queue, l.resource)
+		}
+	}
+	for l := range state.emittedUsage {
+		if _, ok := emittedUsage[l]; !ok {
+			metrics.DeleteNamespaceDecayedUsage(l.namespace, l.queue, l.resource)
+		}
+	}
+	state.emittedShares = emittedShares
+	state.emittedUsage = emittedUsage
 }
 
 // DecayFactor computes 2^(-elapsed/halfLife), exported for testing.
