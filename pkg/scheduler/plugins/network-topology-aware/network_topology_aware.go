@@ -74,6 +74,8 @@ type networkTopologyAwarePlugin struct {
 	maxHyperNodesForEviction int
 	// hyperNodeResourceCache stores the resource status of hypernodes to avoid repeated calculation: hypernode -> resourceStatus
 	hyperNodeResourceCache map[string]*resourceStatus
+	// nodeIdleCache stores the idle resources of each node last accounted in hyperNodeResourceCache: node -> nodeIdleStatus
+	nodeIdleCache map[string]*nodeIdleStatus
 }
 
 type priorityWeight struct {
@@ -98,6 +100,11 @@ type resourceStatus struct {
 	used        *api.Resource
 	idle        *api.Resource
 	futureIdle  *api.Resource
+}
+
+type nodeIdleStatus struct {
+	idle       *api.Resource
+	futureIdle *api.Resource
 }
 
 func (h *hyperNodesTier) init(hyperNodesSetByTier []int) {
@@ -127,6 +134,36 @@ func (nta *networkTopologyAwarePlugin) initHyperNodeResourceCache(ssn *framework
 			nta.hyperNodeResourceCache[hyperNode].futureIdle.Add(ssn.Nodes[node].FutureIdle())
 		}
 	}
+
+	nta.nodeIdleCache = make(map[string]*nodeIdleStatus, len(ssn.Nodes))
+	for name, node := range ssn.Nodes {
+		nta.nodeIdleCache[name] = &nodeIdleStatus{
+			idle:       node.Idle.Clone(),
+			futureIdle: node.FutureIdle(),
+		}
+	}
+}
+
+// updateNodeIdleCache records the current idle resources of the node and returns how much they changed since
+// the last record. The node has already been updated when event handlers are called, so the change applies
+// equally to allocation, pipelining, eviction and their rollbacks.
+func (nta *networkTopologyAwarePlugin) updateNodeIdleCache(ssn *framework.Session, nodeName string) (idleDelta, futureIdleDelta *api.Resource) {
+	node, found := ssn.Nodes[nodeName]
+	if !found {
+		return nil, nil
+	}
+	last, found := nta.nodeIdleCache[nodeName]
+	if !found {
+		return nil, nil
+	}
+
+	idle := node.Idle.Clone()
+	futureIdle := node.FutureIdle()
+	// The deltas can be negative, so add the negated last values instead of subtracting them.
+	idleDelta = idle.Clone().Add(last.idle.Clone().Multi(-1))
+	futureIdleDelta = futureIdle.Clone().Add(last.futureIdle.Clone().Multi(-1))
+	last.idle, last.futureIdle = idle, futureIdle
+	return idleDelta, futureIdleDelta
 }
 
 /*
@@ -328,6 +365,7 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 		AllocateFunc: func(event *framework.Event) {
 			task := event.Task
 			node := task.NodeName
+			idleDelta, futureIdleDelta := nta.updateNodeIdleCache(ssn, node)
 			for hyperNode := range ssn.HyperNodes {
 				if ssn.RealNodesSet[hyperNode].Has(node) {
 					status, ok := nta.hyperNodeResourceCache[hyperNode]
@@ -336,12 +374,17 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 						continue
 					}
 					status.used.Add(task.Resreq)
+					if idleDelta != nil {
+						status.idle.Add(idleDelta)
+						status.futureIdle.Add(futureIdleDelta)
+					}
 				}
 			}
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			task := event.Task
 			node := task.NodeName
+			idleDelta, futureIdleDelta := nta.updateNodeIdleCache(ssn, node)
 			for hyperNode := range ssn.HyperNodes {
 				if ssn.RealNodesSet[hyperNode].Has(node) {
 					status, ok := nta.hyperNodeResourceCache[hyperNode]
@@ -350,6 +393,10 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 						continue
 					}
 					status.used.Sub(task.Resreq)
+					if idleDelta != nil {
+						status.idle.Add(idleDelta)
+						status.futureIdle.Add(futureIdleDelta)
+					}
 				}
 			}
 		},

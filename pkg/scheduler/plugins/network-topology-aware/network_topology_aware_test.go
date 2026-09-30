@@ -24,6 +24,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
 
@@ -3887,4 +3888,203 @@ func TestHyperNodeGradientForSubJobFn_NoSubJobPolicyRespectsHardTopology(t *test
 
 	gradients := ssn.HyperNodeGradientForSubJobFn(subJob, ssn.HyperNodes[rootName], api.PurposeEvict)
 	assert.Empty(t, gradients, "hard topology without feasible tier-1 domain should not fallback to root")
+}
+
+// newHyperNodeResourceCacheTest opens a session with two tier-1 hyperNodes, hn-a = {n1} and hn-b = {n2}, each node has 4 cpu.
+// Job pg1 has task p1 requesting 4 cpu, placed on p1NodeName with phase p1Phase. Job pg2 has pending task p2 requesting 4 cpu
+// and MinResources of 4 cpu. It returns the session and the network-topology-aware plugin instance built by OpenSession.
+func newHyperNodeResourceCacheTest(t *testing.T, p1NodeName string, p1Phase corev1.PodPhase) (*framework.Session, *networkTopologyAwarePlugin, func()) {
+	pg2 := util.BuildPodGroupWithNetWorkTopologies("pg2", "c1", "", "q1", 1, nil, schedulingv1.PodGroupInqueue, "hard", 1)
+	pg2.Spec.MinResources = &corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("4")}
+
+	test := uthelper.TestCommonStruct{
+		PodGroups: []*schedulingv1.PodGroup{
+			util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "", "q1", 1, nil, schedulingv1.PodGroupInqueue, "hard", 1),
+			pg2,
+		},
+		Pods: []*corev1.Pod{
+			util.BuildPod("c1", "p1", p1NodeName, p1Phase, api.BuildResourceList("4", "1Gi"), "pg1", make(map[string]string), nil),
+			util.BuildPod("c1", "p2", "", corev1.PodPending, api.BuildResourceList("4", "1Gi"), "pg2", make(map[string]string), nil),
+		},
+		Nodes: []*corev1.Node{
+			util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			util.BuildNode("n2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+		},
+		HyperNodesSetByTier: map[int]sets.Set[string]{
+			1: sets.New[string]("hn-a", "hn-b"),
+			2: sets.New[string]("hn-root"),
+		},
+		HyperNodesMap: map[string]*api.HyperNodeInfo{
+			"hn-root": api.NewHyperNodeInfo(api.BuildHyperNode("hn-root", 2, []api.MemberConfig{
+				{Name: "hn-a", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: "exact"},
+				{Name: "hn-b", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: "exact"},
+			})),
+			"hn-a": api.NewHyperNodeInfo(api.BuildHyperNode("hn-a", 1, []api.MemberConfig{
+				{Name: "n1", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
+			})),
+			"hn-b": api.NewHyperNodeInfo(api.BuildHyperNode("hn-b", 1, []api.MemberConfig{
+				{Name: "n2", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
+			})),
+		},
+		HyperNodes: map[string]sets.Set[string]{
+			"hn-root": sets.New[string]("n1", "n2"),
+			"hn-a":    sets.New[string]("n1"),
+			"hn-b":    sets.New[string]("n2"),
+		},
+		Queues: []*schedulingv1.Queue{
+			util.BuildQueue("q1", 1, nil),
+		},
+	}
+
+	// Keep a reference to the plugin instance built by OpenSession so its cache can be inspected.
+	var plugin *networkTopologyAwarePlugin
+	test.Plugins = map[string]framework.PluginBuilder{
+		PluginName: func(arguments framework.Arguments) framework.Plugin {
+			plugin = New(arguments).(*networkTopologyAwarePlugin)
+			return plugin
+		},
+	}
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:                     PluginName,
+					EnabledHyperNodeGradient: &trueValue,
+				},
+			},
+		},
+	}
+	ssn := test.RegisterSession(tiers, nil)
+	if plugin == nil {
+		test.Close()
+		t.Fatalf("plugin should be built when the session is opened")
+	}
+	return ssn, plugin, test.Close
+}
+
+// eligibleHyperNodesForJob returns the names of all hyperNodes in the allocation gradient of the job.
+func eligibleHyperNodesForJob(ssn *framework.Session, job *api.JobInfo) sets.Set[string] {
+	gradients := ssn.HyperNodeGradientForJobFn(job, ssn.HyperNodes[framework.ClusterTopHyperNode], api.PurposeAllocate)
+	eligible := sets.New[string]()
+	for _, gradient := range gradients {
+		for _, hn := range gradient {
+			eligible.Insert(hn.Name)
+		}
+	}
+	return eligible
+}
+
+func TestHyperNodeResourceCacheTracksIdleAcrossAllocations(t *testing.T) {
+	ssn, plugin, closeSession := newHyperNodeResourceCacheTest(t, "", corev1.PodPending)
+	defer closeSession()
+
+	hnA := plugin.hyperNodeResourceCache["hn-a"]
+	if !assert.NotNil(t, hnA, "resource status of hn-a should be cached") {
+		return
+	}
+	assert.Equal(t, 0.0, hnA.used.MilliCPU)
+	assert.Equal(t, 4000.0, hnA.idle.MilliCPU)
+	assert.Equal(t, 4000.0, hnA.futureIdle.MilliCPU)
+
+	job1 := ssn.Jobs[api.JobID("c1/pg1")]
+	job2 := ssn.Jobs[api.JobID("c1/pg2")]
+	if !assert.NotNil(t, job1) || !assert.NotNil(t, job2) {
+		return
+	}
+	var p1 *api.TaskInfo
+	for _, task := range job1.Tasks {
+		p1 = task
+	}
+
+	// Allocate the first job's task onto n1, which fills hn-a.
+	stmt := framework.NewStatement(ssn)
+	if err := stmt.Allocate(p1, ssn.Nodes["n1"]); err != nil {
+		t.Fatalf("failed to allocate task p1 to n1: %v", err)
+	}
+	assert.Equal(t, 0.0, ssn.Nodes["n1"].Idle.MilliCPU, "node n1 should have no idle cpu after allocation")
+	assert.Equal(t, 4000.0, hnA.used.MilliCPU, "hn-a used cpu after allocation")
+	assert.Equal(t, 0.0, hnA.idle.MilliCPU, "hn-a idle cpu after allocation")
+	assert.Equal(t, 0.0, hnA.futureIdle.MilliCPU, "hn-a futureIdle cpu after allocation")
+
+	// The second job requires 4 cpu within a tier-1 hyperNode, only hn-b can satisfy it.
+	eligible := eligibleHyperNodesForJob(ssn, job2)
+	assert.True(t, eligible.Has("hn-b"), "hn-b should be eligible for job pg2, got %v", sets.List(eligible))
+	assert.False(t, eligible.Has("hn-a"), "hn-a should not be eligible for job pg2, got %v", sets.List(eligible))
+
+	// Discarding the allocation should restore the cached resource status of hn-a.
+	stmt.Discard()
+	assert.Equal(t, 4000.0, ssn.Nodes["n1"].Idle.MilliCPU, "node n1 idle cpu after discard")
+	assert.Equal(t, 0.0, hnA.used.MilliCPU, "hn-a used cpu after discard")
+	assert.Equal(t, 4000.0, hnA.idle.MilliCPU, "hn-a idle cpu after discard")
+	assert.Equal(t, 4000.0, hnA.futureIdle.MilliCPU, "hn-a futureIdle cpu after discard")
+}
+
+func TestHyperNodeGradientExcludesHyperNodeFullAtSessionOpen(t *testing.T) {
+	// p1 already runs on n1 when the session opens, so hn-a has no idle cpu in the cache from the start.
+	ssn, plugin, closeSession := newHyperNodeResourceCacheTest(t, "n1", corev1.PodRunning)
+	defer closeSession()
+
+	hnA := plugin.hyperNodeResourceCache["hn-a"]
+	if !assert.NotNil(t, hnA, "resource status of hn-a should be cached") {
+		return
+	}
+	assert.Equal(t, 4000.0, hnA.used.MilliCPU)
+	assert.Equal(t, 0.0, hnA.idle.MilliCPU)
+	assert.Equal(t, 0.0, hnA.futureIdle.MilliCPU)
+
+	job2 := ssn.Jobs[api.JobID("c1/pg2")]
+	if !assert.NotNil(t, job2) {
+		return
+	}
+	eligible := eligibleHyperNodesForJob(ssn, job2)
+	assert.True(t, eligible.Has("hn-b"), "hn-b should be eligible for job pg2, got %v", sets.List(eligible))
+	assert.False(t, eligible.Has("hn-a"), "hn-a should not be eligible for job pg2, got %v", sets.List(eligible))
+}
+
+func TestHyperNodeResourceCacheTracksPipelineAndEviction(t *testing.T) {
+	// p1 runs on n1 when the session opens, so hn-a has no idle cpu.
+	ssn, plugin, closeSession := newHyperNodeResourceCacheTest(t, "n1", corev1.PodRunning)
+	defer closeSession()
+
+	hnA := plugin.hyperNodeResourceCache["hn-a"]
+	if !assert.NotNil(t, hnA, "resource status of hn-a should be cached") {
+		return
+	}
+	job1 := ssn.Jobs[api.JobID("c1/pg1")]
+	job2 := ssn.Jobs[api.JobID("c1/pg2")]
+	if !assert.NotNil(t, job1) || !assert.NotNil(t, job2) {
+		return
+	}
+	var p1, p2 *api.TaskInfo
+	for _, task := range job1.Tasks {
+		p1 = task
+	}
+	for _, task := range job2.Tasks {
+		p2 = task
+	}
+
+	assertHyperNodeIdle := func(stage string, idle, futureIdle float64) {
+		t.Helper()
+		assert.Equal(t, idle, ssn.Nodes["n1"].Idle.MilliCPU, "node n1 idle cpu %s", stage)
+		assert.Equal(t, futureIdle, ssn.Nodes["n1"].FutureIdle().MilliCPU, "node n1 futureIdle cpu %s", stage)
+		assert.Equal(t, idle, hnA.idle.MilliCPU, "hn-a idle cpu %s", stage)
+		assert.Equal(t, futureIdle, hnA.futureIdle.MilliCPU, "hn-a futureIdle cpu %s", stage)
+	}
+	assertHyperNodeIdle("at session open", 0, 0)
+
+	// Evicting p1 releases its resources in the future.
+	stmt := framework.NewStatement(ssn)
+	stmt.Evict(p1, "test")
+	assertHyperNodeIdle("after eviction", 0, 4000)
+
+	// Pipelining p2 onto n1 consumes the releasing resources.
+	if err := stmt.Pipeline(p2, "n1", true); err != nil {
+		t.Fatalf("failed to pipeline task p2 to n1: %v", err)
+	}
+	assertHyperNodeIdle("after pipeline", 0, 0)
+
+	// Discarding undoes both operations.
+	stmt.Discard()
+	assertHyperNodeIdle("after discard", 0, 0)
 }
