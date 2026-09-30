@@ -1173,7 +1173,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			attr.name, attr.deserved, attr.realCapability, attr.allocated, attr.request, attr.elastic, attr.share)
 	}
 
-	// Record metrics - all queues are now guaranteed to be in queueOpts
+	// Record metrics - all queues are now guaranteed to be in queueOpts.
 	for _, attr := range cp.queueOpts {
 		metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
 		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
@@ -1226,8 +1226,14 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 			continue
 		}
 		if len(attr.children) > 0 {
-			klog.Errorf("The Queue <%s> of Job <%s/%s> is not leaf queue", attr.name, job.Namespace, job.Name)
-			return false
+			if !utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) ||
+				!hasNamespaceQueueChild(attr, ssn) {
+				klog.Errorf("The Queue <%s> of Job <%s/%s> is not leaf queue", attr.name, job.Namespace, job.Name)
+				return false
+			}
+			// A child can appear after this Job was admitted. Retain its existing
+			// allocation in the parent hierarchy; enqueue/allocate reject non-leaves.
+			klog.Warningf("Accounting for Job <%s/%s> on Queue <%s> after a NamespaceQueue child was added", job.Namespace, job.Name, attr.name)
 		}
 
 		oldAllocated := attr.allocated.Clone()
@@ -1406,10 +1412,19 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 	return true
 }
 
+func hasNamespaceQueueChild(attr *queueAttr, ssn *framework.Session) bool {
+	for childID := range attr.children {
+		if child := ssn.Queues[childID]; child != nil && child.Scope == api.NamespaceQueueScope {
+			return true
+		}
+	}
+	return false
+}
+
 func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 	attr := &queueAttr{
 		queueID:   queue.UID,
-		name:      queue.Name,
+		name:      string(queue.UID),
 		ancestors: make([]api.QueueID, 0),
 		children:  make(map[api.QueueID]*queueAttr),
 
@@ -1437,7 +1452,7 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 }
 
 func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.Session, visited map[api.QueueID]struct{}) error {
-	if queue.Name == cp.rootQueue {
+	if queue.Scope == api.ClusterQueueScope && queue.UID == api.QueueID(cp.rootQueue) {
 		return nil
 	}
 

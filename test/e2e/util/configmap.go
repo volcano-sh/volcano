@@ -18,6 +18,7 @@ package util
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/onsi/gomega"
@@ -112,7 +113,16 @@ func (c *ConfigMapCase) UndoChanged() error {
 }
 
 func ModifySchedulerConfig(data map[string]string, modifier func(*SchedulerConfiguration) bool) (changed bool, changedBefore map[string]string) {
-	vcScheConfStr, ok := data["volcano-scheduler-ci.conf"]
+	configKey := "volcano-scheduler-ci.conf"
+	vcScheConfStr, ok := data[configKey]
+	if !ok {
+		for key, value := range data {
+			if strings.HasPrefix(key, "volcano-scheduler") && strings.HasSuffix(key, ".conf") {
+				configKey, vcScheConfStr, ok = key, value, true
+				break
+			}
+		}
+	}
 	gomega.Expect(ok).To(gomega.BeTrue())
 
 	schedulerConf := &SchedulerConfiguration{}
@@ -128,8 +138,8 @@ func ModifySchedulerConfig(data map[string]string, modifier func(*SchedulerConfi
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	changedBefore = make(map[string]string)
-	changedBefore["volcano-scheduler-ci.conf"] = vcScheConfStr
-	data["volcano-scheduler-ci.conf"] = string(newVCScheConfBytes)
+	changedBefore[configKey] = vcScheConfStr
+	data[configKey] = string(newVCScheConfBytes)
 	return
 }
 
