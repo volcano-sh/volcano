@@ -187,7 +187,7 @@ func TestKillJobFunc(t *testing.T) {
 				}
 			}
 
-			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.Job, metav1.CreateOptions{})
+			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testJobUID(testcase.Job), metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error While Creating Jobs")
 			}
@@ -441,6 +441,7 @@ func TestSyncJobFunc(t *testing.T) {
 			testcase.JobInfo.Job = testcase.Job
 			testcase.JobInfo.Job.Spec.Plugins = jobPlugins
 
+			testcase.PodGroup.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(testJobUID(testcase.Job), v1alpha1.SchemeGroupVersion.WithKind("Job"))}
 			fakeController.pgInformer.Informer().GetIndexer().Add(testcase.PodGroup)
 			fakeController.vcClient.SchedulingV1beta1().PodGroups(testcase.PodGroup.Namespace).Create(context.TODO(), testcase.PodGroup, metav1.CreateOptions{})
 
@@ -451,7 +452,7 @@ func TestSyncJobFunc(t *testing.T) {
 				}
 			}
 
-			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.Job, metav1.CreateOptions{})
+			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testJobUID(testcase.Job), metav1.CreateOptions{})
 			if err != nil {
 				t.Errorf("Expected no Error while creating job, but got error: %s", err)
 			}
@@ -947,6 +948,7 @@ func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 	for _, testcase := range testcases {
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
+			testcase.PodGroup.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(testJobUID(testcase.Job), v1alpha1.SchemeGroupVersion.WithKind("Job"))}
 			fakeController.pgInformer.Informer().GetIndexer().Add(testcase.PodGroup)
 			fakeController.vcClient.SchedulingV1beta1().PodGroups(testcase.PodGroup.Namespace).Create(context.TODO(), testcase.PodGroup, metav1.CreateOptions{})
 
@@ -1331,7 +1333,7 @@ func TestPodsToKill(t *testing.T) {
 			}
 
 			// Create job
-			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.Job, metav1.CreateOptions{})
+			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testJobUID(testcase.Job), metav1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("Error while creating job: %v", err)
 			}
@@ -1341,6 +1343,7 @@ func TestPodsToKill(t *testing.T) {
 				t.Fatalf("Error while adding job to cache: %v", err)
 			}
 
+			testJobUID(testcase.JobInfo.Job)
 			// Execute killPods
 			err = fakeController.killPods(testcase.JobInfo, testcase.PodRetainPhase, testcase.Target, testcase.UpdateStatus)
 			if !errors.Is(err, testcase.ExpectVal) {
@@ -1419,6 +1422,7 @@ func TestKillPodsPodGroupDeletion(t *testing.T) {
 
 			fakeController := newFakeController()
 
+			pg.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(testJobUID(job), v1alpha1.SchemeGroupVersion.WithKind("Job"))}
 			fakeController.pgInformer.Informer().GetIndexer().Add(pg)
 			_, err := fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
 			if err != nil {
@@ -1795,7 +1799,7 @@ func TestIsDependsOnPodsReady(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			fakeController := newFakeController()
 
-			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), tc.Job, metav1.CreateOptions{})
+			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testJobUID(tc.Job), metav1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("Failed to create job: %v", err)
 			}
@@ -1806,6 +1810,7 @@ func TestIsDependsOnPodsReady(t *testing.T) {
 			fakeController.jobInformer.Informer().GetIndexer().Add(tc.Job)
 
 			for _, pod := range tc.Pods {
+				pod.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(tc.Job, v1alpha1.SchemeGroupVersion.WithKind("Job"))}
 				_, err := fakeController.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 				if err != nil {
 					t.Fatalf("Failed to create pod: %v", err)
