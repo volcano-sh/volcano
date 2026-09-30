@@ -304,10 +304,6 @@ type NetworkTopologySpec struct {
 type TopologyAffinitySpec struct {
 	// +optional
 	PodGroupAntiAffinity *PodGroupAntiAffinity `json:"podGroupAntiAffinity,omitempty" protobuf:"bytes,1,opt,name=podGroupAntiAffinity"`
-	// +optional
-	SubGroupAffinity *SubGroupAffinity `json:"subGroupAffinity,omitempty" protobuf:"bytes,2,opt,name=subGroupAffinity"`
-	// +optional
-	SubGroupAntiAffinity *SubGroupAntiAffinity `json:"subGroupAntiAffinity,omitempty" protobuf:"bytes,3,opt,name=subGroupAntiAffinity"`
 }
 
 // PodGroupAntiAffinity defines required/preferred anti-affinity against other PodGroups.
@@ -334,38 +330,6 @@ type PodGroupAffinityTerm struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	TopologyTier *int32 `json:"topologyTier,omitempty" protobuf:"varint,5,opt,name=topologyTier"`
-}
-
-// SubGroupAffinity defines required/preferred affinity between SubGroups in one PodGroup.
-type SubGroupAffinity struct {
-	// +optional
-	Required []SubGroupAffinityTerm `json:"required,omitempty" protobuf:"bytes,1,rep,name=required"`
-	// +optional
-	Preferred []SubGroupAffinityTerm `json:"preferred,omitempty" protobuf:"bytes,2,rep,name=preferred"`
-}
-
-// SubGroupAntiAffinity defines required/preferred anti-affinity between SubGroups in one PodGroup.
-type SubGroupAntiAffinity struct {
-	// +optional
-	Required []SubGroupAffinityTerm `json:"required,omitempty" protobuf:"bytes,1,rep,name=required"`
-	// +optional
-	Preferred []SubGroupAffinityTerm `json:"preferred,omitempty" protobuf:"bytes,2,rep,name=preferred"`
-}
-
-// SubGroupAffinityTerm selects SubGroup policies and the topology tier for comparison.
-type SubGroupAffinityTerm struct {
-	// +kubebuilder:validation:MinItems=1
-	SubGroups []string `json:"subGroups" protobuf:"bytes,1,rep,name=subGroups"`
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=100
-	// +optional
-	Weight int32 `json:"weight,omitempty" protobuf:"varint,2,opt,name=weight"`
-	// +kubebuilder:validation:MaxLength=253
-	// +optional
-	TopologyTierName string `json:"topologyTierName,omitempty" protobuf:"bytes,3,opt,name=topologyTierName"`
-	// +kubebuilder:validation:Minimum=0
-	// +optional
-	TopologyTier *int32 `json:"topologyTier,omitempty" protobuf:"varint,4,opt,name=topologyTier"`
 }
 
 // PodGroupStatus represents the current state of a pod group.

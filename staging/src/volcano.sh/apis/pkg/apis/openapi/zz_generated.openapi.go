@@ -110,9 +110,6 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"volcano.sh/apis/pkg/apis/scheduling/v1beta1.QueueSpec":             schema_pkg_apis_scheduling_v1beta1_QueueSpec(ref),
 		"volcano.sh/apis/pkg/apis/scheduling/v1beta1.QueueStatus":           schema_pkg_apis_scheduling_v1beta1_QueueStatus(ref),
 		"volcano.sh/apis/pkg/apis/scheduling/v1beta1.Reservation":           schema_pkg_apis_scheduling_v1beta1_Reservation(ref),
-		"volcano.sh/apis/pkg/apis/scheduling/v1beta1.SubGroupAffinity":      schema_pkg_apis_scheduling_v1beta1_SubGroupAffinity(ref),
-		"volcano.sh/apis/pkg/apis/scheduling/v1beta1.SubGroupAffinityTerm":  schema_pkg_apis_scheduling_v1beta1_SubGroupAffinityTerm(ref),
-		"volcano.sh/apis/pkg/apis/scheduling/v1beta1.SubGroupAntiAffinity":  schema_pkg_apis_scheduling_v1beta1_SubGroupAntiAffinity(ref),
 		"volcano.sh/apis/pkg/apis/scheduling/v1beta1.TopologyAffinitySpec":  schema_pkg_apis_scheduling_v1beta1_TopologyAffinitySpec(ref),
 	}
 }
@@ -3764,134 +3761,6 @@ func schema_pkg_apis_scheduling_v1beta1_PodGroupStatus(ref common.ReferenceCallb
 	}
 }
 
-func schema_pkg_apis_scheduling_v1beta1_SubGroupAffinity(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "SubGroupAffinity defines required/preferred affinity between SubGroups in one PodGroup.",
-				Type:        []string{"object"},
-				Properties: map[string]spec.Schema{
-					"required": {
-						SchemaProps: spec.SchemaProps{
-							Type: []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref("volcano.sh/apis/pkg/apis/scheduling/v1beta1.SubGroupAffinityTerm"),
-									},
-								},
-							},
-						},
-					},
-					"preferred": {
-						SchemaProps: spec.SchemaProps{
-							Type: []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref("volcano.sh/apis/pkg/apis/scheduling/v1beta1.SubGroupAffinityTerm"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		Dependencies: []string{
-			"volcano.sh/apis/pkg/apis/scheduling/v1beta1.SubGroupAffinityTerm"},
-	}
-}
-
-func schema_pkg_apis_scheduling_v1beta1_SubGroupAffinityTerm(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "SubGroupAffinityTerm selects SubGroup policies and the topology tier for comparison.",
-				Type:        []string{"object"},
-				Properties: map[string]spec.Schema{
-					"subGroups": {
-						SchemaProps: spec.SchemaProps{
-							Type: []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: "",
-										Type:    []string{"string"},
-										Format:  "",
-									},
-								},
-							},
-						},
-					},
-					"weight": {
-						SchemaProps: spec.SchemaProps{
-							Type:   []string{"integer"},
-							Format: "int32",
-						},
-					},
-					"topologyTierName": {
-						SchemaProps: spec.SchemaProps{
-							Type:   []string{"string"},
-							Format: "",
-						},
-					},
-					"topologyTier": {
-						SchemaProps: spec.SchemaProps{
-							Type:   []string{"integer"},
-							Format: "int32",
-						},
-					},
-				},
-				Required: []string{"subGroups"},
-			},
-		},
-	}
-}
-
-func schema_pkg_apis_scheduling_v1beta1_SubGroupAntiAffinity(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "SubGroupAntiAffinity defines required/preferred anti-affinity between SubGroups in one PodGroup.",
-				Type:        []string{"object"},
-				Properties: map[string]spec.Schema{
-					"required": {
-						SchemaProps: spec.SchemaProps{
-							Type: []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref("volcano.sh/apis/pkg/apis/scheduling/v1beta1.SubGroupAffinityTerm"),
-									},
-								},
-							},
-						},
-					},
-					"preferred": {
-						SchemaProps: spec.SchemaProps{
-							Type: []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref("volcano.sh/apis/pkg/apis/scheduling/v1beta1.SubGroupAffinityTerm"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		Dependencies: []string{
-			"volcano.sh/apis/pkg/apis/scheduling/v1beta1.SubGroupAffinityTerm"},
-	}
-}
-
 func schema_pkg_apis_scheduling_v1beta1_TopologyAffinitySpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -3904,21 +3773,11 @@ func schema_pkg_apis_scheduling_v1beta1_TopologyAffinitySpec(ref common.Referenc
 							Ref: ref("volcano.sh/apis/pkg/apis/scheduling/v1beta1.PodGroupAntiAffinity"),
 						},
 					},
-					"subGroupAffinity": {
-						SchemaProps: spec.SchemaProps{
-							Ref: ref("volcano.sh/apis/pkg/apis/scheduling/v1beta1.SubGroupAffinity"),
-						},
-					},
-					"subGroupAntiAffinity": {
-						SchemaProps: spec.SchemaProps{
-							Ref: ref("volcano.sh/apis/pkg/apis/scheduling/v1beta1.SubGroupAntiAffinity"),
-						},
-					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"volcano.sh/apis/pkg/apis/scheduling/v1beta1.PodGroupAntiAffinity", "volcano.sh/apis/pkg/apis/scheduling/v1beta1.SubGroupAffinity", "volcano.sh/apis/pkg/apis/scheduling/v1beta1.SubGroupAntiAffinity"},
+			"volcano.sh/apis/pkg/apis/scheduling/v1beta1.PodGroupAntiAffinity"},
 	}
 }
 

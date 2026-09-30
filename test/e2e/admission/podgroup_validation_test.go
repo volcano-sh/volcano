@@ -18,7 +18,6 @@ package admission
 
 import (
 	"context"
-	"os"
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
@@ -113,7 +112,7 @@ var _ = ginkgo.Describe("PodGroup Validating E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Should preserve phase-1 PodGroup anti-affinity fields on API round-trip", func() {
+	ginkgo.It("Should preserve PodGroup anti-affinity fields on API round-trip", func() {
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
 
@@ -151,39 +150,6 @@ var _ = ginkgo.Describe("PodGroup Validating E2E Test", func() {
 		)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		gomega.Expect(stored.Spec.TopologyAffinity).To(gomega.Equal(podGroup.Spec.TopologyAffinity))
-	})
-
-	ginkgo.It("Should reject phase-2 SubGroup topology fields", func() {
-		if os.Getenv("E2E_TYPE") == "ADMISSION_POLICY" {
-			ginkgo.Skip("phase-1 topology feature gating is enforced by the PodGroup validating webhook")
-		}
-
-		testCtx := util.InitTestContext(util.Options{})
-		defer util.CleanupTestContext(testCtx)
-
-		podGroup := &schedulingv1beta1.PodGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: testCtx.Namespace,
-				Name:      "test-podgroup-subgroup-not-supported",
-			},
-			Spec: schedulingv1beta1.PodGroupSpec{
-				MinMember: 1,
-				TopologyAffinity: &schedulingv1beta1.TopologyAffinitySpec{
-					SubGroupAntiAffinity: &schedulingv1beta1.SubGroupAntiAffinity{
-						Required: []schedulingv1beta1.SubGroupAffinityTerm{{
-							SubGroups:    []string{"worker"},
-							TopologyTier: ptr.To[int32](1),
-						}},
-					},
-				},
-			},
-		}
-
-		_, err := testCtx.Vcclient.SchedulingV1beta1().PodGroups(testCtx.Namespace).Create(
-			context.TODO(), podGroup, metav1.CreateOptions{},
-		)
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("not supported in phase 1"))
 	})
 
 })

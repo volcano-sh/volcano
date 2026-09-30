@@ -324,7 +324,7 @@ func TestValidatePodGroup(t *testing.T) {
 	}
 }
 
-func TestValidateTopologyAffinityPhaseOne(t *testing.T) {
+func TestValidateTopologyAffinity(t *testing.T) {
 	tier := int32(1)
 	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"team": "ml"}}
 	valid := &schedulingv1beta1.TopologyAffinitySpec{
@@ -341,12 +341,6 @@ func TestValidateTopologyAffinityPhaseOne(t *testing.T) {
 		},
 	}
 	assert.Empty(t, validateTopologyAffinity(valid))
-
-	unsupported := valid.DeepCopy()
-	unsupported.SubGroupAntiAffinity = &schedulingv1beta1.SubGroupAntiAffinity{
-		Required: []schedulingv1beta1.SubGroupAffinityTerm{{SubGroups: []string{"worker"}, TopologyTier: &tier}},
-	}
-	assert.Contains(t, validateTopologyAffinity(unsupported), "not supported in phase 1")
 
 	invalidSelector := valid.DeepCopy()
 	invalidSelector.PodGroupAntiAffinity.Required[0].PodGroupSelector = &metav1.LabelSelector{

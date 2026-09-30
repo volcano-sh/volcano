@@ -182,7 +182,7 @@ The `allocate` action supports required and preferred PodGroup anti-affinity, na
 The following scenarios are not supported:
 
 - Required or preferred PodGroup anti-affinity for BestEffort Pods scheduled by backfill. Whole-PodGroup isolation is not guaranteed if any members are placed through backfill.
-- SubGroup affinity and anti-affinity (`subGroupAffinity` and `subGroupAntiAffinity`).
+- Affinity and anti-affinity between subGroups within a PodGroup.
 - Affinity between different PodGroups.
 - Automatic relocation of running Pods after label, policy, or topology changes.
 - Evicting another PodGroup solely to clear an anti-affinity conflict.

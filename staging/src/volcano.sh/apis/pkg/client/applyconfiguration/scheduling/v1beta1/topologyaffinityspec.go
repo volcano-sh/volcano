@@ -23,8 +23,6 @@ package v1beta1
 // TopologyAffinitySpec holds group topology affinity and anti-affinity rules.
 type TopologyAffinitySpecApplyConfiguration struct {
 	PodGroupAntiAffinity *PodGroupAntiAffinityApplyConfiguration `json:"podGroupAntiAffinity,omitempty"`
-	SubGroupAffinity     *SubGroupAffinityApplyConfiguration     `json:"subGroupAffinity,omitempty"`
-	SubGroupAntiAffinity *SubGroupAntiAffinityApplyConfiguration `json:"subGroupAntiAffinity,omitempty"`
 }
 
 // TopologyAffinitySpecApplyConfiguration constructs a declarative configuration of the TopologyAffinitySpec type for use with
@@ -38,21 +36,5 @@ func TopologyAffinitySpec() *TopologyAffinitySpecApplyConfiguration {
 // If called multiple times, the PodGroupAntiAffinity field is set to the value of the last call.
 func (b *TopologyAffinitySpecApplyConfiguration) WithPodGroupAntiAffinity(value *PodGroupAntiAffinityApplyConfiguration) *TopologyAffinitySpecApplyConfiguration {
 	b.PodGroupAntiAffinity = value
-	return b
-}
-
-// WithSubGroupAffinity sets the SubGroupAffinity field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SubGroupAffinity field is set to the value of the last call.
-func (b *TopologyAffinitySpecApplyConfiguration) WithSubGroupAffinity(value *SubGroupAffinityApplyConfiguration) *TopologyAffinitySpecApplyConfiguration {
-	b.SubGroupAffinity = value
-	return b
-}
-
-// WithSubGroupAntiAffinity sets the SubGroupAntiAffinity field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SubGroupAntiAffinity field is set to the value of the last call.
-func (b *TopologyAffinitySpecApplyConfiguration) WithSubGroupAntiAffinity(value *SubGroupAntiAffinityApplyConfiguration) *TopologyAffinitySpecApplyConfiguration {
-	b.SubGroupAntiAffinity = value
 	return b
 }

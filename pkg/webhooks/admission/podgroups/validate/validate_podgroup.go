@@ -155,12 +155,6 @@ func validateTopologyAffinity(topologyAffinity *schedulingv1beta1.TopologyAffini
 		return ""
 	}
 	var errs []string
-	if affinity := topologyAffinity.SubGroupAffinity; affinity != nil && (len(affinity.Required) > 0 || len(affinity.Preferred) > 0) {
-		errs = append(errs, "topologyAffinity.subGroupAffinity is not supported in phase 1")
-	}
-	if antiAffinity := topologyAffinity.SubGroupAntiAffinity; antiAffinity != nil && (len(antiAffinity.Required) > 0 || len(antiAffinity.Preferred) > 0) {
-		errs = append(errs, "topologyAffinity.subGroupAntiAffinity is not supported in phase 1")
-	}
 	if anti := topologyAffinity.PodGroupAntiAffinity; anti != nil {
 		for index, term := range anti.Required {
 			errs = append(errs, validatePodGroupAffinityTerm(
