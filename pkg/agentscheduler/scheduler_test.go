@@ -3,6 +3,7 @@ package agentscheduler
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	v1 "k8s.io/api/core/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
@@ -161,5 +162,69 @@ func TestRunOnceRequeuesWhenSnapshotUpdateFails(t *testing.T) {
 	pendingPods, _ := testFwk.SchedulingQueue.PendingPods()
 	if len(pendingPods) != 1 {
 		t.Fatalf("expected pod to be requeued after snapshot failure, got %d pending pods", len(pendingPods))
+	}
+}
+
+// trackingPlugin records when its lifecycle hooks are invoked.
+type trackingPlugin struct {
+	calls *[]string
+}
+
+func (p *trackingPlugin) Name() string { return "tracking" }
+func (p *trackingPlugin) OnPluginInit(fwk *framework.Framework) {
+}
+func (p *trackingPlugin) OnCycleStart(fwk *framework.Framework) {
+	*p.calls = append(*p.calls, "OnCycleStart")
+}
+func (p *trackingPlugin) OnCycleEnd(fwk *framework.Framework) {
+	*p.calls = append(*p.calls, "OnCycleEnd")
+}
+
+// trackingAction records when its Execute is invoked.
+type trackingAction struct {
+	noopAction
+	calls *[]string
+}
+
+func (a *trackingAction) Execute(_ *framework.Framework, _ *agentapi.SchedulingContext) {
+	*a.calls = append(*a.calls, "Execute")
+}
+
+func TestRunOnceCallsCycleHooksForPlugins(t *testing.T) {
+	agentuthelper.InitTestEnv(t)
+	options.ServerOpts.ShardingMode = commonutil.NoneShardingMode
+	scheduleroptions.ServerOpts.ShardingMode = commonutil.NoneShardingMode
+
+	var calls []string
+	testFwk, err := agentuthelper.NewTestFramework(
+		"test-scheduler",
+		1,
+		[]framework.Action{&trackingAction{calls: &calls}},
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("failed to create test framework: %v", err)
+	}
+	defer testFwk.Close()
+
+	plugin := &trackingPlugin{calls: &calls}
+	testFwk.Frameworks[0].Plugins[plugin.Name()] = plugin
+
+	pod := util.BuildPod("default", "cycle-hooks", "", v1.PodPending, v1.ResourceList{}, "", map[string]string{}, map[string]string{})
+	pod.Spec.SchedulerName = "test-scheduler"
+	task := schedulingapi.NewTaskInfo(pod)
+	testFwk.MockCache.AddTaskInfo(task)
+	testFwk.SchedulingQueue.Add(klog.Background(), pod)
+
+	worker := &Worker{
+		framework: testFwk.Frameworks[0],
+		index:     0,
+	}
+	worker.runOnce()
+
+	expected := []string{"OnCycleStart", "Execute", "OnCycleEnd"}
+	if !reflect.DeepEqual(calls, expected) {
+		t.Fatalf("expected lifecycle hooks to be called in order %v, got %v", expected, calls)
 	}
 }
