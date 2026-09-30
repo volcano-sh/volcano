@@ -1,0 +1,226 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: mpi-volcano
+  namespace: argo
+  annotations:
+    description: "MPI job example using Volcano and Argo Workflows"
+spec:
+  serviceAccountName: argo
+  entrypoint: main
+
+  parameters:
+    - name: job-name
+      value: mpi-job-example
+    - name: mpi-worker-replicas
+      value: "2"
+    - name: mpi-image
+      value: mpioperator/mpi-pi:latest
+
+  templates:
+
+  - name: main
+    dag:
+      tasks:
+
+      - name: submit-job
+        template: submit-volcano-job
+        arguments:
+          parameters:
+          - name: job-name
+            value: "{{workflow.parameters.job-name}}"
+          - name: mpi-worker-replicas
+            value: "{{workflow.parameters.mpi-worker-replicas}}"
+          - name: mpi-image
+            value: "{{workflow.parameters.mpi-image}}"
+
+      - name: follow-logs
+        template: follow-master-logs
+        dependencies: [submit-job]
+        arguments:
+          parameters:
+          - name: job-name
+            value: "{{workflow.parameters.job-name}}"
+
+  - name: submit-volcano-job
+    inputs:
+      parameters:
+      - name: job-name
+      - name: mpi-worker-replicas
+      - name: mpi-image
+    resource:
+      action: create
+      setOwnerReference: true
+      successCondition: status.state.phase == Completed
+      failureCondition: status.state.phase == Failed
+      manifest: |
+        apiVersion: batch.volcano.sh/v1alpha1
+        kind: Job
+        metadata:
+          name: {{inputs.parameters.job-name}}
+          ownerReferences:
+          - apiVersion: argoproj.io/v1alpha1
+            blockOwnerDeletion: true
+            kind: Workflow
+            name: "{{workflow.name}}"
+            uid: "{{workflow.uid}}"
+        spec:
+          minAvailable: {{inputs.parameters.mpi-worker-replicas}}
+          schedulerName: volcano
+          plugins:
+            ssh: []
+            svc: []
+          policies:
+            - event: TaskCompleted
+              action: CompleteJob
+            - event: PodFailed
+              action: RestartTask
+            - event: PodEvicted
+              action: RestartTask
+          tasks:
+
+          # MPI MASTER
+          - name: mpimaster
+            replicas: 1
+            policies:
+              - event: TaskCompleted
+                action: CompleteJob
+            template:
+              metadata:
+                labels:
+                  volcano.sh/job-name: {{inputs.parameters.job-name}}
+                  volcano.sh/task-spec: mpimaster
+              spec:
+                containers:
+                - name: mpimaster
+                  image: {{inputs.parameters.mpi-image}}
+                  imagePullPolicy: IfNotPresent
+                  command:
+                    - mpirun
+                  args:
+                    - "--allow-run-as-root"
+                    - "--hostfile"
+                    - "/etc/volcano/mpi.hostfile"
+                    - "-np"
+                    - "{{inputs.parameters.mpi-worker-replicas}}"
+                    - "./mpi-pi"
+                  resources:
+                    requests:
+                      cpu: "1"
+                      memory: "2Gi"
+                  volumeMounts:
+                    - name: mpi-hostfile
+                      mountPath: /etc/volcano
+                volumes:
+                  - name: mpi-hostfile
+                    emptyDir: {}
+                restartPolicy: OnFailure
+
+          # MPI WORKERS
+          - name: mpiworker
+            replicas: {{inputs.parameters.mpi-worker-replicas}}
+            template:
+              metadata:
+                labels:
+                  volcano.sh/job-name: {{inputs.parameters.job-name}}
+                  volcano.sh/task-spec: mpiworker
+              spec:
+                containers:
+                - name: mpiworker
+                  image: {{inputs.parameters.mpi-image}}
+                  imagePullPolicy: IfNotPresent
+                  command:
+                    - /usr/sbin/sshd
+                  args:
+                    - "-D"
+                  resources:
+                    requests:
+                      cpu: "1"
+                      memory: "2Gi"
+                  volumeMounts:
+                    - name: mpi-hostfile
+                      mountPath: /etc/volcano
+                  readinessProbe:
+                    tcpSocket:
+                      port: 22
+                    initialDelaySeconds: 5
+                    periodSeconds: 5
+                volumes:
+                  - name: mpi-hostfile
+                    emptyDir: {}
+                restartPolicy: OnFailure
+
+  - name: follow-master-logs
+    inputs:
+      parameters:
+      - name: job-name
+    activeDeadlineSeconds: 3600
+    container:
+      image: bitnami/kubectl:latest
+      command: [bash, -c]
+      args:
+        - |
+          set -e
+          NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+          JOB_NAME="{{inputs.parameters.job-name}}"
+          
+          echo "========================================"
+          echo "Waiting for MPI master pod..."
+          echo "Job: $JOB_NAME"
+          echo "Namespace: $NS"
+          echo "========================================"
+          
+          POD=""
+          ATTEMPTS=0
+          MAX_ATTEMPTS=60
+          
+          while [ -z "$POD" ] && [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+            POD=$(kubectl get pods \
+              -n $NS \
+              -l volcano.sh/job-name=$JOB_NAME,volcano.sh/task-spec=mpimaster \
+              -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+            
+            if [ -z "$POD" ]; then
+              echo "[$ATTEMPTS/$MAX_ATTEMPTS] Master pod not found yet, waiting..."
+              sleep 5
+              ATTEMPTS=$((ATTEMPTS + 1))
+            fi
+          done
+          
+          if [ -z "$POD" ]; then
+            echo "ERROR: Timed out waiting for master pod"
+            exit 1
+          fi
+          
+          echo ""
+          echo "✓ Found master pod: $POD"
+          echo ""
+          echo "========================================"
+          echo "Waiting for pod to be ready..."
+          echo "========================================"
+          
+          kubectl wait -n $NS pod/$POD --for=condition=Ready --timeout=300s || {
+            echo "ERROR: Pod did not become ready"
+            kubectl get pod -n $NS $POD -o yaml
+            exit 1
+          }
+          
+          echo ""
+          echo "✓ Pod is ready"
+          echo ""
+          echo "========================================"
+          echo "Following master pod logs..."
+          echo "========================================"
+          echo ""
+          
+          kubectl logs -f -n $NS -c mpimaster $POD || {
+            EXIT_CODE=$?
+            echo ""
+            echo "========================================"
+            echo "Log streaming ended (exit code: $EXIT_CODE)"
+            echo "Fetching final pod status..."
+            echo "========================================"
+            kubectl get pod -n $NS $POD -o wide
+            kubectl describe pod -n $NS $POD
+            exit $EXIT_CODE
+          }
