@@ -28,6 +28,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
@@ -42,6 +43,7 @@ import (
 
 // Run start the service of admission controller.
 func Run(config *options.Config) error {
+	logf.SetLogger(klog.NewKlogr())
 	if config.EnableHealthz {
 		if err := helpers.StartHealthz(config.HealthzBindAddress, "volcano-admission", config.CaCertData, config.CertData, config.KeyData); err != nil {
 			return err
@@ -105,9 +107,11 @@ func Run(config *options.Config) error {
 		klog.V(3).Infof("Registered '%s' as webhook.", service.Path)
 		http.HandleFunc(service.Path, service.Handler)
 
-		klog.V(3).Infof("Add CaCert for webhook <%s>", service.Path)
-		if err = addCaCertForWebhook(kubeClient, service, config.CaCertData); err != nil {
-			return fmt.Errorf("failed to add caCert for webhook %v", err)
+		if config.ManageWebhookCABundle {
+			klog.V(3).Infof("Add CaCert for webhook <%s>", service.Path)
+			if err = addCaCertForWebhook(kubeClient, service, config.CaCertData); err != nil {
+				return fmt.Errorf("failed to add caCert for webhook %v", err)
+			}
 		}
 		return nil
 	}); err != nil {
@@ -126,9 +130,21 @@ func Run(config *options.Config) error {
 		}
 	}
 
+	tlsConfig, certWatcher, err := configTLS(config, restConfig)
+	if err != nil {
+		return err
+	}
+	if certWatcher != nil {
+		go func() {
+			if err := certWatcher.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				klog.ErrorS(err, "certificate watcher stopped")
+			}
+		}()
+	}
+
 	server := &http.Server{
 		Addr:              config.ListenAddress + ":" + strconv.Itoa(config.Port),
-		TLSConfig:         configTLS(config, restConfig),
+		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: helpers.DefaultReadHeaderTimeout,
 		ReadTimeout:       helpers.DefaultReadTimeout,
 		WriteTimeout:      helpers.DefaultWriteTimeout,
