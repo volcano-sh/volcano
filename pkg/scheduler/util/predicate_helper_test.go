@@ -104,6 +104,35 @@ func TestPredicateNodes(t *testing.T) {
 			expectedErrCache: map[string]map[string]string{},
 		},
 		{
+			name: "predicate success keeps enabled error cache",
+			task: &api.TaskInfo{
+				Job:       "job1",
+				TaskRole:  "worker",
+				Namespace: "ns",
+				Name:      "task",
+			},
+			nodes: []*api.NodeInfo{
+				{Name: "node1"},
+				{Name: "node2"},
+			},
+			nodesInShard:     sets.New[string]("node1", "node2"),
+			shardingMode:     commonutil.NoneShardingMode,
+			enableErrorCache: true,
+			predicateFn: func(_ *api.TaskInfo, node *api.NodeInfo) error {
+				if node.Name == "node1" {
+					return fmt.Errorf("predicate failed")
+				}
+				return nil
+			},
+			expectedNodes: []string{"node2"},
+			expectedErr:   "0/1 nodes are unavailable: 1 predicate failed.",
+			expectedErrCache: map[string]map[string]string{
+				"job1/worker": {
+					"node1": "predicate failed",
+				},
+			},
+		},
+		{
 			name: "hard sharding rejects nodes outside shard",
 			task: &api.TaskInfo{
 				Job:       "job1",
@@ -120,11 +149,7 @@ func TestPredicateNodes(t *testing.T) {
 			predicateFn:      func(*api.TaskInfo, *api.NodeInfo) error { return nil },
 			expectedNodes:    []string{},
 			expectedErr:      "0/1 nodes are unavailable: 1 node isn't in scheduler node shard.",
-			expectedErrCache: map[string]map[string]string{
-				"job1/worker": {
-					"node2": "node isn't in scheduler node shard",
-				},
-			},
+			expectedErrCache: map[string]map[string]string{},
 		},
 		{
 			name: "soft sharding allows nodes outside shard",
@@ -163,13 +188,8 @@ func TestPredicateNodes(t *testing.T) {
 			enableErrorCache: false,
 			predicateFn:      func(*api.TaskInfo, *api.NodeInfo) error { return nil },
 			expectedNodes:    []string{"node1"},
-			expectedErr:      "",
-			expectedErrCache: map[string]map[string]string{
-				"job1/worker": {
-					"node2": "node isn't in scheduler node shard",
-					"node3": "node isn't in scheduler node shard",
-				},
-			},
+			expectedErr:      "0/2 nodes are unavailable: 2 node isn't in scheduler node shard.",
+			expectedErrCache: map[string]map[string]string{},
 		},
 	}
 
@@ -206,13 +226,8 @@ func TestPredicateNodes(t *testing.T) {
 				t.Fatalf("unexpected predicate error cache: %#v", cache)
 			}
 
-			if len(result) > 0 {
-				// If at least one node is filtered, the subsequent error checks are not performed
-				return
-			}
-
-			if gotErr := fitErr.Error(); gotErr != tt.expectedErr {
-				t.Fatalf("expected error %s, got %s", tt.expectedErr, gotErr)
+			if tt.expectedErr != "" && fitErr.Error() != tt.expectedErr {
+				t.Fatalf("expected error %s, got %s", tt.expectedErr, fitErr.Error())
 			}
 		})
 	}
