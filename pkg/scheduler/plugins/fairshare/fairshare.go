@@ -80,6 +80,7 @@ const (
 	PluginName = "fairshare"
 
 	defaultResourceKey      = "nvidia.com/gpu"
+	queueResourceKeyPrefix  = "fairshare.resourceKey."
 	defaultUnknownNamespace = "_unknown"
 	defaultHalfLifeMinutes  = 240 // 4 hours
 	usageEpsilon            = 1.0 // 1 resource-second: treat as equal
@@ -158,9 +159,16 @@ func New(arguments framework.Arguments) framework.Plugin {
 		fsp.targetAllQueues = true
 	}
 
-	for queueName := range fsp.targetQueueNames {
+	// Per-queue overrides are discovered from the argument keys themselves
+	// rather than from targetQueueNames, so they also apply in all-queues
+	// mode where targetQueueNames is empty.
+	for key := range arguments {
+		queueName, ok := strings.CutPrefix(key, queueResourceKeyPrefix)
+		if !ok || queueName == "" {
+			continue
+		}
 		var queueRK string
-		arguments.GetString(&queueRK, "fairshare.resourceKey."+queueName)
+		arguments.GetString(&queueRK, key)
 		if queueRK != "" {
 			fsp.queueResourceKeys[queueName] = queueRK
 		}
