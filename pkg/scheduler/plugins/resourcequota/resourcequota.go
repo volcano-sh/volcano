@@ -65,6 +65,12 @@ func (rq *resourceQuotaPlugin) OnSessionOpen(ssn *framework.Session) {
 			return util.Permit
 		}
 
+		// If the job already has Pods in the cluster, their resource requests are
+		// already reflected in resourceQuota.Used by the native ResourceQuota
+		// controller. Adding MinResources on top of Used in that case would count
+		// the same usage twice and could reject a job that actually fits the quota.
+		jobPodsCreated := len(job.Tasks) != 0
+
 		quotas := ssn.NamespaceInfo[api.NamespaceName(job.Namespace)].QuotaStatus
 		for _, resourceQuota := range quotas {
 			hardResources := quotav1.ResourceNames(resourceQuota.Hard)
@@ -74,7 +80,10 @@ func (rq *resourceQuotaPlugin) OnSessionOpen(ssn *framework.Session) {
 			if pendingUse, found := pendingResources[job.Namespace]; found {
 				resourcesUsed = quotav1.Add(pendingUse, resourcesUsed)
 			}
-			newUsage := quotav1.Add(resourcesUsed, requestedUsage)
+			newUsage := resourcesUsed
+			if !jobPodsCreated {
+				newUsage = quotav1.Add(resourcesUsed, requestedUsage)
+			}
 			maskedNewUsage := quotav1.Mask(newUsage, quotav1.ResourceNames(requestedUsage))
 
 			if allowed, exceeded := quotav1.LessThanOrEqual(maskedNewUsage, resourceQuota.Hard); !allowed {
@@ -100,6 +109,11 @@ func (rq *resourceQuotaPlugin) OnSessionOpen(ssn *framework.Session) {
 			return
 		}
 		if ssn.NamespaceInfo[api.NamespaceName(job.Namespace)] == nil {
+			return
+		}
+		// If the job's Pods already exist, resourceQuota.Used already accounts
+		// for them, so there is no pending usage left to track for this job.
+		if len(job.Tasks) != 0 {
 			return
 		}
 		if _, found := pendingResources[job.Namespace]; !found {
