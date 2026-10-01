@@ -224,7 +224,7 @@ func validateStateOfQueue(value schedulingv1beta1.QueueState, fldPath *field.Pat
 	return append(errs, field.Invalid(fldPath, value, fmt.Sprintf("queue state must be in %v", validQueueStates)))
 }
 
-// Verify the resource quantity Of Queue and configure the resource quantity as guaranteed ≤ deserved ≤ capability
+// Validate configured resource quantities and their bounds. Deserved is optional.
 func validateResourceQuantityOfQueue(spec schedulingv1beta1.QueueSpec, fldPath *field.Path) field.ErrorList {
 	errs := field.ErrorList{}
 
@@ -247,18 +247,17 @@ func validateResourceQuantityOfQueue(spec schedulingv1beta1.QueueSpec, fldPath *
 				fldPath.Child("guarantee").Child("resource").Child(resourceName.String()))...,
 			)
 
-			desQ, exists := spec.Deserved[resourceName]
-			if !exists {
+			if capQ, exists := spec.Capability[resourceName]; exists && guaranteeQ.Cmp(capQ) > 0 {
 				errs = append(errs, field.Invalid(
-					fldPath.Child("deserved").Child(resourceName.String()),
-					"<nil>",
-					fmt.Sprintf("deserved[%s] must be >= guarantee[%s]=%s",
-						resourceName, resourceName, guaranteeQ.String()),
+					fldPath.Child("guarantee").Child("resource").Child(resourceName.String()),
+					guaranteeQ.String(),
+					fmt.Sprintf("guarantee[%s]=%s must be <= capability[%s]=%s",
+						resourceName, guaranteeQ.String(), resourceName, capQ.String()),
 				))
-				continue
 			}
 
-			if desQ.Cmp(guaranteeQ) < 0 {
+			desQ, exists := spec.Deserved[resourceName]
+			if exists && desQ.Cmp(guaranteeQ) < 0 {
 				errs = append(errs, field.Invalid(
 					fldPath.Child("deserved").Child(resourceName.String()),
 					desQ.String(),

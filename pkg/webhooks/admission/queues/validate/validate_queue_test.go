@@ -208,6 +208,26 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal onlyGuaranteeSet failed for %v.", err)
 	}
 
+	guaranteeWithCapability := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "guarantee-with-capability"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+			Guarantee: schedulingv1beta1.Guarantee{Resource: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("100m"),
+				v1.ResourceMemory: resource.MustParse("1Gi"),
+			}},
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("200m"),
+				v1.ResourceMemory: resource.MustParse("2Gi"),
+			},
+		},
+	}
+
+	guaranteeWithCapabilityJSON, err := json.Marshal(guaranteeWithCapability)
+	if err != nil {
+		t.Errorf("Marshal guaranteeWithCapability failed for %v.", err)
+	}
+
 	capabilityLessDeserved := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "capability-less-deserved",
@@ -838,7 +858,7 @@ func TestAdmitQueues(t *testing.T) {
 			},
 		},
 		{
-			Name: "Create queue with guarantee but no deserved should be rejected",
+			Name: "Create queue with guarantee but no deserved",
 			AR: admissionv1.AdmissionReview{
 				TypeMeta: metav1.TypeMeta{
 					Kind:       "AdmissionReview",
@@ -863,10 +883,26 @@ func TestAdmitQueues(t *testing.T) {
 				},
 			},
 			reviewResponse: &admissionv1.AdmissionResponse{
-				Allowed: false,
-				Result: &metav1.Status{
-					Message: "requestBody.spec.deserved.cpu: Invalid value: \"<nil>\": deserved[cpu] must be >= guarantee[cpu]=1",
+				Allowed: true,
+			},
+		},
+		{
+			Name: "Create queue with guarantee and capability but no deserved",
+			AR: admissionv1.AdmissionReview{
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group: "scheduling.volcano.sh", Version: "v1beta1", Kind: "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group: "scheduling.volcano.sh", Version: "v1beta1", Resource: "queues",
+					},
+					Name:      guaranteeWithCapability.Name,
+					Operation: admissionv1.Create,
+					Object:    runtime.RawExtension{Raw: guaranteeWithCapabilityJSON},
 				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: true,
 			},
 		},
 		{
@@ -2153,7 +2189,7 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed: false,
 				Result: &metav1.Status{
-					Message: "[requestBody.spec.guarantee.resource.cpu: Invalid value: \"-2\": must be greater than or equal to 0, requestBody.spec.deserved.cpu: Invalid value: \"<nil>\": deserved[cpu] must be >= guarantee[cpu]=-2]",
+					Message: "requestBody.spec.guarantee.resource.cpu: Invalid value: \"-2\": must be greater than or equal to 0",
 				},
 			},
 		},
@@ -2169,6 +2205,50 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 		})
 	}
 	close(stopCh)
+}
+
+func TestValidateResourceQuantityOfQueueBounds(t *testing.T) {
+	tests := []struct {
+		name    string
+		spec    schedulingv1beta1.QueueSpec
+		wantErr string
+	}{
+		{
+			name: "omitted deserved dimension is allowed",
+			spec: schedulingv1beta1.QueueSpec{
+				Guarantee: schedulingv1beta1.Guarantee{Resource: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("100m"),
+					v1.ResourceMemory: resource.MustParse("1Gi"),
+				}},
+				Deserved: v1.ResourceList{v1.ResourceMemory: resource.MustParse("1Gi")},
+			},
+		},
+		{
+			name: "guarantee cannot exceed capability when deserved is omitted",
+			spec: schedulingv1beta1.QueueSpec{
+				Guarantee: schedulingv1beta1.Guarantee{Resource: v1.ResourceList{
+					v1.ResourceCPU: resource.MustParse("300m"),
+				}},
+				Capability: v1.ResourceList{v1.ResourceCPU: resource.MustParse("200m")},
+			},
+			wantErr: "spec.guarantee.resource.cpu: Invalid value: \"300m\": guarantee[cpu]=300m must be <= capability[cpu]=200m",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateResourceQuantityOfQueue(tt.spec, field.NewPath("spec")).ToAggregate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected validation error: %v", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tt.wantErr {
+				t.Fatalf("validation error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
 }
 
 // setupQueueInformerWithIndex creates a queue informer with parent index for testing
