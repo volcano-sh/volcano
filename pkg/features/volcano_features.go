@@ -53,6 +53,11 @@ const (
 	// capacity, preventing cluster autoscalers from triggering unnecessary
 	// scale-ups for pods that are simply waiting for queue admission.
 	SchedulingGatesQueueAdmission featuregate.Feature = "SchedulingGatesQueueAdmission"
+
+	// UnschedulableJobCache enables cache-based skipping for jobs that stayed
+	// unschedulable in previous sessions and are retried only on subscribed
+	// cluster events or watchdog expiry.
+	UnschedulableJobCache featuregate.Feature = "UnschedulableJobCache"
 )
 
 func init() {
@@ -70,4 +75,5 @@ var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec
 	ResourceTopology:              {Default: true, PreRelease: featuregate.Alpha},
 	CronVolcanoJobSupport:         {Default: true, PreRelease: featuregate.Alpha},
 	SchedulingGatesQueueAdmission: {Default: false, PreRelease: featuregate.Alpha},
+	UnschedulableJobCache:         {Default: false, PreRelease: featuregate.Alpha},
 }

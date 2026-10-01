@@ -123,11 +123,11 @@ type TestCommonStruct struct {
 
 var _ Interface = &TestCommonStruct{}
 
-// RegisterSession open session with tiers and configuration, and mock schedulerCache with self-defined FakeBinder and FakeEvictor
-func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session {
+// RegisterSession opens a Session with the supplied scheduler configuration and options.
+func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.Configuration, opts ...framework.SessionOption) *framework.Session {
 	schedulerCache := test.createSchedulerCache()
 	RegisterPlugins(test.Plugins)
-	test.ssn = framework.OpenSession(schedulerCache, tiers, config)
+	test.ssn = framework.OpenSession(schedulerCache, tiers, config, opts...)
 	return test.ssn
 }
 

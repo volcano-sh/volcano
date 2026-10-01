@@ -209,6 +209,9 @@ spec:
             - --enable-healthz=true
             {{- if .Values.custom.scheduler_metrics_enable }}
             - --enable-metrics=true
+            {{- if .Values.custom.scheduler_unschedulable_job_cache_debug_metrics }}
+            - --unschedulable-job-cache-debug-metrics=true
+            {{- end }}
             {{- end }}
             {{- if .Values.custom.scheduler_pprof_enable }}
             - --enable-pprof=true

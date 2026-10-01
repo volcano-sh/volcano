@@ -363,26 +363,26 @@ func (pp *NodeOrderPlugin) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo, k
 // BatchNodeOrderFn scores all candidate nodes for the given task in one call.
 func (pp *NodeOrderPlugin) BatchNodeOrderFn(task *api.TaskInfo, nodes []*api.NodeInfo, nodeMap map[string]fwk.NodeInfo, state *k8sframework.CycleState) (map[string]float64, error) {
 	nodeInfos := nodescore.NodeInfosForCandidateNodes(nodes, nodeMap)
-	nodeScores := make(map[string]float64, len(nodes))
-
+	// Adapt nodeorder's plugin registry to the common input used by RunScorePlugins.
+	preScorePluginEntries := make([]nodescore.PreScorePluginEntry, 0, len(pp.ScorePlugins))
+	scorePluginEntries := make([]nodescore.ScorePluginEntry, 0, len(pp.ScorePlugins))
 	for name, entry := range pp.ScorePlugins {
+		scorePluginEntries = append(scorePluginEntries, nodescore.ScorePluginEntry{
+			Name:   name,
+			Plugin: entry.plugin,
+			Weight: entry.weight,
+		})
 		if preScorePlugin, ok := entry.plugin.(fwk.PreScorePlugin); ok {
-			skipScore, err := nodescore.RunPreScorePlugin(preScorePlugin, state, task.Pod, nodeInfos)
-			if err != nil {
-				return nil, err
-			}
-			if skipScore {
-				continue
-			}
+			preScorePluginEntries = append(preScorePluginEntries, nodescore.PreScorePluginEntry{
+				Name:   name,
+				Plugin: preScorePlugin,
+			})
 		}
+	}
 
-		scores, err := nodescore.CalculatePluginScore(name, entry.plugin, state, task.Pod, nodeInfos, entry.weight)
-		if err != nil {
-			return nil, err
-		}
-		for n, s := range scores {
-			nodeScores[n] += s
-		}
+	nodeScores, err := nodescore.RunScorePlugins(preScorePluginEntries, scorePluginEntries, state, task.Pod, nodeInfos)
+	if err != nil {
+		return nil, err
 	}
 
 	klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)

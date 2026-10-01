@@ -61,8 +61,9 @@ This metrics describe internal state of volcano.
 | `queue_pod_group_running_count`        | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | The number of Running PodGroups in this queue |
 | `queue_pod_group_unknown_count`        | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | The number of Unknown PodGroups in this queue |
 | `queue_session_start_task_count`       | Gauge           | `queue_name`=&lt;queue_name&gt;, `status`=&lt;status&gt;           | Number of tasks by status in jobs directly assigned to this queue at the beginning of the latest scheduling session |
-| `namespace_share`                      | Gauge           | `namespace_name`=&lt;namespace_name&gt;                           | Deserved CPU count for one namespace          |
+| `namespace_share`                      | Gauge           | `namespace_name`=&lt;namespace_name&gt;, `queue`=&lt;queue&gt;, `resource`=&lt;resource_name&gt; | Share for one namespace in one queue, for one resource |
 | `namespace_weight`                     | Gauge           | `namespace_name`=&lt;namespace_name&gt;                           | Weight for one namespace                      |
+| `namespace_decayed_usage`              | Gauge           | `namespace_name`=&lt;namespace_name&gt;, `queue`=&lt;queue&gt;, `resource`=&lt;resource_name&gt; | Decayed cumulative resource-seconds usage for one namespace in one queue (fairshare plugin) |
 | `job_share`                            | Gauge           | `job_id`=&lt;job_id&gt;, `job_ns`=&lt;job_ns&gt;                  | Share for one job                             |
 | `job_retry_counts`                     | Counter         | `job_id`=&lt;job_id&gt;                                           | The number of retry counts for one job        |
 | `job_completed_phase_count`            | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job completed phase             |

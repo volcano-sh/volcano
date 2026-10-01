@@ -97,6 +97,11 @@ type fakePreScorePlugin struct {
 	preScoreCalls  int
 }
 
+type fakeScoreOnlyPlugin struct {
+	name  string
+	score int64
+}
+
 func (p *fakePreScorePlugin) Name() string {
 	return p.name
 }
@@ -111,6 +116,18 @@ func (p *fakePreScorePlugin) Score(_ context.Context, _ k8sframework.CycleState,
 }
 
 func (p *fakePreScorePlugin) ScoreExtensions() k8sframework.ScoreExtensions {
+	return nil
+}
+
+func (p *fakeScoreOnlyPlugin) Name() string {
+	return p.name
+}
+
+func (p *fakeScoreOnlyPlugin) Score(_ context.Context, _ k8sframework.CycleState, _ *apiv1.Pod, _ k8sframework.NodeInfo) (int64, *k8sframework.Status) {
+	return p.score, nil
+}
+
+func (p *fakeScoreOnlyPlugin) ScoreExtensions() k8sframework.ScoreExtensions {
 	return nil
 }
 
@@ -731,6 +748,49 @@ func TestBatchNodeOrderRunsPreScorePlugins(t *testing.T) {
 			_, scored := scores["node-a"]
 			if scored != tt.wantScore {
 				t.Errorf("expected node score presence to be %t, got %t", tt.wantScore, scored)
+			}
+		})
+	}
+}
+
+func TestBatchNodeOrderRunsScoreOnlyPlugins(t *testing.T) {
+	tests := []struct {
+		name         string
+		scoreWeights map[string]int
+		wantScore    float64
+	}{
+		{
+			name:         "uses configured weight",
+			scoreWeights: map[string]int{"score-only": 2},
+			wantScore:    50,
+		},
+		{
+			name:      "uses default weight",
+			wantScore: 25,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plugin := &fakeScoreOnlyPlugin{name: "score-only", score: 25}
+			pp := &PredicatesPlugin{
+				ScorePlugins: map[string]nodescore.BaseScorePlugin{plugin.Name(): plugin},
+				ScoreWeights: tt.scoreWeights,
+				ScoreOrder:   []string{plugin.Name()},
+			}
+			nodeInfo := schedframework.NewNodeInfo()
+			nodeInfo.SetNode(&apiv1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-a"}})
+
+			scores, err := pp.BatchNodeOrder(
+				&api.TaskInfo{Pod: &apiv1.Pod{}},
+				[]k8sframework.NodeInfo{nodeInfo},
+				schedframework.NewCycleState(),
+			)
+			if err != nil {
+				t.Fatalf("BatchNodeOrder returned an error: %v", err)
+			}
+			if scores["node-a"] != tt.wantScore {
+				t.Fatalf("expected node score %v, got %v", tt.wantScore, scores["node-a"])
 			}
 		})
 	}

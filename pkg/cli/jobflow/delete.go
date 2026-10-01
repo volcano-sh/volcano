@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"sigs.k8s.io/yaml"
 
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
@@ -73,7 +74,7 @@ func DeleteJobFlow(ctx context.Context) error {
 
 		yamlDocs := strings.Split(string(yamlData), "---")
 
-		deletedCount := 0
+		var errs []error
 		for _, doc := range yamlDocs {
 			doc = strings.TrimSpace(doc)
 			if doc == "" {
@@ -90,14 +91,13 @@ func DeleteJobFlow(ctx context.Context) error {
 			}
 
 			err := jobFlowClient.FlowV1alpha1().JobFlows(jobFlow.Namespace).Delete(ctx, jobFlow.Name, metav1.DeleteOptions{})
-			if err == nil {
-				fmt.Printf("Deleted JobFlow: %s/%s\n", jobFlow.Namespace, jobFlow.Name)
-				deletedCount++
-			} else {
-				fmt.Printf("Failed to delete JobFlow: %v\n", err)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("delete JobFlow %s/%s: %v", jobFlow.Namespace, jobFlow.Name, err))
+				continue
 			}
+			fmt.Printf("Deleted JobFlow: %s/%s\n", jobFlow.Namespace, jobFlow.Name)
 		}
-		return nil
+		return utilerrors.NewAggregate(errs)
 	}
 
 	if deleteJobFlowFlags.Name == "" {

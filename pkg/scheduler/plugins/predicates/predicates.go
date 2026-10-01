@@ -49,9 +49,11 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/predicates/hintprovider"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodescore"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
 )
 
 const (
@@ -339,6 +341,26 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.RegisterBinder(pp.Name(), pp)
+
+	if ssn.RejectionTrackingEnabled() {
+		// Add hint provider for PredicateFn and PrePredicateFn.
+		hintPlugins := make(map[string]fwk.Plugin, len(pp.FilterPlugins)+len(pp.PreFilterPlugins))
+		for name, plugin := range pp.FilterPlugins {
+			hintPlugins[name] = plugin
+		}
+		for name, plugin := range pp.PreFilterPlugins {
+			hintPlugins[name] = plugin
+		}
+		for name, plugin := range hintPlugins {
+			ext, ok := plugin.(fwk.EnqueueExtensions)
+			if !ok {
+				continue
+			}
+			ssn.AddHintProvider(name, &hintprovider.KubeHintProvider{Ext: ext})
+		}
+		// Volcano's built-in node resource predicate is not a wrapped Kubernetes plugin.
+		ssn.AddHintProvider(resourcefit.ProviderName, &hintprovider.ResourceFitHintProvider{})
+	}
 
 	// Add SimulateAddTask function
 	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
@@ -683,9 +705,10 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 		klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed, allocatable <%d>, existed <%d>",
 			task.Namespace, task.Name, node.Name, node.Allocatable.MaxTaskNum, len(nodeInfo.GetPods()))
 		podsNumStatus := &api.Status{
-			Code:   api.Unschedulable,
-			Reason: api.NodePodNumberExceeded,
-			Plugin: pp.Name(),
+			Code:                  api.Unschedulable,
+			Reason:                api.NodePodNumberExceeded,
+			Plugin:                resourcefit.ProviderName,
+			InsufficientResources: []string{string(v1.ResourcePods)},
 		}
 		predicateStatus = append(predicateStatus, podsNumStatus)
 	}
@@ -705,6 +728,9 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 			status := plugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
 			filterStatus := api.ConvertPredicateStatus(status)
 			if filterStatus.Code != api.Success {
+				if filterStatus.Plugin == "" {
+					filterStatus.Plugin = name
+				}
 				predicateStatus = append(predicateStatus, filterStatus)
 				if util.ShouldAbort(filterStatus) {
 					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", name, status.Message())
@@ -759,6 +785,9 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 		status := plugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
 		filterStatus := api.ConvertPredicateStatus(status)
 		if filterStatus.Code != api.Success {
+			if filterStatus.Plugin == "" {
+				filterStatus.Plugin = name
+			}
 			predicateStatus = append(predicateStatus, filterStatus)
 			if util.ShouldAbort(filterStatus) {
 				return api.NewFitErrWithStatus(task, node, predicateStatus...)
@@ -775,52 +804,33 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 
 // BatchNodeOrder runs all Score plugins for the given task and nodes.
 func (pp *PredicatesPlugin) BatchNodeOrder(task *api.TaskInfo, nodes []fwk.NodeInfo, state *k8sframework.CycleState) (map[string]float64, error) {
-	nodeScores := make(map[string]float64, len(nodes))
-	skippedScorePlugins := map[string]struct{}{}
-
+	// Preserve the configured plugin order while adapting it to RunScorePlugins' common input.
+	preScorePluginEntries := make([]nodescore.PreScorePluginEntry, 0, len(pp.PreScoreOrder))
 	for _, name := range pp.PreScoreOrder {
 		plugin, exists := pp.PreScorePlugins[name]
 		if !exists {
 			continue
 		}
-
-		skipScore, err := nodescore.RunPreScorePlugin(plugin, state, task.Pod, nodes)
-		if err != nil {
-			return nil, fmt.Errorf("pre-score plugin %s failed: %w", name, err)
-		}
-		if skipScore {
-			skippedScorePlugins[name] = struct{}{}
-		}
+		preScorePluginEntries = append(preScorePluginEntries, nodescore.PreScorePluginEntry{Name: name, Plugin: plugin})
 	}
 
-	// Run all Score plugins
+	scorePluginEntries := make([]nodescore.ScorePluginEntry, 0, len(pp.ScoreOrder))
 	for _, name := range pp.ScoreOrder {
-		if _, skipped := skippedScorePlugins[name]; skipped {
-			continue
-		}
 		plugin, exists := pp.ScorePlugins[name]
 		if !exists {
 			continue
 		}
-		// Get weight from ScoreWeights map, default to 1 if not set
 		weight := 1
 		if w, exists := pp.ScoreWeights[name]; exists {
 			weight = w
 		}
-
-		// Calculate score using the helper function
-		pluginScores, err := nodescore.CalculatePluginScore(name, plugin, state, task.Pod, nodes, weight)
-		if err != nil {
-			return nil, err
-		}
-
-		// Accumulate scores
-		for _, node := range nodes {
-			nodeName := node.Node().Name
-			nodeScores[nodeName] += pluginScores[nodeName]
-		}
+		scorePluginEntries = append(scorePluginEntries, nodescore.ScorePluginEntry{Name: name, Plugin: plugin, Weight: weight})
 	}
 
+	nodeScores, err := nodescore.RunScorePlugins(preScorePluginEntries, scorePluginEntries, state, task.Pod, nodes)
+	if err != nil {
+		return nil, err
+	}
 	klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)
 	return nodeScores, nil
 }
@@ -936,11 +946,23 @@ func handleSkipPrePredicatePlugin(status *fwk.Status, state *k8sframework.CycleS
 		state.GetSkipFilterPlugins().Insert(pluginName)
 		klog.V(5).Infof("The predicate of plugin %s will skip execution for pod <%s/%s>, because the status returned by pre-predicate is skip",
 			pluginName, task.Namespace, task.Name)
-	} else if !status.IsSuccess() {
-		return fmt.Errorf("plugin %s pre-predicates failed %s", pluginName, status.Message())
+		return nil
 	}
 
-	return nil
+	if status.IsSuccess() {
+		return nil
+	}
+
+	if status.Code() == fwk.Unschedulable || status.Code() == fwk.UnschedulableAndUnresolvable {
+		// Preserve the rejecting plugin so its events can trigger a retry.
+		return &api.PrePredicateError{
+			Plugin: pluginName,
+			Reason: fmt.Sprintf("plugin %s pre-predicates failed %s", pluginName, status.Message()),
+		}
+	}
+
+	// Other errors such as fwk.Error, we should return an error to stop scheduling and log the error.
+	return fmt.Errorf("plugin %s pre-predicates failed %s", pluginName, status.Message())
 }
 
 func (pp *PredicatesPlugin) OnSessionClose(ssn *framework.Session) {}

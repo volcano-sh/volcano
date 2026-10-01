@@ -193,6 +193,41 @@ func TestValidatePodGroup(t *testing.T) {
 			expectError: true,
 		},
 		{
+			name: "invalid podgroup with two bad SubGroupPolicy entries reports both",
+			podGroup: &schedulingv1beta1.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "PodGroup",
+					APIVersion: "scheduling.volcano.sh/v1beta1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-podgroup",
+				},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					SubGroupPolicy: []schedulingv1beta1.SubGroupPolicySpec{
+						{
+							Name: "policy-a",
+							NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+								Mode:               schedulingv1beta1.HardNetworkTopologyMode,
+								HighestTierAllowed: &highestTierAllowed,
+								HighestTierName:    "volcano.sh/hypernode",
+							},
+						},
+						{
+							Name: "policy-b",
+							NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+								Mode:               schedulingv1beta1.HardNetworkTopologyMode,
+								HighestTierAllowed: &highestTierAllowed,
+								HighestTierName:    "volcano.sh/hypernode",
+							},
+						},
+					},
+				},
+			},
+			queue:       &schedulingv1beta1.Queue{},
+			expectError: true,
+			msgContains: []string{"policy-a", "policy-b"},
+		},
+		{
 			name: "invalid podgroup configured with NetworkTopology containing HighestTierAllowed and HighestTierName",
 			podGroup: &schedulingv1beta1.PodGroup{
 				TypeMeta: metav1.TypeMeta{

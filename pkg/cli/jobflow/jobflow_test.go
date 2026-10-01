@@ -32,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 func TestListJobFlow(t *testing.T) {
@@ -150,6 +151,8 @@ func TestDeleteJobFlow(t *testing.T) {
 		Namespace      string
 		Name           string
 		FilePath       string
+		StatusCode     int
+		WantErr        bool
 		ExpectedErr    error
 		ExpectedOutput string
 	}{
@@ -163,6 +166,7 @@ func TestDeleteJobFlow(t *testing.T) {
 			},
 			Namespace:      "default",
 			Name:           "test-jobflow",
+			StatusCode:     http.StatusOK,
 			ExpectedErr:    nil,
 			ExpectedOutput: `Deleted JobFlow: default/test-jobflow`,
 		},
@@ -175,14 +179,28 @@ func TestDeleteJobFlow(t *testing.T) {
 				},
 			},
 			FilePath:    "test.yaml",
+			StatusCode:  http.StatusOK,
 			ExpectedErr: nil,
 			ExpectedOutput: `Deleted JobFlow: default/test-a
 Deleted JobFlow: default/test-b`,
 		},
+		{
+			name: "Server rejects every delete",
+			Response: &flowv1alpha1.JobFlow{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-jobflow",
+					Namespace: "default",
+				},
+			},
+			FilePath:       "test.yaml",
+			StatusCode:     http.StatusForbidden,
+			WantErr:        true,
+			ExpectedOutput: ``,
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			server := createTestServer(testCase.Response)
+			server := util.CreateTestServerWithStatus(testCase.Response, testCase.StatusCode)
 			defer server.Close()
 			// Set the server URL as the master flag
 			deleteJobFlowFlags.Master = server.URL
@@ -208,7 +226,11 @@ Deleted JobFlow: default/test-b`,
 			defer r.Close()
 			err := DeleteJobFlow(context.TODO())
 			gotOutput := captureOutput(r, oldStdout)
-			if !reflect.DeepEqual(err, testCase.ExpectedErr) {
+			if testCase.WantErr {
+				if err == nil {
+					t.Fatalf("test case: %s failed: got: nil, want: an error", testCase.name)
+				}
+			} else if !reflect.DeepEqual(err, testCase.ExpectedErr) {
 				t.Fatalf("test case: %s failed: got: %v, want: %v", testCase.name, err, testCase.ExpectedErr)
 			}
 			if gotOutput != testCase.ExpectedOutput {
@@ -223,6 +245,8 @@ func TestCreateJobFlow(t *testing.T) {
 		name           string
 		Response       *flowv1alpha1.JobFlow
 		FilePath       string
+		StatusCode     int
+		WantErr        bool
 		ExpectedErr    error
 		ExpectedOutput string
 	}{
@@ -235,14 +259,28 @@ func TestCreateJobFlow(t *testing.T) {
 				},
 			},
 			FilePath:    "test.yaml",
+			StatusCode:  http.StatusOK,
 			ExpectedErr: nil,
 			ExpectedOutput: `Created JobFlow: default/test-a
 Created JobFlow: default/test-b`,
 		},
+		{
+			name: "Server rejects every create",
+			Response: &flowv1alpha1.JobFlow{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-jobflow",
+					Namespace: "default",
+				},
+			},
+			FilePath:       "test.yaml",
+			StatusCode:     http.StatusForbidden,
+			WantErr:        true,
+			ExpectedOutput: ``,
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			server := createTestServer(testCase.Response)
+			server := util.CreateTestServerWithStatus(testCase.Response, testCase.StatusCode)
 			defer server.Close()
 			// Set the server URL as the master flag
 			createJobFlowFlags.Master = server.URL
@@ -265,7 +303,11 @@ Created JobFlow: default/test-b`,
 			defer r.Close()
 			err := CreateJobFlow(context.TODO())
 			gotOutput := captureOutput(r, oldStdout)
-			if !reflect.DeepEqual(err, testCase.ExpectedErr) {
+			if testCase.WantErr {
+				if err == nil {
+					t.Fatalf("test case: %s failed: got: nil, want: an error", testCase.name)
+				}
+			} else if !reflect.DeepEqual(err, testCase.ExpectedErr) {
 				t.Fatalf("test case: %s failed: got: %v, want: %v", testCase.name, err, testCase.ExpectedErr)
 			}
 			if gotOutput != testCase.ExpectedOutput {

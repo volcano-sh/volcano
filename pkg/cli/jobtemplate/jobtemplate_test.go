@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"reflect"
 	"testing"
@@ -137,6 +138,8 @@ func TestDeleteJobTemplate(t *testing.T) {
 		Namespace      string
 		Name           string
 		FilePath       string
+		StatusCode     int
+		WantErr        bool
 		ExpectedErr    error
 		ExpectedOutput string
 	}{
@@ -150,6 +153,7 @@ func TestDeleteJobTemplate(t *testing.T) {
 			},
 			Namespace:      "default",
 			Name:           "test-jobtemplate",
+			StatusCode:     http.StatusOK,
 			ExpectedErr:    nil,
 			ExpectedOutput: `Deleted JobTemplate: default/test-jobtemplate`,
 		},
@@ -162,14 +166,28 @@ func TestDeleteJobTemplate(t *testing.T) {
 				},
 			},
 			FilePath:    "test.yaml",
+			StatusCode:  http.StatusOK,
 			ExpectedErr: nil,
 			ExpectedOutput: `Deleted JobTemplate: default/a
 Deleted JobTemplate: default/b`,
 		},
+		{
+			name: "Server rejects every delete",
+			Response: &flowv1alpha1.JobTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-jobtemplate",
+					Namespace: "default",
+				},
+			},
+			FilePath:       "test.yaml",
+			StatusCode:     http.StatusForbidden,
+			WantErr:        true,
+			ExpectedOutput: ``,
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			server := util.CreateTestServer(testCase.Response)
+			server := util.CreateTestServerWithStatus(testCase.Response, testCase.StatusCode)
 			defer server.Close()
 			// Set the server URL as the master flag
 			deleteJobTemplateFlags.Master = server.URL
@@ -195,7 +213,11 @@ Deleted JobTemplate: default/b`,
 			defer r.Close()
 			err := DeleteJobTemplate(context.TODO())
 			gotOutput := util.CaptureOutput(r, oldStdout)
-			if !reflect.DeepEqual(err, testCase.ExpectedErr) {
+			if testCase.WantErr {
+				if err == nil {
+					t.Fatalf("test case: %s failed: got: nil, want: an error", testCase.name)
+				}
+			} else if !reflect.DeepEqual(err, testCase.ExpectedErr) {
 				t.Fatalf("test case: %s failed: got: %v, want: %v", testCase.name, err, testCase.ExpectedErr)
 			}
 			if gotOutput != testCase.ExpectedOutput {
@@ -210,6 +232,8 @@ func TestCreateJobTemplate(t *testing.T) {
 		name           string
 		Response       *flowv1alpha1.JobTemplate
 		FilePath       string
+		StatusCode     int
+		WantErr        bool
 		ExpectedErr    error
 		ExpectedOutput string
 	}{
@@ -222,14 +246,28 @@ func TestCreateJobTemplate(t *testing.T) {
 				},
 			},
 			FilePath:    "test.yaml",
+			StatusCode:  http.StatusOK,
 			ExpectedErr: nil,
 			ExpectedOutput: `Created JobTemplate: default/a
 Created JobTemplate: default/b`,
 		},
+		{
+			name: "Server rejects every create",
+			Response: &flowv1alpha1.JobTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-jobtemplate",
+					Namespace: "default",
+				},
+			},
+			FilePath:       "test.yaml",
+			StatusCode:     http.StatusForbidden,
+			WantErr:        true,
+			ExpectedOutput: ``,
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			server := util.CreateTestServer(testCase.Response)
+			server := util.CreateTestServerWithStatus(testCase.Response, testCase.StatusCode)
 			defer server.Close()
 			// Set the server URL as the master flag
 			createJobTemplateFlags.Master = server.URL
@@ -252,7 +290,11 @@ Created JobTemplate: default/b`,
 			defer r.Close()
 			err := CreateJobTemplate(context.TODO())
 			gotOutput := util.CaptureOutput(r, oldStdout)
-			if !reflect.DeepEqual(err, testCase.ExpectedErr) {
+			if testCase.WantErr {
+				if err == nil {
+					t.Fatalf("test case: %s failed: got: nil, want: an error", testCase.name)
+				}
+			} else if !reflect.DeepEqual(err, testCase.ExpectedErr) {
 				t.Fatalf("test case: %s failed: got: %v, want: %v", testCase.name, err, testCase.ExpectedErr)
 			}
 			if gotOutput != testCase.ExpectedOutput {

@@ -42,6 +42,7 @@ custom:
   agent_scheduler_name: "agent-scheduler"
   scheduler_replicas: 1
   scheduler_metrics_enable: true
+  scheduler_unschedulable_job_cache_debug_metrics: false
   scheduler_pprof_enable: false
   scheduler_plugins_dir: ""
   scheduler_name: ~

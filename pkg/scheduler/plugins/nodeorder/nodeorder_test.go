@@ -120,6 +120,30 @@ func TestNodeOrderPlugin(t *testing.T) {
 		},
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "least and most allocated enabled together",
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+					util.BuildNode("n2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				},
+				Queues: []*schedulingv1.Queue{
+					util.BuildQueue("c1", 1, nil),
+				},
+				ExpectBindsNum: 1,
+				ExpectBindMap: map[string]string{
+					"c1/p1": "n2",
+				},
+			},
+			LeastRequestedWeight: 2,
+			MostRequestedWeight:  1,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
 				Name: "balanced allocation prefers balanced node",
 				PodGroups: []*schedulingv1.PodGroup{
 					util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupInqueue),
