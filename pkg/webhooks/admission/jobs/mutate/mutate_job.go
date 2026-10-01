@@ -93,7 +93,10 @@ func Jobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	var patchBytes []byte
 	switch ar.Request.Operation {
 	case admissionv1.Create:
-		patchBytes, _ = createPatch(job)
+		patchBytes, err = createPatch(job)
+		if err != nil {
+			return util.ToAdmissionResponse(err)
+		}
 	default:
 		err = fmt.Errorf("expect operation to be 'CREATE' ")
 		return util.ToAdmissionResponse(err)
