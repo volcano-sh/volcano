@@ -1415,3 +1415,52 @@ func TestNoPodGroupCreatedForWhenKubeGroupNameAnnotationExists(t *testing.T) {
 		assert.Equal(t, 1, len(pgList.Items), "Expected 1 PodGroup, found %d: %v", len(pgList.Items), names)
 	})
 }
+
+// TestCreateNormalPodPGIfNotExistRecreatesOnStaleLister ensures we do not bind a
+// pod to a ghost PodGroup when the informer still has a deleted object (#6037).
+func TestCreateNormalPodPGIfNotExistRecreatesOnStaleLister(t *testing.T) {
+	namespace := "test"
+	ownerUID := types.UID("7a09885b-b753-4924-9fba-77c0836bac20")
+	pgName := "podgroup-" + string(ownerUID)
+	isController := true
+
+	c := newFakeController()
+
+	stalePG := &scheduling.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pgName,
+			Namespace: namespace,
+		},
+	}
+	// Stale lister hit: informer has the PG, apiserver does not.
+	assert.NoError(t, c.pgInformer.Informer().GetIndexer().Add(stalePG))
+
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pod1",
+			Namespace: namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "app/v1",
+					Kind:       "ReplicaSet",
+					Name:       "rs1",
+					UID:        ownerUID,
+					Controller: &isController,
+				},
+			},
+		},
+		Spec: v1.PodSpec{SchedulerName: "volcano"},
+	}
+	_, err := c.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	assert.NoError(t, err)
+
+	assert.NoError(t, c.createNormalPodPGIfNotExist(pod))
+
+	pg, err := c.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+	assert.NoError(t, err, "expected PodGroup to be recreated after stale lister hit")
+	assert.Equal(t, pgName, pg.Name)
+
+	newPod, err := c.kubeClient.CoreV1().Pods(namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+	assert.NoError(t, err)
+	assert.Equal(t, pgName, newPod.Annotations[scheduling.KubeGroupNameAnnotationKey])
+}
