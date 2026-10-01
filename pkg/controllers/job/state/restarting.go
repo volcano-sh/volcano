@@ -58,6 +58,24 @@ func (ps *restartingState) Execute(action Action) error {
 	case v1alpha1.RestartTaskAction, v1alpha1.RestartPodAction, v1alpha1.RestartPartitionAction:
 		return KillTarget(ps.job, action.Target, ps.restartingUpdateStatus)
 	default:
+		// A late/duplicate RestartJob (e.g. from PodEvicted) must not re-run a
+		// full KillJob once pods are already gone — that used to delete a
+		// freshly recreated PodGroup and permanently wedge the job (#6037).
+		if !hasLivePods(ps.job) {
+			return SyncJob(ps.job, ps.restartingUpdateStatus)
+		}
 		return KillJob(ps.job, PodRetainPhaseNone, ps.restartingUpdateStatus)
 	}
+}
+
+// hasLivePods reports whether the job still has pods that are not terminating.
+func hasLivePods(job *apis.JobInfo) bool {
+	for _, pods := range job.Pods {
+		for _, pod := range pods {
+			if pod != nil && pod.DeletionTimestamp == nil {
+				return true
+			}
+		}
+	}
+	return false
 }

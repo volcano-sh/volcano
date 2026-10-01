@@ -1371,12 +1371,36 @@ func TestKillPodsPodGroupDeletion(t *testing.T) {
 	testcases := []struct {
 		Name               string
 		Target             *state.Target
+		UpdateStatus       state.UpdateStatusFn
 		ExpectPodGroupGone bool
 	}{
 		{
-			Name:               "full job kill (target=nil) deletes PodGroup",
-			Target:             nil,
+			Name:   "full job kill to Aborting deletes PodGroup",
+			Target: nil,
+			UpdateStatus: func(status *v1alpha1.JobStatus) bool {
+				status.State.Phase = v1alpha1.Aborting
+				return true
+			},
 			ExpectPodGroupGone: true,
+		},
+		{
+			Name:   "full job kill to Terminating deletes PodGroup",
+			Target: nil,
+			UpdateStatus: func(status *v1alpha1.JobStatus) bool {
+				status.State.Phase = v1alpha1.Terminating
+				return true
+			},
+			ExpectPodGroupGone: true,
+		},
+		{
+			Name:   "RestartJob (phase Restarting) keeps PodGroup",
+			Target: nil,
+			UpdateStatus: func(status *v1alpha1.JobStatus) bool {
+				status.State.Phase = v1alpha1.Restarting
+				status.RetryCount++
+				return true
+			},
+			ExpectPodGroupGone: false,
 		},
 		{
 			Name: "targeted pod restart (target!=nil) keeps PodGroup",
@@ -1384,6 +1408,10 @@ func TestKillPodsPodGroupDeletion(t *testing.T) {
 				Type:     state.TargetTypePod,
 				TaskName: "task1",
 				PodName:  "pod1",
+			},
+			UpdateStatus: func(status *v1alpha1.JobStatus) bool {
+				status.State.Phase = v1alpha1.Restarting
+				return true
 			},
 			ExpectPodGroupGone: false,
 		},
@@ -1438,7 +1466,7 @@ func TestKillPodsPodGroupDeletion(t *testing.T) {
 				t.Fatalf("Error adding job to cache: %v", err)
 			}
 
-			err = fakeController.killPods(jobInfo, state.PodRetainPhaseNone, testcase.Target, nil)
+			err = fakeController.killPods(jobInfo, state.PodRetainPhaseNone, testcase.Target, testcase.UpdateStatus)
 			if err != nil {
 				t.Fatalf("killPods returned unexpected error: %v", err)
 			}
@@ -1453,6 +1481,57 @@ func TestKillPodsPodGroupDeletion(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestCreateOrUpdatePodGroupRecreatesOnStaleLister ensures createOrUpdatePodGroup
+// does not trust a stale informer hit after Delete (the #6037 recreate race).
+func TestCreateOrUpdatePodGroupRecreatesOnStaleLister(t *testing.T) {
+	namespace := "test"
+	jobUID := "e7f18111-1cec-11ea-b688-fa163ec79500"
+	job := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "job1",
+			Namespace: namespace,
+			UID:       types.UID(jobUID),
+		},
+		Spec: v1alpha1.JobSpec{
+			MinAvailable: 1,
+			Queue:        "default",
+			Tasks: []v1alpha1.TaskSpec{
+				{Name: "task1", Replicas: 1},
+			},
+		},
+	}
+	pgName := fmt.Sprintf("%s-%s", job.Name, jobUID)
+	stalePG := &schedulingapi.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pgName,
+			Namespace: namespace,
+		},
+		Spec: schedulingapi.PodGroupSpec{
+			MinMember: 1,
+			Queue:     "default",
+		},
+	}
+
+	fakeController := newFakeController()
+	// Stale lister: informer still has the PG, but the apiserver does not
+	// (Delete succeeded; watch echo not yet processed).
+	if err := fakeController.pgInformer.Informer().GetIndexer().Add(stalePG); err != nil {
+		t.Fatalf("failed to seed stale PodGroup into informer: %v", err)
+	}
+
+	if err := fakeController.createOrUpdatePodGroup(job); err != nil {
+		t.Fatalf("createOrUpdatePodGroup returned unexpected error: %v", err)
+	}
+
+	pg, err := fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected PodGroup to be recreated via live GET path, got: %v", err)
+	}
+	if pg.Spec.MinMember != job.Spec.MinAvailable {
+		t.Errorf("expected MinMember %d, got %d", job.Spec.MinAvailable, pg.Spec.MinMember)
 	}
 }
 
