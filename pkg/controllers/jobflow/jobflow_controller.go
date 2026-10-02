@@ -191,6 +191,7 @@ func (jf *jobflowcontroller) handleJobFlow(req *apis.FlowRequest) error {
 
 		return fmt.Errorf("get jobflow %s failed for %v", req.JobFlowName, err)
 	}
+	jobflow = jobflow.DeepCopy()
 
 	jobFlowState := jobflowstate.NewState(jobflow)
 	if jobFlowState == nil {
