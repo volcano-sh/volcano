@@ -447,35 +447,38 @@ var _ = Describe("Agent Scheduler E2E Test", func() {
 		})
 	})
 
-	// Batch throughput is validated in soft/none modes, where pods can spread
-	// across the volcano shard nodes in addition to the agent shard.
 	Describe("Batch Scheduling", Label("soft", "none"), func() {
 		It("should schedule a batch of pods", func() {
 			podCount := 10
 
-			By(fmt.Sprintf("Creating %d pods to test scheduling throughput", podCount))
-			podNames := make([]string, podCount)
+			By(fmt.Sprintf("Creating %d pods with schedulerName=agent-scheduler", podCount))
+			batchPods := make(map[string]bool, podCount)
 			for i := 0; i < podCount; i++ {
 				podName := fmt.Sprintf("agent-batch-pod-%d", i)
-				podNames[i] = podName
+				batchPods[podName] = true
 				pod := createAgentPod(ctx.Namespace, podName, "30m")
 				_, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(
 					context.TODO(), pod, metav1.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred(), "failed to create pod %s", podName)
 			}
 
-			By("Waiting for all pods to be scheduled within timeout")
-			scheduledCount := 0
-			for _, podName := range podNames {
-				err := e2eutil.WaitPodScheduled(ctx, ctx.Namespace, podName)
-				if err == nil {
-					scheduledCount++
-				}
-			}
+			// Binds to the same node are serialized, so wait on the batch as a
+			// whole rather than per pod. List once per poll instead of getting
+			// each pod to keep API-server load low.
+			By("Waiting for every pod in the batch to be scheduled")
+			Eventually(func(g Gomega) {
+				pods, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(
+					context.TODO(), metav1.ListOptions{})
+				g.Expect(err).NotTo(HaveOccurred(), "failed to list pods")
 
-			GinkgoWriter.Printf("Scheduled %d/%d pods\n", scheduledCount, podCount)
-			Expect(scheduledCount).To(Equal(podCount),
-				"all pods should be scheduled")
+				scheduled := 0
+				for _, pod := range pods.Items {
+					if batchPods[pod.Name] && pod.Spec.NodeName != "" {
+						scheduled++
+					}
+				}
+				g.Expect(scheduled).To(Equal(podCount), "all batch pods should be scheduled")
+			}, 3*time.Minute, 2*time.Second).Should(Succeed(), "all pods should be scheduled")
 		})
 	})
 
