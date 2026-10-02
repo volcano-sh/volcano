@@ -72,6 +72,18 @@ func Run(config *options.Config) error {
 
 	vClient := getVolcanoClient(restConfig)
 	kubeClient := getKubeClient(restConfig)
+
+	// Optional reconciliation: delete ValidatingWebhookConfigurations
+	// and MutatingWebhookConfigurations that were produced by this
+	// manager (name-prefix volcano-admission-service-) but that are
+	// no longer listed in --enabled-admission. Off by default.
+	if config.ReconcileAdmissionWebhook {
+		if err := SyncAdmissionWebhooks(kubeClient, config.EnabledAdmission); err != nil {
+			klog.Errorf("Failed to reconcile admission webhook configurations: %v", err)
+			return err
+		}
+	}
+
 	factory := informers.NewSharedInformerFactory(vClient, 0)
 
 	// Get the queue informer and add parent index for efficient child queue lookups
