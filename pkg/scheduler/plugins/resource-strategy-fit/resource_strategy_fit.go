@@ -173,8 +173,8 @@ func calculateWeight(args framework.Arguments) ResourceStrategyFit {
 }
 
 func applyProportionalPolicy(rsf *resourceStrategyFitPlugin, args framework.Arguments) {
-	cfg, _ := framework.Get[proportionalConfig](args, "proportional")
-	if !cfg.Enable {
+	cfg, ok := framework.Get[proportionalConfig](args, "proportional")
+	if !ok || !cfg.Enable {
 		return
 	}
 
@@ -185,8 +185,8 @@ func applyProportionalPolicy(rsf *resourceStrategyFitPlugin, args framework.Argu
 }
 
 func applySraPolicy(rsf *resourceStrategyFitPlugin, args framework.Arguments) {
-	cfg, _ := framework.Get[sraConfig](args, "sra")
-	if !cfg.Enable {
+	cfg, ok := framework.Get[sraConfig](args, "sra")
+	if !ok || !cfg.Enable {
 		return
 	}
 
