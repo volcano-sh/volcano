@@ -28,12 +28,22 @@ func (p *pendingState) Execute(action jobflowv1alpha1.Action) error {
 	switch action {
 	case jobflowv1alpha1.SyncJobFlowAction:
 		return SyncJobFlow(p.jobFlow, func(status *jobflowv1alpha1.JobFlowStatus, allJobList int) {
-			if (len(status.RunningJobs) > 0 || len(status.CompletedJobs) > 0) && len(status.FailedJobs) <= 0 {
-				status.State.Phase = jobflowv1alpha1.Running
-			} else if len(status.FailedJobs) > 0 || len(status.TerminatedJobs) > 0 { // TODO(dongjiang1989) Modify it when the if condition judgment is implemented
+			switch {
+			// Short jobs can finish before any sync observes them running, and the
+			// workqueue collapses the two job events into one. Settling on Running
+			// there would be terminal: a status write only re-enqueues the jobflow
+			// once the phase is already Succeed, and a finished job sends no more
+			// events. The running state reaches the same conclusion from the same
+			// counts.
+			case len(status.CompletedJobs) == allJobList:
+				UpdateJobFlowSucceed(p.jobFlow.Namespace)
+				status.State.Phase = jobflowv1alpha1.Succeed
+			case len(status.FailedJobs) > 0 || len(status.TerminatedJobs) > 0: // TODO(dongjiang1989) Modify it when the if condition judgment is implemented
 				UpdateJobFlowFailed(p.jobFlow.Namespace)
 				status.State.Phase = jobflowv1alpha1.Failed
-			} else {
+			case len(status.RunningJobs) > 0 || len(status.CompletedJobs) > 0:
+				status.State.Phase = jobflowv1alpha1.Running
+			default:
 				status.State.Phase = jobflowv1alpha1.Pending
 			}
 		})
