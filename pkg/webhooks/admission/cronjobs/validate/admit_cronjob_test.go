@@ -299,6 +299,27 @@ func TestValidateCronjobSpec(t *testing.T) {
 			ret:       " invalid timeZone",
 		},
 	}
+	stopCh := setupDefaultQueue()
+	defer close(stopCh)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			ret := validateCronjobSpec(&testCase.CronJob.Spec, testCase.CronJob.Namespace)
+			//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
+			if testCase.ExpectErr == true && ret == "" {
+				t.Errorf("Expect error msg :%s, but got nil.", testCase.ret)
+			}
+			if testCase.ExpectErr == true && !strings.Contains(ret, testCase.ret) {
+				t.Errorf("Expect error msg :%s, but got diff error %v", testCase.ret, ret)
+			}
+			if testCase.ExpectErr == false && ret != "" {
+				t.Errorf("Expect no error, but got error %v", ret)
+			}
+		})
+	}
+}
+
+func setupDefaultQueue() chan struct{} {
 	defaultqueue := &schedulingv1beta2.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "default",
@@ -324,24 +345,9 @@ func TestValidateCronjobSpec(t *testing.T) {
 			panic(fmt.Errorf("failed to sync cache: %v", informerType))
 		}
 	}
-	defer close(stopCh)
-
-	for _, testCase := range testCases {
-		t.Run(testCase.Name, func(t *testing.T) {
-			ret := validateCronjobSpec(&testCase.CronJob.Spec, testCase.CronJob.Namespace)
-			//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
-			if testCase.ExpectErr == true && ret == "" {
-				t.Errorf("Expect error msg :%s, but got nil.", testCase.ret)
-			}
-			if testCase.ExpectErr == true && !strings.Contains(ret, testCase.ret) {
-				t.Errorf("Expect error msg :%s, but got diff error %v", testCase.ret, ret)
-			}
-			if testCase.ExpectErr == false && ret != "" {
-				t.Errorf("Expect no error, but got error %v", ret)
-			}
-		})
-	}
+	return stopCh
 }
+
 func getJobTemplate() v1alpha1.JobSpec {
 	return v1alpha1.JobSpec{
 		MinAvailable: 1,
@@ -373,6 +379,57 @@ func getJobTemplate() v1alpha1.JobSpec {
 		},
 	}
 }
+func TestValidateCronJobTemplateDefaultQueue(t *testing.T) {
+	stopCh := setupDefaultQueue()
+	defer close(stopCh)
+
+	jobTemplate := getJobTemplate()
+	jobTemplate.Queue = ""
+	cronjob := &v1alpha1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cronvcjob",
+			Namespace: metav1.NamespaceDefault,
+		},
+		Spec: v1alpha1.CronJobSpec{
+			Schedule:          "* * * * *",
+			ConcurrencyPolicy: v1alpha1.AllowConcurrent,
+			JobTemplate: v1alpha1.JobTemplateSpec{
+				Spec: jobTemplate,
+			},
+		},
+	}
+
+	if msg := validateCronJob(cronjob); msg != "" {
+		t.Errorf("Expect no error, but got error %v", msg)
+	}
+}
+
+func TestValidateCronJobTemplate(t *testing.T) {
+	stopCh := setupDefaultQueue()
+	defer close(stopCh)
+
+	jobTemplate := getJobTemplate()
+	jobTemplate.Queue = "missing-queue"
+	cronjob := &v1alpha1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cronvcjob",
+			Namespace: metav1.NamespaceDefault,
+		},
+		Spec: v1alpha1.CronJobSpec{
+			Schedule:          "* * * * *",
+			ConcurrencyPolicy: v1alpha1.AllowConcurrent,
+			JobTemplate: v1alpha1.JobTemplateSpec{
+				Spec: jobTemplate,
+			},
+		},
+	}
+
+	msg := validateCronJob(cronjob)
+	if want := "unable to find job queue"; !strings.Contains(msg, want) {
+		t.Errorf("expected %q in error, got %q", want, msg)
+	}
+}
+
 func TestValidateCronJobName(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -415,6 +472,9 @@ func TestValidateCronJobName(t *testing.T) {
 
 // When several checks fail at once, the messages should be separated by "; ".
 func TestValidateCronJobSeparatesMultipleErrors(t *testing.T) {
+	stopCh := setupDefaultQueue()
+	defer close(stopCh)
+
 	cronjob := &v1alpha1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      strings.Repeat("a", 53),
@@ -440,6 +500,9 @@ func TestValidateCronJobSeparatesMultipleErrors(t *testing.T) {
 
 // A single failing check should come back on its own, with no separator.
 func TestValidateCronJobSingleErrorHasNoSeparator(t *testing.T) {
+	stopCh := setupDefaultQueue()
+	defer close(stopCh)
+
 	cronjob := &v1alpha1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "valid-cronjob",
