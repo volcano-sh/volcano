@@ -23,6 +23,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/utils/cpuset"
 
@@ -502,5 +503,104 @@ func TestNodeInfoClonePreservesUnassignedNumaPods(t *testing.T) {
 	clone.UnassignedNumaPods[PodMeta{UID: "uid-2", Name: "p2", Namespace: "ns1"}] = ResNumaSets{"cpu": cpuset.New(9)}
 	if !ni.UnassignedNumaPods[PodMeta{UID: "uid-2", Name: "p2", Namespace: "ns1"}]["cpu"].Equals(cpuset.New(0, 1)) {
 		t.Errorf("Clone mutation leaked back into original: %v", ni.UnassignedNumaPods)
+	}
+}
+
+// TestNodeInfo_RemoveTaskUIDMismatch is a regression test for the stale-replace
+// defect (RM-STALE-DELETE-PEE). CASE A — STALE UID MISMATCH:
+//
+//	stored task: UID = U2, namespace/name = c1/p1
+//	candidate:   UID = U1, namespace/name = c1/p1  (same PodKey, different UID)
+//
+// RemoveTask must be a benign no-op: the stored task and its accounting stay intact.
+func TestNodeInfo_RemoveTaskUIDMismatch(t *testing.T) {
+	node := buildNode("n1", nil, BuildResourceList("8000m", "10G",
+		[]ScalarResource{{Name: "pods", Value: "10"}}...))
+
+	// Stored (recreated) task U2: UID overridden to differ from buildPod default.
+	podStored := buildPod("c1", "p1", "n1", v1.PodRunning,
+		BuildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	podStored.UID = types.UID("deadbeef-recreated")
+
+	// Stale candidate U1: same namespace/name (PodKey "c1/p1"), buildPod default UID "c1-p1".
+	podCandidate := buildPod("c1", "p1", "n1", v1.PodRunning,
+		BuildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+
+	ni := NewNodeInfo(node)
+	if err := ni.AddTask(NewTaskInfo(podStored)); err != nil {
+		t.Fatalf("failed to add stored task: %v", err)
+	}
+
+	idleAfterAdd := ni.Idle.Clone()
+	usedAfterAdd := ni.Used.Clone()
+
+	// Act: stale-candidate removal (same PodKey, different UID).
+	ni.RemoveTask(NewTaskInfo(podCandidate))
+
+	// (A1) Stored task U2 remains in the Tasks map with its original UID.
+	got, ok := ni.Tasks["c1/p1"]
+	if !ok {
+		t.Fatal("expected stored task (UID deadbeef-recreated) to remain after UID-mismatch removal, but it was deleted")
+	}
+	if got.UID != TaskID(podStored.UID) {
+		t.Errorf("expected stored UID %q to be preserved, got %q", podStored.UID, got.UID)
+	}
+
+	// (A2) Resource accounting unchanged vs. the post-add snapshot.
+	if !reflect.DeepEqual(ni.Idle, idleAfterAdd) {
+		t.Errorf("Idle changed after stale UID-mismatch removal:\n expected %v\n got      %v", idleAfterAdd, ni.Idle)
+	}
+	if !reflect.DeepEqual(ni.Used, usedAfterAdd) {
+		t.Errorf("Used changed after stale UID-mismatch removal:\n expected %v\n got      %v", usedAfterAdd, ni.Used)
+	}
+
+	// (A3) No destructive mutation: the single stored task is still present.
+	if len(ni.Tasks) != 1 {
+		t.Errorf("expected Tasks map to retain 1 entry after stale removal, got %d", len(ni.Tasks))
+	}
+}
+
+// TestNodeInfo_RemoveTaskUIDMatch verifies the legitimate removal path is
+// unaffected by the UID guard. CASE B — MATCHING UID:
+//
+//	stored task: UID = U2, namespace/name = c1/p1
+//	candidate:   UID = U2, namespace/name = c1/p1  (same PodKey, same UID)
+//
+// RemoveTask must remove the task and recompute resources as before the fix.
+func TestNodeInfo_RemoveTaskUIDMatch(t *testing.T) {
+	node := buildNode("n1", nil, BuildResourceList("8000m", "10G",
+		[]ScalarResource{{Name: "pods", Value: "10"}}...))
+
+	pod := buildPod("c1", "p1", "n1", v1.PodRunning,
+		BuildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	pod.UID = types.UID("deadbeef-recreated") // U2
+
+	ni := NewNodeInfo(node)
+	idleBeforeAdd := ni.Idle.Clone()
+
+	if err := ni.AddTask(NewTaskInfo(pod)); err != nil {
+		t.Fatalf("failed to add task: %v", err)
+	}
+
+	// Candidate carries the same UID as the stored task (same PodKey).
+	candidate := NewTaskInfo(pod)
+	ni.RemoveTask(candidate)
+
+	// (B1) The stored task U2 is removed.
+	if _, ok := ni.Tasks["c1/p1"]; ok {
+		t.Error("expected matching-UID task to be removed, but it remains in the Tasks map")
+	}
+	if len(ni.Tasks) != 0 {
+		t.Errorf("expected Tasks map to be empty after legitimate removal, got %d", len(ni.Tasks))
+	}
+
+	// (B2) Resource accounting reflects the subtraction: Idle restored to the
+	// pre-add baseline, Used returns to zero.
+	if !reflect.DeepEqual(ni.Idle, idleBeforeAdd) {
+		t.Errorf("Idle not restored after legitimate removal:\n expected %v\n got      %v", idleBeforeAdd, ni.Idle)
+	}
+	if ni.Used.MilliCPU != 0 || ni.Used.Memory != 0 {
+		t.Errorf("Used not restored to zero after legitimate removal: got cpu=%v mem=%v",
+			ni.Used.MilliCPU, ni.Used.Memory)
 	}
 }
