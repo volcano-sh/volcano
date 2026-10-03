@@ -459,9 +459,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		cp.buildQueueAttrs(ssn)
 	}
 
-	// Rebuild the reserved cache for this scheduling cycle. This runs after the queue
-	// attributes exist so that seeding and in-session admission share one insertion path,
-	// keeping the reservedSubtree aggregate consistent with the reserved task set.
+	// Must run after the queue attributes exist: seeding reuses addTaskToReservedCache,
+	// which needs the ancestor links to update the reservedSubtree aggregates.
 	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) {
 		cp.buildQueueReservedTasksCache(ssn)
 	}
@@ -1699,14 +1698,15 @@ func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidat
 	}
 	// reservedSubtree holds the gate-reserved requests of this queue and its descendants.
 	// With hierarchy disabled a queue has no ancestors, so it holds just this queue's own.
-	reserved := api.EmptyResource()
-	if attr.reservedSubtree != nil {
-		reserved = attr.reservedSubtree.Clone()
+	// Read it in place: only the candidate exclusion below mutates, so that branch clones.
+	reserved := attr.reservedSubtree
+	if reserved == nil {
+		reserved = api.EmptyResource()
 	}
 	// Exclude the candidate from reserved if already counted (it is added in futureUsed below).
 	if candidateReserved {
 		if candidate.Resreq.LessEqual(reserved, api.Zero) {
-			reserved.Sub(candidate.Resreq)
+			reserved = reserved.Clone().Sub(candidate.Resreq)
 		} else {
 			// Skip exclusion on the (snapshot-prevented) underflow rather than panic in Resource.Sub.
 			klog.Warningf("[capacity] queue <%v>: reserved subtree <%v> does not cover reserved candidate <%v> request <%v>; skipping candidate exclusion",
