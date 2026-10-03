@@ -22,6 +22,7 @@ import (
 
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
@@ -34,6 +35,7 @@ import (
 var (
 	VertexNotDefinedError      = errors.New("vertex is not defined")
 	FlowNotDAGError            = errors.New("jobflow Flow is not DAG")
+	JobFlowSpecUpdateError     = errors.New("jobflow spec updates are not supported")
 	OperationNotCreateOrUpdate = errors.New("expect operation to be 'CREATE' or 'UPDATE'")
 )
 
@@ -73,21 +75,27 @@ func AdmitJobFlows(ar admissionv1.AdmissionReview) *admissionv1.AdmissionRespons
 		return util.ToAdmissionResponse(err)
 	}
 
-	var msg string
 	reviewResponse := admissionv1.AdmissionResponse{}
 	reviewResponse.Allowed = true
 
 	switch ar.Request.Operation {
-	case admissionv1.Create, admissionv1.Update:
-		msg = validateJobFlowDAG(jobFlow, &reviewResponse)
+	case admissionv1.Create:
+		msg := validateJobFlowDAG(jobFlow, &reviewResponse)
+		if !reviewResponse.Allowed {
+			reviewResponse.Result = &metav1.Status{Message: strings.TrimSpace(msg)}
+		}
+	case admissionv1.Update:
+		oldJobFlow, err := schema.DecodeJobFlow(ar.Request.OldObject, ar.Request.Resource)
+		if err != nil {
+			return util.ToAdmissionResponse(err)
+		}
+		if !apiequality.Semantic.DeepEqual(jobFlow.Spec, oldJobFlow.Spec) {
+			return util.ToAdmissionResponse(JobFlowSpecUpdateError)
+		}
 	default:
-		err := OperationNotCreateOrUpdate
-		return util.ToAdmissionResponse(err)
+		return util.ToAdmissionResponse(OperationNotCreateOrUpdate)
 	}
 
-	if !reviewResponse.Allowed {
-		reviewResponse.Result = &metav1.Status{Message: strings.TrimSpace(msg)}
-	}
 	return &reviewResponse
 }
 
