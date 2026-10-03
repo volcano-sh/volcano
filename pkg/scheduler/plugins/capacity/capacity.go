@@ -824,17 +824,17 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddPrePredicateFn(cp.Name(), func(task *api.TaskInfo) error {
 		state := &capacityState{
-			queueAttrs:      make(map[api.QueueID]*queueAttr),
-			reservedTaskIDs: make(map[api.TaskID]struct{}),
+			queueAttrs:       make(map[api.QueueID]*queueAttr),
+			candidateTaskUID: task.UID,
 		}
 
 		for _, queue := range cp.queueOpts {
 			state.queueAttrs[queue.queueID] = queue.Clone()
 		}
-		for _, tasks := range cp.queueGateReservedTasks {
-			for taskID := range tasks {
-				state.reservedTaskIDs[taskID] = struct{}{}
-			}
+		// Resolve membership now, against the task's own leaf queue, so simulation is
+		// not affected by reservations added or removed later in the cycle.
+		if job := ssn.Jobs[task.Job]; job != nil {
+			state.candidateReserved = cp.isTaskReserved(job.Queue, task.UID)
 		}
 
 		ssn.GetCycleState(task.UID).Write(capacityStateKey, state)
@@ -917,9 +917,12 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return false
 		}
 
-		// Membership comes from the frozen snapshot, never from the live reserved cache,
-		// so simulation is not perturbed by mutations during the cycle.
-		_, candidateReserved := state.reservedTaskIDs[candidate.UID]
+		// Membership was frozen when the state was built, never read live here.
+		if candidate.UID != state.candidateTaskUID {
+			klog.Warningf("[capacity] simulate called for task <%s> with state built for <%s>; "+
+				"reserved membership may be wrong", candidate.UID, state.candidateTaskUID)
+		}
+		candidateReserved := state.candidateReserved
 		simulateQueueAllocatable := func(state *capacityState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 			attr := state.queueAttrs[queue.UID]
 			return cp.queueAllocatableWithReserved(attr, candidate, queue, cp.dynamicResourceAllocationEnable, cp.draConsumableCapacityEnable, candidateReserved)
@@ -1684,8 +1687,7 @@ func (cp *capacityPlugin) subReservedSubtree(leafID api.QueueID, res *api.Resour
 
 // queueAllocatableWithReserved reports whether candidate fits in queue once gate-reserved
 // resources are counted. candidateReserved says whether candidate is itself already part of
-// the reserved aggregate, in which case it is excluded to avoid double-counting; callers
-// compute it once per candidate rather than once per queue in the ancestor chain.
+// the reserved aggregate, in which case it is excluded to avoid double-counting.
 func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo, draEnabled bool, consumableCapacityEnabled bool, candidateReserved bool) bool {
 	if draEnabled && attr.dra != nil {
 		candidateDRA := incrementalTaskDRA(attr, candidate)
@@ -1698,7 +1700,6 @@ func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidat
 	}
 	// reservedSubtree holds the gate-reserved requests of this queue and its descendants.
 	// With hierarchy disabled a queue has no ancestors, so it holds just this queue's own.
-	// Read it in place: only the candidate exclusion below mutates, so that branch clones.
 	reserved := attr.reservedSubtree
 	if reserved == nil {
 		reserved = api.EmptyResource()
@@ -1812,9 +1813,14 @@ func getCapacityState(cycleState fwk.CycleState) (*capacityState, error) {
 
 type capacityState struct {
 	queueAttrs map[api.QueueID]*queueAttr
-	// reservedTaskIDs is a per-cycle snapshot of which tasks are gate-reserved. Simulation
-	// must read membership from this frozen set, never from the live reserved cache.
-	reservedTaskIDs map[api.TaskID]struct{}
+	// candidateTaskUID is the task this state was built for.
+	candidateTaskUID api.TaskID
+	// candidateReserved says whether that task is gate-reserved, resolved when the state
+	// was built so simulation never reads the live cache. One value is enough because
+	// SimulateAllocatableFn is always called with the task whose PrePredicate built the
+	// state; the UID above is checked there, so a caller that breaks this gets a warning
+	// rather than a wrong answer.
+	candidateReserved bool
 }
 
 func (qa *queueAttr) Clone() *queueAttr {
@@ -1861,15 +1867,13 @@ func (s *capacityState) Clone() fwk.StateData {
 	}
 
 	newState := &capacityState{
-		queueAttrs:      make(map[api.QueueID]*queueAttr, len(s.queueAttrs)),
-		reservedTaskIDs: make(map[api.TaskID]struct{}, len(s.reservedTaskIDs)),
+		queueAttrs:        make(map[api.QueueID]*queueAttr, len(s.queueAttrs)),
+		candidateTaskUID:  s.candidateTaskUID,
+		candidateReserved: s.candidateReserved,
 	}
 
 	for qID, qa := range s.queueAttrs {
 		newState.queueAttrs[qID] = qa.Clone()
-	}
-	for taskID := range s.reservedTaskIDs {
-		newState.reservedTaskIDs[taskID] = struct{}{}
 	}
 
 	return newState

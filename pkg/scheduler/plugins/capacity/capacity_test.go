@@ -2506,32 +2506,6 @@ func TestReservedExclusionFollowsMembershipFlag(t *testing.T) {
 	}
 }
 
-// TestCapacityStateCloneIsolatesReservedTaskIDs verifies that the per-cycle snapshot of
-// reserved membership is a deep copy. Simulation must not observe reservations added or
-// removed on the live plugin after the snapshot was taken.
-func TestCapacityStateCloneIsolatesReservedTaskIDs(t *testing.T) {
-	state := &capacityState{
-		queueAttrs:      map[api.QueueID]*queueAttr{},
-		reservedTaskIDs: map[api.TaskID]struct{}{"frozen": {}},
-	}
-
-	cloned, ok := state.Clone().(*capacityState)
-	if !ok {
-		t.Fatalf("Clone did not return a *capacityState")
-	}
-
-	// Mutate the original after cloning; the clone must not see it.
-	state.reservedTaskIDs["added-later"] = struct{}{}
-	delete(state.reservedTaskIDs, "frozen")
-
-	if _, ok := cloned.reservedTaskIDs["frozen"]; !ok {
-		t.Fatalf("clone lost a membership entry removed from the original after cloning")
-	}
-	if _, ok := cloned.reservedTaskIDs["added-later"]; ok {
-		t.Fatalf("clone observed a membership entry added to the original after cloning")
-	}
-}
-
 // TestSimulateRemoveFreesAllocatedVictim guards preemption: the queue allocation gate annotation
 // persists on running pods, so a victim still carries it. SimulateRemoveTaskFn must free the
 // victim's capacity for the preemptor and must not re-count it as reserved.
