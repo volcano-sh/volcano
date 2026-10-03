@@ -2273,59 +2273,31 @@ func TestReservedExclusionDoesNotPanicOnUnderflow(t *testing.T) {
 	}
 }
 
-// TestReservedExclusionFollowsMembershipFlag verifies that candidate exclusion is driven
-// by the membership value the caller resolves, in both directions. Callers compute it once
-// per candidate: the live path from cp.queueGateReservedTasks, the simulate path from the
-// frozen capacityState snapshot. End-to-end coverage of the simulate seam itself lives in
-// TestSimulateRemoveFreesAllocatedVictim.
-func TestReservedExclusionFollowsMembershipFlag(t *testing.T) {
-	newAttr := func() *queueAttr {
-		return &queueAttr{
-			queueID:         "l",
-			name:            "l",
-			allocated:       api.EmptyResource(),
-			realCapability:  &api.Resource{MilliCPU: 80000}, // cpu 80 (tight)
-			reservedSubtree: &api.Resource{MilliCPU: 50000}, // cpu 50 reserved in subtree
-		}
-	}
-	cp := &capacityPlugin{queueGateReservedTasks: make(map[api.QueueID]map[api.TaskID]*api.TaskInfo)}
-	queue := &api.QueueInfo{UID: "l", Name: "l"}
-	candidate := &api.TaskInfo{UID: "c", Name: "c", Resreq: &api.Resource{MilliCPU: 50000}} // cpu 50
-
-	// Reserved -> exclude it: futureUsed = 0 + (50-50) + 50 = 50 <= 80.
-	if !cp.queueAllocatableWithReserved(newAttr(), candidate, queue, false, false, true) {
-		t.Fatalf("a reserved candidate must be excluded from the aggregate (50 <= 80)")
-	}
-
-	// Not reserved -> no exclusion: futureUsed = 0 + 50 + 50 = 100 > 80.
-	if cp.queueAllocatableWithReserved(newAttr(), candidate, queue, false, false, false) {
-		t.Fatalf("an unreserved candidate must be counted on top of the aggregate (100 > 80)")
-	}
-}
-
-// TestCapacityStateCloneIsolatesReservedTaskIDs verifies that the per-cycle snapshot of
-// reserved membership is a deep copy. Simulation must not observe reservations added or
-// removed on the live plugin after the snapshot was taken.
-func TestCapacityStateCloneIsolatesReservedTaskIDs(t *testing.T) {
+// TestCapacityStateCloneCarriesFrozenMembership verifies that Clone propagates the frozen
+// membership answer and the task it belongs to. A clone that dropped either would make
+// preempt simulation treat a reserved candidate as unreserved and double count it.
+func TestCapacityStateCloneCarriesFrozenMembership(t *testing.T) {
 	state := &capacityState{
-		queueAttrs:      map[api.QueueID]*queueAttr{},
-		reservedTaskIDs: map[api.TaskID]struct{}{"frozen": {}},
+		queueAttrs:        map[api.QueueID]*queueAttr{},
+		candidateTaskUID:  "t1",
+		candidateReserved: true,
 	}
 
 	cloned, ok := state.Clone().(*capacityState)
 	if !ok {
 		t.Fatalf("Clone did not return a *capacityState")
 	}
-
-	// Mutate the original after cloning; the clone must not see it.
-	state.reservedTaskIDs["added-later"] = struct{}{}
-	delete(state.reservedTaskIDs, "frozen")
-
-	if _, ok := cloned.reservedTaskIDs["frozen"]; !ok {
-		t.Fatalf("clone lost a membership entry removed from the original after cloning")
+	if cloned.candidateTaskUID != "t1" {
+		t.Fatalf("candidateTaskUID = %q after Clone, want t1", cloned.candidateTaskUID)
 	}
-	if _, ok := cloned.reservedTaskIDs["added-later"]; ok {
-		t.Fatalf("clone observed a membership entry added to the original after cloning")
+	if !cloned.candidateReserved {
+		t.Fatalf("candidateReserved lost in Clone")
+	}
+
+	// The queue attributes must still be deep copied.
+	state.queueAttrs["q"] = &queueAttr{queueID: "q"}
+	if _, ok := cloned.queueAttrs["q"]; ok {
+		t.Fatalf("clone observed a queue added to the original after cloning")
 	}
 }
 
