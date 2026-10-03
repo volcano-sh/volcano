@@ -57,6 +57,8 @@ func (alloc *Action) Name() string {
 
 // OnActionInit initializes the plugin. It is called once when the framework is created.
 func (alloc *Action) OnActionInit(configurations []conf.Configuration) {
+	alloc.enablePredicateErrorCache = true
+	alloc.candidateNodeCount = DefaultCandidateNodeCount
 	alloc.parseArguments(configurations)
 }
 

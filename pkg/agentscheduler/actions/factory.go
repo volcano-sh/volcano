@@ -26,5 +26,7 @@ import (
 )
 
 func init() {
-	framework.RegisterAction(allocate.New())
+	framework.RegisterActionBuilder("allocate", func() framework.Action {
+		return allocate.New()
+	})
 }
