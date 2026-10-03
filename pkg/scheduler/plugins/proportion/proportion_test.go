@@ -509,6 +509,76 @@ func TestAllocate(t *testing.T) {
 	}
 }
 
+// TestGuaranteeReservedBeforeWeightShare verifies that a queue's guarantee is reserved
+// off-the-top before the remaining capacity is distributed by weight, so a guarantee that
+// exceeds the queue's weight share is still honored instead of over-subscribing deserved.
+//
+// Cluster = 12 CPU; qa guarantee 8 (weight 1) requests 8; qb and qc (weight 1, no guarantee)
+// request 4 each. Reserve-first makes slack = 12 - 8 = 4, split 2/2 between qb and qc, so:
+//   - qa.deserved = 8 -> qa's 8-CPU pod is allocatable and binds.
+//   - qb/qc.deserved = 2 -> their 4-CPU pods exceed deserved and are held.
+//
+// Only qa binds (1 pod). Before the fix, qb/qc.deserved was 4 (overcommit 8+4+4=16>12) and
+// two pods would bind, starving qa's guarantee.
+func TestGuaranteeReservedBeforeWeightShare(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	trueValue := true
+	actions := []framework.Action{allocate.New()}
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("12", "12Gi", []api.ScalarResource{{Name: "pods", Value: "20"}}...), make(map[string]string))
+
+	pa := util.BuildPod("ns1", "pa", "", apiv1.PodPending, api.BuildResourceList("8", "8Gi"), "pg-a", make(map[string]string), make(map[string]string))
+	pb := util.BuildPod("ns1", "pb", "", apiv1.PodPending, api.BuildResourceList("4", "4Gi"), "pg-b", make(map[string]string), make(map[string]string))
+	pc := util.BuildPod("ns1", "pc", "", apiv1.PodPending, api.BuildResourceList("4", "4Gi"), "pg-c", make(map[string]string), make(map[string]string))
+
+	pgA := util.BuildPodGroup("pg-a", "ns1", "qa", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pgB := util.BuildPodGroup("pg-b", "ns1", "qb", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pgC := util.BuildPodGroup("pg-c", "ns1", "qc", 1, nil, schedulingv1beta1.PodGroupInqueue)
+
+	qa := util.BuildQueue("qa", 1, nil)
+	qa.Spec.Guarantee.Resource = api.BuildResourceList("8", "8Gi")
+	qb := util.BuildQueue("qb", 1, nil)
+	qc := util.BuildQueue("qc", 1, nil)
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name:      "guarantee reserved before weight share: only the guaranteed queue binds",
+			Plugins:   plugins,
+			Pods:      []*apiv1.Pod{pa, pb, pc},
+			Nodes:     []*apiv1.Node{n1},
+			PodGroups: []*schedulingv1beta1.PodGroup{pgA, pgB, pgC},
+			Queues:    []*schedulingv1beta1.Queue{qa, qb, qc},
+			ExpectBindMap: map[string]string{
+				"ns1/pa": "n1",
+			},
+			ExpectBindsNum: 1,
+		},
+	}
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledQueueOrder:  &trueValue,
+					EnabledAllocatable: &trueValue,
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run(actions)
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 // TestNoDoubleCountingForInqueueJobWithBindingTasks is a regression test for the bug where
 // the proportion plugin double-counts queue resources for jobs whose tasks are in Allocated/Binding
 // state while their PodGroup is still in Inqueue phase.
