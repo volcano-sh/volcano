@@ -88,6 +88,33 @@ func TestGetGPUMemoryOfPod(t *testing.T) {
 			},
 			want: 3,
 		},
+		{
+			name: "GPU memory required by native sidecar and container",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					InitContainers: []v1.Container{
+						{
+							RestartPolicy: restartPolicyAlways(),
+							Resources: v1.ResourceRequirements{
+								Limits: v1.ResourceList{
+									VolcanoGPUResource: resource.MustParse("4"),
+								},
+							},
+						},
+					},
+					Containers: []v1.Container{
+						{
+							Resources: v1.ResourceRequirements{
+								Limits: v1.ResourceList{
+									VolcanoGPUResource: resource.MustParse("4"),
+								},
+							},
+						},
+					},
+				},
+			},
+			want: 8,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -163,6 +190,33 @@ func TestGetGPUNumberOfPod(t *testing.T) {
 			},
 			want: 3,
 		},
+		{
+			name: "GPU count required by native sidecar and container",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					InitContainers: []v1.Container{
+						{
+							RestartPolicy: restartPolicyAlways(),
+							Resources: v1.ResourceRequirements{
+								Limits: v1.ResourceList{
+									VolcanoGPUNumber: resource.MustParse("1"),
+								},
+							},
+						},
+					},
+					Containers: []v1.Container{
+						{
+							Resources: v1.ResourceRequirements{
+								Limits: v1.ResourceList{
+									VolcanoGPUNumber: resource.MustParse("1"),
+								},
+							},
+						},
+					},
+				},
+			},
+			want: 2,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -173,6 +227,11 @@ func TestGetGPUNumberOfPod(t *testing.T) {
 			}
 		})
 	}
+}
+
+func restartPolicyAlways() *v1.ContainerRestartPolicy {
+	restartAlways := v1.ContainerRestartPolicyAlways
+	return &restartAlways
 }
 
 func TestReleaseReturnsRemovedAnnotationKeys(t *testing.T) {
