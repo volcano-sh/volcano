@@ -1364,6 +1364,75 @@ func TestPodsToKill(t *testing.T) {
 	}
 }
 
+func TestKillPodsRetainedStatus(t *testing.T) {
+	namespace := "test"
+
+	job := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "job1",
+			Namespace:       namespace,
+			ResourceVersion: "100",
+		},
+		Spec: v1alpha1.JobSpec{
+			Tasks: []v1alpha1.TaskSpec{
+				{
+					Name:     "task1",
+					Replicas: 1,
+				},
+			},
+		},
+	}
+
+	succeededPod := buildPod(namespace, "pod1", v1.PodSucceeded, nil)
+	addPodAnnotation(succeededPod, map[string]string{
+		v1alpha1.TaskSpecKey: "task1",
+	})
+
+	jobInfo := &apis.JobInfo{
+		Job: job,
+		Pods: map[string]map[string]*v1.Pod{
+			"task1": {
+				"pod1": succeededPod,
+			},
+		},
+	}
+
+	fakeController := newFakeController()
+
+	_, err := fakeController.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), succeededPod, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Error creating pod: %v", err)
+	}
+
+	_, err = fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Error creating job: %v", err)
+	}
+	if err = fakeController.cache.Add(job); err != nil {
+		t.Fatalf("Error adding job to cache: %v", err)
+	}
+
+	err = fakeController.killPods(jobInfo, state.PodRetainPhaseSoft, nil, nil)
+	if err != nil {
+		t.Fatalf("killPods returned unexpected error: %v", err)
+	}
+
+	updatedJob, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Error getting updated job: %v", err)
+	}
+
+	if updatedJob.Status.Succeeded != 1 {
+		t.Errorf("Expected job.Status.Succeeded to be 1, got %d", updatedJob.Status.Succeeded)
+	}
+	if updatedJob.Status.Failed != 0 {
+		t.Errorf("Expected job.Status.Failed to be 0, got %d", updatedJob.Status.Failed)
+	}
+	if taskStatus, found := updatedJob.Status.TaskStatusCount["task1"]; !found || taskStatus.Phase[v1.PodSucceeded] != 1 {
+		t.Errorf("Expected TaskStatusCount for task1 succeeded to be 1, got %#v", taskStatus)
+	}
+}
+
 func TestKillPodsPodGroupDeletion(t *testing.T) {
 	namespace := "test"
 	jobUID := "e7f18111-1cec-11ea-b688-fa163ec79500"
