@@ -365,6 +365,24 @@ func (ssn *Session) UnifiedEvictable(ctx *api.EvictionContext, candidates []*api
 	return victims
 }
 
+// QueueFairnessEnabled reports whether an enabled plugin decides if a queue may reclaim
+// resources or reports queues overused, which reclaim needs to tell which queues are
+// using more than their share. A plugin that only orders queues, such as drf with
+// hierarchy, does neither, so it does not count.
+func (ssn *Session) QueueFairnessEnabled() bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if _, found := ssn.preemptiveFns[plugin.Name]; found && isEnabled(plugin.EnablePreemptive) {
+				return true
+			}
+			if _, found := ssn.overusedFns[plugin.Name]; found && isEnabled(plugin.EnabledOverused) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Overused invoke overused function of the plugins
 func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 	for _, tier := range ssn.Tiers {
