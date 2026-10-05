@@ -459,6 +459,12 @@ When a pod asks for CPUs and GPUs together, the scorer unions the NUMA nodes use
 
 ### Limitations
 
+GPU support in this plugin is NUMA alignment only. It decides which node can place a pod's GPUs (and CPUs) on as few NUMA nodes as possible; it does not model anything else about the GPU, such as NVLink topology, MIG partitions or GPU memory.
+
+- Only whole-device `nvidia.com/gpu` requests are understood. Other vendors' GPUs, vGPU and MIG resources are ignored by the hint provider.
+- Like the CPU path, GPU alignment applies to pods in the Guaranteed QoS class only, because kubelet's Topology Manager only honours hints for Guaranteed pods. A GPU pod therefore needs CPU and memory requests equal to its limits.
+- A node takes part only when its kubelet runs the `static` CPU manager policy and a Topology Manager policy other than `none`. Nodes without those settings are skipped, not rejected.
+
 The scheduler picks the best node for NUMA alignment, but the actual device assignment is still done by kubelet's device plugin (the NVIDIA device plugin, for example). The scheduler doesn't pick the exact GPU devices handed to a container.
 
 To keep the scheduler's preference and the real allocation in sync:
