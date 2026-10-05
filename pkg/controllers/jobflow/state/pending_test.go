@@ -74,6 +74,19 @@ func TestPendingStateExecute(t *testing.T) {
 			want:   v1alpha1.Failed,
 		},
 		{
+			// The old Running arm guarded on FailedJobs alone, so a terminated job
+			// alongside a completed one read as Running and stuck there. The running
+			// state has always called this Failed.
+			name: "a terminated job alongside a completed one settles to Failed",
+			status: v1alpha1.JobFlowStatus{
+				State:          pending,
+				CompletedJobs:  []string{"job-a"},
+				TerminatedJobs: []string{"job-b"},
+			},
+			flows: 2,
+			want:  v1alpha1.Failed,
+		},
+		{
 			name:   "nothing has started yet so it stays Pending",
 			status: v1alpha1.JobFlowStatus{State: pending, PendingJobs: []string{"job-a"}},
 			flows:  1,
