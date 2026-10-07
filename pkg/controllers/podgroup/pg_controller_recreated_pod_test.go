@@ -91,6 +91,14 @@ func stsPod(uid, ownerUID types.UID) *v1.Pod {
 	}
 }
 
+func jobPod(uid, ownerUID types.UID) *v1.Pod {
+	pod := stsPod(uid, ownerUID)
+	pod.OwnerReferences[0].APIVersion = "batch/v1"
+	pod.OwnerReferences[0].Kind = "Job"
+	pod.OwnerReferences[0].Name = "job"
+	return pod
+}
+
 func assertBoundTo(t *testing.T, c *pgcontroller, ownerUID types.UID) {
 	t.Helper()
 	pod, err := c.kubeClient.CoreV1().Pods("test").Get(context.TODO(), "sts-0", metav1.GetOptions{})
@@ -104,9 +112,9 @@ func assertBoundTo(t *testing.T, c *pgcontroller, ownerUID types.UID) {
 }
 
 func TestProcessNextReqWithRecreatedPod(t *testing.T) {
-	oldPod := stsPod("old-pod", "old-sts")
-	newPod := stsPod("new-pod", "new-sts")
-	req := podRequest{podName: oldPod.Name, podNamespace: oldPod.Namespace, podUID: oldPod.UID}
+	oldPod := jobPod("old-pod", "old-job")
+	newPod := jobPod("new-pod", "new-job")
+	req := pgRequest{kind: podKind, name: oldPod.Name, namespace: oldPod.Namespace, uid: oldPod.UID}
 
 	testCases := []struct {
 		name          string
@@ -122,7 +130,7 @@ func TestProcessNextReqWithRecreatedPod(t *testing.T) {
 			name:          "uid matches",
 			cached:        oldPod,
 			stored:        oldPod,
-			wantOwner:     "old-sts",
+			wantOwner:     "old-job",
 			wantPodGroups: 1,
 		},
 		{
@@ -143,7 +151,7 @@ func TestProcessNextReqWithRecreatedPod(t *testing.T) {
 			stored:        oldPod,
 			patchErr:      errors.New("patch failed"),
 			retry:         true,
-			wantOwner:     "old-sts",
+			wantOwner:     "old-job",
 			wantPodGroups: 1,
 		},
 	}
@@ -197,13 +205,13 @@ func TestRecreatedPodIsBoundToNewOwnerPodGroup(t *testing.T) {
 		wantPodGroups int
 	}{
 		{
-			name:          "statefulset recreated",
-			newOwner:      "new-sts",
+			name:          "job recreated",
+			newOwner:      "new-job",
 			wantPodGroups: 2,
 		},
 		{
-			name:          "pod recreated under the same statefulset",
-			newOwner:      "old-sts",
+			name:          "pod recreated under the same job",
+			newOwner:      "old-job",
 			wantPodGroups: 1,
 		},
 	}
@@ -211,9 +219,9 @@ func TestRecreatedPodIsBoundToNewOwnerPodGroup(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newRecreatedPodController()
-			oldPod := stsPod("old-pod", "old-sts")
-			newPod := stsPod("new-pod", tc.newOwner)
-			oldReq := podRequest{podName: oldPod.Name, podNamespace: oldPod.Namespace, podUID: oldPod.UID}
+			oldPod := jobPod("old-pod", "old-job")
+			newPod := jobPod("new-pod", tc.newOwner)
+			oldReq := pgRequest{kind: podKind, name: oldPod.Name, namespace: oldPod.Namespace, uid: oldPod.UID}
 
 			assert.NoError(t, c.podInformer.Informer().GetIndexer().Add(oldPod.DeepCopy()))
 			_, err := c.kubeClient.CoreV1().Pods(newPod.Namespace).Create(context.TODO(), newPod.DeepCopy(), metav1.CreateOptions{})
@@ -230,7 +238,7 @@ func TestRecreatedPodIsBoundToNewOwnerPodGroup(t *testing.T) {
 
 			assert.NoError(t, c.podInformer.Informer().GetIndexer().Add(newPod.DeepCopy()))
 			c.processNextReq()
-			assert.Equal(t, 1, c.queue.NumRequeues(oldReq))
+			assert.Equal(t, 0, c.queue.NumRequeues(oldReq))
 
 			c.addPod(newPod)
 			c.processNextReq()
@@ -263,11 +271,15 @@ func TestAddStatefulSetWithRecreatedPod(t *testing.T) {
 		},
 	}
 
+	assert.NoError(t, c.stsInformer.Informer().GetIndexer().Add(sts.DeepCopy()))
+	_, err := c.kubeClient.AppsV1().StatefulSets(sts.Namespace).Create(context.TODO(), sts.DeepCopy(), metav1.CreateOptions{})
+	assert.NoError(t, err)
 	assert.NoError(t, c.podInformer.Informer().GetIndexer().Add(oldPod.DeepCopy()))
-	_, err := c.kubeClient.CoreV1().Pods(newPod.Namespace).Create(context.TODO(), newPod.DeepCopy(), metav1.CreateOptions{})
+	_, err = c.kubeClient.CoreV1().Pods(newPod.Namespace).Create(context.TODO(), newPod.DeepCopy(), metav1.CreateOptions{})
 	assert.NoError(t, err)
 
 	c.addStatefulSet(sts)
+	c.processNextReq()
 	pod, err := c.kubeClient.CoreV1().Pods(newPod.Namespace).Get(context.TODO(), newPod.Name, metav1.GetOptions{})
 	assert.NoError(t, err)
 	assert.Empty(t, pod.Annotations[scheduling.KubeGroupNameAnnotationKey])
