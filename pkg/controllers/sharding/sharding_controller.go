@@ -322,7 +322,7 @@ func (sc *ShardingController) refreshNodeMetrics() {
 			newMetrics, err := sc.calculateNodeUtilization(node.Name)
 			if err != nil {
 				klog.Warningf("Failed to refresh metrics for node %s: %v", node.Name, err)
-				return
+				continue
 			}
 			sc.updateNodeUtilization(node.Name, newMetrics)
 		}
@@ -536,13 +536,19 @@ func (sc *ShardingController) createShard(schedulerName string, nodesDesired []s
 	}
 
 	// create a new shard
-	_, err = sc.vcClient.ShardV1alpha1().NodeShards().Create(sc.ctx, shard, metav1.CreateOptions{})
+	createdShard, err := sc.vcClient.ShardV1alpha1().NodeShards().Create(sc.ctx, shard, metav1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
 			klog.Infof("Shard %s was created concurrently by another process", schedulerName)
 			return nil
 		}
 		return fmt.Errorf("failed to create shard %s: %v", schedulerName, err)
+	}
+
+	// Persist initial status via status subresource API
+	createdShard.Status = shard.Status
+	if _, errStatus := sc.vcClient.ShardV1alpha1().NodeShards().UpdateStatus(sc.ctx, createdShard, metav1.UpdateOptions{}); errStatus != nil {
+		klog.Warningf("Failed to update status for newly created shard %s: %v", schedulerName, errStatus)
 	}
 
 	klog.Infof("Successfully created shard %s with %d nodes", schedulerName, len(nodesDesired))
@@ -576,10 +582,19 @@ func (sc *ShardingController) applyAssignment(schedulerName string, assignment *
 	newShard.Status.NodesToRemove = nodesToRemove
 	klog.V(6).Infof("%s - current shard: %s, assignment: %s, NodesToadd: %s, NodesToRemove: %s", schedulerName, currentNodesInUse, assignment.NodesDesired, nodesToAdd, nodesToRemove)
 
-	// Apply update
-	_, err = sc.vcClient.ShardV1alpha1().NodeShards().Update(sc.ctx, newShard, metav1.UpdateOptions{})
+	// Apply spec update
+	updatedShard, err := sc.vcClient.ShardV1alpha1().NodeShards().Update(sc.ctx, newShard, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update shard %s: %v", schedulerName, err)
+	}
+
+	// Apply status update via status subresource API
+	updatedShard.Status.LastUpdateTime = newShard.Status.LastUpdateTime
+	updatedShard.Status.NodesToAdd = newShard.Status.NodesToAdd
+	updatedShard.Status.NodesToRemove = newShard.Status.NodesToRemove
+
+	if _, errStatus := sc.vcClient.ShardV1alpha1().NodeShards().UpdateStatus(sc.ctx, updatedShard, metav1.UpdateOptions{}); errStatus != nil {
+		klog.Warningf("Failed to update status for shard %s: %v", schedulerName, errStatus)
 	}
 
 	klog.V(6).Infof("Assignment changed for %s: %d -> %d nodes", schedulerName, len(shard.Spec.NodesDesired), len(assignment.NodesDesired))
