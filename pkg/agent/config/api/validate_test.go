@@ -163,6 +163,41 @@ func TestColocationConfigValidate(t *testing.T) {
 			},
 			expectedErr: []error{errors.New(IllegalCPURecoverLimitPercent)},
 		},
+		{
+			// cpuJitterLimitPercent is a dead-band: a throttle update is only applied
+			// once the available quota moves by at least this percent of the last quota.
+			// A value greater than 100 (only react to swings above 100%) is valid.
+			name: "legal CPUThrottlingConfig with cpuJitterLimitPercent above 100",
+			colocationCfg: &ColocationConfig{
+				CPUThrottlingConfig: &CPUThrottling{
+					Enable:                 utilpointer.Bool(true),
+					CPUThrottlingThreshold: utilpointer.Int(80),
+					CPUJitterLimitPercent:  utilpointer.Int(150),
+					CPURecoverLimitPercent: utilpointer.Int(10),
+				},
+			},
+		},
+		{
+			// A cpuJitterLimitPercent of 0 means every quota change is applied, which is
+			// a valid, non-negative setting.
+			name: "legal CPUThrottlingConfig with zero cpuJitterLimitPercent",
+			colocationCfg: &ColocationConfig{
+				CPUThrottlingConfig: &CPUThrottling{
+					Enable:                utilpointer.Bool(true),
+					CPUJitterLimitPercent: utilpointer.Int(0),
+				},
+			},
+		},
+		{
+			name: "illegal CPUThrottlingConfig && negative cpuJitterLimitPercent",
+			colocationCfg: &ColocationConfig{
+				CPUThrottlingConfig: &CPUThrottling{
+					Enable:                utilpointer.Bool(true),
+					CPUJitterLimitPercent: utilpointer.Int(-1),
+				},
+			},
+			expectedErr: []error{errors.New(IllegalCPUJitterLimitPercent)},
+		},
 	}
 
 	for _, tc := range testCases {
