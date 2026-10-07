@@ -26,6 +26,7 @@ import (
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -305,6 +306,149 @@ func TestSyncQueue(t *testing.T) {
 		item, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), testcase.queue.Name, metav1.GetOptions{})
 		assert.NoError(t, err)
 		assert.Equal(t, testcase.ExpectState, item.Status.State)
+	}
+}
+
+func TestCloseQueueAfterQueueRecreate(t *testing.T) {
+	testCases := []struct {
+		Name            string
+		PodGroups       []*schedulingv1beta1.PodGroup
+		ExpectState     schedulingv1beta1.QueueState
+		ExpectPodGroups int
+	}{
+		{
+			Name: "close after recreate observes the running PodGroup",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "ns1",
+					},
+					Spec: schedulingv1beta1.PodGroupSpec{
+						Queue: "c1",
+					},
+					Status: schedulingv1beta1.PodGroupStatus{
+						Phase: schedulingv1beta1.PodGroupRunning,
+					},
+				},
+			},
+			ExpectState:     schedulingv1beta1.QueueStateClosing,
+			ExpectPodGroups: 1,
+		},
+		{
+			Name:            "close after recreate with no PodGroup reports Closed",
+			ExpectState:     schedulingv1beta1.QueueStateClosed,
+			ExpectPodGroups: 0,
+		},
+	}
+
+	for _, testcase := range testCases {
+		c := newFakeController()
+		queue := &schedulingv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "c1",
+			},
+			Spec: schedulingv1beta1.QueueSpec{
+				Weight: 1,
+			},
+		}
+
+		for _, pg := range testcase.PodGroups {
+			assert.NoError(t, c.pgInformer.Informer().GetStore().Add(pg))
+			c.addPodGroup(pg)
+		}
+
+		// The queue is deleted while its PodGroups are still running and then
+		// recreated under the same name. The recreated queue receives no
+		// PodGroup event for the PodGroups that kept running.
+		c.deleteQueue(queue)
+		assert.Empty(t, c.getPodGroups(queue.Name))
+
+		assert.NoError(t, c.queueInformer.Informer().GetStore().Add(queue))
+		_, err := c.vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
+		assert.NoError(t, err)
+
+		err = c.handleQueue(&apis.Request{
+			QueueName: queue.Name,
+			Event:     busv1alpha1.OutOfSyncEvent,
+			Action:    busv1alpha1.CloseQueueAction,
+		})
+		assert.NoError(t, err)
+
+		item, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue.Name, metav1.GetOptions{})
+		assert.NoError(t, err)
+		assert.Equal(t, testcase.ExpectState, item.Status.State)
+		assert.Len(t, c.getPodGroups(queue.Name), testcase.ExpectPodGroups)
+	}
+}
+
+func TestReconcilePodGroups(t *testing.T) {
+	testCases := []struct {
+		Name            string
+		PodGroups       []*schedulingv1beta1.PodGroup
+		Cache           map[string]struct{}
+		ExpectPodGroups []string
+		ExpectCache     map[string]struct{}
+	}{
+		{
+			Name: "adds PodGroups that are missing from the cache",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "ns1",
+					},
+					Spec: schedulingv1beta1.PodGroupSpec{
+						Queue: "c1",
+					},
+				},
+			},
+			ExpectPodGroups: []string{"ns1/pg1"},
+			ExpectCache:     map[string]struct{}{"ns1/pg1": {}},
+		},
+		{
+			Name:            "drops cache entries that no longer exist",
+			Cache:           map[string]struct{}{"ns1/stale": {}},
+			ExpectPodGroups: []string{},
+			ExpectCache:     map[string]struct{}{},
+		},
+		{
+			Name: "matches the cache to the informer in both directions",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "ns1",
+					},
+					Spec: schedulingv1beta1.PodGroupSpec{
+						Queue: "c1",
+					},
+				},
+			},
+			Cache:           map[string]struct{}{"ns1/stale": {}},
+			ExpectPodGroups: []string{"ns1/pg1"},
+			ExpectCache:     map[string]struct{}{"ns1/pg1": {}},
+		},
+	}
+
+	for _, testcase := range testCases {
+		c := newFakeController()
+		for _, pg := range testcase.PodGroups {
+			assert.NoError(t, c.pgInformer.Informer().GetStore().Add(pg))
+		}
+
+		if testcase.Cache != nil {
+			current := make(map[string]struct{}, len(testcase.Cache))
+			for key := range testcase.Cache {
+				current[key] = struct{}{}
+			}
+			c.podGroups["c1"] = current
+		}
+
+		podGroups := c.reconcilePodGroups("c1")
+
+		assert.ElementsMatch(t, testcase.ExpectPodGroups, podGroups)
+		assert.Equal(t, testcase.ExpectCache, c.podGroups["c1"])
 	}
 }
 
