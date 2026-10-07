@@ -37,13 +37,16 @@ func QueueParentIndexFunc(obj interface{}) ([]string, error) {
 		return []string{}, nil
 	}
 
+	if queue.Name == "root" {
+		return []string{}, nil
+	}
+
 	// Index by parent name
 	if queue.Spec.Parent != "" {
 		return []string{queue.Spec.Parent}, nil
 	}
 
-	// Root queue or queues without parent
-	return []string{}, nil
+	return []string{"root"}, nil
 }
 
 // GetQueuesByParent returns all queues that have the specified parent using the queue parent index.
@@ -78,7 +81,11 @@ func (asc *AdmissionServiceConfig) GetQueuesByParent(parentName string) ([]*sche
 
 	queues := make([]*schedulingv1beta1.Queue, 0)
 	for _, queue := range allQueues {
-		if queue.Spec.Parent == parentName {
+		queueParent := queue.Spec.Parent
+		if queue.Name != "root" && queueParent == "" {
+			queueParent = "root"
+		}
+		if queueParent == parentName {
 			queues = append(queues, queue)
 		}
 	}
