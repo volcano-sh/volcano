@@ -92,6 +92,38 @@ func TestGetPodGroupPhase(t *testing.T) {
 			expected: scheduling.PodGroupCompleted,
 		},
 		{
+			name:     "completed podgroup with no tasks left keeps Completed",
+			job:      newJob(2, scheduling.PodGroupCompleted),
+			expected: scheduling.PodGroupCompleted,
+		},
+		{
+			name: "partially deleted completed podgroup keeps Completed",
+			job: newJob(2, scheduling.PodGroupCompleted,
+				newTask("task-1", api.Succeeded, "node-1")),
+			expected: scheduling.PodGroupCompleted,
+		},
+		{
+			name: "completed podgroup with failed remaining task keeps Completed",
+			job: newJob(2, scheduling.PodGroupCompleted,
+				newTask("task-1", api.Succeeded, "node-1"),
+				newTask("task-2", api.Failed, "node-2")),
+			expected: scheduling.PodGroupCompleted,
+		},
+		{
+			name: "completed podgroup with remaining running task recomputes",
+			job: newJob(2, scheduling.PodGroupCompleted,
+				newTask("task-1", api.Succeeded, "node-1"),
+				newTask("task-2", api.Running, "node-2")),
+			expected: scheduling.PodGroupRunning,
+		},
+		{
+			name: "completed podgroup with new pending task recomputes",
+			job: newJob(2, scheduling.PodGroupCompleted,
+				newTask("task-1", api.Succeeded, "node-1"),
+				newTask("task-2", api.Pending, "")),
+			expected: scheduling.PodGroupPending,
+		},
+		{
 			name: "scheduled releasing tasks below minMember fall to Pending",
 			job: newJob(2, scheduling.PodGroupRunning,
 				newTask("task-1", api.Releasing, "node-1")),
