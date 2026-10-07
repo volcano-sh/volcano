@@ -84,6 +84,7 @@ func main() {
 
 	if err := app.Run(config); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
+		klog.Flush()
 		os.Exit(1)
 	}
 }
