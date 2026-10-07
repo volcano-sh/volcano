@@ -152,7 +152,7 @@ var _ = ginkgo.Describe("Pod Validating E2E Test", func() {
 
 		_, err := testCtx.Kubeclient.CoreV1().Pods(testCtx.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("percentage which between 1% ~ 99%"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("percentage between 1% and 99%"))
 	})
 
 	ginkgo.It("Should reject pod creation with invalid percentage annotation (100%)", func() {
@@ -176,7 +176,7 @@ var _ = ginkgo.Describe("Pod Validating E2E Test", func() {
 
 		_, err := testCtx.Kubeclient.CoreV1().Pods(testCtx.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("percentage which between 1% ~ 99%"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("percentage between 1% and 99%"))
 	})
 
 	ginkgo.It("Should reject pod creation with invalid string annotation", func() {
