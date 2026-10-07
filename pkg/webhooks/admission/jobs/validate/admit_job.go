@@ -395,11 +395,21 @@ func validateTaskTopoPolicy(task v1alpha1.TaskSpec, index int) string {
 		}
 	}
 
-	for id, container := range append(template.Spec.Containers, template.Spec.InitContainers...) {
-		requestNum := guaranteedCPUs(container)
-		if requestNum == 0 {
-			return fmt.Sprintf("the cpu request isn't an integer in spec.task[%d] container[%d].",
-				index, id)
+	if msg := validateIntegerCPU(template.Spec.Containers, "container", index); msg != "" {
+		return msg
+	}
+
+	return validateIntegerCPU(template.Spec.InitContainers, "initContainer", index)
+}
+
+// validateIntegerCPU checks that every container asks for a whole number of CPUs,
+// which is what the topology policy needs. field names the spec field in the
+// message, so "container" or "initContainer".
+func validateIntegerCPU(containers []v1.Container, field string, taskIndex int) string {
+	for id, container := range containers {
+		if guaranteedCPUs(container) == 0 {
+			return fmt.Sprintf("the cpu request isn't an integer in spec.task[%d] %s[%d].",
+				taskIndex, field, id)
 		}
 	}
 

@@ -2478,6 +2478,41 @@ func TestValidateTaskTopoPolicy(t *testing.T) {
 			},
 			expect: "the cpu request isn't an integer",
 		},
+		{
+			// The init container is the one at fault here, so the message should
+			// point at initContainer[0] and not at a container index that the
+			// task does not even have.
+			name: "test-3",
+			taskSpec: v1alpha1.TaskSpec{
+				Name:           "task-3",
+				TopologyPolicy: v1alpha1.Restricted,
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{
+						InitContainers: []v1.Container{
+							{
+								Resources: v1.ResourceRequirements{
+									Limits: v1.ResourceList{
+										v1.ResourceCPU:    *resource.NewMilliQuantity(500, resource.DecimalSI),
+										v1.ResourceMemory: *resource.NewQuantity(2000, resource.BinarySI),
+									},
+								},
+							},
+						},
+						Containers: []v1.Container{
+							{
+								Resources: v1.ResourceRequirements{
+									Limits: v1.ResourceList{
+										v1.ResourceCPU:    *resource.NewQuantity(1, ""),
+										v1.ResourceMemory: *resource.NewQuantity(2000, resource.BinarySI),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expect: "spec.task[0] initContainer[0]",
+		},
 	}
 
 	for _, testcase := range testCases {
