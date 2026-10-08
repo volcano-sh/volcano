@@ -56,7 +56,7 @@ func InitCreateFlags(cmd *cobra.Command) {
 func CreateQueue(ctx context.Context) error {
 	if !strings.EqualFold(createQueueFlags.State, string(schedulingv1beta1.QueueStateOpen)) {
 		return fmt.Errorf("state %s invalid, %s is the only state a queue can be created in, "+
-			"use `vcctl queue -a close` to close it", createQueueFlags.State, schedulingv1beta1.QueueStateOpen)
+			"use `vcctl queue operate -a close` to close it", createQueueFlags.State, schedulingv1beta1.QueueStateOpen)
 	}
 
 	config, err := util.BuildConfig(createQueueFlags.Master, createQueueFlags.Kubeconfig)
