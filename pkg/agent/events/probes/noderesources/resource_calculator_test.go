@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"sync"
 	"testing"
 
 	. "github.com/agiledragon/gomonkey/v2"
@@ -282,4 +283,53 @@ func Test_historicalUsageCalculator_RefreshCfg(t *testing.T) {
 			assert.Equal(t, tt.expectedResourceType, r.resourceTypes)
 		})
 	}
+}
+
+// Test_computeOverSubRes_weightOrder verifies that the most-recent sample in
+// the queue (the tail, since Enqueue appends and GetAll returns oldest-first)
+// receives the highest weight, so the calculator reacts quickly to current
+// utilisation instead of being dominated by stale samples.
+func Test_computeOverSubRes_weightOrder(t *testing.T) {
+	sqQueue := queue.NewSqQueue()
+	// Oldest sample first: a stale usage spike that must NOT dominate the result.
+	sqQueue.Enqueue(apis.Resource{v1.ResourceCPU: 10000, v1.ResourceMemory: 10000})
+	for i := 0; i < 8; i++ {
+		sqQueue.Enqueue(apis.Resource{v1.ResourceCPU: 0, v1.ResourceMemory: 0})
+	}
+	// Newest sample last: current low usage after the spike cleared.
+	sqQueue.Enqueue(apis.Resource{v1.ResourceCPU: 100, v1.ResourceMemory: 100})
+
+	r := &historicalUsageCalculator{queue: sqQueue}
+	res := r.computeOverSubRes()
+
+	// The newest sample carries weight 512 out of totalWeight 1023, while the
+	// stale spike (oldest) carries weight 1, so the weighted result must stay
+	// close to the newest sample and far away from the stale spike.
+	assert.Less(t, res[v1.ResourceCPU], int64(200), "stale spike must not dominate the weighted result")
+	assert.Less(t, res[v1.ResourceMemory], int64(200), "stale spike must not dominate the weighted result")
+}
+
+// Test_historicalUsageCalculator_cfgLock_concurrentReads exercises RefreshCfg
+// (writer) concurrently with getOverSubscriptionTypes (reader) to guard
+// against reintroducing an exclusive sync.Mutex on the read path. Run with
+// -race to catch data races.
+func Test_historicalUsageCalculator_cfgLock_concurrentReads(t *testing.T) {
+	r := &historicalUsageCalculator{resourceTypes: sets.NewString("cpu")}
+	node := &v1.Node{}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_ = r.RefreshCfg(&api.ColocationConfig{
+				OverSubscriptionConfig: &api.OverSubscription{OverSubscriptionTypes: utilpointer.String("cpu,memory")},
+			})
+		}()
+		go func() {
+			defer wg.Done()
+			_ = r.getOverSubscriptionTypes(node)
+		}()
+	}
+	wg.Wait()
 }

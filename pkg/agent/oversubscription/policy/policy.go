@@ -150,6 +150,14 @@ func ShouldUpdateNodeOverSubscription(current, new apis.Resource) bool {
 			delta = -delta
 		}
 
+		if current[res] == 0 {
+			if delta != 0 {
+				update = true
+				break
+			}
+			continue
+		}
+
 		if float64(delta)/float64(current[res]) > overSubscriptionChangeStep {
 			update = true
 			break

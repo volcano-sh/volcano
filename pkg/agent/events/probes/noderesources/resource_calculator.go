@@ -46,7 +46,7 @@ func init() {
 // historicalUsageCalculator is used to calculate the overSubscription
 type historicalUsageCalculator struct {
 	sync.Mutex
-	cfgLock sync.Mutex
+	cfgLock sync.RWMutex
 	policy.Interface
 	eventQueueFactory *framework.EventQueueFactory
 	queue             *queue.SqQueue
@@ -131,6 +131,11 @@ func (r *historicalUsageCalculator) computeOverSubRes() apis.Resource {
 	overSubRes := make(apis.Resource)
 	totalWeight := int64(0)
 	initWeight := int64(1)
+	// historicalUsages is oldest-first (queue.GetAll returns FIFO order), so
+	// iterating forward while doubling the weight each step already gives the
+	// newest sample the highest weight (512 for a full 10-entry window) and
+	// the oldest sample the lowest weight (1) -- the correct EMA-like recency
+	// weighting.
 	for _, usage := range historicalUsages {
 		totalWeight += initWeight
 		for _, res := range apis.OverSubscriptionResourceTypes {
@@ -145,8 +150,8 @@ func (r *historicalUsageCalculator) computeOverSubRes() apis.Resource {
 }
 
 func (r *historicalUsageCalculator) getOverSubscriptionTypes(node *v1.Node) map[v1.ResourceName]bool {
-	r.cfgLock.Lock()
-	defer r.cfgLock.Unlock()
+	r.cfgLock.RLock()
+	defer r.cfgLock.RUnlock()
 	ret := make(map[v1.ResourceName]bool)
 	for _, item := range sets.List(r.resourceTypes) {
 		ret[v1.ResourceName(item)] = true
