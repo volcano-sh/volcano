@@ -171,6 +171,12 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &schedulingv1beta1.ClusterApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("Guarantee"):
 		return &schedulingv1beta1.GuaranteeApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("NamespaceQueue"):
+		return &schedulingv1beta1.NamespaceQueueApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("NamespaceQueueSpec"):
+		return &schedulingv1beta1.NamespaceQueueSpecApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("NamespaceQueueStatus"):
+		return &schedulingv1beta1.NamespaceQueueStatusApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("NetworkTopologySpec"):
 		return &schedulingv1beta1.NetworkTopologySpecApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("NodeGroupAffinity"):

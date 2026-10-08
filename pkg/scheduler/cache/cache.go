@@ -126,23 +126,24 @@ type SchedulerCache struct {
 	nodeSelectorLabels map[string]sets.Empty
 	metricsConf        map[string]string
 
-	resyncPeriod               time.Duration
-	podInformer                infov1.PodInformer
-	nodeInformer               infov1.NodeInformer
-	hyperNodeInformer          topologyinformerv1alpha1.HyperNodeInformer
-	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
-	queueInformerV1beta1       vcinformerv1.QueueInformer
-	pvInformer                 infov1.PersistentVolumeInformer
-	pvcInformer                infov1.PersistentVolumeClaimInformer
-	scInformer                 storagev1.StorageClassInformer
-	vaInformer                 storagev1.VolumeAttachmentInformer
-	pcInformer                 schedv1.PriorityClassInformer
-	quotaInformer              infov1.ResourceQuotaInformer
-	csiNodeInformer            storagev1.CSINodeInformer
-	csiDriverInformer          storagev1.CSIDriverInformer
-	csiStorageCapacityInformer storagev1.CSIStorageCapacityInformer
-	cpuInformer                cpuinformerv1.NumatopologyInformer
-	nodeShardInformer          shardinformerv1alpha1.NodeShardInformer
+	resyncPeriod                  time.Duration
+	podInformer                   infov1.PodInformer
+	nodeInformer                  infov1.NodeInformer
+	hyperNodeInformer             topologyinformerv1alpha1.HyperNodeInformer
+	podGroupInformerV1beta1       vcinformerv1.PodGroupInformer
+	queueInformerV1beta1          vcinformerv1.QueueInformer
+	namespaceQueueInformerV1beta1 vcinformerv1.NamespaceQueueInformer
+	pvInformer                    infov1.PersistentVolumeInformer
+	pvcInformer                   infov1.PersistentVolumeClaimInformer
+	scInformer                    storagev1.StorageClassInformer
+	vaInformer                    storagev1.VolumeAttachmentInformer
+	pcInformer                    schedv1.PriorityClassInformer
+	quotaInformer                 infov1.ResourceQuotaInformer
+	csiNodeInformer               storagev1.CSINodeInformer
+	csiDriverInformer             storagev1.CSIDriverInformer
+	csiStorageCapacityInformer    storagev1.CSIStorageCapacityInformer
+	cpuInformer                   cpuinformerv1.NumatopologyInformer
+	nodeShardInformer             shardinformerv1alpha1.NodeShardInformer
 
 	Binder         Binder
 	Evictor        Evictor
@@ -391,6 +392,27 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 
 // UpdateQueueStatus will update the status of queue
 func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
+	if queue != nil && queue.NamespaceQueue != nil {
+		newNamespaceQueue := &vcv1beta1.NamespaceQueue{}
+		if err := schedulingscheme.Scheme.Convert(
+			queue.NamespaceQueue,
+			newNamespaceQueue,
+			nil,
+		); err != nil {
+			return err
+		}
+		// NamespaceQueue status is scheduler-owned for runtime allocation data.
+		newNamespaceQueue.Status.Allocated = queue.Queue.Status.Allocated
+		newNamespaceQueue.Status.Reservation = vcv1beta1.Reservation{
+			Nodes:    queue.Queue.Status.Reservation.Nodes,
+			Resource: queue.Queue.Status.Reservation.Resource,
+		}
+		_, err := su.vcclient.SchedulingV1beta1().NamespaceQueues(newNamespaceQueue.Namespace).
+			UpdateStatus(context.TODO(), newNamespaceQueue, metav1.UpdateOptions{})
+		return err
+	}
+
+	// Cluster Queue status is persisted through the cluster-scoped Queue API.
 	newQueue := &vcv1beta1.Queue{}
 	if err := schedulingscheme.Scheme.Convert(queue.Queue, newQueue, nil); err != nil {
 		klog.Errorf("error occurred in converting scheduling.Queue to v1beta1.Queue: %s", err.Error())
@@ -477,10 +499,23 @@ func (sc *SchedulerCache) setBatchBindParallel() {
 
 // newDefaultAndRootQueue init default queue and root queue
 func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
+	namespaceQueueEnabled := utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue)
+
 	createIfNotExists := func(name string, reclaimable bool) error {
-		_, err := vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
+		existing, err := vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
 		if err == nil {
 			klog.V(2).Infof("Queue %s already exists, skip creating.", name)
+			// Upgrade path: a default Queue created before NamespaceQueue was enabled gets the
+			// same wildcard as a newly-created one. Only an omitted field (nil) is filled in,
+			// an explicit empty list or any configured value is preserved.
+			if name == defaultQueue && namespaceQueueEnabled && existing.Spec.AllowedNamespaces == nil {
+				updated := existing.DeepCopy()
+				updated.Spec.AllowedNamespaces = []string{"*"}
+				// Best effort: an existing Queue must never prevent the scheduler from starting.
+				if _, err := vcClient.SchedulingV1beta1().Queues().Update(context.TODO(), updated, metav1.UpdateOptions{}); err != nil {
+					klog.Errorf("failed to set allowedNamespaces of existing queue %s: %v", name, err)
+				}
+			}
 			return nil
 		}
 
@@ -490,13 +525,20 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 		}
 
 		// If queue does not exist, start to create it
+		allowedNamespaces := []string(nil)
+		if name == defaultQueue && namespaceQueueEnabled {
+			// A newly-created default Queue is the default parent for NamespaceQueues.
+			allowedNamespaces = []string{"*"}
+		}
+
 		newQueue := vcv1beta1.Queue{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: name,
 			},
 			Spec: vcv1beta1.QueueSpec{
-				Reclaimable: &reclaimable,
-				Weight:      1,
+				Reclaimable:       &reclaimable,
+				Weight:            1,
+				AllowedNamespaces: allowedNamespaces,
 			},
 		}
 
@@ -829,6 +871,16 @@ func (sc *SchedulerCache) addEventHandler() {
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
 	handlers["queue"] = handlerRegistration
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) {
+		sc.namespaceQueueInformerV1beta1 = vcinformers.Scheduling().V1beta1().NamespaceQueues()
+		handlerRegistration, _ = sc.namespaceQueueInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddNamespaceQueueV1beta1,
+			UpdateFunc: sc.UpdateNamespaceQueueV1beta1,
+			DeleteFunc: sc.DeleteNamespaceQueueV1beta1,
+		})
+		handlers["namespacequeue"] = handlerRegistration
+	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.ResourceTopology) {
 		sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()

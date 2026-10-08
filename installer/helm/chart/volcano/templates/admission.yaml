@@ -5,6 +5,8 @@
 {{ $admission_main_csc := or .Values.custom.admission_main_csc .Values.custom.default_csc }}
 {{ $admission_ns := or .Values.custom.admission_ns .Values.custom.default_ns }}
 {{ $scheduler_name := .Values.custom.scheduler_name }}
+{{ $enabled_admissions := include "volcano.enabledAdmissions" (dict "admissions" .Values.custom.enabled_admissions "namespaceQueueEnabled" .Values.custom.namespace_queue_enable) }}
+{{ $admission_feature_gates := include "volcano.featureGates" (dict "gates" .Values.custom.admission_feature_gates "namespaceQueueEnabled" .Values.custom.namespace_queue_enable) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -57,13 +59,16 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["namespacequeues"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["services"]
     verbs: ["get"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["get", "list", "watch"]
-  {{- if .Values.custom.enabled_admissions | regexMatch "/podgroups/mutate" }}
+  {{- if $enabled_admissions | regexMatch "/podgroups/mutate" }}
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["get", "list", "watch"]
@@ -135,7 +140,7 @@ spec:
       {{- end }}
       containers:
         - args:
-            - --enabled-admission={{ .Values.custom.enabled_admissions }}
+            - --enabled-admission={{ $enabled_admissions }}
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
@@ -145,8 +150,8 @@ spec:
             {{- if $scheduler_name }}
             - --scheduler-name={{- $scheduler_name }}
             {{- end }}
-            {{- if .Values.custom.admission_feature_gates }}
-            - --feature-gates={{ .Values.custom.admission_feature_gates }}
+            {{- if $admission_feature_gates }}
+            - --feature-gates={{ $admission_feature_gates }}
             {{- end }}
             - --enable-healthz=true
             - --logtostderr

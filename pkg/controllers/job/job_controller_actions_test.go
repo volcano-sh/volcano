@@ -29,7 +29,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/record"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -37,7 +39,176 @@ import (
 
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/job/state"
+	"volcano.sh/volcano/pkg/features"
 )
+
+func TestGetJobForwardingQueue(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	controller := newFakeController()
+	for _, queue := range []*schedulingapi.Queue{
+		{ObjectMeta: metav1.ObjectMeta{Name: schedulingapi.DefaultQueue}},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "research"},
+			Spec: schedulingapi.QueueSpec{
+				ExtendClusters: []schedulingapi.Cluster{{Name: "remote"}},
+			},
+		},
+	} {
+		if err := controller.queueInformer.Informer().GetIndexer().Add(queue); err != nil {
+			t.Fatalf("failed to add Queue to indexer: %v", err)
+		}
+	}
+
+	tests := []struct {
+		name          string
+		job           *v1alpha1.Job
+		wantQueueName string
+		wantErr       bool
+	}{
+		{
+			name: "cluster Queue provides forwarding configuration",
+			job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "team-a"},
+				Spec:       v1alpha1.JobSpec{Queue: "research"},
+			},
+			wantQueueName: "research",
+		},
+		{
+			name: "NamespaceQueue does not use cluster forwarding",
+			job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "team-a"},
+				Spec:       v1alpha1.JobSpec{Queue: "namespace/training"},
+			},
+		},
+		{
+			name: "empty reference resolves to default Queue",
+			job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "team-a"},
+			},
+			wantQueueName: schedulingapi.DefaultQueue,
+		},
+		{
+			name: "malformed reference is rejected",
+			job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "team-a"},
+				Spec:       v1alpha1.JobSpec{Queue: "namespace/team/training"},
+			},
+			wantErr: true,
+		},
+		{
+			name:    "nil Job is rejected",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queue, err := controller.getJobForwardingQueue(tt.job)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("getJobForwardingQueue() error = %v, wantErr %t", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if tt.wantQueueName == "" {
+				if queue != nil {
+					t.Fatalf("getJobForwardingQueue() = %q, want nil", queue.Name)
+				}
+				return
+			}
+			if queue == nil || queue.Name != tt.wantQueueName {
+				t.Fatalf("getJobForwardingQueue() = %#v, want %q", queue, tt.wantQueueName)
+			}
+		})
+	}
+}
+
+func TestSyncJobWithNamespaceQueue(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+
+	const (
+		namespace      = "team-a"
+		jobName        = "training-job"
+		queueReference = "namespace/training"
+	)
+	job := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            jobName,
+			Namespace:       namespace,
+			UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+			ResourceVersion: "100",
+		},
+		Spec: v1alpha1.JobSpec{
+			Queue: queueReference,
+			Tasks: []v1alpha1.TaskSpec{{
+				Name:     "worker",
+				Replicas: 1,
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{v1alpha1.QueueNameKey: "stale-queue"},
+					},
+					Spec: v1.PodSpec{Containers: []v1.Container{{Name: "worker"}}},
+				},
+			}},
+		},
+		Status: v1alpha1.JobStatus{State: v1alpha1.JobState{Phase: v1alpha1.Pending}},
+	}
+	podGroup := &schedulingapi.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      job.Name + "-" + string(job.UID),
+			Namespace: namespace,
+		},
+		Spec: schedulingapi.PodGroupSpec{
+			Queue:         queueReference,
+			MinResources:  &v1.ResourceList{},
+			MinTaskMember: map[string]int32{"worker": 1},
+		},
+		Status: schedulingapi.PodGroupStatus{Phase: schedulingapi.PodGroupInqueue},
+	}
+
+	controller := newFakeController()
+	if err := controller.pgInformer.Informer().GetIndexer().Add(podGroup); err != nil {
+		t.Fatalf("failed to add PodGroup to indexer: %v", err)
+	}
+	if _, err := controller.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(
+		context.Background(), podGroup, metav1.CreateOptions{},
+	); err != nil {
+		t.Fatalf("failed to create PodGroup: %v", err)
+	}
+	if _, err := controller.vcClient.BatchV1alpha1().Jobs(namespace).Create(
+		context.Background(), job, metav1.CreateOptions{},
+	); err != nil {
+		t.Fatalf("failed to create Job: %v", err)
+	}
+	if err := controller.cache.Add(job); err != nil {
+		t.Fatalf("failed to add Job to cache: %v", err)
+	}
+
+	jobInfo := &apis.JobInfo{
+		Job:       job,
+		Namespace: namespace,
+		Name:      jobName,
+		Pods:      map[string]map[string]*v1.Pod{},
+	}
+	if err := controller.syncJob(jobInfo, nil); err != nil {
+		t.Fatalf("failed to sync NamespaceQueue Job: %v", err)
+	}
+
+	pods, err := controller.kubeClient.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("failed to list Pods: %v", err)
+	}
+	if len(pods.Items) != 1 {
+		t.Fatalf("got %d Pods, want 1", len(pods.Items))
+	}
+	pod := &pods.Items[0]
+	if got := pod.Annotations[v1alpha1.QueueNameKey]; got != queueReference {
+		t.Errorf("queue annotation = %q, want %q", got, queueReference)
+	}
+	if got, found := pod.Labels[v1alpha1.QueueNameKey]; found {
+		t.Errorf("queue label = %q, want label omitted for NamespaceQueue reference", got)
+	}
+}
 
 func TestKillJobFunc(t *testing.T) {
 	namespace := "test"
