@@ -41,12 +41,15 @@ func TestPendingStateExecute(t *testing.T) {
 		want   v1alpha1.Phase
 	}{
 		{
-			// A short job can finish before any sync sees it running. Nothing
-			// re-syncs a jobflow that settles on Running, so this has to reach
-			// Succeed here.
 			name:   "every job completed before the first sync settles to Succeed",
 			status: v1alpha1.JobFlowStatus{State: pending, CompletedJobs: []string{"job-a"}},
 			flows:  1,
+			want:   v1alpha1.Succeed,
+		},
+		{
+			name:   "empty flows intentionally become Succeed",
+			status: v1alpha1.JobFlowStatus{State: pending},
+			flows:  0,
 			want:   v1alpha1.Succeed,
 		},
 		{
@@ -74,9 +77,6 @@ func TestPendingStateExecute(t *testing.T) {
 			want:   v1alpha1.Failed,
 		},
 		{
-			// The old Running arm guarded on FailedJobs alone, so a terminated job
-			// alongside a completed one read as Running and stuck there. The running
-			// state has always called this Failed.
 			name: "a terminated job alongside a completed one settles to Failed",
 			status: v1alpha1.JobFlowStatus{
 				State:          pending,
