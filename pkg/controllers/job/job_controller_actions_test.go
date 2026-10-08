@@ -34,6 +34,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingapi "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	volcanoclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/job/state"
@@ -1484,12 +1485,19 @@ func TestKillPodsPodGroupDeletion(t *testing.T) {
 	}
 }
 
-// TestCreateOrUpdatePodGroupRecreatesOnStaleLister ensures createOrUpdatePodGroup
-// does not trust a stale informer hit after Delete (the #6037 recreate race).
-func TestCreateOrUpdatePodGroupRecreatesOnStaleLister(t *testing.T) {
-	namespace := "test"
-	jobUID := "e7f18111-1cec-11ea-b688-fa163ec79500"
-	job := &v1alpha1.Job{
+// countPodGroupGets returns the number of PodGroup GETs sent to the fake apiserver.
+func countPodGroupGets(c *volcanoclient.Clientset) int {
+	n := 0
+	for _, a := range c.Actions() {
+		if a.GetVerb() == "get" && a.GetResource().Resource == "podgroups" {
+			n++
+		}
+	}
+	return n
+}
+
+func newPodGroupTestJob(namespace, jobUID string, phase v1alpha1.JobPhase) *v1alpha1.Job {
+	return &v1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "job1",
 			Namespace: namespace,
@@ -1502,36 +1510,122 @@ func TestCreateOrUpdatePodGroupRecreatesOnStaleLister(t *testing.T) {
 				{Name: "task1", Replicas: 1},
 			},
 		},
-	}
-	pgName := fmt.Sprintf("%s-%s", job.Name, jobUID)
-	stalePG := &schedulingapi.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pgName,
-			Namespace: namespace,
-		},
-		Spec: schedulingapi.PodGroupSpec{
-			MinMember: 1,
-			Queue:     "default",
+		Status: v1alpha1.JobStatus{
+			State: v1alpha1.JobState{Phase: phase},
 		},
 	}
+}
 
-	fakeController := newFakeController()
-	// Stale lister: informer still has the PG, but the apiserver does not
-	// (Delete succeeded; watch echo not yet processed).
-	if err := fakeController.pgInformer.Informer().GetIndexer().Add(stalePG); err != nil {
-		t.Fatalf("failed to seed stale PodGroup into informer: %v", err)
+// TestCreateOrUpdatePodGroupRecreatesOnStaleLister ensures createOrUpdatePodGroup
+// does not trust a stale informer hit while the job is Restarting (the #6037
+// recreate race after a PodGroup Delete): one live GET confirms the PodGroup is
+// gone and it is recreated.
+func TestCreateOrUpdatePodGroupRecreatesOnStaleLister(t *testing.T) {
+	namespace := "test"
+	jobUID := "e7f18111-1cec-11ea-b688-fa163ec79500"
+	newName := fmt.Sprintf("job1-%s", jobUID)
+
+	testcases := []struct {
+		Name        string
+		Phase       v1alpha1.JobPhase
+		StalePGName string
+		ExpectGets  int
+	}{
+		{
+			Name:        "Restarting with stale lister hit recreates PodGroup",
+			Phase:       v1alpha1.Restarting,
+			StalePGName: newName,
+			ExpectGets:  1,
+		},
+		{
+			Name:        "Restarting with stale legacy-named lister hit recreates PodGroup",
+			Phase:       v1alpha1.Restarting,
+			StalePGName: "job1",
+			ExpectGets:  1,
+		},
 	}
 
-	if err := fakeController.createOrUpdatePodGroup(job); err != nil {
-		t.Fatalf("createOrUpdatePodGroup returned unexpected error: %v", err)
-	}
+	for _, tc := range testcases {
+		t.Run(tc.Name, func(t *testing.T) {
+			job := newPodGroupTestJob(namespace, jobUID, tc.Phase)
+			stalePG := &schedulingapi.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      tc.StalePGName,
+					Namespace: namespace,
+				},
+				Spec: schedulingapi.PodGroupSpec{
+					MinMember: 1,
+					Queue:     "default",
+				},
+			}
 
-	pg, err := fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("expected PodGroup to be recreated via live GET path, got: %v", err)
+			fakeController := newFakeController()
+			vcClient := fakeController.vcClient.(*volcanoclient.Clientset)
+			// Stale lister: informer still has the PG, but the apiserver does not
+			// (Delete succeeded; watch echo not yet processed).
+			if err := fakeController.pgInformer.Informer().GetIndexer().Add(stalePG); err != nil {
+				t.Fatalf("failed to seed stale PodGroup into informer: %v", err)
+			}
+
+			if err := fakeController.createOrUpdatePodGroup(job); err != nil {
+				t.Fatalf("createOrUpdatePodGroup returned unexpected error: %v", err)
+			}
+			gets := countPodGroupGets(vcClient)
+
+			pg, err := vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), newName, metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("expected PodGroup %s to be recreated, got: %v", newName, err)
+			}
+			if pg.Spec.MinMember != job.Spec.MinAvailable {
+				t.Errorf("expected MinMember %d, got %d", job.Spec.MinAvailable, pg.Spec.MinMember)
+			}
+			if gets != tc.ExpectGets {
+				t.Errorf("expected %d PodGroup GETs, got %d", tc.ExpectGets, gets)
+			}
+		})
 	}
-	if pg.Spec.MinMember != job.Spec.MinAvailable {
-		t.Errorf("expected MinMember %d, got %d", job.Spec.MinAvailable, pg.Spec.MinMember)
+}
+
+// TestCreateOrUpdatePodGroupSteadyStateNoLiveGet ensures repeated syncs of a job
+// whose PodGroup exists read the lister and send no PodGroup GETs to the apiserver.
+func TestCreateOrUpdatePodGroupSteadyStateNoLiveGet(t *testing.T) {
+	namespace := "test"
+	jobUID := "e7f18111-1cec-11ea-b688-fa163ec79500"
+	const syncs = 100
+
+	for _, legacy := range []bool{false, true} {
+		t.Run(fmt.Sprintf("legacyName=%v", legacy), func(t *testing.T) {
+			job := newPodGroupTestJob(namespace, jobUID, v1alpha1.Running)
+			fakeController := newFakeController()
+			vcClient := fakeController.vcClient.(*volcanoclient.Clientset)
+
+			// Create the PodGroup the way the controller does, then mirror it into the
+			// informer so the lister and the apiserver agree.
+			if err := fakeController.createOrUpdatePodGroup(job); err != nil {
+				t.Fatalf("initial createOrUpdatePodGroup failed: %v", err)
+			}
+			pg, err := vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), fmt.Sprintf("job1-%s", jobUID), metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("failed to get created PodGroup: %v", err)
+			}
+			if legacy {
+				pg = pg.DeepCopy()
+				pg.Name = job.Name
+			}
+			if err := fakeController.pgInformer.Informer().GetIndexer().Add(pg); err != nil {
+				t.Fatalf("failed to seed PodGroup into informer: %v", err)
+			}
+			vcClient.ClearActions()
+
+			for i := 0; i < syncs; i++ {
+				if err := fakeController.initOnJobUpdate(job); err != nil {
+					t.Fatalf("initOnJobUpdate #%d returned unexpected error: %v", i, err)
+				}
+			}
+			if gets := countPodGroupGets(vcClient); gets != 0 {
+				t.Errorf("expected 0 PodGroup GETs over %d syncs, got %d", syncs, gets)
+			}
+		})
 	}
 }
 
