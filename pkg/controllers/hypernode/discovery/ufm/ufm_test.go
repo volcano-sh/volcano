@@ -64,6 +64,42 @@ func TestUfmDiscoverer_Start(t *testing.T) {
 			expectedError: true,
 		},
 		{
+			name: "EndpointKeyMisspelled",
+			config: api.DiscoveryConfig{
+				Source: "ufm",
+				Config: map[string]interface{}{
+					"endPoint": "https://ufm.example.com",
+				},
+				Credentials: &api.Credentials{
+					SecretRef: &api.SecretRef{
+						Name:      "ufm-creds",
+						Namespace: "default",
+					},
+				},
+			},
+			secretExists:  true,
+			secretData:    map[string][]byte{"username": []byte("user"), "password": []byte("pass")},
+			expectedError: true,
+		},
+		{
+			name: "EndpointNotString",
+			config: api.DiscoveryConfig{
+				Source: "ufm",
+				Config: map[string]interface{}{
+					"endpoint": 8080,
+				},
+				Credentials: &api.Credentials{
+					SecretRef: &api.SecretRef{
+						Name:      "ufm-creds",
+						Namespace: "default",
+					},
+				},
+			},
+			secretExists:  true,
+			secretData:    map[string][]byte{"username": []byte("user"), "password": []byte("pass")},
+			expectedError: true,
+		},
+		{
 			name: "MissingSecretRef",
 			config: api.DiscoveryConfig{
 				Source: "ufm",
