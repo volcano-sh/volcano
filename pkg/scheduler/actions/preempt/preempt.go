@@ -461,7 +461,10 @@ func (pmpt *Action) nominatedNodeEligibleToPreempt(preemptor *api.TaskInfo) erro
 
 	nodeInfo, ok := pmpt.ssn.Nodes[nomNodeName]
 	if !ok {
-		return fmt.Errorf("not eligible due to the pod's nominated node is not found in the session")
+		// The nominated node may have been deleted before the preemptor bound.
+		// Its nomination is no longer useful, so allow normal preemption to
+		// select another candidate node.
+		return nil
 	}
 
 	err := pmpt.ssn.PredicateFn(preemptor, nodeInfo)
