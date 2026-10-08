@@ -114,7 +114,7 @@ func TestCreateQueue(t *testing.T) {
 			Name:  "Abnormal Case Create Queue Failed For State Invalid",
 			State: string(v1beta1.QueueStateClosed),
 			ExpectValue: fmt.Errorf("state %s invalid, %s is the only state a queue can be created in, "+
-				"use `vcctl queue -a close` to close it", v1beta1.QueueStateClosed, v1beta1.QueueStateOpen),
+				"use `vcctl queue operate -a close` to close it", v1beta1.QueueStateClosed, v1beta1.QueueStateOpen),
 		},
 	}
 	for _, testcase := range testCases {
