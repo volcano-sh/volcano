@@ -29,12 +29,8 @@ func (p *pendingState) Execute(action jobflowv1alpha1.Action) error {
 	case jobflowv1alpha1.SyncJobFlowAction:
 		return SyncJobFlow(p.jobFlow, func(status *jobflowv1alpha1.JobFlowStatus, allJobList int) {
 			switch {
-			// Short jobs can finish before any sync observes them running, and the
-			// workqueue collapses the two job events into one. Settling on Running
-			// there would be terminal: a status write only re-enqueues the jobflow
-			// once the phase is already Succeed, and a finished job sends no more
-			// events. The running state reaches the same conclusion from the same
-			// counts.
+			// Settle completed flows directly: entering Running may leave no
+			// further event to trigger reconciliation.
 			case len(status.CompletedJobs) == allJobList:
 				UpdateJobFlowSucceed(p.jobFlow.Namespace)
 				status.State.Phase = jobflowv1alpha1.Succeed
