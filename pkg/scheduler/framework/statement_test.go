@@ -256,6 +256,13 @@ func TestPipelineAutoRollbackOnError(t *testing.T) {
 		if task.NodeName != node.Name {
 			t.Errorf("expected task on node %s, got %s", node.Name, task.NodeName)
 		}
+		// Pipeline must set the pod's NodeName, just like Allocate does.
+		// DRA plugins (e.g. dynamicresources Reserve) read pod.Spec.NodeName
+		// to look up the allocation computed during Filter; without it they
+		// fail with "claim allocation not found for node".
+		if task.Pod.Spec.NodeName != node.Name {
+			t.Errorf("expected Pod.Spec.NodeName %s after Pipeline, got %q", node.Name, task.Pod.Spec.NodeName)
+		}
 	})
 
 	t.Run("pipeline to missing node returns error and rolls back", func(t *testing.T) {
@@ -429,6 +436,71 @@ func TestDiscardReversesOperations(t *testing.T) {
 		// After discard, unevict should restore the task to Running.
 		if task.Status != api.Running {
 			t.Errorf("expected task status Running after Discard of Evict, got %v", task.Status)
+		}
+	})
+}
+
+// TestPipelineSetsPodNodeName guards against regression of the DRA (Dynamic
+// Resource Allocation) scheduling fix: Statement.Pipeline must set
+// task.Pod.Spec.NodeName to the target node, mirroring Statement.Allocate.
+//
+// The Kubernetes dynamicresources Reserve plugin receives pod.Spec.NodeName and
+// uses it as the key into the per-node allocation state written by Filter
+// (state.nodeAllocations). If Pipeline leaves pod.Spec.NodeName empty while it
+// has already staged an allocation for a concrete node, Reserve fails with
+// "claim allocation not found for node" and jobs using ResourceClaims get stuck
+// in Pending.
+func TestPipelineSetsPodNodeName(t *testing.T) {
+	t.Run("pipeline sets Pod.Spec.NodeName like allocate", func(t *testing.T) {
+		ssn, _, task, node := newTestSession(t)
+
+		pipeStmt := NewStatement(ssn)
+		if err := pipeStmt.Pipeline(task, node.Name, false); err != nil {
+			t.Fatalf("Pipeline failed: %v", err)
+		}
+		if got := task.Pod.Spec.NodeName; got != node.Name {
+			t.Errorf("Pipeline: Pod.Spec.NodeName = %q, want %q", got, node.Name)
+		}
+		if got := task.NodeName; got != node.Name {
+			t.Errorf("Pipeline: task.NodeName = %q, want %q", got, node.Name)
+		}
+		pipeStmt.Discard()
+
+		// Pipeline and Allocate must stay symmetric so that reserve plugins
+		// behave identically regardless of which scheduling path was taken.
+		allocStmt := NewStatement(ssn)
+		if err := allocStmt.Allocate(task, node); err != nil {
+			t.Fatalf("Allocate failed: %v", err)
+		}
+		if got := task.Pod.Spec.NodeName; got != node.Name {
+			t.Errorf("Allocate: Pod.Spec.NodeName = %q, want %q", got, node.Name)
+		}
+		if got := task.NodeName; got != node.Name {
+			t.Errorf("Allocate: task.NodeName = %q, want %q", got, node.Name)
+		}
+	})
+
+	t.Run("discard does not corrupt Pod.Spec.NodeName", func(t *testing.T) {
+		ssn, _, task, node := newTestSession(t)
+		stmt := NewStatement(ssn)
+
+		if err := stmt.Pipeline(task, node.Name, false); err != nil {
+			t.Fatalf("Pipeline failed: %v", err)
+		}
+		if task.Pod.Spec.NodeName != node.Name {
+			t.Fatalf("setup: expected Pod.Spec.NodeName %q, got %q", node.Name, task.Pod.Spec.NodeName)
+		}
+
+		stmt.Discard()
+
+		// Discard rolls back task.NodeName (like unPipeline does) but must not
+		// leave the pod in a half-on-node state where NodeName is empty while
+		// Pod.Spec.NodeName still references the node.
+		if task.NodeName != "" {
+			t.Errorf("expected empty task.NodeName after Discard, got %q", task.NodeName)
+		}
+		if task.Status != api.Pending {
+			t.Errorf("expected Pending status after Discard, got %v", task.Status)
 		}
 	})
 }
