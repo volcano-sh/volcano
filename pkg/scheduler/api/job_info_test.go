@@ -399,6 +399,48 @@ func TestTaskSchedulingReason(t *testing.T) {
 	}
 }
 
+// TestTaskSchedulingReasonNomination checks that the nomination is published
+// from the live transaction, so a rolled-back gang attempt does not leak a
+// stale NominatedNodeName while a committed preemption still keeps it.
+func TestTaskSchedulingReasonNomination(t *testing.T) {
+	tests := []struct {
+		name           string
+		live           TransactionContext
+		lastTx         *TransactionContext
+		wantNomination string
+	}{
+		{
+			name:           "committed preemption retains nomination",
+			live:           TransactionContext{Status: Pipelined, NodeName: "node1", EvictionOccurred: true},
+			lastTx:         nil,
+			wantNomination: "node1",
+		},
+		{
+			name:           "discarded attempt publishes no nomination",
+			live:           TransactionContext{Status: Pending},
+			lastTx:         &TransactionContext{Status: Pipelined, NodeName: "node1", EvictionOccurred: true},
+			wantNomination: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := buildPod("ns1", "task-1", "", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
+			job := NewJobInfo(JobID("job1"))
+			ti := NewTaskInfo(pod)
+			job.AddTaskInfo(ti)
+
+			ti.TransactionContext = tt.live
+			ti.LastTransaction = tt.lastTx
+
+			_, _, nominated := job.TaskSchedulingReason(ti.UID)
+			if nominated != tt.wantNomination {
+				t.Errorf("nominatedNodeName = %q, want %q", nominated, tt.wantNomination)
+			}
+		})
+	}
+}
+
 func TestJobInfo(t *testing.T) {
 	newTaskFunc := func(uid, jobUid types.UID, status TaskStatus, resources *Resource) *TaskInfo {
 		isBestEffort := resources.IsEmpty()

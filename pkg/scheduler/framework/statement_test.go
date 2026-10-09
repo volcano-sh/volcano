@@ -386,6 +386,27 @@ func TestDiscardReversesOperations(t *testing.T) {
 		}
 	})
 
+	t.Run("discard clears live EvictionOccurred but keeps the snapshot", func(t *testing.T) {
+		ssn, _, task, node := newTestSession(t)
+		stmt := NewStatement(ssn)
+
+		if err := stmt.Pipeline(task, node.Name, true); err != nil {
+			t.Fatalf("Pipeline failed: %v", err)
+		}
+		if !task.EvictionOccurred {
+			t.Fatalf("expected EvictionOccurred true after Pipeline")
+		}
+
+		stmt.Discard()
+
+		if task.EvictionOccurred {
+			t.Errorf("expected live EvictionOccurred cleared after Discard")
+		}
+		if task.LastTransaction == nil || !task.LastTransaction.EvictionOccurred {
+			t.Errorf("expected LastTransaction to retain the EvictionOccurred snapshot")
+		}
+	})
+
 	t.Run("discard reverses allocate operation", func(t *testing.T) {
 		ssn, _, task, node := newTestSession(t)
 		stmt := NewStatement(ssn)
