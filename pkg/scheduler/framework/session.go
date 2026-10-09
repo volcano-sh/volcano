@@ -163,6 +163,7 @@ type Session struct {
 	subJobOrderFns                map[string]api.CompareFn
 	hyperNodeGradientForJobFns    map[string]api.HyperNodeGradientForJobFn
 	hyperNodeGradientForSubJobFns map[string]api.HyperNodeGradientForSubJobFn
+	hyperNodeCandidateFns         map[string]api.HyperNodeCandidateFn
 
 	// cycleStatesMap is used to temporarily store the scheduling status of each pod, its life cycle is same as Session.
 	// Because state needs to be passed between different extension points (not only used in PreFilter and Filter),
