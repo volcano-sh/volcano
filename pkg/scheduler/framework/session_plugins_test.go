@@ -655,3 +655,31 @@ func TestHyperNodeGradientThreeStates(t *testing.T) {
 		}
 	}
 }
+
+func TestQueueNodesFn(t *testing.T) {
+	nodes := []*api.NodeInfo{{Name: "n1"}, {Name: "n2"}, {Name: "n3"}}
+	enabled, disabled := true, false
+	ssn := &Session{
+		queueNodesFns: make(map[string]api.QueueNodesFn),
+		Tiers: []conf.Tier{{Plugins: []conf.PluginOption{
+			{Name: "disabled", EnabledPredicate: &disabled},
+			{Name: "first", EnabledPredicate: &enabled},
+			{Name: "second", EnabledPredicate: &enabled},
+		}}},
+	}
+	queue := &api.QueueInfo{}
+	assert.Equal(t, nodes, ssn.QueueNodesFn(queue, nodes), "unregistered filters must not change nodes")
+	ssn.AddQueueNodesFn("disabled", func(*api.QueueInfo, []*api.NodeInfo) []*api.NodeInfo {
+		t.Fatal("disabled predicate must not filter candidates")
+		return nil
+	})
+	ssn.AddQueueNodesFn("first", func(_ *api.QueueInfo, input []*api.NodeInfo) []*api.NodeInfo {
+		return input[1:]
+	})
+	ssn.AddQueueNodesFn("second", func(_ *api.QueueInfo, input []*api.NodeInfo) []*api.NodeInfo {
+		assert.Equal(t, nodes[1:], input)
+		return input[:1]
+	})
+	assert.Equal(t, nodes[1:2], ssn.QueueNodesFn(queue, nodes))
+	assert.Len(t, nodes, 3)
+}

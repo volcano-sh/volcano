@@ -111,7 +111,8 @@ func (w *SubJobWorksheet) Clone() *SubJobWorksheet {
 }
 
 type Action struct {
-	session *framework.Session
+	session    *framework.Session
+	queueNodes map[api.QueueID][]*api.NodeInfo
 	// configured flag for error cache
 	enablePredicateErrorCache bool
 
@@ -149,6 +150,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	// 5. use ssn.NodeOrderFn to judge the best node and assign it to T
 
 	alloc.session = ssn
+	alloc.queueNodes = make(map[api.QueueID][]*api.NodeInfo)
+	defer func() { alloc.queueNodes = nil }()
 	logHyperNodeTiers(ssn)
 	alloc.recorder = NewRecorder()
 	actx := alloc.buildAllocateContext()
@@ -930,6 +933,17 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 	if !exist || len(nodes) == 0 {
 		klog.V(4).InfoS("There is no node in hyperNode", "job", job.UID, "hyperNode", hyperNode)
 		return nil
+	}
+
+	// Cache only the cluster-wide scope. Restricted HyperNodes retain their own
+	// candidate lists, and all dynamic predicates still run for each task.
+	if hyperNode == framework.ClusterTopHyperNode {
+		if cached, found := alloc.queueNodes[queue.UID]; found {
+			nodes = cached
+		} else {
+			nodes = ssn.QueueNodesFn(queue, nodes)
+			alloc.queueNodes[queue.UID] = nodes
+		}
 	}
 
 	nodeNameSet := make(map[string]struct{}, len(nodes))
