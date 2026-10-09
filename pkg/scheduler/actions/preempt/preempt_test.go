@@ -343,7 +343,7 @@ func TestPreempt(t *testing.T) {
 			},
 			Pods: []*v1.Pod{
 				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("2", "2G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				buildPodWithNominatedNodeName("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg2", "deleted-node", make(map[string]string), make(map[string]string)),
+				util.BuildPodWithNominatedNodeName("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg2", "deleted-node", make(map[string]string), make(map[string]string)),
 			},
 			Nodes: []*v1.Node{
 				util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
@@ -1093,11 +1093,5 @@ func buildPodWithPodAntiAffinity(name, namespace, node string, phase v1.PodPhase
 		},
 	}
 
-	return pod
-}
-
-func buildPodWithNominatedNodeName(namespace, name, node string, phase v1.PodPhase, req v1.ResourceList, groupName, nominatedNodeName string, labels map[string]string, selector map[string]string) *v1.Pod {
-	pod := util.BuildPod(namespace, name, node, phase, req, groupName, labels, selector)
-	pod.Status.NominatedNodeName = nominatedNodeName
 	return pod
 }
