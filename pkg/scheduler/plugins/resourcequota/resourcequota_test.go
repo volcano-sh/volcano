@@ -21,6 +21,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -172,5 +173,61 @@ func TestJobEnqueuedOnOtherPluginsReject(t *testing.T) {
 	test.Run([]framework.Action{enqueue.New()})
 	if err := test.CheckAll(0); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestResourceQuotaAlreadyReflectsOwnPod reproduces volcano-sh/volcano#4220.
+// When a PodGroup's own Pod already exists, its resource request is already
+// reflected in ResourceQuota.Status.Used by the native ResourceQuota
+// controller, since that controller counts a Pod's usage as soon as it is
+// created, independent of scheduling. The plugin must not add
+// PodGroup.Spec.MinResources on top of Used again in that case, or a job
+// that actually fits the quota is wrongly rejected.
+func TestResourceQuotaAlreadyReflectsOwnPod(t *testing.T) {
+	podReq := api.BuildResourceList("40m", "400")
+	pod := util.BuildPod("cpu-test", "test-resourcequota-pod-2", "", v1.PodPending, podReq, "pg2", nil, nil)
+
+	pg2 := util.BuildPodGroup("pg2", "cpu-test", "c1", 1, nil, schedulingv1.PodGroupPending)
+	pg2.Spec.MinResources = &podReq
+
+	queue1 := util.BuildQueue("c1", 1, nil)
+
+	rq := &v1.ResourceQuota{
+		ObjectMeta: metav1.ObjectMeta{Name: "cpu-test-resource-quota", Namespace: "cpu-test"},
+		Spec: v1.ResourceQuotaSpec{
+			Hard: api.BuildResourceList("100m", "1000"),
+		},
+		Status: v1.ResourceQuotaStatus{
+			Hard: api.BuildResourceList("100m", "1000"),
+			// Used already includes this Pod's own 40m/400, exactly as the
+			// native ResourceQuota controller reports once the Pod exists.
+			Used: api.BuildResourceList("90m", "700"),
+		},
+	}
+
+	test := uthelper.TestCommonStruct{
+		Name:           "job's own already-created pod must not be double counted against quota",
+		Plugins:        map[string]framework.PluginBuilder{PluginName: New},
+		Pods:           []*v1.Pod{pod},
+		PodGroups:      []*schedulingv1.PodGroup{pg2},
+		Queues:         []*schedulingv1.Queue{queue1},
+		ResourceQuotas: []*v1.ResourceQuota{rq},
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{Name: PluginName, EnabledJobEnqueued: &trueValue},
+			},
+		},
+	}
+
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+	for _, job := range ssn.Jobs {
+		if !ssn.JobEnqueueable(job) {
+			t.Errorf("expected job to be enqueueable since quota is not actually exceeded, got rejected")
+		}
 	}
 }
