@@ -37,6 +37,7 @@ type Request struct {
 	PartitionID string
 	Event       v1alpha1.Event
 	ExitCode    int32
+	ExitCodes   string
 	Action      v1alpha1.Action
 	JobVersion  int32
 }
