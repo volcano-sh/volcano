@@ -299,13 +299,18 @@ func (pmpt *Action) preempt(
 	filter func(*api.TaskInfo) bool,
 	predicateHelper util.PredicateHelper,
 ) (bool, error) {
-	// Check whether the task is eligible to preempt others, e.g., check preemptionPolicy is `Never` or not
+	// Policy-only eligibility (e.g. preemptionPolicy=Never) does not depend on predicates.
 	if err := pmpt.taskEligibleToPreempt(preemptor); err != nil {
 		return false, err
 	}
 
 	if err := ssn.PrePredicateFn(preemptor); err != nil {
 		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
+	}
+
+	// Nominated-node eligibility depends on predicates, so it must run after PrePredicateFn.
+	if err := pmpt.nominatedNodeEligibleToPreempt(preemptor); err != nil {
+		return false, err
 	}
 
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
@@ -437,40 +442,50 @@ func preemptorFitsOnNode(ssn *framework.Session, queue *api.QueueInfo, preemptor
 		ssn.PredicateFn(preemptor, node) == nil
 }
 
+// taskEligibleToPreempt checks policy-only preconditions that do not depend on predicates.
 func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {
 	if preemptor.Pod.Spec.PreemptionPolicy != nil && *preemptor.Pod.Spec.PreemptionPolicy == v1.PreemptNever {
 		return fmt.Errorf("not eligible to preempt other tasks due to preemptionPolicy is Never")
 	}
+	return nil
+}
 
+// nominatedNodeEligibleToPreempt decides whether a task carrying a NominatedNodeName
+// should still enter the preempt flow. It relies on PredicateFn and must run after
+// PrePredicateFn has initialized the task's pre-predicate state.
+func (pmpt *Action) nominatedNodeEligibleToPreempt(preemptor *api.TaskInfo) error {
 	nomNodeName := preemptor.Pod.Status.NominatedNodeName
-	if len(nomNodeName) > 0 {
-		nodeInfo, ok := pmpt.ssn.Nodes[nomNodeName]
-		if !ok {
-			return fmt.Errorf("not eligible due to the pod's nominated node is not found in the session")
-		}
+	if len(nomNodeName) == 0 {
+		return nil
+	}
 
-		err := pmpt.ssn.PredicateFn(preemptor, nodeInfo)
-		if err == nil {
-			return fmt.Errorf("not eligible due to the pod's nominated node is already schedulable, which should not happen as preemption means no node is schedulable")
-		}
+	nodeInfo, ok := pmpt.ssn.Nodes[nomNodeName]
+	if !ok {
+		// The nominated node may have been deleted before the preemptor bound.
+		// Its nomination is no longer useful, so allow normal preemption to
+		// select another candidate node.
+		return nil
+	}
 
+	err := pmpt.ssn.PredicateFn(preemptor, nodeInfo)
+	if err != nil {
 		fitError, ok := err.(*api.FitError)
 		if !ok {
 			return fmt.Errorf("not eligible due to the predicate returned a non-FitError error, the error is: %v", err)
 		}
 
-		// If the pod's nominated node is considered as UnschedulableAndUnresolvable by the predicate,
-		// then the pod should be considered for preempting again.
+		// If the nominated node is UnschedulableAndUnresolvable, the pod should be considered for preempting again.
 		if fitError.Status.ContainsUnschedulableAndUnresolvable() {
 			return nil
 		}
+	}
 
-		preemptorPodPriority := PodPriority(preemptor.Pod)
-		for _, p := range nodeInfo.Pods() {
-			if PodPriority(p) < preemptorPodPriority && podTerminatingByPreemption(p) {
-				// There is a terminating pod on the nominated node.
-				return fmt.Errorf("not eligible due to a terminating pod caused by preemption on the nominated node")
-			}
+	// Predicate success does not bypass this guard: if a lower-priority victim is already
+	// terminating on the nominated node, do not trigger another round of preemption there.
+	preemptorPodPriority := PodPriority(preemptor.Pod)
+	for _, p := range nodeInfo.Pods() {
+		if PodPriority(p) < preemptorPodPriority && podTerminatingByPreemption(p) {
+			return fmt.Errorf("not eligible due to a terminating pod caused by preemption on the nominated node")
 		}
 	}
 	return nil

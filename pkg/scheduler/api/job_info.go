@@ -936,8 +936,10 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason, msg, nominatedNodeN
 		return PodReasonSchedulable, msg, ""
 	case Pipelined:
 		msg = fmt.Sprintf("Pod %s/%s can possibly be assigned to %s, once resource is released and minAvailable is satisfied", taskInfo.Namespace, taskInfo.Name, ctx.NodeName)
-		if ctx.EvictionOccurred {
-			nominatedNodeName = ctx.NodeName
+		// Derive the nomination from the live transaction, not the LastTransaction snapshot used for the message above.
+		liveCtx := taskInfo.GetTransactionContext()
+		if liveCtx.Status == Pipelined && liveCtx.NodeName != "" && liveCtx.EvictionOccurred {
+			nominatedNodeName = liveCtx.NodeName
 		}
 		return PodReasonUnschedulable, msg, nominatedNodeName
 	case Pending:
