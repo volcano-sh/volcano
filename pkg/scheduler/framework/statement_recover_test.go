@@ -77,3 +77,71 @@ func TestRecoverOperations_PipelinePreservesEvictionFlag(t *testing.T) {
 		assert.True(t, recoveredTask.EvictionOccurred)
 	}
 }
+
+// TestRecoverOperations_PartialFailureLeavesOperationsApplied documents the
+// invariant that callers of RecoverOperations depend on: the operations are
+// replayed one at a time, so a failure part way through leaves the earlier ones
+// applied to the session and recorded on the recovering statement. The caller
+// must Discard() them, otherwise they stay orphaned and corrupt node accounting
+// for the rest of the scheduling cycle.
+func TestRecoverOperations_PartialFailureLeavesOperationsApplied(t *testing.T) {
+	ssn, _, task, node := newTestSession(t)
+
+	// Build a plan that allocates the task, then record the node's idle capacity
+	// so the rollback can be checked against it.
+	idleBefore := node.Idle.Clone()
+
+	sourceStmt := NewStatement(ssn)
+	if err := sourceStmt.Allocate(task, node); err != nil {
+		t.Fatalf("expected Allocate to succeed, got: %v", err)
+	}
+	plan := SaveOperations(sourceStmt)
+	sourceStmt.Discard()
+
+	// Append a second operation targeting a node that is not in the session, so
+	// replay fails only after the first operation has already been applied. A
+	// Pipeline op is used because it resolves the node by name and reports a clean
+	// error, and its rollback touches only its own task.
+	orphanPod := task.Pod.DeepCopy()
+	orphanPod.Name = "orphan-pod"
+	orphanPod.UID = types.UID("orphan-pod")
+	plan.operations = append(plan.operations, operation{
+		name: Pipeline,
+		task: &api.TaskInfo{
+			UID:       "orphan-task",
+			Job:       task.Job,
+			Name:      "orphan-task",
+			Namespace: task.Namespace,
+			Resreq:    (&api.Resource{MilliCPU: 1000}).Clone(),
+			Pod:       orphanPod,
+			TransactionContext: api.TransactionContext{
+				NodeName: "nonexistent-node",
+				Status:   api.Pending,
+			},
+		},
+	})
+
+	recoverStmt := NewStatement(ssn)
+	err := recoverStmt.RecoverOperations(plan)
+	if err == nil {
+		t.Fatal("expected RecoverOperations to fail on the unresolvable node")
+	}
+
+	// The first operation is applied and recorded even though the call failed.
+	if len(recoverStmt.operations) == 0 {
+		t.Fatal("expected the successfully replayed operation to remain recorded on the statement")
+	}
+	if node.Idle.Equal(idleBefore, api.Zero) {
+		t.Fatal("expected node idle resources to be reduced by the applied operation")
+	}
+
+	// Only Discard puts the session back; without it these mutations are orphaned.
+	recoverStmt.Discard()
+
+	if !node.Idle.Equal(idleBefore, api.Zero) {
+		t.Errorf("expected node idle resources restored after Discard, got %v want %v", node.Idle, idleBefore)
+	}
+	if task.Status != api.Pending {
+		t.Errorf("expected task status Pending after Discard, got %v", task.Status)
+	}
+}
