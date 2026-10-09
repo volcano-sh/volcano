@@ -29,6 +29,7 @@ import (
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 const (
@@ -353,6 +354,34 @@ func (np *nodeGroupPlugin) taskNodeGroup(ssn *framework.Session, task *api.TaskI
 	return group, ok
 }
 
+func (np *nodeGroupPlugin) syncNodeGroupAllocatedMetrics(ssn *framework.Session) {
+	queueNames := make([]string, 0, len(ssn.Queues))
+	resources := make([]metrics.QueueNodeGroupResource, 0)
+	for queueID, queueInfo := range ssn.Queues {
+		if queueInfo == nil {
+			continue
+		}
+		queueNames = append(queueNames, queueInfo.Name)
+		attr := np.queueAttrs[queueID]
+		if attr == nil {
+			continue
+		}
+		for group, allocated := range attr.nodeGroupAllocated {
+			if group == "" || allocated == nil {
+				continue
+			}
+			resources = append(resources, metrics.QueueNodeGroupResource{
+				QueueName:       queueInfo.Name,
+				NodeGroupName:   group,
+				MilliCPU:        allocated.MilliCPU,
+				Memory:          allocated.Memory,
+				ScalarResources: allocated.ScalarResources,
+			})
+		}
+	}
+	metrics.SyncQueueNodeGroupAllocated(queueNames, resources)
+}
+
 func (np *nodeGroupPlugin) checkNodeGroupResourceLimit(task *api.TaskInfo, group string, attr *queueAttr) error {
 	if attr.resourceLimitErr != nil {
 		return attr.resourceLimitErr
@@ -408,6 +437,7 @@ func greaterThanResourceLimit(used, limit float64) bool {
 func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 	np.initQueueAttrs(ssn)
 	np.initNodeGroupAllocated(ssn)
+	np.syncNodeGroupAllocatedMetrics(ssn)
 	for id, attr := range np.queueAttrs {
 		if attr.affinity != nil {
 			klog.V(4).Infof("queue <%v> affinity: anti-required %v, anti-preferred %v, required %v, preferred %v",
