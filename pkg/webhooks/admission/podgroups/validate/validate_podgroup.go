@@ -45,7 +45,7 @@ var service = &router.AdmissionService{
 			Name: "validatepodgroup.volcano.sh",
 			Rules: []whv1.RuleWithOperations{
 				{
-					Operations: []whv1.OperationType{whv1.Create},
+					Operations: []whv1.OperationType{whv1.Create, whv1.Update},
 					Rule: whv1.Rule{
 						APIGroups:   []string{schedulingv1beta1.SchemeGroupVersion.Group},
 						APIVersions: []string{schedulingv1beta1.SchemeGroupVersion.Version},
@@ -72,6 +72,8 @@ func Validate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	switch ar.Request.Operation {
 	case admissionv1.Create:
 		errMsg = validatePodGroup(podgroup)
+	case admissionv1.Update:
+		errMsg = validatePodGroupTopology(podgroup)
 	default:
 		errMsg = fmt.Sprintf("unsupported operation %s", ar.Request.Operation)
 	}
@@ -98,7 +100,21 @@ func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
 	if msg := validateNetworkTopology(pg.Spec.NetworkTopology, pg.Spec.SubGroupPolicy); msg != "" {
 		errs = append(errs, strings.TrimSpace(msg))
 	}
+	if msg := validateTopologyAffinity(pg.Spec.TopologyAffinity); msg != "" {
+		errs = append(errs, strings.TrimSpace(msg))
+	}
 
+	return strings.Join(errs, "; ")
+}
+
+func validatePodGroupTopology(pg *schedulingv1beta1.PodGroup) string {
+	var errs []string
+	if msg := validateNetworkTopology(pg.Spec.NetworkTopology, pg.Spec.SubGroupPolicy); msg != "" {
+		errs = append(errs, strings.TrimSpace(msg))
+	}
+	if msg := validateTopologyAffinity(pg.Spec.TopologyAffinity); msg != "" {
+		errs = append(errs, strings.TrimSpace(msg))
+	}
 	return strings.Join(errs, "; ")
 }
 
@@ -132,4 +148,49 @@ func validateNetworkTopology(networkTopology *schedulingv1beta1.NetworkTopologyS
 		}
 	}
 	return strings.Join(errs, " ")
+}
+
+func validateTopologyAffinity(topologyAffinity *schedulingv1beta1.TopologyAffinitySpec) string {
+	if topologyAffinity == nil {
+		return ""
+	}
+	var errs []string
+	if anti := topologyAffinity.PodGroupAntiAffinity; anti != nil {
+		for index, term := range anti.Required {
+			errs = append(errs, validatePodGroupAffinityTerm(
+				fmt.Sprintf("topologyAffinity.podGroupAntiAffinity.required[%d]", index), term, true)...)
+		}
+		for index, term := range anti.Preferred {
+			errs = append(errs, validatePodGroupAffinityTerm(
+				fmt.Sprintf("topologyAffinity.podGroupAntiAffinity.preferred[%d]", index), term, false)...)
+		}
+	}
+	return strings.Join(errs, "; ")
+}
+
+func validatePodGroupAffinityTerm(path string, term schedulingv1beta1.PodGroupAffinityTerm, required bool) []string {
+	var errs []string
+	if required && term.Weight != 0 {
+		errs = append(errs, fmt.Sprintf("%s: weight must not be set on required terms", path))
+	}
+	if !required && (term.Weight < 1 || term.Weight > 100) {
+		errs = append(errs, fmt.Sprintf("%s: weight must be an integer in the range 1-100 for preferred terms", path))
+	}
+	if term.PodGroupSelector == nil {
+		errs = append(errs, fmt.Sprintf("%s: podGroupSelector is required", path))
+	} else if _, err := metav1.LabelSelectorAsSelector(term.PodGroupSelector); err != nil {
+		errs = append(errs, fmt.Sprintf("%s: invalid podGroupSelector: %v", path, err))
+	}
+	if term.NamespaceSelector != nil {
+		if _, err := metav1.LabelSelectorAsSelector(term.NamespaceSelector); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: invalid namespaceSelector: %v", path, err))
+		}
+	}
+	if term.TopologyTier != nil && term.TopologyTierName != "" {
+		errs = append(errs, fmt.Sprintf("%s: must not specify topologyTier and topologyTierName simultaneously", path))
+	}
+	if term.TopologyTier == nil && term.TopologyTierName == "" {
+		errs = append(errs, fmt.Sprintf("%s: must specify topologyTier or topologyTierName", path))
+	}
+	return errs
 }

@@ -208,6 +208,10 @@ type PodGroupSpec struct {
 	// Concurrent use with minTaskMember is not recommended, and SubGroupPolicy is the long-term evolution direction.
 	// +optional
 	SubGroupPolicy []SubGroupPolicySpec `json:"subGroupPolicy,omitempty" protobuf:"bytes,7,rep,name=subGroupPolicy"`
+
+	// TopologyAffinity expresses inter-group topology affinity and anti-affinity on the HyperNode tree.
+	// +optional
+	TopologyAffinity *TopologyAffinitySpec `json:"topologyAffinity,omitempty" protobuf:"bytes,8,opt,name=topologyAffinity"`
 }
 
 type SubGroupPolicySpec struct {
@@ -273,6 +277,26 @@ type NetworkTopologySpec struct {
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	HighestTierName string `json:"highestTierName,omitempty" protobuf:"bytes,3,opt,name=highestTierName"`
+}
+
+// TopologyAffinitySpec holds group topology affinity and anti-affinity rules.
+type TopologyAffinitySpec struct {
+	PodGroupAntiAffinity *PodGroupAntiAffinity `json:"podGroupAntiAffinity,omitempty" protobuf:"bytes,1,opt,name=podGroupAntiAffinity"`
+}
+
+// PodGroupAntiAffinity defines required/preferred anti-affinity against other PodGroups.
+type PodGroupAntiAffinity struct {
+	Required  []PodGroupAffinityTerm `json:"required,omitempty" protobuf:"bytes,1,rep,name=required"`
+	Preferred []PodGroupAffinityTerm `json:"preferred,omitempty" protobuf:"bytes,2,rep,name=preferred"`
+}
+
+// PodGroupAffinityTerm selects matching PodGroups and the topology tier for HyperNode comparison.
+type PodGroupAffinityTerm struct {
+	Weight            int32                 `json:"weight,omitempty" protobuf:"varint,1,opt,name=weight"`
+	PodGroupSelector  *metav1.LabelSelector `json:"podGroupSelector" protobuf:"bytes,2,opt,name=podGroupSelector"`
+	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty" protobuf:"bytes,3,opt,name=namespaceSelector"`
+	TopologyTierName  string                `json:"topologyTierName,omitempty" protobuf:"bytes,4,opt,name=topologyTierName"`
+	TopologyTier      *int32                `json:"topologyTier,omitempty" protobuf:"varint,5,opt,name=topologyTier"`
 }
 
 // PodGroupStatus represents the current state of a pod group.
