@@ -149,6 +149,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	// 5. use ssn.NodeOrderFn to judge the best node and assign it to T
 
 	alloc.session = ssn
+	logHyperNodeTiers(ssn)
 	alloc.recorder = NewRecorder()
 	actx := alloc.buildAllocateContext()
 	klog.V(3).Infof("Try to allocate resource: %d Queues with nominated jobs, %d Queues with regular jobs",
@@ -204,7 +205,7 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 			continue
 		}
 
-		if !ssn.HyperNodesReadyToSchedule && job.ContainsNetworkTopology() {
+		if !ssn.HyperNodesReadyToSchedule && job.RequiresHyperNodeTopology() {
 			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: hyperNodes are not ready for scheduling",
 				job.Namespace, job.Name, job.Queue)
 			continue
@@ -236,8 +237,8 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 		jobsByQueue[job.Queue].Push(job)
 		actx.jobWorksheet[job.UID] = worksheet
 
-		// job without any hard network topology policy use actx.tasksNoHardTopology
-		if !job.ContainsHardTopology() {
+		// Jobs that do not need HyperNode-level allocation use actx.tasksNoHardTopology.
+		if !job.RequiresHyperNodeAllocate() {
 			if subJobWorksheet, exist := worksheet.subJobWorksheets[job.DefaultSubJobID()]; exist {
 				actx.tasksNoHardTopology[job.UID] = subJobWorksheet.tasks
 			}
@@ -376,7 +377,7 @@ func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobs
 		job := jobs.Pop().(*api.JobInfo)
 		// Currently, both hard-mode network topology scheduling and subjob level scheduling use allocateForJob.
 		// TODO: In the future, we may need to unify the logic of network topology-aware scheduling and normal scheduling.
-		if job.ContainsHardTopology() || job.ContainsSubJobPolicy() {
+		if job.RequiresHyperNodeAllocate() {
 			jobWorksheet := actx.jobWorksheet[job.UID]
 
 			klog.V(3).InfoS("Try to allocate resource for job contains hard topology or subjob policy", "queue", queue.Name, "job", job.UID,
@@ -453,7 +454,18 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 	alloc.recorder.SnapshotSubJobStatus(job, jobWorksheet)
 
 	var failedCandidateRejections []unschedulable.Rejection
-	hyperNodeGradients := ssn.HyperNodeGradientForJobFn(job, hyperNodeToAllocate, api.PurposeAllocate)
+	hyperNodeGradients, gradientStats := ssn.HyperNodeGradientForJobFn(job, hyperNodeToAllocate, api.PurposeAllocate)
+	hyperNodeGradients, resourceStats := FilterGradientsByMinResource(
+		ssn, hyperNodeGradients, job.GetMinResources(), job.AllocatedHyperNode,
+	)
+	job.SetHyperNodeFitErrors(gradientStats, resourceStats, job.GetMinResources(),
+		ssn.HyperNodesSetByTier, ssn.HyperNodeTierNameMap, ssn.HyperNodes)
+	jobHyperNodeFitErrorBaseline := job.JobFitErrors
+	if len(hyperNodeGradients) == 0 {
+		klog.V(3).InfoS("No hyperNode gradient for job", "job", job.UID, "fitError", job.JobFitErrors)
+		return nil
+	}
+	klog.V(4).InfoS("HyperNode screening for job", "job", job.UID, "screeningSummary", job.JobFitErrors)
 	for gradient, hyperNodes := range hyperNodeGradients {
 		stmtBackup := make(map[string]*framework.Statement)   // backup the statement after the job is allocated to a hyperNode
 		jobWorksheetsBackup := make(map[string]*JobWorksheet) // backup the job worksheet after the job is allocated to a hyperNode
@@ -467,6 +479,7 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 
 			candidateRejections := ssn.CollectJobRejections(job.UID, func() {
 				// Clone jobWorksheet and rest job's fit err to make sure it's a clean cache when everytime filter a hyperNode and do not affect each other between hyperNodes.
+				job.JobFitErrors = jobHyperNodeFitErrorBaseline
 				job.ResetFitErr()
 				jobWorksheetCopy = jobWorksheet.Clone()
 				klog.V(3).InfoS("Try to allocate resource for job in hyperNode", "job", job.UID, "hyperNode", hyperNode.Name)
@@ -475,7 +488,7 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 					subJob := jobWorksheetCopy.subJobs.Pop().(*api.SubJobInfo)
 					subJobWorksheet := jobWorksheetCopy.subJobWorksheets[subJob.UID]
 
-					stmt, allocationScore := alloc.allocateForSubJob(subJob, subJobWorksheet, hyperNode)
+					stmt, allocationScore := alloc.allocateForSubJob(subJob, subJobWorksheet, hyperNode, jobHyperNodeFitErrorBaseline)
 
 					if stmt != nil && len(stmt.Operations()) > 0 {
 						stmtList = append(stmtList, stmt)
@@ -556,7 +569,12 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 	return nil
 }
 
-func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *SubJobWorksheet, hyperNodeForJob *api.HyperNodeInfo) (*framework.Statement, float64) {
+func (alloc *Action) allocateForSubJob(
+	subJob *api.SubJobInfo,
+	subJobWorksheet *SubJobWorksheet,
+	hyperNodeForJob *api.HyperNodeInfo,
+	jobHyperNodeFitErrorBaseline string,
+) (*framework.Statement, float64) {
 	ssn := alloc.session
 	job := ssn.Jobs[subJob.Job]
 
@@ -576,7 +594,18 @@ func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *
 	}
 
 	var failedCandidateRejections []unschedulable.Rejection
-	hyperNodeGradients := ssn.HyperNodeGradientForSubJobFn(subJob, hyperNodeForJob, api.PurposeAllocate)
+	hyperNodeGradients, gradientStats := ssn.HyperNodeGradientForSubJobFn(subJob, hyperNodeForJob, api.PurposeAllocate)
+	minResource := subJob.GetMinResources()
+	hyperNodeGradients, resourceStats := FilterGradientsByMinResource(
+		ssn, hyperNodeGradients, minResource, subJob.AllocatedHyperNode,
+	)
+	if len(hyperNodeGradients) == 0 {
+		job.MergeSubJobHyperNodeFitErrors(jobHyperNodeFitErrorBaseline, subJob.UID, gradientStats, resourceStats,
+			minResource, ssn.HyperNodesSetByTier, ssn.HyperNodeTierNameMap, ssn.HyperNodes)
+		klog.V(3).InfoS("No hyperNode gradient for subJob", "job", subJob.Job, "subJob", subJob.UID,
+			"fitError", job.JobFitErrors)
+		return nil, 0
+	}
 	for gradient, hyperNodes := range hyperNodeGradients {
 		stmtBackup := make(map[string]*framework.Statement)         // backup the statement after the subJob is allocated to a hyperNode
 		subJobWorksheetsBackup := make(map[string]*SubJobWorksheet) // backup the subJob worksheet after the subJob is allocated to a hyperNode
@@ -585,6 +614,7 @@ func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *
 		for _, hyperNode := range hyperNodes {
 			var stmt *framework.Statement
 			var subJobWorksheetCopy *SubJobWorksheet
+			placementBeforeTry := captureHyperNodePlacement(job, subJob)
 			candidateRejections := ssn.CollectJobRejections(job.UID, func() {
 				// Clone subJobWorksheet and rest subJob's fit err to make sure it's a clean cache when everytime filter a hyperNode and do not affect each other between hyperNodes.
 				job.ResetSubJobFitErr(subJob.UID)
@@ -608,6 +638,7 @@ func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *
 			} else {
 				failedCandidateRejections = append(failedCandidateRejections, candidateRejections...)
 			}
+			restoreHyperNodePlacement(job, subJob, placementBeforeTry)
 		}
 
 		if len(stmtBackup) == 0 {
@@ -631,6 +662,7 @@ func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *
 		}
 		newAllocatedHyperNode := ssn.HyperNodes.GetLCAHyperNode(subJob.AllocatedHyperNode, bestHyperNode)
 		subJob.AllocatedHyperNode = newAllocatedHyperNode
+		updateJobAllocatedHyperNodeFromSubJob(ssn, job, subJob, newAllocatedHyperNode)
 
 		// inherit the remains worksheet after allocate to the best hyperNode
 		subJobWorksheet.ShallowCopyFrom(subJobWorksheetsBackup[bestHyperNode])
@@ -749,6 +781,12 @@ func (alloc *Action) allocateFromNomination(subJob *api.SubJobInfo, subJobWorksh
 		}
 	}()
 
+	if !alloc.nominationSatisfiesHyperNodeConstraints(job, subJob, hyperNodeForJob, pinned) {
+		klog.V(3).InfoS("NominatedHyperNode no longer satisfies required topology constraints, falling back to normal allocation process",
+			"job", job.UID, "subJob", subJob.UID, "nominatedHyperNode", pinned)
+		return nil, 0, false
+	}
+
 	leafNodes, exist := ssn.RealNodesList[pinned]
 	if !exist || len(leafNodes) == 0 {
 		klog.V(3).InfoS("NominatedHyperNode no longer in topology, falling back to normal allocation process",
@@ -769,7 +807,7 @@ func (alloc *Action) allocateFromNomination(subJob *api.SubJobInfo, subJobWorksh
 
 	stmt = framework.NewStatement(ssn)
 	for _, p := range plan {
-		if subJob.WithNetworkTopology() {
+		if shouldTrackHyperNodePlacement(ssn, subJob) {
 			p.task.JobAllocatedHyperNode = pinned
 		}
 		if err := alloc.allocateResourcesForTask(stmt, p.task, p.node, job); err != nil {
@@ -788,10 +826,32 @@ func (alloc *Action) allocateFromNomination(subJob *api.SubJobInfo, subJobWorksh
 	}
 	newAllocatedHyperNode := ssn.HyperNodes.GetLCAHyperNode(subJob.AllocatedHyperNode, pinned)
 	subJob.AllocatedHyperNode = newAllocatedHyperNode
+	updateJobAllocatedHyperNodeFromSubJob(ssn, job, subJob, newAllocatedHyperNode)
 	alloc.recorder.SaveSubJobDecision(subJob.Job, hyperNodeForJob.Name, subJob.UID, newAllocatedHyperNode)
 	klog.V(3).InfoS("Allocate subJob from nomination success", "subJob", subJob.UID,
 		"nominatedHyperNode", pinned, "newAllocatedHyperNode", newAllocatedHyperNode)
 	return stmt, 0, true
+}
+
+func (alloc *Action) nominationSatisfiesHyperNodeConstraints(
+	job *api.JobInfo,
+	subJob *api.SubJobInfo,
+	root *api.HyperNodeInfo,
+	pinned string,
+) bool {
+	ssn := alloc.session
+	subJobHardTopology, _ := subJob.IsHardTopologyMode()
+	jobHasRequiredTopology := job.ContainsHardTopology() || job.ContainsHardPodGroupAntiAffinity()
+	if !jobHasRequiredTopology && !subJobHardTopology {
+		return true
+	}
+	if jobHasRequiredTopology && !ssn.HyperNodeContainsNomination(job, nil, root, pinned) {
+		return false
+	}
+	if !subJobHardTopology && !job.ContainsHardPodGroupAntiAffinity() {
+		return true
+	}
+	return ssn.HyperNodeContainsNomination(job, subJob, root, pinned)
 }
 
 // validateNomination checks each pending task's NominatedNodeName against the
@@ -883,6 +943,8 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 	ph := util.NewPredicateHelper()
 
 	allocatedHyperNode := subJob.AllocatedHyperNode
+	trackHyperNodePlacement := shouldTrackHyperNodePlacement(ssn, subJob)
+	placementAtStart := captureHyperNodePlacement(job, subJob)
 
 	for !tasks.Empty() {
 		task := tasks.Pop().(*api.TaskInfo)
@@ -985,7 +1047,7 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 			break
 		}
 
-		if subJob.WithNetworkTopology() {
+		if trackHyperNodePlacement {
 			task.JobAllocatedHyperNode = allocatedHyperNode
 		}
 
@@ -999,8 +1061,10 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 			continue
 		}
 
-		if subJob.WithNetworkTopology() {
+		if trackHyperNodePlacement {
 			allocatedHyperNode = getNewAllocatedHyperNode(ssn, bestNode.Name, allocatedHyperNode)
+			subJob.AllocatedHyperNode = allocatedHyperNode
+			updateJobAllocatedHyperNodeFromSubJob(ssn, job, subJob, allocatedHyperNode)
 		}
 
 		if ssn.SubJobReady(job, subJob) {
@@ -1020,19 +1084,69 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 	}
 
 	stmt.Discard()
+	if trackHyperNodePlacement {
+		restoreHyperNodePlacement(job, subJob, placementAtStart)
+	}
 	return nil
 }
 
 // getNewAllocatedHyperNode Obtain the newly allocated hyperNode for the job in soft topology mode
 func getNewAllocatedHyperNode(ssn *framework.Session, bestNode string, jobAllocatedHyperNode string) string {
-	hyperNode := util.FindHyperNodeForNode(bestNode, ssn.RealNodesList, ssn.HyperNodesTiers, ssn.HyperNodesSetByTier)
+	hyperNode := ssn.HyperNodeIndex().NodeToHyperNode[bestNode]
 	if hyperNode != "" {
 		if jobAllocatedHyperNode == "" {
 			return hyperNode
 		}
-		return ssn.HyperNodes.GetLCAHyperNode(hyperNode, jobAllocatedHyperNode)
+		return ssn.HyperNodeIndex().LowestCommonAncestor(hyperNode, jobAllocatedHyperNode)
 	}
 	return jobAllocatedHyperNode
+}
+
+type hyperNodePlacement struct {
+	jobAllocatedHyperNode    string
+	subJobAllocatedHyperNode string
+	allocatedHyperNodeDirty  bool
+}
+
+func captureHyperNodePlacement(job *api.JobInfo, subJob *api.SubJobInfo) hyperNodePlacement {
+	return hyperNodePlacement{
+		jobAllocatedHyperNode:    job.AllocatedHyperNode,
+		subJobAllocatedHyperNode: subJob.AllocatedHyperNode,
+		allocatedHyperNodeDirty:  job.AllocatedHyperNodeDirty,
+	}
+}
+
+func restoreHyperNodePlacement(job *api.JobInfo, subJob *api.SubJobInfo, placement hyperNodePlacement) {
+	job.AllocatedHyperNode = placement.jobAllocatedHyperNode
+	subJob.AllocatedHyperNode = placement.subJobAllocatedHyperNode
+	job.AllocatedHyperNodeDirty = placement.allocatedHyperNodeDirty
+}
+
+func shouldTrackHyperNodePlacement(ssn *framework.Session, subJob *api.SubJobInfo) bool {
+	return subJob.WithNetworkTopology() || ssn.PodGroupPlacementEnabled(subJob.Job)
+}
+
+func updateJobAllocatedHyperNodeFromSubJob(
+	ssn *framework.Session,
+	job *api.JobInfo,
+	subJob *api.SubJobInfo,
+	subJobAllocatedHyperNode string,
+) {
+	if !shouldTrackHyperNodePlacement(ssn, subJob) || subJobAllocatedHyperNode == "" {
+		return
+	}
+	// Session reservations may never reach the cache (Pipeline or failed bind).
+	// Invalidate even when only a SubJob changes and the Job LCA stays the same.
+	job.AllocatedHyperNodeDirty = true
+	ssn.MarkJobDirty(job.UID)
+	jobAllocatedHyperNode := subJobAllocatedHyperNode
+	if job.AllocatedHyperNode != "" {
+		jobAllocatedHyperNode = ssn.HyperNodeIndex().LowestCommonAncestor(job.AllocatedHyperNode, subJobAllocatedHyperNode)
+	}
+	if job.AllocatedHyperNode == jobAllocatedHyperNode {
+		return
+	}
+	job.AllocatedHyperNode = jobAllocatedHyperNode
 }
 
 // prioritizeNodes selects the highest score node.
@@ -1152,6 +1266,74 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
 	return alloc.session.PredicateForAllocateAction(task, node)
+}
+
+func logHyperNodeTiers(ssn *framework.Session) {
+	if !klog.V(4).Enabled() || len(ssn.HyperNodesSetByTier) == 0 {
+		return
+	}
+	total, tierCount, listing := api.FormatHyperNodeTierListing(
+		ssn.HyperNodesTiers, ssn.HyperNodesSetByTier, ssn.HyperNodeTierNameMap, ssn.HyperNodes,
+	)
+	klog.V(4).Infof("HyperNode tiers in session %v: tierCount=%d total=%d; %s", ssn.UID, tierCount, total, listing)
+}
+
+// FilterGradientsByMinResource removes HyperNodes whose aggregate idle or future-idle
+// resources cannot satisfy minResource. Existing placement skips this filter so a
+// running gang remains confined to its established topology domain.
+func FilterGradientsByMinResource(
+	ssn *framework.Session,
+	gradients [][]*api.HyperNodeInfo,
+	minResource *api.Resource,
+	allocatedHyperNode string,
+) ([][]*api.HyperNodeInfo, *api.HyperNodeMinResourceFilterStats) {
+	if allocatedHyperNode != "" || minResource == nil || len(gradients) == 0 {
+		return gradients, nil
+	}
+
+	stats := &api.HyperNodeMinResourceFilterStats{
+		FinalByTier:      make(map[int]int),
+		ExcludedByTier:   make(map[int]int),
+		ExcludedByReason: make(map[string]string),
+	}
+	filtered := make([][]*api.HyperNodeInfo, 0, len(gradients))
+	for _, layer := range gradients {
+		survivors := make([]*api.HyperNodeInfo, 0, len(layer))
+		for _, hyperNode := range layer {
+			if hyperNodeSatisfiesMinResource(ssn, hyperNode.Name, minResource) {
+				stats.FinalByTier[hyperNode.Tier()]++
+				survivors = append(survivors, hyperNode)
+				continue
+			}
+			stats.ExcludedByTier[hyperNode.Tier()]++
+			stats.ExcludedByReason[hyperNode.Name] = fmt.Sprintf("minResource (%s)", minResource.String())
+		}
+		if len(survivors) > 0 {
+			filtered = append(filtered, survivors)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, stats
+	}
+	return filtered, stats
+}
+
+func hyperNodeSatisfiesMinResource(ssn *framework.Session, hyperNodeName string, minResource *api.Resource) bool {
+	nodes, ok := ssn.RealNodesSet[hyperNodeName]
+	if !ok || nodes.Len() == 0 {
+		return true
+	}
+	idle := api.EmptyResource()
+	futureIdle := api.EmptyResource()
+	for nodeName := range nodes {
+		node, found := ssn.Nodes[nodeName]
+		if !found {
+			continue
+		}
+		idle.Add(node.Idle)
+		futureIdle.Add(node.FutureIdle())
+	}
+	return minResource.LessEqual(idle, api.Zero) || minResource.LessEqual(futureIdle, api.Zero)
 }
 
 func (alloc *Action) UnInitialize() {}

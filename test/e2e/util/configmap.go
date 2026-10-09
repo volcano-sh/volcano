@@ -61,14 +61,14 @@ func (c *ConfigMapCase) ChangeBy(fn func(data map[string]string) (changed bool, 
 		c.ocm, c.undoData = cm, changedBefore
 
 		// add pod/volcano-scheduler.annotation to update Mounted-ConfigMaps immediately
-		schedulerPods, err := KubeClient.CoreV1().Pods("volcano-system").List(context.TODO(), metav1.ListOptions{LabelSelector: "app=volcano-scheduler"})
+		schedulerPods, err := KubeClient.CoreV1().Pods(c.NameSpace).List(context.TODO(), metav1.ListOptions{LabelSelector: "app=volcano-scheduler"})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		for _, scheduler := range schedulerPods.Items {
 			if scheduler.Annotations == nil {
 				scheduler.Annotations = make(map[string]string)
 			}
 			scheduler.Annotations["refreshts"] = time.Now().Format("060102150405.000")
-			_, err = KubeClient.CoreV1().Pods("volcano-system").Update(context.TODO(), &scheduler, metav1.UpdateOptions{})
+			_, err = KubeClient.CoreV1().Pods(c.NameSpace).Update(context.TODO(), &scheduler, metav1.UpdateOptions{})
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		}
 		c.startTs = time.Now()
@@ -99,14 +99,14 @@ func (c *ConfigMapCase) UndoChanged() error {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	// add pod/volcano-scheduler.annotation to update Mounted-ConfigMaps immediately
-	schedulerPods, err := KubeClient.CoreV1().Pods("volcano-system").List(context.TODO(), metav1.ListOptions{LabelSelector: "app=volcano-scheduler"})
+	schedulerPods, err := KubeClient.CoreV1().Pods(c.NameSpace).List(context.TODO(), metav1.ListOptions{LabelSelector: "app=volcano-scheduler"})
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	for _, scheduler := range schedulerPods.Items {
 		if scheduler.Annotations == nil {
 			scheduler.Annotations = make(map[string]string)
 		}
 		scheduler.Annotations["refreshts"] = time.Now().Format("060102150405.000")
-		_, err = KubeClient.CoreV1().Pods("volcano-system").Update(context.TODO(), &scheduler, metav1.UpdateOptions{})
+		_, err = KubeClient.CoreV1().Pods(c.NameSpace).Update(context.TODO(), &scheduler, metav1.UpdateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 	return nil

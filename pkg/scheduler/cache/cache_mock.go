@@ -76,6 +76,16 @@ func NewDefaultMockSchedulerCache(schedulerName string) *SchedulerCache {
 	return msc
 }
 
+// ShutdownMockSchedulerCache releases the workqueues created by the mock cache
+// constructors. Call it after closing all Sessions using the cache. Closing a
+// Session alone does not stop these queues or their background goroutines.
+func ShutdownMockSchedulerCache(sc *SchedulerCache) {
+	sc.errTasks.ShutDown()
+	sc.nodeQueue.ShutDown()
+	sc.DeletedJobs.ShutDown()
+	sc.hyperNodesQueue.ShutDown()
+}
+
 func checkAndSetDefaultInterface(sc *SchedulerCache) {
 	if sc.Recorder == nil {
 		sc.Recorder = record.NewFakeRecorder(100) // to avoid blocking, we can pass in &FakeRecorder{} to NewCustomMockSchedulerCache
