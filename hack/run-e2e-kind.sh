@@ -33,6 +33,9 @@ if [[ "${E2E_TYPE}" == "ALL" || "${E2E_TYPE}" == "NAMESPACEQUEUE" ]]; then
 else
   export SCHEDULER_CONFIG_FILE=${SCHEDULER_CONFIG_FILE:-config/volcano-scheduler-ci.conf}
 fi
+export KWOK_CHART_VERSION=${KWOK_CHART_VERSION:-0.3.0}
+export KWOK_IMAGE_REPOSITORY=${KWOK_IMAGE_REPOSITORY:-registry.k8s.io/kwok/kwok}
+export KWOK_IMAGE_TAG=${KWOK_IMAGE_TAG:-v0.8.0}
 if [[ "${HYPERNODE_E2E_PROFILE:-full}" == "ownership-transition" ]]; then
   # Keep this profile focused on controller ownership handover. The full
   # profiles cover admission-enabled deployments, while each Helm upgrade
@@ -558,6 +561,12 @@ case ${E2E_TYPE} in
     hypernode_ginkgo_args=()
     if [[ "${HYPERNODE_E2E_PROFILE:-full}" == "ownership-transition" ]]; then
       hypernode_ginkgo_args+=(--focus="HyperNode controller ownership transition")
+    elif [[ "${HYPERNODE_E2E_PROFILE:-full}" == "podgroup-anti-affinity" ]]; then
+      hypernode_ginkgo_args+=(--label-filter="podgroup-anti-affinity")
+    elif [[ "${HYPERNODE_E2E_PROFILE:-full}" == "podgroup-anti-affinity-normal" ]]; then
+      hypernode_ginkgo_args+=(--label-filter="podgroup-anti-affinity && normal-path")
+    elif [[ "${HYPERNODE_E2E_PROFILE:-full}" == "podgroup-anti-affinity-network-topology" ]]; then
+      hypernode_ginkgo_args+=(--label-filter="podgroup-anti-affinity && network-topology-combination")
     fi
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} VOLCANO_E2E_RELEASE_NAME=${CLUSTER_NAME} VOLCANO_E2E_NAMESPACE=${NAMESPACE} VOLCANO_E2E_CHART_PATH=${VK_ROOT}/installer/helm/chart/volcano ginkgo -r --slow-spec-threshold='30s' --progress "${hypernode_ginkgo_args[@]}" ./test/e2e/hypernode/
     ;;
