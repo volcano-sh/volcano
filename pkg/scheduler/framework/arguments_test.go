@@ -314,3 +314,71 @@ func TestArgumentsGetString(t *testing.T) {
 		}
 	}
 }
+
+func TestArgumentsGetGeneric(t *testing.T) {
+	type DummyConfig struct {
+		Enable bool
+		Count  int
+	}
+
+	key := "dummy"
+
+	cases := []struct {
+		name          string
+		arg           Arguments
+		expectSuccess bool
+		expectValue   DummyConfig
+	}{
+		{
+			name: "key exist and valid type",
+			arg: Arguments{
+				key: map[string]interface{}{
+					"Enable": true,
+					"Count":  5,
+				},
+			},
+			expectSuccess: true,
+			expectValue:   DummyConfig{Enable: true, Count: 5},
+		},
+		{
+			name: "key exist but invalid type",
+			arg: Arguments{
+				// This should fail to decode into the struct completely, or partially fail
+				key: "this is a string, not a map",
+			},
+			expectSuccess: false,
+			expectValue:   DummyConfig{}, // Expect zero value
+		},
+		{
+			name: "key does not exist",
+			arg: Arguments{
+				"otherKey": "value",
+			},
+			expectSuccess: false,
+			expectValue:   DummyConfig{}, // Expect zero value
+		},
+		{
+			name: "partially invalid type causing decode error",
+			arg: Arguments{
+				key: map[string]interface{}{
+					"Enable": true,
+					"Count":  "not an int", // This will cause mapstructure.Decode to return an error
+				},
+			},
+			expectSuccess: false,
+			expectValue:   DummyConfig{}, // Must be fully zero, not partially populated
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result, ok := Get[DummyConfig](c.arg, key)
+			if ok != c.expectSuccess {
+				t.Errorf("case %s: expected success %v, got %v", c.name, c.expectSuccess, ok)
+			}
+			if !equality.Semantic.DeepEqual(result, c.expectValue) {
+				t.Errorf("case %s: expected value %v, got %v", c.name, c.expectValue, result)
+			}
+		})
+	}
+}
