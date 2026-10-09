@@ -88,7 +88,7 @@ func GetCandidateDomains(ssn *framework.Session, job *api.JobInfo, maxDomains in
 	root := ssn.HyperNodes[framework.ClusterTopHyperNode]
 	gradients, _ := ssn.HyperNodeGradientForJobFn(job, root, api.PurposeEvict)
 	fallback := ""
-	if root != nil && (job == nil || !job.ContainsHardTopology()) {
+	if root != nil && (job == nil || (!job.ContainsHardTopology() && !job.ContainsHardPodGroupAntiAffinity())) {
 		fallback = root.Name
 	}
 	return PickDomainsFromGradients(gradients, maxDomains, fallback)

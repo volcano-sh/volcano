@@ -205,7 +205,7 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 			continue
 		}
 
-		if !ssn.HyperNodesReadyToSchedule && job.ContainsNetworkTopology() {
+		if !ssn.HyperNodesReadyToSchedule && job.RequiresHyperNodeTopology() {
 			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: hyperNodes are not ready for scheduling",
 				job.Namespace, job.Name, job.Queue)
 			continue
@@ -237,8 +237,8 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 		jobsByQueue[job.Queue].Push(job)
 		actx.jobWorksheet[job.UID] = worksheet
 
-		// job without any hard network topology policy use actx.tasksNoHardTopology
-		if !job.ContainsHardTopology() {
+		// Jobs that do not need HyperNode-level allocation use actx.tasksNoHardTopology.
+		if !job.RequiresHyperNodeAllocate() {
 			if subJobWorksheet, exist := worksheet.subJobWorksheets[job.DefaultSubJobID()]; exist {
 				actx.tasksNoHardTopology[job.UID] = subJobWorksheet.tasks
 			}
@@ -377,7 +377,7 @@ func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobs
 		job := jobs.Pop().(*api.JobInfo)
 		// Currently, both hard-mode network topology scheduling and subjob level scheduling use allocateForJob.
 		// TODO: In the future, we may need to unify the logic of network topology-aware scheduling and normal scheduling.
-		if job.ContainsHardTopology() || job.ContainsSubJobPolicy() {
+		if job.RequiresHyperNodeAllocate() {
 			jobWorksheet := actx.jobWorksheet[job.UID]
 
 			klog.V(3).InfoS("Try to allocate resource for job contains hard topology or subjob policy", "queue", queue.Name, "job", job.UID,
@@ -841,14 +841,14 @@ func (alloc *Action) nominationSatisfiesHyperNodeConstraints(
 ) bool {
 	ssn := alloc.session
 	subJobHardTopology, _ := subJob.IsHardTopologyMode()
-	jobHasRequiredTopology := job.ContainsHardTopology()
+	jobHasRequiredTopology := job.ContainsHardTopology() || job.ContainsHardPodGroupAntiAffinity()
 	if !jobHasRequiredTopology && !subJobHardTopology {
 		return true
 	}
 	if jobHasRequiredTopology && !ssn.HyperNodeContainsNomination(job, nil, root, pinned) {
 		return false
 	}
-	if !subJobHardTopology {
+	if !subJobHardTopology && !job.ContainsHardPodGroupAntiAffinity() {
 		return true
 	}
 	return ssn.HyperNodeContainsNomination(job, subJob, root, pinned)
