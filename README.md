@@ -66,6 +66,7 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 - [Native Spark](https://spark.apache.org/docs/latest/running-on-kubernetes.html#using-volcano-as-customized-scheduler-for-spark-on-kubernetes)
 - [Flink](https://github.com/GoogleCloudPlatform/flink-on-k8s-operator/blob/master/docs/volcano_integration.md)
 - [KubeRay](https://docs.ray.io/en/master/cluster/kubernetes/k8s-ecosystem/volcano.html)
+- [Grove](https://github.com/ai-dynamo/grove/blob/main/docs/proposals/376-volcano-scheduler-backend/README.md)
 - [PyTorch](https://github.com/volcano-sh/volcano/blob/master/docs/user-guide/how_to_use_pytorch_plugin.md)
 - [TensorFlow](https://github.com/volcano-sh/volcano/tree/master/example/integrations/tensorflow)
 - [kubeflow/trainer (v2)](https://www.kubeflow.org/docs/components/trainer/operator-guides/job-scheduling/volcano/)

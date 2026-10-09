@@ -215,6 +215,9 @@ e2e-test-schedulingaction: images
 e2e-test-schedulinggates: images
 	E2E_TYPE=SCHEDULINGGATES FEATURE_GATES="SchedulingGatesQueueAdmission=true" ./hack/run-e2e-kind.sh
 
+e2e-test-unschedulablejobcache: images
+	E2E_TYPE=UNSCHEDULABLEJOBCACHE FEATURE_GATES="UnschedulableJobCache=true" UNSCHEDULABLE_JOB_CACHE_DEBUG_METRICS=true ./hack/run-e2e-kind.sh
+
 e2e-test-jobp: images
 	E2E_TYPE=JOBP ./hack/run-e2e-kind.sh
 
@@ -241,6 +244,9 @@ e2e-test-admission-webhook: images
 
 e2e-test-admission-policy: images
 	E2E_TYPE=ADMISSION_POLICY ./hack/run-e2e-kind.sh
+
+e2e-test-namespacequeue: images
+	E2E_TYPE=NAMESPACEQUEUE ./hack/run-e2e-kind.sh
 
 e2e-test-agentscheduler: images
 	E2E_TYPE=AGENTSCHEDULER$(if $(SHARDING_MODE),_$(shell echo $(SHARDING_MODE) | tr '[:lower:]' '[:upper:]'),) ./hack/run-e2e-kind.sh

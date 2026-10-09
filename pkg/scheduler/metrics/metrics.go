@@ -17,6 +17,7 @@ limitations under the License.
 package metrics
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -54,6 +55,8 @@ const (
 )
 
 var (
+	unschedulableJobCacheDebugMetricsEnabled atomic.Bool
+
 	e2eSchedulingLatency = promauto.NewHistogram(
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoSubSystemName,
@@ -192,6 +195,30 @@ var (
 			Help:      "Number of jobs could not be scheduled",
 		},
 	)
+
+	unschedulableJobCacheSkips = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "unschedulable_job_cache_skips_total",
+			Help:      "Number of scheduling stages skipped because a Job matched the unschedulable-job cache.",
+		}, []string{"job_namespace", "job_name", "stage"},
+	)
+
+	unschedulableJobCacheWakeups = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "unschedulable_job_cache_wakeups_total",
+			Help:      "Number of cached Jobs woken by a matching cluster event.",
+		}, []string{"job_namespace", "job_name", "resource", "action"},
+	)
+
+	unschedulableJobCacheWatchdogExpirations = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "unschedulable_job_cache_watchdog_expirations_total",
+			Help:      "Number of cached Jobs released by the unschedulable-job cache watchdog.",
+		}, []string{"job_namespace", "job_name"},
+	)
 )
 
 // InitKubeSchedulerRelatedMetrics is used to init metrics global variables in k8s.io/kubernetes/pkg/scheduler/metrics/metrics.go.
@@ -225,6 +252,38 @@ func UpdateE2eDuration(duration time.Duration) {
 // UpdateOpenSessionDuration updates the duration of opening a scheduling session
 func UpdateOpenSessionDuration(duration time.Duration) {
 	openSessionDuration.Observe(DurationInMilliseconds(duration))
+}
+
+// RegisterUnschedulableJobCacheSkip records one scheduling stage suppressed by
+// the unschedulable-job cache.
+func RegisterUnschedulableJobCacheSkip(namespace, jobName, stage string) {
+	if !unschedulableJobCacheDebugMetricsEnabled.Load() {
+		return
+	}
+	unschedulableJobCacheSkips.WithLabelValues(namespace, jobName, stage).Inc()
+}
+
+// RegisterUnschedulableJobCacheWakeup records a cached Job invalidated by a
+// matching cluster event.
+func RegisterUnschedulableJobCacheWakeup(namespace, jobName, resource, action string) {
+	if !unschedulableJobCacheDebugMetricsEnabled.Load() {
+		return
+	}
+	unschedulableJobCacheWakeups.WithLabelValues(namespace, jobName, resource, action).Inc()
+}
+
+// RegisterUnschedulableJobCacheWatchdogExpiration records a cached Job released
+// after its maximum skip duration elapsed without a matching event.
+func RegisterUnschedulableJobCacheWatchdogExpiration(namespace, jobName string) {
+	if !unschedulableJobCacheDebugMetricsEnabled.Load() {
+		return
+	}
+	unschedulableJobCacheWatchdogExpirations.WithLabelValues(namespace, jobName).Inc()
+}
+
+// SetUnschedulableJobCacheDebugMetricsEnabled controls per-Job cache metrics.
+func SetUnschedulableJobCacheDebugMetricsEnabled(enabled bool) {
+	unschedulableJobCacheDebugMetricsEnabled.Store(enabled)
 }
 
 // UpdateE2eSchedulingDurationByJob updates per-job duration from creation to last task assumed/pipelined

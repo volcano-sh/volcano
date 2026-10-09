@@ -24,6 +24,7 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 
 	"volcano.sh/volcano/pkg/kube"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 func TestAddFlags(t *testing.T) {
@@ -63,9 +64,56 @@ func TestAddFlags(t *testing.T) {
 		EnableRootQueueProtection:          true,
 		EnableCascadeChildQueueClose:       false,
 		EnableQueueClosedBeforeDeleteCheck: false,
+		ListenAddress:                 "",
+		Port:                          8443,
+		PrintVersion:                  false,
+		WebhookName:                   "",
+		WebhookNamespace:              "",
+		SchedulerNames:                []string{defaultSchedulerName},
+		WebhookURL:                    "",
+		ConfigPath:                    "",
+		EnabledAdmission:              defaultEnabledAdmission,
+		GracefulShutdownTime:          defaultGracefulShutdownTime,
+		EnableHealthz:                 false,
+		HealthzBindAddress:            defaultHealthzAddress,
+		EnableQueueAllocatedPodsCheck: false,
+		MaxQueueDepth:                 defaultMaxQueueDepth,
+		MaxNamespaceQueueDepth:        commonutil.DefaultMaxNamespaceQueueDepth,
+		EnableRootQueueProtection:     true,
 	}
 
 	if !equality.Semantic.DeepEqual(expected, s) {
 		t.Errorf("Got different run options than expected.\nGot: %+v\nExpected: %+v\n", s, expected)
+	}
+}
+
+func TestValidate(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*Config)
+		wantError bool
+	}{
+		{name: "valid", configure: func(*Config) {}},
+		{name: "invalid port", configure: func(config *Config) { config.Port = 0 }, wantError: true},
+		{name: "cluster queue depth validation remains unchanged", configure: func(config *Config) { config.MaxQueueDepth = 0 }},
+		{
+			name: "invalid NamespaceQueue depth",
+			configure: func(config *Config) {
+				config.MaxNamespaceQueueDepth = 0
+			},
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := NewConfig()
+			config.AddFlags(pflag.NewFlagSet("test", pflag.ContinueOnError))
+			tt.configure(config)
+			err := config.Validate()
+			if (err != nil) != tt.wantError {
+				t.Fatalf("Validate() error = %v, wantError %t", err, tt.wantError)
+			}
+		})
 	}
 }

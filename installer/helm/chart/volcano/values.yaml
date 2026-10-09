@@ -8,6 +8,7 @@ basic:
   admission_secret_name: "volcano-admission-secret"
   admission_config_file: "config/volcano-admission.conf"
   scheduler_config_file: "config/volcano-scheduler.conf"
+  namespace_queue_scheduler_config_file: "config/volcano-scheduler-namespacequeue.conf"
   agent_scheduler_config_file: "config/agent-scheduler.conf"
   image_pull_secret: ""
   image_pull_policy: "Always"
@@ -42,6 +43,7 @@ custom:
   agent_scheduler_name: "agent-scheduler"
   scheduler_replicas: 1
   scheduler_metrics_enable: true
+  scheduler_unschedulable_job_cache_debug_metrics: false
   scheduler_pprof_enable: false
   scheduler_plugins_dir: ""
   scheduler_name: ~
@@ -293,6 +295,8 @@ custom:
   # Specify feature gates for components
   scheduler_feature_gates: ~
   admission_feature_gates: ~
+  controller_feature_gates: ~
+  namespace_queue_enable: false
 
 # Specify options for scheduler sharding
   agent_scheduler_sharding_mode: ~

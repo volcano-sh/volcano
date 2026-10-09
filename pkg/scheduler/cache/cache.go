@@ -75,6 +75,7 @@ import (
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 	"volcano.sh/volcano/pkg/util"
 )
@@ -97,9 +98,19 @@ func init() {
 	utilruntime.Must(schemeBuilder.AddToScheme(scheme.Scheme))
 }
 
-// New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration) Cache {
-	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners, resyncPeriod, resourceSyncTimeout)
+// Option configures optional SchedulerCache dependencies.
+type Option func(*SchedulerCache)
+
+// WithUnschedulableJobCache configures the JobCache that receives informer events.
+func WithUnschedulableJobCache(jobCache *unschedulable.JobCache) Option {
+	return func(cache *SchedulerCache) {
+		cache.unschedulableJobCache = jobCache
+	}
+}
+
+// New returns the Scheduler cache interface.
+func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration, cacheOptions ...Option) Cache {
+	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners, resyncPeriod, resourceSyncTimeout, cacheOptions...)
 }
 
 // SchedulerCache cache for the kube batch
@@ -115,23 +126,24 @@ type SchedulerCache struct {
 	nodeSelectorLabels map[string]sets.Empty
 	metricsConf        map[string]string
 
-	resyncPeriod               time.Duration
-	podInformer                infov1.PodInformer
-	nodeInformer               infov1.NodeInformer
-	hyperNodeInformer          topologyinformerv1alpha1.HyperNodeInformer
-	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
-	queueInformerV1beta1       vcinformerv1.QueueInformer
-	pvInformer                 infov1.PersistentVolumeInformer
-	pvcInformer                infov1.PersistentVolumeClaimInformer
-	scInformer                 storagev1.StorageClassInformer
-	vaInformer                 storagev1.VolumeAttachmentInformer
-	pcInformer                 schedv1.PriorityClassInformer
-	quotaInformer              infov1.ResourceQuotaInformer
-	csiNodeInformer            storagev1.CSINodeInformer
-	csiDriverInformer          storagev1.CSIDriverInformer
-	csiStorageCapacityInformer storagev1.CSIStorageCapacityInformer
-	cpuInformer                cpuinformerv1.NumatopologyInformer
-	nodeShardInformer          shardinformerv1alpha1.NodeShardInformer
+	resyncPeriod                  time.Duration
+	podInformer                   infov1.PodInformer
+	nodeInformer                  infov1.NodeInformer
+	hyperNodeInformer             topologyinformerv1alpha1.HyperNodeInformer
+	podGroupInformerV1beta1       vcinformerv1.PodGroupInformer
+	queueInformerV1beta1          vcinformerv1.QueueInformer
+	namespaceQueueInformerV1beta1 vcinformerv1.NamespaceQueueInformer
+	pvInformer                    infov1.PersistentVolumeInformer
+	pvcInformer                   infov1.PersistentVolumeClaimInformer
+	scInformer                    storagev1.StorageClassInformer
+	vaInformer                    storagev1.VolumeAttachmentInformer
+	pcInformer                    schedv1.PriorityClassInformer
+	quotaInformer                 infov1.ResourceQuotaInformer
+	csiNodeInformer               storagev1.CSINodeInformer
+	csiDriverInformer             storagev1.CSIDriverInformer
+	csiStorageCapacityInformer    storagev1.CSIStorageCapacityInformer
+	cpuInformer                   cpuinformerv1.NumatopologyInformer
+	nodeShardInformer             shardinformerv1alpha1.NodeShardInformer
 
 	Binder         Binder
 	Evictor        Evictor
@@ -186,6 +198,11 @@ type SchedulerCache struct {
 	multiSchedulerInfo
 
 	binderRegistry *BinderRegistry
+
+	// unschedulableJobCache stores Jobs rejected in previous scheduling sessions
+	// and removes cached records when matching informer events arrive or their
+	// retry deadline expires.
+	unschedulableJobCache *unschedulable.JobCache
 
 	// sharedDRAManager is used in DRA plugin, contains resourceClaimTracker, resourceSliceLister and deviceClassLister
 	sharedDRAManager fwk.SharedDRAManager
@@ -375,6 +392,27 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 
 // UpdateQueueStatus will update the status of queue
 func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
+	if queue != nil && queue.NamespaceQueue != nil {
+		newNamespaceQueue := &vcv1beta1.NamespaceQueue{}
+		if err := schedulingscheme.Scheme.Convert(
+			queue.NamespaceQueue,
+			newNamespaceQueue,
+			nil,
+		); err != nil {
+			return err
+		}
+		// NamespaceQueue status is scheduler-owned for runtime allocation data.
+		newNamespaceQueue.Status.Allocated = queue.Queue.Status.Allocated
+		newNamespaceQueue.Status.Reservation = vcv1beta1.Reservation{
+			Nodes:    queue.Queue.Status.Reservation.Nodes,
+			Resource: queue.Queue.Status.Reservation.Resource,
+		}
+		_, err := su.vcclient.SchedulingV1beta1().NamespaceQueues(newNamespaceQueue.Namespace).
+			UpdateStatus(context.TODO(), newNamespaceQueue, metav1.UpdateOptions{})
+		return err
+	}
+
+	// Cluster Queue status is persisted through the cluster-scoped Queue API.
 	newQueue := &vcv1beta1.Queue{}
 	if err := schedulingscheme.Scheme.Convert(queue.Queue, newQueue, nil); err != nil {
 		klog.Errorf("error occurred in converting scheduling.Queue to v1beta1.Queue: %s", err.Error())
@@ -461,10 +499,23 @@ func (sc *SchedulerCache) setBatchBindParallel() {
 
 // newDefaultAndRootQueue init default queue and root queue
 func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
+	namespaceQueueEnabled := utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue)
+
 	createIfNotExists := func(name string, reclaimable bool) error {
-		_, err := vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
+		existing, err := vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
 		if err == nil {
 			klog.V(2).Infof("Queue %s already exists, skip creating.", name)
+			// Upgrade path: a default Queue created before NamespaceQueue was enabled gets the
+			// same wildcard as a newly-created one. Only an omitted field (nil) is filled in,
+			// an explicit empty list or any configured value is preserved.
+			if name == defaultQueue && namespaceQueueEnabled && existing.Spec.AllowedNamespaces == nil {
+				updated := existing.DeepCopy()
+				updated.Spec.AllowedNamespaces = []string{"*"}
+				// Best effort: an existing Queue must never prevent the scheduler from starting.
+				if _, err := vcClient.SchedulingV1beta1().Queues().Update(context.TODO(), updated, metav1.UpdateOptions{}); err != nil {
+					klog.Errorf("failed to set allowedNamespaces of existing queue %s: %v", name, err)
+				}
+			}
 			return nil
 		}
 
@@ -474,13 +525,20 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 		}
 
 		// If queue does not exist, start to create it
+		allowedNamespaces := []string(nil)
+		if name == defaultQueue && namespaceQueueEnabled {
+			// A newly-created default Queue is the default parent for NamespaceQueues.
+			allowedNamespaces = []string{"*"}
+		}
+
 		newQueue := vcv1beta1.Queue{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: name,
 			},
 			Spec: vcv1beta1.QueueSpec{
-				Reclaimable: &reclaimable,
-				Weight:      1,
+				Reclaimable:       &reclaimable,
+				Weight:            1,
+				AllowedNamespaces: allowedNamespaces,
 			},
 		}
 
@@ -517,7 +575,7 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 	}
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration, cacheOptions ...Option) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -568,6 +626,9 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		NodeList:            []string{},
 		nodeWorkers:         nodeWorkers,
 		resourceSyncTimeout: resourceSyncTimeout,
+	}
+	for _, option := range cacheOptions {
+		option(sc)
 	}
 
 	if options.ServerOpts.ShardingMode == util.HardShardingMode || options.ServerOpts.ShardingMode == util.SoftShardingMode {
@@ -676,28 +737,43 @@ func (sc *SchedulerCache) addEventHandler() {
 	handlers["node"] = schedulercache.NewInitialEventHandlerRegistration(handlerRegistration, sc.nodeInitialEventTracker)
 
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
-	sc.pvcInformer.Informer()
+	sc.registerHintEventHandler(handlers, "pvc", sc.pvcInformer.Informer(), fwk.PersistentVolumeClaim)
 	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
-	sc.pvInformer.Informer()
+	sc.registerHintEventHandler(handlers, "pv", sc.pvInformer.Informer(), fwk.PersistentVolume)
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
-	sc.scInformer.Informer()
+	sc.registerHintEventHandler(handlers, "storageClass", sc.scInformer.Informer(), fwk.StorageClass)
 	sc.vaInformer = informerFactory.Storage().V1().VolumeAttachments()
-	sc.vaInformer.Informer()
+	sc.registerHintEventHandler(handlers, "volumeAttachment", sc.vaInformer.Informer(), fwk.VolumeAttachment)
 	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
 	handlerRegistration, _ = sc.csiNodeInformer.Informer().AddEventHandler(
 		cache.ResourceEventHandlerDetailedFuncs{
-			AddFunc:    sc.AddOrUpdateCSINode,
-			UpdateFunc: sc.UpdateCSINode,
-			DeleteFunc: sc.DeleteCSINode,
+			AddFunc: func(obj interface{}, isInInitialList bool) {
+				sc.AddOrUpdateCSINode(obj, isInInitialList)
+				if sc.unschedulableJobCache != nil {
+					sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.CSINode, ActionType: fwk.Add}, nil, obj)
+				}
+			},
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				sc.UpdateCSINode(oldObj, newObj)
+				if sc.unschedulableJobCache != nil {
+					sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.CSINode, ActionType: fwk.Update}, oldObj, newObj)
+				}
+			},
+			DeleteFunc: func(obj interface{}) {
+				sc.DeleteCSINode(obj)
+				if sc.unschedulableJobCache != nil {
+					sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.CSINode, ActionType: fwk.Delete}, obj, nil)
+				}
+			},
 		},
 	)
 	handlers["csiNode"] = handlerRegistration
 
 	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage {
 		sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
-		sc.csiDriverInformer.Informer()
+		sc.registerHintEventHandler(handlers, "csiDriver", sc.csiDriverInformer.Informer(), fwk.CSIDriver)
 		sc.csiStorageCapacityInformer = informerFactory.Storage().V1().CSIStorageCapacities()
-		sc.csiStorageCapacityInformer.Informer()
+		sc.registerHintEventHandler(handlers, "csiStorageCapacity", sc.csiStorageCapacityInformer.Informer(), fwk.CSIStorageCapacity)
 	}
 
 	sc.podInformer = informerFactory.Core().V1().Pods()
@@ -796,6 +872,16 @@ func (sc *SchedulerCache) addEventHandler() {
 	})
 	handlers["queue"] = handlerRegistration
 
+	if utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) {
+		sc.namespaceQueueInformerV1beta1 = vcinformers.Scheduling().V1beta1().NamespaceQueues()
+		handlerRegistration, _ = sc.namespaceQueueInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddNamespaceQueueV1beta1,
+			UpdateFunc: sc.UpdateNamespaceQueueV1beta1,
+			DeleteFunc: sc.DeleteNamespaceQueueV1beta1,
+		})
+		handlers["namespacequeue"] = handlerRegistration
+	}
+
 	if utilfeature.DefaultFeatureGate.Enabled(features.ResourceTopology) {
 		sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()
 		handlerRegistration, _ = sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -830,7 +916,12 @@ func (sc *SchedulerCache) addEventHandler() {
 		ctx := context.TODO()
 		logger := klog.FromContext(ctx)
 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
+		sc.registerHintEventHandler(handlers, "resourceClaim", resourceClaimInformer, fwk.ResourceClaim)
 		sc.resourceClaimCache = assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+		resourceSliceInformer := informerFactory.Resource().V1().ResourceSlices().Informer()
+		sc.registerHintEventHandler(handlers, "resourceSlice", resourceSliceInformer, fwk.ResourceSlice)
+		deviceClassInformer := informerFactory.Resource().V1().DeviceClasses().Informer()
+		sc.registerHintEventHandler(handlers, "deviceClass", deviceClassInformer, fwk.DeviceClass)
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
 			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaintRules),
 			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
@@ -849,6 +940,32 @@ func (sc *SchedulerCache) addEventHandler() {
 		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, sc.resourceClaimCache, resourceSliceTracker, informerFactory)
 	}
 	sc.registeredHandlers = handlers
+}
+
+// registerHintEventHandler forwards informer events to the unschedulable Job
+// cache when the cache is enabled.
+func (sc *SchedulerCache) registerHintEventHandler(
+	handlers map[string]cache.ResourceEventHandlerRegistration,
+	name string,
+	informer cache.SharedIndexInformer,
+	resource fwk.EventResource,
+) {
+	if sc.unschedulableJobCache == nil {
+		return
+	}
+
+	handlerRegistration, _ := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: resource, ActionType: fwk.Add}, nil, obj)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: resource, ActionType: fwk.Update}, oldObj, newObj)
+		},
+		DeleteFunc: func(obj interface{}) {
+			sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: resource, ActionType: fwk.Delete}, obj, nil)
+		},
+	})
+	handlers[name] = handlerRegistration
 }
 
 // Run  starts the schedulerCache
@@ -1931,7 +2048,7 @@ func addDRAResource(dst map[string]*schedulingapi.DRAResource, deviceClass strin
 			dst[deviceClass].Capacity = make(map[string]resource.Quantity)
 		}
 	}
-	dst[deviceClass].Count += count
+	dst[deviceClass].Count = schedulingapi.SaturatingAdd(dst[deviceClass].Count, count)
 	for dim, reqQty := range capacity {
 		// Add the capacity contributed by count devices.
 		total := reqQty.DeepCopy()

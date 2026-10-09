@@ -28,12 +28,14 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
 	"volcano.sh/volcano/pkg/scheduler/actions/reclaim"
@@ -46,6 +48,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 func TestMain(m *testing.M) {
@@ -1196,6 +1199,78 @@ func buildQueueWithParents(name string, parent string, deserved corev1.ResourceL
 	return queue
 }
 
+func TestNamespaceQueueChildDoesNotBlockOtherSchedulingAfterParentOccupied(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	enabled := true
+	test := uthelper.TestCommonStruct{
+		Name: "parent has an admitted Job before NamespaceQueue child appears",
+		Plugins: map[string]framework.PluginBuilder{
+			PluginName: New, predicates.PluginName: predicates.New, gang.PluginName: gang.New,
+		},
+		Nodes: []*corev1.Node{util.BuildNode("n1", api.BuildResourceList("4", "4Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)},
+		Pods: []*corev1.Pod{
+			util.BuildPod("ns1", "running-parent", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg-running", nil, nil),
+			util.BuildPod("ns1", "old-parent", "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), "pg-parent", nil, nil),
+			util.BuildPod("ns1", "child-work", "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), "pg-child", nil, nil),
+		},
+		PodGroups: []*schedulingv1beta1.PodGroup{
+			util.BuildPodGroup("pg-running", "ns1", "parent", 1, nil, schedulingv1beta1.PodGroupRunning),
+			util.BuildPodGroup("pg-parent", "ns1", "parent", 1, nil, schedulingv1beta1.PodGroupInqueue),
+			util.BuildPodGroup("pg-child", "ns1", "child", 1, nil, schedulingv1beta1.PodGroupInqueue),
+		},
+		Queues: []*schedulingv1beta1.Queue{
+			buildQueueWithParents("root", "", nil, nil),
+			buildQueueWithParents("parent", "root", nil, nil),
+			buildQueueWithParents("child", "parent", nil, nil),
+		},
+		ExpectBindMap:  map[string]string{"ns1/child-work": "n1"},
+		ExpectBindsNum: 1,
+	}
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{
+		{Name: predicates.PluginName, EnabledPredicate: &enabled},
+		{Name: gang.PluginName, EnabledJobStarving: &enabled},
+	}}}
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+	// The session sees the newly added child as a NamespaceQueue while the
+	// parent still has a previously admitted Job in its snapshot.
+	child, err := api.NewNamespaceQueueInfo(&scheduling.NamespaceQueue{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "ns1", Name: "child", Generation: 1},
+		Spec:       scheduling.NamespaceQueueSpec{Parent: "cluster/parent"},
+		Status: scheduling.NamespaceQueueStatus{
+			State: scheduling.QueueStateOpen,
+			Conditions: []metav1.Condition{
+				{Type: commonutil.NamespaceQueueAuthorizedCondition, Status: metav1.ConditionTrue, ObservedGeneration: 1},
+				{Type: commonutil.NamespaceQueueReadyCondition, Status: metav1.ConditionTrue, ObservedGeneration: 1},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(ssn.Queues, api.QueueID("child"))
+	ssn.Queues[child.UID] = child
+	for _, job := range ssn.Jobs {
+		if job.Queue == api.QueueID("child") {
+			job.Queue = child.UID
+			job.PodGroup.Spec.Queue = "namespace/child"
+		}
+	}
+	ssn.Tiers[0].Plugins = append(ssn.Tiers[0].Plugins, conf.PluginOption{
+		Name: PluginName, EnabledAllocatable: &enabled, EnabledHierarchy: &enabled,
+	})
+	plugin := New(nil).(*capacityPlugin)
+	plugin.OnSessionOpen(ssn)
+	defer plugin.OnSessionClose(ssn)
+	if got := plugin.queueOpts[api.QueueID("parent")].allocated.MilliCPU; got != 1000 {
+		t.Fatalf("parent allocation = %v, want 1000 millicores for the running Job", got)
+	}
+	test.Run([]framework.Action{allocate.New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func Test_updateQueueAttrShare(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -1357,7 +1432,6 @@ func Test_buildHierarchicalQueueAttrs_nilSafety(t *testing.T) {
 	actions := []framework.Action{allocate.New()}
 
 	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
-
 	tiers := []conf.Tier{
 		{
 			Plugins: []conf.PluginOption{
@@ -2106,5 +2180,89 @@ func TestCheckDRAAllocatable_overflowRejected(t *testing.T) {
 	}
 	if !checkDRAAllocatable(fresh, map[string]*api.DRAResource{dc: {Count: 4}}, false, true) {
 		t.Fatalf("checkDRAAllocatable rejected a valid request (4 <= 8); want admitted")
+	}
+}
+
+// TestBuildQueueAttrsMetricConsistency tests Bug 1 fix:
+// Queue allocated metric should be consistent with Queue.Status.Allocated
+// when hierarchy is disabled, including for jobless queues (like root queue).
+// Before the fix: jobless queues were not added to queueOpts, so their
+// allocated metric was reported as zero instead of Queue.Status.Allocated.
+// After the fix: jobless queues are added to queueOpts with allocated read
+// from Queue.Status.Allocated.
+func TestBuildQueueAttrsMetricConsistency(t *testing.T) {
+	trueValue := true
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+
+	// A running pod in q1: q1 is a "queue with jobs", so its allocated is
+	// derived from the job (2 CPU / 2Gi).
+	p1 := util.BuildPod("ns1", "p1", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg1", make(map[string]string), make(map[string]string))
+	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning)
+
+	// root is a jobless queue: it has no pods of its own, but its
+	// Status.Allocated reflects resources allocated by child queues in a
+	// previous cycle. The fix must surface this value in metrics.
+	root := util.BuildQueueWithResourcesQuantity("root", api.BuildResourceList("4", "4Gi"), nil)
+	root.Status.Allocated = api.BuildResourceList("3", "3Gi")
+
+	queue1 := util.BuildQueueWithResourcesQuantity("q1", api.BuildResourceList("2", "2Gi"), api.BuildResourceList("4", "4Gi"))
+
+	binder := util.NewFakeBinder(10)
+	evictor := util.NewFakeEvictor(0)
+	statusUpdater := &util.FakeStatusUpdater{}
+	stop := make(chan struct{})
+	defer close(stop)
+
+	sc := cache.NewCustomMockSchedulerCache("test-capacity", binder, evictor, statusUpdater, nil, nil)
+	sc.Run(stop)
+	sc.AddOrUpdateNode(n1)
+	sc.AddPod(p1)
+	sc.AddPodGroupV1beta1(pg1)
+	sc.AddQueueV1beta1(root)
+	sc.AddQueueV1beta1(queue1)
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledOverused:    &trueValue,
+					EnabledJobEnqueued: &trueValue,
+					// Hierarchy is NOT enabled - this is the key for Bug 1.
+					EnabledHierarchy: nil,
+				},
+			},
+		},
+	}
+
+	ssn := framework.OpenSession(sc, tiers, nil)
+	defer framework.CloseSession(ssn)
+
+	cp := New(nil).(*capacityPlugin)
+	cp.OnSessionOpen(ssn)
+
+	// The jobless root queue MUST be present in queueOpts (this is the fix).
+	rootAttr, ok := cp.queueOpts[api.QueueID("root")]
+	if !ok {
+		t.Fatal("jobless root queue should be present in queueOpts after buildQueueAttrs")
+	}
+
+	// Its allocated must come from Queue.Status.Allocated, not zero.
+	expectedRoot := api.NewResource(api.BuildResourceList("3", "3Gi"))
+	if rootAttr.allocated.MilliCPU != expectedRoot.MilliCPU || rootAttr.allocated.Memory != expectedRoot.Memory {
+		t.Errorf("jobless root queue allocated: got %v, want %v (from Status.Allocated)", rootAttr.allocated, expectedRoot)
+	}
+
+	// Sanity: a queue with a job derives its allocated from the job, proving
+	// the two code paths (job vs jobless) populate queueOpts independently.
+	q1Attr, ok := cp.queueOpts[api.QueueID("q1")]
+	if !ok {
+		t.Fatal("q1 should be present in queueOpts")
+	}
+	expectedQ1 := api.NewResource(api.BuildResourceList("2", "2Gi"))
+	if q1Attr.allocated.MilliCPU != expectedQ1.MilliCPU || q1Attr.allocated.Memory != expectedQ1.Memory {
+		t.Errorf("q1 allocated: got %v, want %v (from job)", q1Attr.allocated, expectedQ1)
 	}
 }

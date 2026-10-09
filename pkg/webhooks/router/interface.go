@@ -44,6 +44,22 @@ type AdmissionServiceConfig struct {
 	EnableRootQueueProtection          bool
 	EnableCascadeChildQueueClose       bool
 	EnableQueueClosedBeforeDeleteCheck bool
+	SchedulerNames []string
+	KubeClient     kubernetes.Interface
+	VolcanoClient  versioned.Interface
+	QueueLister    schedulinglister.QueueLister
+	QueueInformer  cache.SharedIndexInformer
+	// NamespaceQueueLister reads NamespaceQueue objects from the shared cache.
+	NamespaceQueueLister schedulinglister.NamespaceQueueLister
+	// NamespaceQueueInformer provides indexed NamespaceQueue lookups.
+	NamespaceQueueInformer        cache.SharedIndexInformer
+	Recorder                      record.EventRecorder
+	ConfigData                    *config.AdmissionConfiguration
+	EnableQueueAllocatedPodsCheck bool
+	MaxQueueDepth                 int
+	// MaxNamespaceQueueDepth limits NamespaceQueue descendants below a cluster Queue.
+	MaxNamespaceQueueDepth    int
+	EnableRootQueueProtection bool
 }
 
 type AdmissionService struct {

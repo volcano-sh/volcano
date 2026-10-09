@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -47,6 +48,7 @@ import (
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -67,12 +69,13 @@ const (
 type Session struct {
 	UID types.UID
 
-	kubeClient      kubernetes.Interface
-	vcClient        vcclient.Interface
-	recorder        record.EventRecorder
-	cache           cache.Cache
-	restConfig      *rest.Config
-	informerFactory informers.SharedInformerFactory
+	kubeClient            kubernetes.Interface
+	vcClient              vcclient.Interface
+	recorder              record.EventRecorder
+	cache                 cache.Cache
+	unschedulableJobCache unschedulableJobCache
+	restConfig            *rest.Config
+	informerFactory       informers.SharedInformerFactory
 
 	TotalResource *api.Resource
 	// PodGroupOldState contains podgroup status and annotations during schedule
@@ -162,19 +165,32 @@ type Session struct {
 	// The key is task's UID, value is the CycleState.
 	cycleStatesMap sync.Map
 
+	// jobRejections records confirmed rejections and isolates rejections produced
+	// by nested Job and SubJob evaluations.
+	jobRejections                jobRejectionTracker
+	unschedulableJobCacheEnabled bool
+
 	NodesInShard sets.Set[string]
 }
 
-func openSession(cache cache.Cache) *Session {
-	cache.OnSessionOpen()
+func openSession(schedulerCache cache.Cache, unschedulableJobCache unschedulableJobCache) *Session {
+	schedulerCache.OnSessionOpen()
+	// Feature gate flags initialization
+	unschedulableJobCacheEnabled := utilfeature.DefaultFeatureGate.Enabled(features.UnschedulableJobCache)
+	if unschedulableJobCacheEnabled && unschedulableJobCache == nil {
+		klog.Error("UnschedulableJobCache feature gate is enabled, but no unschedulable cache instance was provided")
+		unschedulableJobCacheEnabled = false
+	}
+
 	ssn := &Session{
-		UID:             uuid.NewUUID(),
-		kubeClient:      cache.Client(),
-		vcClient:        cache.VCClient(),
-		restConfig:      cache.ClientConfig(),
-		recorder:        cache.EventRecorder(),
-		cache:           cache,
-		informerFactory: cache.SharedInformerFactory(),
+		UID:                   uuid.NewUUID(),
+		kubeClient:            schedulerCache.Client(),
+		vcClient:              schedulerCache.VCClient(),
+		restConfig:            schedulerCache.ClientConfig(),
+		recorder:              schedulerCache.EventRecorder(),
+		cache:                 schedulerCache,
+		unschedulableJobCache: unschedulableJobCache,
+		informerFactory:       schedulerCache.SharedInformerFactory(),
 
 		TotalResource: api.EmptyResource(),
 		PodGroupOldState: &api.PodGroupOldState{
@@ -226,9 +242,13 @@ func openSession(cache cache.Cache) *Session {
 		subJobOrderFns:                map[string]api.CompareFn{},
 		hyperNodeGradientForJobFns:    map[string]api.HyperNodeGradientForJobFn{},
 		hyperNodeGradientForSubJobFns: map[string]api.HyperNodeGradientForSubJobFn{},
+		unschedulableJobCacheEnabled:  unschedulableJobCacheEnabled,
+	}
+	if unschedulableJobCacheEnabled {
+		unschedulableJobCache.BeginSession()
 	}
 
-	snapshot := cache.Snapshot()
+	snapshot := schedulerCache.Snapshot()
 	taskCountsByQueue := make(map[api.QueueID]map[string]int, len(snapshot.Queues))
 
 	ssn.Jobs = snapshot.Jobs
@@ -572,6 +592,7 @@ func closeSession(ssn *Session) {
 	ju.UpdateAll()
 
 	updateQueueStatus(ssn)
+	ssn.reconcileUnschedulableCache()
 
 	ssn.Jobs = nil
 	ssn.Nodes = nil
@@ -590,6 +611,28 @@ func closeSession(ssn *Session) {
 }
 
 func getPodGroupPhase(jobInfo *api.JobInfo, unschedulable bool) scheduling.PodGroupPhase {
+	// Latch the terminal phase: once a PodGroup reached Completed, keep it
+	// Completed while every remaining member task is itself in a terminal
+	// state. Pod deletion (TTL/GC/workload controller) is not atomic and
+	// usually spans multiple sessions; without this latch a partially or
+	// fully deleted group is recomputed below minMember, downgraded back to
+	// Pending/Inqueue, re-admitted by the enqueue action, and the
+	// capacity/proportion plugins reserve its MinResources queue quota again
+	// even though it can never run again. A remaining non-completed task
+	// (e.g. a fresh Pending pod) still falls through to the normal recompute.
+	if jobInfo.PodGroup.Status.Phase == scheduling.PodGroupCompleted {
+		allCompleted := true
+		for _, task := range jobInfo.Tasks {
+			if !api.CompletedStatus(task.Status) {
+				allCompleted = false
+				break
+			}
+		}
+		if allCompleted {
+			return scheduling.PodGroupCompleted
+		}
+	}
+
 	// If running tasks && unschedulable, unknown phase
 	if len(jobInfo.TaskStatusIndex[api.Running]) != 0 && unschedulable {
 		return scheduling.PodGroupUnknown

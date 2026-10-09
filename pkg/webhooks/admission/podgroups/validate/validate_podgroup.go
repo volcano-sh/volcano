@@ -92,7 +92,7 @@ func Validate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
 	var errs []string
 
-	if msg := checkQueueState(pg.Spec.Queue); msg != "" {
+	if msg := checkQueueState(pg.Namespace, pg.Spec.Queue); msg != "" {
 		errs = append(errs, strings.TrimSpace(msg))
 	}
 	if msg := validateNetworkTopology(pg.Spec.NetworkTopology, pg.Spec.SubGroupPolicy); msg != "" {
@@ -103,19 +103,19 @@ func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
 }
 
 // checkQueueState verifies if the queue exists and is in the open state
-func checkQueueState(queueName string) string {
-	if queueName == "" {
+func checkQueueState(workloadNamespace, queueReference string) string {
+	if queueReference == "" {
 		return ""
 	}
 
-	queue, err := config.QueueLister.Get(queueName)
-	if err != nil {
-		return fmt.Sprintf("unable to find queue: %s", err.Error())
-	}
-
-	if queue.Status.State != schedulingv1beta1.QueueStateOpen {
-		return fmt.Sprintf("can only submit PodGroup to queue with state `Open`, queue `%s` status is `%s`. ",
-			queue.Name, queue.Status.State)
+	if err := util.ValidateWorkloadQueueReference(
+		workloadNamespace,
+		queueReference,
+		schedulingv1beta1.DefaultQueue,
+		config,
+		util.QueueReferenceValidationOptions{},
+	); err != nil {
+		return err.Error()
 	}
 
 	return ""
@@ -129,7 +129,6 @@ func validateNetworkTopology(networkTopology *schedulingv1beta1.NetworkTopologyS
 	for _, policy := range policies {
 		if policy.NetworkTopology != nil && policy.NetworkTopology.HighestTierAllowed != nil && policy.NetworkTopology.HighestTierName != "" {
 			errs = append(errs, fmt.Sprintf("in subGroupPolicy '%s': must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously.", policy.Name))
-			break
 		}
 	}
 	return strings.Join(errs, " ")
