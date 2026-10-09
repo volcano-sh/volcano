@@ -74,6 +74,11 @@ type networkTopologyAwarePlugin struct {
 	maxHyperNodesForEviction int
 	// hyperNodeResourceCache stores the resource status of hypernodes to avoid repeated calculation: hypernode -> resourceStatus
 	hyperNodeResourceCache map[string]*resourceStatus
+	// allocatedTasks tracks the tasks whose allocation has reduced idle/futureIdle
+	// in the current session and whose reduction has not been rolled back yet.
+	// The plugin instance is shared across sessions, so it is reset on every
+	// session open.
+	allocatedTasks set.Set[api.TaskID]
 }
 
 type priorityWeight struct {
@@ -281,6 +286,7 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 	}()
 	nta.hyperNodesTier.init(ssn.HyperNodesTiers)
 	nta.initHyperNodeResourceCache(ssn)
+	nta.allocatedTasks = set.New[api.TaskID]()
 
 	ssn.AddHyperNodeOrderFn(nta.Name(), func(subJob *api.SubJobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
 		return nta.HyperNodeOrderFn(ssn, subJob, hyperNodes)
@@ -326,34 +332,60 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
-			task := event.Task
-			node := task.NodeName
-			for hyperNode := range ssn.HyperNodes {
-				if ssn.RealNodesSet[hyperNode].Has(node) {
-					status, ok := nta.hyperNodeResourceCache[hyperNode]
-					if !ok {
-						klog.Warningf("plugin %s failed to find the resource status cache of hyperNode %s, which should not happen", PluginName, hyperNode)
-						continue
-					}
-					status.used.Add(task.Resreq)
-				}
-			}
+			nta.applyTaskResourceToCache(ssn, event.Task, true)
 		},
 		DeallocateFunc: func(event *framework.Event) {
-			task := event.Task
-			node := task.NodeName
-			for hyperNode := range ssn.HyperNodes {
-				if ssn.RealNodesSet[hyperNode].Has(node) {
-					status, ok := nta.hyperNodeResourceCache[hyperNode]
-					if !ok {
-						klog.Warningf("plugin %s failed to find the resource status cache of hyperNode %s, which should not happen", PluginName, hyperNode)
-						continue
-					}
-					status.used.Sub(task.Resreq)
-				}
-			}
+			nta.applyTaskResourceToCache(ssn, event.Task, false)
 		},
 	})
+}
+
+func (nta *networkTopologyAwarePlugin) applyTaskResourceToCache(ssn *framework.Session, task *api.TaskInfo, occupy bool) {
+	node := task.NodeName
+	// occupiesAllocatedIdle reports whether AllocateFunc should reduce idle/futureIdle.
+	// Statement.Allocate reduces them only when the task is allocated. Statement.Pipeline
+	// also triggers AllocateFunc, but with the task in Pipelined status, so idle/futureIdle
+	// are left unchanged for pipelined tasks.
+	occupiesAllocatedIdle := occupy && task.Status == api.Allocated
+	// releasesAllocatedIdle reports whether DeallocateFunc should restore idle/futureIdle.
+	// It must be true exactly when the matching AllocateFunc reduced them. Statement.unallocate
+	// and Statement.unPipeline both reset the task to Pending before invoking DeallocateFunc,
+	// so the task status alone cannot tell an allocation rollback from a pipeline rollback.
+	// allocatedTasks explicitly records the tasks whose allocation reduced idle/futureIdle
+	// and has not been rolled back yet, which distinguishes the two rollbacks. Evict
+	// (Releasing) is not an allocation rollback, so idle/futureIdle are not restored for it.
+	releasesAllocatedIdle := !occupy && task.Status != api.Releasing && nta.allocatedTasks.Has(task.UID)
+
+	for hyperNode := range ssn.HyperNodes {
+		if !ssn.RealNodesSet[hyperNode].Has(node) {
+			continue
+		}
+		status, ok := nta.hyperNodeResourceCache[hyperNode]
+		if !ok {
+			klog.Warningf("plugin %s failed to find the resource status cache of hyperNode %s, which should not happen", PluginName, hyperNode)
+			continue
+		}
+		if occupy {
+			status.used.Add(task.Resreq)
+			if occupiesAllocatedIdle {
+				status.idle.SubWithoutAssert(task.Resreq)
+				status.futureIdle.SubWithoutAssert(task.Resreq)
+			}
+			continue
+		}
+		status.used.Sub(task.Resreq)
+		if releasesAllocatedIdle {
+			status.idle.Add(task.Resreq)
+			status.futureIdle.Add(task.Resreq)
+		}
+	}
+
+	if occupiesAllocatedIdle {
+		nta.allocatedTasks.Insert(task.UID)
+	}
+	if releasesAllocatedIdle {
+		nta.allocatedTasks.Delete(task.UID)
+	}
 }
 
 func (nta *networkTopologyAwarePlugin) HyperNodeOrderFn(ssn *framework.Session, subJob *api.SubJobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
