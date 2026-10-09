@@ -1077,6 +1077,9 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 		return err
 	}
 
+	if task.OccupiesTopologyDomain() {
+		job.TaskPlacementGeneration++
+	}
 	job.UpdateTaskStatus(task, schedulingapi.Releasing)
 
 	// Add new task to node.
@@ -1495,6 +1498,7 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	}
 
 	originalStatus := task.Status
+	previousNode, previouslyOccupied := task.NodeName, task.OccupiesTopologyDomain()
 	job.UpdateTaskStatus(task, schedulingapi.Binding)
 
 	err = bindContext.TaskInfo.SetPodResourceDecision()
@@ -1513,6 +1517,9 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	}
 
 	sc.BindFlowChannel <- bindContext
+	if previousNode != task.NodeName || previouslyOccupied != task.OccupiesTopologyDomain() {
+		job.TaskPlacementGeneration++
+	}
 
 	return nil
 }
@@ -1664,6 +1671,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	snapshot.HyperNodeTierNameMap = sc.HyperNodesInfo.HyperNodeTierNameMap()
 	snapshot.RealNodesSet = sc.HyperNodesInfo.RealNodesSet()
 	snapshot.HyperNodesReadyToSchedule = sc.HyperNodesInfo.Ready()
+	snapshot.HyperNodeGeneration = sc.HyperNodesInfo.Generation()
 	sc.HyperNodesInfo.Unlock()
 
 	for _, value := range sc.Queues {
@@ -1876,10 +1884,18 @@ func (sc *SchedulerCache) updateJobInfo(job *schedulingapi.JobInfo) {
 	defer sc.Mutex.Unlock()
 
 	if jobInCache, ok := sc.Jobs[job.UID]; ok {
-		jobInCache.AllocatedHyperNode = job.AllocatedHyperNode
+		placementCurrent := jobInCache.TaskPlacementGeneration == job.TaskPlacementGeneration
+		if placementCurrent {
+			jobInCache.AllocatedHyperNode = job.AllocatedHyperNode
+			jobInCache.AllocatedHyperNodeGeneration = job.AllocatedHyperNodeGeneration
+			jobInCache.AllocatedHyperNodeDirty = job.AllocatedHyperNodeDirty
+			jobInCache.AllocatedTaskPlacementGeneration = job.AllocatedTaskPlacementGeneration
+		}
 		for subJobID, subJobInCache := range jobInCache.SubJobs {
 			if subJob, found := job.SubJobs[subJobID]; found {
-				subJobInCache.AllocatedHyperNode = subJob.AllocatedHyperNode
+				if placementCurrent {
+					subJobInCache.AllocatedHyperNode = subJob.AllocatedHyperNode
+				}
 				subJobInCache.NominatedHyperNode = subJob.NominatedHyperNode
 			}
 		}
