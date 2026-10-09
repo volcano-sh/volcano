@@ -6803,3 +6803,62 @@ func BenchmarkNodeGroupCandidatePredicates(b *testing.B) {
 		})
 	}
 }
+
+func TestQueueCandidatesPreserveSamplingTarget(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		candidates int
+		percentage int32
+		minimum    int32
+		wantScored int32
+	}{
+		{name: "adaptive percentage", candidates: 1000, minimum: 100, wantScored: 680},
+		{name: "fixed percentage", candidates: 1000, percentage: 40, minimum: 100, wantScored: 800},
+		{name: "minimum feasible nodes", candidates: 1000, minimum: 900, wantScored: 900},
+		{name: "capped by candidates", candidates: 300, minimum: 100, wantScored: 300},
+		{name: "empty candidates", minimum: 100},
+		{name: "all feasible nodes", candidates: 1000, percentage: 100, minimum: 100, wantScored: 1000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			previousOpts := options.ServerOpts
+			opts := *previousOpts
+			opts.MinNodesToFind = tc.minimum
+			opts.MinPercentageOfNodesToFind = 5
+			opts.PercentageOfNodesToFind = tc.percentage
+			options.ServerOpts = &opts
+			t.Cleanup(func() { options.ServerOpts = previousOpts })
+
+			common := uthelper.TestCommonStruct{
+				Name: tc.name,
+				Queues: []*schedulingv1.Queue{util.MakeQueue("q1").Affinity(&schedulingv1.Affinity{
+					NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []string{"group1"},
+					},
+				}).Obj()},
+				PodGroups: []*schedulingv1.PodGroup{util.BuildPodGroup("pg1", "ns", "q1", 1, nil, schedulingv1.PodGroupInqueue)},
+				Pods:      []*v1.Pod{util.BuildPod("ns", "p1", "", v1.PodPending, api.BuildResourceList("1", "4Gi"), "pg1", nil, nil)},
+				Plugins:   map[string]framework.PluginBuilder{nodegroup.PluginName: nodegroup.New},
+			}
+			for i := 0; i < 2000; i++ {
+				group := "group2"
+				if i < tc.candidates {
+					group = "group1"
+				}
+				common.Nodes = append(common.Nodes, util.BuildNode(fmt.Sprintf("node-%04d", i),
+					api.BuildResourceList("100", "400Gi", api.ScalarResource{Name: "pods", Value: "100"}),
+					map[string]string{schedulingv1.NodeGroupNameKey: group}))
+			}
+			ssn := common.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{{
+				Name: nodegroup.PluginName, EnabledPredicate: ptr.To(true), EnabledNodeOrder: ptr.To(true),
+			}}}}, nil)
+			defer common.Close()
+			var scored atomic.Int32
+			ssn.AddNodeOrderFn(nodegroup.PluginName, func(_ *api.TaskInfo, node *api.NodeInfo) (float64, error) {
+				scored.Add(1)
+				return 0, nil
+			})
+			common.Run([]framework.Action{New()})
+			assert.Equal(t, tc.wantScored, scored.Load(), "scoring must retain the original root-scope sampling target")
+		})
+	}
+}

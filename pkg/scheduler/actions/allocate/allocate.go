@@ -935,6 +935,9 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 		return nil
 	}
 
+	// Keep the sampling target based on the original scope, before queue filtering.
+	numNodesToFind := util.CalculateNumOfFeasibleNodesToFind(int32(len(nodes)))
+
 	// Cache only the cluster-wide scope. Restricted HyperNodes retain their own
 	// candidate lists, and all dynamic predicates still run for each task.
 	if hyperNode == framework.ClusterTopHyperNode {
@@ -1026,7 +1029,7 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 		// If the nominated node is not found or the nominated node is not suitable for the task, we need to find a suitable node for the task from all nodes.
 		if len(predicateNodes) == 0 {
-			predicateNodes, fitErrors = ph.PredicateNodes(task, nodes, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
+			predicateNodes, fitErrors = ph.PredicateNodesWithTarget(task, nodes, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard, numNodesToFind)
 		}
 
 		if len(predicateNodes) == 0 {
