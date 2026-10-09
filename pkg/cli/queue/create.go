@@ -18,13 +18,13 @@ package queue
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/util"
@@ -54,11 +54,6 @@ func InitCreateFlags(cmd *cobra.Command) {
 
 // CreateQueue create queue.
 func CreateQueue(ctx context.Context) error {
-	if !strings.EqualFold(createQueueFlags.State, string(schedulingv1beta1.QueueStateOpen)) {
-		return fmt.Errorf("state %s invalid, %s is the only state a queue can be created in, "+
-			"use `vcctl queue operate -a close` to close it", createQueueFlags.State, schedulingv1beta1.QueueStateOpen)
-	}
-
 	config, err := util.BuildConfig(createQueueFlags.Master, createQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -78,6 +73,10 @@ func CreateQueue(ctx context.Context) error {
 	queueClient := versioned.NewForConfigOrDie(config)
 	if _, err := queueClient.SchedulingV1beta1().Queues().Create(ctx, queue, metav1.CreateOptions{}); err != nil {
 		return err
+	}
+
+	if strings.EqualFold(createQueueFlags.State, string(schedulingv1beta1.QueueStateClosed)) {
+		return createQueueCommand(ctx, config, v1alpha1.CloseQueueAction, createQueueFlags.Name)
 	}
 
 	return nil
