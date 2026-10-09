@@ -449,6 +449,31 @@ func (cc *jobcontroller) processNextCommand() bool {
 	return true
 }
 
+func (cc *jobcontroller) addPodGroup(obj interface{}) {
+	pg, ok := obj.(*scheduling.PodGroup)
+	if !ok {
+		klog.Errorf("Failed to convert %v to PodGroup", obj)
+		return
+	}
+
+	jobNameKey := pg.Name
+	for _, or := range pg.OwnerReferences {
+		if or.Kind == helpers.JobKind.Kind {
+			jobNameKey = or.Name
+			break
+		}
+	}
+
+	req := apis.Request{
+		Namespace: pg.Namespace,
+		JobName:   jobNameKey,
+		Event:     bus.OutOfSyncEvent,
+	}
+	key := jobhelpers.GetJobKeyByReq(&req)
+	queue := cc.getWorkerQueue(key)
+	queue.Add(req)
+}
+
 func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
 	oldPG, ok := oldObj.(*scheduling.PodGroup)
 	if !ok {
