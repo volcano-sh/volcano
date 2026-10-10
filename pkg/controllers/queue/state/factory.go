@@ -40,17 +40,24 @@ var (
 	OpenQueue QueueActionFn
 	// CloseQueue will set state of queue to close
 	CloseQueue QueueActionFn
+	// ClearClosedByParentAnnotation marks the queue as explicitly closed, so
+	// it is not automatically reopened when its parent queue reopens. It
+	// returns the patched queue so callers can replace their stale reference.
+	ClearClosedByParentAnnotation func(queue *v1beta1.Queue) (*v1beta1.Queue, error)
 )
 
-// NewState gets the state from queue status.
-func NewState(queue *v1beta1.Queue) State {
+// NewState gets the state from queue status. event is the event of the request that
+// triggered this action, used to tell an explicit user command (v1alpha1.CommandIssuedEvent)
+// apart from an action the controller cascaded automatically (e.g. closing a child queue
+// because its parent closed).
+func NewState(queue *v1beta1.Queue, event v1alpha1.Event) State {
 	switch queue.Status.State {
 	case "", v1beta1.QueueStateOpen:
 		return &openState{queue: queue}
 	case v1beta1.QueueStateClosed:
-		return &closedState{queue: queue}
+		return &closedState{queue: queue, event: event}
 	case v1beta1.QueueStateClosing:
-		return &closingState{queue: queue}
+		return &closingState{queue: queue, event: event}
 	case v1beta1.QueueStateUnknown:
 		return &unknownState{queue: queue}
 	}
