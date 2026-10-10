@@ -1079,6 +1079,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 				inqueue:           api.EmptyResource(),
 				guarantee:         api.EmptyResource(),
 				resourceClaimRefs: make(map[string]int),
+				reservedSubtree:   api.EmptyResource(),
 			}
 			if len(queue.Queue.Spec.Capability) != 0 {
 				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
