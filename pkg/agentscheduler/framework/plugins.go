@@ -169,32 +169,27 @@ func (f *Framework) BatchNodeOrderFn(task *api.TaskInfo, nodes []*api.NodeInfo) 
 	return priorityScore, nil
 }
 
-// NodeOrderMapFn invoke node order function of the plugins
-func (f *Framework) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, float64, error) {
+// NodeOrderMapFn invokes node map functions of the plugins.
+func (f *Framework) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, error) {
+	if len(f.NodeMapFns) == 0 {
+		return nil, nil
+	}
 	nodeScoreMap := map[string]float64{}
-	var priorityScore float64
 	for _, tier := range f.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledNodeOrder) {
 				continue
 			}
-			if pfn, found := f.NodeOrderFns[plugin.Name]; found {
-				score, err := pfn(task, node)
-				if err != nil {
-					return nodeScoreMap, priorityScore, err
-				}
-				priorityScore += score
-			}
 			if pfn, found := f.NodeMapFns[plugin.Name]; found {
 				score, err := pfn(task, node)
 				if err != nil {
-					return nodeScoreMap, priorityScore, err
+					return nodeScoreMap, err
 				}
 				nodeScoreMap[plugin.Name] = score
 			}
 		}
 	}
-	return nodeScoreMap, priorityScore, nil
+	return nodeScoreMap, nil
 }
 
 // NodeOrderReduceFn invoke node order function of the plugins
