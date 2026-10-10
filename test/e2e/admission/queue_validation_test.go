@@ -176,7 +176,7 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Should reject queue creation with only guarantee resource (deserved required)", func() {
+	ginkgo.It("Should allow queue creation with only guarantee resource", func() {
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
 
@@ -196,8 +196,11 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 		}
 
 		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("must be >= guarantee"))
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		// Cleanup
+		err = testCtx.Vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), queue.Name, metav1.DeleteOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
 	ginkgo.It("Should reject queue creation with capability less than deserved", func() {
@@ -251,7 +254,7 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("must be >= guarantee"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("must be <= capability"))
 	})
 
 	ginkgo.It("Should reject queue creation with deserved less than guarantee", func() {
@@ -337,7 +340,7 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Should reject queue creation with guarantee resource type not in deserved", func() {
+	ginkgo.It("Should allow queue creation with guarantee resource type not in deserved", func() {
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
 
@@ -360,8 +363,11 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 		}
 
 		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("must be >= guarantee"))
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		// Cleanup
+		err = testCtx.Vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), queue.Name, metav1.DeleteOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
 	// Test hierarchical queue annotations
