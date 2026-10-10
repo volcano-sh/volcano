@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -87,7 +88,19 @@ func getCommonFlags(master string) util.CommonFlags {
 
 func TestCreateQueue(t *testing.T) {
 	InitCreateFlags(&cobra.Command{})
-	server := getTestQueueHTTPServer(t)
+
+	// Record each request so the test can tell whether the close command was sent.
+	var paths []string
+	response := v1beta1.Queue{}
+	response.Name = "testQueue"
+	response.Spec.Weight = int32(2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		if val, err := json.Marshal(response); err == nil {
+			w.Write(val)
+		}
+	}))
 	defer server.Close()
 
 	createQueueFlags.CommonFlags = getCommonFlags(server.URL)
@@ -96,17 +109,45 @@ func TestCreateQueue(t *testing.T) {
 
 	testCases := []struct {
 		Name        string
+		State       string
 		ExpectValue error
+		WantClose   bool
 	}{
 		{
 			Name:        "CreateQueue",
+			State:       string(v1beta1.QueueStateOpen),
 			ExpectValue: nil,
+		},
+		{
+			Name:        "CreateQueue, state in the lower case the operate flags use",
+			State:       strings.ToLower(string(v1beta1.QueueStateOpen)),
+			ExpectValue: nil,
+		},
+		{
+			Name:        "CreateQueue with state Closed closes it after creating",
+			State:       string(v1beta1.QueueStateClosed),
+			ExpectValue: nil,
+			WantClose:   true,
 		},
 	}
 	for _, testcase := range testCases {
+		paths = nil
+		createQueueFlags.State = testcase.State
+
 		err := CreateQueue(context.TODO())
-		if err != nil {
+		if false == reflect.DeepEqual(err, testcase.ExpectValue) {
 			t.Errorf("(%s): expected: %v, got %v ", testcase.Name, testcase.ExpectValue, err)
+		}
+
+		gotClose := false
+		for _, path := range paths {
+			if strings.HasPrefix(path, http.MethodPost) && strings.HasSuffix(path, "/commands") {
+				gotClose = true
+			}
+		}
+		if gotClose != testcase.WantClose {
+			t.Errorf("(%s): close command sent = %v, want %v, requests were %v",
+				testcase.Name, gotClose, testcase.WantClose, paths)
 		}
 	}
 }

@@ -18,11 +18,13 @@ package queue
 
 import (
 	"context"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/util"
@@ -46,7 +48,8 @@ func InitCreateFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&createQueueFlags.Name, "name", "n", "test", "the name of queue")
 	cmd.Flags().Int32VarP(&createQueueFlags.Weight, "weight", "w", 1, "the weight of the queue")
 
-	cmd.Flags().StringVarP(&createQueueFlags.State, "state", "S", "Open", "the state of queue")
+	cmd.Flags().StringVarP(&createQueueFlags.State, "state", "S", "Open",
+		"the state of queue, Open is the only state a queue can be created in")
 }
 
 // CreateQueue create queue.
@@ -56,6 +59,8 @@ func CreateQueue(ctx context.Context) error {
 		return err
 	}
 
+	// Queue has a status subresource, so a status set here never reaches the
+	// cluster. The queue controller owns the state.
 	queue := &schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: createQueueFlags.Name,
@@ -63,14 +68,15 @@ func CreateQueue(ctx context.Context) error {
 		Spec: schedulingv1beta1.QueueSpec{
 			Weight: createQueueFlags.Weight,
 		},
-		Status: schedulingv1beta1.QueueStatus{
-			State: schedulingv1beta1.QueueState(createQueueFlags.State),
-		},
 	}
 
 	queueClient := versioned.NewForConfigOrDie(config)
 	if _, err := queueClient.SchedulingV1beta1().Queues().Create(ctx, queue, metav1.CreateOptions{}); err != nil {
 		return err
+	}
+
+	if strings.EqualFold(createQueueFlags.State, string(schedulingv1beta1.QueueStateClosed)) {
+		return createQueueCommand(ctx, config, v1alpha1.CloseQueueAction, createQueueFlags.Name)
 	}
 
 	return nil
