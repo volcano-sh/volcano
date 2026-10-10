@@ -192,7 +192,7 @@ type PodGroupSpec struct {
 	// +optional
 	// +kubebuilder:default:="default"
 	// +kubebuilder:validation:MaxLength=253
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+	// +kubebuilder:validation:Pattern=`^(namespace/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	Queue string `json:"queue,omitempty" protobuf:"bytes,2,opt,name=queue"`
 
 	// If specified, indicates the PodGroup's priority. "system-node-critical" and
@@ -224,6 +224,10 @@ type PodGroupSpec struct {
 	// Concurrent use with minTaskMember is not recommended, and SubGroupPolicy is the long-term evolution direction.
 	// +optional
 	SubGroupPolicy []SubGroupPolicySpec `json:"subGroupPolicy,omitempty" protobuf:"bytes,6,opt,name=subGroupPolicy"`
+
+	// TopologyAffinity expresses inter-group topology affinity and anti-affinity on the HyperNode tree.
+	// +optional
+	TopologyAffinity *TopologyAffinitySpec `json:"topologyAffinity,omitempty" protobuf:"bytes,7,opt,name=topologyAffinity"`
 }
 
 type SubGroupPolicySpec struct {
@@ -294,6 +298,38 @@ type NetworkTopologySpec struct {
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	HighestTierName string `json:"highestTierName,omitempty" protobuf:"bytes,3,opt,name=highestTierName"`
+}
+
+// TopologyAffinitySpec holds group topology affinity and anti-affinity rules.
+type TopologyAffinitySpec struct {
+	// +optional
+	PodGroupAntiAffinity *PodGroupAntiAffinity `json:"podGroupAntiAffinity,omitempty" protobuf:"bytes,1,opt,name=podGroupAntiAffinity"`
+}
+
+// PodGroupAntiAffinity defines required/preferred anti-affinity against other PodGroups.
+type PodGroupAntiAffinity struct {
+	// +optional
+	Required []PodGroupAffinityTerm `json:"required,omitempty" protobuf:"bytes,1,rep,name=required"`
+	// +optional
+	Preferred []PodGroupAffinityTerm `json:"preferred,omitempty" protobuf:"bytes,2,rep,name=preferred"`
+}
+
+// PodGroupAffinityTerm selects matching PodGroups and the topology tier for HyperNode comparison.
+type PodGroupAffinityTerm struct {
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	Weight int32 `json:"weight,omitempty" protobuf:"varint,1,opt,name=weight"`
+	// +required
+	PodGroupSelector *metav1.LabelSelector `json:"podGroupSelector" protobuf:"bytes,2,opt,name=podGroupSelector"`
+	// +optional
+	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty" protobuf:"bytes,3,opt,name=namespaceSelector"`
+	// +kubebuilder:validation:MaxLength=253
+	// +optional
+	TopologyTierName string `json:"topologyTierName,omitempty" protobuf:"bytes,4,opt,name=topologyTierName"`
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	TopologyTier *int32 `json:"topologyTier,omitempty" protobuf:"varint,5,opt,name=topologyTier"`
 }
 
 // PodGroupStatus represents the current state of a pod group.
@@ -367,6 +403,131 @@ type Queue struct {
 	// The status of queue.
 	// +optional
 	Status QueueStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=namespacequeues,scope=Namespaced,shortName=nq
+// +kubebuilder:printcolumn:name="PARENT",type=string,JSONPath=`.spec.parent`
+// +kubebuilder:printcolumn:name="STATE",type=string,JSONPath=`.status.state`
+// +kubebuilder:printcolumn:name="AGE",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// NamespaceQueue is a namespace-scoped queue abstraction in Volcano scheduling.
+type NamespaceQueue struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// ObjectMeta contains standard Kubernetes object metadata.
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	// Spec defines the desired NamespaceQueue behavior.
+	// +optional
+	Spec NamespaceQueueSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+
+	// Status reports the observed NamespaceQueue lifecycle and workload state.
+	// +optional
+	Status NamespaceQueueStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
+}
+
+// NamespaceQueueSpec represents the desired behavior of NamespaceQueue.
+type NamespaceQueueSpec struct {
+	// Parent can be a cluster Queue or another NamespaceQueue in the same namespace.
+	// "cluster/<name>" refers to a cluster-scoped Queue.
+	// An unprefixed value refers to a NamespaceQueue in the same namespace.
+	// +optional
+	// +kubebuilder:default:="cluster/default"
+	// +kubebuilder:validation:MaxLength=261
+	// +kubebuilder:validation:Pattern=`^(cluster/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+	Parent string `json:"parent,omitempty" protobuf:"bytes,1,opt,name=parent"`
+
+	// Capability limits the resources that this NamespaceQueue may consume.
+	// +optional
+	Capability v1.ResourceList `json:"capability,omitempty" protobuf:"bytes,2,opt,name=capability"`
+
+	// Reclaimable controls whether workloads in this NamespaceQueue may be reclaimed.
+	// +optional
+	Reclaimable *bool `json:"reclaimable,omitempty" protobuf:"bytes,3,opt,name=reclaimable"`
+
+	// Guarantee reserves resources for this NamespaceQueue and its descendants.
+	// +optional
+	Guarantee Guarantee `json:"guarantee,omitempty" protobuf:"bytes,4,opt,name=guarantee"`
+
+	// Deserved declares the fair-share resource entitlement for this NamespaceQueue.
+	// +optional
+	Deserved v1.ResourceList `json:"deserved,omitempty" protobuf:"bytes,5,opt,name=deserved"`
+
+	// Priority influences queue ordering during scheduling and reclamation.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	Priority int32 `json:"priority,omitempty" protobuf:"varint,6,opt,name=priority"`
+
+	// DequeueStrategy controls how descendants are traversed when work is dequeued.
+	// +optional
+	// +kubebuilder:default:=traverse
+	// +kubebuilder:validation:Enum=fifo;traverse
+	DequeueStrategy DequeueStrategy `json:"dequeueStrategy,omitempty" protobuf:"bytes,7,opt,name=dequeueStrategy"`
+}
+
+// NamespaceQueueStatus represents the current status of NamespaceQueue.
+type NamespaceQueueStatus struct {
+	// State is the observed lifecycle state of the NamespaceQueue.
+	// +kubebuilder:validation:Enum=Open;Closed;Closing;Unknown
+	// +optional
+	State QueueState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state"`
+
+	// Unknown counts PodGroups whose phase is unset or not recognized.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Unknown int32 `json:"unknown,omitempty" protobuf:"varint,2,opt,name=unknown"`
+
+	// Pending counts PodGroups waiting for scheduling.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Pending int32 `json:"pending,omitempty" protobuf:"varint,3,opt,name=pending"`
+
+	// Running counts PodGroups with running workloads.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Running int32 `json:"running,omitempty" protobuf:"varint,4,opt,name=running"`
+
+	// Inqueue counts PodGroups admitted to the scheduling queue.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Inqueue int32 `json:"inqueue,omitempty" protobuf:"varint,5,opt,name=inqueue"`
+
+	// Completed counts PodGroups that have finished execution.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Completed int32 `json:"completed,omitempty" protobuf:"varint,6,opt,name=completed"`
+
+	// Reservation records scheduler-owned node reservations.
+	// +optional
+	Reservation Reservation `json:"reservation,omitempty" protobuf:"bytes,7,opt,name=reservation"`
+
+	// Allocated records scheduler-owned resources allocated to the queue.
+	// +optional
+	Allocated v1.ResourceList `json:"allocated,omitempty" protobuf:"bytes,8,opt,name=allocated"`
+
+	// Conditions describe authorization and scheduling readiness transitions.
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty" protobuf:"bytes,9,rep,name=conditions"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+
+// NamespaceQueueList is a collection of namespace queues.
+type NamespaceQueueList struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// +optional
+	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	Items []NamespaceQueue `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
 
 // Guarantee represents configuration of queue resource reservation
@@ -505,6 +666,18 @@ type QueueSpec struct {
 	// +kubebuilder:default:=traverse
 	// +kubebuilder:validation:Enum=fifo;traverse
 	DequeueStrategy DequeueStrategy `json:"dequeueStrategy,omitempty" protobuf:"bytes,11,opt,name=dequeueStrategy"`
+
+	// AllowedNamespaces lists the namespaces whose NamespaceQueues may use
+	// this Queue as their cluster-scoped parent.
+	// An empty or omitted list denies attachment.
+	// The literal "*" allows all namespaces and must be the only entry when present.
+	//
+	// +optional
+	// +listType=set
+	// +kubebuilder:validation:items:MaxLength=63
+	// +kubebuilder:validation:items:Pattern=`^(\*|[a-z0-9]([-a-z0-9]*[a-z0-9])?)$`
+	// +kubebuilder:validation:XValidation:rule="!self.exists(x, x == '*') || size(self) == 1",message="the wildcard '*' must be the only entry"
+	AllowedNamespaces []string `json:"allowedNamespaces,omitempty" protobuf:"bytes,12,rep,name=allowedNamespaces"`
 }
 
 type DequeueStrategy string

@@ -28,12 +28,14 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
 	"volcano.sh/volcano/pkg/scheduler/actions/reclaim"
@@ -46,6 +48,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 func TestMain(m *testing.M) {
@@ -1196,6 +1199,78 @@ func buildQueueWithParents(name string, parent string, deserved corev1.ResourceL
 	return queue
 }
 
+func TestNamespaceQueueChildDoesNotBlockOtherSchedulingAfterParentOccupied(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	enabled := true
+	test := uthelper.TestCommonStruct{
+		Name: "parent has an admitted Job before NamespaceQueue child appears",
+		Plugins: map[string]framework.PluginBuilder{
+			PluginName: New, predicates.PluginName: predicates.New, gang.PluginName: gang.New,
+		},
+		Nodes: []*corev1.Node{util.BuildNode("n1", api.BuildResourceList("4", "4Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)},
+		Pods: []*corev1.Pod{
+			util.BuildPod("ns1", "running-parent", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg-running", nil, nil),
+			util.BuildPod("ns1", "old-parent", "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), "pg-parent", nil, nil),
+			util.BuildPod("ns1", "child-work", "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), "pg-child", nil, nil),
+		},
+		PodGroups: []*schedulingv1beta1.PodGroup{
+			util.BuildPodGroup("pg-running", "ns1", "parent", 1, nil, schedulingv1beta1.PodGroupRunning),
+			util.BuildPodGroup("pg-parent", "ns1", "parent", 1, nil, schedulingv1beta1.PodGroupInqueue),
+			util.BuildPodGroup("pg-child", "ns1", "child", 1, nil, schedulingv1beta1.PodGroupInqueue),
+		},
+		Queues: []*schedulingv1beta1.Queue{
+			buildQueueWithParents("root", "", nil, nil),
+			buildQueueWithParents("parent", "root", nil, nil),
+			buildQueueWithParents("child", "parent", nil, nil),
+		},
+		ExpectBindMap:  map[string]string{"ns1/child-work": "n1"},
+		ExpectBindsNum: 1,
+	}
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{
+		{Name: predicates.PluginName, EnabledPredicate: &enabled},
+		{Name: gang.PluginName, EnabledJobStarving: &enabled},
+	}}}
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+	// The session sees the newly added child as a NamespaceQueue while the
+	// parent still has a previously admitted Job in its snapshot.
+	child, err := api.NewNamespaceQueueInfo(&scheduling.NamespaceQueue{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "ns1", Name: "child", Generation: 1},
+		Spec:       scheduling.NamespaceQueueSpec{Parent: "cluster/parent"},
+		Status: scheduling.NamespaceQueueStatus{
+			State: scheduling.QueueStateOpen,
+			Conditions: []metav1.Condition{
+				{Type: commonutil.NamespaceQueueAuthorizedCondition, Status: metav1.ConditionTrue, ObservedGeneration: 1},
+				{Type: commonutil.NamespaceQueueReadyCondition, Status: metav1.ConditionTrue, ObservedGeneration: 1},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(ssn.Queues, api.QueueID("child"))
+	ssn.Queues[child.UID] = child
+	for _, job := range ssn.Jobs {
+		if job.Queue == api.QueueID("child") {
+			job.Queue = child.UID
+			job.PodGroup.Spec.Queue = "namespace/child"
+		}
+	}
+	ssn.Tiers[0].Plugins = append(ssn.Tiers[0].Plugins, conf.PluginOption{
+		Name: PluginName, EnabledAllocatable: &enabled, EnabledHierarchy: &enabled,
+	})
+	plugin := New(nil).(*capacityPlugin)
+	plugin.OnSessionOpen(ssn)
+	defer plugin.OnSessionClose(ssn)
+	if got := plugin.queueOpts[api.QueueID("parent")].allocated.MilliCPU; got != 1000 {
+		t.Fatalf("parent allocation = %v, want 1000 millicores for the running Job", got)
+	}
+	test.Run([]framework.Action{allocate.New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func Test_updateQueueAttrShare(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -1781,7 +1856,7 @@ func TestSharedResourceClaimIsChargedOnce(t *testing.T) {
 	}
 
 	queue := &api.QueueInfo{UID: queueID, Name: "q1"}
-	if !cp.queueAllocatable(queue, taskA, true, false) {
+	if !cp.queueAllocatable(queue, taskA, true, false, false) {
 		t.Fatalf("shared claim should not consume additional DRA quota when the claim is already referenced by the queue")
 	}
 
@@ -1798,7 +1873,7 @@ func TestSharedResourceClaimIsChargedOnce(t *testing.T) {
 			"gpu.com": {Count: 1},
 		},
 	}
-	if cp.queueAllocatable(queue, distinctTask, true, false) {
+	if cp.queueAllocatable(queue, distinctTask, true, false, false) {
 		t.Fatalf("distinct claim should still be rejected when it exceeds remaining DRA quota")
 	}
 

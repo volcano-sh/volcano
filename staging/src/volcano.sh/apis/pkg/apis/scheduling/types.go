@@ -208,6 +208,10 @@ type PodGroupSpec struct {
 	// Concurrent use with minTaskMember is not recommended, and SubGroupPolicy is the long-term evolution direction.
 	// +optional
 	SubGroupPolicy []SubGroupPolicySpec `json:"subGroupPolicy,omitempty" protobuf:"bytes,7,rep,name=subGroupPolicy"`
+
+	// TopologyAffinity expresses inter-group topology affinity and anti-affinity on the HyperNode tree.
+	// +optional
+	TopologyAffinity *TopologyAffinitySpec `json:"topologyAffinity,omitempty" protobuf:"bytes,8,opt,name=topologyAffinity"`
 }
 
 type SubGroupPolicySpec struct {
@@ -275,6 +279,26 @@ type NetworkTopologySpec struct {
 	HighestTierName string `json:"highestTierName,omitempty" protobuf:"bytes,3,opt,name=highestTierName"`
 }
 
+// TopologyAffinitySpec holds group topology affinity and anti-affinity rules.
+type TopologyAffinitySpec struct {
+	PodGroupAntiAffinity *PodGroupAntiAffinity `json:"podGroupAntiAffinity,omitempty" protobuf:"bytes,1,opt,name=podGroupAntiAffinity"`
+}
+
+// PodGroupAntiAffinity defines required/preferred anti-affinity against other PodGroups.
+type PodGroupAntiAffinity struct {
+	Required  []PodGroupAffinityTerm `json:"required,omitempty" protobuf:"bytes,1,rep,name=required"`
+	Preferred []PodGroupAffinityTerm `json:"preferred,omitempty" protobuf:"bytes,2,rep,name=preferred"`
+}
+
+// PodGroupAffinityTerm selects matching PodGroups and the topology tier for HyperNode comparison.
+type PodGroupAffinityTerm struct {
+	Weight            int32                 `json:"weight,omitempty" protobuf:"varint,1,opt,name=weight"`
+	PodGroupSelector  *metav1.LabelSelector `json:"podGroupSelector" protobuf:"bytes,2,opt,name=podGroupSelector"`
+	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty" protobuf:"bytes,3,opt,name=namespaceSelector"`
+	TopologyTierName  string                `json:"topologyTierName,omitempty" protobuf:"bytes,4,opt,name=topologyTierName"`
+	TopologyTier      *int32                `json:"topologyTier,omitempty" protobuf:"varint,5,opt,name=topologyTier"`
+}
+
 // PodGroupStatus represents the current state of a pod group.
 type PodGroupStatus struct {
 	// Current phase of PodGroup.
@@ -331,6 +355,91 @@ type Queue struct {
 	// The status of queue.
 	// +optional
 	Status QueueStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// NamespaceQueue is a namespace-scoped queue abstraction in Volcano scheduling.
+type NamespaceQueue struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	// +optional
+	Spec NamespaceQueueSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+
+	// +optional
+	Status NamespaceQueueStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
+}
+
+// NamespaceQueueSpec represents the desired behavior of NamespaceQueue.
+type NamespaceQueueSpec struct {
+	// Parent can be a cluster Queue or another NamespaceQueue in the same namespace.
+	// "cluster/<name>" refers to a cluster-scoped Queue.
+	// An unprefixed value refers to a NamespaceQueue in the same namespace.
+	Parent string `json:"parent,omitempty" protobuf:"bytes,1,opt,name=parent"`
+
+	// +optional
+	Capability v1.ResourceList `json:"capability,omitempty" protobuf:"bytes,2,opt,name=capability"`
+
+	// +optional
+	Reclaimable *bool `json:"reclaimable,omitempty" protobuf:"bytes,3,opt,name=reclaimable"`
+
+	// +optional
+	Guarantee Guarantee `json:"guarantee,omitempty" protobuf:"bytes,4,opt,name=guarantee"`
+
+	// +optional
+	Deserved v1.ResourceList `json:"deserved,omitempty" protobuf:"bytes,5,opt,name=deserved"`
+
+	// +optional
+	Priority int32 `json:"priority,omitempty" protobuf:"varint,6,opt,name=priority"`
+
+	// +optional
+	DequeueStrategy DequeueStrategy `json:"dequeueStrategy,omitempty" protobuf:"bytes,7,opt,name=dequeueStrategy"`
+}
+
+// NamespaceQueueStatus represents the current status of NamespaceQueue.
+type NamespaceQueueStatus struct {
+	// +optional
+	State QueueState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state"`
+
+	// +optional
+	Unknown int32 `json:"unknown,omitempty" protobuf:"varint,2,opt,name=unknown"`
+
+	// +optional
+	Pending int32 `json:"pending,omitempty" protobuf:"varint,3,opt,name=pending"`
+
+	// +optional
+	Running int32 `json:"running,omitempty" protobuf:"varint,4,opt,name=running"`
+
+	// +optional
+	Inqueue int32 `json:"inqueue,omitempty" protobuf:"varint,5,opt,name=inqueue"`
+
+	// +optional
+	Completed int32 `json:"completed,omitempty" protobuf:"varint,6,opt,name=completed"`
+
+	// +optional
+	Reservation Reservation `json:"reservation,omitempty" protobuf:"bytes,7,opt,name=reservation"`
+
+	// +optional
+	Allocated v1.ResourceList `json:"allocated,omitempty" protobuf:"bytes,8,opt,name=allocated"`
+
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty" protobuf:"bytes,9,rep,name=conditions"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// NamespaceQueueList is a collection of namespace queues.
+type NamespaceQueueList struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// +optional
+	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	Items []NamespaceQueue `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
 
 // Guarantee represents configuration of queue resource reservation
@@ -451,6 +560,11 @@ type QueueSpec struct {
 	// DequeueStrategy defines the dequeue strategy of queue
 	// +optional
 	DequeueStrategy DequeueStrategy `json:"dequeueStrategy,omitempty" protobuf:"bytes,11,opt,name=dequeueStrategy"`
+
+	// AllowedNamespaces lists the namespaces whose NamespaceQueues are permitted
+	// to set this Queue as their spec.parent. Empty means deny by default.
+	// +optional
+	AllowedNamespaces []string `json:"allowedNamespaces,omitempty" protobuf:"bytes,12,rep,name=allowedNamespaces"`
 }
 
 type DequeueStrategy string
