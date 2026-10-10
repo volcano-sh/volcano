@@ -129,6 +129,7 @@ type Session struct {
 	victimQueueOrderFns map[string]api.VictimCompareFn
 	taskOrderFns        map[string]api.CompareFn
 	clusterOrderFns     map[string]api.CompareFn
+	queueNodesFns       map[string]api.QueueNodesFn
 	predicateFns        map[string]api.PredicateFn
 	prePredicateFns     map[string]api.PrePredicateFn
 	bestNodeFns         map[string]api.BestNodeFn
@@ -217,6 +218,7 @@ func openSession(schedulerCache cache.Cache, unschedulableJobCache unschedulable
 		victimQueueOrderFns:           map[string]api.VictimCompareFn{},
 		taskOrderFns:                  map[string]api.CompareFn{},
 		clusterOrderFns:               map[string]api.CompareFn{},
+		queueNodesFns:                 map[string]api.QueueNodesFn{},
 		predicateFns:                  map[string]api.PredicateFn{},
 		prePredicateFns:               map[string]api.PrePredicateFn{},
 		bestNodeFns:                   map[string]api.BestNodeFn{},
@@ -552,6 +554,7 @@ func closeSession(ssn *Session) {
 	ssn.jobOrderFns = nil
 	ssn.queueOrderFns = nil
 	ssn.clusterOrderFns = nil
+	ssn.queueNodesFns = nil
 	ssn.NodeList = nil
 	ssn.TotalResource = nil
 

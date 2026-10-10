@@ -24,6 +24,7 @@ package allocate
 import (
 	"fmt"
 	"os"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -53,6 +54,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	networktopologyaware "volcano.sh/volcano/pkg/scheduler/plugins/network-topology-aware"
+	"volcano.sh/volcano/pkg/scheduler/plugins/nodegroup"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
@@ -6650,4 +6652,213 @@ func hasNodeGrowthKeyForDimension(keys []unschedulable.HintKey, node, dimension 
 		}
 	}
 	return false
+}
+
+func TestAllocateNodeGroupCandidates(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		allowedGroup     string
+		requestCPU       string
+		requestMemory    string
+		wantVisits       int32
+		wantAllocated    int
+		resourceLimit    string
+		nominatedNode    string
+		disableNodeGroup bool
+		omitNodeGroup    bool
+	}{
+		{name: "group members only", allowedGroup: "group1", requestCPU: "1", requestMemory: "4Gi", wantVisits: 90, wantAllocated: 3},
+		{name: "small tasks still use group filter", allowedGroup: "group1", requestCPU: "100m", requestMemory: "1Gi", wantVisits: 90, wantAllocated: 3},
+		{name: "quota checked after each allocation", allowedGroup: "group1", requestCPU: "1", requestMemory: "4Gi", resourceLimit: `{"group1":{"cpu":"1"}}`, wantVisits: 90, wantAllocated: 1},
+		{name: "nominated node still checked", allowedGroup: "group1", requestCPU: "1", requestMemory: "4Gi", nominatedNode: "node-249", wantVisits: 90, wantAllocated: 3},
+		{name: "disabled predicate uses all nodes", allowedGroup: "missing", requestCPU: "1", requestMemory: "4Gi", disableNodeGroup: true, wantVisits: -1, wantAllocated: 3},
+		{name: "absent plugin uses all nodes", allowedGroup: "missing", requestCPU: "1", requestMemory: "4Gi", omitNodeGroup: true, wantVisits: -1, wantAllocated: 3},
+		{name: "no matching group", allowedGroup: "missing", requestCPU: "1", requestMemory: "4Gi"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			queue := util.MakeQueue("q1").Affinity(&schedulingv1.Affinity{
+				NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: []string{tc.allowedGroup},
+				},
+			}).Obj()
+			if tc.resourceLimit != "" {
+				queue.Annotations = map[string]string{"volcano.sh/nodegroup-resource-limits": tc.resourceLimit}
+			}
+			common := uthelper.TestCommonStruct{
+				Name:   tc.name,
+				Queues: []*schedulingv1.Queue{queue},
+
+				Plugins: map[string]framework.PluginBuilder{nodegroup.PluginName: nodegroup.New, nodeorder.PluginName: nodeorder.New},
+			}
+			for i := 0; i < 250; i++ {
+				group := "group2"
+				if i < 30 {
+					group = "group1"
+				}
+				common.Nodes = append(common.Nodes, util.BuildNode(fmt.Sprintf("node-%03d", i),
+					api.BuildResourceList("100", "400Gi", api.ScalarResource{Name: "pods", Value: "100"}), map[string]string{schedulingv1.NodeGroupNameKey: group}))
+			}
+			for i := 0; i < 3; i++ {
+				pg := fmt.Sprintf("pg%d", i)
+				common.PodGroups = append(common.PodGroups, util.BuildPodGroup(pg, "ns", "q1", 1, nil, schedulingv1.PodGroupInqueue))
+				pod := util.BuildPod("ns", fmt.Sprintf("p%d", i), "", v1.PodPending,
+					api.BuildResourceList(tc.requestCPU, tc.requestMemory), pg, nil, nil)
+				pod.Status.NominatedNodeName = tc.nominatedNode
+				common.Pods = append(common.Pods, pod)
+			}
+			plugins := []conf.PluginOption{{Name: nodeorder.PluginName, EnabledPredicate: ptr.To(true)}}
+			if !tc.omitNodeGroup {
+				plugins = append(plugins, conf.PluginOption{Name: nodegroup.PluginName, EnabledPredicate: ptr.To(!tc.disableNodeGroup)})
+			}
+			ssn := common.RegisterSession([]conf.Tier{{Plugins: plugins}}, nil)
+			defer common.Close()
+			var visits atomic.Int32
+			ssn.AddPredicateFn(nodeorder.PluginName, func(task *api.TaskInfo, node *api.NodeInfo) error {
+				visits.Add(1)
+				return nil
+			})
+			filterCalls := 0
+			ssn.AddQueueNodesFn(nodeorder.PluginName, func(_ *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
+				filterCalls++
+				return nodes
+			})
+			action := New()
+			common.Run([]framework.Action{action})
+			assert.Equal(t, 1, filterCalls, "one candidate calculation per queue per allocate round")
+			assert.Nil(t, action.queueNodes, "candidates must not outlive the allocate round")
+			if tc.wantVisits >= 0 {
+				assert.Equal(t, tc.wantVisits, visits.Load())
+			} else {
+				assert.Greater(t, visits.Load(), int32(0))
+			}
+			allocated := 0
+			for _, job := range ssn.Jobs {
+				for _, task := range job.Tasks {
+					if task.NodeName != "" {
+						allocated++
+						if !tc.disableNodeGroup && !tc.omitNodeGroup {
+							assert.Equal(t, tc.allowedGroup, ssn.Nodes[task.NodeName].Node.Labels[schedulingv1.NodeGroupNameKey])
+						}
+					}
+				}
+			}
+			assert.Equal(t, tc.wantAllocated, allocated)
+			common.Run([]framework.Action{action})
+			if allocated < 3 {
+				assert.Equal(t, 2, filterCalls, "pending tasks must get fresh candidates next round")
+			} else {
+				assert.Equal(t, 1, filterCalls, "queues without pending tasks need no candidates")
+			}
+		})
+	}
+}
+
+// Benchmark only the per-task predicate phase; the queue filter is computed once
+// before timing, as it is reused across tasks by allocate.
+func BenchmarkNodeGroupCandidatePredicates(b *testing.B) {
+	common := uthelper.TestCommonStruct{
+		Name: "nodegroup candidate predicates",
+		Queues: []*schedulingv1.Queue{util.MakeQueue("q1").Affinity(&schedulingv1.Affinity{
+			NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []string{"group1"},
+			},
+		}).Obj()},
+		PodGroups: []*schedulingv1.PodGroup{util.BuildPodGroup("pg1", "ns", "q1", 1, nil, schedulingv1.PodGroupInqueue)},
+		Pods:      []*v1.Pod{util.BuildPod("ns", "p1", "", v1.PodPending, api.BuildResourceList("1", "4Gi"), "pg1", nil, nil)},
+		Plugins:   map[string]framework.PluginBuilder{nodegroup.PluginName: nodegroup.New},
+	}
+	for i := 0; i < 250; i++ {
+		group := "group2"
+		if i < 30 {
+			group = "group1"
+		}
+		common.Nodes = append(common.Nodes, util.BuildNode(fmt.Sprintf("node-%03d", i),
+			api.BuildResourceList("100", "400Gi", api.ScalarResource{Name: "pods", Value: "100"}), map[string]string{schedulingv1.NodeGroupNameKey: group}))
+	}
+	ssn := common.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{{Name: nodegroup.PluginName, EnabledPredicate: ptr.To(true)}}}}, nil)
+	defer common.Close()
+	job := ssn.Jobs[api.JobID("ns/pg1")]
+	task := job.Tasks[api.TaskID("ns-p1")]
+	filtered := ssn.QueueNodesFn(ssn.Queues[job.Queue], ssn.NodeList)
+	action := New()
+	action.session = ssn
+	for _, tc := range []struct {
+		name  string
+		nodes []*api.NodeInfo
+	}{
+		{name: "all_nodes", nodes: ssn.NodeList},
+		{name: "nodegroup_candidates", nodes: filtered},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			ph := util.NewPredicateHelper()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				candidates, _ := ph.PredicateNodes(task, tc.nodes, action.predicate, false, ssn.NodesInShard)
+				if len(candidates) != 30 {
+					b.Fatalf("expected 30 feasible nodes, got %d", len(candidates))
+				}
+			}
+			b.ReportMetric(float64(len(tc.nodes)), "candidates/task")
+		})
+	}
+}
+
+func TestQueueCandidatesPreserveSamplingTarget(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		candidates int
+		percentage int32
+		minimum    int32
+		wantScored int32
+	}{
+		{name: "adaptive percentage", candidates: 1000, minimum: 100, wantScored: 680},
+		{name: "fixed percentage", candidates: 1000, percentage: 40, minimum: 100, wantScored: 800},
+		{name: "minimum feasible nodes", candidates: 1000, minimum: 900, wantScored: 900},
+		{name: "capped by candidates", candidates: 300, minimum: 100, wantScored: 300},
+		{name: "empty candidates", minimum: 100},
+		{name: "all feasible nodes", candidates: 1000, percentage: 100, minimum: 100, wantScored: 1000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			previousOpts := options.ServerOpts
+			opts := *previousOpts
+			opts.MinNodesToFind = tc.minimum
+			opts.MinPercentageOfNodesToFind = 5
+			opts.PercentageOfNodesToFind = tc.percentage
+			options.ServerOpts = &opts
+			t.Cleanup(func() { options.ServerOpts = previousOpts })
+
+			common := uthelper.TestCommonStruct{
+				Name: tc.name,
+				Queues: []*schedulingv1.Queue{util.MakeQueue("q1").Affinity(&schedulingv1.Affinity{
+					NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []string{"group1"},
+					},
+				}).Obj()},
+				PodGroups: []*schedulingv1.PodGroup{util.BuildPodGroup("pg1", "ns", "q1", 1, nil, schedulingv1.PodGroupInqueue)},
+				Pods:      []*v1.Pod{util.BuildPod("ns", "p1", "", v1.PodPending, api.BuildResourceList("1", "4Gi"), "pg1", nil, nil)},
+				Plugins:   map[string]framework.PluginBuilder{nodegroup.PluginName: nodegroup.New},
+			}
+			for i := 0; i < 2000; i++ {
+				group := "group2"
+				if i < tc.candidates {
+					group = "group1"
+				}
+				common.Nodes = append(common.Nodes, util.BuildNode(fmt.Sprintf("node-%04d", i),
+					api.BuildResourceList("100", "400Gi", api.ScalarResource{Name: "pods", Value: "100"}),
+					map[string]string{schedulingv1.NodeGroupNameKey: group}))
+			}
+			ssn := common.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{{
+				Name: nodegroup.PluginName, EnabledPredicate: ptr.To(true), EnabledNodeOrder: ptr.To(true),
+			}}}}, nil)
+			defer common.Close()
+			var scored atomic.Int32
+			ssn.AddNodeOrderFn(nodegroup.PluginName, func(_ *api.TaskInfo, node *api.NodeInfo) (float64, error) {
+				scored.Add(1)
+				return 0, nil
+			})
+			common.Run([]framework.Action{New()})
+			assert.Equal(t, tc.wantScored, scored.Load(), "scoring must retain the original root-scope sampling target")
+		})
+	}
 }
