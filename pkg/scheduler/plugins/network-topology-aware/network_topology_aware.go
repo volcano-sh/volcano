@@ -74,11 +74,11 @@ type networkTopologyAwarePlugin struct {
 	maxHyperNodesForEviction int
 	// hyperNodeResourceCache stores the resource status of hypernodes to avoid repeated calculation: hypernode -> resourceStatus
 	hyperNodeResourceCache map[string]*resourceStatus
-	// allocatedTasks tracks the tasks whose allocation has reduced idle/futureIdle
-	// in the current session and whose reduction has not been rolled back yet.
-	// The plugin instance is shared across sessions, so it is reset on every
-	// session open.
-	allocatedTasks set.Set[api.TaskID]
+	// idleDeductedTasks tracks the tasks with outstanding idle/futureIdle
+	// deductions that have not been rolled back yet. It distinguishes an
+	// allocation rollback from a pipeline rollback, since both reset the task
+	// to Pending before DeallocateFunc runs.
+	idleDeductedTasks set.Set[api.TaskID]
 }
 
 type priorityWeight struct {
@@ -159,6 +159,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 		hyperNodesTier:           &hyperNodesTier{},
 		maxHyperNodesForEviction: getMaxHyperNodesForEviction(arguments),
 		hyperNodeResourceCache:   make(map[string]*resourceStatus),
+		idleDeductedTasks:        set.New[api.TaskID](),
 	}
 	klog.V(5).InfoS("successfully built plugin", "name", PluginName, "arguments", plugin.String())
 	return &plugin
@@ -286,7 +287,6 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 	}()
 	nta.hyperNodesTier.init(ssn.HyperNodesTiers)
 	nta.initHyperNodeResourceCache(ssn)
-	nta.allocatedTasks = set.New[api.TaskID]()
 
 	ssn.AddHyperNodeOrderFn(nta.Name(), func(subJob *api.SubJobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
 		return nta.HyperNodeOrderFn(ssn, subJob, hyperNodes)
@@ -332,32 +332,55 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
-			nta.applyTaskResourceToCache(ssn, event.Task, true)
+			task := event.Task
+			// Statement.Allocate reduces idle/futureIdle only when the task is
+			// allocated. Statement.Pipeline also triggers AllocateFunc, but with the
+			// task in Pipelined status, so idle/futureIdle are left unchanged.
+			deductIdle := task.Status == api.Allocated
+
+			nta.forEachHyperNodeResource(ssn, task.NodeName, func(status *resourceStatus) {
+				status.used.Add(task.Resreq)
+				if deductIdle {
+					status.idle.SubWithoutAssert(task.Resreq)
+					status.futureIdle.SubWithoutAssert(task.Resreq)
+				}
+			})
+
+			if deductIdle {
+				nta.idleDeductedTasks.Insert(task.UID)
+			}
 		},
 		DeallocateFunc: func(event *framework.Event) {
-			nta.applyTaskResourceToCache(ssn, event.Task, false)
+			task := event.Task
+			// Restore idle/futureIdle only when rolling back an allocation that
+			// reduced them. Statement.unallocate and Statement.unPipeline both reset
+			// the task to Pending before invoking DeallocateFunc, so the task status
+			// alone cannot tell an allocation rollback from a pipeline rollback.
+			// idleDeductedTasks explicitly records the tasks whose allocation reduced
+			// idle/futureIdle and has not been rolled back yet. Evict (Releasing) is
+			// not an allocation rollback, so idle/futureIdle are not restored for it.
+			restoreIdle := task.Status != api.Releasing && nta.idleDeductedTasks.Has(task.UID)
+
+			nta.forEachHyperNodeResource(ssn, task.NodeName, func(status *resourceStatus) {
+				status.used.Sub(task.Resreq)
+				if restoreIdle {
+					status.idle.Add(task.Resreq)
+					status.futureIdle.Add(task.Resreq)
+				}
+			})
+
+			if restoreIdle {
+				nta.idleDeductedTasks.Delete(task.UID)
+			}
 		},
 	})
 }
 
-func (nta *networkTopologyAwarePlugin) applyTaskResourceToCache(ssn *framework.Session, task *api.TaskInfo, occupy bool) {
-	node := task.NodeName
-	// occupiesAllocatedIdle reports whether AllocateFunc should reduce idle/futureIdle.
-	// Statement.Allocate reduces them only when the task is allocated. Statement.Pipeline
-	// also triggers AllocateFunc, but with the task in Pipelined status, so idle/futureIdle
-	// are left unchanged for pipelined tasks.
-	occupiesAllocatedIdle := occupy && task.Status == api.Allocated
-	// releasesAllocatedIdle reports whether DeallocateFunc should restore idle/futureIdle.
-	// It must be true exactly when the matching AllocateFunc reduced them. Statement.unallocate
-	// and Statement.unPipeline both reset the task to Pending before invoking DeallocateFunc,
-	// so the task status alone cannot tell an allocation rollback from a pipeline rollback.
-	// allocatedTasks explicitly records the tasks whose allocation reduced idle/futureIdle
-	// and has not been rolled back yet, which distinguishes the two rollbacks. Evict
-	// (Releasing) is not an allocation rollback, so idle/futureIdle are not restored for it.
-	releasesAllocatedIdle := !occupy && task.Status != api.Releasing && nta.allocatedTasks.Has(task.UID)
-
+// forEachHyperNodeResource visits the cached resource status of every HyperNode
+// that contains the given node.
+func (nta *networkTopologyAwarePlugin) forEachHyperNodeResource(ssn *framework.Session, nodeName string, visit func(*resourceStatus)) {
 	for hyperNode := range ssn.HyperNodes {
-		if !ssn.RealNodesSet[hyperNode].Has(node) {
+		if !ssn.RealNodesSet[hyperNode].Has(nodeName) {
 			continue
 		}
 		status, ok := nta.hyperNodeResourceCache[hyperNode]
@@ -365,26 +388,7 @@ func (nta *networkTopologyAwarePlugin) applyTaskResourceToCache(ssn *framework.S
 			klog.Warningf("plugin %s failed to find the resource status cache of hyperNode %s, which should not happen", PluginName, hyperNode)
 			continue
 		}
-		if occupy {
-			status.used.Add(task.Resreq)
-			if occupiesAllocatedIdle {
-				status.idle.SubWithoutAssert(task.Resreq)
-				status.futureIdle.SubWithoutAssert(task.Resreq)
-			}
-			continue
-		}
-		status.used.Sub(task.Resreq)
-		if releasesAllocatedIdle {
-			status.idle.Add(task.Resreq)
-			status.futureIdle.Add(task.Resreq)
-		}
-	}
-
-	if occupiesAllocatedIdle {
-		nta.allocatedTasks.Insert(task.UID)
-	}
-	if releasesAllocatedIdle {
-		nta.allocatedTasks.Delete(task.UID)
+		visit(status)
 	}
 }
 

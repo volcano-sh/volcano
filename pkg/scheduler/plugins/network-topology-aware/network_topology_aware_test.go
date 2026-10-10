@@ -3511,7 +3511,22 @@ func TestHyperNodeResourceCacheUpdatesAfterAllocation(t *testing.T) {
 	)
 	assert.Empty(t, gradients)
 
+	// Save the allocation, then discard it: the cache must be restored.
+	saved := framework.SaveOperations(stmt)
 	stmt.Discard()
+	assert.Zero(t, status.used.MilliCPU)
+	assert.Equal(t, float64(4000), status.idle.MilliCPU)
+	assert.Equal(t, float64(4000), status.futureIdle.MilliCPU)
+
+	// Recover the saved allocation: the cache must be deducted again.
+	recoverStmt := framework.NewStatement(ssn)
+	assert.NoError(t, recoverStmt.RecoverOperations(saved))
+	assert.Equal(t, float64(4000), status.used.MilliCPU)
+	assert.Zero(t, status.idle.MilliCPU)
+	assert.Zero(t, status.futureIdle.MilliCPU)
+
+	// Discard the recovered allocation: the cache must be restored again.
+	recoverStmt.Discard()
 	assert.Zero(t, status.used.MilliCPU)
 	assert.Equal(t, float64(4000), status.idle.MilliCPU)
 	assert.Equal(t, float64(4000), status.futureIdle.MilliCPU)
