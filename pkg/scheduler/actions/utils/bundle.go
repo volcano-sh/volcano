@@ -30,6 +30,30 @@ const (
 	BundleWhole
 )
 
+// VictimOrderPolicy orders disruption class and workload priority within a
+// victim queue. Reclamation always compares victim queues before this policy.
+type VictimOrderPolicy string
+
+const (
+	// VictimOrderSafeFirst considers safe bundles before whole bundles within
+	// each victim queue, then prefers lower-priority workloads.
+	VictimOrderSafeFirst VictimOrderPolicy = "safe-first"
+	// VictimOrderPriorityFirst prefers lower-priority workloads within each victim
+	// queue, with safe before whole across workloads at the same priority.
+	VictimOrderPriorityFirst VictimOrderPolicy = "priority-first"
+)
+
+// ParseVictimOrderPolicy validates a configured gang-aware victim ordering policy.
+func ParseVictimOrderPolicy(value string) (VictimOrderPolicy, bool) {
+	policy := VictimOrderPolicy(value)
+	switch policy {
+	case VictimOrderSafeFirst, VictimOrderPriorityFirst:
+		return policy, true
+	default:
+		return VictimOrderSafeFirst, false
+	}
+}
+
 type Bundle struct {
 	Type      BundleType
 	Job       *api.JobInfo
@@ -199,6 +223,47 @@ func FlattenBundles(bundles []*Bundle) []*api.TaskInfo {
 	return out
 }
 
+// FilterOrderedBundles replays the accepted prefix for each candidate. A failed
+// Whole trial therefore cannot spend the allowance of later bundles. Filters
+// must evaluate each call against the unchanged session snapshot; replaying the
+// prefix preserves cumulative resource accounting across calls.
+// Safe bundles become single-task selection units so placement can stop early.
+func FilterOrderedBundles(bundles []*Bundle, allowWhole bool, filter func([]*api.TaskInfo) []*api.TaskInfo) []*Bundle {
+	var accepted []*api.TaskInfo
+	var result []*Bundle
+	try := func(b *Bundle) {
+		trial := make([]*api.TaskInfo, 0, len(accepted)+len(b.Tasks))
+		trial = append(trial, accepted...)
+		trial = append(trial, b.Tasks...)
+		allowed := make(map[api.TaskID]bool, len(trial))
+		for _, task := range filter(trial) {
+			allowed[task.UID] = true
+		}
+		for _, task := range trial {
+			if !allowed[task.UID] {
+				return
+			}
+		}
+		accepted = trial
+		result = append(result, b)
+	}
+	for _, b := range bundles {
+		if b.Type == BundleWhole {
+			if allowWhole {
+				try(b)
+			}
+			continue
+		}
+		for _, task := range b.Tasks {
+			unit := *b
+			unit.Tasks = []*api.TaskInfo{task}
+			unit.LocalRes = sumTasks(unit.Tasks)
+			try(&unit)
+		}
+	}
+	return result
+}
+
 func ApplyAllowedTasks(bundles []*Bundle, allowed map[api.TaskID]struct{}) []*Bundle {
 	valid := make([]*Bundle, 0, len(bundles))
 	for _, b := range bundles {
@@ -245,50 +310,116 @@ func SelectBundles(bundles []*Bundle, need *api.Resource, allowWhole bool) []*Bu
 	return selected
 }
 
-func SortBundlesForPreempt(bundles []*Bundle, need *api.Resource, lessVictimJobFn func(l, r *api.JobInfo) bool) {
+func SortBundlesForPreempt(bundles []*Bundle, need *api.Resource, policy VictimOrderPolicy, lessVictimJobFn func(l, r *api.JobInfo) bool) {
 	sort.SliceStable(bundles, func(i, j int) bool {
-		if bundles[i].Type != bundles[j].Type {
-			return bundles[i].Type < bundles[j].Type
+		l, r := bundles[i], bundles[j]
+		if cmp := compareBundlePolicy(l, r, policy, lessVictimJobFn); cmp != 0 {
+			return cmp < 0
 		}
-		if lessVictimJobFn != nil && bundles[i].Job != nil && bundles[j].Job != nil && bundles[i].Job.UID != bundles[j].Job.UID {
-			ij := lessVictimJobFn(bundles[i].Job, bundles[j].Job)
-			ji := lessVictimJobFn(bundles[j].Job, bundles[i].Job)
-			if ij != ji {
-				return ij
-			}
-		}
-		iroi := bundleROI(bundles[i], need)
-		jroi := bundleROI(bundles[j], need)
+		iroi := bundleROI(l, need)
+		jroi := bundleROI(r, need)
 		if iroi != jroi {
 			return iroi > jroi
 		}
-		return stableBundleLess(bundles[i], bundles[j])
+		return stableBundleLess(l, r)
 	})
 }
 
-func SortBundlesForReclaim(bundles []*Bundle, need *api.Resource, lessQueueFn func(l, r *api.QueueInfo) bool, queues map[api.QueueID]*api.QueueInfo) {
+func SortBundlesForReclaim(bundles []*Bundle, need *api.Resource, policy VictimOrderPolicy, lessQueueFn func(l, r *api.QueueInfo) bool, queues map[api.QueueID]*api.QueueInfo) {
 	sort.SliceStable(bundles, func(i, j int) bool {
-		if bundles[i].Type != bundles[j].Type {
-			return bundles[i].Type < bundles[j].Type
+		l, r := bundles[i], bundles[j]
+		if cmp := compareVictimQueues(l, r, lessQueueFn, queues); cmp != 0 {
+			return cmp < 0
 		}
-		if lessQueueFn != nil {
-			lq := queues[bundles[i].Job.Queue]
-			rq := queues[bundles[j].Job.Queue]
-			if lq != nil && rq != nil && lq.UID != rq.UID {
-				ij := lessQueueFn(lq, rq)
-				ji := lessQueueFn(rq, lq)
-				if ij != ji {
-					return ij
-				}
-			}
+		if cmp := compareBundlePolicy(l, r, policy, nil); cmp != 0 {
+			return cmp < 0
 		}
-		iroi := bundleROI(bundles[i], need)
-		jroi := bundleROI(bundles[j], need)
+		iroi := bundleROI(l, need)
+		jroi := bundleROI(r, need)
 		if iroi != jroi {
 			return iroi > jroi
 		}
-		return stableBundleLess(bundles[i], bundles[j])
+		return stableBundleLess(l, r)
 	})
+}
+
+func compareBundlePolicy(l, r *Bundle, policy VictimOrderPolicy, lessVictimJobFn func(l, r *api.JobInfo) bool) int {
+	if policy == VictimOrderPriorityFirst {
+		if cmp := compareJobPriority(l, r); cmp != 0 {
+			return cmp
+		}
+		if cmp := compareBundleType(l, r); cmp != 0 {
+			return cmp
+		}
+		return compareVictimJobs(l.Job, r.Job, lessVictimJobFn)
+	}
+	if cmp := compareBundleType(l, r); cmp != 0 {
+		return cmp
+	}
+	if cmp := compareJobPriority(l, r); cmp != 0 {
+		return cmp
+	}
+	return compareVictimJobs(l.Job, r.Job, lessVictimJobFn)
+}
+
+func compareBundleType(l, r *Bundle) int {
+	if l.Type < r.Type {
+		return -1
+	}
+	if l.Type > r.Type {
+		return 1
+	}
+	return 0
+}
+
+func compareJobPriority(l, r *Bundle) int {
+	if l == nil || r == nil || l.Job == nil || r.Job == nil || l.Job.UID == r.Job.UID {
+		return 0
+	}
+	if l.Job.Priority < r.Job.Priority {
+		return -1
+	}
+	if l.Job.Priority > r.Job.Priority {
+		return 1
+	}
+	return 0
+}
+
+func compareVictimJobs(l, r *api.JobInfo, lessVictimJobFn func(l, r *api.JobInfo) bool) int {
+	if lessVictimJobFn == nil || l == nil || r == nil || l.UID == r.UID {
+		return 0
+	}
+	return compareLess(lessVictimJobFn(l, r), lessVictimJobFn(r, l))
+}
+
+func compareVictimQueues(l, r *Bundle, lessQueueFn func(l, r *api.QueueInfo) bool, queues map[api.QueueID]*api.QueueInfo) int {
+	if l == nil || r == nil || l.Job == nil || r.Job == nil {
+		return 0
+	}
+	lq := queues[l.Job.Queue]
+	rq := queues[r.Job.Queue]
+	if lq == nil || rq == nil || lq.UID == rq.UID {
+		return 0
+	}
+	if lessQueueFn != nil {
+		if cmp := compareLess(lessQueueFn(lq, rq), lessQueueFn(rq, lq)); cmp != 0 {
+			return cmp
+		}
+	}
+	if lq.UID < rq.UID {
+		return -1
+	}
+	return 1
+}
+
+func compareLess(lBeforeR, rBeforeL bool) int {
+	if lBeforeR == rBeforeL {
+		return 0
+	}
+	if lBeforeR {
+		return -1
+	}
+	return 1
 }
 
 func bundleROI(b *Bundle, need *api.Resource) float64 {
@@ -346,6 +477,14 @@ func stableBundleLess(l, r *Bundle) bool {
 	}
 	if lJobUID != rJobUID {
 		return lJobUID < rJobUID
+	}
+
+	// Filtering splits Safe bundles into single tasks. Preserve the job-local
+	// task priority order established by CreateJobBundles on the second sort.
+	if l.Job != nil && r.Job != nil && l.Type == BundleSafe && r.Type == BundleSafe && len(l.Tasks) == 1 && len(r.Tasks) == 1 {
+		if l.Tasks[0].Priority != r.Tasks[0].Priority {
+			return l.Tasks[0].Priority < r.Tasks[0].Priority
+		}
 	}
 
 	lFirstTaskUID := firstTaskUID(l)
