@@ -164,13 +164,11 @@ func (worker *Worker) runOnce() {
 
 	worker.framework.Cache.OnWorkerStartSchedulingCycle(worker.index, schedCtx)
 
-	// TODO: Call OnCycleStart for all plugins
-	// worker.framework.OnCycleStart()
+	worker.framework.OnCycleStart()
 
 	defer func() {
 		agentmetrics.UpdateWorkerSchedulingCycleDuration(schedulermetrics.Duration(scheduleStartTime))
-		// TODO: Call OnCycleEnd for all plugins
-		// worker.framework.OnCycleEnd()
+		worker.framework.OnCycleEnd()
 		worker.framework.Cache.OnWorkerEndSchedulingCycle(worker.index)
 		worker.framework.ClearCycleState()
 	}()
