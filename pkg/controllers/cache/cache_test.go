@@ -394,6 +394,50 @@ func TestJobCache_Delete(t *testing.T) {
 	}
 }
 
+func TestJobCache_ProcessCleanupJob_SkipsStaleGeneration(t *testing.T) {
+	namespace := "test"
+	name := "job1"
+	key := JobKeyByName(namespace, name)
+
+	jc := New().(*jobCache)
+
+	// staleInfo represents a generation of the job whose cleanup was
+	// already scheduled (Job == nil, no pods left), mirroring what the
+	// cache looks like right after Delete() drains it.
+	staleInfo := &apis.JobInfo{
+		Namespace: namespace,
+		Name:      name,
+		Pods:      make(map[string]map[string]*v1.Pod),
+	}
+
+	// liveInfo represents the job having been recreated under the same
+	// key before the stale generation's queued retry got a chance to run,
+	// e.g. a duplicate rate-limited retry left over from before the
+	// recreation firing late.
+	liveInfo := &apis.JobInfo{}
+	liveInfo.SetJob(&v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+	})
+	jc.jobs[key] = liveInfo
+
+	jc.deletedJobs.Add(staleInfo)
+
+	if !jc.processCleanupJob() {
+		t.Fatalf("expected processCleanupJob to process an item")
+	}
+
+	got, found := jc.jobs[key]
+	if !found {
+		t.Fatalf("expected the live job to remain cached, but it was removed")
+	}
+	if got != liveInfo {
+		t.Fatalf("expected the cached job info to be untouched by the stale cleanup task")
+	}
+}
+
 func TestJobCache_AddPod(t *testing.T) {
 	namespace := "test"
 
