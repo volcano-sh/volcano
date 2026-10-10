@@ -28,12 +28,18 @@ func (p *pendingState) Execute(action jobflowv1alpha1.Action) error {
 	switch action {
 	case jobflowv1alpha1.SyncJobFlowAction:
 		return SyncJobFlow(p.jobFlow, func(status *jobflowv1alpha1.JobFlowStatus, allJobList int) {
-			if (len(status.RunningJobs) > 0 || len(status.CompletedJobs) > 0) && len(status.FailedJobs) <= 0 {
-				status.State.Phase = jobflowv1alpha1.Running
-			} else if len(status.FailedJobs) > 0 || len(status.TerminatedJobs) > 0 { // TODO(dongjiang1989) Modify it when the if condition judgment is implemented
+			switch {
+			// Settle completed flows directly: entering Running may leave no
+			// further event to trigger reconciliation.
+			case len(status.CompletedJobs) == allJobList:
+				UpdateJobFlowSucceed(p.jobFlow.Namespace)
+				status.State.Phase = jobflowv1alpha1.Succeed
+			case len(status.FailedJobs) > 0 || len(status.TerminatedJobs) > 0: // TODO(dongjiang1989) Modify it when the if condition judgment is implemented
 				UpdateJobFlowFailed(p.jobFlow.Namespace)
 				status.State.Phase = jobflowv1alpha1.Failed
-			} else {
+			case len(status.RunningJobs) > 0 || len(status.CompletedJobs) > 0:
+				status.State.Phase = jobflowv1alpha1.Running
+			default:
 				status.State.Phase = jobflowv1alpha1.Pending
 			}
 		})
