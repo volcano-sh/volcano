@@ -466,6 +466,43 @@ func TestNew_ExplicitTargetQueues_DisablesAllQueuesMode(t *testing.T) {
 	}
 }
 
+func TestNew_PerQueueResourceKey_AppliedInAllQueuesMode(t *testing.T) {
+	p := New(framework.Arguments{
+		"fairshare.resourceKey.cpu-queue": "cpu",
+	})
+	fsp := p.(*fairSharePlugin)
+
+	if !fsp.targetAllQueues {
+		t.Fatal("targetAllQueues = false, want true when fairshare.targetQueues is unset")
+	}
+	if got := fsp.getResourceKey("cpu-queue"); got != "cpu" {
+		t.Errorf("cpu-queue: got %q, want %q", got, "cpu")
+	}
+	if got := fsp.getResourceKey("other-queue"); got != defaultResourceKey {
+		t.Errorf("other-queue: got %q, want %q", got, defaultResourceKey)
+	}
+}
+
+func TestNew_PerQueueResourceKey_AppliedWithExplicitTargetQueues(t *testing.T) {
+	p := New(framework.Arguments{
+		"fairshare.targetQueues":          "gpu-queue,cpu-queue",
+		"fairshare.resourceKey":           "amd.com/gpu",
+		"fairshare.resourceKey.cpu-queue": "cpu",
+		"fairshare.resourceKey.empty":     "",
+	})
+	fsp := p.(*fairSharePlugin)
+
+	if got := fsp.getResourceKey("cpu-queue"); got != "cpu" {
+		t.Errorf("cpu-queue: got %q, want %q", got, "cpu")
+	}
+	if got := fsp.getResourceKey("gpu-queue"); got != "amd.com/gpu" {
+		t.Errorf("gpu-queue: got %q, want %q", got, "amd.com/gpu")
+	}
+	if _, ok := fsp.queueResourceKeys["empty"]; ok {
+		t.Error("empty override value should be ignored")
+	}
+}
+
 func TestGetQueueName_TargetAllQueues_MatchesAnyQueue(t *testing.T) {
 	fsp := &fairSharePlugin{targetAllQueues: true}
 	ssn := &framework.Session{
