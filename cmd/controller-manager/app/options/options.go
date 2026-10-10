@@ -163,12 +163,12 @@ func (s *ServerOption) checkControllers() error {
 		} else {
 			if strings.HasPrefix(c, "-") || strings.HasPrefix(c, "+") {
 				if existenceMap[c[1:]] {
-					return fmt.Errorf("controllers option %s cannot have both '-' and '+' prefixes", c)
+					return fmt.Errorf("controllers option specifies controller %q more than once", c[1:])
 				}
 				existenceMap[c[1:]] = true
 			} else {
 				if existenceMap[c] {
-					return fmt.Errorf("controllers option %s cannot have both '-' and '+' prefixes", c)
+					return fmt.Errorf("controllers option specifies controller %q more than once", c)
 				}
 				existenceMap[c] = true
 			}
