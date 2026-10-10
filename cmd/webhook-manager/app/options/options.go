@@ -70,6 +70,11 @@ type Config struct {
 	MaxNamespaceQueueDepth int
 	// EnableRootQueueProtection if true, root queue's resource attributes (capability, deserved, guarantee) cannot be modified
 	EnableRootQueueProtection bool
+	// EnableCascadeChildQueueClose if true, opening a child whose parent is closed is rejected at admission
+	// and closing a parent synchronously cascades close to all descendants
+	EnableCascadeChildQueueClose bool
+	// EnableQueueClosedBeforeDeleteCheck if true, queue deletion is rejected when Status.State is Open
+	EnableQueueClosedBeforeDeleteCheck bool
 }
 
 type DecryptFunc func(c *Config) error
@@ -108,6 +113,8 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&c.MaxNamespaceQueueDepth, "max-namespacequeue-depth", commonutil.DefaultMaxNamespaceQueueDepth,
 		"Maximum number of NamespaceQueue levels below a cluster Queue.")
 	fs.BoolVar(&c.EnableRootQueueProtection, "enable-root-queue-protection", true, "If true, root queue's resource attributes (capability, deserved, guarantee) cannot be modified.")
+	fs.BoolVar(&c.EnableCascadeChildQueueClose, "enable-cascade-child-queue-close", false, "If true, reject opening a child queue whose parent is closed and cascade close to descendants when a parent queue is closed.")
+	fs.BoolVar(&c.EnableQueueClosedBeforeDeleteCheck, "enable-queue-closed-before-delete-check", false, "If true, queue deletion is rejected when Status.State is Open.")
 }
 
 // Validate validates webhook manager configuration.

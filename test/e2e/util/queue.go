@@ -18,6 +18,7 @@ package util
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -105,9 +106,51 @@ func CreateQueues(ctx *TestContext) {
 	time.Sleep(3 * time.Second)
 }
 
-// DeleteQueue deletes Queue with the specified name
+// DeleteQueue deletes a single queue. For hierarchical cleanup prefer deleteQueues, which
+// closes from the topmost parent and deletes deepest-first.
 func DeleteQueue(ctx *TestContext, q string) {
+	deleteJobsInQueue(ctx, q)
+	closeQueueStatus(ctx, q)
+	deleteQueueObject(ctx, q)
+}
+
+// deleteQueues deletes all queues in ctx.Queues. For hierarchical queues it closes
+// top-level parents first, waits until every queue is Closed, then deletes
+// deepest-first so callers do not need to hand-order ctx.Queues.
+func deleteQueues(ctx *TestContext) {
+	deleteJobsInQueues(ctx, ctx.Queues)
+
+	for _, q := range topLevelQueues(ctx) {
+		closeQueueStatus(ctx, q)
+	}
+
+	for _, q := range ctx.Queues {
+		err := wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
+			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(pollCtx, q, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			return queue.Status.State == schedulingv1beta1.QueueStateClosed, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "failed waiting for queue %s to be closed", q)
+	}
+
+	for _, q := range sortQueuesByDepthDesc(ctx) {
+		deleteQueueObject(ctx, q)
+	}
+}
+
+func deleteJobsInQueue(ctx *TestContext, q string) {
+	deleteJobsInQueues(ctx, []string{q})
+}
+
+func deleteJobsInQueues(ctx *TestContext, queues []string) {
 	foreground := metav1.DeletePropagationForeground
+
+	queueSet := make(map[string]struct{}, len(queues))
+	for _, q := range queues {
+		queueSet[q] = struct{}{}
+	}
 
 	jobs, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
@@ -115,29 +158,31 @@ func DeleteQueue(ctx *TestContext, q string) {
 	}
 
 	for _, job := range jobs.Items {
-		if job.Spec.Queue == q {
-			//Delete all VcJobs in the queue
-			err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{
-				PropagationPolicy: &foreground,
-			})
-			Expect(err).NotTo(HaveOccurred(), "failed to delete vcjob %s in queue %s", job.Name, q)
-
-			// Wait until the job is deleted
-			delErr := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
-				_, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
-				if errors.IsNotFound(err) {
-					return true, nil
-				}
-				if err != nil {
-					return false, err
-				}
-				return false, nil
-			})
-			Expect(delErr).NotTo(HaveOccurred(), "failed waiting vcjob %s deleted", job.Name)
+		if _, ok := queueSet[job.Spec.Queue]; !ok {
+			continue
 		}
-	}
+		err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{
+			PropagationPolicy: &foreground,
+		})
+		Expect(err).NotTo(HaveOccurred(), "failed to delete vcjob %s in queue %s", job.Name, job.Spec.Queue)
 
+		delErr := wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
+			_, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(pollCtx, job.Name, metav1.GetOptions{})
+			if errors.IsNotFound(err) {
+				return true, nil
+			}
+			if err != nil {
+				return false, err
+			}
+			return false, nil
+		})
+		Expect(delErr).NotTo(HaveOccurred(), "failed waiting vcjob %s deleted", job.Name)
+	}
+}
+
+func closeQueueStatus(ctx *TestContext, q string) {
 	var queue *schedulingv1beta1.Queue
+	var err error
 	retryErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		queue, err = ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
 		if err != nil {
@@ -151,14 +196,17 @@ func DeleteQueue(ctx *TestContext, q string) {
 		return nil
 	})
 	Expect(retryErr).NotTo(HaveOccurred(), "failed to update status of queue %s", q)
+}
 
-	err = ctx.Vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), q,
+func deleteQueueObject(ctx *TestContext, q string) {
+	foreground := metav1.DeletePropagationForeground
+
+	err := ctx.Vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), q,
 		metav1.DeleteOptions{
 			PropagationPolicy: &foreground,
 		})
 	Expect(err).NotTo(HaveOccurred(), "failed to delete queue %s", q)
 
-	// Wait until the queue is actually deleted.
 	err = wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, TwoMinute, true, func(pollCtx context.Context) (bool, error) {
 		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(pollCtx, q, metav1.GetOptions{})
 		if errors.IsNotFound(err) {
@@ -172,13 +220,42 @@ func DeleteQueue(ctx *TestContext, q string) {
 	Expect(err).NotTo(HaveOccurred(), "failed waiting for queue %s to be deleted", q)
 }
 
-// deleteQueues deletes Queues specified in the test context.
-// For hierarchical queues, list children before parents in ctx.Queues; admission
-// rejects deleting a parent that still has child queues.
-func deleteQueues(ctx *TestContext) {
+func topLevelQueues(ctx *TestContext) []string {
+	queueSet := make(map[string]struct{}, len(ctx.Queues))
 	for _, q := range ctx.Queues {
-		DeleteQueue(ctx, q)
+		queueSet[q] = struct{}{}
 	}
+
+	topLevel := make([]string, 0)
+	for _, q := range ctx.Queues {
+		parent := ctx.QueueParent[q]
+		if parent == "" || parent == "root" {
+			topLevel = append(topLevel, q)
+			continue
+		}
+		if _, ok := queueSet[parent]; !ok {
+			topLevel = append(topLevel, q)
+		}
+	}
+	return topLevel
+}
+
+func queueDepthInContext(ctx *TestContext, q string) int {
+	depth := 1
+	parent := ctx.QueueParent[q]
+	for parent != "" && parent != "root" {
+		depth++
+		parent = ctx.QueueParent[parent]
+	}
+	return depth
+}
+
+func sortQueuesByDepthDesc(ctx *TestContext) []string {
+	queues := append([]string(nil), ctx.Queues...)
+	sort.Slice(queues, func(i, j int) bool {
+		return queueDepthInContext(ctx, queues[i]) > queueDepthInContext(ctx, queues[j])
+	})
+	return queues
 }
 
 // SeyQueueReclaimable sets the Queue to be reclaimable

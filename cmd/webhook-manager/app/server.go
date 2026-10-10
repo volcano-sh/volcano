@@ -118,6 +118,8 @@ func Run(config *options.Config) error {
 			service.Config.MaxQueueDepth = config.MaxQueueDepth
 			service.Config.MaxNamespaceQueueDepth = config.MaxNamespaceQueueDepth
 			service.Config.EnableRootQueueProtection = config.EnableRootQueueProtection
+			service.Config.EnableCascadeChildQueueClose = config.EnableCascadeChildQueueClose
+			service.Config.EnableQueueClosedBeforeDeleteCheck = config.EnableQueueClosedBeforeDeleteCheck
 		}
 
 		klog.V(3).Infof("Registered '%s' as webhook.", service.Path)
