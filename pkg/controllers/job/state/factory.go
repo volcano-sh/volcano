@@ -18,6 +18,7 @@ package state
 
 import (
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
@@ -68,6 +69,7 @@ const (
 type Target struct {
 	TaskName      string
 	PodName       string
+	PodUID        types.UID
 	PartitionName string
 	Type          TargetType
 }

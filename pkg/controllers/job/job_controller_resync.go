@@ -17,16 +17,18 @@ limitations under the License.
 package job
 
 import (
-	"context"
-	"fmt"
 	"time"
 
 	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	bus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	"volcano.sh/volcano/pkg/controllers/apis"
+	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
 func newRateLimitingQueue() workqueue.TypedRateLimitingInterface[any] {
@@ -60,25 +62,19 @@ func (cc *jobcontroller) processResyncTask() {
 	if err := cc.syncTask(task); err != nil {
 		klog.Errorf("Failed to sync pod <%v/%v>, retry it, err %v", task.Namespace, task.Name, err)
 		cc.resyncTask(task)
+	} else {
+		cc.errTasks.Forget(obj)
 	}
 }
 
 func (cc *jobcontroller) syncTask(oldTask *v1.Pod) error {
-	newPod, err := cc.kubeClient.CoreV1().Pods(oldTask.Namespace).Get(context.TODO(), oldTask.Name, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			if err := cc.cache.DeletePod(oldTask); err != nil {
-				klog.Errorf("failed to delete cache pod <%v/%v>, err %v.", oldTask.Namespace, oldTask.Name, err)
-				return err
-			}
-			klog.V(3).Infof("Pod <%v/%v> was deleted, removed from cache.", oldTask.Namespace, oldTask.Name)
-
-			return nil
-		}
-		return fmt.Errorf("failed to get Pod <%v/%v>: err %v", oldTask.Namespace, oldTask.Name, err)
+	owner := metav1.GetControllerOf(oldTask)
+	if owner == nil {
+		return nil
 	}
-
-	return cc.cache.UpdatePod(newPod)
+	req := apis.Request{Namespace: oldTask.Namespace, JobName: oldTask.Annotations[batch.JobNameKey], JobUid: owner.UID, Event: bus.OutOfSyncEvent}
+	cc.getWorkerQueue(jobhelpers.GetJobKeyByReq(&req)).AddAfter(req, 2*time.Second)
+	return nil
 }
 
 func (cc *jobcontroller) resyncTask(task *v1.Pod) {
