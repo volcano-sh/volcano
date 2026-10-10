@@ -127,7 +127,7 @@ func (m *ConfigManager) updateConfigMap(cm *corev1.ConfigMap) error {
 
 	changed := false
 	if c.GlobalConfig == nil {
-		return fmt.Errorf("empty glaobal config")
+		return fmt.Errorf("empty global config")
 	}
 	if c.GlobalConfig.OverSubscriptionConfig == nil {
 		changed = true
