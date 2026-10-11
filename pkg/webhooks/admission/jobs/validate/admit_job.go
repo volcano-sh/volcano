@@ -277,6 +277,13 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	for i := range new.Spec.Tasks {
 		new.Spec.Tasks[i].Replicas = old.Spec.Tasks[i].Replicas
 		new.Spec.Tasks[i].MinAvailable = old.Spec.Tasks[i].MinAvailable
+		// MaxRetry is defaulted by the mutating webhook on CREATE only.  A
+		// subsequent kubectl apply that omits the field sends MaxRetry=0,
+		// which differs from the stored defaulted value and causes the deep
+		// equality check below to reject the update even though the user made
+		// no intentional change.  Restore the old value so that purely
+		// defaulted fields do not block otherwise-valid updates.
+		new.Spec.Tasks[i].MaxRetry = old.Spec.Tasks[i].MaxRetry
 	}
 
 	// job controller will update the pvc name if not provided

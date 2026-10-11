@@ -2499,6 +2499,47 @@ func TestValidateJobUpdate(t *testing.T) {
 
 }
 
+// TestValidateJobUpdateDefaultedFields verifies that fields defaulted by the
+// mutating webhook on CREATE (e.g. task.MaxRetry) do not prevent a subsequent
+// kubectl apply that omits those fields from scaling the job.  Regression test
+// for https://github.com/volcano-sh/volcano/issues/6062.
+func TestValidateJobUpdateDefaultedFields(t *testing.T) {
+	// Simulate what is stored after the mutating webhook has run on CREATE:
+	// task.MaxRetry is set to the default (3) even though the user's manifest
+	// did not include the field.
+	old := newJob()
+	old.Spec.Tasks[0].MaxRetry = 3 // set by mutating webhook on CREATE
+
+	// Simulate a subsequent kubectl apply that changes replicas but still
+	// omits maxRetry (so it arrives as the zero value, i.e. 0).
+	updated := newJob()
+	updated.Spec.Tasks[0].Replicas = 8 // scale up
+	updated.Spec.Tasks[0].MaxRetry = 0  // omitted in manifest → zero value
+
+	if err := validateJobUpdate(old, updated); err != nil {
+		t.Errorf("scale-up with omitted defaulted maxRetry should be allowed, got: %v", err)
+	}
+
+	// Scaling down should also work when maxRetry is omitted.
+	updated2 := newJob()
+	updated2.Spec.Tasks[0].Replicas = 3
+	updated2.Spec.MinAvailable = 3
+	updated2.Spec.Tasks[0].MaxRetry = 0 // omitted in manifest → zero value
+
+	if err := validateJobUpdate(old, updated2); err != nil {
+		t.Errorf("scale-down with omitted defaulted maxRetry should be allowed, got: %v", err)
+	}
+
+	// Intentionally mutating maxRetry to a different non-zero value should
+	// still be blocked because maxRetry is not a mutable field.
+	updated3 := newJob()
+	updated3.Spec.Tasks[0].MaxRetry = 5 // user tries to change it explicitly
+
+	if err := validateJobUpdate(old, updated3); err == nil {
+		t.Errorf("changing task maxRetry to a different non-zero value should be rejected")
+	}
+}
+
 func newJob() *v1alpha1.Job {
 	return &v1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{
