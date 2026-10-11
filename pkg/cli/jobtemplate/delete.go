@@ -17,16 +17,17 @@ limitations under the License.
 package jobtemplate
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	"sigs.k8s.io/yaml"
+	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
@@ -72,18 +73,19 @@ func DeleteJobTemplate(ctx context.Context) error {
 			return err
 		}
 
-		yamlDocs := strings.Split(string(yamlData), "---")
+		decoder := yamlutil.NewYAMLOrJSONDecoder(bytes.NewReader(yamlData), 4096)
 
 		var errs []error
-		for _, doc := range yamlDocs {
-			doc = strings.TrimSpace(doc)
-			if doc == "" {
-				continue
-			}
-
-			jobTemplate := &flowv1alpha1.JobTemplate{}
-			if err := yaml.Unmarshal([]byte(doc), jobTemplate); err != nil {
+		for {
+			var jobTemplate *flowv1alpha1.JobTemplate
+			if err := decoder.Decode(&jobTemplate); err != nil {
+				if err == io.EOF {
+					break
+				}
 				return err
+			}
+			if jobTemplate == nil {
+				continue
 			}
 
 			if jobTemplate.Namespace == "" {

@@ -17,16 +17,17 @@ limitations under the License.
 package jobflow
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	"sigs.k8s.io/yaml"
+	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
@@ -59,22 +60,20 @@ func CreateJobFlow(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// Split YAML data into individual documents.
-	yamlDocs := strings.Split(string(yamlData), "---")
+	decoder := yamlutil.NewYAMLOrJSONDecoder(bytes.NewReader(yamlData), 4096)
 
 	jobFlowClient := versioned.NewForConfigOrDie(config)
 	var errs []error
-	for _, doc := range yamlDocs {
-		// Skip empty documents or documents with only whitespace.
-		doc = strings.TrimSpace(doc)
-		if doc == "" {
-			continue
-		}
-
-		// Parse each YAML document into a JobFlow object.
-		obj := &flowv1alpha1.JobFlow{}
-		if err = yaml.Unmarshal([]byte(doc), obj); err != nil {
+	for {
+		var obj *flowv1alpha1.JobFlow
+		if err := decoder.Decode(&obj); err != nil {
+			if err == io.EOF {
+				break
+			}
 			return err
+		}
+		if obj == nil {
+			continue
 		}
 		// Set the namespace if it's not specified.
 		if obj.Namespace == "" {
