@@ -58,6 +58,7 @@ func TestAddFlags(t *testing.T) {
 		EnabledAdmission:              defaultEnabledAdmission,
 		GracefulShutdownTime:          defaultGracefulShutdownTime,
 		EnableHealthz:                 false,
+		ManageWebhookCABundle:         true,
 		HealthzBindAddress:            defaultHealthzAddress,
 		EnableQueueAllocatedPodsCheck: false,
 		MaxQueueDepth:                 defaultMaxQueueDepth,
