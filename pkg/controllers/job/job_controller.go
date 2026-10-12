@@ -70,6 +70,20 @@ func init() {
 // Eviction only causes another identity check; it must not affect correctness.
 const maxAbsentJobUIDs = 1024
 
+type jobRequestIdentity struct {
+	namespace string
+	name      string
+	uid       types.UID
+}
+
+func requestIdentity(req apis.Request) jobRequestIdentity {
+	return jobRequestIdentity{namespace: req.Namespace, name: req.JobName, uid: req.JobUid}
+}
+
+func requestMatchesJob(req apis.Request, job *apis.JobInfo) bool {
+	return job != nil && job.Namespace == req.Namespace && job.Name == req.JobName && job.UID == req.JobUid
+}
+
 type delayAction struct {
 	// The namespacing name of the job
 	jobKey     string
@@ -161,7 +175,7 @@ type jobcontroller struct {
 	// inner map key is pod name, and value is the delayed action to be performed
 	delayActionMap  map[types.UID]map[string]*delayAction
 	identityLimiter *rate.Limiter
-	// Only successful API confirmations of an absent UID are retained here.
+	// Only successful API confirmations of an absent Job identity are retained here.
 	absentJobUIDs *lru.Cache
 }
 
@@ -370,13 +384,17 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 
 	klog.V(3).Infof("Try to handle request <%v>", req)
 
-	cc.CleanPodDelayActionsIfNeed(req)
-
 	jobInfo, err := cc.cache.Get(req.JobUid)
 	if err != nil {
 		cc.waitForJob(queue, req, err)
 		return true
 	}
+	if !requestMatchesJob(req, jobInfo) {
+		klog.Warningf("Ignoring request <%v>: cached Job is <%s/%s> with UID <%s>", req, jobInfo.Namespace, jobInfo.Name, jobInfo.UID)
+		queue.Forget(req)
+		return true
+	}
+	cc.CleanPodDelayActionsIfNeed(req)
 
 	st := state.NewState(jobInfo)
 	if st == nil {
@@ -390,7 +408,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	if delayAct.delay != 0 {
 		klog.V(3).Infof("Execute <%v> on Job <%s/%s> after %s",
 			delayAct.action, req.Namespace, req.JobName, delayAct.delay.String())
-		cc.recordJobEvent(jobInfo.Job.UID, batchv1alpha1.ExecuteAction, fmt.Sprintf(
+		cc.recordJobEvent(req, batchv1alpha1.ExecuteAction, fmt.Sprintf(
 			"Execute action %s after %s", delayAct.action, delayAct.delay.String()))
 		cc.AddDelayActionForJob(req, delayAct)
 		return true
@@ -400,7 +418,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 		delayAct.action, req.Namespace, req.JobName, jobInfo.Job.Status.State.Phase, st)
 
 	if delayAct.action != busv1alpha1.SyncJobAction {
-		cc.recordJobEvent(jobInfo.Job.UID, batchv1alpha1.ExecuteAction, fmt.Sprintf(
+		cc.recordJobEvent(req, batchv1alpha1.ExecuteAction, fmt.Sprintf(
 			"Start to execute action %s ", delayAct.action))
 	}
 
@@ -523,6 +541,10 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 			klog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
 			return
 		}
+		if !requestMatchesJob(req, jobInfo) {
+			klog.Warningf("Ignoring delayed action for <%v>: cached Job is <%s/%s> with UID <%s>", req, jobInfo.Namespace, jobInfo.Name, jobInfo.UID)
+			return
+		}
 
 		if jobInfo.Job.Status.Version != delayAct.jobVersion {
 			return
@@ -564,7 +586,7 @@ func (cc *jobcontroller) handleJobError(queue workqueue.TypedRateLimitingInterfa
 		return
 	}
 
-	cc.recordJobEvent(req.JobUid, batchv1alpha1.ExecuteAction,
+	cc.recordJobEvent(req, batchv1alpha1.ExecuteAction,
 		fmt.Sprintf("Job failed on action %s for retry limit reached", action))
 	klog.Warningf("Terminating Job <%s/%s> and releasing resources", req.Namespace, req.JobName)
 
@@ -632,8 +654,9 @@ func (cc *jobcontroller) waitForJob(queue workqueue.TypedRateLimitingInterface[a
 		queue.Forget(req)
 		return
 	}
+	identity := requestIdentity(req)
 	if cc.absentJobUIDs != nil {
-		if _, absent := cc.absentJobUIDs.Get(req.JobUid); absent {
+		if _, absent := cc.absentJobUIDs.Get(identity); absent {
 			// A late Pod callback may have recreated a placeholder after cleanup.
 			_ = cc.cache.Delete(&batchv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: req.Namespace, Name: req.JobName, UID: req.JobUid}})
 			queue.Forget(req)
@@ -652,7 +675,7 @@ func (cc *jobcontroller) waitForJob(queue workqueue.TypedRateLimitingInterface[a
 	live, err := cc.vcClient.BatchV1alpha1().Jobs(req.Namespace).Get(context.TODO(), req.JobName, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) || (err == nil && live.UID != req.JobUid) {
 		if cc.absentJobUIDs != nil {
-			cc.absentJobUIDs.Add(req.JobUid, struct{}{})
+			cc.absentJobUIDs.Add(identity, struct{}{})
 		}
 		_ = cc.cache.Delete(&batchv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: req.Namespace, Name: req.JobName, UID: req.JobUid}})
 		queue.Forget(req)

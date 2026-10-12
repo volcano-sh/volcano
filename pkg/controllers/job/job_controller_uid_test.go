@@ -466,6 +466,68 @@ func TestSyncTaskOnlyWakesItsOriginalJob(t *testing.T) {
 	}
 }
 
+func TestSyncTaskRepairsOnlyStalePodInstance(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		livePod    string
+		getError   bool
+		wantOldPod bool
+	}{
+		{name: "gone"},
+		{name: "replaced", livePod: "replacement"},
+		{name: "still present", livePod: "original", wantOldPod: true},
+		{name: "get failed", getError: true, wantOldPod: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, q := hotfixController(t)
+			a, b := hotfixJob("a"), hotfixJob("b")
+			old, replacement := hotfixPod(a, "old"), hotfixPod(b, "replacement")
+			if err := c.cache.Add(a); err != nil {
+				t.Fatal(err)
+			}
+			if err := c.cache.AddPod(old); err != nil {
+				t.Fatal(err)
+			}
+			if tc.livePod == "replacement" {
+				if err := c.cache.Add(b); err != nil {
+					t.Fatal(err)
+				}
+				if err := c.cache.AddPod(replacement); err != nil {
+					t.Fatal(err)
+				}
+			}
+			client := c.kubeClient.(*kubefake.Clientset)
+			if tc.livePod != "" {
+				live := old
+				if tc.livePod == "replacement" {
+					live = replacement
+				}
+				if _, err := client.CoreV1().Pods(live.Namespace).Create(context.TODO(), live, metav1.CreateOptions{}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.getError {
+				client.PrependReactor("get", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
+					return true, nil, apierrors.NewForbidden(schema.GroupResource{Resource: "pods"}, old.Name, errors.New("unavailable"))
+				})
+			}
+			err := c.syncTask(old)
+			if (err != nil) != tc.getError {
+				t.Fatalf("syncTask error: %v", err)
+			}
+			if len(q.waits) != 1 || q.waits[0] != jobSyncRequest(a) {
+				t.Fatal("failed to wake original Job")
+			}
+			if c.cache.HasPod(old) != tc.wantOldPod {
+				t.Fatal("old Pod cache was not reconciled with API state")
+			}
+			if tc.livePod == "replacement" && !c.cache.HasPod(replacement) {
+				t.Fatal("old Pod repair removed replacement")
+			}
+		})
+	}
+}
+
 func TestCommandIdentitySurvivesDeleteRetry(t *testing.T) {
 	c, q := hotfixController(t)
 	a, b := hotfixJob("a"), hotfixJob("b")
@@ -504,6 +566,69 @@ func TestCommandIdentitySurvivesDeleteRetry(t *testing.T) {
 	q.Done(item)
 	if item.(apis.Request).JobUid != a.UID {
 		t.Fatal("command rebound to replacement Job")
+	}
+}
+
+func TestCommandCannotTargetJobInAnotherNamespace(t *testing.T) {
+	c, q := hotfixController(t)
+	foreign := hotfixJob("foreign")
+	foreign.Namespace = "other"
+	if err := c.cache.Add(foreign); err != nil {
+		t.Fatal(err)
+	}
+	cmd := &bus.Command{
+		ObjectMeta:   metav1.ObjectMeta{Namespace: "ns", Name: "terminate"},
+		TargetObject: metav1.NewControllerRef(foreign, helpers.JobKind),
+		Action:       string(bus.TerminateJobAction),
+	}
+	if _, err := c.vcClient.BusV1alpha1().Commands(cmd.Namespace).Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	c.commandQueue.Add(cmd)
+	c.processNextCommand()
+	if q.Len() != 1 {
+		t.Fatal("command request was not queued")
+	}
+	c.processNextReq(0)
+	if q.Len() != 0 || len(q.waits) != 0 {
+		t.Fatal("foreign command was retried")
+	}
+	got, err := c.cache.Get(foreign.UID)
+	if err != nil || got.Job.Status.State.Phase != batch.Running {
+		t.Fatalf("foreign Job was changed: %v", err)
+	}
+	select {
+	case event := <-c.recorder.(*record.FakeRecorder).Events:
+		t.Fatalf("foreign Job received event %q", event)
+	default:
+	}
+}
+
+func TestMismatchedRequestCannotCancelForeignPodAction(t *testing.T) {
+	for _, tc := range []struct{ namespace, name string }{
+		{namespace: "other", name: "job"},
+		{namespace: "ns", name: "different"},
+	} {
+		t.Run(tc.namespace+"/"+tc.name, func(t *testing.T) {
+			c, q := hotfixController(t)
+			foreign := hotfixJob("foreign")
+			foreign.Namespace, foreign.Name = tc.namespace, tc.name
+			if err := c.cache.Add(foreign); err != nil {
+				t.Fatal(err)
+			}
+			action := &delayAction{jobUID: foreign.UID, podName: "pod", podUID: "pod-uid", event: bus.PodPendingEvent}
+			c.delayActionMap[foreign.UID] = map[string]*delayAction{"pod": action}
+			req := apis.Request{Namespace: "ns", JobName: "job", JobUid: foreign.UID,
+				PodName: "pod", PodUID: "pod-uid", Event: bus.PodEvictedEvent, Action: bus.TerminateJobAction}
+			q.Add(req)
+			c.processNextReq(0)
+			if c.delayActionMap[foreign.UID]["pod"] != action {
+				t.Fatal("mismatched request canceled a foreign Pod action")
+			}
+			if got, err := c.cache.Get(foreign.UID); err != nil || got.Job.Status.State.Phase != batch.Running {
+				t.Fatalf("mismatched request changed foreign Job: %v", err)
+			}
+		})
 	}
 }
 

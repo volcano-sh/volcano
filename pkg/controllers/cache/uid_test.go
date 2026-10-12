@@ -17,15 +17,19 @@ limitations under the License.
 package cache
 
 import (
+	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/workqueue"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/helpers"
+	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
 func uidJob(uid types.UID) *batch.Job {
@@ -150,6 +154,88 @@ func TestCleanupChecksEntryIdentity(t *testing.T) {
 	c.processCleanupJob()
 	if _, exists := c.jobs[a.UID]; exists {
 		t.Fatal("orphan placeholder leaked")
+	}
+}
+
+func TestDelayedOldCleanupCannotRemoveRecreatedJob(t *testing.T) {
+	c := New().(*jobCache)
+	c.deletedJobs.ShutDown()
+	// Keep the real rate-limited retry pending until the test explicitly
+	// delivers it, so the lifecycle ordering is independent of wall time.
+	c.deletedJobs = workqueue.NewTypedRateLimitingQueue(
+		workqueue.NewTypedItemExponentialFailureRateLimiter[*apis.JobInfo](time.Hour, time.Hour))
+	defer c.deletedJobs.ShutDown()
+
+	a, b := uidJob("a"), uidJob("b")
+	pa, pb := uidPod(a, "pa"), uidPod(b, "pb")
+	for _, err := range []error{c.Add(a), c.AddPod(pa), c.Delete(a)} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := c.jobs[a.UID]
+	c.processCleanupJob() // Old Pod remains, so cleanup schedules a delayed retry.
+	if c.deletedJobs.NumRequeues(old) != 1 {
+		t.Fatal("old cleanup did not schedule a rate-limited retry")
+	}
+	if err := c.DeletePod(pa); err != nil {
+		t.Fatal(err)
+	}
+	c.processCleanupJob() // The last Pod delete immediately removes A.
+	if _, found := c.jobs[a.UID]; found {
+		t.Fatal("old Job remained after its last Pod was deleted")
+	}
+	for _, err := range []error{c.Add(b), c.AddPod(pb)} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.deletedJobs.Add(old) // Deliver the previously scheduled retry after B exists.
+	c.processCleanupJob()
+	if _, found := c.jobs[a.UID]; found {
+		t.Fatal("old cleanup revived deleted Job")
+	}
+	got, err := c.Get(b.UID)
+	if err != nil {
+		t.Fatalf("old cleanup removed the new Job: %v", err)
+	}
+	if got.Pods["task"][pb.Name] == nil || got.Pods["task"][pb.Name].UID != pb.UID {
+		t.Fatal("old cleanup changed the new Job's Pod")
+	}
+}
+
+func TestDeleteRejectsJobIdentityMismatch(t *testing.T) {
+	for _, placeholder := range []bool{false, true} {
+		t.Run(fmt.Sprintf("placeholder=%t", placeholder), func(t *testing.T) {
+			c := New().(*jobCache)
+			defer c.deletedJobs.ShutDown()
+			job := uidJob("current")
+			job.Namespace = "other"
+			pod := uidPod(job, "pod")
+			if placeholder {
+				if err := c.AddPod(pod); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := c.Add(job); err != nil {
+				t.Fatal(err)
+			}
+			for _, identity := range []struct{ namespace, name string }{
+				{namespace: "ns", name: job.Name},
+				{namespace: job.Namespace, name: "different"},
+			} {
+				forged := uidJob(job.UID)
+				forged.Namespace, forged.Name = identity.namespace, identity.name
+				if err := c.Delete(forged); !errors.Is(err, ErrJobNotFound) {
+					t.Fatalf("Delete(%s/%s) = %v", forged.Namespace, forged.Name, err)
+				}
+				if c.jobs[job.UID].Deleted {
+					t.Fatal("foreign identity deleted Job cache entry")
+				}
+			}
+			if placeholder && !c.HasPod(pod) {
+				t.Fatal("foreign identity removed Pod placeholder")
+			}
+		})
 	}
 }
 

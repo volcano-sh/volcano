@@ -224,6 +224,9 @@ func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
 	if !found {
 		return ErrJobNotFound
 	}
+	if jobInfo.Namespace != obj.Namespace || jobInfo.Name != obj.Name {
+		return ErrJobNotFound
+	}
 	jobInfo.Job = nil
 	jobInfo.Deleted = true
 	jc.deleteJob(jobInfo)

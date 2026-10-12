@@ -17,10 +17,13 @@ limitations under the License.
 package job
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -74,6 +77,21 @@ func (cc *jobcontroller) syncTask(oldTask *v1.Pod) error {
 	}
 	req := apis.Request{Namespace: oldTask.Namespace, JobName: oldTask.Annotations[batch.JobNameKey], JobUid: owner.UID, Event: bus.OutOfSyncEvent}
 	cc.getWorkerQueue(jobhelpers.GetJobKeyByReq(&req)).AddAfter(req, 2*time.Second)
+	if !cc.cache.HasPod(oldTask) {
+		return nil
+	}
+
+	current, err := cc.kubeClient.CoreV1().Pods(oldTask.Namespace).Get(context.TODO(), oldTask.Name, metav1.GetOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("get pod <%s/%s>: %w", oldTask.Namespace, oldTask.Name, err)
+	}
+	if apierrors.IsNotFound(err) || current.UID != oldTask.UID {
+		// Only remove the failed operation's Pod instance. A same-name Pod may
+		// already belong to a new Job (or be a replacement in this Job).
+		if err := cc.cache.DeletePod(oldTask); err != nil {
+			return fmt.Errorf("remove stale pod <%s/%s> from cache: %w", oldTask.Namespace, oldTask.Name, err)
+		}
+	}
 	return nil
 }
 
