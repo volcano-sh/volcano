@@ -183,6 +183,7 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 				continue
 			}
 			if err := stmt.RecoverOperations(plan); err != nil {
+				stmt.Discard()
 				continue
 			}
 			return subJobHyperNodes
