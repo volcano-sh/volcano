@@ -18,6 +18,7 @@ package queue
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -49,18 +50,23 @@ func InitCreateFlags(cmd *cobra.Command) {
 	cmd.Flags().Int32VarP(&createQueueFlags.Weight, "weight", "w", 1, "the weight of the queue")
 
 	cmd.Flags().StringVarP(&createQueueFlags.State, "state", "S", "Open",
-		"the state of queue, Open is the only state a queue can be created in")
+		"the state of the queue, Open or Closed. Closed creates the queue and then requests its closure")
 }
 
 // CreateQueue create queue.
 func CreateQueue(ctx context.Context) error {
+	open := strings.EqualFold(createQueueFlags.State, string(schedulingv1beta1.QueueStateOpen))
+	closed := strings.EqualFold(createQueueFlags.State, string(schedulingv1beta1.QueueStateClosed))
+	if !open && !closed {
+		return fmt.Errorf("state %s invalid, valid states are %s and %s",
+			createQueueFlags.State, schedulingv1beta1.QueueStateOpen, schedulingv1beta1.QueueStateClosed)
+	}
+
 	config, err := util.BuildConfig(createQueueFlags.Master, createQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}
 
-	// Queue has a status subresource, so a status set here never reaches the
-	// cluster. The queue controller owns the state.
 	queue := &schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: createQueueFlags.Name,
@@ -75,8 +81,11 @@ func CreateQueue(ctx context.Context) error {
 		return err
 	}
 
-	if strings.EqualFold(createQueueFlags.State, string(schedulingv1beta1.QueueStateClosed)) {
-		return createQueueCommand(ctx, config, v1alpha1.CloseQueueAction, createQueueFlags.Name)
+	if closed {
+		if err := createQueueCommand(ctx, config, v1alpha1.CloseQueueAction, createQueueFlags.Name); err != nil {
+			return fmt.Errorf("queue %q was created, but submitting its close command failed: %w; retry with:\n"+
+				"vcctl queue operate -n %s -a close", createQueueFlags.Name, err, createQueueFlags.Name)
+		}
 	}
 
 	return nil

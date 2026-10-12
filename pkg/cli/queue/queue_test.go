@@ -25,7 +25,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -89,13 +88,24 @@ func getCommonFlags(master string) util.CommonFlags {
 func TestCreateQueue(t *testing.T) {
 	InitCreateFlags(&cobra.Command{})
 
-	// Record each request so the test can tell whether the close command was sent.
-	var paths []string
+	type recorded struct {
+		method string
+		path   string
+		body   string
+	}
+	var requests []recorded
+	var failOn string
+
 	response := v1beta1.Queue{}
 	response.Name = "testQueue"
 	response.Spec.Weight = int32(2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.Method+" "+r.URL.Path)
+		body, _ := io.ReadAll(r.Body)
+		requests = append(requests, recorded{r.Method, r.URL.Path, string(body)})
+		if failOn != "" && strings.Contains(r.URL.Path, failOn) && r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		if val, err := json.Marshal(response); err == nil {
 			w.Write(val)
@@ -108,47 +118,118 @@ func TestCreateQueue(t *testing.T) {
 	createQueueFlags.Weight = int32(2)
 
 	testCases := []struct {
-		Name        string
-		State       string
-		ExpectValue error
-		WantClose   bool
+		Name            string
+		State           string
+		FailOn          string
+		WantErr         string
+		WantRequests    int
+		WantCloseAction bool
 	}{
 		{
-			Name:        "CreateQueue",
-			State:       string(v1beta1.QueueStateOpen),
-			ExpectValue: nil,
+			Name:         "state Open creates an open queue",
+			State:        string(v1beta1.QueueStateOpen),
+			WantRequests: 1,
 		},
 		{
-			Name:        "CreateQueue, state in the lower case the operate flags use",
-			State:       strings.ToLower(string(v1beta1.QueueStateOpen)),
-			ExpectValue: nil,
+			Name:         "state open in lower case is accepted",
+			State:        strings.ToLower(string(v1beta1.QueueStateOpen)),
+			WantRequests: 1,
 		},
 		{
-			Name:        "CreateQueue with state Closed closes it after creating",
-			State:       string(v1beta1.QueueStateClosed),
-			ExpectValue: nil,
-			WantClose:   true,
+			Name:            "state Closed closes the queue after creating it",
+			State:           string(v1beta1.QueueStateClosed),
+			WantRequests:    3,
+			WantCloseAction: true,
+		},
+		{
+			Name:            "state closed in lower case is accepted",
+			State:           strings.ToLower(string(v1beta1.QueueStateClosed)),
+			WantRequests:    3,
+			WantCloseAction: true,
+		},
+		{
+			Name:         "an unknown state is rejected before any request",
+			State:        "Banana",
+			WantErr:      "state Banana invalid",
+			WantRequests: 0,
+		},
+		{
+			Name:         "a misspelled state is rejected before any request",
+			State:        "Clsoed",
+			WantErr:      "state Clsoed invalid",
+			WantRequests: 0,
+		},
+		{
+			Name:         "an empty state is rejected before any request",
+			State:        "",
+			WantErr:      "invalid",
+			WantRequests: 0,
+		},
+		{
+			Name:         "a failed create does not send a close command",
+			State:        string(v1beta1.QueueStateClosed),
+			FailOn:       "/queues",
+			WantErr:      "an error on the server",
+			WantRequests: 1,
+		},
+		{
+			Name:            "a failed close reports that the queue was created",
+			State:           string(v1beta1.QueueStateClosed),
+			FailOn:          "/commands",
+			WantErr:         "was created, but submitting its close command failed",
+			WantRequests:    3,
+			WantCloseAction: true,
 		},
 	}
+
 	for _, testcase := range testCases {
-		paths = nil
-		createQueueFlags.State = testcase.State
+		t.Run(testcase.Name, func(t *testing.T) {
+			requests = nil
+			failOn = testcase.FailOn
+			createQueueFlags.State = testcase.State
 
-		err := CreateQueue(context.TODO())
-		if false == reflect.DeepEqual(err, testcase.ExpectValue) {
-			t.Errorf("(%s): expected: %v, got %v ", testcase.Name, testcase.ExpectValue, err)
-		}
-
-		gotClose := false
-		for _, path := range paths {
-			if strings.HasPrefix(path, http.MethodPost) && strings.HasSuffix(path, "/commands") {
-				gotClose = true
+			err := CreateQueue(context.TODO())
+			if testcase.WantErr == "" && err != nil {
+				t.Errorf("expected no error, got %v", err)
 			}
-		}
-		if gotClose != testcase.WantClose {
-			t.Errorf("(%s): close command sent = %v, want %v, requests were %v",
-				testcase.Name, gotClose, testcase.WantClose, paths)
-		}
+			if testcase.WantErr != "" {
+				if err == nil {
+					t.Fatalf("expected an error containing %q, got none", testcase.WantErr)
+				}
+				if !strings.Contains(err.Error(), testcase.WantErr) {
+					t.Errorf("expected an error containing %q, got %v", testcase.WantErr, err)
+				}
+			}
+
+			if len(requests) != testcase.WantRequests {
+				t.Errorf("expected %d requests, got %d: %v", testcase.WantRequests, len(requests), requests)
+			}
+
+			var closeBody string
+			for _, req := range requests {
+				if req.method == http.MethodDelete {
+					t.Errorf("the queue must not be deleted, got %s %s", req.method, req.path)
+				}
+				if req.method == http.MethodPost && strings.HasSuffix(req.path, "/commands") {
+					closeBody = req.body
+				}
+			}
+			if !testcase.WantCloseAction {
+				if closeBody != "" {
+					t.Errorf("no close command expected, got %s", closeBody)
+				}
+				return
+			}
+			if closeBody == "" {
+				t.Fatalf("expected a close command, requests were %v", requests)
+			}
+			if !strings.Contains(closeBody, `"action":"CloseQueue"`) {
+				t.Errorf("expected a CloseQueue action, got %s", closeBody)
+			}
+			if !strings.Contains(closeBody, createQueueFlags.Name) {
+				t.Errorf("expected the command to target %s, got %s", createQueueFlags.Name, closeBody)
+			}
+		})
 	}
 }
 
