@@ -83,7 +83,7 @@ func CreateQueue(ctx context.Context) error {
 
 	if closed {
 		if err := createQueueCommand(ctx, config, v1alpha1.CloseQueueAction, createQueueFlags.Name); err != nil {
-			return fmt.Errorf("queue %q was created, but submitting its close command failed: %w; retry with:\n"+
+			return fmt.Errorf("queue %q was created, but submitting its close command failed:\n%w; retry with:\n"+
 				"vcctl queue operate -n %s -a close", createQueueFlags.Name, err, createQueueFlags.Name)
 		}
 	}
