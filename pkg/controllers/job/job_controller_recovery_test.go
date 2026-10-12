@@ -378,6 +378,33 @@ func TestAbsentJobConfirmationHandlesLatePodsAndNewLifecycle(t *testing.T) {
 	}
 }
 
+func TestAbsentJobConfirmationDoesNotPoisonForeignPlaceholder(t *testing.T) {
+	c, q := hotfixController(t)
+	foreign := hotfixJob("foreign")
+	foreign.Namespace = "other"
+	if err := c.cache.AddPod(hotfixPod(foreign, "pod")); err != nil {
+		t.Fatal(err)
+	}
+	forged := apis.Request{Namespace: "ns", JobName: foreign.Name, JobUid: foreign.UID, Event: bus.OutOfSyncEvent}
+	q.Add(forged)
+	c.processNextReq(0)
+	if _, err := c.cache.Get(foreign.UID); !errors.Is(err, jobcache.ErrJobNotReady) {
+		t.Fatalf("foreign placeholder was deleted: %v", err)
+	}
+	if err := c.jobInformer.Informer().GetIndexer().Add(foreign); err != nil {
+		t.Fatal(err)
+	}
+	valid := jobSyncRequest(foreign)
+	q.Add(valid)
+	c.processNextReq(0)
+	if len(q.waits) != 1 || q.waits[0] != valid {
+		t.Fatal("absence of another namespace suppressed the valid Job")
+	}
+	if _, err := c.cache.Get(foreign.UID); !errors.Is(err, jobcache.ErrJobNotReady) {
+		t.Fatalf("valid Job placeholder was deleted: %v", err)
+	}
+}
+
 func TestAbsentJobConfirmationCacheIsBounded(t *testing.T) {
 	c, q := hotfixController(t)
 	c.identityLimiter = rate.NewLimiter(rate.Inf, 1)

@@ -411,11 +411,15 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 	cc.enqueueJobRequest(req)
 }
 
-func (cc *jobcontroller) recordJobEvent(uid types.UID, event batch.JobEvent, message string) {
-	job, err := cc.cache.Get(uid)
+func (cc *jobcontroller) recordJobEvent(req apis.Request, event batch.JobEvent, message string) {
+	job, err := cc.cache.Get(req.JobUid)
 	if err != nil {
 		klog.Warningf("Failed to find job in cache when reporting job event <%s>: %v",
-			uid, err)
+			req.JobUid, err)
+		return
+	}
+	if !requestMatchesJob(req, job) {
+		klog.Warningf("Ignoring event for <%v>: cached Job is <%s/%s> with UID <%s>", req, job.Namespace, job.Name, job.UID)
 		return
 	}
 	cc.recorder.Event(job.Job, v1.EventTypeNormal, string(event), message)
@@ -460,10 +464,6 @@ func (cc *jobcontroller) processNextCommand() bool {
 		return true
 	}
 	cc.commandQueue.Forget(cmd)
-	cc.recordJobEvent(cmd.TargetObject.UID,
-		batch.CommandIssued,
-		fmt.Sprintf(
-			"Start to execute command %s, and clean it up to make sure executed not more than once.", cmd.Action))
 	req := apis.Request{
 		Namespace: cmd.Namespace,
 		JobName:   cmd.TargetObject.Name,
@@ -471,6 +471,8 @@ func (cc *jobcontroller) processNextCommand() bool {
 		Event:     bus.CommandIssuedEvent,
 		Action:    bus.Action(cmd.Action),
 	}
+	cc.recordJobEvent(req, batch.CommandIssued,
+		fmt.Sprintf("Start to execute command %s, and clean it up to make sure executed not more than once.", cmd.Action))
 
 	key := jobhelpers.GetJobKeyByReq(&req)
 	queue := cc.getWorkerQueue(key)

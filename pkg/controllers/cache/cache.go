@@ -224,6 +224,11 @@ func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
 	if !found {
 		return ErrJobNotFound
 	}
+	if jobInfo.Namespace != obj.Namespace || jobInfo.Name != obj.Name {
+		return ErrJobNotFound
+	}
+	// Mark the old UID as deleted before asynchronous cleanup. Otherwise a late
+	// Add callback could restore Job while its Pods are still being removed.
 	jobInfo.Job = nil
 	jobInfo.Deleted = true
 	jc.deleteJob(jobInfo)
@@ -243,8 +248,10 @@ func (jc *jobCache) AddPod(pod *v1.Pod) error {
 	job, found := jc.jobs[key]
 	if !found {
 		job = &apis.JobInfo{
-			Namespace: pod.Namespace, Name: pod.Annotations[v1alpha1.JobNameKey], UID: key,
-			Pods: make(map[string]map[string]*v1.Pod),
+			Namespace: pod.Namespace,
+			Name:      pod.Annotations[v1alpha1.JobNameKey],
+			UID:       key,
+			Pods:      make(map[string]map[string]*v1.Pod),
 		}
 		jc.jobs[key] = job
 	}
@@ -264,8 +271,10 @@ func (jc *jobCache) UpdatePod(pod *v1.Pod) error {
 	job, found := jc.jobs[key]
 	if !found {
 		job = &apis.JobInfo{
-			Namespace: pod.Namespace, Name: pod.Annotations[v1alpha1.JobNameKey], UID: key,
-			Pods: make(map[string]map[string]*v1.Pod),
+			Namespace: pod.Namespace,
+			Name:      pod.Annotations[v1alpha1.JobNameKey],
+			UID:       key,
+			Pods:      make(map[string]map[string]*v1.Pod),
 		}
 		jc.jobs[key] = job
 	}
