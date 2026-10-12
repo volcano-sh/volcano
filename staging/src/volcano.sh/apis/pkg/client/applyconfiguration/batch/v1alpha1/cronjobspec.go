@@ -56,7 +56,9 @@ type CronJobSpecApplyConfiguration struct {
 	// This is a pointer to distinguish between explicit zero and not specified.
 	// Defaults to 3.
 	SuccessfulJobsHistoryLimit *int32 `json:"successfulJobsHistoryLimit,omitempty"`
-	// The number of failed finished jobs to retain.
+	// The maximum combined number of finished jobs in the Failed or Terminated
+	// phase to retain. Terminated jobs share this limit with Failed jobs;
+	// their phase remains Terminated.
 	// This is a pointer to distinguish between explicit zero and not specified.
 	// Defaults to 1.
 	FailedJobsHistoryLimit *int32 `json:"failedJobsHistoryLimit,omitempty"`

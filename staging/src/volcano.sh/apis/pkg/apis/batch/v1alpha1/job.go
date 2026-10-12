@@ -555,7 +555,9 @@ type CronJobSpec struct {
 	// +optional
 	SuccessfulJobsHistoryLimit *int32 `json:"successfulJobsHistoryLimit,omitempty" protobuf:"varint,7,opt,name=successfulJobsHistoryLimit"`
 
-	// The number of failed finished jobs to retain.
+	// The maximum combined number of finished jobs in the Failed or Terminated
+	// phase to retain. Terminated jobs share this limit with Failed jobs;
+	// their phase remains Terminated.
 	// This is a pointer to distinguish between explicit zero and not specified.
 	// Defaults to 1.
 	// +kubebuilder:default=1
