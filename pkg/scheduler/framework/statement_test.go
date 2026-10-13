@@ -348,6 +348,27 @@ func TestDiscardReversesOperations(t *testing.T) {
 		}
 	})
 
+	t.Run("discard clears live EvictionOccurred but keeps the snapshot", func(t *testing.T) {
+		ssn, _, task, node := newTestSession(t)
+		stmt := NewStatement(ssn)
+
+		if err := stmt.Pipeline(task, node.Name, true); err != nil {
+			t.Fatalf("Pipeline failed: %v", err)
+		}
+		if !task.EvictionOccurred {
+			t.Fatalf("expected EvictionOccurred true after Pipeline")
+		}
+
+		stmt.Discard()
+
+		if task.EvictionOccurred {
+			t.Errorf("expected live EvictionOccurred cleared after Discard")
+		}
+		if task.LastTransaction == nil || !task.LastTransaction.EvictionOccurred {
+			t.Errorf("expected LastTransaction to retain the EvictionOccurred snapshot")
+		}
+	})
+
 	t.Run("discard reverses allocate operation", func(t *testing.T) {
 		ssn, _, task, node := newTestSession(t)
 		stmt := NewStatement(ssn)
@@ -391,6 +412,62 @@ func TestDiscardReversesOperations(t *testing.T) {
 		// After discard, unevict should restore the task to Running.
 		if task.Status != api.Running {
 			t.Errorf("expected task status Running after Discard of Evict, got %v", task.Status)
+		}
+	})
+}
+
+// TestTaskSchedulingReasonNominationLifecycle asserts the NominatedNodeName
+// published by TaskSchedulingReason across the real Pipeline/Discard/Commit
+// paths. The nomination follows the live transaction, not the reason snapshot.
+func TestTaskSchedulingReasonNominationLifecycle(t *testing.T) {
+	t.Run("discarded preemption publishes no nomination", func(t *testing.T) {
+		ssn, job, task, node := newTestSession(t)
+		stmt := NewStatement(ssn)
+
+		if err := stmt.Pipeline(task, node.Name, true); err != nil {
+			t.Fatalf("Pipeline failed: %v", err)
+		}
+		// Live attempt nominates the node.
+		if _, _, nominated := job.TaskSchedulingReason(task.UID); nominated != node.Name {
+			t.Fatalf("pre-discard nomination = %q, want %q", nominated, node.Name)
+		}
+
+		stmt.Discard()
+
+		// Rolled back to Pending, so nothing is nominated.
+		if _, _, nominated := job.TaskSchedulingReason(task.UID); nominated != "" {
+			t.Errorf("post-discard nomination = %q, want empty", nominated)
+		}
+	})
+
+	t.Run("committed preemption retains nomination", func(t *testing.T) {
+		ssn, job, task, node := newTestSession(t)
+		stmt := NewStatement(ssn)
+
+		if err := stmt.Pipeline(task, node.Name, true); err != nil {
+			t.Fatalf("Pipeline failed: %v", err)
+		}
+
+		stmt.Commit()
+
+		if _, _, nominated := job.TaskSchedulingReason(task.UID); nominated != node.Name {
+			t.Errorf("post-commit nomination = %q, want %q", nominated, node.Name)
+		}
+	})
+
+	t.Run("committed non-eviction pipeline publishes no nomination", func(t *testing.T) {
+		ssn, job, task, node := newTestSession(t)
+		stmt := NewStatement(ssn)
+
+		// No eviction, so nothing to nominate.
+		if err := stmt.Pipeline(task, node.Name, false); err != nil {
+			t.Fatalf("Pipeline failed: %v", err)
+		}
+
+		stmt.Commit()
+
+		if _, _, nominated := job.TaskSchedulingReason(task.UID); nominated != "" {
+			t.Errorf("post-commit nomination = %q, want empty", nominated)
 		}
 	})
 }
