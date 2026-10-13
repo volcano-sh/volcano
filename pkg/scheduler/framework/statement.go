@@ -254,6 +254,7 @@ func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 		}
 	}
 	task.NodeName = ""
+	task.EvictionOccurred = false
 	task.JobAllocatedHyperNode = ""
 
 	return nil
