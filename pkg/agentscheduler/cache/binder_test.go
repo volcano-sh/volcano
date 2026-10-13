@@ -412,7 +412,7 @@ func TestCheckAndBindPod(t *testing.T) {
 				setupCacheWithNode(cache, node.Name)
 			}
 
-			binder := NewConflictAwareBinder(cache, schedulingQueue)
+			binder := NewConflictAwareBinder(cache, schedulingQueue, 1)
 
 			// Set up pre-existing bind generations if any
 			if tt.preExistingBindGenerations != nil {
