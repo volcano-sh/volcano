@@ -52,7 +52,7 @@ require (
 	sigs.k8s.io/e2e-framework v0.7.0
 	sigs.k8s.io/yaml v1.6.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.16.0
+	volcano.sh/apis v0.0.0
 )
 
 require (
