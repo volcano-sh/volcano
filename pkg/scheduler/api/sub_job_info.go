@@ -19,6 +19,7 @@ package api
 import (
 	"fmt"
 	"hash/fnv"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -285,14 +286,47 @@ func (sji *SubJobInfo) CloneStatusFrom(source *SubJobInfo) {
 	sji.NominatedHyperNode = source.NominatedHyperNode
 }
 
-// GetMinResources The current sub job is constrained to gang scheduling,
-// where the MinAvailable of a sub job equals the size of itself.
-// so the minimum required resource to run a sub job can be considered as
-// the total initResReq of each pending task in the sub job.
+// GetMinResources returns a conservative lower bound for the pending resources
+// needed to reach MinAvailable. Each dimension sums the smallest remaining
+// requests independently: heterogeneous tasks must not cause a false rejection
+// merely because a different feasible subset could meet the gang minimum.
+// Actual placement and gang checks remain authoritative.
 func (sji *SubJobInfo) GetMinResources() *Resource {
-	totalResource := EmptyResource()
-	for _, task := range sji.TaskStatusIndex[Pending] {
-		totalResource.Add(task.InitResreq)
+	needed := int(sji.MinAvailable - sji.ReadyTaskNum() - sji.WaitingTaskNum() - sji.PendingBestEffortTaskNum())
+	result := EmptyResource()
+	if needed <= 0 {
+		return result
 	}
-	return totalResource
+	requests := make([]*Resource, 0, len(sji.TaskStatusIndex[Pending]))
+	names := sets.New[v1.ResourceName](v1.ResourceCPU, v1.ResourceMemory)
+	for _, task := range sji.TaskStatusIndex[Pending] {
+		if task.BestEffort {
+			continue
+		}
+		requests = append(requests, task.InitResreq)
+		for name := range task.InitResreq.ScalarResources {
+			names.Insert(name)
+		}
+	}
+	needed = min(needed, len(requests))
+	values := make([]float64, len(requests))
+	for name := range names {
+		for i, request := range requests {
+			values[i] = request.Get(name)
+		}
+		sort.Float64s(values)
+		var total float64
+		for _, value := range values[:needed] {
+			total += value
+		}
+		switch name {
+		case v1.ResourceCPU:
+			result.MilliCPU = total
+		case v1.ResourceMemory:
+			result.Memory = total
+		default:
+			result.SetScalar(name, total)
+		}
+	}
+	return result
 }

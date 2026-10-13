@@ -65,9 +65,9 @@ type ServerOption struct {
 	// concurrently. Larger number = faster job updating, but more CPU load.
 	WorkerThreads           uint32
 	WorkerThreadsForCronJob uint32
-	// MaxRequeueNum is the number of times a job, queue or command will be requeued before it is dropped out of the queue.
+	// MaxRequeueNum is the number of times a job, queue, NamespaceQueue or command will be requeued before it is dropped out of the queue.
 	// With the current rate-limiter in use (5ms*2^(maxRetries-1)) the following numbers represent the times
-	// a job, queue or command is going to be requeued:
+	// a job, queue, NamespaceQueue or command is going to be requeued:
 	// 5ms, 10ms, 20ms, 40ms, 80ms, 160ms, 320ms, 640ms, 1.3s, 2.6s, 5.1s, 10.2s, 20.4s, 41s, 82s
 	MaxRequeueNum  int
 	SchedulerNames []string
@@ -122,7 +122,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet, knownControllers []string) {
 		"Larger number = faster job updating, but more CPU load")
 	fs.Uint32Var(&s.WorkerThreadsForCronJob, "worker-threads-for-cronjob", defaultCronJobWorkers, "The number of threads syncing cronjob operations. The larger the number, the faster the cronjob processing, but requires more CPU load.")
 	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
-	fs.IntVar(&s.MaxRequeueNum, "max-requeue-num", defaultMaxRequeueNum, "The number of times a job, queue or command will be requeued before it is dropped out of the queue")
+	fs.IntVar(&s.MaxRequeueNum, "max-requeue-num", defaultMaxRequeueNum, "The number of times a job, queue, NamespaceQueue or command will be requeued before it is dropped out of the queue")
 	fs.StringVar(&s.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")

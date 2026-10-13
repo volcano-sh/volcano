@@ -83,5 +83,9 @@ This metrics describe internal state of volcano.
 |------------------------------------------------------|-----------------|-------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
 | `controller_job_to_pod_creation_latency_milliseconds` | Histogram      | None                                                                                      | Latency from VCJob creation to pod created in milliseconds                                   |
 
+The existing `queue_pod_group_*_count` metrics also use the canonical
+`queue_name` for NamespaceQueues. NamespaceQueue metric series are removed
+when the corresponding NamespaceQueue is deleted.
+
 ### volcano Liveness
 Healthcheck last time of volcano activity and timeout

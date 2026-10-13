@@ -58,6 +58,10 @@ const (
 	// unschedulable in previous sessions and are retried only on subscribed
 	// cluster events or watchdog expiry.
 	UnschedulableJobCache featuregate.Feature = "UnschedulableJobCache"
+
+	// NamespaceQueue enables namespace-scoped queues and namespace-first
+	// PodGroup queue resolution.
+	NamespaceQueue featuregate.Feature = "NamespaceQueue"
 )
 
 func init() {
@@ -65,6 +69,7 @@ func init() {
 }
 
 var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
+	NamespaceQueue:              {Default: false, PreRelease: featuregate.Alpha},
 	WorkLoadSupport:             {Default: true, PreRelease: featuregate.Alpha},
 	VolcanoJobSupport:           {Default: true, PreRelease: featuregate.Alpha},
 	PodDisruptionBudgetsSupport: {Default: true, PreRelease: featuregate.Alpha},

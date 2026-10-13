@@ -510,6 +510,9 @@ var _ = Describe("Network Topology Task Tests", func() {
 			By("Kill pod of job")
 			e2eutil.DeletePod(ctx, jobPods[0])
 
+			By("Wait for the replacement pod to be running")
+			Expect(e2eutil.WaitPodRecreatedAndRunning(ctx, jobPods[0])).NotTo(HaveOccurred())
+
 			By("Wait for job running again")
 			Expect(e2eutil.WaitJobReady(ctx, topologyJob)).NotTo(HaveOccurred())
 
@@ -1123,7 +1126,7 @@ var _ = Describe("Network Topology Task Tests", func() {
 	})
 
 	Context("Both the Job and PartitionPolicy network topology with minPartitions are hard mode tests", func() {
-		It("Case 9.1: Schedule to node-2 and node-3 when hypernode resources just meet the job's minAvailable requirement.", func() {
+		DescribeTable("Case 9.1: Schedule to node-2 and node-3 when hypernode resources just meet the job's minAvailable requirement.", func(totalPartitions int32) {
 			By("Create job that fits in s1's resources")
 
 			// schedule pod to s1 (node-2 and node-3) to make sure the s1's binpack score is higher
@@ -1160,11 +1163,11 @@ var _ = Describe("Network Topology Task Tests", func() {
 						Name:        "task-9-1",
 						Img:         e2eutil.DefaultNginxImage,
 						Req:         e2eutil.CPU3Mem3,
-						Rep:         4,
+						Rep:         totalPartitions * 2,
 						Tolerations: tolerations,
 						PartitionPolicy: &batchv1alpha1.PartitionPolicySpec{
 							MinPartitions:   int32(2),
-							TotalPartitions: 2,
+							TotalPartitions: totalPartitions,
 							PartitionSize:   2,
 							NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
 								Mode:               batchv1alpha1.HardNetworkTopologyMode,
@@ -1185,8 +1188,18 @@ var _ = Describe("Network Topology Task Tests", func() {
 			Expect(e2eutil.WaitJobReady(ctx, topologyJob)).NotTo(HaveOccurred())
 
 			By("Verify pods are scheduled to s1")
-			Expect(e2eutil.VerifyPodScheduling(ctx, topologyJob, []string{"kwok-node-2", "kwok-node-3"})).NotTo(HaveOccurred())
-		})
+			if totalPartitions == 2 {
+				Expect(e2eutil.VerifyPodScheduling(ctx, topologyJob, []string{"kwok-node-2", "kwok-node-3"})).NotTo(HaveOccurred())
+			} else {
+				By("Verify only minPartitions fit and the remaining partitions stay pending")
+				Expect(e2eutil.WaitTaskPhase(ctx, topologyJob, []v1.PodPhase{v1.PodPending}, int(totalPartitions*2-4))).NotTo(HaveOccurred())
+				// Four job Pods plus the two preallocated Pods must occupy s1.
+				Expect(e2eutil.VerifyHyperNodeScheduling(ctx, "s1", 6)).NotTo(HaveOccurred())
+			}
+		},
+			Entry("all partitions fit", int32(2)),
+			Entry("only minPartitions fit", int32(4)),
+		)
 
 		It("Case 9.2: Schedule to s4 when hypernode resources has more resources than the minAvailable resources requested by the job.", func() {
 			By("Create job that fits in s4's resources")
@@ -1246,8 +1259,9 @@ var _ = Describe("Network Topology Task Tests", func() {
 				e2eutil.DeleteJob(ctx, topologyJob)
 			}()
 
-			By("Wait for job running")
-			Expect(e2eutil.WaitJobReady(ctx, topologyJob)).NotTo(HaveOccurred())
+			By("Wait for all four required partitions to be running")
+			// minAvailable is only four, but the assertions below require all eight Pods.
+			Expect(e2eutil.WaitTasksReady(ctx, topologyJob, 8)).NotTo(HaveOccurred())
 
 			By("Verify pods are scheduled to s4")
 			Expect(e2eutil.VerifyHyperNodeScheduling(ctx, "s0", 4)).NotTo(HaveOccurred())
@@ -1289,8 +1303,9 @@ var _ = Describe("Network Topology Task Tests", func() {
 				e2eutil.DeleteJob(ctx, topologyJob)
 			}()
 
-			By("Verify pods are pending")
-			Expect(e2eutil.WaitTaskPhase(ctx, topologyJob, []v1.PodPhase{v1.PodPending}, 0)).NotTo(HaveOccurred())
+			By("Wait for a failed scheduling attempt before verifying all pods are pending")
+			Expect(e2eutil.WaitJobUnschedulable(ctx, topologyJob)).NotTo(HaveOccurred())
+			Expect(e2eutil.WaitTaskPhase(ctx, topologyJob, []v1.PodPhase{v1.PodPending}, 12)).NotTo(HaveOccurred())
 		})
 
 		It("Case 9.4: Pods remain pending when hypernode resources meet the job's minAvailable but do not meet minPartitions.", func() {
@@ -1397,6 +1412,9 @@ var _ = Describe("Network Topology Task Tests", func() {
 			By("Kill pod of job")
 			e2eutil.DeletePod(ctx, jobPods[0])
 
+			By("Wait for the replacement pod to be running")
+			Expect(e2eutil.WaitPodRecreatedAndRunning(ctx, jobPods[0])).NotTo(HaveOccurred())
+
 			By("Wait for job running again")
 			Expect(e2eutil.WaitJobReady(ctx, topologyJob)).NotTo(HaveOccurred())
 
@@ -1438,10 +1456,12 @@ var _ = Describe("Network Topology Task Tests", func() {
 						Name:        "task-9-6",
 						Img:         e2eutil.DefaultNginxImage,
 						Req:         e2eutil.CPU3Mem3,
-						Rep:         8,
+						Rep:         4,
 						Tolerations: tolerations,
 						PartitionPolicy: &batchv1alpha1.PartitionPolicySpec{
-							TotalPartitions: 4,
+							// Both partitions fit so that unrelated pending partitions cannot
+							// take the resources released by the partition being recreated.
+							TotalPartitions: 2,
 							PartitionSize:   2,
 							MinPartitions:   int32(2),
 							NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
@@ -1464,17 +1484,34 @@ var _ = Describe("Network Topology Task Tests", func() {
 			Expect(e2eutil.WaitJobReady(ctx, topologyJob)).NotTo(HaveOccurred())
 
 			jobPods := e2eutil.GetTasksOfJob(ctx, topologyJob)
-			Expect(len(jobPods)).To(Equal(8))
+			Expect(len(jobPods)).To(Equal(4))
+			Expect(e2eutil.VerifyPodScheduling(ctx, topologyJob, []string{"kwok-node-6", "kwok-node-7"})).NotTo(HaveOccurred())
 
-			By("Kill pod of job")
-			e2eutil.DeletePod(ctx, jobPods[0])
-			e2eutil.DeletePod(ctx, jobPods[1])
+			By("Kill all pods of one running subJob")
+			partitionID := jobPods[0].Labels[batchv1alpha1.TaskPartitionID]
+			Expect(partitionID).NotTo(BeEmpty())
+			var partitionPods []*v1.Pod
+			for _, pod := range jobPods {
+				if pod.Labels[batchv1alpha1.TaskPartitionID] == partitionID {
+					Expect(pod.Status.Phase).To(Equal(v1.PodRunning))
+					partitionPods = append(partitionPods, pod)
+				}
+			}
+			Expect(partitionPods).To(HaveLen(2))
+			for _, pod := range partitionPods {
+				e2eutil.DeletePod(ctx, pod)
+			}
+
+			By("Wait for both replacement pods to be running")
+			for _, pod := range partitionPods {
+				Expect(e2eutil.WaitPodRecreatedAndRunning(ctx, pod)).NotTo(HaveOccurred())
+			}
 
 			By("Wait for job running again")
 			Expect(e2eutil.WaitJobReady(ctx, topologyJob)).NotTo(HaveOccurred())
 
-			Expect(e2eutil.WaitPodPhase(ctx, jobPods[0], []v1.PodPhase{v1.PodRunning})).NotTo(HaveOccurred())
-			Expect(e2eutil.WaitPodPhase(ctx, jobPods[1], []v1.PodPhase{v1.PodRunning})).NotTo(HaveOccurred())
+			By("Verify the recreated subJob is scheduled to the same hypernode")
+			Expect(e2eutil.VerifyPodScheduling(ctx, topologyJob, []string{"kwok-node-6", "kwok-node-7"})).NotTo(HaveOccurred())
 		})
 	})
 })

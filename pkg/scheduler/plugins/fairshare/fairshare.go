@@ -291,6 +291,9 @@ func (fsp *fairSharePlugin) OnSessionOpen(ssn *framework.Session) {
 				qs.namespaceDemand[namespace] += taskResource(task, qs.resourceKey)
 			}
 		}
+		if len(job.Tasks) == 0 && job.IsPending() {
+			qs.namespaceDemand[namespace] += job.GetMinResources().Get(qs.resourceKey)
+		}
 	}
 
 	// Snapshot state.usage so the rest of this cycle reads a stable view
@@ -602,6 +605,9 @@ func taskResource(task *api.TaskInfo, resourceKey v1.ResourceName) float64 {
 }
 
 func jobTotalResource(job *api.JobInfo, resourceKey v1.ResourceName) float64 {
+	if len(job.Tasks) == 0 {
+		return job.GetMinResources().Get(resourceKey)
+	}
 	total := 0.0
 	for _, task := range job.Tasks {
 		total += taskResource(task, resourceKey)

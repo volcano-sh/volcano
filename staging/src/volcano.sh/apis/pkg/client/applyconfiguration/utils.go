@@ -171,6 +171,12 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &schedulingv1beta1.ClusterApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("Guarantee"):
 		return &schedulingv1beta1.GuaranteeApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("NamespaceQueue"):
+		return &schedulingv1beta1.NamespaceQueueApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("NamespaceQueueSpec"):
+		return &schedulingv1beta1.NamespaceQueueSpecApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("NamespaceQueueStatus"):
+		return &schedulingv1beta1.NamespaceQueueStatusApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("NetworkTopologySpec"):
 		return &schedulingv1beta1.NetworkTopologySpecApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("NodeGroupAffinity"):
@@ -179,6 +185,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &schedulingv1beta1.NodeGroupAntiAffinityApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("PodGroup"):
 		return &schedulingv1beta1.PodGroupApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("PodGroupAffinityTerm"):
+		return &schedulingv1beta1.PodGroupAffinityTermApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("PodGroupAntiAffinity"):
+		return &schedulingv1beta1.PodGroupAntiAffinityApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("PodGroupCondition"):
 		return &schedulingv1beta1.PodGroupConditionApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("PodGroupSpec"):
@@ -195,6 +205,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &schedulingv1beta1.ReservationApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("SubGroupPolicySpec"):
 		return &schedulingv1beta1.SubGroupPolicySpecApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("TopologyAffinitySpec"):
+		return &schedulingv1beta1.TopologyAffinitySpecApplyConfiguration{}
 
 		// Group=shard.volcano.sh, Version=v1alpha1
 	case shardv1alpha1.SchemeGroupVersion.WithKind("NodeShard"):

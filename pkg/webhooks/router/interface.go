@@ -32,16 +32,22 @@ import (
 type AdmitFunc func(admissionv1.AdmissionReview) *admissionv1.AdmissionResponse
 
 type AdmissionServiceConfig struct {
-	SchedulerNames                []string
-	KubeClient                    kubernetes.Interface
-	VolcanoClient                 versioned.Interface
-	QueueLister                   schedulinglister.QueueLister
-	QueueInformer                 cache.SharedIndexInformer
+	SchedulerNames []string
+	KubeClient     kubernetes.Interface
+	VolcanoClient  versioned.Interface
+	QueueLister    schedulinglister.QueueLister
+	QueueInformer  cache.SharedIndexInformer
+	// NamespaceQueueLister reads NamespaceQueue objects from the shared cache.
+	NamespaceQueueLister schedulinglister.NamespaceQueueLister
+	// NamespaceQueueInformer provides indexed NamespaceQueue lookups.
+	NamespaceQueueInformer        cache.SharedIndexInformer
 	Recorder                      record.EventRecorder
 	ConfigData                    *config.AdmissionConfiguration
 	EnableQueueAllocatedPodsCheck bool
 	MaxQueueDepth                 int
-	EnableRootQueueProtection     bool
+	// MaxNamespaceQueueDepth limits NamespaceQueue descendants below a cluster Queue.
+	MaxNamespaceQueueDepth    int
+	EnableRootQueueProtection bool
 }
 
 type AdmissionService struct {

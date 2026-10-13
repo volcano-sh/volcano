@@ -19,6 +19,7 @@ package jobflow
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/spf13/cobra"
 	"io"
 	"net/http"
@@ -380,6 +381,24 @@ status:
     "state": {}
   }
 }`,
+		},
+		{
+			name: "Invalid format",
+			Response: &flowv1alpha1.JobFlow{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: flowv1alpha1.SchemeGroupVersion.String(),
+					Kind:       "JobFlow",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-jobflow",
+					Namespace: "default",
+				},
+			},
+			Namespace:      "default",
+			Name:           "test-jobflow",
+			Format:         "xml",
+			ExpectedErr:    fmt.Errorf("format xml invalid, valid formats are json and yaml"),
+			ExpectedOutput: "",
 		},
 	}
 	for _, testCase := range testCases {

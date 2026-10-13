@@ -312,7 +312,7 @@ func TestTaskSchedulingReason(t *testing.T) {
 	t5 := buildPod("ns1", "task-5", "node3", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
 	t6 := buildPod("ns1", "task-6", "", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
 
-	originReason1 := ". Origin reason is task-6: 0/3 nodes are unavailable: 1 node(s) pod number exceeded, 2 node(s) resource fit failed."
+	originReason1 := ". Node: task-6: 0/3 nodes are unavailable: 1 node(s) pod number exceeded, 2 node(s) resource fit failed."
 
 	tests := []struct {
 		desc     string
@@ -337,12 +337,12 @@ func TestTaskSchedulingReason(t *testing.T) {
 			},
 			expected: map[types.UID]string{
 				"pg":   "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable" + originReason1,
-				t1.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable" + originReason1,
-				t2.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable" + originReason1,
+				t1.UID: "",
+				t2.UID: "",
 				t3.UID: "Pod ns1/task-3 can possibly be assigned to node1, once minAvailable is satisfied",
 				t4.UID: "Pod ns1/task-4 can possibly be assigned to node2, once minAvailable is satisfied",
 				t5.UID: "Pod ns1/task-5 can possibly be assigned to node3, once minAvailable is satisfied",
-				t6.UID: "0/3 nodes are unavailable: 1 node(s) pod number exceeded, 2 node(s) resource fit failed.",
+				t6.UID: "Node: 0/3 nodes are unavailable: 1 node(s) pod number exceeded, 2 node(s) resource fit failed.",
 			},
 		},
 	}
@@ -384,11 +384,9 @@ func TestTaskSchedulingReason(t *testing.T) {
 			task.Status = Pending
 			job.TaskStatusIndex[Pending][task.UID] = task
 		}
-		job.JobFitErrors = job.FitError()
-
 		// assert
 		for uid, exp := range test.expected {
-			msg := job.JobFitErrors
+			msg := job.FitError()
 			if uid != "pg" {
 				_, msg, _ = job.TaskSchedulingReason(TaskID(uid))
 			}
@@ -396,6 +394,48 @@ func TestTaskSchedulingReason(t *testing.T) {
 				t.Errorf("[x] case #%d, task %v\nwant: %s\n got: %s", i, uid, exp, msg)
 			}
 		}
+	}
+}
+
+// TestTaskSchedulingReasonNomination checks that the nomination is published
+// from the live transaction, so a rolled-back gang attempt does not leak a
+// stale NominatedNodeName while a committed preemption still keeps it.
+func TestTaskSchedulingReasonNomination(t *testing.T) {
+	tests := []struct {
+		name           string
+		live           TransactionContext
+		lastTx         *TransactionContext
+		wantNomination string
+	}{
+		{
+			name:           "committed preemption retains nomination",
+			live:           TransactionContext{Status: Pipelined, NodeName: "node1", EvictionOccurred: true},
+			lastTx:         nil,
+			wantNomination: "node1",
+		},
+		{
+			name:           "discarded attempt publishes no nomination",
+			live:           TransactionContext{Status: Pending},
+			lastTx:         &TransactionContext{Status: Pipelined, NodeName: "node1", EvictionOccurred: true},
+			wantNomination: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := buildPod("ns1", "task-1", "", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
+			job := NewJobInfo(JobID("job1"))
+			ti := NewTaskInfo(pod)
+			job.AddTaskInfo(ti)
+
+			ti.TransactionContext = tt.live
+			ti.LastTransaction = tt.lastTx
+
+			_, _, nominated := job.TaskSchedulingReason(ti.UID)
+			if nominated != tt.wantNomination {
+				t.Errorf("nominatedNodeName = %q, want %q", nominated, tt.wantNomination)
+			}
+		})
 	}
 }
 

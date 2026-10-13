@@ -28,12 +28,37 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"stathat.com/c/consistent"
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/features"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
+
+func resolveQueueReference(namespace, reference, defaultQueue string) (schedulingapi.QueueID, error) {
+	if reference == "" {
+		reference = defaultQueue
+	}
+	if commonutil.HasNamespaceQueuePrefix(reference) &&
+		!utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) {
+		return "", fmt.Errorf("NamespaceQueue feature is disabled")
+	}
+	if reference == "" {
+		return "", nil
+	}
+	resolved, err := commonutil.ResolveWorkloadQueueReference(namespace, reference, "")
+	if err != nil {
+		return "", err
+	}
+	if resolved.Scope == commonutil.ClusterQueueReferenceScope {
+		return schedulingapi.QueueID(resolved.Name), nil
+	}
+	return schedulingapi.NamespaceQueueID(resolved.Namespace, resolved.Name), nil
+}
 
 type hyperNodeEventSource string
 

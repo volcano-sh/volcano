@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"volcano.sh/volcano/pkg/kube"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 const (
@@ -65,6 +66,8 @@ type Config struct {
 	EnableQueueAllocatedPodsCheck bool
 	// MaxQueueDepth is the maximum depth of hierarchical queues
 	MaxQueueDepth int
+	// MaxNamespaceQueueDepth is the maximum number of NamespaceQueue levels below a cluster Queue.
+	MaxNamespaceQueueDepth int
 	// EnableRootQueueProtection if true, root queue's resource attributes (capability, deserved, guarantee) cannot be modified
 	EnableRootQueueProtection bool
 }
@@ -102,10 +105,23 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&c.GracefulShutdownTime, "graceful-shutdown-time", defaultGracefulShutdownTime, "The duration to wait during graceful shutdown before forcing termination.")
 	fs.BoolVar(&c.EnableQueueAllocatedPodsCheck, "enable-queue-allocated-pods-check", false, "If true, queue deletion will be rejected when the queue has allocated pods.")
 	fs.IntVar(&c.MaxQueueDepth, "max-queue-depth", defaultMaxQueueDepth, "The maximum depth of hierarchical queues.")
+	fs.IntVar(&c.MaxNamespaceQueueDepth, "max-namespacequeue-depth", commonutil.DefaultMaxNamespaceQueueDepth,
+		"Maximum number of NamespaceQueue levels below a cluster Queue.")
 	fs.BoolVar(&c.EnableRootQueueProtection, "enable-root-queue-protection", true, "If true, root queue's resource attributes (capability, deserved, guarantee) cannot be modified.")
 }
 
-// CheckPortOrDie check valid port range.
+// Validate validates webhook manager configuration.
+func (c *Config) Validate() error {
+	if err := c.CheckPortOrDie(); err != nil {
+		return err
+	}
+	if c.MaxNamespaceQueueDepth < 1 {
+		return fmt.Errorf("max-namespacequeue-depth must be greater than zero")
+	}
+	return nil
+}
+
+// CheckPortOrDie checks the configured port range.
 func (c *Config) CheckPortOrDie() error {
 	if c.Port < 1 || c.Port > 65535 {
 		return fmt.Errorf("the port should be in the range of 1 and 65535")

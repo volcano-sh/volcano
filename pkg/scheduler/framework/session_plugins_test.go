@@ -279,7 +279,7 @@ func TestUnifiedEvictable_ContextPassedThrough(t *testing.T) {
 	assert.Equal(t, "hn1", receivedCtx.HyperNode)
 }
 
-func TestHyperNodeGradientForJobFn_ForwardsPurposeAndKeepsWinnerTakesAll(t *testing.T) {
+func TestHyperNodeGradientForJobFn_ForwardsPurposeAndIntersectsPlugins(t *testing.T) {
 	enabled := true
 	ssn := &Session{
 		Tiers: []conf.Tier{
@@ -298,17 +298,18 @@ func TestHyperNodeGradientForJobFn_ForwardsPurposeAndKeepsWinnerTakesAll(t *test
 	hn2 := &api.HyperNodeInfo{Name: "hn2"}
 
 	var gotPurpose api.SearchPurpose
-	ssn.AddHyperNodeGradientForJobFn("p1", func(job *api.JobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
+	ssn.AddHyperNodeGradientForJobFn("p1", func(job *api.JobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) api.HyperNodeGradientResult {
 		gotPurpose = purpose
-		return [][]*api.HyperNodeInfo{{hn1}}
+		return api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{hn1}}}
 	})
-	ssn.AddHyperNodeGradientForJobFn("p2", func(job *api.JobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) [][]*api.HyperNodeInfo {
-		return [][]*api.HyperNodeInfo{{hn2}}
+	ssn.AddHyperNodeGradientForJobFn("p2", func(job *api.JobInfo, hyperNode *api.HyperNodeInfo, purpose api.SearchPurpose) api.HyperNodeGradientResult {
+		return api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{hn2}}}
 	})
 
-	result := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
+	result, stats := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
 	assert.Equal(t, api.PurposeEvict, gotPurpose)
-	assert.Equal(t, [][]*api.HyperNodeInfo{{hn1}}, result)
+	assert.Empty(t, result)
+	assert.NotNil(t, stats)
 }
 
 func TestHyperNodeGradientForJobFn_NoPluginKeepsCurrentFallback(t *testing.T) {
@@ -316,7 +317,7 @@ func TestHyperNodeGradientForJobFn_NoPluginKeepsCurrentFallback(t *testing.T) {
 		hyperNodeGradientForJobFns: map[string]api.HyperNodeGradientForJobFn{},
 	}
 	root := &api.HyperNodeInfo{Name: "root"}
-	result := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
+	result, _ := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, root, api.PurposeEvict)
 	assert.Equal(t, [][]*api.HyperNodeInfo{{root}}, result)
 }
 
@@ -539,5 +540,118 @@ func TestQueueScope(t *testing.T) {
 			ssn := &Session{Queues: test.queues}
 			assert.Equal(t, test.want, ssn.queueScope("child"))
 		})
+	}
+}
+
+func TestHyperNodeGradientForJobFn_NilCallbackFailsClosed(t *testing.T) {
+	enabled := true
+	ssn := &Session{
+		Tiers:                      []conf.Tier{{Plugins: []conf.PluginOption{{Name: "nil-gradient", EnabledHyperNodeGradient: &enabled}}}},
+		hyperNodeGradientForJobFns: map[string]api.HyperNodeGradientForJobFn{},
+	}
+	ssn.AddHyperNodeGradientForJobFn("nil-gradient", func(*api.JobInfo, *api.HyperNodeInfo, api.SearchPurpose) api.HyperNodeGradientResult {
+		return api.HyperNodeGradientResult{}
+	})
+	result, stats := ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, &api.HyperNodeInfo{Name: "root"}, api.PurposeAllocate)
+	assert.NotNil(t, result)
+	assert.Empty(t, result)
+	assert.NotNil(t, stats)
+}
+
+func TestHyperNodeGradientThreeStates(t *testing.T) {
+	root := api.NewHyperNodeInfo(api.BuildHyperNode("root", 3, nil))
+	rack := api.NewHyperNodeInfo(api.BuildHyperNode("rack", 2, nil))
+	a := api.NewHyperNodeInfo(api.BuildHyperNode("a", 1, nil))
+	b := api.NewHyperNodeInfo(api.BuildHyperNode("b", 1, nil))
+	outside := api.NewHyperNodeInfo(api.BuildHyperNode("outside", 1, nil))
+	root.Children = sets.New(rack.Name, outside.Name)
+	rack.Children = sets.New(b.Name, a.Name)
+	hyperNodes := api.HyperNodeInfoMap{root.Name: root, rack.Name: rack, a.Name: a, b.Name: b, outside.Name: outside}
+	unconstrained := api.HyperNodeGradientResult{Unconstrained: true}
+	onlyA := api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{a}}}
+	onlyB := api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{b}}}
+	both := api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{b, a}}}
+	tests := []struct {
+		name     string
+		results  []api.HyperNodeGradientResult
+		disabled bool
+		want     [][]*api.HyperNodeInfo
+	}{
+		{name: "no callbacks", want: [][]*api.HyperNodeInfo{{rack}}},
+		{name: "disabled callback", results: []api.HyperNodeGradientResult{unconstrained}, disabled: true, want: [][]*api.HyperNodeInfo{{rack}}},
+		{name: "one unconstrained", results: []api.HyperNodeGradientResult{unconstrained}, want: [][]*api.HyperNodeInfo{{a, b}, {rack}}},
+		{name: "all unconstrained", results: []api.HyperNodeGradientResult{unconstrained, unconstrained}, want: [][]*api.HyperNodeInfo{{a, b}, {rack}}},
+		{name: "unconstrained then candidates", results: []api.HyperNodeGradientResult{unconstrained, onlyA}, want: [][]*api.HyperNodeInfo{{a}}},
+		{name: "candidates then unconstrained", results: []api.HyperNodeGradientResult{onlyB, unconstrained}, want: [][]*api.HyperNodeInfo{{b}}},
+		{name: "overlapping candidates", results: []api.HyperNodeGradientResult{both, onlyA}, want: [][]*api.HyperNodeInfo{{a}}},
+		{name: "disjoint candidates", results: []api.HyperNodeGradientResult{onlyA, onlyB}, want: [][]*api.HyperNodeInfo{}},
+		{name: "zero result rejects", results: []api.HyperNodeGradientResult{{}, unconstrained}, want: [][]*api.HyperNodeInfo{}},
+		{name: "explicit empty rejects", results: []api.HyperNodeGradientResult{unconstrained, {Gradients: [][]*api.HyperNodeInfo{}}}, want: [][]*api.HyperNodeInfo{}},
+		{name: "rejection overrides candidates", results: []api.HyperNodeGradientResult{both, {}}, want: [][]*api.HyperNodeInfo{}},
+		{name: "invalid unconstrained result rejects", results: []api.HyperNodeGradientResult{{Unconstrained: true, Gradients: both.Gradients}}, want: [][]*api.HyperNodeInfo{}},
+	}
+	for _, tc := range tests {
+		for _, purpose := range []api.SearchPurpose{api.PurposeAllocate, api.PurposeEvict} {
+			for _, subJobCallback := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/purpose=%d/subJob=%t", tc.name, purpose, subJobCallback), func(t *testing.T) {
+					ssn := &Session{
+						HyperNodes:                    hyperNodes,
+						hyperNodeGradientForJobFns:    map[string]api.HyperNodeGradientForJobFn{},
+						hyperNodeGradientForSubJobFns: map[string]api.HyperNodeGradientForSubJobFn{},
+					}
+					enabled := !tc.disabled
+					options := []conf.PluginOption{{Name: "unregistered", EnabledHyperNodeGradient: &enabled}}
+					calls := 0
+					for i, result := range tc.results {
+						name := fmt.Sprintf("p%d", i)
+						options = append(options, conf.PluginOption{Name: name, EnabledHyperNodeGradient: &enabled})
+						callback := func(input *api.HyperNodeInfo, gotPurpose api.SearchPurpose) api.HyperNodeGradientResult {
+							calls++
+							assert.Same(t, rack, input)
+							assert.Equal(t, purpose, gotPurpose)
+							return result
+						}
+						ssn.AddHyperNodeGradientForJobFn(name, func(_ *api.JobInfo, input *api.HyperNodeInfo, p api.SearchPurpose) api.HyperNodeGradientResult {
+							return callback(input, p)
+						})
+						ssn.AddHyperNodeGradientForSubJobFn(name, func(_ *api.SubJobInfo, input *api.HyperNodeInfo, p api.SearchPurpose) api.HyperNodeGradientResult {
+							return callback(input, p)
+						})
+					}
+					ssn.Tiers = []conf.Tier{{Plugins: options}}
+					var got [][]*api.HyperNodeInfo
+					var stats *api.HyperNodeGradientStats
+					if subJobCallback {
+						got, stats = ssn.HyperNodeGradientForSubJobFn(&api.SubJobInfo{}, rack, purpose)
+					} else {
+						got, stats = ssn.HyperNodeGradientForJobFn(&api.JobInfo{}, rack, purpose)
+					}
+					want := append([][]*api.HyperNodeInfo{}, tc.want...)
+					if purpose == api.PurposeEvict {
+						for i, j := 0, len(want)-1; i < j; i, j = i+1, j-1 {
+							want[i], want[j] = want[j], want[i]
+						}
+					}
+					assert.Equal(t, want, got)
+					if tc.disabled || len(tc.results) == 0 {
+						assert.Zero(t, calls)
+						assert.Nil(t, stats)
+						return
+					}
+					assert.Equal(t, len(tc.results), calls)
+					if !assert.NotNil(t, stats) {
+						return
+					}
+					assert.Equal(t, hyperNodeCountByTier(got), stats.IntersectedByTier)
+					for i, result := range tc.results {
+						if result.Unconstrained && len(result.Gradients) == 0 {
+							assert.NotContains(t, stats.PluginEligibleByTier, fmt.Sprintf("p%d", i), "unconstrained plugins must not report exclusions")
+						} else {
+							assert.Contains(t, stats.PluginEligibleByTier, fmt.Sprintf("p%d", i))
+						}
+					}
+				})
+			}
+		}
 	}
 }

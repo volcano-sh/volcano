@@ -473,6 +473,9 @@ var _ = Describe("Network Topology Tests", func() {
 			By("Kill pod of job")
 			e2eutil.DeletePod(ctx, jobPods[0])
 
+			By("Wait for the replacement pod to be running")
+			Expect(e2eutil.WaitPodRecreatedAndRunning(ctx, jobPods[0])).NotTo(HaveOccurred())
+
 			By("Wait for job running again")
 			Expect(e2eutil.WaitJobReady(ctx, topologyJob)).NotTo(HaveOccurred())
 

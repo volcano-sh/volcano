@@ -393,7 +393,7 @@ func (cc *cronjobcontroller) createJob(cronJob *batchv1.CronJob, scheduledTime t
 		return nil, err
 
 	case errors.IsAlreadyExists(err):
-		existingJob, err := cc.jobClient.GetJobClient(cc.vcClient, jobTemplate.Namespace, jobTemplate.Name)
+		existingJob, err := cc.jobClient.GetJobClient(cc.vcClient, cronJob.Namespace, jobTemplate.Name)
 		if err != nil {
 			if errors.IsNotFound(err) {
 				klog.Warningf("Job %s disappeared after creation conflict, retrying", jobTemplate.Name)

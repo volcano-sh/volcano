@@ -55,6 +55,10 @@ func InitDescribeFlags(cmd *cobra.Command) {
 
 // DescribeJobFlow is used to get the particular jobflow details.
 func DescribeJobFlow(ctx context.Context) error {
+	if err := checkFormat(describeJobFlowFlags.Format); err != nil {
+		return err
+	}
+
 	config, err := util.BuildConfig(describeJobFlowFlags.Master, describeJobFlowFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -70,7 +74,9 @@ func DescribeJobFlow(ctx context.Context) error {
 		for i, jobFlow := range jobFlows.Items {
 			// Remove managedFields
 			jobFlow.ManagedFields = nil
-			PrintJobFlowDetail(&jobFlow, describeJobFlowFlags.Format)
+			if err := PrintJobFlowDetail(&jobFlow, describeJobFlowFlags.Format); err != nil {
+				return err
+			}
 			// Print space if it's not the last element
 			if len(jobFlows.Items) != 1 && i < len(jobFlows.Items)-1 {
 				fmt.Printf("\n\n")
@@ -89,39 +95,50 @@ func DescribeJobFlow(ctx context.Context) error {
 			jobFlow.APIVersion = v1alpha1.SchemeGroupVersion.String()
 			jobFlow.Kind = "JobFlow"
 		}
-		PrintJobFlowDetail(jobFlow, describeJobFlowFlags.Format)
+		return PrintJobFlowDetail(jobFlow, describeJobFlowFlags.Format)
 	}
 
 	return nil
 }
 
 // PrintJobFlowDetail print jobflow details
-func PrintJobFlowDetail(jobFlow *v1alpha1.JobFlow, format string) {
+func PrintJobFlowDetail(jobFlow *v1alpha1.JobFlow, format string) error {
 	switch format {
 	case "json":
-		printJSON(jobFlow)
+		return printJSON(jobFlow)
 	case "yaml":
-		printYAML(jobFlow)
+		return printYAML(jobFlow)
 	default:
-		fmt.Printf("Unsupported format: %s", format)
+		return checkFormat(format)
 	}
 }
 
-func printJSON(jobFlow *v1alpha1.JobFlow) {
+// checkFormat checks that the output format is one the printer supports.
+func checkFormat(format string) error {
+	if format != "json" && format != "yaml" {
+		return fmt.Errorf("format %s invalid, valid formats are json and yaml", format)
+	}
+
+	return nil
+}
+
+func printJSON(jobFlow *v1alpha1.JobFlow) error {
 	b, err := json.MarshalIndent(jobFlow, "", "  ")
 	if err != nil {
-		fmt.Printf("Error marshaling JSON: %v\n", err)
-		return
+		return err
 	}
 	os.Stdout.Write(b)
 	fmt.Println("")
+
+	return nil
 }
 
-func printYAML(jobFlow *v1alpha1.JobFlow) {
+func printYAML(jobFlow *v1alpha1.JobFlow) error {
 	b, err := yaml.Marshal(jobFlow)
 	if err != nil {
-		fmt.Printf("Error marshaling YAML: %v\n", err)
-		return
+		return err
 	}
 	os.Stdout.Write(b)
+
+	return nil
 }

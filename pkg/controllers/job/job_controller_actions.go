@@ -29,6 +29,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -38,6 +39,8 @@ import (
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 	"volcano.sh/volcano/pkg/controllers/metrics"
+	"volcano.sh/volcano/pkg/features"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 var calMutex sync.Mutex
@@ -345,6 +348,34 @@ func (cc *jobcontroller) GetQueueInfo(queue string) (*scheduling.Queue, error) {
 	return queueInfo, err
 }
 
+func (cc *jobcontroller) getJobForwardingQueue(job *batch.Job) (*scheduling.Queue, error) {
+	if job == nil {
+		return nil, fmt.Errorf("job is nil")
+	}
+	if commonutil.HasNamespaceQueuePrefix(job.Spec.Queue) &&
+		!utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) {
+		return nil, fmt.Errorf("NamespaceQueue feature is disabled")
+	}
+
+	target, err := commonutil.ResolveWorkloadQueueReference(
+		job.Namespace,
+		job.Spec.Queue,
+		scheduling.DefaultQueue,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("resolve queue reference %q: %w", job.Spec.Queue, err)
+	}
+
+	switch target.Scope {
+	case commonutil.ClusterQueueReferenceScope:
+		return cc.GetQueueInfo(target.Name)
+	case commonutil.NamespaceQueueReferenceScope:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unsupported queue reference scope %q", target.Scope)
+	}
+}
+
 func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
 	job := jobInfo.Job
 	klog.V(3).Infof("Starting to sync up Job <%s/%s>, current version %d", job.Namespace, job.Name, job.Status.Version)
@@ -360,14 +391,13 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	job = job.DeepCopy()
 
 	// Find queue that job belongs to, and check if the queue has forwarding metadata
-	queueInfo, err := cc.GetQueueInfo(job.Spec.Queue)
+	queueInfo, err := cc.getJobForwardingQueue(job)
 	if err != nil {
 		return err
 	}
 
-	var jobForwarding bool
-	if len(queueInfo.Spec.ExtendClusters) != 0 {
-		jobForwarding = true
+	jobForwarding := queueInfo != nil && len(queueInfo.Spec.ExtendClusters) != 0
+	if jobForwarding {
 		if len(job.Annotations) == 0 {
 			job.Annotations = make(map[string]string)
 		}
@@ -391,8 +421,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		}
 	}
 
-	if len(queueInfo.Spec.ExtendClusters) != 0 {
-		jobForwarding = true
+	if jobForwarding {
 		job.Annotations[batch.JobForwardingKey] = "true"
 		_, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
 		if err != nil {
