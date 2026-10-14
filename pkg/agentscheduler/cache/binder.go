@@ -53,7 +53,7 @@ const (
 
 func NewConflictAwareBinder(schedulerCache Cache, schedulingQueue k8sschedulingqueue.SchedulingQueue, workerCount int) *ConflictAwareBinder {
 	// Calculate channel capacity based on worker count and candidate count
-	// Use workerCount * defaultCandidateNodeCount * 2 to provide modest buffering
+	// Use workerCount * defaultBinderCandidateNodeCount * 2 to provide modest buffering
 	// while preventing unbounded accumulation of stale results
 	channelCapacity := workerCount * defaultBinderCandidateNodeCount * 2
 	if channelCapacity < minBinderChannelCapacity {
