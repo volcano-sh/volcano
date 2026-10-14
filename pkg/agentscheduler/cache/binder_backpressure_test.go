@@ -18,8 +18,10 @@ package cache
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 )
 
 func TestBinderChannelCapacity(t *testing.T) {
@@ -84,4 +86,27 @@ func TestBinderChannelBackpressure(t *testing.T) {
 
 	// Verify channel starts empty
 	assert.Equal(t, 0, len(binder.BindCheckChannel), "Channel should start empty")
+
+	for i := 0; i < capacity; i++ {
+		binder.EnqueueScheduleResult(&agentapi.PodScheduleResult{})
+	}
+
+	enqueued := make(chan struct{})
+	go func() {
+		binder.EnqueueScheduleResult(&agentapi.PodScheduleResult{})
+		close(enqueued)
+	}()
+
+	select {
+	case <-enqueued:
+		t.Fatal("enqueue should block when the Binder channel is full")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	<-binder.BindCheckChannel
+	select {
+	case <-enqueued:
+	case <-time.After(time.Second):
+		t.Fatal("enqueue should complete after a channel slot is released")
+	}
 }

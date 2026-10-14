@@ -138,14 +138,15 @@ func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *agentapi.PodS
 		return
 	}
 
-	// 3. Release candidates AFTER cache assume completes
-	// This ensures other workers see the updated cache state and generation
+	binder.recordsMutex.Lock()
+	binder.nodeBindRecords[node.Name] = nodeBindGeneration
+	binder.recordsMutex.Unlock()
+
+	// 3. Release candidates only after both the cache assume and Binder's
+	// generation record are visible to subsequent scheduling results.
 	binder.cache.RemoveCandidateNodesFromBinder(scheduleResult.SuggestedNodes)
 
 	binder.schedulingQueue.Done(task.Pod.UID) // Mark previous processing as done to clean in-flight records, avoid memory leak
-	binder.recordsMutex.Lock()
-	defer binder.recordsMutex.Unlock()
-	binder.nodeBindRecords[node.Name] = nodeBindGeneration
 	metrics.UpdateTaskScheduleDuration(metrics.TaskStageAssumed, metrics.Duration(task.Pod.CreationTimestamp.Time))
 }
 
