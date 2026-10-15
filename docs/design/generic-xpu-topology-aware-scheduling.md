@@ -1,8 +1,13 @@
-# Generic xPU Topology-Aware Scheduling
+# Generic Device Topology-Aware Scheduling
 
 **Status:** Proposal
 
 **Author:** Talha Amjad ([@miantalha45](https://github.com/miantalha45))
+
+**Naming:** The public feature name is **device topology**. The workload API is
+`deviceTopology`; Go identifiers use the `DeviceTopology` prefix; the scheduler
+plugin is `device-topology-aware`; and Node inventory uses
+`topology.volcano.sh/device-inventory`. The physical resources are called accelerators.
 
 ## Table of Contents
 
@@ -54,12 +59,12 @@
 
 Volcano currently schedules accelerators primarily as aggregate Node resources. That works only when all free devices on a Node are interchangeable. Communication-heavy AI workloads instead depend on the physical interconnect between devices: eight free devices may be unusable for an eight-device Pod when they are split across two independent device domains.
 
-This proposal adds an optional, vendor-neutral xPU topology layer to Volcano. It separates topology discovery, scheduling policy, and runtime allocation enforcement:
+This proposal adds an optional, vendor-neutral device topology layer to Volcano. It separates topology discovery, scheduling policy, and runtime allocation enforcement:
 
 ```mermaid
 flowchart LR
     Sources[Topology sources] --> Cache[SchedulerCache topology state]
-    Cache --> Plugin[xPU scheduler plugin]
+    Cache --> Plugin[Device topology scheduler plugin]
     Plugin --> Adapter[Allocation adapter]
     Adapter --> Bind[Kubernetes bind or DRA]
 
@@ -86,22 +91,22 @@ aggregate free NPUs: 8
 largest connected free domain: 6
 ```
 
-An eight-NPU Pod that requires one connected domain cannot run on this Node, despite the aggregate resource check succeeding. The same issue occurs with separate NVLink-connected GPU groups, NVSwitch domains, MetaXLink domains, and similar xPU interconnects.
+An eight-NPU Pod that requires one connected domain cannot run on this Node, despite the aggregate resource check succeeding. The same issue occurs with separate NVLink-connected GPU groups, NVSwitch domains, MetaXLink domains, and similar accelerator interconnects.
 
 Volcano must also distinguish ordinary multi-Node clusters from rack-scale fabrics:
 
 ```text
-Ordinary multi-Node cluster              Declared rack-scale xPU fabric
+Ordinary multi-Node cluster              Declared rack-scale accelerator fabric
 ---------------------------              ------------------------------
 Node A: local domain                     Node A ─┐
 Node B: local domain                             ├─ one physical fabric
 Node C: local domain                     Node C ─┘
 
-Network links connect Nodes.             The provider declares a real xPU fabric.
+Network links connect Nodes.             The provider declares a real accelerator fabric.
 Local domains stay independent.          Pods may share one fabric across Nodes.
 ```
 
-Free devices on ordinary Nodes must not be treated as one shared xPU domain. A Device Plugin's kubelet-side `GetPreferredAllocation` is insufficient because it runs after Node selection and cannot reject fragmented Nodes, coordinate a PodGroup, or reserve IDs across concurrent scheduling attempts.
+Free devices on ordinary Nodes must not be treated as one shared accelerator domain. A Device Plugin's kubelet-side `GetPreferredAllocation` is insufficient because it runs after Node selection and cannot reject fragmented Nodes, coordinate a PodGroup, or reserve IDs across concurrent scheduling attempts.
 
 ## Goals
 
@@ -116,11 +121,11 @@ Free devices on ordinary Nodes must not be treated as one shared xPU domain. A D
 
 ## Non-goals
 
-The first milestone does not implement vendor discovery, device configuration, NCCL ring construction, MIG/vGPU/fractional-device allocation, topology-aware victim selection, or hierarchical composition of parent and SubGroup xPU policies. It does not replace DRA, Device Plugins, `deviceshare`, HyperNodes, or aggregate Kubernetes resource accounting. It also does not infer topology from device indices, PCI addresses, or aggregate capacity: providers must publish explicit topology facts.
+The first milestone does not implement vendor discovery, device configuration, NCCL ring construction, MIG/vGPU/fractional-device allocation, topology-aware victim selection, or hierarchical composition of parent and SubGroup device-topology policies. It does not replace DRA, Device Plugins, `deviceshare`, HyperNodes, or aggregate Kubernetes resource accounting. It also does not infer topology from device indices, PCI addresses, or aggregate capacity: providers must publish explicit topology facts.
 
-Existing `preempt` and `gangpreempt` actions remain supported and may evict Pods holding xPU devices. The alpha only defers using xPU topology to choose victims or to change existing preemption policy. Eviction, like completion and deletion, must be observed by the topology allocation lifecycle so that it cannot leak a device reservation or allocation.
+Existing `preempt` and `gangpreempt` actions remain supported and may evict Pods holding accelerator devices. The alpha only defers using device topology to choose victims or to change existing preemption policy. Eviction, like completion and deletion, must be observed by the topology allocation lifecycle so that it cannot leak a device reservation or allocation.
 
-Kubernetes binds Pods independently and provides no operation that binds or unbinds a whole gang atomically. The proposed transaction boundary is therefore before bind dispatch: it either reserves every selected xPU ID and prepares and accepts every gang member's bind context, or rolls back all tentative Task, Node, and reservation changes without dispatching any context. After dispatch, one Pod can bind successfully while another fails. Kubernetes cannot automatically unbind the successful Pod, so the adapter reconciles every individual bind result and retains uncertain device IDs as unavailable until it confirms allocation or release.
+Kubernetes binds Pods independently and provides no operation that binds or unbinds a whole gang atomically. The proposed transaction boundary is therefore before bind dispatch: it either reserves every selected device ID and prepares and accepts every gang member's bind context, or rolls back all tentative Task, Node, and reservation changes without dispatching any context. After dispatch, one Pod can bind successfully while another fails. Kubernetes cannot automatically unbind the successful Pod, so the adapter reconciles every individual bind result and retains uncertain device IDs as unavailable until it confirms allocation or release.
 
 ## Architecture
 
@@ -136,7 +141,7 @@ Kubernetes binds Pods independently and provides no operation that binds or unbi
 
 The design builds on `SchedulerCache.Snapshot()`, `Session.AddPredicateFn`, `Session.AddNodeOrderFn`/`AddBatchNodeOrderFn`, the existing `allocate` action, and `Statement` rollback. It does not create a parallel scheduler path.
 
-Existing HAMi Ascend910 selection uses vendor-specific `CustomInfo["NetworkID"]` to group candidate devices and take devices from the largest available local network group first. Its `FilterNode`, score, and allocation paths each run that vendor selection independently. This is a best-effort, Node-local heuristic: it can fall back across groups and does not carry a scheduler-selected plan into allocation. It does not provide a vendor-neutral domain model, a `hard` same-domain guarantee, cross-Node fabric support, exact-ID reservation, or gang-wide planning. The proposed xPU topology feature generalizes that scheduling intent without changing existing HAMi behavior in its alpha scope.
+Existing HAMi Ascend910 selection uses vendor-specific `CustomInfo["NetworkID"]` to group candidate devices and take devices from the largest available local network group first. Its `FilterNode`, score, and allocation paths each run that vendor selection independently. This is a best-effort, Node-local heuristic: it can fall back across groups and does not carry a scheduler-selected plan into allocation. It does not provide a vendor-neutral domain model, a `hard` same-domain guarantee, cross-Node fabric support, exact-ID reservation, or gang-wide planning. The proposed device topology feature generalizes that scheduling intent without changing existing HAMi behavior in its alpha scope.
 
 ### Proposed Architecture
 
@@ -144,7 +149,7 @@ Existing HAMi Ascend910 selection uses vendor-specific `CustomInfo["NetworkID"]`
 flowchart LR
     Sources[Trusted topology sources] --> Provider[Provider]
     Provider --> Snapshot[Canonical topology snapshot]
-    Snapshot --> Plugin[xPU topology plugin]
+    Snapshot --> Plugin[Device topology plugin]
     Plugin --> Decisions[Filter, score, and gang plan]
     Decisions --> Ledger[Reservation ledger]
     Ledger --> Adapter[Allocation adapter]
@@ -160,7 +165,7 @@ flowchart LR
     class Adapter,Runtime,Observe runtime
 ```
 
-The architecture separates source normalization, scheduler-owned state, scheduling policy, and runtime enforcement. Providers publish facts, `SchedulerCache` owns immutable xPU views and reservations, the plugin makes placement decisions, and the adapter enforces selected IDs. The remaining sections define those contracts in detail.
+The architecture separates source normalization, scheduler-owned state, scheduling policy, and runtime enforcement. Providers publish facts, `SchedulerCache` owns immutable device topology views and reservations, the plugin makes placement decisions, and the adapter enforces selected IDs. The remaining sections define those contracts in detail.
 
 ## Design Details
 
@@ -185,7 +190,7 @@ The annotation provider reuses the scheduler cache's existing Node informer. It 
 
 Every provider also has a liveness-refresh obligation. It must submit a current update for a published fact set before its `effectiveFreshUntil`, even when topology content did not change. For the annotation provider, the trusted publisher renews `observedAt` and optional `freshUntil` by patching the inventory annotation, which produces an ordinary Node update. The recommended refresh interval is no greater than half of `providerMaxAge`. A missed refresh makes the facts stale for `hard` placement, while `soft` placement simply loses its topology bonus.
 
-Provider readiness is separate from ordinary Node readiness. `SchedulerCache` starts xPU topology state from an empty, explicitly not-ready source state, accepts only a fully validated initial provider sync, and then publishes topology revisions. A `hard` request must remain pending with `XPUTopologyDataNotReady` until its configured provider has completed initial sync for the relevant Node or fabric. It must never be admitted merely because the Kubernetes Node object arrived before the provider or its configuration was ready. Provider initialization must not depend on legacy DeviceShare feature flags or the order in which `NodeInfo` happened to be constructed.
+Provider readiness is separate from ordinary Node readiness. `SchedulerCache` starts device topology state from an empty, explicitly not-ready source state, accepts only a fully validated initial provider sync, and then publishes topology revisions. A `hard` request must remain pending with `DeviceTopologyDataNotReady` until its configured provider has completed initial sync for the relevant Node or fabric. It must never be admitted merely because the Kubernetes Node object arrived before the provider or its configuration was ready. Provider initialization must not depend on legacy DeviceShare feature flags or the order in which `NodeInfo` happened to be constructed.
 
 ##### Provider Readiness Contract
 
@@ -241,7 +246,7 @@ type NodeTopologyProvider interface {
 	SyncNode(ctx context.Context, node *corev1.Node) (ProviderNodeUpdate, error)
 }
 
-// AnnotationProvider reads the trusted xPU inventory annotation from Nodes.
+// AnnotationProvider reads the trusted device inventory annotation from Nodes.
 type AnnotationProvider struct{}
 
 func (p *AnnotationProvider) ID() string {
@@ -249,7 +254,7 @@ func (p *AnnotationProvider) ID() string {
 }
 
 func (p *AnnotationProvider) SyncNode(_ context.Context, node *corev1.Node) (ProviderNodeUpdate, error) {
-	rawInventory := node.Annotations["topology.volcano.sh/xpu-inventory"]
+	rawInventory := node.Annotations["topology.volcano.sh/device-inventory"]
 	if rawInventory == "" {
 		// The provider checked this Node successfully but found no inventory.
 		return ProviderNodeUpdate{
@@ -289,7 +294,7 @@ When it applies a valid update, the cache stamps the immutable `NodeTopologyFact
 
 After the first successful sync, a later invalid update retains the last valid facts and leaves the Node in `Synced` state, while provider age and error metrics expose the problem. Normal freshness rules still make stale data unavailable for `hard` policies. When a Kubernetes Node is deleted or leaves this scheduler's NodeShard or selector scope, the cache removes it from topology candidate indexes and invalidates every fabric containing it. Facts for live allocations remain as unavailable tombstones until authoritative reconciliation confirms release.
 
-For a `hard` local-domain request, the plugin checks the configured provider's `Synced` state for the candidate Node from the session snapshot. For a declared cross-Node fabric, it also requires synced state for every member Node and a valid assembled fabric. Otherwise, it returns `XPUTopologyDataNotReady`. The provider does not change Kubernetes `Node.Status`; this is scheduler-internal readiness only.
+For a `hard` local-domain request, the plugin checks the configured provider's `Synced` state for the candidate Node from the session snapshot. For a declared cross-Node fabric, it also requires synced state for every member Node and a valid assembled fabric. Otherwise, it returns `DeviceTopologyDataNotReady`. The provider does not change Kubernetes `Node.Status`; this is scheduler-internal readiness only.
 
 ```mermaid
 flowchart TD
@@ -297,7 +302,7 @@ flowchart TD
     Queue --> Parse[Annotation provider reads, parses, and validates]
     Parse -->|valid| Update[Replace or remove this Node's facts]
     Parse -->|invalid| Reject[Reject update and keep the last valid facts]
-    Update --> Cache[SchedulerCache updates affected xPU indexes]
+    Update --> Cache[SchedulerCache updates affected device topology indexes]
     Cache --> Snapshot[Publish next immutable snapshot]
 
     classDef normal fill:#e8f1ff,stroke:#2563eb,color:#172554
@@ -319,7 +324,7 @@ The annotation provider is the only production-shaped source in the alpha scope.
 ```yaml
 metadata:
   annotations:
-    topology.volcano.sh/xpu-inventory: |
+    topology.volcano.sh/device-inventory: |
       {
         "apiVersion": "topology.volcano.sh/v1alpha1",
         "generation": 42,
@@ -370,7 +375,7 @@ HyperNode rack-1 (existing network topology)
 ├── node-b: local domain value nvlink-0 (canonical ID includes node-b UID)
 └── network: RoCE or InfiniBand
 
-xPU topology facts
+Device topology facts
 ├── node-a annotation: fabrics: []
 └── node-b annotation: fabrics: []
 ```
@@ -383,7 +388,7 @@ The provider reports structured errors for malformed JSON, an unsupported schema
 
 ##### Annotation Writer Authorization and Validation
 
-The Node annotation is a topology assertion, not proof of physical hardware. The alpha deployment must use a dedicated topology publisher identity, such as `system:serviceaccount:volcano-system:xpu-topology-publisher`, backed by a platform-managed controller or vendor integration. The scheduler only reads the annotation. Workload users, ordinary application ServiceAccounts, and the scheduler ServiceAccount must not receive Node write permissions.
+The Node annotation is a topology assertion, not proof of physical hardware. The alpha deployment must use a dedicated topology publisher identity, such as `system:serviceaccount:volcano-system:device-topology-publisher`, backed by a platform-managed controller or vendor integration. The scheduler only reads the annotation. Workload users, ordinary application ServiceAccounts, and the scheduler ServiceAccount must not receive Node write permissions.
 
 The publisher receives only the Node permissions needed to discover and patch topology inventory:
 
@@ -396,11 +401,11 @@ rules:
 
 Nodes are cluster-scoped, and `patch` permission cannot be limited by RBAC to one annotation key. Therefore, each annotation-provider deployment must also install a fail-closed `ValidatingAdmissionPolicy` or validating webhook that:
 
-1. permits changes to `topology.volcano.sh/xpu-inventory` only from the configured publisher identity;
+1. permits changes to `topology.volcano.sh/device-inventory` only from the configured publisher identity;
 2. rejects creation, modification, or removal of that key from every other identity, including workload ServiceAccounts; and
 3. records denied attempts through Kubernetes audit logging and provider error metrics.
 
-Node authorizer and `NodeRestriction` settings are not a substitute for this application-specific protection. The deployment must not rely on a kubelet's ability to modify its own Node object as authorization to publish xPU topology.
+Node authorizer and `NodeRestriction` settings are not a substitute for this application-specific protection. The deployment must not rely on a kubelet's ability to modify its own Node object as authorization to publish device topology.
 
 The provider verifies schema and internal consistency, including ownership, stable IDs, domain membership, generation, and matching aggregate Node allocatable capacity. It cannot prove that an arbitrary annotation describes physical hardware. The publisher must obtain facts from an authoritative inventory source, and a `hard` placement still needs a compatible allocation adapter to confirm that the chosen device IDs were actually assigned.
 
@@ -439,7 +444,7 @@ type DeviceID struct {
 	Value      string
 }
 
-// DeviceDomainID identifies a Node-local xPU domain. NodeUID prevents a
+// DeviceDomainID identifies a Node-local device domain. NodeUID prevents a
 // replacement Node with the same name from colliding with an old domain.
 type DeviceDomainID struct {
 	ProviderID string
@@ -509,7 +514,7 @@ The cache maintains indexes for `resource + Node -> local domains`, `resource + 
 
 #### Scheduler Cache Topology State and Session Snapshot
 
-xPU topology is scheduler-owned, session-independent state inside the existing `SchedulerCache`. It has two layers:
+Device topology is scheduler-owned, session-independent state inside the existing `SchedulerCache`. It has two layers:
 
 ```text
 provider facts                    scheduler-owned availability ledger
@@ -524,7 +529,7 @@ Provider updates replace only the facts owned by that source and affected Node o
 
 An accepted generation may change device membership only when the affected device is free. For a device in `Held`, `Binding`, `Allocated`, or `Unreconciled` state, the cache pins its accepted Node, resource, local-domain, and fabric membership as an allocation tombstone. It applies health changes immediately, but stores a source update that moves, removes, renames, or reassigns that live device as pending and does not expose the new identity through candidate indexes. After authoritative release of the last live reference, the cache applies the newest pending valid generation. This prevents a valid hardware reconfiguration from invalidating an existing reservation or silently reusing the same ID in a different domain.
 
-`SchedulerCache.Snapshot()` captures Nodes, Jobs, Queues, HyperNodes, and the immutable xPU topology view under the existing scheduler-cache mutex. The proposed `ClusterInfo` field holds an immutable snapshot reference, so no device or domain indexes are rebuilt while the lock is held:
+`SchedulerCache.Snapshot()` captures Nodes, Jobs, Queues, HyperNodes, and the immutable device topology view under the existing scheduler-cache mutex. The proposed `ClusterInfo` field holds an immutable snapshot reference, so no device or domain indexes are rebuilt while the lock is held:
 
 ```go
 type ClusterInfo struct {
@@ -532,9 +537,9 @@ type ClusterInfo struct {
     Nodes      map[string]*NodeInfo
     HyperNodes HyperNodeInfoMap
 
-    // XPUTopology is the immutable xPU facts and availability-index view
+    // DeviceTopology is the immutable device topology facts and availability-index view
     // captured with the rest of this ClusterInfo snapshot.
-    XPUTopology *TopologySnapshot
+    DeviceTopology *TopologySnapshot
 }
 
 type Session struct {
@@ -542,19 +547,19 @@ type Session struct {
     Nodes      map[string]*NodeInfo
     HyperNodes HyperNodeInfoMap
 
-    // XPUTopology is copied from the one ClusterInfo snapshot during session
+    // DeviceTopology is copied from the one ClusterInfo snapshot during session
     // creation and remains immutable for the scheduling session.
-    XPUTopology *TopologySnapshot
+    DeviceTopology *TopologySnapshot
 }
 ```
 
-`framework.openSession` keeps its existing `cache.Snapshot()` path. It initializes the Session from that one `ClusterInfo` snapshot and copies `ClusterInfo.XPUTopology` to `Session.XPUTopology` with the other snapshot fields. The xPU plugin reads that session field. There is no second topology snapshot, second cache lock, cross-snapshot Node UID/resource-version comparison, or capture retry. Provider updates still validate the current Node UID and `resourceVersion` before publication. A hard request returns `XPUTopologyDataNotReady` when its provider readiness, freshness, health, or enforcement data in this snapshot is unavailable. A soft request continues without an xPU preference. Predicate and score callbacks use this one accepted topology revision for their entire scheduling session, while reservation operations revalidate selected IDs against the live ledger under `SchedulerCache.Mutex` before succeeding.
+`framework.openSession` keeps its existing `cache.Snapshot()` path. It initializes the Session from that one `ClusterInfo` snapshot and copies `ClusterInfo.DeviceTopology` to `Session.DeviceTopology` with the other snapshot fields. The device-topology plugin reads that session field. There is no second topology snapshot, second cache lock, cross-snapshot Node UID/resource-version comparison, or capture retry. Provider updates still validate the current Node UID and `resourceVersion` before publication. A hard request returns `DeviceTopologyDataNotReady` when its provider readiness, freshness, health, or enforcement data in this snapshot is unavailable. A soft request continues without a device-topology preference. Predicate and score callbacks use this one accepted topology revision for their entire scheduling session, while reservation operations revalidate selected IDs against the live ledger under `SchedulerCache.Mutex` before succeeding.
 
 The scheduler cache exposes operations conceptually equivalent to:
 
 ```go
 // Snapshot returns ClusterInfo with Nodes, Jobs, HyperNodes, and the current
-// immutable xPU topology facts and availability indexes captured together.
+// immutable device topology facts and availability indexes captured together.
 Snapshot() *api.ClusterInfo
 
 // ApplyProviderNodeUpdate validates and applies one provider's current facts
@@ -607,21 +612,21 @@ eligible task-node pair = normal Kubernetes/Volcano resource fit
 
 `Statement.Allocate` remains responsible for normal `NodeInfo` resource accounting. The topology ledger reserves device identity only, it must not subtract the same extended resource from `NodeInfo` a second time. For extended-resource providers, published whole-device capacity may not exceed matching Node allocatable capacity. DRA providers perform the equivalent consistency check using ResourceSlice/claim semantics. A disagreement blocks hard scheduling and removes topology preference for soft scheduling until reconciliation succeeds.
 
-Normal Volcano resource fit continues to use the Kubernetes-compatible effective Pod request. The exact xPU alpha deliberately has a narrower input shape so the selected-ID handoff is unambiguous: each Task selected by a device requirement must request that extended resource as an integral whole-device quantity from exactly one regular container. The alpha rejects the resource in init containers, restartable init sidecars, or multiple regular containers. Tasks that do not request a requirement's resource remain in normal gang and resource scheduling but do not receive a topology assignment for that requirement. This avoids silently assigning or reusing IDs across container lifecycle phases. A later API may add explicit per-task and per-container targeting once its allocation and lifecycle semantics are designed.
+Normal Volcano resource fit continues to use the Kubernetes-compatible effective Pod request. The exact device-topology alpha deliberately has a narrower input shape so the selected-ID handoff is unambiguous: each Task selected by a device requirement must request that extended resource as an integral whole-device quantity from exactly one regular container. The alpha rejects the resource in init containers, restartable init sidecars, or multiple regular containers. Tasks that do not request a requirement's resource remain in normal gang and resource scheduling but do not receive a topology assignment for that requirement. This avoids silently assigning or reusing IDs across container lifecycle phases. A later API may add explicit per-task and per-container targeting once its allocation and lifecycle semantics are designed.
 
 Provider fields describing shared memory, cores, virtual-device count, MIG, or other vendor geometry must not be silently converted into a whole-device record.
 
 ### Workload Policy
 
-xPU topology scheduling applies only to Pods whose `spec.schedulerName` is `volcano`. It cannot influence Pods scheduled by Kubernetes `kube-scheduler`. The scheduler reads a canonical policy from either `PodGroup.spec.deviceTopology` for the entire PodGroup or the matching `PodGroup.spec.subGroupPolicy[].deviceTopology` for one existing SubJob:
+Device topology scheduling applies only to Pods whose `spec.schedulerName` is `volcano`. It cannot influence Pods scheduled by Kubernetes `kube-scheduler`. The scheduler reads a canonical policy from either `PodGroup.spec.deviceTopology` for the entire PodGroup or the matching `PodGroup.spec.subGroupPolicy[].deviceTopology` for one existing SubJob:
 
 1. A Volcano Job uses typed `spec.deviceTopology`, which the Job controller copies to its generated `PodGroup.spec.deviceTopology`.
 2. A user who creates a PodGroup directly sets the same typed `spec.deviceTopology` field.
 3. A normal Volcano-scheduled Pod uses the documented `volcano.sh/device-topology` annotation. The PodGroup controller parses it as a `DeviceTopologySpec` and writes the normalized result to the automatically generated PodGroup.
 
-This lets Deployments, StatefulSets, and other controllers use whole-PodGroup xPU topology scheduling by setting `schedulerName: volcano` and the device-topology annotation in their Pod template. `volcano.sh/group-min-member` defines the gang size when such a workload needs gang-wide xPU planning. A workload without that annotation still receives the existing Volcano scheduling behavior.
+This lets Deployments, StatefulSets, and other controllers use whole-PodGroup device topology scheduling by setting `schedulerName: volcano` and the device-topology annotation in their Pod template. `volcano.sh/group-min-member` defines the gang size when such a workload needs gang-wide device-topology planning. A workload without that annotation still receives the existing Volcano scheduling behavior.
 
-The policy unit is the complete PodGroup for `spec.deviceTopology`, or one matching SubJob for `subGroupPolicy[].deviceTopology`. Each device requirement selects only the Tasks in that unit that request its declared resource. The remaining Tasks continue through normal gang and resource scheduling; this selection is explicit policy semantics, not silent skipping. Every selected Task must resolve the resource request to exactly one regular container with an integral whole-device quantity. A selected Task with an unsupported request shape makes its policy unit ineligible with `XPUTopologyUnsupportedPodRequest`. A requirement that selects no Tasks is rejected before scheduling. A parent `deviceTopology` policy and any subgroup `deviceTopology` policy are mutually exclusive in alpha. This avoids ambiguous fabric scope and inheritance. Heterogeneous accelerator Task templates, init-container accelerator requests, per-container policy targeting, and hierarchical parent-plus-subgroup xPU composition are deferred because they require explicit inheritance and allocation-lifecycle semantics. Exact API names and versions require API review. The following examples are illustrative.
+The policy unit is the complete PodGroup for `spec.deviceTopology`, or one matching SubJob for `subGroupPolicy[].deviceTopology`. Each device requirement selects only the Tasks in that unit that request its declared resource. The remaining Tasks continue through normal gang and resource scheduling; this selection is explicit policy semantics, not silent skipping. Every selected Task must resolve the resource request to exactly one regular container with an integral whole-device quantity. A selected Task with an unsupported request shape makes its policy unit ineligible with `DeviceTopologyUnsupportedPodRequest`. A requirement that selects no Tasks is rejected before scheduling. A parent `deviceTopology` policy and any subgroup `deviceTopology` policy are mutually exclusive in alpha. This avoids ambiguous fabric scope and inheritance. Heterogeneous accelerator Task templates, init-container accelerator requests, per-container policy targeting, and hierarchical parent-plus-subgroup device-topology composition are deferred because they require explicit inheritance and allocation-lifecycle semantics. Exact API names and versions require API review. The following examples are illustrative.
 
 **Volcano Job:**
 
@@ -733,7 +738,7 @@ spec:
       mode: soft
 ```
 
-The alpha webhook rejects `claimName` requirements. This avoids accepting an API shape that cannot yet map a DRA claim to stable, enforceable device identities. The future DRA version will require every Pod in the scheduling unit to contain the declared claim alias and will report `XPUClaimNotFound` when it is absent.
+The alpha webhook rejects `claimName` requirements. This avoids accepting an API shape that cannot yet map a DRA claim to stable, enforceable device identities. The future DRA version will require every Pod in the scheduling unit to contain the declared claim alias and will report `DeviceTopologyClaimNotFound` when it is absent.
 
 > **Alpha limitation:** The DRA example above describes the proposed future API only. It is rejected by the initial implementation.
 
@@ -794,7 +799,7 @@ All requirements that select a Task are ANDed. For example, a Task requiring a s
 
 #### Subgroup Device Policy
 
-Volcano already converts every matching `subGroupPolicy` into a scheduler `SubJobInfo`. The xPU design reuses that existing unit: it does not create a parallel xPU subgroup, duplicate gang accounting, or introduce a second allocation loop. `subGroupSize` and `minSubGroups` retain their existing gang semantics; xPU plans devices only after the existing `allocate` action identifies the exact SubJob Task unit to admit.
+Volcano already converts every matching `subGroupPolicy` into a scheduler `SubJobInfo`. The device-topology design reuses that existing unit: it does not create a parallel device-topology subgroup, duplicate gang accounting, or introduce a second allocation loop. `subGroupSize` and `minSubGroups` retain their existing gang semantics; the device-topology planner selects devices only after the existing `allocate` action identifies the exact SubJob Task unit to admit.
 
 For a Volcano Job, `tasks[].partitionPolicy.deviceTopology` is the Job-facing representation. The Job controller copies it to the generated `PodGroup.spec.subGroupPolicy[].deviceTopology` together with the existing partition size, task selector, partition label key, and network topology fields. The batch API may use a package-local device-topology type and convert it to the scheduling API type, just as it does for network topology.
 
@@ -832,7 +837,7 @@ spec:
               nvidia.com/gpu: 1
 ```
 
-The Job controller labels the first four worker Pods with one partition value and the remaining four with another, then creates two existing SubJobs. The xPU plugin plans one four-Pod SubJob at a time. The hard network rule limits that SubJob to its selected HyperNode candidate scope. The hard xPU rule requires every Pod to have an enforceable local-domain allocation; the hard fabric rule additionally requires all selected device domains in that one SubJob plan to belong to one declared fabric. A second SubJob receives a separate plan and reservation and may select another fitting fabric. A failed hard plan leaves only that SubJob pending and creates no reservation.
+The Job controller labels the first four worker Pods with one partition value and the remaining four with another, then creates two existing SubJobs. The device-topology plugin plans one four-Pod SubJob at a time. The hard network rule limits that SubJob to its selected HyperNode candidate scope. The hard device-topology rule requires every Pod to have an enforceable local-domain allocation; the hard fabric rule additionally requires all selected device domains in that one SubJob plan to belong to one declared fabric. A second SubJob receives a separate plan and reservation and may select another fitting fabric. A failed hard plan leaves only that SubJob pending and creates no reservation.
 
 For a direct PodGroup, users set the same field on a `subGroupPolicy` and use the existing label selector and match keys to define membership:
 
@@ -865,7 +870,7 @@ Normal controller-created Pods continue to support the documented parent-level `
 
 The webhook makes invalid intent fail at admission instead of becoming an ambiguous runtime placement failure:
 
-1. Reject a non-empty `deviceTopology` policy unless `XPUTopologyAwareScheduling` is enabled.
+1. Reject a non-empty `deviceTopology` policy unless `DeviceTopologyAwareScheduling` is enabled.
 2. Require at least one resource requirement and exactly one of `extendedResourceName` or `claimName` in each requirement.
 3. Require a valid extended resource name. Reject CPU and memory because the first scope is full accelerator devices, not CPU/NUMA topology.
 4. Accept only `hard` or `soft` mode. Reject unknown fields, including a per-workload packing or spreading strategy.
@@ -878,7 +883,7 @@ The webhook makes invalid intent fail at admission instead of becoming an ambigu
 
 The alpha makes this policy create-only because it is an input to filtering, scoring, gang planning, device reservation, and the selected-ID bind handoff. A Job, direct PodGroup, or a set of normal Pods can all produce the same canonical PodGroup policy. Ordinary Kubernetes object updates are not coordinated transactionally with an in-memory scheduling session or a live adapter reservation. For example, changing a hard fabric rule or resource selector after a session created its plan could make its reserved IDs and handoff inconsistent with the persisted policy, or leave one gang with mixed intent. A future mutable-policy API would need a versioned canonical policy, atomic propagation across workload sources, final reservation preflight against that version, and defined release/replan behavior. It is deliberately deferred rather than silently accepting unsafe updates.
 
-The scheduler configuration adds a fail-closed activation check. Startup fails when the feature gate is enabled but `xpu-topology-aware` is absent from the configured tiers, when the plugin is configured while the gate is disabled, or when scheduler replicas have conflicting xPU feature configuration. The admission webhook receives the same feature configuration as the scheduler deployment. If that configuration cannot be read or does not declare the plugin active, it rejects a non-empty policy rather than allowing it to be ignored by a scheduler with no xPU plugin.
+The scheduler configuration adds a fail-closed activation check. Startup fails when the feature gate is enabled but `device-topology-aware` is absent from the configured tiers, when the plugin is configured while the gate is disabled, or when scheduler replicas have conflicting device topology feature configuration. The admission webhook receives the same feature configuration as the scheduler deployment. If that configuration cannot be read or does not declare the plugin active, it rejects a non-empty policy rather than allowing it to be ignored by a scheduler with no device-topology plugin.
 
 The webhook does not validate live topology, device availability, source freshness, or adapter enforcement. Those facts are dynamic and remain scheduler responsibilities.
 
@@ -896,9 +901,9 @@ Providers normalize data, adapters determine what the scheduler can safely promi
 
 An accepted `ReplaceFacts` update includes a source generation, timestamp, stable objects, and optional freshness deadline. An accepted `ClearFacts` update instead relies on its Node UID and `resourceVersion`. The provider validates schema size, Node ownership, unique IDs, domain membership, fabric references, and source generation. The cache does not merge contradictory device facts from multiple authorities. Stale data makes devices unavailable for hard requests and removes the topology bonus for soft requests.
 
-Plain Device Plugins and kubelet `GetPreferredAllocation` are not a reservation or exact-enforcement interface. Likewise, the xPU plugin must not instantiate a second upstream `DynamicResources` plugin: predicates remains responsible for DRA prefilter, filter, score, reserve, and prebind behavior.
+Plain Device Plugins and kubelet `GetPreferredAllocation` are not a reservation or exact-enforcement interface. Likewise, the device-topology plugin must not instantiate a second upstream `DynamicResources` plugin: predicates remains responsible for DRA prefilter, filter, score, reserve, and prebind behavior.
 
-An aggregate-only backend that reports only a quantity such as `node-a has 8 GPUs` is not an exact allocation adapter. Even when an annotation provider publishes stable device IDs and domains, the scheduler cannot prove that the backend recognizes those IDs or will assign the selected set to the Pod. Such a backend is observation-only: it may support soft topology scoring, but a hard topology request must be rejected with `XPUAssignmentNotEnforceable`. Only an adapter that validates stable IDs against the real allocator, reserves them atomically, and confirms the final assignment can enable hard topology.
+An aggregate-only backend that reports only a quantity such as `node-a has 8 GPUs` is not an exact allocation adapter. Even when an annotation provider publishes stable device IDs and domains, the scheduler cannot prove that the backend recognizes those IDs or will assign the selected set to the Pod. Such a backend is observation-only: it may support soft topology scoring, but a hard topology request must be rejected with `DeviceTopologyAssignmentNotEnforceable`. Only an adapter that validates stable IDs against the real allocator, reserves them atomically, and confirms the final assignment can enable hard topology.
 
 #### Allocation Adapter Contract
 
@@ -989,10 +994,10 @@ For every proposed placement, the adapter receives the Task or Pod identity, sel
 1. **Validate and reserve:** accept every selected ID for the plan or reject the request without partially reserving it. Reservations must prevent a concurrent allocation from receiving the same ID and must survive a scheduler restart until they expire or are reconciled.
 2. **Prepare an immutable handoff:** create one `AllocationHandoff` for each selected Pod. It binds the reservation token and plan digest to that Pod UID and Node. Repeated preparation for the same reservation and Pod must return the same handoff.
 3. **Confirm enforcement:** after the normal bind path, report whether the real allocator assigned the selected IDs to the intended Pod. A successful Node bind alone is not proof of exact device assignment.
-4. **Release, recover, and reconcile:** release unconfirmed reservations after discard, bind, prebind, or enforcement failure. `Recover` returns every active backend reservation and confirmed allocation after scheduler startup so `SchedulerCache` can reconstruct safe ledger state. Publish authoritative allocation, release, and health changes so its xPU topology state can converge.
+4. **Release, recover, and reconcile:** release unconfirmed reservations after discard, bind, prebind, or enforcement failure. `Recover` returns every active backend reservation and confirmed allocation after scheduler startup so `SchedulerCache` can reconstruct safe ledger state. Publish authoritative allocation, release, and health changes so its device topology state can converge.
 5. **Report a structured failure:** distinguish unsupported exact selection, contention, stale inventory, and allocator failure so the scheduler can retry or expose a useful unschedulable reason.
 
-The scheduler adds a new scheduler-owned `XPUTopologyHandoff` field to the proposed `BindContext` and attaches the `AllocationHandoff` returned for that Pod before the bind batch is accepted. The adapter's pre-bind or DRA integration consumes this opaque handoff and validates its token, plan digest, Pod UID, Node, and container assignments before the runtime receives the request. A workload-writable Pod annotation is not a valid handoff carrier. If an adapter must persist backend-specific information on the Pod, its pre-bind path writes it with scheduler credentials and validates the immutable handoff first.
+The scheduler adds a new scheduler-owned `DeviceTopologyHandoff` field to the proposed `BindContext` and attaches the `AllocationHandoff` returned for that Pod before the bind batch is accepted. The adapter's pre-bind or DRA integration consumes this opaque handoff and validates its token, plan digest, Pod UID, Node, and container assignments before the runtime receives the request. A workload-writable Pod annotation is not a valid handoff carrier. If an adapter must persist backend-specific information on the Pod, its pre-bind path writes it with scheduler credentials and validates the immutable handoff first.
 
 A filter or scoring calculation may discover candidate IDs, but exact allocation must consume the IDs recorded in the accepted plan or reservation token. It must not rerun a vendor chooser and silently select a different set during `Allocate`. Existing DeviceShare implementations demonstrate annotation carry through the predicate allocation event, but those annotations are not by themselves a generic transactional enforcement protocol.
 
@@ -1000,26 +1005,26 @@ For hard mode, the adapter must validate and enforce the exact selected IDs. If 
 
 #### Resource Ownership and DeviceShare Coexistence
 
-Each accelerator resource must have exactly one exact-allocation owner for a scheduling cycle. The xPU plugin and an existing `deviceshare` backend must not independently reserve, release, or subtract the same physical device IDs, because either path could select a device that the other path has already committed.
+Each accelerator resource must have exactly one exact-allocation owner for a scheduling cycle. The device-topology plugin and an existing `deviceshare` backend must not independently reserve, release, or subtract the same physical device IDs, because either path could select a device that the other path has already committed.
 
-| Workload and integration | xPU behavior | Allocation owner |
+| Workload and integration | Device-topology behavior | Allocation owner |
 | --- | --- | --- |
 | No `deviceTopology` policy | Does not filter, score, plan, or reserve topology IDs. | Existing `deviceshare`, DRA, or Kubernetes allocation path. |
 | `soft` policy with legacy `deviceshare` only | May use current topology facts for a score but creates no exact-ID reservation and makes no exact-ID guarantee. | Existing `deviceshare` backend. |
-| `hard` policy with legacy `deviceshare` only | Rejects the placement with `XPUAssignmentNotEnforceable`. | None, a best-effort result must not be presented as hard. |
-| `hard` policy with a compatible adapter | Plans and reserves exact IDs, attaches an immutable bind handoff, then requires adapter confirmation. | The configured xPU allocation adapter. |
+| `hard` policy with legacy `deviceshare` only | Rejects the placement with `DeviceTopologyAssignmentNotEnforceable`. | None, a best-effort result must not be presented as hard. |
+| `hard` policy with a compatible adapter | Plans and reserves exact IDs, attaches an immutable bind handoff, then requires adapter confirmation. | The configured device-topology allocation adapter. |
 
-At plugin initialization, the scheduler validates a single resource-ownership map from resource name to the configured exact-allocation owner. The map also binds that resource to exactly one `DeviceIdentityContract`. A hard xPU request is enabled only when the configured provider ID and identity namespace match the adapter contract, and the adapter has successfully run `ValidateTopology` for every current provider fact set for that resource. The same validation runs before a changed provider fact set becomes enforceable for hard placement. Validation runs outside `SchedulerCache.Mutex`, then `SchedulerCache` rechecks the source generation before publishing the result. A validation failure retains the facts for observation but marks the affected resource unavailable for hard placement. This prevents a provider ID such as `GPU-0` from being mistaken for an unrelated allocator's `GPU-0`.
+At plugin initialization, the scheduler validates a single resource-ownership map from resource name to the configured exact-allocation owner. The map also binds that resource to exactly one `DeviceIdentityContract`. A hard device-topology request is enabled only when the configured provider ID and identity namespace match the adapter contract, and the adapter has successfully run `ValidateTopology` for every current provider fact set for that resource. The same validation runs before a changed provider fact set becomes enforceable for hard placement. Validation runs outside `SchedulerCache.Mutex`, then `SchedulerCache` rechecks the source generation before publishing the result. A validation failure retains the facts for observation but marks the affected resource unavailable for hard placement. This prevents a provider ID such as `GPU-0` from being mistaken for an unrelated allocator's `GPU-0`.
 
 The topology ledger is not a second allocation owner. It is the scheduler-side concurrency guard, while the adapter remains the only component that can reserve and assign devices in the real backend. An adapter may consume an existing `SharedDevicePool` or backend as an implementation detail only after proving that it shares the same reservation lifecycle and cannot double-account resources.
 
-The first alpha implementation does not make legacy `deviceshare` backends implicit xPU adapters. A future HAMi, NVIDIA, or other DeviceShare adapter must explicitly accept the scheduler-selected IDs or reservation token, prevent the backend from independently choosing conflicting IDs, and reconcile allocation and release through the same ownership path.
+The first alpha implementation does not make legacy `deviceshare` backends implicit device-topology adapters. A future HAMi, NVIDIA, or other DeviceShare adapter must explicitly accept the scheduler-selected IDs or reservation token, prevent the backend from independently choosing conflicting IDs, and reconcile allocation and release through the same ownership path.
 
 ### Scheduling and Gang Reservation
 
 #### Per-Task Filter and Score
 
-At session open, the plugin reads the immutable xPU topology view included in `ClusterInfo`. It uses existing session extension points and one proposed candidate-preparation integration as follows:
+At session open, the plugin reads the immutable device topology view included in `ClusterInfo`. It uses existing session extension points and one proposed candidate-preparation integration as follows:
 
 | Phase | Integration | Effect |
 | --- | --- | --- |
@@ -1033,7 +1038,7 @@ The plugin uses a deterministic topology tie-break after existing Node and Hyper
 
 #### Plugin Responsibilities and Boundaries
 
-`xpu-topology-aware` is an optional scheduler plugin. It adds topology eligibility, topology preference, and coordinated reservations. It does not replace normal Kubernetes resource fit or device allocation systems.
+`device-topology-aware` is an optional scheduler plugin. It adds topology eligibility, topology preference, and coordinated reservations. It does not replace normal Kubernetes resource fit or device allocation systems.
 
 | Scheduler stage | Plugin responsibility | Existing owner that remains authoritative |
 | --- | --- | --- |
@@ -1045,7 +1050,7 @@ The plugin uses a deterministic topology tie-break after existing Node and Hyper
 | Reservation | Atomically reserve topology IDs and attach the reservation to the current transaction. | `Statement` remains the owner of normal task/Node mutation. |
 | Reconciliation | Observe authoritative allocation/release/health updates and update the ledger. | Provider/adapter source remains authoritative for device state. |
 
-The plugin uses `Session.AddPredicateFn` for final hard eligibility and `Session.AddNodeOrderFn` or `AddBatchNodeOrderFn` for preferences. After Queue, gang, and NodeShard establish the workload scope, the proposed integration exposes domain-related feasibility from the immutable topology snapshot and session ledger view to the existing HyperNode and Node candidate-selection path. For hard mode, that path removes a Node only when the summary proves it has no fitting, healthy, enforceable domain or required fabric membership. For soft mode, it removes no Node and provides score input only. If the summary is unavailable or stale, early candidate selection makes no xPU pruning decision. The later xPU predicate returns `XPUTopologyDataNotReady` for hard mode and removes the topology bonus for soft mode. The exact framework method that carries this summary requires maintainer review, but these ordering and failure semantics are part of the proposed contract. A topology score cannot turn a Node that failed normal predicates into an eligible Node, and a topology plan cannot bypass Queue, DRF, capacity, gang, priority, preemption, NodeShard, or network constraints.
+The plugin uses `Session.AddPredicateFn` for final hard eligibility and `Session.AddNodeOrderFn` or `AddBatchNodeOrderFn` for preferences. After Queue, gang, and NodeShard establish the workload scope, the proposed integration exposes domain-related feasibility from the immutable topology snapshot and session ledger view to the existing HyperNode and Node candidate-selection path. For hard mode, that path removes a Node only when the summary proves it has no fitting, healthy, enforceable domain or required fabric membership. For soft mode, it removes no Node and provides score input only. If the summary is unavailable or stale, early candidate selection makes no device-topology pruning decision. The later device-topology predicate returns `DeviceTopologyDataNotReady` for hard mode and removes the topology bonus for soft mode. The exact framework method that carries this summary requires maintainer review, but these ordering and failure semantics are part of the proposed contract. A topology score cannot turn a Node that failed normal predicates into an eligible Node, and a topology plan cannot bypass Queue, DRF, capacity, gang, priority, preemption, NodeShard, or network constraints.
 
 The plugin remains independent of `deviceshare` unless a compatible adapter proves stable device identity and single-owner accounting. See [Resource Ownership and DeviceShare Coexistence](#resource-ownership-and-deviceshare-coexistence) for the enforcement requirements.
 
@@ -1055,17 +1060,17 @@ The plugin participates in Volcano's existing scheduling path. It does not build
 
 ```text
 OpenSession
-  -> capture ClusterInfo with immutable xPU topology view
-  -> build read-only xPU domain-feasibility summary
+  -> capture ClusterInfo with immutable device topology view
+  -> build read-only device-topology domain-feasibility summary
   -> existing Queue, gang, and NodeShard establish workload candidate scope
   -> existing HyperNode and Node selection build an initial candidate set using the summary
   -> normal predicates check Node-level Kubernetes feasibility
-  -> xpu-topology-aware predicate rechecks topology-domain feasibility against live state
+  -> device-topology-aware predicate rechecks topology-domain feasibility against live state
   -> Nodes that pass both predicate checks form the final eligible candidate set
-  -> existing Node order plugins and xpu topology preferences score candidates
-  -> xPU gang planner produces a side-effect-free candidate plan for hard mode
+  -> existing Node order plugins and device-topology preferences score candidates
+  -> device-topology gang planner produces a side-effect-free candidate plan for hard mode
   -> Statement tentatively allocates Tasks and reaches the gang plan unit
-  -> final xPU plan is constrained to those Task/Node placements and revalidated
+  -> final device-topology plan is constrained to those Task/Node placements and revalidated
   -> SchedulerCache topology ledger atomically reserves the final selected IDs
   -> proposed CommitWithParticipants keeps task changes and reservations. Discard rolls both back
   -> bind path and authoritative allocation observation reconcile the ledger
@@ -1073,12 +1078,12 @@ OpenSession
 
 ```mermaid
 flowchart TB
-    SO[OpenSession: capture ClusterInfo plus xPU topology view]
-    DS[Build read-only xPU domain-feasibility summary]
+    SO[OpenSession: capture ClusterInfo plus device topology view]
+    DS[Build read-only device-topology domain-feasibility summary]
     Q[Queue, gang, NodeShard, HyperNode and Node candidate selection]
     P[Existing Node predicates]
-    XPF[xpu-topology-aware exact feasibility recheck]
-    S[Node scoring: existing plugins + xPU soft-affinity score]
+    XPF[device-topology-aware exact feasibility recheck]
+    S[Node scoring: existing plugins + device-topology soft-affinity score]
     GP[Pure hard-mode gang-plan candidate]
     ST[Statement.Allocate tentative task operations]
     C{Gang plan unit ready?}
@@ -1098,16 +1103,16 @@ Normal resource fit and topology fit are both required:
 
 ```text
 eligible Task/Node = existing Volcano/Kubernetes predicates
-                     AND xPU domain/fabric/health/enforcement predicate
+                     AND device-topology domain/fabric/health/enforcement predicate
 ```
 
-`network-topology-aware` remains optional and separate. For a workload with both a network topology policy and a hard xPU fabric policy, the proposed xPU domain-feasibility summary is available before HyperNode and Node selection. The selected network path can use the summary to exclude Nodes without a fitting domain, then the xPU predicate rechecks fabric membership and exact feasibility against live state. HyperNode contributes network locality only. It must never synthesize device domains or own device IDs.
+`network-topology-aware` remains optional and separate. For a workload with both a network topology policy and a hard device-topology fabric policy, the proposed device-topology domain-feasibility summary is available before HyperNode and Node selection. The selected network path can use the summary to exclude Nodes without a fitting domain, then the device-topology predicate rechecks fabric membership and exact feasibility against live state. HyperNode contributes network locality only. It must never synthesize device domains or own device IDs.
 
-Current `HyperNodeGradientForJobFn` and `HyperNodeGradientForSubJobFn` use the first enabled gradient callback rather than intersecting results from multiple plugins. Therefore the xPU plugin must not register a competing HyperNode-gradient callback and assume intersection exists. The proposed contract instead exposes one read-only domain-feasibility summary to the existing HyperNode and Node candidate-selection path after Queue, gang, and NodeShard scope is established. For hard mode, an empty fitting-domain result removes only the affected Node. Missing, stale, or failed summary capture removes no Node early and the later xPU predicate reports `XPUTopologyDataNotReady`. For soft mode, no summary result removes no Node and only suppresses the xPU score. The framework API that carries this summary still requires maintainer review, but the xPU plugin does not claim early candidate pruning until that API exists.
+Current `HyperNodeGradientForJobFn` and `HyperNodeGradientForSubJobFn` use the first enabled gradient callback rather than intersecting results from multiple plugins. Therefore the device-topology plugin must not register a competing HyperNode-gradient callback and assume intersection exists. The proposed contract instead exposes one read-only domain-feasibility summary to the existing HyperNode and Node candidate-selection path after Queue, gang, and NodeShard scope is established. For hard mode, an empty fitting-domain result removes only the affected Node. Missing, stale, or failed summary capture removes no Node early and the later device-topology predicate reports `DeviceTopologyDataNotReady`. For soft mode, no summary result removes no Node and only suppresses the device-topology score. The framework API that carries this summary still requires maintainer review, but the device-topology plugin does not claim early candidate pruning until that API exists.
 
-Group topology affinity is a proposed HyperNode-level capability and is not implemented yet. If introduced, it must use an explicit framework-defined composition of HyperNode candidate scopes. It can consume the same read-only xPU domain-feasibility summary, rather than requiring xPU to register a competing gradient callback.
+Group topology affinity is a proposed HyperNode-level capability and is not implemented yet. If introduced, it must use an explicit framework-defined composition of HyperNode candidate scopes. It can consume the same read-only device-topology domain-feasibility summary, rather than requiring the device-topology plugin to register a competing gradient callback.
 
-Hard xPU requirements are evaluated before topology preference. A hard local-domain or fabric failure produces a structured xPU fit error and is not converted to a low score. Soft local-domain and fabric rules contribute scores only after normal eligibility. The first alpha implementation should use the existing predicate and Node-order callback mechanisms, any new gang-planning callback requires explicit framework review rather than hidden logic in a single plugin.
+Hard device-topology requirements are evaluated before topology preference. A hard local-domain or fabric failure produces a structured device-topology fit error and is not converted to a low score. Soft local-domain and fabric rules contribute scores only after normal eligibility. The first alpha implementation should use the existing predicate and Node-order callback mechanisms, any new gang-planning callback requires explicit framework review rather than hidden logic in a single plugin.
 
 #### Proposed Plugin and GangPlan Contracts
 
@@ -1162,23 +1167,23 @@ type TopologyReservationCoordinator interface {
 
 The gang plan unit is the exact set of pending Tasks that the existing gang logic is about to admit in one `Statement`. It is not automatically every Job replica. For example, when a Job has ten replicas and `minAvailable: 4`, the first unit contains the four Tasks needed for the current gang admission. Later pending Tasks receive a new plan unit when the normal allocate and gang logic selects them. The normal Statement still covers every Task in this unit; the topology plan must cover every Task in it that is selected by a device requirement, or allocate none of them.
 
-`CandidateNodes` contains only Nodes that already passed normal scheduler predicates and any applicable Queue, NodeShard, and HyperNode/network scope. When the reviewed early integration is available, this candidate selection also consumes the read-only xPU domain-feasibility summary. A gang plan therefore cannot expand the candidate set or bypass existing scheduling policy.
+`CandidateNodes` contains only Nodes that already passed normal scheduler predicates and any applicable Queue, NodeShard, and HyperNode/network scope. When the reviewed early integration is available, this candidate selection also consumes the read-only device-topology domain-feasibility summary. A gang plan therefore cannot expand the candidate set or bypass existing scheduling policy.
 
 `NodeResourceState` contains plan-owned clones of the session Nodes. As the planner assigns each Task, it applies the same normal `NodeInfo.AddTask` resource accounting to the clone before accepting that placement. This prevents a plan from placing two Tasks on a Node that each fit individually but do not fit together. The final `Statement` preflight repeats the check against current session state before reservation commit. If that preflight fails because state changed, the planner retries a bounded alternative plan rather than repeatedly reserving the same invalid placement.
 
-The xPU implementation returns `TopologyTaskPlacement` values only when it can plan every device-requesting Task selected from the unit. A provisional plan may be evaluated during normal or HyperNode trial placement, but it contains no reservation, adapter token, or mutable transaction participant.
+The device-topology implementation returns `TopologyTaskPlacement` values only when it can plan every device-requesting Task selected from the unit. A provisional plan may be evaluated during normal or HyperNode trial placement, but it contains no reservation, adapter token, or mutable transaction participant.
 
 The plugin continues to use existing callbacks for per-Task work and registers the proposed planning callback at session open:
 
 ```go
-func (p *xpuTopologyPlugin) OnSessionOpen(ssn *framework.Session) {
+func (p *deviceTopologyPlugin) OnSessionOpen(ssn *framework.Session) {
     ssn.AddPredicateFn(p.Name(), p.filter)
     ssn.AddNodeOrderFn(p.Name(), p.score)
     ssn.AddGangPlanFn(p.Name(), p.planGang) // proposed framework API
 }
 ```
 
-`allocate` invokes `GangPlanFn` only for an applicable hard-mode xPU scheduling unit after normal candidate preparation. The unit is either the parent PodGroup gang unit or one existing SubJob created from `subGroupPolicy`; it is never a new xPU-only grouping. It first uses only pure plan candidates while normal allocation and any HyperNode trial Statements choose a gang-ready Task/Node set. After the winning trial Statement has been recovered, or after a non-trial Statement has tentatively allocated its gang plan unit, `allocate` invokes `GangPlanFn` again with `AssignedNodes` fixed to those selected placements. It then calls `TopologyReservationCoordinator.ReservePlan` for that final plan and registers the returned participant on the final Statement.
+`allocate` invokes `GangPlanFn` only for an applicable hard-mode device-topology scheduling unit after normal candidate preparation. The unit is either the parent PodGroup gang unit or one existing SubJob created from `subGroupPolicy`; it is never a new device-topology-only grouping. It first uses only pure plan candidates while normal allocation and any HyperNode trial Statements choose a gang-ready Task/Node set. After the winning trial Statement has been recovered, or after a non-trial Statement has tentatively allocated its gang plan unit, `allocate` invokes `GangPlanFn` again with `AssignedNodes` fixed to those selected placements. It then calls `TopologyReservationCoordinator.ReservePlan` for that final plan and registers the returned participant on the final Statement.
 
 Before recovering or creating a final Statement, `allocate` creates an allocation-attempt checkpoint. It owns cloned `JobWorksheet` and `SubJobWorksheet` queues, `NodesFitErrors`, SubJob allocation and nomination fields, and recorder decision state. The final attempt consumes only those clones. `Statement.Discard` still reverses session Task and Node operations, while the checkpoint restores every non-Statement mutation if final planning, reservation, preflight, batch preparation, or commit fails. Only a successful `CommitWithParticipants` adopts the cloned worksheets and recorder decision into the live allocation context. This prevents a failed first reservation attempt from silently dropping Tasks, retaining a stale HyperNode decision, or skipping a candidate during bounded replan.
 
@@ -1186,7 +1191,7 @@ Before recovering or creating a final Statement, `allocate` creates an allocatio
 
 #### Gang Planning Flow
 
-Per-Pod filtering cannot safely coordinate a gang: allocating the first Pod greedily may consume a domain needed by a later Pod. A hard xPU policy therefore triggers one bounded plan for the current existing gang unit: the parent PodGroup or one SubJob selected through `subGroupPolicy`.
+Per-Pod filtering cannot safely coordinate a gang: allocating the first Pod greedily may consume a domain needed by a later Pod. A hard device-topology policy therefore triggers one bounded plan for the current existing gang unit: the parent PodGroup or one SubJob selected through `subGroupPolicy`.
 
 ```mermaid
 flowchart TD
@@ -1209,7 +1214,7 @@ flowchart TD
     class Pending wait
 ```
 
-The planner orders tasks by fewest candidate domains, then largest device request, then existing task order. For a hard fabric policy, it chooses one common Fabric ID before assigning any Task and evaluates only that fabric's member Nodes and domains for the whole unit. It breaks topology ties by stable ID order after normal Node ordering has selected placements. It uses backtracking only when this greedy placement cannot complete the unit, and every expanded placement state consumes the configured `maxSearchStates` budget. It also enforces `maxCandidateDomainsPerTask`, `maxPlanningAttempts`, and a planning deadline. Budget exhaustion returns `XPUTopologyPlanningBudgetExceeded`, creates no reservation, and is retryable planning pressure rather than a false `NotEnoughResources` result. The planner never bypasses queue, gang, priority, preemption, NodeShard, or network-topology checks.
+The planner orders tasks by fewest candidate domains, then largest device request, then existing task order. For a hard fabric policy, it chooses one common Fabric ID before assigning any Task and evaluates only that fabric's member Nodes and domains for the whole unit. It breaks topology ties by stable ID order after normal Node ordering has selected placements. It uses backtracking only when this greedy placement cannot complete the unit, and every expanded placement state consumes the configured `maxSearchStates` budget. It also enforces `maxCandidateDomainsPerTask`, `maxPlanningAttempts`, and a planning deadline. Budget exhaustion returns `DeviceTopologyPlanningBudgetExceeded`, creates no reservation, and is retryable planning pressure rather than a false `NotEnoughResources` result. The planner never bypasses queue, gang, priority, preemption, NodeShard, or network-topology checks.
 
 `TryReserve(plan)` is the topology ledger's internal all-or-nothing hold. It validates every selected ID against the current ledger and either creates every scheduler-side hold or creates none. Locks use canonical fabric/domain/device order to avoid deadlock.
 
@@ -1230,7 +1235,7 @@ If a later individual Kubernetes bind fails after another Pod has bound, Volcano
 
 #### Transaction Participant Contract
 
-`CommitWithParticipants` is a proposed framework extension, not an existing `Statement` method. Existing `Statement.Commit()` applies normal task and Node allocation changes. The proposed method coordinates those changes with registered transaction participants, such as an xPU reservation, so that they are committed together or rolled back together if any step fails.
+`CommitWithParticipants` is a proposed framework extension, not an existing `Statement` method. Existing `Statement.Commit()` applies normal task and Node allocation changes. The proposed method coordinates those changes with registered transaction participants, such as a device-topology reservation, so that they are committed together or rolled back together if any step fails.
 
 The gang plan is represented independently from mutable task state so it can be validated before `Statement.Allocate` changes the session:
 
@@ -1245,7 +1250,7 @@ type TopologyTaskPlacement struct {
     PodUID types.UID
     // NodeName is the exact Node that must receive this Task during binding.
     NodeName string
-    // LocalDomainID identifies the selected Node-local xPU domain.
+    // LocalDomainID identifies the selected Node-local device domain.
     LocalDomainID DeviceDomainID
     // Assignments maps the Task's resource requests to concrete device IDs.
     Assignments []TopologyContainerAssignment
@@ -1333,11 +1338,11 @@ type BindBatchSubmitter interface {
 }
 ```
 
-The existing `Statement.Commit()` remains unchanged for non-xPU actions. `CommitWithParticipants()` is used only for a plan that attached a transaction participant. It first preflights every planned allocation without creating a bind context. It then applies all in-memory task and Node mutations. If any mutation fails, it reverses every earlier mutation, invokes participants' `Rollback` methods in reverse registration order, creates no bind context, and returns an error.
+The existing `Statement.Commit()` remains unchanged for non-device-topology actions. `CommitWithParticipants()` is used only for a plan that attached a transaction participant. It first preflights every planned allocation without creating a bind context. It then applies all in-memory task and Node mutations. If any mutation fails, it reverses every earlier mutation, invokes participants' `Rollback` methods in reverse registration order, creates no bind context, and returns an error.
 
-After in-memory mutations succeed, `CommitWithParticipants()` obtains and validates one immutable `XPUTopologyHandoff` for every planned bind context. It then runs `BatchPreBinder.PrepareBindBatch` across the complete batch before a context is accepted by the bind cache. If any member preparation fails, it invokes every successful preparation rollback in reverse order, rolls back the transaction participant and allocation-attempt checkpoint, and submits no bind context. A hard xPU batch must not fall back to the existing independent per-context prebind loop. A non-transactional prebind integration is therefore incompatible with this alpha batch path until it implements the batch contract.
+After in-memory mutations succeed, `CommitWithParticipants()` obtains and validates one immutable `DeviceTopologyHandoff` for every planned bind context. It then runs `BatchPreBinder.PrepareBindBatch` across the complete batch before a context is accepted by the bind cache. If any member preparation fails, it invokes every successful preparation rollback in reverse order, rolls back the transaction participant and allocation-attempt checkpoint, and submits no bind context. A hard device-topology batch must not fall back to the existing independent per-context prebind loop. A non-transactional prebind integration is therefore incompatible with this alpha batch path until it implements the batch contract.
 
-Only after all batch preparations succeed does `CommitWithParticipants()` call participant `Commit` and submit one `BindBatch`. `AddBindBatch` validates every context, including the handoff's Pod UID and Node, applies the corresponding scheduler-cache task and Node mutations under one cache lock, and enqueues the complete batch as one unit. If participant commit or batch submission fails, it invokes batch-preparation rollbacks, then follows the same transaction rollback path. The bind worker must not dispatch an individual context from a batch before the batch is fully accepted, and it must not run the ordinary per-context prebind loop a second time for a prepared xPU batch. This new path avoids changing every existing `Statement.Commit()` caller.
+Only after all batch preparations succeed does `CommitWithParticipants()` call participant `Commit` and submit one `BindBatch`. `AddBindBatch` validates every context, including the handoff's Pod UID and Node, applies the corresponding scheduler-cache task and Node mutations under one cache lock, and enqueues the complete batch as one unit. If participant commit or batch submission fails, it invokes batch-preparation rollbacks, then follows the same transaction rollback path. The bind worker must not dispatch an individual context from a batch before the batch is fully accepted, and it must not run the ordinary per-context prebind loop a second time for a prepared device-topology batch. This new path avoids changing every existing `Statement.Commit()` caller.
 
 After the batch is accepted, Kubernetes binding remains non-atomic. A later individual bind failure may coexist with another successfully bound Pod, which is handled through the `Binding` and `Unreconciled` lifecycle above. The exact ordering with existing `Statement` operations and bind-cache handoff must be covered by failure-injection tests.
 
@@ -1347,7 +1352,7 @@ The first implementation only uses this participant for topology reservations. I
 
 | Case | Hard-mode behavior |
 | --- | --- |
-| Two local domains on one Node | Six plus two free devices do not satisfy an eight-device hard same-domain request, emit `XPUDeviceDomainFragmented`. |
+| Two local domains on one Node | Six plus two free devices do not satisfy an eight-device hard same-domain request, emit `DeviceTopologyDomainFragmented`. |
 | Ordinary multi-Node gang | Each Pod receives its own valid local domain. A HyperNode policy may choose a rack, but local domains on different Nodes never become one device domain. |
 | Declared cross-Node fabric | A hard fabric gang selects one declared fabric and uses only its member Nodes and local domains. Every Pod still receives a valid local device group. |
 
@@ -1358,8 +1363,8 @@ For a fabric plus a hard network policy, the candidate set is the intersection o
 ```mermaid
 sequenceDiagram
     participant Source as Provider source
-    participant Cache as SchedulerCache xPU state
-    participant Plugin as xPU plugin
+    participant Cache as SchedulerCache device topology state
+    participant Plugin as device-topology plugin
     participant Ledger as Reservation ledger
     participant Runtime as Kubernetes or DRA
     participant Adapter as Allocation adapter
@@ -1377,45 +1382,45 @@ sequenceDiagram
 - A health update removes the device from future plans immediately but preserves any live allocation until release.
 - A source conflict or stale source yields a structured reason instead of guessing.
 - Pod completion, deletion, and preemption enter the same release path. The scheduler-cache deallocation or eviction event marks the affected IDs `Releasing` immediately, so they cannot be selected by a new hard plan. The adapter's authoritative source must then confirm release before the ledger makes them free. A missed confirmation leaves the IDs `Unreconciled` and unavailable until reconciliation resolves them, rather than leaking capacity until scheduler restart.
-- Exact hard scheduling depends on Volcano leader election. Followers may warm read-only informer and provider state, but they must never call `TryReserve`, commit a topology participant, or hand a topology batch to the bind cache. A promoted leader completes current provider sync and adapter recovery before it becomes ready to open scheduling sessions. A deployment that enables hard xPU policy while leader election is disabled is rejected.
+- Exact hard scheduling depends on Volcano leader election. Followers may warm read-only informer and provider state, but they must never call `TryReserve`, commit a topology participant, or hand a topology batch to the bind cache. A promoted leader completes current provider sync and adapter recovery before it becomes ready to open scheduling sessions. A deployment that enables hard device-topology policy while leader election is disabled is rejected.
 - The scheduler-side reservation ledger is process-local and is not restored blindly after scheduler restart or leader promotion. An exact adapter reservation must therefore be a backend-durable lease until the adapter expires, releases, or confirms it. Before `SchedulerCache` marks an exact-allocation resource ready, the active leader reloads provider facts and calls `Recover` on its adapter. Recovery rebuilds ledger entries for active reservations and confirmed allocations from the returned immutable plans. Any active reservation that cannot be matched safely, and every device owned by an adapter whose recovery failed or timed out, is marked unavailable for hard placement. `SchedulerCache` enables hard scheduling for that resource only after recovery succeeds.
 
-Recommended fit reasons include `XPUTopologyDataNotReady`, `XPUDeviceDomainFragmented`, `XPUFabricDomainUnavailable`, `XPUDeviceUnhealthy`, `XPUTopologyStale`, `XPUAssignmentNotEnforceable`, `XPUTopologyUnsupportedPodRequest`, `XPUClaimNotFound`, and `XPUReservationConflict`.
+Recommended fit reasons include `DeviceTopologyDataNotReady`, `DeviceTopologyDomainFragmented`, `DeviceTopologyFabricUnavailable`, `DeviceTopologyDeviceUnhealthy`, `DeviceTopologyStale`, `DeviceTopologyAssignmentNotEnforceable`, `DeviceTopologyUnsupportedPodRequest`, `DeviceTopologyClaimNotFound`, and `DeviceTopologyReservationConflict`.
 
 #### Failure and Retry Semantics
 
 | Failure point | Scheduler behavior | Reservation result |
 | --- | --- | --- |
-| No provider data, stale data, or unhealthy device for a hard request | Task remains pending with the corresponding xPU fit reason. | No reservation is created. |
-| Hard domain is fragmented | Reject the candidate Node with `XPUDeviceDomainFragmented`. Try another normal candidate. | No reservation is created. |
+| No provider data, stale data, or unhealthy device for a hard request | Task remains pending with the corresponding device-topology fit reason. | No reservation is created. |
+| Hard domain is fragmented | Reject the candidate Node with `DeviceTopologyDomainFragmented`. Try another normal candidate. | No reservation is created. |
 | Soft topology cannot be found | Continue with normal eligible Nodes without the preference score. | No reservation is created. |
 | Complete gang plan cannot be found | Keep the gang pending. Do not allocate a partial topology plan. | No reservation is created. |
 | Concurrent plan reserves a selected ID first | Rebuild or retry the plan against the current ledger. | `TryReserve` changes nothing on failure. |
-| Adapter rejects the immutable plan reservation | Report the structured adapter failure. Retry a different topology plan only when the error is retryable, otherwise keep the gang pending with the explicit xPU reason. | Release the complete ledger hold. Mark IDs `Unreconciled` if compensation fails. |
+| Adapter rejects the immutable plan reservation | Report the structured adapter failure. Retry a different topology plan only when the error is retryable, otherwise keep the gang pending with the explicit device-topology reason. | Release the complete ledger hold. Mark IDs `Unreconciled` if compensation fails. |
 | A transaction, handoff, or batch pre-bind preparation fails | Roll back every prepared member, tentative task and Node mutation, and allocation-attempt checkpoint before the bind cache sees a context. | Release the complete `Held` reservation. |
 | An individual Kubernetes bind or adapter enforcement fails after a prepared batch is dispatched | Kubernetes binding is non-atomic, so reconcile any member that already bound and retry the unbound work through normal scheduling. | Release unconfirmed reservations and reconcile every bound allocation. |
 | A confirmation deadline expires after bind handoff | Report the missing confirmation and stop new hard plans from using those IDs. | Mark IDs `Unreconciled` until authoritative reconciliation. |
 | Scheduler restarts with exact adapter reservations | Reload provider facts, recover active adapter reservations and allocations, then reconstruct safe ledger state before enabling hard placement. | Block the adapter-owned resource when recovery fails or leaves an unknown reservation. |
 | A Pod is already bound when another gang member fails | Kubernetes cannot unbind it atomically. | Reconcile the bound allocation. Release only unconfirmed IDs. |
 
-An xPU topology failure is distinct from a normal Node predicate failure. The former means the topology snapshot cannot satisfy the declared device-domain rule, the latter means an otherwise topology-valid Node failed a standard check such as CPU, taints, volumes, ports, or DRA predicate behavior. Events and metrics should preserve that distinction for users and operators.
+A device topology failure is distinct from a normal Node predicate failure. The former means the topology snapshot cannot satisfy the declared device-domain rule, the latter means an otherwise topology-valid Node failed a standard check such as CPU, taints, volumes, ports, or DRA predicate behavior. Events and metrics should preserve that distinction for users and operators.
 
 ##### PodGroup Failure Reporting
 
-When a hard xPU policy is the final reason that a gang remains pending, the scheduler updates the existing `PodGroup.status.conditions` entry with `type: Unschedulable` and `status: "True"`. It does not add a new condition type. The condition's `Reason` is the final structured xPU fit reason and its `Message` is a concise, aggregated explanation suitable for `kubectl describe podgroup`; it includes the requested resource, policy scope, and affected Task count, but never device IDs, provider payloads, or credentials.
+When a hard device-topology policy is the final reason that a gang remains pending, the scheduler updates the existing `PodGroup.status.conditions` entry with `type: Unschedulable` and `status: "True"`. It does not add a new condition type. The condition's `Reason` is the final structured device-topology fit reason and its `Message` is a concise, aggregated explanation suitable for `kubectl describe podgroup`; it includes the requested resource, policy scope, and affected Task count, but never device IDs, provider payloads, or credentials.
 
 ```yaml
 status:
   conditions:
   - type: Unschedulable
     status: "True"
-    reason: XPUDeviceDomainFragmented
+    reason: DeviceTopologyDomainFragmented
     message: "4 pending Tasks require 2 nvidia.com/gpu devices in one healthy local domain; no candidate Node has a fitting domain."
 ```
 
-The scheduler writes this condition only after the final gang attempt determines that the xPU rule blocked the unit. It must not replace a normal CPU, taint, volume, port, DRA, Queue, or gang failure with an xPU reason merely because the PodGroup declares xPU policy. Existing condition update behavior replaces the current `Unschedulable` condition by type, so a later final failure replaces the previous reason rather than accumulating stale conditions.
+The scheduler writes this condition only after the final gang attempt determines that the device-topology rule blocked the unit. It must not replace a normal CPU, taint, volume, port, DRA, Queue, or gang failure with a device-topology reason merely because the PodGroup declares deviceTopology policy. Existing condition update behavior replaces the current `Unschedulable` condition by type, so a later final failure replaces the previous reason rather than accumulating stale conditions.
 
-For the same final result, Volcano records a PodGroup warning Event whose reason is the xPU fit reason and increments a bounded-cardinality metric such as `volcano_xpu_topology_unschedulable_total{reason="XPUDeviceDomainFragmented"}`. The allowed metric and Event reasons are the documented fit-reason enum. A later successful gang admission follows the existing `Scheduled` condition path. This gives users one visible reason in `kubectl describe podgroup`, while Events and metrics retain the same diagnosis for operators.
+For the same final result, Volcano records a PodGroup warning Event whose reason is the device-topology fit reason and increments a bounded-cardinality metric such as `volcano_device_topology_unschedulable_total{reason="DeviceTopologyDomainFragmented"}`. The allowed metric and Event reasons are the documented fit-reason enum. A later successful gang admission follows the existing `Scheduled` condition path. This gives users one visible reason in `kubectl describe podgroup`, while Events and metrics retain the same diagnosis for operators.
 
 ### Performance and Observability
 
@@ -1448,11 +1453,11 @@ The following package layout keeps source parsing, reusable scheduler API types,
 | Initial source | `pkg/scheduler/topology/provider/annotations/node_annotations.go` | Parse and validate the Node annotation. Emit replace/delete updates. |
 | Test source | `pkg/scheduler/topology/provider/mock/` | Deterministic topology updates for unit and KWOK tests. |
 | Live state | `pkg/scheduler/cache/topology_cache.go`, `pkg/scheduler/cache/cache.go` | Keep provider facts, indexes, availability ledger, immutable topology-view publication, reservation states, and adapter recovery under `SchedulerCache.Mutex`. |
-| Cache integration | `pkg/scheduler/cache/cache.go`, `event_handlers.go`, `cache_mock.go`, `pkg/scheduler/api/cluster_info.go` | Initialize SchedulerCache topology state, serialize provider work per Node UID, enforce provider initial-sync readiness, process liveness heartbeats, defer live-device identity changes until release, attach the immutable xPU view to `ClusterInfo.Snapshot()`, and initialize test caches. |
-| SubJob integration | `pkg/scheduler/api/job_info.go`, `sub_job_info.go` | Copy the matching subgroup xPU policy into `SubJobInfo`, preserve existing subgroup membership and gang accounting, and identify the parent or SubJob scheduling unit in every plan digest and reservation. |
-| Session integration | `pkg/scheduler/framework/session.go`, `framework.go` | Keep the ordinary `SchedulerCache.Snapshot()` path, copy `ClusterInfo.XPUTopology` to `Session.XPUTopology`, and expose it to the xPU plugin before plugin initialization. |
-| Transaction integration | `pkg/scheduler/framework/statement.go`, proposed `topology_transaction.go`, `pkg/scheduler/cache/cache.go` | Keep gang-plan trials side-effect free, checkpoint allocation worksheets and recorder state, finalize and reserve only after the final Statement is recovered, add `CommitWithParticipants`, reservation participants, immutable `XPUTopologyHandoff` attachment, reversible batch prebind, rollback of every tentative mutation, and atomic bind-context batch handoff without changing existing `Statement.Commit()` callers. |
-| Plugin | `pkg/scheduler/plugins/xputopology/` | Policy resolution, domain-feasibility summary, predicate, score, gang planner, reservation participant, and tests. |
+| Cache integration | `pkg/scheduler/cache/cache.go`, `event_handlers.go`, `cache_mock.go`, `pkg/scheduler/api/cluster_info.go` | Initialize SchedulerCache topology state, serialize provider work per Node UID, enforce provider initial-sync readiness, process liveness heartbeats, defer live-device identity changes until release, attach the immutable device topology view to `ClusterInfo.Snapshot()`, and initialize test caches. |
+| SubJob integration | `pkg/scheduler/api/job_info.go`, `sub_job_info.go` | Copy the matching subgroup device-topology policy into `SubJobInfo`, preserve existing subgroup membership and gang accounting, and identify the parent or SubJob scheduling unit in every plan digest and reservation. |
+| Session integration | `pkg/scheduler/framework/session.go`, `framework.go` | Keep the ordinary `SchedulerCache.Snapshot()` path, copy `ClusterInfo.DeviceTopology` to `Session.DeviceTopology`, and expose it to the device-topology plugin before plugin initialization. |
+| Transaction integration | `pkg/scheduler/framework/statement.go`, proposed `topology_transaction.go`, `pkg/scheduler/cache/cache.go` | Keep gang-plan trials side-effect free, checkpoint allocation worksheets and recorder state, finalize and reserve only after the final Statement is recovered, add `CommitWithParticipants`, reservation participants, immutable `DeviceTopologyHandoff` attachment, reversible batch prebind, rollback of every tentative mutation, and atomic bind-context batch handoff without changing existing `Statement.Commit()` callers. |
+| Plugin | `pkg/scheduler/plugins/devicetopology/` | Policy resolution, domain-feasibility summary, predicate, score, gang planner, reservation participant, and tests. |
 | Allocation integration | `pkg/scheduler/actions/allocate/allocate.go` | Request one complete plan before tentative allocation of the applicable gang unit. |
 | Configuration | `pkg/scheduler/conf/volcano_features.go`, scheduler config/Helm values | Feature gate, plugin arguments, leader-election requirement for exact mode, replica consistency, hot-reload validation, and safe feature-drain validation. |
 | Annotation security | Helm manifests and admission-policy or webhook configuration | Dedicated publisher ServiceAccount, least-privilege Node RBAC, annotation-key write protection, and audit configuration. |
@@ -1465,11 +1470,11 @@ The annotation-only milestone does **not** change the HyperNode CRD/controller, 
 | Area | Alpha delivery | Deferred work |
 | --- | --- | --- |
 | Topology ingestion | Node annotation provider and mock provider. | CRD, Device Plugin companion, vendor API, and DRA `ResourceSlice` providers. |
-| Device type | Healthy full devices represented as integral Kubernetes extended-resource requests from one regular container per planned Pod. | DRA claim selectors, init-container or multi-container xPU requests, MIG, vGPU, fractional allocation, vendor-specific memory/core geometry, and device configuration. |
+| Device type | Healthy full devices represented as integral Kubernetes extended-resource requests from one regular container per planned Pod. | DRA claim selectors, init-container or multi-container accelerator requests, MIG, vGPU, fractional allocation, vendor-specific memory/core geometry, and device configuration. |
 | Locality | Hard/soft Node-local device domains. | Vendor-specific link bandwidth models and runtime/NCCL ring construction. |
 | Cross-Node | Mock/KWOK fabric domains with optional HyperNode intersection. | Real NVL72 validation and automatically inferred cross-Node fabrics. |
 | Enforcement | Mock/compatible exact adapter contract, otherwise soft-mode-only observation. | A production Device Plugin companion or DRA driver enforcement adapter. |
-| Transactions | Parent-PodGroup and SubJob gang-plan reservation, error-returning `CommitWithParticipants` rollback integration, and batched bind-context handoff. | Atomic multi-Pod Kubernetes binding, hierarchical parent-plus-subgroup xPU composition, and topology-aware victim selection. |
+| Transactions | Parent-PodGroup and SubJob gang-plan reservation, error-returning `CommitWithParticipants` rollback integration, and batched bind-context handoff. | Atomic multi-Pod Kubernetes binding, hierarchical parent-plus-subgroup device-topology composition, and topology-aware victim selection. |
 
 This boundary prevents the alpha feature from claiming exact accelerator assignment when the active provider or runtime cannot enforce selected IDs.
 
@@ -1478,43 +1483,43 @@ This boundary prevents the alpha feature from claiming exact accelerator assignm
 The feature is enabled only when both the feature gate and plugin are configured. Scheduler startup validates this combination on every replica and fails rather than running with an enabled gate but no plugin. Exact hard mode also requires Volcano leader election. The admission webhook is deployed with the same feature configuration and rejects a non-empty policy when the configuration is absent or inconsistent:
 
 ```yaml
---feature-gates=XPUTopologyAwareScheduling=true
+--feature-gates=DeviceTopologyAwareScheduling=true
 
 tiers:
 - plugins:
-  - name: xpu-topology-aware
+  - name: device-topology-aware
     arguments:
-      xpu-topology.provider: annotation
-      xpu-topology.provider-max-age: 2m
-      xpu-topology.max-candidate-domains-per-task: 8
-      xpu-topology.max-search-states: 256
-      xpu-topology.max-planning-attempts: 3
-      xpu-topology.planning-deadline: 100ms
+      device-topology.provider: annotation
+      device-topology.provider-max-age: 2m
+      device-topology.max-candidate-domains-per-task: 8
+      device-topology.max-search-states: 256
+      device-topology.max-planning-attempts: 3
+      device-topology.planning-deadline: 100ms
 ```
 
 The following planner budgets are proposed initial defaults. They bound the work performed for one hard gang plan and must be benchmarked before the alpha defaults are finalized. Every value must be positive, and an invalid value fails scheduler configuration validation rather than disabling the limit.
 
 | Argument | Proposed default | Purpose |
 | --- | --- | --- |
-| `xpu-topology.max-candidate-domains-per-task` | `8` | Maximum feasible local domains considered for one Task. |
-| `xpu-topology.max-search-states` | `256` | Maximum placement states explored by backtracking for one plan. |
-| `xpu-topology.max-planning-attempts` | `3` | Maximum complete plan attempts after a retryable conflict or preflight failure. |
-| `xpu-topology.planning-deadline` | `100ms` | Maximum wall-clock time spent planning one gang plan unit. |
+| `device-topology.max-candidate-domains-per-task` | `8` | Maximum feasible local domains considered for one Task. |
+| `device-topology.max-search-states` | `256` | Maximum placement states explored by backtracking for one plan. |
+| `device-topology.max-planning-attempts` | `3` | Maximum complete plan attempts after a retryable conflict or preflight failure. |
+| `device-topology.planning-deadline` | `100ms` | Maximum wall-clock time spent planning one gang plan unit. |
 
-Budget exhaustion returns `XPUTopologyPlanningBudgetExceeded`, creates no reservation, and leaves the workload pending for a later scheduling cycle. The limits are scheduler safety controls, not claims that the cluster lacks resources.
+Budget exhaustion returns `DeviceTopologyPlanningBudgetExceeded`, creates no reservation, and leaves the workload pending for a later scheduling cycle. The limits are scheduler safety controls, not claims that the cluster lacks resources.
 
-A watched scheduler configuration reload is staged. The scheduler validates the complete candidate configuration, including feature gate, plugin, provider, adapter identity contract, and leader-election requirements, before replacing the active configuration. Removing the xPU plugin, disabling the gate, changing the exact-allocation owner, or changing the provider or identity namespace is a drain operation. If any nonterminal xPU PodGroup, active allocation, reservation, or recovery entry remains, the reload is rejected and the scheduler keeps its last accepted configuration. A session always completes with the configuration and immutable xPU view captured in its `ClusterInfo` snapshot.
+A watched scheduler configuration reload is staged. The scheduler validates the complete candidate configuration, including feature gate, plugin, provider, adapter identity contract, and leader-election requirements, before replacing the active configuration. Removing the device-topology plugin, disabling the gate, changing the exact-allocation owner, or changing the provider or identity namespace is a drain operation. If any nonterminal device-topology PodGroup, active allocation, reservation, or recovery entry remains, the reload is rejected and the scheduler keeps its last accepted configuration. A session always completes with the configuration and immutable device topology view captured in its `ClusterInfo` snapshot.
 
-Disabling is a drain operation, not a normal configuration toggle. Before removing the plugin or disabling the gate, operators must run every scheduler replica with the feature still enabled until there are no nonterminal PodGroups with `deviceTopology`, no active xPU allocation, and no adapter reservation awaiting recovery. The scheduler's configuration validator checks this condition while the feature is enabled. Afterward, a gate-disabled scheduler performs a lightweight typed PodGroup scan before becoming ready. If it finds a nonterminal xPU policy, it remains not ready and reports that the feature must be re-enabled to drain or delete the workload. It must never schedule that persisted policy through the normal non-xPU path.
+Disabling is a drain operation, not a normal configuration toggle. Before removing the plugin or disabling the gate, operators must run every scheduler replica with the feature still enabled until there are no nonterminal PodGroups with `deviceTopology`, no active device-topology allocation, and no adapter reservation awaiting recovery. The scheduler's configuration validator checks this condition while the feature is enabled. Afterward, a gate-disabled scheduler performs a lightweight typed PodGroup scan before becoming ready. If it finds a nonterminal device-topology policy, it remains not ready and reports that the feature must be re-enabled to drain or delete the workload. It must never schedule that persisted policy through the normal non-device-topology path.
 
-Only when that check succeeds do gate-disabled replicas create no provider watches or SchedulerCache xPU topology state, and existing workloads retain current scheduling behavior. A newly submitted non-empty xPU policy is rejected rather than silently ignored. The plugin must not be enabled on only some scheduler replicas.
+Only when that check succeeds do gate-disabled replicas create no provider watches or SchedulerCache device topology state, and existing workloads retain current scheduling behavior. A newly submitted non-empty device-topology policy is rejected rather than silently ignored. The plugin must not be enabled on only some scheduler replicas.
 
 The implementation is phased as follows:
 
 | Phase | Deliverable |
 | --- | --- |
 | 1 | Typed Job, PodGroup, and SubGroup policy API, Job partition-to-subgroup policy conversion, normal-Pod parent-policy annotation parsing and generated-PodGroup conversion, fail-closed policy validation, canonical types/cache, feature-gate and plugin configuration validation including leader-election and safe feature-drain validation, Node-inventory annotation/mock provider, ordered Node UID updates, liveness refresh, explicit fabric ownership and member identity, immutable indexes, and unit tests. |
-| 2 | One `SchedulerCache` snapshot carrying Node, HyperNode, and immutable xPU topology views; reviewed domain-summary integration for HyperNode and Node selection; hard/soft local-domain filtering and affinity scoring; fit reasons; immutable policy validation; and disabled-feature regressions. |
+| 2 | One `SchedulerCache` snapshot carrying Node, HyperNode, and immutable device topology views; reviewed domain-summary integration for HyperNode and Node selection; hard/soft local-domain filtering and affinity scoring; fit reasons; immutable policy validation; and disabled-feature regressions. |
 | 3 | Gang-plan units, allocation-attempt checkpoints, linked ledger and adapter reservations, reservation lifecycle, `CommitWithParticipants`, reversible batch prebind and bind-context batch handoff, failure injection, leader-handoff recovery, and concurrency tests. |
 | 4 | Mock/KWOK cross-Node fabric and HyperNode intersection, E2E scenarios, benchmarks, operational metrics, and user documentation. |
 
@@ -1522,7 +1527,7 @@ Production DRA and Device Plugin companion adapters are follow-up work. The init
 
 ### Validation Plan
 
-Unit tests cover schema validation, source-generation ordering and reuse, effective freshness deadlines and invalid timestamps, stable identity, stale/conflicting updates, delayed `ClearFacts` after a newer replace, Node deletion and removal from scheduler scope, fabric ownership conflicts, live-device topology changes deferred until release, allocation/release/health reconciliation, preemption-driven release and missing-release reconciliation, adapter recovery after restart, one `SchedulerCache.Snapshot()` carrying consistent Node, HyperNode, and xPU topology views, typed Job, direct PodGroup, and subgroup policy propagation, Job partition-to-SubJob device-topology conversion, normal-Pod annotation parsing and generated-PodGroup conversion, rejection of a policy annotation on a non-Volcano Pod, conflicting annotations in one generated PodGroup, rejection of per-workload packing or spreading fields, immutable policy rejection, parent-plus-subgroup policy rejection, fail-closed gate and plugin configuration validation including disabled-feature refusal with persisted policies, alpha fabric single-resource validation, one-common-fabric gang plans, alpha unsupported Pod request rejection, DRA-selector rejection, selected-ID handoff identity and rollback, adapter-provider identity contract validation, `minAvailable` gang-plan units with later allocation waves, normal-resource shadow planning, dry-run plan finalization without reservations, search-state budget exhaustion, adapter-reservation compensation, gang rollback, bind-context batch failure, reservation confirmation timeout, and reservation conflicts.
+Unit tests cover schema validation, source-generation ordering and reuse, effective freshness deadlines and invalid timestamps, stable identity, stale/conflicting updates, delayed `ClearFacts` after a newer replace, Node deletion and removal from scheduler scope, fabric ownership conflicts, live-device topology changes deferred until release, allocation/release/health reconciliation, preemption-driven release and missing-release reconciliation, adapter recovery after restart, one `SchedulerCache.Snapshot()` carrying consistent Node, HyperNode, and device topology views, typed Job, direct PodGroup, and subgroup policy propagation, Job partition-to-SubJob device-topology conversion, normal-Pod annotation parsing and generated-PodGroup conversion, rejection of a policy annotation on a non-Volcano Pod, conflicting annotations in one generated PodGroup, rejection of per-workload packing or spreading fields, immutable policy rejection, parent-plus-subgroup policy rejection, fail-closed gate and plugin configuration validation including disabled-feature refusal with persisted policies, alpha fabric single-resource validation, one-common-fabric gang plans, alpha unsupported Pod request rejection, DRA-selector rejection, selected-ID handoff identity and rollback, adapter-provider identity contract validation, `minAvailable` gang-plan units with later allocation waves, normal-resource shadow planning, dry-run plan finalization without reservations, search-state budget exhaustion, adapter-reservation compensation, gang rollback, bind-context batch failure, reservation confirmation timeout, and reservation conflicts.
 
 Additional regression tests prove that metadata-only provider heartbeats renew freshness without accepting changed topology content, a Node replacement with the same name starts `Pending`, and a fabric cannot revive until its owner republishes membership for replacement Node UIDs or generations. They also prove that a failed final reservation restores every worksheet, fit-error, nomination, and recorder decision before the next plan attempt, a batch prebind failure dispatches no member, a leader promotion completes recovery before hard scheduling, and an unsafe watched configuration reload keeps the prior configuration active.
 
@@ -1537,7 +1542,7 @@ KWOK E2E tests cover:
 7. annotation writes accepted only from the configured publisher identity, and
 8. a member Node leaving the scheduler scope or an owner Node deletion makes the affected fabric unavailable, and
 9. a `minAvailable` gang unit reserves only its admitted Tasks, while later Tasks receive a separate plan, and
-10. a Volcano Job partition creates independent SubJob xPU plans and reservations without mixing their device IDs or fabric selections, and
+10. a Volcano Job partition creates independent SubJob device-topology plans and reservations without mixing their device IDs or fabric selections, and
 11. a Deployment or StatefulSet Pod template with `schedulerName: volcano`, `volcano.sh/group-min-member`, and `volcano.sh/device-topology` produces an equivalent parent PodGroup policy and gang plan.
 
 Scale benchmarks simulate dense devices, fragmented capacity, large fabric sets, concurrent gangs, and high provider-update rates. User documentation will describe feature configuration, provider schema, enforcement guarantees, failure reasons, and troubleshooting. Once the API is accepted, the user-facing documentation will also be published through the `volcano-sh/website` repository.
