@@ -509,6 +509,150 @@ func TestAllocate(t *testing.T) {
 	}
 }
 
+// TestGuaranteeReservedBeforeWeightShare verifies that when a queue's guarantee exceeds its
+// weighted fair share, the guarantee is reserved via water-filling (the remainder rebalanced
+// among the other queues by weight) instead of over-subscribing deserved beyond capacity.
+//
+// Cluster = 12 CPU; qa guarantee 8 (weight 1) requests 8; qb and qc (weight 1, no guarantee)
+// request 4 each. qa's fair share (12/3 = 4) is below its guarantee, so qa is pinned at 8 and
+// the remaining 4 is split 2/2 between qb and qc:
+//   - qa.deserved = 8 -> qa's 8-CPU pod is allocatable and binds.
+//   - qb/qc.deserved = 2 -> their 4-CPU pods exceed deserved and are held.
+//
+// Only qa binds (1 pod). Before the fix, qb/qc.deserved was 4 (overcommit 8+4+4=16>12) and
+// two pods would bind, starving qa's guarantee.
+func TestGuaranteeReservedBeforeWeightShare(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	trueValue := true
+	actions := []framework.Action{allocate.New()}
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("12", "12Gi", []api.ScalarResource{{Name: "pods", Value: "20"}}...), make(map[string]string))
+
+	pa := util.BuildPod("ns1", "pa", "", apiv1.PodPending, api.BuildResourceList("8", "8Gi"), "pg-a", make(map[string]string), make(map[string]string))
+	pb := util.BuildPod("ns1", "pb", "", apiv1.PodPending, api.BuildResourceList("4", "4Gi"), "pg-b", make(map[string]string), make(map[string]string))
+	pc := util.BuildPod("ns1", "pc", "", apiv1.PodPending, api.BuildResourceList("4", "4Gi"), "pg-c", make(map[string]string), make(map[string]string))
+
+	pgA := util.BuildPodGroup("pg-a", "ns1", "qa", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pgB := util.BuildPodGroup("pg-b", "ns1", "qb", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pgC := util.BuildPodGroup("pg-c", "ns1", "qc", 1, nil, schedulingv1beta1.PodGroupInqueue)
+
+	qa := util.BuildQueue("qa", 1, nil)
+	qa.Spec.Guarantee.Resource = api.BuildResourceList("8", "8Gi")
+	qb := util.BuildQueue("qb", 1, nil)
+	qc := util.BuildQueue("qc", 1, nil)
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name:      "guarantee reserved before weight share: only the guaranteed queue binds",
+			Plugins:   plugins,
+			Pods:      []*apiv1.Pod{pa, pb, pc},
+			Nodes:     []*apiv1.Node{n1},
+			PodGroups: []*schedulingv1beta1.PodGroup{pgA, pgB, pgC},
+			Queues:    []*schedulingv1beta1.Queue{qa, qb, qc},
+			ExpectBindMap: map[string]string{
+				"ns1/pa": "n1",
+			},
+			ExpectBindsNum: 1,
+		},
+	}
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledQueueOrder:  &trueValue,
+					EnabledAllocatable: &trueValue,
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run(actions)
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// TestGuaranteeDoesNotInflateSatisfiedShare verifies the other half of the water-filling
+// model: when a queue's guarantee is already covered by its weighted fair share, the
+// guarantee must NOT be reserved off-the-top (which would inflate that queue's deserved and
+// shrink the others below their fair share).
+//
+// Cluster = 30 CPU; three equal-weight queues each request a single 10-CPU pod. q1 has a
+// guarantee of 5, which is below its fair share of 30/3 = 10, so q1 is left to the weighted
+// split. All three queues get deserved = 10, so every 10-CPU pod is allocatable and binds.
+//
+// All three pods bind. Under the earlier reserve-off-the-top approach q1.deserved would have
+// been 5 + (30-5)/3 = 13.33 and q2/q3.deserved only 8.33, so their 10-CPU pods would exceed
+// deserved and be held -- matching the guarantee design doc's 10/10/10 expectation instead.
+func TestGuaranteeDoesNotInflateSatisfiedShare(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	trueValue := true
+	actions := []framework.Action{allocate.New()}
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("30", "30Gi", []api.ScalarResource{{Name: "pods", Value: "20"}}...), make(map[string]string))
+
+	p1 := util.BuildPod("ns1", "p1", "", apiv1.PodPending, api.BuildResourceList("10", "10Gi"), "pg-1", make(map[string]string), make(map[string]string))
+	p2 := util.BuildPod("ns1", "p2", "", apiv1.PodPending, api.BuildResourceList("10", "10Gi"), "pg-2", make(map[string]string), make(map[string]string))
+	p3 := util.BuildPod("ns1", "p3", "", apiv1.PodPending, api.BuildResourceList("10", "10Gi"), "pg-3", make(map[string]string), make(map[string]string))
+
+	pg1 := util.BuildPodGroup("pg-1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg2 := util.BuildPodGroup("pg-2", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg3 := util.BuildPodGroup("pg-3", "ns1", "q3", 1, nil, schedulingv1beta1.PodGroupInqueue)
+
+	q1 := util.BuildQueue("q1", 1, nil)
+	q1.Spec.Guarantee.Resource = api.BuildResourceList("5", "5Gi")
+	q2 := util.BuildQueue("q2", 1, nil)
+	q3 := util.BuildQueue("q3", 1, nil)
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name:      "already-satisfied guarantee does not inflate the queue's share",
+			Plugins:   plugins,
+			Pods:      []*apiv1.Pod{p1, p2, p3},
+			Nodes:     []*apiv1.Node{n1},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg1, pg2, pg3},
+			Queues:    []*schedulingv1beta1.Queue{q1, q2, q3},
+			ExpectBindMap: map[string]string{
+				"ns1/p1": "n1",
+				"ns1/p2": "n1",
+				"ns1/p3": "n1",
+			},
+			ExpectBindsNum: 3,
+		},
+	}
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledQueueOrder:  &trueValue,
+					EnabledAllocatable: &trueValue,
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run(actions)
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 // TestNoDoubleCountingForInqueueJobWithBindingTasks is a regression test for the bug where
 // the proportion plugin double-counts queue resources for jobs whose tasks are in Allocated/Binding
 // state while their PodGroup is still in Inqueue phase.

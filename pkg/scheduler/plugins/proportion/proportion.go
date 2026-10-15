@@ -201,8 +201,54 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		metrics.UpdateQueueInqueue(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
 	}
 
+	// Reserve guarantees via water-filling before the weight-based split. A queue whose
+	// weighted fair share of the remaining capacity is below its guarantee is pinned at
+	// its guarantee and taken out of the pool; this repeats because each reservation
+	// shrinks the pool and may pull another queue below its guarantee. Queues whose
+	// weighted share already covers their guarantee are left to the distribution loop
+	// below, so an already-satisfied guarantee does not inflate a queue's share (matching
+	// the guarantee design doc), while an under-served guarantee is honored without
+	// over-subscribing deserved beyond the cluster capacity.
 	remaining := pp.totalResource.Clone()
 	meet := map[api.QueueID]struct{}{}
+	for {
+		totalWeight := int32(0)
+		for _, attr := range pp.queueOpts {
+			if _, found := meet[attr.queueID]; found {
+				continue
+			}
+			totalWeight += attr.weight
+		}
+		if totalWeight == 0 {
+			break
+		}
+		pinnedGuarantee := false
+		for _, attr := range pp.queueOpts {
+			if _, found := meet[attr.queueID]; found {
+				continue
+			}
+			if attr.guarantee.IsEmpty() {
+				continue
+			}
+			share := remaining.Clone().Multi(float64(attr.weight) / float64(totalWeight))
+			if attr.guarantee.LessEqual(share, api.Zero) {
+				continue
+			}
+			reserved := attr.guarantee.Clone()
+			if attr.realCapability != nil {
+				reserved.MinDimensionResource(attr.realCapability, api.Infinity)
+			}
+			attr.deserved = reserved
+			pp.updateShare(attr)
+			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
+			meet[attr.queueID] = struct{}{}
+			remaining = api.ExceededPart(remaining, reserved)
+			pinnedGuarantee = true
+		}
+		if !pinnedGuarantee {
+			break
+		}
+	}
 	for {
 		totalWeight := int32(0)
 		for _, attr := range pp.queueOpts {
