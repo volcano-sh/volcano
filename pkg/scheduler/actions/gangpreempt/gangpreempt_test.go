@@ -59,8 +59,9 @@ func TestParseArguments(t *testing.T) {
 			{
 				Name: "gangpreempt",
 				Arguments: map[string]interface{}{
-					MaxDomainsKey:       3,
-					AllowWholeBundleKey: false,
+					MaxDomainsKey:        3,
+					AllowWholeBundleKey:  false,
+					VictimOrderPolicyKey: string(utils.VictimOrderPriorityFirst),
 				},
 			},
 		},
@@ -69,6 +70,7 @@ func TestParseArguments(t *testing.T) {
 	action.parseArguments(ssn)
 	assert.Equal(t, 3, action.maxDomains)
 	assert.False(t, action.allowWholeBundle)
+	assert.Equal(t, utils.VictimOrderPriorityFirst, action.victimOrderPolicy)
 }
 
 func TestParseArguments_InvalidMaxDomainsFallsBackToDefault(t *testing.T) {
@@ -96,6 +98,22 @@ func TestParseArguments_InvalidMaxDomainsFallsBackToDefault(t *testing.T) {
 			assert.Equal(t, defaultMaxDomains, action.maxDomains)
 		})
 	}
+}
+
+func TestParseArguments_InvalidVictimOrderPolicyFallsBackToDefault(t *testing.T) {
+	ssn := &framework.Session{
+		Configurations: []conf.Configuration{
+			{
+				Name: "gangpreempt",
+				Arguments: map[string]interface{}{
+					VictimOrderPolicyKey: "invalid",
+				},
+			},
+		},
+	}
+	action := New()
+	action.parseArguments(ssn)
+	assert.Equal(t, utils.VictimOrderSafeFirst, action.victimOrderPolicy)
 }
 
 func TestSelectDomainVictims_RespectAllowWholeBundle(t *testing.T) {
