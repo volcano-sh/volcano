@@ -392,6 +392,48 @@ func TestAddAndSubMigUsed(t *testing.T) {
 	}
 }
 
+func TestAddAndSubMigUsed_PositionOutOfRange(t *testing.T) {
+	// position decoded from the user-settable volcano.sh/devices-to-allocate
+	// annotation can exceed the group's instance count. findPosition then
+	// returns -1, which must not be used to index group.Instances.
+	newDevice := func() *GPUDevice {
+		return &GPUDevice{
+			UUID: "gpu-1",
+			MigTemplate: []config.Geometry{
+				{
+					Group: "group1",
+					Instances: []config.MigTemplate{
+						{Name: "1g.10gb", Memory: 10240, Count: 2},
+					},
+				},
+			},
+			MigUsage: config.MigInUse{},
+		}
+	}
+
+	gdAdd := newDevice()
+	if mem := addMigUsed(gdAdd, "group1", 999); mem != 0 {
+		t.Errorf("addMigUsed out-of-range position: want 0, got %d", mem)
+	}
+	if len(gdAdd.MigUsage.UsageList) != 0 {
+		t.Errorf("addMigUsed out-of-range position must not record usage, got %d entries", len(gdAdd.MigUsage.UsageList))
+	}
+
+	gdSub := newDevice()
+	if mem := subMigUsed(gdSub, "group1", 999); mem != 0 {
+		t.Errorf("subMigUsed out-of-range position: want 0, got %d", mem)
+	}
+
+	// the same position also arrives through decodeMIGID without error
+	group, position, err := decodeMIGID("gpu-1[group1-999]")
+	if err != nil {
+		t.Fatalf("decodeMIGID unexpected error: %v", err)
+	}
+	if mem := addMigUsed(newDevice(), group, position); mem != 0 {
+		t.Errorf("addMigUsed decoded out-of-range position: want 0, got %d", mem)
+	}
+}
+
 func TestMIGFactory_TryAddPod_WithMemoryFactor(t *testing.T) {
 	// Initialize config to avoid nil pointer
 	config.InitDevicesConfig("", "")
