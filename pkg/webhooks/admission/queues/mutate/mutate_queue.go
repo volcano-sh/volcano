@@ -130,6 +130,14 @@ func createQueuePatch(queue *schedulingv1beta1.Queue) ([]byte, error) {
 		})
 	}
 
+	if queue.Spec.Preemptable == nil {
+		patch = append(patch, patchOperation{
+			Op:    "add",
+			Path:  "/spec/preemptable",
+			Value: &trueValue,
+		})
+	}
+
 	defaultWeight := 1
 	if queue.Spec.Weight == 0 {
 		patch = append(patch, patchOperation{
