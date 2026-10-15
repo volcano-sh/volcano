@@ -75,7 +75,7 @@ flowchart LR
     class Adapter,Bind runtime
 ```
 
-The initial implementation is deliberately narrow: full devices, Node-local domains, an annotation or mock provider, and feature-gated behavior. The same model can later support topology CRDs, Device Plugin companions, DRA `ResourceSlice`s, and declared cross-Node fabrics without changing the workload API or scheduling policy.
+The initial implementation is deliberately narrow: full devices, Node-local domains, an annotation or mock provider, and feature-gated behavior. It includes a declared cross-Node fabric model and mock/KWOK simulation, with optional HyperNode intersection, but does not require real NVL72 hardware validation or production vendor integrations. The same model can later support topology CRDs, Device Plugin companions, DRA `ResourceSlice`s, and production fabric integrations without changing the workload API or scheduling policy.
 
 ## Problem
 
@@ -553,6 +553,21 @@ type Session struct {
 ```
 
 `framework.openSession` keeps its existing `cache.Snapshot()` path. It initializes the Session from that one `ClusterInfo` snapshot and copies `ClusterInfo.DeviceTopology` to `Session.DeviceTopology` with the other snapshot fields. The device-topology plugin reads that session field. There is no second topology snapshot, second cache lock, cross-snapshot Node UID/resource-version comparison, or capture retry. Provider updates still validate the current Node UID and `resourceVersion` before publication. A hard request returns `DeviceTopologyDataNotReady` when its provider readiness, freshness, health, or enforcement data in this snapshot is unavailable. A soft request continues without a device-topology preference. Predicate and score callbacks use this one accepted topology revision for their entire scheduling session, while reservation operations revalidate selected IDs against the live ledger under `SchedulerCache.Mutex` before succeeding.
+
+##### Availability Resolution Rules
+
+`available` is not a provider-owned field and is not a ledger state by itself. The cache derives it by combining immutable provider facts with the live scheduler-owned ledger. A device is available for a hard placement only when all of the following are true:
+
+1. Its configured provider has completed sync for its current Node UID and its facts are fresh.
+2. The device is present in those facts, healthy, and still belongs to the planned Node, resource, local domain, and, when applicable, fabric.
+3. The live ledger has no `Held`, `Binding`, `Allocated`, or `Unreconciled` entry for that device.
+4. Recovery has completed for the provider and adapter that own the resource.
+
+Neither source can make a device available by itself. Unhealthy, missing, stale, or unsynced provider facts make the device unavailable even when the ledger has no active entry. Conversely, a healthy current device remains unavailable while the ledger records an active reservation or allocation. A valid provider update introduces a device into the free-device index only when it meets the provider conditions above and has no active ledger entry.
+
+Each `TopologySnapshot` contains the resulting immutable free-device indexes for planning. The snapshot is only a consistent starting view: two sessions may both see the same device as free. `TryReserve` therefore repeats every rule against the live cache while holding `SchedulerCache.Mutex`; it either changes every selected device to `Held` or changes none. This live recheck is the double-allocation protection, not the snapshot alone.
+
+An authoritative release returns a device to the free-device index only after the cache confirms that its current provider facts are still healthy and identity-compatible. A health failure removes it from candidate indexes immediately. A removal, rename, or domain/fabric reassignment of a device with an active ledger entry remains an unavailable tombstone until reconciliation confirms release, after which the newest valid provider facts may become available.
 
 The scheduler cache exposes operations conceptually equivalent to:
 
@@ -1474,12 +1489,14 @@ The annotation-only milestone does **not** change the HyperNode CRD/controller, 
 
 #### Alpha Scope Boundary
 
+Declared cross-Node fabrics are part of the alpha delivery. They are modeled from trusted provider facts and exercised through mock/KWOK simulation in phase 4. They are not inferred from ordinary network connectivity. Real NVL72 hardware validation and production vendor-specific fabric integrations are deferred.
+
 | Area | Alpha delivery | Deferred work |
 | --- | --- | --- |
 | Topology ingestion | Node annotation provider and mock provider. | CRD, Device Plugin companion, vendor API, and DRA `ResourceSlice` providers. |
 | Device type | Healthy full devices represented as integral Kubernetes extended-resource requests from one regular container per planned Pod. | DRA claim selectors, init-container or multi-container accelerator requests, MIG, vGPU, fractional allocation, vendor-specific memory/core geometry, and device configuration. |
 | Locality | Hard/soft Node-local device domains. | Vendor-specific link bandwidth models and runtime/NCCL ring construction. |
-| Cross-Node | Mock/KWOK fabric domains with optional HyperNode intersection. | Real NVL72 validation and automatically inferred cross-Node fabrics. |
+| Cross-Node | Declared fabric model and mock/KWOK simulation with optional HyperNode intersection. | Real NVL72 validation, automatically inferred fabrics, and production vendor-specific fabric integrations. |
 | Enforcement | Mock/compatible exact adapter contract, otherwise soft-mode-only observation. | A production Device Plugin companion or DRA driver enforcement adapter. |
 | Transactions | Parent-PodGroup and SubJob gang-plan reservation, error-returning `CommitWithParticipants` rollback integration, and batched bind-context handoff. | Atomic multi-Pod Kubernetes binding, hierarchical parent-plus-subgroup device-topology composition, and topology-aware victim selection. |
 
@@ -1521,7 +1538,7 @@ Disabling is a drain operation, not a normal configuration toggle. Before removi
 
 Only when that check succeeds do gate-disabled replicas create no provider watches or SchedulerCache device topology state, and existing workloads retain current scheduling behavior. A newly submitted non-empty device-topology policy is rejected rather than silently ignored. The plugin must not be enabled on only some scheduler replicas.
 
-The implementation is phased as follows:
+The implementation is phased as follows. Phases 1 through 4 together are the alpha delivery, phase 4 completes cross-Node fabric simulation rather than claiming real-hardware validation:
 
 | Phase | Deliverable |
 | --- | --- |
