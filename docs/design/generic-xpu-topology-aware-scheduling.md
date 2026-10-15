@@ -52,7 +52,6 @@ plugin is `device-topology-aware`; and Node inventory uses
     - [Alpha Scope Boundary](#alpha-scope-boundary)
   - [Rollout and Implementation Phases](#rollout-and-implementation-phases)
   - [Validation Plan](#validation-plan)
-  - [Open Questions for Review](#open-questions-for-review)
   - [References](#references)
 
 ## Abstract
@@ -1236,6 +1235,14 @@ If a later individual Kubernetes bind fails after another Pod has bound, Volcano
 #### Transaction Participant Contract
 
 `CommitWithParticipants` is a proposed framework extension, not an existing `Statement` method. Existing `Statement.Commit()` applies normal task and Node allocation changes. The proposed method coordinates those changes with registered transaction participants, such as a device-topology reservation, so that they are committed together or rolled back together if any step fails.
+
+##### Why a separate transaction path is needed
+
+The current `Statement` flow handles each Task independently: allocating one Task updates the in-memory Job and Node state and creates a bind context for that Pod. A later Task failure does not give the scheduler one operation that can withdraw an already accepted bind context or undo an external device reservation for the whole gang.
+
+For example, a two-Pod gang may select `GPU-1` for Pod A and `GPU-2` for Pod B. If Pod A is accepted first but preparing Pod B or reserving `GPU-2` fails, ordinary per-Task processing can leave Pod A proceeding to bind while the gang as a whole has failed. That is not acceptable for a hard device-topology plan: the scheduler must either prepare and accept both Pods and both device reservations before dispatch, or dispatch neither.
+
+`CommitWithParticipants` provides that pre-bind boundary only for a hard device-topology gang unit that attached a reservation participant. It does not replace or change the existing `Statement.Commit()` behavior for ordinary scheduling actions. Kubernetes binding remains individually non-atomic after the accepted batch is dispatched; the adapter reconciles those later outcomes.
 
 The gang plan is represented independently from mutable task state so it can be validated before `Statement.Allocate` changes the session:
 
