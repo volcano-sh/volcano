@@ -32,10 +32,14 @@ const (
 	MaxDomainsKey = "maxDomains"
 	// AllowWholeBundleKey toggles whether whole-job ("whole-bundle") victim bundles may be selected.
 	AllowWholeBundleKey = "allowWholeBundle"
+	// PruneVictimsKey trims victims the final nomination plan does not need.
+	PruneVictimsKey = "pruneVictims"
 	// defaultMaxDomains is used when maxDomains is unset or invalid (<= 0).
 	defaultMaxDomains = 8
 	// defaultWholeBundleOn is the default for allowWholeBundle.
 	defaultWholeBundleOn = true
+	// defaultPruneVictimsOff keeps legacy behavior unless explicitly enabled.
+	defaultPruneVictimsOff = false
 )
 
 type Action struct {
@@ -43,6 +47,8 @@ type Action struct {
 	maxDomains int
 	// allowWholeBundle permits selecting whole-job victim bundles when true.
 	allowWholeBundle bool
+	// pruneVictims drops victims the final plan does not need before committing.
+	pruneVictims bool
 	// configured flag for predicate error cache
 	enablePredicateErrorCache bool
 }
@@ -51,6 +57,7 @@ func New() *Action {
 	return &Action{
 		maxDomains:       defaultMaxDomains,
 		allowWholeBundle: defaultWholeBundleOn,
+		pruneVictims:     defaultPruneVictimsOff,
 	}
 }
 
@@ -69,6 +76,7 @@ func (gr *Action) parseArguments(ssn *framework.Session) {
 		gr.maxDomains = defaultMaxDomains
 	}
 	arguments.GetBool(&gr.allowWholeBundle, AllowWholeBundleKey)
+	arguments.GetBool(&gr.pruneVictims, PruneVictimsKey)
 
 	// Honor allocate's predicateErrorCacheEnable for the per-sub-job simulation, defaulting to
 	// enabled when allocate is not configured.
@@ -164,8 +172,10 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 		}
 		domainIdle := utils.SumIdleAndReleasing(nodes)
 		selectedVictims := make([]*api.TaskInfo, 0)
+		selectedBundles := make([]*utils.Bundle, 0)
 		for _, bundle := range domainBundles {
 			selectedVictims = append(selectedVictims, bundle.Tasks...)
+			selectedBundles = append(selectedBundles, bundle)
 			available := domainIdle.Clone()
 			available.Add(utils.SumResreq(selectedVictims))
 			if !jobNeed.LessEqual(available, api.Zero) {
@@ -173,6 +183,7 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 			}
 
 			attemptVictims := append([]*api.TaskInfo(nil), selectedVictims...)
+			attemptBundles := append([]*utils.Bundle(nil), selectedBundles...)
 
 			jobHN := ssn.HyperNodes[domain]
 			if jobHN == nil {
@@ -182,6 +193,9 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 			if !ok {
 				continue
 			}
+			if prunedHyperNodes, pruned := gr.tryPruneVictims(ssn, stmt, queue, job, jobHN, pending, nodes, attemptVictims, attemptBundles); pruned {
+				return prunedHyperNodes
+			}
 			if err := stmt.RecoverOperations(plan); err != nil {
 				continue
 			}
@@ -189,6 +203,29 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 		}
 	}
 	return nil
+}
+
+func (gr *Action) tryPruneVictims(ssn *framework.Session, stmt *framework.Statement, queue *api.QueueInfo, job *api.JobInfo, jobHN *api.HyperNodeInfo, pending []*api.TaskInfo, nodes []*api.NodeInfo, attemptVictims []*api.TaskInfo, attemptBundles []*utils.Bundle) (map[api.SubJobID]string, bool) {
+	if !gr.pruneVictims || len(attemptVictims) <= 1 {
+		return nil, false
+	}
+	prunedVictims := utils.PruneRedundantVictims(ssn, pending, nodes, attemptBundles)
+	if len(prunedVictims) >= len(attemptVictims) {
+		return nil, false
+	}
+	prunedPlan, prunedHyperNodes, ok := utils.BuildNominationPlanInDomain(ssn, queue, job, jobHN, prunedVictims, utils.ReasonGangReclaim, gr.enablePredicateErrorCache)
+	if !ok {
+		klog.V(3).Infof("GangReclaim pruned %d/%d victims rejected by predicates, keep original set for job <%s/%s>",
+			len(attemptVictims)-len(prunedVictims), len(attemptVictims), job.Namespace, job.Name)
+		return nil, false
+	}
+	if err := stmt.RecoverOperations(prunedPlan); err != nil {
+		klog.V(3).Infof("GangReclaim failed to recover pruned plan for job <%s/%s>, keep original set: %v", job.Namespace, job.Name, err)
+		return nil, false
+	}
+	klog.V(3).Infof("GangReclaim pruned %d/%d victims for job <%s/%s>",
+		len(attemptVictims)-len(prunedVictims), len(attemptVictims), job.Namespace, job.Name)
+	return prunedHyperNodes, true
 }
 
 func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l, r *api.QueueInfo) bool, reclaimerJob *api.JobInfo, pendingTasks []*api.TaskInfo, jobNeed *api.Resource, domain string) []*utils.Bundle {
