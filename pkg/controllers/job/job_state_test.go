@@ -88,12 +88,13 @@ func TestAbortedState_Execute(t *testing.T) {
 
 	for _, testcase := range testcases {
 		t.Run(testcase.Name, func(t *testing.T) {
+			testJobUID(testcase.JobInfo.Job)
 			absState := state.NewState(testcase.JobInfo)
 
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testJobUID(testcase.JobInfo.Job), metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -108,7 +109,7 @@ func TestAbortedState_Execute(t *testing.T) {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
 			if testcase.Action == busv1alpha1.ResumeJobAction {
-				jobInfo, err := fakecontroller.cache.Get(fmt.Sprintf("%s/%s", testcase.JobInfo.Job.Namespace, testcase.JobInfo.Job.Name))
+				jobInfo, err := fakecontroller.cache.Get(testcase.JobInfo.Job.UID)
 				if err != nil {
 					t.Error("Error while retrieving value from Cache")
 				}
@@ -203,12 +204,13 @@ func TestAbortingState_Execute(t *testing.T) {
 
 	for _, testcase := range testcases {
 		t.Run(testcase.Name, func(t *testing.T) {
+			testJobUID(testcase.JobInfo.Job)
 			absState := state.NewState(testcase.JobInfo)
 
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testJobUID(testcase.JobInfo.Job), metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -223,7 +225,7 @@ func TestAbortingState_Execute(t *testing.T) {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
 			if testcase.Action == busv1alpha1.ResumeJobAction {
-				jobInfo, err := fakecontroller.cache.Get(fmt.Sprintf("%s/%s", testcase.JobInfo.Job.Namespace, testcase.JobInfo.Job.Name))
+				jobInfo, err := fakecontroller.cache.Get(testcase.JobInfo.Job.UID)
 				if err != nil {
 					t.Error("Error while retrieving value from Cache")
 				}
@@ -234,7 +236,7 @@ func TestAbortingState_Execute(t *testing.T) {
 			}
 
 			if testcase.Action != busv1alpha1.ResumeJobAction {
-				jobInfo, err := fakecontroller.cache.Get(fmt.Sprintf("%s/%s", testcase.JobInfo.Job.Namespace, testcase.JobInfo.Job.Name))
+				jobInfo, err := fakecontroller.cache.Get(testcase.JobInfo.Job.UID)
 				if err != nil {
 					t.Error("Error while retrieving value from Cache")
 				}
@@ -321,7 +323,7 @@ func TestCompletingState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testJobUID(testcase.JobInfo.Job), metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -336,7 +338,7 @@ func TestCompletingState_Execute(t *testing.T) {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
 
-			jobInfo, err := fakecontroller.cache.Get(fmt.Sprintf("%s/%s", testcase.JobInfo.Job.Namespace, testcase.JobInfo.Job.Name))
+			jobInfo, err := fakecontroller.cache.Get(testcase.JobInfo.Job.UID)
 			if err != nil {
 				t.Error("Error while retrieving value from Cache")
 			}
@@ -394,7 +396,7 @@ func TestFinishedState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testJobUID(testcase.JobInfo.Job), metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -705,7 +707,7 @@ func TestPendingState_Execute(t *testing.T) {
 
 			defer patches.Reset()
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testJobUID(testcase.JobInfo.Job), metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -720,7 +722,7 @@ func TestPendingState_Execute(t *testing.T) {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
 
-			jobInfo, err := fakecontroller.cache.Get(fmt.Sprintf("%s/%s", testcase.JobInfo.Job.Namespace, testcase.JobInfo.Job.Name))
+			jobInfo, err := fakecontroller.cache.Get(testcase.JobInfo.Job.UID)
 			if err != nil {
 				t.Error("Error while retrieving value from Cache")
 			}
@@ -840,7 +842,7 @@ func TestRestartingState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testJobUID(testcase.JobInfo.Job), metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -855,7 +857,7 @@ func TestRestartingState_Execute(t *testing.T) {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
 
-			jobInfo, err := fakecontroller.cache.Get(fmt.Sprintf("%s/%s", testcase.JobInfo.Job.Namespace, testcase.JobInfo.Job.Name))
+			jobInfo, err := fakecontroller.cache.Get(testcase.JobInfo.Job.UID)
 			if err != nil {
 				t.Error("Error while retrieving value from Cache")
 			}
@@ -1325,7 +1327,7 @@ func TestRunningState_Execute(t *testing.T) {
 
 			defer patches.Reset()
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testJobUID(testcase.JobInfo.Job), metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -1340,7 +1342,7 @@ func TestRunningState_Execute(t *testing.T) {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
 
-			jobInfo, err := fakecontroller.cache.Get(fmt.Sprintf("%s/%s", testcase.JobInfo.Job.Namespace, testcase.JobInfo.Job.Name))
+			jobInfo, err := fakecontroller.cache.Get(testcase.JobInfo.Job.UID)
 			if err != nil {
 				t.Error("Error while retrieving value from Cache")
 			}
@@ -1452,7 +1454,7 @@ func TestTerminatingState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testJobUID(testcase.JobInfo.Job), metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -1467,7 +1469,7 @@ func TestTerminatingState_Execute(t *testing.T) {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
 
-			jobInfo, err := fakecontroller.cache.Get(fmt.Sprintf("%s/%s", testcase.JobInfo.Job.Namespace, testcase.JobInfo.Job.Name))
+			jobInfo, err := fakecontroller.cache.Get(testcase.JobInfo.Job.UID)
 			if err != nil {
 				t.Error("Error while retrieving value from Cache")
 			}
