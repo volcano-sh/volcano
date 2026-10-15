@@ -595,3 +595,25 @@ func buildDryRunJob(t *testing.T, opts dryRunEnvOptions) (*api.JobInfo, *api.Sub
 	}
 	return job, subJob
 }
+
+func TestQueueCandidatesDoNotReplaceRestrictedHyperNode(t *testing.T) {
+	env := newDryRunPlacementEnv(t, dryRunEnvOptions{
+		nodeCPU:      map[string]string{"node-a": "8"},
+		tasks:        []dryRunTaskSpec{{name: "p1", cpu: "1", mem: "1G", role: "worker"}},
+		minMember:    1,
+		subGroupSize: 1,
+	})
+	alloc := env.action()
+	// A cluster-wide cached result must not replace a restricted leaf scope.
+	alloc.queueNodes = map[api.QueueID][]*api.NodeInfo{env.job.Queue: nil}
+	stmt := alloc.allocateResourcesForTasks(env.subJob, env.pendingTasks(), "sn-a")
+	if stmt == nil || len(stmt.Operations()) != 1 {
+		t.Fatal("restricted HyperNode allocation was affected by cluster-wide queue candidates")
+	}
+	defer stmt.Discard()
+	for _, task := range env.job.Tasks {
+		if task.NodeName != "node-a" {
+			t.Fatalf("task escaped its HyperNode: got node %s", task.NodeName)
+		}
+	}
+}

@@ -100,6 +100,26 @@ func (ssn *Session) AddPredicateFn(name string, pf api.PredicateFn) {
 	ssn.predicateFns[name] = pf
 }
 
+// AddQueueNodesFn adds a session-stable queue node filter, enabled with the plugin's predicate.
+func (ssn *Session) AddQueueNodesFn(name string, fn api.QueueNodesFn) {
+	ssn.queueNodesFns[name] = fn
+}
+
+// QueueNodesFn narrows the candidates before per-task predicates are evaluated.
+func (ssn *Session) QueueNodesFn(queue *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPredicate) {
+				continue
+			}
+			if fn, found := ssn.queueNodesFns[plugin.Name]; found {
+				nodes = fn(queue, nodes)
+			}
+		}
+	}
+	return nodes
+}
+
 // AddPrePredicateFn add PrePredicate function
 func (ssn *Session) AddPrePredicateFn(name string, pf api.PrePredicateFn) {
 	ssn.prePredicateFns[name] = pf
