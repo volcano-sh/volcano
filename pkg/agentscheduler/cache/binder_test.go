@@ -59,7 +59,7 @@ func TestEnqueueScheduleResult(t *testing.T) {
 	// Create ConflictAwareBinder
 	binder := &ConflictAwareBinder{
 		nodeBindRecords:  make(map[string]int64),
-		BindCheckChannel: make(chan *agentapi.PodScheduleResult, 5000),
+		BindCheckChannel: make(chan *agentapi.PodScheduleResult, 10),
 	}
 
 	// Create a schedule result
@@ -411,8 +411,9 @@ func TestCheckAndBindPod(t *testing.T) {
 			for _, node := range tt.suggestedNodes {
 				setupCacheWithNode(cache, node.Name)
 			}
+			cache.RecordCandidateNodesInBinder(tt.suggestedNodes)
 
-			binder := NewConflictAwareBinder(cache, schedulingQueue)
+			binder := NewConflictAwareBinder(cache, schedulingQueue, 1)
 
 			// Set up pre-existing bind generations if any
 			if tt.preExistingBindGenerations != nil {
@@ -434,6 +435,9 @@ func TestCheckAndBindPod(t *testing.T) {
 
 			// Execute CheckAndBindPod
 			binder.CheckAndBindPod(scheduleResult)
+			if len(cache.NodesInBinder) != 0 {
+				t.Errorf("Expected all candidate nodes to be released, got %v", cache.NodesInBinder)
+			}
 
 			// Verify selected node and bind generation
 			if tt.expectedSelectedNode == "" {
