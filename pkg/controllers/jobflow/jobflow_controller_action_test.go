@@ -753,6 +753,69 @@ func TestGetAllJobStatusFunc(t *testing.T) {
 	}
 }
 
+func TestGetAllJobStatusPhaseCoverage(t *testing.T) {
+	tests := []struct {
+		name  string
+		phase v1alpha1.JobPhase
+		want  func(*jobflowv1alpha1.JobFlowStatus) []string
+	}{
+		{"pending", v1alpha1.Pending, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.PendingJobs }},
+		{"running", v1alpha1.Running, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.RunningJobs }},
+		{"completed", v1alpha1.Completed, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.CompletedJobs }},
+		{"terminated", v1alpha1.Terminated, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.TerminatedJobs }},
+		{"failed", v1alpha1.Failed, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.FailedJobs }},
+		// A phase the status has no list for belongs in UnKnowJobs rather than
+		// being collected and dropped.
+		{"completing", v1alpha1.Completing, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.UnKnowJobs }},
+		{"terminating", v1alpha1.Terminating, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.UnKnowJobs }},
+		{"aborting", v1alpha1.Aborting, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.UnKnowJobs }},
+		{"restarting", v1alpha1.Restarting, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.UnKnowJobs }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeController := newFakeController()
+			jobFlow := &jobflowv1alpha1.JobFlow{
+				ObjectMeta: metav1.ObjectMeta{Name: "flowA", Namespace: "default"},
+				Spec: jobflowv1alpha1.JobFlowSpec{
+					Flows: []jobflowv1alpha1.Flow{{Name: "A"}},
+				},
+			}
+			job := &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "flowA-A",
+					Namespace: "default",
+					Labels: map[string]string{
+						CreatedByJobTemplate: GenerateObjectString("default", "A"),
+						CreatedByJobFlow:     GenerateObjectString("default", "flowA"),
+					},
+					OwnerReferences: []metav1.OwnerReference{{
+						APIVersion: "volcano",
+						Kind:       JobFlow,
+						Name:       "flowA",
+					}},
+				},
+				Status: v1alpha1.JobStatus{State: v1alpha1.JobState{Phase: tt.phase}},
+			}
+			if _, err := fakeController.vcClient.BatchV1alpha1().Jobs("default").Create(
+				context.Background(), job, metav1.CreateOptions{}); err != nil {
+				t.Fatalf("create job: %v", err)
+			}
+			if err := fakeController.jobInformer.Informer().GetIndexer().Add(job); err != nil {
+				t.Fatalf("add job to indexer: %v", err)
+			}
+
+			status, err := fakeController.getAllJobStatus(jobFlow)
+			if err != nil {
+				t.Fatalf("getAllJobStatus() error = %v", err)
+			}
+			if got := tt.want(status); len(got) != 1 || got[0] != job.Name {
+				t.Errorf("job in phase %s is not reported, status = %+v", tt.phase, status)
+			}
+		})
+	}
+}
+
 func TestLoadJobTemplateAndSetJobFunc(t *testing.T) {
 	type args struct {
 		jobFlow     *jobflowv1alpha1.JobFlow
