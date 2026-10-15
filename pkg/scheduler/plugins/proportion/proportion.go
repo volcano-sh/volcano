@@ -201,7 +201,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		metrics.UpdateQueueInqueue(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
 	}
 
-	remaining := pp.totalResource.Clone()
+	// Reserve each queue's guarantee off-the-top, then distribute only the slack
+	// (total − Σguarantee) by weight on top of each queue's guarantee. This prevents
+	// guarantees from over-subscribing `deserved` when weight is not set ∝ guarantee.
+	for _, attr := range pp.queueOpts {
+		attr.deserved = attr.guarantee.Clone()
+	}
+	remaining := api.ExceededPart(pp.totalResource.Clone(), pp.totalGuarantee)
 	meet := map[api.QueueID]struct{}{}
 	for {
 		totalWeight := int32(0)
