@@ -107,6 +107,11 @@ func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface,
 		return nil
 	}
 
+	if !metav1.IsControlledBy(cmOld, job) {
+		return fmt.Errorf("existing ConfigMap <%s/%s> is not controlled by Job <%s/%s>",
+			cmOld.Namespace, cmOld.Name, job.Namespace, job.Name)
+	}
+
 	// no changes
 	if reflect.DeepEqual(cmOld.Data, data) {
 		return nil
@@ -152,6 +157,11 @@ func CreateOrUpdateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, da
 		return nil
 	}
 
+	if !metav1.IsControlledBy(secretOld, job) {
+		return fmt.Errorf("existing Secret <%s/%s> is not controlled by Job <%s/%s>",
+			secretOld.Namespace, secretOld.Name, job.Namespace, job.Name)
+	}
+
 	// no changes
 	SSHConfig := "config"
 	if reflect.DeepEqual(secretOld.Data[SSHConfig], data[SSHConfig]) {
@@ -169,8 +179,24 @@ func CreateOrUpdateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, da
 }
 
 // DeleteConfigmap deletes the config map resource.
+// It leaves the config map in place if it is not controlled by the job.
 func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName string) error {
-	if err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Delete(context.TODO(), cmName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+	cm, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(context.TODO(), cmName, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if !metav1.IsControlledBy(cm, job) {
+		klog.Warningf("Skip deleting ConfigMap <%s/%s>: not controlled by Job <%s/%s>",
+			cm.Namespace, cm.Name, job.Namespace, job.Name)
+		return nil
+	}
+
+	if err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Delete(context.TODO(), cmName, metav1.DeleteOptions{
+		Preconditions: metav1.NewUIDPreconditions(string(cm.UID)),
+	}); err != nil && !apierrors.IsNotFound(err) {
 		klog.Errorf("Failed to delete Configmap of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
@@ -180,8 +206,24 @@ func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName 
 }
 
 // DeleteSecret delete secret.
+// It leaves the secret in place if it is not controlled by the job.
 func DeleteSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, secretName string) error {
-	err := kubeClients.CoreV1().Secrets(job.Namespace).Delete(context.TODO(), secretName, metav1.DeleteOptions{})
+	secret, err := kubeClients.CoreV1().Secrets(job.Namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if !metav1.IsControlledBy(secret, job) {
+		klog.Warningf("Skip deleting Secret <%s/%s>: not controlled by Job <%s/%s>",
+			secret.Namespace, secret.Name, job.Namespace, job.Name)
+		return nil
+	}
+
+	err = kubeClients.CoreV1().Secrets(job.Namespace).Delete(context.TODO(), secretName, metav1.DeleteOptions{
+		Preconditions: metav1.NewUIDPreconditions(string(secret.UID)),
+	})
 	if err != nil && apierrors.IsNotFound(err) {
 		return nil
 	}
