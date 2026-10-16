@@ -16,7 +16,11 @@ limitations under the License.
 
 package validate
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+	"time"
+)
 
 func TestIsDAG(t *testing.T) {
 	tests := []struct {
@@ -45,5 +49,47 @@ func TestIsDAG(t *testing.T) {
 				t.Fatalf("Failed case #%d. Want %v got %v", i, test.isDAG, got)
 			}
 		}
+	}
+}
+
+// TestIsDAGLayeredGraph checks that IsDAG stays linear on a layered DAG where
+// every flow depends on both flows of the next layer. Such a graph has 2^layers
+// distinct paths, so a DFS that re-walks shared descendants never finishes.
+func TestIsDAGLayeredGraph(t *testing.T) {
+	const layers = 64
+	graph := make(map[string][]string, 2*layers)
+	for l := 0; l < layers; l++ {
+		for w := 0; w < 2; w++ {
+			name := fmt.Sprintf("flow-%d-%d", l, w)
+			if l+1 < layers {
+				graph[name] = []string{fmt.Sprintf("flow-%d-0", l+1), fmt.Sprintf("flow-%d-1", l+1)}
+			} else {
+				graph[name] = []string{}
+			}
+		}
+	}
+	data, err := LoadVertexs(graph)
+	if err != nil {
+		t.Fatalf("LoadVertexs error %v", err)
+	}
+
+	result := make(chan bool, 1)
+	go func() { result <- IsDAG(data) }()
+	select {
+	case got := <-result:
+		if !got {
+			t.Fatalf("Want layered graph to be a DAG")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("IsDAG did not finish on a %d-layer graph", layers)
+	}
+
+	graph["flow-63-0"] = []string{"flow-0-0"}
+	data, err = LoadVertexs(graph)
+	if err != nil {
+		t.Fatalf("LoadVertexs error %v", err)
+	}
+	if IsDAG(data) {
+		t.Fatalf("Want layered graph with back edge to not be a DAG")
 	}
 }
