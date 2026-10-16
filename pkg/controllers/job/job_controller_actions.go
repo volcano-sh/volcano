@@ -68,6 +68,20 @@ func (cc *jobcontroller) generateRelatedPodGroupName(job *batch.Job) string {
 	return fmt.Sprintf("%s-%s", job.Name, string(job.UID))
 }
 
+// shouldDeletePodGroupOnKill reports whether killPods should delete the job's
+// PodGroup. Restart paths keep it; abort/terminate/complete/failed remove it.
+func shouldDeletePodGroupOnKill(job *batch.Job) bool {
+	switch job.Status.State.Phase {
+	case batch.Aborting, batch.Aborted,
+		batch.Terminating, batch.Terminated,
+		batch.Completing, batch.Completed,
+		batch.Failed:
+		return true
+	default:
+		return false
+	}
+}
+
 func (cc *jobcontroller) killTarget(jobInfo *apis.JobInfo, target state.Target, updateStatus state.UpdateStatusFn) error {
 	switch target.Type {
 	case state.TargetTypeTask:
@@ -266,10 +280,14 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 		return e
 	}
 
-	// Delete PodGroup only on full job kills; targeted pod restarts (RestartPodAction)
-	// must keep the PodGroup alive so the scheduler does not need to re-enqueue and
-	// re-schedule the job from scratch on every individual pod failure.
-	if target == nil {
+	// Delete PodGroup only when the job is terminating/terminal. RestartJob (and
+	// Resume→Restarting) must keep the PodGroup: the job is not ending and
+	// MinMember/MinResources/queue/priority are unchanged. Unconditionally deleting
+	// on every full kill races with the informer lister (stale "exists" skips
+	// recreate with no requeue) and with late duplicate PodEvicted events that
+	// re-enter KillJob — permanently wedging the job in Pending with no PodGroup
+	// (#6037). Targeted kills (target!=nil) already keep the PodGroup.
+	if target == nil && shouldDeletePodGroupOnKill(job) {
 		pg, err := cc.getPodGroupByJob(job)
 		if err != nil && !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to find PodGroup of Job: %s/%s, error: %s", job.Namespace, job.Name, err.Error())
@@ -825,6 +843,14 @@ func (cc *jobcontroller) createPVC(job *batch.Job, vcName string, volumeClaim *v
 func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	// If PodGroup does not exist, create one for Job.
 	pg, err := cc.getPodGroupByJob(job)
+	if err == nil && job.Status.State.Phase == batch.Restarting {
+		// killPods deletes the PodGroup for Aborting/Aborted jobs, and resuming
+		// such a job moves it to Restarting. Right after that Delete the lister
+		// can still return the PodGroup; trusting that hit would skip the
+		// recreate with no requeue (#6037). Confirm it with a live GET, but only
+		// while Restarting so steady-state syncs keep reading the lister.
+		pg, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Get(context.TODO(), pg.Name, metav1.GetOptions{})
+	}
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to get PodGroup for Job <%s/%s>: %v",
