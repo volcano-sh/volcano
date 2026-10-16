@@ -86,7 +86,6 @@ var _ = Describe("Queue E2E Test", func() {
 				q11: q1,
 			},
 		})
-		testCtx.Queues = []string{q11, q1, q2}
 		DeferCleanup(e2eutil.CleanupTestContext, testCtx)
 
 		By("Close queue with child queues")
