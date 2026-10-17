@@ -256,6 +256,12 @@ func (cc *cronjobcontroller) processCtlJobAndActiveJob(cronJob *batchv1.CronJob,
 			cc.recorder.Eventf(cronJob, corev1.EventTypeWarning, "OrphanedJob",
 				"Detected orphaned job forgotten or not managed by controller: %s (UID: %s)",
 				job.Name, job.UID)
+			jobRef, err := getRef(job)
+			if err != nil {
+				return updateStatus, err
+			}
+			cronJob.Status.Active = append(cronJob.Status.Active, *jobRef)
+			updateStatus = true
 		}
 	}
 

@@ -1595,6 +1595,35 @@ func TestSyncCronJob(t *testing.T) {
 			},
 		},
 		{
+			name: "not first run, orphan active, is time, Forbid",
+			cronjob: cjSpec{
+				concurrency: "Forbid",
+			},
+			now: justTen().Add(10 * time.Minute),
+			jobs: []jobSpec{
+				{
+					status:      batchv1.Running,
+					time:        fiveMinutesAfterTen(),
+					inLister:    true,
+					inClient:    true,
+					active:      false,
+					processTime: time.Minute,
+				},
+			},
+			lastScheduleTime: &metav1.Time{Time: fiveMinutesAfterTen()},
+			expect: testExpect{
+				expectRequeueAfter:     durationPtr(5*time.Minute + nextScheduleDelta),
+				expectUpdateStatus:     true,
+				expectError:            false,
+				expectLastScheduleTime: &metav1.Time{Time: fiveMinutesAfterTen()},
+				expectInActiveNum:      1,
+				expectEventsNum:        2,
+				expectLastSuccessTime:  nil,
+				expectCreateJobNum:     0,
+				expectDeleteJobNum:     0,
+			},
+		},
+		{
 			name: "not first run, pre active, is time, Replace",
 			cronjob: cjSpec{
 				concurrency: "Replace",
@@ -1618,6 +1647,35 @@ func TestSyncCronJob(t *testing.T) {
 				expectLastScheduleTime: &metav1.Time{Time: justTen().Add(10 * time.Minute)},
 				expectInActiveNum:      1,
 				expectEventsNum:        3,
+				expectLastSuccessTime:  nil,
+				expectCreateJobNum:     1,
+				expectDeleteJobNum:     1,
+			},
+		},
+		{
+			name: "not first run, orphan active, is time, Replace",
+			cronjob: cjSpec{
+				concurrency: "Replace",
+			},
+			now: justTen().Add(10 * time.Minute),
+			jobs: []jobSpec{
+				{
+					status:      batchv1.Running,
+					time:        fiveMinutesAfterTen(),
+					inLister:    true,
+					inClient:    true,
+					active:      false,
+					processTime: time.Minute,
+				},
+			},
+			lastScheduleTime: &metav1.Time{Time: fiveMinutesAfterTen()},
+			expect: testExpect{
+				expectRequeueAfter:     durationPtr(5*time.Minute + nextScheduleDelta),
+				expectUpdateStatus:     true,
+				expectError:            false,
+				expectLastScheduleTime: &metav1.Time{Time: justTen().Add(10 * time.Minute)},
+				expectInActiveNum:      1,
+				expectEventsNum:        4,
 				expectLastSuccessTime:  nil,
 				expectCreateJobNum:     1,
 				expectDeleteJobNum:     1,
