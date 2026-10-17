@@ -132,3 +132,31 @@ func TestValidatePod(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateIntPercentageStr(t *testing.T) {
+	testCases := []struct {
+		name      string
+		value     string
+		expectErr bool
+	}{
+		{"valid integer", "3", false},
+		{"valid percentage", "50%", false},
+		{"invalid string", "abc", true},
+		{"large integer", "3000000000", true},
+		{"double percent", "50%%", true},
+		{"percent in middle", "5%0", true},
+		{"percent prefix", "%50", true},
+		{"zero percent", "0%", true},
+		{"hundred percent", "100%", true},
+	}
+
+	for _, testCase := range testCases {
+		err := validateIntPercentageStr(vcschedulingv1.JDBMinAvailable, testCase.value)
+		if testCase.expectErr && err == nil {
+			t.Errorf("%s: expect error, but got nil", testCase.name)
+		}
+		if !testCase.expectErr && err != nil {
+			t.Errorf("%s: expect no error, but got %v", testCase.name, err)
+		}
+	}
+}
