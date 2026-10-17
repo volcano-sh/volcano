@@ -76,6 +76,8 @@ type HyperNodeSpec struct {
 }
 
 // MemberSpec represents a specific node or a hyperNodes in the hyperNode.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.type) || self.type != 'HyperNode' || (has(self.selector) && has(self.selector.exactMatch))",message="A member of type HyperNode must be selected with exactMatch; regexMatch and labelMatch are only supported for members of type Node"
 type MemberSpec struct {
 	// Type specifies the member type.
 	// +required
