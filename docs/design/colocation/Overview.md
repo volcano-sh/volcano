@@ -120,33 +120,27 @@ Perform stress with `wrk` to nginx app.
 wrk -H "Accept-Encoding: deflate, gzip" -t 2 -c 8 -d 120  --latency --timeout 2s http://$(kubectl get svc nginx -o jsonpath='{.spec.clusterIP}')
 ```
 
-#### Check cpu burst
+#### Checking CPU Throttling and Burst Configuration
 
-Check container's cpu throttle state of pod, we can see that `nr_bursts` and `burst_time` is not 0, `nr_throttled` and `throttled_time` is a small value, which indicates pod has used burst cpu quota.
+Run these commands on the Node hosting the Pod, in the cgroup of the actual container process. The cgroup path depends on the container runtime and cgroup driver; inspect `/proc/<container-pid>/cgroup` to find its relative path, then replace `/sys/fs/cgroup/<container-cgroup>` below. These commands use the cgroup v2 interface:
 
-```shell
-$ cat /sys/fs/cgroup/cpu/kubepods/burstable/podd2988e14-83bc-4d3d-931a-59f8a3174396/cpu.stat # replace nginx pod uid in your kubernetes cluster.
-nr_periods 1210
-nr_throttled 9
-throttled_time 193613865
-nr_bursts 448
-burst_time 6543701690
+```bash
+cd /sys/fs/cgroup/<container-cgroup>
+uname -r
+cat cpu.max
+test -e cpu.max.burst && cat cpu.max.burst || echo "cpu.max.burst is unsupported"
+cat cpu.stat
 ```
 
-If we set pod's annotations `volcano.sh/enable-quota-burst=false`(disable pod cpu burst) and perform another stress, `nr_throttled` and `throttled_time` will be a relatively large value, which indicates pod cpu is throttled strictly, `nr_bursts` and `burst_time` is 0, indicates that pod cpu burst not happened.
+A non-zero `cpu.max.burst` value means that CPU Burst is configured for the cgroup. The `cpu.stat` file always reports the regular CPU accounting fields, such as `nr_periods`, `nr_throttled`, and `throttled_usec`. The later `nr_bursts` and `burst_usec` fields are kernel-dependent accounting fields: their absence does not mean that CPU Burst is disabled or that no burst occurred. If `cpu.max.burst` is missing, the host kernel does not expose the cgroup v2 CPU Burst interface and Volcano cannot enable CPU Burst on that node.
 
-```shell
-$ cat /sys/fs/cgroup/cpu/kubepods/burstable/podeeb542c6-b667-4da4-9ac9-86ced4e93fbb/cpu.stat #replace nginx pod uid in your kubernetes cluster.
-nr_periods 1210
-nr_throttled 488
-throttled_time 10125826283
-nr_bursts 0
-burst_time 0
-```
+`nr_throttled` records periods in which the normal CPU quota was exceeded. A non-zero value therefore indicates quota throttling, not necessarily a failure to configure CPU Burst. With sustained load, throttling can still occur after the available burst budget is used.
+
+The cgroup v1 interface uses different file and counter names. Do not use the v1 `burst_time` example to interpret cgroup v2 output. On cgroup v2, the expected burst accounting field is `burst_usec` when the running kernel provides it.
 
 #### Limitation
 
-CPU burst relies on capabilities provided by the linux kernel, this feature only works with host upstream linux kernel >=5.14 and some Linux Distribution like OpenEuler 22.03 SP2 or higher version.
+CPU Burst depends on the host Linux kernel and CPU cgroup controller. On cgroup v2, the target cgroup must expose `cpu.max.burst`; on cgroup v1, the corresponding file is `cpu.cfs_burst_us`. If the applicable interface is missing, Volcano Agent cannot configure CPU Burst for that cgroup.
 
 ### Dynamic resource oversubscription tutorial
 
@@ -280,7 +274,7 @@ And if we stop online workload to release pressure then the eviction taint will 
 
 #### Limitation
 
-Volcano agent defines a Qos resource model for online and offline workloads, and provides application level guarantee(eviction when node has pressure) for online workloads Qos guarantee. The OS level cpu and memory isolation and suppress are guaranteed by host kernel, and currently volcano agent only adapted to openEuler 22.03 SP2 and higher version, please make sure that you are using the correct OS type and version.
+Volcano Agent defines a QoS resource model for online and offline workloads and supports colocation features, including oversubscription, CPU Burst configuration, and node-pressure eviction, on generic Linux distributions. CPU, memory, and network isolation or suppression depend on the host kernel, cgroup hierarchy, and available OS interfaces. Verify the required kernel interfaces before enabling a kernel-level feature.
 
 ### Network bandwidth isolation tutorial
 
@@ -417,7 +411,7 @@ enable filed value true means enable network bandwidth isolation, false means di
 
 ### CPU burst
 
-Container in a pod enabled cpu burst can burst cpu quota at most equal to container's cpu limit, if many pods are using burst cpu at the same time, CPU contention will occur and affect cpu cfs scheduling. You can set pod annotation `volcano.sh/quota-burst-time` to specify custom burst quota, for example, if a container's cpu limit is 4 core, and volcano agent will set container's cgroup `cpu.cfs_quota_us` value to 400000(the basic cfs period is 100000, so 4 core cpu will be 4*100000=400000), which means container can use at most an extra 4 core cpu in a moment, if you set volcano.sh/quota-burst-time=200000, it means container can only use at most an extra 2 core cpu in a moment.
+When CPU Burst is enabled for a limited container, Volcano Agent uses the container CPU quota as the default burst budget. The `volcano.sh/quota-burst-time` annotation can request a smaller custom budget; the Agent caps it at the container quota. On cgroup v2, a 4-core limit is represented as `400000 100000` in `cpu.max`, and the default burst budget is `400000` in `cpu.max.burst`. Setting `volcano.sh/quota-burst-time=200000` sets the burst budget to `200000`. On cgroup v1, the equivalent interfaces are `cpu.cfs_quota_us` and `cpu.cfs_burst_us`. Concurrent bursts from many Pods can cause CPU contention.
 
 ```yaml
 annotations: 
