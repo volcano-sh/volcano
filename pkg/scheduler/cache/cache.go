@@ -158,6 +158,7 @@ type SchedulerCache struct {
 	NodeShards           map[string]*schedulingapi.NodeShardInfo
 	PriorityClasses      map[string]*schedulingv1.PriorityClass
 	NodeList             []string
+	nodeListIndex        map[string]int
 	defaultPriorityClass *schedulingv1.PriorityClass
 	defaultPriority      int32
 	CSINodesStatus       map[string]*schedulingapi.CSINodeStatusInfo
@@ -624,6 +625,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		NodeShards:          make(map[string]*schedulingapi.NodeShardInfo),
 
 		NodeList:            []string{},
+		nodeListIndex:       make(map[string]int),
 		nodeWorkers:         nodeWorkers,
 		resourceSyncTimeout: resourceSyncTimeout,
 	}
