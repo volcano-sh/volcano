@@ -109,3 +109,24 @@ func TestPendingStateExecute(t *testing.T) {
 		})
 	}
 }
+
+func TestPendingState_DefaultAction(t *testing.T) {
+	origSyncJobFlow := SyncJobFlow
+	t.Cleanup(func() { SyncJobFlow = origSyncJobFlow })
+
+	jobFlow := &v1alpha1.JobFlow{}
+	state := &pendingState{jobFlow: jobFlow}
+
+	var called bool
+	SyncJobFlow = func(jf *v1alpha1.JobFlow, fn UpdateJobFlowStatusFn) error {
+		called = true
+		return nil
+	}
+
+	if err := state.Execute(v1alpha1.Action("UnknownAction")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if called {
+		t.Errorf("expected SyncJobFlow not to be called for non-sync action")
+	}
+}
