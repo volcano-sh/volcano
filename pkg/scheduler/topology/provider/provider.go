@@ -49,6 +49,9 @@ const (
 	// SourceErrorUnsupportedFeature means the source requests a topology feature
 	// that the active provider implementation cannot safely materialize yet.
 	SourceErrorUnsupportedFeature SourceErrorReason = "UnsupportedFeature"
+	// SourceErrorUnauthorizedProvider means scheduler configuration did not
+	// authorize the provider to publish the update's resource topology.
+	SourceErrorUnauthorizedProvider SourceErrorReason = "UnauthorizedProvider"
 )
 
 // SourceError is a typed error returned when a provider cannot produce a valid

@@ -75,6 +75,7 @@ import (
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
+	"volcano.sh/volcano/pkg/scheduler/topology/provider"
 	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 	"volcano.sh/volcano/pkg/util"
@@ -213,6 +214,13 @@ type SchedulerCache struct {
 	resourceSyncTimeout time.Duration
 	// resourceClaimCache is a cache for ResourceClaims, used for DRA
 	resourceClaimCache *assumecache.AssumeCache
+
+	// deviceTopology holds cache-owned provider facts and immutable topology
+	// indexes. It is initialized lazily while SchedulerCache.Mutex is held.
+	deviceTopology *deviceTopologyState
+	// deviceTopologyProviderRegistry is the immutable scheduler configuration
+	// that selects authoritative topology providers for extended resources.
+	deviceTopologyProviderRegistry *provider.Registry
 }
 
 type multiSchedulerInfo struct {

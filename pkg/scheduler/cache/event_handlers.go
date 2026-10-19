@@ -683,11 +683,16 @@ func (sc *SchedulerCache) AddOrUpdateNode(node *v1.Node) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
+	var previousNode *v1.Node
 	if sc.Nodes[node.Name] != nil {
+		previousNode = sc.Nodes[node.Name].Node
 		sc.Nodes[node.Name].SetNode(node)
 		sc.removeNodeImageStates(node.Name)
 	} else {
 		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
+	}
+	if sc.deviceTopology != nil && previousNode != nil && previousNode.UID != node.UID {
+		sc.deviceTopology.removeNode(previousNode.UID)
 	}
 	sc.addNodeImageStates(node, sc.Nodes[node.Name])
 
@@ -719,6 +724,9 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 
 	if _, ok := sc.Nodes[nodeName]; !ok {
 		return fmt.Errorf("node <%s> does not exist", nodeName)
+	}
+	if sc.deviceTopology != nil && sc.Nodes[nodeName].Node != nil {
+		sc.deviceTopology.removeNode(sc.Nodes[nodeName].Node.UID)
 	}
 
 	numaInfo := sc.Nodes[nodeName].NumaInfo
