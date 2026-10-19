@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -196,7 +197,12 @@ func (c *colocationConfigController) syncPod(ctx context.Context, key string) er
 		return fmt.Errorf("failed to list colocation configs: %w", err)
 	}
 	slices.SortFunc(coloConfigs, func(a, b *configv1alpha1.ColocationConfiguration) int {
-		return b.CreationTimestamp.Time.Compare(a.CreationTimestamp.Time) // sort by creation time descending to apply newest first
+		// Sort by creation time descending to apply the newest first. Creation times have a resolution of one second,
+		// so configs created in the same second are ordered by name, otherwise the lister order decides which one applies.
+		if c := b.CreationTimestamp.Time.Compare(a.CreationTimestamp.Time); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Name, b.Name)
 	})
 
 	for _, coloConfig := range coloConfigs {
