@@ -27,6 +27,76 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
+// SourceErrorReason categorizes a source-specific failure while a provider
+// examines a Node. The cache owns the corresponding provider and Node context.
+type SourceErrorReason string
+
+const (
+	// SourceErrorInvalidNode means the provider could not examine the supplied
+	// Node because its identity or delivery metadata was incomplete.
+	SourceErrorInvalidNode SourceErrorReason = "InvalidNode"
+	// SourceErrorMalformedPayload means the provider source could not be decoded.
+	SourceErrorMalformedPayload SourceErrorReason = "MalformedPayload"
+	// SourceErrorUnsupportedSchema means the payload uses an unsupported schema.
+	SourceErrorUnsupportedSchema SourceErrorReason = "UnsupportedSchema"
+	// SourceErrorInvalidTopology means decoded source facts are inconsistent.
+	SourceErrorInvalidTopology SourceErrorReason = "InvalidTopology"
+	// SourceErrorStaleGeneration means a source supplied an obsolete generation.
+	SourceErrorStaleGeneration SourceErrorReason = "StaleGeneration"
+	// SourceErrorGenerationReuseWithDifferentFacts means one source generation
+	// was reused for different normalized topology facts.
+	SourceErrorGenerationReuseWithDifferentFacts SourceErrorReason = "GenerationReuseWithDifferentFacts"
+	// SourceErrorUnsupportedFeature means the source requests a topology feature
+	// that the active provider implementation cannot safely materialize yet.
+	SourceErrorUnsupportedFeature SourceErrorReason = "UnsupportedFeature"
+)
+
+// SourceError is a typed error returned when a provider cannot produce a valid
+// update for a Node.
+type SourceError struct {
+	Reason SourceErrorReason
+	Cause  error
+}
+
+// Error implements the error interface.
+func (err *SourceError) Error() string {
+	if err == nil {
+		return ""
+	}
+	if err.Cause == nil {
+		return string(err.Reason)
+	}
+	return fmt.Sprintf("%s: %v", err.Reason, err.Cause)
+}
+
+// Unwrap returns the source error's underlying cause.
+func (err *SourceError) Unwrap() error {
+	if err == nil {
+		return nil
+	}
+	return err.Cause
+}
+
+// NewSourceError creates a typed source error with an optional underlying cause.
+func NewSourceError(reason SourceErrorReason, cause error) *SourceError {
+	return &SourceError{Reason: reason, Cause: cause}
+}
+
+// ValidateNodeMetadata verifies that an informer-delivered Node contains the
+// identity and delivery metadata required for a provider update.
+func ValidateNodeMetadata(node *corev1.Node) error {
+	if node == nil {
+		return fmt.Errorf("Node is required")
+	}
+	if node.Name == "" || node.UID == "" {
+		return fmt.Errorf("Node name and UID are required")
+	}
+	if node.ResourceVersion == "" {
+		return fmt.Errorf("Node resource version is required")
+	}
+	return nil
+}
+
 // ProviderUpdateOperation identifies how a provider changes its complete fact
 // set for one Node.
 type ProviderUpdateOperation string

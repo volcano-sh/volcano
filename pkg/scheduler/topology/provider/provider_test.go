@@ -17,6 +17,7 @@ limitations under the License.
 package provider
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +37,80 @@ var (
 	providerTestResource   = corev1.ResourceName("nvidia.com/gpu")
 	providerTestObservedAt = time.Date(2026, time.January, 1, 12, 0, 0, 0, time.UTC)
 )
+
+func TestSourceError(t *testing.T) {
+	cause := errors.New("invalid inventory")
+	err := NewSourceError(SourceErrorMalformedPayload, cause)
+
+	if err.Reason != SourceErrorMalformedPayload {
+		t.Fatalf("Reason = %q, want %q", err.Reason, SourceErrorMalformedPayload)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatalf("errors.Is(%v, %v) = false, want true", err, cause)
+	}
+	if !strings.Contains(err.Error(), string(SourceErrorMalformedPayload)) {
+		t.Fatalf("Error() = %q, want reason", err)
+	}
+}
+
+func TestValidateNodeMetadata(t *testing.T) {
+	tests := []struct {
+		name      string
+		node      *corev1.Node
+		wantError string
+	}{
+		{
+			name: "valid Node",
+			node: validProviderNode(),
+		},
+		{
+			name:      "nil Node",
+			wantError: "Node is required",
+		},
+		{
+			name: "missing name",
+			node: func() *corev1.Node {
+				node := validProviderNode()
+				node.Name = ""
+				return node
+			}(),
+			wantError: "Node name and UID are required",
+		},
+		{
+			name: "missing UID",
+			node: func() *corev1.Node {
+				node := validProviderNode()
+				node.UID = ""
+				return node
+			}(),
+			wantError: "Node name and UID are required",
+		},
+		{
+			name: "missing resource version",
+			node: func() *corev1.Node {
+				node := validProviderNode()
+				node.ResourceVersion = ""
+				return node
+			}(),
+			wantError: "Node resource version is required",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateNodeMetadata(test.node)
+			if test.wantError == "" {
+				if err != nil {
+					t.Fatalf("ValidateNodeMetadata() error = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("ValidateNodeMetadata() error = %v, want containing %q", err, test.wantError)
+			}
+		})
+	}
+}
 
 func TestProviderNodeUpdateValidate(t *testing.T) {
 	tests := []struct {
@@ -293,4 +368,12 @@ func testProviderNodeUpdate() ProviderNodeUpdate {
 		Operation:           ReplaceFacts,
 		Facts:               &facts,
 	}
+}
+
+func validProviderNode() *corev1.Node {
+	node := &corev1.Node{}
+	node.Name = "node-a"
+	node.UID = types.UID("node-a-uid")
+	node.ResourceVersion = "1"
+	return node
 }
