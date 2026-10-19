@@ -101,9 +101,16 @@ func GetPodSchedulingPriority(pod *v1.Pod) int {
 // 1. Internal scheduling priority (set via annotations, e.g., for urgent retry scenarios such as binding conflict)
 // 2. Pod priority class (from PodSpec)
 // 3. Timestamp (earlier is higher priority)
-func Less(pInfo1, pInfo2 schedfwk.QueuedPodInfo) bool {
-	pod1 := pInfo1.GetPodInfo().GetPod()
-	pod2 := pInfo2.GetPodInfo().GetPod()
+func Less(pInfo1, pInfo2 schedfwk.QueuedEntityInfo) bool {
+	// Kubernetes 1.37 queues generic entities; the agent scheduler only queues pods.
+	podInfo1, ok1 := pInfo1.(interface{ GetPodInfo() schedfwk.PodInfo })
+	podInfo2, ok2 := pInfo2.(interface{ GetPodInfo() schedfwk.PodInfo })
+	if !ok1 || !ok2 {
+		return pInfo1.GetPriority() > pInfo2.GetPriority() ||
+			(pInfo1.GetPriority() == pInfo2.GetPriority() && pInfo1.GetTimestamp().Before(pInfo2.GetTimestamp()))
+	}
+	pod1 := podInfo1.GetPodInfo().GetPod()
+	pod2 := podInfo2.GetPodInfo().GetPod()
 
 	// 1. Compare internal scheduling priority (from annotations)
 	schedulingPriority1 := GetPodSchedulingPriority(pod1)
