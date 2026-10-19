@@ -29,6 +29,8 @@ type PartitionPolicySpecApplyConfiguration struct {
 	NetworkTopology *NetworkTopologySpecApplyConfiguration `json:"networkTopology,omitempty"`
 	// MinPartitions defines the minimum number of sub-affinity groups required.
 	MinPartitions *int32 `json:"minPartitions,omitempty"`
+	// DeviceTopology defines accelerator-locality and fabric placement intent for each partition.
+	DeviceTopology *DeviceTopologySpecApplyConfiguration `json:"deviceTopology,omitempty"`
 }
 
 // PartitionPolicySpecApplyConfiguration constructs a declarative configuration of the PartitionPolicySpec type for use with
@@ -66,5 +68,13 @@ func (b *PartitionPolicySpecApplyConfiguration) WithNetworkTopology(value *Netwo
 // If called multiple times, the MinPartitions field is set to the value of the last call.
 func (b *PartitionPolicySpecApplyConfiguration) WithMinPartitions(value int32) *PartitionPolicySpecApplyConfiguration {
 	b.MinPartitions = &value
+	return b
+}
+
+// WithDeviceTopology sets the DeviceTopology field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DeviceTopology field is set to the value of the last call.
+func (b *PartitionPolicySpecApplyConfiguration) WithDeviceTopology(value *DeviceTopologySpecApplyConfiguration) *PartitionPolicySpecApplyConfiguration {
+	b.DeviceTopology = value
 	return b
 }

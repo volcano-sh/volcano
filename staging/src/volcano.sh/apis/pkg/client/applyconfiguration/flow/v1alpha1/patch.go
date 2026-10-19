@@ -172,6 +172,15 @@ func (b *PatchApplyConfiguration) WithNetworkTopology(value *batchv1alpha1.Netwo
 	return b
 }
 
+// WithDeviceTopology sets the DeviceTopology field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DeviceTopology field is set to the value of the last call.
+func (b *PatchApplyConfiguration) WithDeviceTopology(value *batchv1alpha1.DeviceTopologySpecApplyConfiguration) *PatchApplyConfiguration {
+	b.ensureJobSpecApplyConfigurationExists()
+	b.JobSpecApplyConfiguration.DeviceTopology = value
+	return b
+}
+
 func (b *PatchApplyConfiguration) ensureJobSpecApplyConfigurationExists() {
 	if b.JobSpecApplyConfiguration == nil {
 		b.JobSpecApplyConfiguration = &batchv1alpha1.JobSpecApplyConfiguration{}

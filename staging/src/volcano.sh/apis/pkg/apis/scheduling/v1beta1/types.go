@@ -228,6 +228,10 @@ type PodGroupSpec struct {
 	// TopologyAffinity expresses inter-group topology affinity and anti-affinity on the HyperNode tree.
 	// +optional
 	TopologyAffinity *TopologyAffinitySpec `json:"topologyAffinity,omitempty" protobuf:"bytes,7,opt,name=topologyAffinity"`
+
+	// DeviceTopology defines accelerator-locality and fabric placement intent for the whole PodGroup.
+	// +optional
+	DeviceTopology *DeviceTopologySpec `json:"deviceTopology,omitempty" protobuf:"bytes,8,opt,name=deviceTopology"`
 }
 
 type SubGroupPolicySpec struct {
@@ -268,6 +272,10 @@ type SubGroupPolicySpec struct {
 	// +listType=atomic
 	// +optional
 	MatchLabelKeys []string `json:"matchLabelKeys,omitempty" protobuf:"bytes,7,opt,name=matchLabelKeys"`
+
+	// DeviceTopology defines accelerator-locality and fabric placement intent for this matching subgroup.
+	// +optional
+	DeviceTopology *DeviceTopologySpec `json:"deviceTopology,omitempty" protobuf:"bytes,8,opt,name=deviceTopology"`
 }
 
 type NetworkTopologyMode string
@@ -298,6 +306,53 @@ type NetworkTopologySpec struct {
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	HighestTierName string `json:"highestTierName,omitempty" protobuf:"bytes,3,opt,name=highestTierName"`
+}
+
+// DeviceTopologyMode controls whether a device-topology rule is required or preferred.
+// +kubebuilder:validation:Enum=hard;soft
+type DeviceTopologyMode string
+
+const (
+	// HardDeviceTopologyMode requires a placement that satisfies the device-topology rule.
+	HardDeviceTopologyMode DeviceTopologyMode = "hard"
+
+	// SoftDeviceTopologyMode prefers a placement that satisfies the device-topology rule.
+	SoftDeviceTopologyMode DeviceTopologyMode = "soft"
+)
+
+// DeviceTopologySpec defines accelerator-locality and cross-Node fabric intent for a scheduling unit.
+type DeviceTopologySpec struct {
+	// Requirements selects accelerator resources whose local topology should influence placement.
+	// +optional
+	Requirements []DeviceTopologyRequirement `json:"requirements,omitempty" protobuf:"bytes,1,rep,name=requirements"`
+
+	// Fabric defines optional cross-Node accelerator fabric affinity.
+	// +optional
+	Fabric *DeviceFabricAffinity `json:"fabric,omitempty" protobuf:"bytes,2,opt,name=fabric"`
+}
+
+// DeviceTopologyRequirement defines topology intent for one accelerator resource selector.
+type DeviceTopologyRequirement struct {
+	// Resource identifies the accelerator resource to which this requirement applies.
+	Resource DeviceResourceSelector `json:"resource" protobuf:"bytes,1,opt,name=resource"`
+
+	// Mode controls whether this requirement is required or preferred.
+	// +optional
+	Mode DeviceTopologyMode `json:"mode,omitempty" protobuf:"bytes,2,opt,name=mode"`
+}
+
+// DeviceResourceSelector identifies one accelerator resource by its extended resource name.
+type DeviceResourceSelector struct {
+	// ExtendedResourceName identifies a full-device Kubernetes extended resource, such as nvidia.com/gpu.
+	// +optional
+	ExtendedResourceName v1.ResourceName `json:"extendedResourceName,omitempty" protobuf:"bytes,1,opt,name=extendedResourceName"`
+}
+
+// DeviceFabricAffinity defines cross-Node accelerator fabric placement intent.
+type DeviceFabricAffinity struct {
+	// Mode controls whether this fabric affinity is required or preferred.
+	// +optional
+	Mode DeviceTopologyMode `json:"mode,omitempty" protobuf:"bytes,1,opt,name=mode"`
 }
 
 // TopologyAffinitySpec holds group topology affinity and anti-affinity rules.

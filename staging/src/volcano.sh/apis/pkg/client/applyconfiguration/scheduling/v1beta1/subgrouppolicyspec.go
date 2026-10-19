@@ -44,6 +44,8 @@ type SubGroupPolicySpecApplyConfiguration struct {
 	// 2. Grouping rule: Specify one or more label keys; Pods containing the target label keys with exactly the same corresponding label values are grouped together
 	// 3. Policy constraint: Pods in the same group follow a unified NetworkTopology policy to achieve group-level network behavior governance
 	MatchLabelKeys []string `json:"matchLabelKeys,omitempty"`
+	// DeviceTopology defines accelerator-locality and fabric placement intent for this matching subgroup.
+	DeviceTopology *DeviceTopologySpecApplyConfiguration `json:"deviceTopology,omitempty"`
 }
 
 // SubGroupPolicySpecApplyConfiguration constructs a declarative configuration of the SubGroupPolicySpec type for use with
@@ -99,5 +101,13 @@ func (b *SubGroupPolicySpecApplyConfiguration) WithMatchLabelKeys(values ...stri
 	for i := range values {
 		b.MatchLabelKeys = append(b.MatchLabelKeys, values[i])
 	}
+	return b
+}
+
+// WithDeviceTopology sets the DeviceTopology field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DeviceTopology field is set to the value of the last call.
+func (b *SubGroupPolicySpecApplyConfiguration) WithDeviceTopology(value *DeviceTopologySpecApplyConfiguration) *SubGroupPolicySpecApplyConfiguration {
+	b.DeviceTopology = value
 	return b
 }

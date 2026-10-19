@@ -124,6 +124,10 @@ type JobSpec struct {
 	// NetworkTopology defines the NetworkTopology config, this field works in conjunction with network topology feature and hyperNode CRD.
 	// +optional
 	NetworkTopology *NetworkTopologySpec `json:"networkTopology,omitempty" protobuf:"bytes,13,opt,name=networkTopology"`
+
+	// DeviceTopology defines accelerator-locality and fabric placement intent for the whole Job.
+	// +optional
+	DeviceTopology *DeviceTopologySpec `json:"deviceTopology,omitempty" protobuf:"bytes,14,opt,name=deviceTopology"`
 }
 
 // NetworkTopologyMode represents the networkTopology mode, valid values are "hard" and "soft".
@@ -155,6 +159,53 @@ type NetworkTopologySpec struct {
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	HighestTierName string `json:"highestTierName,omitempty" protobuf:"bytes,3,opt,name=highestTierName"`
+}
+
+// DeviceTopologyMode controls whether a device-topology rule is required or preferred.
+// +kubebuilder:validation:Enum=hard;soft
+type DeviceTopologyMode string
+
+const (
+	// HardDeviceTopologyMode requires a placement that satisfies the device-topology rule.
+	HardDeviceTopologyMode DeviceTopologyMode = "hard"
+
+	// SoftDeviceTopologyMode prefers a placement that satisfies the device-topology rule.
+	SoftDeviceTopologyMode DeviceTopologyMode = "soft"
+)
+
+// DeviceTopologySpec defines accelerator-locality and cross-Node fabric intent for a Job or task partition.
+type DeviceTopologySpec struct {
+	// Requirements selects accelerator resources whose local topology should influence placement.
+	// +optional
+	Requirements []DeviceTopologyRequirement `json:"requirements,omitempty" protobuf:"bytes,1,rep,name=requirements"`
+
+	// Fabric defines optional cross-Node accelerator fabric affinity.
+	// +optional
+	Fabric *DeviceFabricAffinity `json:"fabric,omitempty" protobuf:"bytes,2,opt,name=fabric"`
+}
+
+// DeviceTopologyRequirement defines topology intent for one accelerator resource selector.
+type DeviceTopologyRequirement struct {
+	// Resource identifies the accelerator resource to which this requirement applies.
+	Resource DeviceResourceSelector `json:"resource" protobuf:"bytes,1,opt,name=resource"`
+
+	// Mode controls whether this requirement is required or preferred.
+	// +optional
+	Mode DeviceTopologyMode `json:"mode,omitempty" protobuf:"bytes,2,opt,name=mode"`
+}
+
+// DeviceResourceSelector identifies one accelerator resource by its extended resource name.
+type DeviceResourceSelector struct {
+	// ExtendedResourceName identifies a full-device Kubernetes extended resource, such as nvidia.com/gpu.
+	// +optional
+	ExtendedResourceName v1.ResourceName `json:"extendedResourceName,omitempty" protobuf:"bytes,1,opt,name=extendedResourceName"`
+}
+
+// DeviceFabricAffinity defines cross-Node accelerator fabric placement intent.
+type DeviceFabricAffinity struct {
+	// Mode controls whether this fabric affinity is required or preferred.
+	// +optional
+	Mode DeviceTopologyMode `json:"mode,omitempty" protobuf:"bytes,1,opt,name=mode"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC.
@@ -301,6 +352,10 @@ type PartitionPolicySpec struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	MinPartitions int32 `json:"minPartitions,omitempty" protobuf:"bytes,4,opt,name=minPartitions"`
+
+	// DeviceTopology defines accelerator-locality and fabric placement intent for each partition.
+	// +optional
+	DeviceTopology *DeviceTopologySpec `json:"deviceTopology,omitempty" protobuf:"bytes,5,opt,name=deviceTopology"`
 }
 
 // JobPhase defines the phase of the job.

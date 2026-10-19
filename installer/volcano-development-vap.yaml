@@ -320,6 +320,34 @@ spec:
             type: object
           spec:
             properties:
+              deviceTopology:
+                properties:
+                  fabric:
+                    properties:
+                      mode:
+                        enum:
+                        - hard
+                        - soft
+                        type: string
+                    type: object
+                  requirements:
+                    items:
+                      properties:
+                        mode:
+                          enum:
+                          - hard
+                          - soft
+                          type: string
+                        resource:
+                          properties:
+                            extendedResourceName:
+                              type: string
+                          type: object
+                      required:
+                      - resource
+                      type: object
+                    type: array
+                type: object
               maxRetry:
                 default: 3
                 format: int32
@@ -436,6 +464,34 @@ spec:
                       type: string
                     partitionPolicy:
                       properties:
+                        deviceTopology:
+                          properties:
+                            fabric:
+                              properties:
+                                mode:
+                                  enum:
+                                  - hard
+                                  - soft
+                                  type: string
+                              type: object
+                            requirements:
+                              items:
+                                properties:
+                                  mode:
+                                    enum:
+                                    - hard
+                                    - soft
+                                    type: string
+                                  resource:
+                                    properties:
+                                      extendedResourceName:
+                                        type: string
+                                    type: object
+                                required:
+                                - resource
+                                type: object
+                              type: array
+                          type: object
                         minPartitions:
                           default: 0
                           format: int32
@@ -4734,6 +4790,34 @@ spec:
                     type: object
                   spec:
                     properties:
+                      deviceTopology:
+                        properties:
+                          fabric:
+                            properties:
+                              mode:
+                                enum:
+                                - hard
+                                - soft
+                                type: string
+                            type: object
+                          requirements:
+                            items:
+                              properties:
+                                mode:
+                                  enum:
+                                  - hard
+                                  - soft
+                                  type: string
+                                resource:
+                                  properties:
+                                    extendedResourceName:
+                                      type: string
+                                  type: object
+                              required:
+                              - resource
+                              type: object
+                            type: array
+                        type: object
                       maxRetry:
                         default: 3
                         format: int32
@@ -4850,6 +4934,34 @@ spec:
                               type: string
                             partitionPolicy:
                               properties:
+                                deviceTopology:
+                                  properties:
+                                    fabric:
+                                      properties:
+                                        mode:
+                                          enum:
+                                          - hard
+                                          - soft
+                                          type: string
+                                      type: object
+                                    requirements:
+                                      items:
+                                        properties:
+                                          mode:
+                                            enum:
+                                            - hard
+                                            - soft
+                                            type: string
+                                          resource:
+                                            properties:
+                                              extendedResourceName:
+                                                type: string
+                                            type: object
+                                        required:
+                                        - resource
+                                        type: object
+                                      type: array
+                                  type: object
                                 minPartitions:
                                   default: 0
                                   format: int32
@@ -9649,6 +9761,50 @@ spec:
               Specification of the desired behavior of the pod group.
               More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status
             properties:
+              deviceTopology:
+                description: DeviceTopology defines accelerator-locality and fabric
+                  placement intent for the whole PodGroup.
+                properties:
+                  fabric:
+                    description: Fabric defines optional cross-Node accelerator fabric
+                      affinity.
+                    properties:
+                      mode:
+                        description: Mode controls whether this fabric affinity is
+                          required or preferred.
+                        enum:
+                        - hard
+                        - soft
+                        type: string
+                    type: object
+                  requirements:
+                    description: Requirements selects accelerator resources whose
+                      local topology should influence placement.
+                    items:
+                      description: DeviceTopologyRequirement defines topology intent
+                        for one accelerator resource selector.
+                      properties:
+                        mode:
+                          description: Mode controls whether this requirement is required
+                            or preferred.
+                          enum:
+                          - hard
+                          - soft
+                          type: string
+                        resource:
+                          description: Resource identifies the accelerator resource
+                            to which this requirement applies.
+                          properties:
+                            extendedResourceName:
+                              description: ExtendedResourceName identifies a full-device
+                                Kubernetes extended resource, such as nvidia.com/gpu.
+                              type: string
+                          type: object
+                      required:
+                      - resource
+                      type: object
+                    type: array
+                type: object
               minMember:
                 description: |-
                   MinMember defines the minimal number of members/tasks to run the pod group;
@@ -9728,6 +9884,51 @@ spec:
                   Concurrent use with minTaskMember is not recommended, and SubGroupPolicy is the long-term evolution direction.
                 items:
                   properties:
+                    deviceTopology:
+                      description: DeviceTopology defines accelerator-locality and
+                        fabric placement intent for this matching subgroup.
+                      properties:
+                        fabric:
+                          description: Fabric defines optional cross-Node accelerator
+                            fabric affinity.
+                          properties:
+                            mode:
+                              description: Mode controls whether this fabric affinity
+                                is required or preferred.
+                              enum:
+                              - hard
+                              - soft
+                              type: string
+                          type: object
+                        requirements:
+                          description: Requirements selects accelerator resources
+                            whose local topology should influence placement.
+                          items:
+                            description: DeviceTopologyRequirement defines topology
+                              intent for one accelerator resource selector.
+                            properties:
+                              mode:
+                                description: Mode controls whether this requirement
+                                  is required or preferred.
+                                enum:
+                                - hard
+                                - soft
+                                type: string
+                              resource:
+                                description: Resource identifies the accelerator resource
+                                  to which this requirement applies.
+                                properties:
+                                  extendedResourceName:
+                                    description: ExtendedResourceName identifies a
+                                      full-device Kubernetes extended resource, such
+                                      as nvidia.com/gpu.
+                                    type: string
+                                type: object
+                            required:
+                            - resource
+                            type: object
+                          type: array
+                      type: object
                     labelSelector:
                       description: |-
                         LabelSelector is used to find matching pods.
@@ -12310,6 +12511,34 @@ spec:
             type: object
           spec:
             properties:
+              deviceTopology:
+                properties:
+                  fabric:
+                    properties:
+                      mode:
+                        enum:
+                        - hard
+                        - soft
+                        type: string
+                    type: object
+                  requirements:
+                    items:
+                      properties:
+                        mode:
+                          enum:
+                          - hard
+                          - soft
+                          type: string
+                        resource:
+                          properties:
+                            extendedResourceName:
+                              type: string
+                          type: object
+                      required:
+                      - resource
+                      type: object
+                    type: array
+                type: object
               maxRetry:
                 default: 3
                 format: int32
@@ -12426,6 +12655,34 @@ spec:
                       type: string
                     partitionPolicy:
                       properties:
+                        deviceTopology:
+                          properties:
+                            fabric:
+                              properties:
+                                mode:
+                                  enum:
+                                  - hard
+                                  - soft
+                                  type: string
+                              type: object
+                            requirements:
+                              items:
+                                properties:
+                                  mode:
+                                    enum:
+                                    - hard
+                                    - soft
+                                    type: string
+                                  resource:
+                                    properties:
+                                      extendedResourceName:
+                                        type: string
+                                    type: object
+                                required:
+                                - resource
+                                type: object
+                              type: array
+                          type: object
                         minPartitions:
                           default: 0
                           format: int32
@@ -16681,6 +16938,34 @@ spec:
                       properties:
                         jobSpec:
                           properties:
+                            deviceTopology:
+                              properties:
+                                fabric:
+                                  properties:
+                                    mode:
+                                      enum:
+                                      - hard
+                                      - soft
+                                      type: string
+                                  type: object
+                                requirements:
+                                  items:
+                                    properties:
+                                      mode:
+                                        enum:
+                                        - hard
+                                        - soft
+                                        type: string
+                                      resource:
+                                        properties:
+                                          extendedResourceName:
+                                            type: string
+                                        type: object
+                                    required:
+                                    - resource
+                                    type: object
+                                  type: array
+                              type: object
                             maxRetry:
                               default: 3
                               format: int32
@@ -16797,6 +17082,34 @@ spec:
                                     type: string
                                   partitionPolicy:
                                     properties:
+                                      deviceTopology:
+                                        properties:
+                                          fabric:
+                                            properties:
+                                              mode:
+                                                enum:
+                                                - hard
+                                                - soft
+                                                type: string
+                                            type: object
+                                          requirements:
+                                            items:
+                                              properties:
+                                                mode:
+                                                  enum:
+                                                  - hard
+                                                  - soft
+                                                  type: string
+                                                resource:
+                                                  properties:
+                                                    extendedResourceName:
+                                                      type: string
+                                                  type: object
+                                              required:
+                                              - resource
+                                              type: object
+                                            type: array
+                                        type: object
                                       minPartitions:
                                         default: 0
                                         format: int32
