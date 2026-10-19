@@ -37,7 +37,6 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-
 	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -318,6 +317,9 @@ func (pmpt *Action) preempt(
 	}
 
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
+	// Nodes with insufficient DRA devices are not filtered out (see
+	// FilterOutUnschedulableAndUnresolvableNodesForTask), the demand can be
+	// satisfied by evicting victims holding DRA devices
 	allNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(preemptor)
 	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateForPreemptAction, pmpt.enablePredicateErrorCache, ssn.NodesInShard)
 
@@ -372,7 +374,7 @@ func (pmpt *Action) normalPreempt(
 		victims := ssn.Preemptable(preemptor, preemptees)
 		metrics.UpdatePreemptionVictimsCount(len(victims))
 
-		if err := util.ValidateVictims(preemptor, node, victims); err != nil {
+		if err := util.ValidateVictims(preemptor, node, victims, ssn.SharedDRAManager()); err != nil {
 			klog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
 			continue
 		}
@@ -443,7 +445,36 @@ func (pmpt *Action) normalPreempt(
 func preemptorFitsOnNode(ssn *framework.Session, queue *api.QueueInfo, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
 	return ssn.Allocatable(queue, preemptor) &&
 		preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) &&
-		ssn.PredicateFn(preemptor, node) == nil
+		ssn.PredicateFn(preemptor, node) == nil &&
+		draFutureIdleSatisfied(ssn, preemptor, node)
+}
+
+// checkDRAFutureIdle checks with FutureIdle semantics whether the preemptor's DRA
+// device requirements can be satisfied on the node, and returns the pre-allocated
+// device set. This function is purely read-only: it does not modify the preemptor
+// and is safe for parallel dry-runs.
+func checkDRAFutureIdle(ssn *framework.Session, preemptor *api.TaskInfo, node *api.NodeInfo) (*api.DRADeviceInfo, bool) {
+	if len(preemptor.DRAResourceClaimKeys) == 0 {
+		return nil, true
+	}
+	results, err := util.FutureDRAIdleCheck(context.TODO(), preemptor, node, ssn.SharedDRAManager(), nil)
+	if err != nil {
+		klog.V(4).Infof("DRA future idle check failed for task <%s/%s> on node <%s>: %v",
+			preemptor.Namespace, preemptor.Name, node.Name, err)
+		return nil, false
+	}
+	return results, true
+}
+
+// draFutureIdleSatisfied checks in a FutureIdle manner whether the preemptor's DRA
+// device requirements can be satisfied on the node. On success it assigns the
+// pre-allocated device set to preemptor.DRAPreAllocatedDevices.
+func draFutureIdleSatisfied(ssn *framework.Session, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
+	results, ok := checkDRAFutureIdle(ssn, preemptor, node)
+	if ok {
+		preemptor.DRAPreAllocatedDevices = results
+	}
+	return ok
 }
 
 // taskEligibleToPreempt checks policy-only preconditions that do not depend on predicates.
@@ -525,6 +556,22 @@ func (pmpt *Action) topologyAwarePreempt(
 	tmpStmt := framework.NewStatement(ssn)
 
 	prepareCandidate(bestCandidate, preemptor.Pod, tmpStmt)
+
+	// Victim evictions have already been written into the node's DraReleasing by Evict.
+	// Now compute and record the preemptor's DRA pre-allocated device set, so that
+	// DraPipelined correctly reserves the devices after Pipeline and subsequent tasks
+	// do not allocate them again.
+	bestNode, found := ssn.Nodes[bestCandidate.Name()]
+	if !found {
+		tmpStmt.Discard()
+		return false, fmt.Errorf("candidate node %s not found in session", bestCandidate.Name())
+	}
+	if !draFutureIdleSatisfied(ssn, preemptor, bestNode) {
+		tmpStmt.Discard()
+		return false, fmt.Errorf("DRA devices cannot satisfy preemptor <%s/%s> on node <%s> after evicting victims",
+			preemptor.Namespace, preemptor.Name, bestCandidate.Name())
+	}
+
 	if err := tmpStmt.Pipeline(preemptor, bestCandidate.Name(), true); err != nil {
 		klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 			preemptor.Namespace, preemptor.Name, bestCandidate.Name())
@@ -754,6 +801,7 @@ func SelectVictimsOnNode(
 			return err
 		}
 		nodeInfo.RemoveTask(rti)
+		nodeInfo.AddDraReleasing(rti)
 		return nil
 	}
 
@@ -766,6 +814,7 @@ func SelectVictimsOnNode(
 		if err := nodeInfo.AddTask(ati); err != nil {
 			return err
 		}
+		nodeInfo.RemoveDraReleasing(ati)
 		return nil
 	}
 
@@ -783,7 +832,7 @@ func SelectVictimsOnNode(
 	allVictims := ssn.Preemptable(preemptor, preemptees)
 	metrics.UpdatePreemptionVictimsCount(len(allVictims))
 
-	if err := util.ValidateVictims(preemptor, nodeInfo, allVictims); err != nil {
+	if err := util.ValidateVictims(preemptor, nodeInfo, allVictims, ssn.SharedDRAManager()); err != nil {
 		klog.V(3).Infof("No validated victims on Node <%s>: %v", nodeInfo.Name, err)
 		return nil, api.AsStatus(fmt.Errorf("no validated victims on Node <%s>: %v", nodeInfo.Name, err))
 	}
@@ -800,9 +849,11 @@ func SelectVictimsOnNode(
 		}
 
 		if ssn.SimulateAllocatableFn(ctx, state, currentQueue, preemptor) && preemptor.InitResreq.LessEqual(nodeInfo.FutureIdle(), api.Zero) {
-			if err := ssn.SimulatePredicateFn(ctx, state, preemptor, nodeInfo); err == nil {
-				klog.V(3).Infof("Pod %v/%v can be scheduled on node %v after preempt %v/%v, stop evicting more pods", preemptor.Namespace, preemptor.Name, nodeInfo.Name, task.Namespace, task.Name)
-				break
+			if _, ok := checkDRAFutureIdle(ssn, preemptor, nodeInfo); ok {
+				if err := ssn.SimulatePredicateFn(ctx, state, preemptor, nodeInfo); err == nil {
+					klog.V(3).Infof("Pod %v/%v can be scheduled on node %v after preempt %v/%v, stop evicting more pods", preemptor.Namespace, preemptor.Name, nodeInfo.Name, task.Namespace, task.Name)
+					break
+				}
 			}
 		}
 	}
@@ -836,8 +887,10 @@ func SelectVictimsOnNode(
 
 		var fits bool
 		if ssn.SimulateAllocatableFn(ctx, state, currentQueue, preemptor) && preemptor.InitResreq.LessEqual(nodeInfo.FutureIdle(), api.Zero) {
-			err := ssn.SimulatePredicateFn(ctx, state, preemptor, nodeInfo)
-			fits = err == nil
+			if _, ok := checkDRAFutureIdle(ssn, preemptor, nodeInfo); ok {
+				err := ssn.SimulatePredicateFn(ctx, state, preemptor, nodeInfo)
+				fits = err == nil
+			}
 		}
 
 		if !fits {

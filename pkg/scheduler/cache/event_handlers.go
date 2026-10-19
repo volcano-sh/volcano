@@ -263,13 +263,14 @@ func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, err
 	// Adding CSI attachment counts updates both Resreq and InitResreq, which share an object here.
 	// Refresh BestEffort so a task with these requests is no longer treated as resource-free.
 	taskInfo.UpdateSchedulingBestEffort()
-	draResreq, claimDRAResreq, claimKeys, err := sc.buildTaskDRAInfo(pod)
+	draResreq, claimDRAResreq, claimKeys, draClaimKeys, err := sc.buildTaskDRAInfo(pod)
 	if err != nil {
 		return taskInfo, err
 	}
 	taskInfo.DRAResreq = draResreq
 	taskInfo.ResourceClaimDRAResreq = claimDRAResreq
 	taskInfo.ResourceClaimKeys = claimKeys
+	taskInfo.DRAResourceClaimKeys = draClaimKeys
 	return taskInfo, nil
 }
 

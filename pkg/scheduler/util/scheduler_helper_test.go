@@ -24,8 +24,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	v1 "k8s.io/api/core/v1"
+	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -704,6 +708,162 @@ func TestSelectBestHyperNodeAndScore(t *testing.T) {
 			if score != tc.expectedScore {
 				t.Errorf("Test case '%s' failed. Expected score: %#v, but got: %#v",
 					tc.name, tc.expectedScore, score)
+			}
+		})
+	}
+}
+
+func TestSplitClaimKey(t *testing.T) {
+	tests := []struct {
+		name      string
+		key       string
+		namespace string
+		claimName string
+		ok        bool
+	}{
+		{name: "valid key", key: "default/claim1", namespace: "default", claimName: "claim1", ok: true},
+		{name: "missing separator", key: "claim1", ok: false},
+		{name: "empty namespace", key: "/claim1", ok: false},
+		{name: "empty claim name", key: "default/", ok: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ns, name, ok := SplitClaimKey(tt.key)
+			assert.Equal(t, tt.ok, ok)
+			if ok {
+				assert.Equal(t, tt.namespace, ns)
+				assert.Equal(t, tt.claimName, name)
+			}
+		})
+	}
+}
+
+func TestClaimFullyHeldByTask(t *testing.T) {
+	taskUID := types.UID("task-1")
+	otherUID := types.UID("task-2")
+	newClaim := func(reservedFor ...types.UID) *resourceapi.ResourceClaim {
+		claim := &resourceapi.ResourceClaim{}
+		for _, uid := range reservedFor {
+			claim.Status.ReservedFor = append(claim.Status.ReservedFor,
+				resourceapi.ResourceClaimConsumerReference{UID: uid})
+		}
+		return claim
+	}
+
+	tests := []struct {
+		name     string
+		claim    *resourceapi.ResourceClaim
+		expected bool
+	}{
+		{name: "no ReservedFor means exclusive", claim: newClaim(), expected: true},
+		{name: "referenced only by the task", claim: newClaim(taskUID), expected: true},
+		{name: "referenced by another pod too", claim: newClaim(taskUID, otherUID), expected: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, ClaimFullyHeldByTask(tt.claim, sets.New(taskUID)))
+		})
+	}
+}
+
+func TestValidateVictims(t *testing.T) {
+	newVictim := func(uid types.UID, cpu, memory string) *api.TaskInfo {
+		pod := BuildPod("ns", string(uid), "n1", v1.PodRunning, api.BuildResourceList(cpu, memory), "pg", nil, nil)
+		task := api.NewTaskInfo(pod)
+		task.UID = api.TaskID(uid)
+		return task
+	}
+
+	// Victim tasks stay Running so their resources sit in node.Idle; ValidateVictims
+	// adds them back into FutureIdle to simulate the eviction.
+	newNode := func(cpu, memory string, running []*api.TaskInfo) *api.NodeInfo {
+		node := api.NewNodeInfo(BuildNode("n1",
+			api.BuildResourceList(cpu, memory, []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil))
+		for _, task := range running {
+			if err := node.AddTask(task); err != nil {
+				panic(err)
+			}
+		}
+		return node
+	}
+
+	preemptor := func(cpu, memory string, dra bool) *api.TaskInfo {
+		task := newVictim("preemptor", cpu, memory)
+		if dra {
+			task.DRAResreq = map[string]*api.DRAResource{"gpu.com": {Count: 1}}
+			task.ResourceClaimKeys = []string{"default/claim1"}
+		}
+		return task
+	}
+
+	// n1-match/n2-match selectors: an empty selector always matches, a rack2 selector
+	// never matches n1 (which carries no labels).
+	newManager := func(matchNode string) *fakeDRAManager {
+		var selector map[string]string
+		if matchNode != "" {
+			selector = map[string]string{"topology": matchNode}
+		}
+		claim := newAllocatedClaim("default", "claim1", nil, selector)
+		return newFakeDRAManager(map[string]*resourceapi.ResourceClaim{"default/claim1": claim})
+	}
+
+	victim1 := func() *api.TaskInfo { return newVictim("v1", "3", "3Gi") }
+
+	tests := []struct {
+		name      string
+		preemptor *api.TaskInfo
+		node      *api.NodeInfo
+		victims   []*api.TaskInfo
+		manager   fwk.SharedDRAManager
+		expectErr bool
+	}{
+		{
+			name:      "not enough CPU after evicting victims",
+			preemptor: preemptor("6", "6Gi", false),
+			node:      newNode("4", "8Gi", []*api.TaskInfo{newVictim("v1", "1", "1Gi")}),
+			victims:   []*api.TaskInfo{newVictim("v1", "1", "1Gi")},
+			expectErr: true,
+		},
+		{
+			name:      "enough CPU without DRA requirements",
+			preemptor: preemptor("2", "2Gi", false),
+			node:      newNode("4", "8Gi", []*api.TaskInfo{victim1()}),
+			victims:   []*api.TaskInfo{victim1()},
+			expectErr: false,
+		},
+		{
+			name:      "DRA check skipped when manager is nil",
+			preemptor: preemptor("2", "2Gi", true),
+			node:      newNode("4", "8Gi", []*api.TaskInfo{victim1()}),
+			victims:   []*api.TaskInfo{victim1()},
+			manager:   nil,
+			expectErr: false,
+		},
+		{
+			name:      "DRA claim allocated on the target node",
+			preemptor: preemptor("2", "2Gi", true),
+			node:      newNode("4", "8Gi", []*api.TaskInfo{victim1()}),
+			victims:   []*api.TaskInfo{victim1()},
+			manager:   newManager(""),
+			expectErr: false,
+		},
+		{
+			name:      "DRA claim allocated on another node",
+			preemptor: preemptor("2", "2Gi", true),
+			node:      newNode("4", "8Gi", []*api.TaskInfo{victim1()}),
+			victims:   []*api.TaskInfo{victim1()},
+			manager:   newManager("rack2"),
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateVictims(tt.preemptor, tt.node, tt.victims, tt.manager)
+			if tt.expectErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}

@@ -24,8 +24,12 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/dynamic-resource-allocation/structured"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -48,6 +52,11 @@ type CSINodeStatusInfo struct {
 	DriverStatus map[string]bool
 }
 
+type ActiveClaim struct {
+	ResourceClaim *resourcev1.ResourceClaim
+	Refs          map[TaskID]bool
+}
+
 // NodeInfo is node level aggregated information.
 type NodeInfo struct {
 	Name string
@@ -65,6 +74,22 @@ type NodeInfo struct {
 	// The used resource on that node, including running and terminating
 	// pods
 	Used *Resource
+
+	// DraReleasing record the set of devices on a node that are within the
+	// pending-release window, keyed by `resourceClaim`.
+	DraReleasing map[string]*DRADeviceInfo
+	// DraPipelined records the DRA devices pre-allocated via allocator.Allocate by
+	// Pipelined tasks on the node, aligned with Pipelined *Resource
+	DraPipelined *DRADeviceInfo
+	// DraAllocated records the locally allocated DRA devices mapped to this node by
+	// the latest snapshot rebuild.
+	DraAllocated *DRADeviceInfo
+	// DraActiveClaims is the set of active claims (including in-flight allocations)
+	// obtained from the latest snapshot rebuild, together with the referencing task refs.
+	DraActiveClaims map[string]*ActiveClaim
+	// DraSlices are the available ResourceSlices mapped to this node by the latest
+	// snapshot rebuild.
+	DraSlices []*resourcev1.ResourceSlice
 
 	Allocatable   *Resource
 	Capacity      *Resource
@@ -157,6 +182,8 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Idle:      EmptyResource(),
 		Used:      EmptyResource(),
 
+		DraReleasing:  make(map[string]*DRADeviceInfo),
+		DraPipelined:  NewDRADeviceState(),
 		Allocatable:   EmptyResource(),
 		Capacity:      EmptyResource(),
 		ResourceUsage: &NodeUsage{},
@@ -164,8 +191,10 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		OversubscriptionResource: EmptyResource(),
 		Tasks:                    make(map[TaskID]*TaskInfo),
 
-		Others:      make(map[string]interface{}),
-		ImageStates: make(map[string]*fwk.ImageStateSummary),
+		Others:          make(map[string]interface{}),
+		ImageStates:     make(map[string]*fwk.ImageStateSummary),
+		DraActiveClaims: make(map[string]*ActiveClaim),
+		DraAllocated:    NewDRADeviceState(),
 	}
 
 	nodeInfo.setOversubscription(node)
@@ -222,6 +251,11 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	for _, p := range ni.Tasks {
 		res.AddTask(p)
 	}
+	res.DraReleasing = cloneDRADeviceInfoMap(ni.DraReleasing)
+	res.DraSlices = make([]*resourcev1.ResourceSlice, len(ni.DraSlices))
+	copy(res.DraSlices, ni.DraSlices)
+	res.DraAllocated = ni.DraAllocated.Clone()
+	res.DraActiveClaims = cloneActiveClaimMap(ni.DraActiveClaims)
 	if ni.NumaInfo != nil {
 		res.NumaInfo = ni.NumaInfo.DeepCopy()
 	}
@@ -422,6 +456,7 @@ func (ni *NodeInfo) setNode(node *v1.Node) {
 	ni.Capacity = NewResource(node.Status.Capacity).Add(ni.OversubscriptionResource)
 	ni.Releasing = EmptyResource()
 	ni.Pipelined = EmptyResource()
+	ni.DraPipelined = NewDRADeviceState()
 	ni.Idle = NewResource(node.Status.Allocatable).Add(ni.OversubscriptionResource)
 	ni.Used = EmptyResource()
 
@@ -433,6 +468,7 @@ func (ni *NodeInfo) setNode(node *v1.Node) {
 			ni.Used.Add(ti.Resreq)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
+			ni.DraPipelined.Merge(ti.DRAPreAllocatedDevices)
 		default:
 			ni.allocateIdleResource(ti)
 			ni.Used.Add(ti.Resreq)
@@ -451,6 +487,141 @@ func (ni *NodeInfo) allocateIdleResource(ti *TaskInfo) {
 	ni.Idle.sub(ti.Resreq)
 	klog.ErrorS(nil, "Idle resources turn into negative after allocated",
 		"nodeName", ni.Name, "task", klog.KObj(ti.Pod), "resources", resources, "idle", ni.Idle.String(), "req", ti.Resreq.String())
+}
+
+// AddDraReleasing adds DRA devices that are being released:
+// 1. If the task's claim is not in DraActiveClaims, or Refs has no record of the
+//    task, conservatively assume the task has actually been deleted.
+// 2. Only when Refs becomes empty are the devices held by the claim considered
+//    to be releasing.
+func (ni *NodeInfo) AddDraReleasing(task *TaskInfo) {
+	for claimKey := range task.DRAResourceClaimKeys {
+		claim := ni.DraActiveClaims[claimKey]
+		if claim == nil || len(claim.Refs) == 0 {
+			continue
+		}
+		if _, ok := claim.Refs[task.UID]; ok {
+			delete(claim.Refs, task.UID)
+			if len(claim.Refs) == 0 {
+				ni.DraReleasing[claimKey] = DRADeviceStateFromClaimAllocation(claim.ResourceClaim)
+			}
+		}
+	}
+}
+
+// RemoveDraReleasing undoes the accounting of AddDraReleasing and increments the
+// claim's reference count.
+func (ni *NodeInfo) RemoveDraReleasing(task *TaskInfo) {
+	for claimKey := range task.DRAResourceClaimKeys {
+		delete(ni.DraReleasing, claimKey)
+		if activeClaim, ok := ni.DraActiveClaims[claimKey]; ok {
+			activeClaim.Refs[task.UID] = true
+		}
+	}
+}
+
+// ComputeDraReleasing computes the DRA devices being released on the node.
+func (ni *NodeInfo) ComputeDraReleasing() {
+	ni.DraReleasing = make(map[string]*DRADeviceInfo)
+	for _, task := range ni.Tasks {
+		if task.Status != Releasing {
+			continue
+		}
+		ni.AddDraReleasing(task)
+	}
+}
+
+// ComputeActiveClaimRefs records active claims onto the node (filtering out claims
+// shared across nodes) and computes the task reference count of each active claim
+// on the node, skipping only tasks in Pending status. Tasks never appear in
+// Failed/Succeeded status here.
+func (ni *NodeInfo) ComputeActiveClaimRefs(claims map[string]*ActiveClaim, localDevices sets.Set[structured.DeviceID]) {
+	ni.DraActiveClaims = make(map[string]*ActiveClaim)
+	for _, claim := range claims {
+		if !ni.canReleaseOnNode(claim.ResourceClaim.Status.Allocation, localDevices) {
+			continue
+		}
+		claimKey := claim.ResourceClaim.Namespace + "/" + claim.ResourceClaim.Name
+		for _, task := range ni.Tasks {
+			if task.Status == Pending {
+				continue
+			}
+			if _, ok := task.DRAResourceClaimKeys[claimKey]; ok {
+				if _, ok := ni.DraActiveClaims[claimKey]; !ok {
+					ni.DraActiveClaims[claimKey] = claim
+				}
+				ni.DraActiveClaims[claimKey].Refs[task.UID] = true
+			}
+		}
+	}
+}
+
+// ComputeAllocatedState computes the allocated DRA devices on the node based on
+// the node's ResourceSlices.
+func (ni *NodeInfo) ComputeAllocatedState(allocatedState *structured.AllocatedState) {
+	ni.DraAllocated = &DRADeviceInfo{
+		SharedDevices:      allocatedState.AllocatedSharedDeviceIDs,
+		AggregatedCapacity: allocatedState.AggregatedCapacity,
+	}
+	ni.DraAllocated.Devices = sets.New[structured.DeviceID]()
+	for _, slice := range ni.DraSlices {
+		for _, device := range slice.Spec.Devices {
+			id := structured.MakeDeviceID(slice.Spec.Driver, slice.Spec.Pool.Name, device.Name)
+			if allocatedState.AllocatedDevices.Has(id) {
+				ni.DraAllocated.Devices.Insert(id)
+			}
+		}
+	}
+}
+
+// canReleaseOnNode reports whether all non-admin devices of allocation are local to nodeName,
+// so that releasing allocation frees a device on the node.Now doesn't handle devices made available
+// via a node selector or allNodes; they aren't local (see localDevicesByNode), so a claim with such
+// a device isn't released.
+func (ni *NodeInfo) canReleaseOnNode(allocation *resourcev1.AllocationResult, localDevices sets.Set[structured.DeviceID]) bool {
+	found := false
+	for _, result := range allocation.Devices.Results {
+		// Admin-access allocations do not block normal allocations, so
+		// releasing them frees nothing for the preemptor.
+		if ptr.Deref(result.AdminAccess, false) {
+			continue
+		}
+		if !localDevices.Has(structured.MakeDeviceID(result.Driver, result.Pool, result.Device)) {
+			// Reject the whole claim so releasing it does not also free non-local devices.
+			return false
+		}
+		found = true
+	}
+	return found
+}
+
+func cloneDRADeviceInfoMap(in map[string]*DRADeviceInfo) map[string]*DRADeviceInfo {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]*DRADeviceInfo, len(in))
+	for claimKey, devices := range in {
+		out[claimKey] = devices.Clone()
+	}
+	return out
+}
+
+func cloneActiveClaimMap(in map[string]*ActiveClaim) map[string]*ActiveClaim {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]*ActiveClaim, len(in))
+	for claimKey, claim := range in {
+		refs := make(map[TaskID]bool, len(claim.Refs))
+		for taskID, ref := range claim.Refs {
+			refs[taskID] = ref
+		}
+		out[claimKey] = &ActiveClaim{
+			ResourceClaim: claim.ResourceClaim.DeepCopy(),
+			Refs:          refs,
+		}
+	}
+	return out
 }
 
 // AddTask is used to add a task in nodeInfo object
@@ -480,6 +651,7 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 			ni.Used.Add(ti.Resreq)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
+			ni.DraPipelined.Merge(ti.DRAPreAllocatedDevices)
 		case Binding:
 			// When task in Binding status, it will bind to node, we should double-check whether idle resources are enough to put task before bind to apiserver.
 			if ok, resNames := ti.Resreq.LessEqualWithResourcesName(ni.Idle, Zero); !ok {
@@ -522,6 +694,7 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) {
 			ni.Used.Sub(task.Resreq)
 		case Pipelined:
 			ni.Pipelined.Sub(task.Resreq)
+			ni.DraPipelined.Subtract(task.DRAPreAllocatedDevices)
 		default:
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)

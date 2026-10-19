@@ -27,6 +27,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -313,8 +314,11 @@ func GetRealNodesByHyperNode(hyperNodes map[string]sets.Set[string], allNodes ma
 	return resultList, resultSet
 }
 
-// ValidateVictims returns an error if the resources of the victims can't satisfy the preemptor
-func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api.TaskInfo) error {
+// ValidateVictims returns an error if the resources of the victims can't satisfy the preemptor.
+// when the preemptor carries DRA requirements, additionally validates the preemptor's DRA devices
+// with all victims' devices simulated as released — the DRA counterpart of the CPU/memory simulation below;
+// pass nil draManager when the caller has no DRA check capability.
+func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api.TaskInfo, draManager fwk.SharedDRAManager) error {
 	// Victims should not be judged to be empty here.
 	// It is possible to complete the scheduling of the preemptor without evicting the task.
 	// In the first round, a large task (CPU: 8) is expelled, and a small task is scheduled (CPU: 2)
@@ -328,6 +332,14 @@ func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api
 	if !preemptor.InitResreq.LessEqual(futureIdle, api.Zero) {
 		return fmt.Errorf("not enough resources: requested <%v>, but future idle <%v>",
 			preemptor.InitResreq, futureIdle)
+	}
+	// The CPU/memory simulation above already accounts for the victims' resources, but DRA
+	// devices are accounted separately: a victim's devices are not in node.DraReleasing until
+	// its eviction is committed, so the DRA check must be told to simulate their release.
+	if len(preemptor.DRAResourceClaimKeys) > 0 {
+		if _, err := FutureDRAIdleCheck(context.TODO(), preemptor, node, draManager, victims); err != nil {
+			return fmt.Errorf("DRA devices cannot satisfy the preemptor after evicting all victims: %v", err)
+		}
 	}
 	return nil
 }
@@ -392,4 +404,13 @@ func FindJobTaskNumOfHyperNode(hyperNodeName string, tasks api.TasksMap, hyperNo
 		}
 	}
 	return taskCount
+}
+
+// SplitClaimKey splits a claim key in "namespace/claimName" format into namespace and name.
+func SplitClaimKey(key string) (namespace, name string, ok bool) {
+	idx := strings.Index(key, "/")
+	if idx <= 0 || idx == len(key)-1 {
+		return "", "", false
+	}
+	return key[:idx], key[idx+1:], true
 }

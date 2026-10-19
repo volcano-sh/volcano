@@ -56,6 +56,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodescore"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
+	schedulerutil "volcano.sh/volcano/pkg/scheduler/util"
 )
 
 const (
@@ -216,7 +217,6 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	pp.Handle = handle
 
 	pp.InitPlugin()
-
 	// Initialize PredicateCache if enabled
 	if pp.enabledPredicates.cacheEnable {
 		pp.PredicateCache = predicateCacheNew()
@@ -761,6 +761,12 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 			if filterStatus.Plugin == "" {
 				filterStatus.Plugin = name
 			}
+			// Nodes with insufficient DRA devices are allowed through directly.
+			if api.IsDRAInsufficientDevicesStatus(filterStatus) {
+				klog.V(5).Infof("Skip DRA insufficient devices status for Task <%s/%s> on Node <%s>: %s",
+					task.Namespace, task.Name, node.Name, filterStatus.Reason)
+				continue
+			}
 			predicateStatus = append(predicateStatus, filterStatus)
 			if util.ShouldAbort(filterStatus) {
 				return api.NewFitErrWithStatus(task, node, predicateStatus...)
@@ -875,7 +881,15 @@ func (pp *PredicatesPlugin) onAllocate(ssn *framework.Session, event *framework.
 func (pp *PredicatesPlugin) runReservePlugins(ssn *framework.Session, event *framework.Event) {
 	state := ssn.GetCycleState(event.Task.UID)
 
+	isPipelined := event.Task.Status == api.Pipelined
+
 	for _, name := range pp.ReserveOrder {
+		if isPipelined && name == dynamicresources.Name {
+			klog.V(4).Infof("skip DRA Reserve for pipelined pod %s/%s on node %s, "+
+				"device allocation will be re-evaluated in a future scheduling cycle after victim eviction",
+				event.Task.Namespace, event.Task.Name, event.Task.Pod.Spec.NodeName)
+			continue
+		}
 		plugin, exists := pp.ReservePlugins[name]
 		if !exists {
 			continue
@@ -885,6 +899,12 @@ func (pp *PredicatesPlugin) runReservePlugins(ssn *framework.Session, event *fra
 			klog.Errorf("Reserve plugin %s failed for pod %s/%s: %v", name, event.Task.Namespace, event.Task.Name, status.AsError())
 			event.Err = status.AsError()
 			return
+		}
+		if name == dynamicresources.Name {
+			// Rebuild the DRA accounting snapshot after the dynamicresources Reserve succeeds.
+			if err := schedulerutil.BuildDRASnapshot(ssn.SharedDRAManager(), ssn.Nodes); err != nil {
+				klog.ErrorS(err, "Failed to build DRA snapshot after DRA Reserve, keep previous state")
+			}
 		}
 	}
 }
