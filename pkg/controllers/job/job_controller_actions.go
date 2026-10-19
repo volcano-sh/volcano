@@ -878,6 +878,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 				Queue:             job.Spec.Queue,
 				MinResources:      cc.calcPGMinResources(job),
 				PriorityClassName: job.Spec.PriorityClassName,
+				DeviceTopology:    convertDeviceTopologySpec(job.Spec.DeviceTopology),
 			},
 		}
 		if job.Spec.NetworkTopology != nil {
@@ -1214,6 +1215,7 @@ func getSubGroupPolicy(taskSpec batch.TaskSpec) scheduling.SubGroupPolicySpec {
 		}
 		subGroupPolicy.NetworkTopology = nt
 	}
+	subGroupPolicy.DeviceTopology = convertDeviceTopologySpec(taskSpec.PartitionPolicy.DeviceTopology)
 	return subGroupPolicy
 }
 
@@ -1237,4 +1239,30 @@ func (cc *jobcontroller) podInstanceGone(pod *v1.Pod, err error) bool {
 	}
 	current, getErr := cc.kubeClient.CoreV1().Pods(pod.Namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
 	return apierrors.IsNotFound(getErr) || (getErr == nil && current.UID != pod.UID)
+}
+
+func convertDeviceTopologySpec(spec *batch.DeviceTopologySpec) *scheduling.DeviceTopologySpec {
+	if spec == nil {
+		return nil
+	}
+
+	converted := &scheduling.DeviceTopologySpec{}
+	if spec.Requirements != nil {
+		converted.Requirements = make([]scheduling.DeviceTopologyRequirement, len(spec.Requirements))
+		for index, requirement := range spec.Requirements {
+			converted.Requirements[index] = scheduling.DeviceTopologyRequirement{
+				Resource: scheduling.DeviceResourceSelector{
+					ExtendedResourceName: requirement.Resource.ExtendedResourceName,
+				},
+				Mode: scheduling.DeviceTopologyMode(requirement.Mode),
+			}
+		}
+	}
+	if spec.Fabric != nil {
+		converted.Fabric = &scheduling.DeviceFabricAffinity{
+			Mode: scheduling.DeviceTopologyMode(spec.Fabric.Mode),
+		}
+	}
+
+	return converted
 }
