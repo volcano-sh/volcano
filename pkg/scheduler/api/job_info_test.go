@@ -961,6 +961,23 @@ func TestTaskInfoPodAnnotationsAreCloned(t *testing.T) {
 	assert.NotContains(t, cloned.PodAnnotations, "new")
 }
 
+func TestTaskInfoCloneDRAFields(t *testing.T) {
+	task := NewTaskInfo(&v1.Pod{})
+	task.UseResourceClaim = true
+	task.ResourceClaimKeys = []string{"default/claim1"}
+	task.DRAResreq = map[string]*DRAResource{"gpu.com": {Count: 1}}
+
+	cloned := task.Clone()
+
+	assert.True(t, cloned.UseResourceClaim)
+	assert.Equal(t, task.ResourceClaimKeys, cloned.ResourceClaimKeys)
+	assert.Equal(t, task.DRAResreq, cloned.DRAResreq)
+
+	// Mutating the clone must not leak into the original.
+	cloned.ResourceClaimKeys[0] = "default/other"
+	assert.Equal(t, "default/claim1", task.ResourceClaimKeys[0])
+}
+
 func newTaskWithStatus(uid string, status TaskStatus, nodeName string) *TaskInfo {
 	return &TaskInfo{
 		UID: TaskID(uid),

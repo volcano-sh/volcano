@@ -2076,25 +2076,38 @@ func addDRAResource(dst map[string]*schedulingapi.DRAResource, deviceClass strin
 }
 
 // buildTaskDRAInfo builds aggregated and per-claim DRA resource requests from Pod ResourceClaims.
-func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulingapi.DRAResource, map[string]map[string]*schedulingapi.DRAResource, []string, error) {
+// It also extracts the devices allocated to the pod from the claims' allocation status in
+// the same pass: the claim objects are already fetched here, so no additional cache access
+// is needed. All allocated claims are counted, including shared ones.
+// The boolean return reports whether the pod references any ResourceClaim (all claims
+// resolved), covering claims whose requests are skipped for DRA quota tracking and thus
+// absent from the returned claim keys.
+func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulingapi.DRAResource, map[string]map[string]*schedulingapi.DRAResource, []string, *schedulingapi.DRADeviceInfo, bool, error) {
 	if !utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) || len(pod.Spec.ResourceClaims) == 0 || sc.resourceClaimCache == nil {
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, false, nil
 	}
 
 	result := make(map[string]*schedulingapi.DRAResource)
 	claimResources := make(map[string]map[string]*schedulingapi.DRAResource)
+	devices := schedulingapi.NewDRADeviceState()
+	extractedClaims := sets.New[string]()
 	consumableCapacityEnabled := utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRAConsumableCapacity)
+
+	var useResourceClaim bool
+	if len(pod.Spec.ResourceClaims) > 0 {
+		useResourceClaim = true
+	}
 
 	for _, podClaim := range pod.Spec.ResourceClaims {
 		templateClaim := podClaim.ResourceClaimTemplateName != nil
 		claimName := resolvePodClaimName(pod, podClaim)
 		if claimName == "" {
 			if templateClaim {
-				return nil, nil, nil, &pendingDRAResourceClaimError{
+				return nil, nil, nil, nil, false, &pendingDRAResourceClaimError{
 					err: fmt.Errorf("ResourceClaim for pod claim %s in pod %s/%s is not resolved yet", podClaim.Name, pod.Namespace, pod.Name),
 				}
 			}
-			return nil, nil, nil, fmt.Errorf("failed to resolve ResourceClaim name for pod claim %s in pod %s/%s", podClaim.Name, pod.Namespace, pod.Name)
+			return nil, nil, nil, nil, false, fmt.Errorf("failed to resolve ResourceClaim name for pod claim %s in pod %s/%s", podClaim.Name, pod.Namespace, pod.Name)
 		}
 		claimKey := pod.Namespace + "/" + claimName
 		if _, exists := claimResources[claimKey]; exists {
@@ -2105,22 +2118,48 @@ func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulinga
 		if err != nil || obj == nil {
 			if templateClaim {
 				if err != nil {
-					return nil, nil, nil, &pendingDRAResourceClaimError{
+					return nil, nil, nil, nil, false, &pendingDRAResourceClaimError{
 						err: fmt.Errorf("ResourceClaim %s for pod %s/%s is not synced yet: %w", claimKey, pod.Namespace, pod.Name, err),
 					}
 				}
-				return nil, nil, nil, &pendingDRAResourceClaimError{
+				return nil, nil, nil, nil, false, &pendingDRAResourceClaimError{
 					err: fmt.Errorf("ResourceClaim %s for pod %s/%s is not synced yet", claimKey, pod.Namespace, pod.Name),
 				}
 			}
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("failed to get ResourceClaim %s: %w", claimKey, err)
+				return nil, nil, nil, nil, false, fmt.Errorf("failed to get ResourceClaim %s: %w", claimKey, err)
 			}
-			return nil, nil, nil, fmt.Errorf("failed to get ResourceClaim %s: cache returned nil object", claimKey)
+			return nil, nil, nil, nil, false, fmt.Errorf("failed to get ResourceClaim %s: cache returned nil object", claimKey)
 		}
 		claim, ok := obj.(*resourcev1.ResourceClaim)
 		if !ok {
-			return nil, nil, nil, fmt.Errorf("ResourceClaim cache entry %s has unexpected type %T", claimKey, obj)
+			return nil, nil, nil, nil, false, fmt.Errorf("ResourceClaim cache entry %s has unexpected type %T", claimKey, obj)
+		}
+
+		// A Bound/Running pod must have all its claims allocated: DRA allocation is
+		// persisted before binding and is a prerequisite for the pod to run. If the pod
+		// update overtook the claim update across informers, the claim here may still be
+		// the pre-allocation revision — report the pending error so the task is re-synced
+		// and rebuilt once the allocation arrives, instead of caching a TaskInfo with an
+		// empty device state that would never be refreshed (a Running pod emits no further
+		// pod events). Releasing/terminated pods are excluded: their allocation may be nil
+		// legitimately once the claim is deallocated during termination.
+		taskStatus := schedulingapi.GetTaskStatus(pod)
+		if claim.Status.Allocation == nil && (taskStatus == schedulingapi.Running || taskStatus == schedulingapi.Bound) {
+			return nil, nil, nil, nil, false, &pendingDRAResourceClaimError{
+				err: fmt.Errorf("ResourceClaim %s for pod %s/%s is not allocated yet while the pod is %s",
+					claimKey, pod.Namespace, pod.Name, taskStatus),
+			}
+		}
+
+		// Extract the devices this claim allocated to the pod while the claim object is
+		// already at hand. The field records all devices the task occupies via its claims,
+		// regardless of claim sharing: guarding shared claims is the responsibility of the
+		// preemption/reclaim paths (SharedClaimEvictableFn), not of task accounting.
+		if claim.Status.Allocation != nil && !extractedClaims.Has(claimKey) {
+			extractedClaims.Insert(claimKey)
+			devices.Merge(schedulingapi.DRADeviceStateFromAllocationResults(
+				[]resourcev1.AllocationResult{*claim.Status.Allocation}, consumableCapacityEnabled))
 		}
 
 		perClaim := make(map[string]*schedulingapi.DRAResource)
@@ -2164,7 +2203,12 @@ func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulinga
 	}
 
 	if len(claimResources) == 0 {
-		return nil, nil, nil, nil
+		// Device extraction is independent of quota tracking: claims whose requests are
+		// skipped for quota purposes (e.g. FirstAvailable) may still hold allocations.
+		if devices.IsEmpty() {
+			return nil, nil, nil, nil, useResourceClaim, nil
+		}
+		return nil, nil, nil, devices, useResourceClaim, nil
 	}
 	claimKeys := make([]string, 0, len(claimResources))
 	for claimKey := range claimResources {
@@ -2175,5 +2219,8 @@ func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulinga
 	if len(result) == 0 {
 		result = nil
 	}
-	return result, claimResources, claimKeys, nil
+	if devices.IsEmpty() {
+		devices = nil
+	}
+	return result, claimResources, claimKeys, devices, useResourceClaim, nil
 }

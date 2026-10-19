@@ -132,8 +132,18 @@ type TaskInfo struct {
 	DRAResreq map[string]*DRAResource
 	// ResourceClaimKeys lists namespaced ResourceClaims referenced by this task.
 	ResourceClaimKeys []string
+	// UseResourceClaim indicates whether the task references any ResourceClaim at all,
+	// regardless of whether their requests participate in DRA quota tracking.
+	UseResourceClaim bool
 	// ResourceClaimDRAResreq stores per-claim DRA resources for shared-claim deduplication.
 	ResourceClaimDRAResreq map[string]map[string]*DRAResource
+	// DRAPreAlloc records the pre-allocated device set computed by the DRA validator
+	// (allocator.Allocate) before the task is Pipelined, for NodeInfo.DraPipelined accounting.
+	DRAPreAlloc *DRADeviceInfo
+	// DRAAllocatedDevices records all DRA devices the task occupies via its allocated
+	// claims, extracted when the TaskInfo is built — aligned with DRAResreq, which is also
+	// derived once at task build time.
+	DRAAllocatedDevices *DRADeviceInfo
 
 	TransactionContext
 	// LastTransaction holds the context of last scheduling transaction
@@ -358,8 +368,15 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 	if len(ti.ResourceClaimKeys) > 0 {
 		res.ResourceClaimKeys = append([]string(nil), ti.ResourceClaimKeys...)
 	}
+	res.UseResourceClaim = ti.UseResourceClaim
 	if ti.ResourceClaimDRAResreq != nil {
 		res.ResourceClaimDRAResreq = cloneResourceClaimDRAResreq(ti.ResourceClaimDRAResreq)
+	}
+	if ti.DRAPreAlloc != nil {
+		res.DRAPreAlloc = ti.DRAPreAlloc.Clone()
+	}
+	if ti.DRAAllocatedDevices != nil {
+		res.DRAAllocatedDevices = ti.DRAAllocatedDevices.Clone()
 	}
 	return res
 }

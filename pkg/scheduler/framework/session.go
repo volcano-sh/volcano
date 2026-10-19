@@ -42,7 +42,6 @@ import (
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
-
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -650,6 +649,14 @@ func (ssn *Session) FilterOutUnschedulableAndUnresolvableNodesForTask(task *api.
 	}
 
 	skipNodes := fitErr.GetUnschedulableAndUnresolvableNodes()
+	// For tasks with DRA resource requirements, nodes excluded during the allocate phase
+	// due to insufficient DRA devices can be remediated via preemption/reclaim, so remove
+	// them from the filtered set.
+	if task.UseResourceClaim {
+		for nodeName := range fitErr.GetDRAFailedNodes() {
+			delete(skipNodes, nodeName)
+		}
+	}
 	if len(skipNodes) == 0 {
 		return ssn.NodeList
 	}
