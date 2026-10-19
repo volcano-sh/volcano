@@ -152,6 +152,8 @@ type SchedulerCache struct {
 
 	Recorder record.EventRecorder
 
+	podGroupEvents podGroupEventDeduper
+
 	Jobs                 map[schedulingapi.JobID]*schedulingapi.JobInfo
 	Nodes                map[string]*schedulingapi.NodeInfo
 	Queues               map[schedulingapi.QueueID]*schedulingapi.QueueInfo
@@ -1798,9 +1800,12 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 			len(job.Tasks),
 			fitErrStr)
 		// TODO: should we skip pod unschedulable event if pod group is unschedulable due to gates to avoid printing too many messages?
-		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeWarning, string(scheduling.PodGroupUnschedulableType), msg)
+		sc.RecordPodGroupEvent(job.PodGroup, v1.EventTypeWarning, string(scheduling.PodGroupUnschedulableType), msg)
 	} else if updatePG {
-		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupScheduled), string(scheduling.PodGroupReady))
+		sc.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupScheduled), string(scheduling.PodGroupReady))
+	}
+	if job.PodGroup != nil {
+		sc.podGroupEvents.endSession(job.PodGroup.UID)
 	}
 
 	baseErrorMessage := fitErrStr
@@ -1907,8 +1912,13 @@ func (sc *SchedulerCache) UpdateQueueStatus(queue *schedulingapi.QueueInfo) erro
 	return sc.StatusUpdater.UpdateQueueStatus(queue)
 }
 
-func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventType, reason, msg string) {
+// RecordPodGroupEvent records a PodGroup event unless the same event was already
+// recorded for the PodGroup in the current or previous scheduling session.
+func (sc *SchedulerCache) RecordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventType, reason, msg string) {
 	if podGroup == nil {
+		return
+	}
+	if !sc.podGroupEvents.shouldRecord(podGroup.UID, eventType, reason, msg) {
 		return
 	}
 

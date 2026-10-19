@@ -1175,6 +1175,8 @@ func (sc *SchedulerCache) DeletePodGroupV1beta1(obj interface{}) {
 		return
 	}
 
+	sc.podGroupEvents.forget(ss.UID)
+
 	jobID := schedulingapi.JobID(fmt.Sprintf("%s/%s", ss.Namespace, ss.Name))
 	sc.Mutex.Lock()
 	err := sc.deletePodGroup(jobID)

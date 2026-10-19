@@ -62,6 +62,9 @@ type Cache interface {
 	// Deprecated: remove it after removed PDB support.
 	RecordJobStatusEvent(job *api.JobInfo, updatePG bool)
 
+	// RecordPodGroupEvent records a PodGroup event, skipping repeats across sessions.
+	RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reason, msg string)
+
 	// UpdateJobStatus puts job in backlog for a while.
 	UpdateJobStatus(job *api.JobInfo, updatePGStatus, updatePGAnnotations, updateJobInfo bool) (*api.JobInfo, error)
 
