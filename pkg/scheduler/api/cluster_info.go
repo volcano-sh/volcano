@@ -43,6 +43,9 @@ type ClusterInfo struct {
 	NodeList                  []string
 	CSINodesStatus            map[string]*CSINodeStatusInfo
 	NodesInShard              sets.Set[string]
+	// DeviceTopology is the immutable device topology view captured with the
+	// rest of this cluster snapshot.
+	DeviceTopology *TopologySnapshot
 }
 
 func (ci ClusterInfo) String() string {

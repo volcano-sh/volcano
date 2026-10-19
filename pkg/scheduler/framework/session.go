@@ -94,6 +94,9 @@ type Session struct {
 	RevocableNodes map[string]*api.NodeInfo
 	Queues         map[api.QueueID]*api.QueueInfo
 	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
+	// DeviceTopology is the immutable topology view captured when this Session
+	// opened. Plugins must treat it as read-only for the session lifetime.
+	DeviceTopology *api.TopologySnapshot
 
 	// NodeMap is like Nodes except that it uses k8s NodeInfo api and should only
 	// be used in k8s compatible api scenarios such as in predicates and nodeorder plugins.
@@ -307,6 +310,7 @@ func openSession(schedulerCache cache.Cache, unschedulableJobCache unschedulable
 	ssn.RevocableNodes = snapshot.RevocableNodes
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
+	ssn.DeviceTopology = snapshot.DeviceTopology
 	// calculate all nodes' resource only once in each schedule cycle, other plugins can clone it when need
 	for _, n := range ssn.Nodes {
 		ssn.TotalResource.Add(n.Allocatable)

@@ -312,6 +312,46 @@ func TestSchedulerCacheAcceptsMetadataHeartbeat(t *testing.T) {
 	}
 }
 
+func TestSchedulerCacheSnapshotCapturesImmutableDeviceTopology(t *testing.T) {
+	node := topologyCacheTestNode("node-a", "node-a-uid", "1")
+	cache := newTopologySnapshotTestSchedulerCache(t, node)
+	initial := topologyCacheTestUpdate(node, 1, topologyCacheTestObservedAt, "device-a", schedulingapi.DeviceHealthy)
+	if err := cache.ApplyProviderNodeUpdate(initial); err != nil {
+		t.Fatalf("initial ApplyProviderNodeUpdate() error = %v", err)
+	}
+
+	firstClusterSnapshot := cache.Snapshot()
+	if firstClusterSnapshot.DeviceTopology == nil {
+		t.Fatal("Snapshot().DeviceTopology = nil, want immutable topology snapshot")
+	}
+	if firstClusterSnapshot.DeviceTopology != cache.DeviceTopologySnapshot() {
+		t.Fatal("Snapshot().DeviceTopology does not reference the cache's current immutable topology snapshot")
+	}
+	if firstClusterSnapshot.DeviceTopology.Revision() != 1 {
+		t.Fatalf("first Snapshot().DeviceTopology.Revision() = %d, want 1", firstClusterSnapshot.DeviceTopology.Revision())
+	}
+
+	replacement := topologyCacheTestUpdate(node, 2, topologyCacheTestObservedAt.Add(time.Minute), "device-b", schedulingapi.DeviceHealthy)
+	if err := cache.ApplyProviderNodeUpdate(replacement); err != nil {
+		t.Fatalf("replacement ApplyProviderNodeUpdate() error = %v", err)
+	}
+
+	secondClusterSnapshot := cache.Snapshot()
+	if firstClusterSnapshot.DeviceTopology.Revision() != 1 {
+		t.Fatalf("first Snapshot().DeviceTopology.Revision() = %d, want immutable revision 1", firstClusterSnapshot.DeviceTopology.Revision())
+	}
+	if secondClusterSnapshot.DeviceTopology == firstClusterSnapshot.DeviceTopology {
+		t.Fatal("replacement topology update reused the previous immutable snapshot")
+	}
+	if secondClusterSnapshot.DeviceTopology.Revision() != 2 {
+		t.Fatalf("second Snapshot().DeviceTopology.Revision() = %d, want 2", secondClusterSnapshot.DeviceTopology.Revision())
+	}
+	facts, exists := secondClusterSnapshot.DeviceTopology.Facts(topologyCacheTestProviderID, node.UID)
+	if !exists || facts.SourceGeneration != 2 || len(facts.Devices) != 1 || facts.Devices[0].ID.Value != "device-b" {
+		t.Fatalf("second Snapshot().DeviceTopology.Facts() = (%#v, %t), want generation-two device-b facts", facts, exists)
+	}
+}
+
 func TestSchedulerCacheDoesNotPublishDuplicateProviderUpdate(t *testing.T) {
 	node := topologyCacheTestNode("node-a", "node-a-uid", "1")
 	cache := newTopologyTestSchedulerCache(t, node)
@@ -682,6 +722,26 @@ func TestSchedulerCacheRejectsConflictingFabricOwnership(t *testing.T) {
 
 func newTopologyTestSchedulerCache(t *testing.T, nodes ...*corev1.Node) *SchedulerCache {
 	t.Helper()
+	return newTopologyTestSchedulerCacheWithRegistry(t, newTopologyTestProviderRegistry(t), nodes...)
+}
+
+func newTopologySnapshotTestSchedulerCache(t *testing.T, nodes ...*corev1.Node) *SchedulerCache {
+	t.Helper()
+	cache := NewDefaultMockSchedulerCache("device-topology-snapshot-test")
+	t.Cleanup(func() {
+		ShutdownMockSchedulerCache(cache)
+	})
+	WithDeviceTopologyProviderRegistry(newTopologyTestProviderRegistry(t))(cache)
+	for _, node := range nodes {
+		if err := cache.AddOrUpdateNode(node); err != nil {
+			t.Fatalf("AddOrUpdateNode(%q) error = %v", node.Name, err)
+		}
+	}
+	return cache
+}
+
+func newTopologyTestProviderRegistry(t *testing.T) *provider.Registry {
+	t.Helper()
 	registry, err := provider.NewRegistry([]provider.Registration{{
 		ProviderID:        topologyCacheTestProviderID,
 		IdentityNamespace: topologyCacheTestNamespace,
@@ -690,7 +750,7 @@ func newTopologyTestSchedulerCache(t *testing.T, nodes ...*corev1.Node) *Schedul
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	return newTopologyTestSchedulerCacheWithRegistry(t, registry, nodes...)
+	return registry
 }
 
 func newTopologyTestSchedulerCacheWithRegistry(t *testing.T, registry *provider.Registry, nodes ...*corev1.Node) *SchedulerCache {
