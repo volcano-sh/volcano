@@ -104,6 +104,65 @@ func Test_parseRevocableZone(t *testing.T) {
 	}
 }
 
+func Test_New_MalformedArguments(t *testing.T) {
+	tests := []struct {
+		name             string
+		args             framework.Arguments
+		wantEvictPeriod  time.Duration
+		wantRevocableLen int
+	}{
+		{
+			// Reproduces the crash from https://github.com/volcano-sh/volcano/issues/5806:
+			// a bare (unquoted) number in the scheduler configmap used to panic with
+			// "interface conversion: interface {} is int, not string" instead of being
+			// rejected gracefully.
+			name: "non-string evict period falls back to default",
+			args: framework.Arguments{
+				evictPeriodLabel: 60,
+			},
+			wantEvictPeriod:  time.Minute,
+			wantRevocableLen: 0,
+		},
+		{
+			name: "non-string revocable zone value is skipped",
+			args: framework.Arguments{
+				revocableZoneLabelPrefix + "rz1": 1000,
+			},
+			wantEvictPeriod:  time.Minute,
+			wantRevocableLen: 0,
+		},
+		{
+			name: "well-formed arguments still parse correctly",
+			args: framework.Arguments{
+				evictPeriodLabel:                 "2m",
+				revocableZoneLabelPrefix + "rz1": "10:00-21:00",
+			},
+			wantEvictPeriod:  2 * time.Minute,
+			wantRevocableLen: 1,
+		},
+		{
+			name: "revocable zone prefix must be at the start of the key",
+			args: framework.Arguments{
+				"other-" + revocableZoneLabelPrefix + "rz1": "10:00-21:00",
+			},
+			wantEvictPeriod:  time.Minute,
+			wantRevocableLen: 0,
+		},
+	}
+
+	for _, c := range tests {
+		t.Run(c.name, func(t *testing.T) {
+			plugin := New(c.args).(*tdmPlugin)
+			if plugin.evictPeriod != c.wantEvictPeriod {
+				t.Errorf("evictPeriod: want %v, got %v", c.wantEvictPeriod, plugin.evictPeriod)
+			}
+			if len(plugin.revocableZone) != c.wantRevocableLen {
+				t.Errorf("revocableZone length: want %v, got %v", c.wantRevocableLen, len(plugin.revocableZone))
+			}
+		})
+	}
+}
+
 func Test_TDM(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 
