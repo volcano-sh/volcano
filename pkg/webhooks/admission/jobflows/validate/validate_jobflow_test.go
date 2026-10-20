@@ -17,18 +17,99 @@ limitations under the License.
 package validate
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
 	schedulingv1beta2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 )
+
+func TestAdmitJobFlowsUpdate(t *testing.T) {
+	oldJobFlow := flowv1alpha1.JobFlow{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-jobflow",
+			Namespace: "test",
+		},
+		Spec: flowv1alpha1.JobFlowSpec{
+			Flows: []flowv1alpha1.Flow{
+				{Name: "a"},
+				{
+					Name: "b",
+					DependsOn: &flowv1alpha1.DependsOn{
+						Targets: []string{"a"},
+					},
+				},
+			},
+			JobRetainPolicy: flowv1alpha1.RetainPolicy("retain"),
+		},
+	}
+
+	testCases := []struct {
+		name    string
+		update  func(*flowv1alpha1.JobFlow)
+		allowed bool
+		message string
+	}{
+		{
+			name: "reject spec update",
+			update: func(jobFlow *flowv1alpha1.JobFlow) {
+				jobFlow.Spec.Flows = append(jobFlow.Spec.Flows, flowv1alpha1.Flow{Name: "c"})
+			},
+			message: "jobflow spec updates are not supported",
+		},
+		{
+			name: "allow metadata update",
+			update: func(jobFlow *flowv1alpha1.JobFlow) {
+				jobFlow.Labels = map[string]string{"test": "true"}
+			},
+			allowed: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			jobFlow := oldJobFlow.DeepCopy()
+			testCase.update(jobFlow)
+
+			ar := admissionv1.AdmissionReview{
+				Request: &admissionv1.AdmissionRequest{
+					Resource: metav1.GroupVersionResource{
+						Group:    "flow.volcano.sh",
+						Version:  "v1alpha1",
+						Resource: "jobflows",
+					},
+					Operation: admissionv1.Update,
+					Object:    rawJobFlow(t, jobFlow),
+					OldObject: rawJobFlow(t, &oldJobFlow),
+				},
+			}
+
+			response := AdmitJobFlows(ar)
+			if response.Allowed != testCase.allowed {
+				t.Errorf("Expected Allowed %v, got %v", testCase.allowed, response.Allowed)
+			}
+			if testCase.message != "" && (response.Result == nil || !strings.Contains(response.Result.Message, testCase.message)) {
+				t.Errorf("Expected error %q, got %v", testCase.message, response.Result)
+			}
+		})
+	}
+}
+
+func rawJobFlow(t *testing.T, jobFlow *flowv1alpha1.JobFlow) runtime.RawExtension {
+	jobFlowJSON, err := json.Marshal(jobFlow)
+	if err != nil {
+		t.Fatalf("failed to marshal jobflow: %v", err)
+	}
+	return runtime.RawExtension{Raw: jobFlowJSON}
+}
 
 func TestValidateJobFlowCreate(t *testing.T) {
 	namespace := "test"
