@@ -30,8 +30,8 @@ const (
 )
 
 // deviceTopologyPlugin resolves immutable PodGroup device topology policies at
-// session open. Later filter, score, planning, and reservation phases consume
-// these resolved policy units without reparsing workload API objects.
+// session open. Its predicate and Node-order callbacks consume those policy
+// units without reparsing workload API objects.
 type deviceTopologyPlugin struct {
 	policies map[policyUnitKey]*resolvedDeviceTopologyPolicy
 	errors   map[policyUnitKey]error
@@ -51,8 +51,8 @@ func (plugin *deviceTopologyPlugin) Name() string {
 }
 
 // OnSessionOpen resolves the canonical parent and subgroup policies present in
-// the immutable scheduler session. It deliberately does not add predicates or
-// scoring callbacks; those consume this state in later implementation phases.
+// the immutable scheduler session and registers static topology filter and
+// scoring callbacks for the session lifetime.
 func (plugin *deviceTopologyPlugin) OnSessionOpen(session *framework.Session) {
 	clear(plugin.policies)
 	clear(plugin.errors)
@@ -63,6 +63,13 @@ func (plugin *deviceTopologyPlugin) OnSessionOpen(session *framework.Session) {
 	for _, job := range session.Jobs {
 		plugin.resolveJob(job)
 	}
+
+	session.AddPredicateFn(plugin.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+		return plugin.predicate(session, task, node)
+	})
+	session.AddNodeOrderFn(plugin.Name(), func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
+		return plugin.nodeOrder(session, task, node)
+	})
 }
 
 // OnSessionClose discards policy data that belongs only to the completed

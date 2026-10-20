@@ -30,6 +30,8 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
@@ -42,7 +44,7 @@ func TestDeviceTopologyPluginResolvesParentPolicy(t *testing.T) {
 	job.DeviceTopology = testDeviceTopologyPolicy("nvidia.com/gpu", scheduling.HardDeviceTopologyMode)
 
 	plugin := New(framework.Arguments{}).(*deviceTopologyPlugin)
-	plugin.OnSessionOpen(&framework.Session{Jobs: map[api.JobID]*api.JobInfo{job.UID: job}})
+	plugin.OnSessionOpen(newDeviceTopologyTestSession(t, map[api.JobID]*api.JobInfo{job.UID: job}))
 
 	policy, err := plugin.policyFor(job, job.SubJobs[job.DefaultSubJobID()])
 	if err != nil {
@@ -82,7 +84,7 @@ func TestDeviceTopologyPluginResolvesSubGroupPolicy(t *testing.T) {
 	job.TaskToSubJob[task.UID] = subJob.UID
 
 	plugin := New(framework.Arguments{}).(*deviceTopologyPlugin)
-	plugin.OnSessionOpen(&framework.Session{Jobs: map[api.JobID]*api.JobInfo{job.UID: job}})
+	plugin.OnSessionOpen(newDeviceTopologyTestSession(t, map[api.JobID]*api.JobInfo{job.UID: job}))
 
 	policy, err := plugin.policyFor(job, subJob)
 	if err != nil {
@@ -119,7 +121,7 @@ func TestDeviceTopologyPluginRejectsConflictingPolicyScopes(t *testing.T) {
 	job.SubJobs[subJob.UID] = subJob
 
 	plugin := New(framework.Arguments{}).(*deviceTopologyPlugin)
-	plugin.OnSessionOpen(&framework.Session{Jobs: map[api.JobID]*api.JobInfo{job.UID: job}})
+	plugin.OnSessionOpen(newDeviceTopologyTestSession(t, map[api.JobID]*api.JobInfo{job.UID: job}))
 
 	if _, err := plugin.policyFor(job, nil); err == nil || !strings.Contains(err.Error(), "both parent and subgroup") {
 		t.Fatalf("parent policy error = %v, want conflicting-scope error", err)
@@ -137,10 +139,46 @@ func TestDeviceTopologyPluginSkipsPoliciesWhenFeatureDisabled(t *testing.T) {
 	job.DeviceTopology = testDeviceTopologyPolicy("nvidia.com/gpu", scheduling.HardDeviceTopologyMode)
 
 	plugin := New(framework.Arguments{}).(*deviceTopologyPlugin)
-	plugin.OnSessionOpen(&framework.Session{Jobs: map[api.JobID]*api.JobInfo{job.UID: job}})
+	plugin.OnSessionOpen(newDeviceTopologyTestSession(t, map[api.JobID]*api.JobInfo{job.UID: job}))
 	policy, err := plugin.policyFor(job, nil)
 	if err != nil || policy != nil {
 		t.Fatalf("disabled feature policy = (%#v, %v), want (nil, nil)", policy, err)
+	}
+}
+
+func TestDeviceTopologyPluginLeavesCandidatesUnchangedWhenFeatureDisabled(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DeviceTopologyAwareScheduling, false)
+	enabled := true
+	task := newDeviceTopologyTask("worker", []corev1.Container{containerWithRequest("trainer", "nvidia.com/gpu", "1")}, nil)
+	job := api.NewJobInfo("job", task)
+	job.DeviceTopology = testDeviceTopologyPolicy("nvidia.com/gpu", scheduling.HardDeviceTopologyMode)
+	task.Job = job.UID
+	node := &api.NodeInfo{
+		Name: "node-a",
+		Node: &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+			Name: "node-a",
+			UID:  types.UID("node-a"),
+		}},
+	}
+	session := newDeviceTopologyTestSession(t, map[api.JobID]*api.JobInfo{job.UID: job})
+	session.Tiers = []conf.Tier{{Plugins: []conf.PluginOption{{
+		Name:             PluginName,
+		EnabledPredicate: &enabled,
+		EnabledNodeOrder: &enabled,
+	}}}}
+
+	plugin := New(framework.Arguments{}).(*deviceTopologyPlugin)
+	plugin.OnSessionOpen(session)
+
+	if err := session.PredicateFn(task, node); err != nil {
+		t.Fatalf("Session.PredicateFn() error = %v, want nil with the feature disabled", err)
+	}
+	score, err := session.NodeOrderFn(task, node)
+	if err != nil {
+		t.Fatalf("Session.NodeOrderFn() error = %v", err)
+	}
+	if score != 0 {
+		t.Fatalf("Session.NodeOrderFn() score = %v, want 0 with the feature disabled", score)
 	}
 }
 
@@ -150,7 +188,7 @@ func TestDeviceTopologyPluginClearsSessionPolicyState(t *testing.T) {
 	task := newDeviceTopologyTask("worker", []corev1.Container{containerWithRequest("trainer", "nvidia.com/gpu", "1")}, nil)
 	job := api.NewJobInfo("job", task)
 	job.DeviceTopology = testDeviceTopologyPolicy("nvidia.com/gpu", scheduling.HardDeviceTopologyMode)
-	session := &framework.Session{Jobs: map[api.JobID]*api.JobInfo{job.UID: job}}
+	session := newDeviceTopologyTestSession(t, map[api.JobID]*api.JobInfo{job.UID: job})
 
 	plugin := New(framework.Arguments{}).(*deviceTopologyPlugin)
 	plugin.OnSessionOpen(session)
@@ -195,4 +233,20 @@ func testDeviceTopologyPolicy(resourceName corev1.ResourceName, mode scheduling.
 			Mode:     mode,
 		}},
 	}
+}
+
+func newDeviceTopologyTestSession(t *testing.T, jobs map[api.JobID]*api.JobInfo) *framework.Session {
+	t.Helper()
+	schedulerCache := cache.NewDefaultMockSchedulerCache("device-topology-aware-test")
+	t.Cleanup(func() {
+		cache.ShutdownMockSchedulerCache(schedulerCache)
+	})
+
+	session := framework.OpenSession(schedulerCache, nil, nil)
+	session.Jobs = jobs
+	t.Cleanup(func() {
+		session.Jobs = nil
+		framework.CloseSession(session)
+	})
+	return session
 }
