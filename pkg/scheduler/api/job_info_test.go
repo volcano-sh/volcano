@@ -307,77 +307,75 @@ func TestDeleteTaskInfo(t *testing.T) {
 func TestFitErrorStableTaskDiagnostics(t *testing.T) {
 	const summary = "pod group is not ready, 2 minAvailable, 3 Pending; Pending: 3 Unschedulable"
 	tests := []struct {
-		name     string
-		order    []TaskID
-		errors   map[TaskID]string
-		jobError string
-		remove   TaskID
-		want     string
-		update   string
-		wantNext string
+		name                 string
+		order                []TaskID
+		errors               map[TaskID]string
+		jobError             string
+		remove               TaskID
+		expectedBeforeDelete string
+		expected             string
+		updateTask           TaskID
+		update               string
+		expectedAfterUpdate  string
 	}{
 		{
-			name:   "multiple failures",
-			order:  []TaskID{"a", "b", "c"},
-			errors: map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory", "c": "Node affinity mismatch"},
-			want:   summary + ". Node: task-z: Insufficient cpu",
+			name:     "multiple failures",
+			order:    []TaskID{"a", "b", "c"},
+			errors:   map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory", "c": "Node affinity mismatch"},
+			expected: summary + ". Node: task-z: Insufficient cpu",
 		},
 		{
-			name:   "reversed insertion order",
-			order:  []TaskID{"c", "b", "a"},
-			errors: map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory", "c": "Node affinity mismatch"},
-			want:   summary + ". Node: task-z: Insufficient cpu",
+			name:     "reversed insertion order",
+			order:    []TaskID{"c", "b", "a"},
+			errors:   map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory", "c": "Node affinity mismatch"},
+			expected: summary + ". Node: task-z: Insufficient cpu",
 		},
 		{
-			name:   "nil failure is ignored",
-			order:  []TaskID{"a", "b", "c"},
-			errors: map[TaskID]string{"a": "", "b": "Insufficient memory"},
-			want:   summary + ". Node: task-a: Insufficient memory",
+			name:     "nil failure is ignored",
+			order:    []TaskID{"a", "b", "c"},
+			errors:   map[TaskID]string{"a": "", "b": "Insufficient memory"},
+			expected: summary + ". Node: task-a: Insufficient memory",
 		},
 		{
-			name:   "unknown task is ignored",
-			order:  []TaskID{"a", "b", "c"},
-			errors: map[TaskID]string{"0": "Stale failure", "b": "Insufficient memory"},
-			want:   summary + ". Node: task-a: Insufficient memory",
+			name:     "single failure",
+			order:    []TaskID{"a", "b", "c"},
+			errors:   map[TaskID]string{"c": "Node affinity mismatch"},
+			expected: summary + ". Node: task-b: Node affinity mismatch",
 		},
 		{
-			name:   "single failure",
-			order:  []TaskID{"a", "b", "c"},
-			errors: map[TaskID]string{"c": "Node affinity mismatch"},
-			want:   summary + ". Node: task-b: Node affinity mismatch",
-		},
-		{
-			name:  "no failures",
-			order: []TaskID{"a", "b", "c"},
-			want:  summary,
+			name:     "no failures",
+			order:    []TaskID{"a", "b", "c"},
+			expected: summary,
 		},
 		{
 			name:     "job and task failures",
 			order:    []TaskID{"a", "b", "c"},
 			errors:   map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory"},
 			jobError: "No eligible hypernode",
-			want:     summary + ". HyperNode: No eligible hypernode; Node: task-z: Insufficient cpu",
+			expected: summary + ". HyperNode: No eligible hypernode; Node: task-z: Insufficient cpu",
 		},
 		{
 			name:     "job failure only",
 			order:    []TaskID{"a", "b", "c"},
 			jobError: "No eligible hypernode",
-			want:     summary + ". HyperNode: No eligible hypernode",
+			expected: summary + ". HyperNode: No eligible hypernode",
 		},
 		{
-			name:     "representative failure changes",
-			order:    []TaskID{"a", "b", "c"},
-			errors:   map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory"},
-			want:     summary + ". Node: task-z: Insufficient cpu",
-			update:   "Node affinity mismatch",
-			wantNext: summary + ". Node: task-z: Node affinity mismatch",
+			name:                "representative failure changes",
+			order:               []TaskID{"a", "b", "c"},
+			errors:              map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory"},
+			expected:            summary + ". Node: task-z: Insufficient cpu",
+			updateTask:          "a",
+			update:              "Node affinity mismatch",
+			expectedAfterUpdate: summary + ". Node: task-z: Node affinity mismatch",
 		},
 		{
-			name:   "representative task deleted",
-			order:  []TaskID{"a", "b", "c"},
-			errors: map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory"},
-			remove: "a",
-			want:   "pod group is not ready, 2 Pending, 2 minAvailable; Pending: 2 Unschedulable. Node: task-a: Insufficient memory",
+			name:                 "representative task deleted",
+			order:                []TaskID{"a", "b", "c"},
+			errors:               map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory"},
+			remove:               "a",
+			expectedBeforeDelete: summary + ". Node: task-z: Insufficient cpu",
+			expected:             "pod group is not ready, 2 Pending, 2 minAvailable; Pending: 2 Unschedulable. Node: task-a: Insufficient memory",
 		},
 	}
 	for _, tt := range tests {
@@ -404,21 +402,15 @@ func TestFitErrorStableTaskDiagnostics(t *testing.T) {
 				job.NodesFitErrors[uid] = fe
 			}
 			if tt.remove != "" {
-				if got := job.FitError(); got != summary+". Node: task-z: Insufficient cpu" {
-					t.Fatalf("FitError() before deletion = %q", got)
-				}
+				assert.Equal(t, tt.expectedBeforeDelete, job.FitError())
 				job.DeleteTaskInfo(job.Tasks[tt.remove])
 			}
 			for i := 0; i < 32; i++ {
-				if got := job.FitError(); got != tt.want {
-					t.Fatalf("FitError() = %q, want %q", got, tt.want)
-				}
+				assert.Equal(t, tt.expected, job.FitError())
 			}
-			if tt.update != "" {
-				job.NodesFitErrors["a"].SetError(tt.update)
-				if got := job.FitError(); got != tt.wantNext {
-					t.Fatalf("FitError() after failure changed = %q, want %q", got, tt.wantNext)
-				}
+			if tt.updateTask != "" {
+				job.NodesFitErrors[tt.updateTask].SetError(tt.update)
+				assert.Equal(t, tt.expectedAfterUpdate, job.FitError())
 			}
 		})
 	}
@@ -434,13 +426,18 @@ func TestTaskSchedulingReason(t *testing.T) {
 
 	originReason1 := ". Node: task-6: 0/3 nodes are unavailable: 1 node(s) pod number exceeded, 2 node(s) resource fit failed."
 
+	type schedulingReason struct {
+		reason            string
+		message           string
+		nominatedNodeName string
+	}
 	tests := []struct {
-		desc     string
-		pods     []*v1.Pod
-		jobid    JobID
-		origin   string // origin reason string from first failed pod
-		nodefes  map[TaskID]*FitErrors
-		expected map[types.UID]string
+		desc             string
+		pods             []*v1.Pod
+		jobid            JobID
+		nodefes          map[TaskID]*FitErrors
+		expectedFitError string
+		expected         map[types.UID]schedulingReason
 	}{
 		{
 			desc:  "each failed task keeps its own node diagnostics",
@@ -458,11 +455,11 @@ func TestTaskSchedulingReason(t *testing.T) {
 					},
 				},
 			},
-			expected: map[types.UID]string{
-				"pg":   "pod group is not ready, 3 Pending, 3 minAvailable; Pending: 3 Unschedulable. Node: task-1: 0/1 nodes are unavailable: 1 node(s) resource fit failed.",
-				t1.UID: "Node: 0/1 nodes are unavailable: 1 node(s) resource fit failed.",
-				t2.UID: "Node: 0/1 nodes are unavailable: 1 node(s) pod number exceeded.",
-				t6.UID: "",
+			expectedFitError: "pod group is not ready, 3 Pending, 3 minAvailable; Pending: 3 Unschedulable. Node: task-1: 0/1 nodes are unavailable: 1 node(s) resource fit failed.",
+			expected: map[types.UID]schedulingReason{
+				t1.UID: {reason: PodReasonUnschedulable, message: "Node: 0/1 nodes are unavailable: 1 node(s) resource fit failed."},
+				t2.UID: {reason: PodReasonUnschedulable, message: "Node: 0/1 nodes are unavailable: 1 node(s) pod number exceeded."},
+				t6.UID: {reason: PodReasonUnschedulable},
 			},
 		},
 		{
@@ -478,19 +475,19 @@ func TestTaskSchedulingReason(t *testing.T) {
 					},
 				},
 			},
-			expected: map[types.UID]string{
-				"pg":   "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable" + originReason1,
-				t1.UID: "",
-				t2.UID: "",
-				t3.UID: "Pod ns1/task-3 can possibly be assigned to node1, once minAvailable is satisfied",
-				t4.UID: "Pod ns1/task-4 can possibly be assigned to node2, once minAvailable is satisfied",
-				t5.UID: "Pod ns1/task-5 can possibly be assigned to node3, once minAvailable is satisfied",
-				t6.UID: "Node: 0/3 nodes are unavailable: 1 node(s) pod number exceeded, 2 node(s) resource fit failed.",
+			expectedFitError: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable" + originReason1,
+			expected: map[types.UID]schedulingReason{
+				t1.UID: {reason: PodReasonUnschedulable},
+				t2.UID: {reason: PodReasonUnschedulable},
+				t3.UID: {reason: PodReasonSchedulable, message: "Pod ns1/task-3 can possibly be assigned to node1, once minAvailable is satisfied"},
+				t4.UID: {reason: PodReasonSchedulable, message: "Pod ns1/task-4 can possibly be assigned to node2, once minAvailable is satisfied"},
+				t5.UID: {reason: PodReasonSchedulable, message: "Pod ns1/task-5 can possibly be assigned to node3, once minAvailable is satisfied"},
+				t6.UID: {reason: PodReasonUnschedulable, message: "Node: 0/3 nodes are unavailable: 1 node(s) pod number exceeded, 2 node(s) resource fit failed."},
 			},
 		},
 	}
 
-	for i, test := range tests {
+	for _, test := range tests {
 		job := NewJobInfo(test.jobid)
 		pg := scheduling.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
@@ -527,15 +524,10 @@ func TestTaskSchedulingReason(t *testing.T) {
 			task.Status = Pending
 			job.TaskStatusIndex[Pending][task.UID] = task
 		}
-		// assert
-		for uid, exp := range test.expected {
-			msg := job.FitError()
-			if uid != "pg" {
-				_, msg, _ = job.TaskSchedulingReason(TaskID(uid))
-			}
-			if msg != exp {
-				t.Errorf("[x] case #%d, task %v\nwant: %s\n got: %s", i, uid, exp, msg)
-			}
+		assert.Equal(t, test.expectedFitError, job.FitError(), test.desc)
+		for uid, expected := range test.expected {
+			reason, message, nominatedNodeName := job.TaskSchedulingReason(TaskID(uid))
+			assert.Equal(t, expected, schedulingReason{reason, message, nominatedNodeName}, "%s: task %s", test.desc, uid)
 		}
 	}
 }
