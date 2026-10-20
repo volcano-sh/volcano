@@ -304,6 +304,126 @@ func TestDeleteTaskInfo(t *testing.T) {
 	}
 }
 
+func TestFitErrorStableTaskDiagnostics(t *testing.T) {
+	const summary = "pod group is not ready, 2 minAvailable, 3 Pending; Pending: 3 Unschedulable"
+	tests := []struct {
+		name     string
+		order    []TaskID
+		errors   map[TaskID]string
+		jobError string
+		remove   TaskID
+		want     string
+		update   string
+		wantNext string
+	}{
+		{
+			name:   "multiple failures",
+			order:  []TaskID{"a", "b", "c"},
+			errors: map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory", "c": "Node affinity mismatch"},
+			want:   summary + ". Node: task-z: Insufficient cpu",
+		},
+		{
+			name:   "reversed insertion order",
+			order:  []TaskID{"c", "b", "a"},
+			errors: map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory", "c": "Node affinity mismatch"},
+			want:   summary + ". Node: task-z: Insufficient cpu",
+		},
+		{
+			name:   "nil failure is ignored",
+			order:  []TaskID{"a", "b", "c"},
+			errors: map[TaskID]string{"a": "", "b": "Insufficient memory"},
+			want:   summary + ". Node: task-a: Insufficient memory",
+		},
+		{
+			name:   "unknown task is ignored",
+			order:  []TaskID{"a", "b", "c"},
+			errors: map[TaskID]string{"0": "Stale failure", "b": "Insufficient memory"},
+			want:   summary + ". Node: task-a: Insufficient memory",
+		},
+		{
+			name:   "single failure",
+			order:  []TaskID{"a", "b", "c"},
+			errors: map[TaskID]string{"c": "Node affinity mismatch"},
+			want:   summary + ". Node: task-b: Node affinity mismatch",
+		},
+		{
+			name:  "no failures",
+			order: []TaskID{"a", "b", "c"},
+			want:  summary,
+		},
+		{
+			name:     "job and task failures",
+			order:    []TaskID{"a", "b", "c"},
+			errors:   map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory"},
+			jobError: "No eligible hypernode",
+			want:     summary + ". HyperNode: No eligible hypernode; Node: task-z: Insufficient cpu",
+		},
+		{
+			name:     "job failure only",
+			order:    []TaskID{"a", "b", "c"},
+			jobError: "No eligible hypernode",
+			want:     summary + ". HyperNode: No eligible hypernode",
+		},
+		{
+			name:     "representative failure changes",
+			order:    []TaskID{"a", "b", "c"},
+			errors:   map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory"},
+			want:     summary + ". Node: task-z: Insufficient cpu",
+			update:   "Node affinity mismatch",
+			wantNext: summary + ". Node: task-z: Node affinity mismatch",
+		},
+		{
+			name:   "representative task deleted",
+			order:  []TaskID{"a", "b", "c"},
+			errors: map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory"},
+			remove: "a",
+			want:   "pod group is not ready, 2 Pending, 2 minAvailable; Pending: 2 Unschedulable. Node: task-a: Insufficient memory",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			job := NewJobInfo("job")
+			names := map[TaskID]string{"a": "task-z", "b": "task-a", "c": "task-b"}
+			for _, uid := range tt.order {
+				pod := buildPod("ns", names[uid], "", v1.PodPending, BuildResourceList("1", "1Gi"), nil, nil)
+				pod.UID = types.UID(uid)
+				job.AddTaskInfo(NewTaskInfo(pod))
+			}
+			job.SetPodGroup(&PodGroup{PodGroup: scheduling.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "pg"},
+				Spec:       scheduling.PodGroupSpec{MinMember: 2},
+			}})
+			job.JobFitErrors = tt.jobError
+			for uid, message := range tt.errors {
+				if message == "" {
+					job.NodesFitErrors[uid] = nil
+					continue
+				}
+				fe := NewFitErrors()
+				fe.SetError(message)
+				job.NodesFitErrors[uid] = fe
+			}
+			if tt.remove != "" {
+				if got := job.FitError(); got != summary+". Node: task-z: Insufficient cpu" {
+					t.Fatalf("FitError() before deletion = %q", got)
+				}
+				job.DeleteTaskInfo(job.Tasks[tt.remove])
+			}
+			for i := 0; i < 32; i++ {
+				if got := job.FitError(); got != tt.want {
+					t.Fatalf("FitError() = %q, want %q", got, tt.want)
+				}
+			}
+			if tt.update != "" {
+				job.NodesFitErrors["a"].SetError(tt.update)
+				if got := job.FitError(); got != tt.wantNext {
+					t.Fatalf("FitError() after failure changed = %q, want %q", got, tt.wantNext)
+				}
+			}
+		})
+	}
+}
+
 func TestTaskSchedulingReason(t *testing.T) {
 	t1 := buildPod("ns1", "task-1", "", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
 	t2 := buildPod("ns1", "task-2", "", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
@@ -322,6 +442,29 @@ func TestTaskSchedulingReason(t *testing.T) {
 		nodefes  map[TaskID]*FitErrors
 		expected map[types.UID]string
 	}{
+		{
+			desc:  "each failed task keeps its own node diagnostics",
+			pods:  []*v1.Pod{t1, t2, t6},
+			jobid: JobID("multiple-failures"),
+			nodefes: map[TaskID]*FitErrors{
+				TaskID(t1.UID): {
+					nodes: map[string]*FitError{
+						"node1": {Status: []*Status{{Reason: NodeResourceFitFailed}}},
+					},
+				},
+				TaskID(t2.UID): {
+					nodes: map[string]*FitError{
+						"node1": {Status: []*Status{{Reason: NodePodNumberExceeded}}},
+					},
+				},
+			},
+			expected: map[types.UID]string{
+				"pg":   "pod group is not ready, 3 Pending, 3 minAvailable; Pending: 3 Unschedulable. Node: task-1: 0/1 nodes are unavailable: 1 node(s) resource fit failed.",
+				t1.UID: "Node: 0/1 nodes are unavailable: 1 node(s) resource fit failed.",
+				t2.UID: "Node: 0/1 nodes are unavailable: 1 node(s) pod number exceeded.",
+				t6.UID: "",
+			},
+		},
 		{
 			desc:  "task3 ~ 5 are schedulable",
 			pods:  []*v1.Pod{t1, t2, t3, t4, t5, t6},
