@@ -314,3 +314,73 @@ func TestArgumentsGetString(t *testing.T) {
 		}
 	}
 }
+
+type getTestConfig struct {
+	Enable bool           `json:"enable"`
+	Name   string         `json:"name"`
+	Weight map[string]int `json:"weight"`
+}
+
+// TestGet checks that Get reports success only for a value it could decode.
+// A value of an unexpected type must be reported as a miss so that the caller
+// keeps its own default, and it must never end the scheduler process.
+func TestGet(t *testing.T) {
+	const key = "argkey"
+
+	t.Run("scalar", func(t *testing.T) {
+		if value, ok := Get[int](Arguments{key: 10}, key); !ok || value != 10 {
+			t.Errorf("expected 10 and true, but got %v and %v", value, ok)
+		}
+		// A quoted number in the scheduler ConfigMap arrives as a string.
+		if value, ok := Get[int](Arguments{key: "10"}, key); ok || value != 0 {
+			t.Errorf("expected 0 and false, but got %v and %v", value, ok)
+		}
+		if value, ok := Get[int](Arguments{"otherkey": 10}, key); ok || value != 0 {
+			t.Errorf("expected 0 and false, but got %v and %v", value, ok)
+		}
+	})
+
+	t.Run("slice", func(t *testing.T) {
+		expected := []string{"nvidia.com/gpu", "nvidia.com/gpumem"}
+		value, ok := Get[[]string](Arguments{key: expected}, key)
+		if !ok || !equality.Semantic.DeepEqual(value, expected) {
+			t.Errorf("expected %v and true, but got %v and %v", expected, value, ok)
+		}
+		// A comma separated string is not a list, even though other plugin
+		// arguments accept that form.
+		if value, ok := Get[[]string](Arguments{key: "nvidia.com/gpu, nvidia.com/gpumem"}, key); ok || value != nil {
+			t.Errorf("expected nil and false, but got %v and %v", value, ok)
+		}
+	})
+
+	t.Run("map", func(t *testing.T) {
+		// Nested maps come from gopkg.in/yaml.v2 with interface{} keys.
+		arg := Arguments{key: map[interface{}]interface{}{"nvidia.com/gpu": 2}}
+		expected := map[string]int{"nvidia.com/gpu": 2}
+		value, ok := Get[map[string]int](arg, key)
+		if !ok || !equality.Semantic.DeepEqual(value, expected) {
+			t.Errorf("expected %v and true, but got %v and %v", expected, value, ok)
+		}
+		if value, ok := Get[map[string]int](Arguments{key: "nvidia.com/gpu"}, key); ok || value != nil {
+			t.Errorf("expected nil and false, but got %v and %v", value, ok)
+		}
+	})
+
+	t.Run("struct", func(t *testing.T) {
+		arg := Arguments{key: map[interface{}]interface{}{
+			"enable": true,
+			"name":   "sra",
+			"weight": map[interface{}]interface{}{"nvidia.com/gpu": 1},
+		}}
+		expected := getTestConfig{Enable: true, Name: "sra", Weight: map[string]int{"nvidia.com/gpu": 1}}
+		value, ok := Get[getTestConfig](arg, key)
+		if !ok || !equality.Semantic.DeepEqual(value, expected) {
+			t.Errorf("expected %v and true, but got %v and %v", expected, value, ok)
+		}
+		// A partially decoded struct must not leak to the caller.
+		badArg := Arguments{key: map[interface{}]interface{}{"enable": true, "name": 1}}
+		if value, ok := Get[getTestConfig](badArg, key); ok || !equality.Semantic.DeepEqual(value, getTestConfig{}) {
+			t.Errorf("expected an empty config and false, but got %v and %v", value, ok)
+		}
+	})
+}
