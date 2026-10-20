@@ -371,9 +371,20 @@ func (jc *jobCache) processCleanupJob() bool {
 	jc.Mutex.Lock()
 	defer jc.Mutex.Unlock()
 
+	key := keyFn(job.Namespace, job.Name)
+	// A rate-limited cleanup task can outlive the JobInfo it was scheduled
+	// for: if the job is deleted and recreated under the same key while a
+	// previous, already-scheduled retry is still pending, that stale retry
+	// must not be allowed to evict the cache entry of the recreated job.
+	// Only proceed if this task's JobInfo is still the one currently cached
+	// for this key.
+	if current, found := jc.jobs[key]; !found || current != job {
+		jc.deletedJobs.Forget(job)
+		return true
+	}
+
 	if jobTerminated(job) {
 		jc.deletedJobs.Forget(job)
-		key := keyFn(job.Namespace, job.Name)
 		delete(jc.jobs, key)
 		klog.V(3).Infof("Job <%s> was deleted.", key)
 	} else {
