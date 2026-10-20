@@ -1006,7 +1006,7 @@ func TestHasTopologyHardConstrain(t *testing.T) {
 	}
 }
 
-func TestSetPodGroupDeepCopiesNetworkTopology(t *testing.T) {
+func TestSetPodGroupDeepCopiesTopologyPolicies(t *testing.T) {
 	tier := 2
 	pg := &PodGroup{
 		PodGroup: scheduling.PodGroup{
@@ -1016,6 +1016,12 @@ func TestSetPodGroupDeepCopiesNetworkTopology(t *testing.T) {
 					HighestTierAllowed: &tier,
 					HighestTierName:    "volcano.sh/hypercluster",
 				},
+				DeviceTopology: &scheduling.DeviceTopologySpec{
+					Requirements: []scheduling.DeviceTopologyRequirement{{
+						Resource: scheduling.DeviceResourceSelector{ExtendedResourceName: "nvidia.com/gpu"},
+						Mode:     scheduling.HardDeviceTopologyMode,
+					}},
+				},
 			},
 		},
 	}
@@ -1024,12 +1030,20 @@ func TestSetPodGroupDeepCopiesNetworkTopology(t *testing.T) {
 	job.SetPodGroup(pg)
 
 	assert.NotSame(t, job.PodGroup.Spec.NetworkTopology, job.NetworkTopology)
+	assert.NotSame(t, job.PodGroup.Spec.DeviceTopology, job.DeviceTopology)
 
 	job.NetworkTopology.Mode = scheduling.HardNetworkTopologyMode
 	job.NetworkTopology.HighestTierName = ""
+	job.DeviceTopology.Requirements[0].Mode = scheduling.SoftDeviceTopologyMode
 
 	assert.Equal(t, scheduling.SoftNetworkTopologyMode, job.PodGroup.Spec.NetworkTopology.Mode)
 	assert.Equal(t, "volcano.sh/hypercluster", job.PodGroup.Spec.NetworkTopology.HighestTierName)
+	assert.Equal(t, scheduling.HardDeviceTopologyMode, job.PodGroup.Spec.DeviceTopology.Requirements[0].Mode)
+
+	clone := job.Clone()
+	assert.NotSame(t, job.DeviceTopology, clone.DeviceTopology)
+	clone.DeviceTopology.Requirements[0].Resource.ExtendedResourceName = "amd.com/gpu"
+	assert.Equal(t, v1.ResourceName("nvidia.com/gpu"), job.DeviceTopology.Requirements[0].Resource.ExtendedResourceName)
 }
 
 func TestParseMinMemberInfoChanged(t *testing.T) {
