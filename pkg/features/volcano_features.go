@@ -45,6 +45,10 @@ const (
 	// ResourceTopology supports resources like cpu/memory topology aware.
 	ResourceTopology featuregate.Feature = "ResourceTopology"
 
+	// DeviceTopologyAwareScheduling enables device topology-aware scheduling
+	// policies for accelerator workloads.
+	DeviceTopologyAwareScheduling featuregate.Feature = "DeviceTopologyAwareScheduling"
+
 	// CronVolcanoJobSupport can identify and schedule volcano cronjob.
 	CronVolcanoJobSupport featuregate.Feature = "CronVolcanoJobSupport"
 
@@ -78,6 +82,7 @@ var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec
 	// CSIStorage default is kept for compatibility; cache CSI informers use --csi-storage.
 	CSIStorage:                    {Default: false, PreRelease: featuregate.Alpha},
 	ResourceTopology:              {Default: true, PreRelease: featuregate.Alpha},
+	DeviceTopologyAwareScheduling: {Default: false, PreRelease: featuregate.Alpha},
 	CronVolcanoJobSupport:         {Default: true, PreRelease: featuregate.Alpha},
 	SchedulingGatesQueueAdmission: {Default: false, PreRelease: featuregate.Alpha},
 	UnschedulableJobCache:         {Default: false, PreRelease: featuregate.Alpha},

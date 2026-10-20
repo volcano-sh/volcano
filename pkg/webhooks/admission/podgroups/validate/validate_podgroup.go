@@ -73,7 +73,14 @@ func Validate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	case admissionv1.Create:
 		errMsg = validatePodGroup(podgroup)
 	case admissionv1.Update:
-		errMsg = validatePodGroupTopology(podgroup)
+		oldPodGroup, err := schema.DecodePodGroup(ar.Request.OldObject, ar.Request.Resource)
+		if err != nil {
+			return util.ToAdmissionResponse(err)
+		}
+		errMsg = joinValidationMessages(
+			validatePodGroupTopology(podgroup),
+			validatePodGroupDeviceTopologyUpdate(oldPodGroup, podgroup),
+		)
 	default:
 		errMsg = fmt.Sprintf("unsupported operation %s", ar.Request.Operation)
 	}
@@ -103,6 +110,9 @@ func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
 	if msg := validateTopologyAffinity(pg.Spec.TopologyAffinity); msg != "" {
 		errs = append(errs, strings.TrimSpace(msg))
 	}
+	if msg := validatePodGroupDeviceTopology(pg); msg != "" {
+		errs = append(errs, strings.TrimSpace(msg))
+	}
 
 	return strings.Join(errs, "; ")
 }
@@ -116,6 +126,31 @@ func validatePodGroupTopology(pg *schedulingv1beta1.PodGroup) string {
 		errs = append(errs, strings.TrimSpace(msg))
 	}
 	return strings.Join(errs, "; ")
+}
+
+func validatePodGroupDeviceTopology(pg *schedulingv1beta1.PodGroup) string {
+	return strings.Join(util.ValidateSchedulingPodGroupDeviceTopology(&pg.Spec), "; ")
+}
+
+// validatePodGroupDeviceTopologyUpdate only checks that an update keeps the
+// policies, which were validated on create. Validating them again would reject
+// status and minMember updates of existing PodGroups when the feature gate is
+// turned off.
+func validatePodGroupDeviceTopologyUpdate(oldPodGroup, newPodGroup *schedulingv1beta1.PodGroup) string {
+	if util.SchedulingPodGroupDeviceTopologyPoliciesEqual(&oldPodGroup.Spec, &newPodGroup.Spec) {
+		return ""
+	}
+	return "deviceTopology policies are immutable"
+}
+
+func joinValidationMessages(messages ...string) string {
+	var nonEmpty []string
+	for _, message := range messages {
+		if message = strings.TrimSpace(message); message != "" {
+			nonEmpty = append(nonEmpty, message)
+		}
+	}
+	return strings.Join(nonEmpty, "; ")
 }
 
 // checkQueueState verifies if the queue exists and is in the open state

@@ -30,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -97,6 +98,10 @@ allow pods to create when
 2. check pod budget annotations configure
 */
 func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) string {
+	if err := validateDeviceTopologyAnnotation(pod); err != nil {
+		reviewResponse.Allowed = false
+		return err.Error()
+	}
 	if !slices.Contains(config.SchedulerNames, pod.Spec.SchedulerName) {
 		return ""
 	}
@@ -109,6 +114,29 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 	}
 
 	return msg
+}
+
+func validateDeviceTopologyAnnotation(pod *v1.Pod) error {
+	if pod.Annotations == nil {
+		return nil
+	}
+	rawPolicy, exists := pod.Annotations[vcv1beta1.DeviceTopologyAnnotationKey]
+	if !exists || rawPolicy == "" {
+		return nil
+	}
+	if !slices.Contains(config.SchedulerNames, pod.Spec.SchedulerName) {
+		return fmt.Errorf("annotation %q requires a configured Volcano scheduler", vcv1beta1.DeviceTopologyAnnotationKey)
+	}
+
+	policy, err := commonutil.DecodeDeviceTopologyAnnotation(rawPolicy)
+	if err != nil {
+		return fmt.Errorf("annotation %q %w", vcv1beta1.DeviceTopologyAnnotationKey, err)
+	}
+	if errs := util.ValidateSchedulingDeviceTopology(policy); len(errs) > 0 {
+		return fmt.Errorf("annotation %q is invalid: %s", vcv1beta1.DeviceTopologyAnnotationKey, strings.Join(errs, "; "))
+	}
+
+	return nil
 }
 
 func validateAnnotation(pod *v1.Pod) error {
