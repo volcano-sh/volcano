@@ -35,21 +35,15 @@ import (
 
 type PredicateHelper interface {
 	PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn, enableErrorCache bool, nodesInShard sets.Set[string]) ([]*api.NodeInfo, *api.FitErrors)
-	PredicateNodesWithTarget(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn, enableErrorCache bool, nodesInShard sets.Set[string], numNodesToFind int32) ([]*api.NodeInfo, *api.FitErrors)
 }
 
 type predicateHelper struct {
 	taskPredicateErrorCache map[string]map[string]error
+	feasibleNodeTarget      *int32
 }
 
 // PredicateNodes returns the specified number of nodes that fit a task
 func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn, enableErrorCache bool, nodesInShard sets.Set[string]) ([]*api.NodeInfo, *api.FitErrors) {
-	return ph.PredicateNodesWithTarget(task, nodes, fn, enableErrorCache, nodesInShard, CalculateNumOfFeasibleNodesToFind(int32(len(nodes))))
-}
-
-// PredicateNodesWithTarget uses a non-negative feasible-node target computed before
-// prefiltering. The target is capped by the number of supplied candidates.
-func (ph *predicateHelper) PredicateNodesWithTarget(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn, enableErrorCache bool, nodesInShard sets.Set[string], numNodesToFind int32) ([]*api.NodeInfo, *api.FitErrors) {
 	var errorLock sync.RWMutex
 	fe := api.NewFitErrors()
 
@@ -64,7 +58,10 @@ func (ph *predicateHelper) PredicateNodesWithTarget(task *api.TaskInfo, nodes []
 	if allNodes == 0 {
 		return make([]*api.NodeInfo, 0), fe
 	}
-	numNodesToFind = min(numNodesToFind, int32(allNodes))
+	numNodesToFind := CalculateNumOfFeasibleNodesToFind(int32(allNodes))
+	if ph.feasibleNodeTarget != nil {
+		numNodesToFind = min(*ph.feasibleNodeTarget, int32(allNodes))
+	}
 
 	//allocate enough space to avoid growing it
 	predicateNodes := make([]*api.NodeInfo, numNodesToFind)
@@ -156,6 +153,16 @@ func taskGroupID(task *api.TaskInfo) string {
 
 func NewPredicateHelper() PredicateHelper {
 	return &predicateHelper{taskPredicateErrorCache: map[string]map[string]error{}}
+}
+
+// NewPredicateHelperWithFeasibleNodeTarget creates a helper with a fixed
+// feasible-node target, capped by the candidate count on each call.
+func NewPredicateHelperWithFeasibleNodeTarget(target int32) PredicateHelper {
+	target = max(target, 0)
+	return &predicateHelper{
+		taskPredicateErrorCache: map[string]map[string]error{},
+		feasibleNodeTarget:      &target,
+	}
 }
 
 // GetPredicatedNodeByShard return predicateNodes by shard

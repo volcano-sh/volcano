@@ -6665,12 +6665,16 @@ func TestAllocateNodeGroupCandidates(t *testing.T) {
 		resourceLimit    string
 		nominatedNode    string
 		disableNodeGroup bool
+		queueNodeFilter  *bool
 		omitNodeGroup    bool
 	}{
 		{name: "group members only", allowedGroup: "group1", requestCPU: "1", requestMemory: "4Gi", wantVisits: 90, wantAllocated: 3},
 		{name: "small tasks still use group filter", allowedGroup: "group1", requestCPU: "100m", requestMemory: "1Gi", wantVisits: 90, wantAllocated: 3},
 		{name: "quota checked after each allocation", allowedGroup: "group1", requestCPU: "1", requestMemory: "4Gi", resourceLimit: `{"group1":{"cpu":"1"}}`, wantVisits: 90, wantAllocated: 1},
 		{name: "nominated node still checked", allowedGroup: "group1", requestCPU: "1", requestMemory: "4Gi", nominatedNode: "node-249", wantVisits: 90, wantAllocated: 3},
+		{name: "matching nominated node", allowedGroup: "group1", requestCPU: "1", requestMemory: "4Gi", nominatedNode: "node-000", wantVisits: 3, wantAllocated: 3},
+		{name: "disabled filter still checks predicate", allowedGroup: "group1", requestCPU: "1", requestMemory: "4Gi", queueNodeFilter: ptr.To(false), wantVisits: 750, wantAllocated: 3},
+		{name: "explicit filter with disabled predicate", allowedGroup: "missing", requestCPU: "1", requestMemory: "4Gi", disableNodeGroup: true, queueNodeFilter: ptr.To(true)},
 		{name: "disabled predicate uses all nodes", allowedGroup: "missing", requestCPU: "1", requestMemory: "4Gi", disableNodeGroup: true, wantVisits: -1, wantAllocated: 3},
 		{name: "absent plugin uses all nodes", allowedGroup: "missing", requestCPU: "1", requestMemory: "4Gi", omitNodeGroup: true, wantVisits: -1, wantAllocated: 3},
 		{name: "no matching group", allowedGroup: "missing", requestCPU: "1", requestMemory: "4Gi"},
@@ -6708,7 +6712,7 @@ func TestAllocateNodeGroupCandidates(t *testing.T) {
 			}
 			plugins := []conf.PluginOption{{Name: nodeorder.PluginName, EnabledPredicate: ptr.To(true)}}
 			if !tc.omitNodeGroup {
-				plugins = append(plugins, conf.PluginOption{Name: nodegroup.PluginName, EnabledPredicate: ptr.To(!tc.disableNodeGroup)})
+				plugins = append(plugins, conf.PluginOption{Name: nodegroup.PluginName, EnabledPredicate: ptr.To(!tc.disableNodeGroup), EnabledQueueNodeFilter: tc.queueNodeFilter})
 			}
 			ssn := common.RegisterSession([]conf.Tier{{Plugins: plugins}}, nil)
 			defer common.Close()
@@ -6718,7 +6722,7 @@ func TestAllocateNodeGroupCandidates(t *testing.T) {
 				return nil
 			})
 			filterCalls := 0
-			ssn.AddQueueNodesFn(nodeorder.PluginName, func(_ *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
+			ssn.AddQueueNodeFilterFn(nodeorder.PluginName, func(_ *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
 				filterCalls++
 				return nodes
 			})
@@ -6779,7 +6783,7 @@ func BenchmarkNodeGroupCandidatePredicates(b *testing.B) {
 	defer common.Close()
 	job := ssn.Jobs[api.JobID("ns/pg1")]
 	task := job.Tasks[api.TaskID("ns-p1")]
-	filtered := ssn.QueueNodesFn(ssn.Queues[job.Queue], ssn.NodeList)
+	filtered := ssn.QueueNodeFilterFn(ssn.Queues[job.Queue], ssn.NodeList)
 	action := New()
 	action.session = ssn
 	for _, tc := range []struct {
@@ -6807,11 +6811,13 @@ func BenchmarkNodeGroupCandidatePredicates(b *testing.B) {
 func TestQueueCandidatesPreserveSamplingTarget(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
+		hyperNode  string
 		candidates int
 		percentage int32
 		minimum    int32
 		wantScored int32
 	}{
+		{name: "restricted HyperNode sampling", hyperNode: "restricted", candidates: 1000, minimum: 100, wantScored: 680},
 		{name: "adaptive percentage", candidates: 1000, minimum: 100, wantScored: 680},
 		{name: "fixed percentage", candidates: 1000, percentage: 40, minimum: 100, wantScored: 800},
 		{name: "minimum feasible nodes", candidates: 1000, minimum: 900, wantScored: 900},
@@ -6839,7 +6845,11 @@ func TestQueueCandidatesPreserveSamplingTarget(t *testing.T) {
 				Pods:      []*v1.Pod{util.BuildPod("ns", "p1", "", v1.PodPending, api.BuildResourceList("1", "4Gi"), "pg1", nil, nil)},
 				Plugins:   map[string]framework.PluginBuilder{nodegroup.PluginName: nodegroup.New},
 			}
-			for i := 0; i < 2000; i++ {
+			nodeCount := 2000
+			if tc.hyperNode != "" {
+				nodeCount = 4000
+			}
+			for i := 0; i < nodeCount; i++ {
 				group := "group2"
 				if i < tc.candidates {
 					group = "group1"
@@ -6857,8 +6867,28 @@ func TestQueueCandidatesPreserveSamplingTarget(t *testing.T) {
 				scored.Add(1)
 				return 0, nil
 			})
-			common.Run([]framework.Action{New()})
-			assert.Equal(t, tc.wantScored, scored.Load(), "scoring must retain the original root-scope sampling target")
+			if tc.hyperNode == "" {
+				common.Run([]framework.Action{New()})
+			} else {
+				for _, node := range ssn.NodeList {
+					if node.Name < "node-2000" {
+						ssn.RealNodesList[tc.hyperNode] = append(ssn.RealNodesList[tc.hyperNode], node)
+					}
+				}
+				job := ssn.Jobs[api.JobID("ns/pg1")]
+				tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
+				for _, task := range job.Tasks {
+					tasks.Push(task)
+				}
+				action := New()
+				action.session = ssn
+				action.queueNodes = make(map[queueNodeCacheKey][]*api.NodeInfo)
+				stmt := action.allocateResourcesForTasks(job.SubJobs[job.DefaultSubJobID()], tasks, tc.hyperNode)
+				if stmt != nil {
+					defer stmt.Discard()
+				}
+			}
+			assert.Equal(t, tc.wantScored, scored.Load(), "scoring must retain the original scope's sampling target")
 		})
 	}
 }

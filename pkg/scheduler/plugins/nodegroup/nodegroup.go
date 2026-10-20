@@ -408,17 +408,22 @@ func greaterThanResourceLimit(used, limit float64) bool {
 // groupPredicate checks only session-stable affinity rules. Resource limits must
 // still be evaluated for each task as allocations change within the session.
 func (np *nodeGroupPlugin) groupPredicate(attr *queueAttr, group string, labeled bool) string {
+	// Check if the queue has any node group affinity rules.
 	unsetAffinity := attr == nil || attr.affinity == nil ||
 		(attr.affinity.queueGroupAffinityRequired.Len() == 0 &&
 			attr.affinity.queueGroupAffinityPreferred.Len() == 0 &&
 			attr.affinity.queueGroupAntiAffinityRequired.Len() == 0 &&
 			attr.affinity.queueGroupAntiAffinityPreferred.Len() == 0)
 	if !labeled {
+		// In non-strict mode, if the queue also has no affinity requirements,
+		// the task is allowed to be scheduled on this node.
 		if !np.strict && unsetAffinity {
 			return ""
 		}
+		// Otherwise (in strict mode, or if the queue has affinity rules), the node is not a fit.
 		return errNodeGroupLabelNotFound
 	}
+	// The node has a group label, but the queue has no affinity rules, we don't allow schedule onto this node.
 	if unsetAffinity {
 		return errNodeGroupAffinityNotFound
 	}
@@ -430,9 +435,9 @@ func (np *nodeGroupPlugin) groupPredicate(attr *queueAttr, group string, labeled
 
 func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 	np.initQueueAttrs(ssn)
-	ssn.AddQueueNodesFn(np.Name(), func(queue *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
+	ssn.AddQueueNodeFilterFn(np.Name(), func(queue *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
 		// Only static affinity is checked here; resources and quotas are checked per task.
-		var candidates []*api.NodeInfo
+		candidates := make([]*api.NodeInfo, 0, len(nodes))
 		for _, node := range nodes {
 			group, labeled := node.Node.Labels[schedulingv1.NodeGroupNameKey]
 			if np.groupPredicate(np.queueAttrs[queue.UID], group, labeled) == "" {

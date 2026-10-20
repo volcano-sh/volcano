@@ -100,24 +100,9 @@ func (ssn *Session) AddPredicateFn(name string, pf api.PredicateFn) {
 	ssn.predicateFns[name] = pf
 }
 
-// AddQueueNodesFn adds a session-stable queue node filter, enabled with the plugin's predicate.
-func (ssn *Session) AddQueueNodesFn(name string, fn api.QueueNodesFn) {
-	ssn.queueNodesFns[name] = fn
-}
-
-// QueueNodesFn narrows the candidates before per-task predicates are evaluated.
-func (ssn *Session) QueueNodesFn(queue *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledPredicate) {
-				continue
-			}
-			if fn, found := ssn.queueNodesFns[plugin.Name]; found {
-				nodes = fn(queue, nodes)
-			}
-		}
-	}
-	return nodes
+// AddQueueNodeFilterFn adds a session-stable queue node filter.
+func (ssn *Session) AddQueueNodeFilterFn(name string, fn api.QueueNodeFilterFn) {
+	ssn.queueNodeFilterFns[name] = fn
 }
 
 // AddPrePredicateFn add PrePredicate function
@@ -877,6 +862,28 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 	lv := l.(*api.TaskInfo)
 	rv := r.(*api.TaskInfo)
 	return helpers.CompareTask(lv, rv)
+}
+
+// QueueNodeFilterFn narrows candidate nodes before per-task predicates are evaluated,
+// using queue-level constraints that remain valid throughout the session.
+// Implementations must preserve input order and must not add nodes or modify the input.
+func (ssn *Session) QueueNodeFilterFn(queue *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			enabled := plugin.EnabledQueueNodeFilter
+			// Preserve existing predicate settings unless the filter is explicitly configured.
+			if enabled == nil {
+				enabled = plugin.EnabledPredicate
+			}
+			if !isEnabled(enabled) {
+				continue
+			}
+			if fn, found := ssn.queueNodeFilterFns[plugin.Name]; found {
+				nodes = fn(queue, nodes)
+			}
+		}
+	}
+	return nodes
 }
 
 // PredicateFn invoke predicate function of the plugins

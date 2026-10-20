@@ -110,9 +110,14 @@ func (w *SubJobWorksheet) Clone() *SubJobWorksheet {
 	}
 }
 
+type queueNodeCacheKey struct {
+	queueID   api.QueueID
+	hyperNode string
+}
+
 type Action struct {
 	session    *framework.Session
-	queueNodes map[api.QueueID][]*api.NodeInfo
+	queueNodes map[queueNodeCacheKey][]*api.NodeInfo
 	// configured flag for error cache
 	enablePredicateErrorCache bool
 
@@ -150,7 +155,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	// 5. use ssn.NodeOrderFn to judge the best node and assign it to T
 
 	alloc.session = ssn
-	alloc.queueNodes = make(map[api.QueueID][]*api.NodeInfo)
+	alloc.queueNodes = make(map[queueNodeCacheKey][]*api.NodeInfo)
 	defer func() { alloc.queueNodes = nil }()
 	logHyperNodeTiers(ssn)
 	alloc.recorder = NewRecorder()
@@ -938,15 +943,14 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 	// Keep the sampling target based on the original scope, before queue filtering.
 	numNodesToFind := util.CalculateNumOfFeasibleNodesToFind(int32(len(nodes)))
 
-	// Cache only the cluster-wide scope. Restricted HyperNodes retain their own
-	// candidate lists, and all dynamic predicates still run for each task.
-	if hyperNode == framework.ClusterTopHyperNode {
-		if cached, found := alloc.queueNodes[queue.UID]; found {
-			nodes = cached
-		} else {
-			nodes = ssn.QueueNodesFn(queue, nodes)
-			alloc.queueNodes[queue.UID] = nodes
-		}
+	// Cache static queue constraints separately for each HyperNode scope.
+	// All dynamic predicates still run for each task.
+	cacheKey := queueNodeCacheKey{queueID: queue.UID, hyperNode: hyperNode}
+	if cached, found := alloc.queueNodes[cacheKey]; found {
+		nodes = cached
+	} else {
+		nodes = ssn.QueueNodeFilterFn(queue, nodes)
+		alloc.queueNodes[cacheKey] = nodes
 	}
 
 	nodeNameSet := make(map[string]struct{}, len(nodes))
@@ -957,7 +961,7 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 	}
 
 	stmt := framework.NewStatement(ssn)
-	ph := util.NewPredicateHelper()
+	ph := util.NewPredicateHelperWithFeasibleNodeTarget(numNodesToFind)
 
 	allocatedHyperNode := subJob.AllocatedHyperNode
 	trackHyperNodePlacement := shouldTrackHyperNodePlacement(ssn, subJob)
@@ -1029,7 +1033,7 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 		// If the nominated node is not found or the nominated node is not suitable for the task, we need to find a suitable node for the task from all nodes.
 		if len(predicateNodes) == 0 {
-			predicateNodes, fitErrors = ph.PredicateNodesWithTarget(task, nodes, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard, numNodesToFind)
+			predicateNodes, fitErrors = ph.PredicateNodes(task, nodes, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
 		}
 
 		if len(predicateNodes) == 0 {
