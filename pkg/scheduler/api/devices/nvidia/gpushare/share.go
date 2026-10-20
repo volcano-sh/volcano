@@ -231,17 +231,26 @@ func (g *GPUDevice) isIdleGPU() bool {
 
 // getGPUMemoryPod returns the GPU memory required by the pod.
 func getGPUMemoryOfPod(pod *v1.Pod) uint {
-	var initMem uint
-	for _, container := range pod.Spec.InitContainers {
-		res := getGPUMemoryOfContainer(container.Resources)
-		if initMem < res {
-			initMem = res
-		}
-	}
-
 	var mem uint
 	for _, container := range pod.Spec.Containers {
 		mem += getGPUMemoryOfContainer(container.Resources)
+	}
+
+	var restartableInitMem uint
+	var initMem uint
+	for _, container := range pod.Spec.InitContainers {
+		res := getGPUMemoryOfContainer(container.Resources)
+		if container.RestartPolicy != nil && *container.RestartPolicy == v1.ContainerRestartPolicyAlways {
+			mem += res
+			restartableInitMem += res
+			res = restartableInitMem
+		} else {
+			res += restartableInitMem
+		}
+
+		if initMem < res {
+			initMem = res
+		}
 	}
 
 	if mem > initMem {
@@ -266,9 +275,18 @@ func getGPUNumberOfPod(pod *v1.Pod) int {
 		gpus += getGPUNumberOfContainer(container.Resources)
 	}
 
+	var restartableInitGPUs int
 	var initGPUs int
 	for _, container := range pod.Spec.InitContainers {
 		res := getGPUNumberOfContainer(container.Resources)
+		if container.RestartPolicy != nil && *container.RestartPolicy == v1.ContainerRestartPolicyAlways {
+			gpus += res
+			restartableInitGPUs += res
+			res = restartableInitGPUs
+		} else {
+			res += restartableInitGPUs
+		}
+
 		if initGPUs < res {
 			initGPUs = res
 		}
