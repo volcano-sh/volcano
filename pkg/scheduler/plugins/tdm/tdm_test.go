@@ -631,3 +631,89 @@ func Test_TDM_victimsFn_minAvailableNotMet(t *testing.T) {
 		})
 	}
 }
+
+func Test_TDM_preemptableFn_minAvailableNotMet(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+
+	p1 := util.BuildPod("c1", "p1", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p2 := util.BuildPod("c1", "p2", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p3 := util.BuildPod("c1", "p3", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p4 := util.BuildPod("c1", "p4", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	// p5 is not running (e.g. it was preempted earlier and is waiting to be rescheduled)
+	p5 := util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	for _, p := range []*v1.Pod{p1, p2, p3, p4, p5} {
+		p.Annotations[schedulingv2.PodPreemptable] = "true"
+	}
+
+	// n1 has no revocable zone, so its preemptable tasks are preemption candidates
+	n1 := util.BuildNode("n1", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+
+	tests := []struct {
+		name         string
+		minAvailable string
+		want         int
+	}{
+		{
+			// 4 running, minAvailable 2: two tasks can be preempted
+			name:         "running above min available",
+			minAvailable: "2",
+			want:         2,
+		},
+		{
+			name:         "running equals min available",
+			minAvailable: "4",
+			want:         0,
+		},
+		{
+			// 4 running < minAvailable 5: the job is already below its budget
+			name:         "running below min available",
+			minAvailable: "5",
+			want:         0,
+		},
+		{
+			name:         "running below min available percent",
+			minAvailable: "100%",
+			want:         0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			test := uthelper.TestCommonStruct{
+				Plugins: plugins,
+				PodGroups: []*schedulingv2.PodGroup{
+					util.BuildPodGroupWithAnno("pg1", "c1", "c1", 0, nil, "", map[string]string{schedulingv2.JDBMinAvailable: tc.minAvailable}),
+				},
+				Queues: []*schedulingv2.Queue{util.BuildQueue("c1", 1, nil)},
+				Pods:   []*v1.Pod{p1, p2, p3, p4, p5},
+				Nodes:  []*v1.Node{n1},
+			}
+			trueValue := true
+			tiers := []conf.Tier{
+				{
+					Plugins: []conf.PluginOption{
+						{
+							Name:               PluginName,
+							EnabledPreemptable: &trueValue,
+						},
+					},
+				},
+			}
+			ssn := test.RegisterSession(tiers, nil)
+			defer test.Close()
+
+			var preemptees []*api.TaskInfo
+			for _, job := range ssn.Jobs {
+				for _, task := range job.Tasks {
+					preemptees = append(preemptees, task)
+				}
+			}
+
+			// a non-preemptable preemptor without revocable zone
+			res := ssn.Preemptable(&api.TaskInfo{}, preemptees)
+			if len(res) != tc.want {
+				t.Errorf("jdb-min-available=%s with 4 running tasks: want %d victims, got %d", tc.minAvailable, tc.want, len(res))
+			}
+		})
+	}
+}
