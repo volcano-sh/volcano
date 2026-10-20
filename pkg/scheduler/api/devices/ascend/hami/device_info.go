@@ -535,6 +535,36 @@ func hasNetworkID(devices []*AscendDevice) bool {
 	return true
 }
 
+// hamiCorePercentBudget is the percentage capacity used for hami-core Fit.
+//
+// Coresreq is a percentage, not physical AI cores. Plugins that have not
+// enabled hami-core may still register Devcore as the hardware AICore count
+// (8/20/24/30). Any advertised value at or below the base is treated as 100 so
+// Fit sees one inventory unit. Values above the base are intentional oversell
+// budgets from ascend-device-plugin deviceCoreScaling (see Project-HAMi
+// ascend-device-plugin#132 / HAMi#2952).
+func hamiCorePercentBudget(advertisedTotalcore int32) int32 {
+	if advertisedTotalcore > hamiCorePercentBase {
+		return advertisedTotalcore
+	}
+	return hamiCorePercentBase
+}
+
+// hamiCoreExclusiveOccupant reports whether a single Pod already holds the
+// whole percentage base on dev. Two Pods sharing half the base each stay below
+// the base individually and may share an oversold card.
+func hamiCoreExclusiveOccupant(dev *AscendDevice) bool {
+	if dev == nil {
+		return false
+	}
+	for _, usage := range dev.PodMap {
+		if usage != nil && usage.Usedcores >= hamiCorePercentBase {
+			return true
+		}
+	}
+	return false
+}
+
 func fit(req *devices.ContainerDeviceRequest, dev *AscendDevice, isHAMiCore bool) bool {
 	if req.Type != dev.config.CommonWord {
 		return false
@@ -550,17 +580,28 @@ func fit(req *devices.ContainerDeviceRequest, dev *AscendDevice, isHAMiCore bool
 	if deviceInfo.Devmem-deviceUsage.Usedmem < req.Memreq {
 		return false
 	}
-	effectiveTotalCore := dev.DeviceInfo.Devcore
+	effectiveTotalCore := deviceInfo.Devcore
 	if isHAMiCore {
-		effectiveTotalCore = 100
+		effectiveTotalCore = hamiCorePercentBudget(deviceInfo.Devcore)
 	}
 	if effectiveTotalCore-deviceUsage.Usedcores < req.Coresreq {
 		return false
 	}
-	if effectiveTotalCore == 100 && req.Coresreq == 100 && deviceUsage.Used > 0 {
+	// Coresreq at the percentage base stays exclusive for hami-core even when
+	// the plugin advertises an oversold budget.
+	if isHAMiCore && req.Coresreq == hamiCorePercentBase && deviceUsage.Used > 0 {
 		return false
 	}
 	if effectiveTotalCore != 0 && deviceUsage.Usedcores == effectiveTotalCore && req.Coresreq == 0 {
+		return false
+	}
+	// A card whose full-core occupancy belongs to one pod rejects every later
+	// request. Oversell lifts the budget above that occupant's share, so the
+	// Usedcores == effectiveTotalCore check no longer recognizes the card as
+	// full. Used == 1 covers usage rebuilt without pod detail; PodMap covers
+	// an exclusive reservation recorded with more than one slot.
+	if isHAMiCore && deviceUsage.Usedcores >= hamiCorePercentBase &&
+		(deviceUsage.Used == 1 || hamiCoreExclusiveOccupant(dev)) {
 		return false
 	}
 	return true
@@ -709,6 +750,19 @@ func (dev *AscendDevice) getNodeDevices(n *v1.Node, conf config.VNPUsConfig) ([]
 	if len(nodeDevices) == 0 {
 		klog.InfoS("no ascend device found", "node", n.Name, "device annotation", anno)
 		return []*devices.DeviceInfo{}, nodeSupportHamiCore, errors.New("no device found on node")
+	}
+	if nodeSupportHamiCore {
+		for idx := range nodeDevices {
+			advertised := nodeDevices[idx].Devcore
+			budget := hamiCorePercentBudget(advertised)
+			if budget == advertised {
+				continue
+			}
+			klog.V(5).InfoS("hami-core Devcore normalized to percentage budget",
+				"node", n.Name, "device", nodeDevices[idx].ID,
+				"advertised", advertised, "budget", budget)
+			nodeDevices[idx].Devcore = budget
+		}
 	}
 	return nodeDevices, nodeSupportHamiCore, nil
 }

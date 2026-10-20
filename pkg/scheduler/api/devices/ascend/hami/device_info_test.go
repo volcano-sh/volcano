@@ -391,12 +391,172 @@ func Test_fit(t *testing.T) {
 			isHAMiCore: true,
 			result:     true,
 		},
+		{
+			name: "hami_core_oversell_admits_second_40_when_budget_150",
+			req: &devices.ContainerDeviceRequest{
+				Nums:     1,
+				Type:     "Ascend310P",
+				Memreq:   1024,
+				Coresreq: 40,
+			},
+			dev: &AscendDevice{
+				config: ascend310PConfig,
+				DeviceInfo: &devices.DeviceInfo{
+					ID:      deviceInfo.ID,
+					Index:   0,
+					Count:   8,
+					Devcore: 150,
+					Devmem:  21527,
+				},
+				DeviceUsage: &devices.DeviceUsage{
+					Used:      1,
+					Usedmem:   1024,
+					Usedcores: 40,
+				},
+				hamiVnpuCore: true,
+			},
+			isHAMiCore: true,
+			result:     true,
+		},
+		{
+			name: "hami_core_oversell_rejects_third_40_when_budget_150",
+			req: &devices.ContainerDeviceRequest{
+				Nums:     1,
+				Type:     "Ascend310P",
+				Memreq:   1024,
+				Coresreq: 40,
+			},
+			dev: &AscendDevice{
+				config: ascend310PConfig,
+				DeviceInfo: &devices.DeviceInfo{
+					ID:      deviceInfo.ID,
+					Index:   0,
+					Count:   8,
+					Devcore: 150,
+					Devmem:  21527,
+				},
+				DeviceUsage: &devices.DeviceUsage{
+					Used:      2,
+					Usedmem:   2048,
+					Usedcores: 120,
+				},
+				hamiVnpuCore: true,
+			},
+			isHAMiCore: true,
+			result:     false,
+		},
+		{
+			name: "hami_core_full_core_stays_exclusive_on_oversold_card",
+			req: &devices.ContainerDeviceRequest{
+				Nums:     1,
+				Type:     "Ascend310P",
+				Memreq:   1024,
+				Coresreq: 100,
+			},
+			dev: &AscendDevice{
+				config: ascend310PConfig,
+				DeviceInfo: &devices.DeviceInfo{
+					ID:      deviceInfo.ID,
+					Index:   0,
+					Count:   8,
+					Devcore: 150,
+					Devmem:  21527,
+				},
+				DeviceUsage: &devices.DeviceUsage{
+					Used:      1,
+					Usedmem:   1024,
+					Usedcores: 40,
+				},
+				hamiVnpuCore: true,
+			},
+			isHAMiCore: true,
+			result:     false,
+		},
+		{
+			name: "hami_core_rejects_share_after_exclusive_occupant_on_oversold_card",
+			req: &devices.ContainerDeviceRequest{
+				Nums:     1,
+				Type:     "Ascend310P",
+				Memreq:   1024,
+				Coresreq: 40,
+			},
+			dev: &AscendDevice{
+				config: ascend310PConfig,
+				DeviceInfo: &devices.DeviceInfo{
+					ID:      deviceInfo.ID,
+					Index:   0,
+					Count:   8,
+					Devcore: 150,
+					Devmem:  21527,
+				},
+				DeviceUsage: &devices.DeviceUsage{
+					Used:      1,
+					Usedmem:   4096,
+					Usedcores: 100,
+				},
+				PodMap: map[string]*devices.DeviceUsage{
+					"pod-a": {Used: 1, Usedmem: 4096, Usedcores: 100},
+				},
+				hamiVnpuCore: true,
+			},
+			isHAMiCore: true,
+			result:     false,
+		},
+		{
+			name: "hami_core_two_shared_50_still_fit_under_oversell",
+			req: &devices.ContainerDeviceRequest{
+				Nums:     1,
+				Type:     "Ascend310P",
+				Memreq:   1024,
+				Coresreq: 40,
+			},
+			dev: &AscendDevice{
+				config: ascend310PConfig,
+				DeviceInfo: &devices.DeviceInfo{
+					ID:      deviceInfo.ID,
+					Index:   0,
+					Count:   8,
+					Devcore: 150,
+					Devmem:  21527,
+				},
+				DeviceUsage: &devices.DeviceUsage{
+					Used:      2,
+					Usedmem:   2048,
+					Usedcores: 100,
+				},
+				PodMap: map[string]*devices.DeviceUsage{
+					"pod-a": {Used: 1, Usedmem: 1024, Usedcores: 50},
+					"pod-b": {Used: 1, Usedmem: 1024, Usedcores: 50},
+				},
+				hamiVnpuCore: true,
+			},
+			isHAMiCore: true,
+			result:     true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ret := fit(tt.req, tt.dev, tt.isHAMiCore)
 			assert.Equal(t, tt.result, ret)
 		})
+	}
+}
+
+func TestHamiCorePercentBudget(t *testing.T) {
+	cases := []struct {
+		in, want int32
+	}{
+		{0, 100},
+		{8, 100},
+		{30, 100},
+		{100, 100},
+		{150, 150},
+		{200, 200},
+	}
+	for _, tc := range cases {
+		if got := hamiCorePercentBudget(tc.in); got != tc.want {
+			t.Fatalf("hamiCorePercentBudget(%d)=%d, want %d", tc.in, got, tc.want)
+		}
 	}
 }
 
@@ -470,15 +630,17 @@ func TestAscendDevicesFilterNodeErrorClassification(t *testing.T) {
 func TestAscendDevice_GetNodeDevices_HAMiVnpuCore(t *testing.T) {
 	deviceRegisterAnno := fmt.Sprintf("%s/node-register-%s", util.HAMiAnnotationsPrefix, "Ascend910A")
 	testNodeDevicesJSON := `[{"id":"dev-1","index":0,"count":1,"devmem":32768,"devcore":30}]`
+	oversellNodeDevicesJSON := `[{"id":"dev-1","index":0,"count":1,"devmem":32768,"devcore":150}]`
 	dev := &AscendDevice{
 		nodeRegisterAnno: deviceRegisterAnno,
 	}
 	var conf config.VNPUsConfig
 
 	tests := []struct {
-		name          string
-		annotations   map[string]string
-		expectSupport bool
+		name           string
+		annotations    map[string]string
+		expectSupport  bool
+		expectDevcore  int32
 	}{
 		{
 			name: "node_support_hami_vnpu_core",
@@ -487,6 +649,16 @@ func TestAscendDevice_GetNodeDevices_HAMiVnpuCore(t *testing.T) {
 				VNPUNodeSelectorAnnotation: "true",
 			},
 			expectSupport: true,
+			expectDevcore: hamiCorePercentBase, // physical AICore 30 → percentage budget 100
+		},
+		{
+			name: "node_support_hami_vnpu_core_keeps_oversell_budget",
+			annotations: map[string]string{
+				deviceRegisterAnno:         oversellNodeDevicesJSON,
+				VNPUNodeSelectorAnnotation: "true",
+			},
+			expectSupport: true,
+			expectDevcore: 150,
 		},
 		{
 			name: "node_not_support_hami_vnpu_core",
@@ -495,6 +667,7 @@ func TestAscendDevice_GetNodeDevices_HAMiVnpuCore(t *testing.T) {
 				VNPUNodeSelectorAnnotation: "false",
 			},
 			expectSupport: false,
+			expectDevcore: 30,
 		},
 		{
 			name: "node_without_hami_vnpu_core_annotation",
@@ -502,6 +675,7 @@ func TestAscendDevice_GetNodeDevices_HAMiVnpuCore(t *testing.T) {
 				deviceRegisterAnno: testNodeDevicesJSON,
 			},
 			expectSupport: false,
+			expectDevcore: 30,
 		},
 	}
 
@@ -518,6 +692,7 @@ func TestAscendDevice_GetNodeDevices_HAMiVnpuCore(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Len(t, nodeDevices, 1)
 			assert.Equal(t, tt.expectSupport, nodeSupportHamiCore)
+			assert.Equal(t, tt.expectDevcore, nodeDevices[0].Devcore)
 		})
 	}
 }
