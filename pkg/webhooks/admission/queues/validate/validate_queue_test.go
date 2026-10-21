@@ -561,6 +561,52 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal onlyGuaranteeSet failed for %v.", err)
 	}
 
+	guaranteeAndCapabilityWithoutDeserved := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "guarantee-and-capability-without-deserved",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: map[v1.ResourceName]resource.Quantity{
+					v1.ResourceCPU:    resource.MustParse("100m"),
+					v1.ResourceMemory: resource.MustParse("1Gi"),
+				},
+			},
+			Capability: map[v1.ResourceName]resource.Quantity{
+				v1.ResourceCPU:    resource.MustParse("200m"),
+				v1.ResourceMemory: resource.MustParse("2Gi"),
+			},
+		},
+	}
+
+	guaranteeAndCapabilityWithoutDeservedJSON, err := json.Marshal(guaranteeAndCapabilityWithoutDeserved)
+	if err != nil {
+		t.Errorf("Marshal guaranteeAndCapabilityWithoutDeserved failed for %v.", err)
+	}
+
+	capabilityLessGuarantee := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "capability-less-guarantee",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: map[v1.ResourceName]resource.Quantity{
+					v1.ResourceCPU: resource.MustParse("2"),
+				},
+			},
+			Capability: map[v1.ResourceName]resource.Quantity{
+				v1.ResourceCPU: resource.MustParse("1"),
+			},
+		},
+	}
+
+	capabilityLessGuaranteeJSON, err := json.Marshal(capabilityLessGuarantee)
+	if err != nil {
+		t.Errorf("Marshal capabilityLessGuarantee failed for %v.", err)
+	}
+
 	capabilityLessDeserved := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "capability-less-deserved",
@@ -1177,7 +1223,7 @@ func TestAdmitQueues(t *testing.T) {
 			},
 		},
 		{
-			Name: "Create queue with guarantee but no deserved should be rejected",
+			Name: "Create queue with guarantee but no deserved",
 			AR: admissionv1.AdmissionReview{
 				TypeMeta: metav1.TypeMeta{
 					Kind:       "AdmissionReview",
@@ -1202,9 +1248,67 @@ func TestAdmitQueues(t *testing.T) {
 				},
 			},
 			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: true,
+			},
+		},
+		{
+			Name: "Create queue with guarantee and capability but no deserved",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: guaranteeAndCapabilityWithoutDeservedJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: true,
+			},
+		},
+		{
+			Name: "Create queue with capability less guarantee",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: capabilityLessGuaranteeJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed: false,
 				Result: &metav1.Status{
-					Message: "requestBody.spec.deserved.cpu: Invalid value: \"<nil>\": deserved[cpu] must be >= guarantee[cpu]=1",
+					Message: "requestBody.spec.guarantee.resource.cpu: Invalid value: \"2\": guarantee[cpu]=2 must be <= capability[cpu]=1",
 				},
 			},
 		},
@@ -2492,7 +2596,7 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed: false,
 				Result: &metav1.Status{
-					Message: "[requestBody.spec.guarantee.resource.cpu: Invalid value: \"-2\": must be greater than or equal to 0, requestBody.spec.deserved.cpu: Invalid value: \"<nil>\": deserved[cpu] must be >= guarantee[cpu]=-2]",
+					Message: "requestBody.spec.guarantee.resource.cpu: Invalid value: \"-2\": must be greater than or equal to 0",
 				},
 			},
 		},
