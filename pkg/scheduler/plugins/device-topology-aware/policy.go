@@ -75,7 +75,7 @@ type resolvedDeviceTopologyTaskRequest struct {
 }
 
 // policyResolutionError provides a stable reason prefix for malformed policy
-// units and unsupported Pod request shapes.
+// units, unsupported Pod request shapes, and pure planning failures.
 type policyResolutionError struct {
 	reason  string
 	message string
