@@ -184,13 +184,15 @@ func logPredicateSummary(task *api.TaskInfo, totalNodes int, processedNodes int3
 		return
 	}
 
-	if failedNodes == 0 && candidateNodes > 0 {
+	if candidateNodes > 0 {
 		return
 	}
 
-	klog.V(3).InfoS("Predicate evaluation summary",
-		"task", klog.KRef(task.Namespace, task.Name),
-		"fitErrors", fitErrors.Error())
+	if logger := klog.V(3); logger.Enabled() {
+		logger.InfoS("Predicate evaluation summary",
+			"task", klog.KRef(task.Namespace, task.Name),
+			"fitErrors", fitErrors.Error())
+	}
 }
 
 func taskGroupID(task *api.TaskInfo) string {

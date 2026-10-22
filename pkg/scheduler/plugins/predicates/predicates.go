@@ -702,7 +702,7 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 	}
 
 	if node.Allocatable.MaxTaskNum <= len(nodeInfo.GetPods()) {
-		klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed, allocatable <%d>, existed <%d>",
+		klog.V(5).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed, allocatable <%d>, existed <%d>",
 			task.Namespace, task.Name, node.Name, node.Allocatable.MaxTaskNum, len(nodeInfo.GetPods()))
 		podsNumStatus := &api.Status{
 			Code:                  api.Unschedulable,
