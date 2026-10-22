@@ -254,6 +254,8 @@ func (c *queuecontroller) openHierarchicalQueue(queue *schedulingv1beta1.Queue) 
 func (c *queuecontroller) closeHierarchicalQueue(queue *schedulingv1beta1.Queue) (bool, error) {
 	if queue.Name == "root" {
 		klog.Errorf("Root queue cannot be closed")
+		c.recorder.Event(queue, v1.EventTypeWarning, string(v1alpha1.CloseQueueAction),
+			"Close queue rejected: the root queue cannot be closed")
 		return false, nil
 	}
 
