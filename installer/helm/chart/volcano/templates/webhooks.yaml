@@ -5,6 +5,10 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
+  {{- if .Values.custom.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-admission-cert
+  {{- end }}
   name: volcano-admission-service-pods-mutate
   {{- if .Values.custom.common_labels }}
   labels:
@@ -53,6 +57,10 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
+  {{- if .Values.custom.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-admission-cert
+  {{- end }}
   name: volcano-admission-service-queues-mutate
   {{- if .Values.custom.common_labels }}
   labels:
@@ -102,6 +110,10 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
+  {{- if .Values.custom.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-admission-cert
+  {{- end }}
   name: volcano-admission-service-podgroups-mutate
   {{- if .Values.custom.common_labels }}
   labels:
@@ -150,6 +162,10 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
+  {{- if .Values.custom.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-admission-cert
+  {{- end }}
   name: volcano-admission-service-jobs-mutate
   {{- if .Values.custom.common_labels }}
   labels:
@@ -199,6 +215,10 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
+  {{- if .Values.custom.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-admission-cert
+  {{- end }}
   name: volcano-admission-service-jobs-validate
   {{- if .Values.custom.common_labels }}
   labels:
@@ -247,6 +267,10 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
+  {{- if .Values.custom.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-admission-cert
+  {{- end }}
   name: volcano-admission-service-jobflows-validate
   {{- if .Values.custom.common_labels }}
   labels:
@@ -296,6 +320,10 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
+  {{- if .Values.custom.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-admission-cert
+  {{- end }}
   name: volcano-admission-service-pods-validate
   {{- if .Values.custom.common_labels }}
   labels:
@@ -343,6 +371,10 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
+  {{- if .Values.custom.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-admission-cert
+  {{- end }}
   name: volcano-admission-service-queues-validate
   {{- if .Values.custom.common_labels }}
   labels:
@@ -441,6 +473,10 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
+  {{- if .Values.custom.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-admission-cert
+  {{- end }}
   name: volcano-admission-service-podgroups-validate
   {{- if .Values.custom.common_labels }}
   labels:
@@ -489,6 +525,10 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
+  {{- if .Values.custom.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-admission-cert
+  {{- end }}
   name: volcano-admission-service-hypernodes-validate
   {{- if .Values.custom.common_labels }}
   labels:
@@ -525,6 +565,10 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration  
 metadata:  
   name: volcano-admission-service-cronjobs-validate  
+  {{- if .Values.custom.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-admission-cert
+  {{- end }}
   {{- if .Values.custom.common_labels }}  
   labels:  
     {{- toYaml .Values.custom.common_labels | nindent 4 }}  
