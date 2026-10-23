@@ -133,6 +133,49 @@ func TestPredicateNodes(t *testing.T) {
 			},
 		},
 		{
+			name: "predicate errors do not populate disabled cache",
+			task: &api.TaskInfo{
+				Job:       "job1",
+				TaskRole:  "worker",
+				Namespace: "ns",
+				Name:      "task",
+			},
+			nodes: []*api.NodeInfo{
+				{Name: "node1"},
+				{Name: "node2"},
+			},
+			nodesInShard:     sets.New[string]("node1", "node2"),
+			shardingMode:     commonutil.NoneShardingMode,
+			enableErrorCache: false,
+			predicateFn: func(*api.TaskInfo, *api.NodeInfo) error {
+				return fmt.Errorf("predicate failed")
+			},
+			expectedNodes:    []string{},
+			expectedErr:      "0/2 nodes are unavailable: 2 predicate failed.",
+			expectedErrCache: map[string]map[string]string{},
+		},
+		{
+			name: "empty task role does not populate predicate error cache",
+			task: &api.TaskInfo{
+				Job:       "job1",
+				Namespace: "ns",
+				Name:      "task",
+			},
+			nodes: []*api.NodeInfo{
+				{Name: "node1"},
+				{Name: "node2"},
+			},
+			nodesInShard:     sets.New[string]("node1", "node2"),
+			shardingMode:     commonutil.NoneShardingMode,
+			enableErrorCache: true,
+			predicateFn: func(*api.TaskInfo, *api.NodeInfo) error {
+				return fmt.Errorf("predicate failed")
+			},
+			expectedNodes:    []string{},
+			expectedErr:      "0/2 nodes are unavailable: 2 predicate failed.",
+			expectedErrCache: map[string]map[string]string{},
+		},
+		{
 			name: "hard sharding rejects nodes outside shard",
 			task: &api.TaskInfo{
 				Job:       "job1",
