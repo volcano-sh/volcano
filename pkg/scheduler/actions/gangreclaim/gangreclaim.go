@@ -80,6 +80,15 @@ func (gr *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter GangReclaim ...")
 	defer klog.V(5).Infof("Leaving GangReclaim ...")
 
+	// Reclaim takes resources back from queues using more than their share. Without a plugin
+	// that decides whether a queue may reclaim or reports queues overused, no queue has a
+	// share, and the Pods evicted here can be allocated back to their own queue next session
+	// and evicted again.
+	if !ssn.QueueFairnessEnabled() {
+		klog.V(3).Infof("No queue fairness plugin is enabled, skip GangReclaim")
+		return
+	}
+
 	gr.parseArguments(ssn)
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}
