@@ -560,9 +560,9 @@ func (sc *SchedulerCache) AddPod(obj interface{}) {
 	sc.Mutex.Lock()
 	err := sc.addPod(pod)
 	sc.Mutex.Unlock()
+
 	if err != nil {
-		klog.Errorf("Failed to add pod <%s/%s> into cache: %v",
-			pod.Namespace, pod.Name, err)
+		klog.ErrorS(err, "Failed to add pod to scheduler cache", "pod", klog.KObj(pod))
 		return
 	}
 	if pod.Spec.NodeName == "" {
@@ -572,7 +572,7 @@ func (sc *SchedulerCache) AddPod(obj interface{}) {
 		sc.invalidateUnschedulableJobForPod(pod)
 		sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Add}, nil, pod)
 	}
-	klog.V(3).Infof("Added pod <%s/%v> into cache.", pod.Namespace, pod.Name)
+	klog.V(5).InfoS("Added pod to scheduler cache", "pod", klog.KObj(pod))
 }
 
 // UpdatePod update pod to scheduler cache
@@ -622,8 +622,9 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 	sc.clearUnassignedNumaPod(pod)
 	err := sc.deletePod(pod)
 	sc.Mutex.Unlock()
+
 	if err != nil {
-		klog.Errorf("Failed to delete pod %v from cache: %v", pod.Name, err)
+		klog.ErrorS(err, "Failed to delete pod from scheduler cache", "pod", klog.KObj(pod))
 		return
 	}
 
@@ -631,7 +632,7 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 		sc.invalidateUnschedulableJobForPod(pod)
 		sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}, pod, nil)
 	}
-	klog.V(3).Infof("Deleted pod <%s/%v> from cache.", pod.Namespace, pod.Name)
+	klog.V(5).InfoS("Deleted pod from scheduler cache", "pod", klog.KObj(pod))
 }
 
 // addNodeImageStates adds states of the images on given node to the given nodeInfo and update the imageStates in
