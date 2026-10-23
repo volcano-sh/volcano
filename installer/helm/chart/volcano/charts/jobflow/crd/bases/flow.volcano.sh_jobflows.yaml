@@ -4281,6 +4281,7 @@ spec:
                   properties:
                     endTimestamp:
                       format: date-time
+                      nullable: true
                       type: string
                     name:
                       type: string
@@ -4293,6 +4294,7 @@ spec:
                         properties:
                           endTimestamp:
                             format: date-time
+                            nullable: true
                             type: string
                           startTimestamp:
                             format: date-time
