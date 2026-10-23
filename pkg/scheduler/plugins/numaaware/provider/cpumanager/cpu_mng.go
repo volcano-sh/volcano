@@ -115,6 +115,24 @@ func getPhysicalCoresNum(CPUDetails topology.CPUDetails) int {
 	return len(uniques)
 }
 
+// reserveCPUs returns the cpuset that should be reserved for system and
+// kubernetes daemons on the node, derived from the node's ResReserved CPU
+// quantity. It returns an error when the reservation exceeds the total number
+// of CPUs on the node, which indicates a misconfigured node and must not be
+// silently ignored, otherwise the reserved CPUs would leak into allocations.
+func reserveCPUs(topoInfo *api.NumatopoInfo, cputopo *topology.CPUTopology) (cpuset.CPUSet, error) {
+	reservedCPUs, ok := topoInfo.ResReserved[v1.ResourceCPU]
+	if !ok {
+		return cpuset.New(), nil
+	}
+
+	// Take the ceiling of the reservation, since fractional CPUs cannot be
+	// exclusively allocated.
+	reservedCPUsFloat := float64(reservedCPUs.MilliValue()) / 1000
+	numReservedCPUs := int(math.Ceil(reservedCPUsFloat))
+	return takeByTopology(cputopo, cputopo.CPUDetails.CPUs(), numReservedCPUs)
+}
+
 func (mng *cpuMng) GetTopologyHints(container *v1.Container,
 	topoInfo *api.NumatopoInfo, resNumaSets api.ResNumaSets) map[string][]policy.TopologyHint {
 	if _, ok := container.Resources.Requests[v1.ResourceCPU]; !ok {
@@ -135,16 +153,12 @@ func (mng *cpuMng) GetTopologyHints(container *v1.Container,
 		CPUDetails: topoInfo.CPUDetail,
 	}
 
-	reserved := cpuset.New()
-	reservedCPUs, ok := topoInfo.ResReserved[v1.ResourceCPU]
-	if ok {
-		// Take the ceiling of the reservation, since fractional CPUs cannot be
-		// exclusively allocated.
-		reservedCPUsFloat := float64(reservedCPUs.MilliValue()) / 1000
-		numReservedCPUs := int(math.Ceil(reservedCPUsFloat))
-		reserved, _ = takeByTopology(cputopo, cputopo.CPUDetails.CPUs(), numReservedCPUs)
-		klog.V(4).Infof("[cpumanager] reserve cpuset :%v", reserved)
+	reserved, err := reserveCPUs(topoInfo, cputopo)
+	if err != nil {
+		klog.Errorf("[cpumanager] failed to reserve CPUs for node %s: %v", topoInfo.Name, err)
+		return nil
 	}
+	klog.V(4).Infof("[cpumanager] reserve cpuset :%v", reserved)
 
 	availableCPUSet, ok := resNumaSets[string(v1.ResourceCPU)]
 	if !ok {
@@ -168,16 +182,14 @@ func (mng *cpuMng) Allocate(container *v1.Container, bestHit *policy.TopologyHin
 		CPUDetails: topoInfo.CPUDetail,
 	}
 
-	reserved := cpuset.New()
-	reservedCPUs, ok := topoInfo.ResReserved[v1.ResourceCPU]
-	if ok {
-		// Take the ceiling of the reservation, since fractional CPUs cannot be
-		// exclusively allocated.
-		reservedCPUsFloat := float64(reservedCPUs.MilliValue()) / 1000
-		numReservedCPUs := int(math.Ceil(reservedCPUsFloat))
-		reserved, _ = takeByTopology(cputopo, cputopo.CPUDetails.CPUs(), numReservedCPUs)
-		klog.V(3).Infof("[cpumanager] reserve cpuset :%v", reserved)
+	reserved, err := reserveCPUs(topoInfo, cputopo)
+	if err != nil {
+		klog.Errorf("[cpumanager] failed to reserve CPUs for node %s: %v", topoInfo.Name, err)
+		return map[string]cpuset.CPUSet{
+			string(v1.ResourceCPU): cpuset.New(),
+		}
 	}
+	klog.V(3).Infof("[cpumanager] reserve cpuset :%v", reserved)
 
 	requestNum := guaranteedCPUs(container)
 	availableCPUSet := resNumaSets[string(v1.ResourceCPU)]
