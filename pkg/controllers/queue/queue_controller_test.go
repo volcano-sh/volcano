@@ -25,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
@@ -381,5 +382,27 @@ func TestProcessNextWorkItem(t *testing.T) {
 		if c.queue.Len() != 0 {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, c.queue.Len())
 		}
+	}
+}
+
+func TestCloseRootQueueRecordsWarningEvent(t *testing.T) {
+	c := newFakeController()
+	recorder := record.NewFakeRecorder(1)
+	c.recorder = recorder
+
+	root := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "root"},
+		Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateOpen},
+	}
+
+	err := c.closeQueue(root, nil)
+	assert.NoError(t, err)
+
+	select {
+	case event := <-recorder.Events:
+		assert.Contains(t, event, "Warning")
+		assert.Contains(t, event, "root queue cannot be closed")
+	default:
+		t.Fatal("expected a Warning event when closing the root queue")
 	}
 }
