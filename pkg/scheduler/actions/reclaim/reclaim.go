@@ -23,6 +23,8 @@ limitations under the License.
 package reclaim
 
 import (
+	"context"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
@@ -178,6 +180,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 }
 
 func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Statement, task *api.TaskInfo, job *api.JobInfo) {
+	// Nodes with insufficient DRA devices are not filtered out,
 	totalNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
 	predicateHelper := util.NewPredicateHelper()
 	predicateNodes, _ := predicateHelper.PredicateNodes(task, totalNodes, ssn.PredicateForPreemptAction, ra.enablePredicateErrorCache, ssn.NodesInShard)
@@ -264,7 +267,18 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 // reclaimerFitsOnNode verifies available resources and plugin predicates after tentative evictions.
 func reclaimerFitsOnNode(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo, resreq, availableResources *api.Resource) bool {
 	return resreq.LessEqual(availableResources, api.Zero) &&
-		ssn.PredicateFn(task, node) == nil
+		ssn.PredicateFn(task, node) == nil &&
+		draReclaimFutureIdleSatisfied(ssn, task, node)
+}
+
+// draReclaimFutureIdleSatisfied checks in a FutureIdle manner whether the reclaimer's
+// DRA device requirements can be satisfied on the node.
+func draReclaimFutureIdleSatisfied(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo) bool {
+	if len(task.DRAResreq) == 0 {
+		return true
+	}
+	_, err := ssn.DRAFutureIdleCheckFn(context.TODO(), task, node)
+	return err == nil
 }
 
 func (ra *Action) UnInitialize() {

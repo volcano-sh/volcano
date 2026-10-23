@@ -206,6 +206,22 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	pp.InitPlugin()
 
+	var draHelper *draPreemptHelper
+	if pp.enabledPredicates.dynamicResourceAllocationEnable && ssn.SharedDRAManager() != nil {
+		draHelper = newDRAPreemptHelper(ssn.SharedDRAManager(), pp.features)
+		// Idle path: allocate directly on the current snapshot (analogous to the node.Idle check)
+		ssn.AddDRAIdleCheckFn(pp.Name(), draHelper.IdleCheck)
+		// FutureIdle path: snapshot - node.DraReleasing + node.DraPipelined (analogous to the node.FutureIdle() check)
+		ssn.AddDRAFutureIdleCheckFn(pp.Name(), draHelper.FutureIdleCheck)
+		// For NodeInfo resource accounting: devices of Releasing tasks are extracted into node.DraReleasing
+		api.GetTaskDRAAllocatedDevicesFn = draHelper.GetTaskAllocatedDevices
+
+		// Preemption/reclaim veto: when the initiator requires DRA devices, pods holding
+		// shared claims must not be evicted, see draPreemptHelper.SharedClaimEvictableFn.
+		ssn.AddPreemptableFn(pp.Name(), draHelper.SharedClaimEvictableFn)
+		ssn.AddReclaimableFn(pp.Name(), draHelper.SharedClaimEvictableFn)
+	}
+
 	// Initialize PredicateCache if enabled
 	if pp.enabledPredicates.cacheEnable {
 		pp.PredicateCache = predicateCacheNew()
@@ -788,6 +804,13 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 			if filterStatus.Plugin == "" {
 				filterStatus.Plugin = name
 			}
+			// Nodes with insufficient DRA devices are allowed through directly; the check is
+			// handled by DRAIdleCheckFn/DRAFutureIdleCheckFn.
+			if api.IsDRAInsufficientDevicesStatus(filterStatus) {
+				klog.V(5).Infof("Skip DRA insufficient devices status for Task <%s/%s> on Node <%s>: %s",
+					task.Namespace, task.Name, node.Name, filterStatus.Reason)
+				continue
+			}
 			predicateStatus = append(predicateStatus, filterStatus)
 			if util.ShouldAbort(filterStatus) {
 				return api.NewFitErrWithStatus(task, node, predicateStatus...)
@@ -838,6 +861,8 @@ func (pp *PredicatesPlugin) BatchNodeOrder(task *api.TaskInfo, nodes []fwk.NodeI
 func (pp *PredicatesPlugin) runReservePlugins(ssn *framework.Session, event *framework.Event) {
 	state := ssn.GetCycleState(event.Task.UID)
 
+	isPipelined := event.Task.Status == api.Pipelined
+
 	for _, name := range pp.ReserveOrder {
 		plugin, exists := pp.ReservePlugins[name]
 		if !exists {
@@ -845,9 +870,23 @@ func (pp *PredicatesPlugin) runReservePlugins(ssn *framework.Session, event *fra
 		}
 		status := plugin.Reserve(context.TODO(), state, event.Task.Pod, event.Task.Pod.Spec.NodeName)
 		if !status.IsSuccess() {
+			if isPipelined && name == dynamicresources.Name {
+				klog.V(3).Infof("tolerating DRA Reserve failure for pipelined pod %s/%s on node %s: %v "+
+					"(device allocation will be re-evaluated in a future scheduling cycle after victim eviction)",
+					event.Task.Namespace, event.Task.Name, event.Task.Pod.Spec.NodeName, status.AsError())
+				continue
+			}
 			klog.Errorf("Reserve plugin %s failed for pod %s/%s: %v", name, event.Task.Namespace, event.Task.Name, status.AsError())
 			event.Err = status.AsError()
 			return
+		}
+		// DRA Reserve succeeded for a Pipelined task: immediately Unreserve to clean up the
+		// pending record, avoiding cross-session leftovers that would deadlock the next
+		// cycle's PreFilter.
+		if isPipelined && name == dynamicresources.Name {
+			klog.V(4).Infof("DRA Reserve succeeded for pipelined pod %s/%s on node %s, immediately unreserving to clean pending allocation",
+				event.Task.Namespace, event.Task.Name, event.Task.Pod.Spec.NodeName)
+			plugin.Unreserve(context.TODO(), state, event.Task.Pod, event.Task.Pod.Spec.NodeName)
 		}
 	}
 }

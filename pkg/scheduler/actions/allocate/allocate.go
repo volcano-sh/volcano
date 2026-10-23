@@ -17,6 +17,7 @@
 package allocate
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"slices"
@@ -25,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -1201,7 +1203,7 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 		}
 		switch {
 		case len(nodes) == 0:
-			klog.V(5).Infof("Task: %v, no matching node is found in the candidateNodes（index: %d） list.", task.Name, index)
+			klog.V(5).Infof("Task: %v, no matching node is found in the candidateNodes (index: %d) list.", task.Name, index)
 		case len(nodes) == 1: // If only one node after predicate, just use it.
 			bestNode = nodes[0]
 		case len(nodes) > 1: // If more than one node after predicate, using "the best" one
@@ -1222,8 +1224,19 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 }
 
 func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo, job *api.JobInfo) (err error) {
+	// Check whether DRA devices are currently satisfiable. If not, skip Allocate
+	// and fall into the Pipeline branch.
+	draIdleSatisfied := true
+	if len(task.DRAResreq) > 0 {
+		if _, checkErr := alloc.session.DRAIdleCheckFn(context.TODO(), task, node); checkErr != nil {
+			klog.V(3).Infof("Node <%s> DRA devices cannot satisfy Task <%s/%s> (idle check): %v",
+				node.Name, task.Namespace, task.Name, checkErr)
+			draIdleSatisfied = false
+		}
+	}
+
 	// Allocate idle resource to the task.
-	if task.InitResreq.LessEqual(node.Idle, api.Zero) {
+	if task.InitResreq.LessEqual(node.Idle, api.Zero) && draIdleSatisfied {
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
 		if err = stmt.Allocate(task, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
@@ -1238,8 +1251,18 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 	klog.V(3).Infof("Predicates failed in allocate for task <%s/%s> on node <%s> with limited resources",
 		task.Namespace, task.Name, node.Name)
 
+	// Check whether DRA devices are satisfiable after releasing. If not, do not Pipeline.
+	draFutureIdleSatisfied := true
+	if len(task.DRAResreq) > 0 {
+		if _, checkErr := alloc.session.DRAFutureIdleCheckFn(context.TODO(), task, node); checkErr != nil {
+			klog.V(3).Infof("Node <%s> DRA devices cannot satisfy Task <%s/%s> (futureIdle check): %v",
+				node.Name, task.Namespace, task.Name, checkErr)
+			draFutureIdleSatisfied = false
+		}
+	}
+
 	// Allocate releasing resource to the task if any.
-	if task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+	if task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) && draFutureIdleSatisfied {
 		klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 			task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
 		if err = stmt.Pipeline(task, node.Name, false); err != nil {
@@ -1265,6 +1288,21 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 		})
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
+
+	// DRA resource quantity check
+	if len(task.DRAResreq) > 0 {
+		if _, draErr := alloc.session.DRAFutureIdleCheckFn(context.TODO(), task, node); draErr != nil {
+			klog.V(3).Infof("Node <%s> DRA devices cannot satisfy Task <%s/%s> in allocate predicate: %v",
+				node.Name, task.Namespace, task.Name, draErr)
+			statusSets = append(statusSets, &api.Status{
+				Code:   api.UnschedulableAndUnresolvable,
+				Reason: draErr.Error(),
+				Plugin: dynamicresources.Name,
+			})
+			return api.NewFitErrWithStatus(task, node, statusSets...)
+		}
+	}
+
 	return alloc.session.PredicateForAllocateAction(task, node)
 }
 

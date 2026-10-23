@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
 )
 
 const (
@@ -32,6 +33,17 @@ const (
 
 	// AllNodeUnavailableMsg is the default error message
 	AllNodeUnavailableMsg = "all nodes are unavailable"
+
+	// DRAFilterInsufficientDevicesMessage is the failure reason literal returned by the
+	// upstream dynamicresources plugin's Filter when DRA devices are insufficient.
+	// predicatesFn does not check resource quantity, so this failure is skipped by the
+	// predicates plugin.
+	DRAFilterInsufficientDevicesMessage = "cannot allocate all claims"
+
+	// DRAInsufficientDevicesMessage is the failure reason identifier returned by this
+	// scheduler's DRA validator (predicates.checkFit, based on allocator.Allocate) when
+	// DRA devices are insufficient, used for failure status recognition.
+	DRAInsufficientDevicesMessage = "insufficient DRA devices"
 
 	// HyperNodeFitSummaryPrefix labels HyperNode-tier scheduling diagnostics.
 	HyperNodeFitSummaryPrefix = "HyperNode"
@@ -338,6 +350,32 @@ func (f *FitErrors) GetUnschedulableAndUnresolvableNodes() map[string]sets.Empty
 	for _, node := range f.nodes {
 		if node.Status.ContainsUnschedulableAndUnresolvable() {
 			ret[node.NodeName] = sets.Empty{}
+		}
+	}
+	return ret
+}
+
+// IsDRAInsufficientDevicesStatus reports whether the failure status indicates
+// insufficient DRA devices.
+func IsDRAInsufficientDevicesStatus(s *Status) bool {
+	if s == nil {
+		return false
+	}
+	return s.Code == UnschedulableAndUnresolvable &&
+		s.Plugin == dynamicresources.Name &&
+		(strings.Contains(s.Reason, DRAFilterInsufficientDevicesMessage) ||
+			strings.Contains(s.Reason, DRAInsufficientDevicesMessage))
+}
+
+// GetDRAFailedNodes returns the set of nodes excluded due to insufficient DRA devices.
+func (f *FitErrors) GetDRAFailedNodes() sets.Set[string] {
+	ret := sets.New[string]()
+	for _, node := range f.nodes {
+		for _, status := range node.Status {
+			if IsDRAInsufficientDevicesStatus(status) {
+				ret.Insert(node.NodeName)
+				break
+			}
 		}
 	}
 	return ret

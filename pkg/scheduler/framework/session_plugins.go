@@ -25,6 +25,7 @@ import (
 	"errors"
 	"sort"
 
+	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
@@ -199,6 +200,16 @@ func (ssn *Session) AddSimulateAllocatableFn(name string, fn api.SimulateAllocat
 
 func (ssn *Session) AddSimulatePredicateFn(name string, fn api.SimulatePredicateFn) {
 	ssn.simulatePredicateFns[name] = fn
+}
+
+// AddDRAIdleCheckFn registers a DRA idle-path check callback (analogous to the node.Idle check).
+func (ssn *Session) AddDRAIdleCheckFn(name string, fn api.DRAIdleCheckFn) {
+	ssn.draIdleCheckFns[name] = fn
+}
+
+// AddDRAFutureIdleCheckFn registers a DRA futureIdle-path check callback (analogous to the node.FutureIdle() check).
+func (ssn *Session) AddDRAFutureIdleCheckFn(name string, fn api.DRAFutureIdleCheckFn) {
+	ssn.draFutureIdleCheckFns[name] = fn
 }
 
 // AddSubJobReadyFn add SubJobReady function
@@ -956,6 +967,52 @@ func (ssn *Session) SimulateAddTaskFn(ctx context.Context, state fwk.CycleState,
 		}
 	}
 	return nil
+}
+
+// DRAIdleCheckFn validates the task's DRA device requirements via the node.Idle path;
+// returns nil when no callback is registered (DRA disabled, fall back to the original
+// behavior); any callback returning an error means the requirements cannot be satisfied.
+func (ssn *Session) DRAIdleCheckFn(ctx context.Context, task *api.TaskInfo, node *api.NodeInfo) ([]resourceapi.AllocationResult, error) {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPredicate) {
+				continue
+			}
+			fn, found := ssn.draIdleCheckFns[plugin.Name]
+			if !found {
+				continue
+			}
+			results, err := fn(ctx, task, node)
+			if err != nil {
+				return nil, err
+			}
+			return results, nil
+		}
+	}
+	return nil, nil
+}
+
+// DRAFutureIdleCheckFn validates the task's DRA device requirements via the node.FutureIdle() path;
+// returns nil when no callback is registered (DRA disabled, fall back to the original
+// behavior); any callback returning an error means the requirements cannot be satisfied.
+func (ssn *Session) DRAFutureIdleCheckFn(ctx context.Context, task *api.TaskInfo, node *api.NodeInfo) ([]resourceapi.AllocationResult, error) {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPredicate) {
+				continue
+			}
+			fn, found := ssn.draFutureIdleCheckFns[plugin.Name]
+			if !found {
+				continue
+			}
+			results, err := fn(ctx, task, node)
+			if err != nil {
+				return nil, err
+			}
+			return results, nil
+		}
+	}
+	return nil, nil
 }
 
 // PrePredicateFn invoke predicate function of the plugins
