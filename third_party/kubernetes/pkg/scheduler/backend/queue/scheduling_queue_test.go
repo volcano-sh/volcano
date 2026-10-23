@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/version"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/component-base/metrics/testutil"
@@ -514,9 +513,11 @@ func Test_InFlightPods(t *testing.T) {
 				{podPopped: pod1},
 				{eventHappens: &framework.EventAssignedPodAdd},
 				{podEnqueued: &framework.QueuedPodInfo{
-					PodInfo:              mustNewPodInfo(pod1),
-					UnschedulablePlugins: sets.New("fooPlugin2", "fooPlugin3"),
-					PendingPlugins:       sets.New("fooPlugin1"),
+					PodInfo: mustNewPodInfo(pod1),
+					QueueingParams: framework.QueueingParams{
+						UnschedulablePlugins: sets.New("fooPlugin2", "fooPlugin3"),
+						PendingPlugins:       sets.New("fooPlugin1"),
+					},
 				}},
 			},
 			wantActiveQPodNames: []string{"targetpod"},
@@ -747,8 +748,7 @@ func Test_InFlightPods(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if !test.isSchedulingQueueHintEnabled {
-				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.33"))
-				featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SchedulerQueueingHints, false)
+				t.Skip("SchedulerQueueingHints was removed in Kubernetes 1.37")
 			}
 
 			logger, ctx := ktesting.NewTestContext(t)
@@ -890,8 +890,7 @@ func TestPop(t *testing.T) {
 	for name, isSchedulingQueueHintEnabled := range map[string]bool{"with-hints": true, "without-hints": false} {
 		t.Run(name, func(t *testing.T) {
 			if !isSchedulingQueueHintEnabled {
-				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.33"))
-				featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SchedulerQueueingHints, false)
+				t.Skip("SchedulerQueueingHints was removed in Kubernetes 1.37")
 			}
 
 			logger, ctx := ktesting.NewTestContext(t)
@@ -1102,7 +1101,7 @@ func TestPriorityQueue_Update(t *testing.T) {
 	skipPlugin := "skipPlugin"
 	queueingHintMap := QueueingHintMapPerProfile{
 		"": {
-			framework.EventUnscheduledPodUpdate: {
+			framework.EventTargetPodUpdate: {
 				{
 					PluginName:     queuePlugin,
 					QueueingHintFn: queueHintReturnQueue,
@@ -1218,8 +1217,7 @@ func TestPriorityQueue_Update(t *testing.T) {
 		for _, qHintEnabled := range tt.schedulingHintsEnablement {
 			t.Run(fmt.Sprintf("%s, with queuehint(%v)", tt.name, qHintEnabled), func(t *testing.T) {
 				if !qHintEnabled {
-					featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.33"))
-					featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SchedulerQueueingHints, false)
+					t.Skip("SchedulerQueueingHints was removed in Kubernetes 1.37")
 				}
 
 				logger, ctx := ktesting.NewTestContext(t)
@@ -1281,7 +1279,7 @@ func TestPriorityQueue_UpdateWhenInflight(t *testing.T) {
 
 	m := makeEmptyQueueingHintMapPerProfile()
 	// fakePlugin could change its scheduling result by any updates in Pods.
-	m[""][framework.EventUnscheduledPodUpdate] = []*QueueingHintFunction{
+	m[""][framework.EventTargetPodUpdate] = []*QueueingHintFunction{
 		{
 			PluginName:     "fakePlugin",
 			QueueingHintFn: queueHintReturnQueue,
@@ -1396,10 +1394,6 @@ func TestPriorityQueue_Activate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if !tt.qHintEnabled {
-				featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.33"))
-				featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SchedulerQueueingHints, false)
-			}
 
 			var objs []runtime.Object
 			logger, ctx := ktesting.NewTestContext(t)
@@ -1874,20 +1868,20 @@ func TestPriorityQueue_MoveAllToActiveOrBackoffQueueWithQueueingHint(t *testing.
 		{
 			name: "Queue queues pod to activeQ",
 			// This pod has PendingPlugins and hence will be pushed directly to activeQ
-			podInfo:   &framework.QueuedPodInfo{PodInfo: mustNewPodInfo(p), PendingPlugins: sets.New("foo")},
+			podInfo:   &framework.QueuedPodInfo{PodInfo: mustNewPodInfo(p), QueueingParams: framework.QueueingParams{PendingPlugins: sets.New("foo")}},
 			hint:      queueHintReturnQueue,
 			expectedQ: activeQ,
 		},
 		{
 			name: "Queue queues pod to backoffQ if Pod is backing off",
 			// needs UnschedulableCount to make it backing off.
-			podInfo:   &framework.QueuedPodInfo{PodInfo: mustNewPodInfo(p), UnschedulablePlugins: sets.New("foo")},
+			podInfo:   &framework.QueuedPodInfo{PodInfo: mustNewPodInfo(p), QueueingParams: framework.QueueingParams{UnschedulablePlugins: sets.New("foo")}},
 			hint:      queueHintReturnQueue,
 			expectedQ: backoffQ,
 		},
 		{
 			name:    "Queue queues pod to activeQ if Pod is not backing off",
-			podInfo: &framework.QueuedPodInfo{PodInfo: mustNewPodInfo(p), UnschedulablePlugins: sets.New("foo")},
+			podInfo: &framework.QueuedPodInfo{PodInfo: mustNewPodInfo(p), QueueingParams: framework.QueueingParams{UnschedulablePlugins: sets.New("foo")}},
 			hint:    queueHintReturnQueue,
 			// The pod is assumed to failed the scheduling cycle once, which would get DefaultPodInitialBackoffDuration as the penalty.
 			// To finish the backoff, waiting for DefaultPodInitialBackoffDuration isn't enough, need to wait for +1
@@ -1897,7 +1891,7 @@ func TestPriorityQueue_MoveAllToActiveOrBackoffQueueWithQueueingHint(t *testing.
 		},
 		{
 			name:      "Skip queues pod to unschedulablePods",
-			podInfo:   &framework.QueuedPodInfo{PodInfo: mustNewPodInfo(p), UnschedulablePlugins: sets.New("foo")},
+			podInfo:   &framework.QueuedPodInfo{PodInfo: mustNewPodInfo(p), QueueingParams: framework.QueueingParams{UnschedulablePlugins: sets.New("foo")}},
 			hint:      queueHintReturnSkip,
 			expectedQ: unschedulableQ,
 		},
@@ -2131,8 +2125,7 @@ func TestPriorityQueue_MoveAllToActiveOrBackoffQueueWithoutQueueingHint(t *testi
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	m := makeEmptyQueueingHintMapPerProfile()
-	featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.33"))
-	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SchedulerQueueingHints, false)
+	t.Skip("SchedulerQueueingHints was removed in Kubernetes 1.37")
 	m[""][nodeAdd] = []*QueueingHintFunction{
 		{
 			PluginName:     "fooPlugin",
@@ -2814,12 +2807,16 @@ func TestPriorityQueue_initPodMaxInUnschedulablePodsDuration(t *testing.T) {
 
 	var timestamp = time.Now()
 	pInfo1 := &framework.QueuedPodInfo{
-		PodInfo:   mustNewTestPodInfo(t, pod1),
-		Timestamp: timestamp.Add(-time.Second),
+		PodInfo: mustNewTestPodInfo(t, pod1),
+		QueueingParams: framework.QueueingParams{
+			Timestamp: timestamp.Add(-time.Second),
+		},
 	}
 	pInfo2 := &framework.QueuedPodInfo{
-		PodInfo:   mustNewTestPodInfo(t, pod2),
-		Timestamp: timestamp.Add(-2 * time.Second),
+		PodInfo: mustNewTestPodInfo(t, pod2),
+		QueueingParams: framework.QueueingParams{
+			Timestamp: timestamp.Add(-2 * time.Second),
+		},
 	}
 
 	tests := []struct {
@@ -2992,12 +2989,16 @@ func TestPodTimestamp(t *testing.T) {
 
 	var timestamp = time.Now()
 	pInfo1 := &framework.QueuedPodInfo{
-		PodInfo:   mustNewTestPodInfo(t, pod1),
-		Timestamp: timestamp,
+		PodInfo: mustNewTestPodInfo(t, pod1),
+		QueueingParams: framework.QueueingParams{
+			Timestamp: timestamp,
+		},
 	}
 	pInfo2 := &framework.QueuedPodInfo{
-		PodInfo:   mustNewTestPodInfo(t, pod2),
-		Timestamp: timestamp.Add(time.Second),
+		PodInfo: mustNewTestPodInfo(t, pod2),
+		QueueingParams: framework.QueueingParams{
+			Timestamp: timestamp.Add(time.Second),
+		},
 	}
 
 	tests := []struct {
@@ -3127,7 +3128,7 @@ func TestPendingPodsMetric(t *testing.T) {
 			},
 			metricsName: "scheduler_pending_pods",
 			wants: `
-# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulablePods that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated.
+# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulableEntities that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated; 'incomplete' means number of pods in incompletePodGroupPods; 'pending' means number of pods in pendingPodGroupPods.
 # TYPE scheduler_pending_pods gauge
 scheduler_pending_pods{queue="active"} 30
 scheduler_pending_pods{queue="backoff"} 0
@@ -3149,7 +3150,7 @@ scheduler_pending_pods{queue="unschedulable"} 20
 			},
 			metricsName: "scheduler_pending_pods",
 			wants: `
-# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulablePods that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated.
+# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulableEntities that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated; 'incomplete' means number of pods in incompletePodGroupPods; 'pending' means number of pods in pendingPodGroupPods.
 # TYPE scheduler_pending_pods gauge
 scheduler_pending_pods{queue="active"} 15
 scheduler_pending_pods{queue="backoff"} 25
@@ -3171,7 +3172,7 @@ scheduler_pending_pods{queue="unschedulable"} 10
 			},
 			metricsName: "scheduler_pending_pods",
 			wants: `
-# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulablePods that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated.
+# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulableEntities that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated; 'incomplete' means number of pods in incompletePodGroupPods; 'pending' means number of pods in pendingPodGroupPods.
 # TYPE scheduler_pending_pods gauge
 scheduler_pending_pods{queue="active"} 50
 scheduler_pending_pods{queue="backoff"} 0
@@ -3195,7 +3196,7 @@ scheduler_pending_pods{queue="unschedulable"} 0
 			},
 			metricsName: "scheduler_pending_pods",
 			wants: `
-# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulablePods that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated.
+# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulableEntities that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated; 'incomplete' means number of pods in incompletePodGroupPods; 'pending' means number of pods in pendingPodGroupPods.
 # TYPE scheduler_pending_pods gauge
 scheduler_pending_pods{queue="active"} 30
 scheduler_pending_pods{queue="backoff"} 20
@@ -3219,7 +3220,7 @@ scheduler_pending_pods{queue="unschedulable"} 0
 			},
 			metricsName: "scheduler_pending_pods",
 			wants: `
-# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulablePods that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated.
+# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulableEntities that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated; 'incomplete' means number of pods in incompletePodGroupPods; 'pending' means number of pods in pendingPodGroupPods.
 # TYPE scheduler_pending_pods gauge
 scheduler_pending_pods{queue="active"} 50
 scheduler_pending_pods{queue="backoff"} 0
@@ -3245,7 +3246,7 @@ scheduler_pending_pods{queue="unschedulable"} 0
 			},
 			metricsName: "scheduler_pending_pods",
 			wants: `
-# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulablePods that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated.
+# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulableEntities that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated; 'incomplete' means number of pods in incompletePodGroupPods; 'pending' means number of pods in pendingPodGroupPods.
 # TYPE scheduler_pending_pods gauge
 scheduler_pending_pods{queue="active"} 28
 scheduler_pending_pods{queue="backoff"} 0
@@ -3267,7 +3268,7 @@ scheduler_pending_pods{queue="unschedulable"} 17
 			},
 			metricsName: "scheduler_pending_pods",
 			wants: `
-# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulablePods that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated.
+# HELP scheduler_pending_pods [STABLE] Number of pending pods, by the queue type. 'active' means number of pods in activeQ; 'backoff' means number of pods in backoffQ; 'unschedulable' means number of pods in unschedulableEntities that the scheduler attempted to schedule and failed; 'gated' is the number of unschedulable pods that the scheduler never attempted to schedule because they are gated; 'incomplete' means number of pods in incompletePodGroupPods; 'pending' means number of pods in pendingPodGroupPods.
 # TYPE scheduler_pending_pods gauge
 scheduler_pending_pods{queue="active"} 35
 scheduler_pending_pods{queue="backoff"} 0
@@ -3286,7 +3287,7 @@ scheduler_pending_pods{queue="unschedulable"} 20
 			metricsName:                "scheduler_plugin_execution_duration_seconds",
 			pluginMetricsSamplePercent: 0,
 			wants: `
-# HELP scheduler_plugin_execution_duration_seconds [ALPHA] Duration for running a plugin at a specific extension point.
+# HELP scheduler_plugin_execution_duration_seconds [BETA] Duration for running a plugin at a specific extension point.
 # TYPE scheduler_plugin_execution_duration_seconds histogram
 `, // the observed value will always be 0, because we don't proceed the fake clock.
 		},
@@ -3301,7 +3302,7 @@ scheduler_pending_pods{queue="unschedulable"} 20
 			metricsName:                "scheduler_plugin_execution_duration_seconds",
 			pluginMetricsSamplePercent: 100,
 			wants: `
-# HELP scheduler_plugin_execution_duration_seconds [ALPHA] Duration for running a plugin at a specific extension point.
+# HELP scheduler_plugin_execution_duration_seconds [BETA] Duration for running a plugin at a specific extension point.
 # TYPE scheduler_plugin_execution_duration_seconds histogram
 scheduler_plugin_execution_duration_seconds_bucket{extension_point="PreEnqueue",plugin="preEnqueuePlugin",status="Success",le="1e-05"} 1
 scheduler_plugin_execution_duration_seconds_bucket{extension_point="PreEnqueue",plugin="preEnqueuePlugin",status="Success",le="1.5000000000000002e-05"} 1
@@ -3347,7 +3348,7 @@ scheduler_plugin_execution_duration_seconds_count{extension_point="PreEnqueue",p
 			resetPodInfos()
 
 			m := makeEmptyQueueingHintMapPerProfile()
-			m[""][framework.EventUnscheduledPodUpdate] = []*QueueingHintFunction{
+			m[""][framework.EventTargetPodUpdate] = []*QueueingHintFunction{
 				{
 					PluginName:     preenqueuePluginName,
 					QueueingHintFn: queueHintReturnQueue,
@@ -3494,8 +3495,10 @@ func TestIncomingPodsMetrics(t *testing.T) {
 		p := &framework.QueuedPodInfo{
 			PodInfo: mustNewTestPodInfo(t,
 				st.MakePod().Name(fmt.Sprintf("test-pod-%d", i)).Namespace(fmt.Sprintf("ns%d", i)).UID(fmt.Sprintf("tp-%d", i)).Obj()),
-			Timestamp:            timestamp,
-			UnschedulablePlugins: sets.New(unschedulablePlg),
+			QueueingParams: framework.QueueingParams{
+				Timestamp:            timestamp,
+				UnschedulablePlugins: sets.New(unschedulablePlg),
+			},
 		}
 		pInfos = append(pInfos, p)
 	}
@@ -3510,7 +3513,7 @@ func TestIncomingPodsMetrics(t *testing.T) {
 				add,
 			},
 			want: `
-            scheduler_queue_incoming_pods_total{event="UnschedulablePodAdd",queue="active"} 3
+            scheduler_queue_incoming_pods_total{event="UnscheduledPodAdd",queue="active"} 3
 `,
 		},
 		{
@@ -3518,7 +3521,7 @@ func TestIncomingPodsMetrics(t *testing.T) {
 			operations: []operation{
 				popAndRequeueAsUnschedulable,
 			},
-			want: `scheduler_queue_incoming_pods_total{event="UnschedulablePodAdd",queue="active"} 3
+			want: `scheduler_queue_incoming_pods_total{event="UnscheduledPodAdd",queue="active"} 3
              scheduler_queue_incoming_pods_total{event="ScheduleAttemptFailure",queue="unschedulable"} 3
 `,
 		},
@@ -3528,7 +3531,7 @@ func TestIncomingPodsMetrics(t *testing.T) {
 				popAndRequeueAsUnschedulable,
 				moveAllToActiveOrBackoffQ,
 			},
-			want: `scheduler_queue_incoming_pods_total{event="UnschedulablePodAdd",queue="active"} 3
+			want: `scheduler_queue_incoming_pods_total{event="UnscheduledPodAdd",queue="active"} 3
 			scheduler_queue_incoming_pods_total{event="ScheduleAttemptFailure",queue="unschedulable"} 3
             scheduler_queue_incoming_pods_total{event="UnschedulableTimeout",queue="backoff"} 3
 `,
@@ -3540,7 +3543,7 @@ func TestIncomingPodsMetrics(t *testing.T) {
 				moveClockForward,
 				moveAllToActiveOrBackoffQ,
 			},
-			want: `scheduler_queue_incoming_pods_total{event="UnschedulablePodAdd",queue="active"} 3
+			want: `scheduler_queue_incoming_pods_total{event="UnscheduledPodAdd",queue="active"} 3
 			scheduler_queue_incoming_pods_total{event="ScheduleAttemptFailure",queue="unschedulable"} 3
             scheduler_queue_incoming_pods_total{event="UnschedulableTimeout",queue="active"} 3
 `,
@@ -3552,7 +3555,7 @@ func TestIncomingPodsMetrics(t *testing.T) {
 				moveClockForward,
 				flushBackoffQ,
 			},
-			want: `scheduler_queue_incoming_pods_total{event="UnschedulablePodAdd",queue="active"} 3
+			want: `scheduler_queue_incoming_pods_total{event="UnscheduledPodAdd",queue="active"} 3
 			scheduler_queue_incoming_pods_total{event="BackoffComplete",queue="active"} 3
             scheduler_queue_incoming_pods_total{event="ScheduleAttemptFailure",queue="backoff"} 3
 `,
@@ -3756,8 +3759,10 @@ func makeQueuedPodInfos(num int, namePrefix, label string, timestamp time.Time) 
 		p := &framework.QueuedPodInfo{
 			PodInfo: mustNewPodInfo(
 				st.MakePod().Name(fmt.Sprintf("%v-%d", namePrefix, i)).Namespace(fmt.Sprintf("ns%d", i)).Label(label, "").UID(fmt.Sprintf("tp-%d", i)).Obj()),
-			Timestamp:            timestamp,
-			UnschedulablePlugins: sets.New[string](),
+			QueueingParams: framework.QueueingParams{
+				Timestamp:            timestamp,
+				UnschedulablePlugins: sets.New[string](),
+			},
 		}
 		pInfos = append(pInfos, p)
 	}
@@ -3810,8 +3815,10 @@ func Test_isPodWorthRequeuing(t *testing.T) {
 		{
 			name: "return Queue when no queueing hint function is registered for the event",
 			podInfo: &framework.QueuedPodInfo{
-				UnschedulablePlugins: sets.New("fooPlugin1"),
-				PodInfo:              mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
+				QueueingParams: framework.QueueingParams{
+					UnschedulablePlugins: sets.New("fooPlugin1"),
+				},
+				PodInfo: mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
 			},
 			event:                  nodeAdd,
 			oldObj:                 nil,
@@ -3834,8 +3841,10 @@ func Test_isPodWorthRequeuing(t *testing.T) {
 		{
 			name: "Treat the event as Queue when QueueHintFn returns error",
 			podInfo: &framework.QueuedPodInfo{
-				UnschedulablePlugins: sets.New("fooPlugin1"),
-				PodInfo:              mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
+				QueueingParams: framework.QueueingParams{
+					UnschedulablePlugins: sets.New("fooPlugin1"),
+				},
+				PodInfo: mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
 			},
 			event:                  nodeAdd,
 			oldObj:                 nil,
@@ -3856,8 +3865,10 @@ func Test_isPodWorthRequeuing(t *testing.T) {
 		{
 			name: "return Queue when the event is wildcard",
 			podInfo: &framework.QueuedPodInfo{
-				UnschedulablePlugins: sets.New("fooPlugin1"),
-				PodInfo:              mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
+				QueueingParams: framework.QueueingParams{
+					UnschedulablePlugins: sets.New("fooPlugin1"),
+				},
+				PodInfo: mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
 			},
 			event:                  framework.EventUnschedulableTimeout,
 			oldObj:                 nil,
@@ -3869,8 +3880,10 @@ func Test_isPodWorthRequeuing(t *testing.T) {
 		{
 			name: "return Queue when the event is wildcard and the wildcard targets the pod to be requeued right now",
 			podInfo: &framework.QueuedPodInfo{
-				UnschedulablePlugins: sets.New("fooPlugin1"),
-				PodInfo:              mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
+				QueueingParams: framework.QueueingParams{
+					UnschedulablePlugins: sets.New("fooPlugin1"),
+				},
+				PodInfo: mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
 			},
 			event:                  framework.EventForceActivate,
 			oldObj:                 nil,
@@ -3882,8 +3895,10 @@ func Test_isPodWorthRequeuing(t *testing.T) {
 		{
 			name: "return Skip when the event is wildcard, but the wildcard targets a different pod",
 			podInfo: &framework.QueuedPodInfo{
-				UnschedulablePlugins: sets.New("fooPlugin1"),
-				PodInfo:              mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
+				QueueingParams: framework.QueueingParams{
+					UnschedulablePlugins: sets.New("fooPlugin1"),
+				},
+				PodInfo: mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
 			},
 			event:                  framework.EventForceActivate,
 			oldObj:                 nil,
@@ -3895,9 +3910,11 @@ func Test_isPodWorthRequeuing(t *testing.T) {
 		{
 			name: "interprets Queue from the Pending plugin as queueImmediately",
 			podInfo: &framework.QueuedPodInfo{
-				UnschedulablePlugins: sets.New("fooPlugin1", "fooPlugin3"),
-				PendingPlugins:       sets.New("fooPlugin2"),
-				PodInfo:              mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
+				QueueingParams: framework.QueueingParams{
+					UnschedulablePlugins: sets.New("fooPlugin1", "fooPlugin3"),
+					PendingPlugins:       sets.New("fooPlugin2"),
+				},
+				PodInfo: mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
 			},
 			event:                  nodeAdd,
 			oldObj:                 nil,
@@ -3934,8 +3951,10 @@ func Test_isPodWorthRequeuing(t *testing.T) {
 		{
 			name: "interprets Queue from the Unschedulable plugin as queueAfterBackoff",
 			podInfo: &framework.QueuedPodInfo{
-				UnschedulablePlugins: sets.New("fooPlugin1", "fooPlugin2"),
-				PodInfo:              mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
+				QueueingParams: framework.QueueingParams{
+					UnschedulablePlugins: sets.New("fooPlugin1", "fooPlugin2"),
+				},
+				PodInfo: mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
 			},
 			event:                  nodeAdd,
 			oldObj:                 nil,
@@ -3962,8 +3981,10 @@ func Test_isPodWorthRequeuing(t *testing.T) {
 		{
 			name: "Queueing hint function that isn't from the plugin in UnschedulablePlugins/PendingPlugins is ignored",
 			podInfo: &framework.QueuedPodInfo{
-				UnschedulablePlugins: sets.New("fooPlugin1", "fooPlugin2"),
-				PodInfo:              mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
+				QueueingParams: framework.QueueingParams{
+					UnschedulablePlugins: sets.New("fooPlugin1", "fooPlugin2"),
+				},
+				PodInfo: mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
 			},
 			event:                  nodeAdd,
 			oldObj:                 nil,
@@ -3992,8 +4013,10 @@ func Test_isPodWorthRequeuing(t *testing.T) {
 		{
 			name: "If event is specific Node update event, queueing hint function for NodeUpdate/UpdateNodeLabel is also executed",
 			podInfo: &framework.QueuedPodInfo{
-				UnschedulablePlugins: sets.New("fooPlugin1", "fooPlugin2"),
-				PodInfo:              mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
+				QueueingParams: framework.QueueingParams{
+					UnschedulablePlugins: sets.New("fooPlugin1", "fooPlugin2"),
+				},
+				PodInfo: mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
 			},
 			event:                  fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.UpdateNodeLabel},
 			oldObj:                 nil,
@@ -4032,8 +4055,10 @@ func Test_isPodWorthRequeuing(t *testing.T) {
 		{
 			name: "If event with '*' Resource, queueing hint function for specified Resource is also executed",
 			podInfo: &framework.QueuedPodInfo{
-				UnschedulablePlugins: sets.New("fooPlugin1"),
-				PodInfo:              mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
+				QueueingParams: framework.QueueingParams{
+					UnschedulablePlugins: sets.New("fooPlugin1"),
+				},
+				PodInfo: mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
 			},
 			event:                  fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add},
 			oldObj:                 nil,
@@ -4054,8 +4079,10 @@ func Test_isPodWorthRequeuing(t *testing.T) {
 		{
 			name: "If event is a wildcard one, queueing hint function for all kinds of events is executed",
 			podInfo: &framework.QueuedPodInfo{
-				UnschedulablePlugins: sets.New("fooPlugin1"),
-				PodInfo:              mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
+				QueueingParams: framework.QueueingParams{
+					UnschedulablePlugins: sets.New("fooPlugin1"),
+				},
+				PodInfo: mustNewPodInfo(st.MakePod().Name("pod1").Namespace("ns1").UID("1").Obj()),
 			},
 			event:                  fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.UpdateNodeLabel | fwk.UpdateNodeTaint},
 			oldObj:                 nil,

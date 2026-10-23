@@ -24,7 +24,7 @@ import (
 // Interface provides access to all the informers in this group version.
 type Interface interface {
 	// HyperNodes returns a HyperNodeInformer.
-	HyperNodes() HyperNodeInformer
+	HyperNodes() TypedHyperNodeInformer
 }
 
 type version struct {
@@ -38,7 +38,7 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// HyperNodes returns a HyperNodeInformer.
-func (v *version) HyperNodes() HyperNodeInformer {
+// HyperNodes returns a TypedHyperNodeInformer.
+func (v *version) HyperNodes() TypedHyperNodeInformer {
 	return &hyperNodeInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

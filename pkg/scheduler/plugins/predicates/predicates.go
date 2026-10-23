@@ -29,6 +29,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/informers"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/features"
@@ -94,6 +95,8 @@ const (
 var (
 	volumeBindingPluginInstance *volumebinding.VolumeBinding
 	volumeBindingPluginOnce     sync.Once
+
+	dynamicResourceAllocationPlugins = map[informers.SharedInformerFactory]*dynamicresources.DynamicResources{}
 )
 
 type PredicatesPlugin struct {
@@ -154,7 +157,6 @@ func New(arguments framework.Arguments) framework.Plugin {
 		EnableStorageCapacityScoring:                 utilFeature.DefaultFeatureGate.Enabled(features.StorageCapacityScoring),
 		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
 		EnableMatchLabelKeysInPodTopologySpread:      utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
-		EnableSidecarContainers:                      utilFeature.DefaultFeatureGate.Enabled(features.SidecarContainers),
 		EnableDRAAdminAccess:                         utilFeature.DefaultFeatureGate.Enabled(features.DRAAdminAccess),
 		EnableDynamicResourceAllocation:              utilFeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation),
 		EnableVolumeAttributesClass:                  utilFeature.DefaultFeatureGate.Enabled(features.VolumeAttributesClass),
@@ -166,6 +168,11 @@ func New(arguments framework.Arguments) framework.Plugin {
 		EnableDRAResourceClaimDeviceStatus:           utilFeature.DefaultFeatureGate.Enabled(features.DRAResourceClaimDeviceStatus),
 		EnableDRADeviceBindingConditions:             utilFeature.DefaultFeatureGate.Enabled(features.DRADeviceBindingConditions),
 		EnableDRAPartitionableDevices:                utilFeature.DefaultFeatureGate.Enabled(features.DRAPartitionableDevices),
+		EnableDRAFractionalCapacityRange:             utilFeature.DefaultFeatureGate.Enabled(features.DRAFractionalCapacityRange),
+		EnableDRADerivedAttributes:                   utilFeature.DefaultFeatureGate.Enabled(features.DRADerivedAttributes),
+		EnableDRAOptionalNodeOperations:              utilFeature.DefaultFeatureGate.Enabled(features.DRAOptionalNodeOperations),
+		EnableDRADeviceCompatibilityGroups:           utilFeature.DefaultFeatureGate.Enabled(features.DRADeviceCompatibilityGroups),
+		EnableVolumeLimitScaling:                     utilFeature.DefaultFeatureGate.Enabled(features.VolumeLimitScaling),
 	}
 	return &PredicatesPlugin{pluginArguments: arguments, enabledPredicates: predicate, features: features}
 }
@@ -468,16 +475,6 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 // It is safe here to directly use the state to run plugins because we have already initialized the cycle state
 // for each pending pod when open session and will not meet nil state.
 func (pp *PredicatesPlugin) PrePredicate(task *api.TaskInfo, state *k8sframework.CycleState, nodeInfoList []fwk.NodeInfo) error {
-	// Check restartable container
-	if !pp.features.EnableSidecarContainers && task.HasRestartableInitContainer {
-		// Scheduler will calculate resources usage for a Pod containing
-		// restartable init containers that will be equal or more than kubelet will
-		// require to run the Pod. So there will be no overbooking. However, to
-		// avoid the inconsistency in resource calculation between the scheduler
-		// and the older (before v1.28) kubelet, make the Pod unschedulable.
-		return fmt.Errorf("pod has a restartable init container and the SidecarContainers feature is disabled")
-	}
-
 	// Run all PreFilter plugins
 	for _, name := range pp.PreFilterOrder {
 		plugin, exists := pp.PreFilterPlugins[name]
@@ -654,13 +651,19 @@ func (pp *PredicatesPlugin) InitPlugin() {
 	}
 	// 10. DRA
 	if pp.enabledPredicates.dynamicResourceAllocationEnable {
-		draArgs := defaultDynamicResourcesArgs()
-		setUpDynamicResourcesArgs(draArgs, pp.pluginArguments)
-		plugin, err := dynamicresources.New(context.TODO(), draArgs.DynamicResourcesArgs, pp.Handle, pp.features)
-		if err != nil {
-			klog.Fatalf("failed to create dra plugin with err: %v", err)
+		// Since Kubernetes 1.37 DRA registers a pod informer indexer, so create it once per factory.
+		factory := pp.Handle.SharedInformerFactory()
+		dynamicResourceAllocationPlugin, ok := dynamicResourceAllocationPlugins[factory]
+		if !ok {
+			draArgs := defaultDynamicResourcesArgs()
+			setUpDynamicResourcesArgs(draArgs, pp.pluginArguments)
+			plugin, err := dynamicresources.New(context.TODO(), draArgs.DynamicResourcesArgs, pp.Handle, pp.features)
+			if err != nil {
+				klog.Fatalf("failed to create dra plugin with err: %v", err)
+			}
+			dynamicResourceAllocationPlugin = plugin.(*dynamicresources.DynamicResources)
+			dynamicResourceAllocationPlugins[factory] = dynamicResourceAllocationPlugin
 		}
-		dynamicResourceAllocationPlugin := plugin.(*dynamicresources.DynamicResources)
 		addFilterPlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addPreFilterPlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addReservePlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)

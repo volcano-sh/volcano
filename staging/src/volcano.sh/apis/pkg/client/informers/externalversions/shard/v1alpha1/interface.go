@@ -24,7 +24,7 @@ import (
 // Interface provides access to all the informers in this group version.
 type Interface interface {
 	// NodeShards returns a NodeShardInformer.
-	NodeShards() NodeShardInformer
+	NodeShards() TypedNodeShardInformer
 }
 
 type version struct {
@@ -38,7 +38,7 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// NodeShards returns a NodeShardInformer.
-func (v *version) NodeShards() NodeShardInformer {
+// NodeShards returns a TypedNodeShardInformer.
+func (v *version) NodeShards() TypedNodeShardInformer {
 	return &nodeShardInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

@@ -33,11 +33,39 @@ import (
 )
 
 // QueueInformer provides access to a shared informer and lister for
-// Queues.
+// Queues. Prefer using the type-safe variant (see [TypedQueueInformer]).
 type QueueInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() schedulingv1beta1.QueueLister
 }
+
+// TypedQueueInformer provides access to a shared informer and lister for
+// Queues, including the type-safe TypedInformer variant.
+// It is a superset of QueueInformer.
+type TypedQueueInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() QueueIndexInformer
+	Lister() schedulingv1beta1.QueueLister
+}
+
+// QueueIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type QueueIndexInformer cache.TypedSharedIndexInformer[*apisschedulingv1beta1.Queue]
+
+// QueueHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for Queue.
+type QueueHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apisschedulingv1beta1.Queue]
+
+// QueueDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for Queue.
+type QueueDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apisschedulingv1beta1.Queue]
+
+// QueueFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for Queue.
+type QueueFilteringHandler = cache.TypedFilteringResourceEventHandler[*apisschedulingv1beta1.Queue]
+
+// QueueIndexers is a specialization of [cache.TypedIndexers] for Queue.
+type QueueIndexers = cache.TypedIndexers[*apisschedulingv1beta1.Queue]
+
+// DeletedQueue is a specialization of [cache.DeletedObject] for Queue.
+type DeletedQueue = cache.DeletedObject[*apisschedulingv1beta1.Queue]
 
 type queueInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -47,25 +75,49 @@ type queueInformer struct {
 // NewQueueInformer constructs a new informer for Queue type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedQueueInformer]).
 func NewQueueInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewQueueInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedQueueInformer constructs a new informer for Queue type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedQueueInformer(client versioned.Interface, resyncPeriod time.Duration, indexers QueueIndexers) QueueIndexInformer {
+	return NewTypedQueueInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredQueueInformer constructs a new informer for Queue type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredQueueInformer]).
 func NewFilteredQueueInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewQueueInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+	return NewTypedQueueInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredQueueInformer constructs a new informer for Queue type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredQueueInformer(client versioned.Interface, resyncPeriod time.Duration, indexers QueueIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) QueueIndexInformer {
+	return NewTypedQueueInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
 }
 
 // NewQueueInformerWithOptions constructs a new informer for Queue type with additional options.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedQueueInformerWithOptions]).
 func NewQueueInformerWithOptions(client versioned.Interface, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedQueueInformerWithOptions(client, options)
+}
+
+// NewTypedQueueInformerWithOptions constructs a new informer for Queue type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedQueueInformerWithOptions(client versioned.Interface, options internalinterfaces.InformerOptions) QueueIndexInformer {
 	gvr := schema.GroupVersionResource{Group: "scheduling.volcano.sh", Version: "v1beta1", Resource: "queues"}
 	identifier := options.InformerName.WithResource(gvr)
 	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
+	return cache.NewTypedSharedIndexInformer[*apisschedulingv1beta1.Queue](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
@@ -98,17 +150,57 @@ func NewQueueInformerWithOptions(client versioned.Interface, options internalint
 			Indexers:     options.Indexers,
 			Identifier:   identifier,
 		},
-	)
+	))
 }
 
 func (f *queueInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewQueueInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewTypedQueueInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *queueInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apisschedulingv1beta1.Queue{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *queueInformer) TypedInformer() QueueIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisschedulingv1beta1.Queue](f.factory.InformerFor(&apisschedulingv1beta1.Queue{}, f.defaultInformer))
 }
 
 func (f *queueInformer) Lister() schedulingv1beta1.QueueLister {
 	return schedulingv1beta1.NewQueueLister(f.Informer().GetIndexer())
+}
+
+// ToTypedQueueInformer converts an untyped informer into a TypedQueueInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *Queue. If that is not the case, calling type-safe methods of the returned
+// TypedQueueInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedQueueInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedQueueInformer(informer QueueInformer) TypedQueueInformer {
+	if informer, ok := informer.(TypedQueueInformer); ok {
+		return informer
+	}
+	return &queueTypedInformerAdapter{informer}
+}
+
+type queueTypedInformerAdapter struct {
+	QueueInformer
+}
+
+func (a *queueTypedInformerAdapter) TypedInformer() QueueIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisschedulingv1beta1.Queue](a.Informer())
+}
+
+// ToQueueIndexInformer converts an untyped informer into a QueueIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *Queue. If that is not the case, calling type-safe methods of the returned
+// QueueIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a QueueIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToQueueIndexInformer(informer cache.SharedIndexInformer) QueueIndexInformer {
+	if informer, ok := informer.(QueueIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apisschedulingv1beta1.Queue](informer)
 }
