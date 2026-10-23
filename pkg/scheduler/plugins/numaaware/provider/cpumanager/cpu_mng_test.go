@@ -43,11 +43,71 @@ var numaInfo = api.NumatopoInfo{
 	},
 }
 
+// reservedFailTopoInfo represents a misconfigured node whose reserved CPU
+// count (9) exceeds the total number of CPUs (8).
+var reservedFailTopoInfo = api.NumatopoInfo{
+	CPUDetail: numaInfo.CPUDetail,
+	ResReserved: v1.ResourceList{
+		v1.ResourceCPU: *resource.NewQuantity(9, ""),
+	},
+}
+
+func Test_reserveCPUs(t *testing.T) {
+	testCases := []struct {
+		name      string
+		topoInfo  api.NumatopoInfo
+		expectSet cpuset.CPUSet
+		expectErr bool
+	}{
+		{
+			name:      "no-reservation",
+			topoInfo:  numaInfo,
+			expectSet: cpuset.New(),
+			expectErr: false,
+		},
+		{
+			name: "normal-reservation",
+			topoInfo: api.NumatopoInfo{
+				CPUDetail: numaInfo.CPUDetail,
+				ResReserved: v1.ResourceList{
+					v1.ResourceCPU: *resource.NewQuantity(2, ""),
+				},
+			},
+			expectSet: cpuset.New(0, 1),
+			expectErr: false,
+		},
+		{
+			name:      "reservation-exceeds-total-cpus",
+			topoInfo:  reservedFailTopoInfo,
+			expectSet: cpuset.New(),
+			expectErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		cputopo := &topology.CPUTopology{
+			NumCPUs:    tc.topoInfo.CPUDetail.CPUs().Size(),
+			NumCores:   getPhysicalCoresNum(tc.topoInfo.CPUDetail),
+			NumSockets: tc.topoInfo.CPUDetail.Sockets().Size(),
+			CPUDetails: tc.topoInfo.CPUDetail,
+		}
+
+		reserved, err := reserveCPUs(&tc.topoInfo, cputopo)
+		if (err != nil) != tc.expectErr {
+			t.Errorf("%s: expected error=%v, got %v", tc.name, tc.expectErr, err)
+		}
+		if !reserved.Equals(tc.expectSet) {
+			t.Errorf("%s: expected reserved=%v, got %v", tc.name, tc.expectSet, reserved)
+		}
+	}
+}
+
 func Test_GetTopologyHints(t *testing.T) {
 	teseCases := []struct {
 		name        string
 		container   v1.Container
 		resNumaSets api.ResNumaSets
+		topoInfo    *api.NumatopoInfo
 		expect      []policy.TopologyHint
 	}{
 		{
@@ -195,11 +255,30 @@ func Test_GetTopologyHints(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "test-7-reservation-exceeds-total-cpus",
+			container: v1.Container{
+				Resources: v1.ResourceRequirements{
+					Requests: v1.ResourceList{
+						"cpu": *resource.NewQuantity(4, ""),
+					},
+				},
+			},
+			resNumaSets: api.ResNumaSets{
+				"cpu": cpuset.New(0, 1, 2, 3, 4, 5, 6, 7),
+			},
+			topoInfo: &reservedFailTopoInfo,
+			expect:   []policy.TopologyHint{},
+		},
 	}
 
 	for _, testcase := range teseCases {
 		provider := NewProvider()
-		topologyHintmap := provider.GetTopologyHints(&testcase.container, &numaInfo, testcase.resNumaSets)
+		topoInfo := testcase.topoInfo
+		if topoInfo == nil {
+			topoInfo = &numaInfo
+		}
+		topologyHintmap := provider.GetTopologyHints(&testcase.container, topoInfo, testcase.resNumaSets)
 		if !(equality.Semantic.DeepEqual(topologyHintmap["cpu"], testcase.expect) ||
 			(len(topologyHintmap["cpu"]) == 0 && len(testcase.expect) == 0)) {
 			t.Errorf("%s failed. topologyHintmap = %v\n", testcase.name, topologyHintmap)
@@ -213,6 +292,7 @@ func Test_Allocate(t *testing.T) {
 		container   v1.Container
 		resNumaSets api.ResNumaSets
 		bestHit     *policy.TopologyHint
+		topoInfo    *api.NumatopoInfo
 		expect      cpuset.CPUSet
 	}{
 		{
@@ -320,11 +400,37 @@ func Test_Allocate(t *testing.T) {
 			},
 			expect: cpuset.New(),
 		},
+		{
+			name: "test-6-reservation-exceeds-total-cpus",
+			container: v1.Container{
+				Resources: v1.ResourceRequirements{
+					Requests: v1.ResourceList{
+						"cpu": *resource.NewQuantity(4, ""),
+					},
+				},
+			},
+			resNumaSets: api.ResNumaSets{
+				"cpu": cpuset.New(0, 1, 2, 3, 4, 5, 6, 7),
+			},
+			bestHit: &policy.TopologyHint{
+				NUMANodeAffinity: func() bitmask.BitMask {
+					mask, _ := bitmask.NewBitMask(0)
+					return mask
+				}(),
+				Preferred: true,
+			},
+			topoInfo: &reservedFailTopoInfo,
+			expect:   cpuset.New(),
+		},
 	}
 
 	for _, testcase := range teseCases {
 		provider := NewProvider()
-		assignMap := provider.Allocate(&testcase.container, testcase.bestHit, &numaInfo, testcase.resNumaSets)
+		topoInfo := testcase.topoInfo
+		if topoInfo == nil {
+			topoInfo = &numaInfo
+		}
+		assignMap := provider.Allocate(&testcase.container, testcase.bestHit, topoInfo, testcase.resNumaSets)
 		if !(equality.Semantic.DeepEqual(assignMap["cpu"], testcase.expect)) {
 			t.Errorf("%s failed.\n", testcase.name)
 		}
