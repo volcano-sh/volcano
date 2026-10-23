@@ -66,6 +66,8 @@ type EvictionContext struct {
 type UnifiedEvictableFn func(ctx *EvictionContext, candidates []*TaskInfo) ([]*TaskInfo, int)
 ```
 
+Gang actions can replay cumulative candidate prefixes. Each invocation must evaluate the complete input against the unchanged session snapshot without persisting trial accounting. Rejected trials are omitted from subsequent prefixes.
+
 #### Pros
 
 * `EvictionKind` states gang vs legacy preempt/reclaim directly in the context, and `EvictionContext` groups job, task, pending tasks, and hypernode so job-oriented gang eviction does not depend on one representative task for all plugins.
