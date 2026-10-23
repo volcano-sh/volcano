@@ -336,3 +336,35 @@ func TestGetPredicatedNodeByShard(t *testing.T) {
 		})
 	}
 }
+
+func TestPredicateHelperWithFeasibleNodeTarget(t *testing.T) {
+	previousOpts := options.ServerOpts
+	options.ServerOpts = &options.ServerOption{
+		MinNodesToFind: 100, MinPercentageOfNodesToFind: 5,
+	}
+	t.Cleanup(func() { options.ServerOpts = previousOpts })
+	nodes := make([]*api.NodeInfo, 1000)
+	for i := range nodes {
+		nodes[i] = &api.NodeInfo{Name: fmt.Sprintf("node-%d", i)}
+	}
+	task := &api.TaskInfo{Name: "task"}
+	predicate := func(*api.TaskInfo, *api.NodeInfo) error { return nil }
+	helper := NewPredicateHelperWithFeasibleNodeTarget(680)
+	for _, candidateCount := range []int{1000, 1, 1000, 0} {
+		result, _ := helper.PredicateNodes(task, nodes[:candidateCount], predicate, false, nil)
+		if want := min(680, candidateCount); len(result) != want {
+			t.Fatalf("%d candidates: expected %d feasible nodes, got %d", candidateCount, want, len(result))
+		}
+	}
+	for _, target := range []int32{0, -1} {
+		helper := NewPredicateHelperWithFeasibleNodeTarget(target)
+		result, _ := helper.PredicateNodes(task, nodes, predicate, false, nil)
+		if len(result) != 0 {
+			t.Fatalf("target %d: expected no feasible nodes, got %d", target, len(result))
+		}
+	}
+	result, _ := NewPredicateHelper().PredicateNodes(task, nodes, predicate, false, nil)
+	if len(result) != 420 {
+		t.Fatalf("default helper must retain adaptive sampling: got %d feasible nodes, want 420", len(result))
+	}
+}

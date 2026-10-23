@@ -106,7 +106,7 @@ func TestPlacementReconciledAcrossSessions(t *testing.T) {
 					ssn.Nodes["node-1"].Idle = api.EmptyResource()
 					ssn.Nodes["node-1"].Releasing = ssn.Nodes["node-1"].Allocatable.Clone()
 				}
-				alloc := &Action{session: ssn, recorder: NewRecorder()}
+				alloc := &Action{session: ssn, recorder: NewRecorder(), queueNodes: make(map[queueNodeCacheKey][]*api.NodeInfo)}
 				stmt := alloc.allocateResourcesForTasks(subJob, tasks, "domain-b")
 				require.NotNil(t, stmt)
 				require.Len(t, stmt.Operations(), 1)

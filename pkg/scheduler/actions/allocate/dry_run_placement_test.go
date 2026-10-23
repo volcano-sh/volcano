@@ -19,10 +19,12 @@ package allocate
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -399,6 +401,7 @@ type dryRunPlacementEnv struct {
 func (e *dryRunPlacementEnv) action() *Action {
 	alloc := New()
 	alloc.session = e.ssn
+	alloc.queueNodes = make(map[queueNodeCacheKey][]*api.NodeInfo)
 	alloc.recorder = NewRecorder()
 	return alloc
 }
@@ -594,4 +597,82 @@ func buildDryRunJob(t *testing.T, opts dryRunEnvOptions) (*api.JobInfo, *api.Sub
 		t.Fatal("subJob not found")
 	}
 	return job, subJob
+}
+
+func TestQueueCandidatesDoNotReplaceRestrictedHyperNode(t *testing.T) {
+	env := newDryRunPlacementEnv(t, dryRunEnvOptions{
+		nodeCPU:      map[string]string{"node-a": "8"},
+		tasks:        []dryRunTaskSpec{{name: "p1", cpu: "1", mem: "1G", role: "worker"}},
+		minMember:    1,
+		subGroupSize: 1,
+	})
+	alloc := env.action()
+	// A cluster-wide cached result must not replace a restricted leaf scope.
+	alloc.queueNodes = map[queueNodeCacheKey][]*api.NodeInfo{
+		{queueID: env.job.Queue, hyperNode: framework.ClusterTopHyperNode}: nil,
+	}
+	stmt := alloc.allocateResourcesForTasks(env.subJob, env.pendingTasks(), "sn-a")
+	if stmt == nil || len(stmt.Operations()) != 1 {
+		t.Fatal("restricted HyperNode allocation was affected by cluster-wide queue candidates")
+	}
+	defer stmt.Discard()
+	for _, task := range env.job.Tasks {
+		if task.NodeName != "node-a" {
+			t.Fatalf("task escaped its HyperNode: got node %s", task.NodeName)
+		}
+	}
+}
+
+func TestQueueCandidatesCacheByQueueAndHyperNode(t *testing.T) {
+	env := newDryRunPlacementEnv(t, dryRunEnvOptions{
+		nodeCPU:   map[string]string{"node-a": "8", "node-b": "8"},
+		tasks:     []dryRunTaskSpec{{name: "p1", cpu: "1", mem: "1G"}},
+		minMember: 1, subGroupSize: 1,
+	})
+	env.ssn.Queues["q2"] = api.NewQueueInfo(&scheduling.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "q2"}, Spec: scheduling.QueueSpec{Weight: 1},
+	})
+	env.ssn.Tiers[0].Plugins[1].EnabledQueueNodeFilter = ptr.To(true)
+	calls := map[queueNodeCacheKey]int{}
+	env.ssn.AddQueueNodeFilterFn(dryRunTestPlugin, func(queue *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
+		require.Len(t, nodes, 1, "filter input must stay within the requested HyperNode")
+		hyperNode := "sn-a"
+		if nodes[0].Name == "node-b" {
+			hyperNode = "sn-b"
+		}
+		calls[queueNodeCacheKey{queueID: queue.UID, hyperNode: hyperNode}]++
+		if queue.UID == "q2" && hyperNode == "sn-a" {
+			return nil
+		}
+		return nodes
+	})
+	alloc := env.action()
+	for _, tc := range []struct {
+		queue     api.QueueID
+		hyperNode string
+		wantNode  string
+	}{
+		{queue: "q1", hyperNode: "sn-a", wantNode: "node-a"},
+		{queue: "q1", hyperNode: "sn-a", wantNode: "node-a"},
+		{queue: "q1", hyperNode: "sn-b", wantNode: "node-b"},
+		{queue: "q2", hyperNode: "sn-a"},
+		{queue: "q2", hyperNode: "sn-a"},
+		{queue: "q2", hyperNode: "sn-b", wantNode: "node-b"},
+		{queue: "q1", hyperNode: "sn-a", wantNode: "node-a"},
+	} {
+		env.job.Queue = tc.queue
+		stmt := alloc.allocateResourcesForTasks(env.subJob, env.pendingTasks(), tc.hyperNode)
+		if tc.wantNode == "" {
+			require.Nil(t, stmt, "empty cached candidates must not fall back to other nodes")
+		} else {
+			require.NotNil(t, stmt, "queue %s, HyperNode %s", tc.queue, tc.hyperNode)
+			require.Len(t, stmt.Operations(), 1)
+			require.Equal(t, tc.wantNode, env.job.Tasks["p1"].NodeName)
+			stmt.Discard()
+		}
+	}
+	require.Len(t, calls, 4)
+	for key, count := range calls {
+		require.Equal(t, 1, count, "candidates for %v must be calculated only once", key)
+	}
 }
