@@ -26,7 +26,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
+	clienttesting "k8s.io/client-go/testing"
 
 	"volcano.sh/volcano/pkg/agent/apis"
 	"volcano.sh/volcano/pkg/agent/events/framework"
@@ -58,21 +60,14 @@ func Test_manager_Handle(t *testing.T) {
 		return fakeTime
 	})
 
-	pp := utiltesting.NewPodProvider(
-		utiltesting.MakePod("offline-pod-1", 30, 30, "BE"),
-		utiltesting.MakePod("offline-pod-2", 40, 30, "BE"),
-		utiltesting.MakePod("online-pod", 10, 10, ""),
-	)
-
 	tests := []struct {
-		name         string
-		event        interface{}
-		Eviction     eviction.Eviction
-		policy       func(cfg *config.Configuration, pods utilpod.ActivePods, evictor eviction.Eviction) policy.Interface
-		getNodeFunc  utilnode.ActiveNode
-		getPodsFunc  utilpod.ActivePods
-		wantErr      assert.ErrorAssertionFunc
-		expectedNode func() *v1.Node
+		name                   string
+		event                  interface{}
+		policy                 func(cfg *config.Configuration, pods utilpod.ActivePods, evictor eviction.Eviction) policy.Interface
+		getNodeFunc            utilnode.ActiveNode
+		wantErr                assert.ErrorAssertionFunc
+		expectedNode           func() *v1.Node
+		wantDisableScheduleErr bool
 	}{
 		{
 			name: "evict high request pod with extend resource",
@@ -80,11 +75,9 @@ func Test_manager_Handle(t *testing.T) {
 				TimeStamp: time.Now(),
 				Resource:  v1.ResourceCPU,
 			},
-			Eviction: pp,
 			policy: func(cfg *config.Configuration, pods utilpod.ActivePods, evictor eviction.Eviction) policy.Interface {
 				return extend.NewExtendResource(cfg, nil, evictor, nil, "")
 			},
-			getPodsFunc: pp.GetPodsFunc,
 			getNodeFunc: makeNode,
 			wantErr:     assert.NoError,
 			expectedNode: func() *v1.Node {
@@ -97,12 +90,35 @@ func Test_manager_Handle(t *testing.T) {
 				return node
 			},
 		},
+		{
+			name: "do not evict pods when disabling schedule fails",
+			event: framework.NodeMonitorEvent{
+				TimeStamp: time.Now(),
+				Resource:  v1.ResourceCPU,
+			},
+			policy: func(cfg *config.Configuration, pods utilpod.ActivePods, evictor eviction.Eviction) policy.Interface {
+				return extend.NewExtendResource(cfg, nil, evictor, nil, "")
+			},
+			getNodeFunc:            makeNode,
+			wantErr:                assert.Error,
+			wantDisableScheduleErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			pp := utiltesting.NewPodProvider(
+				utiltesting.MakePod("offline-pod-1", 30, 30, "BE"),
+				utiltesting.MakePod("offline-pod-2", 40, 30, "BE"),
+				utiltesting.MakePod("online-pod", 10, 10, ""),
+			)
 			fakeNode, err := makeNode()
 			assert.NoError(t, err)
 			fakeClient := fakeclientset.NewSimpleClientset(fakeNode)
+			if tt.wantDisableScheduleErr {
+				fakeClient.PrependReactor("patch", "nodes", func(action clienttesting.Action) (bool, runtime.Object, error) {
+					return true, nil, fmt.Errorf("injected disable schedule error")
+				})
+			}
 			cfg := &config.Configuration{GenericConfiguration: &config.VolcanoAgentConfiguration{
 				KubeClient:   fakeClient,
 				KubeNodeName: "test-node",
@@ -112,12 +128,20 @@ func Test_manager_Handle(t *testing.T) {
 			}}
 			m := &manager{
 				cfg:         cfg,
-				Interface:   tt.policy(cfg, tt.getPodsFunc, nil),
-				Eviction:    tt.Eviction,
+				Interface:   tt.policy(cfg, pp.GetPodsFunc, nil),
+				Eviction:    pp,
 				getNodeFunc: tt.getNodeFunc,
-				getPodsFunc: tt.getPodsFunc,
+				getPodsFunc: pp.GetPodsFunc,
 			}
 			tt.wantErr(t, m.Handle(tt.event), fmt.Sprintf("Handle(%v)", tt.event))
+
+			// When disabling schedule fails, no pod should be evicted and the
+			// node is not expected to carry the eviction taint.
+			if tt.wantDisableScheduleErr {
+				assert.Empty(t, pp.GetEvictedPods(), "no pod should be evicted when disabling schedule fails")
+				return
+			}
+
 			evictedPods := pp.GetEvictedPods()
 			// Verify that pod should be evicted.
 			if len(evictedPods) == 0 || evictedPods[0].Name != "offline-pod-2" {
