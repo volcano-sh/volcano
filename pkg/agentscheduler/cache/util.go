@@ -21,8 +21,8 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
 	schedfwk "k8s.io/kube-scheduler/framework"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/utils/clock"
 
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
@@ -102,27 +102,17 @@ func GetPodSchedulingPriority(pod *v1.Pod) int {
 // 2. Pod priority class (from PodSpec)
 // 3. Timestamp (earlier is higher priority)
 func Less(pInfo1, pInfo2 schedfwk.QueuedEntityInfo) bool {
-	// Kubernetes 1.37 queues generic entities; the agent scheduler only queues pods.
-	podInfo1, ok1 := pInfo1.(interface{ GetPodInfo() schedfwk.PodInfo })
-	podInfo2, ok2 := pInfo2.(interface{ GetPodInfo() schedfwk.PodInfo })
-	if !ok1 || !ok2 {
-		return pInfo1.GetPriority() > pInfo2.GetPriority() ||
-			(pInfo1.GetPriority() == pInfo2.GetPriority() && pInfo1.GetTimestamp().Before(pInfo2.GetTimestamp()))
-	}
-	pod1 := podInfo1.GetPodInfo().GetPod()
-	pod2 := podInfo2.GetPodInfo().GetPod()
-
 	// 1. Compare internal scheduling priority (from annotations)
-	schedulingPriority1 := GetPodSchedulingPriority(pod1)
-	schedulingPriority2 := GetPodSchedulingPriority(pod2)
+	schedulingPriority1 := GetPodSchedulingPriority(pInfo1.(*k8sframework.QueuedPodInfo).Pod)
+	schedulingPriority2 := GetPodSchedulingPriority(pInfo2.(*k8sframework.QueuedPodInfo).Pod)
 
 	if schedulingPriority1 != schedulingPriority2 {
 		return schedulingPriority1 > schedulingPriority2
 	}
 
 	// 2. If scheduling priorities are equal, compare pod priority class
-	podPriority1 := corev1helpers.PodPriority(pod1)
-	podPriority2 := corev1helpers.PodPriority(pod2)
+	podPriority1 := pInfo1.GetPriority()
+	podPriority2 := pInfo2.GetPriority()
 
 	if podPriority1 != podPriority2 {
 		return podPriority1 > podPriority2

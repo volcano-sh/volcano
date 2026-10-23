@@ -96,8 +96,7 @@ var (
 	volumeBindingPluginInstance *volumebinding.VolumeBinding
 	volumeBindingPluginOnce     sync.Once
 
-	dynamicResourceAllocationPlugins   = map[informers.SharedInformerFactory]*dynamicresources.DynamicResources{}
-	dynamicResourceAllocationPluginsMu sync.Mutex
+	dynamicResourceAllocationPlugins = map[informers.SharedInformerFactory]*dynamicresources.DynamicResources{}
 )
 
 type PredicatesPlugin struct {
@@ -653,7 +652,6 @@ func (pp *PredicatesPlugin) InitPlugin() {
 	// 10. DRA
 	if pp.enabledPredicates.dynamicResourceAllocationEnable {
 		// Since Kubernetes 1.37 DRA registers a pod informer indexer, so create it once per factory.
-		dynamicResourceAllocationPluginsMu.Lock()
 		factory := pp.Handle.SharedInformerFactory()
 		dynamicResourceAllocationPlugin, ok := dynamicResourceAllocationPlugins[factory]
 		if !ok {
@@ -666,7 +664,6 @@ func (pp *PredicatesPlugin) InitPlugin() {
 			dynamicResourceAllocationPlugin = plugin.(*dynamicresources.DynamicResources)
 			dynamicResourceAllocationPlugins[factory] = dynamicResourceAllocationPlugin
 		}
-		dynamicResourceAllocationPluginsMu.Unlock()
 		addFilterPlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addPreFilterPlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addReservePlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
