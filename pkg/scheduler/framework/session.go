@@ -158,6 +158,7 @@ type Session struct {
 	simulateAddTaskFns            map[string]api.SimulateAddTaskFn
 	simulatePredicateFns          map[string]api.SimulatePredicateFn
 	simulateAllocatableFns        map[string]api.SimulateAllocatableFn
+	batchVictimScoreFns           map[string]api.BatchVictimScoreFn
 	subJobReadyFns                map[string]api.ValidateFn
 	subJobPipelinedFns            map[string]api.VoteFn
 	subJobOrderFns                map[string]api.CompareFn
@@ -244,6 +245,7 @@ func openSession(schedulerCache cache.Cache, unschedulableJobCache unschedulable
 		simulateAddTaskFns:            map[string]api.SimulateAddTaskFn{},
 		simulatePredicateFns:          map[string]api.SimulatePredicateFn{},
 		simulateAllocatableFns:        map[string]api.SimulateAllocatableFn{},
+		batchVictimScoreFns:           map[string]api.BatchVictimScoreFn{},
 		subJobReadyFns:                map[string]api.ValidateFn{},
 		subJobPipelinedFns:            map[string]api.VoteFn{},
 		subJobOrderFns:                map[string]api.CompareFn{},
