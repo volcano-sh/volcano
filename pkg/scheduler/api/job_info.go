@@ -932,11 +932,26 @@ func (ji *JobInfo) schedulingDimensions(taskID TaskID) string {
 			nodeSummary = fe.Error()
 		}
 	} else {
-		for _, taskInfo := range ji.Tasks {
-			if fe := ji.NodesFitErrors[taskInfo.UID]; fe != nil {
-				nodeSummary = fmt.Sprintf("%s: %s", taskInfo.Name, fe.Error())
-				break
+		var selectedTask *TaskInfo
+		var selectedError *FitErrors
+		// Show one task's failure details to keep the job summary concise.
+		// Select by UID so unordered map iteration does not change the message
+		// and trigger status updates and events for identical scheduling failures.
+		for uid, fe := range ji.NodesFitErrors {
+			if fe == nil {
+				continue
 			}
+			task := ji.Tasks[uid]
+			if task == nil {
+				continue
+			}
+			if selectedTask == nil || uid < selectedTask.UID {
+				selectedTask = task
+				selectedError = fe
+			}
+		}
+		if selectedTask != nil {
+			nodeSummary = fmt.Sprintf("%s: %s", selectedTask.Name, selectedError.Error())
 		}
 	}
 	return FormatSchedulingDimensions(ji.JobFitErrors, nodeSummary)
