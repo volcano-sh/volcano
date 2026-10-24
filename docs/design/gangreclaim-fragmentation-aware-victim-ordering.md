@@ -6,8 +6,9 @@ This change proposes an optional resource-layout tie-breaker for `gangreclaim`.
 It preserves the existing bundle type, victim queue and ROI ordering. It only
 changes the final choice between otherwise equivalent victim bundles.
 
-This draft contains a baseline reproducer and a proposed policy. It does not
-change the production scheduler or claim that the proposed heuristic is optimal.
+This draft contains a baseline reproducer and an opt-in proof of concept. The
+option defaults to false. The policy remains under discussion, and the heuristic
+does not claim to find an optimal victim set.
 
 ## Reproduction on current master
 
@@ -15,7 +16,7 @@ Baseline: `0854d3a4018c9304f8a25ded7a6f136c539f753c`.
 
 Two worker nodes each have an effective budget of 4 CPU. All existing workload
 Pods request 1 CPU. There are two victim jobs in the same queue, each with
-`minMember: 1`, three Running Pods, and one protected anchor Pod. Only the other
+`minMember: 1` and three Running Pods, one of which is a protected anchor. Only the other
 two Pods of each victim job are preemptable. The jobs therefore each have one
 SAFE bundle containing two 1-CPU Pods.
 
@@ -49,9 +50,16 @@ Pod UID disappearance, Events and the reclaimer's actual phase/node were
 recorded. This is a small CPU functional reproduction, not a throughput benchmark
 or validation on accelerator hardware.
 
-The action-level characterization test reproduces the same four cases through
-the real scheduler cache/session and the gang/capacity plugins. Its cache clients
-and eviction sink are fake; it supplements the Kind evidence.
+The action-level test reproduces the same four cases with the option off and
+checks the corresponding enabled cases through the real scheduler cache/session
+and gang/capacity plugins. Its cache clients and eviction sink are fake; it
+supplements the Kind evidence. A failed-predicate case checks that resource fit
+cannot override placement validation and that speculative evictions roll back.
+
+With the proof-of-concept option enabled, all four Kind cases evicted only
+`packed-1` and `packed-2`, and the reclaimer became Running on n2. The same
+source-built binary with the option disabled retained the baseline results.
+The tainted control-plane node remained present in all runs.
 
 ## Why the current order matters
 
@@ -78,8 +86,8 @@ different order, or that the current behavior violates an existing guarantee.
 
 ## Proposed first increment
 
-Add `enableFragmentationAwareVictimOrder` to the `gangreclaim` action, defaulting
-to `false`. When enabled, order by:
+The proof of concept adds `enableFragmentationAwareVictimOrder` to the
+`gangreclaim` action, defaulting to `false`. When enabled, order by:
 
 1. Existing SAFE/WHOLE bundle type.
 2. Existing victim queue order.
@@ -88,12 +96,25 @@ to `false`. When enabled, order by:
 5. Existing stable identifiers.
 
 For each candidate bundle, calculate a resource-only score from the current
-domain snapshot: how many of the pending target tasks can individually fit on
-at least one node after releasing that bundle's tasks on their respective nodes.
-Use `FutureIdle()` plus the bundle's per-node released requests, and compare
-against each target task's `InitResreq`. A task that fits multiple nodes counts
-once. Compute immutable scores before sorting; do not mutate the session or
-invoke stateful predicates from the comparator.
+domain snapshot: how many pending target tasks gain at least one newly
+resource-feasible node when that bundle is released. For each affected node,
+compare the target's `InitResreq` against both `FutureIdle()` and `FutureIdle()`
+plus the bundle's per-node released requests. Count a target once if it did not
+fit before but fits after on at least one affected node. Compute immutable
+scores before sorting; do not mutate the session or invoke stateful predicates
+from the comparator.
+
+Capacity on unaffected nodes is excluded. A domain-wide absolute fit count can
+hide all layout differences when an unrelated node has spare resources but is
+unusable because of taints or another predicate. This occurred in the first
+Kind prototype with the tainted control-plane node. Measuring newly gained fits
+on victim nodes avoids that masking and avoids a full domain scan per target.
+
+The implementation indexes domain nodes once and caches `FutureIdle()` resources
+only for nodes with candidate victims. For each bundle it clones the affected
+nodes' cached resources. Scores are stored on temporary bundles; cache, session,
+victim and target resources are not modified. Removing the configuration resets
+the option to false on the next action execution.
 
 In the fixture, the spread bundle scores zero and the packed bundle scores one.
 The score is an ordering heuristic: it does not jointly place the gang and does
@@ -127,6 +148,23 @@ address these cases after functional and scheduling-cost measurements.
   compare scheduler CPU, cycle duration, successful placements and eviction
   counts. Avoid a full predicate simulation for every comparison. Cache the
   resource-only inputs and evaluate affected nodes where possible.
+
+## Proof-of-concept measurements
+
+The scoring/sorting microbenchmark ran on darwin/arm64, Apple M2 Pro. Targets in
+these cases fit neither the original nodes nor the spread bundles. Numbers
+describe one scoring/sorting call, not an
+entire scheduling cycle; `gangreclaim` scores both before and after filtering.
+
+| Nodes / bundles / targets | Option off | Option on | Bytes per enabled call |
+| --- | ---: | ---: | ---: |
+| 100 / 8 / 1 | 0.53 microseconds | 4.78 microseconds | 5,032 |
+| 1,000 / 32 / 16 | 2.77 microseconds | 65.39 microseconds | 62,160 |
+
+These local microbenchmarks quantify added work, not an end-to-end throughput
+improvement. Larger domains, many pending targets, heterogeneous requests and
+production scheduling latency still need representative measurements before a
+default policy change could be considered.
 
 ## Reproduce
 
@@ -162,12 +200,23 @@ go build -o /tmp/volcano-5958/vc-scheduler ./cmd/scheduler
 python3 hack/reproduce-gangreclaim-fragmentation.py \
   --kubeconfig /tmp/volcano-5958/kubeconfig \
   --scheduler /tmp/volcano-5958/vc-scheduler \
-  --evidence-dir /tmp/volcano-5958/evidence
+  --evidence-dir /tmp/volcano-5958/disabled
+python3 hack/reproduce-gangreclaim-fragmentation.py \
+  --kubeconfig /tmp/volcano-5958/kubeconfig \
+  --scheduler /tmp/volcano-5958/vc-scheduler \
+  --evidence-dir /tmp/volcano-5958/enabled --enable-fragmentation-order
 kind delete cluster --name volcano-5958
 ```
 
 The harness writes per-case before/after Pod snapshots, Events, scheduler logs
 and `summary.json`. Do not publish the kubeconfig with the evidence.
+
+Run the scoring/sorting microbenchmark with:
+
+```sh
+go test ./pkg/scheduler/actions/gangreclaim -run '^$' \
+  -bench BenchmarkBundleResourceFitScores -benchmem -benchtime=500ms
+```
 
 ## Discussion requested
 

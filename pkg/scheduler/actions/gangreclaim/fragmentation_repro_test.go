@@ -17,6 +17,7 @@ limitations under the License.
 package gangreclaim
 
 import (
+	"fmt"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -32,8 +33,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-// This characterization test reproduces #5958 on the unchanged scheduler.
-// Changing only victim job names changes the stable bundle tie-breaker.
+// Disabled mode characterizes #5958; enabled mode verifies the proposed fix.
+// Changing only victim job names changes the original stable bundle tie-breaker.
 func TestGangReclaimFragmentationReproduction(t *testing.T) {
 	previousOpts := options.ServerOpts
 	options.ServerOpts = options.NewServerOption()
@@ -41,16 +42,23 @@ func TestGangReclaimFragmentationReproduction(t *testing.T) {
 	t.Cleanup(func() { options.ServerOpts = previousOpts })
 
 	for _, tc := range []struct {
-		name           string
-		spreadFirst    bool
-		victimDeserved string
-		wantEvictions  []string
-		wantPipelined  bool
+		name            string
+		spreadFirst     bool
+		victimDeserved  string
+		wantEvictions   []string
+		wantPipelined   bool
+		enableFitOrder  bool
+		rejectPlacement bool
 	}{
-		{"spread first with four CPU reclaimable", true, "4", []string{"ns/spread-1", "ns/spread-2", "ns/packed-1", "ns/packed-2"}, true},
-		{"packed first with four CPU reclaimable", false, "4", []string{"ns/packed-1", "ns/packed-2"}, true},
-		{"spread first with two CPU reclaimable", true, "6", nil, false},
-		{"packed first with two CPU reclaimable", false, "6", []string{"ns/packed-1", "ns/packed-2"}, true},
+		{"spread first with four CPU reclaimable", true, "4", []string{"ns/spread-1", "ns/spread-2", "ns/packed-1", "ns/packed-2"}, true, false, false},
+		{"packed first with four CPU reclaimable", false, "4", []string{"ns/packed-1", "ns/packed-2"}, true, false, false},
+		{"spread first with two CPU reclaimable", true, "6", nil, false, false, false},
+		{"packed first with two CPU reclaimable", false, "6", []string{"ns/packed-1", "ns/packed-2"}, true, false, false},
+		{"enabled spread first with four CPU reclaimable", true, "4", []string{"ns/packed-1", "ns/packed-2"}, true, true, false},
+		{"enabled packed first with four CPU reclaimable", false, "4", []string{"ns/packed-1", "ns/packed-2"}, true, true, false},
+		{"enabled spread first with two CPU reclaimable", true, "6", []string{"ns/packed-1", "ns/packed-2"}, true, true, false},
+		{"enabled packed first with two CPU reclaimable", false, "6", []string{"ns/packed-1", "ns/packed-2"}, true, true, false},
+		{"enabled resource fit cannot override a failed predicate", true, "6", nil, false, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			spreadPG, packedPG := "a-spread", "b-packed"
@@ -102,11 +110,23 @@ func TestGangReclaimFragmentationReproduction(t *testing.T) {
 				test.ExpectPipeLined = map[string][]string{"ns/reclaimer": {"n2"}}
 			}
 			enabled, disabled := true, false
+			var config []conf.Configuration
+			if tc.enableFitOrder {
+				config = []conf.Configuration{{Name: "gangreclaim", Arguments: map[string]interface{}{
+					EnableFragmentationAwareVictimOrderKey: true,
+				}}}
+			}
 			ssn := test.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{
 				{Name: gang.PluginName, EnabledJobStarving: &enabled, EnabledJobPipelined: &enabled},
 				{Name: capacity.PluginName, EnabledHierarchy: &disabled, EnablePreemptive: &enabled},
-			}}}, nil)
+			}}}, config)
 			defer test.Close()
+			if tc.rejectPlacement {
+				ssn.Tiers[0].Plugins = append(ssn.Tiers[0].Plugins, conf.PluginOption{Name: "reject-placement", EnabledPredicate: &enabled})
+				ssn.AddPredicateFn("reject-placement", func(*api.TaskInfo, *api.NodeInfo) error {
+					return fmt.Errorf("test placement rejection")
+				})
+			}
 			test.Run([]framework.Action{New()})
 			if err := test.CheckAll(0); err != nil {
 				t.Fatal(err)
@@ -114,7 +134,23 @@ func TestGangReclaimFragmentationReproduction(t *testing.T) {
 			if got := ssn.JobPipelined(ssn.Jobs["ns/reclaimer"]); got != tc.wantPipelined {
 				t.Errorf("reclaimer pipelined = %t, want %t", got, tc.wantPipelined)
 			}
-			t.Logf("spreadFirst=%t victimDeserved=%s evictions=%d reclaimerPipelined=%t", tc.spreadFirst, tc.victimDeserved, len(tc.wantEvictions), tc.wantPipelined)
+			if tc.rejectPlacement {
+				for _, job := range ssn.Jobs {
+					for _, task := range job.Tasks {
+						want := api.Running
+						if task.Name == "reclaimer" {
+							want = api.Pending
+							if task.Pod.Status.NominatedNodeName != "" {
+								t.Error("failed placement retained a nomination")
+							}
+						}
+						if task.Status != want {
+							t.Errorf("task %s status = %s, want %s after rollback", task.Name, task.Status, want)
+						}
+					}
+				}
+			}
+			t.Logf("enabled=%t spreadFirst=%t victimDeserved=%s evictions=%d reclaimerPipelined=%t", tc.enableFitOrder, tc.spreadFirst, tc.victimDeserved, len(tc.wantEvictions), tc.wantPipelined)
 		})
 	}
 }

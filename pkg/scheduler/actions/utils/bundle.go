@@ -36,6 +36,8 @@ type Bundle struct {
 	Tasks     []*api.TaskInfo
 	LocalRes  *api.Resource
 	GlobalRes *api.Resource
+	// ResourceFitScore is an optional gangreclaim tie-breaker, computed before sorting.
+	ResourceFitScore int
 }
 
 // CreateJobBundles splits local candidate tasks into safe/whole bundles at job level.
@@ -286,6 +288,9 @@ func SortBundlesForReclaim(bundles []*Bundle, need *api.Resource, lessQueueFn fu
 		jroi := bundleROI(bundles[j], need)
 		if iroi != jroi {
 			return iroi > jroi
+		}
+		if bundles[i].ResourceFitScore != bundles[j].ResourceFitScore {
+			return bundles[i].ResourceFitScore > bundles[j].ResourceFitScore
 		}
 		return stableBundleLess(bundles[i], bundles[j])
 	})

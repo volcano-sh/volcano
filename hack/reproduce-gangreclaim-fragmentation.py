@@ -22,6 +22,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--kubeconfig", required=True, type=pathlib.Path)
 parser.add_argument("--scheduler", required=True, type=pathlib.Path)
 parser.add_argument("--evidence-dir", required=True, type=pathlib.Path)
+parser.add_argument("--enable-fragmentation-order", action="store_true")
 args = parser.parse_args()
 P = args.evidence_dir.resolve()
 P.mkdir(parents=True, exist_ok=True)
@@ -43,6 +44,13 @@ tiers:
 - plugins:
   - name: predicates
   - name: nodeorder
+""")
+if args.enable_fragmentation_order:
+    with (P / "scheduler.conf").open("a") as config:
+        config.write("""configurations:
+- name: gangreclaim
+  arguments:
+    enableFragmentationAwareVictimOrder: true
 """)
 
 
@@ -260,6 +268,7 @@ for index, (spread_first, deserved) in enumerate(
         r = next(p for p in after if p["metadata"]["name"] == "reclaimer")
         summary = {
             "case": index,
+            "fragmentation_order_enabled": args.enable_fragmentation_order,
             "spread_first": spread_first,
             "victim_deserved_cpu": deserved,
             "evicted": evicted,
