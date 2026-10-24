@@ -49,6 +49,12 @@ func TestConcurrentMultiWorkerScheduling(t *testing.T) {
 		nodeCount     int
 	}{
 		{
+			name:          "single worker with bounded result buffer",
+			workerCount:   1,
+			podsPerWorker: 20,
+			nodeCount:     20,
+		},
+		{
 			name:          "concurrent scheduling with 4 workers",
 			workerCount:   4,
 			podsPerWorker: 5,
@@ -155,23 +161,36 @@ func TestConcurrentMultiWorkerScheduling(t *testing.T) {
 				}(w)
 			}
 
-			wg.Wait()
-			close(errCh)
+			results := testFwk.MockCache.ConflictAwareBinder.BindCheckChannel
+			go func() {
+				wg.Wait()
+				close(errCh)
+				close(results)
+			}()
 
+			// Drain results while workers are running so a full Binder buffer
+			// cannot prevent the workers from finishing.
+			received := 0
+		collectResults:
+			for {
+				select {
+				case result, ok := <-results:
+					if !ok {
+						break collectResults
+					}
+					if result == nil || len(result.SuggestedNodes) == 0 {
+						t.Errorf("pod %d: expected at least one suggested node, got nil or empty", received)
+					}
+					received++
+				case <-time.After(5 * time.Second):
+					t.Fatalf("Timeout: only received %d/%d scheduling results", received, totalPods)
+				}
+			}
 			for err := range errCh {
 				t.Errorf("Concurrent scheduling error: %v", err)
 			}
-
-			// Collect all scheduling results from the shared ConflictAwareBinder.
-			for i := 0; i < totalPods; i++ {
-				select {
-				case result := <-testFwk.MockCache.ConflictAwareBinder.BindCheckChannel:
-					if result == nil || len(result.SuggestedNodes) == 0 {
-						t.Errorf("pod %d: expected at least one suggested node, got nil or empty", i)
-					}
-				case <-time.After(5 * time.Second):
-					t.Fatalf("Timeout: only received %d/%d scheduling results", i, totalPods)
-				}
+			if received != totalPods {
+				t.Errorf("Expected %d scheduling results, got %d", totalPods, received)
 			}
 		})
 	}

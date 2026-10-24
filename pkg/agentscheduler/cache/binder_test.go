@@ -19,6 +19,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/agentscheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 )
 
@@ -59,7 +61,7 @@ func TestEnqueueScheduleResult(t *testing.T) {
 	// Create ConflictAwareBinder
 	binder := &ConflictAwareBinder{
 		nodeBindRecords:  make(map[string]int64),
-		BindCheckChannel: make(chan *agentapi.PodScheduleResult, 5000),
+		BindCheckChannel: make(chan *agentapi.PodScheduleResult, 10),
 	}
 
 	// Create a schedule result
@@ -411,8 +413,9 @@ func TestCheckAndBindPod(t *testing.T) {
 			for _, node := range tt.suggestedNodes {
 				setupCacheWithNode(cache, node.Name)
 			}
+			cache.RecordCandidateNodesInBinder(tt.suggestedNodes)
 
-			binder := NewConflictAwareBinder(cache, schedulingQueue)
+			binder := NewConflictAwareBinder(cache, schedulingQueue, 1)
 
 			// Set up pre-existing bind generations if any
 			if tt.preExistingBindGenerations != nil {
@@ -434,6 +437,9 @@ func TestCheckAndBindPod(t *testing.T) {
 
 			// Execute CheckAndBindPod
 			binder.CheckAndBindPod(scheduleResult)
+			if len(cache.NodesInBinder) != 0 {
+				t.Errorf("Expected all candidate nodes to be released, got %v", cache.NodesInBinder)
+			}
 
 			// Verify selected node and bind generation
 			if tt.expectedSelectedNode == "" {
@@ -450,6 +456,111 @@ func TestCheckAndBindPod(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// pausedAssumeCache lets a worker inspect its snapshot before the Binder assumes a pod.
+type pausedAssumeCache struct {
+	Cache
+	entered chan struct{}
+	resume  chan struct{}
+}
+
+func (c *pausedAssumeCache) AddBindTask(bindContext *agentapi.BindContext) error {
+	close(c.entered)
+	<-c.resume
+	return c.Cache.AddBindTask(bindContext)
+}
+
+func TestCheckAndBindPodKeepsCandidatesUntilAssumed(t *testing.T) {
+	cache, queue := mockForTest()
+	t.Cleanup(cache.cancel)
+	setupCacheWithNode(cache, "selected")
+	setupCacheWithNode(cache, "unselected")
+
+	snapshot := k8sutil.NewEmptySnapshot()
+	if err := cache.UpdateSnapshot(snapshot); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := snapshot.GetVolcanoNodeInfo("selected")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unselected, err := snapshot.GetVolcanoNodeInfo("unselected")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidates := []*api.NodeInfo{selected, unselected}
+	cache.RecordCandidateNodesInBinder(candidates)
+	initialBindGeneration := selected.BindGeneration
+
+	pausedCache := &pausedAssumeCache{
+		Cache: cache, entered: make(chan struct{}), resume: make(chan struct{}),
+	}
+	binder := NewConflictAwareBinder(pausedCache, queue, 1)
+	task := api.NewTaskInfo(createTestPod("test-pod", "test-pod-uid"))
+	schedCtx := &agentapi.SchedulingContext{Task: task}
+	result := &agentapi.PodScheduleResult{
+		SchedCtx:       schedCtx,
+		SuggestedNodes: candidates,
+		BindContext:    &agentapi.BindContext{SchedCtx: schedCtx},
+	}
+	done := make(chan struct{})
+	resume := sync.OnceFunc(func() { close(pausedCache.resume) })
+	t.Cleanup(func() {
+		resume()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("Binder did not finish after resuming cache assume")
+		}
+	})
+	go func() {
+		binder.CheckAndBindPod(result)
+		close(done)
+	}()
+	select {
+	case <-pausedCache.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Binder did not reach cache assume")
+	}
+
+	// A concurrent worker must still see both candidates as pending while
+	// the selected node's cache state and generation have not advanced.
+	if err := cache.UpdateSnapshot(snapshot); err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range candidates {
+		if got := snapshot.NodesInBinder[node.Name]; got != 1 {
+			t.Errorf("candidate %s released before cache assume: pending references = %d, want 1", node.Name, got)
+		}
+	}
+	before := snapshot.GetVolcanoNodeInfoMap()[selected.Name]
+	if len(before.Tasks) != 0 || before.BindGeneration != initialBindGeneration {
+		t.Fatal("selected node was assumed before the barrier was released")
+	}
+
+	resume()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Binder did not finish cache assume")
+	}
+	if err := cache.UpdateSnapshot(snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.NodesInBinder) != 0 {
+		t.Errorf("candidates still pending after assume: %v", snapshot.NodesInBinder)
+	}
+	after := snapshot.GetVolcanoNodeInfoMap()[selected.Name]
+	if _, found := after.Tasks[api.PodKey(task.Pod)]; !found {
+		t.Error("released candidate's snapshot does not contain the assumed task")
+	}
+	if after.BindGeneration <= initialBindGeneration {
+		t.Errorf("released candidate's generation = %d, want > %d", after.BindGeneration, initialBindGeneration)
+	}
+	if got, found := binder.nodeBindRecords[selected.Name]; !found || got != initialBindGeneration {
+		t.Errorf("Binder generation record = %d (present=%t), want %d", got, found, initialBindGeneration)
 	}
 }
 
