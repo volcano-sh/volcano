@@ -198,6 +198,8 @@ func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l
 	}
 
 	candidatesByJob := map[api.JobID][]*api.TaskInfo{}
+	// The reclaimer queue is the same for every node, so cache the result per victim queue.
+	reclaimableQueues := map[api.QueueID]bool{}
 	for _, n := range domainNodes {
 		for _, taskOnNode := range n.Tasks {
 			if taskOnNode.Status != api.Running || !taskOnNode.Preemptable {
@@ -210,8 +212,12 @@ func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l
 			if !utils.IsJobPreemptableForGangEviction(victimJob) {
 				continue
 			}
-			q := ssn.Queues[victimJob.Queue]
-			if q == nil || !q.Reclaimable() {
+			reclaimable, cached := reclaimableQueues[victimJob.Queue]
+			if !cached {
+				reclaimable = ssn.ReclaimableBy(victimJob.Queue, reclaimerJob.Queue)
+				reclaimableQueues[victimJob.Queue] = reclaimable
+			}
+			if !reclaimable {
 				continue
 			}
 			candidatesByJob[taskOnNode.Job] = append(candidatesByJob[taskOnNode.Job], taskOnNode.Clone())
