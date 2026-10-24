@@ -91,6 +91,27 @@ data:
       - name: binpack
 ```
 
+## Protect a queue subtree from reclaim
+
+In a queue hierarchy, `reclaimable: false` on a parent queue stops queues outside its subtree from reclaiming resources from any queue inside it. Reclaim between queues inside the subtree still works and is governed by each victim queue's own `reclaimable` setting. A child's `reclaimable: true` does not override the parent's protection.
+
+For example, with `reclaimable: false` on `root-tenant-a`:
+
+```
+root
+├── root-tenant-a   reclaimable: false
+│   ├── a1
+│   └── a2
+└── root-tenant-b
+    └── b1
+```
+
+- `a2` can reclaim from `a1`.
+- `b1` cannot reclaim from `a1` or `a2`.
+- `a1` can still reclaim from `b1`, because `root-tenant-b` is not protected.
+
+> **Note:** Before this behavior was added, `reclaimable` on a parent queue had no effect. Clusters that set `reclaimable: false` on parent queues will now see cross-subtree reclaim blocked.
+
 ## Config queue's deserved resources
 
 Assume there are two nodes and two queues named queue1 and queue2 in your kubernetes cluster, and each node has 4 CPU and 16Gi memory, then there will be total 8 CPU and 32Gi memory in your cluster.

@@ -186,6 +186,8 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 	for _, nodes := range predicateNodesByShard {
 		predicateNodesByShardFlattened = append(predicateNodesByShardFlattened, nodes...)
 	}
+	// The reclaimer queue is the same for every node, so cache the result per victim queue.
+	reclaimableQueues := map[api.QueueID]bool{}
 	for _, n := range predicateNodesByShardFlattened {
 		klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.", task.Namespace, task.Name, n.Name)
 
@@ -198,8 +200,12 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			if j, found := ssn.Jobs[taskOnNode.Job]; !found {
 				continue
 			} else if j.Queue != job.Queue {
-				q := ssn.Queues[j.Queue]
-				if !q.Reclaimable() {
+				reclaimable, cached := reclaimableQueues[j.Queue]
+				if !cached {
+					reclaimable = ssn.ReclaimableBy(j.Queue, job.Queue)
+					reclaimableQueues[j.Queue] = reclaimable
+				}
+				if !reclaimable {
 					continue
 				}
 				reclaimees = append(reclaimees, taskOnNode.Clone())
