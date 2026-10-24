@@ -27,13 +27,18 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	"k8s.io/component-helpers/nodedeclaredfeatures/features/restartallcontainers"
 	k8sframework "k8s.io/kube-scheduler/framework"
+	"k8s.io/kubernetes/pkg/features"
 	schedframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodedeclaredfeatures"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
@@ -44,6 +49,7 @@ import (
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
+	volcanofeatures "volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/actions/backfill"
 	"volcano.sh/volcano/pkg/scheduler/actions/preempt"
@@ -55,6 +61,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodescore"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -470,6 +477,7 @@ func TestInitPlugin(t *testing.T) {
 		enablePodTopologySpread bool
 		enableVolumeBinding     bool
 		enableDRA               bool
+		enableNodeDeclaredFeat  bool
 		expectInFilter          []string
 		expectInStableFilter    []string
 		expectInPrefilter       []string
@@ -478,6 +486,8 @@ func TestInitPlugin(t *testing.T) {
 		expectInPreBind         []string
 		expectInScore           []string
 		expectNotInFilter       []string
+		expectNotInStableFilter []string
+		expectNotInPrefilter    []string
 		expectNotInPreScore     []string
 		expectNotInReserve      []string
 		expectNotInPreBind      []string
@@ -501,7 +511,9 @@ func TestInitPlugin(t *testing.T) {
 			expectInReserve:         []string{},
 			expectInPreBind:         []string{},
 			expectInScore:           []string{},
-			expectNotInFilter:       []string{volumebinding.Name, dynamicresources.Name},
+			expectNotInFilter:       []string{volumebinding.Name, dynamicresources.Name, nodedeclaredfeatures.Name},
+			expectNotInStableFilter: []string{nodedeclaredfeatures.Name},
+			expectNotInPrefilter:    []string{nodedeclaredfeatures.Name},
 			expectNotInReserve:      []string{volumebinding.Name, dynamicresources.Name},
 			expectNotInPreBind:      []string{volumebinding.Name, dynamicresources.Name},
 			expectNotInScore:        []string{dynamicresources.Name, volumebinding.Name},
@@ -572,12 +584,22 @@ func TestInitPlugin(t *testing.T) {
 			expectInPreBind:         []string{volumebinding.Name, dynamicresources.Name},
 			expectInScore:           []string{volumebinding.Name, dynamicresources.Name},
 		},
+		{
+			name:                   "node declared features enabled",
+			enableNodeAffinity:     true,
+			enableTaintToleration:  true,
+			enableNodeDeclaredFeat: true,
+			expectInFilter:         []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, nodedeclaredfeatures.Name},
+			expectInStableFilter:   []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, nodedeclaredfeatures.Name},
+			expectInPrefilter:      []string{nodeaffinity.Name, nodedeclaredfeatures.Name},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset volume binding plugin for test isolation
 			ResetVolumeBindingPluginForTest()
+			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NodeDeclaredFeatures, tt.enableNodeDeclaredFeat)
 
 			pp := New(nil).(*PredicatesPlugin)
 			pp.enabledPredicates.nodeAffinityEnable = tt.enableNodeAffinity
@@ -619,11 +641,21 @@ func TestInitPlugin(t *testing.T) {
 					t.Errorf("expected %s in StableFilterPlugins, but not found", pluginName)
 				}
 			}
+			for _, pluginName := range tt.expectNotInStableFilter {
+				if _, exists := pp.StableFilterPlugins[pluginName]; exists {
+					t.Errorf("expected %s not in StableFilterPlugins, but found", pluginName)
+				}
+			}
 
 			// Verify PreFilterPlugins
 			for _, pluginName := range tt.expectInPrefilter {
 				if _, exists := pp.PreFilterPlugins[pluginName]; !exists {
 					t.Errorf("expected %s in PreFilterPlugins, but not found", pluginName)
+				}
+			}
+			for _, pluginName := range tt.expectNotInPrefilter {
+				if _, exists := pp.PreFilterPlugins[pluginName]; exists {
+					t.Errorf("expected %s not in PreFilterPlugins, but found", pluginName)
 				}
 			}
 
@@ -957,4 +989,101 @@ func TestReserveRollbackOrderStable(t *testing.T) {
 		"unreserve-DynamicResources",
 		"unreserve-VolumeBinding",
 	}, calls)
+}
+
+func TestNodeDeclaredFeatures(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NodeDeclaredFeatures, true)
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, volcanofeatures.UnschedulableJobCache, true)
+
+	plugins := map[string]framework.PluginBuilder{
+		PluginName: New,
+	}
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:             PluginName,
+					EnabledPredicate: &trueValue,
+				},
+			},
+		},
+	}
+
+	// The pod requires RestartAllContainersOnContainerExits because of its RestartAllContainers rule.
+	pod := util.BuildPod("ns1", "p1", "", apiv1.PodPending, api.BuildResourceList("1", "1G"), "pg1", nil, nil)
+	pod.Spec.Containers[0].RestartPolicyRules = []apiv1.ContainerRestartRule{{
+		Action: apiv1.ContainerRestartRuleActionRestartAllContainers,
+		ExitCodes: &apiv1.ContainerRestartRuleOnExitCodes{
+			Operator: apiv1.ContainerRestartRuleOnExitCodesOpIn,
+			Values:   []int32{42},
+		},
+	}}
+	buildNode := func(name string, declaredFeatures ...string) *apiv1.Node {
+		node := util.BuildNode(name, api.BuildResourceList("4", "4G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+		node.Status.DeclaredFeatures = declaredFeatures
+		return node
+	}
+	incompatibleNode := buildNode("node1")
+	compatibleNode := buildNode("node2", restartallcontainers.RestartAllContainersOnContainerExits)
+
+	tests := []struct {
+		name          string
+		nodes         []*apiv1.Node
+		expectBindMap map[string]string
+	}{
+		{
+			name:          "pod is bound to the node declaring the required feature",
+			nodes:         []*apiv1.Node{incompatibleNode, compatibleNode},
+			expectBindMap: map[string]string{"ns1/p1": "node2"},
+		},
+		{
+			name:          "pod waits when no node declares the required feature",
+			nodes:         []*apiv1.Node{incompatibleNode},
+			expectBindMap: map[string]string{},
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jobCache := unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration)
+			runCycle := func(nodes []*apiv1.Node, expectBindMap map[string]string) *api.JobInfo {
+				test := uthelper.TestCommonStruct{
+					Name:           tt.name,
+					Plugins:        plugins,
+					Pods:           []*apiv1.Pod{pod.DeepCopy()},
+					Nodes:          nodes,
+					PodGroups:      []*schedulingv1beta1.PodGroup{util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue)},
+					Queues:         []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, nil)},
+					ExpectBindMap:  expectBindMap,
+					ExpectBindsNum: len(expectBindMap),
+				}
+				ssn := test.RegisterSession(tiers, nil, framework.WithUnschedulableJobCache(jobCache))
+				job := ssn.Jobs["ns1/pg1"]
+				test.Run([]framework.Action{allocate.New()})
+				checkErr := test.CheckAll(i)
+				test.Close()
+				if checkErr != nil {
+					t.Fatal(checkErr)
+				}
+				return job
+			}
+
+			job := runCycle(tt.nodes, tt.expectBindMap)
+			if len(tt.expectBindMap) > 0 {
+				return
+			}
+
+			// An empty bind map doesn't say why the pod stayed pending, so check the recorded rejection.
+			if rejections := jobCache.CachedRejections(job); assert.Len(t, rejections, 1) {
+				assert.Equal(t, nodedeclaredfeatures.Name, rejections[0].Plugin)
+			}
+
+			// Once the node declares the feature, the cached job is woken up and binds in the next cycle.
+			updatedNode := incompatibleNode.DeepCopy()
+			updatedNode.Status.DeclaredFeatures = []string{restartallcontainers.RestartAllContainersOnContainerExits}
+			jobCache.OnEvent(k8sframework.ClusterEvent{Resource: k8sframework.Node, ActionType: k8sframework.UpdateNodeDeclaredFeature}, incompatibleNode, updatedNode)
+			runCycle([]*apiv1.Node{updatedNode}, map[string]string{"ns1/p1": "node1"})
+		})
+	}
 }

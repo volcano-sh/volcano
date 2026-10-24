@@ -38,6 +38,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodedeclaredfeatures"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
@@ -136,6 +137,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 		cacheEnable:                     false,
 		volumeBindingEnable:             true,
 		dynamicResourceAllocationEnable: utilFeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation),
+		nodeDeclaredFeaturesEnable:      utilFeature.DefaultFeatureGate.Enabled(features.NodeDeclaredFeatures),
 	}
 
 	// Checks whether predicate enable args is provided or not.
@@ -166,6 +168,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 		EnableDRAResourceClaimDeviceStatus:           utilFeature.DefaultFeatureGate.Enabled(features.DRAResourceClaimDeviceStatus),
 		EnableDRADeviceBindingConditions:             utilFeature.DefaultFeatureGate.Enabled(features.DRADeviceBindingConditions),
 		EnableDRAPartitionableDevices:                utilFeature.DefaultFeatureGate.Enabled(features.DRAPartitionableDevices),
+		EnableNodeDeclaredFeatures:                   utilFeature.DefaultFeatureGate.Enabled(features.NodeDeclaredFeatures),
 	}
 	return &PredicatesPlugin{pluginArguments: arguments, enabledPredicates: predicate, features: features}
 }
@@ -185,6 +188,7 @@ type predicateEnable struct {
 	cacheEnable                     bool
 	volumeBindingEnable             bool
 	dynamicResourceAllocationEnable bool
+	nodeDeclaredFeaturesEnable      bool
 }
 
 // bind context extension information of predicates
@@ -666,6 +670,17 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		addReservePlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addPreBindPlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addScorePlugin(dynamicresources.Name, dynamicResourceAllocationPlugin, 1)
+	}
+	// 11. NodeDeclaredFeatures (stable filter for cache)
+	if pp.enabledPredicates.nodeDeclaredFeaturesEnable {
+		if plugin, err := nodedeclaredfeatures.New(context.TODO(), nil, pp.Handle, pp.features); err == nil {
+			nodeDeclaredFeaturesFilter := plugin.(*nodedeclaredfeatures.NodeDeclaredFeatures)
+			addFilterPlugin(nodedeclaredfeatures.Name, nodeDeclaredFeaturesFilter)
+			addStableFilterPlugin(nodedeclaredfeatures.Name, nodeDeclaredFeaturesFilter)
+			addPreFilterPlugin(nodedeclaredfeatures.Name, nodeDeclaredFeaturesFilter)
+		} else {
+			klog.Errorf("Failed to init %s plugin %v", nodedeclaredfeatures.Name, err)
+		}
 	}
 
 	pp.FilterPlugins = filterPlugins
