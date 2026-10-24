@@ -25,12 +25,13 @@ import (
 )
 
 const (
-	deviceTopologyDataNotReadyReason      = "DeviceTopologyDataNotReady"
-	deviceTopologyDomainFragmentedReason  = "DeviceTopologyDomainFragmented"
-	deviceTopologyFabricUnavailableReason = "DeviceTopologyFabricUnavailable"
-	deviceTopologyDeviceUnhealthyReason   = "DeviceTopologyDeviceUnhealthy"
-	deviceTopologyStaleReason             = "DeviceTopologyStale"
-	deviceTopologySoftPreferenceScore     = 1.0
+	deviceTopologyDataNotReadyReason        = "DeviceTopologyDataNotReady"
+	deviceTopologyDomainFragmentedReason    = "DeviceTopologyDomainFragmented"
+	deviceTopologyFabricUnavailableReason   = "DeviceTopologyFabricUnavailable"
+	deviceTopologyDeviceUnhealthyReason     = "DeviceTopologyDeviceUnhealthy"
+	deviceTopologyReservationConflictReason = "DeviceTopologyReservationConflict"
+	deviceTopologyStaleReason               = "DeviceTopologyStale"
+	deviceTopologySoftPreferenceScore       = 1.0
 )
 
 // topologyCandidateEvaluation records static snapshot feasibility for one
@@ -55,8 +56,8 @@ type selectedDeviceTopologyRequirement struct {
 }
 
 // predicate rejects a candidate only when a selected hard requirement cannot
-// use the immutable session topology snapshot. Exact-ID ledger and allocation
-// adapter checks are added with the later reservation implementation.
+// use the immutable session topology snapshot. Exact-ID reservation and
+// allocation-adapter enforcement checks are added later.
 func (plugin *deviceTopologyPlugin) predicate(session *framework.Session, task *api.TaskInfo, node *api.NodeInfo) error {
 	policy, requirements, fabric, err := plugin.evaluateTaskCandidate(session, task, node, time.Now())
 	if err != nil {
@@ -212,9 +213,10 @@ func hasSubGroupDeviceTopologyPolicy(job *api.JobInfo) bool {
 	return false
 }
 
-// evaluateLocalDomain finds healthy devices from one fresh local domain that
-// can satisfy the Task's whole-device request. This static check does not use
-// the later scheduler-owned availability ledger.
+// evaluateLocalDomain finds available devices from one fresh local domain that
+// can satisfy the Task's whole-device request. Provider health determines the
+// diagnostic reason, while the scheduler-owned availability ledger prevents a
+// held or allocated device from being selected again.
 func evaluateLocalDomain(snapshot *api.TopologySnapshot, node *api.NodeInfo, request resolvedDeviceTopologyTaskRequest, at time.Time) topologyCandidateEvaluation {
 	if snapshot == nil || node == nil || node.Node == nil || node.Node.UID == "" {
 		return topologyCandidateEvaluation{reason: deviceTopologyDataNotReadyReason}
@@ -229,6 +231,7 @@ func evaluateLocalDomain(snapshot *api.TopologySnapshot, node *api.NodeInfo, req
 	hasSyncedFacts := false
 	hasFreshFacts := false
 	hasHealthyDevice := false
+	hasSufficientHealthyDomain := false
 	for _, domain := range domains {
 		if snapshot.ProviderNodeReadiness(domain.ID.ProviderID, node.Node.UID) != api.ProviderNodeSynced {
 			continue
@@ -243,6 +246,9 @@ func evaluateLocalDomain(snapshot *api.TopologySnapshot, node *api.NodeInfo, req
 			hasHealthyDevice = true
 		}
 		if int64(len(healthyDeviceIDs)) >= request.quantity {
+			hasSufficientHealthyDomain = true
+		}
+		if int64(len(snapshot.AvailableDeviceIDs(domain.ID))) >= request.quantity {
 			result.fittingDomains = append(result.fittingDomains, domain)
 		}
 	}
@@ -259,6 +265,10 @@ func evaluateLocalDomain(snapshot *api.TopologySnapshot, node *api.NodeInfo, req
 	}
 	if !hasHealthyDevice {
 		result.reason = deviceTopologyDeviceUnhealthyReason
+		return result
+	}
+	if hasSufficientHealthyDomain {
+		result.reason = deviceTopologyReservationConflictReason
 		return result
 	}
 	result.reason = deviceTopologyDomainFragmentedReason
@@ -334,13 +344,17 @@ func fabricFreshnessReason(snapshot *api.TopologySnapshot, fabric api.FabricDoma
 }
 
 // newDeviceTopologyFitError creates a structured unschedulable result for a
-// hard policy failure without conflating it with ordinary resource fit. No
-// reason can be solved by evicting Pods, so the result is
-// UnschedulableAndUnresolvable and preempt and reclaim do not evict Pods from
-// the Node for nothing.
+// hard policy failure without conflating it with ordinary resource fit. Only a
+// reservation conflict can be solved by evicting the Pods that hold the
+// devices. Every other reason is UnschedulableAndUnresolvable, so preempt and
+// reclaim do not evict Pods from the Node for nothing.
 func newDeviceTopologyFitError(task *api.TaskInfo, node *api.NodeInfo, reason string) error {
+	code := api.UnschedulableAndUnresolvable
+	if reason == deviceTopologyReservationConflictReason {
+		code = api.Unschedulable
+	}
 	return api.NewFitErrWithStatus(task, node, &api.Status{
-		Code:   api.UnschedulableAndUnresolvable,
+		Code:   code,
 		Plugin: PluginName,
 		Reason: reason,
 	})

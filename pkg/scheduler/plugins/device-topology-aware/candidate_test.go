@@ -121,6 +121,25 @@ func TestDeviceTopologyCandidateHardLocalDomain(t *testing.T) {
 	}
 }
 
+func TestDeviceTopologyCandidateExcludesHeldLedgerDevices(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DeviceTopologyAwareScheduling, true)
+	now := time.Now()
+	node := newCandidateTestNode("node-a")
+	task := newDeviceTopologyTask("worker", []corev1.Container{containerWithRequest("trainer", "nvidia.com/gpu", "1")}, nil)
+	job := api.NewJobInfo("job", task)
+	job.DeviceTopology = testDeviceTopologyPolicy("nvidia.com/gpu", scheduling.HardDeviceTopologyMode)
+	facts := newCandidateTopologyFacts(node, []candidateDomainSpec{{value: "domain-a", deviceCount: 1, healthy: 1}}, now.Add(time.Hour))
+	key := api.ProviderNodeKey{ProviderID: facts.ProviderID, NodeUID: facts.NodeUID}
+	snapshot := api.NewTopologySnapshotWithAvailability(1,
+		map[api.ProviderNodeKey]api.NodeTopologyFacts{key: facts},
+		map[api.ProviderNodeKey]api.ProviderNodeSyncState{key: api.ProviderNodeSynced},
+		map[api.DeviceID]api.DeviceAvailability{facts.Devices[0].ID: api.DeviceHeld},
+	)
+	plugin, session := openCandidatePlugin(t, job, snapshot)
+
+	assertCandidateFitReason(t, plugin.predicate(session, task, node), deviceTopologyReservationConflictReason)
+}
+
 func TestDeviceTopologyCandidateHardLocalDomainRequiresSyncedMatchingFacts(t *testing.T) {
 	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DeviceTopologyAwareScheduling, true)
 	now := time.Now()
@@ -898,6 +917,7 @@ func TestDeviceTopologyFitErrorCode(t *testing.T) {
 		reason   string
 		wantCode int
 	}{
+		{reason: deviceTopologyReservationConflictReason, wantCode: api.Unschedulable},
 		{reason: deviceTopologyDomainFragmentedReason, wantCode: api.UnschedulableAndUnresolvable},
 		{reason: deviceTopologyDataNotReadyReason, wantCode: api.UnschedulableAndUnresolvable},
 		{reason: deviceTopologyStaleReason, wantCode: api.UnschedulableAndUnresolvable},

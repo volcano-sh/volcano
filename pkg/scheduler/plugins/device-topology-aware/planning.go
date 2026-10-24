@@ -333,6 +333,7 @@ func selectPlanningFailureReason(reasons map[string]struct{}) string {
 		deviceTopologyDataNotReadyReason,
 		deviceTopologyStaleReason,
 		deviceTopologyDeviceUnhealthyReason,
+		deviceTopologyReservationConflictReason,
 		deviceTopologyDomainFragmentedReason,
 	} {
 		if _, exists := reasons[reason]; exists {
@@ -483,9 +484,8 @@ func fabricContainsDomain(fabric api.FabricDomain, domainID api.DeviceDomainID) 
 }
 
 // newDeviceTopologyGangPlanSolver initializes static per-domain capacity from
-// healthy snapshot devices. This prevents one gang plan from assigning the
-// same healthy capacity to multiple Tasks before the later ledger can choose
-// and reserve exact device IDs.
+// ledger-available snapshot devices. This prevents one gang plan from using
+// capacity already held, bound, allocated, releasing, or unreconciled.
 func newDeviceTopologyGangPlanSolver(snapshot *api.TopologySnapshot, tasks []deviceTopologyPlanningTask, maxSearchStates int) *deviceTopologyGangPlanSolver {
 	remainingCapacity := make(map[api.DeviceDomainID]int64)
 	for _, task := range tasks {
@@ -493,7 +493,7 @@ func newDeviceTopologyGangPlanSolver(snapshot *api.TopologySnapshot, tasks []dev
 			for _, requestChoice := range choice.requestChoices {
 				for _, domain := range requestChoice.domains {
 					if _, exists := remainingCapacity[domain.ID]; !exists {
-						remainingCapacity[domain.ID] = int64(len(snapshot.HealthyDeviceIDs(domain.ID)))
+						remainingCapacity[domain.ID] = int64(len(snapshot.AvailableDeviceIDs(domain.ID)))
 					}
 				}
 			}

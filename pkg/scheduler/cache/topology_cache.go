@@ -33,6 +33,7 @@ type deviceTopologyState struct {
 	revision  schedulingapi.TopologyRevision
 	facts     map[schedulingapi.ProviderNodeKey]schedulingapi.NodeTopologyFacts
 	readiness map[schedulingapi.ProviderNodeKey]schedulingapi.ProviderNodeSyncState
+	ledger    *deviceTopologyAvailabilityLedger
 	snapshot  *schedulingapi.TopologySnapshot
 }
 
@@ -51,8 +52,9 @@ func newDeviceTopologyState() *deviceTopologyState {
 	state := &deviceTopologyState{
 		facts:     make(map[schedulingapi.ProviderNodeKey]schedulingapi.NodeTopologyFacts),
 		readiness: make(map[schedulingapi.ProviderNodeKey]schedulingapi.ProviderNodeSyncState),
+		ledger:    newDeviceTopologyAvailabilityLedger(),
 	}
-	state.snapshot = schedulingapi.NewTopologySnapshot(state.revision, state.facts, state.readiness)
+	state.snapshot = schedulingapi.NewTopologySnapshotWithAvailability(state.revision, state.facts, state.readiness, state.ledger.snapshot())
 	return state
 }
 
@@ -256,6 +258,7 @@ func (state *deviceTopologyState) validateNoTopologyConflicts(candidateKey sched
 // publish increments the topology revision and rebuilds its immutable indexed
 // view from the accepted fact sets.
 func (state *deviceTopologyState) publish() {
+	state.ledger.reconcile(state.facts)
 	state.revision++
-	state.snapshot = schedulingapi.NewTopologySnapshot(state.revision, state.facts, state.readiness)
+	state.snapshot = schedulingapi.NewTopologySnapshotWithAvailability(state.revision, state.facts, state.readiness, state.ledger.snapshot())
 }

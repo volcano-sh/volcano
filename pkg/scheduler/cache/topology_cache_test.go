@@ -67,6 +67,41 @@ func TestSchedulerCacheApplyProviderNodeUpdatePublishesTopologySnapshot(t *testi
 	if len(healthyDeviceIDs) != 1 || healthyDeviceIDs[0].Value != "device-a" {
 		t.Fatalf("HealthyDeviceIDs() = %#v, want device-a", healthyDeviceIDs)
 	}
+	availableDeviceIDs := snapshot.AvailableDeviceIDs(domains[0].ID)
+	if len(availableDeviceIDs) != 1 || availableDeviceIDs[0].Value != "device-a" {
+		t.Fatalf("AvailableDeviceIDs() = %#v, want device-a", availableDeviceIDs)
+	}
+	if state, found := snapshot.DeviceAvailability(availableDeviceIDs[0]); !found || state != schedulingapi.DeviceAvailable {
+		t.Fatalf("DeviceAvailability() = (%q, %v), want (%q, true)", state, found, schedulingapi.DeviceAvailable)
+	}
+}
+
+func TestSchedulerCacheTopologyAvailabilityTracksProviderHealth(t *testing.T) {
+	node := topologyCacheTestNode("node-a", "node-a-uid", "1")
+	cache := newTopologyTestSchedulerCache(t, node)
+	if err := cache.ApplyProviderNodeUpdate(topologyCacheTestUpdate(node, 1, topologyCacheTestObservedAt, "device-a", schedulingapi.DeviceHealthy)); err != nil {
+		t.Fatalf("initial ApplyProviderNodeUpdate() error = %v", err)
+	}
+
+	if err := cache.ApplyProviderNodeUpdate(topologyCacheTestUpdate(node, 2, topologyCacheTestObservedAt.Add(time.Minute), "device-a", schedulingapi.DeviceUnhealthy)); err != nil {
+		t.Fatalf("unhealthy ApplyProviderNodeUpdate() error = %v", err)
+	}
+
+	snapshot := cache.DeviceTopologySnapshot()
+	domains := snapshot.LocalDomains(node.UID, corev1.ResourceName("nvidia.com/gpu"))
+	if len(domains) != 1 {
+		t.Fatalf("LocalDomains() = %#v, want one domain", domains)
+	}
+	if availableDeviceIDs := snapshot.AvailableDeviceIDs(domains[0].ID); len(availableDeviceIDs) != 0 {
+		t.Fatalf("AvailableDeviceIDs() = %#v, want no unhealthy devices", availableDeviceIDs)
+	}
+	facts, found := snapshot.Facts(topologyCacheTestProviderID, node.UID)
+	if !found || len(facts.Devices) != 1 {
+		t.Fatalf("Facts() = (%#v, %v), want one unhealthy device", facts, found)
+	}
+	if state, found := snapshot.DeviceAvailability(facts.Devices[0].ID); !found || state != schedulingapi.DeviceUnavailable {
+		t.Fatalf("DeviceAvailability() = (%q, %v), want (%q, true)", state, found, schedulingapi.DeviceUnavailable)
+	}
 }
 
 func TestSchedulerCacheRejectsProviderUpdateForStaleNodeVersion(t *testing.T) {

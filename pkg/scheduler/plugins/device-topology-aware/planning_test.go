@@ -101,6 +101,38 @@ func TestDeviceTopologyGangPlannerRejectsAggregateDomainOvercommit(t *testing.T)
 	assertGangPlanningReason(t, err, deviceTopologyDomainFragmentedReason)
 }
 
+func TestDeviceTopologyGangPlannerExcludesHeldLedgerCapacity(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DeviceTopologyAwareScheduling, true)
+	now := time.Date(2026, time.October, 20, 0, 0, 0, 0, time.UTC)
+	node := newCandidateTestNode("node-a")
+	firstTask := newDeviceTopologyTask("first-worker", []corev1.Container{containerWithRequest("trainer", "nvidia.com/gpu", "1")}, nil)
+	secondTask := newDeviceTopologyTask("second-worker", []corev1.Container{containerWithRequest("trainer", "nvidia.com/gpu", "1")}, nil)
+	job := api.NewJobInfo("job", firstTask, secondTask)
+	job.DeviceTopology = testDeviceTopologyPolicy("nvidia.com/gpu", scheduling.HardDeviceTopologyMode)
+	facts := newCandidateTopologyFacts(node, []candidateDomainSpec{{value: "domain-a", deviceCount: 2, healthy: 2}}, now.Add(time.Hour))
+	key := api.ProviderNodeKey{ProviderID: facts.ProviderID, NodeUID: facts.NodeUID}
+	snapshot := api.NewTopologySnapshotWithAvailability(1,
+		map[api.ProviderNodeKey]api.NodeTopologyFacts{key: facts},
+		map[api.ProviderNodeKey]api.ProviderNodeSyncState{key: api.ProviderNodeSynced},
+		map[api.DeviceID]api.DeviceAvailability{facts.Devices[0].ID: api.DeviceHeld},
+	)
+	plugin, session := openCandidatePlugin(t, job, snapshot)
+
+	plan, err := plugin.planGang(session, deviceTopologyGangPlanContext{
+		job:   job,
+		tasks: []*api.TaskInfo{firstTask, secondTask},
+		candidateNodes: map[api.TaskID][]*api.NodeInfo{
+			firstTask.UID:  {node},
+			secondTask.UID: {node},
+		},
+		at: now,
+	})
+	if plan != nil {
+		t.Fatalf("planGang() plan = %#v, want nil when only one device is ledger-available", plan)
+	}
+	assertGangPlanningReason(t, err, deviceTopologyDomainFragmentedReason)
+}
+
 func TestDeviceTopologyGangPlannerSelectsOneSharedFabric(t *testing.T) {
 	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DeviceTopologyAwareScheduling, true)
 	now := time.Date(2026, time.October, 20, 0, 0, 0, 0, time.UTC)

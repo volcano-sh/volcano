@@ -66,6 +66,55 @@ const (
 	DeviceUnhealthy DeviceHealth = "Unhealthy"
 )
 
+// DeviceAvailability is the scheduler-owned lifecycle state for one device.
+// It is separate from provider-reported DeviceHealth because a healthy device
+// can still be reserved, allocated, releasing, or awaiting reconciliation.
+type DeviceAvailability string
+
+const (
+	// DeviceAvailable means a healthy device is not held by the scheduler or an
+	// allocation backend.
+	DeviceAvailable DeviceAvailability = "Available"
+	// DeviceHeld means the scheduler has tentatively reserved the device before
+	// bind handoff.
+	DeviceHeld DeviceAvailability = "Held"
+	// DeviceBinding means a reservation has been handed to the bind path and is
+	// awaiting authoritative allocation confirmation.
+	DeviceBinding DeviceAvailability = "Binding"
+	// DeviceAllocated means the allocation backend confirmed the device is in use.
+	DeviceAllocated DeviceAvailability = "Allocated"
+	// DeviceReleasing means an allocation is being released but the backend has
+	// not yet confirmed that the device is free.
+	DeviceReleasing DeviceAvailability = "Releasing"
+	// DeviceUnavailable means provider health or scheduler safety checks make
+	// the device ineligible for a new placement.
+	DeviceUnavailable DeviceAvailability = "Unavailable"
+	// DeviceUnreconciled means the scheduler cannot safely determine whether the
+	// backend still holds the device.
+	DeviceUnreconciled DeviceAvailability = "Unreconciled"
+)
+
+// IsValid reports whether availability is a supported ledger lifecycle state.
+func (availability DeviceAvailability) IsValid() bool {
+	switch availability {
+	case DeviceAvailable, DeviceHeld, DeviceBinding, DeviceAllocated, DeviceReleasing, DeviceUnavailable, DeviceUnreconciled:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsLive reports whether the availability state must survive a provider fact
+// removal until allocation reconciliation confirms it is safe to discard.
+func (availability DeviceAvailability) IsLive() bool {
+	switch availability {
+	case DeviceHeld, DeviceBinding, DeviceAllocated, DeviceReleasing, DeviceUnreconciled:
+		return true
+	default:
+		return false
+	}
+}
+
 // TopologyRevision identifies one immutable topology snapshot.
 type TopologyRevision uint64
 
@@ -347,23 +396,41 @@ type TopologySnapshot struct {
 	factsByProviderNode        map[ProviderNodeKey]NodeTopologyFacts
 	providerNodeReadiness      map[ProviderNodeKey]ProviderNodeSyncState
 	devices                    map[DeviceID]TopologyDevice
+	deviceAvailabilityByID     map[DeviceID]DeviceAvailability
 	domains                    map[DeviceDomainID]DeviceDomain
 	fabrics                    map[FabricDomainID]FabricDomain
 	domainIDsByNodeAndResource map[NodeResourceKey][]DeviceDomainID
 	healthyDeviceIDsByDomain   map[DeviceDomainID][]DeviceID
+	availableDeviceIDsByDomain map[DeviceDomainID][]DeviceID
 }
 
 // NewTopologySnapshot creates an indexed immutable view from accepted facts.
 func NewTopologySnapshot(revision TopologyRevision, facts map[ProviderNodeKey]NodeTopologyFacts, readiness map[ProviderNodeKey]ProviderNodeSyncState) *TopologySnapshot {
+	return NewTopologySnapshotWithAvailability(revision, facts, readiness, nil)
+}
+
+// NewTopologySnapshotWithAvailability creates an indexed immutable view from
+// accepted facts and scheduler-owned device availability. Missing availability
+// states default to Available for healthy devices and Unavailable for unhealthy
+// devices. Valid states for removed live devices are retained as ledger
+// tombstones but do not participate in candidate indexes.
+func NewTopologySnapshotWithAvailability(revision TopologyRevision, facts map[ProviderNodeKey]NodeTopologyFacts, readiness map[ProviderNodeKey]ProviderNodeSyncState, availability map[DeviceID]DeviceAvailability) *TopologySnapshot {
 	snapshot := &TopologySnapshot{
 		revision:                   revision,
 		factsByProviderNode:        make(map[ProviderNodeKey]NodeTopologyFacts, len(facts)),
 		providerNodeReadiness:      make(map[ProviderNodeKey]ProviderNodeSyncState, len(readiness)),
 		devices:                    make(map[DeviceID]TopologyDevice),
+		deviceAvailabilityByID:     make(map[DeviceID]DeviceAvailability, len(availability)),
 		domains:                    make(map[DeviceDomainID]DeviceDomain),
 		fabrics:                    make(map[FabricDomainID]FabricDomain),
 		domainIDsByNodeAndResource: make(map[NodeResourceKey][]DeviceDomainID),
 		healthyDeviceIDsByDomain:   make(map[DeviceDomainID][]DeviceID),
+		availableDeviceIDsByDomain: make(map[DeviceDomainID][]DeviceID),
+	}
+	for deviceID, state := range availability {
+		if state.IsValid() {
+			snapshot.deviceAvailabilityByID[deviceID] = state
+		}
 	}
 	for key, state := range readiness {
 		snapshot.providerNodeReadiness[key] = state
@@ -378,8 +445,21 @@ func NewTopologySnapshot(revision TopologyRevision, facts map[ProviderNodeKey]No
 		}
 		for _, device := range factSet.Devices {
 			snapshot.devices[device.ID] = cloneTopologyDevice(device)
+			availability, exists := snapshot.deviceAvailabilityByID[device.ID]
+			if !exists {
+				availability = DeviceAvailable
+				if device.Health != DeviceHealthy {
+					availability = DeviceUnavailable
+				}
+			} else if device.Health != DeviceHealthy && availability == DeviceAvailable {
+				availability = DeviceUnavailable
+			}
+			snapshot.deviceAvailabilityByID[device.ID] = availability
 			if device.Health == DeviceHealthy {
 				snapshot.healthyDeviceIDsByDomain[device.LocalDomainID] = append(snapshot.healthyDeviceIDsByDomain[device.LocalDomainID], device.ID)
+				if availability == DeviceAvailable {
+					snapshot.availableDeviceIDsByDomain[device.LocalDomainID] = append(snapshot.availableDeviceIDsByDomain[device.LocalDomainID], device.ID)
+				}
 			}
 		}
 	}
@@ -402,6 +482,11 @@ func NewTopologySnapshot(revision TopologyRevision, facts map[ProviderNodeKey]No
 		})
 	}
 	for _, deviceIDs := range snapshot.healthyDeviceIDsByDomain {
+		sort.Slice(deviceIDs, func(left, right int) bool {
+			return deviceIDs[left].String() < deviceIDs[right].String()
+		})
+	}
+	for _, deviceIDs := range snapshot.availableDeviceIDsByDomain {
 		sort.Slice(deviceIDs, func(left, right int) bool {
 			return deviceIDs[left].String() < deviceIDs[right].String()
 		})
@@ -474,6 +559,25 @@ func (snapshot *TopologySnapshot) HealthyDeviceIDs(domainID DeviceDomainID) []De
 		return nil
 	}
 	return append([]DeviceID(nil), snapshot.healthyDeviceIDsByDomain[domainID]...)
+}
+
+// AvailableDeviceIDs returns healthy devices that the availability ledger marks
+// free for a new topology placement in one local domain.
+func (snapshot *TopologySnapshot) AvailableDeviceIDs(domainID DeviceDomainID) []DeviceID {
+	if snapshot == nil {
+		return nil
+	}
+	return append([]DeviceID(nil), snapshot.availableDeviceIDsByDomain[domainID]...)
+}
+
+// DeviceAvailability returns the scheduler-owned availability state for one
+// current device or retained allocation tombstone.
+func (snapshot *TopologySnapshot) DeviceAvailability(deviceID DeviceID) (DeviceAvailability, bool) {
+	if snapshot == nil {
+		return "", false
+	}
+	availability, exists := snapshot.deviceAvailabilityByID[deviceID]
+	return availability, exists
 }
 
 // Device returns a copy of a device record.

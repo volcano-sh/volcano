@@ -321,6 +321,57 @@ func TestTopologySnapshotIndexesAndReturnsCopies(t *testing.T) {
 	}
 }
 
+func TestTopologySnapshotIndexesLedgerAvailableDevices(t *testing.T) {
+	facts := testNodeTopologyFacts("node-a", "node-a-uid", 1, "domain-a", "device-a")
+	secondDeviceID := DeviceID{ProviderID: topologyTestProviderID, Namespace: topologyTestNamespace, Value: "device-b"}
+	facts.Devices = append(facts.Devices, TopologyDevice{
+		ID:            secondDeviceID,
+		ResourceName:  topologyTestResource,
+		NodeName:      facts.NodeName,
+		NodeUID:       facts.NodeUID,
+		LocalDomainID: facts.LocalDomains[0].ID,
+		Health:        DeviceHealthy,
+	})
+	facts.LocalDomains[0].DeviceIDs = append(facts.LocalDomains[0].DeviceIDs, secondDeviceID)
+	key := ProviderNodeKey{ProviderID: topologyTestProviderID, NodeUID: facts.NodeUID}
+
+	defaultSnapshot := NewTopologySnapshot(1, map[ProviderNodeKey]NodeTopologyFacts{key: facts}, nil)
+	if state, found := defaultSnapshot.DeviceAvailability(facts.Devices[0].ID); !found || state != DeviceAvailable {
+		t.Fatalf("default DeviceAvailability() = (%q, %v), want (%q, true)", state, found, DeviceAvailable)
+	}
+
+	tombstoneID := DeviceID{ProviderID: topologyTestProviderID, Namespace: topologyTestNamespace, Value: "removed-device"}
+	snapshot := NewTopologySnapshotWithAvailability(2,
+		map[ProviderNodeKey]NodeTopologyFacts{key: facts},
+		nil,
+		map[DeviceID]DeviceAvailability{
+			facts.Devices[0].ID: DeviceHeld,
+			secondDeviceID:      DeviceAvailable,
+			tombstoneID:         DeviceUnreconciled,
+		},
+	)
+
+	healthyDeviceIDs := snapshot.HealthyDeviceIDs(facts.LocalDomains[0].ID)
+	if len(healthyDeviceIDs) != 2 {
+		t.Fatalf("HealthyDeviceIDs() = %#v, want both healthy devices", healthyDeviceIDs)
+	}
+	availableDeviceIDs := snapshot.AvailableDeviceIDs(facts.LocalDomains[0].ID)
+	if len(availableDeviceIDs) != 1 || availableDeviceIDs[0] != secondDeviceID {
+		t.Fatalf("AvailableDeviceIDs() = %#v, want only device-b", availableDeviceIDs)
+	}
+	if state, found := snapshot.DeviceAvailability(facts.Devices[0].ID); !found || state != DeviceHeld {
+		t.Fatalf("DeviceAvailability(device-a) = (%q, %v), want (%q, true)", state, found, DeviceHeld)
+	}
+	if state, found := snapshot.DeviceAvailability(tombstoneID); !found || state != DeviceUnreconciled {
+		t.Fatalf("DeviceAvailability(tombstone) = (%q, %v), want (%q, true)", state, found, DeviceUnreconciled)
+	}
+
+	availableDeviceIDs[0].Value = "mutated-device"
+	if got := snapshot.AvailableDeviceIDs(facts.LocalDomains[0].ID); len(got) != 1 || got[0] != secondDeviceID {
+		t.Fatalf("AvailableDeviceIDs() returned a mutable copy: %#v", got)
+	}
+}
+
 func TestTopologySnapshotOmitsFabricWithStaleMember(t *testing.T) {
 	ownerFacts := testNodeTopologyFacts("node-a", "node-a-uid", 3, "domain-a", "device-a")
 	memberFacts := testNodeTopologyFacts("node-b", "node-b-uid", 4, "domain-b", "device-b")
@@ -413,6 +464,12 @@ func TestTopologySnapshotNilAndMissingAccessors(t *testing.T) {
 	}
 	if got := snapshot.HealthyDeviceIDs(domainID); got != nil {
 		t.Fatalf("nil HealthyDeviceIDs() = %#v, want nil", got)
+	}
+	if got := snapshot.AvailableDeviceIDs(domainID); got != nil {
+		t.Fatalf("nil AvailableDeviceIDs() = %#v, want nil", got)
+	}
+	if _, found := snapshot.DeviceAvailability(deviceID); found {
+		t.Fatal("nil DeviceAvailability() found a device, want false")
 	}
 	if _, found := snapshot.Device(deviceID); found {
 		t.Fatal("nil Device() found a device, want false")
