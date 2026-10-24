@@ -790,6 +790,12 @@ func TestRestartingState_Execute(t *testing.T) {
 						},
 					},
 				},
+				// Live pod so RestartJob still enters KillJob (no-pods path uses SyncJob).
+				Pods: map[string]map[string]*v1.Pod{
+					"task1": {
+						"pod1": buildPod(namespace, "pod1", v1.PodRunning, nil),
+					},
+				},
 			},
 			Action:      busv1alpha1.RestartJobAction,
 			ExpectedVal: nil,
@@ -827,6 +833,11 @@ func TestRestartingState_Execute(t *testing.T) {
 						},
 					},
 				},
+				Pods: map[string]map[string]*v1.Pod{
+					"task1": {
+						"pod1": buildPod(namespace, "pod1", v1.PodRunning, nil),
+					},
+				},
 			},
 			Action:      busv1alpha1.RestartJobAction,
 			ExpectedVal: nil,
@@ -839,6 +850,14 @@ func TestRestartingState_Execute(t *testing.T) {
 
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
+
+			for _, pods := range testcase.JobInfo.Pods {
+				for _, pod := range pods {
+					if _, err := fakecontroller.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{}); err != nil {
+						t.Fatalf("Error while creating Pod: %v", err)
+					}
+				}
+			}
 
 			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
 			if err != nil {
@@ -870,6 +889,90 @@ func TestRestartingState_Execute(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestRestartingState_NoLivePodsSkipsKillJob ensures a late/duplicate RestartJob
+// with no remaining pods drives SyncJob (status only) instead of re-entering KillJob (#6037).
+func TestRestartingState_NoLivePodsSkipsKillJob(t *testing.T) {
+	namespace := "test"
+	jobInfo := &apis.JobInfo{
+		Namespace: namespace,
+		Name:      "jobinfo1",
+		Job: &v1alpha1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:            "Job1",
+				Namespace:       namespace,
+				ResourceVersion: "100",
+			},
+			Spec: v1alpha1.JobSpec{
+				MaxRetry: 3,
+				Queue:    "default",
+				Tasks: []v1alpha1.TaskSpec{
+					{Name: "task1", Replicas: 1},
+				},
+			},
+			Status: v1alpha1.JobStatus{
+				RetryCount:   1,
+				MinAvailable: 1,
+				State: v1alpha1.JobState{
+					Phase: v1alpha1.Restarting,
+				},
+			},
+		},
+		// No live pods: duplicate RestartJob must not re-enter KillJob.
+		Pods: map[string]map[string]*v1.Pod{},
+	}
+
+	testState := state.NewState(jobInfo)
+	fakecontroller := newFakeController()
+	state.SyncJob = fakecontroller.syncJob
+
+	killCalled := false
+	state.KillJob = func(job *apis.JobInfo, podRetainPhase state.PhaseMap, fn state.UpdateStatusFn) error {
+		killCalled = true
+		return nil
+	}
+
+	patches := gomonkey.ApplyMethod(reflect.TypeOf(fakecontroller), "GetQueueInfo", func(_ *jobcontroller, _ string) (*schedulingapi.Queue, error) {
+		return &schedulingapi.Queue{}, nil
+	})
+	defer patches.Reset()
+
+	_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), jobInfo.Job, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Error while creating Job: %v", err)
+	}
+	if err = fakecontroller.cache.Add(jobInfo.Job); err != nil {
+		t.Fatalf("Error while adding Job in cache: %v", err)
+	}
+
+	// Seed a PodGroup so syncJob can proceed past PG creation.
+	pg := &schedulingapi.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobInfo.Job.Name + "-" + string(jobInfo.Job.UID),
+			Namespace: namespace,
+		},
+		Status: schedulingapi.PodGroupStatus{Phase: schedulingapi.PodGroupPending},
+	}
+	if _, err = fakecontroller.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Error creating PodGroup: %v", err)
+	}
+	_ = fakecontroller.pgInformer.Informer().GetIndexer().Add(pg)
+
+	if err = testState.Execute(state.Action{Action: busv1alpha1.RestartJobAction}); err != nil {
+		t.Fatalf("Execute returned unexpected error: %v", err)
+	}
+	if killCalled {
+		t.Fatalf("expected KillJob not to be called when no live pods remain")
+	}
+
+	got, err := fakecontroller.cache.Get(fmt.Sprintf("%s/%s", jobInfo.Job.Namespace, jobInfo.Job.Name))
+	if err != nil {
+		t.Fatalf("Error retrieving job from cache: %v", err)
+	}
+	if got.Job.Status.State.Phase != v1alpha1.Pending {
+		t.Fatalf("expected phase Pending after status-only sync, got %s", got.Job.Status.State.Phase)
 	}
 }
 
