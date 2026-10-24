@@ -23,6 +23,7 @@ package framework
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -1413,6 +1414,26 @@ func (ssn *Session) reconcileUnschedulableCache() {
 
 		ssn.unschedulableJobCache.Forget(jobID)
 	}
+}
+
+// ReclaimableBy reports whether a job in the reclaimer queue can reclaim from jobs in the victim queue.
+// The victim queue and its ancestors below the lowest common ancestor with the reclaimer queue must all
+// be reclaimable, so reclaimable=false on a parent queue protects its subtree from queues outside it.
+func (ssn *Session) ReclaimableBy(victim, reclaimer api.QueueID) bool {
+	if !ssn.Queues[victim].Reclaimable() {
+		return false
+	}
+	reclaimerScope := ssn.queueScope(reclaimer)
+	for _, id := range ssn.queueScope(victim)[1:] {
+		if slices.Contains(reclaimerScope, id) {
+			// Reached the lowest common ancestor.
+			return true
+		}
+		if q, found := ssn.Queues[id]; found && !q.Reclaimable() {
+			return false
+		}
+	}
+	return true
 }
 
 // queueScope returns queueID together with its ancestor queues, walking
