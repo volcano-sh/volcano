@@ -50,6 +50,26 @@ var _ = ginkgo.Describe("Queue Mutating E2E Test", func() {
 		gomega.Expect(*createdQueue.Spec.Reclaimable).To(gomega.BeTrue())
 	})
 
+	ginkgo.It("Should set default preemptable to true when not specified", func() {
+		testCtx := util.InitTestContext(util.Options{})
+		defer util.CleanupTestContext(testCtx)
+
+		queue := &schedulingv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "default-preemptable-queue",
+			},
+			Spec: schedulingv1beta1.QueueSpec{
+				Weight: 1,
+				// Preemptable not specified
+			},
+		}
+
+		createdQueue, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		gomega.Expect(createdQueue.Spec.Preemptable).NotTo(gomega.BeNil())
+		gomega.Expect(*createdQueue.Spec.Preemptable).To(gomega.BeTrue())
+	})
+
 	ginkgo.It("Should set default weight to 1 when not specified", func() {
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
@@ -70,7 +90,7 @@ var _ = ginkgo.Describe("Queue Mutating E2E Test", func() {
 		gomega.Expect(createdQueue.Spec.Weight).To(gomega.Equal(int32(1)))
 	})
 
-	ginkgo.It("Should apply both default reclaimable and weight when not specified", func() {
+	ginkgo.It("Should apply both default reclaimable, preemptable and weight when not specified", func() {
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
 
@@ -79,7 +99,7 @@ var _ = ginkgo.Describe("Queue Mutating E2E Test", func() {
 				Name: "both-defaults-queue",
 			},
 			Spec: schedulingv1beta1.QueueSpec{
-				// Both Weight and Reclaimable not specified
+				// Weight, Reclaimable, Preemptable not specified
 			},
 		}
 
@@ -88,6 +108,8 @@ var _ = ginkgo.Describe("Queue Mutating E2E Test", func() {
 		gomega.Expect(createdQueue.Spec.Weight).To(gomega.Equal(int32(1)))
 		gomega.Expect(createdQueue.Spec.Reclaimable).NotTo(gomega.BeNil())
 		gomega.Expect(*createdQueue.Spec.Reclaimable).To(gomega.BeTrue())
+		gomega.Expect(createdQueue.Spec.Preemptable).NotTo(gomega.BeNil())
+		gomega.Expect(*createdQueue.Spec.Preemptable).To(gomega.BeTrue())
 	})
 
 	ginkgo.It("Should preserve existing field values when specified", func() {
@@ -102,6 +124,7 @@ var _ = ginkgo.Describe("Queue Mutating E2E Test", func() {
 			Spec: schedulingv1beta1.QueueSpec{
 				Weight:      5,           // Explicitly specified
 				Reclaimable: &falseValue, // Explicitly specified as false
+				Preemptable: &falseValue, // Explicitly specified as false
 			},
 		}
 
@@ -112,6 +135,8 @@ var _ = ginkgo.Describe("Queue Mutating E2E Test", func() {
 		gomega.Expect(createdQueue.Spec.Weight).To(gomega.Equal(int32(5)))
 		gomega.Expect(createdQueue.Spec.Reclaimable).NotTo(gomega.BeNil())
 		gomega.Expect(*createdQueue.Spec.Reclaimable).To(gomega.BeFalse())
+		gomega.Expect(createdQueue.Spec.Preemptable).NotTo(gomega.BeNil())
+		gomega.Expect(*createdQueue.Spec.Preemptable).To(gomega.BeFalse())
 	})
 
 	// Note: We are not testing hierarchy root prefix addition in e2e tests because:
