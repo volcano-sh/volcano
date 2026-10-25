@@ -35,7 +35,7 @@ spec:
           int(object.metadata.annotations["volcano.sh/jdb-min-available"].replace('%', '')) > 0 &&
           int(object.metadata.annotations["volcano.sh/jdb-min-available"].replace('%', '')) < 100
         )
-      message: "jdb-min-available must be a positive integer or a valid percentage which between 1% ~ 99%"
+      message: "jdb-min-available must be a positive integer or a valid percentage between 1% and 99%"
       reason: Invalid
     # not allow negative values for jdb-max-unavailable
     - expression: |
@@ -49,7 +49,7 @@ spec:
           int(object.metadata.annotations["volcano.sh/jdb-max-unavailable"].replace('%', '')) > 0 &&
           int(object.metadata.annotations["volcano.sh/jdb-max-unavailable"].replace('%', '')) < 100
         )
-      message: "jdb-max-unavailable must be a positive integer or a valid percentage which between 1% ~ 99%"
+      message: "jdb-max-unavailable must be a positive integer or a valid percentage between 1% and 99%"
       reason: Invalid
 
 ---
