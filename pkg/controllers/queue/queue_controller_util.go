@@ -24,6 +24,9 @@ import (
 
 const (
 	controllerName = "queue-controller"
+	// podGroupQueueIndex is the name of the PodGroup informer index that maps
+	// a PodGroup to the queue it belongs to.
+	podGroupQueueIndex = "queue"
 )
 
 type patchOperation struct {
