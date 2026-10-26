@@ -495,6 +495,100 @@ func TestAddStatefulSet(t *testing.T) {
 	}
 }
 
+func TestAddStatefulSetScaleToZeroRace(t *testing.T) {
+	namespace := "test"
+	stsName := "sts-test"
+	uid := types.UID("11111111-2222-3333-4444-555555555555")
+	pgName := vcbatch.PodgroupNamePrefix + string(uid)
+
+	tests := []struct {
+		name            string
+		currentReplicas int32
+		expectDeleted   bool
+	}{
+		{name: "genuine scale to zero deletes the podgroup", currentReplicas: 0, expectDeleted: true},
+		{name: "stale scale-to-zero event keeps a recreated podgroup", currentReplicas: 1, expectDeleted: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newFakeController()
+
+			// The API server already reflects the current state of the StatefulSet.
+			_, err := c.kubeClient.AppsV1().StatefulSets(namespace).Create(context.TODO(), &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{Name: stsName, Namespace: namespace, UID: uid},
+				Spec:       appsv1.StatefulSetSpec{Replicas: ptr.To(tc.currentReplicas)},
+			}, metav1.CreateOptions{})
+			assert.NoError(t, err)
+
+			_, err = c.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), &scheduling.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: pgName, Namespace: namespace},
+			}, metav1.CreateOptions{})
+			assert.NoError(t, err)
+
+			// A stale event observes the StatefulSet as scaled to zero.
+			c.addStatefulSet(&appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{Name: stsName, Namespace: namespace, UID: uid},
+				Spec:       appsv1.StatefulSetSpec{Replicas: ptr.To[int32](0)},
+			})
+
+			_, err = c.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+			if tc.expectDeleted {
+				assert.True(t, apierrors.IsNotFound(err), "expected the podgroup to be deleted")
+			} else {
+				assert.NoError(t, err, "expected the podgroup to be kept")
+			}
+		})
+	}
+}
+
+func TestAddReplicaSetScaleToZeroRace(t *testing.T) {
+	namespace := "test"
+	rsName := "rs-test"
+	uid := types.UID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+	pgName := vcbatch.PodgroupNamePrefix + string(uid)
+
+	tests := []struct {
+		name            string
+		currentReplicas int32
+		expectDeleted   bool
+	}{
+		{name: "genuine scale to zero deletes the podgroup", currentReplicas: 0, expectDeleted: true},
+		{name: "stale scale-to-zero event keeps a recreated podgroup", currentReplicas: 1, expectDeleted: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newFakeController()
+
+			// The API server already reflects the current state of the ReplicaSet.
+			_, err := c.kubeClient.AppsV1().ReplicaSets(namespace).Create(context.TODO(), &appsv1.ReplicaSet{
+				ObjectMeta: metav1.ObjectMeta{Name: rsName, Namespace: namespace, UID: uid},
+				Spec:       appsv1.ReplicaSetSpec{Replicas: ptr.To(tc.currentReplicas)},
+			}, metav1.CreateOptions{})
+			assert.NoError(t, err)
+
+			_, err = c.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), &scheduling.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: pgName, Namespace: namespace},
+			}, metav1.CreateOptions{})
+			assert.NoError(t, err)
+
+			// A stale event observes the ReplicaSet as scaled to zero.
+			c.addReplicaSet(&appsv1.ReplicaSet{
+				ObjectMeta: metav1.ObjectMeta{Name: rsName, Namespace: namespace, UID: uid},
+				Spec:       appsv1.ReplicaSetSpec{Replicas: ptr.To[int32](0)},
+			})
+
+			_, err = c.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+			if tc.expectDeleted {
+				assert.True(t, apierrors.IsNotFound(err), "expected the podgroup to be deleted")
+			} else {
+				assert.NoError(t, err, "expected the podgroup to be kept")
+			}
+		})
+	}
+}
+
 func Test_createOrUpdateNormalPodPG(t *testing.T) {
 	namespace := "test"
 	replicas := int32(2)
