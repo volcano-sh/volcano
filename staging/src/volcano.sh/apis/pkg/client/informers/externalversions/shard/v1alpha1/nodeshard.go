@@ -33,11 +33,39 @@ import (
 )
 
 // NodeShardInformer provides access to a shared informer and lister for
-// NodeShards.
+// NodeShards. Prefer using the type-safe variant (see [TypedNodeShardInformer]).
 type NodeShardInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() shardv1alpha1.NodeShardLister
 }
+
+// TypedNodeShardInformer provides access to a shared informer and lister for
+// NodeShards, including the type-safe TypedInformer variant.
+// It is a superset of NodeShardInformer.
+type TypedNodeShardInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() NodeShardIndexInformer
+	Lister() shardv1alpha1.NodeShardLister
+}
+
+// NodeShardIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type NodeShardIndexInformer cache.TypedSharedIndexInformer[*apisshardv1alpha1.NodeShard]
+
+// NodeShardHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for NodeShard.
+type NodeShardHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apisshardv1alpha1.NodeShard]
+
+// NodeShardDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for NodeShard.
+type NodeShardDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apisshardv1alpha1.NodeShard]
+
+// NodeShardFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for NodeShard.
+type NodeShardFilteringHandler = cache.TypedFilteringResourceEventHandler[*apisshardv1alpha1.NodeShard]
+
+// NodeShardIndexers is a specialization of [cache.TypedIndexers] for NodeShard.
+type NodeShardIndexers = cache.TypedIndexers[*apisshardv1alpha1.NodeShard]
+
+// DeletedNodeShard is a specialization of [cache.DeletedObject] for NodeShard.
+type DeletedNodeShard = cache.DeletedObject[*apisshardv1alpha1.NodeShard]
 
 type nodeShardInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -47,25 +75,49 @@ type nodeShardInformer struct {
 // NewNodeShardInformer constructs a new informer for NodeShard type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedNodeShardInformer]).
 func NewNodeShardInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewNodeShardInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedNodeShardInformer constructs a new informer for NodeShard type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedNodeShardInformer(client versioned.Interface, resyncPeriod time.Duration, indexers NodeShardIndexers) NodeShardIndexInformer {
+	return NewTypedNodeShardInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredNodeShardInformer constructs a new informer for NodeShard type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredNodeShardInformer]).
 func NewFilteredNodeShardInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewNodeShardInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+	return NewTypedNodeShardInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredNodeShardInformer constructs a new informer for NodeShard type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredNodeShardInformer(client versioned.Interface, resyncPeriod time.Duration, indexers NodeShardIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) NodeShardIndexInformer {
+	return NewTypedNodeShardInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
 }
 
 // NewNodeShardInformerWithOptions constructs a new informer for NodeShard type with additional options.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedNodeShardInformerWithOptions]).
 func NewNodeShardInformerWithOptions(client versioned.Interface, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedNodeShardInformerWithOptions(client, options)
+}
+
+// NewTypedNodeShardInformerWithOptions constructs a new informer for NodeShard type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedNodeShardInformerWithOptions(client versioned.Interface, options internalinterfaces.InformerOptions) NodeShardIndexInformer {
 	gvr := schema.GroupVersionResource{Group: "shard.volcano.sh", Version: "v1alpha1", Resource: "nodeshards"}
 	identifier := options.InformerName.WithResource(gvr)
 	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
+	return cache.NewTypedSharedIndexInformer[*apisshardv1alpha1.NodeShard](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
@@ -98,17 +150,57 @@ func NewNodeShardInformerWithOptions(client versioned.Interface, options interna
 			Indexers:     options.Indexers,
 			Identifier:   identifier,
 		},
-	)
+	))
 }
 
 func (f *nodeShardInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewNodeShardInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewTypedNodeShardInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *nodeShardInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apisshardv1alpha1.NodeShard{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *nodeShardInformer) TypedInformer() NodeShardIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisshardv1alpha1.NodeShard](f.factory.InformerFor(&apisshardv1alpha1.NodeShard{}, f.defaultInformer))
 }
 
 func (f *nodeShardInformer) Lister() shardv1alpha1.NodeShardLister {
 	return shardv1alpha1.NewNodeShardLister(f.Informer().GetIndexer())
+}
+
+// ToTypedNodeShardInformer converts an untyped informer into a TypedNodeShardInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *NodeShard. If that is not the case, calling type-safe methods of the returned
+// TypedNodeShardInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedNodeShardInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedNodeShardInformer(informer NodeShardInformer) TypedNodeShardInformer {
+	if informer, ok := informer.(TypedNodeShardInformer); ok {
+		return informer
+	}
+	return &nodeShardTypedInformerAdapter{informer}
+}
+
+type nodeShardTypedInformerAdapter struct {
+	NodeShardInformer
+}
+
+func (a *nodeShardTypedInformerAdapter) TypedInformer() NodeShardIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisshardv1alpha1.NodeShard](a.Informer())
+}
+
+// ToNodeShardIndexInformer converts an untyped informer into a NodeShardIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *NodeShard. If that is not the case, calling type-safe methods of the returned
+// NodeShardIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a NodeShardIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToNodeShardIndexInformer(informer cache.SharedIndexInformer) NodeShardIndexInformer {
+	if informer, ok := informer.(NodeShardIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apisshardv1alpha1.NodeShard](informer)
 }

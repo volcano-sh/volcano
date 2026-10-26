@@ -28,7 +28,7 @@ import (
 //
 // NamespaceQueue is a namespace-scoped queue abstraction in Volcano scheduling.
 type NamespaceQueueApplyConfiguration struct {
-	v1.TypeMetaApplyConfiguration `json:",inline"`
+	v1.TypeMetaApplyConfiguration `json:""`
 	// ObjectMeta contains standard Kubernetes object metadata.
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	// Spec defines the desired NamespaceQueue behavior.

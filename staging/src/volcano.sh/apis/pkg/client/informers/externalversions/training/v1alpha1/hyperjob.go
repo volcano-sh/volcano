@@ -33,11 +33,39 @@ import (
 )
 
 // HyperJobInformer provides access to a shared informer and lister for
-// HyperJobs.
+// HyperJobs. Prefer using the type-safe variant (see [TypedHyperJobInformer]).
 type HyperJobInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() trainingv1alpha1.HyperJobLister
 }
+
+// TypedHyperJobInformer provides access to a shared informer and lister for
+// HyperJobs, including the type-safe TypedInformer variant.
+// It is a superset of HyperJobInformer.
+type TypedHyperJobInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() HyperJobIndexInformer
+	Lister() trainingv1alpha1.HyperJobLister
+}
+
+// HyperJobIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type HyperJobIndexInformer cache.TypedSharedIndexInformer[*apistrainingv1alpha1.HyperJob]
+
+// HyperJobHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for HyperJob.
+type HyperJobHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apistrainingv1alpha1.HyperJob]
+
+// HyperJobDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for HyperJob.
+type HyperJobDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apistrainingv1alpha1.HyperJob]
+
+// HyperJobFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for HyperJob.
+type HyperJobFilteringHandler = cache.TypedFilteringResourceEventHandler[*apistrainingv1alpha1.HyperJob]
+
+// HyperJobIndexers is a specialization of [cache.TypedIndexers] for HyperJob.
+type HyperJobIndexers = cache.TypedIndexers[*apistrainingv1alpha1.HyperJob]
+
+// DeletedHyperJob is a specialization of [cache.DeletedObject] for HyperJob.
+type DeletedHyperJob = cache.DeletedObject[*apistrainingv1alpha1.HyperJob]
 
 type hyperJobInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -48,25 +76,49 @@ type hyperJobInformer struct {
 // NewHyperJobInformer constructs a new informer for HyperJob type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedHyperJobInformer]).
 func NewHyperJobInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewHyperJobInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedHyperJobInformer constructs a new informer for HyperJob type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedHyperJobInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers HyperJobIndexers) HyperJobIndexInformer {
+	return NewTypedHyperJobInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredHyperJobInformer constructs a new informer for HyperJob type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredHyperJobInformer]).
 func NewFilteredHyperJobInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewHyperJobInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+	return NewTypedHyperJobInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredHyperJobInformer constructs a new informer for HyperJob type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredHyperJobInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers HyperJobIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) HyperJobIndexInformer {
+	return NewTypedHyperJobInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
 }
 
 // NewHyperJobInformerWithOptions constructs a new informer for HyperJob type with additional options.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedHyperJobInformerWithOptions]).
 func NewHyperJobInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedHyperJobInformerWithOptions(client, namespace, options)
+}
+
+// NewTypedHyperJobInformerWithOptions constructs a new informer for HyperJob type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedHyperJobInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) HyperJobIndexInformer {
 	gvr := schema.GroupVersionResource{Group: "training.volcano.sh", Version: "v1alpha1", Resource: "hyperjobs"}
 	identifier := options.InformerName.WithResource(gvr)
 	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
+	return cache.NewTypedSharedIndexInformer[*apistrainingv1alpha1.HyperJob](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
@@ -99,17 +151,57 @@ func NewHyperJobInformerWithOptions(client versioned.Interface, namespace string
 			Indexers:     options.Indexers,
 			Identifier:   identifier,
 		},
-	)
+	))
 }
 
 func (f *hyperJobInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewHyperJobInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewTypedHyperJobInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *hyperJobInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apistrainingv1alpha1.HyperJob{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *hyperJobInformer) TypedInformer() HyperJobIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apistrainingv1alpha1.HyperJob](f.factory.InformerFor(&apistrainingv1alpha1.HyperJob{}, f.defaultInformer))
 }
 
 func (f *hyperJobInformer) Lister() trainingv1alpha1.HyperJobLister {
 	return trainingv1alpha1.NewHyperJobLister(f.Informer().GetIndexer())
+}
+
+// ToTypedHyperJobInformer converts an untyped informer into a TypedHyperJobInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *HyperJob. If that is not the case, calling type-safe methods of the returned
+// TypedHyperJobInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedHyperJobInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedHyperJobInformer(informer HyperJobInformer) TypedHyperJobInformer {
+	if informer, ok := informer.(TypedHyperJobInformer); ok {
+		return informer
+	}
+	return &hyperJobTypedInformerAdapter{informer}
+}
+
+type hyperJobTypedInformerAdapter struct {
+	HyperJobInformer
+}
+
+func (a *hyperJobTypedInformerAdapter) TypedInformer() HyperJobIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apistrainingv1alpha1.HyperJob](a.Informer())
+}
+
+// ToHyperJobIndexInformer converts an untyped informer into a HyperJobIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *HyperJob. If that is not the case, calling type-safe methods of the returned
+// HyperJobIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a HyperJobIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToHyperJobIndexInformer(informer cache.SharedIndexInformer) HyperJobIndexInformer {
+	if informer, ok := informer.(HyperJobIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apistrainingv1alpha1.HyperJob](informer)
 }

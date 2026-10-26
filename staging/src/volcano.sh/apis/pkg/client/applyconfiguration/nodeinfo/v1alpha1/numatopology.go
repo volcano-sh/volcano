@@ -28,7 +28,7 @@ import (
 //
 // Numatopology is the Schema for the Numatopologies API
 type NumatopologyApplyConfiguration struct {
-	v1.TypeMetaApplyConfiguration    `json:",inline"`
+	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	// Specification of the numa information of the worker node
 	Spec *NumatopoSpecApplyConfiguration `json:"spec,omitempty"`

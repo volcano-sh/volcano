@@ -33,11 +33,39 @@ import (
 )
 
 // PodGroupInformer provides access to a shared informer and lister for
-// PodGroups.
+// PodGroups. Prefer using the type-safe variant (see [TypedPodGroupInformer]).
 type PodGroupInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() schedulingv1beta1.PodGroupLister
 }
+
+// TypedPodGroupInformer provides access to a shared informer and lister for
+// PodGroups, including the type-safe TypedInformer variant.
+// It is a superset of PodGroupInformer.
+type TypedPodGroupInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() PodGroupIndexInformer
+	Lister() schedulingv1beta1.PodGroupLister
+}
+
+// PodGroupIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type PodGroupIndexInformer cache.TypedSharedIndexInformer[*apisschedulingv1beta1.PodGroup]
+
+// PodGroupHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for PodGroup.
+type PodGroupHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apisschedulingv1beta1.PodGroup]
+
+// PodGroupDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for PodGroup.
+type PodGroupDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apisschedulingv1beta1.PodGroup]
+
+// PodGroupFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for PodGroup.
+type PodGroupFilteringHandler = cache.TypedFilteringResourceEventHandler[*apisschedulingv1beta1.PodGroup]
+
+// PodGroupIndexers is a specialization of [cache.TypedIndexers] for PodGroup.
+type PodGroupIndexers = cache.TypedIndexers[*apisschedulingv1beta1.PodGroup]
+
+// DeletedPodGroup is a specialization of [cache.DeletedObject] for PodGroup.
+type DeletedPodGroup = cache.DeletedObject[*apisschedulingv1beta1.PodGroup]
 
 type podGroupInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -48,25 +76,49 @@ type podGroupInformer struct {
 // NewPodGroupInformer constructs a new informer for PodGroup type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedPodGroupInformer]).
 func NewPodGroupInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewPodGroupInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedPodGroupInformer constructs a new informer for PodGroup type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedPodGroupInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers PodGroupIndexers) PodGroupIndexInformer {
+	return NewTypedPodGroupInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredPodGroupInformer constructs a new informer for PodGroup type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredPodGroupInformer]).
 func NewFilteredPodGroupInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewPodGroupInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+	return NewTypedPodGroupInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredPodGroupInformer constructs a new informer for PodGroup type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredPodGroupInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers PodGroupIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) PodGroupIndexInformer {
+	return NewTypedPodGroupInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
 }
 
 // NewPodGroupInformerWithOptions constructs a new informer for PodGroup type with additional options.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedPodGroupInformerWithOptions]).
 func NewPodGroupInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedPodGroupInformerWithOptions(client, namespace, options)
+}
+
+// NewTypedPodGroupInformerWithOptions constructs a new informer for PodGroup type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedPodGroupInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) PodGroupIndexInformer {
 	gvr := schema.GroupVersionResource{Group: "scheduling.volcano.sh", Version: "v1beta1", Resource: "podgroups"}
 	identifier := options.InformerName.WithResource(gvr)
 	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
+	return cache.NewTypedSharedIndexInformer[*apisschedulingv1beta1.PodGroup](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
@@ -99,17 +151,57 @@ func NewPodGroupInformerWithOptions(client versioned.Interface, namespace string
 			Indexers:     options.Indexers,
 			Identifier:   identifier,
 		},
-	)
+	))
 }
 
 func (f *podGroupInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewPodGroupInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewTypedPodGroupInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *podGroupInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apisschedulingv1beta1.PodGroup{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *podGroupInformer) TypedInformer() PodGroupIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisschedulingv1beta1.PodGroup](f.factory.InformerFor(&apisschedulingv1beta1.PodGroup{}, f.defaultInformer))
 }
 
 func (f *podGroupInformer) Lister() schedulingv1beta1.PodGroupLister {
 	return schedulingv1beta1.NewPodGroupLister(f.Informer().GetIndexer())
+}
+
+// ToTypedPodGroupInformer converts an untyped informer into a TypedPodGroupInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *PodGroup. If that is not the case, calling type-safe methods of the returned
+// TypedPodGroupInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedPodGroupInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedPodGroupInformer(informer PodGroupInformer) TypedPodGroupInformer {
+	if informer, ok := informer.(TypedPodGroupInformer); ok {
+		return informer
+	}
+	return &podGroupTypedInformerAdapter{informer}
+}
+
+type podGroupTypedInformerAdapter struct {
+	PodGroupInformer
+}
+
+func (a *podGroupTypedInformerAdapter) TypedInformer() PodGroupIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisschedulingv1beta1.PodGroup](a.Informer())
+}
+
+// ToPodGroupIndexInformer converts an untyped informer into a PodGroupIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *PodGroup. If that is not the case, calling type-safe methods of the returned
+// PodGroupIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a PodGroupIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToPodGroupIndexInformer(informer cache.SharedIndexInformer) PodGroupIndexInformer {
+	if informer, ok := informer.(PodGroupIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apisschedulingv1beta1.PodGroup](informer)
 }

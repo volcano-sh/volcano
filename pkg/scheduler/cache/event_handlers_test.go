@@ -22,16 +22,23 @@ import (
 	"log"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
 	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	resourceslicetracker "k8s.io/dynamic-resource-allocation/resourceslice/tracker"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/utils/cpuset"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -75,6 +82,68 @@ func TestRegisterHintEventHandler(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDeviceTaintRuleRemovalInvalidatesUnschedulableCache(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const (
+		driver = "driver.example.com"
+		plugin = "plugin"
+	)
+	slice := &resourceapi.ResourceSlice{
+		ObjectMeta: metav1.ObjectMeta{Name: "slice"},
+		Spec: resourceapi.ResourceSliceSpec{
+			Driver:   driver,
+			Pool:     resourceapi.ResourcePool{Name: "pool", ResourceSliceCount: 1},
+			AllNodes: ptr.To(true),
+			Devices:  []resourceapi.Device{{Name: "device"}},
+		},
+	}
+	rule := &resourceapi.DeviceTaintRule{
+		ObjectMeta: metav1.ObjectMeta{Name: "rule"},
+		Spec: resourceapi.DeviceTaintRuleSpec{
+			DeviceSelector: &resourceapi.DeviceTaintSelector{Driver: ptr.To(driver)},
+			Taint:          resourceapi.DeviceTaint{Key: "example.com/taint", Effect: resourceapi.DeviceTaintEffectNoSchedule},
+		},
+	}
+	client := fake.NewSimpleClientset(slice, rule)
+	informerFactory := informers.NewSharedInformerFactory(client, 0)
+	tracker, err := resourceslicetracker.StartTracker(ctx, resourceslicetracker.Options{
+		EnableDeviceTaintRules: true,
+		SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
+		TaintInformer:          informerFactory.Resource().V1().DeviceTaintRules(),
+		KubeClient:             client,
+	})
+	if err != nil {
+		t.Fatalf("failed to start resource slice tracker: %v", err)
+	}
+	defer tracker.Stop()
+
+	jobCache := unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration)
+	jobCache.AddHintProvider(plugin, testHintProvider{event: fwk.ClusterEvent{Resource: fwk.ResourceSlice, ActionType: fwk.Update}})
+	schedulerCache := &SchedulerCache{unschedulableJobCache: jobCache}
+	handlers := make(map[string]kcache.ResourceEventHandlerRegistration)
+	schedulerCache.registerHintEventHandler(handlers, "resourceSlice", tracker, fwk.ResourceSlice)
+	informerFactory.Start(ctx.Done())
+	if !kcache.WaitForCacheSync(ctx.Done(), tracker.HasSynced, handlers["resourceSlice"].HasSynced) {
+		t.Fatal("resource slice tracker did not sync")
+	}
+
+	job := api.NewJobInfo("test/job")
+	jobCache.Record(job, []unschedulable.Rejection{{Plugin: plugin, Source: unschedulable.RejectionPredicate}})
+	if len(jobCache.CachedRejections(job)) == 0 {
+		t.Fatal("rejection was not cached")
+	}
+
+	if err := client.ResourceV1().DeviceTaintRules().Delete(ctx, rule.Name, metav1.DeleteOptions{}); err != nil {
+		t.Fatalf("failed to delete device taint rule: %v", err)
+	}
+
+	assert.Eventually(t, func() bool {
+		return len(jobCache.CachedRejections(job)) == 0
+	}, wait.ForeverTestTimeout, 10*time.Millisecond)
 }
 
 func TestSchedulerCache_updateTask(t *testing.T) {
