@@ -6808,22 +6808,24 @@ func BenchmarkNodeGroupCandidatePredicates(b *testing.B) {
 	}
 }
 
-func TestQueueCandidatesPreserveSamplingTarget(t *testing.T) {
+func TestAllocateResourcesForTasksSamplingTarget(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		hyperNode  string
-		candidates int
-		percentage int32
-		minimum    int32
-		wantScored int32
+		name         string
+		clusterNodes int
+		scopedNodes  int
+		hyperNode    string
+		candidates   int
+		percentage   int32
+		minimum      int32
+		wantScored   int32
 	}{
-		{name: "restricted HyperNode sampling", hyperNode: "restricted", candidates: 1000, minimum: 100, wantScored: 680},
-		{name: "adaptive percentage", candidates: 1000, minimum: 100, wantScored: 680},
-		{name: "fixed percentage", candidates: 1000, percentage: 40, minimum: 100, wantScored: 800},
-		{name: "minimum feasible nodes", candidates: 1000, minimum: 900, wantScored: 900},
-		{name: "capped by candidates", candidates: 300, minimum: 100, wantScored: 300},
-		{name: "empty candidates", minimum: 100},
-		{name: "all feasible nodes", candidates: 1000, percentage: 100, minimum: 100, wantScored: 1000},
+		{name: "restricted HyperNode sampling", clusterNodes: 4000, scopedNodes: 2000, hyperNode: "restricted", candidates: 1000, minimum: 100, wantScored: 680},
+		{name: "adaptive percentage", clusterNodes: 2000, scopedNodes: 2000, hyperNode: framework.ClusterTopHyperNode, candidates: 1000, minimum: 100, wantScored: 680},
+		{name: "fixed percentage", clusterNodes: 2000, scopedNodes: 2000, hyperNode: framework.ClusterTopHyperNode, candidates: 1000, percentage: 40, minimum: 100, wantScored: 800},
+		{name: "minimum feasible nodes", clusterNodes: 2000, scopedNodes: 2000, hyperNode: framework.ClusterTopHyperNode, candidates: 1000, minimum: 900, wantScored: 900},
+		{name: "capped by candidates", clusterNodes: 2000, scopedNodes: 2000, hyperNode: framework.ClusterTopHyperNode, candidates: 300, minimum: 100, wantScored: 300},
+		{name: "empty candidates", clusterNodes: 2000, scopedNodes: 2000, hyperNode: framework.ClusterTopHyperNode, minimum: 100},
+		{name: "all feasible nodes", clusterNodes: 2000, scopedNodes: 2000, hyperNode: framework.ClusterTopHyperNode, candidates: 1000, percentage: 100, minimum: 100, wantScored: 1000},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			previousOpts := options.ServerOpts
@@ -6834,8 +6836,10 @@ func TestQueueCandidatesPreserveSamplingTarget(t *testing.T) {
 			options.ServerOpts = &opts
 			t.Cleanup(func() { options.ServerOpts = previousOpts })
 
+			nodes, scope := buildQueueCandidateSamplingNodes(tc.clusterNodes, tc.scopedNodes, tc.candidates)
 			common := uthelper.TestCommonStruct{
-				Name: tc.name,
+				Name:  tc.name,
+				Nodes: nodes,
 				Queues: []*schedulingv1.Queue{util.MakeQueue("q1").Affinity(&schedulingv1.Affinity{
 					NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
 						RequiredDuringSchedulingIgnoredDuringExecution: []string{"group1"},
@@ -6845,50 +6849,52 @@ func TestQueueCandidatesPreserveSamplingTarget(t *testing.T) {
 				Pods:      []*v1.Pod{util.BuildPod("ns", "p1", "", v1.PodPending, api.BuildResourceList("1", "4Gi"), "pg1", nil, nil)},
 				Plugins:   map[string]framework.PluginBuilder{nodegroup.PluginName: nodegroup.New},
 			}
-			nodeCount := 2000
-			if tc.hyperNode != "" {
-				nodeCount = 4000
+			if tc.hyperNode != framework.ClusterTopHyperNode {
+				common.HyperNodes = map[string]sets.Set[string]{tc.hyperNode: scope}
+				common.HyperNodesMap = api.HyperNodeInfoMap{tc.hyperNode: newPlacementTestHyperNode(tc.hyperNode, 1, "")}
+				common.HyperNodesSetByTier = map[int]sets.Set[string]{1: sets.New(tc.hyperNode)}
 			}
-			for i := 0; i < nodeCount; i++ {
-				group := "group2"
-				if i < tc.candidates {
-					group = "group1"
-				}
-				common.Nodes = append(common.Nodes, util.BuildNode(fmt.Sprintf("node-%04d", i),
-					api.BuildResourceList("100", "400Gi", api.ScalarResource{Name: "pods", Value: "100"}),
-					map[string]string{schedulingv1.NodeGroupNameKey: group}))
-			}
-			ssn := common.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{{
-				Name: nodegroup.PluginName, EnabledPredicate: ptr.To(true), EnabledNodeOrder: ptr.To(true),
-			}}}}, nil)
-			defer common.Close()
 			var scored atomic.Int32
-			ssn.AddNodeOrderFn(nodegroup.PluginName, func(_ *api.TaskInfo, node *api.NodeInfo) (float64, error) {
+			ssn, action := newQueueCandidateAllocation(t, common, nil, func(_ *api.TaskInfo, _ *api.NodeInfo) (float64, error) {
 				scored.Add(1)
 				return 0, nil
 			})
-			if tc.hyperNode == "" {
-				common.Run([]framework.Action{New()})
-			} else {
-				for _, node := range ssn.NodeList {
-					if node.Name < "node-2000" {
-						ssn.RealNodesList[tc.hyperNode] = append(ssn.RealNodesList[tc.hyperNode], node)
-					}
-				}
-				job := ssn.Jobs[api.JobID("ns/pg1")]
-				tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
-				for _, task := range job.Tasks {
-					tasks.Push(task)
-				}
-				action := New()
-				action.session = ssn
-				action.queueNodes = make(map[queueNodeCacheKey][]*api.NodeInfo)
-				stmt := action.allocateResourcesForTasks(job.SubJobs[job.DefaultSubJobID()], tasks, tc.hyperNode)
-				if stmt != nil {
-					defer stmt.Discard()
-				}
+			job := ssn.Jobs["ns/pg1"]
+			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
+			tasks.Push(job.Tasks["ns-p1"])
+			stmt := action.allocateResourcesForTasks(job.SubJobs[job.DefaultSubJobID()], tasks, tc.hyperNode)
+			if stmt != nil {
+				defer stmt.Discard()
 			}
+			assert.Len(t, ssn.NodeList, tc.clusterNodes)
+			assert.Len(t, ssn.RealNodesList[tc.hyperNode], tc.scopedNodes)
 			assert.Equal(t, tc.wantScored, scored.Load(), "scoring must retain the original scope's sampling target")
+			if tc.wantScored == 0 {
+				assert.Nil(t, stmt)
+				assert.Empty(t, job.Tasks["ns-p1"].NodeName)
+			} else if assert.NotNil(t, stmt) {
+				assert.Len(t, stmt.Operations(), 1)
+				assert.True(t, scope.Has(job.Tasks["ns-p1"].NodeName), "allocation must stay within the requested scope")
+			}
 		})
 	}
+}
+
+func buildQueueCandidateSamplingNodes(clusterNodes, scopedNodes, candidates int) ([]*v1.Node, sets.Set[string]) {
+	nodes := make([]*v1.Node, 0, clusterNodes)
+	scope := sets.New[string]()
+	for i := 0; i < clusterNodes; i++ {
+		group := "group2"
+		if i < candidates {
+			group = "group1"
+		}
+		name := fmt.Sprintf("node-%04d", i)
+		nodes = append(nodes, util.BuildNode(name,
+			api.BuildResourceList("100", "400Gi", api.ScalarResource{Name: "pods", Value: "100"}),
+			map[string]string{schedulingv1.NodeGroupNameKey: group}))
+		if i < scopedNodes {
+			scope.Insert(name)
+		}
+	}
+	return nodes, scope
 }

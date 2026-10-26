@@ -19,6 +19,7 @@ package nodegroup
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -352,41 +353,17 @@ func TestNodeGroup(t *testing.T) {
 
 			for _, job := range ssn.Jobs {
 				candidates := ssn.QueueNodeFilterFn(ssn.Queues[job.Queue], ssn.NodeList)
-				candidateNames := make(map[string]bool, len(candidates))
-				lastIndex := -1
-				for _, candidate := range candidates {
-					if candidateNames[candidate.Name] {
-						t.Fatalf("duplicate candidate %s", candidate.Name)
-					}
-					candidateNames[candidate.Name] = true
-					for index, node := range ssn.NodeList {
-						if candidate == node {
-							if index <= lastIndex {
-								t.Fatal("candidate order differs from session node order")
-							}
-							lastIndex = index
-						}
-					}
-				}
-				reversed := append([]*api.NodeInfo(nil), ssn.NodeList...)
-				for left, right := 0, len(reversed)-1; left < right; left, right = left+1, right-1 {
-					reversed[left], reversed[right] = reversed[right], reversed[left]
-				}
-				filtered := ssn.QueueNodeFilterFn(ssn.Queues[job.Queue], reversed)
-				index := 0
-				for _, node := range reversed {
-					if candidateNames[node.Name] {
-						if index >= len(filtered) || filtered[index] != node {
-							t.Fatal("candidate filter did not preserve the supplied node order")
-						}
-						index++
-					}
-				}
-				if index != len(filtered) {
-					t.Fatal("candidate filter expanded the supplied node list")
-				}
 				for _, task := range job.Tasks {
 					taskID := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
+					expectedCandidates := make([]*api.NodeInfo, 0)
+					for _, node := range ssn.NodeList {
+						if test.expectedStatus[taskID][node.Name] == api.Success {
+							expectedCandidates = append(expectedCandidates, node)
+						}
+					}
+					if !reflect.DeepEqual(candidates, expectedCandidates) {
+						t.Fatalf("unexpected queue candidates: got %v, want %v", candidates, expectedCandidates)
+					}
 
 					for _, node := range ssn.Nodes {
 						score, err := ssn.NodeOrderFn(task, node)
@@ -400,9 +377,6 @@ func TestNodeGroup(t *testing.T) {
 
 						var code int
 						err = ssn.PredicateFn(task, node)
-						if candidateNames[node.Name] != (err == nil) {
-							t.Fatalf("queue candidates disagree with static predicate for node %s: %v", node.Name, err)
-						}
 						if err == nil {
 							code = api.Success
 						} else {
@@ -756,48 +730,93 @@ func TestQueueNodesSpecialLabels(t *testing.T) {
 	}
 }
 
-func TestQueueCandidatesSessionLifecycle(t *testing.T) {
-	n1 := util.BuildNode("n1", api.BuildResourceList("4", "16Gi"), map[string]string{schedulingv1.NodeGroupNameKey: "group1"})
-	n2 := util.BuildNode("n2", api.BuildResourceList("4", "16Gi"), map[string]string{schedulingv1.NodeGroupNameKey: "group2"})
-	queue := util.MakeQueue("q1").Affinity(&schedulingv1.Affinity{
-		NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: []string{"group1"},
-		},
-	}).Obj()
-	for round, want := range []string{"n1", "n2", "n1"} {
-		if round == 1 {
-			n1.Labels[schedulingv1.NodeGroupNameKey], n2.Labels[schedulingv1.NodeGroupNameKey] = "group2", "group1"
-		}
-		if round == 2 {
-			queue.Spec.Affinity.NodeGroupAffinity.RequiredDuringSchedulingIgnoredDuringExecution = []string{"group2"}
-		}
-		var plugin *nodeGroupPlugin
-		common := uthelper.TestCommonStruct{
-			Name:   "session candidate lifecycle",
-			Queues: []*schedulingv1.Queue{queue},
-			Nodes:  []*v1.Node{n1, n2},
-			Plugins: map[string]framework.PluginBuilder{
-				PluginName: func(args framework.Arguments) framework.Plugin {
-					plugin = New(args).(*nodeGroupPlugin)
-					return plugin
-				},
+func newNodeGroupTestSession(t *testing.T, nodes []*v1.Node, queue *schedulingv1.Queue, pods []*v1.Pod) (*framework.Session, *nodeGroupPlugin) {
+	t.Helper()
+	var plugin *nodeGroupPlugin
+	common := uthelper.TestCommonStruct{
+		Nodes: nodes, Queues: []*schedulingv1.Queue{queue}, Pods: pods,
+		Plugins: map[string]framework.PluginBuilder{
+			PluginName: func(args framework.Arguments) framework.Plugin {
+				plugin = New(args).(*nodeGroupPlugin)
+				return plugin
 			},
-		}
-		func() {
-			enabled := true
-			ssn := common.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{{Name: PluginName, EnabledPredicate: &enabled}}}}, nil)
-			defer common.Close()
-			for read := 0; read < 2; read++ {
-				candidates := ssn.QueueNodeFilterFn(ssn.Queues[api.QueueID("q1")], ssn.NodeList)
-				if len(candidates) != 1 || candidates[0].Name != want {
-					t.Fatalf("session %d: expected candidate %s, got %v", round, want, candidates)
-				}
-				// Changing available resources must not change the static membership.
-				ssn.Nodes[want].Idle = api.EmptyResource()
+		},
+	}
+	enabled := true
+	ssn := common.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{{Name: PluginName, EnabledPredicate: &enabled}}}}, nil)
+	t.Cleanup(common.Close)
+	return ssn, plugin
+}
+
+func TestQueueNodeFilterFn(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input []string
+		want  []string
+		pods  []*v1.Pod
+	}{
+		{name: "preserves supplied order", input: []string{"n3", "n2", "n1"}, want: []string{"n3", "n1"}},
+		{name: "does not expand restricted input", input: []string{"n2"}, want: []string{}},
+		{name: "resource exhaustion does not change static membership", input: []string{"n1"}, want: []string{"n1"},
+			pods: []*v1.Pod{util.BuildPod("ns", "running", "n1", v1.PodRunning, api.BuildResourceList("4", "16Gi"), "", nil, nil)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			nodes := []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("4", "16Gi"), map[string]string{schedulingv1.NodeGroupNameKey: "group1"}),
+				util.BuildNode("n2", api.BuildResourceList("4", "16Gi"), map[string]string{schedulingv1.NodeGroupNameKey: "group2"}),
+				util.BuildNode("n3", api.BuildResourceList("4", "16Gi"), map[string]string{schedulingv1.NodeGroupNameKey: "group1"}),
 			}
-		}()
-		if plugin.queueAttrs != nil {
-			t.Fatalf("session %d: queue candidates were retained after OnSessionClose", round)
+			queue := util.MakeQueue("q1").Affinity(&schedulingv1.Affinity{NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []string{"group1"},
+			}}).Obj()
+			ssn, _ := newNodeGroupTestSession(t, nodes, queue, tc.pods)
+			if len(tc.pods) > 0 && !ssn.Nodes["n1"].Idle.IsEmpty() {
+				t.Fatal("running pod must consume the node's available resources")
+			}
+			input := make([]*api.NodeInfo, 0, len(tc.input))
+			for _, name := range tc.input {
+				input = append(input, ssn.Nodes[name])
+			}
+			want := make([]*api.NodeInfo, 0, len(tc.want))
+			for _, name := range tc.want {
+				want = append(want, ssn.Nodes[name])
+			}
+			if got := ssn.QueueNodeFilterFn(ssn.Queues["q1"], input); !reflect.DeepEqual(got, want) {
+				t.Fatalf("unexpected candidates: got %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestNodeGroupSessionQueueAttrs(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		nodeGroups    []string
+		requiredGroup string
+		want          string
+	}{
+		{name: "initial labels and affinity", nodeGroups: []string{"group1", "group2"}, requiredGroup: "group1", want: "n1"},
+		{name: "node labels changed", nodeGroups: []string{"group2", "group1"}, requiredGroup: "group1", want: "n2"},
+		{name: "queue affinity changed", nodeGroups: []string{"group1", "group2"}, requiredGroup: "group2", want: "n2"},
+	} {
+		var plugin *nodeGroupPlugin
+		t.Run(tc.name, func(t *testing.T) {
+			nodes := []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("4", "16Gi"), map[string]string{schedulingv1.NodeGroupNameKey: tc.nodeGroups[0]}),
+				util.BuildNode("n2", api.BuildResourceList("4", "16Gi"), map[string]string{schedulingv1.NodeGroupNameKey: tc.nodeGroups[1]}),
+			}
+			queue := util.MakeQueue("q1").Affinity(&schedulingv1.Affinity{NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []string{tc.requiredGroup},
+			}}).Obj()
+			var ssn *framework.Session
+			ssn, plugin = newNodeGroupTestSession(t, nodes, queue, nil)
+			want := []*api.NodeInfo{ssn.Nodes[tc.want]}
+			if got := ssn.QueueNodeFilterFn(ssn.Queues["q1"], ssn.NodeList); !reflect.DeepEqual(got, want) {
+				t.Fatalf("unexpected queue candidates: got %v, want %v", got, want)
+			}
+		})
+		if plugin != nil && plugin.queueAttrs != nil {
+			t.Fatalf("%s: queue attributes were retained after OnSessionClose", tc.name)
 		}
 	}
 }
