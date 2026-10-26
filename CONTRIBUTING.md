@@ -185,6 +185,9 @@ Note: if your pull request isn't getting enough attention, you can use the reach
 
 ## Testing
 
+Follow the [testing guidelines](docs/development/development.md#about-testing)
+when adding or modifying tests.
+
 There are multiple types of tests.
 The location of the test code varies with type, as do the specifics of the environment needed to successfully run the test:
 
