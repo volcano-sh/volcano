@@ -387,7 +387,7 @@ func TestProcessNextWorkItem(t *testing.T) {
 
 func TestCloseRootQueueRecordsWarningEvent(t *testing.T) {
 	c := newFakeController()
-	recorder := record.NewFakeRecorder(1)
+	recorder := record.NewFakeRecorder(10)
 	c.recorder = recorder
 
 	root := &schedulingv1beta1.Queue{
