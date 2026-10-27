@@ -26,11 +26,12 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/cli/vjobs"
 )
 
 func TestViewJob(t *testing.T) {
@@ -161,4 +162,32 @@ func TestInitViewFlags(t *testing.T) {
 		t.Errorf("Could not find the flag name")
 	}
 
+}
+
+func TestGetEventsUsesJobIdentity(t *testing.T) {
+	job := &v1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "train", Namespace: "team", UID: "current-job"}}
+	events := v1.EventList{Items: []v1.Event{
+		{ObjectMeta: metav1.ObjectMeta{Name: "train.current"}, InvolvedObject: v1.ObjectReference{UID: job.UID}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "custom-event"}, InvolvedObject: v1.ObjectReference{UID: job.UID}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "train.old"}, InvolvedObject: v1.ObjectReference{UID: "previous-job"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "train.pod"}, InvolvedObject: v1.ObjectReference{UID: "same-name-pod"}},
+	}}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/namespaces/team/events" {
+			t.Errorf("unexpected events path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(events)
+	}))
+	defer server.Close()
+	for name, getEvents := range map[string]func(context.Context, *rest.Config, *v1alpha1.Job) []v1.Event{
+		"vcctl": GetEvents, "vjobs": vjobs.GetEvents,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := getEvents(context.Background(), &rest.Config{Host: server.URL}, job)
+			if len(got) != 2 || got[0].Name != "train.current" || got[1].Name != "custom-event" {
+				t.Errorf("got events %+v; want only events for UID %s", got, job.UID)
+			}
+		})
+	}
 }
