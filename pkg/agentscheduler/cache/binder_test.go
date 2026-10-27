@@ -671,3 +671,117 @@ func mockForTest() (*SchedulerCache, k8sschedulingqueue.SchedulingQueue) {
 	cache.schedulingQueue = schedulingQueue
 	return cache, schedulingQueue
 }
+
+// These cases exercise real cache failures after a valid scheduling snapshot,
+// rather than relying only on the failingAssumeCache dependency stub.
+func TestCheckAndBindPodRestoresTaskAfterAssumeFailure(t *testing.T) {
+	tests := []struct {
+		name       string
+		removeNode bool
+	}{
+		{name: "node removed after snapshot", removeNode: true},
+		{name: "resources consumed after snapshot"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cache, queue := mockForTest()
+			t.Cleanup(cache.cancel)
+			t.Cleanup(cache.nodeQueue.ShutDown)
+			setupCacheWithNode(cache, "selected")
+			binder, err := NewConflictAwareBinder(cache, queue, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cache.ConflictAwareBinder = binder
+
+			snapshot := k8sutil.NewEmptySnapshot()
+			if err := cache.UpdateSnapshot(snapshot); err != nil {
+				t.Fatal(err)
+			}
+			candidate, err := snapshot.GetVolcanoNodeInfo("selected")
+			if err != nil {
+				t.Fatal(err)
+			}
+			candidates := []*api.NodeInfo{candidate}
+			pod := createTestPod("pending", "pending-uid")
+			pod.Status.Phase = v1.PodPending
+			pod.Spec.SchedulerName = cache.schedulerName
+			pod.Spec.Containers = []v1.Container{{Name: "task", Image: "busybox", Resources: v1.ResourceRequirements{Requests: api.BuildResourceList("1", "1Gi")}}}
+			task := api.NewTaskInfo(pod)
+			if !task.Resreq.LessEqual(candidate.Idle, api.Zero) {
+				t.Fatal("task must fit the original worker snapshot")
+			}
+			cache.AddTaskInfo(task)
+			originalStatus := task.Status
+			cache.RecordCandidateNodesInBinder(candidates)
+
+			var before *api.NodeInfo
+			var beforeGeneration int64
+			if tt.removeNode {
+				if err := cache.RemoveNode("selected"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				// An informer-observed Pod fills the two-CPU node after the
+				// worker's snapshot, without adding an Agent Binder record.
+				other := createTestPod("other", "other-uid")
+				other.Spec.NodeName = "selected"
+				other.Status.Phase = v1.PodRunning
+				other.Spec.SchedulerName = "default-scheduler"
+				other.Spec.Containers = []v1.Container{{Name: "task", Image: "busybox", Resources: v1.ResourceRequirements{Requests: api.BuildResourceList("2", "1Gi")}}}
+				cache.AddPodToCache(other)
+				before = cache.Nodes["selected"].info.Clone()
+				beforeGeneration = cache.Nodes["selected"].info.Generation
+				if len(before.Tasks) != 1 || task.Resreq.LessEqual(before.Idle, api.Zero) {
+					t.Fatal("fixture did not exhaust the selected node's CPU")
+				}
+			}
+			schedCtx := &agentapi.SchedulingContext{Task: task}
+			binder.CheckAndBindPod(&agentapi.PodScheduleResult{SchedCtx: schedCtx, SuggestedNodes: candidates, BindContext: &agentapi.BindContext{SchedCtx: schedCtx}})
+
+			if task.NodeName != "" || task.Pod.Spec.NodeName != "" {
+				t.Errorf("failed assume retained selected node: task=%q pod=%q", task.NodeName, task.Pod.Spec.NodeName)
+			}
+			cached, found := cache.GetTaskInfo(task.UID)
+			if !found {
+				t.Fatal("pending task disappeared from cache")
+			}
+			if cached.NodeName != "" || cached.Pod.Spec.NodeName != "" || cached.Status != originalStatus {
+				t.Errorf("cached task was not restored: task=%q pod=%q status=%v", cached.NodeName, cached.Pod.Spec.NodeName, cached.Status)
+			}
+			pending, _ := queue.PendingPods()
+			if len(pending) != 1 {
+				t.Fatalf("queued %d pods, want 1", len(pending))
+			}
+			if pending[0].Spec.NodeName != "" {
+				t.Errorf("requeued Pod still assigned to %q", pending[0].Spec.NodeName)
+			}
+			if pending[0].Annotations[AnnotationSchedulingPriorityReason] != RequeueReasonBindTaskFailure {
+				t.Error("unexpected retry reason")
+			}
+			if len(cache.NodesInBinder) != 0 || len(binder.nodeBindRecords) != 0 || len(cache.BindFlowChannel) != 0 {
+				t.Error("failed assume retained references, a bind generation or downstream work")
+			}
+			if before != nil {
+				after := cache.Nodes["selected"].info
+				if !after.Idle.Equal(before.Idle, api.Zero) || !after.Used.Equal(before.Used, api.Zero) || len(after.Tasks) != len(before.Tasks) {
+					t.Error("failed assume changed node resources or tasks")
+				}
+				if after.BindGeneration != before.BindGeneration || after.Generation != beforeGeneration {
+					t.Error("failed assume advanced a node generation")
+				}
+			}
+		})
+	}
+}
+
+func TestRequeuePodWithPriorityWithoutQueue(t *testing.T) {
+	binder := &ConflictAwareBinder{}
+	task := api.NewTaskInfo(createTestPod("pending", "pending-uid"))
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Errorf("nil queue guard panicked: %v", recovered)
+		}
+	}()
+	binder.requeuePodWithPriority(task, SchedulingPriorityUrgent, RequeueReasonBindTaskFailure)
+}

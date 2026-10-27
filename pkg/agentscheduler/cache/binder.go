@@ -91,12 +91,11 @@ func (binder *ConflictAwareBinder) processScheduleResult() {
 
 // requeuePodWithPriority requeues a pod with specified priority and reason
 func (binder *ConflictAwareBinder) requeuePodWithPriority(task *api.TaskInfo, priority int, reason string) {
-	binder.schedulingQueue.Done(task.Pod.UID) // Mark previous processing as done
-
 	if binder.schedulingQueue == nil {
 		klog.ErrorS(nil, "schedulingQueue is nil, cannot re-queue pod", "pod", klog.KObj(task.Pod))
 		return
 	}
+	binder.schedulingQueue.Done(task.Pod.UID) // Mark previous processing as done
 
 	// Create a copy to avoid modifying the original pod
 	podCopy := task.Pod.DeepCopy()
@@ -127,10 +126,17 @@ func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *agentapi.PodS
 	}
 
 	// 2. Bind pod if no conflict
+	originalNodeName := task.NodeName
+	originalPodNodeName := task.Pod.Spec.NodeName
 	task.NodeName = node.Name
 	task.Pod.Spec.NodeName = node.Name
 	nodeBindGeneration := node.BindGeneration
 	if err := binder.cache.AddBindTask(scheduleResult.BindContext); err != nil {
+		// The cache did not accept this bind. Restore the pre-attempt state
+		// before copying the Pod into the retry queue. Do not replace the task
+		// cache entry, which may have received a newer informer update.
+		task.NodeName = originalNodeName
+		task.Pod.Spec.NodeName = originalPodNodeName
 		// Release all candidates on bind failure
 		binder.cache.RemoveCandidateNodesFromBinder(scheduleResult.SuggestedNodes)
 		klog.ErrorS(err, "Failed to add bind task", "pod", klog.KObj(task.Pod), "node", node.Name)
