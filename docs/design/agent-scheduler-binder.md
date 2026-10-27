@@ -50,6 +50,23 @@ pending results     <= C + W + 1
 candidate references <= K * (C + W + 1)
 ```
 
+The bound is preserved by the result lifecycle, not by the release ordering
+alone. Initially there are no registered results. Registration adds at most
+`K` references to a worker-held result, and a synchronous worker cannot register
+another result until its current send completes. Enqueue/dequeue transfers that
+result between the worker, queue and consumer categories without registering it
+again. The channel contains at most `C` results and the consumer handles one at
+a time. Successful processing, conflict and assume failure each release the
+result's own references exactly once before that result leaves these categories
+or is requeued. Thus completed results cannot leave references accumulating
+outside the `C + W + 1` population.
+
+Holding references until assume and generation recording complete is a separate
+visibility requirement: releasing them earlier would still satisfy an upper
+bound, but could expose an unsafe snapshot. Conversely, retaining references
+forever would avoid early release but invalidate the population bound. Both the
+release ordering and exact-once cleanup are required by the complete contract.
+
 References are counted with multiplicity: several results may refer to the same
 node. `K` is a bound on the **actual** candidate count, including a configured
 `candidateNodeCount`, rather than a copy of the default value 3.
@@ -73,11 +90,19 @@ repeats that arithmetic does not establish the missing policy.
 
 ## Default and configuration
 
-The default remains **5000**, the pre-existing channel capacity. This preserves
-the queue-size behavior of deployments that do not configure the new option;
-it is not a claim that 5000 is optimal. The visibility correction applies at
+The default remains **5000**, the pre-existing channel capacity. Compatibility
+here means only retaining that default number of queue slots for deployments
+that do not configure the option. It does not guarantee unchanged throughput,
+latency or conflict rates, and it does not imply that 5000 is optimal.
+Different worker counts and eligible-node pools may require explicit tuning. The visibility correction applies at
 every supported capacity. There is no worker multiplier, candidate multiplier,
 or implicit clamp on an explicitly supplied capacity.
+
+The CLI and the programmatic Binder, cache and scheduler constructors validate
+negative capacities. Constructors return errors rather than allowing a negative
+value to reach `make(chan, ...)`; cache/scheduler validation precedes client,
+workqueue and file-watcher setup. The same validation rule is shared across
+these entry points.
 
 For the binary, set `--binder-channel-capacity=<non-negative integer>`. For
 Helm, set `custom.agent_scheduler_binder_channel_capacity` to the same value.
@@ -91,6 +116,11 @@ second and scheduling latency as well as generation conflicts. Fewer conflicts
 alone do not establish better throughput.
 
 ## Evidence and validation boundary
+
+The experiments below are separate datasets tied to different commits. They
+must not be combined or relabelled as measurements of a later revision.
+
+### Dataset A: superseded automatic formula (`b887171b6`)
 
 Experiments on the earlier PR head `b887171b67a936b8473a6ed7b2c0b0e26179f4f0`
 compared the original Binder, visibility-only correction with capacity 5000,
@@ -116,15 +146,60 @@ workers. Preliminary runs with CNI restarts were excluded and rerun after
 stabilizing the test infrastructure. These results are not production throughput
 guarantees or measurements of a newly rebased commit.
 
-The experiments reject a universal tuning claim for the proposed formula;
-they do not supply a replacement universal constant. This change exposes the
-capacity budget explicitly while retaining the existing default. Automatic
-capacity selection remains follow-up performance work.
+The dataset motivated rejecting the automatic default. It does not establish
+performance of the later explicit-capacity implementation or supply a universal
+replacement constant.
+
+### Dataset B: explicit capacity (`f27b585a3`)
+
+Commit `f27b585a3cb63959ad9442d848641ea0f404cf9b` removed the automatic formula,
+retained default capacity 5000 and exposed the explicit CLI option. The
+[per-run explicit-capacity data](agent-scheduler-binder-explicit-results.csv)
+contains 18 pressure runs: 2000 pre-created Pods per run, three repeats per
+configuration, and 36,000 successful API bindings. Its original-ordering
+baseline uses `77236588da03eefcb18b5744d60f7a305b6949ef` on the same code tree.
+Capacity came from the production CLI, without a diagnostic capacity override.
+
+| Eligible nodes / workers | Original ordering, C=5000 | Explicit implementation default, C=5000 | Explicit tuning |
+| --- | ---: | ---: | ---: |
+| 200 / 4 | 1387.5 bindings/s | 1320.2 bindings/s | C=100: 1403.3 bindings/s |
+| 20 / 6 | 275.4 bindings/s | 276.9 bindings/s | C=10: 431.7 bindings/s |
+
+Values are medians. The 200-node default comparison changed by -4.9%; individual
+ranges were 1310.4–1410.7/s and 1283.9–1416.4/s. The overlapping ranges do not
+prove performance equivalence. The 20-node default median changed by +0.6%.
+These observations support keeping default-value compatibility distinct from
+performance guarantees and show why workload-specific tuning may be needed.
+
+This dataset used a separate stable Kind v1.36.1 cluster, Go 1.27.1,
+`GOMAXPROCS=8`, the same eight shared-host CPU affinities and identical diagnostic
+instrumentation on both variants. It retained 200 virtual Node objects, with
+eligibility restricted to 20 in the smaller pool. A separate 20-Pod smoke test
+with CLI capacity 0 reached Running on real Kind workers. All pressure runs
+cross-checked counters, watch events and final API assignments; CNI restart
+counts remained zero. These are burst scheduling/API-binding results, not a
+200-node container-runtime E2E or production throughput guarantee.
+
+### Behavioral coverage of the current revision
+
+The measured datasets above remain attributable to their named commits. Later
+constructor validation and test hardening do not turn those measurements into
+current-head performance results. Automatic capacity selection remains
+follow-up work, and this PR does not close the general scalability issue.
 
 Regression coverage checks the intermediate pending state before assume,
 success/conflict/error cleanup, exact configured capacity including zero,
-blocking and FIFO handoff, and candidate visibility while workers are blocked.
-The saturated-state test varies the capacity and candidate count independently
-and observes the `K * (C + W + 1)` bound. Concurrent allocation tests drain the
-result channel while workers run, including an unbuffered channel, so the test
-consumer does not introduce a producer/consumer deadlock.
+blocking and FIFO handoff, and programmatic rejection of negative capacities.
+The saturated-state test crosses `W` in `{1, 4}`, `C` in `{0, 1, W+1}`, and
+`K` in `{1, 3, 5}`. These represent serial/concurrent workers, no buffer/one
+slot/a queue larger than the worker pool, and single/default/custom candidate
+counts. Every combination checks total references at saturation against
+`K * (C + W + 1)`, then checks that completing the paused consumer removes
+exactly `K` references while the others remain visible.
+
+The paused-assume test isolates a worker snapshot during one Binder operation;
+its constructor argument of 1 is channel capacity, not a worker count. The
+saturation matrix provides the concurrent sender coverage. Concurrent allocation
+tests separately cross serial, multi-worker and stress profiles with unbuffered,
+single-slot and whole-workload buffers, checking progress and the final result
+count while a consumer drains the channel.
