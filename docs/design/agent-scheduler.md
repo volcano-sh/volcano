@@ -92,6 +92,13 @@ TBD
 
 ## Multi-Worker scheduling
 Single scheduling process has performance bottleneck when a large number of Pods need to be scheduled. To improve throughput of scheduling, multiple worker can be enabled to perform parallel scheduling. Worker count can be configured via startup parameter `agent_scheduler_worker_count=x`.
+
+The Binder result buffer is independently configurable with
+`--binder-channel-capacity` (Helm:
+`custom.agent_scheduler_binder_channel_capacity`). Its default is the existing
+5000 results; zero selects an unbuffered handoff. See
+[Binder visibility and capacity](agent-scheduler-binder.md) for the state
+invariants, capacity derivation, and validation boundaries.
 Parallel scheduling may bring scheduling conflict when cluster lack of resource. So Binder component is involved to resolve the conflict before executing real binding.
 
 

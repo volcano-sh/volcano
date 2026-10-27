@@ -393,7 +393,7 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *Schedule
 		k8sschedulingqueue.WithQueueingHintMapPerProfile(queueingHintMapPerProfile),
 	)
 
-	sc.ConflictAwareBinder = NewConflictAwareBinder(sc, sc.schedulingQueue)
+	sc.ConflictAwareBinder = NewConflictAwareBinder(sc, sc.schedulingQueue, opt.BinderChannelCapacity)
 	if options.ServerOpts.ShardingMode != util.NoneShardingMode {
 		sc.ShardCoordinator = NewShardCoordinator(sc, int(opt.ScheduleWorkerCount), opt.ShardName, opt.ShardingMode)
 	}
