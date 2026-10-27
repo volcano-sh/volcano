@@ -36,6 +36,7 @@ import (
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	schedcache "volcano.sh/volcano/pkg/agentscheduler/cache"
+	agentconfig "volcano.sh/volcano/pkg/agentscheduler/config"
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
 	"volcano.sh/volcano/pkg/filewatcher"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
@@ -72,7 +73,7 @@ type Worker struct {
 
 // NewAgentScheduler returns a Scheduler
 func NewAgentScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, error) {
-	if err := options.ValidateBinderChannelCapacity(opt.BinderChannelCapacity); err != nil {
+	if err := agentconfig.ValidateBinderChannelCapacity(opt.BinderChannelCapacity); err != nil {
 		return nil, err
 	}
 	var watcher filewatcher.FileWatcher

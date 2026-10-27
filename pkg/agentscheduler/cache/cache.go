@@ -64,6 +64,7 @@ import (
 	shardv1alpha1 "volcano.sh/apis/pkg/client/listers/shard/v1alpha1"
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
+	agentconfig "volcano.sh/volcano/pkg/agentscheduler/config"
 	"volcano.sh/volcano/pkg/features"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -323,7 +324,7 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) (*Schedul
 	// Validate before creating clients, workqueues or background recorders.
 	// Keep the validated value for the later Binder construction.
 	capacity := opt.BinderChannelCapacity
-	if err := options.ValidateBinderChannelCapacity(capacity); err != nil {
+	if err := agentconfig.ValidateBinderChannelCapacity(capacity); err != nil {
 		return nil, err
 	}
 	kubeClient, err := kubernetes.NewForConfig(config)
@@ -403,14 +404,8 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) (*Schedul
 		k8sschedulingqueue.WithQueueingHintMapPerProfile(queueingHintMapPerProfile),
 	)
 
-	sc.ConflictAwareBinder, err = NewConflictAwareBinder(sc, sc.schedulingQueue, capacity)
-	if err != nil {
-		cancel()
-		sc.schedulingQueue.Close()
-		sc.nodeQueue.ShutDown()
-		broadcaster.Shutdown()
-		return nil, err
-	}
+	// capacity was validated before resource setup and has not changed.
+	sc.ConflictAwareBinder = newConflictAwareBinder(sc, sc.schedulingQueue, capacity)
 	if options.ServerOpts.ShardingMode != util.NoneShardingMode {
 		sc.ShardCoordinator = NewShardCoordinator(sc, int(opt.ScheduleWorkerCount), opt.ShardName, opt.ShardingMode)
 	}

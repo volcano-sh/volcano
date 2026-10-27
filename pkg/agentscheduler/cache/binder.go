@@ -22,8 +22,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 
-	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
+	agentconfig "volcano.sh/volcano/pkg/agentscheduler/config"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
@@ -50,9 +50,15 @@ type ConflictAwareBinder struct {
 // A zero capacity hands each result directly to the consumer. A negative
 // capacity returns an error before any channel or records are allocated.
 func NewConflictAwareBinder(schedulerCache Cache, schedulingQueue k8sschedulingqueue.SchedulingQueue, channelCapacity int) (*ConflictAwareBinder, error) {
-	if err := options.ValidateBinderChannelCapacity(channelCapacity); err != nil {
+	if err := agentconfig.ValidateBinderChannelCapacity(channelCapacity); err != nil {
 		return nil, err
 	}
+	return newConflictAwareBinder(schedulerCache, schedulingQueue, channelCapacity), nil
+}
+
+// newConflictAwareBinder allocates a Binder after its caller has validated the
+// capacity. Both the public constructor and cache initialization enforce this.
+func newConflictAwareBinder(schedulerCache Cache, schedulingQueue k8sschedulingqueue.SchedulingQueue, channelCapacity int) *ConflictAwareBinder {
 	// Each worker registers its candidates before sending a result. With W
 	// synchronous workers and one consumer, at most channelCapacity+W+1 results
 	// can retain candidate references, including blocked senders and the consumer.
@@ -64,7 +70,7 @@ func NewConflictAwareBinder(schedulerCache Cache, schedulingQueue k8sschedulingq
 		BindCheckChannel: make(chan *agentapi.PodScheduleResult, channelCapacity),
 		schedulingQueue:  schedulingQueue,
 		cache:            schedulerCache,
-	}, nil
+	}
 }
 func (binder *ConflictAwareBinder) Run(stopCh <-chan struct{}) {
 	go wait.Until(binder.processScheduleResult, 0, stopCh)
