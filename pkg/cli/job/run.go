@@ -158,7 +158,7 @@ func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.Resource
 							Containers: []v1.Container{
 								{
 									Image:           launchJobFlags.Image,
-									Name:            launchJobFlags.Name,
+									Name:            strings.ReplaceAll(launchJobFlags.Name, ".", "-"),
 									ImagePullPolicy: v1.PullIfNotPresent,
 									Resources: v1.ResourceRequirements{
 										Limits:   limit,
