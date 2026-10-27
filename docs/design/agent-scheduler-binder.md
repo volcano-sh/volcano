@@ -84,7 +84,8 @@ hint lifetime, and exact-once reference accounting serve different purposes.
 
 Here candidate references mean the sum of counts in `NodesInBinder`, not every
 NodeInfo pointer held by snapshots. References are counted with multiplicity:
-several results may refer to the same node. `K` is a bound on the **actual** candidate count, including a configured
+several results may refer to the same node. `K` is a bound on the **actual**
+candidate count, including a configured
 `candidateNodeCount`, rather than a copy of the default value 3.
 
 If an operator has a maximum pending-result budget `P`, a sufficient condition
@@ -118,7 +119,8 @@ here means only retaining that default number of queue slots for deployments
 that do not configure the option. It does not guarantee unchanged throughput,
 latency or conflict rates, and it does not imply that 5000 is optimal.
 Different worker counts and eligible-node pools may require explicit tuning.
-The pending-hint lifetime change applies at every supported capacity. There is no worker multiplier, candidate multiplier,
+The pending-hint lifetime change applies at every supported capacity. There is
+no worker multiplier, candidate multiplier,
 or implicit clamp on an explicitly supplied capacity.
 
 The CLI and the programmatic Binder, cache and scheduler constructors validate
@@ -153,7 +155,8 @@ compared the original Binder, visibility-only correction with capacity 5000,
 and the proposed automatic capacity. The [per-run data](agent-scheduler-binder-results.csv)
 includes the configured capacities, conflict counts, successful bindings and
 elapsed times for all 84 stable runs. `baseline` uses the Binder ordering from
-`0854d3a4018c9304f8a25ded7a6f136c539f753c`; `fixed` is the experiment label for post-assume hint release.
+`0854d3a4018c9304f8a25ded7a6f136c539f753c`; `fixed` is the experiment label for
+post-assume hint release.
 In a 200-node scheduling workload, the
 automatic capacity improved throughput at 6 and 12 workers but reduced it by
 25.6% at 4 workers. In a separate 20-eligible-node capacity sweep at 6 workers,

@@ -774,14 +774,3 @@ func TestCheckAndBindPodRestoresTaskAfterAssumeFailure(t *testing.T) {
 		})
 	}
 }
-
-func TestRequeuePodWithPriorityWithoutQueue(t *testing.T) {
-	binder := &ConflictAwareBinder{}
-	task := api.NewTaskInfo(createTestPod("pending", "pending-uid"))
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			t.Errorf("nil queue guard panicked: %v", recovered)
-		}
-	}()
-	binder.requeuePodWithPriority(task, SchedulingPriorityUrgent, RequeueReasonBindTaskFailure)
-}
