@@ -1,26 +1,40 @@
 # Agent Scheduler Binder visibility and capacity
 
-## Correctness contract
+## Conflict-avoidance hint lifecycle
+
+`NodesInBinder` records pending-node hints, not resource reservations.
+`SelectBestNodes` downgrades these nodes only when the number of scored nodes
+exceeds the requested candidate count, and falls back to pending nodes if there
+are too few alternatives. A pending hint never prohibits selecting a node.
 
 An allocation result contains one Pod and up to `K` candidate nodes. The worker
-registers those candidates in `NodesInBinder` before sending the result to
-`BindCheckChannel`. The single conflict-checking Binder then:
+registers those candidates before sending the result to `BindCheckChannel`.
+The single conflict-checking Binder then:
 
-1. Selects a candidate whose snapshot generation has not already been consumed.
-2. Calls `AddBindTask` to assume the Pod and advance the cache generation.
+1. Selects a candidate using the existing consumed-generation check.
+2. Calls `AddBindTask`, which checks current node resources and assumes the Pod.
 3. Records the generation consumed by this result in `nodeBindRecords`.
-4. Releases all candidate references for this result.
+4. Releases the result's candidate-hint references.
 
-Releasing candidates before step 2 exposes a window in which a worker snapshot
-can treat a node as neither pending nor assumed. On success, candidate release
-must follow both the cache assume and the Binder generation record. A conflict
-or an `AddBindTask` error instead releases the references before requeueing.
-Each result must release its own references exactly once; references held by
-other results on the same node must remain visible.
+Previously the references were released before conflict checking and assume.
+A concurrent worker could miss the pending-node downgrade hint while its node
+snapshot still reflected the pre-assume state. That can produce extra generation
+conflicts and requeues. The existing generation and resource checks still reject
+stale or unfit results; this window has not been shown to cause an incorrect
+binding or oversubscription. Extra retries can recur, but their cost depends on
+the workload and queueing behavior.
 
-This ordering protects the transition. It does not make worker snapshots atomic
-with the Binder, nor does it guarantee zero generation conflicts. The existing
-generation check remains necessary.
+The new ordering retains the heuristic hint through assume and generation
+recording. It does not make snapshots atomic, guarantee zero conflicts, or
+establish a new binding-safety guarantee. A conflict or synchronous assume error
+releases this result's references before requeueing. Each result releases its own
+references exactly once; other results' references to the same node remain.
+
+On a synchronous assume error, the Binder also restores the task and Pod node
+names to their pre-attempt values before copying the Pod into the retry queue.
+For an unscheduled Pod these are empty. Real-cache tests cover a node removed
+after the worker snapshot and resources consumed by an informer-observed Pod.
+This rollback does not change the asynchronous pre-bind/API-failure protocol.
 
 ## Capacity contract and derivation
 
@@ -61,14 +75,16 @@ result's own references exactly once before that result leaves these categories
 or is requeued. Thus completed results cannot leave references accumulating
 outside the `C + W + 1` population.
 
-Holding references until assume and generation recording complete is a separate
-visibility requirement: releasing them earlier would still satisfy an upper
-bound, but could expose an unsafe snapshot. Conversely, retaining references
-forever would avoid early release but invalidate the population bound. Both the
-release ordering and exact-once cleanup are required by the complete contract.
+Holding references through assume and generation recording is a separate
+heuristic-visibility requirement. Earlier release can still satisfy the upper
+bound while losing the downgrade hint and increasing conflicting selections.
+Conversely, leaked references can accumulate after their results leave the
+pipeline and invalidate the population bound. The generation/resource checks,
+hint lifetime, and exact-once reference accounting serve different purposes.
 
-References are counted with multiplicity: several results may refer to the same
-node. `K` is a bound on the **actual** candidate count, including a configured
+Here candidate references mean the sum of counts in `NodesInBinder`, not every
+NodeInfo pointer held by snapshots. References are counted with multiplicity:
+several results may refer to the same node. `K` is a bound on the **actual** candidate count, including a configured
 `candidateNodeCount`, rather than a copy of the default value 3.
 
 If an operator has a maximum pending-result budget `P`, a sufficient condition
@@ -83,6 +99,13 @@ eligible node sets may overlap, and candidate selection can fall back to nodes
 already present in `NodesInBinder`. The subsequent `BindFlowChannel`, pre-bind
 work, and API binding are outside this result-buffer budget.
 
+`AddBindTask` currently holds the cache mutex while sending to `BindFlowChannel`.
+If that channel is full, the send can hold up cache operations such as
+`UpdateSnapshot`. However, `BindTask` starts pre-bind/API work asynchronously, so
+slow API calls do not necessarily fill the channel: downstream goroutines can
+accumulate instead. This capacity setting does not bound that work or change
+the downstream locking/consumption protocol.
+
 In particular, neither a second buffer nor two rounds of results per candidate
 are required by this control flow. The previous proposed `W * 3 * 2` formula
 and `[10, 100]` clamp did not follow from these constraints. Adding a test that
@@ -94,15 +117,18 @@ The default remains **5000**, the pre-existing channel capacity. Compatibility
 here means only retaining that default number of queue slots for deployments
 that do not configure the option. It does not guarantee unchanged throughput,
 latency or conflict rates, and it does not imply that 5000 is optimal.
-Different worker counts and eligible-node pools may require explicit tuning. The visibility correction applies at
-every supported capacity. There is no worker multiplier, candidate multiplier,
+Different worker counts and eligible-node pools may require explicit tuning.
+The pending-hint lifetime change applies at every supported capacity. There is no worker multiplier, candidate multiplier,
 or implicit clamp on an explicitly supplied capacity.
 
 The CLI and the programmatic Binder, cache and scheduler constructors validate
 negative capacities. Constructors return errors rather than allowing a negative
 value to reach `make(chan, ...)`; cache/scheduler validation precedes client,
-workqueue and file-watcher setup. The same validation rule is shared across
-these entry points.
+workqueue and file-watcher setup. A shared validation rule lives in the
+lightweight `pkg/agentscheduler/config` package, below the CLI and runtime
+packages. Cache initialization captures the validated capacity, then uses the
+private allocation path; it does not contain an unreachable late validation
+failure/cleanup branch.
 
 For the binary, set `--binder-channel-capacity=<non-negative integer>`. For
 Helm, set `custom.agent_scheduler_binder_channel_capacity` to the same value.
@@ -127,7 +153,7 @@ compared the original Binder, visibility-only correction with capacity 5000,
 and the proposed automatic capacity. The [per-run data](agent-scheduler-binder-results.csv)
 includes the configured capacities, conflict counts, successful bindings and
 elapsed times for all 84 stable runs. `baseline` uses the Binder ordering from
-`0854d3a4018c9304f8a25ded7a6f136c539f753c`; `fixed` uses the corrected ordering.
+`0854d3a4018c9304f8a25ded7a6f136c539f753c`; `fixed` is the experiment label for post-assume hint release.
 In a 200-node scheduling workload, the
 automatic capacity improved throughput at 6 and 12 workers but reduced it by
 25.6% at 4 workers. In a separate 20-eligible-node capacity sweep at 6 workers,
