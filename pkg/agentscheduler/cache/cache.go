@@ -90,8 +90,12 @@ var _ Cache = &SchedulerCache{}
 var generation int64
 
 // New returns a Cache implementation.
-func New(config *rest.Config, opt *options.ServerOption) Cache {
-	return newSchedulerCache(config, opt)
+func New(config *rest.Config, opt *options.ServerOption) (Cache, error) {
+	cache, err := newSchedulerCache(config, opt)
+	if err != nil {
+		return nil, err
+	}
+	return cache, nil
 }
 
 //TODO: abstract common field and functions for volcano and agent scheduler, so each scheduler only depend on common part and customized part
@@ -315,18 +319,24 @@ func (sc *SchedulerCache) setBatchBindParallel() {
 	}
 }
 
-func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, opt *options.ServerOption) (*SchedulerCache, error) {
+	// Validate before creating clients, workqueues or background recorders.
+	// Keep the validated value for the later Binder construction.
+	capacity := opt.BinderChannelCapacity
+	if err := options.ValidateBinderChannelCapacity(capacity); err != nil {
+		return nil, err
+	}
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
+		return nil, fmt.Errorf("failed init kubeClient: %w", err)
 	}
 	vcClient, err := vcclient.NewForConfig(config)
 	if err != nil {
-		panic(fmt.Sprintf("failed init vcClient, with err: %v", err))
+		return nil, fmt.Errorf("failed init vcClient: %w", err)
 	}
 	eventClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		panic(fmt.Sprintf("failed init eventClient, with err: %v", err))
+		return nil, fmt.Errorf("failed init eventClient: %w", err)
 	}
 
 	sc := &SchedulerCache{
@@ -393,11 +403,18 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *Schedule
 		k8sschedulingqueue.WithQueueingHintMapPerProfile(queueingHintMapPerProfile),
 	)
 
-	sc.ConflictAwareBinder = NewConflictAwareBinder(sc, sc.schedulingQueue, opt.BinderChannelCapacity)
+	sc.ConflictAwareBinder, err = NewConflictAwareBinder(sc, sc.schedulingQueue, capacity)
+	if err != nil {
+		cancel()
+		sc.schedulingQueue.Close()
+		sc.nodeQueue.ShutDown()
+		broadcaster.Shutdown()
+		return nil, err
+	}
 	if options.ServerOpts.ShardingMode != util.NoneShardingMode {
 		sc.ShardCoordinator = NewShardCoordinator(sc, int(opt.ScheduleWorkerCount), opt.ShardName, opt.ShardingMode)
 	}
-	return sc
+	return sc, nil
 }
 
 // defaultQueueingHintFn is the default queueing hint function.

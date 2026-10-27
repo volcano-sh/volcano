@@ -146,10 +146,19 @@ func (s *ServerOption) validateOptions() error {
 	if s.ScheduleWorkerCount <= 0 {
 		return fmt.Errorf("scheduler-worker-count must be greater than 0")
 	}
-	if s.BinderChannelCapacity < 0 {
-		return fmt.Errorf("binder-channel-capacity must be greater than or equal to 0")
+	if err := ValidateBinderChannelCapacity(s.BinderChannelCapacity); err != nil {
+		return err
 	}
 	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
+}
+
+// ValidateBinderChannelCapacity checks the result budget for both command-line
+// options and programmatic scheduler/Binder construction.
+func ValidateBinderChannelCapacity(capacity int) error {
+	if capacity < 0 {
+		return fmt.Errorf("binder-channel-capacity must be greater than or equal to 0")
+	}
+	return nil
 }
 
 // RegisterOptions registers options.

@@ -455,7 +455,10 @@ func TestCheckAndBindPod(t *testing.T) {
 			if tt.bindError {
 				binderCache = &failingAssumeCache{Cache: cache}
 			}
-			binder := NewConflictAwareBinder(binderCache, schedulingQueue, 1)
+			binder, err := NewConflictAwareBinder(binderCache, schedulingQueue, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			// Set up pre-existing bind generations if any
 			for name, generation := range tt.preExistingBindGenerations {
@@ -574,7 +577,10 @@ func TestCheckAndBindPodKeepsCandidatesUntilAssumed(t *testing.T) {
 	pausedCache := &pausedAssumeCache{
 		Cache: cache, entered: make(chan struct{}), resume: make(chan struct{}),
 	}
-	binder := NewConflictAwareBinder(pausedCache, queue, 1)
+	binder, err := NewConflictAwareBinder(pausedCache, queue, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	task := api.NewTaskInfo(createTestPod("test-pod", "test-pod-uid"))
 	schedCtx := &agentapi.SchedulingContext{Task: task}
 	result := &agentapi.PodScheduleResult{

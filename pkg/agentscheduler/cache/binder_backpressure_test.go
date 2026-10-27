@@ -18,12 +18,15 @@ package cache
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"testing/synctest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 
+	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
@@ -31,9 +34,11 @@ import (
 
 func TestNewConflictAwareBinder(t *testing.T) {
 	tests := []struct {
-		name     string
-		capacity int
+		name      string
+		capacity  int
+		wantError bool
 	}{
+		{name: "negative capacity", capacity: -1, wantError: true},
 		{name: "unbuffered handoff", capacity: 0},
 		{name: "one queued result", capacity: 1},
 		{name: "capacity below former minimum", capacity: 7},
@@ -45,7 +50,13 @@ func TestNewConflictAwareBinder(t *testing.T) {
 			cache, queue := mockForTest()
 			t.Cleanup(cache.cancel)
 			t.Cleanup(cache.nodeQueue.ShutDown)
-			binder := NewConflictAwareBinder(cache, queue, tt.capacity)
+			binder, err := NewConflictAwareBinder(cache, queue, tt.capacity)
+			if tt.wantError {
+				require.EqualError(t, err, "binder-channel-capacity must be greater than or equal to 0")
+				assert.Nil(t, binder)
+				return
+			}
+			require.NoError(t, err)
 			assert.Equal(t, tt.capacity, cap(binder.BindCheckChannel))
 		})
 	}
@@ -68,7 +79,8 @@ func TestEnqueueScheduleResultBackpressure(t *testing.T) {
 			t.Cleanup(cache.cancel)
 			t.Cleanup(cache.nodeQueue.ShutDown)
 			synctest.Test(t, func(t *testing.T) {
-				binder := NewConflictAwareBinder(cache, queue, tt.capacity)
+				binder, err := NewConflictAwareBinder(cache, queue, tt.capacity)
+				require.NoError(t, err)
 				results := make([]*agentapi.PodScheduleResult, tt.capacity+1)
 				for i := range results {
 					results[i] = newBinderScheduleResult(fmt.Sprintf("pod-%d", i), nil)
@@ -101,13 +113,22 @@ func TestEnqueueScheduleResultBackpressure(t *testing.T) {
 }
 
 func TestEnqueueScheduleResultKeepsBlockedCandidatesVisible(t *testing.T) {
-	tests := []struct {
+	// Cross serial/concurrent workers with no buffer, one slot and a buffer
+	// larger than the worker pool; independently vary single/default/custom K.
+	type handoffCase struct {
 		name                          string
 		capacity, workers, candidates int
-	}{
-		{name: "unbuffered single candidate", capacity: 0, workers: 1, candidates: 1},
-		{name: "buffered default candidates", capacity: 1, workers: 2, candidates: 3},
-		{name: "independent capacity and candidate count", capacity: 7, workers: 3, candidates: 5},
+	}
+	var tests []handoffCase
+	for _, workers := range []int{1, 4} {
+		for _, capacity := range []int{0, 1, workers + 1} {
+			for _, candidates := range []int{1, 3, 5} {
+				tests = append(tests, handoffCase{
+					name:     fmt.Sprintf("workers=%d/capacity=%d/candidates=%d", workers, capacity, candidates),
+					capacity: capacity, workers: workers, candidates: candidates,
+				})
+			}
+		}
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -129,7 +150,8 @@ func TestEnqueueScheduleResultKeepsBlockedCandidatesVisible(t *testing.T) {
 					nodes = append(nodes, node)
 				}
 				pausedCache := &pausedAssumeCache{Cache: cache, entered: make(chan struct{}), resume: make(chan struct{})}
-				binder := NewConflictAwareBinder(pausedCache, queue, tt.capacity)
+				binder, err := NewConflictAwareBinder(pausedCache, queue, tt.capacity)
+				require.NoError(t, err)
 				firstDone := make(chan struct{})
 				go func() {
 					binder.CheckAndBindPod(<-binder.BindCheckChannel)
@@ -154,8 +176,9 @@ func TestEnqueueScheduleResultKeepsBlockedCandidatesVisible(t *testing.T) {
 						workerDone <- struct{}{}
 					}()
 				}
+				resume := sync.OnceFunc(func() { close(pausedCache.resume) })
 				defer func() {
-					close(pausedCache.resume)
+					resume()
 					<-firstDone
 					// Drain and release the fixture's remaining reservations;
 					// binding success/conflict cleanup is covered separately.
@@ -179,6 +202,19 @@ func TestEnqueueScheduleResultKeepsBlockedCandidatesVisible(t *testing.T) {
 					totalReferences += refs
 				}
 				assert.Equal(t, tt.candidates*pendingResults, totalReferences)
+				// Finishing the single consumer releases exactly its K refs.
+				// The C buffered results and W blocked senders remain pending.
+				resume()
+				<-firstDone
+				synctest.Wait()
+				require.NoError(t, cache.UpdateSnapshot(snapshot))
+				remainingReferences := 0
+				for _, node := range nodes {
+					refs := snapshot.NodesInBinder[node.Name]
+					assert.Equal(t, tt.capacity+tt.workers, refs)
+					remainingReferences += refs
+				}
+				assert.Equal(t, tt.candidates*(tt.capacity+tt.workers), remainingReferences)
 			})
 		})
 	}
@@ -192,4 +228,14 @@ func newBinderScheduleResult(name string, nodes []*api.NodeInfo) *agentapi.PodSc
 		SuggestedNodes: nodes,
 		BindContext:    &agentapi.BindContext{SchedCtx: schedCtx},
 	}
+}
+
+func TestNewRejectsNegativeBinderCapacity(t *testing.T) {
+	opt := options.NewServerOption()
+	opt.BinderChannelCapacity = -1
+	// Capacity validation must precede client construction, even when the
+	// programmatic caller also supplied an invalid REST configuration.
+	schedulerCache, err := New(&rest.Config{Host: "://invalid"}, opt)
+	require.EqualError(t, err, "binder-channel-capacity must be greater than or equal to 0")
+	assert.True(t, schedulerCache == nil, "the Cache interface must not contain a typed nil")
 }

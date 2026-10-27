@@ -72,6 +72,9 @@ type Worker struct {
 
 // NewAgentScheduler returns a Scheduler
 func NewAgentScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, error) {
+	if err := options.ValidateBinderChannelCapacity(opt.BinderChannelCapacity); err != nil {
+		return nil, err
+	}
 	var watcher filewatcher.FileWatcher
 	if opt.SchedulerConf != "" {
 		var err error
@@ -81,7 +84,13 @@ func NewAgentScheduler(config *rest.Config, opt *options.ServerOption) (*Schedul
 			return nil, fmt.Errorf("failed creating filewatcher for %s: %v", opt.SchedulerConf, err)
 		}
 	}
-	cache := schedcache.New(config, opt)
+	cache, err := schedcache.New(config, opt)
+	if err != nil {
+		if watcher != nil {
+			watcher.Close()
+		}
+		return nil, err
+	}
 	scheduler := &Scheduler{
 		schedulerConf:      opt.SchedulerConf,
 		fileWatcher:        watcher,

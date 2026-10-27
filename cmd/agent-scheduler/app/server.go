@@ -66,7 +66,7 @@ func Run(opt *options.ServerOption) error {
 
 	sched, err := scheduler.NewAgentScheduler(config, opt)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	if opt.EnableHealthz {

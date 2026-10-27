@@ -43,36 +43,37 @@ func TestConcurrentMultiWorkerScheduling(t *testing.T) {
 	options.ServerOpts.ShardingMode = commonutil.NoneShardingMode
 	scheduleroptions.ServerOpts.ShardingMode = commonutil.NoneShardingMode
 
-	tests := []struct {
-		name           string
-		workerCount    int
-		podsPerWorker  int
-		nodeCount      int
-		binderCapacity int
+	profiles := []struct {
+		name                                  string
+		workerCount, podsPerWorker, nodeCount int
 	}{
-		{
-			name:           "single worker with unbuffered handoff",
-			workerCount:    1,
-			podsPerWorker:  20,
-			nodeCount:      20,
-			binderCapacity: 0,
-		},
-		{
-			name:           "concurrent scheduling with 4 workers",
-			workerCount:    4,
-			podsPerWorker:  5,
-			nodeCount:      20,
-			binderCapacity: 1,
-		},
-		{
-			name:           "stress scheduling with 10 workers",
-			workerCount:    10,
-			podsPerWorker:  100,
-			nodeCount:      50,
-			binderCapacity: 7,
-		},
+		{name: "serial", workerCount: 1, podsPerWorker: 20, nodeCount: 20},
+		{name: "concurrent", workerCount: 4, podsPerWorker: 5, nodeCount: 20},
+		{name: "stress", workerCount: 10, podsPerWorker: 100, nodeCount: 50},
 	}
-
+	type schedulingCase struct {
+		name                                                  string
+		workerCount, podsPerWorker, nodeCount, binderCapacity int
+	}
+	var tests []schedulingCase
+	// For each worker profile exercise direct handoff, limited buffering,
+	// and the boundary where the entire workload fits in the result buffer.
+	for _, profile := range profiles {
+		for _, buffer := range []struct {
+			name     string
+			capacity int
+		}{
+			{name: "unbuffered", capacity: 0},
+			{name: "single-slot", capacity: 1},
+			{name: "whole-workload", capacity: profile.workerCount * profile.podsPerWorker},
+		} {
+			tests = append(tests, schedulingCase{
+				name:        profile.name + "/" + buffer.name,
+				workerCount: profile.workerCount, podsPerWorker: profile.podsPerWorker,
+				nodeCount: profile.nodeCount, binderCapacity: buffer.capacity,
+			})
+		}
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			totalPods := tt.workerCount * tt.podsPerWorker
@@ -89,7 +90,11 @@ func TestConcurrentMultiWorkerScheduling(t *testing.T) {
 				t.Fatalf("Failed to create test framework: %v", err)
 			}
 			defer testFwk.Close()
-			testFwk.MockCache.ConflictAwareBinder = agentcache.NewConflictAwareBinder(testFwk.MockCache, testFwk.SchedulingQueue, tt.binderCapacity)
+			binder, err := agentcache.NewConflictAwareBinder(testFwk.MockCache, testFwk.SchedulingQueue, tt.binderCapacity)
+			if err != nil {
+				t.Fatal(err)
+			}
+			testFwk.MockCache.ConflictAwareBinder = binder
 
 			// Add nodes to the shared cache.
 			for i := 0; i < tt.nodeCount; i++ {
