@@ -18,14 +18,18 @@ package jobp
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v12 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
@@ -188,8 +192,20 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		pgName := jobName + "-" + string(job.UID)
-		pGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		var pGroup *schedulingv1beta1.PodGroup
+		// Job status is initialized to Pending before its PodGroup is created.
+		// Wait for the resource itself instead of assuming Pending implies it exists.
+		err = wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, e2eutil.FiveMinute, true,
+			func(c context.Context) (bool, error) {
+				var getErr error
+				pGroup, getErr = ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Get(c, pgName, metav1.GetOptions{})
+				if apierrors.IsNotFound(getErr) {
+					return false, nil
+				}
+				return getErr == nil, getErr
+			})
+		Expect(err).NotTo(HaveOccurred(), "PodGroup %s/%s should be created", ctx.Namespace, pgName)
+		Expect(pGroup.Spec.MinResources).NotTo(BeNil())
 
 		minReq := *pGroup.Spec.MinResources
 		for name, q := range expected {
