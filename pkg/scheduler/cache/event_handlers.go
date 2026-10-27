@@ -1354,7 +1354,7 @@ func (sc *SchedulerCache) DeleteNamespaceQueueV1beta1(obj interface{}) {
 		return
 	}
 	sc.Mutex.Lock()
-	delete(sc.Queues, schedulingapi.NamespaceQueueID(queue.Namespace, queue.Name))
+	sc.deleteQueue(schedulingapi.NamespaceQueueID(queue.Namespace, queue.Name))
 	sc.Mutex.Unlock()
 }
 
