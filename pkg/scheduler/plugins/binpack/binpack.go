@@ -209,6 +209,7 @@ func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeig
 	requested := task.Resreq
 	allocatable := node.Allocatable
 	used := node.Used
+	priorityUsed := resourceUsedByPriority(task, node)
 
 	for _, resource := range requested.ResourceNames() {
 		request := requested.Get(resource)
@@ -223,14 +224,15 @@ func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeig
 			continue
 		}
 
-		resourceScore, err := ResourceBinPackingScore(request, allocate, nodeUsed, resourceWeight)
+		priorityNodeUsed := priorityUsed.Get(resource)
+		resourceScore, err := resourceBinPackingScoreWithPriority(request, allocate, nodeUsed, priorityNodeUsed, resourceWeight)
 		if err != nil {
-			klog.V(4).Infof("task %s/%s cannot binpack node %s: resource: %s is %s, need %f, used %f, allocatable %f",
-				task.Namespace, task.Name, node.Name, resource, err.Error(), request, nodeUsed, allocate)
+			klog.V(4).Infof("task %s/%s cannot binpack node %s: resource: %s is %s, need %f, used %f, priority used %f, allocatable %f",
+				task.Namespace, task.Name, node.Name, resource, err.Error(), request, nodeUsed, priorityNodeUsed, allocate)
 			return 0
 		}
-		klog.V(5).Infof("task %s/%s on node %s resource %s, need %f, used %f, allocatable %f, weight %d, score %f",
-			task.Namespace, task.Name, node.Name, resource, request, nodeUsed, allocate, resourceWeight, resourceScore)
+		klog.V(5).Infof("task %s/%s on node %s resource %s, need %f, used %f, priority used %f, allocatable %f, weight %d, score %f",
+			task.Namespace, task.Name, node.Name, resource, request, nodeUsed, priorityNodeUsed, allocate, resourceWeight, resourceScore)
 
 		score += resourceScore
 		weightSum += resourceWeight
@@ -243,6 +245,38 @@ func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeig
 	score *= float64(fwk.MaxNodeScore * int64(weight.BinPackingWeight))
 
 	return score
+}
+
+func resourceUsedByPriority(task *api.TaskInfo, node *api.NodeInfo) *api.Resource {
+	used := api.EmptyResource()
+	for _, nodeTask := range node.Tasks {
+		// Pipelined tasks are accounted separately from NodeInfo.Used and
+		// should not affect the priority-specific bin-packing score yet.
+		if nodeTask.Status != api.Pipelined && nodeTask.Priority == task.Priority {
+			used.Add(nodeTask.Resreq)
+		}
+	}
+	return used
+}
+
+// resourceBinPackingScoreWithPriority prefers nodes that already contain
+// workloads with the same priority as the task being scheduled. Nodes that
+// require preemption are kept below nodes with enough idle capacity so that
+// priority-aware packing does not cause unnecessary preemption.
+func resourceBinPackingScoreWithPriority(requested, capacity, used, priorityUsed float64, weight int) (float64, error) {
+	if capacity == 0 || weight == 0 {
+		return 0, nil
+	}
+
+	priorityScore, err := ResourceBinPackingScore(requested, capacity, priorityUsed, 1)
+	if err != nil {
+		return 0, err
+	}
+
+	if requested+used > capacity {
+		return priorityScore * 0.5 * float64(weight), nil
+	}
+	return (priorityScore*0.5 + 0.5) * float64(weight), nil
 }
 
 // ResourceBinPackingScore calculate the binpack score for resource with provided info
