@@ -476,3 +476,88 @@ func TestReclaimRechecksPredicateAfterEviction(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestReclaimTiers_ConformanceAndCapacity(t *testing.T) {
+	trueValue := true
+	plugins := map[string]framework.PluginBuilder{
+		conformance.PluginName: conformance.New,
+		gang.PluginName:        gang.New,
+		capacity.PluginName:    capacity.New,
+	}
+
+	buildTest := func() uthelper.TestCommonStruct {
+		return uthelper.TestCommonStruct{
+			Plugins: plugins,
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg-victim", "c1", "q2", 0, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
+				util.BuildPodGroupWithPrio("pg-reclaimer", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+				util.BuildPodGroupWithPrio("pg-q1-running", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "victim1", "n1", v1.PodRunning, api.BuildResourceList("2", "2G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "q1-holder", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-q1-running", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
+				util.BuildPod("c1", "reclaimer", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg-reclaimer", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("3", "3G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueueWithResourcesQuantity("q1", api.BuildResourceList("2", "2G"), api.BuildResourceList("4", "4G")),
+				util.BuildQueueWithResourcesQuantity("q2", api.BuildResourceList("2", "2G"), api.BuildResourceList("4", "4G")),
+			},
+		}
+	}
+
+	t.Run("conformance and capacity in same tier respects queue deserved capacity", func(t *testing.T) {
+		test := buildTest()
+		test.Name = "same-tier-respects-deserved"
+		test.ExpectEvictNum = 0
+		test.ExpectEvicted = []string{}
+
+		sameTier := []conf.Tier{{
+			Plugins: []conf.PluginOption{
+				{Name: conformance.PluginName, EnabledReclaimable: &trueValue},
+				{Name: gang.PluginName, EnabledReclaimable: &trueValue, EnabledJobStarving: &trueValue},
+				{Name: capacity.PluginName, EnabledReclaimable: &trueValue},
+			},
+		}}
+
+		test.RegisterSession(sameTier, nil)
+		defer test.Close()
+		test.Run([]framework.Action{New()})
+		if err := test.CheckAll(0); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("conformance in higher tier than capacity short-circuits and ignores deserved capacity", func(t *testing.T) {
+		test := buildTest()
+		test.Name = "different-tier-short-circuits"
+		test.ExpectEvictNum = 1
+		test.ExpectEvicted = []string{"c1/victim1"}
+		test.ExpectPipeLined = map[string][]string{
+			"c1/pg-reclaimer": {"n1"},
+		}
+
+		diffTiers := []conf.Tier{
+			{
+				Plugins: []conf.PluginOption{
+					{Name: conformance.PluginName, EnabledReclaimable: &trueValue},
+					{Name: gang.PluginName, EnabledReclaimable: &trueValue, EnabledJobStarving: &trueValue},
+				},
+			},
+			{
+				Plugins: []conf.PluginOption{
+					{Name: capacity.PluginName, EnabledReclaimable: &trueValue},
+				},
+			},
+		}
+
+		test.RegisterSession(diffTiers, nil)
+		defer test.Close()
+		test.Run([]framework.Action{New()})
+		if err := test.CheckAll(0); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
