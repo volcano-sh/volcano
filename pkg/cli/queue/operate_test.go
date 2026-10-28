@@ -65,6 +65,12 @@ func TestOperateQueue(t *testing.T) {
 			ExpectValue: nil,
 		},
 		{
+			Name:        "Abnormal Case Operate Queue Failed For Closing Root Queue",
+			QueueName:   "root",
+			Action:      ActionClose,
+			ExpectValue: fmt.Errorf("`%s` queue can not be closed", "root"),
+		},
+		{
 			Name:        "Normal Case Operate Queue Succeed, Action open",
 			QueueName:   "normal-case-action-open",
 			Action:      ActionOpen,
