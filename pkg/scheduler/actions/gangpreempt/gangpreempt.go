@@ -147,7 +147,7 @@ func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.St
 	}
 
 	jobNeed := utils.SumInitResreq(pending)
-	domains := utils.GetCandidateDomains(ssn, preemptorJob, gp.maxDomains)
+	domains := utils.GetCandidateDomains(ssn, preemptorJob, pending, gp.maxDomains)
 	for _, domain := range domains {
 		domainNodes := ssn.RealNodesList[domain]
 		if len(domainNodes) == 0 {

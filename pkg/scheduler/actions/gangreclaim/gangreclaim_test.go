@@ -44,12 +44,12 @@ func TestPickDomainsFromGradients_MaxDomainsAndDedup(t *testing.T) {
 		},
 	}
 
-	domains := utils.PickDomainsFromGradients(gradients, 3, "")
+	domains := utils.PickDomainsFromGradients(gradients, 3, "", nil)
 	assert.Equal(t, []string{"d1", "d2", "d3"}, domains)
 }
 
 func TestPickDomainsFromGradients_Fallback(t *testing.T) {
-	domains := utils.PickDomainsFromGradients([][]*api.HyperNodeInfo{}, 8, "<cluster-top-hypernode>")
+	domains := utils.PickDomainsFromGradients([][]*api.HyperNodeInfo{}, 8, "<cluster-top-hypernode>", nil)
 	assert.Equal(t, []string{"<cluster-top-hypernode>"}, domains)
 }
 
