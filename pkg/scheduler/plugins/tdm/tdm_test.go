@@ -83,6 +83,16 @@ func Test_parseRevocableZone(t *testing.T) {
 			err:   false,
 		},
 		{
+			rz:    "22:00-06:00",
+			delta: 8 * 60 * 60,
+			err:   false,
+		},
+		{
+			rz:    "22:00-6:00",
+			delta: 8 * 60 * 60,
+			err:   false,
+		},
+		{
 			rz:    "63:59-23:59",
 			delta: 0,
 			err:   true,
@@ -100,6 +110,223 @@ func Test_parseRevocableZone(t *testing.T) {
 				t.Errorf("want %v, got %v", c.delta, end.Unix()-start.Unix())
 			}
 
+		})
+	}
+}
+
+func Test_parseRevocableZoneWithTime(t *testing.T) {
+	loc := time.UTC
+	tests := []struct {
+		name      string
+		rz        string
+		now       time.Time
+		wantStart time.Time
+		wantEnd   time.Time
+		wantErr   bool
+	}{
+		// Daytime window: 09:00-18:00
+		{
+			name:      "daytime window before start",
+			rz:        "09:00-18:00",
+			now:       time.Date(2026, 1, 2, 8, 0, 0, 0, loc),
+			wantStart: time.Date(2026, 1, 2, 9, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 1, 2, 18, 0, 0, 0, loc),
+			wantErr:   false,
+		},
+		{
+			name:      "daytime window during active hours",
+			rz:        "09:00-18:00",
+			now:       time.Date(2026, 1, 2, 12, 0, 0, 0, loc),
+			wantStart: time.Date(2026, 1, 2, 9, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 1, 2, 18, 0, 0, 0, loc),
+			wantErr:   false,
+		},
+		{
+			name:      "daytime window after end",
+			rz:        "09:00-18:00",
+			now:       time.Date(2026, 1, 2, 19, 0, 0, 0, loc),
+			wantStart: time.Date(2026, 1, 2, 9, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 1, 2, 18, 0, 0, 0, loc),
+			wantErr:   false,
+		},
+
+		// Overnight window: 22:00-06:00
+		{
+			name:      "overnight window after midnight at 02:00",
+			rz:        "22:00-06:00",
+			now:       time.Date(2026, 1, 2, 2, 0, 0, 0, loc),
+			wantStart: time.Date(2026, 1, 1, 22, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 1, 2, 6, 0, 0, 0, loc),
+			wantErr:   false,
+		},
+		{
+			name:      "overnight window before midnight at 23:00",
+			rz:        "22:00-06:00",
+			now:       time.Date(2026, 1, 2, 23, 0, 0, 0, loc),
+			wantStart: time.Date(2026, 1, 2, 22, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 1, 3, 6, 0, 0, 0, loc),
+			wantErr:   false,
+		},
+		{
+			name:      "overnight window at boundary 06:00",
+			rz:        "22:00-06:00",
+			now:       time.Date(2026, 1, 2, 6, 0, 0, 0, loc),
+			wantStart: time.Date(2026, 1, 1, 22, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 1, 2, 6, 0, 0, 0, loc),
+			wantErr:   false,
+		},
+		{
+			name:      "overnight window at boundary 06:01",
+			rz:        "22:00-06:00",
+			now:       time.Date(2026, 1, 2, 6, 1, 0, 0, loc),
+			wantStart: time.Date(2026, 1, 2, 22, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 1, 3, 6, 0, 0, 0, loc),
+			wantErr:   false,
+		},
+		{
+			name:      "overnight window at boundary 22:00",
+			rz:        "22:00-06:00",
+			now:       time.Date(2026, 1, 2, 22, 0, 0, 0, loc),
+			wantStart: time.Date(2026, 1, 2, 22, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 1, 3, 6, 0, 0, 0, loc),
+			wantErr:   false,
+		},
+		{
+			name:      "overnight window with single-digit hour 22:00-6:00 after midnight",
+			rz:        "22:00-6:00",
+			now:       time.Date(2026, 1, 2, 2, 0, 0, 0, loc),
+			wantStart: time.Date(2026, 1, 1, 22, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 1, 2, 6, 0, 0, 0, loc),
+			wantErr:   false,
+		},
+
+		// 24-hour window: 23:59-23:59
+		{
+			name:      "24-hour window 23:59-23:59 at 02:00",
+			rz:        "23:59-23:59",
+			now:       time.Date(2026, 1, 2, 2, 0, 0, 0, loc),
+			wantStart: time.Date(2026, 1, 1, 23, 59, 0, 0, loc),
+			wantEnd:   time.Date(2026, 1, 2, 23, 59, 0, 0, loc),
+			wantErr:   false,
+		},
+		{
+			name:      "24-hour window 23:59-23:59 at 23:59",
+			rz:        "23:59-23:59",
+			now:       time.Date(2026, 1, 2, 23, 59, 0, 0, loc),
+			wantStart: time.Date(2026, 1, 1, 23, 59, 0, 0, loc),
+			wantEnd:   time.Date(2026, 1, 2, 23, 59, 0, 0, loc),
+			wantErr:   false,
+		},
+
+		// 24-hour window: 0:00-0:00
+		{
+			name:      "24-hour window 0:00-0:00 at 00:00",
+			rz:        "0:00-0:00",
+			now:       time.Date(2026, 1, 2, 0, 0, 0, 0, loc),
+			wantStart: time.Date(2026, 1, 1, 0, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 1, 2, 0, 0, 0, 0, loc),
+			wantErr:   false,
+		},
+		{
+			name:      "24-hour window 0:00-0:00 at 12:00",
+			rz:        "0:00-0:00",
+			now:       time.Date(2026, 1, 2, 12, 0, 0, 0, loc),
+			wantStart: time.Date(2026, 1, 2, 0, 0, 0, 0, loc),
+			wantEnd:   time.Date(2026, 1, 3, 0, 0, 0, 0, loc),
+			wantErr:   false,
+		},
+
+		// Invalid format
+		{
+			name:    "invalid format missing dash",
+			rz:      "22:00",
+			now:     time.Date(2026, 1, 2, 12, 0, 0, 0, loc),
+			wantErr: true,
+		},
+		{
+			name:    "invalid hour value",
+			rz:      "63:59-23:59",
+			now:     time.Date(2026, 1, 2, 12, 0, 0, 0, loc),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start, end, err := parseRevocableZoneWithTime(tt.rz, tt.now)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseRevocableZoneWithTime() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr {
+				if !start.Equal(tt.wantStart) {
+					t.Errorf("start = %v, want %v", start, tt.wantStart)
+				}
+				if !end.Equal(tt.wantEnd) {
+					t.Errorf("end = %v, want %v", end, tt.wantEnd)
+				}
+			}
+		})
+	}
+}
+
+func Test_availableRevocableZoneWithTime(t *testing.T) {
+	loc := time.UTC
+	tp := &tdmPlugin{
+		revocableZone: map[string]string{
+			"daytime":   "09:00-18:00",
+			"overnight": "22:00-06:00",
+			"all_day_1": "23:59-23:59",
+			"all_day_2": "0:00-0:00",
+		},
+	}
+
+	tests := []struct {
+		name       string
+		zone       string
+		now        time.Time
+		wantActive bool
+	}{
+		// Normal daytime window: 09:00-18:00
+		{"daytime at 08:59 (inactive)", "daytime", time.Date(2026, 1, 2, 8, 59, 0, 0, loc), false},
+		{"daytime at 09:00 (active)", "daytime", time.Date(2026, 1, 2, 9, 0, 0, 0, loc), true},
+		{"daytime at 12:00 (active)", "daytime", time.Date(2026, 1, 2, 12, 0, 0, 0, loc), true},
+		{"daytime at 18:00 (active)", "daytime", time.Date(2026, 1, 2, 18, 0, 0, 0, loc), true},
+		{"daytime at 18:01 (inactive)", "daytime", time.Date(2026, 1, 2, 18, 1, 0, 0, loc), false},
+
+		// Overnight window: 22:00-06:00
+		{"overnight at 21:00 (inactive)", "overnight", time.Date(2026, 1, 2, 21, 0, 0, 0, loc), false},
+		{"overnight at 21:59 (inactive)", "overnight", time.Date(2026, 1, 2, 21, 59, 0, 0, loc), false},
+		{"overnight at 22:00 (active)", "overnight", time.Date(2026, 1, 2, 22, 0, 0, 0, loc), true},
+		{"overnight at 23:59 (active)", "overnight", time.Date(2026, 1, 2, 23, 59, 0, 0, loc), true},
+		{"overnight at 00:00 (active)", "overnight", time.Date(2026, 1, 3, 0, 0, 0, 0, loc), true},
+		{"overnight at 02:00 (active)", "overnight", time.Date(2026, 1, 3, 2, 0, 0, 0, loc), true},
+		{"overnight at 06:00 (active)", "overnight", time.Date(2026, 1, 3, 6, 0, 0, 0, loc), true},
+		{"overnight at 06:01 (inactive)", "overnight", time.Date(2026, 1, 3, 6, 1, 0, 0, loc), false},
+		{"overnight at 12:00 (inactive)", "overnight", time.Date(2026, 1, 3, 12, 0, 0, 0, loc), false},
+
+		// Equal start/end 23:59-23:59 (24-hour window)
+		{"all_day_1 at 00:00 (active)", "all_day_1", time.Date(2026, 1, 2, 0, 0, 0, 0, loc), true},
+		{"all_day_1 at 02:00 (active)", "all_day_1", time.Date(2026, 1, 2, 2, 0, 0, 0, loc), true},
+		{"all_day_1 at 12:00 (active)", "all_day_1", time.Date(2026, 1, 2, 12, 0, 0, 0, loc), true},
+		{"all_day_1 at 23:59 (active)", "all_day_1", time.Date(2026, 1, 2, 23, 59, 0, 0, loc), true},
+
+		// Equal start/end 0:00-0:00 (24-hour window)
+		{"all_day_2 at 00:00 (active)", "all_day_2", time.Date(2026, 1, 2, 0, 0, 0, 0, loc), true},
+		{"all_day_2 at 02:00 (active)", "all_day_2", time.Date(2026, 1, 2, 2, 0, 0, 0, loc), true},
+		{"all_day_2 at 12:00 (active)", "all_day_2", time.Date(2026, 1, 2, 12, 0, 0, 0, loc), true},
+		{"all_day_2 at 23:59 (active)", "all_day_2", time.Date(2026, 1, 2, 23, 59, 0, 0, loc), true},
+
+		// Non-existent zone
+		{"unknown zone (inactive)", "nonexistent", time.Date(2026, 1, 2, 12, 0, 0, 0, loc), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tp.availableRevocableZoneWithTime(tt.zone, tt.now)
+			if (err == nil) != tt.wantActive {
+				t.Errorf("availableRevocableZoneWithTime(%s, %v) active = %v, wantActive = %v (err: %v)",
+					tt.zone, tt.now, err == nil, tt.wantActive, err)
+			}
 		})
 	}
 }
