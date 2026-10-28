@@ -16,7 +16,37 @@ limitations under the License.
 
 package framework
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+type fakeAction struct{}
+
+func (fakeAction) Name() string     { return "FakeAction" }
+func (fakeAction) Initialize()      {}
+func (fakeAction) Execute(*Session) {}
+func (fakeAction) UnInitialize()    {}
+
+func TestGetActionCaseInsensitive(t *testing.T) {
+	RegisterAction(fakeAction{})
+	t.Cleanup(func() {
+		pluginMutex.Lock()
+		defer pluginMutex.Unlock()
+		delete(actionMap, strings.ToLower(fakeAction{}.Name()))
+	})
+
+	cases := []string{"fakeaction", "fakeAction", "FakeAction", "FAKEACTION"}
+	for _, name := range cases {
+		if _, found := GetAction(name); !found {
+			t.Errorf("expected to find action for lookup name %q", name)
+		}
+	}
+
+	if _, found := GetAction("notregistered"); found {
+		t.Errorf("expected not to find action for unregistered name")
+	}
+}
 
 func TestGetPluginName(t *testing.T) {
 	cases := []struct {
