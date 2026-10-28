@@ -309,6 +309,15 @@ func WaitTaskPhase(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase
 			if !metav1.IsControlledBy(&pod, job) {
 				continue
 			}
+			// Terminating pods (e.g. the old pod being replaced after a kill)
+			// can still report a stale matching phase; excluding them avoids
+			// counting them toward readyTaskNum before their replacement has
+			// actually reached the target phase.
+			if pod.DeletionTimestamp != nil {
+				podKey := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+				podNotReadyCache[podKey] = &pod
+				continue
+			}
 
 			podKey := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 			podReady := false
