@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -1157,5 +1158,148 @@ func TestScheduledTaskNum(t *testing.T) {
 
 	if got, want := jobInfo.ScheduledTaskNum(), int32(4); got != want {
 		t.Fatalf("ScheduledTaskNum() = %v, want %v", got, want)
+	}
+}
+
+func TestJobInfoIsGenuinelyUnschedulable(t *testing.T) {
+	tests := []struct {
+		name     string
+		min      int32
+		tasks    []*TaskInfo
+		nodeFit  bool
+		jobFit   string
+		expected bool
+	}{
+		{
+			name:     "all pending without fit errors",
+			min:      2,
+			tasks:    []*TaskInfo{newTaskWithStatus("t1", Pending, ""), newTaskWithStatus("t2", Pending, "")},
+			expected: false,
+		},
+		{
+			name:     "pending task with node fit errors",
+			min:      2,
+			tasks:    []*TaskInfo{newTaskWithStatus("t1", Pending, ""), newTaskWithStatus("t2", Pending, "")},
+			nodeFit:  true,
+			expected: true,
+		},
+		{
+			name:     "nil entry in node fit errors is not evidence",
+			min:      2,
+			tasks:    []*TaskInfo{newTaskWithStatus("t1", Pending, ""), newTaskWithStatus("t2", Pending, "")},
+			expected: false,
+		},
+		{
+			name:     "job level fit errors",
+			min:      2,
+			tasks:    []*TaskInfo{newTaskWithStatus("t1", Pending, ""), newTaskWithStatus("t2", Pending, "")},
+			jobFit:   "insufficient hypernode",
+			expected: true,
+		},
+		{
+			name:     "pipelined job is a wait, not a failure",
+			min:      2,
+			tasks:    []*TaskInfo{newTaskWithStatus("t1", Pipelined, "node-1"), newTaskWithStatus("t2", Pending, "")},
+			expected: false,
+		},
+		{
+			name:     "pipelined job wins over fit errors",
+			min:      2,
+			tasks:    []*TaskInfo{newTaskWithStatus("t1", Pipelined, "node-1"), newTaskWithStatus("t2", Pipelined, "node-2")},
+			nodeFit:  true,
+			jobFit:   "insufficient hypernode",
+			expected: false,
+		},
+		{
+			name:     "ready job",
+			min:      2,
+			tasks:    []*TaskInfo{newTaskWithStatus("t1", Running, "node-1"), newTaskWithStatus("t2", Running, "node-2")},
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			job := NewJobInfo("job-1", tc.tasks...)
+			job.MinAvailable = tc.min
+			if tc.nodeFit {
+				job.NodesFitErrors[TaskID("t1")] = NewFitErrors()
+			}
+			job.JobFitErrors = tc.jobFit
+
+			assert.Equal(t, tc.expected, job.IsGenuinelyUnschedulable())
+		})
+	}
+}
+
+func TestJobInfoLatestPodGroupCondition(t *testing.T) {
+	newJobWithConditions := func(conds ...scheduling.PodGroupCondition) *JobInfo {
+		job := NewJobInfo("job-1")
+		job.PodGroup = &PodGroup{PodGroup: scheduling.PodGroup{
+			Status: scheduling.PodGroupStatus{Conditions: conds},
+		}}
+		return job
+	}
+	cond := func(typ scheduling.PodGroupConditionType, at time.Time) scheduling.PodGroupCondition {
+		return scheduling.PodGroupCondition{Type: typ, LastTransitionTime: metav1.NewTime(at)}
+	}
+
+	base := time.Now()
+	older := base.Add(-time.Minute)
+
+	tests := []struct {
+		name     string
+		job      *JobInfo
+		types    []scheduling.PodGroupConditionType
+		expected *scheduling.PodGroupConditionType
+	}{
+		{
+			name:  "no pod group",
+			job:   NewJobInfo("job-1"),
+			types: []scheduling.PodGroupConditionType{scheduling.PodGroupScheduled, scheduling.PodGroupUnschedulableType},
+		},
+		{
+			name:  "no conditions",
+			job:   newJobWithConditions(),
+			types: []scheduling.PodGroupConditionType{scheduling.PodGroupScheduled, scheduling.PodGroupUnschedulableType},
+		},
+		{
+			name: "returns the most recent condition",
+			job: newJobWithConditions(
+				cond(scheduling.PodGroupUnschedulableType, older),
+				cond(scheduling.PodGroupScheduled, base),
+			),
+			types:    []scheduling.PodGroupConditionType{scheduling.PodGroupScheduled, scheduling.PodGroupUnschedulableType},
+			expected: ptr.To(scheduling.PodGroupScheduled),
+		},
+		{
+			name: "timestamp tie keeps the first-listed type",
+			job: newJobWithConditions(
+				cond(scheduling.PodGroupUnschedulableType, base),
+				cond(scheduling.PodGroupScheduled, base),
+			),
+			types:    []scheduling.PodGroupConditionType{scheduling.PodGroupScheduled, scheduling.PodGroupUnschedulableType},
+			expected: ptr.To(scheduling.PodGroupScheduled),
+		},
+		{
+			name: "ignores conditions of other types",
+			job: newJobWithConditions(
+				cond(scheduling.PodGroupConditionType("Other"), base),
+			),
+			types: []scheduling.PodGroupConditionType{scheduling.PodGroupScheduled, scheduling.PodGroupUnschedulableType},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.job.LatestPodGroupCondition(tc.types...)
+			if tc.expected == nil {
+				assert.Nil(t, got)
+				return
+			}
+			if assert.NotNil(t, got) {
+				assert.Equal(t, *tc.expected, got.Type)
+			}
+		})
 	}
 }
