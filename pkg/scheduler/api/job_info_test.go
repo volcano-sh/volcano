@@ -304,6 +304,149 @@ func TestDeleteTaskInfo(t *testing.T) {
 	}
 }
 
+func TestJobInfoFitError(t *testing.T) {
+	const summary = "pod group is not ready, 2 minAvailable, 3 Pending; Pending: 3 Unschedulable"
+	tests := []struct {
+		name                 string
+		order                []TaskID
+		errors               map[TaskID]string
+		jobError             string
+		remove               TaskID
+		expectedBeforeDelete string
+		expected             string
+		recreate             TaskID
+		replacementUID       TaskID
+		updateTask           TaskID
+		update               string
+		expectedAfterUpdate  string
+	}{
+		{
+			name:     "multiple failures",
+			order:    []TaskID{"a", "b", "c"},
+			errors:   map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory", "c": "Node affinity mismatch"},
+			expected: summary + ". Origin reason is task-a: Insufficient memory",
+		},
+		{
+			name:     "reversed insertion order",
+			order:    []TaskID{"c", "b", "a"},
+			errors:   map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory", "c": "Node affinity mismatch"},
+			expected: summary + ". Origin reason is task-a: Insufficient memory",
+		},
+		{
+			name:     "nil failure is ignored",
+			order:    []TaskID{"a", "b", "c"},
+			errors:   map[TaskID]string{"a": "Insufficient cpu", "b": "", "c": "Node affinity mismatch"},
+			expected: summary + ". Origin reason is task-b: Node affinity mismatch",
+		},
+		{
+			name:     "single failure",
+			order:    []TaskID{"a", "b", "c"},
+			errors:   map[TaskID]string{"c": "Node affinity mismatch"},
+			expected: summary + ". Origin reason is task-b: Node affinity mismatch",
+		},
+		{
+			name:     "no failures",
+			order:    []TaskID{"a", "b", "c"},
+			expected: summary,
+		},
+		{
+			name:     "job failure takes precedence over task failures",
+			order:    []TaskID{"a", "b", "c"},
+			errors:   map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory"},
+			jobError: "No eligible hypernode",
+			expected: summary + ". Origin reason is: No eligible hypernode",
+		},
+		{
+			name:     "job failure only",
+			order:    []TaskID{"a", "b", "c"},
+			jobError: "No eligible hypernode",
+			expected: summary + ". Origin reason is: No eligible hypernode",
+		},
+		{
+			name:     "missing task failure is ignored",
+			order:    []TaskID{"a", "b", "c"},
+			errors:   map[TaskID]string{"missing": "Insufficient cpu"},
+			expected: summary,
+		},
+		{
+			name:                "representative failure changes",
+			order:               []TaskID{"a", "b", "c"},
+			errors:              map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory"},
+			expected:            summary + ". Origin reason is task-a: Insufficient memory",
+			updateTask:          "b",
+			update:              "Node affinity mismatch",
+			expectedAfterUpdate: summary + ". Origin reason is task-a: Node affinity mismatch",
+		},
+		{
+			name:           "same-name task recreated with a higher UID",
+			order:          []TaskID{"a", "b", "c"},
+			errors:         map[TaskID]string{"b": "Insufficient memory", "c": "Node affinity mismatch"},
+			recreate:       "b",
+			replacementUID: "z",
+			expected:       summary + ". Origin reason is task-a: Insufficient memory",
+		},
+		{
+			name:                 "representative task deleted",
+			order:                []TaskID{"a", "b", "c"},
+			errors:               map[TaskID]string{"a": "Insufficient cpu", "b": "Insufficient memory", "c": "Node affinity mismatch"},
+			remove:               "b",
+			expectedBeforeDelete: summary + ". Origin reason is task-a: Insufficient memory",
+			expected:             "pod group is not ready, 2 Pending, 2 minAvailable; Pending: 2 Unschedulable. Origin reason is task-b: Node affinity mismatch",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			job := NewJobInfo("job")
+			names := map[TaskID]string{"a": "task-z", "b": "task-a", "c": "task-b"}
+			for _, uid := range tt.order {
+				pod := buildPod("ns", names[uid], "", v1.PodPending, BuildResourceList("1", "1Gi"), nil, nil)
+				pod.UID = types.UID(uid)
+				job.AddTaskInfo(NewTaskInfo(pod))
+			}
+			job.SetPodGroup(&PodGroup{PodGroup: scheduling.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "pg"},
+				Spec:       scheduling.PodGroupSpec{MinMember: 2},
+			}})
+			job.JobFitErrors = tt.jobError
+			for uid, message := range tt.errors {
+				if message == "" {
+					job.NodesFitErrors[uid] = nil
+					continue
+				}
+				fe := NewFitErrors()
+				fe.SetError(message)
+				job.NodesFitErrors[uid] = fe
+			}
+			if tt.remove != "" {
+				assert.Equal(t, tt.expectedBeforeDelete, job.FitError())
+				job.DeleteTaskInfo(job.Tasks[tt.remove])
+			}
+			// Map iteration can start in a different order on every call. Sample
+			// it 32 times with this three-task fixture to catch unstable output
+			// at low cost, checking every result rather than retrying failures.
+			for i := 0; i < 32; i++ {
+				assert.Equal(t, tt.expected, job.FitError())
+			}
+			if tt.recreate != "" {
+				oldTask := job.Tasks[tt.recreate]
+				pod := oldTask.Pod.DeepCopy()
+				job.DeleteTaskInfo(oldTask)
+				pod.UID = types.UID(tt.replacementUID)
+				replacement := NewTaskInfo(pod)
+				job.AddTaskInfo(replacement)
+				fe := NewFitErrors()
+				fe.SetError(tt.errors[tt.recreate])
+				job.NodesFitErrors[replacement.UID] = fe
+				assert.Equal(t, tt.expected, job.FitError())
+			}
+			if tt.updateTask != "" {
+				job.NodesFitErrors[tt.updateTask].SetError(tt.update)
+				assert.Equal(t, tt.expectedAfterUpdate, job.FitError())
+			}
+		})
+	}
+}
+
 func TestTaskSchedulingReason(t *testing.T) {
 	t1 := buildPod("ns1", "task-1", "", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
 	t2 := buildPod("ns1", "task-2", "", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
@@ -322,6 +465,29 @@ func TestTaskSchedulingReason(t *testing.T) {
 		nodefes  map[TaskID]*FitErrors
 		expected map[types.UID]string
 	}{
+		{
+			desc:  "each failed task keeps its own node diagnostics",
+			pods:  []*v1.Pod{t1, t2, t6},
+			jobid: JobID("multiple-failures"),
+			nodefes: map[TaskID]*FitErrors{
+				TaskID(t1.UID): {
+					nodes: map[string]*FitError{
+						"node1": {Status: []*Status{{Reason: NodeResourceFitFailed}}},
+					},
+				},
+				TaskID(t2.UID): {
+					nodes: map[string]*FitError{
+						"node1": {Status: []*Status{{Reason: NodePodNumberExceeded}}},
+					},
+				},
+			},
+			expected: map[types.UID]string{
+				"pg":   "pod group is not ready, 3 Pending, 3 minAvailable; Pending: 3 Unschedulable. Origin reason is task-1: 0/1 nodes are unavailable: 1 node(s) resource fit failed.",
+				t1.UID: "0/1 nodes are unavailable: 1 node(s) resource fit failed.",
+				t2.UID: "0/1 nodes are unavailable: 1 node(s) pod number exceeded.",
+				t6.UID: "pod group is not ready, 3 Pending, 3 minAvailable; Pending: 3 Unschedulable. Origin reason is task-1: 0/1 nodes are unavailable: 1 node(s) resource fit failed.",
+			},
+		},
 		{
 			desc:  "task3 ~ 5 are schedulable",
 			pods:  []*v1.Pod{t1, t2, t3, t4, t5, t6},
