@@ -23,6 +23,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -102,6 +104,48 @@ func TestValidatePodGroup(t *testing.T) {
 				},
 				Spec: schedulingv1beta1.PodGroupSpec{
 					Queue: "",
+				},
+			},
+			queue:       &schedulingv1beta1.Queue{},
+			expectError: false,
+		},
+		{
+			name: "invalid podgroup with negative minResources on create",
+			podGroup: &schedulingv1beta1.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-podgroup"},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					MinResources: &v1.ResourceList{
+						v1.ResourceCPU:    resource.MustParse("-1000"),
+						v1.ResourceMemory: resource.MustParse("1Gi"),
+					},
+				},
+			},
+			queue:       &schedulingv1beta1.Queue{},
+			expectError: true,
+			msgContains: []string{`spec.minResources[cpu]: Invalid value: "-1k"`},
+		},
+		{
+			name:      "invalid podgroup with negative minResources on update",
+			operation: admissionv1.Update,
+			podGroup: &schedulingv1beta1.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-podgroup"},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					MinResources: &v1.ResourceList{"nvidia.com/gpu": resource.MustParse("-4")},
+				},
+			},
+			queue:       &schedulingv1beta1.Queue{},
+			expectError: true,
+			msgContains: []string{`spec.minResources[nvidia.com/gpu]: Invalid value: "-4"`},
+		},
+		{
+			name: "valid podgroup with zero and positive minResources",
+			podGroup: &schedulingv1beta1.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-podgroup"},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					MinResources: &v1.ResourceList{
+						v1.ResourceCPU:    resource.MustParse("0"),
+						v1.ResourceMemory: resource.MustParse("1Gi"),
+					},
 				},
 			},
 			queue:       &schedulingv1beta1.Queue{},

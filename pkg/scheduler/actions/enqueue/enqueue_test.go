@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -119,6 +120,22 @@ func TestEnqueue(t *testing.T) {
 			},
 			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
 				"c1/pg1": scheduling.PodGroupPending,
+			},
+		},
+		{
+			Name: "podgroup with negative MinResources is enqueued instead of panicking the scheduler",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithMinResources("pg1", "c1", "c1", 1,
+					nil, v1.ResourceList{v1.ResourceCPU: resource.MustParse("-1000")}, schedulingv1.PodGroupPending),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("c1", 1, api.BuildResourceList("4", "4G")),
+			},
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"c1/pg1": scheduling.PodGroupInqueue,
 			},
 		},
 	}
