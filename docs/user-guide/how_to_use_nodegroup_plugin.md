@@ -2,7 +2,7 @@
 
 ## Introduction
 
-**Nodegroup plugin** is designed to isolate resources by assigning labels to nodes and set node label affinty on Queue.
+**Nodegroup plugin** is designed to isolate resources by assigning labels to nodes and set node label affinity on Queue.
 
 ## Usage
 
