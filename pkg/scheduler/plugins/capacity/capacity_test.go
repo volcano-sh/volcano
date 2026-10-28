@@ -43,6 +43,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
@@ -1183,6 +1184,135 @@ func Test_capacityPlugin_AncestorReclaimScenarios(t *testing.T) {
 				ExpectBindMap:   sc.expectBindMap,
 			}
 			tiers := buildTier(sc.level, sc.includePriority)
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run(actions)
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func Test_capacityPlugin_ReclaimableBoundary(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{
+		PluginName:             New,
+		predicates.PluginName:  predicates.New,
+		gang.PluginName:        gang.New,
+		conformance.PluginName: conformance.New,
+	}
+	actions := []framework.Action{enqueue.New(), reclaim.New(), allocate.New()}
+	trueValue, falseValue := true, false
+
+	type scenario struct {
+		name            string
+		victimQueue     string
+		reclaimerQueue  string
+		expectPipeLined map[string][]string
+		expectEvicted   []string
+		expectEvictNum  int
+	}
+
+	// root-tenant-a is not reclaimable. The node is full with one 2 CPU pod in the victim queue,
+	// which is over its deserved of 1 CPU, and the reclaimer queue has a pending 1 CPU pod.
+	build := func(victimQueue, reclaimerQueue string) ([]*corev1.Node, []*corev1.Pod, []*schedulingv1beta1.PodGroup, []*schedulingv1beta1.Queue) {
+		n1 := util.BuildNode("n1", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+
+		root := buildQueueWithParents("root", "", nil, nil)
+		tenantA := buildQueueWithParents("root-tenant-a", "root", api.BuildResourceList("2", "2Gi"), nil)
+		tenantA.Spec.Reclaimable = &falseValue
+		tenantB := buildQueueWithParents("root-tenant-b", "root", api.BuildResourceList("2", "2Gi"), nil)
+		a1 := buildQueueWithParents("a1", "root-tenant-a", api.BuildResourceList("1", "1Gi"), nil)
+		a2 := buildQueueWithParents("a2", "root-tenant-a", api.BuildResourceList("1", "1Gi"), nil)
+		b1 := buildQueueWithParents("b1", "root-tenant-b", api.BuildResourceList("1", "1Gi"), nil)
+		b2 := buildQueueWithParents("b2", "root-tenant-b", api.BuildResourceList("1", "1Gi"), nil)
+
+		// minMember 0 lets the gang plugin offer the victim, so tier 1 picks the victims.
+		pgVictim := util.BuildPodGroup("pg-victim", "ns1", victimQueue, 0, nil, schedulingv1beta1.PodGroupRunning)
+		pgReclaimer := util.BuildPodGroup("pg-reclaimer", "ns1", reclaimerQueue, 1, nil, schedulingv1beta1.PodGroupInqueue)
+
+		pVictim := util.BuildPod("ns1", "p-victim", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg-victim", nil, nil)
+		pReclaimer := util.BuildPod("ns1", "p-reclaimer", "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), "pg-reclaimer", nil, nil)
+
+		return []*corev1.Node{n1}, []*corev1.Pod{pVictim, pReclaimer}, []*schedulingv1beta1.PodGroup{pgVictim, pgReclaimer}, []*schedulingv1beta1.Queue{root, tenantA, tenantB, a1, a2, b1, b2}
+	}
+
+	scenarios := []scenario{
+		{
+			name:            "case1: queue outside a non-reclaimable parent cannot reclaim from its subtree",
+			victimQueue:     "a1",
+			reclaimerQueue:  "b1",
+			expectPipeLined: map[string][]string{},
+			expectEvicted:   []string{},
+			expectEvictNum:  0,
+		},
+		{
+			name:            "case2: queues inside a non-reclaimable parent can reclaim from each other",
+			victimQueue:     "a1",
+			reclaimerQueue:  "a2",
+			expectPipeLined: map[string][]string{"ns1/pg-reclaimer": {"n1"}},
+			expectEvicted:   []string{"ns1/p-victim"},
+			expectEvictNum:  1,
+		},
+		{
+			name:            "case3: queue inside a non-reclaimable parent can reclaim from an unprotected queue",
+			victimQueue:     "b1",
+			reclaimerQueue:  "a1",
+			expectPipeLined: map[string][]string{"ns1/pg-reclaimer": {"n1"}},
+			expectEvicted:   []string{"ns1/p-victim"},
+			expectEvictNum:  1,
+		},
+	}
+
+	// Same tier layout as the default scheduler config. Gang and conformance in tier 1 pick the victims
+	// and capacity in tier 2 is never called, so the reclaim action has to enforce the boundary.
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               gang.PluginName,
+					EnabledReclaimable: &trueValue,
+					EnabledJobStarving: &trueValue,
+				},
+				{
+					Name:               conformance.PluginName,
+					EnabledReclaimable: &trueValue,
+				},
+			},
+		},
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnablePreemptive:   &trueValue,
+					EnabledReclaimable: &trueValue,
+					EnabledQueueOrder:  &trueValue,
+					EnabledHierarchy:   &trueValue,
+					EnabledJobEnqueued: &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+			},
+		},
+	}
+
+	for i, sc := range scenarios {
+		t.Run(sc.name, func(t *testing.T) {
+			nodes, pods, pgs, queues := build(sc.victimQueue, sc.reclaimerQueue)
+			test := uthelper.TestCommonStruct{
+				Name:            sc.name,
+				Plugins:         plugins,
+				Nodes:           nodes,
+				Pods:            pods,
+				PodGroups:       pgs,
+				Queues:          queues,
+				ExpectPipeLined: sc.expectPipeLined,
+				ExpectEvicted:   sc.expectEvicted,
+				ExpectEvictNum:  sc.expectEvictNum,
+			}
 			test.RegisterSession(tiers, nil)
 			defer test.Close()
 			test.Run(actions)
