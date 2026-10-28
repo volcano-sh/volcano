@@ -66,6 +66,13 @@ type NodeInfo struct {
 	// pods
 	Used *Resource
 
+	// DraReleasing records the DRA devices occupied by Releasing tasks on the node,
+	// which will be returned after the eviction completes
+	DraReleasing *DRADeviceState
+	// DraPipelined records the DRA devices pre-allocated via allocator.Allocate by
+	// Pipelined tasks on the node, aligned with Pipelined *Resource
+	DraPipelined *DRADeviceState
+
 	Allocatable   *Resource
 	Capacity      *Resource
 	ResourceUsage *NodeUsage
@@ -156,6 +163,9 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Pipelined: EmptyResource(),
 		Idle:      EmptyResource(),
 		Used:      EmptyResource(),
+
+		DraReleasing: NewDRADeviceState(),
+		DraPipelined: NewDRADeviceState(),
 
 		Allocatable:   EmptyResource(),
 		Capacity:      EmptyResource(),
@@ -422,6 +432,8 @@ func (ni *NodeInfo) setNode(node *v1.Node) {
 	ni.Capacity = NewResource(node.Status.Capacity).Add(ni.OversubscriptionResource)
 	ni.Releasing = EmptyResource()
 	ni.Pipelined = EmptyResource()
+	ni.DraReleasing = NewDRADeviceState()
+	ni.DraPipelined = NewDRADeviceState()
 	ni.Idle = NewResource(node.Status.Allocatable).Add(ni.OversubscriptionResource)
 	ni.Used = EmptyResource()
 
@@ -431,8 +443,10 @@ func (ni *NodeInfo) setNode(node *v1.Node) {
 			ni.allocateIdleResource(ti)
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
+			ni.addDraDeviceState(ti)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
+			ni.addDraDeviceState(ti)
 		default:
 			ni.allocateIdleResource(ti)
 			ni.Used.Add(ti.Resreq)
@@ -478,8 +492,10 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 			ni.allocateIdleResource(ti)
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
+			ni.addDraDeviceState(ti)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
+			ni.addDraDeviceState(ti)
 		case Binding:
 			// When task in Binding status, it will bind to node, we should double-check whether idle resources are enough to put task before bind to apiserver.
 			if ok, resNames := ti.Resreq.LessEqualWithResourcesName(ni.Idle, Zero); !ok {
@@ -520,8 +536,10 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) {
 			ni.Releasing.Sub(task.Resreq)
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)
+			ni.removeDraDeviceState(task)
 		case Pipelined:
 			ni.Pipelined.Sub(task.Resreq)
+			ni.removeDraDeviceState(task)
 		default:
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)
@@ -530,6 +548,56 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) {
 	}
 
 	delete(ni.Tasks, key)
+}
+
+// addDraDeviceState records the task's DRA devices into the node's DraReleasing /
+// DraPipelined according to the task status, strictly aligned with the Releasing /
+// Pipelined accounting of CPU/memory
+func (ni *NodeInfo) addDraDeviceState(ti *TaskInfo) {
+	if len(ti.ResourceClaimKeys) == 0 {
+		return
+	}
+	switch ti.Status {
+	case Releasing:
+		if GetTaskDRAAllocatedDevicesFn == nil {
+			klog.V(5).Infof("GetTaskDRAAllocatedDevicesFn not registered, skip DRA releasing accounting for task <%s/%s> on node <%s>",
+				ti.Namespace, ti.Name, ni.Name)
+			return
+		}
+		if devices := GetTaskDRAAllocatedDevicesFn(ti); devices != nil {
+			ni.DraReleasing.Merge(devices)
+		}
+	case Pipelined:
+		if ti.DRAPreAlloc == nil {
+			// Pipelines not going through the DRA validator path (e.g. the nominated path
+			// of allocate) may lack the pre-allocation record
+			klog.Warningf("task <%s/%s> pipelined on node <%s> has DRA claims but no DRAPreAlloc",
+				ti.Namespace, ti.Name, ni.Name)
+			return
+		}
+		ni.DraPipelined.Merge(ti.DRAPreAlloc)
+	}
+}
+
+// removeDraDeviceState is the mirror operation of addDraDeviceState: when a task leaves
+// the node or changes status, its devices are deducted from DraReleasing / DraPipelined.
+func (ni *NodeInfo) removeDraDeviceState(ti *TaskInfo) {
+	if len(ti.ResourceClaimKeys) == 0 {
+		return
+	}
+	switch ti.Status {
+	case Releasing:
+		if GetTaskDRAAllocatedDevicesFn == nil {
+			return
+		}
+		if devices := GetTaskDRAAllocatedDevicesFn(ti); devices != nil {
+			ni.DraReleasing.Subtract(devices)
+		}
+	case Pipelined:
+		if ti.DRAPreAlloc != nil {
+			ni.DraPipelined.Subtract(ti.DRAPreAlloc)
+		}
+	}
 }
 
 // addResource is used to add sharable devices
@@ -631,9 +699,9 @@ func (ni NodeInfo) String() string {
 		taints = ni.Node.Spec.Taints
 	}
 
-	return fmt.Sprintf("Node (%s): allocatable<%v> idle <%v>, used <%v>, releasing <%v>, oversubscribution <%v>, "+
+	return fmt.Sprintf("Node (%s): allocatable<%v> idle <%v>, used <%v>, releasing <%v>, draReleasing <%v>, draPipelined <%v>, oversubscribution <%v>, "+
 		"state <phase %s, reaseon %s>, oversubscributionNode <%v>, offlineJobEvicting <%v>,taints <%v>%s, imageStates %v",
-		ni.Name, ni.Allocatable, ni.Idle, ni.Used, ni.Releasing, ni.OversubscriptionResource, ni.State.Phase, ni.State.Reason, ni.OversubscriptionNode, ni.OfflineJobEvicting, taints, b.String(), ni.ImageStates)
+		ni.Name, ni.Allocatable, ni.Idle, ni.Used, ni.Releasing, ni.DraReleasing.String(), ni.DraPipelined.String(), ni.OversubscriptionResource, ni.State.Phase, ni.State.Reason, ni.OversubscriptionNode, ni.OfflineJobEvicting, taints, b.String(), ni.ImageStates)
 }
 
 // Pods returns all pods running in that node

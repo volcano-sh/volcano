@@ -134,6 +134,9 @@ type TaskInfo struct {
 	ResourceClaimKeys []string
 	// ResourceClaimDRAResreq stores per-claim DRA resources for shared-claim deduplication.
 	ResourceClaimDRAResreq map[string]map[string]*DRAResource
+	// DRAPreAlloc records the pre-allocated device set computed by the DRA validator
+	// (allocator.Allocate) before the task is Pipelined, for NodeInfo.DraPipelined accounting.
+	DRAPreAlloc *DRADeviceState
 
 	TransactionContext
 	// LastTransaction holds the context of last scheduling transaction
@@ -360,6 +363,9 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 	}
 	if ti.ResourceClaimDRAResreq != nil {
 		res.ResourceClaimDRAResreq = cloneResourceClaimDRAResreq(ti.ResourceClaimDRAResreq)
+	}
+	if ti.DRAPreAlloc != nil {
+		res.DRAPreAlloc = ti.DRAPreAlloc.Clone()
 	}
 	return res
 }

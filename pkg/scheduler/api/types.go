@@ -26,6 +26,7 @@ import (
 	"errors"
 	"strings"
 
+	resourceapi "k8s.io/api/resource/v1"
 	fwk "k8s.io/kube-scheduler/framework"
 )
 
@@ -417,6 +418,15 @@ type SimulatePredicateFn func(ctx context.Context, state fwk.CycleState, task *T
 // Simulate the allocatable check for a node
 // Plugins implement this function to verify if the queue has enough resources to schedule the task while maintaining topology constraints
 type SimulateAllocatableFn func(ctx context.Context, state fwk.CycleState, queue *QueueInfo, task *TaskInfo) bool
+
+// DRAIdleCheckFn validates the task's DRA device requirements via the node.Idle path:
+// it calls allocator.Allocate directly on the current global allocated-device snapshot
+// (analogous to the CPU/memory check against node.Idle).
+type DRAIdleCheckFn func(ctx context.Context, task *TaskInfo, node *NodeInfo) ([]resourceapi.AllocationResult, error)
+
+// DRAFutureIdleCheckFn validates the task's DRA device requirements via the
+// node.FutureIdle() path (analogous to the CPU/memory check against node.FutureIdle()).
+type DRAFutureIdleCheckFn func(ctx context.Context, task *TaskInfo, node *NodeInfo) ([]resourceapi.AllocationResult, error)
 
 type SearchPurpose int
 

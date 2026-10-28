@@ -314,6 +314,9 @@ func (pmpt *Action) preempt(
 	}
 
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
+	// Nodes with insufficient DRA devices are not filtered out (see
+	// FilterOutUnschedulableAndUnresolvableNodesForTask), the demand can be
+	// satisfied by evicting victims holding DRA devices
 	allNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(preemptor)
 	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateForPreemptAction, pmpt.enablePredicateErrorCache, ssn.NodesInShard)
 
@@ -439,7 +442,18 @@ func (pmpt *Action) normalPreempt(
 func preemptorFitsOnNode(ssn *framework.Session, queue *api.QueueInfo, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
 	return ssn.Allocatable(queue, preemptor) &&
 		preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) &&
-		ssn.PredicateFn(preemptor, node) == nil
+		ssn.PredicateFn(preemptor, node) == nil &&
+		draFutureIdleSatisfied(ssn, preemptor, node)
+}
+
+// draFutureIdleSatisfied checks in a FutureIdle manner whether the preemptor's DRA
+// device requirements can be satisfied on the node.
+func draFutureIdleSatisfied(ssn *framework.Session, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
+	if len(preemptor.DRAResreq) == 0 {
+		return true
+	}
+	_, err := ssn.DRAFutureIdleCheckFn(context.TODO(), preemptor, node)
+	return err == nil
 }
 
 // taskEligibleToPreempt checks policy-only preconditions that do not depend on predicates.

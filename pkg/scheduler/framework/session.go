@@ -158,6 +158,8 @@ type Session struct {
 	simulateAddTaskFns            map[string]api.SimulateAddTaskFn
 	simulatePredicateFns          map[string]api.SimulatePredicateFn
 	simulateAllocatableFns        map[string]api.SimulateAllocatableFn
+	draIdleCheckFns               map[string]api.DRAIdleCheckFn
+	draFutureIdleCheckFns         map[string]api.DRAFutureIdleCheckFn
 	subJobReadyFns                map[string]api.ValidateFn
 	subJobPipelinedFns            map[string]api.VoteFn
 	subJobOrderFns                map[string]api.CompareFn
@@ -244,6 +246,8 @@ func openSession(schedulerCache cache.Cache, unschedulableJobCache unschedulable
 		simulateAddTaskFns:            map[string]api.SimulateAddTaskFn{},
 		simulatePredicateFns:          map[string]api.SimulatePredicateFn{},
 		simulateAllocatableFns:        map[string]api.SimulateAllocatableFn{},
+		draIdleCheckFns:               map[string]api.DRAIdleCheckFn{},
+		draFutureIdleCheckFns:         map[string]api.DRAFutureIdleCheckFn{},
 		subJobReadyFns:                map[string]api.ValidateFn{},
 		subJobPipelinedFns:            map[string]api.VoteFn{},
 		subJobOrderFns:                map[string]api.CompareFn{},
@@ -650,6 +654,14 @@ func (ssn *Session) FilterOutUnschedulableAndUnresolvableNodesForTask(task *api.
 	}
 
 	skipNodes := fitErr.GetUnschedulableAndUnresolvableNodes()
+	// For tasks with DRA resource requirements, nodes excluded during the allocate phase
+	// due to insufficient DRA devices can be remediated via preemption/reclaim, so remove
+	// them from the filtered set.
+	if len(task.DRAResreq) > 0 {
+		for nodeName := range fitErr.GetDRAFailedNodes() {
+			delete(skipNodes, nodeName)
+		}
+	}
 	if len(skipNodes) == 0 {
 		return ssn.NodeList
 	}
