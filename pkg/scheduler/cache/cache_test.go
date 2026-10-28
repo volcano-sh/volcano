@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -42,6 +43,7 @@ import (
 	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	"volcano.sh/apis/pkg/apis/scheduling"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclientfake "volcano.sh/apis/pkg/client/clientset/versioned/fake"
@@ -1145,4 +1147,102 @@ func TestUpdateJobInfoPreservesNewerTaskPlacement(t *testing.T) {
 	session.AllocatedHyperNodeDirty = false
 	sc.updateJobInfo(session)
 	assert.False(t, cached.AllocatedHyperNodeDirty)
+}
+
+// TestRecordJobStatusEventByCondition checks that PodGroup events follow the
+// latest PodGroup condition instead of the phase, so an Inqueue job with no
+// scheduling attempt stays silent while real failures keep emitting (#4503).
+func TestRecordJobStatusEventByCondition(t *testing.T) {
+	newTask := func(name string, status api.TaskStatus) *api.TaskInfo {
+		return &api.TaskInfo{
+			UID: api.TaskID(name),
+			TransactionContext: api.TransactionContext{
+				Status: status,
+			},
+			Resreq: api.EmptyResource(),
+		}
+	}
+	newJob := func(conds []scheduling.PodGroupCondition, tasks ...*api.TaskInfo) *api.JobInfo {
+		job := api.NewJobInfo("job-1", tasks...)
+		job.PodGroup = &api.PodGroup{PodGroup: scheduling.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "pg-1"},
+			Status: scheduling.PodGroupStatus{
+				Phase:      scheduling.PodGroupInqueue,
+				Conditions: conds,
+			},
+		}}
+		return job
+	}
+	now := metav1.Now()
+	unschedulableCond := scheduling.PodGroupCondition{
+		Type:               scheduling.PodGroupUnschedulableType,
+		Status:             v1.ConditionTrue,
+		LastTransitionTime: now,
+	}
+	scheduledCond := scheduling.PodGroupCondition{
+		Type:               scheduling.PodGroupScheduled,
+		Status:             v1.ConditionTrue,
+		LastTransitionTime: now,
+	}
+
+	tests := []struct {
+		name      string
+		job       *api.JobInfo
+		updatePG  bool
+		wantEvent string // empty means no event
+	}{
+		{
+			name:     "inqueue without condition stays silent",
+			job:      newJob(nil, newTask("t1", api.Running), newTask("t2", api.Running)),
+			updatePG: false,
+		},
+		{
+			name:      "latest unschedulable condition emits warning",
+			job:       newJob([]scheduling.PodGroupCondition{unschedulableCond}, newTask("t1", api.Running), newTask("t2", api.Running)),
+			updatePG:  false,
+			wantEvent: "Warning Unschedulable",
+		},
+		{
+			name:      "latest scheduled condition emits normal event",
+			job:       newJob([]scheduling.PodGroupCondition{scheduledCond}, newTask("t1", api.Running), newTask("t2", api.Running)),
+			updatePG:  true,
+			wantEvent: "Normal Scheduled",
+		},
+		{
+			name:      "latest scheduled condition without status update is silent",
+			job:       newJob([]scheduling.PodGroupCondition{scheduledCond}, newTask("t1", api.Running), newTask("t2", api.Running)),
+			updatePG:  false,
+			wantEvent: "",
+		},
+		{
+			name: "timestamp tie biases to scheduled",
+			job: newJob([]scheduling.PodGroupCondition{scheduledCond, unschedulableCond},
+				newTask("t1", api.Running), newTask("t2", api.Running)),
+			updatePG:  true,
+			wantEvent: "Normal Scheduled",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sc := NewDefaultMockSchedulerCache("fake")
+			defer ShutdownMockSchedulerCache(sc)
+
+			sc.RecordJobStatusEvent(tc.job, tc.updatePG)
+
+			recorder := sc.Recorder.(*record.FakeRecorder)
+			select {
+			case event := <-recorder.Events:
+				if tc.wantEvent == "" {
+					t.Errorf("unexpected event: %s", event)
+				} else if !strings.HasPrefix(event, tc.wantEvent) {
+					t.Errorf("got event %q, want prefix %q", event, tc.wantEvent)
+				}
+			default:
+				if tc.wantEvent != "" {
+					t.Errorf("expected event %q, got none", tc.wantEvent)
+				}
+			}
+		})
+	}
 }
