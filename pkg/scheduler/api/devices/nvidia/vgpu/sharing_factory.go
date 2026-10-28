@@ -19,9 +19,9 @@ package vgpu
 type SharingFactory interface {
 	// TryAddPod try to add pod, not add the pod to the device pod map
 	TryAddPod(gd *GPUDevice, mem uint, core uint) (bool, string)
-	// AddPod truely add pod, add it to the device pod map
+	// AddPod truly add pod, add it to the device pod map
 	AddPod(gd *GPUDevice, mem uint, core uint, podUID string, devID string) error
-	// SubPod substract the pod and remove it from the device pod map
+	// SubPod subtract the pod and remove it from the device pod map
 	SubPod(gd *GPUDevice, mem uint, core uint, podUID string, devID string) error
 }
 

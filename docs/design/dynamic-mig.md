@@ -6,7 +6,7 @@ This feature will not be implemented without the help of @sailorvii.
 
 ## Introduction
 
-The NVIDIA GPU build-in sharing method includes: time-slice, MPS and MIG. The context switch for time slice sharing would waste some time, so we chose the MPS and MIG. The GPU MIG profile is variable, the user could acquire the MIG device in the profile definition, but current implementation only defines the dedicated profile before the user requirement. That limits the usage of MIG. We want to develop an automatic slice plugin and create the slice when the user require it.
+The NVIDIA GPU built-in sharing method includes: time-slice, MPS and MIG. The context switch for time slice sharing would waste some time, so we chose the MPS and MIG. The GPU MIG profile is variable, the user could acquire the MIG device in the profile definition, but current implementation only defines the dedicated profile before the user requirement. That limits the usage of MIG. We want to develop an automatic slice plugin and create the slice when the user require it.
 For the scheduling method, node-level binpack and spread will be supported. Referring to the binpack plugin, we consider the CPU, Mem, GPU memory and other user-defined resource.
 Volcano already have a [vgpu feature](https://github.com/Project-HAMi/volcano-vgpu-device-plugin) for NVIDIA devices after v1.9, it is done by using [hami-core](https://github.com/Project-HAMi/HAMi-core), which is a cuda-hacking library. It can dynamically share GPUs and ensure both quality of service and resource isolation. But considering MIG is also widely used across the world. Supporting MIG mode along with 'hami-core' in volcano-vgpu can be helpful. A unified API for dynamic-MIG and hami-core for volcano-vgpu is needed.
 
@@ -15,7 +15,7 @@ Volcano already have a [vgpu feature](https://github.com/Project-HAMi/volcano-vg
 - CPU, Mem, and GPU combined scheduling
 - GPU dynamic slice: Hami-core and MIG
 - Support node-level binpack and spread by GPU memory, CPU and Mem
-- A unified vGPU Pool different virtualization technics
+- A unified vGPU Pool different virtualization techniques
 - Tasks can choose to use MIG, use HAMi-core, or use both.
 
 ### Config maps
