@@ -831,16 +831,30 @@ func (ji *JobInfo) FitError() string {
 		reasonMsg += "; " + fmt.Sprintf("%s: %s", Pending.String(), strings.Join(sortReasonsHistogram(reasons), ", "))
 	}
 
-	// record the original reason: such as can not enqueue or failed reasons of first pod failed to predicated
+	// Record the original reason, such as an enqueue failure or one pod's predicate failure.
 	if ji.JobFitErrors != "" {
 		reasonMsg += ". Origin reason is: " + ji.JobFitErrors
 	} else {
-		for _, taskInfo := range ji.Tasks {
-			fitError := ji.NodesFitErrors[taskInfo.UID]
-			if fitError != nil {
-				reasonMsg += fmt.Sprintf(". Origin reason is %v: %v", taskInfo.Name, fitError.Error())
-				break
+		var selectedTask *TaskInfo
+		var selectedError *FitErrors
+		// Show one task's failure details to keep the job summary concise.
+		// Select by name for stable output across map iterations and same-name
+		// Pod recreation, avoiding status updates and events for unchanged failures.
+		for uid, fe := range ji.NodesFitErrors {
+			if fe == nil {
+				continue
 			}
+			task := ji.Tasks[uid]
+			if task == nil {
+				continue
+			}
+			if selectedTask == nil || task.Name < selectedTask.Name {
+				selectedTask = task
+				selectedError = fe
+			}
+		}
+		if selectedTask != nil {
+			reasonMsg += fmt.Sprintf(". Origin reason is %v: %v", selectedTask.Name, selectedError.Error())
 		}
 	}
 
