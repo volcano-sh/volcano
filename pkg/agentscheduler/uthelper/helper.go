@@ -146,7 +146,13 @@ func NewTestFramework(schedulerName string, workerCount int, actions []framework
 	}
 	fieldAddr := unsafe.Pointer(schedulingQueueField.UnsafeAddr())
 	*(*k8sschedulingqueue.SchedulingQueue)(fieldAddr) = schedulingQueue
-	mockCache.ConflictAwareBinder = cache.NewConflictAwareBinder(mockCache, schedulingQueue)
+	binder, err := cache.NewConflictAwareBinder(mockCache, schedulingQueue, options.NewServerOption().BinderChannelCapacity)
+	if err != nil {
+		cancel()
+		schedulingQueue.Close()
+		return nil, err
+	}
+	mockCache.ConflictAwareBinder = binder
 
 	for _, action := range actions {
 		action.OnActionInit(configurations)

@@ -27,6 +27,7 @@ import (
 	componentbaseconfigvalidation "k8s.io/component-base/config/validation"
 
 	voptions "volcano.sh/volcano/cmd/scheduler/app/options"
+	agentconfig "volcano.sh/volcano/pkg/agentscheduler/config"
 	"volcano.sh/volcano/pkg/util"
 )
 
@@ -48,6 +49,8 @@ const (
 	defaultLockObjectNamespace        = "volcano-system"
 	defaultNodeWorkers                = 20
 	defaultScheduleWorkerCount        = 1
+	// Preserve the result-buffer capacity used before it became configurable.
+	defaultBinderChannelCapacity = 5000
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -58,6 +61,10 @@ type ServerOption struct {
 
 	//Count of workers for scheduling
 	ScheduleWorkerCount uint32
+
+	// BinderChannelCapacity limits queued Pod scheduling results, excluding
+	// results held by workers and the result currently processed by the Binder.
+	BinderChannelCapacity int
 
 	//enable scheduling with shard
 	ShardingMode string
@@ -74,9 +81,12 @@ var ServerOpts *ServerOption
 
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
-	return &ServerOption{ServerOption: &voptions.ServerOption{
-		EnableCSIStorage: true,
-	}}
+	return &ServerOption{
+		ServerOption: &voptions.ServerOption{
+			EnableCSIStorage: true,
+		},
+		BinderChannelCapacity: defaultBinderChannelCapacity,
+	}
 }
 
 // AddFlags adds flags for a specific CMServer to the specified FlagSet.
@@ -120,6 +130,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&s.ResourceSyncTimeout, "resource-sync-timeout", defaultResourceSyncTimeout, "timeout on waiting for handler handling initial resources synchronization before starting scheduler, default is 60s, 0 skip waiting")
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
 	fs.Uint32Var(&s.ScheduleWorkerCount, "scheduler-worker-count", defaultScheduleWorkerCount, "The flag indicates the number of worker threads scheduling in parallel")
+	fs.IntVar(&s.BinderChannelCapacity, "binder-channel-capacity", defaultBinderChannelCapacity, "Maximum queued Pod scheduling results awaiting Binder conflict checking; 0 uses an unbuffered channel. Excludes worker-held results and subsequent API binding work.")
 	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling, the mode could be none(default, schedule pod without shard)|hard(schedule pod within nodes in shard)|soft(chedule pod within nodes in shard in priority)")
 	fs.StringVar(&s.ShardName, "scheduler-sharding-name", defaultShardName, "The name of shard used for this scheduler, scheduler schedule pods based on nodes in shard if sharding mode is hard/soft")
 }
@@ -135,6 +146,9 @@ func (s *ServerOption) CheckOptionOrDie() error {
 func (s *ServerOption) validateOptions() error {
 	if s.ScheduleWorkerCount <= 0 {
 		return fmt.Errorf("scheduler-worker-count must be greater than 0")
+	}
+	if err := agentconfig.ValidateBinderChannelCapacity(s.BinderChannelCapacity); err != nil {
+		return err
 	}
 	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
 }

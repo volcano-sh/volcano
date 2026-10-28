@@ -28,6 +28,7 @@ import (
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	scheduleroptions "volcano.sh/volcano/cmd/scheduler/app/options"
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
+	agentcache "volcano.sh/volcano/pkg/agentscheduler/cache"
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
 	agentuthelper "volcano.sh/volcano/pkg/agentscheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -36,32 +37,43 @@ import (
 )
 
 // TestConcurrentMultiWorkerScheduling verifies that multiple workers can concurrently
-// schedule different pods without data races or scheduling conflicts.
+// produce each Pod result while a consumer drains a bounded Binder channel.
 func TestConcurrentMultiWorkerScheduling(t *testing.T) {
 	agentuthelper.InitTestEnv(t)
 	options.ServerOpts.ShardingMode = commonutil.NoneShardingMode
 	scheduleroptions.ServerOpts.ShardingMode = commonutil.NoneShardingMode
 
-	tests := []struct {
-		name          string
-		workerCount   int
-		podsPerWorker int
-		nodeCount     int
+	profiles := []struct {
+		name                                  string
+		workerCount, podsPerWorker, nodeCount int
 	}{
-		{
-			name:          "concurrent scheduling with 4 workers",
-			workerCount:   4,
-			podsPerWorker: 5,
-			nodeCount:     20,
-		},
-		{
-			name:          "stress scheduling with 10 workers",
-			workerCount:   10,
-			podsPerWorker: 100,
-			nodeCount:     50,
-		},
+		{name: "serial", workerCount: 1, podsPerWorker: 20, nodeCount: 20},
+		{name: "concurrent", workerCount: 4, podsPerWorker: 5, nodeCount: 20},
+		{name: "stress", workerCount: 10, podsPerWorker: 100, nodeCount: 50},
 	}
-
+	type schedulingCase struct {
+		name                                                  string
+		workerCount, podsPerWorker, nodeCount, binderCapacity int
+	}
+	var tests []schedulingCase
+	// For each worker profile exercise direct handoff, limited buffering,
+	// and the boundary where the entire workload fits in the result buffer.
+	for _, profile := range profiles {
+		for _, buffer := range []struct {
+			name     string
+			capacity int
+		}{
+			{name: "unbuffered", capacity: 0},
+			{name: "single-slot", capacity: 1},
+			{name: "whole-workload", capacity: profile.workerCount * profile.podsPerWorker},
+		} {
+			tests = append(tests, schedulingCase{
+				name:        profile.name + "/" + buffer.name,
+				workerCount: profile.workerCount, podsPerWorker: profile.podsPerWorker,
+				nodeCount: profile.nodeCount, binderCapacity: buffer.capacity,
+			})
+		}
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			totalPods := tt.workerCount * tt.podsPerWorker
@@ -78,6 +90,11 @@ func TestConcurrentMultiWorkerScheduling(t *testing.T) {
 				t.Fatalf("Failed to create test framework: %v", err)
 			}
 			defer testFwk.Close()
+			binder, err := agentcache.NewConflictAwareBinder(testFwk.MockCache, testFwk.SchedulingQueue, tt.binderCapacity)
+			if err != nil {
+				t.Fatal(err)
+			}
+			testFwk.MockCache.ConflictAwareBinder = binder
 
 			// Add nodes to the shared cache.
 			for i := 0; i < tt.nodeCount; i++ {
@@ -155,23 +172,36 @@ func TestConcurrentMultiWorkerScheduling(t *testing.T) {
 				}(w)
 			}
 
-			wg.Wait()
-			close(errCh)
+			results := testFwk.MockCache.ConflictAwareBinder.BindCheckChannel
+			go func() {
+				wg.Wait()
+				close(errCh)
+				close(results)
+			}()
 
+			// Drain results while workers are running so a full Binder buffer
+			// cannot prevent the workers from finishing.
+			received := 0
+		collectResults:
+			for {
+				select {
+				case result, ok := <-results:
+					if !ok {
+						break collectResults
+					}
+					if result == nil || len(result.SuggestedNodes) == 0 {
+						t.Errorf("pod %d: expected at least one suggested node, got nil or empty", received)
+					}
+					received++
+				case <-time.After(5 * time.Second):
+					t.Fatalf("Timeout: only received %d/%d scheduling results", received, totalPods)
+				}
+			}
 			for err := range errCh {
 				t.Errorf("Concurrent scheduling error: %v", err)
 			}
-
-			// Collect all scheduling results from the shared ConflictAwareBinder.
-			for i := 0; i < totalPods; i++ {
-				select {
-				case result := <-testFwk.MockCache.ConflictAwareBinder.BindCheckChannel:
-					if result == nil || len(result.SuggestedNodes) == 0 {
-						t.Errorf("pod %d: expected at least one suggested node, got nil or empty", i)
-					}
-				case <-time.After(5 * time.Second):
-					t.Fatalf("Timeout: only received %d/%d scheduling results", i, totalPods)
-				}
+			if received != totalPods {
+				t.Errorf("Expected %d scheduling results, got %d", totalPods, received)
 			}
 		})
 	}

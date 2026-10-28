@@ -23,6 +23,7 @@ import (
 	"k8s.io/klog/v2"
 
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
+	agentconfig "volcano.sh/volcano/pkg/agentscheduler/config"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
@@ -45,10 +46,28 @@ type ConflictAwareBinder struct {
 	cache           Cache
 }
 
-func NewConflictAwareBinder(schedulerCache Cache, schedulingQueue k8sschedulingqueue.SchedulingQueue) *ConflictAwareBinder {
+// NewConflictAwareBinder takes a non-negative capacity in Pod scheduling results.
+// A zero capacity hands each result directly to the consumer. A negative
+// capacity returns an error before any channel or records are allocated.
+func NewConflictAwareBinder(schedulerCache Cache, schedulingQueue k8sschedulingqueue.SchedulingQueue, channelCapacity int) (*ConflictAwareBinder, error) {
+	if err := agentconfig.ValidateBinderChannelCapacity(channelCapacity); err != nil {
+		return nil, err
+	}
+	return newConflictAwareBinder(schedulerCache, schedulingQueue, channelCapacity), nil
+}
+
+// newConflictAwareBinder allocates a Binder after its caller has validated the
+// capacity. Both the public constructor and cache initialization enforce this.
+func newConflictAwareBinder(schedulerCache Cache, schedulingQueue k8sschedulingqueue.SchedulingQueue, channelCapacity int) *ConflictAwareBinder {
+	// Each worker registers its candidates before sending a result. With W
+	// synchronous workers and one consumer, at most channelCapacity+W+1 results
+	// can retain candidate references, including blocked senders and the consumer.
+	// This bounds pending work; it does not select a throughput-optimal capacity.
+	klog.V(2).Infof("ConflictAwareBinder initialized with channel capacity %d", channelCapacity)
+
 	return &ConflictAwareBinder{
 		nodeBindRecords:  make(map[string]int64, 0),
-		BindCheckChannel: make(chan *agentapi.PodScheduleResult, 5000),
+		BindCheckChannel: make(chan *agentapi.PodScheduleResult, channelCapacity),
 		schedulingQueue:  schedulingQueue,
 		cache:            schedulerCache,
 	}
@@ -72,12 +91,11 @@ func (binder *ConflictAwareBinder) processScheduleResult() {
 
 // requeuePodWithPriority requeues a pod with specified priority and reason
 func (binder *ConflictAwareBinder) requeuePodWithPriority(task *api.TaskInfo, priority int, reason string) {
-	binder.schedulingQueue.Done(task.Pod.UID) // Mark previous processing as done
-
 	if binder.schedulingQueue == nil {
 		klog.ErrorS(nil, "schedulingQueue is nil, cannot re-queue pod", "pod", klog.KObj(task.Pod))
 		return
 	}
+	binder.schedulingQueue.Done(task.Pod.UID) // Mark previous processing as done
 
 	// Create a copy to avoid modifying the original pod
 	podCopy := task.Pod.DeepCopy()
@@ -95,10 +113,12 @@ func (binder *ConflictAwareBinder) requeuePodWithPriority(task *api.TaskInfo, pr
 // CheckAndBindPod check the pod schedule result, send pod for binding if no conflict. Put pod back to schedule queue if there is conflict
 func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *agentapi.PodScheduleResult) {
 	task := scheduleResult.SchedCtx.Task
-	binder.cache.RemoveCandidateNodesFromBinder(scheduleResult.SuggestedNodes)
-	// 1. Check conflict
+
+	// 1. Check conflict before removing candidates
 	node := binder.FindNonConflictingNode(scheduleResult)
 	if node == nil {
+		// Release all candidates on conflict
+		binder.cache.RemoveCandidateNodesFromBinder(scheduleResult.SuggestedNodes)
 		klog.V(5).Infof("%d candidates of pod %s/%s are conflict with previouse bind node, put back to queue for retry", len(scheduleResult.SuggestedNodes), task.Namespace, task.Name)
 		// Binding conflict needs urgent retry
 		binder.requeuePodWithPriority(task, SchedulingPriorityUrgent, RequeueReasonBindingConflict)
@@ -106,19 +126,33 @@ func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *agentapi.PodS
 	}
 
 	// 2. Bind pod if no conflict
+	originalNodeName := task.NodeName
+	originalPodNodeName := task.Pod.Spec.NodeName
 	task.NodeName = node.Name
 	task.Pod.Spec.NodeName = node.Name
 	nodeBindGeneration := node.BindGeneration
 	if err := binder.cache.AddBindTask(scheduleResult.BindContext); err != nil {
+		// The cache did not accept this bind. Restore the pre-attempt state
+		// before copying the Pod into the retry queue. Do not replace the task
+		// cache entry, which may have received a newer informer update.
+		task.NodeName = originalNodeName
+		task.Pod.Spec.NodeName = originalPodNodeName
+		// Release all candidates on bind failure
+		binder.cache.RemoveCandidateNodesFromBinder(scheduleResult.SuggestedNodes)
 		klog.ErrorS(err, "Failed to add bind task", "pod", klog.KObj(task.Pod), "node", node.Name)
 		binder.requeuePodWithPriority(task, SchedulingPriorityUrgent, RequeueReasonBindTaskFailure)
 		return
 	}
 
-	binder.schedulingQueue.Done(task.Pod.UID) // Mark previous processing as done to clean in-flight records, avoid memory leak
 	binder.recordsMutex.Lock()
-	defer binder.recordsMutex.Unlock()
 	binder.nodeBindRecords[node.Name] = nodeBindGeneration
+	binder.recordsMutex.Unlock()
+
+	// 3. Release candidates only after both the cache assume and Binder's
+	// generation record are visible to subsequent scheduling results.
+	binder.cache.RemoveCandidateNodesFromBinder(scheduleResult.SuggestedNodes)
+
+	binder.schedulingQueue.Done(task.Pod.UID) // Mark previous processing as done to clean in-flight records, avoid memory leak
 	metrics.UpdateTaskScheduleDuration(metrics.TaskStageAssumed, metrics.Duration(task.Pod.CreationTimestamp.Time))
 }
 
