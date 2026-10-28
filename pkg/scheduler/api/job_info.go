@@ -685,7 +685,18 @@ func (ji *JobInfo) GetMinResources() *Resource {
 		return EmptyResource()
 	}
 
-	return NewResource(*ji.PodGroup.Spec.MinResources)
+	// Admission rejects negative quantities, but PodGroups stored before that check, or
+	// written while the webhook is disabled, can still carry them. Plugins subtract this
+	// value from queue totals, and Resource.Sub panics when the result goes negative, so
+	// ignore negative entries instead of letting one PodGroup stop every scheduling cycle.
+	minResources := make(v1.ResourceList, len(*ji.PodGroup.Spec.MinResources))
+	for name, quantity := range *ji.PodGroup.Spec.MinResources {
+		if quantity.Sign() < 0 {
+			continue
+		}
+		minResources[name] = quantity
+	}
+	return NewResource(minResources)
 }
 
 // Get the total resources of tasks whose pod is scheduling gated
