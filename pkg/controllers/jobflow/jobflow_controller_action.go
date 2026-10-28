@@ -147,14 +147,15 @@ func (jf *jobflowcontroller) getAllJobStatus(jobFlow *v1alpha1flow.JobFlow) (*v1
 		return nil, err
 	}
 
+	// Only the phases JobFlowStatus has a list for belong here. A phase present
+	// in this map but absent from the status is collected and then dropped,
+	// where an unlisted one reaches UnKnowJobs below.
 	statusListJobMap := map[v1alpha1.JobPhase][]string{
-		v1alpha1.Pending:     make([]string, 0),
-		v1alpha1.Running:     make([]string, 0),
-		v1alpha1.Completing:  make([]string, 0),
-		v1alpha1.Completed:   make([]string, 0),
-		v1alpha1.Terminating: make([]string, 0),
-		v1alpha1.Terminated:  make([]string, 0),
-		v1alpha1.Failed:      make([]string, 0),
+		v1alpha1.Pending:    make([]string, 0),
+		v1alpha1.Running:    make([]string, 0),
+		v1alpha1.Completed:  make([]string, 0),
+		v1alpha1.Terminated: make([]string, 0),
+		v1alpha1.Failed:     make([]string, 0),
 	}
 
 	UnKnowJobs := make([]string, 0)
