@@ -25,11 +25,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/rest"
@@ -43,6 +45,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/gate"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	topologyconfig "volcano.sh/volcano/pkg/scheduler/topology/config"
 	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
@@ -57,13 +60,15 @@ type Scheduler struct {
 	schedulePeriod        time.Duration
 	once                  sync.Once
 
-	mutex              sync.Mutex
-	actions            []framework.Action
-	plugins            []conf.Tier
-	configurations     []conf.Configuration
-	metricsConf        map[string]string
-	dumper             schedcache.Dumper
-	disableDefaultConf bool
+	mutex                    sync.Mutex
+	actions                  []framework.Action
+	plugins                  []conf.Tier
+	configurations           []conf.Configuration
+	metricsConf              map[string]string
+	deviceTopologyConf       *conf.DeviceTopologyConfiguration
+	deviceTopologyConfFrozen bool
+	dumper                   schedcache.Dumper
+	disableDefaultConf       bool
 
 	// schGateManager is used for async scheduling gate removal.
 	schGateManager *gate.SchGateManager
@@ -107,6 +112,9 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 // initializes the cache, and begins the scheduling process.
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	pc.loadSchedulerConf()
+	if err := pc.configureDeviceTopologyProviders(); err != nil {
+		klog.Fatalf("Failed to configure device topology providers: %v", err)
+	}
 
 	// Start the gate manager (if the feature gate is enabled).
 	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) {
@@ -207,7 +215,7 @@ func (pc *Scheduler) loadSchedulerConf() {
 		config = strings.TrimSpace(string(confData))
 	}
 
-	actions, plugins, configurations, metricsConf, err := UnmarshalSchedulerConf(config)
+	schedulerConfiguration, err := unmarshalSchedulerConfiguration(config)
 	if err != nil {
 		if pc.disableDefaultConf {
 			klog.Fatalf("Invalid scheduler configuration and default configuration fallback is disabled")
@@ -216,13 +224,80 @@ func (pc *Scheduler) loadSchedulerConf() {
 		return
 	}
 
+	actions, plugins, configurations, metricsConf, err := schedulerConfigurationRuntime(schedulerConfiguration)
+	if err != nil {
+		if pc.disableDefaultConf {
+			klog.Fatalf("Invalid scheduler configuration and default configuration fallback is disabled")
+		}
+		klog.Errorf("Scheduler config %s is invalid: %v", config, err)
+		return
+	}
+	deviceTopologyConf := cloneDeviceTopologyConfiguration(schedulerConfiguration.DeviceTopology)
+
 	pc.mutex.Lock()
+	topologyProviderChange := pc.deviceTopologyConfFrozen && !reflect.DeepEqual(pc.deviceTopologyConf, deviceTopologyConf)
+	if !topologyProviderChange {
+		pc.deviceTopologyConf = deviceTopologyConf
+	}
 	pc.actions = actions
 	pc.plugins = plugins
 	pc.configurations = configurations
 	pc.metricsConf = metricsConf
 	pc.mutex.Unlock()
+	if topologyProviderChange {
+		klog.Errorf("Ignoring deviceTopology.providers configuration change; restart the scheduler to change topology providers")
+		klog.V(2).Info("Loaded scheduler configuration while retaining the existing deviceTopology.providers setting")
+		return
+	}
 	logLoadedSchedulerConf(config)
+}
+
+// configureDeviceTopologyProviders builds the immutable provider registry and
+// source instances after scheduler configuration is loaded but before cache.Run
+// starts informer processing. Provider configuration is startup-only in alpha.
+func (pc *Scheduler) configureDeviceTopologyProviders() error {
+	pc.mutex.Lock()
+	configuration := cloneDeviceTopologyConfiguration(pc.deviceTopologyConf)
+	pc.mutex.Unlock()
+	if configuration == nil || len(configuration.Providers) == 0 {
+		pc.mutex.Lock()
+		pc.deviceTopologyConfFrozen = true
+		pc.mutex.Unlock()
+		return nil
+	}
+
+	runtime, err := topologyconfig.NewProviderRuntime(configuration)
+	if err != nil {
+		return err
+	}
+	cache, supported := pc.cache.(schedcache.DeviceTopologyProviderCache)
+	if !supported {
+		return fmt.Errorf("scheduler cache does not support device topology providers")
+	}
+	if err := cache.ConfigureDeviceTopologyProviders(runtime.Registry, runtime.Sources); err != nil {
+		return err
+	}
+
+	pc.mutex.Lock()
+	pc.deviceTopologyConfFrozen = true
+	pc.mutex.Unlock()
+	return nil
+}
+
+// cloneDeviceTopologyConfiguration returns an independent configuration so a
+// watcher reload cannot mutate the startup-only provider ownership settings.
+func cloneDeviceTopologyConfiguration(configuration *conf.DeviceTopologyConfiguration) *conf.DeviceTopologyConfiguration {
+	if configuration == nil {
+		return nil
+	}
+
+	clone := *configuration
+	clone.Providers = make([]conf.DeviceTopologyProviderConfiguration, len(configuration.Providers))
+	for index, provider := range configuration.Providers {
+		clone.Providers[index] = provider
+		clone.Providers[index].Resources = append([]corev1.ResourceName(nil), provider.Resources...)
+	}
+	return &clone
 }
 
 func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {

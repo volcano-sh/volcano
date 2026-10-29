@@ -21,6 +21,12 @@ limitations under the License.
 
 package conf
 
+import (
+	"time"
+
+	corev1 "k8s.io/api/core/v1"
+)
+
 // EnabledActionMap check if a action exist in scheduler configmap. If not exist the value is false.
 var EnabledActionMap map[string]bool
 
@@ -33,7 +39,34 @@ type SchedulerConfiguration struct {
 	// Configurations is configuration for actions
 	Configurations       []Configuration   `yaml:"configurations"`
 	MetricsConfiguration map[string]string `yaml:"metrics"`
+	// DeviceTopology configures cache-owned sources of accelerator topology.
+	// It is optional so clusters that do not configure device topology retain
+	// their current scheduler behavior.
+	DeviceTopology *DeviceTopologyConfiguration `yaml:"deviceTopology,omitempty"`
 }
+
+// DeviceTopologyConfiguration configures the authoritative topology sources
+// that SchedulerCache synchronizes while it processes Nodes.
+type DeviceTopologyConfiguration struct {
+	Providers []DeviceTopologyProviderConfiguration `yaml:"providers,omitempty"`
+}
+
+// DeviceTopologyProviderConfiguration configures one authoritative source for
+// the complete topology of its declared extended resources.
+type DeviceTopologyProviderConfiguration struct {
+	ID                string                `yaml:"id"`
+	Type              string                `yaml:"type"`
+	IdentityNamespace string                `yaml:"identityNamespace"`
+	Resources         []corev1.ResourceName `yaml:"resources"`
+	// MaxAge bounds how long the provider's facts stay fresh after their
+	// observation time, such as "2m". The source must refresh its facts
+	// within this time. Zero means the default of two minutes.
+	MaxAge time.Duration `yaml:"maxAge,omitempty"`
+}
+
+// DeviceTopologyProviderTypeAnnotation identifies the trusted Node annotation
+// source supported by the initial device-topology implementation.
+const DeviceTopologyProviderTypeAnnotation = "annotation"
 
 // Tier defines plugin tier
 type Tier struct {

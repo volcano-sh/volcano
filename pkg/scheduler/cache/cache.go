@@ -222,6 +222,15 @@ type SchedulerCache struct {
 	// deviceTopologyProviderRegistry is the immutable scheduler configuration
 	// that selects authoritative topology providers for extended resources.
 	deviceTopologyProviderRegistry *provider.Registry
+	// deviceTopologyProviders are the configured trusted sources that publish
+	// complete facts while SchedulerCache synchronizes Nodes.
+	deviceTopologyProviders []provider.NodeTopologyProvider
+	// deviceTopologyProvidersConfigured prevents a second startup configuration
+	// from changing provider ownership before cache startup.
+	deviceTopologyProvidersConfigured bool
+	// deviceTopologyProvidersFrozen prevents all configuration changes after
+	// informer processing begins.
+	deviceTopologyProvidersFrozen bool
 	// deviceTopologyAdapterRegistry owns exact backend allocation for configured
 	// device resources. It is immutable after SchedulerCache construction.
 	deviceTopologyAdapterRegistry *adapter.Registry
@@ -994,6 +1003,7 @@ func (sc *SchedulerCache) registerHintEventHandler(
 
 // Run  starts the schedulerCache
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
+	sc.freezeDeviceTopologyProviders()
 	sc.informerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
 	sc.WaitForCacheSync(stopCh)

@@ -849,6 +849,9 @@ func (sc *SchedulerCache) SyncNode(nodeName string) error {
 	if err := sc.AddOrUpdateNode(nodeCopy); err != nil {
 		return err
 	}
+	if err := sc.syncDeviceTopologyProviders(context.Background(), nodeCopy); err != nil {
+		return err
+	}
 	if sc.unschedulableJobCache == nil {
 		return nil
 	}
@@ -858,6 +861,27 @@ func (sc *SchedulerCache) SyncNode(nodeName string) error {
 	}
 	for _, event := range kubeschedulerframework.NodeSchedulingPropertiesChange(nodeCopy, oldNode) {
 		sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.Node, ActionType: event.ActionType}, oldNode, nodeCopy)
+	}
+	return nil
+}
+
+// syncDeviceTopologyProviders collects the complete topology result from each
+// configured source and applies it after the current Node is in SchedulerCache.
+// Provider calls run outside the cache mutex; any error is returned so the Node
+// worker retries the synchronization. The sources are set before Run and never
+// change, so reading them needs no lock.
+func (sc *SchedulerCache) syncDeviceTopologyProviders(ctx context.Context, node *v1.Node) error {
+	for _, source := range sc.deviceTopologyProviders {
+		update, err := source.SyncNode(ctx, node)
+		if err != nil {
+			return fmt.Errorf("sync device topology provider %q for Node %q: %w", source.ID(), node.Name, err)
+		}
+		if update.ProviderID != source.ID() {
+			return fmt.Errorf("device topology provider %q returned an update for provider %q", source.ID(), update.ProviderID)
+		}
+		if err := sc.ApplyProviderNodeUpdate(update); err != nil {
+			return fmt.Errorf("apply device topology update from provider %q for Node %q: %w", source.ID(), node.Name, err)
+		}
 	}
 	return nil
 }
