@@ -22,15 +22,14 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 
-	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	fakevcclientset "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 )
 
 type legacyTestDiscoverer struct{}
 
-func (*legacyTestDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
-	return make(chan []*topologyv1alpha1.HyperNode), nil
+func (*legacyTestDiscoverer) Start() (chan DiscoveryResult, error) {
+	return make(chan DiscoveryResult), nil
 }
 func (*legacyTestDiscoverer) Stop() error   { return nil }
 func (*legacyTestDiscoverer) Name() string  { return "legacy-test" }
