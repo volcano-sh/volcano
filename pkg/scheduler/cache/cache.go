@@ -1085,7 +1085,7 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	// Add new task to node.
 	node.UpdateTask(task)
 
-	p := task.Pod
+	p := task.Pod.DeepCopy()
 
 	go func() {
 		err := sc.Evictor.Evict(p, reason)
