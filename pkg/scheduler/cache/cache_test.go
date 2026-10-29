@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -43,6 +44,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/apis/scheduling"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclientfake "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/features"
@@ -1146,3 +1148,183 @@ func TestUpdateJobInfoPreservesNewerTaskPlacement(t *testing.T) {
 	sc.updateJobInfo(session)
 	assert.False(t, cached.AllocatedHyperNodeDirty)
 }
+
+func TestRecordJobStatusEvent_GangUnschedulableConsistency(t *testing.T) {
+	owner := buildOwnerReference("job-gang")
+
+	tests := []struct {
+		name                 string
+		minAvailable         int32
+		pgConditions         []scheduling.PodGroupCondition
+		setupTasks           func() ([]*api.TaskInfo, map[api.TaskID]*api.FitErrors)
+		wantPGEvents         []string
+		wantPodFallbackMsg   string
+		wantExplicitPodMsg   string
+	}{
+		{
+			name:         "gang unschedulable with pre-existing PodGroup condition propagates message to event and pending fallback pods",
+			minAvailable: 3,
+			pgConditions: []scheduling.PodGroupCondition{
+				{
+					Type:    scheduling.PodGroupUnschedulableType,
+					Status:  v1.ConditionTrue,
+					Message: "2/3 tasks in gang unschedulable: 0/1 nodes are available: 1 node(s) resource fit failed.",
+				},
+			},
+			setupTasks: func() ([]*api.TaskInfo, map[api.TaskID]*api.FitErrors) {
+				pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), []metav1.OwnerReference{owner}, nil)
+				t1 := api.NewTaskInfo(pod1)
+				t1.Job = "job-gang"
+
+				pod2 := buildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), []metav1.OwnerReference{owner}, nil)
+				t2 := api.NewTaskInfo(pod2)
+				t2.Job = "job-gang"
+
+				pod3 := buildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), []metav1.OwnerReference{owner}, nil)
+				t3 := api.NewTaskInfo(pod3)
+				t3.Job = "job-gang"
+
+				fe := api.NewFitErrors()
+				fe.SetNodeError("n1", fmt.Errorf("1 node(s) resource fit failed."))
+				nodeFitErrors := map[api.TaskID]*api.FitErrors{
+					t2.UID: fe,
+				}
+				return []*api.TaskInfo{t1, t2, t3}, nodeFitErrors
+			},
+			wantPGEvents:       []string{"Warning Unschedulable 2/3 tasks in gang unschedulable: 0/1 nodes are available: 1 node(s) resource fit failed."},
+			wantPodFallbackMsg: "2/3 tasks in gang unschedulable: 0/1 nodes are available: 1 node(s) resource fit failed.",
+			wantExplicitPodMsg: "0/1 nodes are unavailable",
+		},
+		{
+			name:         "gang unschedulable fallback computes unmet count when condition message is empty",
+			minAvailable: 4,
+			pgConditions: []scheduling.PodGroupCondition{
+				{
+					Type:    scheduling.PodGroupUnschedulableType,
+					Status:  v1.ConditionTrue,
+					Message: "",
+				},
+			},
+			setupTasks: func() ([]*api.TaskInfo, map[api.TaskID]*api.FitErrors) {
+				pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), []metav1.OwnerReference{owner}, nil)
+				t1 := api.NewTaskInfo(pod1)
+				t1.Job = "job-gang"
+
+				pod2 := buildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), []metav1.OwnerReference{owner}, nil)
+				t2 := api.NewTaskInfo(pod2)
+				t2.Job = "job-gang"
+
+				pod3 := buildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), []metav1.OwnerReference{owner}, nil)
+				t3 := api.NewTaskInfo(pod3)
+				t3.Job = "job-gang"
+
+				pod4 := buildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("1", "1G"), []metav1.OwnerReference{owner}, nil)
+				t4 := api.NewTaskInfo(pod4)
+				t4.Job = "job-gang"
+
+				return []*api.TaskInfo{t1, t2, t3, t4}, nil
+			},
+			// 1 Running, MinAvailable 4 -> unmet is 4 - 1 = 3 tasks out of 4 total tasks
+			wantPGEvents:       []string{"Warning Unschedulable 3/4 tasks in gang unschedulable: pod group is not ready, 1 Running, 3 Pending, 4 minAvailable; Pending: 3 Unschedulable"},
+			wantPodFallbackMsg: "3/4 tasks in gang unschedulable: ",
+			wantExplicitPodMsg: "",
+		},
+		{
+			name:         "non-gang job without unschedulable condition does not add gang prefix",
+			minAvailable: 1,
+			pgConditions: nil,
+			setupTasks: func() ([]*api.TaskInfo, map[api.TaskID]*api.FitErrors) {
+				pod1 := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), []metav1.OwnerReference{owner}, nil)
+				t1 := api.NewTaskInfo(pod1)
+				t1.Job = "job-gang"
+				return []*api.TaskInfo{t1}, nil
+			},
+			wantPGEvents:       nil,
+			wantPodFallbackMsg: "",
+			wantExplicitPodMsg: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tasks, nodeFitErrors := tt.setupTasks()
+			job := api.NewJobInfo("job-gang", tasks...)
+			job.MinAvailable = tt.minAvailable
+			job.NodesFitErrors = nodeFitErrors
+
+			phase := scheduling.PodGroupPending
+			if tt.pgConditions == nil {
+				phase = scheduling.PodGroupRunning
+			}
+			job.PodGroup = &api.PodGroup{
+				PodGroup: scheduling.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "job-gang",
+						Namespace: "c1",
+					},
+					Status: scheduling.PodGroupStatus{
+						Phase:      phase,
+						Conditions: tt.pgConditions,
+					},
+				},
+			}
+
+			fakeRecorder := record.NewFakeRecorder(30)
+			sc := &SchedulerCache{
+				Jobs:          map[api.JobID]*api.JobInfo{job.UID: job},
+				StatusUpdater: &util.FakeStatusUpdater{},
+				Recorder:      fakeRecorder,
+			}
+
+			sc.RecordJobStatusEvent(job, false)
+
+			// Collect events from fake recorder
+			var pgEvents []string
+			var podEvents []string
+
+			close(fakeRecorder.Events)
+			for event := range fakeRecorder.Events {
+				if len(event) >= 21 && event[:21] == "Warning Unschedulable" {
+					pgEvents = append(pgEvents, event)
+				} else if strings.Contains(event, "FailedScheduling") {
+					podEvents = append(podEvents, event)
+				}
+			}
+
+			if len(tt.wantPGEvents) == 0 {
+				assert.Empty(t, pgEvents)
+			} else {
+				assert.Equal(t, tt.wantPGEvents, pgEvents)
+			}
+
+			if tt.wantPodFallbackMsg != "" {
+				foundFallback := false
+				for _, pe := range podEvents {
+					if strings.Contains(pe, tt.wantPodFallbackMsg) {
+						foundFallback = true
+						break
+					}
+				}
+				assert.True(t, foundFallback, "expected at least one pod event containing fallback message: %s, got events: %v", tt.wantPodFallbackMsg, podEvents)
+			}
+
+			if tt.wantExplicitPodMsg != "" {
+				foundExplicit := false
+				for _, pe := range podEvents {
+					if strings.Contains(pe, tt.wantExplicitPodMsg) {
+						foundExplicit = true
+						break
+					}
+				}
+				assert.True(t, foundExplicit, "expected at least one pod event containing explicit message: %s, got events: %v", tt.wantExplicitPodMsg, podEvents)
+			}
+
+			if tt.name == "non-gang job without unschedulable condition does not add gang prefix" {
+				for _, pe := range podEvents {
+					assert.NotContains(t, pe, "tasks in gang unschedulable")
+				}
+			}
+		})
+	}
+}
+

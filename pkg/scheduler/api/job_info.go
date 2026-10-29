@@ -584,6 +584,19 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	}
 }
 
+// GetPodGroupCondition returns the condition with the given type, or nil if not found.
+func (ji *JobInfo) GetPodGroupCondition(conditionType scheduling.PodGroupConditionType) *scheduling.PodGroupCondition {
+	if ji == nil || ji.PodGroup == nil {
+		return nil
+	}
+	for i := range ji.PodGroup.Status.Conditions {
+		if ji.PodGroup.Status.Conditions[i].Type == conditionType {
+			return &ji.PodGroup.Status.Conditions[i]
+		}
+	}
+	return nil
+}
+
 // extractWaitingTime reads sla waiting time for job from podgroup annotations
 // TODO: should also read from given field in volcano job spec
 func (ji *JobInfo) extractWaitingTime(pg *PodGroup, waitingTimeKey string) (*time.Duration, error) {
@@ -1035,6 +1048,24 @@ func (ji *JobInfo) AllocatedTaskNum() int32 {
 		}
 	}
 	return int32(count)
+}
+
+// SchedulableTaskNum returns the number of tasks in the job that are ready or schedulable in the current session.
+func (ji *JobInfo) SchedulableTaskNum() int32 {
+	if ji == nil {
+		return 0
+	}
+	var num int32
+	for _, task := range ji.TaskStatusIndex[Pending] {
+		ctx := task.GetTransactionContext()
+		if task.LastTransaction != nil {
+			ctx = *task.LastTransaction
+		}
+		if AllocatedStatus(ctx.Status) {
+			num++
+		}
+	}
+	return num + ji.ReadyTaskNum()
 }
 
 // FitFailedRoles returns the job roles' failed fit records
