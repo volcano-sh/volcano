@@ -17,6 +17,8 @@ limitations under the License.
 package gpumanager
 
 import (
+	"math"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask"
@@ -46,13 +48,20 @@ func (mng *gpuMng) Name() string {
 	return "gpuMng"
 }
 
-// requestedGPUs return the integer num of request gpu
+// requestedGPUs return the integer num of request gpu. A request that is
+// negative or does not fit in an int32 is treated as no request, since no
+// node has that many devices and converting it to int could overflow.
 func requestedGPUs(container *v1.Container) int {
 	gpuQuantity, ok := container.Resources.Requests[NvidiaGPUResource]
 	if !ok {
 		return 0
 	}
-	return int(gpuQuantity.Value())
+	value := gpuQuantity.Value()
+	if value < 0 || value > math.MaxInt32 {
+		klog.Warningf("[gpumanager] container %s requests an invalid GPU count %d, ignoring", container.Name, value)
+		return 0
+	}
+	return int(value)
 }
 
 // generateGPUTopologyHints return the numa topology hints based on

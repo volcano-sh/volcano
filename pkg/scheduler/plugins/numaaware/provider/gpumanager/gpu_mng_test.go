@@ -327,3 +327,44 @@ func Test_Allocate_GPUAbsent(t *testing.T) {
 		t.Errorf("Allocate with GPU absent = %v, want nil", got)
 	}
 }
+
+func Test_requestedGPUs(t *testing.T) {
+	tests := []struct {
+		name    string
+		request *resource.Quantity
+		want    int
+	}{
+		{
+			name:    "no gpu request",
+			request: nil,
+			want:    0,
+		},
+		{
+			name:    "four gpus",
+			request: resource.NewQuantity(4, resource.DecimalSI),
+			want:    4,
+		},
+		{
+			name:    "negative request is ignored",
+			request: resource.NewQuantity(-1, resource.DecimalSI),
+			want:    0,
+		},
+		{
+			name:    "request above int32 is ignored",
+			request: resource.NewQuantity(1<<40, resource.DecimalSI),
+			want:    0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			container := v1.Container{Name: "c", Resources: v1.ResourceRequirements{Requests: v1.ResourceList{}}}
+			if tt.request != nil {
+				container.Resources.Requests[NvidiaGPUResource] = *tt.request
+			}
+			if got := requestedGPUs(&container); got != tt.want {
+				t.Errorf("requestedGPUs() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
