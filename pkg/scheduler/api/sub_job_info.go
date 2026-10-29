@@ -256,10 +256,12 @@ func (sji *SubJobInfo) ReadyTaskNum() int32 {
 	return int32(occupied)
 }
 
+// PendingBestEffortTaskNum counts pending tasks with neither ordinary requests nor DRA claims.
+// These tasks can count toward sub-job readiness without allocation; DRA-only tasks cannot.
 func (sji *SubJobInfo) PendingBestEffortTaskNum() int32 {
 	count := 0
 	for _, task := range sji.TaskStatusIndex[Pending] {
-		if task.BestEffort {
+		if !task.HasSchedulingResourceRequests() {
 			count++
 		}
 	}
@@ -300,7 +302,7 @@ func (sji *SubJobInfo) GetMinResources() *Resource {
 	requests := make([]*Resource, 0, len(sji.TaskStatusIndex[Pending]))
 	names := sets.New[v1.ResourceName](v1.ResourceCPU, v1.ResourceMemory)
 	for _, task := range sji.TaskStatusIndex[Pending] {
-		if task.BestEffort {
+		if !task.HasSchedulingResourceRequests() {
 			continue
 		}
 		requests = append(requests, task.InitResreq)

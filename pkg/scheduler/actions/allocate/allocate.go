@@ -312,9 +312,10 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 				continue
 			}
 
-			// Skip BestEffort task in 'allocate' action.
-			if task.Resreq.IsEmpty() {
-				klog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.",
+			// Leave tasks without ordinary requests or DRA claims to backfill.
+			// DRA-only tasks still need device allocation and gang checks here.
+			if !task.HasSchedulingResourceRequests() {
+				klog.V(4).Infof("Task <%v/%v> has no resource requests or DRA claims, skip it.",
 					task.Namespace, task.Name)
 				continue
 			}
