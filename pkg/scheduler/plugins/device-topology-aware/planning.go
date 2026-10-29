@@ -116,8 +116,8 @@ type deviceTopologyFabricPlanningCandidate struct {
 
 // planGang builds a complete static plan for the exact pending Tasks in one
 // existing PodGroup or SubJob admission unit. It is intentionally not
-// registered as a framework callback yet: allocate integration, reservation,
-// and exact-ID enforcement are separate later changes.
+// registered as a framework callback yet: normal allocation integration and
+// exact-ID bind handoff are separate later changes.
 func (plugin *deviceTopologyPlugin) planGang(session *framework.Session, context deviceTopologyGangPlanContext) (*deviceTopologyGangPlan, error) {
 	if session == nil {
 		return nil, newPolicyResolutionError(invalidDeviceTopologyPolicyReason, "gang planning requires a scheduler session")

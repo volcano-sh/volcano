@@ -109,6 +109,18 @@ type Cache interface {
 	OnSessionClose()
 }
 
+// DeviceTopologyReservationCache is an optional Cache extension used by the
+// device-topology plugin to reserve exact selected device IDs. It is separate
+// from Cache so existing cache implementations remain compatible until they
+// opt into trusted topology allocation.
+type DeviceTopologyReservationCache interface {
+	ReserveDeviceTopologyPlan(ctx context.Context, plan api.TopologyPlacementPlan) (api.TopologyReservation, error)
+	ReleaseDeviceTopologyReservation(ctx context.Context, reservation api.TopologyReservation) error
+	// DeviceTopologySnapshot returns the current immutable topology view,
+	// including availability changes made by reservations and releases.
+	DeviceTopologySnapshot() *api.TopologySnapshot
+}
+
 // Binder interface for binding task and hostname
 type Binder interface {
 	Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) map[api.TaskID]string

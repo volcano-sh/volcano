@@ -24,7 +24,8 @@ import (
 
 // deviceTopologyAvailabilityLedger owns mutable scheduler-side device
 // availability. Its caller holds SchedulerCache.Mutex, so it has no separate
-// lock. Reservation and adapter reconciliation operations are added later.
+// lock. Cache reservation transactions update it; adapter recovery and
+// allocation reconciliation are added later.
 type deviceTopologyAvailabilityLedger struct {
 	states map[schedulingapi.DeviceID]schedulingapi.DeviceAvailability
 }

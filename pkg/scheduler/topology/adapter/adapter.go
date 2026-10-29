@@ -183,8 +183,8 @@ func NewError(reason ErrorReason, cause error) *Error {
 
 // AllocationAdapter bridges a scheduler-selected topology plan to the backend
 // that reserves and assigns actual devices. Implementations must treat plans
-// and handoffs as immutable; scheduler cache reservation integration follows
-// in a later change.
+// and handoffs as immutable; SchedulerCache coordinates transactional
+// reservation and later bind handoff through this contract.
 type AllocationAdapter interface {
 	// Capabilities reports the guarantees this adapter provides.
 	Capabilities() AdapterCapabilities

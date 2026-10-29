@@ -31,13 +31,14 @@ func TestTopologyPlacementPlanClone(t *testing.T) {
 		Revision:         7,
 		FabricID:         FabricDomainID{ProviderID: "test-provider", Namespace: "test.example", Value: "fabric-a"},
 		Placements: []TopologyTaskPlacement{{
-			TaskID:        "task-a",
-			PodUID:        types.UID("pod-a"),
-			NodeName:      "node-a",
-			LocalDomainID: DeviceDomainID{ProviderID: "test-provider", Namespace: "test.example", NodeUID: "node-a-uid", Value: "domain-a"},
+			TaskID:   "task-a",
+			PodUID:   types.UID("pod-a"),
+			NodeName: "node-a",
+			NodeUID:  types.UID("node-a-uid"),
 			Assignments: []TopologyContainerAssignment{{
 				ContainerName: "trainer",
 				ResourceName:  corev1.ResourceName("nvidia.com/gpu"),
+				LocalDomainID: DeviceDomainID{ProviderID: "test-provider", Namespace: "test.example", NodeUID: "node-a-uid", Value: "domain-a"},
 				DeviceIDs:     []DeviceID{deviceID},
 			}},
 		}},
@@ -50,5 +51,29 @@ func TestTopologyPlacementPlanClone(t *testing.T) {
 	assignment := clone.Placements[0].Assignments[0]
 	if assignment.ContainerName != "trainer" || len(assignment.DeviceIDs) != 1 || assignment.DeviceIDs[0] != deviceID {
 		t.Fatalf("Clone() = %#v, want independent placement assignments", clone)
+	}
+}
+
+func TestTopologyReservationClone(t *testing.T) {
+	reservation := TopologyReservation{
+		Plan: TopologyPlacementPlan{Placements: []TopologyTaskPlacement{{
+			Assignments: []TopologyContainerAssignment{{DeviceIDs: []DeviceID{{Value: "device-a"}}}},
+		}}},
+		AdapterReservations: []TopologyAdapterReservation{{
+			ResourceName: "nvidia.com/gpu",
+			Token:        "reservation-a",
+			PlanDigest:   "digest-a",
+		}},
+	}
+
+	clone := reservation.Clone()
+	reservation.Plan.Placements[0].Assignments[0].DeviceIDs[0].Value = "mutated-device"
+	reservation.AdapterReservations[0].Token = "mutated-token"
+
+	if clone.Plan.Placements[0].Assignments[0].DeviceIDs[0].Value != "device-a" {
+		t.Fatalf("Clone() plan device = %q, want independent copy", clone.Plan.Placements[0].Assignments[0].DeviceIDs[0].Value)
+	}
+	if clone.AdapterReservations[0].Token != "reservation-a" {
+		t.Fatalf("Clone() token = %q, want independent copy", clone.AdapterReservations[0].Token)
 	}
 }

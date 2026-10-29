@@ -24,17 +24,19 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/topology/adapter"
 	"volcano.sh/volcano/pkg/scheduler/topology/provider"
 )
 
 // deviceTopologyState is the mutable, cache-owned source of immutable device
 // topology snapshots. SchedulerCache.Mutex protects every field.
 type deviceTopologyState struct {
-	revision  schedulingapi.TopologyRevision
-	facts     map[schedulingapi.ProviderNodeKey]schedulingapi.NodeTopologyFacts
-	readiness map[schedulingapi.ProviderNodeKey]schedulingapi.ProviderNodeSyncState
-	ledger    *deviceTopologyAvailabilityLedger
-	snapshot  *schedulingapi.TopologySnapshot
+	revision          schedulingapi.TopologyRevision
+	facts             map[schedulingapi.ProviderNodeKey]schedulingapi.NodeTopologyFacts
+	readiness         map[schedulingapi.ProviderNodeKey]schedulingapi.ProviderNodeSyncState
+	ledger            *deviceTopologyAvailabilityLedger
+	reservationOwners map[schedulingapi.DeviceID]deviceTopologyReservationOwner
+	snapshot          *schedulingapi.TopologySnapshot
 }
 
 // WithDeviceTopologyProviderRegistry configures the immutable authoritative
@@ -46,13 +48,23 @@ func WithDeviceTopologyProviderRegistry(registry *provider.Registry) Option {
 	}
 }
 
+// WithDeviceTopologyAdapterRegistry configures the immutable allocation
+// adapter ownership map used to reserve exact device IDs for hard topology.
+// A nil registry leaves topology facts observable but prevents reservations.
+func WithDeviceTopologyAdapterRegistry(registry *adapter.Registry) Option {
+	return func(cache *SchedulerCache) {
+		cache.deviceTopologyAdapterRegistry = registry
+	}
+}
+
 // newDeviceTopologyState creates an empty topology view. Unknown provider and
 // Node pairs are pending by the TopologySnapshot contract.
 func newDeviceTopologyState() *deviceTopologyState {
 	state := &deviceTopologyState{
-		facts:     make(map[schedulingapi.ProviderNodeKey]schedulingapi.NodeTopologyFacts),
-		readiness: make(map[schedulingapi.ProviderNodeKey]schedulingapi.ProviderNodeSyncState),
-		ledger:    newDeviceTopologyAvailabilityLedger(),
+		facts:             make(map[schedulingapi.ProviderNodeKey]schedulingapi.NodeTopologyFacts),
+		readiness:         make(map[schedulingapi.ProviderNodeKey]schedulingapi.ProviderNodeSyncState),
+		ledger:            newDeviceTopologyAvailabilityLedger(),
+		reservationOwners: make(map[schedulingapi.DeviceID]deviceTopologyReservationOwner),
 	}
 	state.snapshot = schedulingapi.NewTopologySnapshotWithAvailability(state.revision, state.facts, state.readiness, state.ledger.snapshot())
 	return state

@@ -75,6 +75,7 @@ import (
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
+	"volcano.sh/volcano/pkg/scheduler/topology/adapter"
 	"volcano.sh/volcano/pkg/scheduler/topology/provider"
 	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
@@ -221,6 +222,15 @@ type SchedulerCache struct {
 	// deviceTopologyProviderRegistry is the immutable scheduler configuration
 	// that selects authoritative topology providers for extended resources.
 	deviceTopologyProviderRegistry *provider.Registry
+	// deviceTopologyAdapterRegistry owns exact backend allocation for configured
+	// device resources. It is immutable after SchedulerCache construction.
+	deviceTopologyAdapterRegistry *adapter.Registry
+	// deviceTopologyReservationMutex serializes external adapter reservation and
+	// release operations without holding SchedulerCache.Mutex during I/O.
+	deviceTopologyReservationMutex sync.Mutex
+	// deviceTopologyNow supplies the current time for dynamic topology
+	// freshness checks. A nil value uses time.Now.
+	deviceTopologyNow func() time.Time
 }
 
 type multiSchedulerInfo struct {

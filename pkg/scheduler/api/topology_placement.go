@@ -21,12 +21,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// TopologyContainerAssignment records the exact devices selected for one
-// regular container resource or future DRA claim request.
+// TopologyContainerAssignment records the local domain and exact devices
+// selected for one regular container resource request.
 type TopologyContainerAssignment struct {
 	ContainerName string
 	ResourceName  corev1.ResourceName
-	ClaimName     string
+	LocalDomainID DeviceDomainID
 	DeviceIDs     []DeviceID
 }
 
@@ -37,14 +37,14 @@ func (assignment TopologyContainerAssignment) Clone() TopologyContainerAssignmen
 	return clone
 }
 
-// TopologyTaskPlacement records the selected Node, local domain, and concrete
-// container device assignments for one Task in a complete topology plan.
+// TopologyTaskPlacement records the selected Node and concrete container
+// device assignments for one Task in a complete topology plan.
 type TopologyTaskPlacement struct {
-	TaskID        TaskID
-	PodUID        types.UID
-	NodeName      string
-	LocalDomainID DeviceDomainID
-	Assignments   []TopologyContainerAssignment
+	TaskID      TaskID
+	PodUID      types.UID
+	NodeName    string
+	NodeUID     types.UID
+	Assignments []TopologyContainerAssignment
 }
 
 // Clone returns an independent copy of a Task placement.
@@ -74,5 +74,29 @@ func (plan TopologyPlacementPlan) Clone() TopologyPlacementPlan {
 	for index, placement := range plan.Placements {
 		clone.Placements[index] = placement.Clone()
 	}
+	return clone
+}
+
+// TopologyAdapterReservation identifies one adapter-owned portion of a
+// completed topology reservation. ResourceName selects its configured adapter.
+type TopologyAdapterReservation struct {
+	ResourceName corev1.ResourceName
+	Token        string
+	PlanDigest   string
+}
+
+// TopologyReservation records every adapter reservation that together hold a
+// complete topology placement plan. It is scheduler-internal and immutable to
+// callers through Clone.
+type TopologyReservation struct {
+	Plan                TopologyPlacementPlan
+	AdapterReservations []TopologyAdapterReservation
+}
+
+// Clone returns an independent copy of a topology reservation.
+func (reservation TopologyReservation) Clone() TopologyReservation {
+	clone := reservation
+	clone.Plan = reservation.Plan.Clone()
+	clone.AdapterReservations = append([]TopologyAdapterReservation(nil), reservation.AdapterReservations...)
 	return clone
 }
