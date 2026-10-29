@@ -260,6 +260,9 @@ func TestKillJobFunc(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "job1",
 						Namespace: namespace,
+						OwnerReferences: []metav1.OwnerReference{
+							{UID: "e7f18111-1cec-11ea-b688-fa163ec79500", Controller: ptr.To(true)},
+						},
 					},
 				},
 			},
@@ -311,6 +314,9 @@ func TestKillJobFunc(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "job2",
 						Namespace: namespace,
+						OwnerReferences: []metav1.OwnerReference{
+							{UID: "e7f18111-1cec-11ea-b688-fa163ec79500", Controller: ptr.To(true)},
+						},
 					},
 				},
 			},
