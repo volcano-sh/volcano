@@ -21,6 +21,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
 
@@ -92,6 +93,12 @@ func evictPodsFromSourceNodes(sourceNodes, targetNodes []*NodeUtilization, tasks
 	}
 	klog.V(4).Infof("totalAllocatableResource: %s", totalAllocatableResource)
 
+	// Index only eligible tasks, once for all source nodes.
+	tasksByUID := make(map[types.UID]*api.TaskInfo, len(tasks))
+	for _, task := range tasks {
+		tasksByUID[task.Pod.UID] = task
+	}
+
 	// sort the source nodes in descending order
 	sortNodes(sourceNodes)
 
@@ -105,7 +112,7 @@ func evictPodsFromSourceNodes(sourceNodes, targetNodes []*NodeUtilization, tasks
 			continue
 		}
 		sortPods(node.pods)
-		victims = append(victims, evict(node.pods, node, totalAllocatableResource, evictionCon, tasks, config)...)
+		victims = append(victims, evict(node.pods, node, totalAllocatableResource, evictionCon, tasksByUID, config)...)
 	}
 	klog.V(3).Infof("victims: %v\n", victims)
 	return victims
@@ -160,27 +167,26 @@ func sortPods(pods []*v1.Pod) {
 }
 
 // evict select victims and add to the eviction list
-func evict(pods []*v1.Pod, utilization *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, continueEviction isContinueEviction, tasks []*api.TaskInfo, config interface{}) []*api.TaskInfo {
+func evict(pods []*v1.Pod, utilization *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, continueEviction isContinueEviction, tasksByUID map[types.UID]*api.TaskInfo, config interface{}) []*api.TaskInfo {
 	victims := make([]*api.TaskInfo, 0)
 	for _, pod := range pods {
 		if !continueEviction(utilization, totalAllocatableResource, config) {
 			klog.V(3).Infoln("stop evict pods")
 			return victims
 		}
-		for _, task := range tasks {
-			if task.Pod.Name == pod.Name {
-				usedCPU := *resource.NewMilliQuantity(int64(task.Resreq.MilliCPU), resource.DecimalSI)
-				usedMem := *resource.NewQuantity(int64(task.Resreq.Memory), resource.BinarySI)
-				totalAllocatableResource[v1.ResourceCPU].Sub(usedCPU)
-				totalAllocatableResource[v1.ResourceMemory].Sub(usedMem)
-				utilization.utilization[v1.ResourceCPU] -= convertQuanToPercent(v1.ResourceCPU, &usedCPU, utilization.nodeInfo.Status.Capacity)
-				utilization.utilization[v1.ResourceMemory] -= convertQuanToPercent(v1.ResourceMemory, &usedMem, utilization.nodeInfo.Status.Capacity)
-				klog.V(4).Infof("totalAllocatableResource: %v\n", totalAllocatableResource)
-				klog.V(4).Infof("node: %s, utilization: %v\n", utilization.nodeInfo.Name, utilization.utilization)
-				victims = append(victims, task)
-				break
-			}
+		task, found := tasksByUID[pod.UID]
+		if !found {
+			continue
 		}
+		usedCPU := *resource.NewMilliQuantity(int64(task.Resreq.MilliCPU), resource.DecimalSI)
+		usedMem := *resource.NewQuantity(int64(task.Resreq.Memory), resource.BinarySI)
+		totalAllocatableResource[v1.ResourceCPU].Sub(usedCPU)
+		totalAllocatableResource[v1.ResourceMemory].Sub(usedMem)
+		utilization.utilization[v1.ResourceCPU] -= convertQuanToPercent(v1.ResourceCPU, &usedCPU, utilization.nodeInfo.Status.Capacity)
+		utilization.utilization[v1.ResourceMemory] -= convertQuanToPercent(v1.ResourceMemory, &usedMem, utilization.nodeInfo.Status.Capacity)
+		klog.V(4).Infof("totalAllocatableResource: %v\n", totalAllocatableResource)
+		klog.V(4).Infof("node: %s, utilization: %v\n", utilization.nodeInfo.Name, utilization.utilization)
+		victims = append(victims, task)
 	}
 	return victims
 }
