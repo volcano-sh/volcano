@@ -1159,3 +1159,164 @@ func TestScheduledTaskNum(t *testing.T) {
 		t.Fatalf("ScheduledTaskNum() = %v, want %v", got, want)
 	}
 }
+
+func TestGetPodGroupCondition(t *testing.T) {
+	tests := []struct {
+		name          string
+		jobInfo       *JobInfo
+		conditionType scheduling.PodGroupConditionType
+		wantCondition *scheduling.PodGroupCondition
+	}{
+		{
+			name:          "nil JobInfo",
+			jobInfo:       nil,
+			conditionType: scheduling.PodGroupUnschedulableType,
+			wantCondition: nil,
+		},
+		{
+			name:          "job with nil PodGroup",
+			jobInfo:       NewJobInfo("job-1"),
+			conditionType: scheduling.PodGroupUnschedulableType,
+			wantCondition: nil,
+		},
+		{
+			name: "job with empty conditions",
+			jobInfo: &JobInfo{
+				UID: "job-1",
+				PodGroup: &PodGroup{
+					PodGroup: scheduling.PodGroup{
+						Status: scheduling.PodGroupStatus{},
+					},
+				},
+			},
+			conditionType: scheduling.PodGroupUnschedulableType,
+			wantCondition: nil,
+		},
+		{
+			name: "condition found",
+			jobInfo: &JobInfo{
+				UID: "job-1",
+				PodGroup: &PodGroup{
+					PodGroup: scheduling.PodGroup{
+						Status: scheduling.PodGroupStatus{
+							Conditions: []scheduling.PodGroupCondition{
+								{
+									Type:    scheduling.PodGroupScheduled,
+									Status:  v1.ConditionFalse,
+									Message: "not scheduled",
+								},
+								{
+									Type:    scheduling.PodGroupUnschedulableType,
+									Status:  v1.ConditionTrue,
+									Message: "3/5 tasks in gang unschedulable",
+								},
+							},
+						},
+					},
+				},
+			},
+			conditionType: scheduling.PodGroupUnschedulableType,
+			wantCondition: &scheduling.PodGroupCondition{
+				Type:    scheduling.PodGroupUnschedulableType,
+				Status:  v1.ConditionTrue,
+				Message: "3/5 tasks in gang unschedulable",
+			},
+		},
+		{
+			name: "condition not found",
+			jobInfo: &JobInfo{
+				UID: "job-1",
+				PodGroup: &PodGroup{
+					PodGroup: scheduling.PodGroup{
+						Status: scheduling.PodGroupStatus{
+							Conditions: []scheduling.PodGroupCondition{
+								{
+									Type:   scheduling.PodGroupScheduled,
+									Status: v1.ConditionTrue,
+								},
+							},
+						},
+					},
+				},
+			},
+			conditionType: scheduling.PodGroupUnschedulableType,
+			wantCondition: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.jobInfo.GetPodGroupCondition(tt.conditionType)
+			assert.Equal(t, tt.wantCondition, got)
+		})
+	}
+}
+
+func TestSchedulableTaskNum(t *testing.T) {
+	taskPendingAllocated := newTaskWithStatus("t-session-allocated", Pending, "")
+	taskPendingAllocated.LastTransaction = &TransactionContext{
+		Status: Allocated,
+	}
+
+	tests := []struct {
+		name    string
+		jobInfo *JobInfo
+		want    int32
+	}{
+		{
+			name:    "nil job",
+			jobInfo: nil,
+			want:    0,
+		},
+		{
+			name:    "empty job",
+			jobInfo: NewJobInfo("job-1"),
+			want:    0,
+		},
+		{
+			name: "tasks with ready statuses (allocated, binding, bound, running, succeeded)",
+			jobInfo: NewJobInfo("job-1",
+				newTaskWithStatus("t1", Allocated, "node-1"),
+				newTaskWithStatus("t2", Binding, "node-1"),
+				newTaskWithStatus("t3", Bound, "node-1"),
+				newTaskWithStatus("t4", Running, "node-1"),
+				newTaskWithStatus("t5", Succeeded, "node-1"),
+			),
+			want: 5,
+		},
+		{
+			name: "tasks with non-schedulable statuses pending, failed, unknown",
+			jobInfo: NewJobInfo("job-1",
+				newTaskWithStatus("t1", Pending, ""),
+				newTaskWithStatus("t2", Failed, ""),
+				newTaskWithStatus("t3", Unknown, ""),
+			),
+			want: 0,
+		},
+		{
+			name: "pending task allocated in transaction session",
+			jobInfo: NewJobInfo("job-1",
+				taskPendingAllocated,
+				newTaskWithStatus("t-pending", Pending, ""),
+			),
+			want: 1,
+		},
+		{
+			name: "mixed statuses: 2 running/bound, 1 transaction-allocated, 1 pending",
+			jobInfo: NewJobInfo("job-1",
+				newTaskWithStatus("t1", Running, "node-1"),
+				newTaskWithStatus("t2", Bound, "node-1"),
+				taskPendingAllocated,
+				newTaskWithStatus("t3", Pending, ""),
+			),
+			want: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.jobInfo.SchedulableTaskNum())
+		})
+	}
+}
+
