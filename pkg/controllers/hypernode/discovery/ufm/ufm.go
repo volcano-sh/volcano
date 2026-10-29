@@ -121,7 +121,7 @@ func NewUFMDiscoverer(cfg api.DiscoveryConfig, kubeClient clientset.Interface, v
 }
 
 // Start begins the topology discovery process and returns the channel for receiving discovered topology
-func (u *ufmDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
+func (u *ufmDiscoverer) Start() (chan api.DiscoveryResult, error) {
 	if u.endpoint == "" {
 		return nil, errors.New("UFM endpoint is not configured")
 	}
@@ -135,7 +135,7 @@ func (u *ufmDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
 		"interval", u.discoveryInterval)
 
 	// Create the output channel that this discoverer will manage
-	outputCh := make(chan []*topologyv1alpha1.HyperNode, 10)
+	outputCh := make(chan api.DiscoveryResult, 10)
 
 	// Start periodic discovery in a separate goroutine
 	go u.periodicDiscovery(outputCh)
@@ -180,7 +180,7 @@ func (u *ufmDiscoverer) getCredentialsFromSecret(name, namespace string) (string
 }
 
 // periodicDiscovery periodically discovers network topology
-func (u *ufmDiscoverer) periodicDiscovery(outputCh chan []*topologyv1alpha1.HyperNode) {
+func (u *ufmDiscoverer) periodicDiscovery(outputCh chan api.DiscoveryResult) {
 	// Perform immediate discovery first
 	u.discoverAndSend(outputCh)
 
@@ -200,8 +200,17 @@ func (u *ufmDiscoverer) periodicDiscovery(outputCh chan []*topologyv1alpha1.Hype
 	}
 }
 
-// discoverAndSend discovers the topology and sends it through the channel
-func (u *ufmDiscoverer) discoverAndSend(outputCh chan []*topologyv1alpha1.HyperNode) {
+// discoverAndSend discovers the topology and sends it through the channel.
+// An empty response from the UFM API is treated as ambiguous: there is no
+// reliable way to distinguish a genuinely empty topology (no InfiniBand ports
+// at all) from a transient, incomplete, or cached empty response.  To avoid
+// accidentally deleting all UFM-owned HyperNodes on a transient glitch, an
+// empty result is silently skipped — existing HyperNodes are preserved until
+// the next successful non-empty discovery cycle.
+//
+// If you need to remove all UFM-owned HyperNodes intentionally, either disable
+// the UFM discovery source in the ConfigMap or delete the HyperNodes directly.
+func (u *ufmDiscoverer) discoverAndSend(outputCh chan api.DiscoveryResult) {
 	// Fetch UFM data
 	ufmData, err := u.fetchUFMData()
 	if err != nil {
@@ -212,9 +221,18 @@ func (u *ufmDiscoverer) discoverAndSend(outputCh chan []*topologyv1alpha1.HyperN
 	// Process UFM data into HyperNodes
 	hyperNodes := u.buildHyperNodes(ufmData)
 
+	// An empty result from the UFM API cannot be treated as authoritative:
+	// HTTP 200 + [] is indistinguishable from a transient empty response.
+	// Skip sending to preserve previously discovered HyperNodes.
+	if len(hyperNodes) == 0 {
+		klog.Warningf("UFM API returned an empty topology; skipping reconciliation to preserve existing HyperNodes. " +
+			"To remove UFM HyperNodes intentionally, disable the UFM discovery source or delete them directly.")
+		return
+	}
+
 	// Send discovered nodes through the channel
 	select {
-	case outputCh <- hyperNodes:
+	case outputCh <- api.DiscoveryResult{HyperNodes: hyperNodes}:
 		klog.InfoS("Sent network topology data", "hyperNodeCount", len(hyperNodes))
 	case <-u.stopCh:
 		// Discovery stopped, don't attempt to send
