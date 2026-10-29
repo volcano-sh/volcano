@@ -1198,7 +1198,7 @@ func (sc *SchedulerCache) UpdateNodeShardStatus(shardName string, usedNodeInCach
 			klog.Infof("NodeShard %s has been deleted, no status update needed", shardName)
 			return nil
 		}
-		klog.Error(err, "Failed to get NodeShard", "name", shardName)
+		klog.ErrorS(err, "Failed to get NodeShard", "name", shardName)
 		return err
 	}
 

@@ -841,7 +841,7 @@ func SelectVictimsOnNode(
 				return false, err
 			}
 			victims = append(victims, pi)
-			klog.V(3).Info("Pod is a potential preemption victim on node", "pod", klog.KObj(pi.Pod), "node", klog.KObj(nodeInfo.Node))
+			klog.V(3).InfoS("Pod is a potential preemption victim on node", "pod", klog.KObj(pi.Pod), "node", klog.KObj(nodeInfo.Node))
 		}
 		klog.Infof("reprievePod for task: %v, fits: %v", pi.Name, fits)
 		return fits, nil
@@ -892,7 +892,7 @@ func SelectCandidate(candidates []*candidate) *candidate {
 	}
 
 	// We shouldn't reach here.
-	klog.Error(errors.New("no candidate selected"), "Should not reach here", "candidates", candidates)
+	klog.ErrorS(errors.New("no candidate selected"), "Should not reach here", "candidates", candidates)
 	// To not break the whole flow, return the first candidate.
 	return candidates[0]
 }
@@ -960,7 +960,7 @@ func pickOneNodeForPreemption(nodesToVictims map[string][]*api.TaskInfo, scoreFu
 			// Get the earliest start time of all pods on the current node.
 			earliestStartTimeOnNode := GetEarliestPodStartTime(nodesToVictims[node])
 			if earliestStartTimeOnNode == nil {
-				klog.Error(errors.New("earliestStartTime is nil for node"), "Should not reach here", "node", node)
+				klog.ErrorS(errors.New("earliestStartTime is nil for node"), "Should not reach here", "node", node)
 				return int64(math.MinInt64)
 			}
 			// The bigger the earliestStartTimeOnNode, the higher the score.
