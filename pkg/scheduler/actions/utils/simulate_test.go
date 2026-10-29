@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
@@ -31,6 +32,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 const antiAffinitySimulationGradientPluginName = "anti-affinity-simulation-gradient"
@@ -83,6 +85,80 @@ func TestBuildNominationPlanInDomain_Guards(t *testing.T) {
 	plan, _, ok = BuildNominationPlanInDomain(ssn, nil, job, nil, nil, "x", true)
 	assert.False(t, ok)
 	assert.Nil(t, plan)
+}
+
+func TestOrganizeEvictionWorksheet(t *testing.T) {
+	tests := []struct {
+		name      string
+		requests  v1.ResourceList
+		claims    []v1.PodResourceClaim
+		gates     []v1.PodSchedulingGate
+		wantTasks []api.TaskID
+	}{
+		{
+			name:      "ordinary requests need placement",
+			requests:  api.BuildResourceList("1", "0"),
+			wantTasks: []api.TaskID{"ns-t1"},
+		},
+		{
+			name: "DRA-only direct claim needs placement",
+			claims: []v1.PodResourceClaim{
+				{
+					Name:              "gpu",
+					ResourceClaimName: ptr.To("gpu-claim"),
+				},
+			},
+			wantTasks: []api.TaskID{"ns-t1"},
+		},
+		{
+			name: "DRA-only template claim needs placement",
+			claims: []v1.PodResourceClaim{
+				{
+					Name:                      "gpu",
+					ResourceClaimTemplateName: ptr.To("gpu-template"),
+				},
+			},
+			wantTasks: []api.TaskID{"ns-t1"},
+		},
+		{
+			name: "no resource requests are left to backfill",
+		},
+		{
+			name: "scheduling gate still excludes DRA-only tasks",
+			claims: []v1.PodResourceClaim{
+				{
+					Name:              "gpu",
+					ResourceClaimName: ptr.To("gpu-claim"),
+				},
+			},
+			gates: []v1.PodSchedulingGate{
+				{Name: "example.com/ready"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var containerClaims []v1.ResourceClaim
+			for _, claim := range tt.claims {
+				containerClaims = append(containerClaims, v1.ResourceClaim{Name: claim.Name})
+			}
+			pod := util.BuildPodWithResourceClaim("ns", "t1", "", v1.PodPending, tt.requests,
+				"job", nil, nil, containerClaims, tt.claims)
+			pod.Spec.SchedulingGates = tt.gates
+			task := api.NewTaskInfo(pod)
+			job := api.NewJobInfo(task.Job, task)
+			worksheet := organizeEvictionWorksheet(&framework.Session{}, job)
+			var gotTasks []api.TaskID
+			for !worksheet.Empty() {
+				subJob := worksheet.subJobs.Pop().(*api.SubJobInfo)
+				tasks := worksheet.subJobWorksheets[subJob.UID].tasks
+				for !tasks.Empty() {
+					gotTasks = append(gotTasks, tasks.Pop().(*api.TaskInfo).UID)
+				}
+			}
+			assert.Equal(t, tt.wantTasks, gotTasks)
+		})
+	}
 }
 
 func TestCollectPendingTasksForJobStartup_WorksheetOrder(t *testing.T) {

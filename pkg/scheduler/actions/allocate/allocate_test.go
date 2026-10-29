@@ -45,6 +45,7 @@ import (
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	volcanofeatures "volcano.sh/volcano/pkg/features"
+	"volcano.sh/volcano/pkg/scheduler/actions/backfill"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -2699,84 +2700,149 @@ func TestAllocateWithDRA(t *testing.T) {
 		},
 	}
 
-	tests := []uthelper.TestCommonStruct{
+	// Each gang member has its own claim and needs a distinct device.
+	gangClaim1 := util.BuildResourceClaim("c1", "claim1",
+		[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)}, nil, nil)
+	gangClaim1.UID = types.UID("claim1")
+	gangClaim2 := util.BuildResourceClaim("c1", "claim2",
+		[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)}, nil, nil)
+	gangClaim2.UID = types.UID("claim2")
+
+	tests := []struct {
+		uthelper.TestCommonStruct
+		checkBackfill bool
+	}{
 		{
-			Name: "Allocate normal resourceClaim successfully",
-			ResourceClaims: []*resourcev1.ResourceClaim{
-				util.BuildResourceClaim("c1", "claim1",
-					[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
-					nil, nil),
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "Allocate normal resourceClaim successfully",
+				ResourceClaims: []*resourcev1.ResourceClaim{
+					util.BuildResourceClaim("c1", "claim1",
+						[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
+						nil, nil),
+				},
+				ResourceSlices: []*resourcev1.ResourceSlice{
+					util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
+						[]resourcev1.Device{
+							util.BuildDevice("gpu-1", nil, nil),
+						}),
+				},
+				DeviceClasses: []*resourcev1.DeviceClass{
+					util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{
+						{CEL: &resourcev1.CELDeviceSelector{
+							Expression: fmt.Sprintf(`device.driver == 'gpu.example.com'`),
+						}},
+					}, nil),
+				},
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string),
+						[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
+				},
+				Queues: []*schedulingv1.Queue{
+					util.BuildQueue("c1", 1, nil),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				},
+				ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
+					"c1/pg1": {api.Binding: 1},
+				},
+				ExpectBindMap: map[string]string{
+					"c1/p1": "n1",
+				},
+				ExpectBindsNum: 1,
 			},
-			ResourceSlices: []*resourcev1.ResourceSlice{
-				util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
-					[]resourcev1.Device{
-						util.BuildDevice("gpu-1", nil, nil),
-					}),
-			},
-			DeviceClasses: []*resourcev1.DeviceClass{
-				util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{
-					{CEL: &resourcev1.CELDeviceSelector{
-						Expression: fmt.Sprintf(`device.driver == 'gpu.example.com'`),
-					}},
-				}, nil),
-			},
-			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
-			},
-			Pods: []*v1.Pod{
-				util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string),
-					[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
-			},
-			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
-			},
-			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-			},
-			ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
-				"c1/pg1": {api.Binding: 1},
-			},
-			ExpectBindMap: map[string]string{
-				"c1/p1": "n1",
-			},
-			ExpectBindsNum: 1,
 		},
 		{
-			Name: "claim cel runtime errors",
-			ResourceClaims: []*resourcev1.ResourceClaim{
-				util.BuildResourceClaim("c1", "claim1",
-					[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
-					nil, nil),
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "claim cel runtime errors",
+				ResourceClaims: []*resourcev1.ResourceClaim{
+					util.BuildResourceClaim("c1", "claim1",
+						[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
+						nil, nil),
+				},
+				ResourceSlices: []*resourcev1.ResourceSlice{
+					util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
+						[]resourcev1.Device{
+							util.BuildDevice("gpu-1", nil, nil),
+						}),
+				},
+				DeviceClasses: []*resourcev1.DeviceClass{
+					util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{
+						{CEL: &resourcev1.CELDeviceSelector{
+							Expression: fmt.Sprintf(`device.attributes["%s"].%s`, "some-driver", resourcev1.QualifiedName("healthy")),
+						}},
+					}, nil),
+				},
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string),
+						[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
+				},
+				Queues: []*schedulingv1.Queue{
+					util.BuildQueue("c1", 1, nil),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				},
+				ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+					"c1/pg1": scheduling.PodGroupInqueue,
+				},
 			},
-			ResourceSlices: []*resourcev1.ResourceSlice{
-				util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
-					[]resourcev1.Device{
-						util.BuildDevice("gpu-1", nil, nil),
-					}),
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:           "DRA-only gang waits when only one device is available",
+				ResourceClaims: []*resourcev1.ResourceClaim{gangClaim1.DeepCopy(), gangClaim2.DeepCopy()},
+				ResourceSlices: []*resourcev1.ResourceSlice{
+					util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
+						[]resourcev1.Device{util.BuildDevice("gpu-1", nil, nil)}),
+				},
+				DeviceClasses: []*resourcev1.DeviceClass{
+					util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{{CEL: &resourcev1.CELDeviceSelector{Expression: `device.driver == 'gpu.example.com'`}}}, nil),
+				},
+				PodGroups: []*schedulingv1.PodGroup{util.BuildPodGroup("pg1", "c1", "c1", 2, nil, schedulingv1.PodGroupInqueue)},
+				Pods: []*v1.Pod{
+					util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, nil, "pg1", nil, nil,
+						[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
+					util.BuildPodWithResourceClaim("c1", "p2", "", v1.PodPending, nil, "pg1", nil, nil,
+						[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim2")}}),
+				},
+				Queues:               []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+				Nodes:                []*v1.Node{util.BuildNode("n1", api.BuildResourceList("2", "4Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)},
+				ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{"c1/pg1": {api.Pending: 2}},
 			},
-			DeviceClasses: []*resourcev1.DeviceClass{
-				util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{
-					{CEL: &resourcev1.CELDeviceSelector{
-						Expression: fmt.Sprintf(`device.attributes["%s"].%s`, "some-driver", resourcev1.QualifiedName("healthy")),
-					}},
-				}, nil),
+			checkBackfill: true,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:           "DRA-only gang binds when both devices are available",
+				ResourceClaims: []*resourcev1.ResourceClaim{gangClaim1.DeepCopy(), gangClaim2.DeepCopy()},
+				ResourceSlices: []*resourcev1.ResourceSlice{
+					util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
+						[]resourcev1.Device{util.BuildDevice("gpu-1", nil, nil), util.BuildDevice("gpu-2", nil, nil)}),
+				},
+				DeviceClasses: []*resourcev1.DeviceClass{
+					util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{{CEL: &resourcev1.CELDeviceSelector{Expression: `device.driver == 'gpu.example.com'`}}}, nil),
+				},
+				PodGroups: []*schedulingv1.PodGroup{util.BuildPodGroup("pg1", "c1", "c1", 2, nil, schedulingv1.PodGroupInqueue)},
+				Pods: []*v1.Pod{
+					util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, nil, "pg1", nil, nil,
+						[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
+					util.BuildPodWithResourceClaim("c1", "p2", "", v1.PodPending, nil, "pg1", nil, nil,
+						[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim2")}}),
+				},
+				Queues:               []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+				Nodes:                []*v1.Node{util.BuildNode("n1", api.BuildResourceList("2", "4Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)},
+				ExpectBindMap:        map[string]string{"c1/p1": "n1", "c1/p2": "n1"},
+				ExpectBindsNum:       2,
+				ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{"c1/pg1": {api.Binding: 2}},
 			},
-			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
-			},
-			Pods: []*v1.Pod{
-				util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string),
-					[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
-			},
-			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
-			},
-			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-			},
-			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
-				"c1/pg1": scheduling.PodGroupInqueue,
-			},
+			checkBackfill: true,
 		},
 	}
 
@@ -2787,6 +2853,20 @@ func TestAllocateWithDRA(t *testing.T) {
 			defer test.Close()
 			action := New()
 			test.Run([]framework.Action{action})
+			if test.checkBackfill {
+				// Check allocate before backfill, which could otherwise hide skipped DRA allocation.
+				if err := test.CheckBind(i); err != nil {
+					t.Fatalf("after allocate: %v", err)
+				}
+				if err := test.CheckTaskStatusNums(i); err != nil {
+					t.Fatalf("after allocate: %v", err)
+				}
+				// CheckBind already verified the destinations and consumed the bind events.
+				// Backfill must neither bind additional tasks nor change their statuses.
+				test.ExpectBindsNum = 0
+				test.MinimalBindCheck = true
+				test.Run([]framework.Action{backfill.New()})
+			}
 			if err := test.CheckAll(i); err != nil {
 				t.Fatal(err)
 			}
