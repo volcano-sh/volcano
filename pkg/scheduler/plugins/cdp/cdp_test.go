@@ -63,6 +63,70 @@ func makePod(labels map[string]string, annotations map[string]string, podSchedul
 
 }
 
+func addPodCondition(pod *v1.Pod, condType v1.PodConditionType, status v1.ConditionStatus, transitionTime time.Time) *v1.Pod {
+	pod.Status.Conditions = append(pod.Status.Conditions, v1.PodCondition{
+		Type:               condType,
+		LastTransitionTime: metav1.NewTime(transitionTime),
+		Status:             status,
+	})
+	return pod
+}
+
+func Test_CooldownTimePlugin_podCooldownStartTime(t *testing.T) {
+	scheduledTime := time.Now().Add(time.Second * -800).Truncate(time.Second)
+	readyTime := time.Now().Add(time.Second * -100).Truncate(time.Second)
+	tests := []struct {
+		name string
+		pod  *v1.Pod
+		want time.Time
+	}{
+		{
+			name: "ready pod uses ready time",
+			pod: addPodCondition(makePod(map[string]string{}, map[string]string{}, scheduledTime),
+				v1.PodReady, v1.ConditionTrue, readyTime),
+			want: readyTime,
+		},
+		{
+			name: "ready condition before scheduled condition uses ready time",
+			pod: &v1.Pod{Status: v1.PodStatus{Conditions: []v1.PodCondition{
+				{Type: v1.PodReady, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(readyTime)},
+				{Type: v1.PodScheduled, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(scheduledTime)},
+			}}},
+			want: readyTime,
+		},
+		{
+			name: "not ready pod falls back to scheduled time",
+			pod: addPodCondition(makePod(map[string]string{}, map[string]string{}, scheduledTime),
+				v1.PodReady, v1.ConditionFalse, readyTime),
+			want: scheduledTime,
+		},
+		{
+			name: "ready condition without transition time falls back to scheduled time",
+			pod: addPodCondition(makePod(map[string]string{}, map[string]string{}, scheduledTime),
+				v1.PodReady, v1.ConditionTrue, time.Time{}),
+			want: scheduledTime,
+		},
+		{
+			name: "pod without ready condition uses scheduled time",
+			pod:  makePod(map[string]string{}, map[string]string{}, scheduledTime),
+			want: scheduledTime,
+		},
+		{
+			name: "pod without conditions",
+			pod:  makePod(map[string]string{}, map[string]string{}, time.Time{}),
+			want: time.Time{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sp := &CooldownProtectionPlugin{}
+			if got := sp.podCooldownStartTime(tt.pod); !got.Equal(tt.want) {
+				t.Errorf("CooldownTimePlugin.podCooldownStartTime() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_CooldownTimePlugin_podPreemptStableTime(t *testing.T) {
 	type args struct {
 		pod *v1.Pod
@@ -153,10 +217,31 @@ func TestPreemptableFn(t *testing.T) {
 			map[string]string{v1beta1.CooldownTime: "600s"},
 			time.Now().Add(time.Second*-800)),
 	)
-	preemptees := []*api.TaskInfo{task1, task2, task3}
+	// task4: scheduled before stable time, but became ready within it (slow start-up), should be filtered
+	task4 := api.NewTaskInfo(
+		addPodCondition(makePod(map[string]string{v1beta1.PodPreemptable: "true"},
+			map[string]string{v1beta1.CooldownTime: "600s"},
+			time.Now().Add(time.Second*-800)),
+			v1.PodReady, v1.ConditionTrue, time.Now().Add(time.Second*-100)),
+	)
+	// task5: scheduled before stable time and not ready, can be preempted
+	task5 := api.NewTaskInfo(
+		addPodCondition(makePod(map[string]string{v1beta1.PodPreemptable: "true"},
+			map[string]string{v1beta1.CooldownTime: "600s"},
+			time.Now().Add(time.Second*-800)),
+			v1.PodReady, v1.ConditionFalse, time.Now().Add(time.Second*-100)),
+	)
+	// task6: ready after stable time, can be preempted
+	task6 := api.NewTaskInfo(
+		addPodCondition(makePod(map[string]string{v1beta1.PodPreemptable: "true"},
+			map[string]string{v1beta1.CooldownTime: "600s"},
+			time.Now().Add(time.Second*-900)),
+			v1.PodReady, v1.ConditionTrue, time.Now().Add(time.Second*-800)),
+	)
+	preemptees := []*api.TaskInfo{task1, task2, task3, task4, task5, task6}
 	victims := ssn.Preemptable(&api.TaskInfo{}, preemptees)
 
-	expectVictims := []*api.TaskInfo{task2, task3}
+	expectVictims := []*api.TaskInfo{task2, task3, task5, task6}
 	if !equality.Semantic.DeepEqual(victims, expectVictims) {
 		t.Errorf("stable preempt test not equal! expect victims %v, actual %v", expectVictims, victims)
 	}
