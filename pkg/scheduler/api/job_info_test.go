@@ -31,10 +31,100 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/ptr"
 
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
+
+func TestNewTaskInfo(t *testing.T) {
+	tests := []struct {
+		name             string
+		requests         v1.ResourceList
+		claims           []v1.PodResourceClaim
+		wantBestEffort   bool
+		wantInitRequests bool
+	}{
+		{
+			name:           "no requests",
+			wantBestEffort: true,
+		},
+		{
+			name:           "zero CPU and memory",
+			requests:       BuildResourceList("0", "0"),
+			wantBestEffort: true,
+		},
+		{
+			name:             "CPU request",
+			requests:         BuildResourceList("1", "0"),
+			wantInitRequests: true,
+		},
+		{
+			name:             "extended resource request",
+			requests:         v1.ResourceList{"example.com/gpu": resource.MustParse("1")},
+			wantInitRequests: true,
+		},
+		{
+			name:             "DRA only with ResourceClaim",
+			claims:           []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("gpu-claim")}},
+			wantBestEffort:   false,
+			wantInitRequests: false,
+		},
+		{
+			name:             "DRA only with ResourceClaimTemplate",
+			claims:           []v1.PodResourceClaim{{Name: "gpu", ResourceClaimTemplateName: ptr.To("gpu-template")}},
+			wantBestEffort:   false,
+			wantInitRequests: false,
+		},
+		{
+			name:             "CPU and DRA",
+			requests:         BuildResourceList("1", "0"),
+			claims:           []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("gpu-claim")}},
+			wantInitRequests: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := buildPod("c1", "p1", "", v1.PodPending, tt.requests, nil, nil)
+			pod.Spec.ResourceClaims = tt.claims
+			for _, claim := range tt.claims {
+				pod.Spec.Containers[0].Resources.Claims = append(pod.Spec.Containers[0].Resources.Claims, v1.ResourceClaim{Name: claim.Name})
+			}
+			task := NewTaskInfo(pod)
+			assert.Equal(t, tt.wantBestEffort, task.BestEffort)
+			assert.Equal(t, !tt.wantBestEffort, task.HasSchedulingResourceRequests())
+			assert.Equal(t, tt.wantInitRequests, task.HasInitResourceRequests())
+		})
+	}
+}
+
+func TestHasSchedulingResourceRequests(t *testing.T) {
+	tests := []struct {
+		name    string
+		request *Resource
+		want    bool
+	}{
+		{
+			name:    "nil Pod without ordinary requests",
+			request: EmptyResource(),
+			want:    false,
+		},
+		{
+			name:    "nil Pod with ordinary requests",
+			request: NewResource(BuildResourceList("1", "0")),
+			want:    true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			task := &TaskInfo{
+				InitResreq: tt.request,
+			}
+			assert.Equal(t, tt.want, task.HasSchedulingResourceRequests())
+		})
+	}
+}
 
 func TestAddTaskInfo(t *testing.T) {
 	// case1
@@ -600,91 +690,185 @@ func TestTaskSchedulingReasonNomination(t *testing.T) {
 }
 
 func TestJobInfo(t *testing.T) {
-	newTaskFunc := func(uid, jobUid types.UID, status TaskStatus, resources *Resource) *TaskInfo {
-		isBestEffort := resources.IsEmpty()
-		return &TaskInfo{
-			UID:  TaskID(uid),
-			Job:  JobID(jobUid),
-			Name: string(uid),
-			TransactionContext: TransactionContext{
-				Status: status,
-			},
-			Resreq:     resources,
-			InitResreq: resources,
-			BestEffort: isBestEffort,
-			NumaInfo: &TopologyInfo{
-				ResMap: map[int]v1.ResourceList{},
-			},
+	newPod := func(name, node string, phase v1.PodPhase, requests v1.ResourceList, claims []v1.PodResourceClaim) *v1.Pod {
+		pod := buildPod("c1", name, node, phase, requests, nil, map[string]string{batch.TaskSpecKey: "worker"})
+		pod.Annotations = map[string]string{schedulingv2.KubeGroupNameAnnotationKey: "job-1"}
+		pod.Spec.ResourceClaims = claims
+		for _, claim := range claims {
+			pod.Spec.Containers[0].Resources.Claims = append(pod.Spec.Containers[0].Resources.Claims, v1.ResourceClaim{Name: claim.Name})
 		}
+		return pod
 	}
-
+	mixedPods := []*v1.Pod{
+		newPod("pending-requestless", "", v1.PodPending, nil, nil),
+		newPod("pipelined-requestless", "", v1.PodPending, nil, nil),
+		newPod("running-requestless", "n1", v1.PodRunning, nil, nil),
+		newPod("pending-cpu", "", v1.PodPending, BuildResourceList("100m", "0"), nil),
+		newPod("pipelined-cpu", "", v1.PodPending, BuildResourceList("100m", "0"), nil),
+		newPod("running-cpu", "n1", v1.PodRunning, BuildResourceList("100m", "0"), nil),
+	}
+	directClaims := []v1.PodResourceClaim{{
+		Name:              "gpu",
+		ResourceClaimName: ptr.To("claim1"),
+	}}
+	templateClaims := []v1.PodResourceClaim{{
+		Name:                      "gpu",
+		ResourceClaimTemplateName: ptr.To("template1"),
+	}}
+	runningWorker := newPod("running", "n1", v1.PodRunning, BuildResourceList("1", "0"), nil)
 	testCases := []struct {
 		name                             string
-		jobUID                           JobID
-		jobMinAvailable                  int32
-		tasks                            []*TaskInfo
+		minMember                        int32
+		minTaskMember                    map[string]int32
+		pods                             []*v1.Pod
+		pipelineTasks                    []string
 		expectedPendingBestEffortTaskNum int32
 		expectedIsReady                  bool
 		expectedIsPipelined              bool
 		expectedIsStarving               bool
+		expectedTaskReady                bool
+		expectedTaskPipelined            bool
 	}{
 		{
-			name:            "starving job",
-			jobUID:          "job-1",
-			jobMinAvailable: 5,
-			tasks: []*TaskInfo{
-				newTaskFunc("pending-besteffort-task-1", "job-1", Pending, EmptyResource()),
-				newTaskFunc("pipelined-besteffort-task-1", "job-1", Pipelined, EmptyResource()),
-				newTaskFunc("running-besteffort-task-1", "job-1", Running, EmptyResource()),
-				newTaskFunc("pending-unbesteffort-task-1", "job-1", Pending, NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})),
-				newTaskFunc("pipelined-unbesteffort-task-1", "job-1", Pipelined, NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})),
-				newTaskFunc("running-unbesteffort-task-1", "job-1", Running, NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})),
-			},
+			name:                             "starving job",
+			minMember:                        5,
+			pods:                             mixedPods,
+			pipelineTasks:                    []string{"pipelined-requestless", "pipelined-cpu"},
 			expectedPendingBestEffortTaskNum: 1,
 			expectedIsReady:                  false,
 			expectedIsPipelined:              true,
 			expectedIsStarving:               true,
+			expectedTaskReady:                true,
+			expectedTaskPipelined:            true,
 		},
-
 		{
-			name:            "ready job",
-			jobUID:          "job-1",
-			jobMinAvailable: 3,
-			tasks: []*TaskInfo{
-				newTaskFunc("pending-besteffort-task-1", "job-1", Pending, EmptyResource()),
-				newTaskFunc("pipelined-besteffort-task-1", "job-1", Pipelined, EmptyResource()),
-				newTaskFunc("running-besteffort-task-1", "job-1", Running, EmptyResource()),
-				newTaskFunc("pending-unbesteffort-task-1", "job-1", Pending, NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})),
-				newTaskFunc("pipelined-unbesteffort-task-1", "job-1", Pipelined, NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})),
-				newTaskFunc("running-unbesteffort-task-1", "job-1", Running, NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})),
-			},
+			name:                             "ready job",
+			minMember:                        3,
+			pods:                             mixedPods,
+			pipelineTasks:                    []string{"pipelined-requestless", "pipelined-cpu"},
 			expectedPendingBestEffortTaskNum: 1,
 			expectedIsReady:                  true,
 			expectedIsPipelined:              true,
 			expectedIsStarving:               false,
+			expectedTaskReady:                true,
+			expectedTaskPipelined:            true,
+		},
+		{
+			name:          "pending requestless worker counts toward job and role readiness",
+			minMember:     2,
+			minTaskMember: map[string]int32{"worker": 2},
+			pods: []*v1.Pod{
+				runningWorker,
+				newPod("pending", "", v1.PodPending, nil, nil),
+			},
+			expectedPendingBestEffortTaskNum: 1,
+			expectedIsReady:                  true,
+			expectedIsPipelined:              true,
+			expectedIsStarving:               true,
+			expectedTaskReady:                true,
+			expectedTaskPipelined:            true,
+		},
+		{
+			name:          "pending CPU worker does not count toward job or role readiness",
+			minMember:     2,
+			minTaskMember: map[string]int32{"worker": 2},
+			pods: []*v1.Pod{
+				runningWorker,
+				newPod("pending", "", v1.PodPending, BuildResourceList("1", "0"), nil),
+			},
+			expectedIsReady:       false,
+			expectedIsPipelined:   false,
+			expectedIsStarving:    true,
+			expectedTaskReady:     false,
+			expectedTaskPipelined: false,
+		},
+		{
+			name:          "pending worker with ResourceClaim does not count toward job or role readiness",
+			minMember:     2,
+			minTaskMember: map[string]int32{"worker": 2},
+			pods: []*v1.Pod{
+				runningWorker,
+				newPod("pending", "", v1.PodPending, nil, directClaims),
+			},
+			expectedIsReady:       false,
+			expectedIsPipelined:   false,
+			expectedIsStarving:    true,
+			expectedTaskReady:     false,
+			expectedTaskPipelined: false,
+		},
+		{
+			name:          "pending worker with ResourceClaimTemplate does not count toward job or role readiness",
+			minMember:     2,
+			minTaskMember: map[string]int32{"worker": 2},
+			pods: []*v1.Pod{
+				runningWorker,
+				newPod("pending", "", v1.PodPending, nil, templateClaims),
+			},
+			expectedIsReady:       false,
+			expectedIsPipelined:   false,
+			expectedIsStarving:    true,
+			expectedTaskReady:     false,
+			expectedTaskPipelined: false,
+		},
+		{
+			name:          "running DRA worker counts toward job and role readiness",
+			minMember:     2,
+			minTaskMember: map[string]int32{"worker": 2},
+			pods: []*v1.Pod{
+				runningWorker,
+				newPod("dra", "n1", v1.PodRunning, nil, directClaims),
+			},
+			expectedIsReady:       true,
+			expectedIsPipelined:   true,
+			expectedIsStarving:    false,
+			expectedTaskReady:     true,
+			expectedTaskPipelined: true,
+		},
+		{
+			name:          "pipelined DRA worker counts toward pipeline readiness only",
+			minMember:     2,
+			minTaskMember: map[string]int32{"worker": 2},
+			pods: []*v1.Pod{
+				runningWorker,
+				newPod("dra", "", v1.PodPending, nil, directClaims),
+			},
+			pipelineTasks:         []string{"dra"},
+			expectedIsReady:       false,
+			expectedIsPipelined:   true,
+			expectedIsStarving:    false,
+			expectedTaskReady:     false,
+			expectedTaskPipelined: true,
 		},
 	}
 
 	for _, tc := range testCases {
-		jobInfo := NewJobInfo(tc.jobUID, tc.tasks...)
-		jobInfo.MinAvailable = tc.jobMinAvailable
-		actualPendingBestEffortTaskNum := jobInfo.PendingBestEffortTaskNum()
-		actualIsReady := jobInfo.IsReady()
-		actualIsPipelined := jobInfo.IsPipelined()
-		actualIsStarving := jobInfo.IsStarving()
-
-		if !assert.Equal(t, actualPendingBestEffortTaskNum, tc.expectedPendingBestEffortTaskNum) {
-			t.Errorf("unexpected PendingBestEffortTaskNum; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedPendingBestEffortTaskNum, actualPendingBestEffortTaskNum)
-		}
-		if !assert.Equal(t, actualIsReady, tc.expectedIsReady) {
-			t.Errorf("unexpected Ready; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedIsReady, actualIsReady)
-		}
-		if !assert.Equal(t, actualIsPipelined, tc.expectedIsPipelined) {
-			t.Errorf("unexpected IsPipelined; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedIsPipelined, actualIsPipelined)
-		}
-		if !assert.Equal(t, actualIsStarving, tc.expectedIsStarving) {
-			t.Errorf("unexpected IsStarving; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedIsStarving, actualIsStarving)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			jobInfo := NewJobInfo("c1/job-1")
+			jobInfo.SetPodGroup(&PodGroup{PodGroup: scheduling.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-1",
+					Namespace: "c1",
+				},
+				Spec: scheduling.PodGroupSpec{
+					MinMember:     tc.minMember,
+					MinTaskMember: tc.minTaskMember,
+				},
+			}})
+			pipelineTasks := sets.New(tc.pipelineTasks...)
+			for _, pod := range tc.pods {
+				task := NewTaskInfo(pod.DeepCopy())
+				jobInfo.AddTaskInfo(task)
+				if pipelineTasks.Has(pod.Name) {
+					jobInfo.UpdateTaskStatus(task, Pipelined)
+				}
+			}
+			assert.Equal(t, tc.expectedPendingBestEffortTaskNum, jobInfo.PendingBestEffortTaskNum())
+			assert.Equal(t, tc.expectedIsReady, jobInfo.IsReady())
+			assert.Equal(t, tc.expectedIsPipelined, jobInfo.IsPipelined())
+			assert.Equal(t, tc.expectedIsStarving, jobInfo.IsStarving())
+			assert.Equal(t, tc.expectedTaskReady, jobInfo.CheckTaskReady())
+			assert.Equal(t, tc.expectedTaskPipelined, jobInfo.CheckTaskPipelined())
+		})
 	}
 }
 
