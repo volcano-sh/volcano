@@ -46,8 +46,17 @@ func NewPrometheusMetricsClient(conf map[string]string) (*PrometheusMetricsClien
 }
 
 func (p *PrometheusMetricsClient) NodesMetricsAvg(ctx context.Context, nodeMetricsMap map[string]*NodeMetrics) error {
+	if len(nodeMetricsMap) == 0 {
+		return nil
+	}
+	v1api, transport, err := p.newAPIClient()
+	if err != nil {
+		return err
+	}
+	defer transport.CloseIdleConnections()
+
 	for nodeName := range nodeMetricsMap {
-		nodeMetrics, err := p.NodeMetricsAvg(ctx, nodeName)
+		nodeMetrics, err := p.nodeMetricsAvg(ctx, nodeName, v1api)
 		if err != nil {
 			return err
 		}
@@ -57,9 +66,16 @@ func (p *PrometheusMetricsClient) NodesMetricsAvg(ctx context.Context, nodeMetri
 }
 
 func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName string) (*NodeMetrics, error) {
-	klog.V(4).Infof("Get node metrics from Prometheus: %s", p.address)
-	var client api.Client
-	var err error
+	v1api, transport, err := p.newAPIClient()
+	if err != nil {
+		return nil, err
+	}
+	defer transport.CloseIdleConnections()
+	return p.nodeMetricsAvg(ctx, nodeName, v1api)
+}
+
+// Each collection owns its transport so idle connections are closed on return.
+func (p *PrometheusMetricsClient) newAPIClient() (prometheusv1.API, *http.Transport, error) {
 	insecureSkipVerify := p.conf["tls.insecureSkipVerify"] == "true"
 	if insecureSkipVerify {
 		klog.Warningf("WARNING: TLS certificate verification is disabled which is insecure. This should not be used in production environments")
@@ -70,14 +86,18 @@ func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName s
 			InsecureSkipVerify: insecureSkipVerify,
 		},
 	}
-	client, err = api.NewClient(api.Config{
+	client, err := api.NewClient(api.Config{
 		Address:      p.address,
 		RoundTripper: tr,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	v1api := prometheusv1.NewAPI(client)
+	return prometheusv1.NewAPI(client), tr, nil
+}
+
+func (p *PrometheusMetricsClient) nodeMetricsAvg(ctx context.Context, nodeName string, v1api prometheusv1.API) (*NodeMetrics, error) {
+	klog.V(4).Infof("Get node metrics from Prometheus: %s", p.address)
 	nodeMetrics := &NodeMetrics{}
 	cpuQueryStr := fmt.Sprintf(`avg_over_time(clamp_min(100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle",instance="%s"}[5m])) * 100), 0)[%s:30s])`, nodeName, NODE_METRICS_PERIOD)
 	memQueryStr := fmt.Sprintf("100*avg_over_time(((1-node_memory_MemAvailable_bytes{instance=\"%s\"}/node_memory_MemTotal_bytes{instance=\"%s\"}))[%s:30s])", nodeName, nodeName, NODE_METRICS_PERIOD)
