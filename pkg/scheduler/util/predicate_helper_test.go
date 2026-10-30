@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -29,17 +30,25 @@ import (
 )
 
 func TestPredicateNodes(t *testing.T) {
+	samplingNodes := make([]*api.NodeInfo, 1000)
+	for i := range samplingNodes {
+		samplingNodes[i] = &api.NodeInfo{Name: fmt.Sprintf("node-%d", i)}
+	}
+	samplingOpts := &options.ServerOption{MinNodesToFind: 100, MinPercentageOfNodesToFind: 5}
 	tests := []struct {
-		name             string
-		task             *api.TaskInfo
-		nodes            []*api.NodeInfo
-		nodesInShard     sets.Set[string]
-		shardingMode     string
-		enableErrorCache bool
-		predicateFn      api.PredicateFn
-		expectedNodes    []string
-		expectedErr      string
-		expectedErrCache map[string]map[string]string
+		name               string
+		task               *api.TaskInfo
+		nodes              []*api.NodeInfo
+		nodesInShard       sets.Set[string]
+		shardingMode       string
+		enableErrorCache   bool
+		predicateFn        api.PredicateFn
+		feasibleNodeTarget *int32
+		serverOpts         *options.ServerOption
+		expectedCount      int
+		expectedNodes      []string
+		expectedErr        string
+		expectedErrCache   map[string]map[string]string
 	}{
 		{
 			name: "empty nodes returns empty result",
@@ -234,10 +243,46 @@ func TestPredicateNodes(t *testing.T) {
 			expectedErr:      "0/2 nodes are unavailable: 2 node isn't in scheduler node shard.",
 			expectedErrCache: map[string]map[string]string{},
 		},
+		{
+			name: "fixed target preserves original scope sampling",
+			task: &api.TaskInfo{Name: "task"}, nodes: samplingNodes,
+			predicateFn:        func(*api.TaskInfo, *api.NodeInfo) error { return nil },
+			feasibleNodeTarget: ptr.To(int32(680)), serverOpts: samplingOpts,
+			expectedCount: 680, expectedErrCache: map[string]map[string]string{},
+		},
+		{
+			name: "fixed target is capped by candidate count",
+			task: &api.TaskInfo{Name: "task"}, nodes: samplingNodes[:1],
+			predicateFn:        func(*api.TaskInfo, *api.NodeInfo) error { return nil },
+			feasibleNodeTarget: ptr.To(int32(680)), serverOpts: samplingOpts,
+			expectedCount: 1, expectedErrCache: map[string]map[string]string{},
+		},
+		{
+			name: "zero target returns no feasible nodes",
+			task: &api.TaskInfo{Name: "task"}, nodes: samplingNodes,
+			predicateFn:        func(*api.TaskInfo, *api.NodeInfo) error { return nil },
+			feasibleNodeTarget: ptr.To(int32(0)), serverOpts: samplingOpts,
+			expectedCount: 0, expectedErr: "0/0 nodes are unavailable", expectedErrCache: map[string]map[string]string{},
+		},
+		{
+			name: "negative target returns no feasible nodes",
+			task: &api.TaskInfo{Name: "task"}, nodes: samplingNodes,
+			predicateFn:        func(*api.TaskInfo, *api.NodeInfo) error { return nil },
+			feasibleNodeTarget: ptr.To(int32(-1)), serverOpts: samplingOpts,
+			expectedCount: 0, expectedErr: "0/0 nodes are unavailable", expectedErrCache: map[string]map[string]string{},
+		},
+		{
+			name: "default helper uses adaptive sampling",
+			task: &api.TaskInfo{Name: "task"}, nodes: samplingNodes,
+			predicateFn: func(*api.TaskInfo, *api.NodeInfo) error { return nil },
+			serverOpts:  samplingOpts, expectedCount: 420, expectedErrCache: map[string]map[string]string{},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			previousOpts := options.ServerOpts
+			t.Cleanup(func() { options.ServerOpts = previousOpts })
 			options.ServerOpts = &options.ServerOption{
 				MinPercentageOfNodesToFind: 5,
 				MinNodesToFind:             1,
@@ -245,15 +290,25 @@ func TestPredicateNodes(t *testing.T) {
 				ShardingMode:               tt.shardingMode,
 			}
 
+			if tt.serverOpts != nil {
+				options.ServerOpts = tt.serverOpts
+			}
 			ph := NewPredicateHelper()
+			if tt.feasibleNodeTarget != nil {
+				ph = NewPredicateHelperWithFeasibleNodeTarget(*tt.feasibleNodeTarget)
+			}
 			result, fitErr := ph.PredicateNodes(tt.task, tt.nodes, tt.predicateFn, tt.enableErrorCache, tt.nodesInShard)
 
-			if len(result) != len(tt.expectedNodes) {
-				t.Fatalf("expected %d nodes, got %d", len(tt.expectedNodes), len(result))
+			wantCount := tt.expectedCount
+			if tt.expectedNodes != nil {
+				wantCount = len(tt.expectedNodes)
 			}
-			for i, node := range result {
-				if node.Name != tt.expectedNodes[i] {
-					t.Fatalf("expected node %s, got %s", tt.expectedNodes[i], node.Name)
+			if len(result) != wantCount {
+				t.Fatalf("expected %d nodes, got %d", wantCount, len(result))
+			}
+			for i, name := range tt.expectedNodes {
+				if result[i].Name != name {
+					t.Fatalf("expected node %s, got %s", name, result[i].Name)
 				}
 			}
 
@@ -376,6 +431,37 @@ func TestGetPredicatedNodeByShard(t *testing.T) {
 
 			checkNodes(t, "InShard", result[0], tt.expectedInShard)
 			checkNodes(t, "InOtherShard", result[1], tt.expectedInOtherShard)
+		})
+	}
+}
+
+func TestPredicateNodesFixedTargetAcrossCalls(t *testing.T) {
+	previousOpts := options.ServerOpts
+	options.ServerOpts = &options.ServerOption{MinNodesToFind: 100, MinPercentageOfNodesToFind: 5}
+	t.Cleanup(func() { options.ServerOpts = previousOpts })
+	nodes := make([]*api.NodeInfo, 1000)
+	for i := range nodes {
+		nodes[i] = &api.NodeInfo{Name: fmt.Sprintf("node-%d", i)}
+	}
+	task := &api.TaskInfo{Name: "task"}
+	predicate := func(*api.TaskInfo, *api.NodeInfo) error { return nil }
+	helper := NewPredicateHelperWithFeasibleNodeTarget(680)
+	// Reuse one helper: capping a call must not reduce the target for later calls.
+	for _, tc := range []struct {
+		name       string
+		candidates int
+		want       int
+	}{
+		{name: "initial target", candidates: 1000, want: 680},
+		{name: "cap to one candidate", candidates: 1, want: 1},
+		{name: "original target retained", candidates: 1000, want: 680},
+		{name: "empty candidates", candidates: 0, want: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, _ := helper.PredicateNodes(task, nodes[:tc.candidates], predicate, false, nil)
+			if len(result) != tc.want {
+				t.Fatalf("expected %d feasible nodes, got %d", tc.want, len(result))
+			}
 		})
 	}
 }
