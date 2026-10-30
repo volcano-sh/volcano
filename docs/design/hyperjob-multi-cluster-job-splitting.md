@@ -396,7 +396,7 @@ HyperJob is designed for scenarios where training requirements exceed single clu
 The HyperJob controller is responsible for splitting HyperJob into multiple Volcano Jobs and aggregate each Volcano Job's status across multiple clusters.
 
 For detailed controller implementation design is documented in the volcano-global repository:
-- [HyperJob Controller Design](https://github.com/volcano-sh/volcano-global/blob/main/docs/proposals/hyperjob-controller.md)
+- [HyperJob Controller Design](https://github.com/volcano-sh/volcano-global/blob/main/docs/proposals/hyperjob-controller-design.md)
 
 ## Future Work
 

@@ -48,7 +48,7 @@ To enable vGPU scheduling, the following components must be set up based on the 
 
   * Deploy [`volcano-vgpu-device-plugin`](https://github.com/Project-HAMi/volcano-vgpu-device-plugin)
 
-  **Note:** the [vgpu device plugin yaml](https://github.com/Project-HAMi/volcano-vgpu-device-plugin/blob/main/volcano-vgpu-device-plugin.yml) also includes the ***Node GPU mode*** and the ***MIG geometry*** configuration. Please refer to the [vgpu device plugin config](https://github.com/Project-HAMi/volcano-vgpu-device-plugin/blob/main/doc/config.md).
+  **Note:** the [vgpu device plugin yaml](https://github.com/Project-HAMi/volcano-vgpu-device-plugin/blob/main/deployments/static/volcano-vgpu-device-plugin.yml) also includes the ***Node GPU mode*** and the ***MIG geometry*** configuration. Please refer to the [vgpu device plugin config](https://github.com/Project-HAMi/volcano-vgpu-device-plugin/blob/main/doc/config.md).
 
 * **Validate Setup**:
   Ensure node allocatable resources include:
@@ -156,7 +156,7 @@ sudo nvidia-smi -mig 1
 ```
 
 * **Geometry Config (Optional)**:
-  The volcano-vgpu-device-plugin automatically generates an initial MIG configuration, which is stored in the `volcano-vgpu-device-config` ConfigMap under the `kube-system` namespace. You can customize this configuration as needed. For more details, refer to the [vgpu device plugin yaml](https://github.com/Project-HAMi/volcano-vgpu-device-plugin/blob/main/volcano-vgpu-device-plugin.yml).
+  The volcano-vgpu-device-plugin automatically generates an initial MIG configuration, which is stored in the `volcano-vgpu-device-config` ConfigMap under the `kube-system` namespace. You can customize this configuration as needed. For more details, refer to the [vgpu device plugin yaml](https://github.com/Project-HAMi/volcano-vgpu-device-plugin/blob/main/deployments/static/volcano-vgpu-device-plugin.yml).
 
 * **Pod Spec with MIG Annotation**:
 
