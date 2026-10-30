@@ -355,13 +355,11 @@ func (np *nodeGroupPlugin) taskNodeGroup(ssn *framework.Session, task *api.TaskI
 }
 
 func (np *nodeGroupPlugin) syncNodeGroupAllocatedMetrics(ssn *framework.Session) {
-	queueNames := make([]string, 0, len(ssn.Queues))
 	resources := make([]metrics.QueueNodeGroupResource, 0)
 	for queueID, queueInfo := range ssn.Queues {
 		if queueInfo == nil {
 			continue
 		}
-		queueNames = append(queueNames, queueInfo.Name)
 		attr := np.queueAttrs[queueID]
 		if attr == nil {
 			continue
@@ -379,7 +377,7 @@ func (np *nodeGroupPlugin) syncNodeGroupAllocatedMetrics(ssn *framework.Session)
 			})
 		}
 	}
-	metrics.SyncQueueNodeGroupAllocated(queueNames, resources)
+	metrics.SyncQueueNodeGroupAllocated(resources)
 }
 
 func (np *nodeGroupPlugin) checkNodeGroupResourceLimit(task *api.TaskInfo, group string, attr *queueAttr) error {
