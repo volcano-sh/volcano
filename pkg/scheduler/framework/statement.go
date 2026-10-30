@@ -138,7 +138,8 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 	for _, eh := range s.ssn.eventHandlers {
 		if eh.AllocateFunc != nil {
 			eh.AllocateFunc(&Event{
-				Task: reclaimee,
+				Task:    reclaimee,
+				Restore: true,
 			})
 		}
 	}
