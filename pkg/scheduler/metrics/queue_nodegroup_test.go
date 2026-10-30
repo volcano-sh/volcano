@@ -17,6 +17,7 @@ limitations under the License.
 package metrics
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -35,7 +36,7 @@ func TestQueueNodeGroupAllocatedMetricsLifecycle(t *testing.T) {
 	)
 	gpu := v1.ResourceName("nvidia.com/gpu")
 
-	SyncQueueNodeGroupAllocated([]string{queue1, queue2}, []QueueNodeGroupResource{
+	SyncQueueNodeGroupAllocated([]QueueNodeGroupResource{
 		{
 			QueueName:       queue1,
 			NodeGroupName:   group1,
@@ -57,26 +58,29 @@ func TestQueueNodeGroupAllocatedMetricsLifecycle(t *testing.T) {
 		t.Fatalf("expected initial GPU to be 1, got %v", got)
 	}
 
-	// A later session keeps known pairs for existing queues and zeros omitted values.
-	SyncQueueNodeGroupAllocated([]string{queue1, queue2}, []QueueNodeGroupResource{
+	// A later session removes omitted pairs and scalar resource names.
+	SyncQueueNodeGroupAllocated([]QueueNodeGroupResource{
 		{QueueName: queue1, NodeGroupName: group1, MilliCPU: 1600, Memory: 1636},
 		{QueueName: queue2, NodeGroupName: group1, MilliCPU: 3000, Memory: 3072},
 	})
-	if got := testutil.ToFloat64(queueNodeGroupAllocatedScalarResource.WithLabelValues(queue1, group1, string(gpu))); got != 0 {
-		t.Fatalf("expected removed GPU dimension to be reset to zero, got %v", got)
+	if got := testutil.CollectAndCount(queueNodeGroupAllocatedScalarResource); got != 0 {
+		t.Fatalf("expected removed GPU series to be deleted, got %d", got)
 	}
-	if got := testutil.ToFloat64(queueNodeGroupAllocatedMilliCPU.WithLabelValues(queue1, group2)); got != 0 {
-		t.Fatalf("expected omitted nodegroup pair to be reset to zero, got %v", got)
+	if got := testutil.ToFloat64(queueNodeGroupAllocatedMilliCPU.WithLabelValues(queue1, group1)); got != 1600 {
+		t.Fatalf("expected updated CPU to be 1600, got %v", got)
 	}
-	if got := testutil.CollectAndCount(queueNodeGroupAllocatedMilliCPU); got != 3 {
-		t.Fatalf("expected all three known CPU series to be retained, got %d", got)
+	if got := testutil.CollectAndCount(queueNodeGroupAllocatedMilliCPU); got != 2 {
+		t.Fatalf("expected only two active CPU series, got %d", got)
+	}
+	if got := testutil.CollectAndCount(queueNodeGroupAllocatedMemory); got != 2 {
+		t.Fatalf("expected only two active memory series, got %d", got)
 	}
 
 	// A later session removes metrics for queues that no longer exist.
-	SyncQueueNodeGroupAllocated([]string{queue1}, []QueueNodeGroupResource{
+	SyncQueueNodeGroupAllocated([]QueueNodeGroupResource{
 		{QueueName: queue1, NodeGroupName: group1, MilliCPU: 1600, Memory: 1636},
 	})
-	if got := testutil.CollectAndCount(queueNodeGroupAllocatedMilliCPU); got != 2 {
+	if got := testutil.CollectAndCount(queueNodeGroupAllocatedMilliCPU); got != 1 {
 		t.Fatalf("expected only queue1 CPU series after deleting queue2, got %d", got)
 	}
 
@@ -92,11 +96,79 @@ func TestQueueNodeGroupAllocatedMetricsLifecycle(t *testing.T) {
 	}
 }
 
+func TestQueueNodeGroupAllocatedScalarChanges(t *testing.T) {
+	resetQueueNodeGroupAllocatedMetricsForTest()
+	t.Cleanup(resetQueueNodeGroupAllocatedMetricsForTest)
+
+	const queue = "queue-nodegroup-scalar-changes"
+	gpu := v1.ResourceName("nvidia.com/gpu")
+	fpga := v1.ResourceName("example.com/fpga")
+	// The caller owns this map and may change it after publishing a snapshot.
+	scalarResources := map[v1.ResourceName]float64{}
+	resource := QueueNodeGroupResource{QueueName: queue, NodeGroupName: "group", ScalarResources: scalarResources}
+	tests := []struct {
+		name      string
+		resources map[v1.ResourceName]float64
+	}{
+		{name: "initial", resources: map[v1.ResourceName]float64{gpu: 1}},
+		{name: "unchanged", resources: map[v1.ResourceName]float64{gpu: 1}},
+		{name: "changed", resources: map[v1.ResourceName]float64{gpu: 2, fpga: 1}},
+		{name: "removed", resources: map[v1.ResourceName]float64{fpga: 1}},
+		{name: "empty"},
+		{name: "reintroduced zero", resources: map[v1.ResourceName]float64{gpu: 0}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clear(scalarResources)
+			for name, value := range tt.resources {
+				scalarResources[name] = value
+			}
+			SyncQueueNodeGroupAllocated([]QueueNodeGroupResource{resource})
+			if got := testutil.CollectAndCount(queueNodeGroupAllocatedScalarResource); got != len(tt.resources) {
+				t.Fatalf("expected %d scalar series, got %d", len(tt.resources), got)
+			}
+			for name, want := range tt.resources {
+				if got := testutil.ToFloat64(queueNodeGroupAllocatedScalarResource.WithLabelValues(queue, "group", string(name))); got != want {
+					t.Errorf("expected %s to be %v, got %v", name, want, got)
+				}
+			}
+		})
+	}
+
+	SyncQueueNodeGroupAllocated(nil)
+	if got := testutil.CollectAndCount(queueNodeGroupAllocatedScalarResource); got != 0 {
+		t.Fatalf("expected an empty snapshot to delete scalar series, got %d", got)
+	}
+	SyncQueueNodeGroupAllocated([]QueueNodeGroupResource{resource})
+	if got := testutil.CollectAndCount(queueNodeGroupAllocatedScalarResource); got != 1 {
+		t.Fatalf("expected the reintroduced pair to export its scalar series, got %d", got)
+	}
+}
+
+func BenchmarkSyncQueueNodeGroupAllocatedUnchanged(b *testing.B) {
+	resetQueueNodeGroupAllocatedMetricsForTest()
+	b.Cleanup(resetQueueNodeGroupAllocatedMetricsForTest)
+	resources := make([]QueueNodeGroupResource, 1000)
+	for i := range resources {
+		resources[i] = QueueNodeGroupResource{
+			QueueName: "benchmark-queue", NodeGroupName: fmt.Sprintf("group-%d", i),
+			MilliCPU: 1000, Memory: 1024,
+			ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1},
+		}
+	}
+	SyncQueueNodeGroupAllocated(resources)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		SyncQueueNodeGroupAllocated(resources)
+	}
+}
+
 func resetQueueNodeGroupAllocatedMetricsForTest() {
 	queueNodeGroupAllocatedMetricsLock.Lock()
 	defer queueNodeGroupAllocatedMetricsLock.Unlock()
 	queueNodeGroupAllocatedMilliCPU.Reset()
 	queueNodeGroupAllocatedMemory.Reset()
 	queueNodeGroupAllocatedScalarResource.Reset()
-	knownQueueNodeGroupScalarResources = make(map[queueNodeGroupKey]map[string]struct{})
+	queueNodeGroupAllocatedResources = make(map[queueNodeGroupKey]*queueNodeGroupAllocation)
 }

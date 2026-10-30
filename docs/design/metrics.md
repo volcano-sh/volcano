@@ -72,7 +72,7 @@ This metrics describe internal state of volcano.
 | `job_completed_phase_count`            | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job completed phase             |
 | `job_failed_phase_count`               | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job failed phase                |
 
-The `queue_nodegroup_allocated_*` metrics are refreshed by the `nodegroup` plugin at the beginning of each scheduling session. They report Pod resource requests for allocated tasks directly assigned to the queue, grouped by the assigned node's `volcano.sh/nodegroup-name` label; they do not report actual node utilization. Scalar values use the same units as `queue_allocated_scalar_resources`. A previously observed Queue/NodeGroup pair is reset to zero when absent from a later session, and all of its series are removed when the Queue is deleted.
+The `queue_nodegroup_allocated_*` metrics are reconciled by the `nodegroup` plugin at the beginning of each scheduling session, updating only changed values. They report Pod resource requests for allocated tasks directly assigned to the queue, grouped by the assigned node's `volcano.sh/nodegroup-name` label; they do not report actual node utilization. Scalar values use the same units as `queue_allocated_scalar_resources`. Missing Queue/NodeGroup pairs and scalar resource names are removed in the next session. All series for a Queue are removed when it is deleted, and all Queue/NodeGroup series are removed in the first session without the `nodegroup` plugin.
 
 ### volcano agent scheduler related metrics
 

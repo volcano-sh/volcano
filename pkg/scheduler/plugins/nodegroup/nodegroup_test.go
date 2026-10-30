@@ -745,6 +745,57 @@ func TestNodeGroupAllocatedMetricsSnapshot(t *testing.T) {
 	}, group2Task.Resreq.MilliCPU)
 }
 
+func TestNodeGroupAllocatedMetricsPluginLifecycle(t *testing.T) {
+	const queueName = "queue-nodegroup-plugin-lifecycle"
+	schedmetrics.DeleteQueueMetrics(queueName)
+	t.Cleanup(func() { schedmetrics.DeleteQueueMetrics(queueName) })
+	common := uthelper.TestCommonStruct{
+		Queues: []*schedulingv1.Queue{util.MakeQueue(queueName).Obj()},
+		PodGroups: []*schedulingv1.PodGroup{
+			util.BuildPodGroup("pg", "metrics", queueName, 0, nil, schedulingv1.PodGroupRunning),
+		},
+		Pods: []*v1.Pod{util.BuildPod("metrics", "running", "node", v1.PodRunning,
+			api.BuildResourceList("1", "2Gi", api.ScalarResource{Name: "nvidia.com/gpu", Value: "1"}), "pg", nil, nil)},
+		Nodes: []*v1.Node{util.BuildNode("node",
+			api.BuildResourceList("4", "8Gi", api.ScalarResource{Name: "nvidia.com/gpu", Value: "2"},
+				api.ScalarResource{Name: string(v1.ResourcePods), Value: "16"}),
+			map[string]string{schedulingv1.NodeGroupNameKey: "group"})},
+		Plugins: map[string]framework.PluginBuilder{PluginName: New},
+	}
+	tests := []struct {
+		name    string
+		enabled bool
+	}{
+		{name: "enabled", enabled: true},
+		{name: "disabled"},
+		{name: "still disabled"},
+		{name: "re-enabled", enabled: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tiers []conf.Tier
+			if tt.enabled {
+				tiers = []conf.Tier{{Plugins: []conf.PluginOption{{Name: PluginName}}}}
+			}
+			common.RegisterSession(tiers, nil)
+			defer common.Close()
+			for _, metricName := range []string{
+				"volcano_queue_nodegroup_allocated_milli_cpu",
+				"volcano_queue_nodegroup_allocated_memory_bytes",
+				"volcano_queue_nodegroup_allocated_scalar_resources",
+			} {
+				labels := map[string]string{"queue_name": queueName, "nodegroup_name": "group"}
+				if metricName == "volcano_queue_nodegroup_allocated_scalar_resources" {
+					labels["resource"] = "nvidia.com/gpu"
+				}
+				if _, found := nodeGroupGaugeValue(t, metricName, labels); found != tt.enabled {
+					t.Errorf("metric %s presence: expected %v, got %v", metricName, tt.enabled, found)
+				}
+			}
+		})
+	}
+}
+
 func requireNodeGroupGaugeValue(t *testing.T, metricName string, labels map[string]string, expected float64) {
 	t.Helper()
 	actual, found := nodeGroupGaugeValue(t, metricName, labels)
