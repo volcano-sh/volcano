@@ -438,6 +438,13 @@ func TestDiscardReversesOperations(t *testing.T) {
 		}
 		job.UpdateTaskStatus(task, api.Running)
 
+		var allocateEvents []*Event
+		ssn.AddEventHandler(&EventHandler{
+			AllocateFunc: func(event *Event) {
+				allocateEvents = append(allocateEvents, event)
+			},
+		})
+
 		stmt := NewStatement(ssn)
 		stmt.Evict(task, "test-reclaim")
 
@@ -450,6 +457,14 @@ func TestDiscardReversesOperations(t *testing.T) {
 		// After discard, unevict should restore the task to Running.
 		if task.Status != api.Running {
 			t.Errorf("expected task status Running after Discard of Evict, got %v", task.Status)
+		}
+		// The task was never really deallocated, so handlers must be told that
+		// they are restoring state instead of admitting the task again.
+		if len(allocateEvents) != 1 {
+			t.Fatalf("expected 1 allocate event from Discard of Evict, got %d", len(allocateEvents))
+		}
+		if !allocateEvents[0].Restore {
+			t.Errorf("expected the allocate event of an unevicted task to be marked as a restore")
 		}
 	})
 }
