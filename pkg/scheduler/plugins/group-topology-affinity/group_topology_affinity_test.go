@@ -474,12 +474,33 @@ func TestHyperNodeOrderFn(t *testing.T) {
 			},
 		},
 		{
-			name:    "invalid preferred term tierName returns error",
+			name:    "unknown preferred term tierName applies no penalty",
+			weight:  1,
 			selfJob: jobWithTopologyAffinity(nil, []scheduling.PodGroupAffinityTerm{{PodGroupSelector: prodSelector, TopologyTierName: "missing"}}),
 			candidates: map[string][]*api.NodeInfo{
 				"sn-a": {},
 			},
-			wantErr: true,
+			wantScores: map[string]float64{
+				"sn-a": 1.0 * float64(fwk.MaxNodeScore),
+			},
+		},
+		{
+			name:   "unknown preferred term tierName does not affect other valid preferred terms",
+			weight: 1,
+			jobs:   map[api.JobID]*api.JobInfo{"other": otherJobOn("other", "sn-a", "prod")},
+			selfJob: jobWithTopologyAffinity(nil, []scheduling.PodGroupAffinityTerm{
+				{
+					PodGroupSelector: prodSelector,
+					TopologyTierName: "missing",
+					Weight:           50,
+				},
+				preferredTerm,
+			}),
+			candidates: map[string][]*api.NodeInfo{"sn-a": {}, "sn-b": {}},
+			wantScores: map[string]float64{
+				"sn-a": 0.5 * float64(fwk.MaxNodeScore),
+				"sn-b": 1.0 * float64(fwk.MaxNodeScore),
+			},
 		},
 	}
 
