@@ -200,6 +200,9 @@ func (worker *Worker) generateNextSchedulingContext() (*agentapi.SchedulingConte
 	if err != nil {
 		return nil, fmt.Errorf("failed to pop scheduling task: %w", err)
 	}
+	if podInfo == nil || podInfo.Pod == nil {
+		return nil, nil
+	}
 
 	task, exist := worker.framework.Cache.GetTaskInfo(schedulingapi.TaskID(podInfo.Pod.UID))
 	if !exist {
