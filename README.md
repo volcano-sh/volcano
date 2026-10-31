@@ -36,7 +36,9 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 
 ## Overall Architecture
 
-![volcano](docs/images/volcano-architecture.png)
+<a href="docs/images/volcano-new-architecture.svg">
+  <img src="docs/images/volcano-new-architecture.svg" alt="Volcano architecture: ecosystem integrations, scheduling capabilities, and Kubernetes node resources" />
+</a>
 
 ## Talks
 

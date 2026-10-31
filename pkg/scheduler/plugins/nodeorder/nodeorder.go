@@ -344,7 +344,9 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 func (pp *NodeOrderPlugin) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo, k8sNodeInfo fwk.NodeInfo, state *k8sframework.CycleState) (float64, error) {
 	var nodeScore = 0.0
 	for name, p := range pp.NodeOrderScorePlugins {
-		klog.V(5).Infof("Score node through %s plugin", name)
+		if klog.V(5).Enabled() {
+			klog.V(5).Infof("Score node through %s plugin", name)
+		}
 		score, status := p.plugin.Score(context.TODO(), state, task.Pod, k8sNodeInfo)
 		if !status.IsSuccess() {
 			klog.Warningf("Node: %s, <%s> Priority Failed because of Error: %v", node.Name, name, status.AsError())
@@ -354,9 +356,13 @@ func (pp *NodeOrderPlugin) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo, k
 		// Score from each plugin is multiplied by its configured weight before being added to the total.
 		weightedScore := float64(score) * float64(p.weight)
 		nodeScore += weightedScore
-		klog.V(5).Infof("Node: %s, task<%s/%s> plugin %s weight %d, raw score: %d, weighted score: %f", node.Name, task.Namespace, task.Name, name, p.weight, score, weightedScore)
+		if klog.V(5).Enabled() {
+			klog.V(5).Infof("Node: %s, task<%s/%s> plugin %s weight %d, raw score: %d, weighted score: %f", node.Name, task.Namespace, task.Name, name, p.weight, score, weightedScore)
+		}
 	}
-	klog.V(4).Infof("Nodeorder Total Score for task<%s/%s> on node %s is: %f", task.Namespace, task.Name, node.Name, nodeScore)
+	if klog.V(4).Enabled() {
+		klog.V(4).Infof("Nodeorder Total Score for task<%s/%s> on node %s is: %f", task.Namespace, task.Name, node.Name, nodeScore)
+	}
 	return nodeScore, nil
 }
 

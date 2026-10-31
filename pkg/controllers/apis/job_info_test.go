@@ -318,6 +318,7 @@ func TestJobInfo_DeletePod(t *testing.T) {
 			Labels: map[string]string{batch.TaskPartitionID: "p1"},
 		},
 	}
+	ji.Pods["task-1"]["pod-1"] = podToDelete.DeepCopy()
 	if err := ji.DeletePod(podToDelete); err != nil {
 		t.Errorf("DeletePod failed: %v", err)
 	}
