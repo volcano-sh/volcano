@@ -45,6 +45,7 @@ type topologyCandidateEvaluation struct {
 // the local-domain result for the candidate Node.
 type requirementCandidateEvaluation struct {
 	requirement resolvedDeviceTopologyRequirement
+	request     resolvedDeviceTopologyTaskRequest
 	local       topologyCandidateEvaluation
 }
 
@@ -56,8 +57,9 @@ type selectedDeviceTopologyRequirement struct {
 }
 
 // predicate rejects a candidate only when a selected hard requirement cannot
-// use the immutable session topology snapshot. Exact-ID reservation and
-// allocation-adapter enforcement checks are added later.
+// use the immutable session topology snapshot. It holds no devices: exact
+// device IDs are reserved through the allocation adapter later, in
+// PrepareBindBatch, and the cache checks them again then.
 func (plugin *deviceTopologyPlugin) predicate(session *framework.Session, task *api.TaskInfo, node *api.NodeInfo) error {
 	policy, requirements, fabric, err := plugin.evaluateTaskCandidate(session, task, node, time.Now())
 	if err != nil {
@@ -126,7 +128,8 @@ func (plugin *deviceTopologyPlugin) evaluateTaskCandidate(session *framework.Ses
 	for _, requirement := range requirements {
 		evaluations = append(evaluations, requirementCandidateEvaluation{
 			requirement: requirement.requirement,
-			local:       evaluateLocalDomain(session.DeviceTopology, node, requirement.request, at),
+			request:     requirement.request,
+			local:       evaluateLocalDomain(session.DeviceTopology, node, requirement.request, at, plugin.pending.byDomain),
 		})
 	}
 
@@ -138,7 +141,13 @@ func (plugin *deviceTopologyPlugin) evaluateTaskCandidate(session *framework.Ses
 		if evaluations[0].local.reason != "" {
 			fabric.reason = evaluations[0].local.reason
 		} else {
-			fabric = evaluateFabric(session.DeviceTopology, evaluations[0].local.fittingDomains, at)
+			domains := evaluations[0].local.fittingDomains
+			// Later Tasks of a policy unit must use the fabric its first
+			// allocated Task pinned.
+			if pinned, exists := plugin.pending.fabrics[policy]; exists {
+				domains = domainsInFabric(session.DeviceTopology, pinned.id, domains)
+			}
+			fabric = evaluateFabric(session.DeviceTopology, domains, at)
 		}
 	}
 
@@ -216,8 +225,10 @@ func hasSubGroupDeviceTopologyPolicy(job *api.JobInfo) bool {
 // evaluateLocalDomain finds available devices from one fresh local domain that
 // can satisfy the Task's whole-device request. Provider health determines the
 // diagnostic reason, while the scheduler-owned availability ledger prevents a
-// held or allocated device from being selected again.
-func evaluateLocalDomain(snapshot *api.TopologySnapshot, node *api.NodeInfo, request resolvedDeviceTopologyTaskRequest, at time.Time) topologyCandidateEvaluation {
+// held or allocated device from being selected again. pending holds devices
+// that earlier, not yet committed allocations in this session are expected to
+// use; gang planning passes nil because it plans those Tasks itself.
+func evaluateLocalDomain(snapshot *api.TopologySnapshot, node *api.NodeInfo, request resolvedDeviceTopologyTaskRequest, at time.Time, pending map[api.DeviceDomainID]int64) topologyCandidateEvaluation {
 	if snapshot == nil || node == nil || node.Node == nil || node.Node.UID == "" {
 		return topologyCandidateEvaluation{reason: deviceTopologyDataNotReadyReason}
 	}
@@ -232,6 +243,7 @@ func evaluateLocalDomain(snapshot *api.TopologySnapshot, node *api.NodeInfo, req
 	hasFreshFacts := false
 	hasHealthyDevice := false
 	hasSufficientHealthyDomain := false
+	fitsWithoutPending := false
 	for _, domain := range domains {
 		if snapshot.ProviderNodeReadiness(domain.ID.ProviderID, node.Node.UID) != api.ProviderNodeSynced {
 			continue
@@ -248,7 +260,11 @@ func evaluateLocalDomain(snapshot *api.TopologySnapshot, node *api.NodeInfo, req
 		if int64(len(healthyDeviceIDs)) >= request.quantity {
 			hasSufficientHealthyDomain = true
 		}
-		if int64(len(snapshot.AvailableDeviceIDs(domain.ID))) >= request.quantity {
+		available := int64(len(snapshot.AvailableDeviceIDs(domain.ID)))
+		if available >= request.quantity {
+			fitsWithoutPending = true
+		}
+		if available-pending[domain.ID] >= request.quantity {
 			result.fittingDomains = append(result.fittingDomains, domain)
 		}
 	}
@@ -265,6 +281,12 @@ func evaluateLocalDomain(snapshot *api.TopologySnapshot, node *api.NodeInfo, req
 	}
 	if !hasHealthyDevice {
 		result.reason = deviceTopologyDeviceUnhealthyReason
+		return result
+	}
+	// Devices that this session's own pending allocations need, usually the
+	// earlier Tasks of the same gang, mean the gang does not fit here.
+	if fitsWithoutPending {
+		result.reason = deviceTopologyDomainFragmentedReason
 		return result
 	}
 	if hasSufficientHealthyDomain {

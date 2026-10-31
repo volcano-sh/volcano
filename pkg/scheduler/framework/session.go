@@ -1035,11 +1035,46 @@ func (ssn *Session) ReserveDeviceTopologyPlan(ctx context.Context, plan api.Topo
 }
 
 // refreshDeviceTopology replaces the session topology view after a
-// reservation or release changed device availability, so later plans in the
-// same session use the current revision and skip devices that are now held.
-// It also runs after a failure, because a rollback can change availability.
+// reservation, release, bind commit, or bind rollback changed device
+// availability, so later plans in the same session use the current revision
+// and skip devices that are no longer available. It also runs after a
+// failure, because a rollback can change availability.
 func (ssn *Session) refreshDeviceTopology(reservationCache cache.DeviceTopologyReservationCache) {
 	ssn.DeviceTopology = reservationCache.DeviceTopologySnapshot()
+}
+
+// PrepareDeviceTopologyReservationBind asks the cache's optional trusted
+// topology extension for immutable resource-specific handoffs for every Pod
+// in an already reserved exact-device plan.
+func (ssn *Session) PrepareDeviceTopologyReservationBind(ctx context.Context, reservation api.TopologyReservation) (map[api.TaskID][]cache.DeviceTopologyBindHandoff, error) {
+	bindCache, supported := ssn.cache.(cache.DeviceTopologyBindHandoffCache)
+	if !supported {
+		return nil, fmt.Errorf("scheduler cache does not support device topology bind handoffs")
+	}
+	return bindCache.PrepareDeviceTopologyReservationBind(ctx, reservation)
+}
+
+// CommitDeviceTopologyReservationBind advances an already prepared topology
+// reservation to the scheduler's Binding state before the cache accepts its
+// Pod bind contexts.
+func (ssn *Session) CommitDeviceTopologyReservationBind(ctx context.Context, reservation api.TopologyReservation) error {
+	bindCache, supported := ssn.cache.(cache.DeviceTopologyBindHandoffCache)
+	if !supported {
+		return fmt.Errorf("scheduler cache does not support device topology bind handoffs")
+	}
+	defer ssn.refreshDeviceTopology(bindCache)
+	return bindCache.CommitDeviceTopologyReservationBind(ctx, reservation)
+}
+
+// RollbackDeviceTopologyReservationBind releases an unbound topology
+// reservation through the cache's trusted bind-handoff extension.
+func (ssn *Session) RollbackDeviceTopologyReservationBind(ctx context.Context, reservation api.TopologyReservation) error {
+	bindCache, supported := ssn.cache.(cache.DeviceTopologyBindHandoffCache)
+	if !supported {
+		return fmt.Errorf("scheduler cache does not support device topology bind handoffs")
+	}
+	defer ssn.refreshDeviceTopology(bindCache)
+	return bindCache.RollbackDeviceTopologyReservationBind(ctx, reservation)
 }
 
 // GetMetricsConf returns the metrics server related configuration from cache

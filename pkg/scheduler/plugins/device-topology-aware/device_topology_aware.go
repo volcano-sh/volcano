@@ -35,6 +35,8 @@ const (
 type deviceTopologyPlugin struct {
 	policies map[policyUnitKey]*resolvedDeviceTopologyPolicy
 	errors   map[policyUnitKey]error
+	session  *framework.Session
+	pending  pendingAllocations
 }
 
 // New creates a device topology-aware scheduler plugin.
@@ -42,6 +44,7 @@ func New(_ framework.Arguments) framework.Plugin {
 	return &deviceTopologyPlugin{
 		policies: make(map[policyUnitKey]*resolvedDeviceTopologyPolicy),
 		errors:   make(map[policyUnitKey]error),
+		pending:  newPendingAllocations(),
 	}
 }
 
@@ -56,9 +59,15 @@ func (plugin *deviceTopologyPlugin) Name() string {
 func (plugin *deviceTopologyPlugin) OnSessionOpen(session *framework.Session) {
 	clear(plugin.policies)
 	clear(plugin.errors)
-	if session == nil || !utilfeature.DefaultFeatureGate.Enabled(features.DeviceTopologyAwareScheduling) {
+	plugin.pending.clear()
+	plugin.session = session
+	if session == nil {
 		return
 	}
+	if !utilfeature.DefaultFeatureGate.Enabled(features.DeviceTopologyAwareScheduling) {
+		return
+	}
+	session.RegisterBinder(plugin.Name(), plugin)
 
 	for _, job := range session.Jobs {
 		plugin.resolveJob(job)
@@ -70,6 +79,7 @@ func (plugin *deviceTopologyPlugin) OnSessionOpen(session *framework.Session) {
 	session.AddNodeOrderFn(plugin.Name(), func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		return plugin.nodeOrder(session, task, node)
 	})
+	session.AddEventHandler(plugin.eventHandler())
 }
 
 // OnSessionClose discards policy data that belongs only to the completed
@@ -77,6 +87,8 @@ func (plugin *deviceTopologyPlugin) OnSessionOpen(session *framework.Session) {
 func (plugin *deviceTopologyPlugin) OnSessionClose(_ *framework.Session) {
 	clear(plugin.policies)
 	clear(plugin.errors)
+	plugin.pending.clear()
+	plugin.session = nil
 }
 
 // resolveJob records a resolved policy or a fail-closed error for every policy

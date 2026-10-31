@@ -49,8 +49,8 @@ type deviceTopologyGangPlanContext struct {
 
 // deviceTopologyGangPlan records a complete static domain plan for the exact
 // device-requesting Tasks in one gang admission unit. It deliberately carries
-// no reservation, adapter token, or concrete device IDs; the availability
-// ledger and allocation handoff add those in later phases.
+// no reservation, adapter token, or concrete device IDs; reserveGangPlan
+// selects the device IDs and reserves them when the Statement commits.
 type deviceTopologyGangPlan struct {
 	jobID            api.JobID
 	schedulingUnitID string
@@ -115,9 +115,9 @@ type deviceTopologyFabricPlanningCandidate struct {
 }
 
 // planGang builds a complete static plan for the exact pending Tasks in one
-// existing PodGroup or SubJob admission unit. It is intentionally not
-// registered as a framework callback yet: normal allocation integration and
-// exact-ID bind handoff are separate later changes.
+// existing PodGroup or SubJob admission unit. It is not a framework callback:
+// PrepareBindBatch calls it when a Statement commits, before the plan's exact
+// devices are reserved.
 func (plugin *deviceTopologyPlugin) planGang(session *framework.Session, context deviceTopologyGangPlanContext) (*deviceTopologyGangPlan, error) {
 	if session == nil {
 		return nil, newPolicyResolutionError(invalidDeviceTopologyPolicyReason, "gang planning requires a scheduler session")
@@ -291,7 +291,7 @@ func buildDeviceTopologyPlanningTask(snapshot *api.TopologySnapshot, task *api.T
 		}
 		fitsAllRequests := true
 		for requestIndex, request := range requests {
-			evaluation := evaluateLocalDomain(snapshot, node, request, at)
+			evaluation := evaluateLocalDomain(snapshot, node, request, at, nil)
 			if evaluation.reason != "" {
 				failureReasons[requestIndex][evaluation.reason] = struct{}{}
 				fitsAllRequests = false
@@ -580,7 +580,7 @@ func (solver *deviceTopologyGangPlanSolver) consumeSearchState() bool {
 }
 
 // newDeviceTopologyGangPlan copies the complete result into deterministic
-// admission-unit order before returning it to a future allocation integration.
+// admission-unit order before PrepareBindBatch reserves it.
 func newDeviceTopologyGangPlan(policy *resolvedDeviceTopologyPolicy, snapshot *api.TopologySnapshot, fabricID api.FabricDomainID, placements []deviceTopologyGangPlacement, tasks []deviceTopologyPlanningTask) *deviceTopologyGangPlan {
 	taskOrder := make(map[api.TaskID]int, len(tasks))
 	for _, task := range tasks {

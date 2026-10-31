@@ -70,6 +70,70 @@ func TestSchedulerCacheReservesAndReleasesExactDeviceTopologyPlan(t *testing.T) 
 	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceAvailable)
 }
 
+func TestSchedulerCachePreparesAndCommitsDeviceTopologyBindHandoffs(t *testing.T) {
+	resourceName := corev1.ResourceName("nvidia.com/gpu")
+	allocationAdapter := newTopologyReservationTestAdapter(resourceName)
+	node, cache := newTopologyReservationTestCache(t, []topologyReservationDeviceSpec{{resourceName: resourceName, domainValue: "gpu-domain", deviceValue: "gpu-0"}}, allocationAdapter)
+	plan := topologyReservationTestPlan(t, cache, node, map[corev1.ResourceName]int64{resourceName: 1})
+
+	reservation, err := cache.ReserveDeviceTopologyPlan(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("ReserveDeviceTopologyPlan() error = %v", err)
+	}
+	handoffs, err := cache.PrepareDeviceTopologyReservationBind(context.Background(), reservation)
+	if err != nil {
+		t.Fatalf("PrepareDeviceTopologyReservationBind() error = %v", err)
+	}
+	if len(allocationAdapter.preparedBindPlacements) != 1 {
+		t.Fatalf("PrepareBind() calls = %d, want 1", len(allocationAdapter.preparedBindPlacements))
+	}
+	taskHandoffs := handoffs[plan.Placements[0].TaskID]
+	if len(taskHandoffs) != 1 || taskHandoffs[0].ResourceName != resourceName {
+		t.Fatalf("prepared handoffs = %#v, want one %q handoff", handoffs, resourceName)
+	}
+	if taskHandoffs[0].Handoff.ReservationToken != reservation.AdapterReservations[0].Token || taskHandoffs[0].Handoff.PodUID != plan.Placements[0].PodUID || taskHandoffs[0].Handoff.NodeName != node.Name {
+		t.Fatalf("prepared handoff = %#v, want reservation, Pod, and Node identity", taskHandoffs[0].Handoff)
+	}
+	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceHeld)
+
+	if err := cache.CommitDeviceTopologyReservationBind(context.Background(), reservation); err != nil {
+		t.Fatalf("CommitDeviceTopologyReservationBind() error = %v", err)
+	}
+	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceBinding)
+
+	if err := cache.RollbackDeviceTopologyReservationBind(context.Background(), reservation); err != nil {
+		t.Fatalf("RollbackDeviceTopologyReservationBind() error = %v", err)
+	}
+	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceAvailable)
+}
+
+func TestSchedulerCacheRejectsMismatchedDeviceTopologyBindHandoff(t *testing.T) {
+	resourceName := corev1.ResourceName("nvidia.com/gpu")
+	allocationAdapter := newTopologyReservationTestAdapter(resourceName)
+	allocationAdapter.handoffForPlacement = func(_ adapter.AdapterReservation, placement schedulingapi.TopologyTaskPlacement) adapter.AllocationHandoff {
+		return adapter.AllocationHandoff{
+			ReservationToken: "wrong-token",
+			PlanDigest:       "wrong-digest",
+			PodUID:           placement.PodUID,
+			NodeName:         placement.NodeName,
+		}
+	}
+	node, cache := newTopologyReservationTestCache(t, []topologyReservationDeviceSpec{{resourceName: resourceName, domainValue: "gpu-domain", deviceValue: "gpu-0"}}, allocationAdapter)
+	plan := topologyReservationTestPlan(t, cache, node, map[corev1.ResourceName]int64{resourceName: 1})
+
+	reservation, err := cache.ReserveDeviceTopologyPlan(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("ReserveDeviceTopologyPlan() error = %v", err)
+	}
+	if _, err := cache.PrepareDeviceTopologyReservationBind(context.Background(), reservation); err == nil || !strings.Contains(err.Error(), "different reservation") {
+		t.Fatalf("PrepareDeviceTopologyReservationBind() error = %v, want mismatched handoff rejection", err)
+	}
+	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceHeld)
+	if err := cache.RollbackDeviceTopologyReservationBind(context.Background(), reservation); err != nil {
+		t.Fatalf("RollbackDeviceTopologyReservationBind() error = %v", err)
+	}
+}
+
 func TestSchedulerCacheReservationRollsBackEarlierAdapterFragments(t *testing.T) {
 	nvidiaResource := corev1.ResourceName("nvidia.com/gpu")
 	amdResource := corev1.ResourceName("amd.com/gpu")
@@ -451,15 +515,18 @@ type topologyReservationDeviceSpec struct {
 }
 
 type topologyReservationTestAdapter struct {
-	contract             adapter.DeviceIdentityContract
-	validatedFacts       []schedulingapi.NodeTopologyFacts
-	reservedPlans        []schedulingapi.TopologyPlacementPlan
-	releasedReservations []adapter.AdapterReservation
-	releaseContextErrors []error
-	reserveHook          func()
-	validateErr          error
-	reserveErr           error
-	releaseErr           error
+	contract               adapter.DeviceIdentityContract
+	validatedFacts         []schedulingapi.NodeTopologyFacts
+	reservedPlans          []schedulingapi.TopologyPlacementPlan
+	preparedBindPlacements []schedulingapi.TopologyTaskPlacement
+	releasedReservations   []adapter.AdapterReservation
+	releaseContextErrors   []error
+	reserveHook            func()
+	handoffForPlacement    func(adapter.AdapterReservation, schedulingapi.TopologyTaskPlacement) adapter.AllocationHandoff
+	validateErr            error
+	reserveErr             error
+	prepareBindErr         error
+	releaseErr             error
 }
 
 func newTopologyReservationTestAdapter(resourceName corev1.ResourceName) *topologyReservationTestAdapter {
@@ -501,8 +568,20 @@ func (testAdapter *topologyReservationTestAdapter) Reserve(_ context.Context, pl
 	return adapter.AdapterReservation{Token: fmt.Sprintf("%s-token-%d", testAdapter.contract.ResourceName, len(testAdapter.reservedPlans)), PlanDigest: fmt.Sprintf("%s-digest-%d", testAdapter.contract.ResourceName, len(testAdapter.reservedPlans))}, nil
 }
 
-func (testAdapter *topologyReservationTestAdapter) PrepareBind(context.Context, adapter.AdapterReservation, schedulingapi.TopologyTaskPlacement) (adapter.AllocationHandoff, error) {
-	return adapter.AllocationHandoff{}, nil
+func (testAdapter *topologyReservationTestAdapter) PrepareBind(_ context.Context, reservation adapter.AdapterReservation, placement schedulingapi.TopologyTaskPlacement) (adapter.AllocationHandoff, error) {
+	testAdapter.preparedBindPlacements = append(testAdapter.preparedBindPlacements, placement.Clone())
+	if testAdapter.prepareBindErr != nil {
+		return adapter.AllocationHandoff{}, testAdapter.prepareBindErr
+	}
+	if testAdapter.handoffForPlacement != nil {
+		return testAdapter.handoffForPlacement(reservation, placement), nil
+	}
+	return adapter.AllocationHandoff{
+		ReservationToken: reservation.Token,
+		PlanDigest:       reservation.PlanDigest,
+		PodUID:           placement.PodUID,
+		NodeName:         placement.NodeName,
+	}, nil
 }
 
 func (testAdapter *topologyReservationTestAdapter) Confirm(context.Context, adapter.AdapterReservation) (adapter.AllocationObservation, error) {

@@ -23,7 +23,11 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -184,9 +188,218 @@ func TestReserveGangPlanMaterializesAndReservesThroughSessionCache(t *testing.T)
 	}
 }
 
+func TestDeviceTopologyPluginPreparesHardBatchBindHandoffs(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DeviceTopologyAwareScheduling, true)
+
+	now := time.Now()
+	node := newCandidateTestNode("node-a")
+	node.Node.ResourceVersion = "1"
+	task := newDeviceTopologyTask("worker", []corev1.Container{containerWithRequest("trainer", "nvidia.com/gpu", "1")}, nil)
+	job := api.NewJobInfo("job", task)
+	task.Job = job.UID
+	job.DeviceTopology = testDeviceTopologyPolicy("nvidia.com/gpu", scheduling.HardDeviceTopologyMode)
+	facts := newCandidateTopologyFacts(node, []candidateDomainSpec{{value: "gpu-domain", deviceCount: 1, healthy: 1}}, now.Add(time.Minute))
+
+	providerRegistry, err := provider.NewRegistry([]provider.Registration{{
+		ProviderID:        candidateTestProviderID,
+		IdentityNamespace: candidateTestNamespace,
+		ResourceNames:     []corev1.ResourceName{"nvidia.com/gpu"},
+	}})
+	if err != nil {
+		t.Fatalf("provider.NewRegistry() error = %v", err)
+	}
+	allocationAdapter := &reservationForwardingTestAdapter{contract: adapter.DeviceIdentityContract{
+		ProviderID:   candidateTestProviderID,
+		ResourceName: "nvidia.com/gpu",
+		Namespace:    candidateTestNamespace,
+	}}
+	adapterRegistry, err := adapter.NewRegistry([]adapter.AllocationAdapter{allocationAdapter})
+	if err != nil {
+		t.Fatalf("adapter.NewRegistry() error = %v", err)
+	}
+
+	schedulerCache := cache.NewDefaultMockSchedulerCache("device-topology-batch-handoff-plugin-test")
+	t.Cleanup(func() {
+		cache.ShutdownMockSchedulerCache(schedulerCache)
+	})
+	cache.WithDeviceTopologyProviderRegistry(providerRegistry)(schedulerCache)
+	cache.WithDeviceTopologyAdapterRegistry(adapterRegistry)(schedulerCache)
+	if err := schedulerCache.AddOrUpdateNode(node.Node); err != nil {
+		t.Fatalf("AddOrUpdateNode() error = %v", err)
+	}
+	if err := schedulerCache.ApplyProviderNodeUpdate(provider.ProviderNodeUpdate{
+		ProviderID:          facts.ProviderID,
+		NodeName:            facts.NodeName,
+		NodeUID:             facts.NodeUID,
+		NodeResourceVersion: facts.NodeResourceVersion,
+		SourceGeneration:    facts.SourceGeneration,
+		ObservedAt:          facts.ObservedAt,
+		FreshUntil:          facts.FreshUntil,
+		Operation:           provider.ReplaceFacts,
+		Facts:               &facts,
+	}); err != nil {
+		t.Fatalf("ApplyProviderNodeUpdate() error = %v", err)
+	}
+
+	session := framework.OpenSession(schedulerCache, nil, nil)
+	session.Jobs = map[api.JobID]*api.JobInfo{job.UID: job}
+	t.Cleanup(func() {
+		session.Jobs = nil
+		framework.CloseSession(session)
+	})
+	task.NodeName = node.Name
+	job.UpdateTaskStatus(task, api.Allocated)
+	plugin := New(framework.Arguments{}).(*deviceTopologyPlugin)
+	plugin.OnSessionOpen(session)
+	bindContext := &cache.BindContext{TaskInfo: task, Extensions: make(map[string]cache.BindContextExtension)}
+	domain := session.DeviceTopology.LocalDomains(node.Node.UID, "nvidia.com/gpu")[0]
+	deviceID := session.DeviceTopology.AvailableDeviceIDs(domain.ID)
+	if len(deviceID) != 1 {
+		t.Fatalf("session availability before reservation = %v, want one device", deviceID)
+	}
+
+	preparation, err := plugin.PrepareBindBatch(context.Background(), []*cache.BindContext{bindContext})
+	if err != nil {
+		t.Fatalf("PrepareBindBatch() error = %v", err)
+	}
+	if preparation == nil {
+		t.Fatal("PrepareBindBatch() preparation = nil, want hard topology preparation")
+	}
+	if len(allocationAdapter.reservedPlans) != 1 || len(allocationAdapter.preparedBindPlacements) != 1 {
+		t.Fatalf("adapter calls reserve=%d prepare=%d, want one each", len(allocationAdapter.reservedPlans), len(allocationAdapter.preparedBindPlacements))
+	}
+	extension, exists := bindContext.Extensions[PluginName].(cache.DeviceTopologyBindContextExtension)
+	if !exists || len(extension.Handoffs) != 1 {
+		t.Fatalf("bind context extension = %#v, want one device topology handoff", bindContext.Extensions[PluginName])
+	}
+
+	if err := preparation.Commit(context.Background()); err != nil {
+		t.Fatalf("prepared bind Commit() error = %v", err)
+	}
+	state, found := schedulerCache.DeviceTopologySnapshot().DeviceAvailability(deviceID[0])
+	if !found || state != api.DeviceBinding {
+		t.Fatalf("DeviceAvailability() = (%q, %v), want (Binding, true)", state, found)
+	}
+	if err := preparation.Rollback(context.Background()); err != nil {
+		t.Fatalf("prepared bind Rollback() error = %v", err)
+	}
+	state, found = schedulerCache.DeviceTopologySnapshot().DeviceAvailability(deviceID[0])
+	if !found || state != api.DeviceAvailable {
+		t.Fatalf("DeviceAvailability() after rollback = (%q, %v), want (Available, true)", state, found)
+	}
+}
+
+func TestDeviceTopologyPluginPreparesSecondBindBatchAfterFirstCommit(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DeviceTopologyAwareScheduling, true)
+
+	now := time.Now()
+	node := newCandidateTestNode("node-a")
+	node.Node.ResourceVersion = "1"
+	firstTask := newDeviceTopologyTask("first-worker", []corev1.Container{containerWithRequest("trainer", "nvidia.com/gpu", "1")}, nil)
+	secondTask := newDeviceTopologyTask("second-worker", []corev1.Container{containerWithRequest("trainer", "nvidia.com/gpu", "1")}, nil)
+	firstJob := api.NewJobInfo("first-job", firstTask)
+	secondJob := api.NewJobInfo("second-job", secondTask)
+	for _, job := range []*api.JobInfo{firstJob, secondJob} {
+		job.DeviceTopology = testDeviceTopologyPolicy("nvidia.com/gpu", scheduling.HardDeviceTopologyMode)
+	}
+	firstTask.Job = firstJob.UID
+	secondTask.Job = secondJob.UID
+	facts := newCandidateTopologyFacts(node, []candidateDomainSpec{{value: "gpu-domain", deviceCount: 2, healthy: 2}}, now.Add(time.Minute))
+
+	providerRegistry, err := provider.NewRegistry([]provider.Registration{{
+		ProviderID:        candidateTestProviderID,
+		IdentityNamespace: candidateTestNamespace,
+		ResourceNames:     []corev1.ResourceName{"nvidia.com/gpu"},
+	}})
+	if err != nil {
+		t.Fatalf("provider.NewRegistry() error = %v", err)
+	}
+	allocationAdapter := &uniqueTokenTestAdapter{reservationForwardingTestAdapter: &reservationForwardingTestAdapter{contract: adapter.DeviceIdentityContract{
+		ProviderID:   candidateTestProviderID,
+		ResourceName: "nvidia.com/gpu",
+		Namespace:    candidateTestNamespace,
+	}}}
+	adapterRegistry, err := adapter.NewRegistry([]adapter.AllocationAdapter{allocationAdapter})
+	if err != nil {
+		t.Fatalf("adapter.NewRegistry() error = %v", err)
+	}
+
+	schedulerCache := cache.NewDefaultMockSchedulerCache("device-topology-two-bind-batch-plugin-test")
+	t.Cleanup(func() {
+		cache.ShutdownMockSchedulerCache(schedulerCache)
+	})
+	cache.WithDeviceTopologyProviderRegistry(providerRegistry)(schedulerCache)
+	cache.WithDeviceTopologyAdapterRegistry(adapterRegistry)(schedulerCache)
+	if err := schedulerCache.AddOrUpdateNode(node.Node); err != nil {
+		t.Fatalf("AddOrUpdateNode() error = %v", err)
+	}
+	if err := schedulerCache.ApplyProviderNodeUpdate(provider.ProviderNodeUpdate{
+		ProviderID:          facts.ProviderID,
+		NodeName:            facts.NodeName,
+		NodeUID:             facts.NodeUID,
+		NodeResourceVersion: facts.NodeResourceVersion,
+		SourceGeneration:    facts.SourceGeneration,
+		ObservedAt:          facts.ObservedAt,
+		FreshUntil:          facts.FreshUntil,
+		Operation:           provider.ReplaceFacts,
+		Facts:               &facts,
+	}); err != nil {
+		t.Fatalf("ApplyProviderNodeUpdate() error = %v", err)
+	}
+
+	session := framework.OpenSession(schedulerCache, nil, nil)
+	session.Jobs = map[api.JobID]*api.JobInfo{firstJob.UID: firstJob, secondJob.UID: secondJob}
+	t.Cleanup(func() {
+		session.Jobs = nil
+		framework.CloseSession(session)
+	})
+	firstTask.NodeName = node.Name
+	secondTask.NodeName = node.Name
+	firstJob.UpdateTaskStatus(firstTask, api.Allocated)
+	secondJob.UpdateTaskStatus(secondTask, api.Allocated)
+	plugin := New(framework.Arguments{}).(*deviceTopologyPlugin)
+	plugin.OnSessionOpen(session)
+
+	firstBindContext := &cache.BindContext{TaskInfo: firstTask, Extensions: make(map[string]cache.BindContextExtension)}
+	firstPreparation, err := plugin.PrepareBindBatch(context.Background(), []*cache.BindContext{firstBindContext})
+	if err != nil {
+		t.Fatalf("first PrepareBindBatch() error = %v", err)
+	}
+	if err := firstPreparation.Commit(context.Background()); err != nil {
+		t.Fatalf("first prepared bind Commit() error = %v", err)
+	}
+
+	// The second Job is prepared in the same session after the first Job's
+	// devices moved from Held to Binding.
+	secondBindContext := &cache.BindContext{TaskInfo: secondTask, Extensions: make(map[string]cache.BindContextExtension)}
+	secondPreparation, err := plugin.PrepareBindBatch(context.Background(), []*cache.BindContext{secondBindContext})
+	if err != nil {
+		t.Fatalf("second PrepareBindBatch() after first Commit() error = %v, want the second free device reserved", err)
+	}
+	if secondPreparation == nil {
+		t.Fatal("second PrepareBindBatch() preparation = nil, want hard topology preparation")
+	}
+	if len(allocationAdapter.reservedPlans) != 2 {
+		t.Fatalf("Reserve() calls = %d, want 2", len(allocationAdapter.reservedPlans))
+	}
+	firstDevice := allocationAdapter.reservedPlans[0].Placements[0].Assignments[0].DeviceIDs[0]
+	secondDevice := allocationAdapter.reservedPlans[1].Placements[0].Assignments[0].DeviceIDs[0]
+	if firstDevice == secondDevice {
+		t.Fatalf("both Jobs reserved device %q", firstDevice.String())
+	}
+
+	for _, preparation := range []cache.BatchBindPreparation{secondPreparation, firstPreparation} {
+		if err := preparation.Rollback(context.Background()); err != nil {
+			t.Fatalf("prepared bind Rollback() error = %v", err)
+		}
+	}
+}
+
 type reservationForwardingTestAdapter struct {
-	contract      adapter.DeviceIdentityContract
-	reservedPlans []api.TopologyPlacementPlan
+	contract               adapter.DeviceIdentityContract
+	reservedPlans          []api.TopologyPlacementPlan
+	preparedBindPlacements []api.TopologyTaskPlacement
+	releasedReservations   []adapter.AdapterReservation
 }
 
 func (testAdapter *reservationForwardingTestAdapter) Capabilities() adapter.AdapterCapabilities {
@@ -213,15 +426,22 @@ func (testAdapter *reservationForwardingTestAdapter) Reserve(_ context.Context, 
 	return adapter.AdapterReservation{Token: "reservation-token", PlanDigest: "reservation-digest"}, nil
 }
 
-func (testAdapter *reservationForwardingTestAdapter) PrepareBind(context.Context, adapter.AdapterReservation, api.TopologyTaskPlacement) (adapter.AllocationHandoff, error) {
-	return adapter.AllocationHandoff{}, nil
+func (testAdapter *reservationForwardingTestAdapter) PrepareBind(_ context.Context, reservation adapter.AdapterReservation, placement api.TopologyTaskPlacement) (adapter.AllocationHandoff, error) {
+	testAdapter.preparedBindPlacements = append(testAdapter.preparedBindPlacements, placement.Clone())
+	return adapter.AllocationHandoff{
+		ReservationToken: reservation.Token,
+		PlanDigest:       reservation.PlanDigest,
+		PodUID:           placement.PodUID,
+		NodeName:         placement.NodeName,
+	}, nil
 }
 
 func (testAdapter *reservationForwardingTestAdapter) Confirm(context.Context, adapter.AdapterReservation) (adapter.AllocationObservation, error) {
 	return adapter.AllocationObservation{}, nil
 }
 
-func (testAdapter *reservationForwardingTestAdapter) Release(context.Context, adapter.AdapterReservation) error {
+func (testAdapter *reservationForwardingTestAdapter) Release(_ context.Context, reservation adapter.AdapterReservation) error {
+	testAdapter.releasedReservations = append(testAdapter.releasedReservations, reservation)
 	return nil
 }
 

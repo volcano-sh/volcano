@@ -17,6 +17,9 @@ limitations under the License.
 package framework
 
 import (
+	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -63,6 +66,179 @@ func TestStatementHasEvictions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStatementCommitWithParticipants(t *testing.T) {
+	t.Run("commits one prepared allocation batch", func(t *testing.T) {
+		ssn, job, task, node := newTestSession(t)
+		preBinder := &statementBatchTestPreBinder{}
+		ssn.RegisterBinder("statement-batch-test", preBinder)
+		statement := NewStatement(ssn)
+		if err := statement.Allocate(task, node); err != nil {
+			t.Fatalf("Allocate() error = %v", err)
+		}
+
+		if err := statement.CommitWithParticipants(context.Background()); err != nil {
+			t.Fatalf("CommitWithParticipants() error = %v", err)
+		}
+		schedulerCache := ssn.cache.(*cache.SchedulerCache)
+		if preBinder.preparedContexts != 1 || preBinder.preparation == nil || !preBinder.preparation.committed {
+			t.Fatalf("batch pre-binder state = %#v, want one committed preparation", preBinder)
+		}
+		if len(schedulerCache.BindFlowChannel) != 1 {
+			t.Fatalf("queued binds = %d, want 1", len(schedulerCache.BindFlowChannel))
+		}
+		if task.Status != api.Binding || job.Tasks[task.UID].Status != api.Binding {
+			t.Fatalf("session Task status = (%q, %q), want Binding", task.Status, job.Tasks[task.UID].Status)
+		}
+	})
+
+	t.Run("discards allocations when preparation fails", func(t *testing.T) {
+		ssn, job, task, node := newTestSession(t)
+		preBinder := &statementBatchTestPreBinder{prepareErr: errors.New("DeviceTopologyDomainFragmented: no complete local-domain plan")}
+		ssn.RegisterBinder("statement-batch-test", preBinder)
+		statement := NewStatement(ssn)
+		if err := statement.Allocate(task, node); err != nil {
+			t.Fatalf("Allocate() error = %v", err)
+		}
+
+		if err := statement.CommitWithParticipants(context.Background()); err == nil {
+			t.Fatal("CommitWithParticipants() error = nil, want preparation failure")
+		}
+		schedulerCache := ssn.cache.(*cache.SchedulerCache)
+		if len(schedulerCache.BindFlowChannel) != 0 {
+			t.Fatalf("queued binds = %d, want 0", len(schedulerCache.BindFlowChannel))
+		}
+		if task.Status != api.Pending || task.NodeName != "" || len(node.Tasks) != 0 {
+			t.Fatalf("discarded Task = (status=%q, node=%q, nodeTasks=%d), want Pending, empty, zero", task.Status, task.NodeName, len(node.Tasks))
+		}
+		// The Pod must show the preparation failure, not the hint that it
+		// can be placed once minAvailable is met.
+		if task.LastTransaction != nil {
+			t.Fatalf("discarded Task LastTransaction = %+v, want nil", task.LastTransaction)
+		}
+		reason, message, _ := job.TaskSchedulingReason(task.UID)
+		if reason != api.PodReasonUnschedulable || !strings.Contains(message, "DeviceTopologyDomainFragmented") || strings.Contains(message, "can possibly be assigned") {
+			t.Fatalf("TaskSchedulingReason() = (%q, %q), want Unschedulable with the preparation failure", reason, message)
+		}
+	})
+
+	t.Run("keeps legacy commit for pipelined operations without a participant", func(t *testing.T) {
+		ssn, allocated, pipelined, node := newTwoTaskTestSession(t)
+		statement := NewStatement(ssn)
+		if err := statement.Allocate(allocated, node); err != nil {
+			t.Fatalf("Allocate() error = %v", err)
+		}
+		if err := statement.Pipeline(pipelined, node.Name, false); err != nil {
+			t.Fatalf("Pipeline() error = %v", err)
+		}
+
+		if err := statement.CommitWithParticipants(context.Background()); err != nil {
+			t.Fatalf("CommitWithParticipants() error = %v", err)
+		}
+		schedulerCache := ssn.cache.(*cache.SchedulerCache)
+		if len(schedulerCache.BindFlowChannel) != 1 {
+			t.Fatalf("queued binds = %d, want 1", len(schedulerCache.BindFlowChannel))
+		}
+		if allocated.Status != api.Binding || pipelined.Status != api.Pipelined {
+			t.Fatalf("Task status = (allocated=%q, pipelined=%q), want (Binding, Pipelined)", allocated.Status, pipelined.Status)
+		}
+	})
+
+	t.Run("rejects pipelined operations when a participant prepares", func(t *testing.T) {
+		ssn, allocated, pipelined, node := newTwoTaskTestSession(t)
+		preBinder := &statementBatchTestPreBinder{}
+		ssn.RegisterBinder("statement-batch-test", preBinder)
+		statement := NewStatement(ssn)
+		if err := statement.Allocate(allocated, node); err != nil {
+			t.Fatalf("Allocate() error = %v", err)
+		}
+		if err := statement.Pipeline(pipelined, node.Name, false); err != nil {
+			t.Fatalf("Pipeline() error = %v", err)
+		}
+
+		if err := statement.CommitWithParticipants(context.Background()); err == nil {
+			t.Fatal("CommitWithParticipants() error = nil, want mixed operation rejection")
+		}
+		schedulerCache := ssn.cache.(*cache.SchedulerCache)
+		if preBinder.preparedContexts != 1 || preBinder.preparation == nil || !preBinder.preparation.rolledBack || preBinder.preparation.committed {
+			t.Fatalf("batch pre-binder state = %#v, want one rolled back uncommitted preparation", preBinder)
+		}
+		if len(schedulerCache.BindFlowChannel) != 0 {
+			t.Fatalf("queued binds = %d, want 0", len(schedulerCache.BindFlowChannel))
+		}
+		if allocated.Status != api.Pending || pipelined.Status != api.Pending {
+			t.Fatalf("Task status = (allocated=%q, pipelined=%q), want (Pending, Pending)", allocated.Status, pipelined.Status)
+		}
+	})
+}
+
+// newTwoTaskTestSession creates a minimal session with one job that has two
+// pending tasks, p1 and p2, and one node.
+func newTwoTaskTestSession(t *testing.T) (ssn *Session, first, second *api.TaskInfo, node *api.NodeInfo) {
+	t.Helper()
+	scherCache := cache.NewDefaultMockSchedulerCache("test-scheduler")
+
+	scherCache.AddOrUpdateNode(
+		util.BuildNode("n1", api.BuildResourceList("4", "8Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil),
+	)
+	for _, name := range []string{"p1", "p2"} {
+		scherCache.AddPod(
+			util.BuildPod("ns1", name, "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+		)
+	}
+	scherCache.AddPodGroupV1beta1(
+		util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1.PodGroupInqueue),
+	)
+	scherCache.AddQueueV1beta1(
+		util.BuildQueue("q1", 1, nil),
+	)
+
+	ssn = OpenSession(scherCache, nil, nil)
+	t.Cleanup(func() { CloseSession(ssn) })
+
+	for _, job := range ssn.Jobs {
+		first = job.Tasks["ns1-p1"]
+		second = job.Tasks["ns1-p2"]
+	}
+	if first == nil || second == nil {
+		t.Fatal("session does not contain tasks p1 and p2")
+	}
+	for _, nd := range ssn.Nodes {
+		node = nd
+		break
+	}
+	return
+}
+
+type statementBatchTestPreBinder struct {
+	preparedContexts int
+	prepareErr       error
+	preparation      *statementBatchTestPreparation
+}
+
+func (preBinder *statementBatchTestPreBinder) PrepareBindBatch(_ context.Context, bindContexts []*cache.BindContext) (cache.BatchBindPreparation, error) {
+	preBinder.preparedContexts = len(bindContexts)
+	if preBinder.prepareErr != nil {
+		return nil, preBinder.prepareErr
+	}
+	preBinder.preparation = &statementBatchTestPreparation{}
+	return preBinder.preparation, nil
+}
+
+type statementBatchTestPreparation struct {
+	committed  bool
+	rolledBack bool
+}
+
+func (preparation *statementBatchTestPreparation) Commit(context.Context) error {
+	preparation.committed = true
+	return nil
+}
+
+func (preparation *statementBatchTestPreparation) Rollback(context.Context) error {
+	preparation.rolledBack = true
+	return nil
 }
 
 func TestStatementMerge(t *testing.T) {

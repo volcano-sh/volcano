@@ -38,14 +38,16 @@ func GetBindMethod() Binder {
 
 // BinderRegistry is used to hold the registered binders, such as pre-binders, post-binders
 type BinderRegistry struct {
-	mu         sync.RWMutex
-	preBinders map[string]PreBinder
+	mu              sync.RWMutex
+	preBinders      map[string]PreBinder
+	batchPreBinders map[string]BatchPreBinder
 	// Can add postBinders in the future
 }
 
 func NewBinderRegistry() *BinderRegistry {
 	return &BinderRegistry{
-		preBinders: make(map[string]PreBinder),
+		preBinders:      make(map[string]PreBinder),
+		batchPreBinders: make(map[string]BatchPreBinder),
 	}
 }
 
@@ -60,6 +62,10 @@ func (r *BinderRegistry) Register(name string, binder interface{}) {
 		klog.V(5).Infof("Register preBinder %s successfully", name)
 		r.preBinders[name] = pb
 	}
+	if batchPreBinder, ok := binder.(BatchPreBinder); ok {
+		klog.V(5).Infof("Register batchPreBinder %s successfully", name)
+		r.batchPreBinders[name] = batchPreBinder
+	}
 }
 
 // getRegisteredPreBinders returns a snapshot of currently registered PreBinders.
@@ -69,4 +75,22 @@ func (r *BinderRegistry) getRegisteredPreBinders() map[string]PreBinder {
 	defer r.mu.RUnlock()
 
 	return maps.Clone(r.preBinders)
+}
+
+// hasBatchPreBinders reports whether any batch pre-binder is registered.
+func (r *BinderRegistry) hasBatchPreBinders() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return len(r.batchPreBinders) > 0
+}
+
+// getRegisteredBatchPreBinders returns a snapshot of batch pre-binders. The
+// caller can safely prepare the returned binders without holding the registry
+// lock while another session updates registrations.
+func (r *BinderRegistry) getRegisteredBatchPreBinders() map[string]BatchPreBinder {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return maps.Clone(r.batchPreBinders)
 }

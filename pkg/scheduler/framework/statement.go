@@ -23,12 +23,14 @@ limitations under the License.
 package framework
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
@@ -424,6 +426,109 @@ func (s *Statement) Commit() {
 		}
 	}
 	s.operations = nil
+}
+
+// CommitWithParticipants commits a statement through the optional
+// transactional batch-bind cache extension. It preserves legacy Commit
+// behavior, including pipelined operations, when no registered participant
+// needs preparation. A prepared batch must contain only allocations, and a
+// failed prepare, commit, or cache admission discards every reversible
+// in-memory operation before any Pod bind context is submitted.
+func (s *Statement) CommitWithParticipants(ctx context.Context) error {
+	if len(s.operations) == 0 {
+		return nil
+	}
+
+	batchCache, supportsBatchBind := s.ssn.cache.(cache.BatchBindCache)
+	if !supportsBatchBind || !batchCache.HasBatchPreBinders() {
+		s.Commit()
+		return nil
+	}
+
+	// Non-allocation operations are rejected only after a participant opts in,
+	// so statements without batch preparation keep the legacy Commit path.
+	bindContexts := make([]*cache.BindContext, 0, len(s.operations))
+	allocationOnly := true
+	var nonAllocation Operation
+	for _, operation := range s.operations {
+		if operation.name != Allocate {
+			if allocationOnly {
+				allocationOnly = false
+				nonAllocation = operation.name
+			}
+			continue
+		}
+		if _, exists := s.ssn.Jobs[operation.task.Job]; !exists {
+			s.Discard()
+			return fmt.Errorf("transactional batch bind cannot find Job %q", operation.task.Job)
+		}
+		bindContexts = append(bindContexts, s.ssn.CreateBindContext(operation.task))
+	}
+	if len(bindContexts) == 0 {
+		s.Commit()
+		return nil
+	}
+
+	preparation, err := batchCache.PrepareBindBatch(ctx, bindContexts)
+	if err != nil {
+		return s.discardWithError(fmt.Errorf("prepare transactional batch bind: %w", err))
+	}
+	if preparation == nil {
+		s.Commit()
+		return nil
+	}
+	if !allocationOnly {
+		rollbackErr := preparation.Rollback(ctx)
+		mixedErr := fmt.Errorf("transactional batch bind only supports allocation operations, found operation %d", nonAllocation)
+		return s.discardWithError(errors.Join(mixedErr, rollbackErr))
+	}
+
+	if err := preparation.Commit(ctx); err != nil {
+		rollbackErr := preparation.Rollback(ctx)
+		return s.discardWithError(errors.Join(fmt.Errorf("commit transactional batch bind preparation: %w", err), rollbackErr))
+	}
+	if err := batchCache.AddBindBatch(bindContexts); err != nil {
+		rollbackErr := preparation.Rollback(ctx)
+		return s.discardWithError(errors.Join(fmt.Errorf("admit transactional batch bind: %w", err), rollbackErr))
+	}
+
+	for _, operation := range s.operations {
+		operation.task.ClearLastTxContext()
+		s.ssn.Jobs[operation.task.Job].UpdateTaskStatus(operation.task, api.Binding)
+		metrics.UpdateTaskScheduleDuration(metrics.TaskStageAssumed, metrics.Duration(operation.task.Pod.CreationTimestamp.Time))
+	}
+	s.operations = nil
+	return nil
+}
+
+// discardWithError discards the statement after a transactional batch bind
+// failed, and records err as the scheduling reason of every Task the
+// statement allocated. Discard leaves an Allocated hint on each Task, which
+// reports the Task as waiting for minAvailable. Here the allocation was
+// complete and err is the real reason, so the hint is replaced by err.
+func (s *Statement) discardWithError(err error) error {
+	allocated := make([]*api.TaskInfo, 0, len(s.operations))
+	for _, operation := range s.operations {
+		if operation.name == Allocate && operation.task != nil {
+			allocated = append(allocated, operation.task)
+		}
+	}
+	s.Discard()
+
+	for _, task := range allocated {
+		task.ClearLastTxContext()
+		job, found := s.ssn.Jobs[task.Job]
+		if !found {
+			continue
+		}
+		if job.NodesFitErrors == nil {
+			job.NodesFitErrors = make(map[api.TaskID]*api.FitErrors)
+		}
+		fitErrors := api.NewFitErrors()
+		fitErrors.SetError(err.Error())
+		job.NodesFitErrors[task.UID] = fitErrors
+	}
+	return err
 }
 
 // Merge transfers operations from the given statements into this statement.
