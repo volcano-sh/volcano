@@ -59,7 +59,9 @@ func (sc *SchedulerCache) PrepareDeviceTopologyReservationBind(ctx context.Conte
 	handoffs := make(map[schedulingapi.TaskID][]DeviceTopologyBindHandoff)
 	for _, group := range prepared.groups {
 		for _, placement := range group.placements {
-			handoff, err := group.allocationAdapter.PrepareBind(ctx, group.reservation, placement.Clone())
+			callContext, cancel := sc.newDeviceTopologyAdapterCallContext(ctx)
+			handoff, err := group.allocationAdapter.PrepareBind(callContext, group.reservation, placement.Clone())
+			cancel()
 			if err != nil {
 				return nil, fmt.Errorf("prepare device topology bind handoff for resource %q and Task %q: %w", group.resourceName, placement.TaskID, err)
 			}
@@ -100,12 +102,9 @@ func (sc *SchedulerCache) CommitDeviceTopologyReservationBind(_ context.Context,
 }
 
 // RollbackDeviceTopologyReservationBind releases an unbound or failed bind
-// reservation using a cleanup context so a cancelled scheduling attempt does
-// not prevent backend compensation.
+// reservation. The release uses its own cleanup context.
 func (sc *SchedulerCache) RollbackDeviceTopologyReservationBind(ctx context.Context, reservation schedulingapi.TopologyReservation) error {
-	cleanupContext, cancel := newDeviceTopologyReservationCleanupContext(ctx)
-	defer cancel()
-	return sc.ReleaseDeviceTopologyReservation(cleanupContext, reservation)
+	return sc.ReleaseDeviceTopologyReservation(ctx, reservation)
 }
 
 // prepareDeviceTopologyReservationBind verifies current reservation ownership,

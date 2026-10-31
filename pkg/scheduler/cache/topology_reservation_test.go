@@ -373,6 +373,112 @@ func TestSchedulerCacheReservationRollbackUsesUsableCleanupContext(t *testing.T)
 	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceAvailable)
 }
 
+func TestSchedulerCacheReservationTimesOutHungAdapterCalls(t *testing.T) {
+	tests := []struct {
+		name  string
+		block func(*hungTopologyReservationTestAdapter)
+		want  schedulingapi.DeviceAvailability
+	}{
+		{
+			name:  "ValidateTopology holds no devices",
+			block: func(hungAdapter *hungTopologyReservationTestAdapter) { hungAdapter.hangValidate = true },
+			want:  schedulingapi.DeviceAvailable,
+		},
+		{
+			name:  "Reserve leaves an unknown backend result unreconciled",
+			block: func(hungAdapter *hungTopologyReservationTestAdapter) { hungAdapter.hangReserve = true },
+			want:  schedulingapi.DeviceUnreconciled,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resourceName := corev1.ResourceName("nvidia.com/gpu")
+			hungAdapter := &hungTopologyReservationTestAdapter{topologyReservationTestAdapter: newTopologyReservationTestAdapter(resourceName)}
+			tt.block(hungAdapter)
+			node, cache := newTopologyReservationTestCache(t, []topologyReservationDeviceSpec{{resourceName: resourceName, domainValue: "gpu-domain", deviceValue: "gpu-0"}}, hungAdapter)
+			cache.deviceTopologyAdapterCallTimeout = 20 * time.Millisecond
+			plan := topologyReservationTestPlan(t, cache, node, map[corev1.ResourceName]int64{resourceName: 1})
+
+			if _, err := cache.ReserveDeviceTopologyPlan(context.Background(), plan); !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("ReserveDeviceTopologyPlan() error = %v, want deadline exceeded", err)
+			}
+			assertTopologyReservationAvailability(t, cache, plan, tt.want)
+		})
+	}
+}
+
+func TestDeviceTopologyAdapterCallContextDefaultsTimeout(t *testing.T) {
+	sc := &SchedulerCache{}
+	callContext, cancel := sc.newDeviceTopologyAdapterCallContext(context.Background())
+	defer cancel()
+
+	deadline, hasDeadline := callContext.Deadline()
+	if !hasDeadline || time.Until(deadline) > defaultDeviceTopologyAdapterCallTimeout {
+		t.Fatalf("adapter call deadline = (%v, %v), want at most %v from now", deadline, hasDeadline, defaultDeviceTopologyAdapterCallTimeout)
+	}
+}
+
+func TestSchedulerCacheReservationHonorsCallerCancellationDuringAdapterCall(t *testing.T) {
+	resourceName := corev1.ResourceName("nvidia.com/gpu")
+	hungAdapter := &hungTopologyReservationTestAdapter{topologyReservationTestAdapter: newTopologyReservationTestAdapter(resourceName), hangReserve: true}
+	node, cache := newTopologyReservationTestCache(t, []topologyReservationDeviceSpec{{resourceName: resourceName, domainValue: "gpu-domain", deviceValue: "gpu-0"}}, hungAdapter)
+	plan := topologyReservationTestPlan(t, cache, node, map[corev1.ResourceName]int64{resourceName: 1})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := cache.ReserveDeviceTopologyPlan(ctx, plan); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ReserveDeviceTopologyPlan() error = %v, want caller cancellation", err)
+	}
+}
+
+func TestSchedulerCachePrepareBindTimesOutHungAdapterCall(t *testing.T) {
+	resourceName := corev1.ResourceName("nvidia.com/gpu")
+	hungAdapter := &hungTopologyReservationTestAdapter{topologyReservationTestAdapter: newTopologyReservationTestAdapter(resourceName)}
+	node, cache := newTopologyReservationTestCache(t, []topologyReservationDeviceSpec{{resourceName: resourceName, domainValue: "gpu-domain", deviceValue: "gpu-0"}}, hungAdapter)
+	cache.deviceTopologyAdapterCallTimeout = 20 * time.Millisecond
+	plan := topologyReservationTestPlan(t, cache, node, map[corev1.ResourceName]int64{resourceName: 1})
+	reservation, err := cache.ReserveDeviceTopologyPlan(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("ReserveDeviceTopologyPlan() error = %v", err)
+	}
+	hungAdapter.hangPrepareBind = true
+
+	if _, err := cache.PrepareDeviceTopologyReservationBind(context.Background(), reservation); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("PrepareDeviceTopologyReservationBind() error = %v, want deadline exceeded", err)
+	}
+	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceHeld)
+
+	if err := cache.RollbackDeviceTopologyReservationBind(context.Background(), reservation); err != nil {
+		t.Fatalf("RollbackDeviceTopologyReservationBind() error = %v", err)
+	}
+	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceAvailable)
+}
+
+func TestSchedulerCacheReleaseUsesBoundedCleanupContext(t *testing.T) {
+	resourceName := corev1.ResourceName("nvidia.com/gpu")
+	allocationAdapter := newTopologyReservationTestAdapter(resourceName)
+	node, cache := newTopologyReservationTestCache(t, []topologyReservationDeviceSpec{{resourceName: resourceName, domainValue: "gpu-domain", deviceValue: "gpu-0"}}, allocationAdapter)
+	plan := topologyReservationTestPlan(t, cache, node, map[corev1.ResourceName]int64{resourceName: 1})
+	reservation, err := cache.ReserveDeviceTopologyPlan(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("ReserveDeviceTopologyPlan() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := cache.ReleaseDeviceTopologyReservation(ctx, reservation); err != nil {
+		t.Fatalf("ReleaseDeviceTopologyReservation() error = %v", err)
+	}
+	if len(allocationAdapter.releaseContextErrors) != 1 || allocationAdapter.releaseContextErrors[0] != nil {
+		t.Fatalf("Release() context errors = %v, want one usable context", allocationAdapter.releaseContextErrors)
+	}
+	if len(allocationAdapter.releaseContextDeadlines) != 1 || !allocationAdapter.releaseContextDeadlines[0] {
+		t.Fatalf("Release() context deadlines = %v, want one bounded context", allocationAdapter.releaseContextDeadlines)
+	}
+	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceAvailable)
+}
+
 func TestSchedulerCacheReleaseMarksOnlyFailedFragmentUnreconciled(t *testing.T) {
 	nvidiaResource := corev1.ResourceName("nvidia.com/gpu")
 	amdResource := corev1.ResourceName("amd.com/gpu")
@@ -521,12 +627,14 @@ type topologyReservationTestAdapter struct {
 	preparedBindPlacements []schedulingapi.TopologyTaskPlacement
 	releasedReservations   []adapter.AdapterReservation
 	releaseContextErrors   []error
-	reserveHook            func()
-	handoffForPlacement    func(adapter.AdapterReservation, schedulingapi.TopologyTaskPlacement) adapter.AllocationHandoff
-	validateErr            error
-	reserveErr             error
-	prepareBindErr         error
-	releaseErr             error
+	// releaseContextDeadlines records whether each Release context had a deadline.
+	releaseContextDeadlines []bool
+	reserveHook             func()
+	handoffForPlacement     func(adapter.AdapterReservation, schedulingapi.TopologyTaskPlacement) adapter.AllocationHandoff
+	validateErr             error
+	reserveErr              error
+	prepareBindErr          error
+	releaseErr              error
 }
 
 func newTopologyReservationTestAdapter(resourceName corev1.ResourceName) *topologyReservationTestAdapter {
@@ -591,11 +699,55 @@ func (testAdapter *topologyReservationTestAdapter) Confirm(context.Context, adap
 func (testAdapter *topologyReservationTestAdapter) Release(ctx context.Context, reservation adapter.AdapterReservation) error {
 	testAdapter.releasedReservations = append(testAdapter.releasedReservations, reservation)
 	testAdapter.releaseContextErrors = append(testAdapter.releaseContextErrors, ctx.Err())
+	_, hasDeadline := ctx.Deadline()
+	testAdapter.releaseContextDeadlines = append(testAdapter.releaseContextDeadlines, hasDeadline)
 	return testAdapter.releaseErr
 }
 
 func (testAdapter *topologyReservationTestAdapter) Recover(context.Context) ([]adapter.AdapterReservationState, error) {
 	return nil, nil
+}
+
+// hungTopologyReservationTestAdapter behaves like a hung backend that honors
+// its call context in the selected methods.
+type hungTopologyReservationTestAdapter struct {
+	*topologyReservationTestAdapter
+	hangValidate    bool
+	hangReserve     bool
+	hangPrepareBind bool
+}
+
+func (testAdapter *hungTopologyReservationTestAdapter) ValidateTopology(ctx context.Context, facts schedulingapi.NodeTopologyFacts) error {
+	if testAdapter.hangValidate {
+		return waitForAdapterCallContext(ctx)
+	}
+	return testAdapter.topologyReservationTestAdapter.ValidateTopology(ctx, facts)
+}
+
+func (testAdapter *hungTopologyReservationTestAdapter) Reserve(ctx context.Context, plan schedulingapi.TopologyPlacementPlan) (adapter.AdapterReservation, error) {
+	if testAdapter.hangReserve {
+		return adapter.AdapterReservation{}, waitForAdapterCallContext(ctx)
+	}
+	return testAdapter.topologyReservationTestAdapter.Reserve(ctx, plan)
+}
+
+func (testAdapter *hungTopologyReservationTestAdapter) PrepareBind(ctx context.Context, reservation adapter.AdapterReservation, placement schedulingapi.TopologyTaskPlacement) (adapter.AllocationHandoff, error) {
+	if testAdapter.hangPrepareBind {
+		return adapter.AllocationHandoff{}, waitForAdapterCallContext(ctx)
+	}
+	return testAdapter.topologyReservationTestAdapter.PrepareBind(ctx, reservation, placement)
+}
+
+// waitForAdapterCallContext returns the context error, or a plain error if the
+// context has no effective deadline, so a missing timeout fails instead of
+// hanging the test binary.
+func waitForAdapterCallContext(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(2 * time.Second):
+		return errors.New("adapter call context did not end")
+	}
 }
 
 func newTopologyReservationTestCache(t *testing.T, devices []topologyReservationDeviceSpec, adapters ...adapter.AllocationAdapter) (*corev1.Node, *SchedulerCache) {

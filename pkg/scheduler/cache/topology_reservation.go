@@ -29,7 +29,12 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/topology/adapter"
 )
 
-const defaultDeviceTopologyReservationCleanupTimeout = 30 * time.Second
+const (
+	defaultDeviceTopologyReservationCleanupTimeout = 30 * time.Second
+	// defaultDeviceTopologyAdapterCallTimeout limits how long one adapter call
+	// can block other reservations, which wait on the reservation mutex.
+	defaultDeviceTopologyAdapterCallTimeout = 5 * time.Second
+)
 
 type preparedDeviceTopologyReservation struct {
 	groups []preparedDeviceTopologyAdapterReservation
@@ -84,7 +89,7 @@ func (sc *SchedulerCache) ReserveDeviceTopologyPlan(ctx context.Context, plan sc
 		return schedulingapi.TopologyReservation{}, err
 	}
 
-	if err := validatePreparedDeviceTopologyReservation(ctx, prepared); err != nil {
+	if err := sc.validatePreparedDeviceTopologyReservation(ctx, prepared); err != nil {
 		return schedulingapi.TopologyReservation{}, err
 	}
 
@@ -102,7 +107,9 @@ func (sc *SchedulerCache) ReserveDeviceTopologyPlan(ctx context.Context, plan sc
 	completed := make([]completedDeviceTopologyAdapterReservation, 0, len(prepared.groups))
 	for groupIndex := range prepared.groups {
 		group := prepared.groups[groupIndex]
-		reservation, reserveErr := group.allocationAdapter.Reserve(ctx, group.plan.Clone())
+		callContext, cancel := sc.newDeviceTopologyAdapterCallContext(ctx)
+		reservation, reserveErr := group.allocationAdapter.Reserve(callContext, group.plan.Clone())
+		cancel()
 		if reserveErr != nil {
 			if reservation.Token != "" {
 				completed = append(completed, completedDeviceTopologyAdapterReservation{prepared: group, reservation: reservation})
@@ -145,15 +152,13 @@ func (sc *SchedulerCache) ReserveDeviceTopologyPlan(ctx context.Context, plan sc
 }
 
 // ReleaseDeviceTopologyReservation releases all adapter fragments for a prior
-// reservation. A release error leaves only that fragment's devices
-// Unreconciled, preventing unsafe reuse until backend recovery resolves it.
+// reservation using a cleanup context, so a cancelled scheduling attempt does
+// not prevent backend compensation. A release error leaves only that
+// fragment's devices Unreconciled, preventing unsafe reuse until backend
+// recovery resolves it.
 func (sc *SchedulerCache) ReleaseDeviceTopologyReservation(ctx context.Context, reservation schedulingapi.TopologyReservation) error {
-	if sc == nil {
-		return fmt.Errorf("device topology release requires a SchedulerCache")
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	cleanupContext, cancel := newDeviceTopologyReservationCleanupContext(ctx)
+	defer cancel()
 	reservation = reservation.Clone()
 
 	sc.deviceTopologyReservationMutex.Lock()
@@ -171,7 +176,7 @@ func (sc *SchedulerCache) ReleaseDeviceTopologyReservation(ctx context.Context, 
 	var releaseErrors []error
 	for groupIndex := len(prepared.groups) - 1; groupIndex >= 0; groupIndex-- {
 		group := prepared.groups[groupIndex]
-		if err := group.allocationAdapter.Release(ctx, adapter.AdapterReservation{Token: group.token, PlanDigest: group.planDigest}); err != nil {
+		if err := group.allocationAdapter.Release(cleanupContext, adapter.AdapterReservation{Token: group.token, PlanDigest: group.planDigest}); err != nil {
 			releaseErrors = append(releaseErrors, fmt.Errorf("release device topology reservation for resource %q: %w", group.resourceName, err))
 			setDeviceAvailabilityTarget(targets, group.deviceIDs, schedulingapi.DeviceUnreconciled)
 		}
@@ -512,10 +517,13 @@ func (state *deviceTopologyState) validateHeldDevicesUnchanged(prepared prepared
 
 // validatePreparedDeviceTopologyReservation asks every selected adapter to
 // verify its source topology before the cache holds any device IDs.
-func validatePreparedDeviceTopologyReservation(ctx context.Context, prepared preparedDeviceTopologyReservation) error {
+func (sc *SchedulerCache) validatePreparedDeviceTopologyReservation(ctx context.Context, prepared preparedDeviceTopologyReservation) error {
 	for _, group := range prepared.groups {
 		for _, facts := range group.facts {
-			if err := group.allocationAdapter.ValidateTopology(ctx, facts.Clone()); err != nil {
+			callContext, cancel := sc.newDeviceTopologyAdapterCallContext(ctx)
+			err := group.allocationAdapter.ValidateTopology(callContext, facts.Clone())
+			cancel()
+			if err != nil {
 				return fmt.Errorf("validate device topology for resource %q on Node %q: %w", group.resourceName, facts.NodeName, err)
 			}
 		}
@@ -564,6 +572,17 @@ func (sc *SchedulerCache) deviceTopologyReservationTime() time.Time {
 		return sc.deviceTopologyNow()
 	}
 	return time.Now()
+}
+
+// newDeviceTopologyAdapterCallContext bounds one adapter call made during a
+// scheduling attempt. It keeps the caller's cancellation, unlike a cleanup
+// context, because the attempt can stop as soon as its caller gives up.
+func (sc *SchedulerCache) newDeviceTopologyAdapterCallContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := sc.deviceTopologyAdapterCallTimeout
+	if timeout <= 0 {
+		timeout = defaultDeviceTopologyAdapterCallTimeout
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 // newDeviceTopologyReservationCleanupContext keeps rollback eligible to reach

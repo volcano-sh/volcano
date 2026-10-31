@@ -240,6 +240,9 @@ type SchedulerCache struct {
 	// deviceTopologyNow supplies the current time for dynamic topology
 	// freshness checks. A nil value uses time.Now.
 	deviceTopologyNow func() time.Time
+	// deviceTopologyAdapterCallTimeout bounds one allocation adapter call made
+	// during a scheduling attempt. A zero value uses the default timeout.
+	deviceTopologyAdapterCallTimeout time.Duration
 }
 
 type multiSchedulerInfo struct {
