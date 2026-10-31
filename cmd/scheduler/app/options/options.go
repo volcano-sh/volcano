@@ -74,6 +74,8 @@ type ServerOption struct {
 	SchedulerConf     string
 	SchedulePeriod    time.Duration
 	ResyncPeriod      time.Duration
+	// FeatureGates holds overrides to apply after cluster version discovery.
+	FeatureGates map[string]bool
 	// leaderElection defines the configuration of leader election.
 	LeaderElection config.LeaderElectionConfiguration
 	// Deprecated: use ResourceNamespace instead.

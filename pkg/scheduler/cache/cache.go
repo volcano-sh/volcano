@@ -918,8 +918,6 @@ func (sc *SchedulerCache) addEventHandler() {
 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
 		sc.registerHintEventHandler(handlers, "resourceClaim", resourceClaimInformer, fwk.ResourceClaim)
 		sc.resourceClaimCache = assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
-		resourceSliceInformer := informerFactory.Resource().V1().ResourceSlices().Informer()
-		sc.registerHintEventHandler(handlers, "resourceSlice", resourceSliceInformer, fwk.ResourceSlice)
 		deviceClassInformer := informerFactory.Resource().V1().DeviceClasses().Informer()
 		sc.registerHintEventHandler(handlers, "deviceClass", deviceClassInformer, fwk.DeviceClass)
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
@@ -930,31 +928,39 @@ func (sc *SchedulerCache) addEventHandler() {
 		// If device taints are disabled, the additional informers are not needed and
 		// the tracker turns into a simple wrapper around the slice informer.
 		if resourceSliceTrackerOpts.EnableDeviceTaintRules {
-			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1beta2().DeviceTaintRules()
-			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
+			// The v1 DeviceTaintRule API needs a Kubernetes 1.37+ cluster.
+			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1().DeviceTaintRules()
 		}
 		resourceSliceTracker, err := resourceslicetracker.StartTracker(ctx, resourceSliceTrackerOpts)
 		if err != nil {
 			klog.V(3).Infof("couldn't start resource slice tracker: %v", err)
+		} else {
+			// The tracker also reports slice changes caused by DeviceTaintRules.
+			sc.registerHintEventHandler(handlers, "resourceSlice", resourceSliceTracker, fwk.ResourceSlice)
 		}
 		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, sc.resourceClaimCache, resourceSliceTracker, informerFactory)
 	}
 	sc.registeredHandlers = handlers
 }
 
-// registerHintEventHandler forwards informer events to the unschedulable Job
+// eventHandlerRegistrar is implemented by informers and the ResourceSlice tracker.
+type eventHandlerRegistrar interface {
+	AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error)
+}
+
+// registerHintEventHandler forwards events to the unschedulable Job
 // cache when the cache is enabled.
 func (sc *SchedulerCache) registerHintEventHandler(
 	handlers map[string]cache.ResourceEventHandlerRegistration,
 	name string,
-	informer cache.SharedIndexInformer,
+	source eventHandlerRegistrar,
 	resource fwk.EventResource,
 ) {
 	if sc.unschedulableJobCache == nil {
 		return
 	}
 
-	handlerRegistration, _ := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	handlerRegistration, _ := source.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: resource, ActionType: fwk.Add}, nil, obj)
 		},

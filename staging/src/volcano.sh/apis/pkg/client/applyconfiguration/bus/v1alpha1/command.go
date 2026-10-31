@@ -28,7 +28,7 @@ import (
 //
 // Command defines command structure.
 type CommandApplyConfiguration struct {
-	v1.TypeMetaApplyConfiguration    `json:",inline"`
+	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	// Action defines the action that will be took to the target object.
 	Action *string `json:"action,omitempty"`

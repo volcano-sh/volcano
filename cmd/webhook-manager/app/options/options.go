@@ -56,6 +56,8 @@ type Config struct {
 	ConfigPath           string
 	EnabledAdmission     string
 	GracefulShutdownTime time.Duration
+	// FeatureGates holds overrides to apply after cluster version discovery.
+	FeatureGates map[string]bool
 
 	EnableHealthz bool
 	// HealthzBindAddress is the IP address and port for the health check server to serve on

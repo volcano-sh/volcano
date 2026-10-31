@@ -28,7 +28,7 @@ import (
 //
 // Queue is a queue of PodGroup.
 type QueueApplyConfiguration struct {
-	v1.TypeMetaApplyConfiguration    `json:",inline"`
+	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	// Specification of the desired behavior of the queue.
 	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status
