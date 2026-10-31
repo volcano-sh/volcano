@@ -17,6 +17,7 @@ limitations under the License.
 package grouptopologyaffinity
 
 import (
+	"errors"
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -110,7 +111,7 @@ func (gta *groupTopologyAffinityPlugin) compiledTermsFor(ssn *framework.Session,
 		if preferred {
 			terms = job.PreferredPodGroupAntiAffinityTerms()
 		}
-		compiled.terms, compiled.err = compileTerms(ssn, job, terms)
+		compiled.terms, compiled.err = compileTerms(ssn, job, terms, preferred)
 		gta.compiled[key] = compiled
 	}
 	return compiled
@@ -149,11 +150,19 @@ func (gta *groupTopologyAffinityPlugin) constraintsFor(ssn *framework.Session, j
 	return constraints, nil
 }
 
-func compileTerms(ssn *framework.Session, job *api.JobInfo, terms []scheduling.PodGroupAffinityTerm) ([]compiledTerm, error) {
+// compileTerms resolves the terms against the session. A preferred term is a best-effort preference,
+// so one that names an unknown topologyTierName is skipped (it applies no penalty, like a numeric
+// tier that is absent from the tree) instead of failing the whole PodGroup. Required terms keep
+// returning the error.
+func compileTerms(ssn *framework.Session, job *api.JobInfo, terms []scheduling.PodGroupAffinityTerm, preferred bool) ([]compiledTerm, error) {
 	compiled := make([]compiledTerm, 0, len(terms))
 	for i, term := range terms {
 		tier, err := api.ResolvePodGroupTermTier(term, ssn.HyperNodeTierNameMap)
 		if err != nil {
+			if preferred && errors.Is(err, api.ErrUnknownTopologyTierName) {
+				klog.V(3).InfoS("Ignoring preferred PodGroup anti-affinity term", "job", job.UID, "termIndex", i, "reason", err.Error())
+				continue
+			}
 			return nil, fmt.Errorf("term %d: %w", i, err)
 		}
 		selector, err := metav1.LabelSelectorAsSelector(term.PodGroupSelector)
