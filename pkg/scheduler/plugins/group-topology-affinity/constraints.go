@@ -110,7 +110,7 @@ func (gta *groupTopologyAffinityPlugin) compiledTermsFor(ssn *framework.Session,
 		if preferred {
 			terms = job.PreferredPodGroupAntiAffinityTerms()
 		}
-		compiled.terms, compiled.err = compileTerms(ssn, job, terms)
+		compiled.terms, compiled.err = compileTerms(ssn, job, terms, preferred)
 		gta.compiled[key] = compiled
 	}
 	return compiled
@@ -149,19 +149,37 @@ func (gta *groupTopologyAffinityPlugin) constraintsFor(ssn *framework.Session, j
 	return constraints, nil
 }
 
-func compileTerms(ssn *framework.Session, job *api.JobInfo, terms []scheduling.PodGroupAffinityTerm) ([]compiledTerm, error) {
+func compileTerms(ssn *framework.Session, job *api.JobInfo, terms []scheduling.PodGroupAffinityTerm, preferred bool) ([]compiledTerm, error) {
 	compiled := make([]compiledTerm, 0, len(terms))
 	for i, term := range terms {
 		tier, err := api.ResolvePodGroupTermTier(term, ssn.HyperNodeTierNameMap)
 		if err != nil {
+			if preferred {
+				if klog.V(4).Enabled() {
+					klog.InfoS("Skipping unresolvable preferred PodGroup affinity term", "job", job.UID, "termIndex", i, "err", err)
+				}
+				continue
+			}
 			return nil, fmt.Errorf("term %d: %w", i, err)
 		}
 		selector, err := metav1.LabelSelectorAsSelector(term.PodGroupSelector)
 		if err != nil {
+			if preferred {
+				if klog.V(4).Enabled() {
+					klog.InfoS("Skipping unresolvable preferred PodGroup affinity term", "job", job.UID, "termIndex", i, "err", err)
+				}
+				continue
+			}
 			return nil, fmt.Errorf("term %d PodGroup selector: %w", i, err)
 		}
 		namespaceSelector, err := metav1.LabelSelectorAsSelector(term.NamespaceSelector)
 		if err != nil {
+			if preferred {
+				if klog.V(4).Enabled() {
+					klog.InfoS("Skipping unresolvable preferred PodGroup affinity term", "job", job.UID, "termIndex", i, "err", err)
+				}
+				continue
+			}
 			return nil, fmt.Errorf("term %d Namespace selector: %w", i, err)
 		}
 		resolved := compiledTerm{tier: tier, weight: term.Weight}
@@ -178,6 +196,12 @@ func compileTerms(ssn *framework.Session, job *api.JobInfo, terms []scheduling.P
 				if !found {
 					namespace, err := lister.Get(peer.Namespace)
 					if err != nil {
+						if preferred {
+							if klog.V(4).Enabled() {
+								klog.InfoS("Skipping unresolvable preferred PodGroup affinity term peer namespace lookup", "job", job.UID, "peer", peer.UID, "namespace", peer.Namespace, "err", err)
+							}
+							continue
+						}
 						return nil, fmt.Errorf("term %d Namespace lookup: %w", i, err)
 					}
 					matchesNamespace = namespaceSelector.Matches(labels.Set(namespace.Labels))
