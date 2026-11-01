@@ -18,6 +18,7 @@ package predicates
 
 import (
 	"context"
+	"sort"
 	"testing"
 	"time"
 
@@ -54,6 +55,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/actions/backfill"
 	"volcano.sh/volcano/pkg/scheduler/actions/preempt"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -1176,4 +1178,70 @@ func TestOnAllocateRestoresEvictedTask(t *testing.T) {
 			assert.Len(t, info.GetPods(), tt.wantPods)
 		})
 	}
+}
+
+func TestOnAllocateRestoreKeepsDeviceAllocation(t *testing.T) {
+	gpushare.GpuSharingEnable = true
+	t.Cleanup(func() { gpushare.GpuSharingEnable = false })
+	api.RegisterDevice(gpushare.DeviceName)
+
+	gpuResource := apiv1.ResourceName(gpushare.VolcanoGPUResource)
+	gpuNumber := apiv1.ResourceName(gpushare.VolcanoGPUNumber)
+	node := &apiv1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-1"},
+		Status: apiv1.NodeStatus{
+			Capacity: apiv1.ResourceList{
+				apiv1.ResourceCPU:    resource.MustParse("8"),
+				apiv1.ResourceMemory: resource.MustParse("16Gi"),
+				apiv1.ResourcePods:   resource.MustParse("10"),
+				gpuResource:          resource.MustParse("8Gi"),
+				gpuNumber:            resource.MustParse("2"),
+			},
+			Allocatable: apiv1.ResourceList{
+				apiv1.ResourceCPU:    resource.MustParse("8"),
+				apiv1.ResourceMemory: resource.MustParse("16Gi"),
+				apiv1.ResourcePods:   resource.MustParse("10"),
+				gpuResource:          resource.MustParse("8Gi"),
+				gpuNumber:            resource.MustParse("2"),
+			},
+		},
+	}
+	// Two 4Gi devices, and a victim that holds 3Gi of the first one. Once the
+	// victim is back on device 0 there is not enough room left there, so a
+	// second Allocate would hand it device 1 as well.
+	pod := util.BuildPod("ns", "victim", node.Name, apiv1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg", nil, nil)
+	pod.Spec.Containers[0].Resources.Limits = apiv1.ResourceList{gpuResource: resource.MustParse("3Gi")}
+	pod.Annotations[gpushare.GPUIndex] = "0"
+
+	pp := New(nil).(*PredicatesPlugin)
+	snapshot := schedframework.NewNodeInfo()
+	snapshot.SetNode(node)
+	pp.Handle = k8s.NewFramework(map[string]k8sframework.NodeInfo{node.Name: snapshot})
+
+	nodeInfo := api.NewNodeInfo(node)
+	ssn := &framework.Session{
+		Nodes: map[string]*api.NodeInfo{node.Name: nodeInfo},
+	}
+	ssn.PodLister = framework.NewPodLister(ssn)
+
+	task := api.NewTaskInfo(pod)
+	// Statement.unevict restores the task on its node before it fires the
+	// allocate event, and that is what puts the victim back on its device.
+	nodeInfo.UpdateTask(task)
+
+	pp.onAllocate(ssn, &framework.Event{Task: task, Restore: true})
+
+	devices, ok := nodeInfo.Others[gpushare.DeviceName].(*gpushare.GPUDevices)
+	if !ok {
+		t.Fatalf("expected gpushare devices on the node info, got %T", nodeInfo.Others[gpushare.DeviceName])
+	}
+	holders := make([]int, 0, len(devices.Device))
+	for id, device := range devices.Device {
+		if _, found := device.PodMap[string(pod.UID)]; found {
+			holders = append(holders, id)
+		}
+	}
+	sort.Ints(holders)
+	assert.Equal(t, []int{0}, holders, "a restored victim keeps the device its annotation names")
+	assert.Equal(t, "0", task.PodAnnotations[gpushare.GPUIndex], "a restored victim is not reassigned to another device")
 }

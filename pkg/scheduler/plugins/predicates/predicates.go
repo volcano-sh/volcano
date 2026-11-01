@@ -812,6 +812,12 @@ func (pp *PredicatesPlugin) BatchNodeOrder(task *api.TaskInfo, nodes []fwk.NodeI
 // to reserve against. Reserving it again fails with "not found" and returns before
 // the pod is added back, which leaves the victim missing from the node info used by
 // later predicates and by node scoring.
+//
+// The same task also comes back with its device accounting already restored:
+// Statement.unevict calls NodeInfo.UpdateTask before it fires this event, and
+// UpdateTask's AddTask puts the pod back on the device its gpu-index annotation
+// names. Allocating it again would place the pod on a second device, so the shared
+// device plugins are skipped for a restore as well.
 func (pp *PredicatesPlugin) onAllocate(ssn *framework.Session, event *framework.Event) {
 	klog.V(4).Infoln("predicates, allocate", event.Task.NodeName)
 	pod := ssn.PodLister.UpdateTask(event.Task, event.Task.NodeName)
@@ -832,28 +838,28 @@ func (pp *PredicatesPlugin) onAllocate(ssn *framework.Session, event *framework.
 		if event.Err != nil {
 			return
 		}
-	}
-	//predicate gpu sharing
-	for _, val := range api.RegisteredDevices {
-		if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
-			if api.IsNilDevice(devices) {
-				continue
-			}
-			if !devices.HasDeviceRequest(pod) {
-				continue
-			}
+		//predicate gpu sharing
+		for _, val := range api.RegisteredDevices {
+			if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
+				if api.IsNilDevice(devices) {
+					continue
+				}
+				if !devices.HasDeviceRequest(pod) {
+					continue
+				}
 
-			reservation, err := devices.Allocate(ssn.KubeClient(), pod)
-			if err != nil {
-				klog.Errorf("AllocateToPod failed %s", err.Error())
-				event.Err = err
-				return
+				reservation, err := devices.Allocate(ssn.KubeClient(), pod)
+				if err != nil {
+					klog.Errorf("AllocateToPod failed %s", err.Error())
+					event.Err = err
+					return
+				}
+				if reservation != nil && len(reservation.Annotations) > 0 {
+					event.Task.MergePodAnnotations(reservation.Annotations)
+				}
+			} else {
+				klog.Warningf("Devices %s assertion conversion failed, skip", val)
 			}
-			if reservation != nil && len(reservation.Annotations) > 0 {
-				event.Task.MergePodAnnotations(reservation.Annotations)
-			}
-		} else {
-			klog.Warningf("Devices %s assertion conversion failed, skip", val)
 		}
 	}
 	// ignore this err since apiserver doesn't properly validate affinity terms
