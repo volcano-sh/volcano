@@ -221,14 +221,23 @@ func (f *Framework) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 }
 
 // Action management
-var actionMap = map[string]Action{}
+type ActionBuilder func() Action
+
+var actionBuilders = map[string]ActionBuilder{}
 
 // RegisterAction register action
 func RegisterAction(act Action) {
+	RegisterActionBuilder(act.Name(), func() Action {
+		return act
+	})
+}
+
+// RegisterActionBuilder registers the action builder.
+func RegisterActionBuilder(name string, ab ActionBuilder) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 
-	actionMap[act.Name()] = act
+	actionBuilders[name] = ab
 }
 
 // GetAction get the action by name
@@ -236,6 +245,9 @@ func GetAction(name string) (Action, bool) {
 	pluginMutex.RLock()
 	defer pluginMutex.RUnlock()
 
-	act, found := actionMap[name]
-	return act, found
+	ab, found := actionBuilders[name]
+	if !found {
+		return nil, false
+	}
+	return ab(), true
 }
