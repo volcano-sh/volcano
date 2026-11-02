@@ -113,12 +113,12 @@ func (t *TCCmd) AddFilter(netns, ifName string) error {
 		}
 		klog.InfoS("Successfully added qdisc", "type", QdiscTypeClsact, "netns", netns, "ifName", ifName)
 
-		filterCmd := fmt.Sprintf("tc filter add dev %s egress bpf direct-action obj %s sec tc", ifName, utils.TCPROGPath)
 		ctx, cancel := context.WithTimeout(context.Background(), CmdTimeout)
 		defer cancel()
-		output, err := exec.GetExecutor().CommandContext(ctx, filterCmd)
+		args := []string{"filter", "add", "dev", ifName, "egress", "bpf", "direct-action", "obj", utils.TCPROGPath, "sec", "tc"}
+		output, err := exec.GetExecutor().CommandContextWithArgs(ctx, "tc", args...)
 		if err != nil {
-			return fmt.Errorf("add dev on ns:ifName(%s:%s) failed : %v, %s, %s", netns, ifName, err, output, filterCmd)
+			return fmt.Errorf("add dev on ns:ifName(%s:%s) failed : %v, %s, args: %v", netns, ifName, err, output, args)
 		}
 		klog.InfoS("Successfully added filter", "ebpf-obj", utils.TCPROGPath, "netns", netns, "ifName", ifName)
 		return nil
