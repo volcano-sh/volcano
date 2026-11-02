@@ -55,17 +55,13 @@ ARCH=$(go env GOARCH)
 # Step1. install helm binary
 if [[ ! -f "${HELM_BIN_DIR}/version.helm.${HELM_VER}" ]] || [[ ! -f "${HELM_BIN_DIR}/helm" ]] ; then
     TD=$(mktemp -d)
-    cd "${TD}" && \
-        curl -Lo "${TD}/helm.tgz" "https://get.helm.sh/helm-${HELM_VER}-${LOCAL_OS}-${ARCH}.tar.gz" && \
-        tar xfz helm.tgz && \
-        mv ${LOCAL_OS}-${ARCH}/helm "${HELM_BIN_DIR}/helm-${HELM_VER}" && \
-        cp "${HELM_BIN_DIR}/helm-${HELM_VER}" "${HELM_BIN_DIR}/helm" && \
-        chmod +x ${HELM_BIN_DIR}/helm
-        rm -rf "${TD}"
-
-        if [[ ! -f "${HELM_BIN_DIR}/version.helm.${HELM_VER}" ]] ; then
-          touch "${HELM_BIN_DIR}/version.helm.${HELM_VER}"
-        fi
+    trap 'rm -rf "${TD}"' EXIT
+    curl -fsSLo "${TD}/helm.tgz" "https://get.helm.sh/helm-${HELM_VER}-${LOCAL_OS}-${ARCH}.tar.gz"
+    tar xzf "${TD}/helm.tgz" -C "${TD}"
+    mv "${TD}/${LOCAL_OS}-${ARCH}/helm" "${HELM_BIN_DIR}/helm-${HELM_VER}"
+    cp "${HELM_BIN_DIR}/helm-${HELM_VER}" "${HELM_BIN_DIR}/helm"
+    chmod +x "${HELM_BIN_DIR}/helm"
+    touch "${HELM_BIN_DIR}/version.helm.${HELM_VER}"
 fi
 
 echo "generate chart"
@@ -74,5 +70,5 @@ CHART_OUT_PATH=${RELEASE_FOLDER}/chart
 rm -rf ${RELEASE_FOLDER}/chart
 cp -r "${CHART_ORIGIN_PATH}" "${CHART_OUT_PATH}"
 sed_i "s|image_tag_version: \"latest\"|image_tag_version: \"${VOLCANO_IMAGE_TAG}\"|g" $(find ${CHART_OUT_PATH} -type f | grep values.yaml)
-helm package --version ${VOLCANO_CHART_VERSION} --app-version ${VOLCANO_CHART_VERSION} "${CHART_OUT_PATH}/volcano" -d "${CHART_OUT_PATH}"
+"${HELM_BIN_DIR}/helm" package --version ${VOLCANO_CHART_VERSION} --app-version ${VOLCANO_CHART_VERSION} "${CHART_OUT_PATH}/volcano" -d "${CHART_OUT_PATH}"
 echo "helm package end, charts is in ${CHART_OUT_PATH}"
