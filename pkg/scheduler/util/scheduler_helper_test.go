@@ -232,6 +232,20 @@ func TestSelectBestNodes(t *testing.T) {
 			},
 		},
 		{
+			name: "no downgrade: nil binder map, top N by score",
+			nodeScores: map[float64][]*api.NodeInfo{
+				3.0: {{Name: "node3"}},
+				2.0: {{Name: "node2"}},
+				1.0: {{Name: "node1"}},
+			},
+			count:         2,
+			nodesInBinder: nil,
+			expected: []*api.NodeInfo{
+				{Name: "node3"},
+				{Name: "node2"},
+			},
+		},
+		{
 			name: "downgrade: binder node skipped, lower-score non-binder selected instead",
 			nodeScores: map[float64][]*api.NodeInfo{
 				3.0: {{Name: "node3"}},
@@ -299,7 +313,7 @@ func TestSelectBestNodes(t *testing.T) {
 			},
 		},
 		{
-			name: "no downgrade: binder node with count=0 is treated as free",
+			name: "no downgrade: binder map with zero count is treated as inactive",
 			nodeScores: map[float64][]*api.NodeInfo{
 				3.0: {{Name: "node3"}},
 				2.0: {{Name: "node2_binder"}},
@@ -312,6 +326,22 @@ func TestSelectBestNodes(t *testing.T) {
 			expected: []*api.NodeInfo{
 				{Name: "node3"},
 				{Name: "node2_binder"},
+			},
+		},
+		{
+			name: "no downgrade: zero-count binder keeps higher score node ahead of lower score node",
+			nodeScores: map[float64][]*api.NodeInfo{
+				3.0: {{Name: "node3_binder_inactive"}},
+				2.0: {{Name: "node2"}},
+				1.0: {{Name: "node1"}},
+			},
+			count: 2,
+			nodesInBinder: map[string]int{
+				"node3_binder_inactive": 0,
+			},
+			expected: []*api.NodeInfo{
+				{Name: "node3_binder_inactive"},
+				{Name: "node2"},
 			},
 		},
 		{
@@ -344,6 +374,219 @@ func TestSelectBestNodes(t *testing.T) {
 					t.Errorf("position %d: expected %s, got %s", i, node.Name, result[i].Name)
 				}
 			}
+		})
+	}
+}
+
+func TestSelectBestNodesDoesNotMutateNodeScores(t *testing.T) {
+	tests := []struct {
+		name          string
+		nodeScores    map[float64][]*api.NodeInfo
+		count         int
+		nodesInBinder map[string]int
+	}{
+		{
+			name: "top bucket overflow shuffle does not mutate input",
+			nodeScores: map[float64][]*api.NodeInfo{
+				2.0: {{Name: "node2a"}, {Name: "node2b"}, {Name: "node2c"}},
+				1.0: {{Name: "node1"}},
+			},
+			count:         2,
+			nodesInBinder: map[string]int{},
+		},
+		{
+			name: "free node overflow shuffle does not mutate input",
+			nodeScores: map[float64][]*api.NodeInfo{
+				3.0: {{Name: "node3a"}, {Name: "node3b"}, {Name: "node3c"}},
+				2.0: {{Name: "node2_binder"}},
+				1.0: {{Name: "node1"}},
+			},
+			count: 2,
+			nodesInBinder: map[string]int{
+				"node2_binder": 1,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			expectedNames := nodeScoreNames(tt.nodeScores)
+
+			SelectBestNodes(tt.nodeScores, tt.count, tt.nodesInBinder)
+
+			assert.Equal(t, expectedNames, nodeScoreNames(tt.nodeScores))
+		})
+	}
+}
+
+func TestHasActiveBinderNode(t *testing.T) {
+	tests := []struct {
+		name          string
+		nodesInBinder map[string]int
+		expected      bool
+	}{
+		{
+			name:          "nil binder map",
+			nodesInBinder: nil,
+			expected:      false,
+		},
+		{
+			name:          "empty binder map",
+			nodesInBinder: map[string]int{},
+			expected:      false,
+		},
+		{
+			name: "only zero counts are inactive",
+			nodesInBinder: map[string]int{
+				"node1": 0,
+				"node2": 0,
+			},
+			expected: false,
+		},
+		{
+			name: "negative counts are inactive",
+			nodesInBinder: map[string]int{
+				"node1": -1,
+			},
+			expected: false,
+		},
+		{
+			name: "positive count is active",
+			nodesInBinder: map[string]int{
+				"node1": 0,
+				"node2": 1,
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, hasActiveBinderNode(tt.nodesInBinder))
+		})
+	}
+}
+
+func nodeScoreNames(nodeScores map[float64][]*api.NodeInfo) map[float64][]string {
+	result := make(map[float64][]string, len(nodeScores))
+	for score, nodes := range nodeScores {
+		for _, node := range nodes {
+			result[score] = append(result[score], node.Name)
+		}
+	}
+	return result
+}
+
+func TestTopScoreBuckets(t *testing.T) {
+	tests := []struct {
+		name          string
+		nodeScores    map[float64][]*api.NodeInfo
+		count         int
+		expectedScore []float64
+		expectedNames [][]string
+	}{
+		{
+			name:          "empty nodeScores returns nil",
+			nodeScores:    map[float64][]*api.NodeInfo{},
+			count:         3,
+			expectedScore: nil,
+			expectedNames: nil,
+		},
+		{
+			name: "count is zero returns nil",
+			nodeScores: map[float64][]*api.NodeInfo{
+				1.0: {{Name: "node1"}},
+			},
+			count:         0,
+			expectedScore: nil,
+			expectedNames: nil,
+		},
+		{
+			name: "selects highest score buckets that cover requested count",
+			nodeScores: map[float64][]*api.NodeInfo{
+				5.0: {{Name: "node5"}},
+				4.0: {{Name: "node4a"}, {Name: "node4b"}},
+				3.0: {{Name: "node3"}},
+				2.0: {{Name: "node2"}},
+			},
+			count:         3,
+			expectedScore: []float64{5.0, 4.0},
+			expectedNames: [][]string{{"node5"}, {"node4a", "node4b"}},
+		},
+		{
+			name: "selects all non-empty buckets when count is greater than total nodes",
+			nodeScores: map[float64][]*api.NodeInfo{
+				5.0: {{Name: "node5"}},
+				3.0: {{Name: "node3"}},
+				1.0: {{Name: "node1"}},
+			},
+			count:         5,
+			expectedScore: []float64{5.0, 3.0, 1.0},
+			expectedNames: [][]string{{"node5"}, {"node3"}, {"node1"}},
+		},
+		{
+			name: "keeps buckets whose total exactly equals count",
+			nodeScores: map[float64][]*api.NodeInfo{
+				5.0: {{Name: "node5"}},
+				4.0: {{Name: "node4a"}, {Name: "node4b"}},
+				3.0: {{Name: "node3"}},
+			},
+			count:         3,
+			expectedScore: []float64{5.0, 4.0},
+			expectedNames: [][]string{{"node5"}, {"node4a", "node4b"}},
+		},
+		{
+			name: "selects highest buckets with negative scores",
+			nodeScores: map[float64][]*api.NodeInfo{
+				-1.0:  {{Name: "node1"}},
+				-5.0:  {{Name: "node5"}},
+				-10.0: {{Name: "node10"}},
+			},
+			count:         2,
+			expectedScore: []float64{-1.0, -5.0},
+			expectedNames: [][]string{{"node1"}, {"node5"}},
+		},
+		{
+			name: "keeps full boundary bucket when bucket size crosses count",
+			nodeScores: map[float64][]*api.NodeInfo{
+				5.0: {{Name: "node5"}},
+				4.0: {{Name: "node4a"}, {Name: "node4b"}, {Name: "node4c"}},
+				3.0: {{Name: "node3"}},
+			},
+			count:         2,
+			expectedScore: []float64{5.0, 4.0},
+			expectedNames: [][]string{{"node5"}, {"node4a", "node4b", "node4c"}},
+		},
+		{
+			name: "ignores empty buckets",
+			nodeScores: map[float64][]*api.NodeInfo{
+				5.0: {},
+				4.0: {{Name: "node4"}},
+				3.0: {{Name: "node3"}},
+			},
+			count:         1,
+			expectedScore: []float64{4.0},
+			expectedNames: [][]string{{"node4"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buckets := topScoreBuckets(tt.nodeScores, tt.count)
+
+			var actualScore []float64
+			var actualNames [][]string
+			for _, bucket := range buckets {
+				actualScore = append(actualScore, bucket.score)
+				var names []string
+				for _, node := range bucket.nodes {
+					names = append(names, node.Name)
+				}
+				actualNames = append(actualNames, names)
+			}
+
+			assert.Equal(t, tt.expectedScore, actualScore)
+			assert.Equal(t, tt.expectedNames, actualNames)
 		})
 	}
 }
