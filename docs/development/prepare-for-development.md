@@ -37,7 +37,7 @@ If you aren't sure which Kubernetes platform is right for you, see [Picking the 
 
 * [Installing Kubernetes with Minikube](https://kubernetes.io/docs/setup/learning-environment/minikube/)
 
-* [Installing Kubernetes with kops](https://kubernetes.io/docs/setup/production-environment/tools/kops/)
+* [Installing Kubernetes with kops](https://kops.sigs.k8s.io/getting_started/install/)
 
 * [Installing Kubernetes with kind](https://kind.sigs.k8s.io/)
 

@@ -82,7 +82,7 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 - [MXNet](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mxnet/train)
 - [Argo](https://github.com/volcano-sh/volcano/tree/master/example/integrations/argo)
 - [KubeGene](https://github.com/volcano-sh/kubegene)
-- [LeaderWorkerSet](https://github.com/kubernetes-sigs/lws/tree/main/docs/examples/sample/gang-scheduling#using-volcano-for-gang-scheduling)
+- [LeaderWorkerSet](https://github.com/kubernetes-sigs/lws/tree/v0.10.0/docs/examples/sample/gang-scheduling#using-volcano-for-gang-scheduling)
 - [Kthena](https://github.com/volcano-sh/kthena/tree/main/examples)
 
 ## Use Cases
@@ -239,7 +239,7 @@ If you have any question, feel free to reach out to us in the following ways:
 > [!TIP]
 > New to the Volcano community? First, join the CNCF Slack workspace using the **Join CNCF Slack** link below. After signing in, search for the `#volcano` channel in the CNCF Slack workspace and join it to participate in community discussions.
 
-**CNCF Slack Workspace Signup:** [Domain Signup](https://cloud-native.slack.com/signup#/domain-signup) or [Community Inviter](https://communityinviter.com/apps/cloud-native/cncf)
+**CNCF Slack Workspace Signup:** [Domain Signup](https://cloud-native.slack.com/signup#/domain-signup) or [Community Inviter](https://slack.cncf.io/)
 
 **Volcano Slack Channel:** [#volcano](https://cloud-native.slack.com/archives/C011GJDQS0N)
 
