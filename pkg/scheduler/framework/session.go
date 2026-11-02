@@ -28,6 +28,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -64,6 +65,18 @@ const (
 	// If no real HyperNodes exist in the cluster, this virtual top-tier HyperNode will still exist with Tier = 1 and will encompass all Nodes in the cluster.
 	ClusterTopHyperNode = "<cluster-top-hypernode>"
 )
+
+// allocatedHyperNodeReconcileStats records the result of validating and
+// recovering allocated HyperNodes during one scheduling session.
+type allocatedHyperNodeReconcileStats struct {
+	totalJobs      int
+	topologyJobs   int
+	removedJobs    int
+	removedSubJobs int
+	updatedJobs    int
+	updatedSubJobs int
+	duration       time.Duration
+}
 
 // Session information for the current session
 type Session struct {
@@ -286,13 +299,33 @@ func openSession(schedulerCache cache.Cache, unschedulableJobCache unschedulable
 	ssn.parseHyperNodesTiers()
 	ssn.adjustNetworkTopologySpec()
 
+	hyperNodeStats := &allocatedHyperNodeReconcileStats{
+		totalJobs: len(ssn.Jobs),
+	}
+	reconcileStart := time.Now()
 	if ssn.HyperNodesReadyToSchedule {
 		for _, job := range ssn.Jobs {
 			if job.ContainsNetworkTopology() || job.ContainsSubJobPolicy() {
-				ssn.refreshAllocatedHyperNode(job)
+				hyperNodeStats.topologyJobs++
+				stats := ssn.refreshAllocatedHyperNode(job)
+				hyperNodeStats.removedJobs += stats.removedJobs
+				hyperNodeStats.removedSubJobs += stats.removedSubJobs
+				hyperNodeStats.updatedJobs += stats.updatedJobs
+				hyperNodeStats.updatedSubJobs += stats.updatedSubJobs
 			}
 		}
 	}
+	hyperNodeStats.duration = time.Since(reconcileStart)
+	klog.V(3).InfoS("Allocated HyperNode reconciliation summary",
+		"session", ssn.UID,
+		"hyperNodesReady", ssn.HyperNodesReadyToSchedule,
+		"totalJobs", hyperNodeStats.totalJobs,
+		"topologyJobs", hyperNodeStats.topologyJobs,
+		"removedJobs", hyperNodeStats.removedJobs,
+		"removedSubJobs", hyperNodeStats.removedSubJobs,
+		"updatedJobs", hyperNodeStats.updatedJobs,
+		"updatedSubJobs", hyperNodeStats.updatedSubJobs,
+		"duration", hyperNodeStats.duration)
 
 	if klog.V(5).Enabled() {
 		for _, hn := range ssn.HyperNodes {
@@ -377,11 +410,11 @@ func (ssn *Session) PodGroupPlacementEnabled(jobID api.JobID) bool {
 	return ssn.podGroupPlacementJobs.Has(jobID)
 }
 
-func (ssn *Session) refreshAllocatedHyperNode(job *api.JobInfo) {
+func (ssn *Session) refreshAllocatedHyperNode(job *api.JobInfo) (stats allocatedHyperNodeReconcileStats) {
 	if !job.AllocatedHyperNodeDirty && job.AllocatedHyperNodeGeneration == ssn.HyperNodeGeneration && job.AllocatedTaskPlacementGeneration == job.TaskPlacementGeneration {
 		return
 	}
-	if ssn.reconcileAllocatedHyperNode(job) {
+	if ssn.reconcileAllocatedHyperNode(job, &stats) {
 		job.AllocatedHyperNodeDirty = false
 		job.AllocatedHyperNodeGeneration = ssn.HyperNodeGeneration
 		job.AllocatedTaskPlacementGeneration = job.TaskPlacementGeneration
@@ -389,6 +422,7 @@ func (ssn *Session) refreshAllocatedHyperNode(job *api.JobInfo) {
 		// not change, so subsequent sessions stay on the cheap path.
 		ssn.MarkJobDirty(job.UID)
 	}
+	return
 }
 
 // reconcileAllocatedHyperNode refreshes persisted Job/SubJob placement from the
@@ -396,7 +430,7 @@ func (ssn *Session) refreshAllocatedHyperNode(job *api.JobInfo) {
 // false when a placed task cannot yet be mapped into the current topology; in
 // that case the old placement and generation are retained so a later session can
 // retry without temporarily widening the scheduling domain.
-func (ssn *Session) reconcileAllocatedHyperNode(job *api.JobInfo) bool {
+func (ssn *Session) reconcileAllocatedHyperNode(job *api.JobInfo, stats *allocatedHyperNodeReconcileStats) bool {
 	complete := true
 	for _, subJob := range job.SubJobs {
 		expected := ""
@@ -415,7 +449,12 @@ func (ssn *Session) reconcileAllocatedHyperNode(job *api.JobInfo) bool {
 			old := subJob.AllocatedHyperNode
 			subJob.AllocatedHyperNode = expected
 			ssn.MarkJobDirty(job.UID)
-			klog.V(3).InfoS("Reconciled subJob allocated HyperNode after topology change",
+			if expected == "" {
+				stats.removedSubJobs++
+			} else {
+				stats.updatedSubJobs++
+			}
+			klog.V(5).InfoS("Reconciled subJob allocated HyperNode after topology change",
 				"job", job.UID, "subJob", subJob.UID, "old", old, "new", expected,
 				"hyperNodeGeneration", ssn.HyperNodeGeneration)
 		}
@@ -443,7 +482,12 @@ func (ssn *Session) reconcileAllocatedHyperNode(job *api.JobInfo) bool {
 		old := job.AllocatedHyperNode
 		job.AllocatedHyperNode = expected
 		ssn.MarkJobDirty(job.UID)
-		klog.V(3).InfoS("Reconciled job allocated HyperNode after topology change",
+		if expected == "" {
+			stats.removedJobs++
+		} else {
+			stats.updatedJobs++
+		}
+		klog.V(5).InfoS("Reconciled job allocated HyperNode after topology change",
 			"job", job.UID, "old", old, "new", expected,
 			"hyperNodeGeneration", ssn.HyperNodeGeneration)
 	}

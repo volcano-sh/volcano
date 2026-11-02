@@ -14,6 +14,68 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
+func TestRefreshAllocatedHyperNodeRemovalStats(t *testing.T) {
+	job := api.NewJobInfo("test-job")
+	job.AllocatedHyperNode = "missing-job-hypernode"
+	subJob := api.NewSubJobInfo("test-subjob-group", "test-subjob", job.UID, nil, nil)
+	subJob.AllocatedHyperNode = "missing-subjob-hypernode"
+	job.SubJobs[subJob.UID] = subJob
+
+	ssn := &Session{
+		HyperNodeGeneration: 1,
+		DirtyJobs:           sets.New[api.JobID](),
+	}
+	stats := ssn.refreshAllocatedHyperNode(job)
+
+	assert.Empty(t, job.AllocatedHyperNode)
+	assert.Empty(t, subJob.AllocatedHyperNode)
+	assert.Equal(t, 1, stats.removedJobs)
+	assert.Equal(t, 1, stats.removedSubJobs)
+	assert.True(t, ssn.DirtyJobs.Has(job.UID))
+}
+
+func TestRefreshAllocatedHyperNodeRecoveryStats(t *testing.T) {
+	job := api.NewJobInfo("test-job")
+	job.NetworkTopology = &scheduling.NetworkTopologySpec{}
+	task := &api.TaskInfo{
+		UID:        "test-task",
+		Job:        job.UID,
+		Resreq:     api.EmptyResource(),
+		InitResreq: api.EmptyResource(),
+		TransactionContext: api.TransactionContext{
+			NodeName: "test-node",
+			Status:   api.Running,
+		},
+	}
+	job.AddTaskInfo(task)
+
+	ssn := &Session{
+		HyperNodes: api.HyperNodeInfoMap{
+			"test-hypernode": api.NewHyperNodeInfo(api.BuildHyperNode("test-hypernode", 1, nil)),
+		},
+		RealNodesSet: map[string]sets.Set[string]{
+			"test-hypernode": sets.New("test-node"),
+		},
+		HyperNodeGeneration: 1,
+		DirtyJobs:           sets.New[api.JobID](),
+	}
+	stats := ssn.refreshAllocatedHyperNode(job)
+
+	assert.Equal(t, 1, stats.updatedJobs)
+	assert.Equal(t, 1, stats.updatedSubJobs)
+	assert.Equal(t, "test-hypernode", job.AllocatedHyperNode)
+	assert.Equal(t, "test-hypernode", job.SubJobs[job.DefaultSubJobID()].AllocatedHyperNode)
+	assert.True(t, ssn.DirtyJobs.Has(job.UID))
+
+	// Reconciliation is idempotent when the allocated HyperNodes are already valid.
+	ssn.DirtyJobs = sets.New[api.JobID]()
+	stats = ssn.refreshAllocatedHyperNode(job)
+
+	assert.Zero(t, stats.updatedJobs)
+	assert.Zero(t, stats.updatedSubJobs)
+	assert.False(t, ssn.DirtyJobs.Has(job.UID))
+}
+
 func TestRefreshAllocatedHyperNodeOnTopologyGenerationChange(t *testing.T) {
 	root := api.NewHyperNodeInfo(&topologyv1alpha1.HyperNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "root"},

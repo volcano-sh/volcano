@@ -23,8 +23,10 @@ package cache
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -603,11 +605,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 		sc.schedulingQueue.Close()
 	}()
 	if sc.resourceSyncTimeout > 0 {
-		klog.V(3).Info("scheduler wait for handlers sync")
 		sc.WaitForHandlerSync(stopCh)
-		klog.V(3).Info("scheduler finished handlers sync")
 	} else {
-		klog.V(3).Info("skip waiting for handlers sync")
+		klog.V(3).Info("Skipping scheduler handler synchronization wait")
 	}
 }
 
@@ -617,7 +617,32 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) {
 	sc.vcInformerFactory.WaitForCacheSync(stopCh)
 }
 
+// WaitForHandlerSync waits for registered event handlers to process their
+// initial resource events and logs the final synchronization result.
 func (sc *SchedulerCache) WaitForHandlerSync(stopCh <-chan struct{}) {
+	start := time.Now()
+	klog.V(3).InfoS("Waiting for scheduler handlers to synchronize", "timeout", sc.resourceSyncTimeout)
+
+	incompleteHandlers, err := sc.waitForHandlerSync(stopCh)
+	duration := time.Since(start)
+	if err == nil {
+		klog.V(3).InfoS("Scheduler handlers synchronized", "duration", duration)
+		return
+	}
+
+	if stderrors.Is(err, context.Canceled) {
+		klog.V(3).InfoS("Stopped waiting for scheduler handlers to synchronize",
+			"duration", duration, "incompleteHandlers", incompleteHandlers)
+		return
+	}
+
+	klog.ErrorS(err, "Scheduler handlers did not finish synchronization",
+		"timeout", sc.resourceSyncTimeout, "duration", duration, "incompleteHandlers", incompleteHandlers)
+}
+
+// waitForHandlerSync waits for all registered handlers to report synced. When
+// waiting fails, it returns the sorted names of handlers that have not synced.
+func (sc *SchedulerCache) waitForHandlerSync(stopCh <-chan struct{}) ([]string, error) {
 	err := wait.PollUntilContextTimeout(wait.ContextForChannel(stopCh), handlerSyncPollPeriod, sc.resourceSyncTimeout, true, func(c context.Context) (done bool, err error) {
 		for _, handler := range sc.registeredHandlers {
 			if !handler.HasSynced() {
@@ -626,14 +651,19 @@ func (sc *SchedulerCache) WaitForHandlerSync(stopCh <-chan struct{}) {
 		}
 		return true, nil
 	})
-	if err != nil {
-		klog.Errorf("Error in waiting event handlers syncing: %v", err)
-		for name, handler := range sc.registeredHandlers {
-			if !handler.HasSynced() {
-				klog.Errorf("%s handler synchronization is not completed", name)
-			}
+	if err == nil {
+		return nil, nil
+	}
+
+	incompleteHandlers := make([]string, 0)
+	for name, handler := range sc.registeredHandlers {
+		if !handler.HasSynced() {
+			incompleteHandlers = append(incompleteHandlers, name)
 		}
 	}
+	sort.Strings(incompleteHandlers)
+
+	return incompleteHandlers, err
 }
 
 // Bind binds task to the target host.
