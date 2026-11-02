@@ -21,7 +21,7 @@ To support Pod Scheduling Readiness, the modifications mainly happen in `schedul
 ## Limitations
 1. **Vcjob does not support removing scheduling gates in template**: As mentioned above, currently, if we remove the scheduling gates field in a Vcjob, the gates of its pods are not removed. This behavior of Vcjob is different from native K8S resources. 
 
-2. **Inaccurate message for scheduling gated podgroups**: Currently, if a Job is gang-unschedulable due to gates, its condition is Unschedulable with reason `NotEnoughResources`, which comes from gang plugin. A better message should notify user about the scheduling gates. Moreover, if a K8S resources like Deployment is Pending due to scheduling gates, there is no event. However, for vcjob, we get a gang scheduling failed event each scheduling cycle, which might be a burden of performence.
+2. **Inaccurate message for scheduling gated podgroups**: Currently, if a Job is gang-unschedulable due to gates, its condition is Unschedulable with reason `NotEnoughResources`, which comes from gang plugin. A better message should notify user about the scheduling gates. Moreover, if a K8S resources like Deployment is Pending due to scheduling gates, there is no event. However, for vcjob, we get a gang scheduling failed event each scheduling cycle, which might be a burden of performance.
    
 ## References
 1. K8S Pod Scheduling Readiness Documentation: https://kubernetes.io/docs/concepts/scheduling-eviction/pod-scheduling-readiness/

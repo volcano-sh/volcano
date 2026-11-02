@@ -70,7 +70,7 @@ type MigInUse struct {
 	UsageList MIGS
 }
 
-// AllowedMigGeometries is about all kind of GPU curresponding supported and its mig patterns
+// AllowedMigGeometries is about all kind of GPU corresponding supported and its mig patterns
 type AllowedMigGeometries struct {
 	// Models are the types of GPU
 	Models []string `yaml:"models"`
