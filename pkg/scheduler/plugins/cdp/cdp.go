@@ -70,6 +70,25 @@ func (sp *CooldownProtectionPlugin) podCooldownTime(pod *v1.Pod) (value time.Dur
 	return vi, true
 }
 
+// podCooldownStartTime returns the time from which the cooldown of a running pod is counted.
+// It is the time the pod became ready, so that start-up such as image pulling and init containers
+// does not consume the cooldown. If the pod is not ready, the time the pod was scheduled is used.
+func (sp *CooldownProtectionPlugin) podCooldownStartTime(pod *v1.Pod) time.Time {
+	var scheduledTime time.Time
+	for _, c := range pod.Status.Conditions {
+		if c.Status != v1.ConditionTrue {
+			continue
+		}
+		if c.Type == v1.PodReady && !c.LastTransitionTime.IsZero() {
+			return c.LastTransitionTime.Time
+		}
+		if c.Type == v1.PodScheduled && scheduledTime.IsZero() {
+			scheduledTime = c.LastTransitionTime.Time
+		}
+	}
+	return scheduledTime
+}
+
 // OnSessionOpen implements framework.Plugin
 func (sp *CooldownProtectionPlugin) OnSessionOpen(ssn *framework.Session) {
 	filterVictimFn := func(evictingTask *api.TaskInfo, candidateVictims []*api.TaskInfo) ([]*api.TaskInfo, int) {
@@ -85,14 +104,8 @@ func (sp *CooldownProtectionPlugin) OnSessionOpen(ssn *framework.Session) {
 			// only running pod check stable time, others all put into victims
 			stableFiltered := false
 			if pod.Status.Phase == v1.PodRunning {
-				// ensure pod is running and have ready state
-				for _, c := range pod.Status.Conditions {
-					if c.Type == v1.PodScheduled && c.Status == v1.ConditionTrue {
-						if c.LastTransitionTime.Add(cooldownTime).After(time.Now()) {
-							stableFiltered = true
-						}
-						break
-					}
+				if sp.podCooldownStartTime(pod).Add(cooldownTime).After(time.Now()) {
+					stableFiltered = true
 				}
 			}
 			if !stableFiltered {

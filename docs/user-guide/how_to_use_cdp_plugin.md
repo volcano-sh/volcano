@@ -114,6 +114,7 @@ spec:
 1. add annotations in volcano job in format below.
    1. `volcano.sh/preemptable` annotation indicates that job or task is preemptable
    2. `volcano.sh/cooldown-time` annotation indicates cooldown time for the entire job or dedicated task. Value for the annotation indicates cooldown time, valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h". 
+      The cooldown time is counted from the time the pod becomes Ready, so time spent pulling images or running init containers does not reduce it. If a running pod is not Ready, the cooldown time is counted from the time the pod was scheduled.
 
         ```yaml
             volcano.sh/preemptable: "true"
