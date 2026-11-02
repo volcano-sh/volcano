@@ -212,7 +212,7 @@ func PrintPods(pods *corev1.PodList, writer io.Writer, showNamespace bool) {
 		headerArgs[i] = col.header
 	}
 	if _, err := fmt.Fprintf(writer, formatStr, headerArgs...); err != nil {
-		fmt.Printf("Failed to print Pod information: %s.\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to print Pod information: %s.\n", err)
 		return
 	}
 	for _, info := range infoList {
@@ -221,7 +221,7 @@ func PrintPods(pods *corev1.PodList, writer io.Writer, showNamespace bool) {
 			rowArgs[i] = col.value(info)
 		}
 		if _, err := fmt.Fprintf(writer, formatStr, rowArgs...); err != nil {
-			fmt.Printf("Failed to print Pod information: %s.\n", err)
+			fmt.Fprintf(os.Stderr, "Failed to print Pod information: %s.\n", err)
 			return
 		}
 	}
