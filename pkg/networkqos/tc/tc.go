@@ -18,6 +18,8 @@ package tc
 
 import (
 	"time"
+
+	"volcano.sh/volcano/pkg/networkqos/utils"
 )
 
 const (
@@ -49,4 +51,15 @@ func GetTCCmd() TC {
 
 func SetTcCmd(tc TC) {
 	tcCmd = tc
+}
+
+// buildFilterArgs constructs the argv slice passed to the `tc` binary for
+// attaching the egress bpf filter to ifName. ifName is placed verbatim as a
+// single argv element so that shell metacharacters (when ifName is attacker-
+// controlled via the CNI ifname annotation) are treated as literal characters
+// and never interpreted by a shell. This is the security-critical construction
+// for the command-injection fix at tc_linux.go AddFilter; do NOT replace it
+// with fmt.Sprintf + sh -c.
+func buildFilterArgs(ifName string) []string {
+	return []string{"filter", "add", "dev", ifName, "egress", "bpf", "direct-action", "obj", utils.TCPROGPath, "sec", "tc"}
 }

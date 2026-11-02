@@ -64,3 +64,23 @@ func (mr *MockExecInterfaceMockRecorder) CommandContext(ctx, cmd interface{}) *g
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommandContext", reflect.TypeOf((*MockExecInterface)(nil).CommandContext), ctx, cmd)
 }
+
+// CommandContextWithArgs mocks base method.
+func (m *MockExecInterface) CommandContextWithArgs(ctx context.Context, name string, args ...string) (string, error) {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{ctx, name}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CommandContextWithArgs", varargs...)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CommandContextWithArgs indicates an expected call of CommandContextWithArgs.
+func (mr *MockExecInterfaceMockRecorder) CommandContextWithArgs(ctx, name interface{}, args ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]interface{}{ctx, name}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommandContextWithArgs", reflect.TypeOf((*MockExecInterface)(nil).CommandContextWithArgs), varargs...)
+}
