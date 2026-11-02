@@ -355,7 +355,7 @@ func prioritizeNodesForSimulate(ssn *framework.Session, task *api.TaskInfo, pred
 		case len(nodes) == 1:
 			bestNode = nodes[0]
 		default:
-			nodeScores := util.PrioritizeNodes(task, nodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+			nodeScores := util.PrioritizeNodes(task, nodes, ssn.BatchNodeOrderFn, ssn.NodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 			bestNode = ssn.BestNodeFn(task, nodeScores)
 			if bestNode == nil {
 				bestNode, _ = util.SelectBestNodeAndScore(nodeScores)
