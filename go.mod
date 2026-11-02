@@ -42,6 +42,7 @@ require (
 	k8s.io/component-base v0.36.1
 	k8s.io/component-helpers v0.36.1
 	k8s.io/dynamic-resource-allocation v0.36.1
+	k8s.io/endpointslice v0.36.1
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kubectl v0.0.0
 	k8s.io/kubernetes v1.36.1

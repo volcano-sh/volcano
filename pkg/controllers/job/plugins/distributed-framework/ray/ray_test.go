@@ -25,6 +25,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/endpointslice"
+	coredefaults "k8s.io/kubernetes/pkg/apis/core/v1"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
@@ -195,6 +197,72 @@ func TestRayPlugin(t *testing.T) {
 			}
 			if _, ok := testcase.Job.Status.ControlledResources["plugin-"+rp.Name()]; ok {
 				t.Errorf("expected ControlledResources entry to be deleted")
+			}
+		})
+	}
+}
+
+// A Service must forward to the listener configured by the plugin even when
+// the user has already declared that listener under another name.
+func TestRayHeadServicePorts(t *testing.T) {
+	tests := []struct {
+		name      string
+		portNames []string
+		arguments []string
+		ports     []int32
+	}{
+		{name: "generated ports", ports: []int32{6379, 8265, 10001}},
+		{name: "canonical port names", portNames: []string{"gcs", "dashboard", "client-server"}, ports: []int32{6379, 8265, 10001}},
+		{name: "custom port names", portNames: []string{"redis", "web", "client"}, ports: []int32{6379, 8265, 10001}},
+		{name: "unnamed ports", portNames: []string{"", "", ""}, ports: []int32{6379, 8265, 10001}},
+		{name: "mixed port names", portNames: []string{"gcs", "web", ""}, ports: []int32{6379, 8265, 10001}},
+		{name: "configured ports", portNames: []string{"redis", "web", "client"}, arguments: []string{"--port=16379", "--dashboardPort=18265", "--clientPort=20001"}, ports: []int32{16379, 18265, 20001}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := fake.NewSimpleClientset()
+			plugin := New(pluginsinterface.PluginClientset{KubeClients: client}, tt.arguments)
+			job := &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{Name: "ray-training", Namespace: "training", UID: "ray-training"},
+				Spec:       v1alpha1.JobSpec{Tasks: []v1alpha1.TaskSpec{{Name: "head", Replicas: 1}}},
+				Status:     v1alpha1.JobStatus{ControlledResources: map[string]string{}},
+			}
+			pod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "ray-training-head-0", Namespace: job.Namespace, Annotations: map[string]string{v1alpha1.TaskSpecKey: "head"}},
+				Spec:       v1.PodSpec{Containers: []v1.Container{{Name: "head", Image: "rayproject/ray:latest"}}},
+			}
+			for i, name := range tt.portNames {
+				pod.Spec.Containers[0].Ports = append(pod.Spec.Containers[0].Ports, v1.ContainerPort{Name: name, ContainerPort: tt.ports[i], Protocol: v1.ProtocolTCP})
+			}
+			originalPorts := slices.Clone(pod.Spec.Containers[0].Ports)
+			if err := plugin.OnPodCreate(pod, job); err != nil {
+				t.Fatal(err)
+			}
+			if tt.portNames != nil && !slices.Equal(originalPorts, pod.Spec.Containers[0].Ports) {
+				t.Errorf("existing listener declarations changed: got %v, want %v", pod.Spec.Containers[0].Ports, originalPorts)
+			}
+			if err := plugin.OnJobAdd(job); err != nil {
+				t.Fatal(err)
+			}
+			service, err := client.CoreV1().Services(job.Namespace).Get(context.Background(), job.Name+"-head-svc", metav1.GetOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(service.Spec.Ports) != len(tt.ports) {
+				t.Fatalf("got %d Service ports, want %d", len(service.Spec.Ports), len(tt.ports))
+			}
+			// Apply the same Pod defaults as the API server before resolving
+			// the generated Service with the EndpointSlice controller's resolver.
+			coredefaults.SetObjectDefaults_Pod(pod)
+			for i, port := range service.Spec.Ports {
+				resolved, err := endpointslice.FindPort(pod, &port)
+				if err != nil {
+					t.Errorf("Service port %s cannot resolve a listener: %v", port.Name, err)
+					continue
+				}
+				if port.Port != tt.ports[i] || resolved != int(tt.ports[i]) {
+					t.Errorf("Service port %s resolves %d -> %d, want %d -> %d", port.Name, port.Port, resolved, tt.ports[i], tt.ports[i])
+				}
 			}
 		})
 	}
