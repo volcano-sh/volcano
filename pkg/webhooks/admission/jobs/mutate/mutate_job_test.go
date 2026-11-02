@@ -17,10 +17,13 @@ limitations under the License.
 package mutate
 
 import (
+	"encoding/json"
 	"testing"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -478,5 +481,105 @@ func TestMutateSpecPartitionPolicyDefaults(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestJobsRejectsOnDecodeFailure verifies that the admission webhook denies the
+// request instead of silently allowing it when the job cannot be decoded.
+// The mutator must never fall through to an allowed response on the error path.
+func TestJobsRejectsOnDecodeFailure(t *testing.T) {
+	jobResource := metav1.GroupVersionResource{
+		Group: "batch.volcano.sh", Version: "v1alpha1", Resource: "jobs",
+	}
+
+	tests := []struct {
+		name string
+		ar   admissionv1.AdmissionReview
+	}{
+		{
+			name: "malformed job object is rejected",
+			ar: admissionv1.AdmissionReview{
+				Request: &admissionv1.AdmissionRequest{
+					Operation: admissionv1.Create,
+					Resource:  jobResource,
+					Object:    runtime.RawExtension{Raw: []byte("not a valid job")},
+				},
+			},
+		},
+		{
+			name: "wrong resource is rejected",
+			ar: admissionv1.AdmissionReview{
+				Request: &admissionv1.AdmissionRequest{
+					Operation: admissionv1.Create,
+					Resource:  metav1.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"},
+					Object:    runtime.RawExtension{Raw: []byte("{}")},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := Jobs(tt.ar)
+			if resp == nil {
+				t.Fatalf("expected non-nil admission response")
+			}
+			if resp.Allowed {
+				t.Fatalf("expected admission to be denied on error, but Allowed is true")
+			}
+		})
+	}
+}
+
+// TestJobsAllowsAndPatchesOnValidCreate verifies the happy path: a valid create
+// request is allowed and carries the computed patch (e.g. default queue).
+func TestJobsAllowsAndPatchesOnValidCreate(t *testing.T) {
+	job := &v1alpha1.Job{
+		TypeMeta: metav1.TypeMeta{APIVersion: "batch.volcano.sh/v1alpha1", Kind: "Job"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-job",
+			Namespace: "default",
+		},
+		Spec: v1alpha1.JobSpec{
+			MinAvailable: 1,
+			Tasks: []v1alpha1.TaskSpec{
+				{
+					Replicas: 1,
+					Template: v1.PodTemplateSpec{
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{Name: "main", Image: "busybox:1.24"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	raw, err := json.Marshal(job)
+	if err != nil {
+		t.Fatalf("failed to marshal job: %v", err)
+	}
+
+	ar := admissionv1.AdmissionReview{
+		Request: &admissionv1.AdmissionRequest{
+			Operation: admissionv1.Create,
+			Resource: metav1.GroupVersionResource{
+				Group: "batch.volcano.sh", Version: "v1alpha1", Resource: "jobs",
+			},
+			Object: runtime.RawExtension{Raw: raw},
+		},
+	}
+
+	resp := Jobs(ar)
+	if resp == nil {
+		t.Fatalf("expected non-nil admission response")
+	}
+	if !resp.Allowed {
+		t.Fatalf("expected admission to be allowed for a valid job, but Allowed is false")
+	}
+	// A job without an explicit queue gets a default-queue patch.
+	if len(resp.Patch) == 0 {
+		t.Fatalf("expected a non-empty patch for a job with defaulted fields")
 	}
 }
