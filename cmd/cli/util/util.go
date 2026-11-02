@@ -33,7 +33,7 @@ func CheckError(cmd *cobra.Command, err error) {
 			msg += fmt.Sprintf(" %s", cur.Name())
 		}
 
-		fmt.Printf("%s: %v\n", msg, err)
+		fmt.Fprintf(cmd.ErrOrStderr(), "%s: %v\n", msg, err)
 		os.Exit(-1)
 	}
 }
