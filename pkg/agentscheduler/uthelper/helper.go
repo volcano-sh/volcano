@@ -26,7 +26,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
-	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	k8smetrics "k8s.io/kubernetes/pkg/scheduler/metrics"
 
@@ -120,22 +119,14 @@ func NewTestFramework(schedulerName string, workerCount int, actions []framework
 	// Initialize scheduling queue.
 	ctx, cancel := context.WithCancel(context.Background())
 	metricsRecorder := k8smetrics.NewMetricsAsyncRecorder(1000, time.Second, ctx.Done())
-	queueingHintMapPerProfile := make(k8sschedulingqueue.QueueingHintMapPerProfile)
-	queueingHintMap := make(k8sschedulingqueue.QueueingHintMap)
-	defaultQueueingHintFn := func(_ klog.Logger, _ *v1.Pod, _, _ interface{}) (fwk.QueueingHint, error) {
-		return fwk.Queue, nil
-	}
-	wildCardEvent := fwk.ClusterEvent{Resource: fwk.WildCard, ActionType: fwk.All}
-	queueingHintMap[wildCardEvent] = append(queueingHintMap[wildCardEvent], &k8sschedulingqueue.QueueingHintFunction{
-		QueueingHintFn: defaultQueueingHintFn,
-	})
-	queueingHintMapPerProfile[schedulerName] = queueingHintMap
-	schedulingQueue := k8sschedulingqueue.NewSchedulingQueue(
-		cache.Less,
+	schedulingQueue, err := cache.NewSchedulingQueue(ctx, schedulerName,
 		mockCache.SharedInformerFactory(),
 		k8sschedulingqueue.WithMetricsRecorder(metricsRecorder),
-		k8sschedulingqueue.WithQueueingHintMapPerProfile(queueingHintMapPerProfile),
 	)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
 
 	// Set schedulingQueue using unsafe pointer since it's unexported.
 	rv := reflect.ValueOf(mockCache).Elem()
