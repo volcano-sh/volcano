@@ -19,6 +19,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
+	resourcehelper "k8s.io/component-helpers/resource"
 	"k8s.io/klog/v2"
 )
 
@@ -109,19 +110,11 @@ func (sc *ShardingController) calculateMetricsFromPodsAndNode(pods []*corev1.Pod
 	totalMemoryRequest := int64(0)
 
 	for _, pod := range pods {
-		for _, container := range pod.Spec.Containers {
-			// Sum CPU requests
-			cpuReq := container.Resources.Requests.Cpu()
-			if cpuReq != nil {
-				totalCPURequest += cpuReq.MilliValue()
-			}
-
-			// Sum memory requests
-			memoryReq := container.Resources.Requests.Memory()
-			if memoryReq != nil {
-				totalMemoryRequest += memoryReq.Value()
-			}
-		}
+		// Use scheduling requests, including init peaks, restartable sidecars,
+		// Pod-level resources and runtime overhead.
+		requests := resourcehelper.PodRequests(pod, resourcehelper.PodResourcesOptions{})
+		totalCPURequest += requests.Cpu().MilliValue()
+		totalMemoryRequest += requests.Memory().Value()
 	}
 
 	// Get node capacity
