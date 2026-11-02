@@ -74,3 +74,43 @@ func TestNamespaceCollection(t *testing.T) {
 	c.Delete(newQuota("def", 0))
 	c.Delete(newQuota("ghi", 0))
 }
+
+func TestNamespaceCollectionScopedQuota(t *testing.T) {
+	c := NewNamespaceCollection("testCollection")
+
+	scopedQuota := newQuota("scoped", 1)
+	scopedQuota.Spec.Scopes = []v1.ResourceQuotaScope{v1.ResourceQuotaScopeTerminating}
+	c.Update(scopedQuota)
+
+	selectorQuota := newQuota("selector", 1)
+	selectorQuota.Spec.ScopeSelector = &v1.ScopeSelector{
+		MatchExpressions: []v1.ScopedResourceSelectorRequirement{
+			{
+				ScopeName: v1.ResourceQuotaScopePriorityClass,
+				Operator:  v1.ScopeSelectorOpIn,
+				Values:    []string{"high"},
+			},
+		},
+	}
+	c.Update(selectorQuota)
+
+	info := c.Snapshot()
+	for _, name := range []string{scopedQuota.Name, selectorQuota.Name} {
+		if _, found := info.QuotaStatus[name]; !found {
+			t.Errorf("QuotaStatus %s of namespace should exist", name)
+		}
+		if !info.IsQuotaScoped(name) {
+			t.Errorf("ResourceQuota %s should be scoped", name)
+		}
+	}
+
+	c.Update(newQuota(scopedQuota.Name, 2))
+	if c.Snapshot().IsQuotaScoped(scopedQuota.Name) {
+		t.Errorf("ResourceQuota %s should not be scoped", scopedQuota.Name)
+	}
+
+	c.Delete(selectorQuota)
+	if c.Snapshot().IsQuotaScoped(selectorQuota.Name) {
+		t.Errorf("ResourceQuota %s should not exist", selectorQuota.Name)
+	}
+}

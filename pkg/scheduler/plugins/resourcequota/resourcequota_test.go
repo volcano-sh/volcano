@@ -48,6 +48,8 @@ func TestResourceQuotaPlugin(t *testing.T) {
 
 	queue1 := util.BuildQueue("c1", 1, nil)
 	rq1 := util.BuildResourceQuota("test", "default", normalResource)
+	scopedRQ := util.BuildResourceQuota("scoped", "default", normalResource)
+	scopedRQ.Spec.Scopes = []v1.ResourceQuotaScope{v1.ResourceQuotaScopeTerminating}
 
 	tests := []struct {
 		uthelper.TestCommonStruct
@@ -72,6 +74,16 @@ func TestResourceQuotaPlugin(t *testing.T) {
 				ResourceQuotas: []*v1.ResourceQuota{rq1},
 			},
 			expectedEnqueueAble: false,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:           "Scoped ResourceQuota does not apply to this pg",
+				Plugins:        map[string]framework.PluginBuilder{PluginName: New},
+				PodGroups:      []*schedulingv1.PodGroup{pg2},
+				Queues:         []*schedulingv1.Queue{queue1},
+				ResourceQuotas: []*v1.ResourceQuota{scopedRQ},
+			},
+			expectedEnqueueAble: true,
 		},
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
