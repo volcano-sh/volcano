@@ -1,0 +1,25 @@
+{{- if and .Values.custom.admission_enable .Values.custom.certManager.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Release.Name }}-admission-selfsigned
+  namespace: {{ .Release.Namespace }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Release.Name }}-admission-cert
+  namespace: {{ .Release.Namespace }}
+spec:
+  secretName: {{ .Values.basic.admission_secret_name }}
+  dnsNames:
+    - {{ .Release.Name }}-admission-service
+    - {{ .Release.Name }}-admission-service.{{ .Release.Namespace }}
+    - {{ .Release.Name }}-admission-service.{{ .Release.Namespace }}.svc
+    - {{ .Release.Name }}-admission-service.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    name: {{ .Release.Name }}-admission-selfsigned
+    kind: Issuer
+{{- end }}

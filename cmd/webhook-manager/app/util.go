@@ -32,6 +32,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
@@ -131,40 +132,57 @@ func getVolcanoClient(restConfig *rest.Config) *versioned.Clientset {
 // configTLS is a helper function that generate tls certificates from directly defined tls config or kubeconfig
 // These are passed in as command line for cluster certification. If tls config is passed in, we use the directly
 // defined tls config, else use that defined in kubeconfig.
-func configTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
+func configTLS(config *options.Config, restConfig *rest.Config) (*tls.Config, *certwatcher.CertWatcher, error) {
 	if len(config.CertData) != 0 && len(config.KeyData) != 0 {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(config.CaCertData)
 
-		sCert, err := tls.X509KeyPair(config.CertData, config.KeyData)
+		if config.CertFile == "" || config.KeyFile == "" {
+			sCert, err := tls.X509KeyPair(config.CertData, config.KeyData)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to parse TLS certificate: %w", err)
+			}
+			return &tls.Config{
+				Certificates: []tls.Certificate{sCert},
+				RootCAs:      certPool,
+				MinVersion:   tls.VersionTLS12,
+				ClientAuth:   tls.VerifyClientCertIfGiven,
+				CipherSuites: []uint16{
+					tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+					tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+					tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+				},
+			}, nil, nil
+		}
+
+		watcher, err := certwatcher.New(config.CertFile, config.KeyFile)
 		if err != nil {
-			klog.Fatal(err)
+			return nil, nil, fmt.Errorf("failed to create certificate watcher: %w", err)
 		}
 
 		return &tls.Config{
-			Certificates: []tls.Certificate{sCert},
-			RootCAs:      certPool,
-			MinVersion:   tls.VersionTLS12,
-			ClientAuth:   tls.VerifyClientCertIfGiven,
+			GetCertificate: watcher.GetCertificate,
+			RootCAs:        certPool,
+			MinVersion:     tls.VersionTLS12,
+			ClientAuth:     tls.VerifyClientCertIfGiven,
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 			},
-		}
+		}, watcher, nil
 	}
 
 	if len(restConfig.CertData) != 0 && len(restConfig.KeyData) != 0 {
 		sCert, err := tls.X509KeyPair(restConfig.CertData, restConfig.KeyData)
 		if err != nil {
-			klog.Fatal(err)
+			return nil, nil, fmt.Errorf("failed to parse TLS certificate: %w", err)
 		}
 
 		return &tls.Config{
 			Certificates: []tls.Certificate{sCert},
-		}
+		}, nil, nil
 	}
 
-	klog.Fatal("tls: failed to find any tls config data")
-	return &tls.Config{}
+	return nil, nil, fmt.Errorf("tls: failed to find any tls config data")
 }
