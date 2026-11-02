@@ -86,6 +86,8 @@ type PluginOption struct {
 	EnabledJobEnqueued *bool `yaml:"enableJobEnqueued"`
 	// EnabledVictim defines whether victimsFn is enabled
 	EnabledVictim *bool `yaml:"enabledVictim"`
+	// EnabledVictimScore defines whether victimScoreFn is enabled
+	EnabledVictimScore *bool `yaml:"enableVictimScore"`
 	// EnabledJobStarving defines whether jobStarvingFn is enabled
 	EnabledJobStarving *bool `yaml:"enableJobStarving"`
 	// EnabledOverused defines whether overusedFn is enabled

@@ -42,6 +42,7 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	setDefaultIfNil(&option.EnabledTargetJob)
 	setDefaultIfNil(&option.EnabledReservedNodes)
 	setDefaultIfNil(&option.EnabledVictim)
+	setDefaultIfNil(&option.EnabledVictimScore)
 	setDefaultIfNil(&option.EnabledJobStarving)
 	setDefaultIfNil(&option.EnabledOverused)
 	setDefaultIfNil(&option.EnabledAllocatable)
