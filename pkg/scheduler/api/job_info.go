@@ -1000,6 +1000,40 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason, msg, nominatedNodeN
 	}
 }
 
+// LatestPodGroupCondition returns, among conditions of the given types, the
+// one with the most recent LastTransitionTime. On equal timestamps (second
+// precision after apiserver round-trip) PodGroupScheduled wins, so a
+// recovery is never masked as a failure. Returns nil when no matching
+// condition exists.
+func (ji *JobInfo) LatestPodGroupCondition(types ...scheduling.PodGroupConditionType) *scheduling.PodGroupCondition {
+	if ji.PodGroup == nil {
+		return nil
+	}
+
+	var latest *scheduling.PodGroupCondition
+	for i := range ji.PodGroup.Status.Conditions {
+		cond := &ji.PodGroup.Status.Conditions[i]
+		matched := false
+		for _, t := range types {
+			if cond.Type == t {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		if latest == nil ||
+			cond.LastTransitionTime.After(latest.LastTransitionTime.Time) ||
+			(cond.LastTransitionTime.Equal(&latest.LastTransitionTime) &&
+				cond.Type == scheduling.PodGroupScheduled &&
+				latest.Type != scheduling.PodGroupScheduled) {
+			latest = cond
+		}
+	}
+	return latest
+}
+
 // ReadyTaskNum returns the number of tasks that are ready or that is best-effort.
 func (ji *JobInfo) ReadyTaskNum() int32 {
 	occupied := 0
@@ -1332,6 +1366,27 @@ func (ji *JobInfo) IsReady() bool {
 
 func (ji *JobInfo) IsPipelined() bool {
 	return ji.WaitingTaskNum()+ji.ReadyTaskNum()+ji.PendingBestEffortTaskNum() >= ji.MinAvailable
+}
+
+// IsGenuinelyUnschedulable reports whether this session produced real
+// scheduling-failure evidence for the job. NodesFitErrors are recorded by
+// allocate/backfill predicate failures and JobFitErrors by HyperNode
+// topology screening; both are cleared/refreshed each session. A pipelined
+// job can satisfy minAvailable once resources are released, which is a
+// wait rather than a failure, so it wins over stale fit errors.
+func (ji *JobInfo) IsGenuinelyUnschedulable() bool {
+	if ji.IsPipelined() {
+		return false
+	}
+	if ji.JobFitErrors != "" {
+		return true
+	}
+	for _, fe := range ji.NodesFitErrors {
+		if fe != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (ji *JobInfo) IsStarving() bool {

@@ -1785,21 +1785,25 @@ func (sc *SchedulerCache) String() string {
 
 // RecordJobStatusEvent records related events according to job status.
 func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updatePG bool) {
-	pgUnschedulable := job.PodGroup != nil &&
-		(job.PodGroup.Status.Phase == scheduling.PodGroupUnknown ||
-			job.PodGroup.Status.Phase == scheduling.PodGroupPending ||
-			job.PodGroup.Status.Phase == scheduling.PodGroupInqueue)
-
 	fitErrStr := job.FitError()
-	// If pending or unschedulable, record unschedulable event.
-	if pgUnschedulable {
+	// Decide the PodGroup event by the latest condition rather than the phase:
+	// an Inqueue job with no scheduling attempt has no condition at all and
+	// must stay silent (#4503). On timestamp ties LatestPodGroupCondition
+	// biases toward Scheduled, so a recovery is never reported as a failure.
+	// The Scheduled event keeps the updatePG gate because the updater calls
+	// this for every job each session, and phase/running-count changes also
+	// set updatePG.
+	latestCond := job.LatestPodGroupCondition(
+		scheduling.PodGroupScheduled, scheduling.PodGroupUnschedulableType)
+	switch {
+	case latestCond != nil && latestCond.Type == scheduling.PodGroupUnschedulableType:
 		msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 			len(job.TaskStatusIndex[schedulingapi.Pending]),
 			len(job.Tasks),
 			fitErrStr)
 		// TODO: should we skip pod unschedulable event if pod group is unschedulable due to gates to avoid printing too many messages?
 		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeWarning, string(scheduling.PodGroupUnschedulableType), msg)
-	} else if updatePG {
+	case latestCond != nil && latestCond.Type == scheduling.PodGroupScheduled && updatePG:
 		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupScheduled), string(scheduling.PodGroupReady))
 	}
 
