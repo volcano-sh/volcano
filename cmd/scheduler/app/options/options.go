@@ -106,6 +106,9 @@ type ServerOption struct {
 	JobUpdaterWorkerNum int
 	// TaskUpdaterWorkerNum is the number of workers updating tasks concurrently for each job.
 	TaskUpdaterWorkerNum int
+	// AsyncPodStatusUpdates publishes ordinary PodScheduled conditions in bounded background workers.
+	AsyncPodStatusUpdates   bool
+	AsyncPodStatusUpdateQPS float64
 
 	// GateRemovalWorkerNum is the number of async workers for scheduling gate removal.
 	// Only used when SchedulingGatesQueueAdmission feature gate is enabled.
@@ -212,6 +215,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.IntVar(&s.JobUpdaterWorkerNum, "job-updater-worker-num", defaultJobUpdaterWorkerNum, "The number of workers updating jobs concurrently.")
 	fs.IntVar(&s.TaskUpdaterWorkerNum, "task-updater-worker-num", defaultTaskUpdaterWorkerNum, "The number of workers updating tasks concurrently for each job.")
+	fs.BoolVar(&s.AsyncPodStatusUpdates, "async-pod-status-updates", false, "Publish ordinary PodScheduled conditions asynchronously; nomination and binding failures remain synchronous.")
+	fs.Float64Var(&s.AsyncPodStatusUpdateQPS, "async-pod-status-update-qps", 100, "Maximum background Pod status publication attempts per second; conflict retries also consume this budget.")
 	fs.IntVar(&s.GateRemovalWorkerNum, "gate-removal-worker-num", 5, "The number of async workers for scheduling gate removal (used when SchedulingGatesQueueAdmission is enabled).")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 	fs.DurationVar(&s.ResourceSyncTimeout, "resource-sync-timeout", defaultResourceSyncTimeout, "timeout on waiting for handler handling initial resources synchronization before starting scheduler, default is 60s, 0 skip waiting")
@@ -226,6 +231,9 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 
 // CheckOptionOrDie validates scheduler options.
 func (s *ServerOption) CheckOptionOrDie() error {
+	if s.AsyncPodStatusUpdates && !(s.AsyncPodStatusUpdateQPS > 0) {
+		return fmt.Errorf("async-pod-status-update-qps must be greater than 0")
+	}
 	if s.JobUpdaterWorkerNum <= 0 {
 		return fmt.Errorf("job-updater-worker-num must be greater than 0")
 	}

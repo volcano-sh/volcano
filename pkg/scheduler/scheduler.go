@@ -85,6 +85,9 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 
 	var unschedulableJobCache *unschedulable.JobCache
 	var cacheOptions []schedcache.Option
+	if opt.AsyncPodStatusUpdates {
+		cacheOptions = append(cacheOptions, schedcache.WithAsyncPodStatusUpdates(opt.AsyncPodStatusUpdateQPS))
+	}
 	if utilfeature.DefaultFeatureGate.Enabled(features.UnschedulableJobCache) {
 		unschedulableJobCache = unschedulable.NewJobCache(opt.UnschedulableJobCacheMaxSkipDuration)
 		cacheOptions = append(cacheOptions, schedcache.WithUnschedulableJobCache(unschedulableJobCache))
