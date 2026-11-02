@@ -55,7 +55,7 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 		return err
 	}
 
-	podGroups := c.getPodGroups(queue.Name)
+	podGroups := c.reconcilePodGroups(queue.Name)
 	queueStatus := schedulingv1beta1.QueueStatus{}
 
 	for _, pgKey := range podGroups {
@@ -152,7 +152,7 @@ func (c *queuecontroller) closeQueue(queue *schedulingv1beta1.Queue, updateState
 		}
 	}
 
-	podGroups := c.getPodGroups(queue.Name)
+	podGroups := c.reconcilePodGroups(queue.Name)
 	newQueue := queue.DeepCopy()
 	if updateStateFn != nil {
 		updateStateFn(&newQueue.Status, podGroups)
