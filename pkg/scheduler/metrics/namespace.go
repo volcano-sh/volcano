@@ -85,3 +85,17 @@ func UpdateNamespaceWeightedShare(namespaceName string, weightedShare float64) {
 func UpdateNamespaceDecayedUsage(namespaceName, queue, resource string, usage float64) {
 	namespaceDecayedUsage.WithLabelValues(namespaceName, queue, resource).Set(usage)
 }
+
+func DeleteNamespaceShare(namespaceName, queue, resource string) {
+	namespaceShare.DeleteLabelValues(namespaceName, queue, resource)
+}
+
+func DeleteNamespaceDecayedUsage(namespaceName, queue, resource string) {
+	namespaceDecayedUsage.DeleteLabelValues(namespaceName, queue, resource)
+}
+
+func deleteNamespaceQueueMetrics(queueName string) {
+	partialLabelMap := map[string]string{"queue": queueName}
+	namespaceShare.DeletePartialMatch(partialLabelMap)
+	namespaceDecayedUsage.DeletePartialMatch(partialLabelMap)
+}

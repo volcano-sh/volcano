@@ -335,6 +335,7 @@ func DeleteQueueMetrics(queueName string) {
 	queueRealCapacityScalarResource.DeletePartialMatch(partialLabelMap)
 	queueInqueueScalarResource.DeletePartialMatch(partialLabelMap)
 	queueTaskCount.DeletePartialMatch(partialLabelMap)
+	deleteNamespaceQueueMetrics(queueName)
 	knownScalarResourcesLock.Lock()
 	delete(knownScalarResources, queueName)
 	knownScalarResourcesLock.Unlock()
