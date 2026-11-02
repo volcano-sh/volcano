@@ -105,20 +105,24 @@ func Pods(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 
 // createPatch patch pod
 func createPatch(pod *v1.Pod) ([]byte, error) {
-	if config.ConfigData == nil {
-		klog.V(5).Infof("admission configuration is empty.")
-		return nil, nil
-	}
-
 	var patch []patchOperation
-	config.ConfigData.Lock()
-	defer config.ConfigData.Unlock()
 
 	// Add scheduling gates if opted-in
 	patchGates := patchSchedulingGates(pod)
 	if patchGates != nil {
 		patch = append(patch, *patchGates)
 	}
+
+	if config.ConfigData == nil {
+		klog.V(5).Infof("admission configuration is empty.")
+		if len(patch) == 0 {
+			return nil, nil
+		}
+		return json.Marshal(patch)
+	}
+
+	config.ConfigData.Lock()
+	defer config.ConfigData.Unlock()
 
 	for _, resourceGroup := range config.ConfigData.ResGroupsConfig {
 		klog.V(3).Infof("resourceGroup %s", resourceGroup.ResourceGroup)

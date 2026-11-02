@@ -53,7 +53,9 @@ type AdmissionConfiguration struct {
 
 var admissionConf AdmissionConfiguration
 
-// LoadAdmissionConf parse the configuration from config path
+// LoadAdmissionConf parse the configuration from config path.
+// It returns the shared configuration even if loading fails, so that a later
+// reload by WatchAdmissionConf takes effect without restarting.
 func LoadAdmissionConf(confPath string) *AdmissionConfiguration {
 	if confPath == "" {
 		return nil
@@ -62,13 +64,13 @@ func LoadAdmissionConf(confPath string) *AdmissionConfiguration {
 	configBytes, err := os.ReadFile(confPath)
 	if err != nil {
 		klog.Errorf("read admission file failed, err=%v", err)
-		return nil
+		return &admissionConf
 	}
 
 	data := AdmissionConfiguration{}
 	if err := yaml.Unmarshal(configBytes, &data); err != nil {
 		klog.Errorf("Unmarshal admission file failed, err=%v", err)
-		return nil
+		return &admissionConf
 	}
 
 	admissionConf.Lock()

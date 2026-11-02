@@ -23,7 +23,11 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/features"
 	webconfig "volcano.sh/volcano/pkg/webhooks/config"
 )
 
@@ -212,6 +216,71 @@ func TestMutatePods(t *testing.T) {
 			if !equality.Semantic.DeepEqual(patchBytes, expectBytes) {
 				t.Errorf("Test case '%s' failed, expect: %v, got: %v", testCase.Name,
 					expectBytes, patchBytes)
+			}
+		})
+	}
+}
+
+func TestCreatePatchSchedulingGates(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SchedulingGatesQueueAdmission, true)
+
+	originalConfig := config.ConfigData
+	t.Cleanup(func() { config.ConfigData = originalConfig })
+
+	gatedPod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "gated-pod",
+			Namespace:   "default",
+			Annotations: map[string]string{schedulingv1beta1.QueueAllocationGateKey: "true"},
+		},
+	}
+	plainPod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "plain-pod",
+			Namespace: "default",
+		},
+	}
+	gatePatch, _ := json.Marshal([]patchOperation{{
+		Op:    "add",
+		Path:  "/spec/schedulingGates",
+		Value: []v1.PodSchedulingGate{{Name: schedulingv1beta1.QueueAllocationGateKey}},
+	}})
+
+	testCases := []struct {
+		Name       string
+		ConfigData *webconfig.AdmissionConfiguration
+		Pod        *v1.Pod
+		expect     []byte
+	}{
+		{
+			Name:       "gate is added with empty admission config",
+			ConfigData: &webconfig.AdmissionConfiguration{},
+			Pod:        gatedPod,
+			expect:     gatePatch,
+		},
+		{
+			Name:       "gate is added without admission config",
+			ConfigData: nil,
+			Pod:        gatedPod,
+			expect:     gatePatch,
+		},
+		{
+			Name:       "no patch without admission config and opt-in annotation",
+			ConfigData: nil,
+			Pod:        plainPod,
+			expect:     nil,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			config.ConfigData = testCase.ConfigData
+			patchBytes, err := createPatch(testCase.Pod)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if string(patchBytes) != string(testCase.expect) {
+				t.Errorf("expect patch %s, got %s", testCase.expect, patchBytes)
 			}
 		})
 	}
