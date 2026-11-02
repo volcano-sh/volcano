@@ -73,6 +73,11 @@ func TestMutateQueues(t *testing.T) {
 		Path:  "/spec/reclaimable",
 		Value: &trueValue,
 	})
+	refreshPatch = append(refreshPatch, patchOperation{
+		Op:    "add",
+		Path:  "/spec/preemptable",
+		Value: &trueValue,
+	})
 
 	refreshPatchJSON, err := json.Marshal(refreshPatch)
 	if err != nil {
@@ -89,6 +94,7 @@ func TestMutateQueues(t *testing.T) {
 		},
 		Spec: schedulingv1beta1.QueueSpec{
 			Reclaimable: &trueValue,
+			Preemptable: &trueValue,
 			Weight:      1,
 		},
 		Status: schedulingv1beta1.QueueStatus{
