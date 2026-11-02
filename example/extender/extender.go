@@ -26,16 +26,19 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
 )
 
+const maxRequestBodySize int64 = 1 << 20 // 1 MiB
+
 var snapshot *api.ClusterInfo
 
 func onSessionOpen(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
+
 	content, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	r.Body.Close()
+	defer r.Body.Close()
 
 	req := &extender.OnSessionOpenRequest{}
 	if err := json.Unmarshal(content, req); err != nil {
@@ -58,13 +61,14 @@ func onSessionClose(w http.ResponseWriter, r *http.Request) {
 }
 
 func predicate(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
+
 	content, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	r.Body.Close()
+	defer r.Body.Close()
 
 	req := &extender.PredicateRequest{}
 	if err := json.Unmarshal(content, req); err != nil || req.Task == nil || req.Node == nil {
@@ -89,13 +93,14 @@ func predicate(w http.ResponseWriter, r *http.Request) {
 }
 
 func prioritize(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
+
 	content, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	r.Body.Close()
+	defer r.Body.Close()
 
 	req := &extender.PrioritizeRequest{}
 	if err := json.Unmarshal(content, req); err != nil || req.Task == nil || len(req.Nodes) == 0 {
