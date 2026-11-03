@@ -43,7 +43,7 @@ type tensorflowPlugin struct {
 	tfArguments   []string
 	Clientset     pluginsinterface.PluginClientset
 	psName        string
-	workerName    string
+	workerNames   []string
 	chiefName     string
 	evaluatorName string
 	port          int
@@ -57,15 +57,47 @@ func New(client pluginsinterface.PluginClientset, arguments []string) pluginsint
 }
 
 func (tp *tensorflowPlugin) addFlags() {
+	worker := ""
+	workers := ""
 	flagSet := flag.NewFlagSet(tp.Name(), flag.ContinueOnError)
 	flagSet.StringVar(&tp.psName, "ps", "ps", "name of ps role task")
-	flagSet.StringVar(&tp.workerName, "worker", "worker", "name of ps role task")
+	flagSet.StringVar(&worker, "worker", "", "name of worker role task, defaults to worker")
+	flagSet.StringVar(&workers, "workers", "", "comma separated list of worker role task names, takes precedence over worker when set")
 	flagSet.StringVar(&tp.chiefName, "chief", "chief", "name of chief role task")
 	flagSet.StringVar(&tp.evaluatorName, "evaluator", "evaluator", "name of evaluator role task")
 	flagSet.IntVar(&tp.port, "port", DefaultPort, "service port")
 	if err := flagSet.Parse(tp.tfArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", tp.Name(), err)
 	}
+	tp.workerNames = jobhelpers.ResolveWorkerNames(worker, workers)
+	if len(tp.workerNames) == 0 {
+		tp.workerNames = []string{"worker"}
+	}
+}
+
+func (tp *tensorflowPlugin) isWorkerTask(taskName string) bool {
+	for _, workerName := range tp.workerNames {
+		if workerName == taskName {
+			return true
+		}
+	}
+	return false
+}
+
+// getWorkerIndexBase returns the index base of the given worker task, which is
+// the total replicas of all worker tasks listed before it in the worker
+// argument. Indices of pods in the task are the base plus their own pod
+// index, so indices stay unique across worker tasks and match their position
+// in the cluster worker host list.
+func (tp *tensorflowPlugin) getWorkerIndexBase(taskName string, job *batch.Job) int {
+	base := 0
+	for _, workerName := range tp.workerNames {
+		if workerName == taskName {
+			break
+		}
+		base += int(jobhelpers.GetTaskReplicasUnderJob(workerName, job))
+	}
+	return base
 }
 
 func (tp *tensorflowPlugin) Name() string {
@@ -120,15 +152,19 @@ func (tp *tensorflowPlugin) OnJobUpdate(job *batch.Job) error {
 }
 
 func (tp *tensorflowPlugin) generateTFClusterSpec(pod *v1.Pod, job *batch.Job) (tfClusterSpec, error) {
+	taskType := jobhelpers.GetTaskKey(pod)
 	index, err := strconv.Atoi(jobhelpers.GetPodIndexUnderTask(pod))
 	if err != nil {
 		return tfClusterSpec{}, err
+	}
+	if tp.isWorkerTask(taskType) {
+		index += tp.getWorkerIndexBase(taskType, job)
 	}
 
 	// Generate tensorflow task info
 	c := tfClusterSpec{
 		Task: taskInfo{
-			Type:  tp.getTaskType(jobhelpers.GetTaskKey(pod)),
+			Type:  tp.getTaskType(taskType),
 			Index: index,
 		},
 	}
@@ -142,12 +178,22 @@ func (tp *tensorflowPlugin) generateTFClusterSpec(pod *v1.Pod, job *batch.Job) (
 		switch ts.Name {
 		case tp.psName:
 			c.Cluster.PS = hosts
-		case tp.workerName:
-			c.Cluster.Worker = hosts
 		case tp.chiefName:
 			c.Cluster.Chief = hosts
 		case tp.evaluatorName:
 			c.Cluster.Evaluator = hosts
+		}
+	}
+	// Worker hosts are appended in the order of the worker argument so each
+	// host position matches the global worker index generated above.
+	for _, workerName := range tp.workerNames {
+		taskIndex := jobhelpers.GetTaskIndexUnderJob(workerName, job)
+		if taskIndex == -1 {
+			continue
+		}
+		ts := job.Spec.Tasks[taskIndex]
+		for i := 0; i < int(ts.Replicas); i++ {
+			c.Cluster.Worker = append(c.Cluster.Worker, fmt.Sprintf("%s:%d", jobhelpers.MakeDomainName(ts, job, i), tp.port))
 		}
 	}
 	return c, nil
@@ -157,12 +203,13 @@ func (tp *tensorflowPlugin) getTaskType(taskKey string) tfTaskType {
 	switch taskKey {
 	case tp.chiefName:
 		return tfChief
-	case tp.workerName:
-		return tfWorker
 	case tp.psName:
 		return tfPS
 	case tp.evaluatorName:
 		return tfEvaluator
+	}
+	if tp.isWorkerTask(taskKey) {
+		return tfWorker
 	}
 	return tfTaskType(taskKey)
 }
