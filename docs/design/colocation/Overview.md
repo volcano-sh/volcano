@@ -403,7 +403,7 @@ enable filed value true means enable dynamic resource oversubscription, false me
 
 ```json
 "overSubscriptionConfig":{
-   "enable": true,
+   "enable": true
 }
 ```
 
@@ -411,7 +411,7 @@ enable filed value true means enable network bandwidth isolation, false means di
 
 ```json
 "networkQosConfig":{
-   "enable": true,
+   "enable": true
 }
 ```
 
