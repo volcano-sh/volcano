@@ -46,7 +46,7 @@ type hcclrankPlugin struct {
 	hcclrankArguments []string
 	clientset         pluginsinterface.PluginClientset
 	masterName        string
-	workerName        string
+	workerNames       []string
 }
 
 // New creates hcclrank plugin.
@@ -57,16 +57,46 @@ func New(client pluginsinterface.PluginClientset, arguments []string) pluginsint
 }
 
 func (hp *hcclrankPlugin) addFlags() {
+	worker := ""
+	workers := ""
 	flagSet := flag.NewFlagSet(hp.Name(), flag.ContinueOnError)
 	flagSet.StringVar(&hp.masterName, "master", DefaultMaster, "name of master role task")
-	flagSet.StringVar(&hp.workerName, "worker", DefaultWorker, "name of worker role task")
+	flagSet.StringVar(&worker, "worker", "", "name of worker role task, defaults to "+DefaultWorker)
+	flagSet.StringVar(&workers, "workers", "", "comma separated list of worker role task names, takes precedence over worker when set")
 	if err := flagSet.Parse(hp.hcclrankArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", hp.Name(), err)
+	}
+	hp.workerNames = helpers.ResolveWorkerNames(worker, workers)
+	if len(hp.workerNames) == 0 {
+		hp.workerNames = []string{DefaultWorker}
 	}
 }
 
 func (hp *hcclrankPlugin) Name() string {
 	return HCCLRankPluginName
+}
+
+func (hp *hcclrankPlugin) isWorkerTask(taskName string) bool {
+	for _, workerName := range hp.workerNames {
+		if workerName == taskName {
+			return true
+		}
+	}
+	return false
+}
+
+// getWorkerRankBase returns the rank base of the given worker task, which is
+// the total replicas of all worker tasks listed before it in the worker
+// argument, so ranks stay unique across worker tasks.
+func (hp *hcclrankPlugin) getWorkerRankBase(taskName string, job *batch.Job) int {
+	base := 0
+	for _, workerName := range hp.workerNames {
+		if workerName == taskName {
+			break
+		}
+		base += int(helpers.GetTaskReplicasUnderJob(workerName, job))
+	}
+	return base
 }
 
 func getEnv(pod *v1.Pod, envName string) string {
@@ -97,7 +127,8 @@ func (hp *hcclrankPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	}
 
 	taskType := helpers.GetTaskKey(pod)
-	if taskType != hp.masterName && taskType != hp.workerName {
+	isWorker := hp.isWorkerTask(taskType)
+	if taskType != hp.masterName && !isWorker {
 		return nil
 	}
 
@@ -112,8 +143,9 @@ func (hp *hcclrankPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 		hcclRank = strconv.Itoa(taskIndex)
 	} else {
 		masterReplicas := helpers.GetTaskReplicasUnderJob(hp.masterName, job)
-		// Calculate rank: master replicas + pod index
-		rank := int(masterReplicas) + taskIndex
+		// Calculate rank: master replicas + replicas of worker tasks listed
+		// before this one + pod index, keeping ranks unique across tasks.
+		rank := int(masterReplicas) + hp.getWorkerRankBase(taskType, job) + taskIndex
 		hcclRank = strconv.Itoa(rank)
 	}
 

@@ -46,7 +46,7 @@ type Plugin struct {
 	mpiArguments []string
 	clientset    pluginsinterface.PluginClientset
 	masterName   string
-	workerName   string
+	workerNames  []string
 	port         int
 }
 
@@ -64,12 +64,19 @@ func NewInstance(arguments []string) Plugin {
 }
 
 func (mp *Plugin) addFlags() {
+	worker := ""
+	workers := ""
 	flagSet := flag.NewFlagSet(mp.Name(), flag.ContinueOnError)
 	flagSet.StringVar(&mp.masterName, "master", DefaultMaster, "name of master role task")
-	flagSet.StringVar(&mp.workerName, "worker", DefaultWorker, "name of worker role task")
+	flagSet.StringVar(&worker, "worker", "", "name of worker role task, defaults to "+DefaultWorker)
+	flagSet.StringVar(&workers, "workers", "", "comma separated list of worker role task names, takes precedence over worker when set")
 	flagSet.IntVar(&mp.port, "port", DefaultPort, "open port for containers")
 	if err := flagSet.Parse(mp.mpiArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", mp.Name(), err)
+	}
+	mp.workerNames = helpers.ResolveWorkerNames(worker, workers)
+	if len(mp.workerNames) == 0 {
+		mp.workerNames = []string{DefaultWorker}
 	}
 }
 
@@ -79,17 +86,29 @@ func (mp *Plugin) Name() string {
 
 func (mp *Plugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	isMaster := false
-	workerHosts := ""
+	workerHosts := []string{}
 	env := v1.EnvVar{}
 	if helpers.GetTaskKey(pod) == mp.masterName {
-		taskIndex := helpers.GetTaskIndexUnderJob(mp.workerName, job)
-		if taskIndex == -1 {
+		workerFound := false
+		// Worker hosts are collected in the order of the worker argument.
+		for _, workerName := range mp.workerNames {
+			taskIndex := helpers.GetTaskIndexUnderJob(workerName, job)
+			if taskIndex == -1 {
+				klog.Warningf("job %s/%s doesn't have worker task %s", job.Namespace, job.Name, workerName)
+				continue
+			}
+			workerFound = true
+			if hosts := mp.generateTaskHosts(job.Spec.Tasks[taskIndex], job.Name); hosts != "" {
+				workerHosts = append(workerHosts, hosts)
+			}
+		}
+		if !workerFound {
 			return nil
 		}
-		workerHosts = mp.generateTaskHosts(job.Spec.Tasks[taskIndex], job.Name)
+
 		env = v1.EnvVar{
 			Name:  MPIHost,
-			Value: workerHosts,
+			Value: strings.Join(workerHosts, ","),
 		}
 
 		isMaster = true
@@ -193,8 +212,8 @@ func (mp *Plugin) GetMasterName() string {
 	return mp.masterName
 }
 
-func (mp *Plugin) GetWorkerName() string {
-	return mp.workerName
+func (mp *Plugin) GetWorkerNames() []string {
+	return mp.workerNames
 }
 
 func (mp *Plugin) GetMpiArguments() []string {

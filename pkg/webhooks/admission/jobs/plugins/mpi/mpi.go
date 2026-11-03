@@ -32,8 +32,18 @@ func AddDependsOn(job *v1alpha1.Job) {
 		return
 	}
 	if job.Spec.Tasks[masterIndex].DependsOn == nil {
-		job.Spec.Tasks[masterIndex].DependsOn = &v1alpha1.DependsOn{
-			Name: []string{mp.GetWorkerName()},
+		workerNames := []string{}
+		for _, workerName := range mp.GetWorkerNames() {
+			// Only depend on tasks that actually exist in the job,
+			// otherwise the depends-on check would index out of range.
+			if helpers.GetTaskIndexUnderJob(workerName, job) != -1 {
+				workerNames = append(workerNames, workerName)
+			}
+		}
+		if len(workerNames) > 0 {
+			job.Spec.Tasks[masterIndex].DependsOn = &v1alpha1.DependsOn{
+				Name: workerNames,
+			}
 		}
 	}
 }
