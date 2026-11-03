@@ -653,6 +653,59 @@ func TestGuaranteeDoesNotInflateSatisfiedShare(t *testing.T) {
 	}
 }
 
+func TestOnSessionOpenMultipleGuarantees(t *testing.T) {
+	tests := []struct {
+		name       string
+		guarantees [3]string
+		wantCPU    [3]float64
+	}{
+		{
+			name:       "covered guarantee stays in the weighted pool",
+			guarantees: [3]string{"24", "16", "0"},
+			wantCPU:    [3]float64{24000, 18000, 18000},
+		},
+		{
+			name:       "reservation requires another pass",
+			guarantees: [3]string{"30", "18", "0"},
+			wantCPU:    [3]float64{30000, 18000, 12000},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := uthelper.TestCommonStruct{
+				Nodes: []*apiv1.Node{util.BuildNode("n1", api.BuildResourceList("60", "60Gi"), nil)},
+			}
+			for i, name := range []string{"qa", "qb", "qc"} {
+				queue := util.BuildQueue(name, 1, nil)
+				queue.Spec.Guarantee.Resource = api.BuildResourceList(tt.guarantees[i], tt.guarantees[i]+"Gi")
+				fixture.Queues = append(fixture.Queues, queue)
+				fixture.PodGroups = append(fixture.PodGroups, util.BuildPodGroup(name, "ns1", name, 1, nil, schedulingv1beta1.PodGroupInqueue))
+				fixture.Pods = append(fixture.Pods, util.BuildPod("ns1", name, "", apiv1.PodPending, api.BuildResourceList("60", "60Gi"), name, nil, nil))
+			}
+			ssn := fixture.RegisterSession(nil, nil)
+			defer fixture.Close()
+
+			// Go map traversal is randomized. Recreate the plugin 128 times to
+			// exercise different queue orders without adding an ordering hook to
+			// production code. Every iteration must produce the same deserved values.
+			for iteration := 0; iteration < 128; iteration++ {
+				plugin := New(nil).(*proportionPlugin)
+				plugin.OnSessionOpen(ssn)
+				for i, queue := range fixture.Queues {
+					attr := plugin.queueOpts[api.QueueID(queue.Name)]
+					if attr == nil {
+						t.Fatalf("queue %s missing from session", queue.Name)
+					}
+					if attr.deserved.MilliCPU != tt.wantCPU[i] {
+						t.Fatalf("iteration %d: queue %s deserved CPU = %v, want %v", iteration, queue.Name, attr.deserved.MilliCPU, tt.wantCPU[i])
+					}
+				}
+				plugin.OnSessionClose(ssn)
+			}
+		})
+	}
+}
+
 // TestNoDoubleCountingForInqueueJobWithBindingTasks is a regression test for the bug where
 // the proportion plugin double-counts queue resources for jobs whose tasks are in Allocated/Binding
 // state while their PodGroup is still in Inqueue phase.

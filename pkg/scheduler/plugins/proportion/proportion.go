@@ -222,6 +222,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		if totalWeight == 0 {
 			break
 		}
+		// Keep the resource pool consistent with totalWeight throughout this pass.
+		passRemaining := remaining.Clone()
 		pinnedGuarantee := false
 		for _, attr := range pp.queueOpts {
 			if _, found := meet[attr.queueID]; found {
@@ -230,7 +232,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			if attr.guarantee.IsEmpty() {
 				continue
 			}
-			share := remaining.Clone().Multi(float64(attr.weight) / float64(totalWeight))
+			share := passRemaining.Clone().Multi(float64(attr.weight) / float64(totalWeight))
 			if attr.guarantee.LessEqual(share, api.Zero) {
 				continue
 			}
