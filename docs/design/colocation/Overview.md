@@ -391,7 +391,7 @@ The configMap `volcano-agent-configuration` of namespace  `volcano-system` by de
 
 Every colocation feature CPU burst/Dynamic resource oversubscription/Network bandwidth isolation has a separate switch, you can enable/disable each of them by modify configMap `volcano-agent-configuration` of namespace,
 
-enable filed value true means enable CPU burst, false means disable it.
+enable field value true means enable CPU burst, false means disable it.
 
 ```json
 "cpuBurstConfig":{
@@ -399,19 +399,19 @@ enable filed value true means enable CPU burst, false means disable it.
 }
 ```
 
-enable filed value true means enable dynamic resource oversubscription, false means disable it.
+enable field value true means enable dynamic resource oversubscription, false means disable it.
 
 ```json
 "overSubscriptionConfig":{
-   "enable": true,
+   "enable": true
 }
 ```
 
-enable filed value true means enable network bandwidth isolation, false means disable it.
+enable field value true means enable network bandwidth isolation, false means disable it.
 
 ```json
 "networkQosConfig":{
-   "enable": true,
+   "enable": true
 }
 ```
 
@@ -430,7 +430,7 @@ The oversubscription resources computation and offline workloads eviction only t
 
 To avoid excessive pressure on nodes, volcano agent set an oversubscription ratio to determine the ratio of idle resource oversubscription, you can change the parameters by set flag `--oversubscription-ratio`, default value is 60, which means 60% of idle resources will be oversold, if you set `--oversubscription-ratio=100`, it means all idle resources will be oversold.
 
-Volcano agent will evict offline workloads when nodes have pressure, and the eviction threshold can be configured by configMap volcano-agent-configuration, `"evictingCPUHighWatermark":80` means eviction will happed when node's cpu utilization is beyond 80% in a period of time, and current node can not schedule new pods when eviction is happening, and `"evictingCPULowWatermark":30` means node will recover schedule when node's cpu utilization is below 30%, `evictingMemoryHighWatermark` and `evictingMemoryLowWatermark` has the same meaning but for memory resource.
+Volcano agent will evict offline workloads when nodes have pressure, and the eviction threshold can be configured by configMap volcano-agent-configuration, `"evictingCPUHighWatermark":80` means eviction will happen when node's cpu utilization is beyond 80% in a period of time, and current node can not schedule new pods when eviction is happening, and `"evictingCPULowWatermark":30` means node will recover schedule when node's cpu utilization is below 30%, `evictingMemoryHighWatermark` and `evictingMemoryLowWatermark` has the same meaning but for memory resource.
 
 ```json
 "evictingConfig":{
