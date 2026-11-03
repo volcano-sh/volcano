@@ -212,12 +212,28 @@ func TestEventHandler(t *testing.T) {
 	}
 
 	// pending pods
-	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodPending, api.BuildResourceList("3", "3k"), "pg1", map[string]string{"role": "worker"}, map[string]string{"selector": "worker"})
-	w2 := util.BuildPod("ns1", "worker-2", "", apiv1.PodPending, api.BuildResourceList("5", "5k"), "pg1", map[string]string{"role": "worker"}, map[string]string{})
-	w3 := util.BuildPod("ns1", "worker-3", "", apiv1.PodPending, api.BuildResourceList("4", "4k"), "pg2", map[string]string{"role": "worker"}, map[string]string{})
-	w1.Spec.Affinity = getWorkerAffinity()
-	w2.Spec.Affinity = getWorkerAffinity()
-	w3.Spec.Affinity = getWorkerAffinity()
+	w1 := util.MakePod("ns1", "worker-1").
+		Phase(apiv1.PodPending).
+		Resource(api.BuildResourceList("3", "3k")).
+		PodGroup("pg1").
+		Labels(map[string]string{"role": "worker"}).
+		NodeSelector(map[string]string{"selector": "worker"}).
+		Affinity(getWorkerAffinity()).
+		Obj()
+	w2 := util.MakePod("ns1", "worker-2").
+		Phase(apiv1.PodPending).
+		Resource(api.BuildResourceList("5", "5k")).
+		PodGroup("pg1").
+		Labels(map[string]string{"role": "worker"}).
+		Affinity(getWorkerAffinity()).
+		Obj()
+	w3 := util.MakePod("ns1", "worker-3").
+		Phase(apiv1.PodPending).
+		Resource(api.BuildResourceList("4", "4k")).
+		PodGroup("pg2").
+		Labels(map[string]string{"role": "worker"}).
+		Affinity(getWorkerAffinity()).
+		Obj()
 
 	// nodes
 	n1 := util.BuildNode("node1", api.BuildResourceList("14", "14k", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"selector": "worker"})
@@ -229,8 +245,18 @@ func TestEventHandler(t *testing.T) {
 	p1 := &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: "p1"}, Value: 1}
 	p2 := &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: "p2"}, Value: 2}
 	// podgroup
-	pg1 := util.BuildPodGroupWithPrio("pg1", "ns1", "q1", 2, nil, schedulingv1beta1.PodGroupInqueue, p2.Name)
-	pg2 := util.BuildPodGroupWithPrio("pg2", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, p1.Name)
+	pg1 := util.MakePodGroup("ns1", "pg1").
+		Queue("q1").
+		MinMember(2).
+		Phase(schedulingv1beta1.PodGroupInqueue).
+		PriorityClassName(p2.Name).
+		Obj()
+	pg2 := util.MakePodGroup("ns1", "pg2").
+		Queue("q1").
+		MinMember(1).
+		Phase(schedulingv1beta1.PodGroupInqueue).
+		PriorityClassName(p1.Name).
+		Obj()
 
 	// queue
 	queue1 := util.BuildQueue("q1", 0, nil)
@@ -292,9 +318,22 @@ func TestNodeNum(t *testing.T) {
 	}
 
 	// pending pods
-	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodPending, nil, "pg1", map[string]string{"role": "worker"}, map[string]string{"selector": "worker"})
-	w2 := util.BuildPod("ns1", "worker-2", "", apiv1.PodPending, nil, "pg1", map[string]string{"role": "worker"}, map[string]string{})
-	w3 := util.BuildPod("ns1", "worker-3", "", apiv1.PodPending, nil, "pg2", map[string]string{"role": "worker"}, map[string]string{})
+	w1 := util.MakePod("ns1", "worker-1").
+		Phase(apiv1.PodPending).
+		PodGroup("pg1").
+		Labels(map[string]string{"role": "worker"}).
+		NodeSelector(map[string]string{"selector": "worker"}).
+		Obj()
+	w2 := util.MakePod("ns1", "worker-2").
+		Phase(apiv1.PodPending).
+		PodGroup("pg1").
+		Labels(map[string]string{"role": "worker"}).
+		Obj()
+	w3 := util.MakePod("ns1", "worker-3").
+		Phase(apiv1.PodPending).
+		PodGroup("pg2").
+		Labels(map[string]string{"role": "worker"}).
+		Obj()
 
 	// nodes
 	n1 := util.BuildNode("node1", api.BuildResourceList("4", "4k", []api.ScalarResource{{Name: "pods", Value: "2"}}...), map[string]string{"selector": "worker"})
@@ -304,8 +343,18 @@ func TestNodeNum(t *testing.T) {
 	p2 := &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: "p2"}, Value: 2}
 
 	// podgroup
-	pg1 := util.BuildPodGroupWithPrio("pg1", "ns1", "q1", 2, nil, schedulingv1beta1.PodGroupInqueue, p2.Name)
-	pg2 := util.BuildPodGroupWithPrio("pg2", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, p1.Name)
+	pg1 := util.MakePodGroup("ns1", "pg1").
+		Queue("q1").
+		MinMember(2).
+		Phase(schedulingv1beta1.PodGroupInqueue).
+		PriorityClassName(p2.Name).
+		Obj()
+	pg2 := util.MakePodGroup("ns1", "pg2").
+		Queue("q1").
+		MinMember(1).
+		Phase(schedulingv1beta1.PodGroupInqueue).
+		PriorityClassName(p1.Name).
+		Obj()
 
 	// queue
 	queue1 := util.BuildQueue("q1", 0, nil)
@@ -361,19 +410,47 @@ func TestPodAntiAffinity(t *testing.T) {
 	highPrio := util.BuildPriorityClass("high-priority", 100000)
 	lowPrio := util.BuildPriorityClass("low-priority", 10)
 
-	w1 := util.BuildPodWithPriority("ns1", "worker-1", "n1", apiv1.PodRunning, api.BuildResourceList("3", "3G"), "pg1", map[string]string{"role": "worker"}, map[string]string{}, &highPrio.Value)
-	w2 := util.BuildPodWithPriority("ns1", "worker-2", "n1", apiv1.PodRunning, api.BuildResourceList("3", "3G"), "pg1", map[string]string{}, map[string]string{}, &lowPrio.Value)
-	w3 := util.BuildPodWithPriority("ns1", "worker-3", "", apiv1.PodPending, api.BuildResourceList("3", "3G"), "pg2", map[string]string{"role": "worker"}, map[string]string{}, &highPrio.Value)
-	w1.Spec.Affinity = getWorkerAffinity()
-	w3.Spec.Affinity = getWorkerAffinity()
+	w1 := util.MakePod("ns1", "worker-1").
+		Node("n1").
+		Phase(apiv1.PodRunning).
+		Resource(api.BuildResourceList("3", "3G")).
+		PodGroup("pg1").
+		Labels(map[string]string{"role": "worker"}).
+		Priority(&highPrio.Value).
+		Affinity(getWorkerAffinity()).
+		Obj()
+	w2 := util.MakePod("ns1", "worker-2").
+		Node("n1").
+		Phase(apiv1.PodRunning).
+		Resource(api.BuildResourceList("3", "3G")).
+		PodGroup("pg1").
+		Priority(&lowPrio.Value).
+		Obj()
+	w3 := util.MakePod("ns1", "worker-3").
+		Phase(apiv1.PodPending).
+		Resource(api.BuildResourceList("3", "3G")).
+		PodGroup("pg2").
+		Labels(map[string]string{"role": "worker"}).
+		Priority(&highPrio.Value).
+		Affinity(getWorkerAffinity()).
+		Obj()
 
 	// nodes
 	n1 := util.BuildNode("n1", api.BuildResourceList("12", "12G", []api.ScalarResource{{Name: "pods", Value: "2"}}...), map[string]string{})
 	n1.Labels["kubernetes.io/hostname"] = "node1"
 
 	// podgroup
-	pg1 := util.BuildPodGroupWithPrio("pg1", "ns1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, lowPrio.Name)
-	pg2 := util.BuildPodGroupWithPrio("pg2", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, highPrio.Name)
+	pg1 := util.MakePodGroup("ns1", "pg1").
+		Queue("q1").
+		Phase(schedulingv1beta1.PodGroupRunning).
+		PriorityClassName(lowPrio.Name).
+		Obj()
+	pg2 := util.MakePodGroup("ns1", "pg2").
+		Queue("q1").
+		MinMember(1).
+		Phase(schedulingv1beta1.PodGroupInqueue).
+		PriorityClassName(highPrio.Name).
+		Obj()
 
 	// queue
 	queue1 := util.BuildQueue("q1", 0, api.BuildResourceList("9", "9G"))
@@ -869,7 +946,7 @@ func TestPredicateFailureReasonAggregationOrderStable(t *testing.T) {
 	k8sNodeInfo.SetNode(node)
 	pp.Handle = k8s.NewFramework(map[string]k8sframework.NodeInfo{"node-1": k8sNodeInfo})
 
-	task := api.NewTaskInfo(util.BuildPod("ns", "p1", "", apiv1.PodPending, nil, "pg", nil, nil))
+	task := api.NewTaskInfo(util.MakePod("ns", "p1").Phase(apiv1.PodPending).PodGroup("pg").Obj())
 	volcanoNode := api.NewNodeInfo(node)
 
 	expected := []string{
@@ -927,7 +1004,7 @@ func TestPredicateByStablefilterSkipsPluginInSkipSet(t *testing.T) {
 	k8sNodeInfo.SetNode(node)
 	pp.Handle = k8s.NewFramework(map[string]k8sframework.NodeInfo{"node-1": k8sNodeInfo})
 
-	task := api.NewTaskInfo(util.BuildPod("ns", "p1", "", apiv1.PodPending, nil, "pg", nil, nil))
+	task := api.NewTaskInfo(util.MakePod("ns", "p1").Phase(apiv1.PodPending).PodGroup("pg").Obj())
 	volcanoNode := api.NewNodeInfo(node)
 
 	// Populate the skip set to simulate nodeaffinity.PreFilter returning Skip.
@@ -959,8 +1036,7 @@ func TestReserveRollbackOrderStable(t *testing.T) {
 	}
 	pp.ReserveOrder = []string{volumebinding.Name, dynamicresources.Name}
 
-	pod := util.BuildPod("ns", "p1", "", apiv1.PodPending, nil, "pg", nil, nil)
-	pod.Spec.NodeName = "node-1"
+	pod := util.MakePod("ns", "p1").Phase(apiv1.PodPending).PodGroup("pg").Node("node-1").Obj()
 	pod.Spec.Volumes = []apiv1.Volume{
 		{
 			Name: "pvc-vol",
@@ -1011,7 +1087,11 @@ func TestNodeDeclaredFeatures(t *testing.T) {
 	}
 
 	// The pod requires RestartAllContainersOnContainerExits because of its RestartAllContainers rule.
-	pod := util.BuildPod("ns1", "p1", "", apiv1.PodPending, api.BuildResourceList("1", "1G"), "pg1", nil, nil)
+	pod := util.MakePod("ns1", "p1").
+		Phase(apiv1.PodPending).
+		Resource(api.BuildResourceList("1", "1G")).
+		PodGroup("pg1").
+		Obj()
 	pod.Spec.Containers[0].RestartPolicyRules = []apiv1.ContainerRestartRule{{
 		Action: apiv1.ContainerRestartRuleActionRestartAllContainers,
 		ExitCodes: &apiv1.ContainerRestartRuleOnExitCodes{
@@ -1053,7 +1133,7 @@ func TestNodeDeclaredFeatures(t *testing.T) {
 					Plugins:        plugins,
 					Pods:           []*apiv1.Pod{pod.DeepCopy()},
 					Nodes:          nodes,
-					PodGroups:      []*schedulingv1beta1.PodGroup{util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue)},
+					PodGroups:      []*schedulingv1beta1.PodGroup{util.MakePodGroup("ns1", "pg1").Queue("q1").MinMember(1).Phase(schedulingv1beta1.PodGroupInqueue).Obj()},
 					Queues:         []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, nil)},
 					ExpectBindMap:  expectBindMap,
 					ExpectBindsNum: len(expectBindMap),
