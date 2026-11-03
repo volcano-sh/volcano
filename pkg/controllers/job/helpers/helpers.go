@@ -25,6 +25,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
@@ -125,6 +126,53 @@ func GenPVCName(jobName string) string {
 // GetJobKeyByReq gets the key for the job request.
 func GetJobKeyByReq(req *apis.Request) string {
 	return fmt.Sprintf("%s/%s", req.Namespace, req.JobName)
+}
+
+// SplitTaskNames splits a comma separated task name list into a slice,
+// keeping the original order and dropping empty entries.
+func SplitTaskNames(value string) []string {
+	names := strings.Split(value, ",")
+	res := make([]string, 0, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			res = append(res, name)
+		}
+	}
+	return res
+}
+
+// ResolveWorkerNames resolves the effective worker task name list from the
+// single-name "worker" flag and the comma separated "workers" flag: when
+// "workers" is set it takes precedence over "worker", and an empty result
+// means the caller should fall back to its default worker task name.
+// Duplicate names are dropped keeping the first occurrence, so rank offsets
+// and host lists never count a task twice.
+func ResolveWorkerNames(worker, workers string) []string {
+	var names []string
+	switch {
+	case workers != "":
+		if worker != "" {
+			klog.Warningf("both worker and workers flags are set, workers takes precedence: %s", workers)
+		}
+		names = SplitTaskNames(workers)
+	case worker != "":
+		names = SplitTaskNames(worker)
+	default:
+		return nil
+	}
+
+	res := make([]string, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		if _, duplicated := seen[name]; duplicated {
+			klog.Warningf("duplicated worker task name %s is ignored", name)
+			continue
+		}
+		seen[name] = struct{}{}
+		res = append(res, name)
+	}
+	return res
 }
 
 // GetTaskIndexUnderJob return index of the task in the job.
