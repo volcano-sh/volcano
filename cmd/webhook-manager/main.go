@@ -25,13 +25,13 @@ import (
 	"go.uber.org/automaxprocs/maxprocs"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/cmd/webhook-manager/app"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
 	_ "volcano.sh/volcano/pkg/features"
+	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/version"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/cronjobs/validate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/hypernodes/validate"
@@ -59,7 +59,7 @@ func main() {
 
 	config := options.NewConfig()
 	config.AddFlags(pflag.CommandLine)
-	utilfeature.DefaultMutableFeatureGate.AddFlag(pflag.CommandLine)
+	commonutil.AddFeatureGatesFlag(pflag.CommandLine, &config.FeatureGates)
 
 	cliflag.InitFlags()
 

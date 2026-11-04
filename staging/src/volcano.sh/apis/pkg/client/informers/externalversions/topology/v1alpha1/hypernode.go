@@ -33,11 +33,39 @@ import (
 )
 
 // HyperNodeInformer provides access to a shared informer and lister for
-// HyperNodes.
+// HyperNodes. Prefer using the type-safe variant (see [TypedHyperNodeInformer]).
 type HyperNodeInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() topologyv1alpha1.HyperNodeLister
 }
+
+// TypedHyperNodeInformer provides access to a shared informer and lister for
+// HyperNodes, including the type-safe TypedInformer variant.
+// It is a superset of HyperNodeInformer.
+type TypedHyperNodeInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() HyperNodeIndexInformer
+	Lister() topologyv1alpha1.HyperNodeLister
+}
+
+// HyperNodeIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type HyperNodeIndexInformer cache.TypedSharedIndexInformer[*apistopologyv1alpha1.HyperNode]
+
+// HyperNodeHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for HyperNode.
+type HyperNodeHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apistopologyv1alpha1.HyperNode]
+
+// HyperNodeDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for HyperNode.
+type HyperNodeDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apistopologyv1alpha1.HyperNode]
+
+// HyperNodeFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for HyperNode.
+type HyperNodeFilteringHandler = cache.TypedFilteringResourceEventHandler[*apistopologyv1alpha1.HyperNode]
+
+// HyperNodeIndexers is a specialization of [cache.TypedIndexers] for HyperNode.
+type HyperNodeIndexers = cache.TypedIndexers[*apistopologyv1alpha1.HyperNode]
+
+// DeletedHyperNode is a specialization of [cache.DeletedObject] for HyperNode.
+type DeletedHyperNode = cache.DeletedObject[*apistopologyv1alpha1.HyperNode]
 
 type hyperNodeInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -47,25 +75,49 @@ type hyperNodeInformer struct {
 // NewHyperNodeInformer constructs a new informer for HyperNode type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedHyperNodeInformer]).
 func NewHyperNodeInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewHyperNodeInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedHyperNodeInformer constructs a new informer for HyperNode type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedHyperNodeInformer(client versioned.Interface, resyncPeriod time.Duration, indexers HyperNodeIndexers) HyperNodeIndexInformer {
+	return NewTypedHyperNodeInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredHyperNodeInformer constructs a new informer for HyperNode type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredHyperNodeInformer]).
 func NewFilteredHyperNodeInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewHyperNodeInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+	return NewTypedHyperNodeInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredHyperNodeInformer constructs a new informer for HyperNode type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredHyperNodeInformer(client versioned.Interface, resyncPeriod time.Duration, indexers HyperNodeIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) HyperNodeIndexInformer {
+	return NewTypedHyperNodeInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
 }
 
 // NewHyperNodeInformerWithOptions constructs a new informer for HyperNode type with additional options.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedHyperNodeInformerWithOptions]).
 func NewHyperNodeInformerWithOptions(client versioned.Interface, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedHyperNodeInformerWithOptions(client, options)
+}
+
+// NewTypedHyperNodeInformerWithOptions constructs a new informer for HyperNode type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedHyperNodeInformerWithOptions(client versioned.Interface, options internalinterfaces.InformerOptions) HyperNodeIndexInformer {
 	gvr := schema.GroupVersionResource{Group: "topology.volcano.sh", Version: "v1alpha1", Resource: "hypernodes"}
 	identifier := options.InformerName.WithResource(gvr)
 	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
+	return cache.NewTypedSharedIndexInformer[*apistopologyv1alpha1.HyperNode](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
@@ -98,17 +150,57 @@ func NewHyperNodeInformerWithOptions(client versioned.Interface, options interna
 			Indexers:     options.Indexers,
 			Identifier:   identifier,
 		},
-	)
+	))
 }
 
 func (f *hyperNodeInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewHyperNodeInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewTypedHyperNodeInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *hyperNodeInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apistopologyv1alpha1.HyperNode{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *hyperNodeInformer) TypedInformer() HyperNodeIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apistopologyv1alpha1.HyperNode](f.factory.InformerFor(&apistopologyv1alpha1.HyperNode{}, f.defaultInformer))
 }
 
 func (f *hyperNodeInformer) Lister() topologyv1alpha1.HyperNodeLister {
 	return topologyv1alpha1.NewHyperNodeLister(f.Informer().GetIndexer())
+}
+
+// ToTypedHyperNodeInformer converts an untyped informer into a TypedHyperNodeInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *HyperNode. If that is not the case, calling type-safe methods of the returned
+// TypedHyperNodeInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedHyperNodeInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedHyperNodeInformer(informer HyperNodeInformer) TypedHyperNodeInformer {
+	if informer, ok := informer.(TypedHyperNodeInformer); ok {
+		return informer
+	}
+	return &hyperNodeTypedInformerAdapter{informer}
+}
+
+type hyperNodeTypedInformerAdapter struct {
+	HyperNodeInformer
+}
+
+func (a *hyperNodeTypedInformerAdapter) TypedInformer() HyperNodeIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apistopologyv1alpha1.HyperNode](a.Informer())
+}
+
+// ToHyperNodeIndexInformer converts an untyped informer into a HyperNodeIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *HyperNode. If that is not the case, calling type-safe methods of the returned
+// HyperNodeIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a HyperNodeIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToHyperNodeIndexInformer(informer cache.SharedIndexInformer) HyperNodeIndexInformer {
+	if informer, ok := informer.(HyperNodeIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apistopologyv1alpha1.HyperNode](informer)
 }

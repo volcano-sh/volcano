@@ -29,7 +29,7 @@ import (
 // DataSource represents a cached query result for data sources in the federated environment.
 // It is a cluster-scoped resource.
 type DataSourceApplyConfiguration struct {
-	v1.TypeMetaApplyConfiguration    `json:",inline"`
+	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	Spec                             *DataSourceSpecApplyConfiguration   `json:"spec,omitempty"`
 	Status                           *DataSourceStatusApplyConfiguration `json:"status,omitempty"`
