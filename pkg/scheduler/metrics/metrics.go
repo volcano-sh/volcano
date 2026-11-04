@@ -141,6 +141,22 @@ var (
 		},
 	)
 
+	preemptIneligible = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "preempt_task_ineligible_total",
+			Help:      "Number of times a pending task was not allowed to preempt in a session, by reason",
+		}, []string{"reason"},
+	)
+
+	preemptStaleNominations = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "preempt_stale_nominations_total",
+			Help:      "Number of times a pending task's nominated node was not in the session (gone or not ready), so the nomination was ignored and cleared",
+		},
+	)
+
 	unscheduleTaskCount = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
@@ -225,6 +241,29 @@ func RegisterPreemptionAttempts() {
 // RegisterPreemptionBackoffSkip records a starving job skipped by preemption backoff
 func RegisterPreemptionBackoffSkip() {
 	preemptionBackoffSkips.Inc()
+}
+
+// Reasons a pending task is not allowed to preempt (preempt_task_ineligible_total).
+const (
+	PreemptIneligiblePolicyNever       = "preemption_policy_never"
+	PreemptIneligiblePredicateError    = "nominated_node_predicate_error"
+	PreemptIneligibleTerminatingVictim = "nominated_node_terminating_victim"
+)
+
+func init() {
+	for _, reason := range []string{PreemptIneligiblePolicyNever, PreemptIneligiblePredicateError, PreemptIneligibleTerminatingVictim} {
+		preemptIneligible.WithLabelValues(reason)
+	}
+}
+
+// RegisterPreemptIneligible records a pending task refused preemption for reason
+func RegisterPreemptIneligible(reason string) {
+	preemptIneligible.WithLabelValues(reason).Inc()
+}
+
+// RegisterPreemptStaleNomination records a nomination to a node the session does not hold
+func RegisterPreemptStaleNomination() {
+	preemptStaleNominations.Inc()
 }
 
 // UpdateUnscheduleTaskCount records total number of unscheduleable tasks

@@ -137,6 +137,11 @@ type TaskInfo struct {
 	BestEffort                  bool
 	HasRestartableInitContainer bool
 	SchGated                    bool
+	// ClearStaleNomination marks a pod whose status.nominatedNodeName names a
+	// node the session does not hold (gone or not ready): the cache clears the field when it
+	// records the task's scheduling status, since the cache otherwise only
+	// ever overwrites a nomination with a newer one.
+	ClearStaleNomination bool
 
 	// RevocableZone supports setting volcano.sh/revocable-zone annotation or label for pod/podgroup
 	// we only support empty value or * value for this version and we will support specify revocable zone name for future releases
@@ -297,6 +302,7 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		RevocableZone:               ti.RevocableZone,
 		NumaInfo:                    ti.NumaInfo.Clone(),
 		SchGated:                    ti.SchGated,
+		ClearStaleNomination:        ti.ClearStaleNomination,
 		TransactionContext: TransactionContext{
 			NodeName: ti.NodeName,
 			Status:   ti.Status,

@@ -355,14 +355,16 @@ func TestPreempt(t *testing.T) {
 
 const (
 	nominatedNodeCase = "task nominated to a node that passes predicates still preempts for its gang"
-	retryCase         = "retry gang placement when the first task lands in a domain its siblings cannot join"
-	drainingNodeCase  = "retry gang placement when the first task fits a draining node its siblings cannot join"
+	// staleNominationCase is a gang task whose nominated node is not in the session.
+	staleNominationCase = "task nominated to a node not in the session still preempts for its gang"
+	retryCase           = "retry gang placement when the first task lands in a domain its siblings cannot join"
+	drainingNodeCase    = "retry gang placement when the first task fits a draining node its siblings cannot join"
 )
 
 // allocateFirstCases run allocate before preempt, as in production, so that
 // allocate's side effects (predicate cycle state, per-node fit errors, a
 // discarded pipelining) are in place when preempt looks at the job.
-var allocateFirstCases = sets.New(nominatedNodeCase, drainingNodeCase)
+var allocateFirstCases = sets.New(nominatedNodeCase, staleNominationCase, drainingNodeCase)
 
 // exhaustiveCandidateCases predicate every node instead of a random sample,
 // as production does, so that a retry's outcome depends only on the exclusion
@@ -723,6 +725,36 @@ func TestTopologyAwarePreempt(t *testing.T) {
 				util.BuildPodWithPriority("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("2", "2G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string), &lowPrio.Value),
 				util.BuildPodWithPriority("c1", "preemptee2", "n2", v1.PodRunning, api.BuildResourceList("2", "2G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string), &lowPrio.Value),
 				buildPodWithNominatedNode(util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg3", make(map[string]string), make(map[string]string)), "n1"),
+				util.BuildPod("c1", "preemptor2", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg3", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.BuildNode("n2", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				buildTaintedNode(util.BuildNode("n3", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectEvictNum: 2,
+			ExpectEvicted:  []string{"c1/preemptee1", "c1/preemptee2"},
+			ExpectPipeLined: map[string][]string{
+				"c1/pg3": {"n1", "n2"},
+			},
+		},
+		{
+			Name: staleNominationCase,
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg3", "c1", "q1", 2, map[string]int32{"": 2}, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			// preemptor1 is still nominated to a node that has since left the
+			// cluster (a reclaimed spot node). The nomination must not take the
+			// task out of preemption, or the gang stays at 1/2 and every
+			// session's transaction is discarded.
+			Pods: []*v1.Pod{
+				util.BuildPodWithPriority("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("2", "2G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string), &lowPrio.Value),
+				util.BuildPodWithPriority("c1", "preemptee2", "n2", v1.PodRunning, api.BuildResourceList("2", "2G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string), &lowPrio.Value),
+				buildPodWithNominatedNode(util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg3", make(map[string]string), make(map[string]string)), "reclaimed-node"),
 				util.BuildPod("c1", "preemptor2", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg3", make(map[string]string), make(map[string]string)),
 			},
 			Nodes: []*v1.Node{

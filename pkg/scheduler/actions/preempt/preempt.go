@@ -106,7 +106,16 @@ type Action struct {
 	// backoff persists across sessions: the action is registered once and
 	// Execute is called on the same instance every scheduling cycle.
 	backoff *preemptBackoff
+
+	// refusals is the last reason each task was refused preemption for. It
+	// persists across sessions like backoff, so a refusal that repeats every
+	// session is logged at V(2) once, when it starts or its reason changes.
+	refusals map[api.TaskID]string
 }
+
+// maxTrackedRefusals bounds refusals; past it the map is reset, which only
+// re-logs refusals that are still happening.
+const maxTrackedRefusals = 10000
 
 func New() *Action {
 	return &Action{
@@ -121,6 +130,7 @@ func New() *Action {
 		preemptionBackoffSeconds:         0,
 		preemptionMaxBackoffSeconds:      60,
 		backoff:                          newPreemptBackoff(),
+		refusals:                         map[api.TaskID]string{},
 	}
 }
 
@@ -647,14 +657,27 @@ func (pmpt *Action) normalPreempt(
 
 func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {
 	if preemptor.Pod.Spec.PreemptionPolicy != nil && *preemptor.Pod.Spec.PreemptionPolicy == v1.PreemptNever {
-		return fmt.Errorf("not eligible to preempt other tasks due to preemptionPolicy is Never")
+		return pmpt.ineligible(preemptor, metrics.PreemptIneligiblePolicyNever,
+			"not eligible to preempt other tasks due to preemptionPolicy is Never")
 	}
 
 	nomNodeName := preemptor.Pod.Status.NominatedNodeName
 	if len(nomNodeName) > 0 {
 		nodeInfo, ok := pmpt.ssn.Nodes[nomNodeName]
 		if !ok {
-			return fmt.Errorf("not eligible due to the pod's nominated node is not found in the session")
+			// Diverges from upstream, which rejects the task: the nomination
+			// outlives a node that left the cluster or is not ready (a
+			// reclaimed spot node, a node a discarded gang transaction
+			// nominated), so the task would never preempt again and its gang
+			// never reach minMember. Like kube-scheduler, a nomination to a
+			// node the session does not hold imposes nothing: the task stays
+			// eligible and the nomination is cleared when the session records
+			// its status.
+			preemptor.ClearStaleNomination = true
+			metrics.RegisterPreemptStaleNomination()
+			klog.V(2).InfoS("Preemptor's nominated node is not in the session; ignoring and clearing the nomination",
+				"task", klog.KRef(preemptor.Namespace, preemptor.Name), "job", preemptor.Job, "nominatedNode", nomNodeName)
+			return nil
 		}
 
 		// Diverges from upstream, which rejects the task when its nominated
@@ -666,7 +689,8 @@ func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {
 		if err := pmpt.ssn.PredicateFn(preemptor, nodeInfo); err != nil {
 			fitError, ok := err.(*api.FitError)
 			if !ok {
-				return fmt.Errorf("not eligible due to the predicate returned a non-FitError error, the error is: %v", err)
+				return pmpt.ineligible(preemptor, metrics.PreemptIneligiblePredicateError,
+					fmt.Sprintf("not eligible due to the predicate returned a non-FitError error, the error is: %v", err))
 			}
 
 			// If the pod's nominated node is considered as UnschedulableAndUnresolvable by the predicate,
@@ -680,11 +704,33 @@ func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {
 		for _, p := range nodeInfo.Pods() {
 			if PodPriority(p) < preemptorPodPriority && podTerminatingByPreemption(p) {
 				// There is a terminating pod on the nominated node.
-				return fmt.Errorf("not eligible due to a terminating pod caused by preemption on the nominated node")
+				return pmpt.ineligible(preemptor, metrics.PreemptIneligibleTerminatingVictim,
+					"not eligible due to a terminating pod caused by preemption on the nominated node")
 			}
 		}
 	}
 	return nil
+}
+
+// ineligible records why a pending task may not preempt this session and
+// returns the refusal. Every refusal is counted by reason. A gang task
+// dropped here leaves its siblings unable to reach minMember, so the reason
+// is logged at V(2), the level the scheduler runs at, when the task's
+// refusal starts or changes reason; repeats of it, and a preemptionPolicy of
+// Never (the pod's own choice, refused every session), are logged at V(4).
+func (pmpt *Action) ineligible(preemptor *api.TaskInfo, reason, msg string) error {
+	metrics.RegisterPreemptIneligible(reason)
+	level := klog.Level(4)
+	if reason != metrics.PreemptIneligiblePolicyNever && pmpt.refusals[preemptor.UID] != reason {
+		level = 2
+	}
+	if len(pmpt.refusals) >= maxTrackedRefusals {
+		clear(pmpt.refusals)
+	}
+	pmpt.refusals[preemptor.UID] = reason
+	klog.V(level).InfoS("Task is not eligible to preempt", "task", klog.KRef(preemptor.Namespace, preemptor.Name),
+		"job", preemptor.Job, "reason", reason, "nominatedNode", preemptor.Pod.Status.NominatedNodeName)
+	return errors.New(msg)
 }
 
 // pipelineOnFittingNode pipelines the preemptor without evicting anyone when

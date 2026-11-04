@@ -1042,8 +1042,11 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 	// 2. at session 2, the pod B is still terminating, so the pod A is still pipelined, but it preempt none, so
 	// the nominatedNodeName is empty, but we should not override the A's nominatedNodeName to empty
 	updateNomiNode := len(nominatedNodeName) > 0 && podNominatedNodeNameNeedUpdate(&pod.Status, nominatedNodeName)
+	// A nomination to a node the session did not hold is cleared rather than kept:
+	// it would otherwise stand until a newer nomination replaced it.
+	clearNomiNode := len(nominatedNodeName) == 0 && task.ClearStaleNomination && len(pod.Status.NominatedNodeName) > 0
 
-	if updateCond || updateNomiNode {
+	if updateCond || updateNomiNode || clearNomiNode {
 		pod = pod.DeepCopy()
 
 		if updateCond && podutil.UpdatePodCondition(&pod.Status, condition) {
@@ -1055,6 +1058,9 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 		if updateNomiNode {
 			klog.V(3).Infof("Updating pod nominatedNodeName for %s/%s from (%s) to (%s)", pod.Namespace, pod.Name, pod.Status.NominatedNodeName, nominatedNodeName)
 			pod.Status.NominatedNodeName = nominatedNodeName
+		} else if clearNomiNode {
+			klog.V(2).InfoS("Clearing stale nominatedNodeName", "pod", klog.KObj(pod), "nominatedNode", pod.Status.NominatedNodeName)
+			pod.Status.NominatedNodeName = ""
 		}
 
 		// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
