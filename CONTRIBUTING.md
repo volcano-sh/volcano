@@ -70,28 +70,31 @@ Issues should be filed under the appropriate Volcano sub-repository.
 
 Please follow the prompted submission guidelines while opening an issue.
 
-Every bug report must include evidence. State the affected version and
-configuration. Provide the evidence that matches the type of report:
+Before submitting a bug report, reproduce the problem on a real Kubernetes
+cluster with Volcano deployed. A local cluster such as kind or minikube counts:
+it must run an actual Kubernetes control plane, nodes, and the affected Volcano
+components. Trigger the problem through normal workloads or supported user
+operations.
 
-1. For a bug observed in a cluster, include the workload or configuration.
-   Include the relevant logs, events, or stack trace.
-2. For a race, panic, or deadlock, include a race report, panic stack, or
-   reproducer. A complete concurrent execution path is also acceptable.
-3. For a performance problem, include a profile or representative benchmark.
-   State the scale used for the test.
-4. For validation or hardening, explain why the input is valid or expected in
-   normal use. Describe the failure it causes. Malformed input or an artificial
-   call to an internal function is not enough if the system rejects it safely.
+Keep the report focused on four things:
 
-If the report includes source code analysis, use permalinks that point to the
-exact commit. Do not replace these links with copied code blocks. If the problem
-has not been reproduced, state that clearly. Use the permalinks to explain the
-complete path from a user action or cluster event to the failure.
+1. **Behavior:** the user scenario, actual result, and expected result.
+2. **Environment:** Volcano release version or `master`, Kubernetes version,
+   cluster setup, and relevant Volcano configuration. A commit ID alone is not
+   sufficient; include it or an image digest as additional detail if available.
+3. **Reproduction:** minimal workload manifests and commands another person can
+   run on that setup. For intermittent failures, include the frequency and how
+   long or how many attempts you ran.
+4. **Evidence:** actual output from that cluster run, such as logs, events,
+   resource status, or a stack trace. For performance problems, include cluster
+   measurements or profiles with the workload scale and measurement procedure.
 
-A suggested fix is optional. A patch plan does not replace evidence. A unit test
-that calls an internal function does not prove that users can reach the bug.
+Unit tests, mocks, standalone benchmarks, static analysis, AI output, and code
+path reasoning do not replace cluster reproduction. Root-cause analysis and a
+suggested fix are optional; source references should use exact-commit permalinks.
 
-Maintainers may ask for missing information or evidence. They may close an issue that does not follow the issue template or these requirements. They may also close it if the requested information is not provided.
+Bug reports without a real-cluster reproduction and its evidence are not accepted
+and will be closed. They can be reconsidered when that evidence is provided.
 
 # Contributor Workflow
 
@@ -117,7 +120,11 @@ The bot may also make some helpful suggestions for commands to run in your PR to
 These `/command` options can be entered in comments to trigger auto-labeling and notifications.
 Refer to its [command reference documentation](https://go.k8s.io/bot-commands).
 
-A bug-fix PR should link to an issue that meets the bug-reporting requirements. If there is no issue, follow the evidence requirements in [File an Issue](#file-an-issue). Include the affected version, the user path to the failure, and the relevant logs, events, stack trace, reproducer, profile, or benchmark. A patch or new test does not prove that the reported bug is valid.
+A bug-fix PR must link to an issue that meets the real-cluster reproduction
+requirements in [File an Issue](#file-an-issue), or include the same evidence in
+the PR. Reproduce the reported failure on the affected version before the fix.
+A patch or regression test alone does not establish a bug. Bug-fix PRs without
+the required cluster evidence will be closed along with unsupported bug reports.
 
 Maintainers may ask for missing information or changes. They may close a PR that does not follow the PR template or these contribution requirements. They may also close it if the author does not provide the requested information or cannot explain the change.
 
@@ -126,10 +133,15 @@ Maintainers may ask for missing information or changes. They may close a PR that
 Using AI tools to help prepare an issue or PR is acceptable. The author remains
 responsible for every claim and change.
 
-For an AI-assisted issue, verify the affected version, code references,
-production path, and supporting evidence before submission. AI output and
-static analysis are starting points. They do not prove that a bug exists. Bug
-reports must follow the requirements in [File an Issue](#file-an-issue).
+For an AI-assisted bug report or bug-fix PR, reproduce the failure on a real
+cluster before submission and provide the evidence required by
+[File an Issue](#file-an-issue). A failing unit test or an AI-generated explanation
+is not sufficient. If you cannot reproduce the failure on a real cluster, do not
+submit it as a bug or open a PR claiming to fix it.
+
+Verify all claimed versions, code references, and results. Clearly distinguish
+observed cluster behavior from a proposed explanation. Never present generated
+or predicted logs, output, or reproduction steps as results you actually obtained.
 
 For an AI-assisted PR, review every change and run the appropriate tests before
 submission. Do not leave the first code review to the maintainers.
@@ -138,8 +150,18 @@ Reviewers may ask you to explain the analysis or code. The issue or PR may be
 closed if you cannot support its claims or explain its changes. Opening a PR
 does not prove that the linked issue is valid.
 
-Do not rely on AI tools when responding to review comments. Reviewers want to
-engage with you directly, not with generated responses.
+These responsibilities apply to reviewers as well as contributors. Read the
+repository's [agent instructions](AGENTS.md) before using AI for implementation
+or review. Understand the affected user workflow and inspect the code and
+verification evidence before making claims about correctness. Reviewers must
+distinguish author-provided results from checks they personally ran; passing
+unit tests or another AI review is not enough to approve a runtime change.
+
+AI may assist investigation, but authors and reviewers must write substantive
+review comments and replies themselves. Do not delegate review discussions to
+AI or run automated exchanges between reviewer and contributor agents. Address
+the specific question with evidence, and state plainly when something has not
+been verified.
 
 Disclose the use of AI tools in the issue or in the PR's "Special notes for your
 reviewer" section. All contributions must follow the contribution policies and
