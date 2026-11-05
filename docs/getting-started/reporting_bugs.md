@@ -1,17 +1,24 @@
 # Reporting bugs
 
-If any part of the Volcano project has bugs or documentation mistakes, please let us know by opening an issue. We treat bugs and mistakes very seriously and believe no issue is too small. Before creating a bug report, please check that an issue reporting the same problem does not already exist.
+Before opening a bug report, reproduce the failure on a real Kubernetes cluster
+with Volcano deployed. A local kind or minikube cluster counts. Check for an
+existing issue first and report one bug per issue.
 
-To make the bug report accurate and easy to understand, please try to create bug reports that are:
+Use the bug report template and include:
 
-- Specific. Include as much details as possible: which version, what environment, what configuration, etc. If the bug is related to running the volcano component, please attach the component log (the starting log with component configuration is especially important).
+- The user scenario, actual behavior, and expected behavior.
+- Exact Volcano and Kubernetes versions, cluster setup, and relevant configuration.
+- Minimal workload manifests and commands to reproduce through normal workloads
+  or supported user operations. For intermittent failures, include the frequency
+  and test duration or attempt count.
+- Actual output from that run: logs, events, resource status, or a stack trace.
+  For performance problems, include cluster measurements or profiles, workload
+  scale, and the measurement procedure.
 
-- Reproducible. Include the steps to reproduce the problem. We understand some issues might be hard to reproduce, please includes the steps that might lead to the problem.
+Unit tests, mocks, standalone benchmarks, static analysis, AI output, and code path
+reasoning cannot replace real-cluster reproduction. Root-cause analysis and a fix
+are optional.
 
-- Isolated. Please try to isolate and reproduce the bug with minimum dependencies. It would significantly slow down the speed to fix a bug if too many dependencies are involved in a bug report.
-
-- Unique. Do not duplicate existing bug report.
-
-- Scoped. One bug per report. Do not follow up with another bug inside one report.
-
-We might ask for further information to locate a bug. A duplicated bug report will be closed.
+Reports without a real-cluster reproduction and its evidence are not accepted and
+will be closed. They can be reconsidered once evidence is provided. See
+[File an Issue](../../CONTRIBUTING.md#file-an-issue) for the full requirements.
