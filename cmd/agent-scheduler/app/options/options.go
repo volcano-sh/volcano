@@ -136,6 +136,12 @@ func (s *ServerOption) validateOptions() error {
 	if s.ScheduleWorkerCount <= 0 {
 		return fmt.Errorf("scheduler-worker-count must be greater than 0")
 	}
+	switch s.ShardingMode {
+	case util.NoneShardingMode, util.HardShardingMode, util.SoftShardingMode:
+	default:
+		return fmt.Errorf("scheduler-sharding-mode must be one of %s, %s or %s, got %q",
+			util.NoneShardingMode, util.HardShardingMode, util.SoftShardingMode, s.ShardingMode)
+	}
 	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
 }
 
