@@ -18,7 +18,6 @@ package predicates
 
 import (
 	"context"
-	"sort"
 	"testing"
 	"time"
 
@@ -1180,68 +1179,87 @@ func TestOnAllocateRestoresEvictedTask(t *testing.T) {
 	}
 }
 
-func TestOnAllocateRestoreKeepsDeviceAllocation(t *testing.T) {
+// TestDiscardRestoresEvictedTaskDeviceState drives eviction and rollback through a
+// scheduler session, so the predicates handler runs in the order the scheduler uses.
+// Statement.Evict removes the victim from the predicates node info, and Discard
+// unevicts it, which updates the task on the node and then fires the allocate
+// handler with Restore set. The victim must come back exactly once, with its
+// resource accounting restored and still on the GPU its annotation names.
+func TestDiscardRestoresEvictedTaskDeviceState(t *testing.T) {
 	gpushare.GpuSharingEnable = true
 	t.Cleanup(func() { gpushare.GpuSharingEnable = false })
 	api.RegisterDevice(gpushare.DeviceName)
 
 	gpuResource := apiv1.ResourceName(gpushare.VolcanoGPUResource)
-	gpuNumber := apiv1.ResourceName(gpushare.VolcanoGPUNumber)
-	node := &apiv1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: "node-1"},
-		Status: apiv1.NodeStatus{
-			Capacity: apiv1.ResourceList{
-				apiv1.ResourceCPU:    resource.MustParse("8"),
-				apiv1.ResourceMemory: resource.MustParse("16Gi"),
-				apiv1.ResourcePods:   resource.MustParse("10"),
-				gpuResource:          resource.MustParse("8Gi"),
-				gpuNumber:            resource.MustParse("2"),
-			},
-			Allocatable: apiv1.ResourceList{
-				apiv1.ResourceCPU:    resource.MustParse("8"),
-				apiv1.ResourceMemory: resource.MustParse("16Gi"),
-				apiv1.ResourcePods:   resource.MustParse("10"),
-				gpuResource:          resource.MustParse("8Gi"),
-				gpuNumber:            resource.MustParse("2"),
+	node := util.BuildNode("node1", api.BuildResourceList("8", "8Gi", []api.ScalarResource{
+		{Name: "pods", Value: "10"},
+		{Name: gpushare.VolcanoGPUResource, Value: "16000"},
+		{Name: gpushare.VolcanoGPUNumber, Value: "2"},
+	}...), map[string]string{})
+	victim := util.BuildPod("ns1", "victim", "node1", apiv1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", nil, nil)
+	victim.Spec.Containers[0].Resources.Limits = apiv1.ResourceList{gpuResource: resource.MustParse("4000")}
+	victim.Annotations[gpushare.GPUIndex] = "1"
+
+	var pp *PredicatesPlugin
+	test := uthelper.TestCommonStruct{
+		Name: "discard-restores-victim",
+		Plugins: map[string]framework.PluginBuilder{
+			PluginName: func(arguments framework.Arguments) framework.Plugin {
+				pp = New(arguments).(*PredicatesPlugin)
+				return pp
 			},
 		},
+		Pods:  []*apiv1.Pod{victim},
+		Nodes: []*apiv1.Node{node},
+		PodGroups: []*schedulingv1beta1.PodGroup{
+			util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning),
+		},
+		Queues: []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, nil)},
 	}
-	// Two 4Gi devices, and a victim that holds 3Gi of the first one. Once the
-	// victim is back on device 0 there is not enough room left there, so a
-	// second Allocate would hand it device 1 as well.
-	pod := util.BuildPod("ns", "victim", node.Name, apiv1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg", nil, nil)
-	pod.Spec.Containers[0].Resources.Limits = apiv1.ResourceList{gpuResource: resource.MustParse("3Gi")}
-	pod.Annotations[gpushare.GPUIndex] = "0"
+	enabled := true
+	ssn := test.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{{Name: PluginName, EnabledPredicate: &enabled}}}}, nil)
+	defer test.Close()
 
-	pp := New(nil).(*PredicatesPlugin)
-	snapshot := schedframework.NewNodeInfo()
-	snapshot.SetNode(node)
-	pp.Handle = k8s.NewFramework(map[string]k8sframework.NodeInfo{node.Name: snapshot})
-
-	nodeInfo := api.NewNodeInfo(node)
-	ssn := &framework.Session{
-		Nodes: map[string]*api.NodeInfo{node.Name: nodeInfo},
+	var task *api.TaskInfo
+	for _, job := range ssn.Jobs {
+		for _, running := range job.TaskStatusIndex[api.Running] {
+			if running.Name == "victim" {
+				task = running
+			}
+		}
 	}
-	ssn.PodLister = framework.NewPodLister(ssn)
+	if !assert.NotNil(t, task, "the running victim should be in the session") {
+		return
+	}
 
-	task := api.NewTaskInfo(pod)
-	// Statement.unevict restores the task on its node before it fires the
-	// allocate event, and that is what puts the victim back on its device.
-	nodeInfo.UpdateTask(task)
+	predicatesPodCount := func() int {
+		info, err := pp.Handle.SnapshotSharedLister().NodeInfos().Get(node.Name)
+		assert.NoError(t, err)
+		return len(info.GetPods())
+	}
+	assert.Equal(t, 1, predicatesPodCount(), "the session starts with the victim in the predicates node info")
 
-	pp.onAllocate(ssn, &framework.Event{Task: task, Restore: true})
+	stmt := ssn.Statement()
+	stmt.Evict(task, "test-reclaim")
+	assert.Zero(t, predicatesPodCount(), "eviction removes the victim from the predicates node info")
+
+	stmt.Discard()
+	assert.Equal(t, 1, predicatesPodCount(), "discard restores exactly one entry for the victim")
+
+	nodeInfo := ssn.Nodes[node.Name]
+	assert.True(t, nodeInfo.Used.Equal(task.Resreq, api.Zero), "used = %s, want %s", nodeInfo.Used, task.Resreq)
+	assert.True(t, nodeInfo.Releasing.IsEmpty(), "releasing = %s, want empty", nodeInfo.Releasing)
 
 	devices, ok := nodeInfo.Others[gpushare.DeviceName].(*gpushare.GPUDevices)
-	if !ok {
-		t.Fatalf("expected gpushare devices on the node info, got %T", nodeInfo.Others[gpushare.DeviceName])
+	if !assert.True(t, ok, "expected gpushare devices on the node info, got %T", nodeInfo.Others[gpushare.DeviceName]) {
+		return
 	}
 	holders := make([]int, 0, len(devices.Device))
 	for id, device := range devices.Device {
-		if _, found := device.PodMap[string(pod.UID)]; found {
+		if _, found := device.PodMap[string(victim.UID)]; found {
 			holders = append(holders, id)
 		}
 	}
-	sort.Ints(holders)
-	assert.Equal(t, []int{0}, holders, "a restored victim keeps the device its annotation names")
-	assert.Equal(t, "0", task.PodAnnotations[gpushare.GPUIndex], "a restored victim is not reassigned to another device")
+	assert.Equal(t, []int{1}, holders, "a restored victim keeps the device its annotation names")
+	assert.Equal(t, "1", task.Pod.Annotations[gpushare.GPUIndex], "a restored victim is not reassigned to another device")
 }
