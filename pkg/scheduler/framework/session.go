@@ -271,8 +271,8 @@ func openSession(schedulerCache cache.Cache, unschedulableJobCache unschedulable
 			taskCountsByQueue[job.Queue][strings.ToLower(status.String())] += len(tasks)
 		}
 	}
-	for queueID, queue := range snapshot.Queues {
-		metrics.UpdateQueueTaskCounts(queue.Name, taskCountsByQueue[queueID])
+	for queueID := range snapshot.Queues {
+		metrics.UpdateQueueTaskCounts(string(queueID), taskCountsByQueue[queueID])
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
 
