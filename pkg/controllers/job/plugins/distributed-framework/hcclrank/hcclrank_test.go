@@ -202,9 +202,9 @@ func TestGetEnv(t *testing.T) {
 func TestHcclrankPlugin_OnPodCreate(t *testing.T) {
 	clientset := pluginsinterface.PluginClientset{}
 	plugin := &hcclrankPlugin{
-		clientset:  clientset,
-		masterName: "master",
-		workerName: "worker",
+		clientset:   clientset,
+		masterName:  "master",
+		workerNames: []string{"worker"},
 	}
 
 	testCases := []struct {
@@ -374,9 +374,9 @@ func TestHcclrankPlugin_OnPodCreate(t *testing.T) {
 func TestHcclrankPlugin_OnPodCreate_WithCustomTaskNames(t *testing.T) {
 	clientset := pluginsinterface.PluginClientset{}
 	plugin := &hcclrankPlugin{
-		clientset:  clientset,
-		masterName: "custom-master",
-		workerName: "custom-worker",
+		clientset:   clientset,
+		masterName:  "custom-master",
+		workerNames: []string{"custom-worker"},
 	}
 
 	testCases := []struct {
@@ -473,9 +473,9 @@ func TestHcclrankPlugin_OnPodCreate_WithCustomTaskNames(t *testing.T) {
 func TestHcclrankPlugin_OnPodCreate_EdgeCases(t *testing.T) {
 	clientset := pluginsinterface.PluginClientset{}
 	plugin := &hcclrankPlugin{
-		clientset:  clientset,
-		masterName: "master",
-		workerName: "worker",
+		clientset:   clientset,
+		masterName:  "master",
+		workerNames: []string{"worker"},
 	}
 
 	testCases := []struct {
@@ -573,8 +573,8 @@ func TestAddFlags(t *testing.T) {
 	if plugin.masterName != "test-master" {
 		t.Errorf("Expected master name to be 'test-master', but got '%s'", plugin.masterName)
 	}
-	if plugin.workerName != "test-worker" {
-		t.Errorf("Expected worker name to be 'test-worker', but got '%s'", plugin.workerName)
+	if len(plugin.workerNames) != 1 || plugin.workerNames[0] != "test-worker" {
+		t.Errorf("Expected worker names to be ['test-worker'], but got %v", plugin.workerNames)
 	}
 }
 
@@ -590,8 +590,8 @@ func TestAddFlags_EmptyArguments(t *testing.T) {
 	if plugin.masterName != DefaultMaster {
 		t.Errorf("Expected master name to be default '%s', but got '%s'", DefaultMaster, plugin.masterName)
 	}
-	if plugin.workerName != DefaultWorker {
-		t.Errorf("Expected worker name to be default '%s', but got '%s'", DefaultWorker, plugin.workerName)
+	if len(plugin.workerNames) != 1 || plugin.workerNames[0] != DefaultWorker {
+		t.Errorf("Expected worker names to be default ['%s'], but got %v", DefaultWorker, plugin.workerNames)
 	}
 }
 
@@ -626,9 +626,9 @@ func TestGetEnv_WithMultipleContainers(t *testing.T) {
 func TestHcclrankPlugin_OnPodCreate_WithHelpers(t *testing.T) {
 	clientset := pluginsinterface.PluginClientset{}
 	plugin := &hcclrankPlugin{
-		clientset:  clientset,
-		masterName: "master",
-		workerName: "worker",
+		clientset:   clientset,
+		masterName:  "master",
+		workerNames: []string{"worker"},
 	}
 
 	// Test that the plugin correctly uses helpers.GetTaskKey
@@ -672,5 +672,107 @@ func TestHcclrankPlugin_OnPodCreate_WithHelpers(t *testing.T) {
 	actualRank := pod.Annotations[HCCLRankKey]
 	if actualRank != expectedRank {
 		t.Errorf("Expected rank %s, but got %s", expectedRank, actualRank)
+	}
+}
+
+func TestHcclrankPlugin_OnPodCreate_MultipleWorkers(t *testing.T) {
+	clientset := pluginsinterface.PluginClientset{}
+	plugin := &hcclrankPlugin{
+		clientset:   clientset,
+		masterName:  "master",
+		workerNames: []string{"worker", "worker-0"},
+	}
+
+	job := &batch.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-job",
+		},
+		Spec: batch.JobSpec{
+			Tasks: []batch.TaskSpec{
+				{
+					Name:     "master",
+					Replicas: 1,
+				},
+				{
+					Name:     "worker",
+					Replicas: 2,
+				},
+				{
+					Name:     "worker-0",
+					Replicas: 2,
+				},
+			},
+		},
+	}
+
+	testCases := []struct {
+		name         string
+		taskSpec     string
+		taskIndex    string
+		expectedRank string
+	}{
+		{
+			name:         "second pod of first worker task",
+			taskSpec:     "worker",
+			taskIndex:    "1",
+			expectedRank: "2", // 1 master replica + 0 preceding workers + index 1
+		},
+		{
+			name:         "second pod of second worker task",
+			taskSpec:     "worker-0",
+			taskIndex:    "1",
+			expectedRank: "4", // 1 master replica + 2 preceding worker replicas + index 1
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			pod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test-pod",
+					Annotations: map[string]string{batch.TaskSpecKey: tc.taskSpec},
+					Labels:      map[string]string{batch.TaskIndex: tc.taskIndex},
+				},
+			}
+			if err := plugin.OnPodCreate(pod, job); err != nil {
+				t.Fatalf("expect no error, but got error %v", err)
+			}
+			if rank := pod.Annotations[HCCLRankKey]; rank != tc.expectedRank {
+				t.Errorf("expected rank '%s', but got '%s'", tc.expectedRank, rank)
+			}
+		})
+	}
+}
+
+func TestHcclrankWorkersFlag(t *testing.T) {
+	plugin := &hcclrankPlugin{
+		masterName:        "master",
+		hcclrankArguments: []string{"--workers=worker,worker-0"},
+	}
+	plugin.addFlags()
+
+	job := &batch.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-job"},
+		Spec: batch.JobSpec{
+			Tasks: []batch.TaskSpec{
+				{Name: "master", Replicas: 1},
+				{Name: "worker", Replicas: 2},
+				{Name: "worker-0", Replicas: 2},
+			},
+		},
+	}
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "test-pod",
+			Annotations: map[string]string{batch.TaskSpecKey: "worker-0"},
+			Labels:      map[string]string{batch.TaskIndex: "1"},
+		},
+	}
+	if err := plugin.OnPodCreate(pod, job); err != nil {
+		t.Fatalf("expect no error, but got error %v", err)
+	}
+	// rank = 1 master replica + 2 worker replicas listed before + pod index 1
+	if rank := pod.Annotations[HCCLRankKey]; rank != "4" {
+		t.Errorf("expected rank '4', but got '%s'", rank)
 	}
 }

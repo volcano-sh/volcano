@@ -43,6 +43,15 @@ const (
 	// DefaultWaitMasterImage is the default image for wait-for-master init container
 	DefaultWaitMasterImage = "busybox:1.36.1"
 
+	// WorldSizeGPUNumber is the world-size-calculation mode where WORLD_SIZE
+	// counts the total accelerator (GPU/NPU) cards of master and worker tasks
+	WorldSizeGPUNumber = "GPU_NUMBER"
+	// WorldSizeNodesNumber is the world-size-calculation mode where WORLD_SIZE
+	// counts the master and worker replicas, same as SENSECORE_PYTORCH_NNODES
+	WorldSizeNodesNumber = "NODES_NUMBER"
+	// DefaultWorldSizeCalculation is the default world-size-calculation mode
+	DefaultWorldSizeCalculation = WorldSizeNodesNumber
+
 	// EnvMasterPort is the env name of master port
 	EnvMasterPort = "MASTER_PORT"
 	// EnvMasterAddr is the env name of master addr
@@ -51,17 +60,27 @@ const (
 	EnvWorldSize = "WORLD_SIZE"
 	// EnvRank is the env name of rank
 	EnvRank = "RANK"
+	// EnvSensecoreNodeRank mirrors EnvRank under the sensecore platform naming
+	EnvSensecoreNodeRank = "SENSECORE_PYTORCH_NODE_RANK"
+	// EnvSensecoreNNodes carries the total master and worker replica count
+	// under the sensecore platform naming
+	EnvSensecoreNNodes = "SENSECORE_PYTORCH_NNODES"
+	// EnvSensecoreWorldSize carries the total accelerator card count under
+	// the sensecore platform naming, regardless of the calculation mode
+	EnvSensecoreWorldSize = "SENSECORE_WORLD_SIZE"
 )
 
 type pytorchPlugin struct {
-	pytorchArguments  []string
-	clientset         pluginsinterface.PluginClientset
-	masterName        string
-	workerName        string
-	port              int
-	waitMasterEnabled bool
-	waitMasterTimeout int
-	waitMasterImage   string
+	pytorchArguments     []string
+	clientset            pluginsinterface.PluginClientset
+	masterName           string
+	workerNames          []string
+	acceleratorResources []v1.ResourceName
+	worldSizeCalculation string
+	port                 int
+	waitMasterEnabled    bool
+	waitMasterTimeout    int
+	waitMasterImage      string
 }
 
 // New creates pytorch plugin.
@@ -72,9 +91,15 @@ func New(client pluginsinterface.PluginClientset, arguments []string) pluginsint
 }
 
 func (pp *pytorchPlugin) addFlags() {
+	worker := ""
+	workers := ""
+	acceleratorResources := ""
 	flagSet := flag.NewFlagSet(pp.Name(), flag.ContinueOnError)
 	flagSet.StringVar(&pp.masterName, "master", DefaultMaster, "name of master role task")
-	flagSet.StringVar(&pp.workerName, "worker", DefaultWorker, "name of worker role task")
+	flagSet.StringVar(&worker, "worker", "", "name of worker role task, defaults to "+DefaultWorker)
+	flagSet.StringVar(&workers, "workers", "", "comma separated list of worker role task names, takes precedence over worker when set")
+	flagSet.StringVar(&acceleratorResources, "accelerator-resources", "", "comma separated extra accelerator resource names counted into WORLD_SIZE, e.g. example.com/xpu")
+	flagSet.StringVar(&pp.worldSizeCalculation, "world-size-calculation", DefaultWorldSizeCalculation, "how WORLD_SIZE is calculated: "+WorldSizeGPUNumber+" counts the total accelerator cards of master and worker tasks, "+WorldSizeNodesNumber+" counts their replicas like "+EnvSensecoreNNodes)
 	flagSet.IntVar(&pp.port, "port", DefaultPort, "open port for containers")
 	flagSet.BoolVar(&pp.waitMasterEnabled, "wait-master-enabled", false, "enable init container to wait for master")
 	flagSet.IntVar(&pp.waitMasterTimeout, "wait-master-timeout", DefaultTimeout, "timeout in seconds for waiting master to be ready (only effective when wait-master-enabled=true)")
@@ -82,6 +107,39 @@ func (pp *pytorchPlugin) addFlags() {
 	if err := flagSet.Parse(pp.pytorchArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", pp.Name(), err)
 	}
+	if pp.worldSizeCalculation != WorldSizeGPUNumber && pp.worldSizeCalculation != WorldSizeNodesNumber {
+		klog.Errorf("plugin %s unknown world-size-calculation %q, falling back to %s", pp.Name(), pp.worldSizeCalculation, DefaultWorldSizeCalculation)
+		pp.worldSizeCalculation = DefaultWorldSizeCalculation
+	}
+	pp.workerNames = helpers.ResolveWorkerNames(worker, workers)
+	if len(pp.workerNames) == 0 {
+		pp.workerNames = []string{DefaultWorker}
+	}
+	pp.acceleratorResources = mergeAcceleratorResources(defaultAcceleratorResources, acceleratorResources)
+}
+
+func (pp *pytorchPlugin) isWorkerTask(taskName string) bool {
+	for _, workerName := range pp.workerNames {
+		if workerName == taskName {
+			return true
+		}
+	}
+	return false
+}
+
+// getWorkerRankBase returns the rank base of the given worker task, which is
+// 1 (master occupies rank 0) plus the total replicas of all worker tasks
+// listed before it in the worker argument. Ranks of pods in the task are
+// the base plus their own pod index, so ranks stay unique across worker tasks.
+func (pp *pytorchPlugin) getWorkerRankBase(taskName string, job *batch.Job) int {
+	base := 1
+	for _, workerName := range pp.workerNames {
+		if workerName == taskName {
+			break
+		}
+		base += int(helpers.GetTaskReplicasUnderJob(workerName, job))
+	}
+	return base
 }
 
 func (pp *pytorchPlugin) Name() string {
@@ -108,36 +166,48 @@ func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 
 	masterRank := 0
 	workerRank := 0
-	if taskType == pp.workerName {
+	if pp.isWorkerTask(taskType) {
 		index, err := strconv.Atoi(helpers.GetPodIndexUnderTask(pod))
 		if err != nil {
 			return err
 		}
 
-		workerRank = index + 1
+		workerRank = pp.getWorkerRankBase(taskType, job) + index
 		// Add init container to wait for master to be ready and accessible on the specified port
 		pp.addWaitForMasterInitContainer(pod, masterAddr)
 	}
 
-	totalReplicas := pp.getTotalReplicas(job)
+	totalReplicas := strconv.Itoa(int(pp.getTotalReplicas(job)))
+	worldSize := strconv.FormatInt(pp.getWorldSize(job), 10)
+	sensecoreWorldSize := strconv.FormatInt(pp.getTotalAccelerators(job), 10)
 	for i, c := range pod.Spec.Containers {
 		pp.openContainerPort(&c, i, pod)
 
 		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, masterEnvVars...)
 		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
 			Name:  EnvWorldSize,
-			Value: strconv.Itoa(int(totalReplicas)),
+			Value: worldSize,
+		}, v1.EnvVar{
+			Name:  EnvSensecoreWorldSize,
+			Value: sensecoreWorldSize,
+		}, v1.EnvVar{
+			Name:  EnvSensecoreNNodes,
+			Value: totalReplicas,
 		})
 
-		if taskType == pp.workerName {
-			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
-				Name:  EnvRank,
-				Value: strconv.Itoa(workerRank),
-			})
+		rank := ""
+		if pp.isWorkerTask(taskType) {
+			rank = strconv.Itoa(workerRank)
 		} else if taskType == pp.masterName {
+			rank = strconv.Itoa(masterRank)
+		}
+		if rank != "" {
 			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
 				Name:  EnvRank,
-				Value: strconv.Itoa(masterRank),
+				Value: rank,
+			}, v1.EnvVar{
+				Name:  EnvSensecoreNodeRank,
+				Value: rank,
 			})
 		}
 	}
@@ -148,12 +218,97 @@ func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 func (pp *pytorchPlugin) getTotalReplicas(job *batch.Job) int32 {
 	jobReplicas := int32(0)
 	for _, task := range job.Spec.Tasks {
-		if task.Name == pp.masterName || task.Name == pp.workerName {
+		if task.Name == pp.masterName || pp.isWorkerTask(task.Name) {
 			jobReplicas += task.Replicas
 		}
 	}
 
 	return jobReplicas
+}
+
+// defaultAcceleratorResources lists the GPU/NPU resource names counted
+// towards the world size by default; the accelerator-resources plugin
+// argument adds more names on top of them.
+var defaultAcceleratorResources = []v1.ResourceName{
+	"nvidia.com/gpu",
+	"amd.com/gpu",
+	"dcu.com/gpu",
+	"metax-tech.com/gpu",
+	"cambricon.com/mlu",
+	"sensetime.com/ptpu",
+	"huawei.com/Ascend910",
+	"huawei.com/Ascend910B",
+	"huawei.com/Ascend310P",
+	"huawei.com/Ascend310",
+}
+
+// mergeAcceleratorResources merges extra comma separated resource names into
+// the defaults, keeping the first occurrence of each name.
+func mergeAcceleratorResources(defaults []v1.ResourceName, extra string) []v1.ResourceName {
+	res := make([]v1.ResourceName, 0, len(defaults)+2)
+	seen := make(map[v1.ResourceName]struct{}, len(defaults)+2)
+	add := func(name v1.ResourceName) {
+		if _, duplicated := seen[name]; duplicated {
+			return
+		}
+		seen[name] = struct{}{}
+		res = append(res, name)
+	}
+	for _, name := range defaults {
+		add(name)
+	}
+	for _, name := range helpers.SplitTaskNames(extra) {
+		add(v1.ResourceName(name))
+	}
+	return res
+}
+
+// getAcceleratorsPerPod returns the accelerator cards of one pod of the task.
+// Pods without any accelerator resource count 0 cards, so they do not inflate
+// WORLD_SIZE.
+func (pp *pytorchPlugin) getAcceleratorsPerPod(template v1.PodTemplateSpec) int64 {
+	cards := int64(0)
+	for i := range template.Spec.Containers {
+		quantities := template.Spec.Containers[i].Resources.Limits
+		if len(quantities) == 0 {
+			quantities = template.Spec.Containers[i].Resources.Requests
+		}
+		for _, name := range pp.acceleratorResources {
+			if quantity, ok := quantities[name]; ok {
+				cards += quantity.Value()
+			}
+		}
+	}
+	return cards
+}
+
+// getTotalAccelerators returns the total accelerator cards used by the master
+// and worker tasks of the job.
+func (pp *pytorchPlugin) getTotalAccelerators(job *batch.Job) int64 {
+	cards := int64(0)
+	for _, task := range job.Spec.Tasks {
+		if task.Name == pp.masterName || pp.isWorkerTask(task.Name) {
+			cards += int64(task.Replicas) * pp.getAcceleratorsPerPod(task.Template)
+		}
+	}
+	return cards
+}
+
+// getWorldSize returns the WORLD_SIZE of the job according to the
+// world-size-calculation argument: WorldSizeNodesNumber (the default) mirrors
+// SENSECORE_PYTORCH_NNODES and counts the master and worker replicas, while
+// WorldSizeGPUNumber counts the total accelerator cards. A GPU_NUMBER job
+// without any accelerator card falls back to its replicas so CPU-only jobs
+// keep the legacy WORLD_SIZE. SENSECORE_WORLD_SIZE always carries the raw
+// accelerator card count in either mode.
+func (pp *pytorchPlugin) getWorldSize(job *batch.Job) int64 {
+	if pp.worldSizeCalculation == WorldSizeNodesNumber {
+		return int64(pp.getTotalReplicas(job))
+	}
+	if cards := pp.getTotalAccelerators(job); cards > 0 {
+		return cards
+	}
+	return int64(pp.getTotalReplicas(job))
 }
 
 func (pp *pytorchPlugin) generateMasterAddr(task batch.TaskSpec, jobName string) string {
