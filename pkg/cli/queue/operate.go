@@ -99,5 +99,5 @@ func OperateQueue(ctx context.Context) error {
 			operateQueueFlags.Action, ActionOpen, ActionClose, ActionUpdate)
 	}
 
-	return createQueueCommand(ctx, config, action)
+	return createQueueCommand(ctx, config, action, operateQueueFlags.Name)
 }
