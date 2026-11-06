@@ -155,6 +155,12 @@ spec:
                   required:
                   - type
                   type: object
+                  x-kubernetes-validations:
+                  - message: A member of type HyperNode must be selected with exactMatch;
+                      regexMatch and labelMatch are only supported for members of
+                      type Node
+                    rule: '!has(self.type) || self.type != ''HyperNode'' || (has(self.selector)
+                      && has(self.selector.exactMatch))'
                 minItems: 1
                 type: array
               tier:
