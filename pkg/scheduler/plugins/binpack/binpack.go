@@ -17,12 +17,15 @@ limitations under the License.
 package binpack
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -45,6 +48,8 @@ const (
 	BinpackResources = "binpack.resources"
 	// BinpackResourcesPrefix is the key prefix for additional resource key name
 	BinpackResourcesPrefix = BinpackResources + "."
+	// DynamicResourceAllocationEnable enables count-level DRA resource scoring.
+	DynamicResourceAllocationEnable = "binpack.DynamicResourceAllocationEnable"
 
 	resourceFmt = "%s[%d]"
 )
@@ -82,13 +87,19 @@ func (w *priorityWeight) String() string {
 
 type binpackPlugin struct {
 	// Arguments given for the plugin
-	weight priorityWeight
+	weight                          priorityWeight
+	dynamicResourceAllocationEnable bool
 }
 
 // New function returns prioritizePlugin object
 func New(aruguments framework.Arguments) framework.Plugin {
 	weight := calculateWeight(aruguments)
-	return &binpackPlugin{weight: weight}
+	dynamicResourceAllocationEnable := utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation)
+	aruguments.GetBool(&dynamicResourceAllocationEnable, DynamicResourceAllocationEnable)
+	return &binpackPlugin{
+		weight:                          weight,
+		dynamicResourceAllocationEnable: dynamicResourceAllocationEnable,
+	}
 }
 
 func calculateWeight(args framework.Arguments) priorityWeight {
@@ -183,17 +194,50 @@ func (bp *binpackPlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(4).Infof("resources [%s] record in weight but not found on any node", strings.Join(notFoundResource, ", "))
 	}
 
-	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-		binPackingScore := BinPackingScore(task, node, bp.weight)
-
-		klog.V(4).Infof("Binpack score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, binPackingScore)
-		return binPackingScore, nil
-	}
-	if bp.weight.BinPackingWeight != 0 {
-		ssn.AddNodeOrderFn(bp.Name(), nodeOrderFn)
-	} else {
+	if bp.weight.BinPackingWeight == 0 {
 		klog.Infof("binpack weight is zero, skip node order function")
+		return
 	}
+
+	if !bp.dynamicResourceAllocationEnable {
+		ssn.AddNodeOrderFn(bp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
+			score := BinPackingScore(task, node, bp.weight)
+			klog.V(4).Infof("Binpack score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, score)
+			return score, nil
+		})
+		return
+	}
+
+	draInventory := newDRAInventory()
+
+	// DRA state can change after each task is reserved. Calculate it once per
+	// task scoring cycle, then use the same snapshot for all candidate nodes.
+	ssn.AddBatchNodeOrderFn(bp.Name(), func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+		var (
+			draResources draNodeResources
+			draRequest   map[string]*api.DRAResource
+			err          error
+		)
+		if len(task.DRAResreq) > 0 {
+			draResources, draRequest, err = calculateDRAScoringState(
+				context.Background(),
+				ssn.SharedDRAManager(),
+				draInventory,
+				task,
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		scores := make(map[string]float64, len(nodes))
+		for _, node := range nodes {
+			score := binPackingScore(task, node, bp.weight, draRequest, draResources[node.Name])
+			scores[node.Name] = score
+			klog.V(4).Infof("Binpack score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, score)
+		}
+		return scores, nil
+	})
 }
 
 func (bp *binpackPlugin) OnSessionClose(ssn *framework.Session) {
@@ -204,6 +248,10 @@ func (bp *binpackPlugin) OnSessionClose(ssn *framework.Session) {
 // - Schedule Jobs using BestFit Policy using Resource Bin Packing Priority Function
 // - Reduce Fragmentation of scarce resources on the Cluster
 func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeight) float64 {
+	return binPackingScore(task, node, weight, nil, nil)
+}
+
+func binPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeight, draRequest map[string]*api.DRAResource, draResources map[string]*draNodeResource) float64 {
 	score := 0.0
 	weightSum := 0
 	requested := task.Resreq
@@ -234,6 +282,33 @@ func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeig
 
 		score += resourceScore
 		weightSum += resourceWeight
+	}
+
+	for deviceClass, request := range draRequest {
+		if request == nil || request.Count == 0 {
+			continue
+		}
+
+		var allocatable, used int64
+		if nodeResource := draResources[deviceClass]; nodeResource != nil {
+			allocatable = nodeResource.Allocatable.Count
+			used = nodeResource.Used.Count
+		}
+		resourceScore, err := ResourceBinPackingScore(
+			float64(request.Count),
+			float64(allocatable),
+			float64(used),
+			1,
+		)
+		if err != nil {
+			klog.V(4).Infof("task %s/%s cannot binpack node %s: DeviceClass %s is %s, need %d, used %d, allocatable %d",
+				task.Namespace, task.Name, node.Name, deviceClass, err.Error(), request.Count, used, allocatable)
+			return 0
+		}
+		klog.V(5).Infof("task %s/%s on node %s DeviceClass %s, need %d, used %d, allocatable %d, score %f",
+			task.Namespace, task.Name, node.Name, deviceClass, request.Count, used, allocatable, resourceScore)
+		score += resourceScore
+		weightSum++
 	}
 
 	// mapping the result from [0, weightSum] to [0, 10(MaxPriority)]
