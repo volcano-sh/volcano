@@ -18,6 +18,7 @@ limitations under the License.
 package cronjob
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -28,6 +29,48 @@ import (
 
 	batchv1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
+
+func BenchmarkGetJobsByCronJob(b *testing.B) {
+	const children = 5
+	for _, namespaceJobs := range []int{children, 1000, 10000} {
+		b.Run(fmt.Sprintf("namespaceJobs=%d", namespaceJobs), func(b *testing.B) {
+			controller := newFakeController()
+			indexer := controller.jobInformer.Informer().GetIndexer()
+			cronJob := &batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{
+				Namespace: "shared",
+				Name:      "report-0",
+				UID:       "cronjob-0",
+			}}
+
+			// Give each CronJob five children in the same namespace.
+			for i := 0; i < namespaceJobs; i++ {
+				owner := metav1.OwnerReference{
+					APIVersion: controllerKind.GroupVersion().String(),
+					Kind:       controllerKind.Kind,
+					Name:       fmt.Sprintf("report-%d", i/children),
+					UID:        types.UID(fmt.Sprintf("cronjob-%d", i/children)),
+					Controller: ptr.To(true),
+				}
+				job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
+					Namespace:       cronJob.Namespace,
+					Name:            fmt.Sprintf("job-%d", i),
+					OwnerReferences: []metav1.OwnerReference{owner},
+				}}
+				if err := indexer.Add(job); err != nil {
+					b.Fatal(err)
+				}
+			}
+
+			b.ReportAllocs()
+			for b.Loop() {
+				jobs, err := controller.getJobsByCronJob(cronJob)
+				if err != nil || len(jobs) != children {
+					b.Fatalf("got %d jobs, want %d (error: %v)", len(jobs), children, err)
+				}
+			}
+		})
+	}
+}
 
 func TestGetJobsByCronJob(t *testing.T) {
 	cronJobUID := types.UID("test-uid-123")
