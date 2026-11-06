@@ -213,3 +213,54 @@ func TestHDRF(t *testing.T) {
 		})
 	}
 }
+
+func TestHDRFQueueWithoutHierarchyWeights(t *testing.T) {
+	options.Default()
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:              PluginName,
+					EnabledHierarchy:  &trueValue,
+					EnabledQueueOrder: &trueValue,
+					EnabledJobOrder:   &trueValue,
+				},
+			},
+		},
+	}
+
+	for _, tc := range []struct {
+		name    string
+		weights map[string]string
+	}{
+		{name: "no weights annotation", weights: nil},
+		{name: "fewer weights than levels", weights: map[string]string{schedulingv1.KubeHierarchyWeightAnnotationKey: "100"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			annos := map[string]string{schedulingv1.KubeHierarchyAnnotationKey: "root/sci"}
+			for k, v := range tc.weights {
+				annos[k] = v
+			}
+			test := uthelper.TestCommonStruct{
+				Name:    tc.name,
+				Plugins: map[string]framework.PluginBuilder{PluginName: New},
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroup("pg1", "default", "root-sci", 0, nil, schedulingv1.PodGroupInqueue),
+				},
+				Pods:   makePods(1, "1", "1G", "pg1"),
+				Queues: []*schedulingv1.Queue{util.BuildQueueWithAnnos("root-sci", 1, nil, annos)},
+				Nodes:  []*v1.Node{util.BuildNode("n", api.BuildResourceList("10", "10G", []api.ScalarResource{{Name: "pods", Value: "50"}}...), make(map[string]string))},
+			}
+			ssn := test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run([]framework.Action{allocate.New()})
+			for _, job := range ssn.Jobs {
+				if job.Allocated.MilliCPU != 1000 {
+					t.Fatalf("job %s allocated %v, want 1 cpu", job.Name, job.Allocated)
+				}
+			}
+		})
+	}
+}
