@@ -22,6 +22,8 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -146,9 +148,16 @@ func (e *ElasticsearchMetricsClient) NodeMetricsAvg(ctx context.Context, nodeNam
 		e.es.Search.WithBody(&buf),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("elasticsearch search request failed for node %s: %w", nodeName, err)
 	}
 	defer res.Body.Close()
+	if res.IsError() {
+		body, err := io.ReadAll(io.LimitReader(res.Body, maxBodySize))
+		if err != nil {
+			return nil, fmt.Errorf("elasticsearch search request failed for node %s: %s, failed to read response body: %w", nodeName, res.Status(), err)
+		}
+		return nil, fmt.Errorf("elasticsearch search request failed for node %s: %s: %s", nodeName, res.Status(), body)
+	}
 	var r struct {
 		Aggregations struct {
 			CPU struct {
@@ -161,7 +170,7 @@ func (e *ElasticsearchMetricsClient) NodeMetricsAvg(ctx context.Context, nodeNam
 	}
 	res.Body = http.MaxBytesReader(nil, res.Body, maxBodySize)
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to decode Elasticsearch metrics response for node %s: %w", nodeName, err)
 	}
 	// The data obtained from Elasticsearch is in decimals and needs to be multiplied by 100.
 	nodeMetrics.CPU = r.Aggregations.CPU.Value * 100
