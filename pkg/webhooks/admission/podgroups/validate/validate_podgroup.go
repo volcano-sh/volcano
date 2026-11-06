@@ -18,10 +18,12 @@ package validate
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
@@ -97,6 +99,9 @@ func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
 	if msg := checkQueueState(pg.Namespace, pg.Spec.Queue); msg != "" {
 		errs = append(errs, strings.TrimSpace(msg))
 	}
+	if msg := validateMinResources(pg.Spec.MinResources); msg != "" {
+		errs = append(errs, msg)
+	}
 	if msg := validateNetworkTopology(pg.Spec.NetworkTopology, pg.Spec.SubGroupPolicy); msg != "" {
 		errs = append(errs, strings.TrimSpace(msg))
 	}
@@ -109,11 +114,36 @@ func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
 
 func validatePodGroupTopology(pg *schedulingv1beta1.PodGroup) string {
 	var errs []string
+	if msg := validateMinResources(pg.Spec.MinResources); msg != "" {
+		errs = append(errs, msg)
+	}
 	if msg := validateNetworkTopology(pg.Spec.NetworkTopology, pg.Spec.SubGroupPolicy); msg != "" {
 		errs = append(errs, strings.TrimSpace(msg))
 	}
 	if msg := validateTopologyAffinity(pg.Spec.TopologyAffinity); msg != "" {
 		errs = append(errs, strings.TrimSpace(msg))
+	}
+	return strings.Join(errs, "; ")
+}
+
+// validateMinResources rejects negative quantities in spec.minResources. The scheduler
+// subtracts these values from queue totals and treats a result that drops below zero as
+// a broken invariant.
+func validateMinResources(minResources *v1.ResourceList) string {
+	if minResources == nil {
+		return ""
+	}
+	names := make([]string, 0, len(*minResources))
+	for name := range *minResources {
+		names = append(names, string(name))
+	}
+	sort.Strings(names)
+	var errs []string
+	for _, name := range names {
+		quantity := (*minResources)[v1.ResourceName(name)]
+		if quantity.Sign() < 0 {
+			errs = append(errs, fmt.Sprintf("spec.minResources[%s]: Invalid value: %q: must be greater than or equal to 0", name, quantity.String()))
+		}
 	}
 	return strings.Join(errs, "; ")
 }

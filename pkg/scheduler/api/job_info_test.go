@@ -743,6 +743,27 @@ func TestGetElasticResources(t *testing.T) {
 	}
 }
 
+func TestGetMinResourcesIgnoresNegativeQuantities(t *testing.T) {
+	minResources := v1.ResourceList{
+		v1.ResourceCPU:    resource.MustParse("-1000"),
+		v1.ResourceMemory: resource.MustParse("1Gi"),
+		"nvidia.com/gpu":  resource.MustParse("-4"),
+	}
+	pg := BuildPodgroup("pg1", "ns1", 1, minResources)
+	job := NewJobInfo("ns1/pg1")
+	job.SetPodGroup(&PodGroup{PodGroup: pg, Version: PodGroupVersionV1Beta1})
+
+	got := job.GetMinResources()
+	want := NewResource(v1.ResourceList{v1.ResourceMemory: resource.MustParse("1Gi")})
+	if !got.Equal(want, Zero) {
+		t.Errorf("GetMinResources() = %v, want %v", got, want)
+	}
+	// The PodGroup spec itself is left untouched.
+	if q := (*job.PodGroup.Spec.MinResources)[v1.ResourceCPU]; q.String() != "-1k" {
+		t.Errorf("PodGroup spec.minResources[cpu] = %s, want -1k", q.String())
+	}
+}
+
 func TestHasTopologyHardConstrain(t *testing.T) {
 	HighestTierAllowedTwo := 2
 	HighestTierAllowedThree := 3
