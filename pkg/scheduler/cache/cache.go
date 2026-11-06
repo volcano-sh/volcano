@@ -203,6 +203,7 @@ type SchedulerCache struct {
 	// and removes cached records when matching informer events arrive or their
 	// retry deadline expires.
 	unschedulableJobCache *unschedulable.JobCache
+	podStatusPublisher    *podStatusPublisher
 
 	// sharedDRAManager is used in DRA plugin, contains resourceClaimTracker, resourceSliceLister and deviceClassLister
 	sharedDRAManager fwk.SharedDRAManager
@@ -973,6 +974,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	sc.informerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
 	sc.WaitForCacheSync(stopCh)
+	if sc.podStatusPublisher != nil {
+		go sc.podStatusPublisher.run(stopCh)
+	}
 	for i := 0; i < int(sc.nodeWorkers); i++ {
 		go wait.Until(sc.runNodeWorker, 0, stopCh)
 	}
@@ -1197,6 +1201,27 @@ func (sc *SchedulerCache) EventRecorder() record.EventRecorder {
 // taskUnschedulable updates pod status of pending task
 func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason, message, nominatedNodeName string) error {
 	pod := task.Pod
+	if p := sc.podStatusPublisher; p != nil {
+		// A synchronous nomination/error supersedes queued observations. Refresh
+		// resourceVersion after acquiring the same stripe as the publisher.
+		lock := p.stripe(pod.UID)
+		lock <- struct{}{}
+		defer func() { <-lock }()
+		p.cancel(pod.UID)
+		ctx, cancel := context.WithTimeout(context.Background(), podStatusRequestTimeout)
+		defer cancel()
+		latest, err := sc.kubeClient.CoreV1().Pods(pod.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if latest.UID != pod.UID || latest.Spec.NodeName != "" || len(latest.Spec.SchedulingGates) != 0 || latest.DeletionTimestamp != nil || latest.Status.Phase == v1.PodSucceeded || latest.Status.Phase == v1.PodFailed {
+			return nil
+		}
+		pod = latest
+	}
 
 	condition := &v1.PodCondition{
 		Type:    v1.PodScheduled,
@@ -1827,6 +1852,12 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 			reason, msg, nominatedNodeName := job.TaskSchedulingReason(taskInfo.UID)
 			if len(msg) == 0 {
 				msg = baseErrorMessage
+			}
+			if p := sc.podStatusPublisher; p != nil && status != schedulingapi.Pipelined && nominatedNodeName == "" && ordinaryPendingPod(taskInfo.Pod) && reason != schedulingapi.PodReasonSchedulerError {
+				if p.enqueue(taskInfo, reason, msg) {
+					return
+				}
+				klog.V(3).InfoS("Pod status publication queue full; updating synchronously", "pod", klog.KObj(taskInfo.Pod))
 			}
 
 			if err := sc.taskUnschedulable(taskInfo, reason, msg, nominatedNodeName); err != nil {

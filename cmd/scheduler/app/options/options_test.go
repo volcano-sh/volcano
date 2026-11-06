@@ -87,6 +87,7 @@ func TestAddFlags(t *testing.T) {
 		NodeWorkerThreads:                    defaultNodeWorkers,
 		JobUpdaterWorkerNum:                  defaultJobUpdaterWorkerNum,
 		TaskUpdaterWorkerNum:                 defaultTaskUpdaterWorkerNum,
+		AsyncPodStatusUpdateQPS:              100,
 		GateRemovalWorkerNum:                 5,
 		CacheDumpFileDir:                     "/tmp",
 		DisableDefaultSchedulerConfig:        false,
@@ -172,5 +173,18 @@ func TestCheckOptionOrDieRejectsNamespaceQueueDefault(t *testing.T) {
 
 	if err := option.CheckOptionOrDie(); err == nil {
 		t.Fatal("CheckOptionOrDie() accepted a NamespaceQueue as default-queue")
+	}
+}
+
+func TestAsyncPodStatusBudgetFlags(t *testing.T) {
+	for _, value := range []string{"0", "-1", "NaN"} {
+		t.Run(value, func(t *testing.T) {
+			fs := pflag.NewFlagSet("async-status", pflag.ContinueOnError)
+			s := NewServerOption()
+			s.AddFlags(fs)
+			s.LeaderElection.LeaderElect = false
+			assert.NoError(t, fs.Parse([]string{"--async-pod-status-updates", "--async-pod-status-update-qps=" + value}))
+			assert.EqualError(t, s.CheckOptionOrDie(), "async-pod-status-update-qps must be greater than 0")
+		})
 	}
 }
