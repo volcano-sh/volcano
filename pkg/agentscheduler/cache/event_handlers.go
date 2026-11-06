@@ -72,10 +72,7 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 }
 
 func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, error) {
-	taskInfo := schedulingapi.NewTaskInfo(pod)
-	// Update BestEffort because the InitResreq maybe changes
-	taskInfo.BestEffort = taskInfo.InitResreq.IsEmpty()
-	return taskInfo, nil
+	return schedulingapi.NewTaskInfo(pod), nil
 }
 
 // Assumes that lock is already acquired.
