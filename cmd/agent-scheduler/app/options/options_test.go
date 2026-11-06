@@ -84,11 +84,12 @@ func TestAddFlags(t *testing.T) {
 		ResourceSyncTimeout:           60 * time.Second,
 	}
 	expected := &ServerOption{
-		ServerOption:        serverOptions,
-		SchedulerName:       defaultSchedulerName,
-		ScheduleWorkerCount: defaultScheduleWorkerCount,
-		ShardingMode:        commonutil.NoneShardingMode,
-		ShardName:           defaultSchedulerName,
+		ServerOption:          serverOptions,
+		SchedulerName:         defaultSchedulerName,
+		ScheduleWorkerCount:   defaultScheduleWorkerCount,
+		BinderChannelCapacity: defaultBinderChannelCapacity,
+		ShardingMode:          commonutil.NoneShardingMode,
+		ShardName:             defaultSchedulerName,
 	}
 	expectedFeatureGates := map[featuregate.Feature]bool{
 		features.PodDisruptionBudgetsSupport: false,
@@ -138,4 +139,41 @@ func TestCheckOptionOrDieRejectsNonPositiveScheduleWorkerCount(t *testing.T) {
 
 	err = s.CheckOptionOrDie()
 	assert.EqualError(t, err, "scheduler-worker-count must be greater than 0")
+}
+
+func TestBinderChannelCapacityOptions(t *testing.T) {
+	// Programmatic construction and CLI initialization must both preserve the
+	// existing 5000-result default; it is a compatibility contract.
+	assert.Equal(t, 5000, NewServerOption().BinderChannelCapacity)
+	tests := []struct {
+		name      string
+		args      []string
+		capacity  int
+		wantError string
+	}{
+		{name: "legacy default", capacity: 5000},
+		{name: "default independent of worker count", args: []string{"--scheduler-worker-count=20"}, capacity: 5000},
+		{name: "unbuffered", args: []string{"--binder-channel-capacity=0"}, capacity: 0},
+		{name: "one queued result", args: []string{"--binder-channel-capacity=1"}, capacity: 1},
+		{name: "no hidden clamp or worker multiplier", args: []string{"--scheduler-worker-count=4", "--binder-channel-capacity=128"}, capacity: 128},
+		{name: "negative capacity", args: []string{"--binder-channel-capacity=-1"}, capacity: -1, wantError: "binder-channel-capacity must be greater than or equal to 0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := NewServerOption()
+			fs := pflag.NewFlagSet("binder-capacity", pflag.ContinueOnError)
+			commonutil.LeaderElectionDefault(&s.LeaderElection)
+			s.AddFlags(fs)
+			s.LeaderElection.ResourceName = commonutil.GenerateComponentName([]string{s.SchedulerName})
+			if !assert.NoError(t, fs.Parse(tt.args)) {
+				return
+			}
+			assert.Equal(t, tt.capacity, s.BinderChannelCapacity)
+			if tt.wantError != "" {
+				assert.EqualError(t, s.CheckOptionOrDie(), tt.wantError)
+			} else {
+				assert.NoError(t, s.CheckOptionOrDie())
+			}
+		})
+	}
 }

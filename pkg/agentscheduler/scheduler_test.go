@@ -5,9 +5,11 @@ import (
 	"fmt"
 	v1 "k8s.io/api/core/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/rest"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -161,5 +163,19 @@ func TestRunOnceRequeuesWhenSnapshotUpdateFails(t *testing.T) {
 	pendingPods, _ := testFwk.SchedulingQueue.PendingPods()
 	if len(pendingPods) != 1 {
 		t.Fatalf("expected pod to be requeued after snapshot failure, got %d pending pods", len(pendingPods))
+	}
+}
+
+func TestNewAgentSchedulerRejectsNegativeBinderCapacity(t *testing.T) {
+	opt := options.NewServerOption()
+	opt.BinderChannelCapacity = -1
+	// Reject the capacity before trying to watch this absent directory.
+	opt.SchedulerConf = filepath.Join(t.TempDir(), "missing", "scheduler.conf")
+	scheduler, err := NewAgentScheduler(&rest.Config{Host: "https://127.0.0.1"}, opt)
+	if err == nil || err.Error() != "binder-channel-capacity must be greater than or equal to 0" {
+		t.Fatalf("expected capacity validation error, got %v", err)
+	}
+	if scheduler != nil {
+		t.Fatal("invalid capacity returned a scheduler")
 	}
 }

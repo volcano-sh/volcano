@@ -70,6 +70,8 @@ custom:
   scheduler_task_updater_worker_num: ~
   scheduler_percentage_nodes_to_find: ~
   agent_scheduler_worker_count: 1
+  # Queued Pod scheduling results; 0 uses an unbuffered handoff.
+  agent_scheduler_binder_channel_capacity: 5000
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/validate,/queues/mutate,/queues/validate,/hypernodes/validate,/cronjobs/validate"
   colocation_enable: false
   ignored_provisioners: ~

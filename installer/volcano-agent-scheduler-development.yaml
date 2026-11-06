@@ -187,6 +187,7 @@ spec:
             - --kube-api-burst=2000
             - --node-worker-threads=20
             - --scheduler-worker-count=1
+            - --binder-channel-capacity=5000
             - -v=3
             - 2>&1
           env:
