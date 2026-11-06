@@ -125,6 +125,7 @@ type JobStatus struct {
 	// +optional
 	StartTimestamp metav1.Time `json:"startTimestamp,omitempty" protobuf:"bytes,3,opt,name=startTimestamp"`
 	// +optional
+	// +nullable
 	EndTimestamp metav1.Time `json:"endTimestamp,omitempty" protobuf:"bytes,4,opt,name=endTimestamp"`
 	// +kubebuilder:validation:Minimum=0
 	// +optional
@@ -137,6 +138,7 @@ type JobRunningHistory struct {
 	// +optional
 	StartTimestamp metav1.Time `json:"startTimestamp,omitempty" protobuf:"bytes,1,opt,name=startTimestamp"`
 	// +optional
+	// +nullable
 	EndTimestamp metav1.Time `json:"endTimestamp,omitempty" protobuf:"bytes,2,opt,name=endTimestamp"`
 	// +optional
 	State v1alpha1.JobPhase `json:"state,omitempty" protobuf:"bytes,3,opt,name=state"`
