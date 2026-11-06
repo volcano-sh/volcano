@@ -18,6 +18,7 @@ limitations under the License.
 package api
 
 import (
+	"errors"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -66,6 +67,9 @@ func (ji *JobInfo) PreferredPodGroupAntiAffinityTerms() []scheduling.PodGroupAff
 	return ji.PodGroup.Spec.TopologyAffinity.PodGroupAntiAffinity.Preferred
 }
 
+// ErrUnknownTopologyTierName is returned when a term names a tier that no HyperNode declares.
+var ErrUnknownTopologyTierName = errors.New("unknown topologyTierName")
+
 // ResolvePodGroupTermTier resolves topologyTier or topologyTierName on a PodGroupAffinityTerm.
 func ResolvePodGroupTermTier(term scheduling.PodGroupAffinityTerm, tierNameMap HyperNodeTierNameMap) (int, error) {
 	if term.TopologyTier != nil && term.TopologyTierName != "" {
@@ -77,7 +81,7 @@ func ResolvePodGroupTermTier(term scheduling.PodGroupAffinityTerm, tierNameMap H
 	if term.TopologyTierName != "" {
 		tier, ok := tierNameMap[term.TopologyTierName]
 		if !ok {
-			return 0, fmt.Errorf("unknown topologyTierName %q", term.TopologyTierName)
+			return 0, fmt.Errorf("%w %q", ErrUnknownTopologyTierName, term.TopologyTierName)
 		}
 		return tier, nil
 	}
