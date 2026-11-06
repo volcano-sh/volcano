@@ -165,28 +165,43 @@ func TestCheckControllers(t *testing.T) {
 			expectErr: nil,
 		},
 		{
-			name: "fail case: use duplicate job-controller",
+			name: "fail case: same controller disabled and enabled",
 			serverOption: &ServerOption{
 				Controllers: []string{"+gc-controller", "+job-controller", "-job-controller"},
 			},
-			expectErr: fmt.Errorf("controllers option %s cannot have both '-' and '+' prefixes", "-job-controller"),
+			expectErr: fmt.Errorf("controllers option specifies controller %q more than once", "job-controller"),
 		},
 		{
-			name: "fail case: use duplicate job-controller",
+			name: "fail case: same controller with and without prefix",
 			serverOption: &ServerOption{
 				Controllers: []string{"+job-controller", "job-controller"},
 			},
-			expectErr: fmt.Errorf("controllers option %s cannot have both '-' and '+' prefixes", "job-controller"),
+			expectErr: fmt.Errorf("controllers option specifies controller %q more than once", "job-controller"),
+		},
+		{
+			name: "fail case: same controller enabled twice",
+			serverOption: &ServerOption{
+				Controllers: []string{"+job-controller", "+job-controller"},
+			},
+			expectErr: fmt.Errorf("controllers option specifies controller %q more than once", "job-controller"),
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.serverOption.checkControllers()
-			if err != nil {
-				if err.Error() != tc.expectErr.Error() {
-					t.Errorf("test case %s failed: expected: %v, but got: %v", tc.name, tc.expectErr, err)
+			if tc.expectErr == nil {
+				if err != nil {
+					t.Errorf("test case %s failed: expected no error, but got: %v", tc.name, err)
 				}
+				return
+			}
+			if err == nil {
+				t.Errorf("test case %s failed: expected error %v, but got nil", tc.name, tc.expectErr)
+				return
+			}
+			if err.Error() != tc.expectErr.Error() {
+				t.Errorf("test case %s failed: expected: %v, but got: %v", tc.name, tc.expectErr, err)
 			}
 		})
 	}
