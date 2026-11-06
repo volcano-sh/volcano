@@ -27,12 +27,15 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -313,8 +316,11 @@ func GetRealNodesByHyperNode(hyperNodes map[string]sets.Set[string], allNodes ma
 	return resultList, resultSet
 }
 
-// ValidateVictims returns an error if the resources of the victims can't satisfy the preemptor
-func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api.TaskInfo) error {
+// ValidateVictims returns an error if the resources of the victims can't satisfy the preemptor.
+// when the preemptor carries DRA requirements, additionally validates the preemptor's DRA devices
+// with all victims' devices simulated as released — the DRA counterpart of the CPU/memory simulation below;
+// pass nil when the caller has no DRA check capability.
+func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api.TaskInfo, draManager fwk.SharedDRAManager, ) error {
 	// Victims should not be judged to be empty here.
 	// It is possible to complete the scheduling of the preemptor without evicting the task.
 	// In the first round, a large task (CPU: 8) is expelled, and a small task is scheduled (CPU: 2)
@@ -328,6 +334,14 @@ func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api
 	if !preemptor.InitResreq.LessEqual(futureIdle, api.Zero) {
 		return fmt.Errorf("not enough resources: requested <%v>, but future idle <%v>",
 			preemptor.InitResreq, futureIdle)
+	}
+	// The CPU/memory simulation above already accounts for the victims' resources, but DRA
+	// devices are accounted separately: a victim's devices are not in node.DraReleasing until
+	// its eviction is committed, so the DRA check must be told to simulate their release.
+	if preemptor.UseResourceClaim {
+		if _, err := FutureIdleCheck(context.TODO(), preemptor, node, draManager, victims); err != nil {
+			return fmt.Errorf("DRA devices cannot satisfy the preemptor after evicting all victims: %v", err)
+		}
 	}
 	return nil
 }
@@ -392,4 +406,26 @@ func FindJobTaskNumOfHyperNode(hyperNodeName string, tasks api.TasksMap, hyperNo
 		}
 	}
 	return taskCount
+}
+
+// SplitClaimKey splits a claim key in "namespace/claimName" format into namespace and name.
+func SplitClaimKey(key string) (namespace, name string, ok bool) {
+	idx := strings.Index(key, "/")
+	if idx <= 0 || idx == len(key)-1 {
+		return "", "", false
+	}
+	return key[:idx], key[idx+1:], true
+}
+
+// ClaimFullyHeldByTask checks whether an allocated claim is referenced only by the given task.
+func ClaimFullyHeldByTask(claim *resourceapi.ResourceClaim, taskUIDs sets.Set[types.UID]) bool {
+	if len(claim.Status.ReservedFor) == 0 {
+		return true
+	}
+	for _, ref := range claim.Status.ReservedFor {
+		if !taskUIDs.Has(ref.UID) {
+			return false
+		}
+	}
+	return true
 }

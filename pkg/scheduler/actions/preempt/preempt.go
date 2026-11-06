@@ -37,7 +37,6 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-
 	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -210,7 +209,14 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 						return false
 					}
 					// Preempt other jobs within queue
-					return job.Queue == preemptorJob.Queue && preemptor.Job != task.Job
+					if !(job.Queue == preemptorJob.Queue && preemptor.Job != task.Job) {
+						return false
+					}
+					// Do not evict pods that use a shared resourceClaim.
+					if preemptor.UseResourceClaim && util.CheckSharedClaim(task, pmpt.ssn.SharedDRAManager()) {
+						return false
+					}
+					return true
 				}, ph)
 				if err != nil {
 					klog.V(3).Infof("Preemptor <%s/%s> failed to preempt Task , err: %s", preemptor.Namespace, preemptor.Name, err)
@@ -314,6 +320,9 @@ func (pmpt *Action) preempt(
 	}
 
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
+	// Nodes with insufficient DRA devices are not filtered out (see
+	// FilterOutUnschedulableAndUnresolvableNodesForTask), the demand can be
+	// satisfied by evicting victims holding DRA devices
 	allNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(preemptor)
 	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateForPreemptAction, pmpt.enablePredicateErrorCache, ssn.NodesInShard)
 
@@ -368,7 +377,7 @@ func (pmpt *Action) normalPreempt(
 		victims := ssn.Preemptable(preemptor, preemptees)
 		metrics.UpdatePreemptionVictimsCount(len(victims))
 
-		if err := util.ValidateVictims(preemptor, node, victims); err != nil {
+		if err := util.ValidateVictims(preemptor, node, victims, ssn.SharedDRAManager()); err != nil {
 			klog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
 			continue
 		}
@@ -439,7 +448,18 @@ func (pmpt *Action) normalPreempt(
 func preemptorFitsOnNode(ssn *framework.Session, queue *api.QueueInfo, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
 	return ssn.Allocatable(queue, preemptor) &&
 		preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) &&
-		ssn.PredicateFn(preemptor, node) == nil
+		ssn.PredicateFn(preemptor, node) == nil &&
+		draFutureIdleSatisfied(ssn, preemptor, node)
+}
+
+// draFutureIdleSatisfied checks in a FutureIdle manner whether the preemptor's DRA
+// device requirements can be satisfied on the node.
+func draFutureIdleSatisfied(ssn *framework.Session, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
+	if !preemptor.UseResourceClaim {
+		return true
+	}
+	_, err := util.FutureIdleCheck(context.TODO(), preemptor, node, ssn.SharedDRAManager(), nil)
+	return err == nil
 }
 
 // taskEligibleToPreempt checks policy-only preconditions that do not depend on predicates.
@@ -779,7 +799,7 @@ func SelectVictimsOnNode(
 	allVictims := ssn.Preemptable(preemptor, preemptees)
 	metrics.UpdatePreemptionVictimsCount(len(allVictims))
 
-	if err := util.ValidateVictims(preemptor, nodeInfo, allVictims); err != nil {
+	if err := util.ValidateVictims(preemptor, nodeInfo, allVictims, ssn.SharedDRAManager()); err != nil {
 		klog.V(3).Infof("No validated victims on Node <%s>: %v", nodeInfo.Name, err)
 		return nil, api.AsStatus(fmt.Errorf("no validated victims on Node <%s>: %v", nodeInfo.Name, err))
 	}

@@ -209,7 +209,6 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	pp.Handle = handle
 
 	pp.InitPlugin()
-
 	// Initialize PredicateCache if enabled
 	if pp.enabledPredicates.cacheEnable {
 		pp.PredicateCache = predicateCacheNew()
@@ -803,6 +802,13 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 			if filterStatus.Plugin == "" {
 				filterStatus.Plugin = name
 			}
+			// Nodes with insufficient DRA devices are allowed through directly; the check is
+			// handled by DRAIdleCheckFn/DRAFutureIdleCheckFn.
+			if api.IsDRAInsufficientDevicesStatus(filterStatus) {
+				klog.V(5).Infof("Skip DRA insufficient devices status for Task <%s/%s> on Node <%s>: %s",
+					task.Namespace, task.Name, node.Name, filterStatus.Reason)
+				continue
+			}
 			predicateStatus = append(predicateStatus, filterStatus)
 			if util.ShouldAbort(filterStatus) {
 				return api.NewFitErrWithStatus(task, node, predicateStatus...)
@@ -853,7 +859,15 @@ func (pp *PredicatesPlugin) BatchNodeOrder(task *api.TaskInfo, nodes []fwk.NodeI
 func (pp *PredicatesPlugin) runReservePlugins(ssn *framework.Session, event *framework.Event) {
 	state := ssn.GetCycleState(event.Task.UID)
 
+	isPipelined := event.Task.Status == api.Pipelined
+
 	for _, name := range pp.ReserveOrder {
+		if isPipelined && name == dynamicresources.Name {
+			klog.V(4).Infof("skip DRA Reserve for pipelined pod %s/%s on node %s, "+
+				"device allocation will be re-evaluated in a future scheduling cycle after victim eviction",
+				event.Task.Namespace, event.Task.Name, event.Task.Pod.Spec.NodeName)
+			continue
+		}
 		plugin, exists := pp.ReservePlugins[name]
 		if !exists {
 			continue

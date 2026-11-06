@@ -23,9 +23,10 @@ limitations under the License.
 package reclaim
 
 import (
+	"context"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -178,6 +179,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 }
 
 func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Statement, task *api.TaskInfo, job *api.JobInfo) {
+	// Nodes with insufficient DRA devices are not filtered out
 	totalNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
 	predicateHelper := util.NewPredicateHelper()
 	predicateNodes, _ := predicateHelper.PredicateNodes(task, totalNodes, ssn.PredicateForPreemptAction, ra.enablePredicateErrorCache, ssn.NodesInShard)
@@ -202,6 +204,10 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 				if !q.Reclaimable() {
 					continue
 				}
+				// Do not evict pods that use a shared resourceClaim.
+				if task.UseResourceClaim && util.CheckSharedClaim(taskOnNode, ssn.SharedDRAManager()) {
+					continue
+				}
 				reclaimees = append(reclaimees, taskOnNode.Clone())
 			}
 		}
@@ -212,7 +218,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		}
 
 		victims := ssn.Reclaimable(task, reclaimees)
-		if err := util.ValidateVictims(task, n, victims); err != nil {
+		if err := util.ValidateVictims(task, n, victims, ssn.SharedDRAManager()); err != nil {
 			klog.V(3).Infof("No validated victims on Node <%s>: %v", n.Name, err)
 			continue
 		}
@@ -264,7 +270,18 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 // reclaimerFitsOnNode verifies available resources and plugin predicates after tentative evictions.
 func reclaimerFitsOnNode(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo, resreq, availableResources *api.Resource) bool {
 	return resreq.LessEqual(availableResources, api.Zero) &&
-		ssn.PredicateFn(task, node) == nil
+		ssn.PredicateFn(task, node) == nil &&
+		draReclaimFutureIdleSatisfied(ssn, task, node)
+}
+
+// draReclaimFutureIdleSatisfied checks in a FutureIdle manner whether the reclaimer's
+// DRA device requirements can be satisfied on the node.
+func draReclaimFutureIdleSatisfied(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo) bool {
+	if !task.UseResourceClaim {
+		return true
+	}
+	_, err := util.FutureIdleCheck(context.TODO(), task, node, ssn.SharedDRAManager(), nil)
+	return err == nil
 }
 
 func (ra *Action) UnInitialize() {

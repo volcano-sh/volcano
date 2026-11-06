@@ -287,16 +287,22 @@ func TestBuildTaskDRAResreq(t *testing.T) {
 			})
 			assert.NoError(t, err, "failed to wait for resource claim cache sync")
 
-			resreq, claimResreq, claimKeys, err := sc.buildTaskDRAInfo(tt.pod)
+			resreq, claimResreq, claimKeys, devices, usesClaim, err := sc.buildTaskDRAInfo(tt.pod)
 			if tt.expectErr {
 				assert.Error(t, err)
 				assert.Nil(t, resreq)
 				assert.Nil(t, claimResreq)
 				assert.Nil(t, claimKeys)
+				assert.Nil(t, devices)
+				assert.False(t, usesClaim)
 				return
 			}
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectedResreq, resreq)
+			// Pods referencing ResourceClaims always report true, even when their
+			// requests are skipped for DRA quota tracking.
+			assert.Equal(t, len(tt.pod.Spec.ResourceClaims) > 0, usesClaim,
+				"UseResourceClaim mismatch for case %q", tt.name)
 			if tt.expectedResreq == nil {
 				assert.Nil(t, claimResreq)
 				assert.Nil(t, claimKeys)
