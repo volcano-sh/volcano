@@ -165,6 +165,14 @@ func (f *Framework) RunFilterPlugins(ctx context.Context, state fwk.CycleState, 
 	panic("implement me")
 }
 
+func (f *Framework) RunReservePluginsReserve(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeName string) *fwk.Status {
+	panic("implement me")
+}
+
+func (f *Framework) RunReservePluginsUnreserve(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeName string) {
+	panic("implement me")
+}
+
 func (f *Framework) RunPreFilterExtensionAddPod(ctx context.Context, state fwk.CycleState, podToSchedule *v1.Pod, podInfoToAdd fwk.PodInfo, nodeInfo fwk.NodeInfo) *fwk.Status {
 	panic("implement me")
 }
@@ -226,6 +234,10 @@ func (f *Framework) SharedCSIManager() fwk.CSIManager {
 }
 
 func (f *Framework) PodGroupManager() fwk.PodGroupManager {
+	return nil
+}
+
+func (f *Framework) MutableSnapshotSharedLister() fwk.MutableSnapshotSharedLister {
 	return nil
 }
 

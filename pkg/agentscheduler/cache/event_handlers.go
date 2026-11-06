@@ -185,7 +185,7 @@ func (sc *SchedulerCache) UpdatePodInCache(oldObj, newObj interface{}) {
 	}
 	klog.V(4).Infof("Updated pod <%s/%v> in cache.", oldPod.Namespace, oldPod.Name)
 
-	events := framework.PodSchedulingPropertiesChange(newPod, oldPod)
+	events := framework.PodSchedulingPropertiesChange(newPod, oldPod, false)
 	for _, evt := range events {
 		// Currently we still use AssignedPodUpdated and only care about pod affinity and pod topology spread,
 		// directly using MoveAllToActiveOrBackoffQueue may lead to a decrease in throughput.

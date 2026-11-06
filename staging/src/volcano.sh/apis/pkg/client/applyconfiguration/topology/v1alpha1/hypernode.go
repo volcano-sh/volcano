@@ -28,7 +28,7 @@ import (
 //
 // HyperNode represents a collection of nodes sharing similar network topology or performance characteristics.
 type HyperNodeApplyConfiguration struct {
-	v1.TypeMetaApplyConfiguration    `json:",inline"`
+	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	// Spec defines the desired configuration of the HyperNode.
 	Spec *HyperNodeSpecApplyConfiguration `json:"spec,omitempty"`

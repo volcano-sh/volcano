@@ -28,6 +28,8 @@ import (
 	"maps"
 
 	v1 "k8s.io/api/core/v1"
+	schedulingv1alpha3 "k8s.io/api/scheduling/v1alpha3"
+	schedulingv1beta1 "k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -324,6 +326,40 @@ func (s *Snapshot) PodGroupStates() fwk.PodGroupStateLister {
 	return snapshotPodGroupStateLister{}
 }
 
+// Volcano does not track kube-scheduler PodGroups or CompositePodGroups in this snapshot.
+type snapshotPodGroupLister struct{}
+
+func (snapshotPodGroupLister) Get(namespace, name string) (*schedulingv1beta1.PodGroup, error) {
+	return nil, fmt.Errorf("pod group %s/%s not found in snapshot", namespace, name)
+}
+
+type snapshotCompositePodGroupLister struct{}
+
+func (snapshotCompositePodGroupLister) Get(namespace, name string) (*schedulingv1alpha3.CompositePodGroup, error) {
+	return nil, fmt.Errorf("composite pod group %s/%s not found in snapshot", namespace, name)
+}
+
+type snapshotCompositePodGroupStateLister struct{}
+
+func (snapshotCompositePodGroupStateLister) Get(namespace, name string) (fwk.CompositePodGroupState, error) {
+	return nil, fmt.Errorf("composite pod group state %s/%s not found in snapshot", namespace, name)
+}
+
+// PodGroups implements fwk.SharedLister (Kubernetes 1.37+).
+func (s *Snapshot) PodGroups() fwk.PodGroupLister {
+	return snapshotPodGroupLister{}
+}
+
+// CompositePodGroups implements fwk.SharedLister (Kubernetes 1.37+).
+func (s *Snapshot) CompositePodGroups() fwk.CompositePodGroupLister {
+	return snapshotCompositePodGroupLister{}
+}
+
+// CompositePodGroupStates implements fwk.SharedLister (Kubernetes 1.37+).
+func (s *Snapshot) CompositePodGroupStates() fwk.CompositePodGroupStateLister {
+	return snapshotCompositePodGroupStateLister{}
+}
+
 // VolcanoNodeInfos returns a list of volcano NodeInfo.
 func (s *Snapshot) GetK8sNodeInfo(nodeName string) (fwk.NodeInfo, error) {
 	if v, ok := s.fwkInfo.nodeInfoMap[nodeName]; ok {
@@ -411,6 +447,11 @@ func (s *Snapshot) HavePodsWithAffinityList() ([]fwk.NodeInfo, error) {
 // HavePodsWithRequiredAntiAffinityList returns the list of NodeInfos of nodes with pods with required anti-affinity terms.
 func (s *Snapshot) HavePodsWithRequiredAntiAffinityList() ([]fwk.NodeInfo, error) {
 	return s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList, nil
+}
+
+// HavePodsWithRequiredNonHostScopedAntiAffinityList stays empty: Volcano never enables InterPodAffinityHostnameFastPath.
+func (s *Snapshot) HavePodsWithRequiredNonHostScopedAntiAffinityList() ([]fwk.NodeInfo, error) {
+	return nil, nil
 }
 
 // Get returns the NodeInfo of the given node name.

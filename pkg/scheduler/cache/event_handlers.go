@@ -528,9 +528,10 @@ func (sc *SchedulerCache) handleUnschedulableJobCachePodUpdate(oldPod, newPod *v
 	terminalRelease := !schedulingapi.CompletedStatus(schedulingapi.GetTaskStatus(oldPod)) &&
 		schedulingapi.CompletedStatus(schedulingapi.GetTaskStatus(newPod))
 	podBecameAssigned := oldPod.Spec.NodeName == "" && newPod.Spec.NodeName != ""
-	events := kubeschedulerframework.PodSchedulingPropertiesChange(newPod, oldPod)
+	events := kubeschedulerframework.PodSchedulingPropertiesChange(newPod, oldPod, false)
 	schedulingInputsChanged := terminalRelease || podBecameAssigned || slices.ContainsFunc(events, func(event fwk.ClusterEvent) bool {
-		return event.ActionType != fwk.Update
+		// A larger request cannot relax a cached rejection.
+		return event.ActionType != fwk.Update && event.ActionType != fwk.UpdatePodScaleUp
 	})
 	sc.invalidateUnschedulableJobsForPodUpdate(oldPod, newPod, schedulingInputsChanged)
 

@@ -33,11 +33,39 @@ import (
 )
 
 // NamespaceQueueInformer provides access to a shared informer and lister for
-// NamespaceQueues.
+// NamespaceQueues. Prefer using the type-safe variant (see [TypedNamespaceQueueInformer]).
 type NamespaceQueueInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() schedulingv1beta1.NamespaceQueueLister
 }
+
+// TypedNamespaceQueueInformer provides access to a shared informer and lister for
+// NamespaceQueues, including the type-safe TypedInformer variant.
+// It is a superset of NamespaceQueueInformer.
+type TypedNamespaceQueueInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() NamespaceQueueIndexInformer
+	Lister() schedulingv1beta1.NamespaceQueueLister
+}
+
+// NamespaceQueueIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type NamespaceQueueIndexInformer cache.TypedSharedIndexInformer[*apisschedulingv1beta1.NamespaceQueue]
+
+// NamespaceQueueHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for NamespaceQueue.
+type NamespaceQueueHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apisschedulingv1beta1.NamespaceQueue]
+
+// NamespaceQueueDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for NamespaceQueue.
+type NamespaceQueueDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apisschedulingv1beta1.NamespaceQueue]
+
+// NamespaceQueueFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for NamespaceQueue.
+type NamespaceQueueFilteringHandler = cache.TypedFilteringResourceEventHandler[*apisschedulingv1beta1.NamespaceQueue]
+
+// NamespaceQueueIndexers is a specialization of [cache.TypedIndexers] for NamespaceQueue.
+type NamespaceQueueIndexers = cache.TypedIndexers[*apisschedulingv1beta1.NamespaceQueue]
+
+// DeletedNamespaceQueue is a specialization of [cache.DeletedObject] for NamespaceQueue.
+type DeletedNamespaceQueue = cache.DeletedObject[*apisschedulingv1beta1.NamespaceQueue]
 
 type namespaceQueueInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -48,25 +76,49 @@ type namespaceQueueInformer struct {
 // NewNamespaceQueueInformer constructs a new informer for NamespaceQueue type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedNamespaceQueueInformer]).
 func NewNamespaceQueueInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewNamespaceQueueInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedNamespaceQueueInformer constructs a new informer for NamespaceQueue type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedNamespaceQueueInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers NamespaceQueueIndexers) NamespaceQueueIndexInformer {
+	return NewTypedNamespaceQueueInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredNamespaceQueueInformer constructs a new informer for NamespaceQueue type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredNamespaceQueueInformer]).
 func NewFilteredNamespaceQueueInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewNamespaceQueueInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+	return NewTypedNamespaceQueueInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredNamespaceQueueInformer constructs a new informer for NamespaceQueue type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredNamespaceQueueInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers NamespaceQueueIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) NamespaceQueueIndexInformer {
+	return NewTypedNamespaceQueueInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
 }
 
 // NewNamespaceQueueInformerWithOptions constructs a new informer for NamespaceQueue type with additional options.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedNamespaceQueueInformerWithOptions]).
 func NewNamespaceQueueInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedNamespaceQueueInformerWithOptions(client, namespace, options)
+}
+
+// NewTypedNamespaceQueueInformerWithOptions constructs a new informer for NamespaceQueue type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedNamespaceQueueInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) NamespaceQueueIndexInformer {
 	gvr := schema.GroupVersionResource{Group: "scheduling.volcano.sh", Version: "v1beta1", Resource: "namespacequeues"}
 	identifier := options.InformerName.WithResource(gvr)
 	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
+	return cache.NewTypedSharedIndexInformer[*apisschedulingv1beta1.NamespaceQueue](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
@@ -99,17 +151,57 @@ func NewNamespaceQueueInformerWithOptions(client versioned.Interface, namespace 
 			Indexers:     options.Indexers,
 			Identifier:   identifier,
 		},
-	)
+	))
 }
 
 func (f *namespaceQueueInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewNamespaceQueueInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewTypedNamespaceQueueInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *namespaceQueueInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apisschedulingv1beta1.NamespaceQueue{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *namespaceQueueInformer) TypedInformer() NamespaceQueueIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisschedulingv1beta1.NamespaceQueue](f.factory.InformerFor(&apisschedulingv1beta1.NamespaceQueue{}, f.defaultInformer))
 }
 
 func (f *namespaceQueueInformer) Lister() schedulingv1beta1.NamespaceQueueLister {
 	return schedulingv1beta1.NewNamespaceQueueLister(f.Informer().GetIndexer())
+}
+
+// ToTypedNamespaceQueueInformer converts an untyped informer into a TypedNamespaceQueueInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *NamespaceQueue. If that is not the case, calling type-safe methods of the returned
+// TypedNamespaceQueueInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedNamespaceQueueInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedNamespaceQueueInformer(informer NamespaceQueueInformer) TypedNamespaceQueueInformer {
+	if informer, ok := informer.(TypedNamespaceQueueInformer); ok {
+		return informer
+	}
+	return &namespaceQueueTypedInformerAdapter{informer}
+}
+
+type namespaceQueueTypedInformerAdapter struct {
+	NamespaceQueueInformer
+}
+
+func (a *namespaceQueueTypedInformerAdapter) TypedInformer() NamespaceQueueIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisschedulingv1beta1.NamespaceQueue](a.Informer())
+}
+
+// ToNamespaceQueueIndexInformer converts an untyped informer into a NamespaceQueueIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *NamespaceQueue. If that is not the case, calling type-safe methods of the returned
+// NamespaceQueueIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a NamespaceQueueIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToNamespaceQueueIndexInformer(informer cache.SharedIndexInformer) NamespaceQueueIndexInformer {
+	if informer, ok := informer.(NamespaceQueueIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apisschedulingv1beta1.NamespaceQueue](informer)
 }
