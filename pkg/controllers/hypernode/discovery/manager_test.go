@@ -40,8 +40,8 @@ type acknowledgementDiscoverer struct {
 	synced atomic.Int32
 }
 
-func (*acknowledgementDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
-	return make(chan []*topologyv1alpha1.HyperNode), nil
+func (*acknowledgementDiscoverer) Start() (chan api.DiscoveryResult, error) {
+	return make(chan api.DiscoveryResult), nil
 }
 
 func (*acknowledgementDiscoverer) Stop() error     { return nil }
@@ -50,7 +50,7 @@ func (d *acknowledgementDiscoverer) ResultSynced() { d.synced.Add(1) }
 
 func TestResultSyncedTargetsProducingDiscoverer(t *testing.T) {
 	producer := &acknowledgementDiscoverer{}
-	topologyCh := make(chan []*topologyv1alpha1.HyperNode, 1)
+	topologyCh := make(chan api.DiscoveryResult, 1)
 	m := &manager{
 		resultCh:   make(chan Result),
 		stopCh:     make(chan struct{}),
@@ -60,7 +60,7 @@ func TestResultSyncedTargetsProducingDiscoverer(t *testing.T) {
 	processorDone := make(chan struct{})
 	m.workerWG.Add(1)
 	go m.processTopology("same-source", producer, topologyCh, processorStopCh, processorDone)
-	topologyCh <- []*topologyv1alpha1.HyperNode{{ObjectMeta: metav1.ObjectMeta{Name: "test"}}}
+	topologyCh <- api.DiscoveryResult{HyperNodes: []*topologyv1alpha1.HyperNode{{ObjectMeta: metav1.ObjectMeta{Name: "test"}}}}
 	result := <-m.resultCh
 
 	// The acknowledgement is bound to the in-flight result and remains
@@ -74,7 +74,7 @@ func TestResultSyncedTargetsProducingDiscoverer(t *testing.T) {
 
 	// A subsequent in-flight result is independently bound to the same
 	// producing instance.
-	topologyCh <- []*topologyv1alpha1.HyperNode{{ObjectMeta: metav1.ObjectMeta{Name: "legacy"}}}
+	topologyCh <- api.DiscoveryResult{HyperNodes: []*topologyv1alpha1.HyperNode{{ObjectMeta: metav1.ObjectMeta{Name: "legacy"}}}}
 	legacyResult := <-m.resultCh
 	m.ResultSynced(legacyResult.Source)
 	if got := producer.synced.Load(); got != 2 {
@@ -87,7 +87,7 @@ func TestResultSyncedTargetsProducingDiscoverer(t *testing.T) {
 
 func TestStopDiscovererWaitsForDeliveredResultAndDropsBufferedResults(t *testing.T) {
 	producer := &acknowledgementDiscoverer{}
-	topologyCh := make(chan []*topologyv1alpha1.HyperNode, 2)
+	topologyCh := make(chan api.DiscoveryResult, 2)
 	processorStopCh := make(chan struct{})
 	processorDone := make(chan struct{})
 	m := &manager{
@@ -100,8 +100,8 @@ func TestStopDiscovererWaitsForDeliveredResultAndDropsBufferedResults(t *testing
 	}
 	m.workerWG.Add(1)
 	go m.processTopology("same-source", producer, topologyCh, processorStopCh, processorDone)
-	topologyCh <- []*topologyv1alpha1.HyperNode{{ObjectMeta: metav1.ObjectMeta{Name: "delivered"}}}
-	topologyCh <- []*topologyv1alpha1.HyperNode{{ObjectMeta: metav1.ObjectMeta{Name: "buffered"}}}
+	topologyCh <- api.DiscoveryResult{HyperNodes: []*topologyv1alpha1.HyperNode{{ObjectMeta: metav1.ObjectMeta{Name: "delivered"}}}}
+	topologyCh <- api.DiscoveryResult{HyperNodes: []*topologyv1alpha1.HyperNode{{ObjectMeta: metav1.ObjectMeta{Name: "buffered"}}}}
 	result := <-m.resultCh
 
 	stopDone := make(chan error, 1)

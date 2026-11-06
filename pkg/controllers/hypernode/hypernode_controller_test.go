@@ -397,11 +397,12 @@ func TestHyperNodeController_Run(t *testing.T) {
 	_, err = fakeVcClient.TopologyV1alpha1().HyperNodes().Get(context.TODO(), "new-hypernode", metav1.GetOptions{})
 	assert.NoError(t, err, "Should be able to get the created HyperNode")
 
-	// phase2: delete hypernode
+	// phase2: authoritative-empty result must delete all UFM-owned HyperNodes
 	go func() {
 		mockManager.resultCh <- discovery.Result{
-			Source:     "ufm",
-			HyperNodes: []*topologyv1alpha1.HyperNode{},
+			Source:             "ufm",
+			HyperNodes:         []*topologyv1alpha1.HyperNode{},
+			AuthoritativeEmpty: true,
 		}
 	}()
 
@@ -428,6 +429,137 @@ func TestHyperNodeController_Run(t *testing.T) {
 	close(stopCh)
 	time.Sleep(100 * time.Millisecond)
 	assert.True(t, func() bool { mockManager.mu.Lock(); defer mockManager.mu.Unlock(); return mockManager.stopCalled }(), "Discovery manager should be stopped")
+}
+
+// TestWatchDiscoveryResultsNonAuthoritativeEmptyPreservesHyperNodes verifies
+// that an empty-HyperNodes result with AuthoritativeEmpty=false does NOT delete
+// existing HyperNodes.  This is the core regression guard for the UFM bug where
+// HTTP 200 + [] would previously wipe all UFM-owned HyperNodes.
+func TestWatchDiscoveryResultsNonAuthoritativeEmptyPreservesHyperNodes(t *testing.T) {
+	existing := &topologyv1alpha1.HyperNode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "leaf-hn-0",
+			Labels: map[string]string{
+				api.NetworkTopologySourceLabelKey: "ufm",
+			},
+		},
+	}
+	fakeVcClient := vcclientset.NewSimpleClientset(existing.DeepCopy())
+	vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
+	hyperNodeInformer := vcInformerFactory.Topology().V1alpha1().HyperNodes()
+	assert.NoError(t, hyperNodeInformer.Informer().GetIndexer().Add(existing.DeepCopy()))
+
+	mockManager := &mockDiscoveryManager{
+		resultCh: make(chan discovery.Result),
+		syncedCh: make(chan string, 1),
+	}
+	controller := &hyperNodeController{
+		vcClient:         fakeVcClient,
+		hyperNodeLister:  hyperNodeInformer.Lister(),
+		discoveryManager: mockManager,
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		controller.watchDiscoveryResults()
+	}()
+
+	// Send a non-authoritative empty result (simulates a transient empty UFM response).
+	mockManager.resultCh <- discovery.Result{
+		Source:             "ufm",
+		HyperNodes:         []*topologyv1alpha1.HyperNode{},
+		AuthoritativeEmpty: false,
+	}
+
+	select {
+	case <-mockManager.syncedCh:
+	case <-time.After(time.Second):
+		t.Fatal("result was not acknowledged")
+	}
+
+	// The existing HyperNode must still exist.
+	nodeList, err := fakeVcClient.TopologyV1alpha1().HyperNodes().List(context.TODO(), metav1.ListOptions{})
+	assert.NoError(t, err)
+	assert.Len(t, nodeList.Items, 1, "non-authoritative empty result must not delete existing HyperNodes")
+
+	close(mockManager.resultCh)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("watcher did not stop")
+	}
+}
+
+// TestWatchDiscoveryResultsAuthoritativeEmptyDeletesHyperNodes verifies that
+// an empty-HyperNodes result with AuthoritativeEmpty=true deletes all HyperNodes
+// for that source while leaving HyperNodes from other sources intact.
+func TestWatchDiscoveryResultsAuthoritativeEmptyDeletesHyperNodes(t *testing.T) {
+	ufmNode := &topologyv1alpha1.HyperNode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "leaf-hn-0",
+			Labels: map[string]string{api.NetworkTopologySourceLabelKey: "ufm"},
+		},
+	}
+	roceNode := &topologyv1alpha1.HyperNode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "roce-hn-0",
+			Labels: map[string]string{api.NetworkTopologySourceLabelKey: "roce"},
+		},
+	}
+	fakeVcClient := vcclientset.NewSimpleClientset(ufmNode.DeepCopy(), roceNode.DeepCopy())
+	vcInformerFactory := vcinformer.NewSharedInformerFactory(fakeVcClient, 0)
+	hyperNodeInformer := vcInformerFactory.Topology().V1alpha1().HyperNodes()
+	assert.NoError(t, hyperNodeInformer.Informer().GetIndexer().Add(ufmNode.DeepCopy()))
+	assert.NoError(t, hyperNodeInformer.Informer().GetIndexer().Add(roceNode.DeepCopy()))
+
+	mockManager := &mockDiscoveryManager{
+		resultCh: make(chan discovery.Result),
+		syncedCh: make(chan string, 1),
+	}
+	controller := &hyperNodeController{
+		vcClient:         fakeVcClient,
+		hyperNodeLister:  hyperNodeInformer.Lister(),
+		discoveryManager: mockManager,
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		controller.watchDiscoveryResults()
+	}()
+
+	// Send an authoritative empty result for the UFM source.
+	mockManager.resultCh <- discovery.Result{
+		Source:             "ufm",
+		HyperNodes:         []*topologyv1alpha1.HyperNode{},
+		AuthoritativeEmpty: true,
+	}
+
+	select {
+	case <-mockManager.syncedCh:
+	case <-time.After(time.Second):
+		t.Fatal("result was not acknowledged")
+	}
+
+	// UFM-owned HyperNode must be deleted.
+	ufmList, err := fakeVcClient.TopologyV1alpha1().HyperNodes().List(context.TODO(), metav1.ListOptions{
+		LabelSelector: labels.SelectorFromSet(labels.Set{api.NetworkTopologySourceLabelKey: "ufm"}).String(),
+	})
+	assert.NoError(t, err)
+	assert.Empty(t, ufmList.Items, "authoritative-empty result must delete UFM-owned HyperNodes")
+
+	// HyperNodes from a different source must be unaffected.
+	roceList, err := fakeVcClient.TopologyV1alpha1().HyperNodes().List(context.TODO(), metav1.ListOptions{
+		LabelSelector: labels.SelectorFromSet(labels.Set{api.NetworkTopologySourceLabelKey: "roce"}).String(),
+	})
+	assert.NoError(t, err)
+	assert.Len(t, roceList.Items, 1, "HyperNodes from other sources must not be deleted")
+
+	close(mockManager.resultCh)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("watcher did not stop")
+	}
 }
 
 func TestHyperNodeController_Initialize(t *testing.T) {

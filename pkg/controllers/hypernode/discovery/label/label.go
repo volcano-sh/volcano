@@ -82,7 +82,7 @@ type labelDiscoverer struct {
 	nodeInformer          infov1.NodeInformer
 	hyperNodeInformer     topologyinformerv1alpha1.HyperNodeInformer
 	networkTopologyRecord map[string][]string
-	outputCh              chan []*topologyv1alpha1.HyperNode
+	outputCh              chan api.DiscoveryResult
 	stopCh                chan struct{}
 	completedCh           chan struct{}
 	queue                 workqueue.TypedRateLimitingInterface[string]
@@ -117,7 +117,7 @@ func newHyperNodeNameResolver(hyperNodeLister topologylisterv1alpha1.HyperNodeLi
 }
 
 // Start begins the topology discovery process and returns the channel for receiving discovered topology
-func (l *labelDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
+func (l *labelDiscoverer) Start() (chan api.DiscoveryResult, error) {
 	var err error
 	l.nodeHandler, err = l.nodeInformer.Informer().AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
@@ -232,7 +232,7 @@ func newLabelDiscoverer(cfg api.DiscoveryConfig, options api.DiscovererOptions, 
 	networkTopologyRecord := parseCfg(cfg)
 
 	// Create the output channel that this discoverer will manage
-	outputCh := make(chan []*topologyv1alpha1.HyperNode)
+	outputCh := make(chan api.DiscoveryResult)
 
 	stopCh := make(chan struct{})
 	completedCh := make(chan struct{})
@@ -314,7 +314,7 @@ func (l *labelDiscoverer) work() {
 		func() {
 			defer l.queue.Done(key)
 			if err := l.discovery(); err != nil {
-				klog.ErrorS(err, "Error discover HyperNode")
+				klog.ErrorS(err, "Error discovering HyperNode")
 				l.queue.AddRateLimited(key)
 				return
 			}
@@ -347,9 +347,17 @@ func (l *labelDiscoverer) discovery() error {
 	// create HyperNodes
 	hyperNodes := l.buildHyperNodes(hyperNodeInfoMap)
 
+	// The label discoverer performs a complete Kubernetes Node listing, so an
+	// empty result authoritatively means "no matching topology labels exist".
+	// Mark it accordingly so the controller deletes stale HyperNodes.
+	result := api.DiscoveryResult{
+		HyperNodes:         hyperNodes,
+		AuthoritativeEmpty: len(hyperNodes) == 0,
+	}
+
 	// Send discovered nodes through the channel
 	select {
-	case l.outputCh <- hyperNodes:
+	case l.outputCh <- result:
 	case <-l.stopCh:
 		return nil
 	}

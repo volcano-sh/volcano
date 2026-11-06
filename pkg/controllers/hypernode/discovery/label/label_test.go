@@ -109,12 +109,13 @@ func TestNewLabelDiscoverer_start(t *testing.T) {
 			vcInformerFactory.WaitForCacheSync(stopCh)
 			outputCh, err := d.Start()
 			assert.NoError(t, err)
-			var hyperNodes []*topologyv1alpha1.HyperNode
+			var discResult api.DiscoveryResult
 			select {
-			case hyperNodes = <-outputCh:
+			case discResult = <-outputCh:
 			case <-time.After(time.Second):
 				t.Fatal("Timeout waiting for output")
 			}
+			hyperNodes := discResult.HyperNodes
 			expectedHyperNodeMap := tc.expectedHyperNodeMap
 			assert.Equal(t, len(expectedHyperNodeMap), len(hyperNodes), "Hypernode count should match")
 			for _, hn := range hyperNodes {

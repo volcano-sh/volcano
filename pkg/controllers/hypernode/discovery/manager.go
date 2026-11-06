@@ -41,6 +41,10 @@ import (
 type Result struct {
 	// HyperNodes contains the discovered hypernodes
 	HyperNodes []*topologyv1alpha1.HyperNode
+	// AuthoritativeEmpty mirrors api.DiscoveryResult.AuthoritativeEmpty: when
+	// true, an empty HyperNodes slice is a deliberate topology snapshot and
+	// the controller should delete existing nodes for this source.
+	AuthoritativeEmpty bool
 	// Source indicates the source of the discovery
 	Source string
 }
@@ -379,13 +383,13 @@ func (m *manager) handleRemovedSources(config *api.NetworkTopologyConfig) error 
 }
 
 // processTopology processes the topology data received from the discoverer
-func (m *manager) processTopology(source string, discoverer api.Discoverer, topologyCh <-chan []*topologyv1alpha1.HyperNode,
+func (m *manager) processTopology(source string, discoverer api.Discoverer, topologyCh <-chan api.DiscoveryResult,
 	processorStopCh <-chan struct{}, processorDone chan<- struct{}) {
 	defer m.workerWG.Done()
 	defer close(processorDone)
 	for {
 		select {
-		case hyperNodes, ok := <-topologyCh:
+		case discResult, ok := <-topologyCh:
 			if !ok {
 				klog.InfoS("Topology channel closed, stopping processor", "source", source)
 				return
@@ -404,8 +408,9 @@ func (m *manager) processTopology(source string, discoverer api.Discoverer, topo
 			}
 			select {
 			case m.resultCh <- Result{
-				HyperNodes: hyperNodes,
-				Source:     source,
+				HyperNodes:         discResult.HyperNodes,
+				AuthoritativeEmpty: discResult.AuthoritativeEmpty,
+				Source:             source,
 			}:
 			case <-processorStopCh:
 				clearPendingAck()
@@ -416,7 +421,7 @@ func (m *manager) processTopology(source string, discoverer api.Discoverer, topo
 			}
 			klog.V(3).InfoS("Forwarded discovery results to unified channel",
 				"source", source,
-				"nodeCount", len(hyperNodes))
+				"nodeCount", len(discResult.HyperNodes))
 			// Preserve result ordering and ensure a hot-reload cannot start a
 			// replacement instance while an old result is still reconciling.
 			select {

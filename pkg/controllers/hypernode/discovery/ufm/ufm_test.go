@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -245,13 +246,14 @@ func TestUfmDiscoverer_Start(t *testing.T) {
 
 			// If HyperNodes are expected, verify the generated nodes
 			if tc.expectHyperNodes {
-				var hyperNodes []*topologyv1alpha1.HyperNode
+				var result api.DiscoveryResult
 				select {
-				case hyperNodes = <-outputCh:
+				case result = <-outputCh:
 				case <-time.After(time.Second):
 					t.Fatal("Timeout waiting for output")
 				}
 
+				hyperNodes := result.HyperNodes
 				assert.Equal(t, len(tc.expectedHyperNodes), len(hyperNodes), "Hypernode count should match")
 				for _, hn := range hyperNodes {
 					expected, exists := tc.expectedHyperNodes[hn.Name]
@@ -262,6 +264,242 @@ func TestUfmDiscoverer_Start(t *testing.T) {
 
 			u.Stop()
 		})
+	}
+}
+
+// TestUFMDiscovererEmptyResponsePreservesHyperNodes verifies that an HTTP 200
+// with an empty JSON array is silently skipped — no DiscoveryResult is sent so
+// the controller keeps existing HyperNodes for the UFM source.
+//
+// The test is deterministic: a two-phase server returns [] on the first request
+// and non-empty data on all subsequent requests.  The first DiscoveryResult
+// received on the output channel must therefore be non-empty, proving that the
+// empty first response was suppressed rather than merely slow.
+func TestUFMDiscovererEmptyResponsePreservesHyperNodes(t *testing.T) {
+	var requestCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&requestCount, 1)
+		w.WriteHeader(http.StatusOK)
+		if n == 1 {
+			w.Write([]byte("[]"))
+			return
+		}
+		data, err := json.Marshal(mockUfmData())
+		if err != nil {
+			t.Errorf("Failed to marshal mock UFM data: %v", err)
+		}
+		w.Write(data)
+	}))
+	defer server.Close()
+
+	fakeClient := fake.NewSimpleClientset()
+	fakeVcClient := vcclientset.NewSimpleClientset()
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ufm-creds", Namespace: "default"},
+		Data:       map[string][]byte{"username": []byte("user"), "password": []byte("pass")},
+	}
+	if _, err := fakeClient.CoreV1().Secrets("default").Create(context.TODO(), secret, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Failed to create secret: %v", err)
+	}
+
+	cfg := api.DiscoveryConfig{
+		Source: "ufm",
+		Config: map[string]interface{}{"endpoint": server.URL},
+		Credentials: &api.Credentials{
+			SecretRef: &api.SecretRef{Name: "ufm-creds", Namespace: "default"},
+		},
+		Interval: 5 * time.Millisecond, // fast poll so the second request fires quickly
+	}
+
+	u := NewUFMDiscoverer(cfg, fakeClient, fakeVcClient)
+	outputCh, err := u.Start()
+	if err != nil {
+		t.Fatalf("Start() returned error: %v", err)
+	}
+	defer u.Stop()
+
+	// The first DiscoveryResult must be non-empty: if the empty first response
+	// had been forwarded it would arrive here and fail the length assertion.
+	select {
+	case result := <-outputCh:
+		if len(result.HyperNodes) == 0 {
+			t.Fatalf("empty UFM response was forwarded (AuthoritativeEmpty=%v); existing HyperNodes would have been deleted",
+				result.AuthoritativeEmpty)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for non-empty result after empty response was suppressed")
+	}
+}
+
+// TestUFMDiscovererNonEmptyResponseSendsHyperNodes verifies that a successful
+// non-empty UFM response is forwarded and has AuthoritativeEmpty=false.
+func TestUFMDiscovererNonEmptyResponseSendsHyperNodes(t *testing.T) {
+	server := setupTestServer(t, http.StatusOK)
+	defer server.Close()
+
+	fakeClient := fake.NewSimpleClientset()
+	fakeVcClient := vcclientset.NewSimpleClientset()
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ufm-creds", Namespace: "default"},
+		Data:       map[string][]byte{"username": []byte("user"), "password": []byte("pass")},
+	}
+	_, err := fakeClient.CoreV1().Secrets("default").Create(context.TODO(), secret, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create secret: %v", err)
+	}
+
+	cfg := api.DiscoveryConfig{
+		Source: "ufm",
+		Config: map[string]interface{}{"endpoint": server.URL},
+		Credentials: &api.Credentials{
+			SecretRef: &api.SecretRef{Name: "ufm-creds", Namespace: "default"},
+		},
+		Interval: time.Minute,
+	}
+
+	u := NewUFMDiscoverer(cfg, fakeClient, fakeVcClient)
+	outputCh, err := u.Start()
+	if err != nil {
+		t.Fatalf("Start() returned error: %v", err)
+	}
+
+	select {
+	case result := <-outputCh:
+		assert.Greater(t, len(result.HyperNodes), 0, "non-empty UFM response should produce HyperNodes")
+		assert.False(t, result.AuthoritativeEmpty, "non-empty result must not set AuthoritativeEmpty")
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for non-empty UFM result")
+	}
+	u.Stop()
+}
+
+// TestUFMDiscovererHTTPErrorPreservesHyperNodes verifies that a non-200 HTTP
+// response results in no DiscoveryResult being sent.
+//
+// The test is deterministic: a two-phase server returns HTTP 500 on the first
+// request and non-empty data on all subsequent requests.  The first
+// DiscoveryResult received must therefore be non-empty, proving that the error
+// response was suppressed rather than merely slow.
+func TestUFMDiscovererHTTPErrorPreservesHyperNodes(t *testing.T) {
+	var requestCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&requestCount, 1)
+		if n == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Server Error"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		data, err := json.Marshal(mockUfmData())
+		if err != nil {
+			t.Errorf("Failed to marshal mock UFM data: %v", err)
+		}
+		w.Write(data)
+	}))
+	defer server.Close()
+
+	fakeClient := fake.NewSimpleClientset()
+	fakeVcClient := vcclientset.NewSimpleClientset()
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ufm-creds", Namespace: "default"},
+		Data:       map[string][]byte{"username": []byte("user"), "password": []byte("pass")},
+	}
+	if _, err := fakeClient.CoreV1().Secrets("default").Create(context.TODO(), secret, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Failed to create secret: %v", err)
+	}
+
+	cfg := api.DiscoveryConfig{
+		Source: "ufm",
+		Config: map[string]interface{}{"endpoint": server.URL},
+		Credentials: &api.Credentials{
+			SecretRef: &api.SecretRef{Name: "ufm-creds", Namespace: "default"},
+		},
+		Interval: 5 * time.Millisecond, // fast poll so the second request fires quickly
+	}
+
+	u := NewUFMDiscoverer(cfg, fakeClient, fakeVcClient)
+	outputCh, err := u.Start()
+	if err != nil {
+		t.Fatalf("Start() returned error: %v", err)
+	}
+	defer u.Stop()
+
+	// The first DiscoveryResult must be non-empty: if the HTTP 500 response had
+	// been forwarded it would arrive here and fail the length assertion.
+	select {
+	case result := <-outputCh:
+		if len(result.HyperNodes) == 0 {
+			t.Fatalf("HTTP error response was forwarded as empty result (AuthoritativeEmpty=%v); existing HyperNodes would have been deleted",
+				result.AuthoritativeEmpty)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for non-empty result after HTTP error was suppressed")
+	}
+}
+
+// TestUFMDiscovererInvalidJSONPreservesHyperNodes verifies that an HTTP 200
+// response containing malformed JSON is treated as a failed fetch — no
+// DiscoveryResult is sent, so the controller keeps existing HyperNodes for the
+// UFM source.
+//
+// The test is deterministic: a two-phase server returns invalid JSON on the
+// first request and non-empty data on all subsequent requests.  The first
+// DiscoveryResult received must therefore be non-empty, proving that the
+// malformed response was suppressed rather than merely slow.
+func TestUFMDiscovererInvalidJSONPreservesHyperNodes(t *testing.T) {
+	var requestCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&requestCount, 1)
+		w.WriteHeader(http.StatusOK)
+		if n == 1 {
+			w.Write([]byte("{not valid json"))
+			return
+		}
+		data, err := json.Marshal(mockUfmData())
+		if err != nil {
+			t.Errorf("Failed to marshal mock UFM data: %v", err)
+		}
+		w.Write(data)
+	}))
+	defer server.Close()
+
+	fakeClient := fake.NewSimpleClientset()
+	fakeVcClient := vcclientset.NewSimpleClientset()
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ufm-creds", Namespace: "default"},
+		Data:       map[string][]byte{"username": []byte("user"), "password": []byte("pass")},
+	}
+	if _, err := fakeClient.CoreV1().Secrets("default").Create(context.TODO(), secret, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Failed to create secret: %v", err)
+	}
+
+	cfg := api.DiscoveryConfig{
+		Source: "ufm",
+		Config: map[string]interface{}{"endpoint": server.URL},
+		Credentials: &api.Credentials{
+			SecretRef: &api.SecretRef{Name: "ufm-creds", Namespace: "default"},
+		},
+		Interval: 5 * time.Millisecond, // fast poll so the second request fires quickly
+	}
+
+	u := NewUFMDiscoverer(cfg, fakeClient, fakeVcClient)
+	outputCh, err := u.Start()
+	if err != nil {
+		t.Fatalf("Start() returned error: %v", err)
+	}
+	defer u.Stop()
+
+	// The first DiscoveryResult must be non-empty: if the malformed-JSON
+	// response had been forwarded it would arrive here and fail the length
+	// assertion.
+	select {
+	case result := <-outputCh:
+		if len(result.HyperNodes) == 0 {
+			t.Fatalf("invalid-JSON response was forwarded as empty result (AuthoritativeEmpty=%v); existing HyperNodes would have been deleted",
+				result.AuthoritativeEmpty)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for non-empty result after invalid-JSON response was suppressed")
 	}
 }
 

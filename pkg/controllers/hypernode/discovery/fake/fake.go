@@ -42,15 +42,15 @@ func NewFakeDiscoverer(hyperNodes []*topologyv1alpha1.HyperNode, cfg api.Discove
 	}
 }
 
-func (f *fakeDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
+func (f *fakeDiscoverer) Start() (chan api.DiscoveryResult, error) {
 	f.startCalled = true
 	f.wg.Add(1)
 
-	ch := make(chan []*topologyv1alpha1.HyperNode)
+	ch := make(chan api.DiscoveryResult)
 	go func() {
 		defer f.wg.Done()
 		select {
-		case ch <- f.hyperNodes:
+		case ch <- api.DiscoveryResult{HyperNodes: f.hyperNodes}:
 		case <-f.stopCh:
 			return
 		}

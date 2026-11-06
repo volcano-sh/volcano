@@ -28,11 +28,26 @@ import (
 	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
 )
 
+// DiscoveryResult carries a single topology snapshot from a discoverer.
+// AuthoritativeEmpty must be set to true only when the discoverer can
+// guarantee that an empty HyperNodes slice reflects a complete, valid
+// topology with no nodes — not a transient or partial response.
+type DiscoveryResult struct {
+	// HyperNodes is the discovered topology snapshot.
+	HyperNodes []*topologyv1alpha1.HyperNode
+	// AuthoritativeEmpty indicates that an empty HyperNodes slice is a
+	// deliberate, complete topology snapshot (delete existing nodes for this
+	// source). When false, an empty snapshot is treated as ambiguous and
+	// existing HyperNodes are preserved.
+	AuthoritativeEmpty bool
+}
+
 // Discoverer is the interface for network topology discovery,
 // every discoverer should implement this interface and return the discovered hyperNodes
 type Discoverer interface {
-	// Start begins the discovery process, sending discovered nodes through the provided channel
-	Start() (chan []*topologyv1alpha1.HyperNode, error)
+	// Start begins the discovery process, sending discovery results through the returned channel.
+	// Each result carries HyperNodes and an AuthoritativeEmpty flag; see DiscoveryResult.
+	Start() (chan DiscoveryResult, error)
 
 	// Stop halts the discovery process
 	Stop() error
@@ -52,8 +67,9 @@ type DiscovererOptions struct {
 	HyperNodeInformer topologyinformerv1alpha1.HyperNodeInformer
 }
 
-// DiscovererConstructor creates a discoverer from configuration and clients.
-// It is retained for compatibility with existing out-of-tree discoverers.
+// DiscovererConstructor creates a discoverer using only the Kubernetes and
+// Volcano clients. Use this for discoverers that do not need shared informers.
+// The returned Discoverer must implement the full current Discoverer interface.
 type DiscovererConstructor func(cfg DiscoveryConfig, kubeClient clientset.Interface, vcClient vcclientset.Interface) Discoverer
 
 // DiscovererOptionsConstructor creates a discoverer from configuration and
@@ -65,7 +81,12 @@ var (
 	discovererRegistry = make(map[string]DiscovererOptionsConstructor)
 )
 
-// RegisterDiscoverer registers a discoverer constructor for a given source
+// RegisterDiscoverer registers a discoverer constructor for a given source.
+// The constructor receives only the Kubernetes and Volcano clients.
+// Use RegisterDiscovererWithOptions if your discoverer needs shared informers.
+// NOTE: the Discoverer interface has changed; Start() must return
+// (chan DiscoveryResult, error). Out-of-tree discoverers using the old
+// Start() (chan []*HyperNode, error) signature will not compile.
 func RegisterDiscoverer(source string, constructor DiscovererConstructor) {
 	RegisterDiscovererWithOptions(source, func(cfg DiscoveryConfig, options DiscovererOptions) (Discoverer, error) {
 		return constructor(cfg, options.KubeClient, options.VolcanoClient), nil

@@ -176,7 +176,13 @@ func (hn *hyperNodeController) watchDiscoveryResults() {
 	resultCh := hn.discoveryManager.ResultChannel()
 	klog.InfoS("Starting to watch discovery results")
 	for result := range resultCh {
-		if result.HyperNodes != nil {
+		// Reconcile when the result is non-empty or when the discoverer has
+		// explicitly marked an empty snapshot as authoritative (meaning it
+		// confirmed there are no nodes for this source).  A nil or non-
+		// authoritative empty result is treated as "skip": existing HyperNodes
+		// are preserved.  This prevents a transient or ambiguous empty API
+		// response from accidentally deleting all HyperNodes for a source.
+		if len(result.HyperNodes) > 0 || result.AuthoritativeEmpty {
 			hn.reconcileTopology(result.Source, result.HyperNodes)
 		}
 		// Always acknowledge a delivered result. Reconciliation errors are
