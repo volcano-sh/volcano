@@ -690,6 +690,23 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal hierarchicalQueueInSubPathOfAnotherQueue failed for %v.", err)
 	}
 
+	hierarchicalQueueUnderAnotherQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "hierarchical-queue-under-another-queue",
+			Annotations: map[string]string{
+				schedulingv1beta1.KubeHierarchyAnnotationKey:       "root/node1/node2/node3",
+				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "1/2/3/4",
+			},
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+		},
+	}
+	hierarchicalQueueUnderAnotherQueueJSON, err := json.Marshal(hierarchicalQueueUnderAnotherQueue)
+	if err != nil {
+		t.Errorf("Marshal hierarchicalQueueUnderAnotherQueue failed for %v.", err)
+	}
+
 	hierarchicalQueueWithNameThatIsSubstringOfOtherQueue := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "hierarchical-queue-with-name-that-is-substring-of-other-queue",
@@ -1412,6 +1429,42 @@ func TestAdmitQueues(t *testing.T) {
 						"root/node1",
 						fmt.Sprintf("%s is not allowed to be in the sub path of %s of queue %s",
 							"root/node1", "root/node1/node2", ordinaryHierchicalQueue.Name,
+						)).Error(),
+				},
+			},
+		},
+		{
+			Name: "Abnormal Case Hierarchy Is Under Another Queue",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: hierarchicalQueueUnderAnotherQueueJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("metadata").Child("annotations"),
+						"root/node1/node2/node3",
+						fmt.Sprintf("%s is not allowed to be in the sub path of %s of queue %s",
+							"root/node1/node2/node3", "root/node1/node2", ordinaryHierchicalQueue.Name,
 						)).Error(),
 				},
 			},
