@@ -155,6 +155,10 @@ In reclaim when hierarchy is enabled, victims are processed by `BuildVictimsPrio
 
 This allows operators to tighten reclaim boundaries in larger queue trees while preserving default behavior when no restriction is required.
 
+#### Reclaimable parent queues
+
+`reclaimable: false` on a parent queue protects its subtree from external reclaim. For a reclaimer queue and a victim queue, the `reclaim` and `gangreclaim` actions find their lowest common ancestor (LCA) through `spec.parent` and reject the victim if the victim queue, or any of its ancestors below the LCA, has `reclaimable: false`. Queues in the same subtree share that ancestor (or a deeper one), so reclaim between them is unaffected. Only the victim side is checked, so a protected subtree can still reclaim from unprotected queues outside it. The check runs in the actions before any plugin is consulted, so it applies regardless of how plugins are arranged in tiers. See the [user guide](../user-guide/how_to_use_capacity_plugin.md#protect-a-queue-subtree-from-reclaim).
+
 #### Unit test scenarios and behavior map
 
 The table-driven test `Test_capacityPlugin_AncestorReclaimScenarios` covers case1-case11 with explicit topologies and reclaim outcomes.
