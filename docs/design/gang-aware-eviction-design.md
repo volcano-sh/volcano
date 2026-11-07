@@ -80,7 +80,14 @@ For `PurposeEvict`, ordering should favor feasibility and latency. Gradients are
 Instead of extending the current actions, this design introduces two dedicated actions: `gangPreempt` and `gangReclaim`. The existing `preempt` and `reclaim` actions remain unchanged, while gang-aware behavior is isolated in the new actions for cleaner rollout and lower regression risk.
 
 ```yaml
-actions: "allocate, backfill, gangPreempt, gangReclaim"
+actions: "allocate, backfill, gangreclaim, gangpreempt"
+configurations:
+  - name: gangpreempt
+    arguments:
+      victimOrderPolicy: priority-first
+  - name: gangreclaim
+    arguments:
+      victimOrderPolicy: priority-first
 tiers:
   - plugins:
       - name: gang
@@ -99,33 +106,35 @@ For each pending preemptor gang, the action starts by fetching ordered topology 
 
 Inside each HyperNode, victim selection is based on the HyperNode-wide footprint of candidate jobs. Candidate tasks are grouped into bundles per job:
 
-A bundle is the smallest eviction selection unit in this action: once selected, its tasks are evicted together as one decision, and its disruption cost is evaluated at bundle scope rather than task scope.
+Safe bundles are split into single-task selection units after filtering; Whole bundles remain atomic decisions. "Whole" refers to the candidate core tasks in this HyperNode, not necessarily every pod of the job across the cluster.
 
 - A safe bundle contains surplus tasks, or tasks from gangs already below their effective availability target.
 - A whole bundle contains core tasks whose eviction implies breaking the gang.
 
-Note that a task in a candidate job is either in its safe bundle or its whole bundle. This split gives the action an explicit disruption model. Safe bundles are low-cost opportunities. Whole bundles are high-cost decisions that are considered only when safe opportunities are insufficient.
+Each candidate task belongs to either Safe or Whole. Their relative order is controlled by the queue-local policy below; Whole is not a cluster-wide fallback after all Safe tasks.
 
 Bundle ordering is performed in two passes for each HyperNode.
 
-In the first pass, the scheduler sorts all raw bundles and then flattens them into an ordered task slice for plugin filtering. It calls `Reclaimable` or `Preemptable` exactly once per HyperNode with that ordered slice. This one-shot call is important for stateful plugins such as the `capacity` plugin; repeated per-job calls would reset internal accounting and can violate queue deserved guarantees.
+In the first pass, the scheduler sorts raw bundles, skips Whole when disabled, and evaluates candidates through `UnifiedEvictable`. Every trial contains the already accepted prefix plus one Safe task or an entire Whole bundle. A trial is accepted only if all its tasks remain eligible. Rejected trials do not enter the next prefix, so partially approved Whole bundles cannot consume later Safe candidates' allowance.
 
-After plugins return allowed tasks, the action rebuilds valid bundles with integrity rules: a whole bundle is kept only if all of its tasks remain allowed, while a safe bundle can be shrunk to its allowed subset.
+Each filter invocation evaluates an unchanged session snapshot. Replaying the prefix preserves the existing plugins' cumulative quota checks without persisting rejected trials. Replay can evaluate a quadratic number of candidate entries; plugins must not mutate session state during filtering. Plugin-result intersection preserves order and is linear per call.
 
 In the second pass, the scheduler re-sorts the rebuilt bundle list before final selection. This second sort is required because plugin filtering can remove or shrink bundles, which changes their effective value and relative priority.
 
-After second-pass sorting, victim bundles are selected incrementally in order. The action adds bundles one by one and tracks cumulative resources to be released. When `(HyperNode currently available resources + cumulative released resources)` is enough to cover the preemptor job's total resource request, the action runs placement simulation with the current victim set.
+Before selecting victims, the action tries a zero-victim placement if current resources can cover the target. Otherwise, after second-pass sorting, it adds one Safe task or one atomic Whole bundle at a time and simulates placement whenever cumulative available resources cover the target.
 
 If simulation succeeds, the action determines placement nodes for the preemptor tasks in that HyperNode, then executes eviction and nomination in one transaction and returns success. If simulation fails, the action keeps selecting the next bundle and retries. If all bundles are exhausted without a successful simulation, the current HyperNode is considered invalid for eviction and the action moves to the next HyperNode.
 
-For faster iteration in the first rollout, victim selection can run in Job-level mode, where each candidate job is treated as a single whole bundle and the same two-pass sorting, plugin filtering, simulation, and nomination flow is reused without the safe/whole split step. This reduces implementation complexity and rollout risk while keeping behavior deterministic. A per-job configuration can also be provided to opt out of bundle splitting so the selected job is always treated as one whole bundle. A later phase can enable full bundle splitting by default to improve disruption efficiency once the core path is stable.
+Victim ordering does not change pending-task collection, gang readiness, or plugin-defined reclaim eligibility. Plan recovery uses a temporary statement: failure rolls back that attempt; success transfers its operations to the parent statement.
+
+The ordering guarantee is **within each candidate HyperNode**. The first feasible domain and victim prefix win; the scheduler does not globally minimize evictions or compare Whole in one domain against Safe in every other domain.
 
 ```mermaid
 flowchart TB
     S([Start pending preemptor]) --> H[Get HyperNodes with PurposeEvict]
     H --> L{Next HyperNode}
     L --> B[Build and rank bundles]
-    B --> F[One-shot plugin filtering]
+    B --> F[Cumulative-prefix plugin trials]
     F --> R[Rebuild bundles and second-pass sort]
     R --> P{Select bundles + simulate placement}
     P -- Success --> C[Evict + nominate transaction]
@@ -144,11 +153,44 @@ The design therefore treats nomination (`.status.nominatedNodeName`) as part of 
 
 Both sorting passes use the same comparator family, but on different inputs. The first pass ranks raw bundles before plugin filtering. The second pass ranks plugin-validated bundles after whole-bundle drops and safe-bundle shrinking. Using the same ordering logic in both passes keeps behavior predictable while still adapting to post-filter changes.
 
-The comparator applies a fixed order. It prefers safe bundles over whole bundles, then applies queue-level fairness or priority depending on action type. For remaining ties, it applies an efficiency metric that compares local gain in the chosen HyperNode against global disruption of the victim job.
+The `victimOrderPolicy` action argument controls the ordering of workloads and bundle types. It accepts two values:
+
+- `safe-first` is the default. Within a victim queue, it considers Safe bundles before Whole bundles, then prefers lower `JobInfo.Priority`. It prioritizes gang integrity within that queue.
+- `priority-first` prefers lower-priority workloads before higher-priority workloads. This allows a lower-priority workload's whole bundle to be used before a higher-priority workload's safe bundle. Within the same priority level, safe bundles remain ahead of whole bundles to avoid unnecessary gang disruption.
+
+The argument is configured independently on `gangpreempt` and `gangreclaim`. An invalid value emits a warning and falls back to `safe-first`.
+
+Both policies put victim queue ordering outermost for `gangreclaim`, grouping tied queues by UID before applying the queue-local policy. `gangpreempt` only considers its own queue. After the policy keys, preemption uses its existing victim job comparator; both actions then use ROI and deterministic identifiers. Equal-priority workloads prefer Safe before Whole across that priority level, rather than exhausting each individual workload.
+
+Within the same workload, Safe tasks retain ascending `TaskInfo.Priority` order after filtering splits them into single-task bundles; task UID only breaks equal-priority ties. Task priority does not override queue or workload ordering.
+
+This changes the previous gang-aware default comparator: reclamation now compares queues before bundle types, and both actions explicitly compare numeric workload priority within each bundle type under `safe-first`. It does not change the legacy task-level `preempt` and `reclaim` actions.
+
+Queue selection and workload selection are separate priority scopes rather than values combined into one global score. `gangreclaim` first uses `QueueOrderFn` to choose which underused queue gets an opportunity to reclaim. With the capacity plugin, a higher `Queue.spec.priority` is scheduled first; queues at the same priority are ordered by their allocated-to-deserved share, with the more underused queue first.
+
+The action then uses `VictimQueueOrderFn` to choose where resources are reclaimed from. In flat capacity mode this falls back to the reverse of `QueueOrderFn`, so a lower-priority victim queue is considered before a higher-priority victim queue and, at equal queue priority, a more overused queue is considered first. Hierarchical capacity may first prefer victim queues according to their relationship to the reclaimer in the queue tree, then uses the same fallback ordering when that relationship ties.
+
+Under either policy, a queue preferred by the victim queue comparator can offer an executable Whole bundle that precedes a more protected queue's Safe bundle. Workload priority and bundle type cannot override victim queue ordering. Both policies remain subject to the existing eligibility and resource checks.
+
+The reclamation ordering model is:
+
+```text
+reclaimer QueueOrderFn
+-> victim VictimQueueOrderFn
+-> queue-local policy:
+     safe-first:     Safe/Whole -> workload priority
+     priority-first: workload priority -> Safe/Whole
+-> ROI
+-> deterministic tie-break
+```
+
+Resource entitlement and action order are separate from victim ordering. To attempt recovery of deserved resources before replacing lower-priority workloads in the requesting queue, configure `gangreclaim` before `gangpreempt`, as in the example above. Reclamation still requires the existing `PreemptiveFn` resource checks; ordering cannot grant an overused queue additional entitlement. Multi-resource and hierarchical eligibility remain plugin-defined. The actions do not construct a joint plan combining cross-queue reclamation and same-queue preemption.
+
+`allowWholeBundle` remains the separate permission to select Whole bundles. Disabled Whole bundles never enter filtering; rejected Whole trials leave no allowance consumed. Selection stops once resources and placement simulation satisfy the target; neither policy requires clearing a workload or a queue.
 
 A practical way to read the efficiency metric is "how much local relief do we get per unit of global disruption."
 
-For each resource dimension the preemptor actually requests (for example CPU, memory, or GPU), the scheduler compares two quantities from the candidate bundle. `Local` is what the bundle frees inside the current HyperNode, which is the immediate gain for this eviction attempt. `Global` is the total disruption cost of selecting that bundle at cluster scope. For a safe bundle, `Global` is usually the sum of the resources of the evicted tasks. For a whole bundle, `Global` includes the full gang-level disruption implied by breaking that victim job.
+For each resource dimension the target requests (for example CPU, memory, or GPU), `Local` measures resources released in the current HyperNode. Whole bundles use the victim job's total resource requests as `Global`, a proxy for the disruption from breaking that job. Safe bundles have no gang-break cost: a zero global cost gives infinite ROI, leaving subsequent tie-breaks to order them.
 
 The score is then computed in three steps:
 
@@ -164,6 +206,7 @@ Future work includes two follow-ups. First, in addition to skipping unrequested 
 # Pseudo code: SelectGangVictimsInHyperNode
 def select_gang_victims_in_hypernode(preemptor, hypernode, candidates, ssn):
     bundles = []
+    need = pending_eviction_demand(ssn, preemptor)
 
     # Phase 1: build raw bundles for each candidate job.
     for job in candidates:
@@ -176,31 +219,31 @@ def select_gang_victims_in_hypernode(preemptor, hypernode, candidates, ssn):
         if whole_bundle:
             bundles.append(whole_bundle)
 
-    # Phase 2: first-pass sort and one-shot plugin filtering.
-    bundles = sort_bundles(bundles, preemptor)  # safe before whole, then policy order
-    ordered_tasks = flatten_tasks(bundles)
-    allowed = set(filter_eligible_tasks(ssn, preemptor.any_task(), ordered_tasks))
-
-    # Rebuild bundles with integrity rules.
+    # Phase 2: first-pass sort and cumulative-prefix filtering.
+    bundles = sort_bundles(bundles, preemptor, victim_order_policy)
+    accepted = []
     valid = []
     for b in bundles:
-        if b.is_whole():
-            if all(t in allowed for t in b.tasks):
-                valid.append(b)
-        else:
-            kept = [t for t in b.tasks if t in allowed]
-            if kept:
-                b.tasks = kept
-                valid.append(b)
+        if b.is_whole() and not allow_whole_bundle:
+            continue
+        for unit in ([b] if b.is_whole() else single_task_units(b)):
+            trial = accepted + unit.tasks
+            allowed = unified_evictable(eviction_context, trial)
+            if all(t in allowed for t in trial):
+                accepted = trial
+                valid.append(unit)
 
     # Phase 3: second-pass sort, then incremental select + simulate.
-    valid = sort_bundles(valid, preemptor)
+    valid = sort_bundles(valid, preemptor, victim_order_policy)
+    if enough(current_free(hypernode), need):
+        if simulate_place(preemptor, hypernode, []):
+            return [], True
     chosen = []
     released = zero_resource()
     for b in valid:
         chosen.append(b)
         released = add_resource(released, b.local_resource())
-        if enough(add_resource(current_free(hypernode), released), preemptor.total_request()):
+        if enough(add_resource(current_free(hypernode), released), need):
             if simulate_place(preemptor, hypernode, chosen):
                 return chosen, True
 
@@ -211,9 +254,9 @@ def select_gang_victims_in_hypernode(preemptor, hypernode, candidates, ssn):
 
 The two new actions share the same core mechanism but use different comparator orders for bundle sorting.
 
-`gangPreempt` is priority-driven. It chooses lower-priority victims in the relevant queue context and uses efficiency as a secondary optimizer rather than a rule that can override priority.
+`gangPreempt` chooses victims in the relevant queue context. With `safe-first`, disruption class precedes numeric workload priority. With `priority-first`, numeric workload priority precedes disruption class. The existing victim job comparator and efficiency cannot override either key.
 
-`gangReclaim` is fairness-driven. It recovers resources from overused queues for under-served queues, with `VictimQueueOrderFn` and reclaimability checks taking precedence. Efficiency and job-level ordering are used only after fairness constraints are satisfied.
+`gangReclaim` recovers resources from overused queues for under-served queues. Reclaimability checks apply to both policies. Victim queue ordering precedes both workload priority and bundle type; the policy only swaps those two keys within each victim queue.
 
 This separation keeps existing scheduling semantics clear while letting both actions benefit from the same HyperNode and bundle mechanics.
 
@@ -225,8 +268,8 @@ Phase 1 implements the core gang-aware eviction path end to end.
 - Update `network-topology-aware` to honor purpose-specific ordering: keep allocation-oriented behavior for `PurposeAllocate`, and use eviction-oriented ordering for `PurposeEvict`.
 - Add dedicated `gangPreempt` and `gangReclaim` actions, and wire them into action configuration and execution.
 - Extract reusable placement logic from `allocate` so post-eviction simulation in gang-aware actions uses the same placement semantics.
-- Add bundle utilities for splitting, first-pass sorting, flattening for plugin calls, shrinking/rebuilding after plugin filtering, second-pass sorting, and final selection bookkeeping, and update `gang` plugin `PreemptableFn` and `ReclaimableFn` so whole-bundle eviction can intentionally break a gang when required.
+- Add bundle splitting, queue-local policy sorting, cumulative-prefix filtering, and incremental selection. Gang actions use `UnifiedEvictableFn`; legacy task-level eviction retains its existing hooks.
 
 ## Future Work
 
-Future work focuses on optimization and flexibility after the core path is stable. The initial rollout can keep Job-level victim selection (one job as one whole bundle) by default or via per-job opt-out from bundle splitting, then move to full safe/whole splitting as the default for better disruption efficiency. The scoring model can be extended with penalties for destroying large amounts of unrequested resources. Bundle comparator precedence can also be extracted into a plugin callback so users can configure whether efficiency is applied before or after priority/fairness keys.
+Future work can optimize filtering costs and extend comparator policy through a plugin hook.
