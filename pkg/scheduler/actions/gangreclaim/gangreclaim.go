@@ -152,7 +152,7 @@ func (gr *Action) reclaimJobInDomains(ssn *framework.Session, stmt *framework.St
 		return nil
 	}
 	jobNeed := utils.SumInitResreq(pending)
-	domains := utils.GetCandidateDomains(ssn, job, gr.maxDomains)
+	domains := utils.GetCandidateDomains(ssn, job, pending, gr.maxDomains)
 	for _, domain := range domains {
 		nodes := ssn.RealNodesList[domain]
 		if len(nodes) == 0 {
