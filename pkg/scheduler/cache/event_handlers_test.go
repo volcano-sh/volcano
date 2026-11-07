@@ -2184,13 +2184,13 @@ func TestClearUnassignedNumaPod_UsesTaskFromJobWhenPresent(t *testing.T) {
 	}
 }
 
-// TestAddPodWithUnresolvedPVCCachesTaskForResync verifies that when a Pod
-// ADD races ahead of its referenced PVC arriving in the scheduler PVC
-// informer, addPod does not drop the pod: it builds the TaskInfo, adds it
-// to the cache (so it carries the pod reference and can be scheduled once
-// the PVC syncs), and enqueues it for resync. Mirrors the DRA counterpart
-// TestAddPodWithUnresolvedResourceClaimTemplateCachesTaskForResync.
-func TestAddPodWithUnresolvedPVCCachesTaskForResync(t *testing.T) {
+// TestAddPodWithUnresolvedPVCIsCachedWithoutResync verifies that a Pod ADD
+// that races ahead of its referenced PVC arriving in the scheduler PVC
+// informer is not dropped. CSI attach limits are now enforced solely by the
+// NodeVolumeLimits predicate (at scheduling time), so NewTaskInfo no longer
+// resolves PVCs and cannot fail on a missing one: addPod builds the TaskInfo
+// and caches it normally, and no resync is required.
+func TestAddPodWithUnresolvedPVCIsCachedWithoutResync(t *testing.T) {
 	sc := newMockSchedulerCache("volcano")
 
 	pod := &v1.Pod{
@@ -2217,11 +2217,10 @@ func TestAddPodWithUnresolvedPVCCachesTaskForResync(t *testing.T) {
 		},
 	}
 
-	// The PVC informer is empty, so NewTaskInfo returns a pendingPVCError.
-	// addPod must still succeed (nil error) by adding the task and
-	// scheduling a resync.
+	// The PVC informer is empty, but NewTaskInfo no longer looks up PVCs,
+	// so addPod must succeed and cache the task.
 	err := sc.addPod(pod)
-	assert.NoError(t, err, "addPod must not fail when the PVC is not yet in the informer; it should cache the task and retry")
+	assert.NoError(t, err, "addPod must not fail when the PVC is not yet in the informer; it caches the task normally")
 
 	// The task must exist in the cache as a proper TaskInfo carrying the
 	// pod reference, so it can be scheduled once the PVC informer syncs.
@@ -2238,9 +2237,10 @@ func TestAddPodWithUnresolvedPVCCachesTaskForResync(t *testing.T) {
 		assert.Equal(t, "default", task.Namespace)
 	}
 
-	// The task must be queued for resync so it is retried once the PVC
-	// informer catches up.
-	assert.Equal(t, 1, sc.errTasks.Len(), "task must be enqueued for resync")
+	// No resync is needed: the task was cached successfully without any
+	// PVC-resolution error, and the NodeVolumeLimits predicate enforces CSI
+	// attach limits at scheduling time once the PVC informer catches up.
+	assert.Equal(t, 0, sc.errTasks.Len(), "task must not be enqueued for resync")
 }
 
 func TestPodEventsInvalidatePlacementWithoutRecomputing(t *testing.T) {
