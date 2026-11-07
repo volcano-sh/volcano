@@ -251,23 +251,25 @@ func (rp *rayPlugin) createServiceIfNotExist(job *batch.Job) error {
 					batch.JobNamespaceKey: job.Namespace,
 					batch.TaskSpecKey:     rp.headName,
 				},
+				// Existing Pod ports may be unnamed or use user-defined names.
+				// Target the configured listeners rather than requiring fixed names.
 				Ports: []v1.ServicePort{
 					{
 						Name:       GcsPortName,
 						Port:       int32(rp.port),
-						TargetPort: intstr.FromString(GcsPortName),
+						TargetPort: intstr.FromInt32(int32(rp.port)),
 						Protocol:   v1.ProtocolTCP,
 					},
 					{
 						Name:       DashboardPortName,
 						Port:       int32(rp.dashboardPort),
-						TargetPort: intstr.FromString(DashboardPortName),
+						TargetPort: intstr.FromInt32(int32(rp.dashboardPort)),
 						Protocol:   v1.ProtocolTCP,
 					},
 					{
 						Name:       ClientServerPortName,
 						Port:       int32(rp.clientPort),
-						TargetPort: intstr.FromString(ClientServerPortName),
+						TargetPort: intstr.FromInt32(int32(rp.clientPort)),
 						Protocol:   v1.ProtocolTCP,
 					},
 				},
