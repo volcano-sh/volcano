@@ -272,7 +272,7 @@ func PrintEvents(events []coreV1.Event, writer io.Writer) {
 func GetEvents(ctx context.Context, config *rest.Config, job *v1alpha1.Job) []coreV1.Event {
 	kubernetes, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		fmt.Printf("%v\n", err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return nil
 	}
 	events, err := kubernetes.CoreV1().Events(viewJobFlags.Namespace).List(ctx, metav1.ListOptions{})
@@ -338,7 +338,7 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 			Name, Creation, Phase, JobType, Replicas, Min, Pending, Running, Succeeded, Failed, Unknown, RetryCount)
 	}
 	if err != nil {
-		fmt.Printf("Failed to print list command result: %s.\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to print list command result: %s.\n", err)
 	}
 
 	for _, job := range jobs.Items {
@@ -367,7 +367,7 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 				job.Status.MinAvailable, job.Status.Pending, job.Status.Running, job.Status.Succeeded, job.Status.Failed, job.Status.Unknown, job.Status.RetryCount)
 		}
 		if err != nil {
-			fmt.Printf("Failed to print list command result: %s.\n", err)
+			fmt.Fprintf(os.Stderr, "Failed to print list command result: %s.\n", err)
 		}
 	}
 }
