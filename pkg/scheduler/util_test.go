@@ -264,7 +264,10 @@ deviceTopology:
     identityNamespace: nvidia-gpu-uuid-v1
     resources:
     - nvidia.com/gpu
-    maxPayloadBytes: 65536
+  adapters:
+  - type: mock
+    provider: node-annotation-inventory
+    resource: nvidia.com/gpu
 `
 
 	schedulerConfiguration, err := unmarshalSchedulerConfiguration(configuration)
@@ -287,5 +290,10 @@ deviceTopology:
 	}
 	if len(provider.Resources) != 1 || provider.Resources[0] != "nvidia.com/gpu" {
 		t.Fatalf("provider resources = %#v, want nvidia.com/gpu", provider.Resources)
+	}
+	adapters := schedulerConfiguration.DeviceTopology.Adapters
+	wantAdapter := conf.DeviceTopologyAdapterConfiguration{Type: conf.DeviceTopologyAdapterTypeMock, Provider: "node-annotation-inventory", Resource: "nvidia.com/gpu"}
+	if len(adapters) != 1 || adapters[0] != wantAdapter {
+		t.Fatalf("adapters = %#v, want %#v", adapters, wantAdapter)
 	}
 }

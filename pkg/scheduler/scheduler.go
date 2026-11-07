@@ -112,8 +112,8 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 // initializes the cache, and begins the scheduling process.
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	pc.loadSchedulerConf()
-	if err := pc.configureDeviceTopologyProviders(); err != nil {
-		klog.Fatalf("Failed to configure device topology providers: %v", err)
+	if err := pc.configureDeviceTopology(); err != nil {
+		klog.Fatalf("Failed to configure device topology: %v", err)
 	}
 
 	// Start the gate manager (if the feature gate is enabled).
@@ -245,21 +245,21 @@ func (pc *Scheduler) loadSchedulerConf() {
 	pc.metricsConf = metricsConf
 	pc.mutex.Unlock()
 	if topologyProviderChange {
-		klog.Errorf("Ignoring deviceTopology.providers configuration change; restart the scheduler to change topology providers")
-		klog.V(2).Info("Loaded scheduler configuration while retaining the existing deviceTopology.providers setting")
+		klog.Errorf("Ignoring deviceTopology configuration change; restart the scheduler to change topology providers or adapters")
+		klog.V(2).Info("Loaded scheduler configuration while retaining the existing deviceTopology setting")
 		return
 	}
 	logLoadedSchedulerConf(config)
 }
 
-// configureDeviceTopologyProviders builds the immutable provider registry and
-// source instances after scheduler configuration is loaded but before cache.Run
-// starts informer processing. Provider configuration is startup-only in alpha.
-func (pc *Scheduler) configureDeviceTopologyProviders() error {
+// configureDeviceTopology builds the immutable provider and allocation adapter
+// registries after scheduler configuration is loaded but before cache.Run
+// starts informer processing. This configuration is startup-only in alpha.
+func (pc *Scheduler) configureDeviceTopology() error {
 	pc.mutex.Lock()
 	configuration := cloneDeviceTopologyConfiguration(pc.deviceTopologyConf)
 	pc.mutex.Unlock()
-	if configuration == nil || len(configuration.Providers) == 0 {
+	if configuration == nil || (len(configuration.Providers) == 0 && len(configuration.Adapters) == 0) {
 		pc.mutex.Lock()
 		pc.deviceTopologyConfFrozen = true
 		pc.mutex.Unlock()
@@ -270,12 +270,25 @@ func (pc *Scheduler) configureDeviceTopologyProviders() error {
 	if err != nil {
 		return err
 	}
+	adapterRegistry, err := topologyconfig.NewAdapterRegistry(configuration)
+	if err != nil {
+		return err
+	}
 	cache, supported := pc.cache.(schedcache.DeviceTopologyProviderCache)
 	if !supported {
 		return fmt.Errorf("scheduler cache does not support device topology providers")
 	}
 	if err := cache.ConfigureDeviceTopologyProviders(runtime.Registry, runtime.Sources); err != nil {
 		return err
+	}
+	if adapterRegistry != nil {
+		adapterCache, supported := pc.cache.(schedcache.DeviceTopologyAdapterCache)
+		if !supported {
+			return fmt.Errorf("scheduler cache does not support device topology adapters")
+		}
+		if err := adapterCache.ConfigureDeviceTopologyAdapters(adapterRegistry); err != nil {
+			return err
+		}
 	}
 
 	pc.mutex.Lock()
@@ -297,6 +310,7 @@ func cloneDeviceTopologyConfiguration(configuration *conf.DeviceTopologyConfigur
 		clone.Providers[index] = provider
 		clone.Providers[index].Resources = append([]corev1.ResourceName(nil), provider.Resources...)
 	}
+	clone.Adapters = append([]conf.DeviceTopologyAdapterConfiguration(nil), configuration.Adapters...)
 	return &clone
 }
 

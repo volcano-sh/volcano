@@ -228,12 +228,15 @@ type SchedulerCache struct {
 	// deviceTopologyProvidersConfigured prevents a second startup configuration
 	// from changing provider ownership before cache startup.
 	deviceTopologyProvidersConfigured bool
-	// deviceTopologyProvidersFrozen prevents all configuration changes after
-	// informer processing begins.
+	// deviceTopologyProvidersFrozen prevents all configuration changes, of
+	// providers and adapters, after informer processing begins.
 	deviceTopologyProvidersFrozen bool
 	// deviceTopologyAdapterRegistry owns exact backend allocation for configured
-	// device resources. It is immutable after SchedulerCache construction.
+	// device resources. It is immutable after SchedulerCache starts.
 	deviceTopologyAdapterRegistry *adapter.Registry
+	// deviceTopologyAdaptersConfigured prevents a second startup configuration
+	// from changing adapter ownership before cache startup.
+	deviceTopologyAdaptersConfigured bool
 	// deviceTopologyReservationMutex serializes external adapter reservation and
 	// release operations without holding SchedulerCache.Mutex during I/O.
 	deviceTopologyReservationMutex sync.Mutex

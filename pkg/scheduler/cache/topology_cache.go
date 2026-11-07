@@ -84,6 +84,24 @@ func WithDeviceTopologyAdapterRegistry(registry *adapter.Registry) Option {
 	}
 }
 
+// ConfigureDeviceTopologyAdapters installs the immutable allocation adapter
+// registry before SchedulerCache begins processing Nodes. A nil registry
+// leaves topology facts observable but prevents reservations.
+func (sc *SchedulerCache) ConfigureDeviceTopologyAdapters(registry *adapter.Registry) error {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	if sc.deviceTopologyProvidersFrozen {
+		return fmt.Errorf("device topology adapters cannot be configured after SchedulerCache starts")
+	}
+	if sc.deviceTopologyAdaptersConfigured {
+		return fmt.Errorf("device topology adapters are already configured")
+	}
+
+	sc.deviceTopologyAdapterRegistry = registry
+	sc.deviceTopologyAdaptersConfigured = true
+	return nil
+}
+
 // newDeviceTopologyState creates an empty topology view. Unknown provider and
 // Node pairs are pending by the TopologySnapshot contract.
 func newDeviceTopologyState() *deviceTopologyState {

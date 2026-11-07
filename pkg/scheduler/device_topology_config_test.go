@@ -20,18 +20,75 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+
 	_ "volcano.sh/volcano/pkg/scheduler/actions"
+	schedcache "volcano.sh/volcano/pkg/scheduler/cache"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 )
 
-func TestConfigureDeviceTopologyProvidersLeavesAbsentConfigurationAsNoOp(t *testing.T) {
+func TestConfigureDeviceTopologyLeavesAbsentConfigurationAsNoOp(t *testing.T) {
 	scheduler := &Scheduler{}
-	if err := scheduler.configureDeviceTopologyProviders(); err != nil {
-		t.Fatalf("configureDeviceTopologyProviders() error = %v", err)
+	if err := scheduler.configureDeviceTopology(); err != nil {
+		t.Fatalf("configureDeviceTopology() error = %v", err)
 	}
 	if !scheduler.deviceTopologyConfFrozen {
 		t.Fatal("deviceTopologyConfFrozen = false, want startup-only configuration frozen")
+	}
+}
+
+func TestConfigureDeviceTopologyInstallsAllocationAdapters(t *testing.T) {
+	provider := conf.DeviceTopologyProviderConfiguration{
+		ID:                "node-annotation-inventory",
+		Type:              conf.DeviceTopologyProviderTypeAnnotation,
+		IdentityNamespace: "nvidia-gpu-uuid-v1",
+		Resources:         []corev1.ResourceName{"nvidia.com/gpu"},
+	}
+	tests := []struct {
+		name     string
+		adapters []conf.DeviceTopologyAdapterConfiguration
+		wantErr  string
+	}{
+		{
+			name:     "installs mock adapter",
+			adapters: []conf.DeviceTopologyAdapterConfiguration{{Type: conf.DeviceTopologyAdapterTypeMock, Provider: provider.ID, Resource: "nvidia.com/gpu"}},
+		},
+		{
+			name:     "rejects adapter for unknown provider",
+			adapters: []conf.DeviceTopologyAdapterConfiguration{{Type: conf.DeviceTopologyAdapterTypeMock, Provider: "missing", Resource: "nvidia.com/gpu"}},
+			wantErr:  "unknown provider",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cache := schedcache.NewDefaultMockSchedulerCache("device-topology-adapter-config")
+			t.Cleanup(func() { schedcache.ShutdownMockSchedulerCache(cache) })
+			scheduler := &Scheduler{
+				cache:              cache,
+				deviceTopologyConf: &conf.DeviceTopologyConfiguration{Providers: []conf.DeviceTopologyProviderConfiguration{provider}, Adapters: test.adapters},
+			}
+
+			err := scheduler.configureDeviceTopology()
+			if test.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+					t.Fatalf("configureDeviceTopology() error = %v, want %q", err, test.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("configureDeviceTopology() error = %v", err)
+			}
+			if !scheduler.deviceTopologyConfFrozen {
+				t.Fatal("deviceTopologyConfFrozen = false, want startup-only configuration frozen")
+			}
+			if err := cache.ConfigureDeviceTopologyAdapters(nil); err == nil || !strings.Contains(err.Error(), "already configured") {
+				t.Fatalf("second ConfigureDeviceTopologyAdapters() error = %v, want adapters already installed", err)
+			}
+		})
 	}
 }
 
@@ -76,5 +133,9 @@ deviceTopology:
     identityNamespace: nvidia-gpu-uuid-v1
     resources:
     - nvidia.com/gpu
+  adapters:
+  - type: mock
+    provider: ` + providerID + `
+    resource: nvidia.com/gpu
 `
 }

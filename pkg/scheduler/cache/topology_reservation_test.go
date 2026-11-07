@@ -30,6 +30,7 @@ import (
 
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/topology/adapter"
+	adaptermock "volcano.sh/volcano/pkg/scheduler/topology/adapter/mock"
 	"volcano.sh/volcano/pkg/scheduler/topology/provider"
 )
 
@@ -105,6 +106,47 @@ func TestSchedulerCachePreparesAndCommitsDeviceTopologyBindHandoffs(t *testing.T
 		t.Fatalf("RollbackDeviceTopologyReservationBind() error = %v", err)
 	}
 	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceAvailable)
+}
+
+func TestSchedulerCacheReservesThroughMockAllocationAdapter(t *testing.T) {
+	resourceName := corev1.ResourceName("nvidia.com/gpu")
+	mockAdapter, err := adaptermock.New(adapter.DeviceIdentityContract{
+		ProviderID:   topologyCacheTestProviderID,
+		ResourceName: resourceName,
+		Namespace:    topologyCacheTestNamespace,
+	}, nil)
+	if err != nil {
+		t.Fatalf("adaptermock.New() error = %v", err)
+	}
+	node, cache := newTopologyReservationTestCache(t, []topologyReservationDeviceSpec{{resourceName: resourceName, domainValue: "gpu-domain", deviceValue: "gpu-0"}}, mockAdapter)
+	plan := topologyReservationTestPlan(t, cache, node, map[corev1.ResourceName]int64{resourceName: 1})
+
+	reservation, err := cache.ReserveDeviceTopologyPlan(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("ReserveDeviceTopologyPlan() error = %v", err)
+	}
+	handoffs, err := cache.PrepareDeviceTopologyReservationBind(context.Background(), reservation)
+	if err != nil {
+		t.Fatalf("PrepareDeviceTopologyReservationBind() error = %v", err)
+	}
+	if taskHandoffs := handoffs[plan.Placements[0].TaskID]; len(taskHandoffs) != 1 || taskHandoffs[0].Handoff.ReservationToken != reservation.AdapterReservations[0].Token {
+		t.Fatalf("prepared handoffs = %#v, want one mock adapter handoff", handoffs)
+	}
+	if err := cache.CommitDeviceTopologyReservationBind(context.Background(), reservation); err != nil {
+		t.Fatalf("CommitDeviceTopologyReservationBind() error = %v", err)
+	}
+	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceBinding)
+	if states, err := mockAdapter.Recover(context.Background()); err != nil || len(states) != 1 || states[0].State != adapter.AdapterReservationBinding {
+		t.Fatalf("mock Recover() = (%#v, %v), want one Binding reservation", states, err)
+	}
+
+	if err := cache.RollbackDeviceTopologyReservationBind(context.Background(), reservation); err != nil {
+		t.Fatalf("RollbackDeviceTopologyReservationBind() error = %v", err)
+	}
+	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceAvailable)
+	if states, err := mockAdapter.Recover(context.Background()); err != nil || len(states) != 0 {
+		t.Fatalf("mock Recover() after rollback = (%#v, %v), want no reservations", states, err)
+	}
 }
 
 func TestSchedulerCacheRejectsMismatchedDeviceTopologyBindHandoff(t *testing.T) {

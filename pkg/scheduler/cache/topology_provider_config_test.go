@@ -22,9 +22,34 @@ import (
 	"time"
 
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/topology/adapter"
 	"volcano.sh/volcano/pkg/scheduler/topology/provider"
 	"volcano.sh/volcano/pkg/scheduler/topology/provider/mock"
 )
+
+func TestSchedulerCacheDeviceTopologyAdapterConfigurationIsStartupOnly(t *testing.T) {
+	cache := &SchedulerCache{}
+	registry, err := adapter.NewRegistry([]adapter.AllocationAdapter{newTopologyReservationTestAdapter("nvidia.com/gpu")})
+	if err != nil {
+		t.Fatalf("adapter.NewRegistry() error = %v", err)
+	}
+
+	if err := cache.ConfigureDeviceTopologyAdapters(registry); err != nil {
+		t.Fatalf("ConfigureDeviceTopologyAdapters() error = %v", err)
+	}
+	if cache.deviceTopologyAdapterRegistry != registry {
+		t.Fatal("deviceTopologyAdapterRegistry was not installed")
+	}
+	if err := cache.ConfigureDeviceTopologyAdapters(registry); err == nil || !strings.Contains(err.Error(), "already configured") {
+		t.Fatalf("second ConfigureDeviceTopologyAdapters() error = %v, want already configured", err)
+	}
+
+	frozen := &SchedulerCache{}
+	frozen.freezeDeviceTopologyProviders()
+	if err := frozen.ConfigureDeviceTopologyAdapters(registry); err == nil || !strings.Contains(err.Error(), "after SchedulerCache starts") {
+		t.Fatalf("frozen ConfigureDeviceTopologyAdapters() error = %v, want startup-only failure", err)
+	}
+}
 
 func TestSchedulerCacheSyncNodeAppliesConfiguredDeviceTopologyProvider(t *testing.T) {
 	cache := NewDefaultMockSchedulerCache("device-topology-provider-sync")

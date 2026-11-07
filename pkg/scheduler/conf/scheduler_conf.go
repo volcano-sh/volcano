@@ -49,6 +49,9 @@ type SchedulerConfiguration struct {
 // that SchedulerCache synchronizes while it processes Nodes.
 type DeviceTopologyConfiguration struct {
 	Providers []DeviceTopologyProviderConfiguration `yaml:"providers,omitempty"`
+	// Adapters configures the exact allocation owner of provider resources.
+	// Without an adapter, hard device-topology placement is rejected.
+	Adapters []DeviceTopologyAdapterConfiguration `yaml:"adapters,omitempty"`
 }
 
 // DeviceTopologyProviderConfiguration configures one authoritative source for
@@ -67,6 +70,20 @@ type DeviceTopologyProviderConfiguration struct {
 // DeviceTopologyProviderTypeAnnotation identifies the trusted Node annotation
 // source supported by the initial device-topology implementation.
 const DeviceTopologyProviderTypeAnnotation = "annotation"
+
+// DeviceTopologyAdapterConfiguration configures the exact allocation adapter
+// for one resource published by a configured provider. The adapter uses that
+// provider's ID and identity namespace, so its device IDs always match.
+type DeviceTopologyAdapterConfiguration struct {
+	Type     string              `yaml:"type"`
+	Provider string              `yaml:"provider"`
+	Resource corev1.ResourceName `yaml:"resource"`
+}
+
+// DeviceTopologyAdapterTypeMock identifies the in-memory allocation adapter.
+// It reserves exact device IDs only in scheduler memory and does not enforce
+// them on Nodes, so it is meant for simulation such as KWOK.
+const DeviceTopologyAdapterTypeMock = "mock"
 
 // Tier defines plugin tier
 type Tier struct {

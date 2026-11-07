@@ -155,6 +155,12 @@ type DeviceTopologyProviderCache interface {
 	ConfigureDeviceTopologyProviders(registry *provider.Registry, sources []provider.NodeTopologyProvider) error
 }
 
+// DeviceTopologyAdapterCache is an optional Cache extension that receives the
+// startup-only allocation adapter registry for exact hard placement.
+type DeviceTopologyAdapterCache interface {
+	ConfigureDeviceTopologyAdapters(registry *adapter.Registry) error
+}
+
 // Binder interface for binding task and hostname
 type Binder interface {
 	Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) map[api.TaskID]string
