@@ -1606,6 +1606,9 @@ func (sc *SchedulerCache) AddNumaInfoV1alpha1(obj interface{}) {
 	defer sc.Mutex.Unlock()
 
 	sc.addNumaInfo(ss)
+	if sc.unschedulableJobCache != nil {
+		sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: unschedulable.NumaInfoEvent, ActionType: fwk.Add}, nil, ss)
+	}
 }
 
 // UpdateNumaInfoV1alpha1 update numa information to scheduler cache
@@ -1620,6 +1623,9 @@ func (sc *SchedulerCache) UpdateNumaInfoV1alpha1(oldObj, newObj interface{}) {
 	defer sc.Mutex.Unlock()
 	sc.addNumaInfo(ss)
 	klog.V(3).Infof("update numaInfo<%s> in cache, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
+	if sc.unschedulableJobCache != nil {
+		sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: unschedulable.NumaInfoEvent, ActionType: fwk.Update}, oldObj, ss)
+	}
 }
 
 // DeleteNumaInfoV1alpha1 delete numa information from scheduler cache
@@ -1645,6 +1651,9 @@ func (sc *SchedulerCache) DeleteNumaInfoV1alpha1(obj interface{}) {
 
 	sc.deleteNumaInfo(ss)
 	klog.V(3).Infof("Delete numaInfo<%s> from cache, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
+	if sc.unschedulableJobCache != nil {
+		sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: unschedulable.NumaInfoEvent, ActionType: fwk.Delete}, ss, nil)
+	}
 }
 
 // AddJob add job to scheduler cache

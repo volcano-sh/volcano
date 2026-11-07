@@ -17,6 +17,7 @@ limitations under the License.
 package numaaware
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -24,6 +25,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
+	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/utils/cpuset"
 
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -31,6 +33,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -356,4 +359,161 @@ func TestNuma_OnSessionClose_VerifiesContent(t *testing.T) {
 		t.Errorf("CPUSet mismatch: got %v, want %v", got, wantCPUSet)
 	}
 	framework.CloseSession(ssn)
+}
+
+func TestNumaHintProvider(t *testing.T) {
+	provider := &NumaHintProvider{}
+	events, err := provider.EventsToRegister(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expectedResources := map[fwk.EventResource]bool{
+		fwk.Pod:                     false,
+		fwk.Node:                    false,
+		unschedulable.NumaInfoEvent: false,
+	}
+
+	for _, e := range events {
+		if _, ok := expectedResources[e.Event.Resource]; ok {
+			expectedResources[e.Event.Resource] = true
+		}
+	}
+
+	for res, found := range expectedResources {
+		if !found {
+			t.Errorf("expected event for resource %v was not registered", res)
+		}
+	}
+}
+
+func TestNuma_DeallocateFuncCleansAssignRes(t *testing.T) {
+	framework.RegisterPluginBuilder(PluginName, New)
+	defer framework.CleanupPluginBuilders()
+
+	schedulerCache := &cache.SchedulerCache{
+		Nodes:          make(map[string]*api.NodeInfo),
+		Jobs:           make(map[api.JobID]*api.JobInfo),
+		Queues:         make(map[api.QueueID]*api.QueueInfo),
+		StatusUpdater:  &util.FakeStatusUpdater{},
+		HyperNodesInfo: api.NewHyperNodesInfo(nil),
+		Recorder:       record.NewFakeRecorder(100),
+	}
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi"), make(map[string]string))
+	schedulerCache.AddOrUpdateNode(n1)
+
+	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	pg1 := &schedulingv1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "pg1", Namespace: "c1"},
+		Spec:       schedulingv1.PodGroupSpec{Queue: "c1"},
+	}
+	queue1 := &schedulingv1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "c1"},
+		Spec:       schedulingv1.QueueSpec{Weight: 1},
+	}
+	schedulerCache.AddPod(p1)
+	schedulerCache.AddPodGroupV1beta1(pg1)
+	schedulerCache.AddQueueV1beta1(queue1)
+
+	trueValue := true
+	ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{Name: PluginName, EnabledPredicate: &trueValue},
+			},
+		},
+	}, nil)
+	defer framework.CloseSession(ssn)
+
+	plugin := New(nil).(*numaPlugin)
+	plugin.OnSessionOpen(ssn)
+
+	taskUID := api.TaskID(p1.UID)
+	task := ssn.Jobs[api.JobID("c1/pg1")].Tasks[taskUID]
+	plugin.assignRes[taskUID] = map[string]api.ResNumaSets{
+		"n1": {string(v1.ResourceCPU): cpuset.New(1, 2)},
+	}
+	plugin.taskBindNodeMap[taskUID] = "n1"
+	plugin.taskPodMetaMap[taskUID] = api.PodMeta{UID: p1.UID, Name: p1.Name, Namespace: p1.Namespace}
+
+	stmt := framework.NewStatement(ssn)
+	nodeInfo1 := ssn.Nodes["n1"]
+	if err := stmt.Allocate(task, nodeInfo1); err != nil {
+		t.Fatalf("stmt.Allocate failed: %v", err)
+	}
+
+	// Discard invokes unallocate and DeallocateFunc
+	stmt.Discard()
+
+	if _, ok := plugin.assignRes[taskUID]; ok {
+		t.Fatalf("expected assignRes to be deleted for task %v, but still exists", taskUID)
+	}
+	if _, ok := plugin.taskBindNodeMap[taskUID]; ok {
+		t.Fatalf("expected taskBindNodeMap to be deleted for task %v, but still exists", taskUID)
+	}
+}
+
+func TestNuma_BatchNodeOrderScoresUnassignedNodeZero(t *testing.T) {
+	framework.RegisterPluginBuilder(PluginName, New)
+	defer framework.CleanupPluginBuilders()
+
+	schedulerCache := &cache.SchedulerCache{
+		Nodes:          make(map[string]*api.NodeInfo),
+		Jobs:           make(map[api.JobID]*api.JobInfo),
+		Queues:         make(map[api.QueueID]*api.QueueInfo),
+		StatusUpdater:  &util.FakeStatusUpdater{},
+		HyperNodesInfo: api.NewHyperNodesInfo(nil),
+		Recorder:       record.NewFakeRecorder(100),
+	}
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi"), make(map[string]string))
+	n2 := util.BuildNode("n2", api.BuildResourceList("4", "8Gi"), make(map[string]string))
+	schedulerCache.AddOrUpdateNode(n1)
+	schedulerCache.AddOrUpdateNode(n2)
+
+	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	pg1 := &schedulingv1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "pg1", Namespace: "c1"},
+		Spec:       schedulingv1.PodGroupSpec{Queue: "c1"},
+	}
+	queue1 := &schedulingv1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "c1"},
+		Spec:       schedulingv1.QueueSpec{Weight: 1},
+	}
+	schedulerCache.AddPod(p1)
+	schedulerCache.AddPodGroupV1beta1(pg1)
+	schedulerCache.AddQueueV1beta1(queue1)
+
+	trueValue := true
+	ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{Name: PluginName, EnabledPredicate: &trueValue, EnabledNodeOrder: &trueValue},
+			},
+		},
+	}, nil)
+	defer framework.CloseSession(ssn)
+
+	plugin := New(nil).(*numaPlugin)
+	plugin.OnSessionOpen(ssn)
+
+	taskUID := api.TaskID(p1.UID)
+	task := ssn.Jobs[api.JobID("c1/pg1")].Tasks[taskUID]
+	task.NumaInfo = &api.TopologyInfo{
+		Policy: "single-numa-node",
+	}
+
+	// Only n1 has CPU assignment; n2 is unassigned
+	plugin.assignRes[taskUID] = map[string]api.ResNumaSets{
+		"n1": {string(v1.ResourceCPU): cpuset.New(0, 1)},
+	}
+
+	nodeInfo1 := ssn.Nodes["n1"]
+	nodeInfo2 := ssn.Nodes["n2"]
+	nodeScores, err := ssn.BatchNodeOrderFn(task, []*api.NodeInfo{nodeInfo1, nodeInfo2})
+	if err != nil {
+		t.Fatalf("BatchNodeOrderFn failed: %v", err)
+	}
+	if score, ok := nodeScores["n2"]; !ok || score != 0 {
+		t.Errorf("expected unassigned node n2 to have score 0, got %v (exists: %v)", score, ok)
+	}
 }

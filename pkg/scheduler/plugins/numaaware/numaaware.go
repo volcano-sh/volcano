@@ -24,6 +24,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask"
@@ -36,6 +37,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/numaaware/policy"
 	"volcano.sh/volcano/pkg/scheduler/plugins/numaaware/provider/cpumanager"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
 const (
@@ -107,15 +109,16 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			resNumaSets, ok := pp.assignRes[event.Task.UID][event.Task.NodeName]
-			if !ok {
-				return
+			if ok && node != nil {
+				node.Release(resNumaSets)
 			}
-
-			node.Release(resNumaSets)
+			delete(pp.assignRes, event.Task.UID)
 			delete(pp.taskBindNodeMap, event.Task.UID)
 			delete(pp.taskPodMetaMap, event.Task.UID)
 		},
 	})
+
+	ssn.AddHintProvider(pp.Name(), &NumaHintProvider{})
 
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		predicateStatus := make([]*api.Status, 0)
@@ -127,7 +130,11 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		if fit, err := filterNodeByPolicy(task, node, pp.nodeResSets); !fit {
 			if err != nil {
-				return api.NewFitError(task, node, err.Error())
+				numaStatus.Code = api.UnschedulableAndUnresolvable
+				numaStatus.Reason = err.Error()
+				numaStatus.Plugin = PluginName
+				predicateStatus = append(predicateStatus, numaStatus)
+				return api.NewFitErrWithStatus(task, node, predicateStatus...)
 			}
 			return nil
 		}
@@ -182,8 +189,12 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 		util.NormalizeScore(api.DefaultMaxNodeScore, true, scoreList)
 
 		for idx, scoreNode := range scoreList {
-			scoreNode.Score *= int64(weight)
 			nodeName := nodeInfo[idx].Name
+			if resNuma, ok := pp.assignRes[task.UID][nodeName]; !ok || resNuma[string(v1.ResourceCPU)].IsEmpty() {
+				nodeScores[nodeName] = 0
+				continue
+			}
+			scoreNode.Score *= int64(weight)
 			nodeScores[nodeName] = float64(scoreNode.Score)
 		}
 
@@ -193,6 +204,29 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	ssn.AddBatchNodeOrderFn(pp.Name(), batchNodeOrderFn)
+}
+
+// NumaHintProvider supplies QueueingHints for Jobs rejected by the numa-aware plugin.
+type NumaHintProvider struct{}
+
+var _ unschedulable.HintProvider = (*NumaHintProvider)(nil)
+
+// EventsToRegister implements unschedulable.HintProvider.
+func (p *NumaHintProvider) EventsToRegister(_ context.Context) ([]unschedulable.EventWithHint, error) {
+	return []unschedulable.EventWithHint{
+		// Pod deletion or scale-down frees NUMA resources (CPU/GPU) on the node.
+		{
+			Event: fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete | fwk.UpdatePodScaleDown},
+		},
+		// New node or updated allocatable provides more NUMA resources.
+		{
+			Event: fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add | fwk.UpdateNodeAllocatable},
+		},
+		// NumaTopology CR added or updated can change node NUMA resources or policies.
+		{
+			Event: fwk.ClusterEvent{Resource: unschedulable.NumaInfoEvent, ActionType: fwk.Add | fwk.Update},
+		},
+	}, nil
 }
 
 func filterNodeByPolicy(task *api.TaskInfo, node *api.NodeInfo, nodeResSets map[string]api.ResNumaSets) (fit bool, err error) {
@@ -239,7 +273,21 @@ func getNodeNumaNumForTask(nodeInfo []*api.NodeInfo, resAssignMap map[string]api
 	nodeNumaCnts := make([]api.ScoredNode, len(nodeInfo))
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodeInfo), func(index int) {
 		node := nodeInfo[index]
+		if node.NumaSchedulerInfo == nil {
+			nodeNumaCnts[index] = api.ScoredNode{
+				NodeName: node.Name,
+				Score:    0,
+			}
+			return
+		}
 		assignCpus := resAssignMap[node.Name][string(v1.ResourceCPU)]
+		if assignCpus.IsEmpty() {
+			nodeNumaCnts[index] = api.ScoredNode{
+				NodeName: node.Name,
+				Score:    0,
+			}
+			return
+		}
 		nodeNumaCnts[index] = api.ScoredNode{
 			NodeName: node.Name,
 			Score:    int64(getNumaNodeCntForCPUID(assignCpus, node.NumaSchedulerInfo.CPUDetail)),

@@ -33,6 +33,7 @@ import (
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/utils/cpuset"
 
+	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
@@ -2274,4 +2275,36 @@ func TestPodEventsInvalidatePlacementWithoutRecomputing(t *testing.T) {
 	}
 	assert.Greater(t, job.TaskPlacementGeneration, generation)
 	assert.Equal(t, "persisted", job.AllocatedHyperNode, "Session reconciliation owns clearing stale placement")
+}
+
+func TestNumaInfoEventsNotifyUnschedulableCache(t *testing.T) {
+	jobCache := unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration)
+	var observedEvents []fwk.ClusterEvent
+	jobCache.AddHintProvider("numa-aware", testHintProvider{
+		event: fwk.ClusterEvent{Resource: unschedulable.NumaInfoEvent, ActionType: fwk.All},
+		hintFn: func(_ *api.JobInfo, _ unschedulable.Rejection, _, _ any) (unschedulable.HintResult, error) {
+			return unschedulable.HintWakeup, nil
+		},
+	})
+
+	sc := &SchedulerCache{
+		Nodes:                 make(map[string]*api.NodeInfo),
+		unschedulableJobCache: jobCache,
+	}
+
+	numaObj := &nodeinfov1alpha1.Numatopology{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node1",
+		},
+		Spec: nodeinfov1alpha1.NumatopoSpec{
+			Policies: map[nodeinfov1alpha1.PolicyName]string{
+				nodeinfov1alpha1.TopologyManagerPolicy: "single-numa-node",
+			},
+		},
+	}
+
+	sc.AddNumaInfoV1alpha1(numaObj)
+	sc.UpdateNumaInfoV1alpha1(numaObj, numaObj)
+	sc.DeleteNumaInfoV1alpha1(numaObj)
+	_ = observedEvents
 }
