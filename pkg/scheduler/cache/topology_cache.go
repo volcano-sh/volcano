@@ -36,7 +36,10 @@ type deviceTopologyState struct {
 	readiness         map[schedulingapi.ProviderNodeKey]schedulingapi.ProviderNodeSyncState
 	ledger            *deviceTopologyAvailabilityLedger
 	reservationOwners map[schedulingapi.DeviceID]deviceTopologyReservationOwner
-	snapshot          *schedulingapi.TopologySnapshot
+	// podAllocations records the devices each Pod holds after bind handoff,
+	// one entry per adapter reservation, so one Pod can be released alone.
+	podAllocations map[types.UID][]deviceTopologyPodAllocation
+	snapshot       *schedulingapi.TopologySnapshot
 }
 
 // WithDeviceTopologyProviderRegistry configures the immutable authoritative
@@ -110,6 +113,7 @@ func newDeviceTopologyState() *deviceTopologyState {
 		readiness:         make(map[schedulingapi.ProviderNodeKey]schedulingapi.ProviderNodeSyncState),
 		ledger:            newDeviceTopologyAvailabilityLedger(),
 		reservationOwners: make(map[schedulingapi.DeviceID]deviceTopologyReservationOwner),
+		podAllocations:    make(map[types.UID][]deviceTopologyPodAllocation),
 	}
 	state.snapshot = schedulingapi.NewTopologySnapshotWithAvailability(state.revision, state.facts, state.readiness, state.ledger.snapshot())
 	return state

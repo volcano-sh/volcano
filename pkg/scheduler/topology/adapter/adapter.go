@@ -201,9 +201,14 @@ type AllocationAdapter interface {
 	Reserve(ctx context.Context, plan api.TopologyPlacementPlan) (AdapterReservation, error)
 	// PrepareBind creates an immutable, Pod-specific handoff for one placement.
 	PrepareBind(ctx context.Context, reservation AdapterReservation, placement api.TopologyTaskPlacement) (AllocationHandoff, error)
-	// Confirm returns the backend's authoritative allocation or release result.
-	Confirm(ctx context.Context, reservation AdapterReservation) (AllocationObservation, error)
-	// Release removes a backend reservation that will not be used.
+	// Confirm returns the backend's authoritative allocation or release result
+	// for one Pod after the bind path has acted on its part of a reservation.
+	Confirm(ctx context.Context, reservation AdapterReservation, podUID types.UID) (AllocationObservation, error)
+	// ReleasePod removes one Pod's selected devices from a reservation after
+	// that Pod failed to bind or ended. Other Pods in the reservation keep theirs.
+	ReleasePod(ctx context.Context, reservation AdapterReservation, podUID types.UID) error
+	// Release removes a complete backend reservation that will not be used,
+	// because its batch never reached the bind path.
 	Release(ctx context.Context, reservation AdapterReservation) error
 	// Recover returns all active backend reservations and allocations so the
 	// scheduler can reconstruct its availability ledger safely.

@@ -101,11 +101,17 @@ func TestSchedulerCachePreparesAndCommitsDeviceTopologyBindHandoffs(t *testing.T
 		t.Fatalf("CommitDeviceTopologyReservationBind() error = %v", err)
 	}
 	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceBinding)
+	if allocations := cache.deviceTopology.podAllocations[plan.Placements[0].PodUID]; len(allocations) != 1 || len(allocations[0].deviceIDs) != 1 {
+		t.Fatalf("Pod allocations after commit = %#v, want one record with one device", allocations)
+	}
 
 	if err := cache.RollbackDeviceTopologyReservationBind(context.Background(), reservation); err != nil {
 		t.Fatalf("RollbackDeviceTopologyReservationBind() error = %v", err)
 	}
 	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceAvailable)
+	if len(cache.deviceTopology.podAllocations) != 0 {
+		t.Fatalf("Pod allocations after rollback = %#v, want none", cache.deviceTopology.podAllocations)
+	}
 }
 
 func TestSchedulerCacheReservesThroughMockAllocationAdapter(t *testing.T) {
@@ -677,6 +683,14 @@ type topologyReservationTestAdapter struct {
 	reserveErr              error
 	prepareBindErr          error
 	releaseErr              error
+	releasedPods            []releasedTopologyTestPod
+	releasePodErr           error
+}
+
+// releasedTopologyTestPod records one ReleasePod call.
+type releasedTopologyTestPod struct {
+	reservation adapter.AdapterReservation
+	podUID      types.UID
 }
 
 func newTopologyReservationTestAdapter(resourceName corev1.ResourceName) *topologyReservationTestAdapter {
@@ -734,8 +748,13 @@ func (testAdapter *topologyReservationTestAdapter) PrepareBind(_ context.Context
 	}, nil
 }
 
-func (testAdapter *topologyReservationTestAdapter) Confirm(context.Context, adapter.AdapterReservation) (adapter.AllocationObservation, error) {
+func (testAdapter *topologyReservationTestAdapter) Confirm(context.Context, adapter.AdapterReservation, types.UID) (adapter.AllocationObservation, error) {
 	return adapter.AllocationObservation{}, nil
+}
+
+func (testAdapter *topologyReservationTestAdapter) ReleasePod(_ context.Context, reservation adapter.AdapterReservation, podUID types.UID) error {
+	testAdapter.releasedPods = append(testAdapter.releasedPods, releasedTopologyTestPod{reservation: reservation, podUID: podUID})
+	return testAdapter.releasePodErr
 }
 
 func (testAdapter *topologyReservationTestAdapter) Release(ctx context.Context, reservation adapter.AdapterReservation) error {

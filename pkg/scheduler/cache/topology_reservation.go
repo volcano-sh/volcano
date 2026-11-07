@@ -182,9 +182,16 @@ func (sc *SchedulerCache) ReleaseDeviceTopologyReservation(ctx context.Context, 
 		}
 	}
 
-	if err := sc.applyDeviceTopologyAvailabilityTargets(state, targets); err != nil {
+	sc.Mutex.Lock()
+	if err := sc.applyDeviceTopologyAvailabilityTargetsLocked(state, targets); err != nil {
 		releaseErrors = append(releaseErrors, err)
 	}
+	// Pod records go even when a release fails, so the Pods can be scheduled
+	// again; Unreconciled devices stay unavailable through the ledger.
+	for _, group := range prepared.groups {
+		state.forgetReservationPodAllocations(deviceTopologyReservationOwner{resourceName: group.resourceName, token: group.token, planDigest: group.planDigest})
+	}
+	sc.Mutex.Unlock()
 	if len(releaseErrors) > 0 {
 		return errors.Join(releaseErrors...)
 	}
@@ -624,14 +631,6 @@ func setDeviceAvailabilityTarget(targets map[schedulingapi.DeviceID]schedulingap
 	for _, deviceID := range deviceIDs {
 		targets[deviceID] = availability
 	}
-}
-
-// applyDeviceTopologyAvailabilityTargets locks SchedulerCache before applying
-// one validated set of device availability transitions.
-func (sc *SchedulerCache) applyDeviceTopologyAvailabilityTargets(state *deviceTopologyState, targets map[schedulingapi.DeviceID]schedulingapi.DeviceAvailability) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-	return sc.applyDeviceTopologyAvailabilityTargetsLocked(state, targets)
 }
 
 // applyDeviceTopologyAvailabilityTargetsLocked validates and applies all

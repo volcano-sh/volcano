@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -189,8 +190,12 @@ func (adapter *testAllocationAdapter) PrepareBind(context.Context, AdapterReserv
 	return AllocationHandoff{}, nil
 }
 
-func (adapter *testAllocationAdapter) Confirm(context.Context, AdapterReservation) (AllocationObservation, error) {
+func (adapter *testAllocationAdapter) Confirm(context.Context, AdapterReservation, types.UID) (AllocationObservation, error) {
 	return AllocationObservation{}, nil
+}
+
+func (adapter *testAllocationAdapter) ReleasePod(context.Context, AdapterReservation, types.UID) error {
+	return nil
 }
 
 func (adapter *testAllocationAdapter) Release(context.Context, AdapterReservation) error {

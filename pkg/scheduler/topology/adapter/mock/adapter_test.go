@@ -191,7 +191,7 @@ func TestAdapterConfirmAndRecoverFollowReservationLifecycle(t *testing.T) {
 		t.Fatalf("Reserve() error = %v", err)
 	}
 	assertRecoveredState(t, mockAdapter, reservation, adapter.AdapterReservationHeld)
-	if _, err := mockAdapter.Confirm(context.Background(), reservation); err == nil {
+	if _, err := mockAdapter.Confirm(context.Background(), reservation, "pod-a"); err == nil {
 		t.Fatal("Confirm() before PrepareBind() error = nil, want missing handoff")
 	}
 
@@ -199,23 +199,89 @@ func TestAdapterConfirmAndRecoverFollowReservationLifecycle(t *testing.T) {
 		t.Fatalf("PrepareBind() error = %v", err)
 	}
 	assertRecoveredState(t, mockAdapter, reservation, adapter.AdapterReservationBinding)
+	if _, err := mockAdapter.Confirm(context.Background(), reservation, "pod-b"); err == nil {
+		t.Fatal("Confirm() for a Pod outside the reservation error = nil, want rejection")
+	}
 
-	observation, err := mockAdapter.Confirm(context.Background(), reservation)
-	if err != nil || observation.State != adapter.AllocationObservationAllocated || !observation.ObservedAt.Equal(testObservedAt) {
-		t.Fatalf("Confirm() = (%#v, %v), want Allocated at %v", observation, err, testObservedAt)
+	observation, err := mockAdapter.Confirm(context.Background(), reservation, "pod-a")
+	if err != nil || observation.State != adapter.AllocationObservationAllocated || observation.PodUID != "pod-a" || !observation.ObservedAt.Equal(testObservedAt) {
+		t.Fatalf("Confirm() = (%#v, %v), want pod-a Allocated at %v", observation, err, testObservedAt)
 	}
 	assertRecoveredState(t, mockAdapter, reservation, adapter.AdapterReservationAllocated)
 
 	if err := mockAdapter.Release(context.Background(), reservation); err != nil {
 		t.Fatalf("Release() error = %v", err)
 	}
-	observation, err = mockAdapter.Confirm(context.Background(), reservation)
+	observation, err = mockAdapter.Confirm(context.Background(), reservation, "pod-a")
 	if err != nil || observation.State != adapter.AllocationObservationReleased {
 		t.Fatalf("Confirm() after Release() = (%#v, %v), want Released", observation, err)
 	}
 	states, err := mockAdapter.Recover(context.Background())
 	if err != nil || len(states) != 0 {
 		t.Fatalf("Recover() after Release() = (%#v, %v), want no reservations", states, err)
+	}
+}
+
+func TestAdapterReleasesOnePodAndKeepsTheRest(t *testing.T) {
+	mockAdapter := newTestAdapter(t)
+	plan := testPlan("pod-a", "gpu-0")
+	plan.Placements = append(plan.Placements, testPlan("pod-b", "gpu-1").Placements...)
+	reservation, err := mockAdapter.Reserve(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("Reserve() error = %v", err)
+	}
+	for _, placement := range plan.Placements {
+		if _, err := mockAdapter.PrepareBind(context.Background(), reservation, placement); err != nil {
+			t.Fatalf("PrepareBind(%q) error = %v", placement.PodUID, err)
+		}
+	}
+
+	if err := mockAdapter.ReleasePod(context.Background(), reservation, "pod-a"); err != nil {
+		t.Fatalf("ReleasePod(pod-a) error = %v", err)
+	}
+	if _, err := mockAdapter.Reserve(context.Background(), testPlan("pod-c", "gpu-0")); err != nil {
+		t.Fatalf("Reserve() of the released Pod's device error = %v", err)
+	}
+	_, err = mockAdapter.Reserve(context.Background(), testPlan("pod-d", "gpu-1"))
+	assertAdapterErrorReason(t, err, adapter.ErrorReservationConflict)
+
+	observation, err := mockAdapter.Confirm(context.Background(), reservation, "pod-a")
+	if err != nil || observation.State != adapter.AllocationObservationReleased {
+		t.Fatalf("Confirm(pod-a) after ReleasePod() = (%#v, %v), want Released", observation, err)
+	}
+	observation, err = mockAdapter.Confirm(context.Background(), reservation, "pod-b")
+	if err != nil || observation.State != adapter.AllocationObservationAllocated {
+		t.Fatalf("Confirm(pod-b) = (%#v, %v), want Allocated", observation, err)
+	}
+	states, err := mockAdapter.Recover(context.Background())
+	if err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	if len(states) != 2 || states[0].Reservation != reservation || len(states[0].Plan.Placements) != 1 || states[0].Plan.Placements[0].PodUID != "pod-b" {
+		t.Fatalf("Recover() = %#v, want the first reservation to list only pod-b", states)
+	}
+
+	if err := mockAdapter.ReleasePod(context.Background(), reservation, "pod-a"); err != nil {
+		t.Fatalf("repeated ReleasePod(pod-a) error = %v, want idempotent cleanup", err)
+	}
+	if err := mockAdapter.ReleasePod(context.Background(), reservation, "pod-x"); err == nil {
+		t.Fatal("ReleasePod() for a Pod outside the reservation error = nil, want rejection")
+	}
+	forged := reservation
+	forged.PlanDigest = "sha256:forged"
+	if err := mockAdapter.ReleasePod(context.Background(), forged, "pod-b"); err == nil {
+		t.Fatal("ReleasePod() with a forged digest error = nil, want rejection")
+	}
+
+	if err := mockAdapter.ReleasePod(context.Background(), reservation, "pod-b"); err != nil {
+		t.Fatalf("ReleasePod(pod-b) error = %v", err)
+	}
+	states, err = mockAdapter.Recover(context.Background())
+	if err != nil || len(states) != 1 || states[0].Reservation == reservation {
+		t.Fatalf("Recover() after the last ReleasePod() = (%#v, %v), want only the pod-c reservation", states, err)
+	}
+	if err := mockAdapter.ReleasePod(context.Background(), reservation, "pod-b"); err != nil {
+		t.Fatalf("ReleasePod() after the reservation ended error = %v, want idempotent cleanup", err)
 	}
 }
 
@@ -229,6 +295,9 @@ func TestAdapterHonorsCancelledContext(t *testing.T) {
 	}
 	if _, err := mockAdapter.Reserve(ctx, testPlan("pod-a", "gpu-0")); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Reserve() error = %v, want context canceled", err)
+	}
+	if err := mockAdapter.ReleasePod(ctx, adapter.AdapterReservation{Token: "mock-1", PlanDigest: "sha256:1"}, "pod-a"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ReleasePod() error = %v, want context canceled", err)
 	}
 	if _, err := mockAdapter.Recover(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Recover() error = %v, want context canceled", err)

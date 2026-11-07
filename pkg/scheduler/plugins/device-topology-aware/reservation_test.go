@@ -23,6 +23,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 
@@ -436,8 +437,12 @@ func (testAdapter *reservationForwardingTestAdapter) PrepareBind(_ context.Conte
 	}, nil
 }
 
-func (testAdapter *reservationForwardingTestAdapter) Confirm(context.Context, adapter.AdapterReservation) (adapter.AllocationObservation, error) {
+func (testAdapter *reservationForwardingTestAdapter) Confirm(context.Context, adapter.AdapterReservation, types.UID) (adapter.AllocationObservation, error) {
 	return adapter.AllocationObservation{}, nil
+}
+
+func (testAdapter *reservationForwardingTestAdapter) ReleasePod(context.Context, adapter.AdapterReservation, types.UID) error {
+	return nil
 }
 
 func (testAdapter *reservationForwardingTestAdapter) Release(_ context.Context, reservation adapter.AdapterReservation) error {

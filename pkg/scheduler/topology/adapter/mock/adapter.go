@@ -46,13 +46,19 @@ type Adapter struct {
 	deviceOwners map[api.DeviceID]string
 }
 
-// reservation is one accepted plan and the devices it owns.
+// reservation is one accepted plan and the Pods that still hold its devices.
 type reservation struct {
 	planDigest string
 	plan       api.TopologyPlacementPlan
-	deviceIDs  []api.DeviceID
-	placements map[types.UID]api.TopologyTaskPlacement
-	state      adapter.AdapterReservationLifecycleState
+	pods       map[types.UID]*podReservation
+}
+
+// podReservation is one Pod's share of a reservation. Each Pod moves through
+// the lifecycle and is released on its own.
+type podReservation struct {
+	placement api.TopologyTaskPlacement
+	deviceIDs []api.DeviceID
+	state     adapter.AdapterReservationLifecycleState
 }
 
 var _ adapter.AllocationAdapter = (*Adapter)(nil)
@@ -118,7 +124,7 @@ func (mockAdapter *Adapter) Reserve(ctx context.Context, plan api.TopologyPlacem
 	if err := ctx.Err(); err != nil {
 		return adapter.AdapterReservation{}, err
 	}
-	deviceIDs, placements, err := mockAdapter.planDevices(plan)
+	pods, deviceIDs, err := mockAdapter.planPods(plan)
 	if err != nil {
 		return adapter.AdapterReservation{}, err
 	}
@@ -139,9 +145,7 @@ func (mockAdapter *Adapter) Reserve(ctx context.Context, plan api.TopologyPlacem
 	mockAdapter.reservations[token] = &reservation{
 		planDigest: planDigest,
 		plan:       plan.Clone(),
-		deviceIDs:  deviceIDs,
-		placements: placements,
-		state:      adapter.AdapterReservationHeld,
+		pods:       pods,
 	}
 	for _, deviceID := range deviceIDs {
 		mockAdapter.deviceOwners[deviceID] = token
@@ -162,23 +166,25 @@ func (mockAdapter *Adapter) PrepareBind(ctx context.Context, handle adapter.Adap
 	if err != nil {
 		return adapter.AllocationHandoff{}, err
 	}
-	planned, exists := held.placements[placement.PodUID]
-	if !exists || planned.NodeName != placement.NodeName {
+	pod, exists := held.pods[placement.PodUID]
+	if !exists || pod.placement.NodeName != placement.NodeName {
 		return adapter.AllocationHandoff{}, adapter.NewError(adapter.ErrorBackendFailure, fmt.Errorf("reservation %q has no placement for Pod %q on Node %q", handle.Token, placement.PodUID, placement.NodeName))
 	}
-	held.state = adapter.AdapterReservationBinding
+	if pod.state == adapter.AdapterReservationHeld {
+		pod.state = adapter.AdapterReservationBinding
+	}
 	return adapter.AllocationHandoff{
 		ReservationToken: handle.Token,
 		PlanDigest:       held.planDigest,
-		PodUID:           planned.PodUID,
-		NodeName:         planned.NodeName,
+		PodUID:           pod.placement.PodUID,
+		NodeName:         pod.placement.NodeName,
 	}, nil
 }
 
-// Confirm treats every prepared handoff as enforced, because nothing outside
-// this adapter can disagree with it. An unknown reservation is reported as
-// released.
-func (mockAdapter *Adapter) Confirm(ctx context.Context, handle adapter.AdapterReservation) (adapter.AllocationObservation, error) {
+// Confirm treats a Pod's prepared handoff as enforced, because nothing outside
+// this adapter can disagree with it. A Pod that was released, alone or with
+// its whole reservation, is reported as released.
+func (mockAdapter *Adapter) Confirm(ctx context.Context, handle adapter.AdapterReservation, podUID types.UID) (adapter.AllocationObservation, error) {
 	if err := ctx.Err(); err != nil {
 		return adapter.AllocationObservation{}, err
 	}
@@ -188,6 +194,7 @@ func (mockAdapter *Adapter) Confirm(ctx context.Context, handle adapter.AdapterR
 	observation := adapter.AllocationObservation{
 		ReservationToken: handle.Token,
 		PlanDigest:       handle.PlanDigest,
+		PodUID:           podUID,
 		ObservedAt:       mockAdapter.now(),
 	}
 	held, exists := mockAdapter.reservations[handle.Token]
@@ -198,12 +205,54 @@ func (mockAdapter *Adapter) Confirm(ctx context.Context, handle adapter.AdapterR
 	if held.planDigest != handle.PlanDigest {
 		return adapter.AllocationObservation{}, adapter.NewError(adapter.ErrorBackendFailure, fmt.Errorf("reservation %q has a different plan digest", handle.Token))
 	}
-	if held.state == adapter.AdapterReservationHeld {
-		return adapter.AllocationObservation{}, adapter.NewError(adapter.ErrorBackendFailure, fmt.Errorf("reservation %q has no prepared bind handoff", handle.Token))
+	pod, exists := held.pods[podUID]
+	if !exists {
+		if !planPlacesPod(held.plan, podUID) {
+			return adapter.AllocationObservation{}, adapter.NewError(adapter.ErrorBackendFailure, fmt.Errorf("reservation %q has no placement for Pod %q", handle.Token, podUID))
+		}
+		observation.State = adapter.AllocationObservationReleased
+		return observation, nil
 	}
-	held.state = adapter.AdapterReservationAllocated
+	if pod.state == adapter.AdapterReservationHeld {
+		return adapter.AllocationObservation{}, adapter.NewError(adapter.ErrorBackendFailure, fmt.Errorf("reservation %q has no prepared bind handoff for Pod %q", handle.Token, podUID))
+	}
+	pod.state = adapter.AdapterReservationAllocated
 	observation.State = adapter.AllocationObservationAllocated
 	return observation, nil
+}
+
+// ReleasePod frees one Pod's devices and keeps the rest of its reservation.
+// The reservation ends when its last Pod is released. Releasing a Pod that is
+// already released succeeds, so a repeated cleanup is safe.
+func (mockAdapter *Adapter) ReleasePod(ctx context.Context, handle adapter.AdapterReservation, podUID types.UID) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	mockAdapter.mutex.Lock()
+	defer mockAdapter.mutex.Unlock()
+	held, exists := mockAdapter.reservations[handle.Token]
+	if !exists {
+		return nil
+	}
+	if held.planDigest != handle.PlanDigest {
+		return adapter.NewError(adapter.ErrorBackendFailure, fmt.Errorf("reservation %q has a different plan digest", handle.Token))
+	}
+	pod, exists := held.pods[podUID]
+	if !exists {
+		if !planPlacesPod(held.plan, podUID) {
+			return adapter.NewError(adapter.ErrorBackendFailure, fmt.Errorf("reservation %q has no placement for Pod %q", handle.Token, podUID))
+		}
+		return nil
+	}
+	for _, deviceID := range pod.deviceIDs {
+		delete(mockAdapter.deviceOwners, deviceID)
+	}
+	delete(held.pods, podUID)
+	if len(held.pods) == 0 {
+		delete(mockAdapter.reservations, handle.Token)
+	}
+	return nil
 }
 
 // Release frees every device of a reservation. Releasing an unknown
@@ -222,15 +271,18 @@ func (mockAdapter *Adapter) Release(ctx context.Context, handle adapter.AdapterR
 	if held.planDigest != handle.PlanDigest {
 		return adapter.NewError(adapter.ErrorBackendFailure, fmt.Errorf("reservation %q has a different plan digest", handle.Token))
 	}
-	for _, deviceID := range held.deviceIDs {
-		delete(mockAdapter.deviceOwners, deviceID)
+	for _, pod := range held.pods {
+		for _, deviceID := range pod.deviceIDs {
+			delete(mockAdapter.deviceOwners, deviceID)
+		}
 	}
 	delete(mockAdapter.reservations, handle.Token)
 	return nil
 }
 
-// Recover returns every active reservation in token order. Mock reservations
-// live only in memory, so they never expire.
+// Recover returns every active reservation in token order. Its plan lists
+// only the Pods that still hold devices, and its state is the earliest state
+// among them. Mock reservations live only in memory, so they never expire.
 func (mockAdapter *Adapter) Recover(ctx context.Context) ([]adapter.AdapterReservationState, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -246,29 +298,43 @@ func (mockAdapter *Adapter) Recover(ctx context.Context) ([]adapter.AdapterReser
 	states := make([]adapter.AdapterReservationState, 0, len(tokens))
 	for _, token := range tokens {
 		held := mockAdapter.reservations[token]
+		plan := held.plan.Clone()
+		plan.Placements = make([]api.TopologyTaskPlacement, 0, len(held.pods))
+		state := adapter.AdapterReservationAllocated
+		for _, placement := range held.plan.Placements {
+			pod, exists := held.pods[placement.PodUID]
+			if !exists {
+				continue
+			}
+			plan.Placements = append(plan.Placements, placement.Clone())
+			if lifecycleOrder(pod.state) < lifecycleOrder(state) {
+				state = pod.state
+			}
+		}
 		states = append(states, adapter.AdapterReservationState{
 			Reservation: adapter.AdapterReservation{Token: token, PlanDigest: held.planDigest},
-			Plan:        held.plan.Clone(),
-			State:       held.state,
+			Plan:        plan,
+			State:       state,
 		})
 	}
 	return states, nil
 }
 
-// planDevices checks that a plan selects only this adapter's resource and
-// identity contract, and indexes its devices and Pod placements.
-func (mockAdapter *Adapter) planDevices(plan api.TopologyPlacementPlan) ([]api.DeviceID, map[types.UID]api.TopologyTaskPlacement, error) {
+// planPods checks that a plan selects only this adapter's resource and
+// identity contract, and splits its devices by Pod.
+func (mockAdapter *Adapter) planPods(plan api.TopologyPlacementPlan) (map[types.UID]*podReservation, []api.DeviceID, error) {
 	var deviceIDs []api.DeviceID
 	seen := make(map[api.DeviceID]struct{})
-	placements := make(map[types.UID]api.TopologyTaskPlacement, len(plan.Placements))
+	pods := make(map[types.UID]*podReservation, len(plan.Placements))
 	for _, placement := range plan.Placements {
 		if placement.PodUID == "" || placement.NodeName == "" {
 			return nil, nil, adapter.NewError(adapter.ErrorUnsupportedExactSelection, fmt.Errorf("placement for Task %q has no Pod UID or Node", placement.TaskID))
 		}
-		if _, exists := placements[placement.PodUID]; exists {
+		if _, exists := pods[placement.PodUID]; exists {
 			return nil, nil, adapter.NewError(adapter.ErrorUnsupportedExactSelection, fmt.Errorf("plan places Pod %q more than once", placement.PodUID))
 		}
-		placements[placement.PodUID] = placement.Clone()
+		pod := &podReservation{placement: placement.Clone(), state: adapter.AdapterReservationHeld}
+		pods[placement.PodUID] = pod
 		for _, assignment := range placement.Assignments {
 			if assignment.ResourceName != mockAdapter.contract.ResourceName {
 				return nil, nil, adapter.NewError(adapter.ErrorUnsupportedExactSelection, fmt.Errorf("assignment for resource %q does not match adapter resource %q", assignment.ResourceName, mockAdapter.contract.ResourceName))
@@ -281,6 +347,7 @@ func (mockAdapter *Adapter) planDevices(plan api.TopologyPlacementPlan) ([]api.D
 					return nil, nil, adapter.NewError(adapter.ErrorUnsupportedExactSelection, fmt.Errorf("plan selects device %q more than once", deviceID.String()))
 				}
 				seen[deviceID] = struct{}{}
+				pod.deviceIDs = append(pod.deviceIDs, deviceID)
 				deviceIDs = append(deviceIDs, deviceID)
 			}
 		}
@@ -288,7 +355,7 @@ func (mockAdapter *Adapter) planDevices(plan api.TopologyPlacementPlan) ([]api.D
 	if len(deviceIDs) == 0 {
 		return nil, nil, adapter.NewError(adapter.ErrorUnsupportedExactSelection, fmt.Errorf("plan selects no %q devices", mockAdapter.contract.ResourceName))
 	}
-	return deviceIDs, placements, nil
+	return pods, deviceIDs, nil
 }
 
 // reservationFor returns the reservation named by a handle whose digest
@@ -308,6 +375,29 @@ func (mockAdapter *Adapter) reservationFor(handle adapter.AdapterReservation) (*
 // identity namespace.
 func (mockAdapter *Adapter) ownsDeviceID(deviceID api.DeviceID) bool {
 	return deviceID.ProviderID == mockAdapter.contract.ProviderID && deviceID.Namespace == mockAdapter.contract.Namespace
+}
+
+// planPlacesPod reports whether a reservation's original plan placed a Pod,
+// which tells a released Pod apart from one that never belonged to it.
+func planPlacesPod(plan api.TopologyPlacementPlan, podUID types.UID) bool {
+	for _, placement := range plan.Placements {
+		if placement.PodUID == podUID {
+			return true
+		}
+	}
+	return false
+}
+
+// lifecycleOrder ranks reservation states from earliest to latest.
+func lifecycleOrder(state adapter.AdapterReservationLifecycleState) int {
+	switch state {
+	case adapter.AdapterReservationHeld:
+		return 0
+	case adapter.AdapterReservationBinding:
+		return 1
+	default:
+		return 2
+	}
 }
 
 // digestPlan returns a stable digest of the complete immutable plan.

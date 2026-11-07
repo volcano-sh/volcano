@@ -1166,6 +1166,7 @@ func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*BindContext,
 					preBinder.PreBindRollBack(ctx, bindContext)
 				}
 			}
+			sc.releaseFailedBindDeviceTopology(ctx, bindContext.TaskInfo)
 
 			klog.V(2).Infof("resyncTask task %s", bindContext.TaskInfo.Name)
 			sc.resyncTask(bindContext.TaskInfo)
@@ -1627,6 +1628,7 @@ func (sc *SchedulerCache) executePreBinds(ctx context.Context, bindContexts []*B
 		if err := sc.executePreBind(ctx, bindContext, preBinders); err != nil {
 			reason := fmt.Sprintf("execute preBind for pod %s failed: %v, resync the task", klog.KObj(bindContext.TaskInfo.Pod), err)
 			klog.Error(reason)
+			sc.releaseFailedBindDeviceTopology(ctx, bindContext.TaskInfo)
 			sc.resyncTask(bindContext.TaskInfo)
 			if updateErr := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, reason, ""); updateErr != nil {
 				logger.Error(updateErr, "Failed to update pod status", "pod", klog.KObj(bindContext.TaskInfo.Pod))
