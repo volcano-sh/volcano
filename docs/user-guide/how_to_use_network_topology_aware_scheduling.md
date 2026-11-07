@@ -172,6 +172,69 @@ Refers to [How to Use HyperNode Auto Discovery](./how_to_use_hypernode_auto_disc
 
 You can build Network Topology by creating HyperNode CRs manually. Refer to the definition of CRD `hypernodes.topology.volcano.sh` for more details.
 
+#### 3.2.3 Inspect HyperNode Trees
+
+Use `vcctl` to resolve HyperNode membership and display the resulting trees down to Kubernetes Nodes:
+
+```shell
+vcctl hypernode tree
+vcctl hypernode tree --kubeconfig /path/to/config
+vcctl hypernode tree --charset=unicode
+vcctl hypernode tree --charset=ascii
+vcctl hypernode tree --dra=false
+```
+
+The command uses the existing vcctl kubeconfig loading rules, including `KUBECONFIG`, and supports `--master` / `-s` and `--kubeconfig` / `-k`. By default, it lists `hypernodes.topology.volcano.sh`, `nodes`, and `resourceslices.resource.k8s.io`, requiring cluster-wide list permission for each. DRA inventory requires the `resource.k8s.io/v1` API. Use `--dra=false` to skip ResourceSlice reads on older clusters or when you do not have that permission. API errors are reported rather than treated as empty inventory. The command does not query Pods, ResourceClaims, or DeviceClasses, or modify cluster resources.
+
+For example, a cluster with four GPU Nodes might display:
+
+```text
+RESOURCE VALUES: ALLOCATABLE/CAPACITY (not free resources)
+
+NAME             TIER    STATUS                       NODES  READY  CORDONED  nvidia.com/gpu
+zone-a           2/zone  -                            4      3/4    1         32/32
+├── rack-a       1/rack  -                            2      2/2    0         16/16
+│   ├── node-01  -       Ready                        -      -      -         8/8
+│   └── node-02  -       Ready                        -      -      -         8/8
+└── rack-b       1/rack  -                            2      1/2    1         16/16
+    ├── node-03  -       Ready                        -      -      -         8/8
+    └── node-04  -       NotReady,SchedulingDisabled  -      -      -         8/8
+```
+
+Each root represents an independent tree. Roots and siblings are sorted by name; direct Node members follow child HyperNodes. Nodes outside the topology are omitted. Empty HyperNodes remain visible.
+
+- `TIER` is the HyperNode tier and optional tier name.
+- Node `STATUS` comes from its Ready condition: `Ready`, `NotReady`, or `Unknown`. `SchedulingDisabled` is appended when the Node is cordoned. These fields do not determine whether a particular workload can schedule there.
+- HyperNode `NODES`, `READY`, and `CORDONED` count distinct descendant and direct-member Nodes. These counts are calculated by the client, not taken from `status.nodeCount`. A Node selected in more than one place is counted only once per HyperNode.
+- Resource columns are discovered from the union of topology-member Nodes' Allocatable and Capacity and sorted by full extended-resource name. Different vendors and resource types are not combined.
+- Each resource value is **Allocatable/Capacity**, not free resources or utilization. Existing Pod requests are not deducted. HyperNode totals sum each component independently across distinct Nodes, including NotReady and cordoned Nodes. An unreported component is shown as `-`, while an explicit zero remains `0`, for example `-/8`, `2/-`, or `0/8`.
+
+Allocatable is the total resource allowance available for Pod allocation, not the amount left after existing Pod requests. For GPUs, device health can reduce the Allocatable reported through a device plugin while Capacity still reflects the reported inventory. The pair therefore exposes both values without estimating unused devices.
+
+Device plugins may report physical devices, virtual devices, shared units, device memory, or other resources. These totals do not imply physical card counts or equivalent computing capacity.
+
+For DRA-managed devices, additional columns are sorted by full driver name and prefixed with `DRA:`. They contain **advertised device counts**, not Allocatable/Capacity pairs. For example:
+
+```text
+DRA VALUES: ADVERTISED DEVICE COUNT (not allocatable or free resources)
+
+NAME                         TIER    STATUS  NODES  READY  CORDONED  DRA:gpu.example.com
+kind-zone                    2/zone  -       2      2/2    0         8
+└── kind-rack                1/rack  -       2      2/2    0         8
+    ├── volcano-lab-worker   -       Ready   -      -      -         4
+    └── volcano-lab-worker2  -       Ready   -      -      -         4
+```
+
+The client groups ResourceSlices by driver and pool, uses only the highest pool generation, and requires its slice count to be complete and consistent for pools covering topology-member Nodes. It associates inventory using `spec.nodeName`, not the pool name. NodeSelector, AllNodes, and per-device Node selection are not supported in this first version and cause an explicit error; use `--dra=false` to inspect the topology without DRA inventory.
+
+Each device is identified by `(driver, pool, device)`. HyperNode totals count distinct advertised devices across their member Nodes, without double-counting overlapping membership. Duplicate device identities within a pool generation are rejected. A reported empty inventory is `0`; absent inventory is `-`. Node-local inventory outside the topology does not generate columns.
+
+DRA counts include allocated and tainted devices, including devices on NotReady or cordoned Nodes. Device capacity attributes such as memory are not device counts. Shared or partitioned device entries are not necessarily physical cards or simultaneously allocatable units. Traditional extended-resource columns and DRA columns remain separate, even when a driver publishes the same hardware through both mechanisms.
+
+The default `--charset=auto` uses Unicode only when stdout is a terminal, `TERM` is set and is not `dumb`, and the first nonempty value among `LC_ALL`, `LC_CTYPE`, and `LANG` declares UTF-8. Otherwise, including pipes and redirected output, it uses ASCII `+--` branches. Explicit `ascii` and `unicode` override automatic selection. If your terminal renders line-drawing characters with unexpected widths, force ASCII.
+
+The command reuses the scheduler's HyperNode parser but rebuilds the view from API objects, not scheduler memory. The HyperNode, Node, and ResourceSlice reads are not an atomic cross-resource snapshot. Invalid selectors, cycles, multiple HyperNode parents, missing exact-match references, or invalid DRA inventory fail with a diagnostic instead of printing a partial tree; retry after reconciling the objects or if concurrent updates caused an inconsistent snapshot.
+
 ### 3.3 Deploy Workloads Using Network Topology Aware Scheduling
 
 Based on the following network topology, this chapter will demonstrate how workloads can be deployed using Network Topology Aware Scheduling.
