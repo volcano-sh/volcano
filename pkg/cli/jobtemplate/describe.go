@@ -77,9 +77,13 @@ func DescribeJobTemplate(ctx context.Context) error {
 			if err := PrintJobTemplateDetail(&jobTemplate, describeJobTemplateFlags.Format); err != nil {
 				return err
 			}
-			// Print space if it's not the last element
+			// Separate YAML documents; JSON objects only need whitespace.
 			if len(jobTemplates.Items) != 1 && i < len(jobTemplates.Items)-1 {
-				fmt.Printf("\n\n")
+				if describeJobTemplateFlags.Format == "yaml" {
+					fmt.Println("---")
+				} else {
+					fmt.Printf("\n\n")
+				}
 			}
 		}
 		// Get job template detail
