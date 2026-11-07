@@ -518,6 +518,26 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		for i := 0; i < int(ts.Replicas); i++ {
 			podName := fmt.Sprintf(jobhelpers.PodNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
+				if cc.podLister != nil {
+					if livePod, err := cc.podLister.Pods(job.Namespace).Get(podName); err == nil && livePod != nil {
+						if isControlledBy(livePod, helpers.JobKind) {
+							if controllerRef := metav1.GetControllerOf(livePod); controllerRef != nil && controllerRef.UID == job.UID {
+								_ = cc.cache.AddPod(livePod)
+								if livePod.DeletionTimestamp != nil {
+									klog.Infof("Pod <%s/%s> is terminating", livePod.Namespace, livePod.Name)
+									atomic.AddInt32(&terminating, 1)
+									continue
+								}
+								if jobhelpers.IsOutOfSyncPod(livePod) {
+									podToDelete = append(podToDelete, livePod)
+								}
+								classifyAndAddUpPodBaseOnPhase(livePod, &pending, &running, &succeeded, &failed, &unknown)
+								calcPodStatus(livePod, taskStatusCount)
+								continue
+							}
+						}
+					}
+				}
 				newPod := createJobPod(job, tc, i, jobForwarding, pg, &ts)
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
 					return err
@@ -526,6 +546,14 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 				waitCreationGroup.Add(1)
 			} else {
 				delete(pods, podName)
+				if cc.podLister != nil {
+					if livePod, err := cc.podLister.Pods(job.Namespace).Get(podName); err == nil && livePod != nil && livePod.UID == pod.UID {
+						if livePod.Status.Phase != pod.Status.Phase || livePod.ResourceVersion != pod.ResourceVersion {
+							pod = livePod
+							_ = cc.cache.UpdatePod(livePod)
+						}
+					}
+				}
 				if pod.DeletionTimestamp != nil {
 					klog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
 					atomic.AddInt32(&terminating, 1)

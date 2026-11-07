@@ -35,6 +35,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingapi "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/volcano/pkg/controllers/apis"
@@ -1994,5 +1995,143 @@ func TestIsDependsOnPodsReady(t *testing.T) {
 				t.Errorf("Case %d (%s): expected ready: %v, got: %v", i, tc.Name, tc.ExpectedReady, ready)
 			}
 		})
+	}
+}
+
+func TestSyncJobRefreshesStalePodsFromLister(t *testing.T) {
+	namespace := "test"
+	fakeController := newFakeController()
+
+	defaultQueue := &schedulingapi.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: schedulingapi.DefaultQueue},
+	}
+	if err := fakeController.queueInformer.Informer().GetIndexer().Add(defaultQueue); err != nil {
+		t.Fatalf("Failed to add default queue: %v", err)
+	}
+
+	job := testJobUID(&v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-job",
+			Namespace:       namespace,
+			ResourceVersion: "100",
+		},
+		Spec: v1alpha1.JobSpec{
+			MinAvailable: 8,
+			Tasks: []v1alpha1.TaskSpec{
+				{
+					Name:     "task",
+					Replicas: 8,
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "task",
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{Name: "c", Image: "nginx"},
+							},
+						},
+					},
+				},
+			},
+		},
+		Status: v1alpha1.JobStatus{
+			State: v1alpha1.JobState{
+				Phase: v1alpha1.Running,
+			},
+			Version: 0,
+		},
+	})
+
+	_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create job: %v", err)
+	}
+	if err := fakeController.cache.Add(job); err != nil {
+		t.Fatalf("Failed to add job to cache: %v", err)
+	}
+	fakeController.jobInformer.Informer().GetIndexer().Add(job)
+
+	// Create PodGroup so syncTask is true in syncJob
+	pg := &schedulingapi.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-%s", job.Name, job.UID),
+			Namespace: namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(job, v1alpha1.SchemeGroupVersion.WithKind("Job")),
+			},
+		},
+		Status: schedulingapi.PodGroupStatus{
+			Phase: schedulingapi.PodGroupRunning,
+		},
+	}
+	_, err = fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create pod group: %v", err)
+	}
+	fakeController.pgInformer.Informer().GetIndexer().Add(pg)
+
+	// In the in-memory cache, pods are recorded with stale phase PodRunning.
+	// But in podLister (the informer cache), all 8 pods have completed (PodSucceeded).
+	for i := 0; i < 8; i++ {
+		podName := fmt.Sprintf("%s-task-%d", job.Name, i)
+		stalePod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName,
+				Namespace: namespace,
+				UID:       types.UID(fmt.Sprintf("uid-%d", i)),
+				Annotations: map[string]string{
+					v1alpha1.JobNameKey:  job.Name,
+					v1alpha1.JobVersion:  "0",
+					v1alpha1.TaskSpecKey: "task",
+				},
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(job, v1alpha1.SchemeGroupVersion.WithKind("Job")),
+				},
+			},
+			Status: v1.PodStatus{
+				Phase: v1.PodRunning,
+			},
+		}
+		if err := fakeController.cache.AddPod(stalePod); err != nil {
+			t.Fatalf("Failed to add stale pod to cache: %v", err)
+		}
+
+		// The live pod in podLister has completed:
+		livePod := stalePod.DeepCopy()
+		livePod.Status.Phase = v1.PodSucceeded
+		livePod.ResourceVersion = "100"
+		_, err = fakeController.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), livePod, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create live pod: %v", err)
+		}
+		fakeController.podInformer.Informer().GetIndexer().Add(livePod)
+	}
+
+	jobInfo, err := fakeController.cache.Get(job.UID)
+	if err != nil {
+		t.Fatalf("Failed to get jobInfo from cache: %v", err)
+	}
+
+	st := state.NewState(jobInfo)
+	if st == nil {
+		t.Fatalf("Failed to create state for job")
+	}
+
+	// Execute syncJob via runningState.Execute(SyncJobAction)
+	err = st.Execute(state.Action{Action: busv1alpha1.SyncJobAction})
+	if err != nil {
+		t.Fatalf("st.Execute failed: %v", err)
+	}
+
+	// Verify job transitioned to Completed
+	updatedJob, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get updated job: %v", err)
+	}
+	if updatedJob.Status.Succeeded != 8 {
+		t.Errorf("Expected 8 succeeded pods, got %d", updatedJob.Status.Succeeded)
+	}
+	if updatedJob.Status.State.Phase != v1alpha1.Completed {
+		t.Errorf("Expected job phase to be Completed, got %v", updatedJob.Status.State.Phase)
 	}
 }
