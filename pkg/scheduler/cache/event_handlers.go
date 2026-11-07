@@ -25,7 +25,6 @@ package cache
 import (
 	"context"
 	"fmt"
-	"math"
 	"reflect"
 	"slices"
 	"strconv"
@@ -36,12 +35,9 @@ import (
 	sv1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/component-helpers/storage/ephemeral"
-	storagehelpers "k8s.io/component-helpers/storage/volume"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
@@ -60,8 +56,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 )
-
-var DefaultAttachableVolumeQuantity int64 = math.MaxInt32
 
 func isTerminated(status schedulingapi.TaskStatus) bool {
 	return status == schedulingapi.Succeeded || status == schedulingapi.Failed
@@ -83,148 +77,6 @@ func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *scheduling
 	}
 
 	return sc.Jobs[pi.Job]
-}
-
-// addPodCSIVolumesToTask counts the csi volumes used by task
-// @Lily922 TODO: support counting shared volumes. Currently, if two different pods use the same attachable volume
-// and scheduled on the same nodes the volume will be count twice, but actually only use one attachable limit resource
-func (sc *SchedulerCache) addPodCSIVolumesToTask(pi *schedulingapi.TaskInfo) error {
-	volumes, err := sc.getPodCSIVolumes(pi.Pod)
-	if err != nil {
-		klog.Errorf("got pod csi attachment persistent volumes count error: %s", err.Error())
-		return err
-	}
-
-	for key, count := range volumes {
-		pi.Resreq.AddScalar(key, float64(count))
-	}
-	return nil
-}
-
-func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName]int64, error) {
-	volumes := make(map[v1.ResourceName]int64)
-	for _, vol := range pod.Spec.Volumes {
-		pvcName := ""
-		isEphemeral := false
-		switch {
-		case vol.PersistentVolumeClaim != nil:
-			// Normal CSI volume can only be used through PVC
-			pvcName = vol.PersistentVolumeClaim.ClaimName
-		case vol.Ephemeral != nil:
-			// Generic ephemeral inline volumes also use a PVC,
-			// just with a computed name and certain ownership.
-			// That is checked below once the pvc object is
-			// retrieved.
-			pvcName = ephemeral.VolumeClaimName(pod, &vol)
-			isEphemeral = true
-		default:
-			// @Lily922 TODO: support Inline volumes.
-			// Inline volume is not supported now
-			continue
-		}
-		if pvcName == "" {
-			return volumes, fmt.Errorf("PersistentVolumeClaim had no name")
-		}
-
-		pvc, err := sc.pvcInformer.Lister().PersistentVolumeClaims(pod.Namespace).Get(pvcName)
-		if err != nil {
-			// A PVC ADD event can reach the scheduler's PVC informer after
-			// the pod's ADD reaches the pod informer (e.g. a pod created
-			// together with an OnDemand PVC). When the PVC is simply not
-			// found yet, wrap the error in pendingPVCError so addPod adds
-			// the task to the cache and re-queues it for resync instead of
-			// dropping the pod. Any other lookup error is fatal as before.
-			if errors.IsNotFound(err) {
-				return volumes, &pendingPVCError{
-					err: fmt.Errorf("looking up PVC %s/%s: %w", pod.Namespace, pvcName, err),
-				}
-			}
-			return volumes, fmt.Errorf("looking up PVC %s/%s: %v", pod.Namespace, pvcName, err)
-		}
-		// The PVC for an ephemeral volume must be owned by the pod.
-		if isEphemeral {
-			if err := ephemeral.VolumeIsForPod(pod, pvc); err != nil {
-				return volumes, err
-			}
-		}
-
-		driverName := sc.getCSIDriverInfo(pvc)
-		if sc.isIgnoredProvisioner(driverName) {
-			klog.V(5).InfoS("Provisioner ignored, skip count pod pvc num", "driverName", driverName)
-			continue
-		}
-		if driverName == "" {
-			klog.V(5).InfoS("Could not find a CSI driver name for pvc(%s/%s), not counting volume", pvc.Namespace, pvc.Name)
-			continue
-		}
-
-		// Count all csi volumes in cache, because the storage may change from unattachable volumes to attachable volumes after
-		// the cache set up, in this case it is very difficult to refresh all task caches.
-		// For unattachable volume, set the limits number to a very large value, in this way, scheduling will never
-		// be limited due to insufficient quantity of it.
-		k := csiAttachLimitResourceName(driverName)
-		if _, ok := volumes[k]; !ok {
-			volumes[k] = 1
-		} else {
-			volumes[k] += 1
-		}
-	}
-	return volumes, nil
-}
-
-func (sc *SchedulerCache) isIgnoredProvisioner(driverName string) bool {
-	return sc.IgnoredCSIProvisioners.Has(driverName)
-}
-
-func (sc *SchedulerCache) getCSIDriverInfo(pvc *v1.PersistentVolumeClaim) string {
-	pvName := pvc.Spec.VolumeName
-
-	if pvName == "" {
-		klog.V(5).Infof("PV had no name for pvc <%s>", klog.KObj(pvc))
-		return sc.getCSIDriverInfoFromSC(pvc)
-	}
-
-	pv, err := sc.pvInformer.Lister().Get(pvName)
-	if err != nil {
-		klog.V(5).InfoS("Failed to get pv <%s> for pvc <%s>: %v", klog.KRef("", pvName), klog.KObj(pvc), err)
-		// If we can't fetch PV associated with PVC, may be it got deleted
-		// or PVC was prebound to a PVC that hasn't been created yet.
-		// fallback to using StorageClass for volume counting
-		return sc.getCSIDriverInfoFromSC(pvc)
-	}
-
-	csiSource := pv.Spec.PersistentVolumeSource.CSI
-	if csiSource == nil {
-		// @Lily922 TODO: support non-CSI volumes and migrating pvc
-		// CSIMigration is not supported now.
-		klog.Warningf("Not support non-csi pvc.")
-		return ""
-	}
-
-	return csiSource.Driver
-}
-
-// getCSIDriverInfoFromSC get the name of the csi driver through the sc of the pvc.
-func (sc *SchedulerCache) getCSIDriverInfoFromSC(pvc *v1.PersistentVolumeClaim) string {
-	scName := storagehelpers.GetPersistentVolumeClaimClass(pvc)
-
-	// If StorageClass is not set or not found, then PVC must be using immediate binding mode
-	// and hence it must be bound before scheduling. So it is safe to not count it.
-	if scName == "" {
-		klog.V(3).Infof("PVC <%s> has no StorageClass", klog.KObj(pvc))
-		return ""
-	}
-
-	storageClass, err := sc.scInformer.Lister().Get(scName)
-	if err != nil {
-		klog.Errorf("Failed to get StorageClass for pvc <%s>: %v", klog.KObj(pvc), err)
-		return ""
-	}
-
-	if driverName, ok := storageClass.Parameters["csi.storage.k8s.io/csi-driver-name"]; ok {
-		return driverName
-	}
-	return storageClass.Provisioner
 }
 
 func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
@@ -257,12 +109,9 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 
 func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, error) {
 	taskInfo := schedulingapi.NewTaskInfo(pod)
-	if err := sc.addPodCSIVolumesToTask(taskInfo); err != nil {
-		return taskInfo, err
-	}
-	// Adding CSI attachment counts updates both Resreq and InitResreq, which share an object here.
-	// Refresh BestEffort so a task with these requests is no longer treated as resource-free.
-	taskInfo.UpdateSchedulingBestEffort()
+	// CSI volume attach limits are enforced solely by the upstream NodeVolumeLimits
+	// (CSILimits) predicate, which deduplicates shared volumes by volume handle.
+	// Volcano no longer models them as a per-task scalar resource.
 	draResreq, claimDRAResreq, claimKeys, err := sc.buildTaskDRAInfo(pod)
 	if err != nil {
 		return taskInfo, err
@@ -279,22 +128,6 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	if err != nil {
 		if isPendingDRAResourceClaimError(err) {
 			klog.V(4).Infof("DRA ResourceClaim for pod <%s/%s> is not ready, add task to cache and retry: %v", pod.Namespace, pod.Name, err)
-			if addErr := sc.addTask(pi); addErr != nil {
-				return addErr
-			}
-			sc.resyncTask(pi)
-			return nil
-		}
-		// Recover from a Pod ADD that races ahead of its PVC ADD on the
-		// informers: the referenced PVC is not yet in the scheduler's PVC
-		// informer. Add the task to the cache and enqueue it for resync so
-		// syncTask re-fetches the pod once the PVC syncs, rather than
-		// dropping it (resyncTask on a task never added to sc.Jobs would be
-		// Forgotten by processResyncTask and lost). Same pattern as the DRA
-		// branch above. Only PVC-not-found is recovered here; other errors
-		// fall through to the drop path below.
-		if isPendingPVCError(err) {
-			klog.V(4).Infof("PVC for pod <%s/%s> not yet in informer cache, add task and retry: %v", pod.Namespace, pod.Name, err)
 			if addErr := sc.addTask(pi); addErr != nil {
 				return addErr
 			}
@@ -832,12 +665,6 @@ func (sc *SchedulerCache) SyncNode(nodeName string) error {
 		oldNode = sc.nodeObject(nodeName)
 	}
 	nodeCopy := node.DeepCopy()
-	csiNode, err := sc.csiNodeInformer.Lister().Get(nodeName)
-	if err == nil {
-		sc.setCSIResourceOnNode(csiNode, nodeCopy)
-	} else if !errors.IsNotFound(err) {
-		return err
-	}
 	if err := sc.AddOrUpdateNode(nodeCopy); err != nil {
 		return err
 	}
@@ -1659,50 +1486,6 @@ func (sc *SchedulerCache) AddJob(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 	sc.Jobs[job.UID] = job
-}
-
-// csiAttachLimitResourceName returns the node ResourceName used for per-CSI-driver volume attach limits.
-// This must stay aligned with kubelet naming (formerly k8s.io/kubernetes/pkg/volume/util.GetCSIAttachLimitKey).
-func csiAttachLimitResourceName(driverName string) v1.ResourceName {
-	return v1.ResourceName("attachable-volumes-csi-" + strings.ReplaceAll(driverName, "/", "-"))
-}
-
-func (sc *SchedulerCache) setCSIResourceOnNode(csiNode *sv1.CSINode, node *v1.Node) {
-	if csiNode == nil || node == nil {
-		return
-	}
-
-	csiResources := make(map[v1.ResourceName]resource.Quantity)
-	for i := range csiNode.Spec.Drivers {
-		d := csiNode.Spec.Drivers[i]
-		k := csiAttachLimitResourceName(d.Name)
-		if d.Allocatable != nil && d.Allocatable.Count != nil {
-			csiResources[k] = *resource.NewScaledQuantity(int64(*d.Allocatable.Count), -3)
-		} else {
-			// Count all csi volumes in cache, because the storage may change from unattachable volumes to attachable volumes after
-			// the cache set up, in this case it is very difficult to refresh all task caches.
-			// For unattachable volume, set the limits number to a very large value, in this way, scheduling will never
-			// be limited due to insufficient quantity of it.
-			csiResources[k] = *resource.NewScaledQuantity(DefaultAttachableVolumeQuantity, -3)
-		}
-	}
-
-	if len(csiResources) == 0 {
-		return
-	}
-
-	if node.Status.Allocatable == nil {
-		node.Status.Allocatable = make(map[v1.ResourceName]resource.Quantity)
-	}
-
-	if node.Status.Capacity == nil {
-		node.Status.Capacity = make(map[v1.ResourceName]resource.Quantity)
-	}
-
-	for resourceName, quantity := range csiResources {
-		node.Status.Allocatable[resourceName] = quantity
-		node.Status.Capacity[resourceName] = quantity
-	}
 }
 
 // AddHyperNode adds hyperNode name to the hyperNodesQueue.
