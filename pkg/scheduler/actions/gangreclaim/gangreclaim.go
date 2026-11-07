@@ -32,6 +32,8 @@ const (
 	MaxDomainsKey = "maxDomains"
 	// AllowWholeBundleKey toggles whether whole-job ("whole-bundle") victim bundles may be selected.
 	AllowWholeBundleKey = "allowWholeBundle"
+	// EnableFragmentationAwareVictimOrderKey enables the resource-layout tie-breaker.
+	EnableFragmentationAwareVictimOrderKey = "enableFragmentationAwareVictimOrder"
 	// defaultMaxDomains is used when maxDomains is unset or invalid (<= 0).
 	defaultMaxDomains = 8
 	// defaultWholeBundleOn is the default for allowWholeBundle.
@@ -45,6 +47,8 @@ type Action struct {
 	allowWholeBundle bool
 	// configured flag for predicate error cache
 	enablePredicateErrorCache bool
+	// enableFragmentationAwareVictimOrder breaks otherwise equal bundle rankings by resource fit.
+	enableFragmentationAwareVictimOrder bool
 }
 
 func New() *Action {
@@ -69,6 +73,8 @@ func (gr *Action) parseArguments(ssn *framework.Session) {
 		gr.maxDomains = defaultMaxDomains
 	}
 	arguments.GetBool(&gr.allowWholeBundle, AllowWholeBundleKey)
+	gr.enableFragmentationAwareVictimOrder = false
+	arguments.GetBool(&gr.enableFragmentationAwareVictimOrder, EnableFragmentationAwareVictimOrderKey)
 
 	// Honor allocate's predicateErrorCacheEnable for the per-sub-job simulation, defaulting to
 	// enabled when allocate is not configured.
@@ -226,6 +232,9 @@ func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l
 	if len(bundles) == 0 {
 		return nil
 	}
+	if gr.enableFragmentationAwareVictimOrder {
+		setBundleResourceFitScores(bundles, domainNodes, pendingTasks)
+	}
 	utils.SortBundlesForReclaim(bundles, jobNeed, lessQueueFn, ssn.Queues)
 
 	evictCtx := &api.EvictionContext{
@@ -245,6 +254,9 @@ func (gr *Action) selectDomainBundles(ssn *framework.Session, lessQueueFn func(l
 	valid := utils.ApplyAllowedTasks(bundles, allowedSet)
 	if len(valid) == 0 {
 		return nil
+	}
+	if gr.enableFragmentationAwareVictimOrder {
+		setBundleResourceFitScores(valid, domainNodes, pendingTasks)
 	}
 	utils.SortBundlesForReclaim(valid, jobNeed, lessQueueFn, ssn.Queues)
 	selected := make([]*utils.Bundle, 0, len(valid))
