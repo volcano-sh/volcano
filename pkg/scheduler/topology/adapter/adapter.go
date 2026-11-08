@@ -185,8 +185,10 @@ func NewError(reason ErrorReason, cause error) *Error {
 // that reserves and assigns actual devices. Implementations must treat plans
 // and handoffs as immutable; SchedulerCache coordinates transactional
 // reservation and later bind handoff through this contract. Implementations
-// must return promptly when ctx is done, because SchedulerCache holds its
-// reservation mutex during these calls and cannot abandon an unknown result.
+// must return promptly when ctx is done, because SchedulerCache waits for each
+// call and cannot abandon an unknown result. Calls on the scheduling path also
+// run while SchedulerCache holds its reservation mutex, so a slow call delays
+// other reservations.
 type AllocationAdapter interface {
 	// Capabilities reports the guarantees this adapter provides.
 	Capabilities() AdapterCapabilities

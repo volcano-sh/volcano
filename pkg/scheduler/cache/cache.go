@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -246,6 +247,9 @@ type SchedulerCache struct {
 	// deviceTopologyAdapterCallTimeout bounds one allocation adapter call made
 	// during a scheduling attempt. A zero value uses the default timeout.
 	deviceTopologyAdapterCallTimeout time.Duration
+	// deviceTopologyPodReleaseQueue holds Pods whose Releasing devices wait
+	// for an adapter release.
+	deviceTopologyPodReleaseQueue workqueue.TypedRateLimitingInterface[types.UID]
 }
 
 type multiSchedulerInfo struct {
@@ -659,6 +663,8 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		NodeList:            []string{},
 		nodeWorkers:         nodeWorkers,
 		resourceSyncTimeout: resourceSyncTimeout,
+
+		deviceTopologyPodReleaseQueue: newDeviceTopologyPodReleaseQueue(),
 	}
 	for _, option := range cacheOptions {
 		option(sc)
@@ -1028,6 +1034,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 
 	go wait.Until(sc.processBindTask, time.Millisecond*20, stopCh)
 
+	// Release the devices of ended Pods.
+	go wait.Until(sc.processDeviceTopologyPodReleaseQueue, 0, stopCh)
+
 	// Get metrics data
 	klog.V(3).Infof("Start metrics collection, metricsConf is %v", sc.metricsConf)
 	interval, err := time.ParseDuration(sc.metricsConf["interval"])
@@ -1166,7 +1175,7 @@ func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*BindContext,
 					preBinder.PreBindRollBack(ctx, bindContext)
 				}
 			}
-			sc.releaseFailedBindDeviceTopology(ctx, bindContext.TaskInfo)
+			sc.releaseFailedBindDeviceTopology(bindContext.TaskInfo)
 
 			klog.V(2).Infof("resyncTask task %s", bindContext.TaskInfo.Name)
 			sc.resyncTask(bindContext.TaskInfo)
@@ -1628,7 +1637,7 @@ func (sc *SchedulerCache) executePreBinds(ctx context.Context, bindContexts []*B
 		if err := sc.executePreBind(ctx, bindContext, preBinders); err != nil {
 			reason := fmt.Sprintf("execute preBind for pod %s failed: %v, resync the task", klog.KObj(bindContext.TaskInfo.Pod), err)
 			klog.Error(reason)
-			sc.releaseFailedBindDeviceTopology(ctx, bindContext.TaskInfo)
+			sc.releaseFailedBindDeviceTopology(bindContext.TaskInfo)
 			sc.resyncTask(bindContext.TaskInfo)
 			if updateErr := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, reason, ""); updateErr != nil {
 				logger.Error(updateErr, "Failed to update pod status", "pod", klog.KObj(bindContext.TaskInfo.Pod))

@@ -18,12 +18,10 @@ package cache
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog/v2"
 
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/topology/adapter"
@@ -127,69 +125,6 @@ func (sc *SchedulerCache) RollbackDeviceTopologyReservationBind(ctx context.Cont
 	return sc.ReleaseDeviceTopologyReservation(ctx, reservation)
 }
 
-// releaseDeviceTopologyPod frees the devices one Pod holds after bind handoff.
-// Other Pods of the same reservations keep theirs. A Pod that holds no devices
-// is ignored. The Pod's record is dropped even if a release fails, so the Pod
-// can be scheduled again; devices an adapter cannot release become
-// Unreconciled instead, which keeps them unavailable until recovery resolves
-// them. The release uses its own cleanup context.
-func (sc *SchedulerCache) releaseDeviceTopologyPod(ctx context.Context, podUID types.UID) error {
-	if sc == nil {
-		return fmt.Errorf("device topology Pod release requires a SchedulerCache")
-	}
-	sc.Mutex.Lock()
-	_, holdsDevices := sc.ensureDeviceTopologyState().podAllocations[podUID]
-	sc.Mutex.Unlock()
-	if !holdsDevices {
-		return nil
-	}
-	cleanupContext, cancel := newDeviceTopologyReservationCleanupContext(ctx)
-	defer cancel()
-
-	sc.deviceTopologyReservationMutex.Lock()
-	defer sc.deviceTopologyReservationMutex.Unlock()
-
-	sc.Mutex.Lock()
-	state := sc.ensureDeviceTopologyState()
-	groups, err := state.prepareDeviceTopologyPodRelease(sc.deviceTopologyAdapterRegistry, podUID)
-	delete(state.podAllocations, podUID)
-	sc.Mutex.Unlock()
-	if err != nil {
-		return err
-	}
-
-	targets := make(map[schedulingapi.DeviceID]schedulingapi.DeviceAvailability)
-	var releaseErrors []error
-	for _, group := range groups {
-		handle := adapter.AdapterReservation{Token: group.token, PlanDigest: group.planDigest}
-		if err := group.allocationAdapter.ReleasePod(cleanupContext, handle, podUID); err != nil {
-			releaseErrors = append(releaseErrors, fmt.Errorf("release device topology devices of Pod %q for resource %q: %w", podUID, group.resourceName, err))
-			setDeviceAvailabilityTarget(targets, group.deviceIDs, schedulingapi.DeviceUnreconciled)
-			continue
-		}
-		setDeviceAvailabilityTarget(targets, group.deviceIDs, schedulingapi.DeviceAvailable)
-	}
-
-	sc.Mutex.Lock()
-	if err := sc.applyDeviceTopologyAvailabilityTargetsLocked(state, targets); err != nil {
-		releaseErrors = append(releaseErrors, err)
-	}
-	sc.Mutex.Unlock()
-	return errors.Join(releaseErrors...)
-}
-
-// releaseFailedBindDeviceTopology frees the exact devices of a Pod whose
-// pre-bind or bind failed, so they do not stay Binding while the Pod is
-// scheduled again.
-func (sc *SchedulerCache) releaseFailedBindDeviceTopology(ctx context.Context, task *schedulingapi.TaskInfo) {
-	if task == nil || task.Pod == nil {
-		return
-	}
-	if err := sc.releaseDeviceTopologyPod(ctx, task.Pod.UID); err != nil {
-		klog.ErrorS(err, "Failed to release device topology devices of a Pod whose bind failed", "pod", klog.KObj(task.Pod))
-	}
-}
-
 // podAllocationsForBind splits a prepared bind into the devices each Pod will
 // hold. It rejects a Pod that still holds devices from an earlier bind. The
 // caller holds SchedulerCache.Mutex.
@@ -209,65 +144,6 @@ func (state *deviceTopologyState) podAllocationsForBind(prepared preparedDeviceT
 		}
 	}
 	return result, nil
-}
-
-// prepareDeviceTopologyPodRelease verifies that each recorded share of a Pod
-// still owns its devices and finds the adapter that releases it. The caller
-// holds SchedulerCache.Mutex.
-func (state *deviceTopologyState) prepareDeviceTopologyPodRelease(registry *adapter.Registry, podUID types.UID) ([]preparedDeviceTopologyReleaseGroup, error) {
-	if registry == nil {
-		return nil, fmt.Errorf("no device topology allocation adapter registry is configured")
-	}
-	allocations := state.podAllocations[podUID]
-	groups := make([]preparedDeviceTopologyReleaseGroup, 0, len(allocations))
-	for _, allocation := range allocations {
-		for _, deviceID := range allocation.deviceIDs {
-			availability, exists := state.ledger.states[deviceID]
-			if !exists || !availability.IsLive() {
-				return nil, fmt.Errorf("device topology device %q of Pod %q is not actively held", deviceID.String(), podUID)
-			}
-			if state.reservationOwners[deviceID] != allocation.owner {
-				return nil, fmt.Errorf("device topology reservation of Pod %q no longer owns device %q", podUID, deviceID.String())
-			}
-		}
-		allocationAdapter, exists := registry.AdapterFor(allocation.owner.resourceName)
-		if !exists {
-			return nil, fmt.Errorf("resource %q has no allocation adapter to release Pod %q", allocation.owner.resourceName, podUID)
-		}
-		groups = append(groups, preparedDeviceTopologyReleaseGroup{
-			resourceName:      allocation.owner.resourceName,
-			allocationAdapter: allocationAdapter,
-			token:             allocation.owner.token,
-			planDigest:        allocation.owner.planDigest,
-			deviceIDs:         append([]schedulingapi.DeviceID(nil), allocation.deviceIDs...),
-		})
-	}
-	return groups, nil
-}
-
-// forgetPodAllocation drops a Pod's record for one released reservation. The
-// caller holds SchedulerCache.Mutex.
-func (state *deviceTopologyState) forgetPodAllocation(podUID types.UID, owner deviceTopologyReservationOwner) {
-	allocations := state.podAllocations[podUID]
-	kept := make([]deviceTopologyPodAllocation, 0, len(allocations))
-	for _, allocation := range allocations {
-		if allocation.owner != owner {
-			kept = append(kept, allocation)
-		}
-	}
-	if len(kept) == 0 {
-		delete(state.podAllocations, podUID)
-		return
-	}
-	state.podAllocations[podUID] = kept
-}
-
-// forgetReservationPodAllocations drops every Pod's record for one released
-// reservation. The caller holds SchedulerCache.Mutex.
-func (state *deviceTopologyState) forgetReservationPodAllocations(owner deviceTopologyReservationOwner) {
-	for podUID := range state.podAllocations {
-		state.forgetPodAllocation(podUID, owner)
-	}
 }
 
 // prepareDeviceTopologyReservationBind verifies current reservation ownership,

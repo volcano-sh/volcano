@@ -39,9 +39,7 @@ func TestSchedulerCacheReleasesOneBoundPodAndKeepsTheRest(t *testing.T) {
 	plan := twoPodTopologyReservationTestPlan(t, cache, node, resourceName)
 	reservation := commitTopologyReservationTestPlan(t, cache, plan)
 
-	if err := cache.releaseDeviceTopologyPod(context.Background(), "pod-a"); err != nil {
-		t.Fatalf("releaseDeviceTopologyPod(pod-a) error = %v", err)
-	}
+	releaseTopologyTestPod(cache, "pod-a")
 	handle := adapter.AdapterReservation{Token: reservation.AdapterReservations[0].Token, PlanDigest: reservation.AdapterReservations[0].PlanDigest}
 	if want := []releasedTopologyTestPod{{reservation: handle, podUID: "pod-a"}}; !reflect.DeepEqual(allocationAdapter.releasedPods, want) {
 		t.Fatalf("ReleasePod() calls = %#v, want %#v", allocationAdapter.releasedPods, want)
@@ -52,22 +50,16 @@ func TestSchedulerCacheReleasesOneBoundPodAndKeepsTheRest(t *testing.T) {
 		t.Fatalf("Release() calls = %#v, want none for a one-Pod release", allocationAdapter.releasedReservations)
 	}
 
-	if err := cache.releaseDeviceTopologyPod(context.Background(), "pod-a"); err != nil {
-		t.Fatalf("repeated releaseDeviceTopologyPod(pod-a) error = %v", err)
-	}
-	if err := cache.releaseDeviceTopologyPod(context.Background(), "pod-without-devices"); err != nil {
-		t.Fatalf("releaseDeviceTopologyPod() for a Pod without devices error = %v", err)
-	}
+	releaseTopologyTestPod(cache, "pod-a")
+	releaseTopologyTestPod(cache, "pod-without-devices")
 	if len(allocationAdapter.releasedPods) != 1 {
 		t.Fatalf("ReleasePod() calls = %d, want no call for released or unknown Pods", len(allocationAdapter.releasedPods))
 	}
 
-	if err := cache.releaseDeviceTopologyPod(context.Background(), "pod-b"); err != nil {
-		t.Fatalf("releaseDeviceTopologyPod(pod-b) error = %v", err)
-	}
+	releaseTopologyTestPod(cache, "pod-b")
 	assertTopologyReservationAvailability(t, cache, plan, schedulingapi.DeviceAvailable)
-	if len(cache.deviceTopology.podAllocations) != 0 || len(cache.deviceTopology.reservationOwners) != 0 {
-		t.Fatalf("records after releasing every Pod = (%#v, %#v), want none", cache.deviceTopology.podAllocations, cache.deviceTopology.reservationOwners)
+	if len(cache.deviceTopology.podAllocations) != 0 || len(cache.deviceTopology.podReleases) != 0 || len(cache.deviceTopology.reservationOwners) != 0 {
+		t.Fatalf("records after releasing every Pod = (%#v, %#v, %#v), want none", cache.deviceTopology.podAllocations, cache.deviceTopology.podReleases, cache.deviceTopology.reservationOwners)
 	}
 }
 
@@ -79,18 +71,29 @@ func TestSchedulerCachePodReleaseFailureLeavesOnlyThatPodUnreconciled(t *testing
 	commitTopologyReservationTestPlan(t, cache, plan)
 	allocationAdapter.releasePodErr = adapter.NewError(adapter.ErrorBackendFailure, errors.New("backend unavailable"))
 
-	if err := cache.releaseDeviceTopologyPod(context.Background(), "pod-a"); err == nil || !strings.Contains(err.Error(), "backend unavailable") {
-		t.Fatalf("releaseDeviceTopologyPod(pod-a) error = %v, want backend failure", err)
-	}
-	assertTopologyReservationAvailability(t, cache, topologyTestPlacementOnly(plan, 0), schedulingapi.DeviceUnreconciled)
+	releaseTopologyTestPod(cache, "pod-a")
+	assertTopologyReservationAvailability(t, cache, topologyTestPlacementOnly(plan, 0), schedulingapi.DeviceReleasing)
 	assertTopologyReservationAvailability(t, cache, topologyTestPlacementOnly(plan, 1), schedulingapi.DeviceBinding)
+	if _, pending := cache.deviceTopology.podReleases["pod-a"]; !pending {
+		t.Fatal("pod-a has no pending release after a failed attempt, want one for a retry")
+	}
 
 	retry := topologyReservationTestPlan(t, cache, node, map[corev1.ResourceName]int64{resourceName: 1})
 	if got := retry.Placements[0].Assignments[0].DeviceIDs[0].Value; got != "gpu-2" {
-		t.Fatalf("retry plan selects %q, want the spare gpu-2 while gpu-0 is Unreconciled", got)
+		t.Fatalf("retry plan selects %q, want the spare gpu-2 while gpu-0 is Releasing", got)
 	}
 	commitTopologyReservationTestPlan(t, cache, retry)
 	assertTopologyReservationAvailability(t, cache, retry, schedulingapi.DeviceBinding)
+
+	pending, err := cache.releaseDeviceTopologyPod(context.Background(), "pod-a", true)
+	if pending || err == nil || !strings.Contains(err.Error(), "backend unavailable") {
+		t.Fatalf("last releaseDeviceTopologyPod(pod-a) = (%v, %v), want no pending release and a backend failure", pending, err)
+	}
+	assertTopologyReservationAvailability(t, cache, topologyTestPlacementOnly(plan, 0), schedulingapi.DeviceUnreconciled)
+	assertTopologyReservationAvailability(t, cache, retry, schedulingapi.DeviceBinding)
+	if allocations := cache.deviceTopology.podAllocations["pod-a"]; len(allocations) != 1 {
+		t.Fatalf("pod-a allocations after the old release gave up = %#v, want the new bind's record", allocations)
+	}
 }
 
 func TestSchedulerCacheFailedBindRollbackDoesNotBlockPods(t *testing.T) {
@@ -164,6 +167,10 @@ func TestSchedulerCacheFailedBindReleasesOnlyThatPodsDevices(t *testing.T) {
 			task.NodeName = node.Name
 
 			test.bind(cache, []*BindContext{{TaskInfo: task}})
+			if _, pending := cache.deviceTopology.podReleases["pod-a"]; !pending {
+				t.Fatal("pod-a has no pending release after its bind failed")
+			}
+			drainTopologyTestPodReleases(cache)
 
 			if len(allocationAdapter.releasedPods) != 1 || allocationAdapter.releasedPods[0].podUID != "pod-a" {
 				t.Fatalf("ReleasePod() calls = %#v, want one call for pod-a", allocationAdapter.releasedPods)
@@ -188,18 +195,14 @@ func TestSchedulerCacheReleasesOnePodThroughMockAllocationAdapter(t *testing.T) 
 	plan := twoPodTopologyReservationTestPlan(t, cache, node, resourceName)
 	commitTopologyReservationTestPlan(t, cache, plan)
 
-	if err := cache.releaseDeviceTopologyPod(context.Background(), "pod-a"); err != nil {
-		t.Fatalf("releaseDeviceTopologyPod(pod-a) error = %v", err)
-	}
+	releaseTopologyTestPod(cache, "pod-a")
 	states, err := mockAdapter.Recover(context.Background())
 	if err != nil || len(states) != 1 || len(states[0].Plan.Placements) != 1 || states[0].Plan.Placements[0].PodUID != "pod-b" {
 		t.Fatalf("mock Recover() = (%#v, %v), want one reservation that keeps only pod-b", states, err)
 	}
 	assertTopologyReservationAvailability(t, cache, topologyTestPlacementOnly(plan, 0), schedulingapi.DeviceAvailable)
 
-	if err := cache.releaseDeviceTopologyPod(context.Background(), "pod-b"); err != nil {
-		t.Fatalf("releaseDeviceTopologyPod(pod-b) error = %v", err)
-	}
+	releaseTopologyTestPod(cache, "pod-b")
 	if states, err := mockAdapter.Recover(context.Background()); err != nil || len(states) != 0 {
 		t.Fatalf("mock Recover() after the last Pod = (%#v, %v), want no reservations", states, err)
 	}

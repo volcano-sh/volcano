@@ -166,7 +166,12 @@ func (sc *SchedulerCache) ReleaseDeviceTopologyReservation(ctx context.Context, 
 
 	sc.Mutex.Lock()
 	state := sc.ensureDeviceTopologyState()
-	prepared, err := prepareDeviceTopologyReservationRelease(state, sc.deviceTopologyAdapterRegistry, reservation)
+	remaining := state.withoutReleasedPodDevices(reservation)
+	if len(reservation.AdapterReservations) > 0 && len(remaining.AdapterReservations) == 0 {
+		sc.Mutex.Unlock()
+		return nil
+	}
+	prepared, err := prepareDeviceTopologyReservationRelease(state, sc.deviceTopologyAdapterRegistry, remaining)
 	sc.Mutex.Unlock()
 	if err != nil {
 		return err
