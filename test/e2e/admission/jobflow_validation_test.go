@@ -78,7 +78,7 @@ var _ = ginkgo.Describe("JobFlow Validating E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Should allow jobflow creation with duplicate flow names", func() {
+	ginkgo.It("Should reject jobflow creation with duplicate flow names", func() {
 		jobFlowName := "duplicate-names-jobflow"
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
@@ -108,7 +108,8 @@ var _ = ginkgo.Describe("JobFlow Validating E2E Test", func() {
 		}
 
 		_, err := testCtx.Vcclient.FlowV1alpha1().JobFlows(testCtx.Namespace).Create(context.TODO(), jobFlow, metav1.CreateOptions{})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		gomega.Expect(err).To(gomega.HaveOccurred())
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("jobflow Flow names must be unique"))
 	})
 
 	ginkgo.It("Should reject jobflow creation with missing flow definition", func() {
@@ -146,7 +147,7 @@ var _ = ginkgo.Describe("JobFlow Validating E2E Test", func() {
 		gomega.Expect(err.Error()).To(gomega.ContainSubstring("vertex is not defined"))
 	})
 
-	ginkgo.It("Should allow jobflow creation with multiple flows having same dependency target", func() {
+	ginkgo.It("Should reject jobflow creation with duplicate flow name sharing a dependency target", func() {
 		jobFlowName := "multi-dependency-jobflow"
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
@@ -185,7 +186,8 @@ var _ = ginkgo.Describe("JobFlow Validating E2E Test", func() {
 		}
 
 		_, err := testCtx.Vcclient.FlowV1alpha1().JobFlows(testCtx.Namespace).Create(context.TODO(), jobFlow, metav1.CreateOptions{})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		gomega.Expect(err).To(gomega.HaveOccurred())
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("jobflow Flow names must be unique"))
 	})
 
 	ginkgo.It("Should allow jobflow update with valid DAG structure", func() {
