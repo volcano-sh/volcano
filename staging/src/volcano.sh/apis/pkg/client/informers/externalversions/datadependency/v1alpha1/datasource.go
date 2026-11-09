@@ -33,11 +33,39 @@ import (
 )
 
 // DataSourceInformer provides access to a shared informer and lister for
-// DataSources.
+// DataSources. Prefer using the type-safe variant (see [TypedDataSourceInformer]).
 type DataSourceInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() datadependencyv1alpha1.DataSourceLister
 }
+
+// TypedDataSourceInformer provides access to a shared informer and lister for
+// DataSources, including the type-safe TypedInformer variant.
+// It is a superset of DataSourceInformer.
+type TypedDataSourceInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() DataSourceIndexInformer
+	Lister() datadependencyv1alpha1.DataSourceLister
+}
+
+// DataSourceIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type DataSourceIndexInformer cache.TypedSharedIndexInformer[*apisdatadependencyv1alpha1.DataSource]
+
+// DataSourceHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for DataSource.
+type DataSourceHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apisdatadependencyv1alpha1.DataSource]
+
+// DataSourceDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for DataSource.
+type DataSourceDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apisdatadependencyv1alpha1.DataSource]
+
+// DataSourceFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for DataSource.
+type DataSourceFilteringHandler = cache.TypedFilteringResourceEventHandler[*apisdatadependencyv1alpha1.DataSource]
+
+// DataSourceIndexers is a specialization of [cache.TypedIndexers] for DataSource.
+type DataSourceIndexers = cache.TypedIndexers[*apisdatadependencyv1alpha1.DataSource]
+
+// DeletedDataSource is a specialization of [cache.DeletedObject] for DataSource.
+type DeletedDataSource = cache.DeletedObject[*apisdatadependencyv1alpha1.DataSource]
 
 type dataSourceInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -47,25 +75,49 @@ type dataSourceInformer struct {
 // NewDataSourceInformer constructs a new informer for DataSource type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedDataSourceInformer]).
 func NewDataSourceInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewDataSourceInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedDataSourceInformer constructs a new informer for DataSource type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedDataSourceInformer(client versioned.Interface, resyncPeriod time.Duration, indexers DataSourceIndexers) DataSourceIndexInformer {
+	return NewTypedDataSourceInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredDataSourceInformer constructs a new informer for DataSource type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredDataSourceInformer]).
 func NewFilteredDataSourceInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewDataSourceInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+	return NewTypedDataSourceInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredDataSourceInformer constructs a new informer for DataSource type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredDataSourceInformer(client versioned.Interface, resyncPeriod time.Duration, indexers DataSourceIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) DataSourceIndexInformer {
+	return NewTypedDataSourceInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
 }
 
 // NewDataSourceInformerWithOptions constructs a new informer for DataSource type with additional options.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedDataSourceInformerWithOptions]).
 func NewDataSourceInformerWithOptions(client versioned.Interface, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedDataSourceInformerWithOptions(client, options)
+}
+
+// NewTypedDataSourceInformerWithOptions constructs a new informer for DataSource type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedDataSourceInformerWithOptions(client versioned.Interface, options internalinterfaces.InformerOptions) DataSourceIndexInformer {
 	gvr := schema.GroupVersionResource{Group: "datadependency.volcano.sh", Version: "v1alpha1", Resource: "datasources"}
 	identifier := options.InformerName.WithResource(gvr)
 	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
+	return cache.NewTypedSharedIndexInformer[*apisdatadependencyv1alpha1.DataSource](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
@@ -98,17 +150,57 @@ func NewDataSourceInformerWithOptions(client versioned.Interface, options intern
 			Indexers:     options.Indexers,
 			Identifier:   identifier,
 		},
-	)
+	))
 }
 
 func (f *dataSourceInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewDataSourceInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewTypedDataSourceInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *dataSourceInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apisdatadependencyv1alpha1.DataSource{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *dataSourceInformer) TypedInformer() DataSourceIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisdatadependencyv1alpha1.DataSource](f.factory.InformerFor(&apisdatadependencyv1alpha1.DataSource{}, f.defaultInformer))
 }
 
 func (f *dataSourceInformer) Lister() datadependencyv1alpha1.DataSourceLister {
 	return datadependencyv1alpha1.NewDataSourceLister(f.Informer().GetIndexer())
+}
+
+// ToTypedDataSourceInformer converts an untyped informer into a TypedDataSourceInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *DataSource. If that is not the case, calling type-safe methods of the returned
+// TypedDataSourceInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedDataSourceInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedDataSourceInformer(informer DataSourceInformer) TypedDataSourceInformer {
+	if informer, ok := informer.(TypedDataSourceInformer); ok {
+		return informer
+	}
+	return &dataSourceTypedInformerAdapter{informer}
+}
+
+type dataSourceTypedInformerAdapter struct {
+	DataSourceInformer
+}
+
+func (a *dataSourceTypedInformerAdapter) TypedInformer() DataSourceIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisdatadependencyv1alpha1.DataSource](a.Informer())
+}
+
+// ToDataSourceIndexInformer converts an untyped informer into a DataSourceIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *DataSource. If that is not the case, calling type-safe methods of the returned
+// DataSourceIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a DataSourceIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToDataSourceIndexInformer(informer cache.SharedIndexInformer) DataSourceIndexInformer {
+	if informer, ok := informer.(DataSourceIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apisdatadependencyv1alpha1.DataSource](informer)
 }

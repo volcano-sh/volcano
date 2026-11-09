@@ -17,6 +17,8 @@ limitations under the License.
 package unschedulable
 
 import (
+	"slices"
+
 	"k8s.io/apimachinery/pkg/util/sets"
 	fwk "k8s.io/kube-scheduler/framework"
 	kubeschedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
@@ -129,14 +131,20 @@ func (c *JobCache) matchingPluginActionIndexSnapshots(ev fwk.ClusterEvent) []plu
 	defer c.mu.RUnlock()
 
 	var snapshots []pluginActionIndexSnapshot
-	for key, index := range c.eventIndex.jobIndexesByResource[ev.Resource] {
-		if eventMatches(fwk.ClusterEvent{Resource: ev.Resource, ActionType: key.actionType}, ev) {
-			snapshots = append(snapshots, pluginActionIndexSnapshot{
-				resource:        ev.Resource,
-				pluginActionKey: key,
-				index:           index,
-				eventHintKeysFn: index.eventHintKeysFn,
-			})
+	resources := []fwk.EventResource{ev.Resource}
+	if ev.Resource == fwk.Pod {
+		resources = append(resources, specificPodResources...)
+	}
+	for _, resource := range resources {
+		for key, index := range c.eventIndex.jobIndexesByResource[resource] {
+			if eventMatches(fwk.ClusterEvent{Resource: resource, ActionType: key.actionType}, ev) {
+				snapshots = append(snapshots, pluginActionIndexSnapshot{
+					resource:        resource,
+					pluginActionKey: key,
+					index:           index,
+					eventHintKeysFn: index.eventHintKeysFn,
+				})
+			}
 		}
 	}
 	for key, index := range c.eventIndex.wildcardJobIndexes {
@@ -202,8 +210,15 @@ func (c *JobCache) candidateRecordsForIndexSnapshots(snapshots []pluginActionInd
 // but a specific update does not match a general Update whose changed property
 // could not be classified.
 func eventMatches(registered, incoming fwk.ClusterEvent) bool {
+	// Volcano dispatches general Pod events; Kubernetes 1.37 plugins register specific ones.
+	if incoming.Resource == fwk.Pod && slices.Contains(specificPodResources, registered.Resource) {
+		incoming.Resource = registered.Resource
+	}
 	return kubeschedulerframework.MatchClusterEvents(registered, incoming)
 }
+
+// TargetPod is excluded: its hints assume the event pod is the rejected pod itself.
+var specificPodResources = []fwk.EventResource{fwk.AssignedPod, fwk.UnscheduledPod}
 
 // ensurePluginActionIndexLocked returns the Job index for one resource/plugin/
 // action classification, creating it when absent. An existing index retains
