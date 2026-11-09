@@ -683,12 +683,18 @@ type topologyReservationTestAdapter struct {
 	reserveErr              error
 	prepareBindErr          error
 	releaseErr              error
-	releasedPods            []releasedTopologyTestPod
+	releasedPods            []topologyTestPodCall
 	releasePodErr           error
+	confirmedPods           []topologyTestPodCall
+	confirmHook             func()
+	confirmErr              error
+	// observationFor, when set, replaces the Allocated observation Confirm
+	// returns by default.
+	observationFor func(adapter.AdapterReservation, types.UID) adapter.AllocationObservation
 }
 
-// releasedTopologyTestPod records one ReleasePod call.
-type releasedTopologyTestPod struct {
+// topologyTestPodCall records one ReleasePod or Confirm call.
+type topologyTestPodCall struct {
 	reservation adapter.AdapterReservation
 	podUID      types.UID
 }
@@ -748,12 +754,27 @@ func (testAdapter *topologyReservationTestAdapter) PrepareBind(_ context.Context
 	}, nil
 }
 
-func (testAdapter *topologyReservationTestAdapter) Confirm(context.Context, adapter.AdapterReservation, types.UID) (adapter.AllocationObservation, error) {
-	return adapter.AllocationObservation{}, nil
+func (testAdapter *topologyReservationTestAdapter) Confirm(_ context.Context, reservation adapter.AdapterReservation, podUID types.UID) (adapter.AllocationObservation, error) {
+	testAdapter.confirmedPods = append(testAdapter.confirmedPods, topologyTestPodCall{reservation: reservation, podUID: podUID})
+	if testAdapter.confirmHook != nil {
+		testAdapter.confirmHook()
+	}
+	if testAdapter.confirmErr != nil {
+		return adapter.AllocationObservation{}, testAdapter.confirmErr
+	}
+	if testAdapter.observationFor != nil {
+		return testAdapter.observationFor(reservation, podUID), nil
+	}
+	return adapter.AllocationObservation{
+		ReservationToken: reservation.Token,
+		PlanDigest:       reservation.PlanDigest,
+		PodUID:           podUID,
+		State:            adapter.AllocationObservationAllocated,
+	}, nil
 }
 
 func (testAdapter *topologyReservationTestAdapter) ReleasePod(_ context.Context, reservation adapter.AdapterReservation, podUID types.UID) error {
-	testAdapter.releasedPods = append(testAdapter.releasedPods, releasedTopologyTestPod{reservation: reservation, podUID: podUID})
+	testAdapter.releasedPods = append(testAdapter.releasedPods, topologyTestPodCall{reservation: reservation, podUID: podUID})
 	return testAdapter.releasePodErr
 }
 

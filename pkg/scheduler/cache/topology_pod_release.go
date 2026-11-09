@@ -35,16 +35,16 @@ const (
 	// deviceTopologyPodReleaseAttempts is how many times the scheduler asks an
 	// adapter to release one Pod's devices before it marks them Unreconciled.
 	deviceTopologyPodReleaseAttempts = 5
-	// deviceTopologyPodReleaseBaseDelay and deviceTopologyPodReleaseMaxDelay
-	// bound the back-off between release attempts.
-	deviceTopologyPodReleaseBaseDelay = time.Second
-	deviceTopologyPodReleaseMaxDelay  = 30 * time.Second
+	// deviceTopologyPodRetryBaseDelay and deviceTopologyPodRetryMaxDelay bound
+	// the back-off between release or confirm attempts for one Pod.
+	deviceTopologyPodRetryBaseDelay = time.Second
+	deviceTopologyPodRetryMaxDelay  = 30 * time.Second
 )
 
-// newDeviceTopologyPodReleaseQueue creates the queue of Pods whose devices
-// wait for an adapter release.
-func newDeviceTopologyPodReleaseQueue() workqueue.TypedRateLimitingInterface[types.UID] {
-	return workqueue.NewTypedRateLimitingQueue(workqueue.NewTypedItemExponentialFailureRateLimiter[types.UID](deviceTopologyPodReleaseBaseDelay, deviceTopologyPodReleaseMaxDelay))
+// newDeviceTopologyPodQueue creates a queue of Pods whose devices wait for an
+// adapter release or confirmation.
+func newDeviceTopologyPodQueue() workqueue.TypedRateLimitingInterface[types.UID] {
+	return workqueue.NewTypedRateLimitingQueue(workqueue.NewTypedItemExponentialFailureRateLimiter[types.UID](deviceTopologyPodRetryBaseDelay, deviceTopologyPodRetryMaxDelay))
 }
 
 // releaseEndedPodDeviceTopologyLocked starts the release of a Pod's devices

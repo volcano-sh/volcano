@@ -39,8 +39,8 @@ type deviceTopologyState struct {
 	// podAllocations records the devices each Pod holds after bind handoff,
 	// one entry per adapter reservation, so one Pod can be released alone.
 	podAllocations map[types.UID][]deviceTopologyPodAllocation
-	// podReleases records the Releasing devices of Pods that ended or failed
-	// to bind, until an adapter releases them.
+	// podReleases records the devices of Pods that ended or failed to bind,
+	// until an adapter releases them.
 	podReleases map[types.UID][]deviceTopologyPodAllocation
 	snapshot    *schedulingapi.TopologySnapshot
 }

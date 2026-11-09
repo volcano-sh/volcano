@@ -41,7 +41,7 @@ func TestSchedulerCacheReleasesOneBoundPodAndKeepsTheRest(t *testing.T) {
 
 	releaseTopologyTestPod(cache, "pod-a")
 	handle := adapter.AdapterReservation{Token: reservation.AdapterReservations[0].Token, PlanDigest: reservation.AdapterReservations[0].PlanDigest}
-	if want := []releasedTopologyTestPod{{reservation: handle, podUID: "pod-a"}}; !reflect.DeepEqual(allocationAdapter.releasedPods, want) {
+	if want := []topologyTestPodCall{{reservation: handle, podUID: "pod-a"}}; !reflect.DeepEqual(allocationAdapter.releasedPods, want) {
 		t.Fatalf("ReleasePod() calls = %#v, want %#v", allocationAdapter.releasedPods, want)
 	}
 	assertTopologyReservationAvailability(t, cache, topologyTestPlacementOnly(plan, 0), schedulingapi.DeviceAvailable)

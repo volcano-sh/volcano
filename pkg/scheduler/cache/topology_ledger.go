@@ -106,7 +106,7 @@ func deviceAvailabilityForHealth(health schedulingapi.DeviceHealth) schedulingap
 }
 
 // canTransitionDeviceAvailability defines the safe lifecycle changes used by
-// future reservation and allocation-reconciliation paths.
+// the reservation, bind, Pod release, and confirmation paths.
 func canTransitionDeviceAvailability(current, next schedulingapi.DeviceAvailability) bool {
 	if current == next {
 		return true

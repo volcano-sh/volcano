@@ -587,8 +587,9 @@ func (sc *SchedulerCache) deviceTopologyReservationTime() time.Time {
 }
 
 // newDeviceTopologyAdapterCallContext bounds one adapter call made during a
-// scheduling attempt. It keeps the caller's cancellation, unlike a cleanup
-// context, because the attempt can stop as soon as its caller gives up.
+// scheduling attempt or a Pod confirmation. It keeps the caller's
+// cancellation, unlike a cleanup context, so the call stops as soon as its
+// caller gives up.
 func (sc *SchedulerCache) newDeviceTopologyAdapterCallContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	timeout := sc.deviceTopologyAdapterCallTimeout
 	if timeout <= 0 {

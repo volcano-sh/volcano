@@ -85,6 +85,7 @@ func ShutdownMockSchedulerCache(sc *SchedulerCache) {
 	sc.DeletedJobs.ShutDown()
 	sc.hyperNodesQueue.ShutDown()
 	sc.deviceTopologyPodReleaseQueue.ShutDown()
+	sc.deviceTopologyPodConfirmQueue.ShutDown()
 }
 
 func checkAndSetDefaultInterface(sc *SchedulerCache) {
@@ -156,7 +157,8 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 		binderRegistry: NewBinderRegistry(),
 		resyncPeriod:   0,
 
-		deviceTopologyPodReleaseQueue: newDeviceTopologyPodReleaseQueue(),
+		deviceTopologyPodReleaseQueue: newDeviceTopologyPodQueue(),
+		deviceTopologyPodConfirmQueue: newDeviceTopologyPodQueue(),
 	}
 	if options.ServerOpts != nil && len(options.ServerOpts.NodeSelector) > 0 {
 		msc.updateNodeSelectors(options.ServerOpts.NodeSelector)

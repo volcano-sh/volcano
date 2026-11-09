@@ -19,6 +19,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -44,6 +45,9 @@ type preparedDeviceTopologyBindGroup struct {
 type deviceTopologyPodAllocation struct {
 	owner     deviceTopologyReservationOwner
 	deviceIDs []schedulingapi.DeviceID
+	// confirmBy is when Binding devices that the adapter has not confirmed
+	// become Unreconciled.
+	confirmBy time.Time
 }
 
 // PrepareDeviceTopologyReservationBind asks each reservation-owning adapter
@@ -88,7 +92,9 @@ func (sc *SchedulerCache) PrepareDeviceTopologyReservationBind(ctx context.Conte
 // CommitDeviceTopologyReservationBind advances every still-owned reservation
 // from Held to Binding after its complete batch has produced valid immutable
 // handoffs, and records the devices each Pod holds. The backend reservation
-// remains owned until a later allocation observation or release frees it.
+// remains owned until a release frees it, either of the whole reservation or
+// of one Pod's share.
+// Each Pod's devices must be confirmed within deviceTopologyPodConfirmTimeout.
 func (sc *SchedulerCache) CommitDeviceTopologyReservationBind(_ context.Context, reservation schedulingapi.TopologyReservation) error {
 	reservation = reservation.Clone()
 
@@ -102,7 +108,7 @@ func (sc *SchedulerCache) CommitDeviceTopologyReservationBind(_ context.Context,
 	if err != nil {
 		return err
 	}
-	podAllocations, err := state.podAllocationsForBind(prepared)
+	podAllocations, err := state.podAllocationsForBind(prepared, sc.deviceTopologyReservationTime().Add(deviceTopologyPodConfirmTimeout))
 	if err != nil {
 		return err
 	}
@@ -126,9 +132,10 @@ func (sc *SchedulerCache) RollbackDeviceTopologyReservationBind(ctx context.Cont
 }
 
 // podAllocationsForBind splits a prepared bind into the devices each Pod will
-// hold. It rejects a Pod that still holds devices from an earlier bind. The
-// caller holds SchedulerCache.Mutex.
-func (state *deviceTopologyState) podAllocationsForBind(prepared preparedDeviceTopologyBind) (map[types.UID][]deviceTopologyPodAllocation, error) {
+// hold, which an adapter must confirm by confirmBy. It rejects a Pod that
+// still holds devices from an earlier bind. The caller holds
+// SchedulerCache.Mutex.
+func (state *deviceTopologyState) podAllocationsForBind(prepared preparedDeviceTopologyBind, confirmBy time.Time) (map[types.UID][]deviceTopologyPodAllocation, error) {
 	result := make(map[types.UID][]deviceTopologyPodAllocation)
 	for _, group := range prepared.groups {
 		owner := deviceTopologyReservationOwner{resourceName: group.resourceName, token: group.reservation.Token, planDigest: group.reservation.PlanDigest}
@@ -136,7 +143,7 @@ func (state *deviceTopologyState) podAllocationsForBind(prepared preparedDeviceT
 			if _, exists := state.podAllocations[placement.PodUID]; exists {
 				return nil, fmt.Errorf("device topology bind for Pod %q conflicts with devices the Pod still holds", placement.PodUID)
 			}
-			allocation := deviceTopologyPodAllocation{owner: owner}
+			allocation := deviceTopologyPodAllocation{owner: owner, confirmBy: confirmBy}
 			for _, assignment := range placement.Assignments {
 				allocation.deviceIDs = append(allocation.deviceIDs, assignment.DeviceIDs...)
 			}
