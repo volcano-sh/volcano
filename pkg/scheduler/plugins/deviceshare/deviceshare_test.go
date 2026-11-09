@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/hami"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -198,5 +199,56 @@ func Test_FilterNode(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestInit_DeviceShare(t *testing.T) {
+	originalHAMiEnabled := hami.AscendHAMiVNPUEnable
+	t.Cleanup(func() {
+		hami.AscendHAMiVNPUEnable = originalHAMiEnabled
+	})
+
+	// 1. Test conflicting arguments return error
+	conflictArgs1 := framework.Arguments{
+		GPUSharingPredicate: true,
+		GPUNumberPredicate:  true,
+	}
+	p1 := New(conflictArgs1)
+	if err := p1.(interface{ Init() error }).Init(); err == nil {
+		t.Errorf("expected error when both GPUSharingEnable and GPUNumberEnable are true, got nil")
+	}
+
+	conflictArgs2 := framework.Arguments{
+		GPUSharingPredicate: true,
+		VGPUEnable:          true,
+	}
+	p2 := New(conflictArgs2)
+	if err := p2.(interface{ Init() error }).Init(); err == nil {
+		t.Errorf("expected error when both GPUSharingEnable and VGPUEnable are true, got nil")
+	}
+
+	// 2. Test AscendHAMiVNPUEnable disabled
+	hami.AscendHAMiVNPUEnable = false
+	disabledArgs := framework.Arguments{
+		AscendHAMiVNPUEnable: false,
+	}
+	pDisabled := New(disabledArgs)
+	if err := pDisabled.(interface{ Init() error }).Init(); err != nil {
+		t.Errorf("unexpected error on disabled HAMi init: %v", err)
+	}
+	if hami.AscendHAMiVNPUEnable {
+		t.Errorf("expected AscendHAMiVNPUEnable to be false, got true")
+	}
+
+	// 3. Test AscendHAMiVNPUEnable enabled
+	enabledArgs := framework.Arguments{
+		AscendHAMiVNPUEnable: true,
+	}
+	pEnabled := New(enabledArgs)
+	if err := pEnabled.(interface{ Init() error }).Init(); err != nil {
+		t.Errorf("unexpected error on enabled HAMi init: %v", err)
+	}
+	if !hami.AscendHAMiVNPUEnable {
+		t.Errorf("expected AscendHAMiVNPUEnable to be true, got false")
 	}
 }

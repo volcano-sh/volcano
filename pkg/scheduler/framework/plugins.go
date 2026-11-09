@@ -54,6 +54,14 @@ func CleanupPluginBuilders() {
 	pluginBuilders = map[string]PluginBuilder{}
 }
 
+// UnregisterPluginBuilder removes a specific plugin builder by name
+func UnregisterPluginBuilder(name string) {
+	pluginMutex.Lock()
+	defer pluginMutex.Unlock()
+
+	delete(pluginBuilders, name)
+}
+
 // GetPluginBuilder get the pluginbuilder by name
 func GetPluginBuilder(name string) (PluginBuilder, bool) {
 	pluginMutex.RLock()
