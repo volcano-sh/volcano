@@ -138,9 +138,12 @@ type TaskInfo struct {
 	// LastTransaction holds the context of last scheduling transaction
 	LastTransaction *TransactionContext
 
-	Priority                    int32
-	VolumeReady                 bool
-	Preemptable                 bool
+	Priority    int32
+	VolumeReady bool
+	Preemptable bool
+	// BestEffort is true when the task has no ordinary resource requests or DRA claims.
+	// DRA-only Pods may have Kubernetes BestEffort QoS, but this field is false
+	// because they still need device allocation and gang checks.
 	BestEffort                  bool
 	HasRestartableInitContainer bool
 	SchGated                    bool
@@ -191,7 +194,6 @@ const TaskPriorityAnnotation = "volcano.sh/task-priority"
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	initResReq := GetPodResourceRequest(pod)
 	resReq := initResReq
-	bestEffort := initResReq.IsEmpty()
 	preemptable := GetPodPreemptable(pod)
 	revocableZone := GetPodRevocableZone(pod)
 	topologyInfo := GetPodTopologyInfo(pod)
@@ -212,7 +214,6 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		Resreq:                      resReq,
 		InitResreq:                  initResReq,
 		Preemptable:                 preemptable,
-		BestEffort:                  bestEffort,
 		HasRestartableInitContainer: hasRestartableInitContainer,
 		RevocableZone:               revocableZone,
 		NumaInfo:                    topologyInfo,
@@ -222,6 +223,8 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 			Status:   getTaskStatus(pod),
 		},
 	}
+
+	ti.UpdateSchedulingBestEffort()
 
 	if pod.Spec.Priority != nil {
 		ti.Priority = *pod.Spec.Priority
@@ -234,6 +237,24 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	}
 
 	return ti
+}
+
+// HasInitResourceRequests checks InitResreq for ordinary requests, including CPU,
+// memory, extended resources, and scheduler-added CSI attachment counts.
+// DRA claims are not included, so DRA-only tasks return false.
+func (ti *TaskInfo) HasInitResourceRequests() bool {
+	return !ti.InitResreq.IsEmpty()
+}
+
+// HasSchedulingResourceRequests checks for ordinary requests or DRA claims that need allocation.
+// Pending tasks with either kind of request cannot count toward gang readiness before allocation.
+func (ti *TaskInfo) HasSchedulingResourceRequests() bool {
+	return ti.HasInitResourceRequests() || (ti.Pod != nil && len(ti.Pod.Spec.ResourceClaims) > 0)
+}
+
+// UpdateSchedulingBestEffort refreshes BestEffort after resource requests change.
+func (ti *TaskInfo) UpdateSchedulingBestEffort() {
+	ti.BestEffort = !ti.HasSchedulingResourceRequests()
 }
 
 // GetTransactionContext get transaction context of a task
@@ -918,10 +939,12 @@ func (ji *JobInfo) WaitingTaskNum() int32 {
 	return int32(len(ji.TaskStatusIndex[Pipelined]))
 }
 
+// PendingBestEffortTaskNum counts pending tasks with neither ordinary requests nor DRA claims.
+// These tasks can count toward gang readiness without allocation; DRA-only tasks cannot.
 func (ji *JobInfo) PendingBestEffortTaskNum() int32 {
 	count := 0
 	for _, task := range ji.TaskStatusIndex[Pending] {
-		if task.BestEffort {
+		if !task.HasSchedulingResourceRequests() {
 			count++
 		}
 	}
@@ -1040,7 +1063,7 @@ func (ji *JobInfo) getJobAllocatedRoles() map[string]int32 {
 
 		if status == Pending {
 			for _, task := range tasks {
-				if task.InitResreq.IsEmpty() {
+				if !task.HasSchedulingResourceRequests() {
 					occupiedMap[task.TaskRole]++
 				}
 			}
@@ -1114,7 +1137,7 @@ func (ji *JobInfo) CheckTaskPipelined() bool {
 
 		if status == Pending {
 			for _, task := range tasks {
-				if task.InitResreq.IsEmpty() {
+				if !task.HasSchedulingResourceRequests() {
 					occupiedMap[task.TaskRole]++
 				}
 			}
