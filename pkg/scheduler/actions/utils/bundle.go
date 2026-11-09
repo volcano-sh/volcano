@@ -89,7 +89,7 @@ func CreateJobBundles(job *api.JobInfo, localTasks []*api.TaskInfo) []*Bundle {
 				}
 			case status == api.Pending:
 				for _, t := range tasks {
-					if t.InitResreq.IsEmpty() {
+					if !t.HasSchedulingResourceRequests() {
 						roleReady[t.TaskRole]++
 					}
 				}

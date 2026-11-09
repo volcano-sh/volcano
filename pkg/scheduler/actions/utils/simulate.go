@@ -197,7 +197,7 @@ func organizeEvictionWorksheet(ssn *framework.Session, job *api.JobInfo) *evicti
 			tasks: util.NewPriorityQueue(ssn.TaskOrderFn),
 		}
 		for _, task := range subJob.TaskStatusIndex[api.Pending] {
-			if task.SchGated || task.Resreq.IsEmpty() {
+			if task.SchGated || !task.HasSchedulingResourceRequests() {
 				continue
 			}
 			sjWorksheet.tasks.Push(task)
