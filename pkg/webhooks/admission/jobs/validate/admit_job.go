@@ -40,6 +40,7 @@ import (
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 	controllerMpi "volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
+	controllerRay "volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/ray"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -137,6 +138,15 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		if masterIndex == -1 {
 			reviewResponse.Allowed = false
 			return "The specified mpi master task was not found"
+		}
+	}
+
+	if _, ok := job.Spec.Plugins[controllerRay.RayPluginName]; ok {
+		rp := controllerRay.NewInstance(job.Spec.Plugins[controllerRay.RayPluginName])
+		headIndex := jobhelpers.GetTaskIndexUnderJob(rp.GetHeadName(), job)
+		if headIndex == -1 {
+			reviewResponse.Allowed = false
+			return "The specified ray head task was not found"
 		}
 	}
 
