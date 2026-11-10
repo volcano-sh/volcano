@@ -2266,3 +2266,68 @@ func TestBuildQueueAttrsMetricConsistency(t *testing.T) {
 		t.Errorf("q1 allocated: got %v, want %v (from job)", q1Attr.allocated, expectedQ1)
 	}
 }
+
+func TestCapacityEmptyQueueAndOrphanedJob(t *testing.T) {
+	uthelper.RegisterPlugins(map[string]framework.PluginBuilder{PluginName: New, gang.PluginName: gang.New})
+	defer framework.CleanupPluginBuilders()
+
+	trueValue := true
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+	queue1 := util.BuildQueueWithResourcesQuantity("q1", api.BuildResourceList("2", "2Gi"), api.BuildResourceList("4", "4Gi"))
+	queue2 := util.BuildQueueWithResourcesQuantity("q2", api.BuildResourceList("2", "2Gi"), api.BuildResourceList("4", "4Gi"))
+
+	// pgOrphan references a queue that does not exist in ssn.Queues.
+	pgOrphan := util.BuildPodGroup("pg-orphan", "ns1", "missing-queue", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	wOrphan := util.BuildPod("ns1", "worker-orphan", "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), "pg-orphan", make(map[string]string), make(map[string]string))
+
+	binder := util.NewFakeBinder(10)
+	evictor := util.NewFakeEvictor(0)
+	statusUpdater := &util.FakeStatusUpdater{}
+	stop := make(chan struct{})
+	defer close(stop)
+
+	sc := cache.NewCustomMockSchedulerCache("test-capacity-orphan", binder, evictor, statusUpdater, nil, nil)
+	sc.Run(stop)
+	sc.AddOrUpdateNode(n1)
+	sc.AddQueueV1beta1(queue1)
+	sc.AddQueueV1beta1(queue2)
+	sc.AddPodGroupV1beta1(pgOrphan)
+	sc.AddPod(wOrphan)
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledQueueOrder:  &trueValue,
+					EnabledAllocatable: &trueValue,
+					EnabledOverused:    &trueValue,
+				},
+			},
+		},
+	}
+
+	ssn := framework.OpenSession(sc, tiers, nil)
+	defer framework.CloseSession(ssn)
+
+	q1Info := ssn.Queues[api.QueueID("q1")]
+	q2Info := ssn.Queues[api.QueueID("q2")]
+	if q1Info == nil || q2Info == nil {
+		t.Fatalf("expected q1 and q2 in session queues, got q1=%v, q2=%v", q1Info, q2Info)
+	}
+
+	// Exercising QueueOrderFn, Overused, and Allocatable on empty queues must not panic.
+	_ = ssn.QueueOrderFn(q1Info, q2Info)
+	if ssn.Overused(q1Info) {
+		t.Errorf("expected empty queue q1 not to be overused")
+	}
+	candidate := &api.TaskInfo{
+		UID:    "t1",
+		Name:   "t1",
+		Resreq: api.EmptyResource(),
+		Pod:    &corev1.Pod{},
+	}
+	if !ssn.Allocatable(q1Info, candidate) {
+		t.Errorf("expected empty open queue q1 to be allocatable for empty candidate request")
+	}
+}

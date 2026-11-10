@@ -685,3 +685,53 @@ func TestJobEnqueuedOnOtherPluginsReject(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestProportionEmptyQueueAndOrphanedJob(t *testing.T) {
+	uthelper.RegisterPlugins(map[string]framework.PluginBuilder{PluginName: New, gang.PluginName: gang.New, priority.PluginName: priority.New})
+	defer framework.CleanupPluginBuilders()
+
+	trueValue := true
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+	queue1 := util.BuildQueue("q1", 1, api.BuildResourceList("4", "4Gi"))
+	queue2 := util.BuildQueue("q2", 1, api.BuildResourceList("4", "4Gi"))
+
+	// pgOrphan references a queue that does not exist in ssn.Queues.
+	pgOrphan := util.BuildPodGroupWithPrio("pg-orphan", "ns1", "missing-queue", 1, nil, schedulingv1beta1.PodGroupInqueue, "")
+	wOrphan := util.BuildPod("ns1", "worker-orphan", "", apiv1.PodPending, api.BuildResourceList("1", "1Gi"), "pg-orphan", make(map[string]string), make(map[string]string))
+
+	binder := util.NewFakeBinder(0)
+	recorder := record.NewFakeRecorder(100)
+	schedulerCache := cache.NewCustomMockSchedulerCache("mock-test", binder, nil, &util.FakeStatusUpdater{}, nil, recorder)
+
+	schedulerCache.AddOrUpdateNode(n1)
+	schedulerCache.AddQueueV1beta1(queue1)
+	schedulerCache.AddQueueV1beta1(queue2)
+	schedulerCache.AddPodGroupV1beta1(pgOrphan)
+	schedulerCache.AddPod(wOrphan)
+
+	ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledQueueOrder:  &trueValue,
+					EnabledAllocatable: &trueValue,
+					EnabledOverused:    &trueValue,
+					EnabledPredicate:   &trueValue,
+				},
+			},
+		},
+	}, nil)
+	defer framework.CloseSession(ssn)
+
+	q1Info := ssn.Queues[api.QueueID("q1")]
+	q2Info := ssn.Queues[api.QueueID("q2")]
+	if q1Info == nil || q2Info == nil {
+		t.Fatalf("expected q1 and q2 in session queues, got q1=%v, q2=%v", q1Info, q2Info)
+	}
+
+	// Exercising QueueOrderFn, Overused, and Allocatable on empty queues must not panic.
+	_ = ssn.QueueOrderFn(q1Info, q2Info)
+	_ = ssn.Overused(q1Info)
+	_ = ssn.Allocatable(q1Info, nil)
+}

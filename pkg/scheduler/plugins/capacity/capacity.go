@@ -1112,7 +1112,11 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 	for _, job := range ssn.Jobs {
 		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
 		if _, found := cp.queueOpts[job.Queue]; !found {
-			queue := ssn.Queues[job.Queue]
+			queue, exists := ssn.Queues[job.Queue]
+			if !exists {
+				klog.Warningf("[capacity] Skip orphaned job <%s/%s>: queue <%s> not found in session", job.Namespace, job.Name, job.Queue)
+				continue
+			}
 			attr := cp.initQueueAttr(queue)
 			cp.queueOpts[job.Queue] = attr
 			klog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
