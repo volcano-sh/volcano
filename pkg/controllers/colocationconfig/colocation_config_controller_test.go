@@ -8,6 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
@@ -429,5 +430,69 @@ func TestResetColocationConfigForPod(t *testing.T) {
 				t.Errorf("Expected no update action but found one")
 			}
 		})
+	}
+}
+
+func TestSyncPodConfigsCreatedInSameSecond(t *testing.T) {
+	// Creation times have a resolution of one second, so configs created together share a timestamp.
+	created := metav1.NewTime(time.Now().Truncate(time.Second))
+	newConfig := func(name string, highRatio int) *configv1alpha1.ColocationConfiguration {
+		return &configv1alpha1.ColocationConfiguration{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              name,
+				Namespace:         "default",
+				CreationTimestamp: created,
+			},
+			Spec: configv1alpha1.ColocationConfigurationSpec{
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "foo"},
+				},
+				Configuration: configv1alpha1.Configuration{
+					MemoryQos: &configv1alpha1.MemoryQos{
+						HighRatio: highRatio,
+					},
+				},
+			},
+		}
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pod-1",
+			Namespace: "default",
+			Labels:    map[string]string{"app": "foo"},
+		},
+	}
+
+	kubeClient := fake.NewClientset(pod)
+	vcClient := vcfake.NewClientset(newConfig("config-b", 80), newConfig("config-a", 50))
+	c := newFakeController(kubeClient, vcClient)
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	c.informerFactory.Start(stopCh)
+	c.vcInformerFactory.Start(stopCh)
+	c.informerFactory.WaitForCacheSync(stopCh)
+	c.vcInformerFactory.WaitForCacheSync(stopCh)
+
+	// The lister returns the configs in a random order, so sync repeatedly and check that the same config is applied every time.
+	ctx := context.TODO()
+	for i := 0; i < 100; i++ {
+		if err := c.syncPod(ctx, "default/pod-1"); err != nil {
+			t.Fatalf("syncPod error: %v", err)
+		}
+		updatedPod, err := kubeClient.CoreV1().Pods("default").Get(ctx, "pod-1", metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("Failed to get pod: %v", err)
+		}
+		if got := updatedPod.Annotations[configv1alpha1.ColocationConfigNameKey]; got != "config-a" {
+			t.Fatalf("sync %d: expected config-a to be applied, got %q", i, got)
+		}
+		// Wait for the informer to see the update, as it would between syncs in a cluster.
+		if err := wait.PollUntilContextTimeout(ctx, time.Millisecond, time.Second, true, func(context.Context) (bool, error) {
+			p, err := c.podLister.Pods("default").Get("pod-1")
+			return err == nil && p.Annotations[configv1alpha1.ColocationConfigNameKey] == "config-a", nil
+		}); err != nil {
+			t.Fatalf("informer did not observe the update: %v", err)
+		}
 	}
 }
