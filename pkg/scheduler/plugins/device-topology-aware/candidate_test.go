@@ -140,6 +140,26 @@ func TestDeviceTopologyCandidateExcludesHeldLedgerDevices(t *testing.T) {
 	assertCandidateFitReason(t, plugin.predicate(session, task, node), deviceTopologyReservationConflictReason)
 }
 
+func TestDeviceTopologyCandidateWaitsForAllocationRecovery(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DeviceTopologyAwareScheduling, true)
+	now := time.Now()
+	node := newCandidateTestNode("node-a")
+	task := newDeviceTopologyTask("worker", []corev1.Container{containerWithRequest("trainer", "nvidia.com/gpu", "1")}, nil)
+	job := api.NewJobInfo("job", task)
+	job.DeviceTopology = testDeviceTopologyPolicy("nvidia.com/gpu", scheduling.HardDeviceTopologyMode)
+	facts := newCandidateTopologyFacts(node, []candidateDomainSpec{{value: "domain-a", deviceCount: 1, healthy: 1}}, now.Add(time.Hour))
+	key := api.ProviderNodeKey{ProviderID: facts.ProviderID, NodeUID: facts.NodeUID}
+	snapshot := api.NewTopologySnapshotWithAllocationState(1,
+		map[api.ProviderNodeKey]api.NodeTopologyFacts{key: facts},
+		map[api.ProviderNodeKey]api.ProviderNodeSyncState{key: api.ProviderNodeSynced},
+		nil,
+		map[corev1.ResourceName]struct{}{"nvidia.com/gpu": {}},
+	)
+	plugin, session := openCandidatePlugin(t, job, snapshot)
+
+	assertCandidateFitReason(t, plugin.predicate(session, task, node), deviceTopologyDataNotReadyReason)
+}
+
 func TestDeviceTopologyCandidateHardLocalDomainRequiresSyncedMatchingFacts(t *testing.T) {
 	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DeviceTopologyAwareScheduling, true)
 	now := time.Now()

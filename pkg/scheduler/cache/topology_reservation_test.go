@@ -688,6 +688,9 @@ type topologyReservationTestAdapter struct {
 	confirmedPods           []topologyTestPodCall
 	confirmHook             func()
 	confirmErr              error
+	recoverCalls            int
+	recoverStates           []adapter.AdapterReservationState
+	recoverErr              error
 	// observationFor, when set, replaces the Allocated observation Confirm
 	// returns by default.
 	observationFor func(adapter.AdapterReservation, types.UID) adapter.AllocationObservation
@@ -787,7 +790,11 @@ func (testAdapter *topologyReservationTestAdapter) Release(ctx context.Context, 
 }
 
 func (testAdapter *topologyReservationTestAdapter) Recover(context.Context) ([]adapter.AdapterReservationState, error) {
-	return nil, nil
+	testAdapter.recoverCalls++
+	if testAdapter.recoverErr != nil {
+		return nil, testAdapter.recoverErr
+	}
+	return testAdapter.recoverStates, nil
 }
 
 // hungTopologyReservationTestAdapter behaves like a hung backend that honors

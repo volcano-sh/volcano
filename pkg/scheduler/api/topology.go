@@ -402,6 +402,10 @@ type TopologySnapshot struct {
 	domainIDsByNodeAndResource map[NodeResourceKey][]DeviceDomainID
 	healthyDeviceIDsByDomain   map[DeviceDomainID][]DeviceID
 	availableDeviceIDsByDomain map[DeviceDomainID][]DeviceID
+	// allocationRecoveryPending lists resources whose allocation adapter has
+	// not yet reported the reservations that existed before this scheduler
+	// started, so their availability is not known.
+	allocationRecoveryPending map[corev1.ResourceName]struct{}
 }
 
 // NewTopologySnapshot creates an indexed immutable view from accepted facts.
@@ -415,7 +419,15 @@ func NewTopologySnapshot(revision TopologyRevision, facts map[ProviderNodeKey]No
 // devices. Valid states for removed live devices are retained as ledger
 // tombstones but do not participate in candidate indexes.
 func NewTopologySnapshotWithAvailability(revision TopologyRevision, facts map[ProviderNodeKey]NodeTopologyFacts, readiness map[ProviderNodeKey]ProviderNodeSyncState, availability map[DeviceID]DeviceAvailability) *TopologySnapshot {
+	return NewTopologySnapshotWithAllocationState(revision, facts, readiness, availability, nil)
+}
+
+// NewTopologySnapshotWithAllocationState creates an indexed immutable view like
+// NewTopologySnapshotWithAvailability, and also records the resources whose
+// allocation state is not recovered yet after scheduler startup.
+func NewTopologySnapshotWithAllocationState(revision TopologyRevision, facts map[ProviderNodeKey]NodeTopologyFacts, readiness map[ProviderNodeKey]ProviderNodeSyncState, availability map[DeviceID]DeviceAvailability, recoveryPending map[corev1.ResourceName]struct{}) *TopologySnapshot {
 	snapshot := &TopologySnapshot{
+		allocationRecoveryPending:  make(map[corev1.ResourceName]struct{}, len(recoveryPending)),
 		revision:                   revision,
 		factsByProviderNode:        make(map[ProviderNodeKey]NodeTopologyFacts, len(facts)),
 		providerNodeReadiness:      make(map[ProviderNodeKey]ProviderNodeSyncState, len(readiness)),
@@ -426,6 +438,9 @@ func NewTopologySnapshotWithAvailability(revision TopologyRevision, facts map[Pr
 		domainIDsByNodeAndResource: make(map[NodeResourceKey][]DeviceDomainID),
 		healthyDeviceIDsByDomain:   make(map[DeviceDomainID][]DeviceID),
 		availableDeviceIDsByDomain: make(map[DeviceDomainID][]DeviceID),
+	}
+	for resourceName := range recoveryPending {
+		snapshot.allocationRecoveryPending[resourceName] = struct{}{}
 	}
 	for deviceID, state := range availability {
 		if state.IsValid() {
@@ -492,6 +507,17 @@ func NewTopologySnapshotWithAvailability(revision TopologyRevision, facts map[Pr
 		})
 	}
 	return snapshot
+}
+
+// AllocationStateRecovered reports whether the scheduler knows which devices of
+// a resource were already reserved or allocated before it started. Until then
+// the resource's devices must not be selected for exact placement.
+func (snapshot *TopologySnapshot) AllocationStateRecovered(resourceName corev1.ResourceName) bool {
+	if snapshot == nil {
+		return false
+	}
+	_, pending := snapshot.allocationRecoveryPending[resourceName]
+	return !pending
 }
 
 // Revision returns the immutable snapshot revision.

@@ -1022,9 +1022,12 @@ func (sc *SchedulerCache) registerHintEventHandler(
 // Run  starts the schedulerCache
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	sc.freezeDeviceTopologyProviders()
+	// Keep exact placement off until adapters report what they already hold.
+	sc.beginDeviceTopologyAllocationRecovery()
 	sc.informerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
 	sc.WaitForCacheSync(stopCh)
+	go sc.runDeviceTopologyAllocationRecovery(stopCh)
 	for i := 0; i < int(sc.nodeWorkers); i++ {
 		go wait.Until(sc.runNodeWorker, 0, stopCh)
 	}

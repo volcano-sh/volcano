@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
@@ -42,7 +43,11 @@ type deviceTopologyState struct {
 	// podReleases records the devices of Pods that ended or failed to bind,
 	// until an adapter releases them.
 	podReleases map[types.UID][]deviceTopologyPodAllocation
-	snapshot    *schedulingapi.TopologySnapshot
+	// allocationRecoveryPending lists resources whose allocation adapter has
+	// not yet reported the reservations made before this scheduler started.
+	// Their devices cannot be reserved until recovery succeeds.
+	allocationRecoveryPending map[corev1.ResourceName]struct{}
+	snapshot                  *schedulingapi.TopologySnapshot
 }
 
 // WithDeviceTopologyProviderRegistry configures the immutable authoritative
@@ -118,8 +123,10 @@ func newDeviceTopologyState() *deviceTopologyState {
 		reservationOwners: make(map[schedulingapi.DeviceID]deviceTopologyReservationOwner),
 		podAllocations:    make(map[types.UID][]deviceTopologyPodAllocation),
 		podReleases:       make(map[types.UID][]deviceTopologyPodAllocation),
+
+		allocationRecoveryPending: make(map[corev1.ResourceName]struct{}),
 	}
-	state.snapshot = schedulingapi.NewTopologySnapshotWithAvailability(state.revision, state.facts, state.readiness, state.ledger.snapshot())
+	state.snapshot = schedulingapi.NewTopologySnapshotWithAllocationState(state.revision, state.facts, state.readiness, state.ledger.snapshot(), state.allocationRecoveryPending)
 	return state
 }
 
@@ -325,5 +332,5 @@ func (state *deviceTopologyState) validateNoTopologyConflicts(candidateKey sched
 func (state *deviceTopologyState) publish() {
 	state.ledger.reconcile(state.facts)
 	state.revision++
-	state.snapshot = schedulingapi.NewTopologySnapshotWithAvailability(state.revision, state.facts, state.readiness, state.ledger.snapshot())
+	state.snapshot = schedulingapi.NewTopologySnapshotWithAllocationState(state.revision, state.facts, state.readiness, state.ledger.snapshot(), state.allocationRecoveryPending)
 }

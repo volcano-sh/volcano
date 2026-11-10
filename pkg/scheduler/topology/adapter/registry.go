@@ -18,6 +18,7 @@ package adapter
 
 import (
 	"fmt"
+	"sort"
 
 	corev1 "k8s.io/api/core/v1"
 )
@@ -62,6 +63,22 @@ func (registry *Registry) AdapterFor(resourceName corev1.ResourceName) (Allocati
 	}
 	allocationAdapter, exists := registry.adaptersByResource[resourceName]
 	return allocationAdapter, exists
+}
+
+// ResourceNames returns every resource that has an allocation adapter, in
+// sorted order.
+func (registry *Registry) ResourceNames() []corev1.ResourceName {
+	if registry == nil {
+		return nil
+	}
+	resourceNames := make([]corev1.ResourceName, 0, len(registry.adaptersByResource))
+	for resourceName := range registry.adaptersByResource {
+		resourceNames = append(resourceNames, resourceName)
+	}
+	sort.Slice(resourceNames, func(left, right int) bool {
+		return resourceNames[left] < resourceNames[right]
+	})
+	return resourceNames
 }
 
 // IdentityContractFor returns the immutable device-ID contract configured for

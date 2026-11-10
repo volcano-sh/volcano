@@ -232,6 +232,11 @@ func evaluateLocalDomain(snapshot *api.TopologySnapshot, node *api.NodeInfo, req
 	if snapshot == nil || node == nil || node.Node == nil || node.Node.UID == "" {
 		return topologyCandidateEvaluation{reason: deviceTopologyDataNotReadyReason}
 	}
+	// After a scheduler restart, a device that looks free may still be used by
+	// a Pod until the allocation adapter reports what it holds.
+	if !snapshot.AllocationStateRecovered(request.resourceName) {
+		return topologyCandidateEvaluation{reason: deviceTopologyDataNotReadyReason}
+	}
 
 	domains := snapshot.LocalDomains(node.Node.UID, request.resourceName)
 	if len(domains) == 0 {

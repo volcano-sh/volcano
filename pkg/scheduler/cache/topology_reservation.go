@@ -359,6 +359,9 @@ func (state *deviceTopologyState) validateTopologyAssignment(registry *adapter.R
 		if !found {
 			return nil, fmt.Errorf("resource %q device %q has no hard-topology allocation adapter", assignment.ResourceName, deviceID.String())
 		}
+		if _, pending := state.allocationRecoveryPending[assignment.ResourceName]; pending {
+			return nil, fmt.Errorf("resource %q allocation state is not recovered yet after scheduler startup", assignment.ResourceName)
+		}
 		if state.snapshot == nil || !state.snapshot.IsProviderNodeFreshAt(deviceID.ProviderID, device.NodeUID, at) {
 			return nil, fmt.Errorf("device topology reservation plan selects device %q with stale provider facts", deviceID.String())
 		}

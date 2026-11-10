@@ -29,8 +29,9 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/topology/adapter"
 )
 
-// deviceTopologyPodConfirmTimeout is how long after the bind commit an
-// adapter has to confirm a Pod's devices before they become Unreconciled.
+// deviceTopologyPodConfirmTimeout is how long after the bind commit, or after
+// recovery, an adapter has to confirm a Pod's devices before they become
+// Unreconciled.
 const deviceTopologyPodConfirmTimeout = 5 * time.Minute
 
 // preparedDeviceTopologyConfirmGroup is one Pod's Binding share of one

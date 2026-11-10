@@ -24,8 +24,8 @@ import (
 
 // deviceTopologyAvailabilityLedger owns mutable scheduler-side device
 // availability. Its caller holds SchedulerCache.Mutex, so it has no separate
-// lock. Cache reservation transactions update it; adapter recovery and
-// allocation reconciliation are added later.
+// lock. Cache reservation transactions update it, and adapter recovery
+// restores it after scheduler startup.
 type deviceTopologyAvailabilityLedger struct {
 	states map[schedulingapi.DeviceID]schedulingapi.DeviceAvailability
 }
@@ -83,6 +83,17 @@ func (ledger *deviceTopologyAvailabilityLedger) transition(deviceID schedulingap
 		return fmt.Errorf("device %q cannot transition from %q to %q", deviceID.String(), current, next)
 	}
 	ledger.states[deviceID] = next
+	return nil
+}
+
+// restore sets the state an allocation adapter reported for a device during
+// recovery after scheduler startup. Unlike transition, the device may have no
+// ledger state yet, because its provider facts can arrive later.
+func (ledger *deviceTopologyAvailabilityLedger) restore(deviceID schedulingapi.DeviceID, state schedulingapi.DeviceAvailability) error {
+	if !state.IsLive() {
+		return fmt.Errorf("device %q cannot be restored to non-live state %q", deviceID.String(), state)
+	}
+	ledger.states[deviceID] = state
 	return nil
 }
 
