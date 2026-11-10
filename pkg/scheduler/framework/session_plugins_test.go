@@ -747,3 +747,168 @@ func TestHyperNodeGradientThreeStates(t *testing.T) {
 		}
 	}
 }
+
+func TestReclaimableBy(t *testing.T) {
+	notReclaimable := false
+	newQueue := func(name, parent string, reclaimable bool) *api.QueueInfo {
+		queue := &scheduling.Queue{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec:       scheduling.QueueSpec{Parent: parent},
+		}
+		if !reclaimable {
+			queue.Spec.Reclaimable = &notReclaimable
+		}
+		return api.NewQueueInfo(queue)
+	}
+	newQueues := func(queues ...*api.QueueInfo) map[api.QueueID]*api.QueueInfo {
+		m := make(map[api.QueueID]*api.QueueInfo, len(queues))
+		for _, q := range queues {
+			m[q.UID] = q
+		}
+		return m
+	}
+
+	// root
+	// ├── tenant-a (reclaimable: false)
+	// │   ├── a1
+	// │   └── team-a2
+	// │       └── a2
+	// └── tenant-b
+	//     ├── b1
+	//     └── b2 (reclaimable: false)
+	//
+	// flat has an empty parent, orphan points at a parent that is not in the
+	// session, and c1 and c2 point at each other.
+	tree := newQueues(
+		newQueue("root", "", true),
+		newQueue("tenant-a", "root", false),
+		newQueue("a1", "tenant-a", true),
+		newQueue("team-a2", "tenant-a", true),
+		newQueue("a2", "team-a2", true),
+		newQueue("tenant-b", "root", true),
+		newQueue("b1", "tenant-b", true),
+		newQueue("b2", "tenant-b", false),
+		newQueue("flat", "", true),
+		newQueue("orphan", "gone", true),
+		newQueue("c1", "c2", true),
+		newQueue("c2", "c1", true),
+	)
+	noRoot := newQueues(
+		newQueue("q1", "", true),
+		newQueue("q2", "", false),
+	)
+
+	tests := []struct {
+		name      string
+		queues    map[api.QueueID]*api.QueueInfo
+		victim    api.QueueID
+		reclaimer api.QueueID
+		want      bool
+	}{
+		{
+			name:      "blocks reclaim from outside a non-reclaimable parent",
+			queues:    tree,
+			victim:    "a1",
+			reclaimer: "b1",
+			want:      false,
+		},
+		{
+			name:      "blocks reclaim from a deeper queue under a non-reclaimable parent",
+			queues:    tree,
+			victim:    "a2",
+			reclaimer: "b1",
+			want:      false,
+		},
+		{
+			name:      "allows reclaim inside a non-reclaimable parent",
+			queues:    tree,
+			victim:    "a1",
+			reclaimer: "a2",
+			want:      true,
+		},
+		{
+			name:      "allows a shallower queue to reclaim from a deeper one inside a non-reclaimable parent",
+			queues:    tree,
+			victim:    "a2",
+			reclaimer: "a1",
+			want:      true,
+		},
+		{
+			name:      "allows a protected subtree to reclaim from an unprotected one",
+			queues:    tree,
+			victim:    "b1",
+			reclaimer: "a1",
+			want:      true,
+		},
+		{
+			name:      "blocks reclaim from a non-reclaimable leaf",
+			queues:    tree,
+			victim:    "b2",
+			reclaimer: "b1",
+			want:      false,
+		},
+		{
+			name:      "blocks a queue with an empty parent from reclaiming inside a non-reclaimable parent",
+			queues:    tree,
+			victim:    "a1",
+			reclaimer: "flat",
+			want:      false,
+		},
+		{
+			name:      "allows reclaim from a queue with an empty parent",
+			queues:    tree,
+			victim:    "flat",
+			reclaimer: "a1",
+			want:      true,
+		},
+		{
+			name:      "blocks reclaim when the victim queue is not in the session",
+			queues:    tree,
+			victim:    "missing",
+			reclaimer: "a1",
+			want:      false,
+		},
+		{
+			name:      "checks every victim ancestor when the reclaimer queue is not in the session",
+			queues:    tree,
+			victim:    "a1",
+			reclaimer: "missing",
+			want:      false,
+		},
+		{
+			name:      "ignores a parent that is not in the session",
+			queues:    tree,
+			victim:    "orphan",
+			reclaimer: "a1",
+			want:      true,
+		},
+		{
+			name:      "stops on a cycle",
+			queues:    tree,
+			victim:    "c1",
+			reclaimer: "a1",
+			want:      true,
+		},
+		{
+			name:      "only checks the leaf when root is not in the session",
+			queues:    noRoot,
+			victim:    "q1",
+			reclaimer: "q2",
+			want:      true,
+		},
+		{
+			name:      "still blocks a non-reclaimable leaf when root is not in the session",
+			queues:    noRoot,
+			victim:    "q2",
+			reclaimer: "q1",
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ssn := &Session{Queues: tt.queues}
+			assert.Equal(t, tt.want, ssn.ReclaimableBy(tt.victim, tt.reclaimer))
+		})
+	}
+}
