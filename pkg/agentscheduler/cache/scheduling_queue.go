@@ -21,11 +21,9 @@ import (
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
-	kubefeatures "k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/schedulinggates"
 
@@ -73,9 +71,7 @@ func NewSchedulingQueue(ctx context.Context, schedulerName string, informerFacto
 }
 
 func newDefaultQueuePlugins(ctx context.Context) ([]queuePlugin, error) {
-	plugin, err := schedulinggates.New(ctx, nil, nil, feature.Features{
-		EnableSchedulingQueueHint: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.SchedulerQueueingHints),
-	})
+	plugin, err := schedulinggates.New(ctx, nil, nil, feature.Features{})
 	if err != nil {
 		return nil, fmt.Errorf("initialize SchedulingGates: %w", err)
 	}
