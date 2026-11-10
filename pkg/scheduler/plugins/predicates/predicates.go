@@ -211,46 +211,7 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
-			klog.V(4).Infoln("predicates, allocate", event.Task.NodeName)
-			pod := pl.UpdateTask(event.Task, event.Task.NodeName)
-			nodeName := event.Task.NodeName
-			node, err := pp.Handle.SnapshotSharedLister().NodeInfos().Get(nodeName)
-			if err != nil {
-				klog.Errorf("predicates, get node %s info failed: %v", nodeName, err)
-				return
-			}
-			nodeInfo, ok := ssn.Nodes[nodeName]
-			if !ok {
-				klog.Errorf("Failed to get node %s info from cache", nodeName)
-				return
-			}
-			// run reserve plugins
-			pp.runReservePlugins(ssn, event)
-			if event.Err != nil {
-				return
-			}
-			//predicate gpu sharing
-			for _, val := range api.RegisteredDevices {
-				if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
-					if !devices.HasDeviceRequest(pod) {
-						continue
-					}
-
-					err := devices.Allocate(ssn.KubeClient(), pod)
-					if err != nil {
-						klog.Errorf("AllocateToPod failed %s", err.Error())
-						event.Err = err
-						return
-					}
-				} else {
-					klog.Warningf("Devices %s assertion conversion failed, skip", val)
-				}
-			}
-			// ignore this err since apiserver doesn't properly validate affinity terms
-			// and we can't fix the validation for backwards compatibility.
-			podInfo, _ := k8sframework.NewPodInfo(pod)
-			node.AddPodInfo(podInfo)
-			klog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
+			pp.onAllocate(ssn, event)
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			klog.V(4).Infoln("predicates, deallocate", event.Task.NodeName)
@@ -756,6 +717,58 @@ func (pp *PredicatesPlugin) BatchNodeOrder(task *api.TaskInfo, nodes []fwk.NodeI
 
 	klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)
 	return nodeScores, nil
+}
+
+// onAllocate adds a task to the predicates node info once it is placed on a node.
+//
+// A task restored after a rolled-back eviction is still bound to the node. Its
+// volumes and claims were never released, and this cycle has no prefilter state
+// to reserve against. Statement.unevict also restores device accounting through
+// NodeInfo.UpdateTask before firing this event, so allocating devices again could
+// place the pod on a second device.
+func (pp *PredicatesPlugin) onAllocate(ssn *framework.Session, event *framework.Event) {
+	klog.V(4).Infoln("predicates, allocate", event.Task.NodeName)
+	pod := ssn.PodLister.UpdateTask(event.Task, event.Task.NodeName)
+	nodeName := event.Task.NodeName
+	node, err := pp.Handle.SnapshotSharedLister().NodeInfos().Get(nodeName)
+	if err != nil {
+		klog.Errorf("predicates, get node %s info failed: %v", nodeName, err)
+		return
+	}
+	nodeInfo, ok := ssn.Nodes[nodeName]
+	if !ok {
+		klog.Errorf("Failed to get node %s info from cache", nodeName)
+		return
+	}
+	if !event.Restore {
+		// run reserve plugins
+		pp.runReservePlugins(ssn, event)
+		if event.Err != nil {
+			return
+		}
+		//predicate gpu sharing
+		for _, val := range api.RegisteredDevices {
+			if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
+				if !devices.HasDeviceRequest(pod) {
+					continue
+				}
+
+				err := devices.Allocate(ssn.KubeClient(), pod)
+				if err != nil {
+					klog.Errorf("AllocateToPod failed %s", err.Error())
+					event.Err = err
+					return
+				}
+			} else {
+				klog.Warningf("Devices %s assertion conversion failed, skip", val)
+			}
+		}
+	}
+	// ignore this err since apiserver doesn't properly validate affinity terms
+	// and we can't fix the validation for backwards compatibility.
+	podInfo, _ := k8sframework.NewPodInfo(pod)
+	node.AddPodInfo(podInfo)
+	klog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
 }
 
 func (pp *PredicatesPlugin) runReservePlugins(ssn *framework.Session, event *framework.Event) {

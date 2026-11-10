@@ -46,6 +46,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/actions/backfill"
 	"volcano.sh/volcano/pkg/scheduler/actions/preempt"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	vbcap "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -71,8 +72,9 @@ func (p *fakeFilterPlugin) Filter(_ context.Context, _ k8sframework.CycleState, 
 }
 
 type fakeReservePlugin struct {
-	name  string
-	calls *[]string
+	name   string
+	calls  *[]string
+	status *k8sframework.Status
 }
 
 func (p *fakeReservePlugin) Name() string {
@@ -81,11 +83,168 @@ func (p *fakeReservePlugin) Name() string {
 
 func (p *fakeReservePlugin) Reserve(_ context.Context, _ k8sframework.CycleState, _ *apiv1.Pod, _ string) *k8sframework.Status {
 	*p.calls = append(*p.calls, "reserve-"+p.name)
+	if p.status != nil {
+		return p.status
+	}
 	return k8sframework.NewStatus(k8sframework.Success)
 }
 
 func (p *fakeReservePlugin) Unreserve(_ context.Context, _ k8sframework.CycleState, _ *apiv1.Pod, _ string) {
 	*p.calls = append(*p.calls, "unreserve-"+p.name)
+}
+
+func TestOnAllocateRestoresEvictedTask(t *testing.T) {
+	node := util.BuildNode("node-1", api.BuildResourceList("4", "8Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)
+	// A bound victim has no prefilter state in this cycle, so reserving it
+	// again would fail with "not found".
+	reserveFailure := k8sframework.NewStatus(k8sframework.Error, "not found")
+	tests := []struct {
+		name         string
+		restore      bool
+		reserve      *k8sframework.Status
+		wantReserves int
+		wantErr      bool
+		wantPods     int
+	}{
+		{
+			name:         "a task allocated in this cycle reserves and joins the node info",
+			reserve:      k8sframework.NewStatus(k8sframework.Success),
+			wantReserves: 1,
+			wantPods:     1,
+		},
+		{
+			name:         "a failed reserve keeps the task out of the node info",
+			reserve:      reserveFailure,
+			wantReserves: 1,
+			wantErr:      true,
+		},
+		{
+			name:     "a restored victim skips reserve and rejoins the node info",
+			restore:  true,
+			reserve:  reserveFailure,
+			wantPods: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := make([]string, 0, 1)
+			pp := New(nil).(*PredicatesPlugin)
+			pp.ReservePlugins = map[string]schedframework.ReservePlugin{
+				vbcap.Name: &fakeReservePlugin{name: vbcap.Name, calls: &calls, status: tt.reserve},
+			}
+			pp.ReserveOrder = []string{vbcap.Name}
+
+			nodeInfo := schedframework.NewNodeInfo()
+			nodeInfo.SetNode(node)
+			pp.Handle = k8s.NewFramework(map[string]k8sframework.NodeInfo{node.Name: nodeInfo})
+			ssn := &framework.Session{
+				Nodes: map[string]*api.NodeInfo{node.Name: api.NewNodeInfo(node)},
+			}
+			ssn.PodLister = framework.NewPodLister(ssn)
+
+			pod := util.BuildPod("ns", "victim", node.Name, apiv1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg", nil, nil)
+			event := &framework.Event{Task: api.NewTaskInfo(pod), Restore: tt.restore}
+			pp.onAllocate(ssn, event)
+
+			if tt.wantErr {
+				assert.Error(t, event.Err)
+			} else {
+				assert.NoError(t, event.Err)
+			}
+			assert.Len(t, calls, tt.wantReserves)
+			assert.Len(t, nodeInfo.GetPods(), tt.wantPods)
+		})
+	}
+}
+
+// TestDiscardRestoresEvictedTaskDeviceState checks that rollback restores the
+// predicates node info and keeps the victim on its original GPU.
+func TestDiscardRestoresEvictedTaskDeviceState(t *testing.T) {
+	originalGPUSharing := gpushare.GpuSharingEnable
+	originalDevices := append([]string(nil), api.RegisteredDevices...)
+	gpushare.GpuSharingEnable = true
+	api.RegisterDevice(gpushare.DeviceName)
+	t.Cleanup(func() {
+		gpushare.GpuSharingEnable = originalGPUSharing
+		api.RegisteredDevices = originalDevices
+	})
+
+	node := util.BuildNode("node1", api.BuildResourceList("8", "8Gi",
+		api.ScalarResource{Name: "pods", Value: "10"},
+		api.ScalarResource{Name: gpushare.VolcanoGPUResource, Value: "16000"},
+		api.ScalarResource{Name: gpushare.VolcanoGPUNumber, Value: "2"},
+	), nil)
+	victim := util.BuildPod("ns1", "victim", node.Name, apiv1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", nil, nil)
+	victim.Spec.Containers[0].Resources.Limits = apiv1.ResourceList{gpushare.VolcanoGPUResource: resource.MustParse("4000")}
+	victim.Annotations[gpushare.GPUIndex] = "1"
+	victim.Annotations[gpushare.PredicateTime] = "1"
+
+	var pp *PredicatesPlugin
+	test := uthelper.TestCommonStruct{
+		Name: "discard-restores-victim",
+		Plugins: map[string]framework.PluginBuilder{
+			PluginName: func(arguments framework.Arguments) framework.Plugin {
+				pp = New(arguments).(*PredicatesPlugin)
+				return pp
+			},
+		},
+		Pods:  []*apiv1.Pod{victim},
+		Nodes: []*apiv1.Node{node},
+		PodGroups: []*schedulingv1beta1.PodGroup{
+			util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning),
+		},
+		Queues: []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, nil)},
+	}
+	enabled := true
+	ssn := test.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{{Name: PluginName, EnabledPredicate: &enabled}}}}, nil)
+	defer test.Close()
+	if _, err := ssn.KubeClient().CoreV1().Pods(victim.Namespace).Create(context.Background(), victim.DeepCopy(), metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	var task *api.TaskInfo
+	for _, job := range ssn.Jobs {
+		for _, running := range job.TaskStatusIndex[api.Running] {
+			if running.Name == victim.Name {
+				task = running
+			}
+		}
+	}
+	if !assert.NotNil(t, task, "the running victim should be in the session") {
+		return
+	}
+	info, err := pp.Handle.SnapshotSharedLister().NodeInfos().Get(node.Name)
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Len(t, info.GetPods(), 1)
+
+	stmt := ssn.Statement()
+	if err := stmt.Evict(task, "test-reclaim"); err != nil {
+		t.Fatal(err)
+	}
+	assert.Empty(t, info.GetPods(), "eviction removes the victim from the predicates node info")
+
+	stmt.Discard()
+	assert.Len(t, info.GetPods(), 1, "discard restores exactly one entry for the victim")
+
+	nodeInfo := ssn.Nodes[node.Name]
+	assert.True(t, nodeInfo.Used.Equal(task.Resreq, api.Zero), "used = %s, want %s", nodeInfo.Used, task.Resreq)
+	assert.True(t, nodeInfo.Releasing.IsEmpty(), "releasing = %s, want empty", nodeInfo.Releasing)
+
+	devices, ok := nodeInfo.Others[gpushare.DeviceName].(*gpushare.GPUDevices)
+	if !assert.True(t, ok, "expected gpushare devices, got %T", nodeInfo.Others[gpushare.DeviceName]) {
+		return
+	}
+	holders := make([]int, 0, len(devices.Device))
+	for id, device := range devices.Device {
+		if _, found := device.PodMap[string(victim.UID)]; found {
+			holders = append(holders, id)
+		}
+	}
+	assert.Equal(t, []int{1}, holders, "a restored victim keeps its original device")
+	assert.Equal(t, "1", task.Pod.Annotations[gpushare.GPUIndex])
 }
 
 func getWorkerAffinity() *apiv1.Affinity {
