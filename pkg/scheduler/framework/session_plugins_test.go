@@ -24,6 +24,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -745,5 +746,64 @@ func TestHyperNodeGradientThreeStates(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestQueueNodeFilterFn(t *testing.T) {
+	nodes := []*api.NodeInfo{{Name: "n1"}, {Name: "n2"}, {Name: "n3"}}
+	enabled, disabled := true, false
+	ssn := &Session{
+		queueNodeFilterFns: make(map[string]api.QueueNodeFilterFn),
+		Tiers: []conf.Tier{{Plugins: []conf.PluginOption{
+			{Name: "disabled", EnabledPredicate: &disabled},
+			{Name: "first", EnabledPredicate: &enabled},
+			{Name: "second", EnabledPredicate: &enabled},
+		}}},
+	}
+	queue := &api.QueueInfo{}
+	assert.Equal(t, nodes, ssn.QueueNodeFilterFn(queue, nodes), "unregistered filters must not change nodes")
+	ssn.AddQueueNodeFilterFn("disabled", func(*api.QueueInfo, []*api.NodeInfo) []*api.NodeInfo {
+		t.Fatal("disabled predicate must not filter candidates")
+		return nil
+	})
+	ssn.AddQueueNodeFilterFn("first", func(_ *api.QueueInfo, input []*api.NodeInfo) []*api.NodeInfo {
+		return input[1:]
+	})
+	ssn.AddQueueNodeFilterFn("second", func(_ *api.QueueInfo, input []*api.NodeInfo) []*api.NodeInfo {
+		assert.Equal(t, nodes[1:], input)
+		return input[:1]
+	})
+	assert.Equal(t, nodes[1:2], ssn.QueueNodeFilterFn(queue, nodes))
+	assert.Len(t, nodes, 3)
+}
+
+func TestQueueNodeFilterEnablement(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		predicate *bool
+		filter    *bool
+		wantCalls int
+	}{
+		{name: "unset flags"},
+		{name: "inherits enabled predicate", predicate: ptr.To(true), wantCalls: 1},
+		{name: "inherits disabled predicate", predicate: ptr.To(false)},
+		{name: "explicitly disabled", predicate: ptr.To(true), filter: ptr.To(false)},
+		{name: "explicitly enabled", predicate: ptr.To(false), filter: ptr.To(true), wantCalls: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ssn := &Session{
+				queueNodeFilterFns: make(map[string]api.QueueNodeFilterFn),
+				Tiers: []conf.Tier{{Plugins: []conf.PluginOption{{
+					Name: "filter", EnabledPredicate: tc.predicate, EnabledQueueNodeFilter: tc.filter,
+				}}}},
+			}
+			calls := 0
+			ssn.AddQueueNodeFilterFn("filter", func(_ *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
+				calls++
+				return nodes
+			})
+			ssn.QueueNodeFilterFn(&api.QueueInfo{}, []*api.NodeInfo{{Name: "n1"}})
+			assert.Equal(t, tc.wantCalls, calls)
+		})
 	}
 }
