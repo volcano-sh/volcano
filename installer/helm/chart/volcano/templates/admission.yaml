@@ -153,6 +153,7 @@ spec:
             {{- if $admission_feature_gates }}
             - --feature-gates={{ $admission_feature_gates }}
             {{- end }}
+            - --enable-root-queue-protection={{ .Values.custom.admission_root_queue_protection_enable }}
             - --enable-healthz=true
             - --logtostderr
             - --port={{.Values.basic.admission_port}}
