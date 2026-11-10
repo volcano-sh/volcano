@@ -157,9 +157,18 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 			// registers no ReclaimableFn.
 			return candidates, util.Permit
 		}
+		if evictCtx.Job == nil {
+			klog.Warningf("[priority] Skip preemption: preemptor job is nil in EvictionContext")
+			return nil, util.Permit
+		}
 		var victims []*api.TaskInfo
 		for _, candidate := range candidates {
 			candidateJob := ssn.Jobs[candidate.Job]
+			if candidateJob == nil {
+				klog.Warningf("[priority] Skip candidate <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+					candidate.Namespace, candidate.Name, candidate.Job)
+				continue
+			}
 			if candidateJob.Priority >= evictCtx.Job.Priority {
 				klog.V(4).Infof("Can not evict task <%v/%v> because victim job priority (%d) >= preemptor job priority (%d)",
 					candidate.Namespace, candidate.Name, candidateJob.Priority, evictCtx.Job.Priority)

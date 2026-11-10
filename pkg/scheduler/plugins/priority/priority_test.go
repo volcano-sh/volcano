@@ -132,6 +132,21 @@ func TestUnifiedEvictableFn_GangReclaimPermitsAll(t *testing.T) {
 			if preemptResult[0].Name != "low-task" {
 				t.Fatalf("GangPreempt: expected low-task as victim, got %s", preemptResult[0].Name)
 			}
+
+			// Orphaned candidate task whose job is absent from ssn.Jobs must be skipped without panicking.
+			orphanedTask := &api.TaskInfo{
+				UID:       "orphaned-uid",
+				Job:       "ns-deleted/pg-deleted",
+				Name:      "orphaned-task",
+				Namespace: "ns-deleted",
+			}
+			withOrphanResult := ssn.UnifiedEvictable(&api.EvictionContext{
+				Kind: api.EvictionKindGangPreempt,
+				Job:  reclaimJob,
+			}, []*api.TaskInfo{orphanedTask, highTask, lowTask})
+			if len(withOrphanResult) != 1 || withOrphanResult[0].Name != "low-task" {
+				t.Fatalf("GangPreempt with orphaned candidate: expected only low-task, got %+v", withOrphanResult)
+			}
 		})
 	}
 }

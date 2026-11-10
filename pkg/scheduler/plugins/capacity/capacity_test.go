@@ -2266,3 +2266,90 @@ func TestBuildQueueAttrsMetricConsistency(t *testing.T) {
 		t.Errorf("q1 allocated: got %v, want %v (from job)", q1Attr.allocated, expectedQ1)
 	}
 }
+
+func TestUnifiedEvictableFn_SkipsOrphanedTasksAndUnknownQueues(t *testing.T) {
+	trueValue := true
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+	p1 := util.BuildPod("ns1", "victim-pod", "n1", corev1.PodRunning, api.BuildResourceList("4", "4Gi"), "pg1", make(map[string]string), make(map[string]string))
+	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning)
+
+	root := util.BuildQueueWithResourcesQuantity("root", api.BuildResourceList("8", "8Gi"), api.BuildResourceList("8", "8Gi"))
+	// q1 has deserved 2 CPU / 2Gi, but allocated 4 CPU / 4Gi -> over deserved, so victim-pod is reclaimable.
+	queue1 := util.BuildQueueWithResourcesQuantity("q1", api.BuildResourceList("2", "2Gi"), api.BuildResourceList("8", "8Gi"))
+
+	binder := util.NewFakeBinder(10)
+	evictor := util.NewFakeEvictor(0)
+	statusUpdater := &util.FakeStatusUpdater{}
+	stop := make(chan struct{})
+	defer close(stop)
+
+	sc := cache.NewCustomMockSchedulerCache("test-capacity-evict", binder, evictor, statusUpdater, nil, nil)
+	sc.Run(stop)
+	sc.AddOrUpdateNode(n1)
+	sc.AddPod(p1)
+	sc.AddPodGroupV1beta1(pg1)
+	sc.AddQueueV1beta1(root)
+	sc.AddQueueV1beta1(queue1)
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledReclaimable: &trueValue,
+				},
+			},
+		},
+	}
+
+	ssn := framework.OpenSession(sc, tiers, nil)
+	defer framework.CloseSession(ssn)
+
+	cp := New(nil).(*capacityPlugin)
+	cp.OnSessionOpen(ssn)
+
+	var validTask *api.TaskInfo
+	for _, job := range ssn.Jobs {
+		for _, task := range job.Tasks {
+			validTask = task
+		}
+	}
+	if validTask == nil {
+		t.Fatal("expected validTask in session")
+	}
+
+	// 1. Orphaned task whose Job is not in ssn.Jobs
+	orphanedTask := &api.TaskInfo{
+		UID:       "orphan-task-1",
+		Job:       "ns1/deleted-pg",
+		Name:      "orphan-pod",
+		Namespace: "ns1",
+		Resreq:    api.NewResource(api.BuildResourceList("1", "1Gi")),
+	}
+
+	// 2. Task whose Job exists in ssn.Jobs but points to a Queue absent from cp.queueOpts
+	ssn.Jobs["ns1/unknown-queue-pg"] = &api.JobInfo{
+		UID:   "ns1/unknown-queue-pg",
+		Name:  "unknown-queue-pg",
+		Queue: "non-existent-queue",
+	}
+	unknownQueueTask := &api.TaskInfo{
+		UID:       "unknown-queue-task-1",
+		Job:       "ns1/unknown-queue-pg",
+		Name:      "unknown-queue-pod",
+		Namespace: "ns1",
+		Resreq:    api.NewResource(api.BuildResourceList("1", "1Gi")),
+	}
+
+	victims := ssn.UnifiedEvictable(&api.EvictionContext{
+		Kind: api.EvictionKindGangReclaim,
+	}, []*api.TaskInfo{orphanedTask, unknownQueueTask, validTask})
+
+	// Clean up synthetic job before CloseSession
+	delete(ssn.Jobs, "ns1/unknown-queue-pg")
+
+	if len(victims) != 1 || victims[0].UID != validTask.UID {
+		t.Fatalf("expected only validTask (%s) to be returned as victim, got %+v", validTask.UID, victims)
+	}
+}
