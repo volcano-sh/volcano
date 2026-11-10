@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling"
 
@@ -36,8 +37,8 @@ type emptyGradientPlugin struct{}
 func (p *emptyGradientPlugin) Name() string { return emptyGradientPluginName }
 
 func (p *emptyGradientPlugin) OnSessionOpen(ssn *framework.Session) {
-	ssn.AddHyperNodeGradientForJobFn(p.Name(), func(*api.JobInfo, *api.HyperNodeInfo, api.SearchPurpose) [][]*api.HyperNodeInfo {
-		return nil
+	ssn.AddHyperNodeGradientForJobFn(p.Name(), func(*api.JobInfo, *api.HyperNodeInfo, api.SearchPurpose) api.HyperNodeGradientResult {
+		return api.HyperNodeGradientResult{}
 	})
 }
 
@@ -84,6 +85,42 @@ func TestGetCandidateDomains_EmptyGradient_HardTopologyNoFallback(t *testing.T) 
 	assert.Empty(t, domains)
 }
 
+func TestGetCandidateDomains_EmptyGradient_HardPodGroupAntiAffinityNoFallback(t *testing.T) {
+	framework.RegisterPluginBuilder(emptyGradientPluginName, func(framework.Arguments) framework.Plugin {
+		return &emptyGradientPlugin{}
+	})
+	defer framework.CleanupPluginBuilders()
+
+	schedulerCache := &cache.SchedulerCache{
+		Nodes:             map[string]*api.NodeInfo{},
+		Jobs:              map[api.JobID]*api.JobInfo{},
+		Queues:            map[api.QueueID]*api.QueueInfo{},
+		HyperNodesInfo:    api.NewHyperNodesInfo(nil),
+		InUseNodesInShard: sets.Set[string]{},
+	}
+	ssn := framework.OpenSession(schedulerCache, []conf.Tier{{Plugins: []conf.PluginOption{{
+		Name:                     emptyGradientPluginName,
+		EnabledHyperNodeGradient: boolPtr(true),
+	}}}}, nil)
+	defer framework.CloseSession(ssn)
+
+	ssn.HyperNodes = map[string]*api.HyperNodeInfo{
+		framework.ClusterTopHyperNode: {Name: framework.ClusterTopHyperNode},
+	}
+	tier := int32(1)
+	job := &api.JobInfo{PodGroup: &api.PodGroup{PodGroup: scheduling.PodGroup{
+		Spec: scheduling.PodGroupSpec{TopologyAffinity: &scheduling.TopologyAffinitySpec{
+			PodGroupAntiAffinity: &scheduling.PodGroupAntiAffinity{Required: []scheduling.PodGroupAffinityTerm{{
+				PodGroupSelector: &metav1.LabelSelector{},
+				TopologyTier:     &tier,
+			}}},
+		}},
+	}}}
+
+	domains := GetCandidateDomains(ssn, job, 8)
+	assert.Empty(t, domains, "required PodGroup anti-affinity must not fall back to the cluster root")
+}
+
 func TestGetCandidateDomains_EmptyGradient_NonHardTopologyFallbackToRoot(t *testing.T) {
 	framework.RegisterPluginBuilder(emptyGradientPluginName, func(framework.Arguments) framework.Plugin {
 		return &emptyGradientPlugin{}
@@ -118,3 +155,68 @@ func TestGetCandidateDomains_EmptyGradient_NonHardTopologyFallbackToRoot(t *test
 }
 
 func boolPtr(v bool) *bool { return &v }
+
+// TestApplySubJobNominations_SetsNominationAndMarksJobDirty asserts the helper
+// both pins each SubJob's NominatedHyperNode and marks the job dirty so the
+// cache writeback path persists the pin into the next scheduling cycle.
+func TestApplySubJobNominations_SetsNominationAndMarksJobDirty(t *testing.T) {
+	jobID := api.JobID("ns/job")
+	subA := api.SubJobID("sub-a")
+	subB := api.SubJobID("sub-b")
+	job := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subA: {UID: subA, Job: jobID},
+			subB: {UID: subB, Job: jobID},
+		},
+	}
+	ssn := &framework.Session{DirtyJobs: sets.New[api.JobID]()}
+
+	ApplySubJobNominations(ssn, job, map[api.SubJobID]string{
+		subA: "hn-a",
+		subB: "hn-b",
+	})
+
+	assert.Equal(t, "hn-a", job.SubJobs[subA].NominatedHyperNode)
+	assert.Equal(t, "hn-b", job.SubJobs[subB].NominatedHyperNode)
+	assert.True(t, ssn.DirtyJobs.Has(jobID),
+		"job must be marked dirty so cache.updateJobInfo propagates NominatedHyperNode")
+}
+
+// TestApplySubJobNominations_EmptyHyperNodeSkipped ensures empty entries do
+// not overwrite an existing pin or mark the job dirty by themselves.
+func TestApplySubJobNominations_EmptyHyperNodeSkipped(t *testing.T) {
+	jobID := api.JobID("ns/job")
+	sub := api.SubJobID("sub-a")
+	job := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			sub: {UID: sub, Job: jobID, NominatedHyperNode: "existing"},
+		},
+	}
+	ssn := &framework.Session{DirtyJobs: sets.New[api.JobID]()}
+
+	ApplySubJobNominations(ssn, job, map[api.SubJobID]string{sub: ""})
+
+	assert.Equal(t, "existing", job.SubJobs[sub].NominatedHyperNode,
+		"empty hyperNode entry must not overwrite an existing nomination")
+	assert.False(t, ssn.DirtyJobs.Has(jobID),
+		"no-op application must not mark the job dirty")
+}
+
+// TestApplySubJobNominations_NilSessionDoesNotPanic guards the helper from
+// callers (e.g. legacy tests) that don't pass a session.
+func TestApplySubJobNominations_NilSessionDoesNotPanic(t *testing.T) {
+	jobID := api.JobID("ns/job")
+	sub := api.SubJobID("sub-a")
+	job := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			sub: {UID: sub, Job: jobID},
+		},
+	}
+	assert.NotPanics(t, func() {
+		ApplySubJobNominations(nil, job, map[api.SubJobID]string{sub: "hn"})
+	})
+	assert.Equal(t, "hn", job.SubJobs[sub].NominatedHyperNode)
+}

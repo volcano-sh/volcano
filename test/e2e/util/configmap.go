@@ -18,6 +18,7 @@ package util
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/onsi/gomega"
@@ -25,6 +26,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 )
 
 type ConfigMapCase struct {
@@ -59,14 +61,14 @@ func (c *ConfigMapCase) ChangeBy(fn func(data map[string]string) (changed bool, 
 		c.ocm, c.undoData = cm, changedBefore
 
 		// add pod/volcano-scheduler.annotation to update Mounted-ConfigMaps immediately
-		schedulerPods, err := KubeClient.CoreV1().Pods("volcano-system").List(context.TODO(), metav1.ListOptions{LabelSelector: "app=volcano-scheduler"})
+		schedulerPods, err := KubeClient.CoreV1().Pods(c.NameSpace).List(context.TODO(), metav1.ListOptions{LabelSelector: "app=volcano-scheduler"})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		for _, scheduler := range schedulerPods.Items {
 			if scheduler.Annotations == nil {
 				scheduler.Annotations = make(map[string]string)
 			}
 			scheduler.Annotations["refreshts"] = time.Now().Format("060102150405.000")
-			_, err = KubeClient.CoreV1().Pods("volcano-system").Update(context.TODO(), &scheduler, metav1.UpdateOptions{})
+			_, err = KubeClient.CoreV1().Pods(c.NameSpace).Update(context.TODO(), &scheduler, metav1.UpdateOptions{})
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		}
 		c.startTs = time.Now()
@@ -79,33 +81,48 @@ func (c *ConfigMapCase) UndoChanged() error {
 	if len(c.undoData) == 0 {
 		return nil
 	}
-	for filename, old := range c.undoData {
-		c.ocm.Data[filename] = old
-	}
 	atLeast := time.Second // at least 1s wait between 2 configmap-change
 	if dur := time.Now().Sub(c.startTs); dur < atLeast {
 		time.Sleep(atLeast - dur)
 	}
-	cm, err := KubeClient.CoreV1().ConfigMaps(c.NameSpace).Update(context.TODO(), c.ocm, metav1.UpdateOptions{})
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		cm, err := KubeClient.CoreV1().ConfigMaps(c.NameSpace).Get(context.TODO(), c.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		for filename, old := range c.undoData {
+			cm.Data[filename] = old
+		}
+		c.ocm, err = KubeClient.CoreV1().ConfigMaps(c.NameSpace).Update(context.TODO(), cm, metav1.UpdateOptions{})
+		return err
+	})
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	c.ocm = cm
 
 	// add pod/volcano-scheduler.annotation to update Mounted-ConfigMaps immediately
-	schedulerPods, err := KubeClient.CoreV1().Pods("volcano-system").List(context.TODO(), metav1.ListOptions{LabelSelector: "app=volcano-scheduler"})
+	schedulerPods, err := KubeClient.CoreV1().Pods(c.NameSpace).List(context.TODO(), metav1.ListOptions{LabelSelector: "app=volcano-scheduler"})
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	for _, scheduler := range schedulerPods.Items {
 		if scheduler.Annotations == nil {
 			scheduler.Annotations = make(map[string]string)
 		}
 		scheduler.Annotations["refreshts"] = time.Now().Format("060102150405.000")
-		_, err = KubeClient.CoreV1().Pods("volcano-system").Update(context.TODO(), &scheduler, metav1.UpdateOptions{})
+		_, err = KubeClient.CoreV1().Pods(c.NameSpace).Update(context.TODO(), &scheduler, metav1.UpdateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 	return nil
 }
 
 func ModifySchedulerConfig(data map[string]string, modifier func(*SchedulerConfiguration) bool) (changed bool, changedBefore map[string]string) {
-	vcScheConfStr, ok := data["volcano-scheduler-ci.conf"]
+	configKey := "volcano-scheduler-ci.conf"
+	vcScheConfStr, ok := data[configKey]
+	if !ok {
+		for key, value := range data {
+			if strings.HasPrefix(key, "volcano-scheduler") && strings.HasSuffix(key, ".conf") {
+				configKey, vcScheConfStr, ok = key, value, true
+				break
+			}
+		}
+	}
 	gomega.Expect(ok).To(gomega.BeTrue())
 
 	schedulerConf := &SchedulerConfiguration{}
@@ -121,8 +138,8 @@ func ModifySchedulerConfig(data map[string]string, modifier func(*SchedulerConfi
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	changedBefore = make(map[string]string)
-	changedBefore["volcano-scheduler-ci.conf"] = vcScheConfStr
-	data["volcano-scheduler-ci.conf"] = string(newVCScheConfBytes)
+	changedBefore[configKey] = vcScheConfStr
+	data[configKey] = string(newVCScheConfBytes)
 	return
 }
 

@@ -24,7 +24,7 @@ import (
 // Interface provides access to all the informers in this group version.
 type Interface interface {
 	// ColocationConfigurations returns a ColocationConfigurationInformer.
-	ColocationConfigurations() ColocationConfigurationInformer
+	ColocationConfigurations() TypedColocationConfigurationInformer
 }
 
 type version struct {
@@ -38,7 +38,7 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// ColocationConfigurations returns a ColocationConfigurationInformer.
-func (v *version) ColocationConfigurations() ColocationConfigurationInformer {
+// ColocationConfigurations returns a TypedColocationConfigurationInformer.
+func (v *version) ColocationConfigurations() TypedColocationConfigurationInformer {
 	return &colocationConfigurationInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

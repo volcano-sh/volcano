@@ -89,7 +89,7 @@ type JobSpec struct {
 	// Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
 	// +kubebuilder:default:="default"
 	// +kubebuilder:validation:MaxLength=253
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+	// +kubebuilder:validation:Pattern=`^(namespace/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	// +optional
 	Queue string `json:"queue,omitempty" protobuf:"bytes,8,opt,name=queue"`
 
@@ -555,7 +555,9 @@ type CronJobSpec struct {
 	// +optional
 	SuccessfulJobsHistoryLimit *int32 `json:"successfulJobsHistoryLimit,omitempty" protobuf:"varint,7,opt,name=successfulJobsHistoryLimit"`
 
-	// The number of failed finished jobs to retain.
+	// The maximum combined number of finished jobs in the Failed or Terminated
+	// phase to retain. Terminated jobs share this limit with Failed jobs;
+	// their phase remains Terminated.
 	// This is a pointer to distinguish between explicit zero and not specified.
 	// Defaults to 1.
 	// +kubebuilder:default=1

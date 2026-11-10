@@ -91,6 +91,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Nodeinfo().V1alpha1().Numatopologies().Informer()}, nil
 
 		// Group=scheduling.volcano.sh, Version=v1beta1
+	case v1beta1.SchemeGroupVersion.WithResource("namespacequeues"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1beta1().NamespaceQueues().Informer()}, nil
 	case v1beta1.SchemeGroupVersion.WithResource("podgroups"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1beta1().PodGroups().Informer()}, nil
 	case v1beta1.SchemeGroupVersion.WithResource("queues"):

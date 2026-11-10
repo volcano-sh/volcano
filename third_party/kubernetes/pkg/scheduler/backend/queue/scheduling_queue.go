@@ -327,8 +327,8 @@ func newQueuedPodInfoForLookup(pod *v1.Pod, plugins ...string) *framework.Queued
 	// Since this is only used for a lookup in the queue, we only need to set the Pod,
 	// and so we avoid creating a full PodInfo, which is expensive to instantiate frequently.
 	return &framework.QueuedPodInfo{
-		PodInfo:              &framework.PodInfo{Pod: pod},
-		UnschedulablePlugins: sets.New(plugins...),
+		PodInfo:        &framework.PodInfo{Pod: pod},
+		QueueingParams: framework.QueueingParams{UnschedulablePlugins: sets.New(plugins...)},
 	}
 }
 
@@ -346,7 +346,8 @@ func NewPriorityQueue(
 		opt(&options)
 	}
 
-	isSchedulingQueueHintEnabled := utilfeature.DefaultFeatureGate.Enabled(features.SchedulerQueueingHints)
+	// SchedulerQueueingHints is GA (locked on since 1.34) and was removed in Kubernetes 1.37.
+	isSchedulingQueueHintEnabled := true
 	isPopFromBackoffQEnabled := utilfeature.DefaultFeatureGate.Enabled(features.SchedulerPopFromBackoffQ)
 	lessConverted := convertLessFn(lessFn)
 
@@ -356,7 +357,7 @@ func NewPriorityQueue(
 		stop:                              make(chan struct{}),
 		podMaxInUnschedulablePodsDuration: options.podMaxInUnschedulablePodsDuration,
 		backoffQ:                          backoffQ,
-		unschedulablePods:                 newUnschedulablePods(metrics.NewUnschedulablePodsRecorder(), metrics.NewGatedPodsRecorder()),
+		unschedulablePods:                 newUnschedulablePods(metrics.NewUnschedulableEntitiesRecorder(), metrics.NewGatedEntitiesRecorder()),
 		preEnqueuePluginMap:               options.preEnqueuePluginMap,
 		queueingHintMap:                   options.queueingHintMap,
 		pluginToEventsMap:                 buildEventMap(options.queueingHintMap),
@@ -371,7 +372,7 @@ func NewPriorityQueue(
 	if isPopFromBackoffQEnabled {
 		backoffQPopper = backoffQ
 	}
-	pq.activeQ = newActiveQueue(heap.NewWithRecorder(podInfoKeyFunc, heap.LessFunc[*framework.QueuedPodInfo](lessConverted), metrics.NewActivePodsRecorder()), isSchedulingQueueHintEnabled, options.metricsRecorder, backoffQPopper)
+	pq.activeQ = newActiveQueue(heap.NewWithRecorder(podInfoKeyFunc, heap.LessFunc[*framework.QueuedPodInfo](lessConverted), metrics.NewActiveEntitiesRecorder()), isSchedulingQueueHintEnabled, options.metricsRecorder, backoffQPopper)
 	pq.nsLister = informerFactory.Core().V1().Namespaces().Lister()
 
 	return pq
@@ -1002,7 +1003,7 @@ func (p *PriorityQueue) Update(logger klog.Logger, oldPod, newPod *v1.Pod) {
 
 	var events []schedfwk.ClusterEvent
 	if p.isSchedulingQueueHintEnabled {
-		events = framework.PodSchedulingPropertiesChange(newPod, oldPod)
+		events = framework.PodSchedulingPropertiesChange(newPod, oldPod, true)
 	}
 
 	updated := false
@@ -1044,7 +1045,13 @@ func (p *PriorityQueue) Update(logger klog.Logger, oldPod, newPod *v1.Pod) {
 
 	// If the pod is in the unschedulable queue, updating it may make it schedulable.
 	if pInfo := p.unschedulablePods.get(newPod); pInfo != nil {
-		_ = pInfo.Update(newPod)
+		if _, err := pInfo.Update(newPod); err != nil {
+			logger.Error(err, "Failed to update pod in the unschedulable queue", "pod", klog.KObj(newPod))
+			if added := p.moveToActiveQ(logger, p.newQueuedPodInfo(newPod), framework.EventUnscheduledPodUpdate.Label(), false); added {
+				p.activeQ.broadcast()
+			}
+			return
+		}
 		if p.isSchedulingQueueHintEnabled {
 			// When unscheduled Pods are updated, we check with QueueingHint
 			// whether the update may make the pods schedulable.
@@ -1336,7 +1343,11 @@ func (p *PriorityQueue) PendingPods() ([]*v1.Pod, string) {
 func (p *PriorityQueue) PatchPodStatus(pod *v1.Pod, condition *v1.PodCondition, nominatingInfo *schedfwk.NominatingInfo) (<-chan error, error) {
 	// Don't store anything in the cache. This might be extended in the next releases.
 	onFinish := make(chan error, 1)
-	err := p.apiDispatcher.Add(apicalls.Implementations.PodStatusPatch(pod, condition, nominatingInfo), schedfwk.APICallOptions{
+	var conditions []*v1.PodCondition
+	if condition != nil {
+		conditions = []*v1.PodCondition{condition}
+	}
+	err := p.apiDispatcher.Add(apicalls.Implementations.PodStatusPatch(pod, conditions, nominatingInfo), schedfwk.APICallOptions{
 		OnFinish: onFinish,
 	})
 	if schedfwk.IsUnexpectedError(err) {
@@ -1361,10 +1372,12 @@ func (p *PriorityQueue) newQueuedPodInfo(pod *v1.Pod, plugins ...string) *framew
 	// and we can't fix the validation for backwards compatibility.
 	podInfo, _ := framework.NewPodInfo(pod)
 	return &framework.QueuedPodInfo{
-		PodInfo:                 podInfo,
-		Timestamp:               now,
-		InitialAttemptTimestamp: nil,
-		UnschedulablePlugins:    sets.New(plugins...),
+		PodInfo: podInfo,
+		QueueingParams: framework.QueueingParams{
+			Timestamp:               now,
+			InitialAttemptTimestamp: nil,
+			UnschedulablePlugins:    sets.New(plugins...),
+		},
 	}
 }
 

@@ -112,6 +112,20 @@ my-pod2        0/1        Running        0        3d
 my-pod3        0/1        Running        0        3d`,
 		},
 		{
+			name: "NamespaceQueue queueName filter",
+			Response: &corev1.PodList{
+				Items: []corev1.Pod{
+					buildPod("default", "my-pod1",
+						map[string]string{v1alpha1.JobNameKey: "my-job1"},
+						map[string]string{schedulingv1beta1.QueueNameAnnotationKey: "namespace/training"}),
+				},
+			},
+			Namespace: "default",
+			QueueName: "namespace/training",
+			ExpectedOutput: "Name           Ready      Status         Restart  Age       \n" +
+				"my-pod1        0/1        Running        0        3d",
+		},
+		{
 			name: "Normal Case with queueName filter and jobName filter",
 			Response: &corev1.PodList{
 				Items: []corev1.Pod{
@@ -125,6 +139,22 @@ my-pod3        0/1        Running        0        3d`,
 			ExpectedErr: nil,
 			ExpectedOutput: `Name           Ready      Status         Restart  Age       
 my-pod1        0/1        Running        0        3d`,
+		},
+		{
+			name: "NamespaceQueue queueName filter and jobName filter",
+			Response: &corev1.PodList{
+				Items: []corev1.Pod{
+					buildPod("default", "my-pod1",
+						map[string]string{v1alpha1.JobNameKey: "my-job1"},
+						map[string]string{schedulingv1beta1.QueueNameAnnotationKey: "namespace/training"}),
+				},
+			},
+			Namespace:   "default",
+			QueueName:   "namespace/training",
+			JobName:     "my-job1",
+			ExpectedErr: nil,
+			ExpectedOutput: "Name           Ready      Status         Restart  Age       \n" +
+				"my-pod1        0/1        Running        0        3d",
 		},
 		{
 			name: "Normal Case with queueName filter and jobName filter, and does not match",

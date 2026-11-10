@@ -34,15 +34,18 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	kubetesting "k8s.io/client-go/testing"
 	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclientfake "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
@@ -564,6 +567,74 @@ func TestNewDefaultAndRootQueue(t *testing.T) {
 	}
 }
 
+func TestNewDefaultAndRootQueueInitializesNamespaceQueueAuthorization(t *testing.T) {
+	tests := []struct {
+		name             string
+		namespaceQueue   bool
+		initialQueueSpec *vcv1beta1.QueueSpec
+		wantAllowed      []string
+	}{
+		{
+			name:           "new default queue with NamespaceQueue enabled",
+			namespaceQueue: true,
+			wantAllowed:    []string{"*"},
+		},
+		{
+			name:           "new default queue with NamespaceQueue disabled",
+			namespaceQueue: false,
+		},
+		{
+			name:           "existing default queue with explicit allowedNamespaces is preserved",
+			namespaceQueue: true,
+			initialQueueSpec: &vcv1beta1.QueueSpec{
+				AllowedNamespaces: []string{"team-a"},
+			},
+			wantAllowed: []string{"team-a"},
+		},
+		{
+			name:           "existing default queue with explicit empty allowedNamespaces is preserved",
+			namespaceQueue: true,
+			initialQueueSpec: &vcv1beta1.QueueSpec{
+				AllowedNamespaces: []string{},
+			},
+			wantAllowed: []string{},
+		},
+		{
+			name:             "existing default queue without allowedNamespaces is upgraded",
+			namespaceQueue:   true,
+			initialQueueSpec: &vcv1beta1.QueueSpec{},
+			wantAllowed:      []string{"*"},
+		},
+		{
+			name:             "existing default queue is untouched with NamespaceQueue disabled",
+			namespaceQueue:   false,
+			initialQueueSpec: &vcv1beta1.QueueSpec{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, tt.namespaceQueue)
+
+			var objects []runtime.Object
+			if tt.initialQueueSpec != nil {
+				objects = append(objects, &vcv1beta1.Queue{
+					ObjectMeta: metav1.ObjectMeta{Name: "default"},
+					Spec:       *tt.initialQueueSpec,
+				})
+			}
+			client := vcclientfake.NewSimpleClientset(objects...)
+			newDefaultAndRootQueue(client, "default")
+
+			queue, err := client.SchedulingV1beta1().Queues().Get(context.TODO(), "default", metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("failed to get default queue: %v", err)
+			}
+			assert.Equal(t, tt.wantAllowed, queue.Spec.AllowedNamespaces)
+		})
+	}
+}
+
 // mockHandlerRegistration is a mock implementation of cache.ResourceEventHandlerRegistration
 type mockHandlerRegistration struct {
 	synced bool
@@ -880,4 +951,198 @@ func TestAddUnassignedNumaPods_NilNodeValueSkips(t *testing.T) {
 		t.Fatalf("AddUnassignedNumaPods returned error: %v", err)
 	}
 	// No panic is the success condition.
+}
+
+// TestUpdateJobInfo_PropagatesNominatedHyperNode locks in the cache writeback
+// for gangpreempt/gangreclaim's NominatedHyperNode pin. Without this
+// propagation the pin is wiped by the next Snapshot+CloneStatusFrom, defeating
+// the per-subJob fast path in allocate.
+func TestUpdateJobInfo_PropagatesNominatedHyperNode(t *testing.T) {
+	jobID := api.JobID("ns/job")
+	subID := api.SubJobID("sub-1")
+
+	cached := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subID: {UID: subID, Job: jobID},
+		},
+	}
+	sc := &SchedulerCache{
+		Jobs: map[api.JobID]*api.JobInfo{jobID: cached},
+	}
+
+	// Session-side copy carries the gangpreempt/gangreclaim decision.
+	sessionView := &api.JobInfo{
+		UID:                          jobID,
+		AllocatedHyperNode:           "hn-allocated",
+		AllocatedHyperNodeGeneration: 7,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subID: {
+				UID:                subID,
+				Job:                jobID,
+				AllocatedHyperNode: "hn-allocated",
+				NominatedHyperNode: "hn-nominated",
+			},
+		},
+	}
+
+	sc.updateJobInfo(sessionView)
+
+	assert.Equal(t, "hn-allocated", cached.AllocatedHyperNode)
+	assert.Equal(t, uint64(7), cached.AllocatedHyperNodeGeneration)
+	assert.Equal(t, "hn-allocated", cached.SubJobs[subID].AllocatedHyperNode)
+	assert.Equal(t, "hn-nominated", cached.SubJobs[subID].NominatedHyperNode,
+		"cache must persist NominatedHyperNode so the next cycle honors the gang-eviction pin")
+}
+
+// TestUpdateJobInfo_PropagatesNominationClear ensures that when allocate
+// clears NominatedHyperNode after consuming the pin, the empty value also
+// makes it back into the cache so the next session does not retry the stale
+// pin via the fast path.
+func TestUpdateJobInfo_PropagatesNominationClear(t *testing.T) {
+	jobID := api.JobID("ns/job")
+	subID := api.SubJobID("sub-1")
+
+	cached := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subID: {UID: subID, Job: jobID, NominatedHyperNode: "hn-nominated"},
+		},
+	}
+	sc := &SchedulerCache{
+		Jobs: map[api.JobID]*api.JobInfo{jobID: cached},
+	}
+
+	sessionView := &api.JobInfo{
+		UID: jobID,
+		SubJobs: map[api.SubJobID]*api.SubJobInfo{
+			subID: {UID: subID, Job: jobID, NominatedHyperNode: ""},
+		},
+	}
+
+	sc.updateJobInfo(sessionView)
+
+	assert.Equal(t, "", cached.SubJobs[subID].NominatedHyperNode,
+		"cache must mirror allocate's clear-on-commit so the next cycle does not retry the consumed nomination")
+}
+
+// TestTaskUnschedulable_SyncsNominatedNodeNameToCache locks in that a
+// successful UpdatePodStatus with a non-empty nominatedNodeName is reflected
+// on the cache task's Pod pointer synchronously, without waiting on the pod
+// informer round-trip. This pairs with updateJobInfo's synchronous writeback
+// of NominatedHyperNode so the next session Snapshot sees a consistent
+// (NominatedHyperNode, NominatedNodeName) pair and validateNomination does
+// not spuriously invalidate the gangpreempt/gangreclaim pin.
+func TestTaskUnschedulable_SyncsNominatedNodeNameToCache(t *testing.T) {
+	owner := buildOwnerReference("j1")
+	pod := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"),
+		[]metav1.OwnerReference{owner}, make(map[string]string))
+	task := api.NewTaskInfo(pod)
+
+	job := api.NewJobInfo(task.Job, task)
+	sc := &SchedulerCache{
+		Jobs:          map[api.JobID]*api.JobInfo{task.Job: job},
+		StatusUpdater: &util.FakeStatusUpdater{},
+		Recorder:      record.NewFakeRecorder(32),
+	}
+
+	err := sc.taskUnschedulable(task, api.PodReasonUnschedulable, "pending", "n-nominated")
+	assert.NoError(t, err)
+
+	cachedTask, ok := sc.Jobs[task.Job].Tasks[task.UID]
+	assert.True(t, ok, "cache must still track the task after taskUnschedulable")
+	assert.Equal(t, "n-nominated", cachedTask.Pod.Status.NominatedNodeName,
+		"cache task's NominatedNodeName must reflect the API-server write synchronously, without waiting on the pod informer")
+	assert.Equal(t, "", pod.Status.NominatedNodeName,
+		"the caller's original Pod pointer must be untouched (taskUnschedulable deep-copies before mutating)")
+}
+
+// TestTaskUnschedulable_DoesNotSyncWhenNominatedNodeNameEmpty guards that
+// the cache sync only runs when we actually wrote a nominatedNodeName. The
+// empty-nominated case is used for regular unschedulable reasons that must
+// not clobber a previously written NominatedNodeName (per the existing
+// updateNomiNode guard).
+func TestTaskUnschedulable_DoesNotSyncWhenNominatedNodeNameEmpty(t *testing.T) {
+	owner := buildOwnerReference("j1")
+	pod := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"),
+		[]metav1.OwnerReference{owner}, make(map[string]string))
+	pod.Status.NominatedNodeName = "n-previous"
+	task := api.NewTaskInfo(pod)
+
+	job := api.NewJobInfo(task.Job, task)
+	sc := &SchedulerCache{
+		Jobs:          map[api.JobID]*api.JobInfo{task.Job: job},
+		StatusUpdater: &util.FakeStatusUpdater{},
+		Recorder:      record.NewFakeRecorder(32),
+	}
+
+	// Call taskUnschedulable with an empty nominatedNodeName - the sync
+	// must NOT touch the cached pod pointer for this case.
+	originalPod := sc.Jobs[task.Job].Tasks[task.UID].Pod
+	err := sc.taskUnschedulable(task, api.PodReasonUnschedulable, "still pending", "")
+	assert.NoError(t, err)
+	assert.Same(t, originalPod, sc.Jobs[task.Job].Tasks[task.UID].Pod,
+		"cache pod pointer must not be swapped when nominatedNodeName is empty")
+	assert.Equal(t, "n-previous", sc.Jobs[task.Job].Tasks[task.UID].Pod.Status.NominatedNodeName,
+		"previously written NominatedNodeName must remain intact")
+}
+
+// addDRAResource accumulates a user-controlled device count. A pod with two
+// same-deviceClass requests each near math.MaxInt64 (both individually valid:
+// the apiserver only rejects count <= 0) must not wrap the aggregate Count to a
+// negative value, which would later bypass the queue's DRA quota check.
+func TestAddDRAResource_saturates(t *testing.T) {
+	const dc = "gpu.example.com"
+	const maxInt64 = math.MaxInt64
+
+	m := make(map[string]*api.DRAResource)
+	addDRAResource(m, dc, maxInt64, nil)
+	addDRAResource(m, dc, maxInt64, nil)
+
+	if got := m[dc].Count; got < 0 {
+		t.Fatalf("addDRAResource wrapped to a negative aggregate Count (%d) for two MaxInt64 requests; want saturated non-negative", got)
+	}
+	if got := m[dc].Count; got != maxInt64 {
+		t.Fatalf("addDRAResource Count = %d for two MaxInt64 requests; want saturated to MaxInt64 (%d)", got, maxInt64)
+	}
+}
+
+func TestUpdateJobInfoPreservesNewerTaskPlacement(t *testing.T) {
+	cached := api.NewJobInfo("job")
+	cached.TaskPlacementGeneration = 4
+	cached.AllocatedTaskPlacementGeneration = 3
+	cached.AllocatedHyperNode = "cached"
+	session := cached.Clone()
+	cached.SubJobs["sub"] = &api.SubJobInfo{UID: "sub", Job: cached.UID, AllocatedHyperNode: "cached"}
+	session.SubJobs["sub"] = &api.SubJobInfo{UID: "sub", Job: cached.UID}
+	session.AllocatedHyperNode = "session"
+	session.SubJobs["sub"].AllocatedHyperNode = "session"
+	session.AllocatedTaskPlacementGeneration = 4
+	session.AllocatedHyperNodeGeneration = 8
+	session.AllocatedHyperNodeDirty = true
+	sc := &SchedulerCache{Jobs: map[api.JobID]*api.JobInfo{cached.UID: cached}}
+
+	// An informer event arrived after the Session snapshot.
+	cached.TaskPlacementGeneration++
+	sc.updateJobInfo(session)
+	assert.Equal(t, "cached", cached.AllocatedHyperNode)
+	assert.Equal(t, "cached", cached.SubJobs["sub"].AllocatedHyperNode)
+	assert.Equal(t, uint64(3), cached.AllocatedTaskPlacementGeneration)
+	assert.Equal(t, uint64(5), cached.TaskPlacementGeneration)
+	assert.False(t, cached.AllocatedHyperNodeDirty)
+
+	// A Session from the current task version can acknowledge reconciliation.
+	session.TaskPlacementGeneration = 5
+	session.AllocatedTaskPlacementGeneration = 5
+	sc.updateJobInfo(session)
+	assert.Equal(t, "session", cached.AllocatedHyperNode)
+	assert.Equal(t, "session", cached.SubJobs["sub"].AllocatedHyperNode)
+	assert.Equal(t, uint64(5), cached.AllocatedTaskPlacementGeneration)
+	assert.Equal(t, uint64(8), cached.AllocatedHyperNodeGeneration)
+	assert.True(t, cached.AllocatedHyperNodeDirty)
+	assert.True(t, cached.Clone().AllocatedHyperNodeDirty)
+
+	session.AllocatedHyperNodeDirty = false
+	sc.updateJobInfo(session)
+	assert.False(t, cached.AllocatedHyperNodeDirty)
 }

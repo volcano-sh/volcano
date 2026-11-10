@@ -23,10 +23,12 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
+	// NamespaceQueues returns a NamespaceQueueInformer.
+	NamespaceQueues() TypedNamespaceQueueInformer
 	// PodGroups returns a PodGroupInformer.
-	PodGroups() PodGroupInformer
+	PodGroups() TypedPodGroupInformer
 	// Queues returns a QueueInformer.
-	Queues() QueueInformer
+	Queues() TypedQueueInformer
 }
 
 type version struct {
@@ -40,12 +42,17 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// PodGroups returns a PodGroupInformer.
-func (v *version) PodGroups() PodGroupInformer {
+// NamespaceQueues returns a TypedNamespaceQueueInformer.
+func (v *version) NamespaceQueues() TypedNamespaceQueueInformer {
+	return &namespaceQueueInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// PodGroups returns a TypedPodGroupInformer.
+func (v *version) PodGroups() TypedPodGroupInformer {
 	return &podGroupInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
-// Queues returns a QueueInformer.
-func (v *version) Queues() QueueInformer {
+// Queues returns a TypedQueueInformer.
+func (v *version) Queues() TypedQueueInformer {
 	return &queueInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

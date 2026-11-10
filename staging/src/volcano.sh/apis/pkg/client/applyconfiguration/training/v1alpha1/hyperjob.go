@@ -26,7 +26,7 @@ import (
 // HyperJobApplyConfiguration represents a declarative configuration of the HyperJob type for use
 // with apply.
 type HyperJobApplyConfiguration struct {
-	v1.TypeMetaApplyConfiguration    `json:",inline"`
+	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	Spec                             *HyperJobSpecApplyConfiguration   `json:"spec,omitempty"`
 	Status                           *HyperJobStatusApplyConfiguration `json:"status,omitempty"`

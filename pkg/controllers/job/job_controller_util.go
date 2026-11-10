@@ -24,6 +24,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
 	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog/v2"
 
@@ -149,7 +150,14 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int, jobForwa
 	pod.Labels[batch.JobNameKey] = job.Name
 	pod.Labels[batch.TaskSpecKey] = tsKey
 	pod.Labels[batch.JobNamespaceKey] = job.Namespace
-	pod.Labels[batch.QueueNameKey] = job.Spec.Queue
+	if len(validation.IsValidLabelValue(job.Spec.Queue)) == 0 {
+		pod.Labels[batch.QueueNameKey] = job.Spec.Queue
+	} else {
+		// NamespaceQueue references such as namespace/training are valid queue
+		// references but invalid Kubernetes label values. Remove any queue label
+		// inherited from the Pod template instead of leaving stale metadata.
+		delete(pod.Labels, batch.QueueNameKey)
+	}
 	if len(job.Labels) > 0 {
 		if value, found := job.Labels[schedulingv2.PodPreemptable]; found {
 			pod.Labels[schedulingv2.PodPreemptable] = value
@@ -181,12 +189,14 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int, jobForwa
 
 func applyPolicies(job *batch.Job, req *apis.Request) (delayAct *delayAction) {
 	delayAct = &delayAction{
-		jobKey:    jobcache.JobKeyByReq(req),
-		event:     req.Event,
-		taskName:  req.TaskName,
-		podName:   req.PodName,
-		podUID:    req.PodUID,
-		partition: req.PartitionID,
+		jobKey:     jobcache.JobKeyByReq(req),
+		jobUID:     job.UID,
+		jobVersion: job.Status.Version,
+		event:      req.Event,
+		taskName:   req.TaskName,
+		podName:    req.PodName,
+		podUID:     req.PodUID,
+		partition:  req.PartitionID,
 		// default action is sync job
 		action: v1alpha1.SyncJobAction,
 	}
@@ -435,7 +445,7 @@ func GetStateAction(delayAct *delayAction) state.Action {
 	if delayAct.action == v1alpha1.RestartTaskAction {
 		action.Target = state.Target{TaskName: delayAct.taskName, Type: state.TargetTypeTask}
 	} else if delayAct.action == v1alpha1.RestartPodAction {
-		action.Target = state.Target{TaskName: delayAct.taskName, PodName: delayAct.podName, Type: state.TargetTypePod}
+		action.Target = state.Target{TaskName: delayAct.taskName, PodName: delayAct.podName, PodUID: delayAct.podUID, Type: state.TargetTypePod}
 	} else if delayAct.action == v1alpha1.RestartPartitionAction {
 		action.Target = state.Target{TaskName: delayAct.taskName, PodName: delayAct.podName, PartitionName: delayAct.partition, Type: state.TargetTypePartition}
 	}

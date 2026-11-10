@@ -36,6 +36,7 @@ type ClusterInfo struct {
 	HyperNodeTierNameMap      HyperNodeTierNameMap
 	RealNodesSet              map[string]sets.Set[string]
 	HyperNodesReadyToSchedule bool
+	HyperNodeGeneration       uint64
 	Queues                    map[QueueID]*QueueInfo
 	NamespaceInfo             map[NamespaceName]*NamespaceInfo
 	RevocableNodes            map[string]*NodeInfo

@@ -26,7 +26,7 @@ type Interface interface {
 	// Run executes the actions
 	Run(actions []framework.Action)
 	// RegisterSession init the session
-	RegisterSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session
+	RegisterSession(tiers []conf.Tier, config []conf.Configuration, opts ...framework.SessionOption) *framework.Session
 	// Close release session and do cleanup
 	Close()
 	// CheckAll do all checks

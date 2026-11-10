@@ -28,7 +28,7 @@ import (
 //
 // ColocationConfiguration is the Schema for the colocationconfigurations API
 type ColocationConfigurationApplyConfiguration struct {
-	v1.TypeMetaApplyConfiguration `json:",inline"`
+	v1.TypeMetaApplyConfiguration `json:""`
 	// metadata is a standard object metadata
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	// spec defines the desired state of ColocationConfiguration

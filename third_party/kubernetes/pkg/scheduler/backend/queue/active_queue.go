@@ -114,7 +114,9 @@ func (uaq *unlockedActiveQueue) add(logger klog.Logger, pInfo *framework.QueuedP
 // It returns new pod info if updated, nil otherwise.
 func (uaq *unlockedActiveQueue) update(newPod *v1.Pod, oldPodInfo *framework.QueuedPodInfo) *framework.QueuedPodInfo {
 	if pInfo, exists := uaq.queue.Get(oldPodInfo); exists {
-		_ = pInfo.Update(newPod)
+		if _, err := pInfo.Update(newPod); err != nil {
+			return nil
+		}
 		uaq.queue.AddOrUpdate(pInfo)
 		return pInfo
 	}
@@ -263,7 +265,10 @@ func (aq *activeQueue) delete(pInfo *framework.QueuedPodInfo) error {
 	aq.lock.Lock()
 	defer aq.lock.Unlock()
 
-	return aq.queue.Delete(pInfo)
+	if aq.queue.Delete(pInfo) == nil {
+		return fmt.Errorf("object not found")
+	}
+	return nil
 }
 
 // pop removes the head of the queue and returns it.

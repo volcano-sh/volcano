@@ -113,7 +113,7 @@ func ListPods(ctx context.Context) error {
 		pods.Items = append(pods.Items, listVcjobPodsRes.Items...)
 		if listPodFlags.QueueName != "" {
 			// if queue is specified, check if the queue name used by the pod matches with the one passed in
-			if !matchPodsLabel(listVcjobPodsRes, v1alpha1.QueueNameKey, listPodFlags.QueueName) {
+			if !matchPodsQueueReference(listVcjobPodsRes, listPodFlags.QueueName) {
 				return fmt.Errorf("the input vcjob %s does not match the queue %s",
 					listPodFlags.JobName, listPodFlags.QueueName)
 			}
@@ -128,7 +128,7 @@ func ListPods(ctx context.Context) error {
 			return err
 		}
 		// then, filter all vcjobs's pods belong to the queue
-		listVcJobPodsRes := filterPodsByLabel(listAllPodsRes, v1alpha1.QueueNameKey, listPodFlags.QueueName)
+		listVcJobPodsRes := filterPodsByQueueReference(listAllPodsRes, listPodFlags.QueueName)
 
 		// then, filter all other workload pods belong to the queue
 		listNormalPodsRes := filterPodsByAnnotation(listAllPodsRes, schedulingv1beta1.QueueNameAnnotationKey, listPodFlags.QueueName)
@@ -227,13 +227,22 @@ func PrintPods(pods *corev1.PodList, writer io.Writer, showNamespace bool) {
 	}
 }
 
-// matchPodsLabel check if the pods match the labelKey and labelValue
-func matchPodsLabel(pods *corev1.PodList, labelKey, labelValue string) bool {
+// podQueueReference returns the canonical queue annotation, falling back to
+// the legacy label used by older Pods.
+func podQueueReference(pod corev1.Pod) (string, bool) {
+	if value, exists := pod.Annotations[schedulingv1beta1.QueueNameAnnotationKey]; exists && value != "" {
+		return value, true
+	}
+	value, exists := pod.Labels[v1alpha1.QueueNameKey]
+	return value, exists
+}
+
+// matchPodsQueueReference checks whether all Pods belong to the queue.
+func matchPodsQueueReference(pods *corev1.PodList, queueReference string) bool {
 	for _, pod := range pods.Items {
-		if value, exist := pod.Labels[labelKey]; exist {
-			if value != labelValue {
-				return false
-			}
+		value, exists := podQueueReference(pod)
+		if !exists || value != queueReference {
+			return false
 		}
 	}
 	return true
@@ -252,14 +261,14 @@ func filterPodsByAnnotation(pods *corev1.PodList, annotationKey, annotationValue
 	return filteredPods
 }
 
-// filterPodsByLabel filter pods based on labelKey and labelValue
-func filterPodsByLabel(pods *corev1.PodList, labelKey, labelValue string) *corev1.PodList {
+// filterPodsByQueueReference filters Pods by annotation, falling back to the
+// legacy queue label for older Pods.
+func filterPodsByQueueReference(pods *corev1.PodList, queueReference string) *corev1.PodList {
 	filteredPods := &corev1.PodList{}
 	for _, pod := range pods.Items {
-		if value, exist := pod.Labels[labelKey]; exist {
-			if value == labelValue {
-				filteredPods.Items = append(filteredPods.Items, pod)
-			}
+		value, exists := podQueueReference(pod)
+		if exists && value == queueReference {
+			filteredPods.Items = append(filteredPods.Items, pod)
 		}
 	}
 	return filteredPods

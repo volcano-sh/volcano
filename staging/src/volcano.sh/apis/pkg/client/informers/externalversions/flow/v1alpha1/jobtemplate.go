@@ -33,11 +33,39 @@ import (
 )
 
 // JobTemplateInformer provides access to a shared informer and lister for
-// JobTemplates.
+// JobTemplates. Prefer using the type-safe variant (see [TypedJobTemplateInformer]).
 type JobTemplateInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() flowv1alpha1.JobTemplateLister
 }
+
+// TypedJobTemplateInformer provides access to a shared informer and lister for
+// JobTemplates, including the type-safe TypedInformer variant.
+// It is a superset of JobTemplateInformer.
+type TypedJobTemplateInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() JobTemplateIndexInformer
+	Lister() flowv1alpha1.JobTemplateLister
+}
+
+// JobTemplateIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type JobTemplateIndexInformer cache.TypedSharedIndexInformer[*apisflowv1alpha1.JobTemplate]
+
+// JobTemplateHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for JobTemplate.
+type JobTemplateHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apisflowv1alpha1.JobTemplate]
+
+// JobTemplateDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for JobTemplate.
+type JobTemplateDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apisflowv1alpha1.JobTemplate]
+
+// JobTemplateFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for JobTemplate.
+type JobTemplateFilteringHandler = cache.TypedFilteringResourceEventHandler[*apisflowv1alpha1.JobTemplate]
+
+// JobTemplateIndexers is a specialization of [cache.TypedIndexers] for JobTemplate.
+type JobTemplateIndexers = cache.TypedIndexers[*apisflowv1alpha1.JobTemplate]
+
+// DeletedJobTemplate is a specialization of [cache.DeletedObject] for JobTemplate.
+type DeletedJobTemplate = cache.DeletedObject[*apisflowv1alpha1.JobTemplate]
 
 type jobTemplateInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -48,25 +76,49 @@ type jobTemplateInformer struct {
 // NewJobTemplateInformer constructs a new informer for JobTemplate type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedJobTemplateInformer]).
 func NewJobTemplateInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewJobTemplateInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedJobTemplateInformer constructs a new informer for JobTemplate type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedJobTemplateInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers JobTemplateIndexers) JobTemplateIndexInformer {
+	return NewTypedJobTemplateInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredJobTemplateInformer constructs a new informer for JobTemplate type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredJobTemplateInformer]).
 func NewFilteredJobTemplateInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewJobTemplateInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+	return NewTypedJobTemplateInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredJobTemplateInformer constructs a new informer for JobTemplate type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredJobTemplateInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers JobTemplateIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) JobTemplateIndexInformer {
+	return NewTypedJobTemplateInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
 }
 
 // NewJobTemplateInformerWithOptions constructs a new informer for JobTemplate type with additional options.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedJobTemplateInformerWithOptions]).
 func NewJobTemplateInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedJobTemplateInformerWithOptions(client, namespace, options)
+}
+
+// NewTypedJobTemplateInformerWithOptions constructs a new informer for JobTemplate type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedJobTemplateInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) JobTemplateIndexInformer {
 	gvr := schema.GroupVersionResource{Group: "flow.volcano.sh", Version: "v1alpha1", Resource: "jobtemplates"}
 	identifier := options.InformerName.WithResource(gvr)
 	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
+	return cache.NewTypedSharedIndexInformer[*apisflowv1alpha1.JobTemplate](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
@@ -99,17 +151,57 @@ func NewJobTemplateInformerWithOptions(client versioned.Interface, namespace str
 			Indexers:     options.Indexers,
 			Identifier:   identifier,
 		},
-	)
+	))
 }
 
 func (f *jobTemplateInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewJobTemplateInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewTypedJobTemplateInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *jobTemplateInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apisflowv1alpha1.JobTemplate{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *jobTemplateInformer) TypedInformer() JobTemplateIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisflowv1alpha1.JobTemplate](f.factory.InformerFor(&apisflowv1alpha1.JobTemplate{}, f.defaultInformer))
 }
 
 func (f *jobTemplateInformer) Lister() flowv1alpha1.JobTemplateLister {
 	return flowv1alpha1.NewJobTemplateLister(f.Informer().GetIndexer())
+}
+
+// ToTypedJobTemplateInformer converts an untyped informer into a TypedJobTemplateInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *JobTemplate. If that is not the case, calling type-safe methods of the returned
+// TypedJobTemplateInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedJobTemplateInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedJobTemplateInformer(informer JobTemplateInformer) TypedJobTemplateInformer {
+	if informer, ok := informer.(TypedJobTemplateInformer); ok {
+		return informer
+	}
+	return &jobTemplateTypedInformerAdapter{informer}
+}
+
+type jobTemplateTypedInformerAdapter struct {
+	JobTemplateInformer
+}
+
+func (a *jobTemplateTypedInformerAdapter) TypedInformer() JobTemplateIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisflowv1alpha1.JobTemplate](a.Informer())
+}
+
+// ToJobTemplateIndexInformer converts an untyped informer into a JobTemplateIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *JobTemplate. If that is not the case, calling type-safe methods of the returned
+// JobTemplateIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a JobTemplateIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToJobTemplateIndexInformer(informer cache.SharedIndexInformer) JobTemplateIndexInformer {
+	if informer, ok := informer.(JobTemplateIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apisflowv1alpha1.JobTemplate](informer)
 }

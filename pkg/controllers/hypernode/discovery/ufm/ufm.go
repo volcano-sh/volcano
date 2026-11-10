@@ -84,7 +84,7 @@ type ufmDiscoverer struct {
 
 // NewUFMDiscoverer creates a new UFM topology discoverer
 func NewUFMDiscoverer(cfg api.DiscoveryConfig, kubeClient clientset.Interface, vcClient vcclientset.Interface) api.Discoverer {
-	endpoint := cfg.Config["endpoint"].(string)
+	endpoint, _ := cfg.Config["endpoint"].(string)
 	insecureSkipVerify, _ := cfg.Config["insecureSkipVerify"].(bool)
 
 	if insecureSkipVerify {

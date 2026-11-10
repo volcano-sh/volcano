@@ -766,6 +766,36 @@ func TestSyncCronJob(t *testing.T) {
 				expectDeleteJobNum:     1,
 			},
 		},
+		{
+			name: "not first run, terminated job, failedJobsHistoryLimit is 0",
+			now:  justTen().Add(7 * time.Minute),
+			cronjob: cjSpec{
+				concurrency:            "Allow",
+				failedJobsHistoryLimit: ptr.To[int32](0),
+			},
+			jobs: []jobSpec{
+				{
+					status:      batchv1.Terminated,
+					time:        fiveMinutesAfterTen(),
+					inLister:    true,
+					inClient:    false,
+					active:      false,
+					processTime: time.Minute,
+				},
+			},
+			lastScheduleTime: &metav1.Time{Time: fiveMinutesAfterTen()},
+			expect: testExpect{
+				expectRequeueAfter:     durationPtr(3*time.Minute + nextScheduleDelta),
+				expectUpdateStatus:     true,
+				expectError:            false,
+				expectLastScheduleTime: &metav1.Time{Time: fiveMinutesAfterTen()},
+				expectInActiveNum:      0,
+				expectEventsNum:        1,
+				expectLastSuccessTime:  nil,
+				expectCreateJobNum:     0,
+				expectDeleteJobNum:     1,
+			},
+		},
 		//TODO: 增加默认值
 		// {
 		// 	name:        "noy first run, successfulJobHistoryLimit is nil",

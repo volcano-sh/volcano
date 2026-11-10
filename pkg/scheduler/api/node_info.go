@@ -304,15 +304,33 @@ func (ni *NodeInfo) setOversubscription(node *v1.Node) {
 			}
 			klog.V(5).Infof("Set node %s OfflineJobEvicting to %v", node.Name, ni.OfflineJobEvicting)
 		}
-		if value, found := node.Annotations[OversubscriptionCPU]; found {
-			ni.OversubscriptionResource.MilliCPU, _ = strconv.ParseFloat(value, 64)
-			klog.V(5).Infof("Set node %s Oversubscription CPU to %v", node.Name, ni.OversubscriptionResource.MilliCPU)
-		}
-		if value, found := node.Annotations[OversubscriptionMemory]; found {
-			ni.OversubscriptionResource.Memory, _ = strconv.ParseFloat(value, 64)
-			klog.V(5).Infof("Set node %s Oversubscription Memory to %v", node.Name, ni.OversubscriptionResource.Memory)
-		}
 	}
+	ni.OversubscriptionResource = nodeOversubscriptionResource(node)
+	klog.V(5).Infof("Set node %s Oversubscription resource to %v", node.Name, ni.OversubscriptionResource)
+}
+
+// NewNodeAllocatable returns the Node resources used by Volcano's built-in
+// resource-fit check, including legacy CPU and memory oversubscription
+// annotations.
+func NewNodeAllocatable(node *v1.Node) *Resource {
+	if node == nil {
+		return EmptyResource()
+	}
+	return NewResource(node.Status.Allocatable).Add(nodeOversubscriptionResource(node))
+}
+
+func nodeOversubscriptionResource(node *v1.Node) *Resource {
+	resource := EmptyResource()
+	if node == nil {
+		return resource
+	}
+	if value, found := node.Annotations[OversubscriptionCPU]; found {
+		resource.MilliCPU, _ = strconv.ParseFloat(value, 64)
+	}
+	if value, found := node.Annotations[OversubscriptionMemory]; found {
+		resource.Memory, _ = strconv.ParseFloat(value, 64)
+	}
+	return resource
 }
 
 func (ni *NodeInfo) setNodeState(node *v1.Node) {

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
@@ -185,9 +186,9 @@ func IsOutOfSyncPod(pod *v1.Pod) bool {
 }
 
 // OutOfSyncJSONPatch generates a JSON patch to mark the pod as out-of-sync with the given reason.
-func OutOfSyncJSONPatch() []byte {
-	return []byte(fmt.Sprintf(`[{"op":"add","path":"/metadata/annotations/%s","value":"true"}]`,
-		escapeJSONPointer(OutOfSyncKey)))
+func OutOfSyncJSONPatch(uid types.UID) []byte {
+	return []byte(fmt.Sprintf(`[{"op":"test","path":"/metadata/uid","value":%q},{"op":"add","path":"/metadata/annotations/%s","value":"true"}]`,
+		uid, escapeJSONPointer(OutOfSyncKey)))
 }
 
 // escapeJSONPointer escapes a string for use in a JSON Pointer.

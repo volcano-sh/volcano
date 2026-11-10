@@ -50,7 +50,7 @@ type historicalUsageCalculator struct {
 	policy.Interface
 	eventQueueFactory *framework.EventQueueFactory
 	queue             *queue.SqQueue
-	resourceTypes     sets.String
+	resourceTypes     sets.Set[string]
 	getNodeFunc       utilnode.ActiveNode
 }
 
@@ -61,7 +61,7 @@ func NewCalculator(config *config.Configuration, mgr *metriccollect.MetricCollec
 		Interface:         policy.GetPolicyFunc(config.GenericConfiguration.OverSubscriptionPolicy)(config, mgr, nil, sqQueue, local.CollectorName),
 		eventQueueFactory: eventQueueFactory,
 		queue:             sqQueue,
-		resourceTypes:     sets.NewString(),
+		resourceTypes:     sets.New[string](),
 		getNodeFunc:       config.GetNode,
 	}
 }
@@ -84,7 +84,7 @@ func (r *historicalUsageCalculator) RefreshCfg(cfg *api.ColocationConfig) error 
 		return fmt.Errorf("nil colocation cfg")
 	}
 	// refresh overSubscription resource types.
-	set := sets.NewString()
+	set := sets.New[string]()
 	typ := strings.Split(*cfg.OverSubscriptionConfig.OverSubscriptionTypes, ",")
 	for _, resType := range typ {
 		if resType == "" {
@@ -148,7 +148,7 @@ func (r *historicalUsageCalculator) getOverSubscriptionTypes(node *v1.Node) map[
 	r.cfgLock.Lock()
 	defer r.cfgLock.Unlock()
 	ret := make(map[v1.ResourceName]bool)
-	for _, item := range r.resourceTypes.List() {
+	for _, item := range sets.List(r.resourceTypes) {
 		ret[v1.ResourceName(item)] = true
 	}
 

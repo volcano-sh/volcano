@@ -55,6 +55,10 @@ func InitDescribeFlags(cmd *cobra.Command) {
 
 // DescribeJobTemplate is used to get the particular job template details.
 func DescribeJobTemplate(ctx context.Context) error {
+	if err := checkFormat(describeJobTemplateFlags.Format); err != nil {
+		return err
+	}
+
 	config, err := util.BuildConfig(describeJobTemplateFlags.Master, describeJobTemplateFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -70,7 +74,9 @@ func DescribeJobTemplate(ctx context.Context) error {
 		for i, jobTemplate := range jobTemplates.Items {
 			// Remove managedFields
 			jobTemplate.ManagedFields = nil
-			PrintJobTemplateDetail(&jobTemplate, describeJobTemplateFlags.Format)
+			if err := PrintJobTemplateDetail(&jobTemplate, describeJobTemplateFlags.Format); err != nil {
+				return err
+			}
 			// Print space if it's not the last element
 			if len(jobTemplates.Items) != 1 && i < len(jobTemplates.Items)-1 {
 				fmt.Printf("\n\n")
@@ -89,37 +95,50 @@ func DescribeJobTemplate(ctx context.Context) error {
 			jobTemplate.APIVersion = v1alpha1.SchemeGroupVersion.String()
 			jobTemplate.Kind = "JobTemplate"
 		}
-		PrintJobTemplateDetail(jobTemplate, describeJobTemplateFlags.Format)
+		return PrintJobTemplateDetail(jobTemplate, describeJobTemplateFlags.Format)
 	}
 
 	return nil
 }
 
 // PrintJobTemplateDetail print job template details
-func PrintJobTemplateDetail(jobTemplate *v1alpha1.JobTemplate, format string) {
+func PrintJobTemplateDetail(jobTemplate *v1alpha1.JobTemplate, format string) error {
 	switch format {
 	case "json":
-		printJSON(jobTemplate)
+		return printJSON(jobTemplate)
 	case "yaml":
-		printYAML(jobTemplate)
+		return printYAML(jobTemplate)
 	default:
-		fmt.Printf("Unsupported format: %s", format)
+		return checkFormat(format)
 	}
 }
 
-func printJSON(jobTemplate *v1alpha1.JobTemplate) {
+// checkFormat checks that the output format is one the printer supports.
+func checkFormat(format string) error {
+	if format != "json" && format != "yaml" {
+		return fmt.Errorf("format %s invalid, valid formats are json and yaml", format)
+	}
+
+	return nil
+}
+
+func printJSON(jobTemplate *v1alpha1.JobTemplate) error {
 	b, err := json.MarshalIndent(jobTemplate, "", "  ")
 	if err != nil {
-		fmt.Printf("Error marshaling JSON: %v\n", err)
+		return err
 	}
 	os.Stdout.Write(b)
 	fmt.Println("")
+
+	return nil
 }
 
-func printYAML(jobTemplate *v1alpha1.JobTemplate) {
+func printYAML(jobTemplate *v1alpha1.JobTemplate) error {
 	b, err := yaml.Marshal(jobTemplate)
 	if err != nil {
-		fmt.Printf("Error marshaling YAML: %v\n", err)
+		return err
 	}
 	os.Stdout.Write(b)
+
+	return nil
 }

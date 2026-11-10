@@ -24,6 +24,18 @@ export LOG_LEVEL=3
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
 export E2E_TYPE=${E2E_TYPE:-"ALL"}
 export ARTIFACTS_PATH=${ARTIFACTS_PATH:-"${VK_ROOT}/volcano-e2e-logs"}
+export NAMESPACE_QUEUE_ENABLE=${NAMESPACE_QUEUE_ENABLE:-false}
+if [[ "${E2E_TYPE}" == "ALL" || "${E2E_TYPE}" == "NAMESPACEQUEUE" ]]; then
+  export NAMESPACE_QUEUE_ENABLE=true
+fi
+if [[ "${E2E_TYPE}" == "ALL" || "${E2E_TYPE}" == "NAMESPACEQUEUE" ]]; then
+  export SCHEDULER_CONFIG_FILE=${SCHEDULER_CONFIG_FILE:-config/volcano-scheduler-namespacequeue.conf}
+else
+  export SCHEDULER_CONFIG_FILE=${SCHEDULER_CONFIG_FILE:-config/volcano-scheduler-ci.conf}
+fi
+export KWOK_CHART_VERSION=${KWOK_CHART_VERSION:-0.3.0}
+export KWOK_IMAGE_REPOSITORY=${KWOK_IMAGE_REPOSITORY:-registry.k8s.io/kwok/kwok}
+export KWOK_IMAGE_TAG=${KWOK_IMAGE_TAG:-v0.8.0}
 if [[ "${HYPERNODE_E2E_PROFILE:-full}" == "ownership-transition" ]]; then
   # Keep this profile focused on controller ownership handover. The full
   # profiles cover admission-enabled deployments, while each Helm upgrade
@@ -147,6 +159,7 @@ custom:
   default_ns:
     node-role.kubernetes.io/control-plane: ""
   scheduler_feature_gates: ${FEATURE_GATES}
+  scheduler_unschedulable_job_cache_debug_metrics: ${UNSCHEDULABLE_JOB_CACHE_DEBUG_METRICS:-false}
   admission_feature_gates: ${FEATURE_GATES}
   enabled_admissions: ""
   vap_enable: true
@@ -193,6 +206,7 @@ custom:
   default_ns:
     node-role.kubernetes.io/control-plane: ""
   scheduler_feature_gates: ${FEATURE_GATES}
+  scheduler_unschedulable_job_cache_debug_metrics: ${UNSCHEDULABLE_JOB_CACHE_DEBUG_METRICS:-false}
   admission_feature_gates: ${FEATURE_GATES}
   enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
   vap_enable: false
@@ -362,7 +376,7 @@ EXTRA
 basic:
   image_pull_policy: IfNotPresent
   image_tag_version: ${TAG}
-  scheduler_config_file: config/volcano-scheduler-ci.conf
+  scheduler_config_file: ${SCHEDULER_CONFIG_FILE}
   crd_version: ${crd_version}
 
 custom:
@@ -402,7 +416,9 @@ custom:
   default_ns:
     node-role.kubernetes.io/control-plane: ""
   scheduler_feature_gates: ${FEATURE_GATES}
+  scheduler_unschedulable_job_cache_debug_metrics: ${UNSCHEDULABLE_JOB_CACHE_DEBUG_METRICS:-false}
   admission_feature_gates: ${FEATURE_GATES}
+  namespace_queue_enable: ${NAMESPACE_QUEUE_ENABLE}
   enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
   ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
@@ -480,12 +496,13 @@ case ${E2E_TYPE} in
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --nodes=4 --compilers=4 --randomize-all --randomize-suites --fail-on-pending --cover --trace --race --slow-spec-threshold='30s' --progress ./test/e2e/jobp/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/jobseq/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingbase/
-    # k8s 1.36 init will import its e2e suite, these k8s's suites need to skip
+    # k8s 1.37 init will import its e2e suite, these k8s's suites need to skip
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --skip="\[sig-.*\]" --slow-spec-threshold='30s' --progress ./test/e2e/schedulingaction/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/vcctl/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/cronjob/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress --focus="${DRA_GINKGO_FOCUS}" ./test/e2e/dra/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/admission/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/namespacequeue/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/hypernode/
     ;;
 "JOBP")
@@ -498,7 +515,7 @@ case ${E2E_TYPE} in
     ;;
 "SCHEDULINGBASE")
     echo "Running scheduling base e2e suite...(need skip k8s framework's suites)"
-    # k8s 1.36 init will import its e2e suite, these k8s's suites need to skip
+    # k8s 1.37 init will import its e2e suite, these k8s's suites need to skip
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --skip="\[sig-.*\]" --slow-spec-threshold='30s' --progress ./test/e2e/schedulingbase/
     ;;
 "SCHEDULINGACTION")
@@ -509,6 +526,10 @@ case ${E2E_TYPE} in
     echo "Running scheduling gates e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulinggates/
     ;;
+"UNSCHEDULABLEJOBCACHE")
+  echo "Running unschedulable job cache e2e suite..."
+  KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/unschedulablejobcache/
+  ;;
 "VCCTL")
     echo "Running vcctl e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/vcctl/
@@ -529,6 +550,10 @@ case ${E2E_TYPE} in
     echo "Running admission webhook e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/admission/
     ;;
+"NAMESPACEQUEUE")
+    echo "Running NamespaceQueue e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} NAMESPACE=${NAMESPACE} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/namespacequeue/
+    ;;
 "HYPERNODE")
     echo "Creating 8 kwok nodes for 3-tier topology"
     install-kwok-nodes 8
@@ -536,6 +561,12 @@ case ${E2E_TYPE} in
     hypernode_ginkgo_args=()
     if [[ "${HYPERNODE_E2E_PROFILE:-full}" == "ownership-transition" ]]; then
       hypernode_ginkgo_args+=(--focus="HyperNode controller ownership transition")
+    elif [[ "${HYPERNODE_E2E_PROFILE:-full}" == "podgroup-anti-affinity" ]]; then
+      hypernode_ginkgo_args+=(--label-filter="podgroup-anti-affinity")
+    elif [[ "${HYPERNODE_E2E_PROFILE:-full}" == "podgroup-anti-affinity-normal" ]]; then
+      hypernode_ginkgo_args+=(--label-filter="podgroup-anti-affinity && normal-path")
+    elif [[ "${HYPERNODE_E2E_PROFILE:-full}" == "podgroup-anti-affinity-network-topology" ]]; then
+      hypernode_ginkgo_args+=(--label-filter="podgroup-anti-affinity && network-topology-combination")
     fi
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} VOLCANO_E2E_RELEASE_NAME=${CLUSTER_NAME} VOLCANO_E2E_NAMESPACE=${NAMESPACE} VOLCANO_E2E_CHART_PATH=${VK_ROOT}/installer/helm/chart/volcano ginkgo -r --slow-spec-threshold='30s' --progress "${hypernode_ginkgo_args[@]}" ./test/e2e/hypernode/
     ;;

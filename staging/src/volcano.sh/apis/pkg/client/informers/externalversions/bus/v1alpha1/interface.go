@@ -24,7 +24,7 @@ import (
 // Interface provides access to all the informers in this group version.
 type Interface interface {
 	// Commands returns a CommandInformer.
-	Commands() CommandInformer
+	Commands() TypedCommandInformer
 }
 
 type version struct {
@@ -38,7 +38,7 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// Commands returns a CommandInformer.
-func (v *version) Commands() CommandInformer {
+// Commands returns a TypedCommandInformer.
+func (v *version) Commands() TypedCommandInformer {
 	return &commandInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

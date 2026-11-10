@@ -19,7 +19,7 @@ if [[ "${BUILD_VOLCANO}" == "true" ]]; then
     require_cmd make
     log_info "Building Volcano images from source..."
     cd "${VOLCANO_ROOT}"
-    make images
+    make images TAG="${TAG}"
 
     VOLCANO_IMAGES=$(docker images --format '{{.Repository}}:{{.Tag}}' \
         | grep -E 'volcanosh/(vc-scheduler|vc-agent-scheduler|vc-controller-manager|vc-webhook-manager)')

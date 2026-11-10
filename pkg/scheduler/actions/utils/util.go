@@ -86,9 +86,9 @@ func PickDomainsFromGradients(gradients [][]*api.HyperNodeInfo, maxDomains int, 
 // and returns an ordered domain list capped at maxDomains.
 func GetCandidateDomains(ssn *framework.Session, job *api.JobInfo, maxDomains int) []string {
 	root := ssn.HyperNodes[framework.ClusterTopHyperNode]
-	gradients := ssn.HyperNodeGradientForJobFn(job, root, api.PurposeEvict)
+	gradients, _ := ssn.HyperNodeGradientForJobFn(job, root, api.PurposeEvict)
 	fallback := ""
-	if root != nil && (job == nil || !job.ContainsHardTopology()) {
+	if root != nil && (job == nil || (!job.ContainsHardTopology() && !job.ContainsHardPodGroupAntiAffinity())) {
 		fallback = root.Name
 	}
 	return PickDomainsFromGradients(gradients, maxDomains, fallback)
@@ -96,15 +96,21 @@ func GetCandidateDomains(ssn *framework.Session, job *api.JobInfo, maxDomains in
 
 // ApplySubJobNominations sets SubJobInfo.NominatedHyperNode on each
 // subJob whose UID appears in subJobHyperNodes, after the outer
-// gangpreempt/gangreclaim Statement has committed.
-func ApplySubJobNominations(job *api.JobInfo, subJobHyperNodes map[api.SubJobID]string) {
+// gangpreempt/gangreclaim Statement has committed, and marks the job
+// dirty so the cache writeback persists the NominatedHyperNode into the next cycle.
+func ApplySubJobNominations(ssn *framework.Session, job *api.JobInfo, subJobHyperNodes map[api.SubJobID]string) {
 	if job == nil {
 		return
 	}
+	applied := false
 	for sjID, hn := range subJobHyperNodes {
 		if sj, ok := job.SubJobs[sjID]; ok && hn != "" {
 			sj.NominatedHyperNode = hn
+			applied = true
 		}
+	}
+	if applied && ssn != nil {
+		ssn.MarkJobDirty(job.UID)
 	}
 }
 

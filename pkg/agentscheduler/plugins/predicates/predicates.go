@@ -29,6 +29,7 @@ import (
 	vcache "volcano.sh/volcano/pkg/scheduler/cache"
 	vfwk "volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodescore"
 )
 
 const (
@@ -74,16 +75,16 @@ func (pp *predicatesPlugin) OnPluginInit(fwk *framework.Framework) {
 	})
 
 	fwk.AddBatchNodeOrderFn(PluginName, func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
-		state := fwk.GetCycleState(types.UID(task.UID))
-		nodeInfoList, err := fwk.SnapshotSharedLister().NodeInfos().List()
-		if err != nil {
-			klog.Errorf("Failed to list nodes from snapshot: %v", err)
-			return nil, err
-		}
-		return pp.BatchNodeOrder(task, nodeInfoList, state)
+		return pp.batchNodeOrder(fwk, task, nodes)
 	})
 
 	fwk.Cache.RegisterBinder(pp.Name(), pp)
+}
+
+func (pp *predicatesPlugin) batchNodeOrder(fwk *framework.Framework, task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+	state := fwk.GetCycleState(types.UID(task.UID))
+	nodeInfoList := nodescore.NodeInfosForCandidateNodes(nodes, fwk.GetSnapshot().GetFwkNodeInfoMap())
+	return pp.BatchNodeOrder(task, nodeInfoList, state)
 }
 
 func (pp *predicatesPlugin) PreBind(ctx context.Context, bindCtx *agentapi.BindContext) error {

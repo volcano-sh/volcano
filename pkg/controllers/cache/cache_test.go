@@ -22,8 +22,10 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -71,13 +73,13 @@ func TestJobCache_Add(t *testing.T) {
 		jobCache := New()
 
 		for _, job := range testcase.JobsInCache {
-			err := jobCache.Add(job)
+			err := jobCache.Add(cacheTestJob(job))
 			if err != nil {
 				t.Errorf("Expected not to occur while adding job, but got error: %s in case %d", err, i)
 			}
 		}
 
-		err := jobCache.Add(testcase.Job)
+		err := jobCache.Add(cacheTestJob(testcase.Job))
 		if err != nil && testcase.ExpectedVal != nil && err.Error() != testcase.ExpectedVal.Error() {
 			t.Errorf("Expected Return Value to be: %s, but got: %s in case %d", testcase.ExpectedVal, err, i)
 		}
@@ -132,7 +134,7 @@ func TestJobCache_GetStatus(t *testing.T) {
 			ExpectedVal: v1alpha1.JobState{
 				Phase: v1alpha1.Completed,
 			},
-			ExpectedErr: fmt.Errorf("failed to find job <%s/%s>", namespace, "job1"),
+			ExpectedErr: ErrJobNotFound,
 		},
 	}
 
@@ -140,13 +142,13 @@ func TestJobCache_GetStatus(t *testing.T) {
 		jobCache := New()
 
 		for _, job := range testcase.JobsInCache {
-			err := jobCache.Add(job)
+			err := jobCache.Add(cacheTestJob(job))
 			if err != nil {
 				t.Errorf("Expected not to occur while adding job, but got error: %s in case %d", err, i)
 			}
 		}
 
-		status, err := jobCache.GetStatus(fmt.Sprintf("%s/%s", testcase.Job.Namespace, testcase.Job.Name))
+		status, err := jobCache.GetStatus(types.UID(fmt.Sprintf("%s/%s", testcase.Job.Namespace, testcase.Job.Name)))
 		if err != nil && testcase.ExpectedErr != nil && err.Error() != testcase.ExpectedErr.Error() {
 			t.Errorf("Expected to get: %s, but got: %s in case %d", testcase.ExpectedErr, err, i)
 		}
@@ -161,14 +163,14 @@ func TestJobCache_Get(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		Key         string
+		Key         types.UID
 		JobsInCache map[string]*v1alpha1.Job
 		ExpectedVal *apis.JobInfo
 		ExpectedErr error
 	}{
 		{
 			Name: "Success Case",
-			Key:  fmt.Sprintf("%s/%s", namespace, "job1"),
+			Key:  types.UID(fmt.Sprintf("%s/%s", namespace, "job1")),
 			JobsInCache: map[string]*v1alpha1.Job{
 				"job1": {
 					ObjectMeta: metav1.ObjectMeta{
@@ -201,10 +203,10 @@ func TestJobCache_Get(t *testing.T) {
 		},
 		{
 			Name:        "Error Case",
-			Key:         fmt.Sprintf("%s/%s", namespace, "job1"),
+			Key:         types.UID(fmt.Sprintf("%s/%s", namespace, "job1")),
 			JobsInCache: nil,
 			ExpectedVal: &apis.JobInfo{},
-			ExpectedErr: fmt.Errorf("failed to find job <%s/%s>", namespace, "job1"),
+			ExpectedErr: ErrJobNotFound,
 		},
 	}
 
@@ -212,7 +214,7 @@ func TestJobCache_Get(t *testing.T) {
 		jobCache := New()
 
 		for _, job := range testcase.JobsInCache {
-			err := jobCache.Add(job)
+			err := jobCache.Add(cacheTestJob(job))
 			if err != nil {
 				t.Errorf("Expected not to occur while adding job, but got error: %s in case %d", err, i)
 			}
@@ -283,7 +285,7 @@ func TestJobCache_Update(t *testing.T) {
 					},
 				},
 			},
-			ExpectedErr: fmt.Errorf("failed to find job <%s/%s>", namespace, "job1"),
+			ExpectedErr: ErrJobNotFound,
 		},
 	}
 
@@ -291,18 +293,18 @@ func TestJobCache_Update(t *testing.T) {
 		jobCache := New()
 
 		for _, job := range testcase.JobsInCache {
-			err := jobCache.Add(job)
+			err := jobCache.Add(cacheTestJob(job))
 			if err != nil {
 				t.Errorf("Expected not to occur while adding job, but got error: %s in case %d", err, i)
 			}
 		}
 
-		err := jobCache.Update(testcase.UpdatedJob)
+		err := jobCache.Update(cacheTestJob(testcase.UpdatedJob))
 		if err != nil && testcase.ExpectedErr != nil && err.Error() != testcase.ExpectedErr.Error() {
 			t.Errorf("Expected to get: %s, but got: %s in case %d", testcase.ExpectedErr, err, i)
 		}
 		if testcase.ExpectedErr == nil {
-			job, err := jobCache.Get(fmt.Sprintf("%s/%s", testcase.UpdatedJob.Namespace, testcase.UpdatedJob.Name))
+			job, err := jobCache.Get(types.UID(fmt.Sprintf("%s/%s", testcase.UpdatedJob.Namespace, testcase.UpdatedJob.Name)))
 			if err != nil {
 				t.Errorf("Expected Error not to have occurred in case %d", i)
 			}
@@ -364,7 +366,7 @@ func TestJobCache_Delete(t *testing.T) {
 					},
 				},
 			},
-			ExpectedErr: fmt.Errorf("failed to find job <%s/%s>", namespace, "job1"),
+			ExpectedErr: ErrJobNotFound,
 		},
 	}
 
@@ -372,18 +374,18 @@ func TestJobCache_Delete(t *testing.T) {
 		jobCache := New()
 
 		for _, job := range testcase.JobsInCache {
-			err := jobCache.Add(job)
+			err := jobCache.Add(cacheTestJob(job))
 			if err != nil {
 				t.Errorf("Expected not to occur while adding job, but got error: %s in case %d", err, i)
 			}
 		}
 
-		err := jobCache.Delete(testcase.DeleteJob)
+		err := jobCache.Delete(cacheTestJob(testcase.DeleteJob))
 		if err != nil && testcase.ExpectedErr != nil && err.Error() != testcase.ExpectedErr.Error() {
 			t.Errorf("Expected to get: %s, but got: %s in case %d", testcase.ExpectedErr, err, i)
 		}
 		if testcase.ExpectedErr == nil {
-			job, err := jobCache.Get(fmt.Sprintf("%s/%s", testcase.DeleteJob.Namespace, testcase.DeleteJob.Name))
+			job, err := jobCache.Get(types.UID(fmt.Sprintf("%s/%s", testcase.DeleteJob.Namespace, testcase.DeleteJob.Name)))
 			if err == nil {
 				t.Errorf("Expected Error to have occurred in case %d", i)
 			}
@@ -458,19 +460,19 @@ func TestJobCache_AddPod(t *testing.T) {
 		jobCache := New()
 
 		for _, job := range testcase.JobsInCache {
-			err := jobCache.Add(job)
+			err := jobCache.Add(cacheTestJob(job))
 			if err != nil {
 				t.Errorf("Expected not to occur while adding job, but got error: %s in case %d", err, i)
 			}
 		}
 
-		err := jobCache.AddPod(testcase.AddPod)
+		err := jobCache.AddPod(cacheTestPod(testcase.AddPod))
 		if err != nil && testcase.ExpectedErr != nil && err.Error() != testcase.ExpectedErr.Error() {
 			t.Errorf("Expected Error to be: %s, but got: %s in case %d", testcase.ExpectedErr.Error(), err.Error(), i)
 		}
 
 		if err == nil {
-			job, err := jobCache.Get(fmt.Sprintf("%s/%s", testcase.JobsInCache["job1"].Namespace, testcase.JobsInCache["job1"].Name))
+			job, err := jobCache.Get(types.UID(fmt.Sprintf("%s/%s", testcase.JobsInCache["job1"].Namespace, testcase.JobsInCache["job1"].Name)))
 			if err != nil {
 				t.Errorf("Expected Error not to occur while retrieving job from cache in case %d", i)
 			}
@@ -560,26 +562,26 @@ func TestJobCache_DeletePod(t *testing.T) {
 		jobCache := New()
 
 		for _, job := range testcase.JobsInCache {
-			err := jobCache.Add(job)
+			err := jobCache.Add(cacheTestJob(job))
 			if err != nil {
 				t.Errorf("Expected not to occur while adding job, but got error: %s in case %d", err, i)
 			}
 		}
 
 		for _, pod := range testcase.AddPod {
-			err := jobCache.AddPod(pod)
+			err := jobCache.AddPod(cacheTestPod(pod))
 			if err != nil {
 				t.Errorf("Expected Error not occur when adding Adding Pod in case %d", i)
 			}
 		}
 
-		err := jobCache.DeletePod(testcase.DeletePod)
+		err := jobCache.DeletePod(cacheTestPod(testcase.DeletePod))
 		if err != nil && testcase.ExpectedErr != nil && err.Error() != testcase.ExpectedErr.Error() {
 			t.Errorf("Expected Error to be: %s, but got: %s in case %d", testcase.ExpectedErr.Error(), err.Error(), i)
 		}
 
 		if err == nil {
-			job, err := jobCache.Get(fmt.Sprintf("%s/%s", namespace, "job1"))
+			job, err := jobCache.Get(types.UID(fmt.Sprintf("%s/%s", namespace, "job1")))
 			if err != nil {
 				t.Errorf("Expected Error not to have occurred but got error: %s in case %d", err, i)
 			}
@@ -667,26 +669,26 @@ func TestJobCache_UpdatePod(t *testing.T) {
 		jobCache := New()
 
 		for _, job := range testcase.JobsInCache {
-			err := jobCache.Add(job)
+			err := jobCache.Add(cacheTestJob(job))
 			if err != nil {
 				t.Errorf("Expected not to occur while adding job, but got error: %s in case %d", err, i)
 			}
 		}
 
 		for _, pod := range testcase.AddPod {
-			err := jobCache.AddPod(pod)
+			err := jobCache.AddPod(cacheTestPod(pod))
 			if err != nil {
 				t.Errorf("Expected Error not occur when adding Adding Pod in case %d", i)
 			}
 		}
 
-		err := jobCache.UpdatePod(testcase.UpdatePod)
+		err := jobCache.UpdatePod(cacheTestPod(testcase.UpdatePod))
 		if err != nil && testcase.ExpectedErr != nil && err.Error() != testcase.ExpectedErr.Error() {
 			t.Errorf("Expected Error to be: %s, but got: %s in case %d", testcase.ExpectedErr.Error(), err.Error(), i)
 		}
 
 		if err == nil {
-			job, err := jobCache.Get(fmt.Sprintf("%s/%s", namespace, "job1"))
+			job, err := jobCache.Get(types.UID(fmt.Sprintf("%s/%s", namespace, "job1")))
 			if err != nil {
 				t.Errorf("Expected Error not to have occurred but got error: %s in case %d", err, i)
 			}
@@ -720,7 +722,7 @@ func TestJobCache_HasPod(t *testing.T) {
 		},
 	}
 
-	err := jobCache.Add(job)
+	err := jobCache.Add(cacheTestJob(job))
 	if err != nil {
 		t.Errorf("Expected not to occur while adding job, but got error: %s", err)
 	}
@@ -740,17 +742,17 @@ func TestJobCache_HasPod(t *testing.T) {
 		},
 	}
 
-	hasPod := jobCache.HasPod(pod)
+	hasPod := jobCache.HasPod(cacheTestPod(pod))
 	if hasPod {
 		t.Errorf("Expected HasPod to be false, but got true")
 	}
 
-	err = jobCache.AddPod(pod)
+	err = jobCache.AddPod(cacheTestPod(pod))
 	if err != nil {
 		t.Errorf("Expected not to occur while adding pod, but got error: %s", err)
 	}
 
-	hasPod = jobCache.HasPod(pod)
+	hasPod = jobCache.HasPod(cacheTestPod(pod))
 	if !hasPod {
 		t.Errorf("Expected HasPod to be true, but got false")
 	}
@@ -881,22 +883,34 @@ func TestJobCache_TaskCompleted(t *testing.T) {
 		jobCache := New()
 
 		for _, job := range testcase.JobsInCache {
-			err := jobCache.Add(job)
+			err := jobCache.Add(cacheTestJob(job))
 			if err != nil {
 				t.Errorf("Expected not to occur while adding job, but got error: %s in case %d", err, i)
 			}
 		}
 
 		for _, pod := range testcase.AddPod {
-			err := jobCache.AddPod(pod)
+			err := jobCache.AddPod(cacheTestPod(pod))
 			if err != nil {
 				t.Errorf("Expected Error not occur when adding Adding Pod in case %d", i)
 			}
 		}
 
-		completed := jobCache.TaskCompleted(fmt.Sprintf("%s/%s", namespace, "job1"), "task1")
+		completed := jobCache.TaskCompleted(types.UID(fmt.Sprintf("%s/%s", namespace, "job1")), "task1")
 		if completed != testcase.ExpectedVal {
 			t.Errorf("Expected Return Value to be: %t, but got: %t in case %d", testcase.ExpectedVal, completed, i)
 		}
 	}
+}
+
+// The fake objects use stable UIDs; distinct lifecycles are tested in uid_test.go.
+func cacheTestJob(job *v1alpha1.Job) *v1alpha1.Job {
+	job.UID = types.UID(job.Namespace + "/" + job.Name)
+	return job
+}
+func cacheTestPod(pod *v1.Pod) *v1.Pod {
+	pod.UID = types.UID(pod.Namespace + "/" + pod.Name)
+	job := cacheTestJob(&v1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: pod.Namespace, Name: pod.Annotations[v1alpha1.JobNameKey]}})
+	pod.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(job, helpers.JobKind)}
+	return pod
 }

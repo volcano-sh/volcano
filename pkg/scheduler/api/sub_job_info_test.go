@@ -577,10 +577,8 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 					"task3": {},
 				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-						"task2": &TaskInfo{
-							BestEffort: true},
+					Pending: {"task1": NewTaskInfo(buildPod("c1", "task1", "", v1.PodPending, nil, nil, nil)),
+						"task2": NewTaskInfo(buildPod("c1", "task2", "", v1.PodPending, nil, nil, nil)),
 					},
 					Pipelined: {"task3": &TaskInfo{}},
 				},
@@ -602,10 +600,8 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 					"task8": {},
 				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-						"task2": &TaskInfo{
-							BestEffort: true},
+					Pending: {"task1": NewTaskInfo(buildPod("c1", "task1", "", v1.PodPending, nil, nil, nil)),
+						"task2": NewTaskInfo(buildPod("c1", "task2", "", v1.PodPending, nil, nil, nil)),
 					},
 					Allocated: {"task3": &TaskInfo{}},
 					Pipelined: {"task4": &TaskInfo{}},
@@ -632,10 +628,8 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 					"task8": {},
 				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-						"task2": &TaskInfo{
-							BestEffort: false},
+					Pending: {"task1": NewTaskInfo(buildPod("c1", "task1", "", v1.PodPending, nil, nil, nil)),
+						"task2": NewTaskInfo(buildPod("c1", "task2", "", v1.PodPending, BuildResourceList("1", "0"), nil, nil)),
 					},
 					Allocated: {"task3": &TaskInfo{}},
 					Pipelined: {"task4": &TaskInfo{}},
@@ -662,10 +656,8 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 					"task8": {},
 				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-						"task2": &TaskInfo{
-							BestEffort: true},
+					Pending: {"task1": NewTaskInfo(buildPod("c1", "task1", "", v1.PodPending, nil, nil, nil)),
+						"task2": NewTaskInfo(buildPod("c1", "task2", "", v1.PodPending, nil, nil, nil)),
 					},
 					Allocated: {"task3": &TaskInfo{}},
 					Pipelined: {"task4": &TaskInfo{}},
@@ -687,10 +679,8 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 					"task3": {},
 				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-						"task2": &TaskInfo{
-							BestEffort: true},
+					Pending: {"task1": NewTaskInfo(buildPod("c1", "task1", "", v1.PodPending, nil, nil, nil)),
+						"task2": NewTaskInfo(buildPod("c1", "task2", "", v1.PodPending, nil, nil, nil)),
 					},
 					Unknown: {"task3": &TaskInfo{}},
 				},
@@ -713,7 +703,7 @@ func TestSubJobInfo_IsReady(t *testing.T) {
 		expected bool
 	}{
 		{
-			name: "All tasks are pipelined",
+			name: "All tasks are pending with resource requests",
 			sji: &SubJobInfo{
 				MinAvailable: 3,
 				Tasks: map[TaskID]*TaskInfo{
@@ -722,9 +712,9 @@ func TestSubJobInfo_IsReady(t *testing.T) {
 					"task3": {},
 				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{},
-						"task2": &TaskInfo{},
-						"task3": &TaskInfo{},
+					Pending: {"task1": NewTaskInfo(buildPod("c1", "task1", "", v1.PodPending, BuildResourceList("1", "0"), nil, nil)),
+						"task2": NewTaskInfo(buildPod("c1", "task2", "", v1.PodPending, BuildResourceList("1", "0"), nil, nil)),
+						"task3": NewTaskInfo(buildPod("c1", "task3", "", v1.PodPending, BuildResourceList("1", "0"), nil, nil)),
 					},
 				},
 			},
@@ -739,10 +729,8 @@ func TestSubJobInfo_IsReady(t *testing.T) {
 					"task2": {},
 				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-						"task2": &TaskInfo{
-							BestEffort: true},
+					Pending: {"task1": NewTaskInfo(buildPod("c1", "task1", "", v1.PodPending, nil, nil, nil)),
+						"task2": NewTaskInfo(buildPod("c1", "task2", "", v1.PodPending, nil, nil, nil)),
 					},
 				},
 			},
@@ -761,9 +749,7 @@ func TestSubJobInfo_IsReady(t *testing.T) {
 					"task6": {},
 				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-					},
+					Pending:   {"task1": NewTaskInfo(buildPod("c1", "task1", "", v1.PodPending, nil, nil, nil))},
 					Allocated: {"task2": &TaskInfo{}},
 					Binding:   {"task3": &TaskInfo{}},
 					Bound:     {"task4": &TaskInfo{}},
@@ -800,10 +786,8 @@ func TestSubJobInfo_IsReady(t *testing.T) {
 					"task7": {},
 				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-						"task2": &TaskInfo{
-							BestEffort: false},
+					Pending: {"task1": NewTaskInfo(buildPod("c1", "task1", "", v1.PodPending, nil, nil, nil)),
+						"task2": NewTaskInfo(buildPod("c1", "task2", "", v1.PodPending, BuildResourceList("1", "0"), nil, nil)),
 					},
 					Allocated: {"task3": &TaskInfo{}},
 					Binding:   {"task4": &TaskInfo{}},
@@ -952,4 +936,27 @@ func TestConvertToHardTopology(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSubJobInfo_deleteTask_ClearsNominatedHyperNodeOnEmpty(t *testing.T) {
+	sji := NewSubJobInfo("gid", "uid", "job", nil, nil)
+	sji.NominatedHyperNode = "hn-pinned"
+	sji.AllocatedHyperNode = "hn-allocated"
+
+	t1 := &TaskInfo{UID: "t1", Job: "job", Priority: 5, TransactionContext: TransactionContext{Status: Pending}}
+	t2 := &TaskInfo{UID: "t2", Job: "job", Priority: 5, TransactionContext: TransactionContext{Status: Pending}}
+	sji.addTask(t1)
+	sji.addTask(t2)
+
+	sji.deleteTask(t1)
+	assert.Equal(t, "hn-pinned", sji.NominatedHyperNode,
+		"pin must persist while any task remains in the subJob")
+	assert.Equal(t, "hn-allocated", sji.AllocatedHyperNode,
+		"AllocatedHyperNode is out of scope and must not be touched")
+
+	sji.deleteTask(t2)
+	assert.Equal(t, "", sji.NominatedHyperNode,
+		"pin must be cleared once the subJob transitions to empty so a later scale-up on the same subJob key does not resurrect it")
+	assert.Equal(t, "hn-allocated", sji.AllocatedHyperNode,
+		"AllocatedHyperNode remains untouched on empty transition")
 }

@@ -24,9 +24,9 @@ import (
 // Interface provides access to all the informers in this group version.
 type Interface interface {
 	// DataSources returns a DataSourceInformer.
-	DataSources() DataSourceInformer
+	DataSources() TypedDataSourceInformer
 	// DataSourceClaims returns a DataSourceClaimInformer.
-	DataSourceClaims() DataSourceClaimInformer
+	DataSourceClaims() TypedDataSourceClaimInformer
 }
 
 type version struct {
@@ -40,12 +40,12 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// DataSources returns a DataSourceInformer.
-func (v *version) DataSources() DataSourceInformer {
+// DataSources returns a TypedDataSourceInformer.
+func (v *version) DataSources() TypedDataSourceInformer {
 	return &dataSourceInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
-// DataSourceClaims returns a DataSourceClaimInformer.
-func (v *version) DataSourceClaims() DataSourceClaimInformer {
+// DataSourceClaims returns a TypedDataSourceClaimInformer.
+func (v *version) DataSourceClaims() TypedDataSourceClaimInformer {
 	return &dataSourceClaimInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

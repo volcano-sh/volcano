@@ -24,6 +24,7 @@ import (
 	"github.com/onsi/gomega"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/test/e2e/util"
@@ -109,6 +110,46 @@ var _ = ginkgo.Describe("PodGroup Validating E2E Test", func() {
 		// Cleanup
 		err = testCtx.Vcclient.SchedulingV1beta1().PodGroups(testCtx.Namespace).Delete(context.TODO(), podGroup.Name, metav1.DeleteOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("Should preserve PodGroup anti-affinity fields on API round-trip", func() {
+		testCtx := util.InitTestContext(util.Options{})
+		defer util.CleanupTestContext(testCtx)
+
+		podGroup := &schedulingv1beta1.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: testCtx.Namespace,
+				Name:      "test-podgroup-topology-round-trip",
+			},
+			Spec: schedulingv1beta1.PodGroupSpec{
+				MinMember: 1,
+				TopologyAffinity: &schedulingv1beta1.TopologyAffinitySpec{
+					PodGroupAntiAffinity: &schedulingv1beta1.PodGroupAntiAffinity{
+						Required: []schedulingv1beta1.PodGroupAffinityTerm{{
+							PodGroupSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"team": "training"}},
+							TopologyTier:     ptr.To[int32](1),
+						}},
+						Preferred: []schedulingv1beta1.PodGroupAffinityTerm{{
+							Weight:            80,
+							PodGroupSelector:  &metav1.LabelSelector{MatchLabels: map[string]string{"team": "inference"}},
+							NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"environment": "production"}},
+							TopologyTierName:  "rack",
+						}},
+					},
+				},
+			},
+		}
+
+		created, err := testCtx.Vcclient.SchedulingV1beta1().PodGroups(testCtx.Namespace).Create(
+			context.TODO(), podGroup, metav1.CreateOptions{},
+		)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		stored, err := testCtx.Vcclient.SchedulingV1beta1().PodGroups(testCtx.Namespace).Get(
+			context.TODO(), created.Name, metav1.GetOptions{},
+		)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		gomega.Expect(stored.Spec.TopologyAffinity).To(gomega.Equal(podGroup.Spec.TopologyAffinity))
 	})
 
 })

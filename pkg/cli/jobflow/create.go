@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"sigs.k8s.io/yaml"
 
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
@@ -62,7 +63,7 @@ func CreateJobFlow(ctx context.Context) error {
 	yamlDocs := strings.Split(string(yamlData), "---")
 
 	jobFlowClient := versioned.NewForConfigOrDie(config)
-	createdCount := 0
+	var errs []error
 	for _, doc := range yamlDocs {
 		// Skip empty documents or documents with only whitespace.
 		doc = strings.TrimSpace(doc)
@@ -81,12 +82,11 @@ func CreateJobFlow(ctx context.Context) error {
 		}
 
 		_, err = jobFlowClient.FlowV1alpha1().JobFlows(obj.Namespace).Create(ctx, obj, metav1.CreateOptions{})
-		if err == nil {
-			fmt.Printf("Created JobFlow: %s/%s\n", obj.Namespace, obj.Name)
-			createdCount++
-		} else {
-			fmt.Printf("Failed to create JobFlow: %v\n", err)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("create JobFlow %s/%s: %v", obj.Namespace, obj.Name, err))
+			continue
 		}
+		fmt.Printf("Created JobFlow: %s/%s\n", obj.Namespace, obj.Name)
 	}
-	return nil
+	return utilerrors.NewAggregate(errs)
 }

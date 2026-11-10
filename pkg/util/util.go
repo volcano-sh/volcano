@@ -19,6 +19,7 @@ package util
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,6 +27,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	cliflag "k8s.io/component-base/cli/flag"
 	basecompatibility "k8s.io/component-base/compatibility"
 	"k8s.io/component-base/config"
 	"k8s.io/component-base/metrics/legacyregistry"
@@ -33,6 +35,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/spf13/pflag"
 )
 
 const (
@@ -85,10 +88,19 @@ func PromHandler() http.Handler {
 	return promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer, promhttp.HandlerFor(prometheus.Gatherers{prometheus.DefaultGatherer, legacyregistry.DefaultGatherer}, promhttp.HandlerOpts{}))
 }
 
+// AddFeatureGatesFlag registers --feature-gates without validating the overrides,
+// because which gates are locked depends on the cluster version.
+func AddFeatureGatesFlag(fs *pflag.FlagSet, featureGates *map[string]bool) {
+	utilfeature.DefaultMutableFeatureGate.Close()
+	fs.Var(cliflag.NewMapStringBool(featureGates), "feature-gates", "A set of key=value pairs that describe feature gates for alpha/experimental features. "+
+		"Options are:\n"+strings.Join(utilfeature.DefaultMutableFeatureGate.KnownFeatures(), "\n"))
+}
+
 // SetupComponentGlobals discovers the API server version and sets
-// Volcano's effective version + feature gate defaults to match the cluster.
+// Volcano's effective version + feature gate defaults to match the cluster,
+// then applies the --feature-gates overrides against those definitions.
 // This makes defaults (like DRA) correct on older clusters.
-func SetupComponentGlobals(config *restclient.Config) error {
+func SetupComponentGlobals(config *restclient.Config, featureGates map[string]bool) error {
 	client, err := clientset.NewForConfig(config)
 	if err != nil {
 		return err
@@ -114,5 +126,8 @@ func SetupComponentGlobals(config *restclient.Config) error {
 		}
 	}
 
-	return componentGlobalsRegistry.Set()
+	if err := componentGlobalsRegistry.Set(); err != nil {
+		return err
+	}
+	return utilfeature.DefaultMutableFeatureGate.SetFromMap(featureGates)
 }

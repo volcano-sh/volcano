@@ -18,12 +18,15 @@ package util
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
 type PodSpec struct {
@@ -112,6 +115,32 @@ func WaitPodReady(ctx *TestContext, pod *v1.Pod) error {
 		}
 		return pod.Status.Phase == v1.PodRunning, nil
 	})
+}
+
+// WaitPodRecreatedAndRunning waits for a same-name replacement, not the old Pod
+// that may remain Running while its deletion is being processed.
+func WaitPodRecreatedAndRunning(ctx *TestContext, original *v1.Pod) error {
+	err := wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, FiveMinute, true,
+		podRecreatedAndRunning(ctx.Kubeclient.CoreV1().Pods(original.Namespace), original))
+	if err != nil {
+		return fmt.Errorf("waiting for pod %s/%s with UID %s to be replaced and running: %w",
+			original.Namespace, original.Name, original.UID, err)
+	}
+	return nil
+}
+
+func podRecreatedAndRunning(pods corev1client.PodInterface, original *v1.Pod) wait.ConditionWithContextFunc {
+	return func(ctx context.Context) (bool, error) {
+		pod, err := pods.Get(ctx, original.Name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return pod.UID != "" && pod.UID != original.UID && pod.DeletionTimestamp == nil &&
+			pod.Spec.NodeName != "" && pod.Status.Phase == v1.PodRunning, nil
+	}
 }
 
 // WaitPodScheduled waits for a pod to have the PodScheduled condition set to True.

@@ -17,6 +17,8 @@ limitations under the License.
 
 package v1beta1
 
+type NamespaceQueueExpansion interface{}
+
 type PodGroupExpansion interface{}
 
 type QueueExpansion interface{}

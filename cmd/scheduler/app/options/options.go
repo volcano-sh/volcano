@@ -19,6 +19,7 @@ package options
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,15 +33,16 @@ import (
 )
 
 const (
-	defaultSchedulerName       = "volcano"
-	defaultShardName           = "volcano"
-	defaultSchedulerPeriod     = time.Second
-	defaultResyncPeriod        = 0
-	defaultResourceSyncTimeout = 60 * time.Second
-	defaultQueue               = "default"
-	defaultListenAddress       = ":8080"
-	defaultHealthzAddress      = ":11251"
-	defaultPluginsDir          = ""
+	defaultSchedulerName                        = "volcano"
+	defaultShardName                            = "volcano"
+	defaultSchedulerPeriod                      = time.Second
+	defaultUnschedulableJobCacheMaxSkipDuration = 5 * time.Minute
+	defaultResyncPeriod                         = 0
+	defaultResourceSyncTimeout                  = 60 * time.Second
+	defaultQueue                                = "default"
+	defaultListenAddress                        = ":8080"
+	defaultHealthzAddress                       = ":11251"
+	defaultPluginsDir                           = ""
 
 	defaultQPS   = 2000.0
 	defaultBurst = 2000
@@ -51,6 +53,8 @@ const (
 	defaultPercentageOfNodesToFind    = 0
 	defaultLockObjectNamespace        = "volcano-system"
 	defaultNodeWorkers                = 20
+	defaultJobUpdaterWorkerNum        = 16
+	defaultTaskUpdaterWorkerNum       = 16
 )
 
 var (
@@ -70,6 +74,8 @@ type ServerOption struct {
 	SchedulerConf     string
 	SchedulePeriod    time.Duration
 	ResyncPeriod      time.Duration
+	// FeatureGates holds overrides to apply after cluster version discovery.
+	FeatureGates map[string]bool
 	// leaderElection defines the configuration of leader election.
 	LeaderElection config.LeaderElectionConfiguration
 	// Deprecated: use ResourceNamespace instead.
@@ -98,6 +104,10 @@ type ServerOption struct {
 	CacheDumpFileDir  string
 	EnableCacheDumper bool
 	NodeWorkerThreads uint32
+	// JobUpdaterWorkerNum is the number of workers updating jobs concurrently.
+	JobUpdaterWorkerNum int
+	// TaskUpdaterWorkerNum is the number of workers updating tasks concurrently for each job.
+	TaskUpdaterWorkerNum int
 
 	// GateRemovalWorkerNum is the number of async workers for scheduling gate removal.
 	// Only used when SchedulingGatesQueueAdmission feature gate is enabled.
@@ -110,6 +120,12 @@ type ServerOption struct {
 
 	// timeout on waiting for handlers handle initial resource synchronization before starting scheduling, 0 will skip waiting
 	ResourceSyncTimeout time.Duration
+
+	// UnschedulableJobCacheMaxSkipDuration bounds how long a Job may remain
+	// cached without a matching wakeup event.
+	UnschedulableJobCacheMaxSkipDuration time.Duration
+	// UnschedulableJobCacheDebugMetrics enables per-Job cache metrics.
+	UnschedulableJobCacheDebugMetrics bool
 
 	// DisableDefaultSchedulerConfig indicates if the scheduler should fallback to default
 	// config if the current scheduler config is invalid
@@ -128,10 +144,27 @@ type DecryptFunc func(c *ServerOption) error
 // ServerOpts server options.
 var ServerOpts *ServerOption
 
+// GetJobUpdaterWorkerNum returns the configured job updater worker number.
+func GetJobUpdaterWorkerNum() int {
+	if ServerOpts == nil || ServerOpts.JobUpdaterWorkerNum <= 0 {
+		return defaultJobUpdaterWorkerNum
+	}
+	return ServerOpts.JobUpdaterWorkerNum
+}
+
+// GetTaskUpdaterWorkerNum returns the configured task updater worker number.
+func GetTaskUpdaterWorkerNum() int {
+	if ServerOpts == nil || ServerOpts.TaskUpdaterWorkerNum <= 0 {
+		return defaultTaskUpdaterWorkerNum
+	}
+	return ServerOpts.TaskUpdaterWorkerNum
+}
+
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
 	return &ServerOption{
-		EnableCSIStorage: true,
+		EnableCSIStorage:                     true,
+		UnschedulableJobCacheMaxSkipDuration: defaultUnschedulableJobCacheMaxSkipDuration,
 	}
 }
 
@@ -179,16 +212,31 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
+	fs.IntVar(&s.JobUpdaterWorkerNum, "job-updater-worker-num", defaultJobUpdaterWorkerNum, "The number of workers updating jobs concurrently.")
+	fs.IntVar(&s.TaskUpdaterWorkerNum, "task-updater-worker-num", defaultTaskUpdaterWorkerNum, "The number of workers updating tasks concurrently for each job.")
 	fs.IntVar(&s.GateRemovalWorkerNum, "gate-removal-worker-num", 5, "The number of async workers for scheduling gate removal (used when SchedulingGatesQueueAdmission is enabled).")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 	fs.DurationVar(&s.ResourceSyncTimeout, "resource-sync-timeout", defaultResourceSyncTimeout, "timeout on waiting for handler handling initial resources synchronization before starting scheduler, default is 60s, 0 skip waiting")
+	fs.DurationVar(&s.UnschedulableJobCacheMaxSkipDuration, "unschedulable-job-cache-max-skip-duration", defaultUnschedulableJobCacheMaxSkipDuration,
+		"Maximum duration a Job may remain in the unschedulable-job cache without a matching event")
+	fs.BoolVar(&s.UnschedulableJobCacheDebugMetrics, "unschedulable-job-cache-debug-metrics", false,
+		"Enable per-Job unschedulable-job cache metrics for debugging")
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
 	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling, none(default)|hard|soft mode is supported")
 	fs.StringVar(&s.ShardName, "scheduler-sharding-name", defaultShardName, "The name of shard used for this scheduler")
 }
 
-// CheckOptionOrDie check leader election flag when LeaderElection is enabled.
+// CheckOptionOrDie validates scheduler options.
 func (s *ServerOption) CheckOptionOrDie() error {
+	if s.JobUpdaterWorkerNum <= 0 {
+		return fmt.Errorf("job-updater-worker-num must be greater than 0")
+	}
+	if s.TaskUpdaterWorkerNum <= 0 {
+		return fmt.Errorf("task-updater-worker-num must be greater than 0")
+	}
+	if strings.Contains(s.DefaultQueue, "/") {
+		return fmt.Errorf("default-queue must be a cluster Queue name, got %q", s.DefaultQueue)
+	}
 	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
 }
 

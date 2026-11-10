@@ -28,6 +28,12 @@ import (
 type Event struct {
 	Task *api.TaskInfo
 	Err  error
+	// Restore is set when the event puts a task back after an operation was
+	// rolled back, for example when a discarded statement unevicts a victim.
+	// The task is still bound to the node it was running on, so handlers must
+	// restore their own state only and skip the work they did when the task
+	// was first admitted to the node.
+	Restore bool
 }
 
 // EventHandler structure

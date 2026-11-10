@@ -118,8 +118,8 @@ func newBackoffQueue(clock clock.WithTicker, podInitialBackoffDuration time.Dura
 	if popFromBackoffQEnabled {
 		podBackoffQLessFn = bq.lessBackoffCompletedWithPriority
 	}
-	bq.podBackoffQ = heap.NewWithRecorder(podInfoKeyFunc, podBackoffQLessFn, metrics.NewBackoffPodsRecorder())
-	bq.podErrorBackoffQ = heap.NewWithRecorder(podInfoKeyFunc, bq.lessBackoffCompleted, metrics.NewBackoffPodsRecorder())
+	bq.podBackoffQ = heap.NewWithRecorder(podInfoKeyFunc, podBackoffQLessFn, metrics.NewBackoffEntitiesRecorder())
+	bq.podErrorBackoffQ = heap.NewWithRecorder(podInfoKeyFunc, bq.lessBackoffCompleted, metrics.NewBackoffEntitiesRecorder())
 
 	return bq
 }
@@ -300,8 +300,7 @@ func (bq *backoffQueue) add(logger klog.Logger, pInfo *framework.QueuedPodInfo, 
 	if pInfo.UnschedulablePlugins.Len() == 0 && pInfo.PendingPlugins.Len() == 0 {
 		bq.podErrorBackoffQ.AddOrUpdate(pInfo)
 		// Ensure the pod is not in the podBackoffQ and report the error if it happens.
-		err := bq.podBackoffQ.Delete(pInfo)
-		if err == nil {
+		if deleted := bq.podBackoffQ.Delete(pInfo); deleted != nil {
 			logger.Error(nil, "BackoffQueue add() was called with a pod that was already in the podBackoffQ", "pod", klog.KObj(pInfo.Pod))
 			return
 		}
@@ -311,8 +310,7 @@ func (bq *backoffQueue) add(logger klog.Logger, pInfo *framework.QueuedPodInfo, 
 	}
 	bq.podBackoffQ.AddOrUpdate(pInfo)
 	// Ensure the pod is not in the podErrorBackoffQ and report the error if it happens.
-	err := bq.podErrorBackoffQ.Delete(pInfo)
-	if err == nil {
+	if deleted := bq.podErrorBackoffQ.Delete(pInfo); deleted != nil {
 		logger.Error(nil, "BackoffQueue add() was called with a pod that was already in the podErrorBackoffQ", "pod", klog.KObj(pInfo.Pod))
 		return
 	}
@@ -328,13 +326,17 @@ func (bq *backoffQueue) update(newPod *v1.Pod, oldPodInfo *framework.QueuedPodIn
 
 	// If the pod is in the backoff queue, update it there.
 	if pInfo, exists := bq.podBackoffQ.Get(oldPodInfo); exists {
-		_ = pInfo.Update(newPod)
+		if _, err := pInfo.Update(newPod); err != nil {
+			return nil
+		}
 		bq.podBackoffQ.AddOrUpdate(pInfo)
 		return pInfo
 	}
 	// If the pod is in the error backoff queue, update it there.
 	if pInfo, exists := bq.podErrorBackoffQ.Get(oldPodInfo); exists {
-		_ = pInfo.Update(newPod)
+		if _, err := pInfo.Update(newPod); err != nil {
+			return nil
+		}
 		bq.podErrorBackoffQ.AddOrUpdate(pInfo)
 		return pInfo
 	}
@@ -347,10 +349,10 @@ func (bq *backoffQueue) delete(pInfo *framework.QueuedPodInfo) bool {
 	bq.lock.Lock()
 	defer bq.lock.Unlock()
 
-	if bq.podBackoffQ.Delete(pInfo) == nil {
+	if bq.podBackoffQ.Delete(pInfo) != nil {
 		return true
 	}
-	return bq.podErrorBackoffQ.Delete(pInfo) == nil
+	return bq.podErrorBackoffQ.Delete(pInfo) != nil
 }
 
 // popBackoff pops the pInfo from the podBackoffQ.

@@ -2,9 +2,8 @@ name: Licenses Lint
 
 on:
   push:
-    branches:
-      - master
-    tags:
+    branches-ignore:
+      - "dependabot/**"
   pull_request:
 
 permissions: read-all

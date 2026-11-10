@@ -47,6 +47,11 @@ type QueueSpecApplyConfiguration struct {
 	Priority *int32 `json:"priority,omitempty"`
 	// DequeueStrategy defines the dequeue strategy of queue
 	DequeueStrategy *schedulingv1beta1.DequeueStrategy `json:"dequeueStrategy,omitempty"`
+	// AllowedNamespaces lists the namespaces whose NamespaceQueues may use
+	// this Queue as their cluster-scoped parent.
+	// An empty or omitted list denies attachment.
+	// The literal "*" allows all namespaces and must be the only entry when present.
+	AllowedNamespaces []string `json:"allowedNamespaces,omitempty"`
 }
 
 // QueueSpecApplyConfiguration constructs a declarative configuration of the QueueSpec type for use with
@@ -145,5 +150,15 @@ func (b *QueueSpecApplyConfiguration) WithPriority(value int32) *QueueSpecApplyC
 // If called multiple times, the DequeueStrategy field is set to the value of the last call.
 func (b *QueueSpecApplyConfiguration) WithDequeueStrategy(value schedulingv1beta1.DequeueStrategy) *QueueSpecApplyConfiguration {
 	b.DequeueStrategy = &value
+	return b
+}
+
+// WithAllowedNamespaces adds the given value to the AllowedNamespaces field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the AllowedNamespaces field.
+func (b *QueueSpecApplyConfiguration) WithAllowedNamespaces(values ...string) *QueueSpecApplyConfiguration {
+	for i := range values {
+		b.AllowedNamespaces = append(b.AllowedNamespaces, values[i])
+	}
 	return b
 }

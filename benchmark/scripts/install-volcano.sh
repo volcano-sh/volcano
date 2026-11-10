@@ -81,13 +81,14 @@ if [[ "${INSTALL_MODE}" == "release" ]]; then
         "${HELM_QPS_ARGS[@]}" \
         --wait --timeout 180s
 else
-    log_info "Installing Volcano from local source..."
+    log_info "Installing Volcano from local source (image tag ${TAG})..."
 
     helm install volcano "${VOLCANO_ROOT}/installer/helm/chart/volcano" \
         --namespace volcano-system \
         --create-namespace \
         --set basic.scheduler_config_file=volcano-scheduler-configmap \
         --set basic.image_pull_policy=IfNotPresent \
+        --set basic.image_tag_version="${TAG}" \
         --set custom.agent_scheduler_enable=true \
         "${HELM_QPS_ARGS[@]}" \
         --wait --timeout 120s

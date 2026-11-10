@@ -23,7 +23,6 @@ import (
 
 	"github.com/spf13/pflag"
 	"go.uber.org/automaxprocs/maxprocs"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	cliflag "k8s.io/component-base/cli/flag"
 	componentbaseoptions "k8s.io/component-base/config/options"
@@ -56,7 +55,7 @@ func main() {
 	s := options.NewServerOption()
 
 	s.AddFlags(fs)
-	utilfeature.DefaultMutableFeatureGate.AddFlag(fs)
+	commonutil.AddFeatureGatesFlag(fs, &s.FeatureGates)
 
 	commonutil.LeaderElectionDefault(&s.LeaderElection)
 	s.LeaderElection.ResourceName = commonutil.GenerateComponentName(s.SchedulerNames)

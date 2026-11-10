@@ -26,7 +26,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -222,6 +224,48 @@ func countReadyTasksByRole(ctx *e2eutil.TestContext, job *batchv1alpha1.Job) map
 		counts[role]++
 	}
 	return counts
+}
+
+// nodesOfRunningPods returns the set of nodes hosting the job's
+// Running/Succeeded pods. Used to verify pod-to-node placement after a
+// gangpreempt/gangreclaim eviction, which is the observable signal that
+// the pipelined preemptor was bound to its NominatedHyperNode pin rather
+// than rescheduled through the regular gradient search.
+func nodesOfRunningPods(ctx *e2eutil.TestContext, job *batchv1alpha1.Job) sets.Set[string] {
+	pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	out := sets.New[string]()
+	for _, pod := range pods.Items {
+		if !metav1.IsControlledBy(&pod, job) {
+			continue
+		}
+		if pod.Status.Phase != v1.PodRunning && pod.Status.Phase != v1.PodSucceeded {
+			continue
+		}
+		if pod.Spec.NodeName == "" {
+			continue
+		}
+		out.Insert(pod.Spec.NodeName)
+	}
+	return out
+}
+
+// setQueuePriority overrides .spec.priority of an existing queue. The
+// capacity plugin's QueueOrderFn uses .spec.priority before any other
+// signal (negative result means higher priority), so a queue set to N>0
+// sorts before a queue left at the default 0 -- regardless of the
+// underused/overused tie-breakers that would otherwise kick in.
+func setQueuePriority(ctx *e2eutil.TestContext, queueName string, priority int32) {
+	retryErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		queue.Spec.Priority = priority
+		_, err = ctx.Vcclient.SchedulingV1beta1().Queues().Update(context.TODO(), queue, metav1.UpdateOptions{})
+		return err
+	})
+	Expect(retryErr).NotTo(HaveOccurred(), "failed to set priority on queue %s", queueName)
 }
 
 // deservedCPU builds a ResourceList with just CPU (in cores) plus matching memory.
@@ -942,6 +986,7 @@ var _ = Describe("GangPreempt E2E Test", func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
+
 })
 
 // ── gangreclaim ────────────────────────────────────────────────────────
@@ -1482,6 +1527,90 @@ var _ = Describe("GangReclaim E2E Test", func() {
 			By("Expecting victim gang to retain minAvail=2 tasks")
 			err = e2eutil.WaitTasksReady(ctx, victim, 2)
 			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	// ── gangreclaim + NominatedHyperNode pin ───────────────────────────
+
+	// GR-N1 exercises the gangreclaim -> NominatedHyperNode -> allocate
+	// handoff across two queues with different .spec.priority.
+	//
+	// Setup (4-CPU tight cluster):
+	//   - qVic .spec.priority=100, deserved=2 -- hosts the running victim
+	//     gang plus a pending "racer" gang; sorts first by QueueOrderFn.
+	//   - qRec .spec.priority=0,   deserved=2 -- hosts the pending reclaimer.
+	//
+	// Cycle 1: allocate cannot place either pending gang (cluster full);
+	// gangreclaim evicts 2 surplus tasks from the victim and pipelines the
+	// reclaimer with a NominatedHyperNode + per-task NominatedNodeName.
+	//
+	// Cycle 2: the pipelined reclaimer in qRec must win the vacated nodes,
+	// even though qVic's racer sorts higher by QueueOrderFn.
+	Context("with NominatedHyperNode pin across queues", func() {
+		It("GR-N1: pipelined reclaimer wins freed capacity over a same-cycle racer in a higher-priority victim queue", func() {
+			qVic := "grn1-qvic"
+			qRec := "grn1-qrec"
+			ctx = e2eutil.InitTestContext(e2eutil.Options{
+				Queues:             []string{qVic, qRec},
+				NodesNumLimit:      4,
+				NodesResourceLimit: e2eutil.CPU1Mem1,
+				DeservedResource: map[string]v1.ResourceList{
+					qVic: deservedCPU(2),
+					qRec: deservedCPU(2),
+				},
+				PriorityClasses: map[string]int32{
+					grLowPri: grLowPriVal,
+				},
+			})
+
+			By("Setting victim queue to high .spec.priority so QueueOrderFn pops it first")
+			setQueuePriority(ctx, qVic, 100)
+			setQueuePriority(ctx, qRec, 0)
+
+			By("Filling cluster with victim gang in the high-priority queue (4 tasks, minAvail=2, overusing deserved=2)")
+			victim := createGangJob(ctx, "victim-grn1", qVic, grLowPri, e2eutil.CPU1Mem1, 4, 2, true)
+			err := e2eutil.WaitTasksReady(ctx, victim, 4)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Snapshotting the 4 nodes hosting the victim's pods")
+			victimNodesBefore := nodesOfRunningPods(ctx, victim)
+			Expect(victimNodesBefore.Len()).To(Equal(4), "victim should occupy all 4 nodes")
+
+			By("Submitting a racer gang in the same high-priority queue (pending, will compete for freed capacity)")
+			racer := createGangJob(ctx, "racer-grn1", qVic, grLowPri, e2eutil.CPU1Mem1, 2, 2, false)
+
+			// Give the scheduler a few sessions to observe the racer as pending
+			// in qVic before the reclaimer arrives. This rules out timing flakes
+			// where gangreclaim could fire before the racer is even visible.
+			time.Sleep(5 * time.Second)
+
+			By("Submitting the reclaimer to the low-priority queue (triggers gangreclaim of qVic's surplus)")
+			reclaimer := createGangJob(ctx, "reclaimer-grn1", qRec, grLowPri, e2eutil.CPU1Mem1, 2, 2, false)
+
+			By("Expecting the reclaimer to run -- its NominatedHyperNode pin must beat qVic's higher QueueOrderFn priority")
+			err = e2eutil.WaitTasksReady(ctx, reclaimer, 2)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Expecting the victim to retain minAvail=2 (safe-bundle reclaim, gang not broken)")
+			err = e2eutil.WaitTasksReady(ctx, victim, 2)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying the reclaimer binds to the exact 2 nodes vacated by gangreclaim")
+			victimNodesAfter := nodesOfRunningPods(ctx, victim)
+			Expect(victimNodesAfter.Len()).To(Equal(2), "victim should retain exactly 2 running tasks")
+
+			freedNodes := victimNodesBefore.Difference(victimNodesAfter)
+			Expect(freedNodes.Len()).To(Equal(2),
+				"gangreclaim should vacate exactly 2 nodes; before=%v, after=%v",
+				sets.List(victimNodesBefore), sets.List(victimNodesAfter))
+
+			reclaimerNodes := nodesOfRunningPods(ctx, reclaimer)
+			Expect(reclaimerNodes.Equal(freedNodes)).To(BeTrue(),
+				"reclaimer pods must bind to the nodes vacated by gangreclaim: reclaimer=%v, vacated=%v",
+				sets.List(reclaimerNodes), sets.List(freedNodes))
+
+			By("Expecting the racer in the higher-priority queue to NOT run (its capacity went to the pinned reclaimer)")
+			waitTasksNotReady(ctx, racer, 2, "high-priority-queue racer must not steal nodes pinned to the gangreclaim-pipelined reclaimer in the lower-priority queue")
 		})
 	})
 })

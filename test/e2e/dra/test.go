@@ -28,13 +28,18 @@ import (
 	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
 	drautils "k8s.io/kubernetes/test/e2e/dra/utils"
+	"k8s.io/utils/ptr"
 
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	admissionapi "k8s.io/pod-security-admission/api"
+
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 // The e2e test cases in this file are copied from kubernetes test/e2e/dra/dra.go, only contains scheduling-related e2e testing.
@@ -234,6 +239,150 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 			gomega.Expect(getResourceClaim.Status.Devices).To(gomega.Equal(updatedResourceClaim.Status.Devices))
 		})
 	}
+
+	// Two Pods each request one device through separate claims, with no CPU/memory requests or limits.
+	// With minMember=2, one available device must leave both unbound; two must let both run.
+	// Each test uses its own driver instance.
+	ginkgo.Context("gang scheduling with DRA-only Pods", ginkgo.Serial, func() {
+		const gangSize = 2
+		for _, scenario := range []struct {
+			name        string
+			deviceCount int
+			wantRunning bool
+		}{
+			{
+				name:        "one device cannot satisfy minMember=2",
+				deviceCount: 1,
+				wantRunning: false,
+			},
+			{
+				name:        "two devices satisfy minMember=2",
+				deviceCount: 2,
+				wantRunning: true,
+			},
+		} {
+			ginkgo.Context(scenario.name, func() {
+				nodes := drautils.NewNodes(f, 1, 1)
+				driver := drautils.NewDriver(f, nodes, drautils.DriverResources(scenario.deviceCount))
+				b := newBuilder(f, driver)
+
+				ginkgo.DescribeTable("schedules the gang according to available devices", func(ctx context.Context, useTemplate bool) {
+					namespace := f.Namespace.Name
+					podsClient := f.ClientSet.CoreV1().Pods(namespace)
+					claimsClient := f.ClientSet.ResourceV1().ResourceClaims(namespace)
+					groupsClient := e2eutil.VcClient.SchedulingV1beta1().PodGroups(namespace)
+
+					group := &schedulingv1.PodGroup{
+						ObjectMeta: metav1.ObjectMeta{Name: "dra-only-gang", Namespace: namespace},
+						Spec:       schedulingv1.PodGroupSpec{MinMember: gangSize, Queue: "default"},
+					}
+					_, err := groupsClient.Create(ctx, group, metav1.CreateOptions{})
+					framework.ExpectNoError(err)
+
+					var pods []*v1.Pod
+					for range gangSize {
+						var pod *v1.Pod
+						if useTemplate {
+							var template *resourceapi.ResourceClaimTemplate
+							pod, template = b.podInline()
+							b.create(ctx, template)
+						} else {
+							claim := b.externalClaim()
+							pod = b.podExternal()
+							pod.Spec.ResourceClaims[0].ResourceClaimName = ptr.To(claim.Name)
+							b.create(ctx, claim)
+						}
+						pod.Annotations = map[string]string{schedulingv1.KubeGroupNameAnnotationKey: group.Name}
+						b.create(ctx, pod)
+						pods = append(pods, pod)
+					}
+
+					// Wait for template-created claims before checking scheduling results.
+					// Direct claims already exist; use the same lookup to verify both forms.
+					claimNames := sets.New[string]()
+					for _, pod := range pods {
+						var claimName string
+						gomega.Eventually(ctx, func(ctx context.Context) (bool, error) {
+							current, err := podsClient.Get(ctx, pod.Name, metav1.GetOptions{})
+							if err != nil {
+								return false, err
+							}
+							for _, container := range current.Spec.Containers {
+								gomega.Expect(container.Resources.Requests).To(gomega.BeEmpty())
+								gomega.Expect(container.Resources.Limits).To(gomega.BeEmpty())
+							}
+							if useTemplate {
+								for _, status := range current.Status.ResourceClaimStatuses {
+									if status.Name == current.Spec.ResourceClaims[0].Name && status.ResourceClaimName != nil {
+										claimName = *status.ResourceClaimName
+									}
+								}
+							} else {
+								claimName = *current.Spec.ResourceClaims[0].ResourceClaimName
+							}
+							if claimName == "" {
+								return false, nil
+							}
+							_, err = claimsClient.Get(ctx, claimName, metav1.GetOptions{})
+							return err == nil, err
+						}).WithTimeout(f.Timeouts.PodStart).Should(gomega.BeTrue())
+						claimNames.Insert(claimName)
+					}
+					gomega.Expect(claimNames.Len()).To(gomega.Equal(gangSize), "gang members must use separate claims")
+
+					if !scenario.wantRunning {
+						// One device could run one member, but minMember=2 must keep both unbound.
+						// This catches DRA-only Pods skipping allocate and binding through backfill.
+						ginkgo.By("checking that an undersized device pool cannot partially bind the gang")
+						// Confirm a scheduling attempt first, so unbound Pods alone cannot make the test pass.
+						gomega.Eventually(ctx, func(ctx context.Context) ([]schedulingv1.PodGroupCondition, error) {
+							current, err := groupsClient.Get(ctx, group.Name, metav1.GetOptions{})
+							if err != nil {
+								return nil, err
+							}
+							return current.Status.Conditions, nil
+						}).WithTimeout(f.Timeouts.PodStart).Should(gomega.ContainElement(gomega.And(
+							gomega.HaveField("Type", schedulingv1.PodGroupUnschedulableType),
+							gomega.HaveField("Status", v1.ConditionTrue),
+						)))
+						gomega.Consistently(ctx, func(ctx context.Context) ([]string, error) {
+							var boundPods []string
+							for _, pod := range pods {
+								current, err := podsClient.Get(ctx, pod.Name, metav1.GetOptions{})
+								if err != nil {
+									return nil, err
+								}
+								if current.Spec.NodeName != "" {
+									boundPods = append(boundPods, current.Name)
+								}
+							}
+							return boundPods, nil
+						}).WithTimeout(30 * time.Second).WithPolling(time.Second).Should(gomega.BeEmpty())
+						return
+					}
+
+					// With two devices available from the start, both members must run on distinct devices.
+					ginkgo.By("waiting for both gang members to run on distinct devices")
+					for _, pod := range pods {
+						framework.ExpectNoError(e2epod.WaitForPodRunningInNamespace(ctx, f.ClientSet, pod))
+					}
+					devices := sets.New[string]()
+					for claimName := range claimNames {
+						claim, err := claimsClient.Get(ctx, claimName, metav1.GetOptions{})
+						framework.ExpectNoError(err)
+						gomega.Expect(claim.Status.Allocation).NotTo(gomega.BeNil())
+						gomega.Expect(claim.Status.Allocation.Devices.Results).To(gomega.HaveLen(1))
+						result := claim.Status.Allocation.Devices.Results[0]
+						devices.Insert(result.Driver + "/" + result.Pool + "/" + result.Device)
+					}
+					gomega.Expect(devices.Len()).To(gomega.Equal(gangSize), "each member must get a distinct device")
+				},
+					ginkgo.Entry("with ResourceClaim", false),
+					ginkgo.Entry("with ResourceClaimTemplate", true),
+				)
+			})
+		}
+	})
 
 	singleNodeTests := func() {
 		nodes := drautils.NewNodes(f, 1, 1)

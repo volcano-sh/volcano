@@ -58,7 +58,7 @@ func Run(opt *options.ServerOption) error {
 	}
 
 	// Align default feature-gates with the connected cluster's version.
-	if err := commonutil.SetupComponentGlobals(config); err != nil {
+	if err := commonutil.SetupComponentGlobals(config, opt.FeatureGates); err != nil {
 		klog.Errorf("failed to set component globals: %v", err)
 		return err
 	}

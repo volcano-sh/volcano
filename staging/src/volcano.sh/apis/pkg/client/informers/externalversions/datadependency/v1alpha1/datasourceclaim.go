@@ -33,11 +33,39 @@ import (
 )
 
 // DataSourceClaimInformer provides access to a shared informer and lister for
-// DataSourceClaims.
+// DataSourceClaims. Prefer using the type-safe variant (see [TypedDataSourceClaimInformer]).
 type DataSourceClaimInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() datadependencyv1alpha1.DataSourceClaimLister
 }
+
+// TypedDataSourceClaimInformer provides access to a shared informer and lister for
+// DataSourceClaims, including the type-safe TypedInformer variant.
+// It is a superset of DataSourceClaimInformer.
+type TypedDataSourceClaimInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() DataSourceClaimIndexInformer
+	Lister() datadependencyv1alpha1.DataSourceClaimLister
+}
+
+// DataSourceClaimIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type DataSourceClaimIndexInformer cache.TypedSharedIndexInformer[*apisdatadependencyv1alpha1.DataSourceClaim]
+
+// DataSourceClaimHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for DataSourceClaim.
+type DataSourceClaimHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apisdatadependencyv1alpha1.DataSourceClaim]
+
+// DataSourceClaimDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for DataSourceClaim.
+type DataSourceClaimDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apisdatadependencyv1alpha1.DataSourceClaim]
+
+// DataSourceClaimFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for DataSourceClaim.
+type DataSourceClaimFilteringHandler = cache.TypedFilteringResourceEventHandler[*apisdatadependencyv1alpha1.DataSourceClaim]
+
+// DataSourceClaimIndexers is a specialization of [cache.TypedIndexers] for DataSourceClaim.
+type DataSourceClaimIndexers = cache.TypedIndexers[*apisdatadependencyv1alpha1.DataSourceClaim]
+
+// DeletedDataSourceClaim is a specialization of [cache.DeletedObject] for DataSourceClaim.
+type DeletedDataSourceClaim = cache.DeletedObject[*apisdatadependencyv1alpha1.DataSourceClaim]
 
 type dataSourceClaimInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -48,25 +76,49 @@ type dataSourceClaimInformer struct {
 // NewDataSourceClaimInformer constructs a new informer for DataSourceClaim type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedDataSourceClaimInformer]).
 func NewDataSourceClaimInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewDataSourceClaimInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedDataSourceClaimInformer constructs a new informer for DataSourceClaim type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedDataSourceClaimInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers DataSourceClaimIndexers) DataSourceClaimIndexInformer {
+	return NewTypedDataSourceClaimInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredDataSourceClaimInformer constructs a new informer for DataSourceClaim type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredDataSourceClaimInformer]).
 func NewFilteredDataSourceClaimInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewDataSourceClaimInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+	return NewTypedDataSourceClaimInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredDataSourceClaimInformer constructs a new informer for DataSourceClaim type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredDataSourceClaimInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers DataSourceClaimIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) DataSourceClaimIndexInformer {
+	return NewTypedDataSourceClaimInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
 }
 
 // NewDataSourceClaimInformerWithOptions constructs a new informer for DataSourceClaim type with additional options.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedDataSourceClaimInformerWithOptions]).
 func NewDataSourceClaimInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedDataSourceClaimInformerWithOptions(client, namespace, options)
+}
+
+// NewTypedDataSourceClaimInformerWithOptions constructs a new informer for DataSourceClaim type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedDataSourceClaimInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) DataSourceClaimIndexInformer {
 	gvr := schema.GroupVersionResource{Group: "datadependency.volcano.sh", Version: "v1alpha1", Resource: "datasourceclaims"}
 	identifier := options.InformerName.WithResource(gvr)
 	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
+	return cache.NewTypedSharedIndexInformer[*apisdatadependencyv1alpha1.DataSourceClaim](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
@@ -99,17 +151,57 @@ func NewDataSourceClaimInformerWithOptions(client versioned.Interface, namespace
 			Indexers:     options.Indexers,
 			Identifier:   identifier,
 		},
-	)
+	))
 }
 
 func (f *dataSourceClaimInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewDataSourceClaimInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewTypedDataSourceClaimInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *dataSourceClaimInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apisdatadependencyv1alpha1.DataSourceClaim{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *dataSourceClaimInformer) TypedInformer() DataSourceClaimIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisdatadependencyv1alpha1.DataSourceClaim](f.factory.InformerFor(&apisdatadependencyv1alpha1.DataSourceClaim{}, f.defaultInformer))
 }
 
 func (f *dataSourceClaimInformer) Lister() datadependencyv1alpha1.DataSourceClaimLister {
 	return datadependencyv1alpha1.NewDataSourceClaimLister(f.Informer().GetIndexer())
+}
+
+// ToTypedDataSourceClaimInformer converts an untyped informer into a TypedDataSourceClaimInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *DataSourceClaim. If that is not the case, calling type-safe methods of the returned
+// TypedDataSourceClaimInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedDataSourceClaimInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedDataSourceClaimInformer(informer DataSourceClaimInformer) TypedDataSourceClaimInformer {
+	if informer, ok := informer.(TypedDataSourceClaimInformer); ok {
+		return informer
+	}
+	return &dataSourceClaimTypedInformerAdapter{informer}
+}
+
+type dataSourceClaimTypedInformerAdapter struct {
+	DataSourceClaimInformer
+}
+
+func (a *dataSourceClaimTypedInformerAdapter) TypedInformer() DataSourceClaimIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisdatadependencyv1alpha1.DataSourceClaim](a.Informer())
+}
+
+// ToDataSourceClaimIndexInformer converts an untyped informer into a DataSourceClaimIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *DataSourceClaim. If that is not the case, calling type-safe methods of the returned
+// DataSourceClaimIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a DataSourceClaimIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToDataSourceClaimIndexInformer(informer cache.SharedIndexInformer) DataSourceClaimIndexInformer {
+	if informer, ok := informer.(DataSourceClaimIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apisdatadependencyv1alpha1.DataSourceClaim](informer)
 }

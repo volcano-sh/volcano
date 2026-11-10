@@ -26,11 +26,8 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
-)
-
-const (
-	jobUpdaterWorker = 16
 )
 
 // TimeJitterAfter means: new after old + duration + jitter
@@ -61,7 +58,7 @@ func NewJobUpdater(ssn *Session) *JobUpdater {
 }
 
 func (ju *JobUpdater) UpdateAll() {
-	workqueue.ParallelizeUntil(context.TODO(), jobUpdaterWorker, len(ju.jobQueue), ju.updateJob)
+	workqueue.ParallelizeUntil(context.TODO(), options.GetJobUpdaterWorkerNum(), len(ju.jobQueue), ju.updateJob)
 }
 
 func isPodGroupConditionsUpdated(newCondition, oldCondition []scheduling.PodGroupCondition) bool {
@@ -108,12 +105,40 @@ func (ju *JobUpdater) isJobAllocatedHyperNodeChanged(job *api.JobInfo) bool {
 	return oldHyperNode != job.PodGroup.GetAnnotations()[api.JobAllocatedHyperNode]
 }
 
+// syncAllocatedHyperNodeAnnotation serializes the in-memory placement so the
+// cache writeback persists allocation and scale-in changes across sessions.
+func syncAllocatedHyperNodeAnnotation(job *api.JobInfo) {
+	if job.PodGroup == nil {
+		return
+	}
+	annotations := job.PodGroup.GetAnnotations()
+	current := ""
+	if annotations != nil {
+		current = annotations[api.JobAllocatedHyperNode]
+	}
+	if current == job.AllocatedHyperNode {
+		return
+	}
+	if job.AllocatedHyperNode == "" {
+		if annotations != nil {
+			delete(annotations, api.JobAllocatedHyperNode)
+		}
+		return
+	}
+	if annotations == nil {
+		annotations = map[string]string{}
+		job.PodGroup.SetAnnotations(annotations)
+	}
+	annotations[api.JobAllocatedHyperNode] = job.AllocatedHyperNode
+}
+
 // updateJob update specified job
 func (ju *JobUpdater) updateJob(index int) {
 	job := ju.jobQueue[index]
 	ssn := ju.ssn
 
 	job.PodGroup.Status = jobStatus(ssn, job)
+	syncAllocatedHyperNodeAnnotation(job)
 	oldStatus, found := ssn.PodGroupOldState.Status[job.UID]
 	updatePGStatus := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus)
 	updatePGAnnotations := ju.isJobAllocatedHyperNodeChanged(job)

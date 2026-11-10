@@ -25,6 +25,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -57,6 +58,49 @@ func updateNodeUsage(nodesInfo map[string]*api.NodeInfo, nodesUsage map[string]*
 		if nodeUsage, ok := nodesUsage[nodeName]; ok {
 			nodeInfo.ResourceUsage = nodeUsage
 		}
+	}
+}
+
+func TestEstimateTaskResource(t *testing.T) {
+	tests := []struct {
+		name       string
+		requests   v1.ResourceList
+		claims     []v1.PodResourceClaim
+		wantCPU    float64
+		wantMemory float64
+	}{
+		{
+			name:       "no requests",
+			wantCPU:    250,
+			wantMemory: 200 * 1024 * 1024,
+		},
+		{
+			name:       "DRA only",
+			claims:     []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}},
+			wantCPU:    250,
+			wantMemory: 200 * 1024 * 1024,
+		},
+		{
+			name:       "ordinary requests and DRA",
+			requests:   api.BuildResourceList("1", "1Gi"),
+			claims:     []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}},
+			wantCPU:    700,
+			wantMemory: 0.7 * 1024 * 1024 * 1024,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := util.BuildPod("c1", "p1", "", v1.PodPending, tt.requests, "pg1", nil, nil)
+			pod.Spec.ResourceClaims = tt.claims
+			for _, claim := range tt.claims {
+				pod.Spec.Containers[0].Resources.Claims = append(pod.Spec.Containers[0].Resources.Claims, v1.ResourceClaim{Name: claim.Name})
+			}
+			plugin := New(nil).(*usagePlugin)
+			cpu, memory := plugin.estimateTaskResource(api.NewTaskInfo(pod), 1)
+			if math.Abs(cpu-tt.wantCPU) > eps || math.Abs(memory-tt.wantMemory) > eps {
+				t.Errorf("estimate = (%v, %v), want (%v, %v)", cpu, memory, tt.wantCPU, tt.wantMemory)
+			}
+		})
 	}
 }
 

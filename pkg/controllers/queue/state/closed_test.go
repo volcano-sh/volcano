@@ -137,6 +137,15 @@ func TestClosedState_SyncQueueAction(t *testing.T) {
 			expectedState: schedulingv1beta1.QueueStateClosed,
 		},
 		{
+			name: "SyncQueueAction: Spec state closed with remaining podgroups",
+			queue: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-queue"},
+				Status:     schedulingv1beta1.QueueStatus{State: schedulingv1beta1.QueueStateClosed},
+			},
+			podGroups:     []string{"default/pg1"},
+			expectedState: schedulingv1beta1.QueueStateClosing,
+		},
+		{
 			name: "SyncQueueAction: Spec state unknown/garbage",
 			queue: &schedulingv1beta1.Queue{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-queue"},

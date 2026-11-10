@@ -207,7 +207,8 @@ func (cc *cronjobcontroller) processFinishedJobs(cronJob *batchv1.CronJob, jobsB
 					updateStatus = true
 				}
 				successfulJobs = append(successfulJobs, job)
-			case batchv1.Failed:
+			case batchv1.Failed, batchv1.Terminated:
+				// A terminated job did not succeed, so it is pruned with the failed ones
 				failedJobs = append(failedJobs, job)
 			}
 		}
@@ -393,7 +394,7 @@ func (cc *cronjobcontroller) createJob(cronJob *batchv1.CronJob, scheduledTime t
 		return nil, err
 
 	case errors.IsAlreadyExists(err):
-		existingJob, err := cc.jobClient.GetJobClient(cc.vcClient, jobTemplate.Namespace, jobTemplate.Name)
+		existingJob, err := cc.jobClient.GetJobClient(cc.vcClient, cronJob.Namespace, jobTemplate.Name)
 		if err != nil {
 			if errors.IsNotFound(err) {
 				klog.Warningf("Job %s disappeared after creation conflict, retrying", jobTemplate.Name)

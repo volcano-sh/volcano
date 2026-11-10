@@ -332,6 +332,13 @@ func BuildPodWithPreemptionPolicy(namespace, name, nodeName string, p v1.PodPhas
 	return pod
 }
 
+// BuildPodWithNominatedNodeName builds a pod with a nominatedNodeName set on its status
+func BuildPodWithNominatedNodeName(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName, nominatedNodeName string, labels map[string]string, selector map[string]string) *v1.Pod {
+	pod := BuildPod(namespace, name, nodeName, p, req, groupName, labels, selector)
+	pod.Status.NominatedNodeName = nominatedNodeName
+	return pod
+}
+
 // BuildPodGroup return podgroup with base spec and phase status
 func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase) *schedulingv1beta1.PodGroup {
 	return &schedulingv1beta1.PodGroup{

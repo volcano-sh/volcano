@@ -64,6 +64,8 @@ restricted_licenses:
 allowlisted_modules:
 # Apache-2.0: github.com/google/cadvisor@v0.47.1/LICENSE
 - github.com/google/cadvisor
+# Apache-2.0: github.com/google/cadvisor/lib@v0.60.5/LICENSE
+- github.com/google/cadvisor/lib
 # Apache-2.0: k8s.io/kubernetes@v1.27.2/logo/LICENSE
 - k8s.io/kubernetes
 # Apache-2.0: github.com/spf13/cobra@v1.8.1/LICENSE
