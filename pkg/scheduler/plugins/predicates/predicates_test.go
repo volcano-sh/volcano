@@ -26,8 +26,10 @@ import (
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	k8sframework "k8s.io/kube-scheduler/framework"
 	schedframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
@@ -178,7 +180,6 @@ func TestDiscardRestoresEvictedTaskDeviceState(t *testing.T) {
 	victim := util.BuildPod("ns1", "victim", node.Name, apiv1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", nil, nil)
 	victim.Spec.Containers[0].Resources.Limits = apiv1.ResourceList{gpushare.VolcanoGPUResource: resource.MustParse("4000")}
 	victim.Annotations[gpushare.GPUIndex] = "1"
-	victim.Annotations[gpushare.PredicateTime] = "1"
 
 	var pp *PredicatesPlugin
 	test := uthelper.TestCommonStruct{
@@ -199,9 +200,10 @@ func TestDiscardRestoresEvictedTaskDeviceState(t *testing.T) {
 	enabled := true
 	ssn := test.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{{Name: PluginName, EnabledPredicate: &enabled}}}}, nil)
 	defer test.Close()
-	if _, err := ssn.KubeClient().CoreV1().Pods(victim.Namespace).Create(context.Background(), victim.DeepCopy(), metav1.CreateOptions{}); err != nil {
-		t.Fatal(err)
-	}
+	// Device annotation patches must not trigger concurrent cache updates.
+	ssn.KubeClient().(*k8sfake.Clientset).PrependReactor("patch", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, victim.DeepCopy(), nil
+	})
 
 	var task *api.TaskInfo
 	for _, job := range ssn.Jobs {
