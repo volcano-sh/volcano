@@ -76,6 +76,16 @@ func NewDefaultMockSchedulerCache(schedulerName string) *SchedulerCache {
 	return msc
 }
 
+// ShutdownMockSchedulerCache releases the workqueues created by the mock cache
+// constructors. Call it after closing all Sessions using the cache. Closing a
+// Session alone does not stop these queues or their background goroutines.
+func ShutdownMockSchedulerCache(sc *SchedulerCache) {
+	sc.errTasks.ShutDown()
+	sc.nodeQueue.ShutDown()
+	sc.DeletedJobs.ShutDown()
+	sc.hyperNodesQueue.ShutDown()
+}
+
 func checkAndSetDefaultInterface(sc *SchedulerCache) {
 	if sc.Recorder == nil {
 		sc.Recorder = record.NewFakeRecorder(100) // to avoid blocking, we can pass in &FakeRecorder{} to NewCustomMockSchedulerCache
@@ -186,8 +196,7 @@ func (sc *SchedulerCache) initMockInformers() {
 		// If device taints are disabled, the additional informers are not needed and
 		// the tracker turns into a simple wrapper around the slice informer.
 		if resourceSliceTrackerOpts.EnableDeviceTaintRules {
-			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1beta2().DeviceTaintRules()
-			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
+			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1().DeviceTaintRules()
 		}
 		resourceSliceTracker, err := resourceslicetracker.StartTracker(ctx, resourceSliceTrackerOpts)
 		if err != nil {

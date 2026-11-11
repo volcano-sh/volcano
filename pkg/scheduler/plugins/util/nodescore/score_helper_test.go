@@ -18,6 +18,8 @@ package nodescore
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -30,9 +32,10 @@ import (
 )
 
 type fakeScorePlugin struct {
-	name       string
-	scores     map[string]int64
-	extensions *fakeScoreExtensions
+	name        string
+	scores      map[string]int64
+	scoreStatus map[string]*fwk.Status
+	extensions  *fakeScoreExtensions
 }
 
 func (p *fakeScorePlugin) Name() string {
@@ -40,7 +43,8 @@ func (p *fakeScorePlugin) Name() string {
 }
 
 func (p *fakeScorePlugin) Score(_ context.Context, _ fwk.CycleState, _ *v1.Pod, nodeInfo fwk.NodeInfo) (int64, *fwk.Status) {
-	return p.scores[nodeInfo.Node().Name], nil
+	nodeName := nodeInfo.Node().Name
+	return p.scores[nodeName], p.scoreStatus[nodeName]
 }
 
 func (p *fakeScorePlugin) ScoreExtensions() fwk.ScoreExtensions {
@@ -50,14 +54,21 @@ func (p *fakeScorePlugin) ScoreExtensions() fwk.ScoreExtensions {
 	return p.extensions
 }
 
+type fakePreScoreAndScorePlugin struct {
+	*fakeScorePlugin
+	preScoreStatus *fwk.Status
+}
+
+func (p *fakePreScoreAndScorePlugin) PreScore(_ context.Context, _ fwk.CycleState, _ *v1.Pod, _ []fwk.NodeInfo) *fwk.Status {
+	return p.preScoreStatus
+}
+
 type fakeScoreExtensions struct {
-	calls     int
 	normalize func(fwk.NodeScoreList)
 	status    *fwk.Status
 }
 
 func (e *fakeScoreExtensions) NormalizeScore(_ context.Context, _ fwk.CycleState, _ *v1.Pod, scores fwk.NodeScoreList) *fwk.Status {
-	e.calls++
 	if e.normalize != nil {
 		e.normalize(scores)
 	}
@@ -97,90 +108,174 @@ func TestNodeInfosForCandidateNodes(t *testing.T) {
 	}
 }
 
-func TestCalculatePluginScore(t *testing.T) {
-	tests := []struct {
-		name           string
-		extensions     *fakeScoreExtensions
-		expectedScores map[string]float64
-		expectedCalls  int
-	}{
-		{
-			name: "skips normalization when score extensions are absent",
-			expectedScores: map[string]float64{
-				"node-a": 20,
-				"node-b": 40,
+func TestRunScorePlugins(t *testing.T) {
+	plugin1 := &fakePreScoreAndScorePlugin{fakeScorePlugin: &fakeScorePlugin{
+		name:   "plugin-1",
+		scores: map[string]int64{"node-a": 10, "node-b": 20},
+	}}
+	plugin2 := &fakePreScoreAndScorePlugin{fakeScorePlugin: &fakeScorePlugin{
+		name:   "plugin-2",
+		scores: map[string]int64{"node-a": 80, "node-b": 40},
+		extensions: &fakeScoreExtensions{normalize: func(scores fwk.NodeScoreList) {
+			for i := range scores {
+				switch scores[i].Name {
+				case "node-a":
+					scores[i].Score = 20
+				case "node-b":
+					scores[i].Score = 60
+				}
+			}
+		}},
+	}}
+	// Both plugins share the same implementation name to verify that Skip is matched by the entry registration name.
+	skippedPlugin := &fakePreScoreAndScorePlugin{
+		fakeScorePlugin: &fakeScorePlugin{
+			name:   "shared-score-plugin",
+			scores: map[string]int64{"node-a": 100, "node-b": 100},
+			scoreStatus: map[string]*fwk.Status{
+				"node-a": fwk.NewStatus(fwk.Error, "skipped plugin ran"),
+				"node-b": fwk.NewStatus(fwk.Error, "skipped plugin ran"),
 			},
 		},
+		preScoreStatus: fwk.NewStatus(fwk.Skip),
+	}
+	nonSkippedPlugin := &fakePreScoreAndScorePlugin{fakeScorePlugin: &fakeScorePlugin{
+		name:   "shared-score-plugin",
+		scores: map[string]int64{"node-a": 30, "node-b": 40},
+	}}
+	preScoreErr := errors.New("pre failed")
+	preScoreErrorPlugin := &fakePreScoreAndScorePlugin{
+		fakeScorePlugin: &fakeScorePlugin{name: "pre-error"},
+		preScoreStatus:  fwk.AsStatus(preScoreErr),
+	}
+	scoreErrorPlugin := &fakeScorePlugin{
+		name:        "score-error",
+		scores:      map[string]int64{"node-a": 10},
+		scoreStatus: map[string]*fwk.Status{"node-a": fwk.NewStatus(fwk.Error, "score failed")},
+	}
+	normalizeErrorPlugin := &fakeScorePlugin{
+		name:       "normalize-error",
+		scores:     map[string]int64{"node-a": 10},
+		extensions: &fakeScoreExtensions{status: fwk.NewStatus(fwk.Error, "normalize failed")},
+	}
+	invalidScorePlugin := &fakeScorePlugin{
+		name:   "invalid-score",
+		scores: map[string]int64{"node-a": 10},
+		extensions: &fakeScoreExtensions{normalize: func(scores fwk.NodeScoreList) {
+			scores[0].Score = fwk.MaxNodeScore + 1
+		}},
+	}
+	scoreOnlyPlugin := &fakeScorePlugin{
+		name:   "score-only",
+		scores: map[string]int64{"node-a": 25},
+		extensions: &fakeScoreExtensions{normalize: func(scores fwk.NodeScoreList) {
+			scores[0].Score = 40
+		}},
+	}
+	tests := []struct {
+		name                  string
+		preScorePluginEntries []PreScorePluginEntry
+		scorePluginEntries    []ScorePluginEntry
+		nodeInfos             []fwk.NodeInfo
+		want                  map[string]float64
+		wantError             string
+		wantCause             error
+	}{
 		{
-			name: "normalizes scores before applying weight",
-			extensions: &fakeScoreExtensions{
-				normalize: func(scores fwk.NodeScoreList) {
-					scores[0].Score = 50
-					scores[1].Score = 75
-				},
+			name: "normalizes, weights, and aggregates multiple plugins",
+			preScorePluginEntries: []PreScorePluginEntry{
+				{Name: plugin1.Name(), Plugin: plugin1},
+				{Name: plugin2.Name(), Plugin: plugin2},
 			},
-			expectedScores: map[string]float64{
-				"node-a": 100,
-				"node-b": 150,
+			scorePluginEntries: []ScorePluginEntry{
+				{Name: plugin1.Name(), Plugin: plugin1, Weight: 2},
+				{Name: plugin2.Name(), Plugin: plugin2, Weight: 3},
 			},
-			expectedCalls: 1,
+			nodeInfos: testNodeInfos("node-a", "node-b"),
+			want:      map[string]float64{"node-a": 80, "node-b": 220},
+		},
+		{
+			name: "skips matching score plugin",
+			preScorePluginEntries: []PreScorePluginEntry{
+				{Name: "skipped-registration", Plugin: skippedPlugin},
+				{Name: "active-registration", Plugin: nonSkippedPlugin},
+			},
+			scorePluginEntries: []ScorePluginEntry{
+				{Name: "skipped-registration", Plugin: skippedPlugin, Weight: 10},
+				{Name: "active-registration", Plugin: nonSkippedPlugin, Weight: 2},
+			},
+			nodeInfos: testNodeInfos("node-a", "node-b"),
+			want:      map[string]float64{"node-a": 60, "node-b": 80},
+		},
+		{
+			name:               "supports score-only plugin",
+			scorePluginEntries: []ScorePluginEntry{{Name: scoreOnlyPlugin.Name(), Plugin: scoreOnlyPlugin, Weight: 2}},
+			nodeInfos:          testNodeInfos("node-a"),
+			want:               map[string]float64{"node-a": 80},
+		},
+		{
+			name:      "returns empty scores when no score plugins are registered",
+			nodeInfos: testNodeInfos("node-a"),
+			want:      map[string]float64{},
+		},
+		{
+			name:                  "returns PreScore error",
+			preScorePluginEntries: []PreScorePluginEntry{{Name: preScoreErrorPlugin.Name(), Plugin: preScoreErrorPlugin}},
+			scorePluginEntries:    []ScorePluginEntry{{Name: preScoreErrorPlugin.Name(), Plugin: preScoreErrorPlugin, Weight: 1}},
+			nodeInfos:             testNodeInfos("node-a"),
+			wantError:             `PreScore plugin "pre-error"`,
+			wantCause:             preScoreErr,
+		},
+		{
+			name:               "returns Score error",
+			scorePluginEntries: []ScorePluginEntry{{Name: scoreErrorPlugin.Name(), Plugin: scoreErrorPlugin, Weight: 1}},
+			nodeInfos:          testNodeInfos("node-a"),
+			wantError:          `Score plugin "score-error" for node "node-a"`,
+		},
+		{
+			name:               "returns NormalizeScore error",
+			scorePluginEntries: []ScorePluginEntry{{Name: normalizeErrorPlugin.Name(), Plugin: normalizeErrorPlugin, Weight: 1}},
+			nodeInfos:          testNodeInfos("node-a"),
+			wantError:          `NormalizeScore plugin "normalize-error"`,
+		},
+		{
+			name:               "rejects invalid normalized score",
+			scorePluginEntries: []ScorePluginEntry{{Name: invalidScorePlugin.Name(), Plugin: invalidScorePlugin, Weight: 1}},
+			nodeInfos:          testNodeInfos("node-a"),
+			wantError:          "invalid score",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			plugin := &fakeScorePlugin{
-				name:       "test-score-plugin",
-				scores:     map[string]int64{"node-a": 10, "node-b": 20},
-				extensions: tt.extensions,
-			}
-
-			scores, err := CalculatePluginScore(
-				plugin.Name(),
-				plugin,
+			got, err := RunScorePlugins(
+				tt.preScorePluginEntries,
+				tt.scorePluginEntries,
 				k8sframework.NewCycleState(),
 				&v1.Pod{},
-				testNodeInfos("node-a", "node-b"),
-				2,
+				tt.nodeInfos,
 			)
-			if err != nil {
-				t.Fatalf("CalculatePluginScore returned an error: %v", err)
-			}
-			for nodeName, expectedScore := range tt.expectedScores {
-				if score := scores[nodeName]; score != expectedScore {
-					t.Errorf("expected score %v for %s, got %v", expectedScore, nodeName, score)
+
+			if tt.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("expected error containing %q, got %v", tt.wantError, err)
 				}
+				if tt.wantCause != nil && !errors.Is(err, tt.wantCause) {
+					t.Fatalf("expected error to wrap %v, got %v", tt.wantCause, err)
+				}
+				if got != nil {
+					t.Fatalf("expected partial scores to be discarded, got %v", got)
+				}
+				return
 			}
-			if tt.extensions != nil && tt.extensions.calls != tt.expectedCalls {
-				t.Errorf("expected NormalizeScore to be called %d times, got %d", tt.expectedCalls, tt.extensions.calls)
+
+			if err != nil {
+				t.Fatalf("RunScorePlugins returned an error: %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("unexpected scores: got %v, want %v", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestCalculatePluginScoreReturnsNormalizeError(t *testing.T) {
-	extensions := &fakeScoreExtensions{
-		status: fwk.NewStatus(fwk.Error, "normalization failed"),
-	}
-	plugin := &fakeScorePlugin{
-		name:       "test-score-plugin",
-		scores:     map[string]int64{"node-a": 10},
-		extensions: extensions,
-	}
-
-	_, err := CalculatePluginScore(
-		plugin.Name(),
-		plugin,
-		k8sframework.NewCycleState(),
-		&v1.Pod{},
-		testNodeInfos("node-a"),
-		1,
-	)
-	if err == nil || !strings.Contains(err.Error(), "normalization failed") {
-		t.Fatalf("expected normalization error, got %v", err)
-	}
-	if extensions.calls != 1 {
-		t.Errorf("expected NormalizeScore to be called once, got %d", extensions.calls)
 	}
 }
 

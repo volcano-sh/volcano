@@ -72,10 +72,7 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 }
 
 func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, error) {
-	taskInfo := schedulingapi.NewTaskInfo(pod)
-	// Update BestEffort because the InitResreq maybe changes
-	taskInfo.BestEffort = taskInfo.InitResreq.IsEmpty()
-	return taskInfo, nil
+	return schedulingapi.NewTaskInfo(pod), nil
 }
 
 // Assumes that lock is already acquired.
@@ -185,7 +182,7 @@ func (sc *SchedulerCache) UpdatePodInCache(oldObj, newObj interface{}) {
 	}
 	klog.V(4).Infof("Updated pod <%s/%v> in cache.", oldPod.Namespace, oldPod.Name)
 
-	events := framework.PodSchedulingPropertiesChange(newPod, oldPod)
+	events := framework.PodSchedulingPropertiesChange(newPod, oldPod, false)
 	for _, evt := range events {
 		// Currently we still use AssignedPodUpdated and only care about pod affinity and pod topology spread,
 		// directly using MoveAllToActiveOrBackoffQueue may lead to a decrease in throughput.

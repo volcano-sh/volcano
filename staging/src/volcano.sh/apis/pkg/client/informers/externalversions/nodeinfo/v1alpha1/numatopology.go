@@ -33,11 +33,39 @@ import (
 )
 
 // NumatopologyInformer provides access to a shared informer and lister for
-// Numatopologies.
+// Numatopologies. Prefer using the type-safe variant (see [TypedNumatopologyInformer]).
 type NumatopologyInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() nodeinfov1alpha1.NumatopologyLister
 }
+
+// TypedNumatopologyInformer provides access to a shared informer and lister for
+// Numatopologies, including the type-safe TypedInformer variant.
+// It is a superset of NumatopologyInformer.
+type TypedNumatopologyInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() NumatopologyIndexInformer
+	Lister() nodeinfov1alpha1.NumatopologyLister
+}
+
+// NumatopologyIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type NumatopologyIndexInformer cache.TypedSharedIndexInformer[*apisnodeinfov1alpha1.Numatopology]
+
+// NumatopologyHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for Numatopology.
+type NumatopologyHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apisnodeinfov1alpha1.Numatopology]
+
+// NumatopologyDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for Numatopology.
+type NumatopologyDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apisnodeinfov1alpha1.Numatopology]
+
+// NumatopologyFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for Numatopology.
+type NumatopologyFilteringHandler = cache.TypedFilteringResourceEventHandler[*apisnodeinfov1alpha1.Numatopology]
+
+// NumatopologyIndexers is a specialization of [cache.TypedIndexers] for Numatopology.
+type NumatopologyIndexers = cache.TypedIndexers[*apisnodeinfov1alpha1.Numatopology]
+
+// DeletedNumatopology is a specialization of [cache.DeletedObject] for Numatopology.
+type DeletedNumatopology = cache.DeletedObject[*apisnodeinfov1alpha1.Numatopology]
 
 type numatopologyInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -47,25 +75,49 @@ type numatopologyInformer struct {
 // NewNumatopologyInformer constructs a new informer for Numatopology type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedNumatopologyInformer]).
 func NewNumatopologyInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewNumatopologyInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedNumatopologyInformer constructs a new informer for Numatopology type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedNumatopologyInformer(client versioned.Interface, resyncPeriod time.Duration, indexers NumatopologyIndexers) NumatopologyIndexInformer {
+	return NewTypedNumatopologyInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredNumatopologyInformer constructs a new informer for Numatopology type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredNumatopologyInformer]).
 func NewFilteredNumatopologyInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewNumatopologyInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+	return NewTypedNumatopologyInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredNumatopologyInformer constructs a new informer for Numatopology type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredNumatopologyInformer(client versioned.Interface, resyncPeriod time.Duration, indexers NumatopologyIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) NumatopologyIndexInformer {
+	return NewTypedNumatopologyInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
 }
 
 // NewNumatopologyInformerWithOptions constructs a new informer for Numatopology type with additional options.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedNumatopologyInformerWithOptions]).
 func NewNumatopologyInformerWithOptions(client versioned.Interface, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedNumatopologyInformerWithOptions(client, options)
+}
+
+// NewTypedNumatopologyInformerWithOptions constructs a new informer for Numatopology type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedNumatopologyInformerWithOptions(client versioned.Interface, options internalinterfaces.InformerOptions) NumatopologyIndexInformer {
 	gvr := schema.GroupVersionResource{Group: "nodeinfo.volcano.sh", Version: "v1alpha1", Resource: "numatopologys"}
 	identifier := options.InformerName.WithResource(gvr)
 	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
+	return cache.NewTypedSharedIndexInformer[*apisnodeinfov1alpha1.Numatopology](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
@@ -98,17 +150,57 @@ func NewNumatopologyInformerWithOptions(client versioned.Interface, options inte
 			Indexers:     options.Indexers,
 			Identifier:   identifier,
 		},
-	)
+	))
 }
 
 func (f *numatopologyInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewNumatopologyInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewTypedNumatopologyInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *numatopologyInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apisnodeinfov1alpha1.Numatopology{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *numatopologyInformer) TypedInformer() NumatopologyIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisnodeinfov1alpha1.Numatopology](f.factory.InformerFor(&apisnodeinfov1alpha1.Numatopology{}, f.defaultInformer))
 }
 
 func (f *numatopologyInformer) Lister() nodeinfov1alpha1.NumatopologyLister {
 	return nodeinfov1alpha1.NewNumatopologyLister(f.Informer().GetIndexer())
+}
+
+// ToTypedNumatopologyInformer converts an untyped informer into a TypedNumatopologyInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *Numatopology. If that is not the case, calling type-safe methods of the returned
+// TypedNumatopologyInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedNumatopologyInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedNumatopologyInformer(informer NumatopologyInformer) TypedNumatopologyInformer {
+	if informer, ok := informer.(TypedNumatopologyInformer); ok {
+		return informer
+	}
+	return &numatopologyTypedInformerAdapter{informer}
+}
+
+type numatopologyTypedInformerAdapter struct {
+	NumatopologyInformer
+}
+
+func (a *numatopologyTypedInformerAdapter) TypedInformer() NumatopologyIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisnodeinfov1alpha1.Numatopology](a.Informer())
+}
+
+// ToNumatopologyIndexInformer converts an untyped informer into a NumatopologyIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *Numatopology. If that is not the case, calling type-safe methods of the returned
+// NumatopologyIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a NumatopologyIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToNumatopologyIndexInformer(informer cache.SharedIndexInformer) NumatopologyIndexInformer {
+	if informer, ok := informer.(NumatopologyIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apisnodeinfov1alpha1.Numatopology](informer)
 }

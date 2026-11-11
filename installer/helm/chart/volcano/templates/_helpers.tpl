@@ -21,3 +21,35 @@ bases
 {{- end -}}
 {{- $mode -}}
 {{- end -}}
+
+{{/* Add NamespaceQueue admission only when the chart feature is enabled. */}}
+{{- define "volcano.enabledAdmissions" -}}
+{{- $configured := .admissions | default "" -}}
+{{- $admissions := splitList "," $configured -}}
+{{- if and .namespaceQueueEnabled (not (has "/namespacequeues/validate" $admissions)) -}}
+{{- $admissions = append $admissions "/namespacequeues/validate" -}}
+{{- end -}}
+{{- join "," $admissions -}}
+{{- end -}}
+
+{{/*
+Merge the NamespaceQueue feature gate into a component's existing gates.
+The chart-level switch takes precedence over an explicitly configured
+NamespaceQueue value while preserving all unrelated gates.
+*/}}
+{{- define "volcano.featureGates" -}}
+{{- $configured := .gates | default "" -}}
+{{- if .namespaceQueueEnabled -}}
+{{- $merged := list -}}
+{{- range $gate := splitList "," $configured -}}
+{{- $gate = trim $gate -}}
+{{- if and $gate (not (hasPrefix "NamespaceQueue=" $gate)) -}}
+{{- $merged = append $merged $gate -}}
+{{- end -}}
+{{- end -}}
+{{- $merged = append $merged "NamespaceQueue=true" -}}
+{{- join "," $merged -}}
+{{- else -}}
+{{- $configured -}}
+{{- end -}}
+{{- end -}}

@@ -24,6 +24,7 @@ package allocate
 import (
 	"fmt"
 	"os"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -44,16 +45,23 @@ import (
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	volcanofeatures "volcano.sh/volcano/pkg/features"
+	"volcano.sh/volcano/pkg/scheduler/actions/backfill"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/binpack"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	networktopologyaware "volcano.sh/volcano/pkg/scheduler/plugins/network-topology-aware"
+	"volcano.sh/volcano/pkg/scheduler/plugins/nodegroup"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
+	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -2694,84 +2702,149 @@ func TestAllocateWithDRA(t *testing.T) {
 		},
 	}
 
-	tests := []uthelper.TestCommonStruct{
+	// Each gang member has its own claim and needs a distinct device.
+	gangClaim1 := util.BuildResourceClaim("c1", "claim1",
+		[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)}, nil, nil)
+	gangClaim1.UID = types.UID("claim1")
+	gangClaim2 := util.BuildResourceClaim("c1", "claim2",
+		[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)}, nil, nil)
+	gangClaim2.UID = types.UID("claim2")
+
+	tests := []struct {
+		uthelper.TestCommonStruct
+		checkBackfill bool
+	}{
 		{
-			Name: "Allocate normal resourceClaim successfully",
-			ResourceClaims: []*resourcev1.ResourceClaim{
-				util.BuildResourceClaim("c1", "claim1",
-					[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
-					nil, nil),
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "Allocate normal resourceClaim successfully",
+				ResourceClaims: []*resourcev1.ResourceClaim{
+					util.BuildResourceClaim("c1", "claim1",
+						[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
+						nil, nil),
+				},
+				ResourceSlices: []*resourcev1.ResourceSlice{
+					util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
+						[]resourcev1.Device{
+							util.BuildDevice("gpu-1", nil, nil),
+						}),
+				},
+				DeviceClasses: []*resourcev1.DeviceClass{
+					util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{
+						{CEL: &resourcev1.CELDeviceSelector{
+							Expression: fmt.Sprintf(`device.driver == 'gpu.example.com'`),
+						}},
+					}, nil),
+				},
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string),
+						[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
+				},
+				Queues: []*schedulingv1.Queue{
+					util.BuildQueue("c1", 1, nil),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				},
+				ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
+					"c1/pg1": {api.Binding: 1},
+				},
+				ExpectBindMap: map[string]string{
+					"c1/p1": "n1",
+				},
+				ExpectBindsNum: 1,
 			},
-			ResourceSlices: []*resourcev1.ResourceSlice{
-				util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
-					[]resourcev1.Device{
-						util.BuildDevice("gpu-1", nil, nil),
-					}),
-			},
-			DeviceClasses: []*resourcev1.DeviceClass{
-				util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{
-					{CEL: &resourcev1.CELDeviceSelector{
-						Expression: fmt.Sprintf(`device.driver == 'gpu.example.com'`),
-					}},
-				}, nil),
-			},
-			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
-			},
-			Pods: []*v1.Pod{
-				util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string),
-					[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
-			},
-			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
-			},
-			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-			},
-			ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
-				"c1/pg1": {api.Binding: 1},
-			},
-			ExpectBindMap: map[string]string{
-				"c1/p1": "n1",
-			},
-			ExpectBindsNum: 1,
 		},
 		{
-			Name: "claim cel runtime errors",
-			ResourceClaims: []*resourcev1.ResourceClaim{
-				util.BuildResourceClaim("c1", "claim1",
-					[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
-					nil, nil),
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "claim cel runtime errors",
+				ResourceClaims: []*resourcev1.ResourceClaim{
+					util.BuildResourceClaim("c1", "claim1",
+						[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
+						nil, nil),
+				},
+				ResourceSlices: []*resourcev1.ResourceSlice{
+					util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
+						[]resourcev1.Device{
+							util.BuildDevice("gpu-1", nil, nil),
+						}),
+				},
+				DeviceClasses: []*resourcev1.DeviceClass{
+					util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{
+						{CEL: &resourcev1.CELDeviceSelector{
+							Expression: fmt.Sprintf(`device.attributes["%s"].%s`, "some-driver", resourcev1.QualifiedName("healthy")),
+						}},
+					}, nil),
+				},
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string),
+						[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
+				},
+				Queues: []*schedulingv1.Queue{
+					util.BuildQueue("c1", 1, nil),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				},
+				ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+					"c1/pg1": scheduling.PodGroupInqueue,
+				},
 			},
-			ResourceSlices: []*resourcev1.ResourceSlice{
-				util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
-					[]resourcev1.Device{
-						util.BuildDevice("gpu-1", nil, nil),
-					}),
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:           "DRA-only gang waits when only one device is available",
+				ResourceClaims: []*resourcev1.ResourceClaim{gangClaim1.DeepCopy(), gangClaim2.DeepCopy()},
+				ResourceSlices: []*resourcev1.ResourceSlice{
+					util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
+						[]resourcev1.Device{util.BuildDevice("gpu-1", nil, nil)}),
+				},
+				DeviceClasses: []*resourcev1.DeviceClass{
+					util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{{CEL: &resourcev1.CELDeviceSelector{Expression: `device.driver == 'gpu.example.com'`}}}, nil),
+				},
+				PodGroups: []*schedulingv1.PodGroup{util.BuildPodGroup("pg1", "c1", "c1", 2, nil, schedulingv1.PodGroupInqueue)},
+				Pods: []*v1.Pod{
+					util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, nil, "pg1", nil, nil,
+						[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
+					util.BuildPodWithResourceClaim("c1", "p2", "", v1.PodPending, nil, "pg1", nil, nil,
+						[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim2")}}),
+				},
+				Queues:               []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+				Nodes:                []*v1.Node{util.BuildNode("n1", api.BuildResourceList("2", "4Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)},
+				ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{"c1/pg1": {api.Pending: 2}},
 			},
-			DeviceClasses: []*resourcev1.DeviceClass{
-				util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{
-					{CEL: &resourcev1.CELDeviceSelector{
-						Expression: fmt.Sprintf(`device.attributes["%s"].%s`, "some-driver", resourcev1.QualifiedName("healthy")),
-					}},
-				}, nil),
+			checkBackfill: true,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:           "DRA-only gang binds when both devices are available",
+				ResourceClaims: []*resourcev1.ResourceClaim{gangClaim1.DeepCopy(), gangClaim2.DeepCopy()},
+				ResourceSlices: []*resourcev1.ResourceSlice{
+					util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
+						[]resourcev1.Device{util.BuildDevice("gpu-1", nil, nil), util.BuildDevice("gpu-2", nil, nil)}),
+				},
+				DeviceClasses: []*resourcev1.DeviceClass{
+					util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{{CEL: &resourcev1.CELDeviceSelector{Expression: `device.driver == 'gpu.example.com'`}}}, nil),
+				},
+				PodGroups: []*schedulingv1.PodGroup{util.BuildPodGroup("pg1", "c1", "c1", 2, nil, schedulingv1.PodGroupInqueue)},
+				Pods: []*v1.Pod{
+					util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, nil, "pg1", nil, nil,
+						[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
+					util.BuildPodWithResourceClaim("c1", "p2", "", v1.PodPending, nil, "pg1", nil, nil,
+						[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim2")}}),
+				},
+				Queues:               []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+				Nodes:                []*v1.Node{util.BuildNode("n1", api.BuildResourceList("2", "4Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)},
+				ExpectBindMap:        map[string]string{"c1/p1": "n1", "c1/p2": "n1"},
+				ExpectBindsNum:       2,
+				ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{"c1/pg1": {api.Binding: 2}},
 			},
-			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
-			},
-			Pods: []*v1.Pod{
-				util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string),
-					[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
-			},
-			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
-			},
-			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-			},
-			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
-				"c1/pg1": scheduling.PodGroupInqueue,
-			},
+			checkBackfill: true,
 		},
 	}
 
@@ -2782,6 +2855,20 @@ func TestAllocateWithDRA(t *testing.T) {
 			defer test.Close()
 			action := New()
 			test.Run([]framework.Action{action})
+			if test.checkBackfill {
+				// Check allocate before backfill, which could otherwise hide skipped DRA allocation.
+				if err := test.CheckBind(i); err != nil {
+					t.Fatalf("after allocate: %v", err)
+				}
+				if err := test.CheckTaskStatusNums(i); err != nil {
+					t.Fatalf("after allocate: %v", err)
+				}
+				// CheckBind already verified the destinations and consumed the bind events.
+				// Backfill must neither bind additional tasks nor change their statuses.
+				test.ExpectBindsNum = 0
+				test.MinimalBindCheck = true
+				test.Run([]framework.Action{backfill.New()})
+			}
 			if err := test.CheckAll(i); err != nil {
 				t.Fatal(err)
 			}
@@ -5995,6 +6082,45 @@ func TestAllocateFromNomination_HappyPath(t *testing.T) {
 	assert.Equal(t, "hn-pinned", got)
 }
 
+func TestAllocateFromNomination_HardPodGroupAntiAffinityRejectsStaleDomain(t *testing.T) {
+	env := newDryRunPlacementEnv(t, dryRunEnvOptions{
+		nodeCPU: map[string]string{
+			"node-a": "8",
+			"node-b": "8",
+		},
+		tasks: []dryRunTaskSpec{
+			{name: "p1", cpu: "1", mem: "1G"},
+		},
+		minMember: 1,
+	})
+
+	tier := int32(2)
+	env.job.PodGroup.Spec.TopologyAffinity = &scheduling.TopologyAffinitySpec{
+		PodGroupAntiAffinity: &scheduling.PodGroupAntiAffinity{
+			Required: []scheduling.PodGroupAffinityTerm{{
+				PodGroupSelector: &metav1.LabelSelector{},
+				TopologyTier:     &tier,
+			}},
+		},
+	}
+	env.ssn.AddHyperNodeGradientForJobFn(dryRunTestPlugin, func(*api.JobInfo, *api.HyperNodeInfo, api.SearchPurpose) api.HyperNodeGradientResult {
+		return api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{{env.ssn.HyperNodes["sn-b"]}}}
+	})
+
+	task := env.job.Tasks[api.TaskID("p1")]
+	task.Pod.Status.NominatedNodeName = "node-a"
+	env.subJob.NominatedHyperNode = "sn-a"
+	ws := newSubJobWorksheet(task)
+
+	stmt, score, ok := env.action().allocateFromNomination(env.subJob, ws, env.ssn.HyperNodes["root"])
+	assert.False(t, ok)
+	assert.Nil(t, stmt)
+	assert.Equal(t, float64(0), score)
+	assert.Equal(t, "", env.subJob.NominatedHyperNode)
+	assert.Equal(t, "", task.Pod.Status.NominatedNodeName)
+	assert.False(t, ws.Empty(), "fallback must leave the worksheet available for normal allocation")
+}
+
 // TestAllocateFromNomination_AllocateErrorFallsBack: allocateResourcesForTask
 // returns non-nil (because the node already has the task's PodKey, so
 // node.AddTask errors) => stmt.Discard + fall back.
@@ -6271,4 +6397,584 @@ func TestAllocate_NominatedJobWinsOverRegularJob(t *testing.T) {
 	}
 	assert.Equal(t, "", nominatedSubJob.NominatedHyperNode,
 		"flat-path commit must clear subJob.NominatedHyperNode after binding")
+}
+
+func TestAllocateTopologyRejections(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, volcanofeatures.UnschedulableJobCache, true)
+
+	trueValue := true
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{
+		{
+			Name:                gang.PluginName,
+			EnabledJobOrder:     &trueValue,
+			EnabledJobReady:     &trueValue,
+			EnabledJobPipelined: &trueValue,
+			EnabledJobStarving:  &trueValue,
+		},
+		{
+			Name:             predicates.PluginName,
+			EnabledPredicate: &trueValue,
+		},
+		{
+			Name:                     networktopologyaware.PluginName,
+			EnabledHyperNodeGradient: &trueValue,
+		},
+	}}}
+	plugins := map[string]framework.PluginBuilder{
+		gang.PluginName:                 gang.New,
+		predicates.PluginName:           predicates.New,
+		networktopologyaware.PluginName: networktopologyaware.New,
+	}
+
+	tests := []struct {
+		name           string
+		secondNodeTags map[string]string
+		wantBinds      int
+		wantRejections bool
+	}{
+		{
+			name:           "keeps only the selected HyperNode result",
+			secondNodeTags: map[string]string{"nodeRole": "master"},
+			wantBinds:      1,
+		},
+		{
+			name:           "keeps failed results when no HyperNode fits",
+			wantRejections: true,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			test := uthelper.TestCommonStruct{
+				Name:    testCase.name,
+				Plugins: plugins,
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "", "q1", 1, nil, schedulingv1.PodGroupInqueue, "hard", 1),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, map[string]string{"nodeRole": "master"}),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.BuildNode("s1-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), testCase.secondNodeTags),
+				},
+				HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1")},
+				HyperNodesMap: map[string]*api.HyperNodeInfo{
+					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{{Name: "s0-n1", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"}})),
+					"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{{Name: "s1-n2", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"}})),
+				},
+				HyperNodes: map[string]sets.Set[string]{
+					"s0": sets.New[string]("s0-n1"),
+					"s1": sets.New[string]("s1-n2"),
+				},
+				Queues:         []*schedulingv1.Queue{util.BuildQueue("q1", 1, nil)},
+				ExpectBindsNum: testCase.wantBinds,
+			}
+			if testCase.wantBinds == 1 {
+				test.ExpectBindMap = map[string]string{"c1/p1": "s1-n2"}
+			}
+
+			fakeCache := &fakeUnschedulableCacheForAllocate{}
+			test.RegisterSession(tiers, nil, framework.WithUnschedulableJobCache(fakeCache))
+			test.Run([]framework.Action{New()})
+			if err := test.CheckAll(0); err != nil {
+				t.Fatal(err)
+			}
+			test.Close()
+
+			gotRejections := len(fakeCache.recorded["c1/pg1"]) > 0
+			if gotRejections != testCase.wantRejections {
+				t.Fatalf("Job rejections recorded = %v, want %v", gotRejections, testCase.wantRejections)
+			}
+		})
+	}
+}
+
+func TestAllocateTopologyRejectionsRespectHighestAllowedTier(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, volcanofeatures.UnschedulableJobCache, true)
+
+	trueValue := true
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{
+		{
+			Name:                gang.PluginName,
+			EnabledJobOrder:     &trueValue,
+			EnabledJobReady:     &trueValue,
+			EnabledJobPipelined: &trueValue,
+			EnabledJobStarving:  &trueValue,
+		},
+		{
+			Name:             priority.PluginName,
+			EnabledTaskOrder: &trueValue,
+		},
+		{
+			Name:             predicates.PluginName,
+			EnabledPredicate: &trueValue,
+		},
+		{
+			Name:                     networktopologyaware.PluginName,
+			EnabledHyperNodeGradient: &trueValue,
+		},
+	}}}
+	plugins := map[string]framework.PluginBuilder{
+		gang.PluginName:                 gang.New,
+		priority.PluginName:             priority.New,
+		predicates.PluginName:           predicates.New,
+		networktopologyaware.PluginName: networktopologyaware.New,
+	}
+
+	tests := []struct {
+		name               string
+		highestAllowedTier int
+		wantIndexedNodes   int
+	}{
+		{
+			name:               "selected tier is the scheduling boundary",
+			highestAllowedTier: 1,
+			wantIndexedNodes:   1,
+		},
+		{
+			name:               "sibling HyperNodes remain eligible within the allowed tier",
+			highestAllowedTier: 2,
+			wantIndexedNodes:   2,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			blockedPod := util.BuildPod("c1", "blocked", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1",
+				map[string]string{"volcano.sh/task-spec": "blocked"}, nil)
+			blockedPod.Annotations[api.TaskPriorityAnnotation] = "100"
+			schedulablePod := util.BuildPod("c1", "schedulable", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1",
+				map[string]string{"volcano.sh/task-spec": "schedulable"}, nil)
+
+			test := uthelper.TestCommonStruct{
+				Name:    testCase.name,
+				Plugins: plugins,
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "", "q1", 1, nil,
+						schedulingv1.PodGroupInqueue, "hard", testCase.highestAllowedTier),
+				},
+				Pods: []*v1.Pod{blockedPod, schedulablePod},
+				Nodes: []*v1.Node{
+					util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.BuildNode("s1-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				},
+				HyperNodesSetByTier: map[int]sets.Set[string]{
+					1: sets.New[string]("s0", "s1"),
+					2: sets.New[string]("s2"),
+				},
+				HyperNodesMap: map[string]*api.HyperNodeInfo{
+					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{{Name: "s0-n1", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"}})),
+					"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{{Name: "s1-n1", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"}})),
+					"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+						{Name: "s0", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: "exact"},
+						{Name: "s1", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: "exact"},
+					})),
+				},
+				HyperNodes: map[string]sets.Set[string]{
+					"s0": sets.New[string]("s0-n1"),
+					"s1": sets.New[string]("s1-n1"),
+					"s2": sets.New[string]("s0-n1", "s1-n1"),
+				},
+				Queues:           []*schedulingv1.Queue{util.BuildQueue("q1", 1, nil)},
+				ExpectBindsNum:   1,
+				MinimalBindCheck: true,
+			}
+
+			fakeCache := &fakeUnschedulableCacheForAllocate{}
+			ssn := test.RegisterSession(tiers, nil, framework.WithUnschedulableJobCache(fakeCache))
+			// Give each candidate a node-scoped CPU rejection so the test can
+			// observe which candidate results remain after HyperNode selection.
+			ssn.AddPredicateFn(predicates.PluginName, func(task *api.TaskInfo, node *api.NodeInfo) error {
+				if task.Name != "blocked" {
+					return nil
+				}
+				return api.NewFitErrWithStatus(task, node, &api.Status{
+					Code:                  api.Unschedulable,
+					Plugin:                resourcefit.ProviderName,
+					Reason:                api.WrapInsufficientResourceReason([]string{"cpu"}),
+					InsufficientResources: []string{"cpu"},
+				})
+			})
+			test.Run([]framework.Action{New()})
+			checkErr := test.CheckAll(0)
+			test.Close()
+			if checkErr != nil {
+				t.Fatal(checkErr)
+			}
+
+			indexedNodes := sets.New[string]()
+			for _, rejection := range fakeCache.recorded["c1/pg1"] {
+				for _, node := range []string{"s0-n1", "s1-n1"} {
+					if hasNodeGrowthKeyForDimension(rejection.HintKeys, node, "cpu") {
+						indexedNodes.Insert(node)
+					}
+				}
+			}
+			assert.Equal(t, testCase.wantIndexedNodes, indexedNodes.Len(), "indexed node count")
+		})
+	}
+}
+
+// fakeUnschedulableCacheForAllocate is a minimal session cache used
+// to observe the rejections recorded at CloseSession without exercising the
+// real cache's event-index bookkeeping.
+type fakeUnschedulableCacheForAllocate struct {
+	recorded map[api.JobID][]unschedulable.Rejection
+}
+
+func (f *fakeUnschedulableCacheForAllocate) BeginSession() {}
+
+func (f *fakeUnschedulableCacheForAllocate) AddHintProvider(string, unschedulable.HintProvider) {}
+
+func (f *fakeUnschedulableCacheForAllocate) Record(job *api.JobInfo, rejections []unschedulable.Rejection) {
+	if f.recorded == nil {
+		f.recorded = map[api.JobID][]unschedulable.Rejection{}
+	}
+	f.recorded[job.UID] = rejections
+}
+
+func (f *fakeUnschedulableCacheForAllocate) CachedRejections(*api.JobInfo) []unschedulable.Rejection {
+	return nil
+}
+
+func (f *fakeUnschedulableCacheForAllocate) Forget(api.JobID) {}
+
+// TestAllocateResourceFitRejectionCarriesHintKeys proves that allocate's
+// fitErrors.UnschedulablePlugins() loop calls AddRejectionWithKeys for the
+// resource-fit plugin, while a different rejecting plugin on the same task
+// still falls back to the plain, key-less AddRejection.
+func TestAllocateResourceFitRejectionCarriesHintKeys(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, volcanofeatures.UnschedulableJobCache, true)
+
+	binder := util.NewFakeBinder(0)
+	evictor := util.NewFakeEvictor(0)
+	statusUpdater := &util.FakeStatusUpdater{}
+	schedulerCache := cache.NewCustomMockSchedulerCache("ut-resource-fit-hint-keys", binder, evictor, statusUpdater, nil, nil)
+	stop := make(chan struct{})
+	defer close(stop)
+	schedulerCache.Run(stop)
+	schedulerCache.WaitForCacheSync(stop)
+
+	// node-small has too little CPU: allocate's own built-in resource check
+	// rejects it before ever reaching a registered predicate plugin.
+	if err := schedulerCache.AddOrUpdateNode(util.BuildNode("node-small",
+		api.BuildResourceList("1", "4Gi", []api.ScalarResource{{Name: "pods", Value: "100"}}...), nil)); err != nil {
+		t.Fatalf("AddOrUpdateNode(node-small) error = %v", err)
+	}
+	// node-other has plenty of CPU/memory, so it passes the built-in resource
+	// check and reaches the fake "fake-other" predicate plugin, which rejects it.
+	if err := schedulerCache.AddOrUpdateNode(util.BuildNode("node-other",
+		api.BuildResourceList("10", "16Gi", []api.ScalarResource{{Name: "pods", Value: "100"}}...), nil)); err != nil {
+		t.Fatalf("AddOrUpdateNode(node-other) error = %v", err)
+	}
+
+	schedulerCache.AddQueueV1beta1(util.BuildQueue("q1", 1, nil))
+	schedulerCache.AddPodGroupV1beta1(util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1.PodGroupInqueue))
+	schedulerCache.AddPod(util.BuildPod("ns1", "task1", "", v1.PodPending, api.BuildResourceList("2", "1Gi"), "pg1", nil, nil))
+
+	trueValue := true
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{
+		{Name: "fake-other", EnabledPredicate: &trueValue},
+	}}}
+
+	fakeCache := &fakeUnschedulableCacheForAllocate{}
+	ssn := framework.OpenSession(schedulerCache, tiers, nil, framework.WithUnschedulableJobCache(fakeCache))
+
+	ssn.AddPredicateFn("fake-other", func(task *api.TaskInfo, node *api.NodeInfo) error {
+		if node.Name == "node-other" {
+			return api.NewFitErrWithStatus(task, node, &api.Status{Code: api.UnschedulableAndUnresolvable, Plugin: "fake-other"})
+		}
+		return nil
+	})
+
+	New().Execute(ssn)
+	framework.CloseSession(ssn)
+
+	rejections := fakeCache.recorded["ns1/pg1"]
+	if !assert.NotEmpty(t, rejections, "expected rejections to be recorded for job ns1/pg1") {
+		return
+	}
+
+	var resourceFit, other *unschedulable.Rejection
+	for i := range rejections {
+		switch rejections[i].Plugin {
+		case resourcefit.ProviderName:
+			resourceFit = &rejections[i]
+		case "fake-other":
+			other = &rejections[i]
+		}
+	}
+
+	if assert.NotNil(t, resourceFit, "expected a resource-fit rejection") {
+		assert.NotEmpty(t, resourceFit.HintKeys, "resource-fit rejection must carry hint keys")
+		assert.True(t, hasNodeGrowthKeyForDimension(resourceFit.HintKeys, "node-small", "cpu"),
+			"resource-fit rejection must carry a node-growth key for node-small's cpu dimension "+
+				"(the structured InsufficientResources populated by allocate's built-in resource "+
+				"check); got %v", resourceFit.HintKeys)
+	}
+	if assert.NotNil(t, other, "expected a fake-other rejection") {
+		assert.Empty(t, other.HintKeys, "non-resource-fit rejection must not carry hint keys")
+	}
+}
+
+// hasNodeGrowthKeyForDimension reports whether keys contains a Node-growth
+// hint key for the given node and resource dimension. It mirrors the
+// slash-separated encoding resourcefit key produces
+// ("node-growth/<node>/<dimension>") without importing the unexported
+// constructor, so this test observes the same externally-visible key the
+// unschedulable cache would use to narrow dispatch.
+func hasNodeGrowthKeyForDimension(keys []unschedulable.HintKey, node, dimension string) bool {
+	want := fmt.Sprintf("node-growth/%s/%s", node, dimension)
+	for _, k := range keys {
+		if string(k) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestAllocateNodeGroupCandidates(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		allowedGroup     string
+		requestCPU       string
+		requestMemory    string
+		wantVisits       int32
+		wantAllocated    int
+		resourceLimit    string
+		nominatedNode    string
+		disableNodeGroup bool
+		queueNodeFilter  *bool
+		omitNodeGroup    bool
+	}{
+		{name: "group members only", allowedGroup: "group1", requestCPU: "1", requestMemory: "4Gi", wantVisits: 90, wantAllocated: 3},
+		{name: "small tasks still use group filter", allowedGroup: "group1", requestCPU: "100m", requestMemory: "1Gi", wantVisits: 90, wantAllocated: 3},
+		{name: "quota checked after each allocation", allowedGroup: "group1", requestCPU: "1", requestMemory: "4Gi", resourceLimit: `{"group1":{"cpu":"1"}}`, wantVisits: 90, wantAllocated: 1},
+		{name: "nominated node still checked", allowedGroup: "group1", requestCPU: "1", requestMemory: "4Gi", nominatedNode: "node-249", wantVisits: 90, wantAllocated: 3},
+		{name: "matching nominated node", allowedGroup: "group1", requestCPU: "1", requestMemory: "4Gi", nominatedNode: "node-000", wantVisits: 3, wantAllocated: 3},
+		{name: "disabled filter still checks predicate", allowedGroup: "group1", requestCPU: "1", requestMemory: "4Gi", queueNodeFilter: ptr.To(false), wantVisits: 750, wantAllocated: 3},
+		{name: "explicit filter with disabled predicate", allowedGroup: "missing", requestCPU: "1", requestMemory: "4Gi", disableNodeGroup: true, queueNodeFilter: ptr.To(true)},
+		{name: "disabled predicate uses all nodes", allowedGroup: "missing", requestCPU: "1", requestMemory: "4Gi", disableNodeGroup: true, wantVisits: -1, wantAllocated: 3},
+		{name: "absent plugin uses all nodes", allowedGroup: "missing", requestCPU: "1", requestMemory: "4Gi", omitNodeGroup: true, wantVisits: -1, wantAllocated: 3},
+		{name: "no matching group", allowedGroup: "missing", requestCPU: "1", requestMemory: "4Gi"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			queue := util.MakeQueue("q1").Affinity(&schedulingv1.Affinity{
+				NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: []string{tc.allowedGroup},
+				},
+			}).Obj()
+			if tc.resourceLimit != "" {
+				queue.Annotations = map[string]string{"volcano.sh/nodegroup-resource-limits": tc.resourceLimit}
+			}
+			common := uthelper.TestCommonStruct{
+				Name:   tc.name,
+				Queues: []*schedulingv1.Queue{queue},
+
+				Plugins: map[string]framework.PluginBuilder{nodegroup.PluginName: nodegroup.New, nodeorder.PluginName: nodeorder.New},
+			}
+			for i := 0; i < 250; i++ {
+				group := "group2"
+				if i < 30 {
+					group = "group1"
+				}
+				common.Nodes = append(common.Nodes, util.BuildNode(fmt.Sprintf("node-%03d", i),
+					api.BuildResourceList("100", "400Gi", api.ScalarResource{Name: "pods", Value: "100"}), map[string]string{schedulingv1.NodeGroupNameKey: group}))
+			}
+			for i := 0; i < 3; i++ {
+				pg := fmt.Sprintf("pg%d", i)
+				common.PodGroups = append(common.PodGroups, util.BuildPodGroup(pg, "ns", "q1", 1, nil, schedulingv1.PodGroupInqueue))
+				pod := util.BuildPod("ns", fmt.Sprintf("p%d", i), "", v1.PodPending,
+					api.BuildResourceList(tc.requestCPU, tc.requestMemory), pg, nil, nil)
+				pod.Status.NominatedNodeName = tc.nominatedNode
+				common.Pods = append(common.Pods, pod)
+			}
+			plugins := []conf.PluginOption{{Name: nodeorder.PluginName, EnabledPredicate: ptr.To(true)}}
+			if !tc.omitNodeGroup {
+				plugins = append(plugins, conf.PluginOption{Name: nodegroup.PluginName, EnabledPredicate: ptr.To(!tc.disableNodeGroup), EnabledQueueNodeFilter: tc.queueNodeFilter})
+			}
+			ssn := common.RegisterSession([]conf.Tier{{Plugins: plugins}}, nil)
+			defer common.Close()
+			var visits atomic.Int32
+			ssn.AddPredicateFn(nodeorder.PluginName, func(task *api.TaskInfo, node *api.NodeInfo) error {
+				visits.Add(1)
+				return nil
+			})
+			filterCalls := 0
+			ssn.AddQueueNodeFilterFn(nodeorder.PluginName, func(_ *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
+				filterCalls++
+				return nodes
+			})
+			action := New()
+			common.Run([]framework.Action{action})
+			assert.Equal(t, 1, filterCalls, "one candidate calculation per queue per allocate round")
+			assert.Nil(t, action.queueNodes, "candidates must not outlive the allocate round")
+			if tc.wantVisits >= 0 {
+				assert.Equal(t, tc.wantVisits, visits.Load())
+			} else {
+				assert.Greater(t, visits.Load(), int32(0))
+			}
+			allocated := 0
+			for _, job := range ssn.Jobs {
+				for _, task := range job.Tasks {
+					if task.NodeName != "" {
+						allocated++
+						if !tc.disableNodeGroup && !tc.omitNodeGroup {
+							assert.Equal(t, tc.allowedGroup, ssn.Nodes[task.NodeName].Node.Labels[schedulingv1.NodeGroupNameKey])
+						}
+					}
+				}
+			}
+			assert.Equal(t, tc.wantAllocated, allocated)
+			common.Run([]framework.Action{action})
+			if allocated < 3 {
+				assert.Equal(t, 2, filterCalls, "pending tasks must get fresh candidates next round")
+			} else {
+				assert.Equal(t, 1, filterCalls, "queues without pending tasks need no candidates")
+			}
+		})
+	}
+}
+
+// Benchmark only the per-task predicate phase; the queue filter is computed once
+// before timing, as it is reused across tasks by allocate.
+func BenchmarkNodeGroupCandidatePredicates(b *testing.B) {
+	common := uthelper.TestCommonStruct{
+		Name: "nodegroup candidate predicates",
+		Queues: []*schedulingv1.Queue{util.MakeQueue("q1").Affinity(&schedulingv1.Affinity{
+			NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []string{"group1"},
+			},
+		}).Obj()},
+		PodGroups: []*schedulingv1.PodGroup{util.BuildPodGroup("pg1", "ns", "q1", 1, nil, schedulingv1.PodGroupInqueue)},
+		Pods:      []*v1.Pod{util.BuildPod("ns", "p1", "", v1.PodPending, api.BuildResourceList("1", "4Gi"), "pg1", nil, nil)},
+		Plugins:   map[string]framework.PluginBuilder{nodegroup.PluginName: nodegroup.New},
+	}
+	for i := 0; i < 250; i++ {
+		group := "group2"
+		if i < 30 {
+			group = "group1"
+		}
+		common.Nodes = append(common.Nodes, util.BuildNode(fmt.Sprintf("node-%03d", i),
+			api.BuildResourceList("100", "400Gi", api.ScalarResource{Name: "pods", Value: "100"}), map[string]string{schedulingv1.NodeGroupNameKey: group}))
+	}
+	ssn := common.RegisterSession([]conf.Tier{{Plugins: []conf.PluginOption{{Name: nodegroup.PluginName, EnabledPredicate: ptr.To(true)}}}}, nil)
+	defer common.Close()
+	job := ssn.Jobs[api.JobID("ns/pg1")]
+	task := job.Tasks[api.TaskID("ns-p1")]
+	filtered := ssn.QueueNodeFilterFn(ssn.Queues[job.Queue], ssn.NodeList)
+	action := New()
+	action.session = ssn
+	for _, tc := range []struct {
+		name  string
+		nodes []*api.NodeInfo
+	}{
+		{name: "all_nodes", nodes: ssn.NodeList},
+		{name: "nodegroup_candidates", nodes: filtered},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			ph := util.NewPredicateHelper()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				candidates, _ := ph.PredicateNodes(task, tc.nodes, action.predicate, false, ssn.NodesInShard)
+				if len(candidates) != 30 {
+					b.Fatalf("expected 30 feasible nodes, got %d", len(candidates))
+				}
+			}
+			b.ReportMetric(float64(len(tc.nodes)), "candidates/task")
+		})
+	}
+}
+
+func TestAllocateResourcesForTasksSamplingTarget(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		clusterNodes int
+		scopedNodes  int
+		hyperNode    string
+		candidates   int
+		percentage   int32
+		minimum      int32
+		wantScored   int32
+	}{
+		{name: "restricted HyperNode sampling", clusterNodes: 4000, scopedNodes: 2000, hyperNode: "restricted", candidates: 1000, minimum: 100, wantScored: 680},
+		{name: "adaptive percentage", clusterNodes: 2000, scopedNodes: 2000, hyperNode: framework.ClusterTopHyperNode, candidates: 1000, minimum: 100, wantScored: 680},
+		{name: "fixed percentage", clusterNodes: 2000, scopedNodes: 2000, hyperNode: framework.ClusterTopHyperNode, candidates: 1000, percentage: 40, minimum: 100, wantScored: 800},
+		{name: "minimum feasible nodes", clusterNodes: 2000, scopedNodes: 2000, hyperNode: framework.ClusterTopHyperNode, candidates: 1000, minimum: 900, wantScored: 900},
+		{name: "capped by candidates", clusterNodes: 2000, scopedNodes: 2000, hyperNode: framework.ClusterTopHyperNode, candidates: 300, minimum: 100, wantScored: 300},
+		{name: "empty candidates", clusterNodes: 2000, scopedNodes: 2000, hyperNode: framework.ClusterTopHyperNode, minimum: 100},
+		{name: "all feasible nodes", clusterNodes: 2000, scopedNodes: 2000, hyperNode: framework.ClusterTopHyperNode, candidates: 1000, percentage: 100, minimum: 100, wantScored: 1000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			previousOpts := options.ServerOpts
+			opts := *previousOpts
+			opts.MinNodesToFind = tc.minimum
+			opts.MinPercentageOfNodesToFind = 5
+			opts.PercentageOfNodesToFind = tc.percentage
+			options.ServerOpts = &opts
+			t.Cleanup(func() { options.ServerOpts = previousOpts })
+
+			nodes, scope := buildQueueCandidateSamplingNodes(tc.clusterNodes, tc.scopedNodes, tc.candidates)
+			common := uthelper.TestCommonStruct{
+				Name:  tc.name,
+				Nodes: nodes,
+				Queues: []*schedulingv1.Queue{util.MakeQueue("q1").Affinity(&schedulingv1.Affinity{
+					NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: []string{"group1"},
+					},
+				}).Obj()},
+				PodGroups: []*schedulingv1.PodGroup{util.BuildPodGroup("pg1", "ns", "q1", 1, nil, schedulingv1.PodGroupInqueue)},
+				Pods:      []*v1.Pod{util.BuildPod("ns", "p1", "", v1.PodPending, api.BuildResourceList("1", "4Gi"), "pg1", nil, nil)},
+				Plugins:   map[string]framework.PluginBuilder{nodegroup.PluginName: nodegroup.New},
+			}
+			if tc.hyperNode != framework.ClusterTopHyperNode {
+				common.HyperNodes = map[string]sets.Set[string]{tc.hyperNode: scope}
+				common.HyperNodesMap = api.HyperNodeInfoMap{tc.hyperNode: newPlacementTestHyperNode(tc.hyperNode, 1, "")}
+				common.HyperNodesSetByTier = map[int]sets.Set[string]{1: sets.New(tc.hyperNode)}
+			}
+			var scored atomic.Int32
+			ssn, action := newQueueCandidateAllocation(t, common, nil, func(_ *api.TaskInfo, _ *api.NodeInfo) (float64, error) {
+				scored.Add(1)
+				return 0, nil
+			})
+			job := ssn.Jobs["ns/pg1"]
+			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
+			tasks.Push(job.Tasks["ns-p1"])
+			stmt := action.allocateResourcesForTasks(job.SubJobs[job.DefaultSubJobID()], tasks, tc.hyperNode)
+			if stmt != nil {
+				defer stmt.Discard()
+			}
+			assert.Len(t, ssn.NodeList, tc.clusterNodes)
+			assert.Len(t, ssn.RealNodesList[tc.hyperNode], tc.scopedNodes)
+			assert.Equal(t, tc.wantScored, scored.Load(), "scoring must retain the original scope's sampling target")
+			if tc.wantScored == 0 {
+				assert.Nil(t, stmt)
+				assert.Empty(t, job.Tasks["ns-p1"].NodeName)
+			} else if assert.NotNil(t, stmt) {
+				assert.Len(t, stmt.Operations(), 1)
+				assert.True(t, scope.Has(job.Tasks["ns-p1"].NodeName), "allocation must stay within the requested scope")
+			}
+		})
+	}
+}
+
+func buildQueueCandidateSamplingNodes(clusterNodes, scopedNodes, candidates int) ([]*v1.Node, sets.Set[string]) {
+	nodes := make([]*v1.Node, 0, clusterNodes)
+	scope := sets.New[string]()
+	for i := 0; i < clusterNodes; i++ {
+		group := "group2"
+		if i < candidates {
+			group = "group1"
+		}
+		name := fmt.Sprintf("node-%04d", i)
+		nodes = append(nodes, util.BuildNode(name,
+			api.BuildResourceList("100", "400Gi", api.ScalarResource{Name: "pods", Value: "100"}),
+			map[string]string{schedulingv1.NodeGroupNameKey: group}))
+		if i < scopedNodes {
+			scope.Insert(name)
+		}
+	}
+	return nodes, scope
 }

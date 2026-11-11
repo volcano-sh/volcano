@@ -28,7 +28,7 @@ import (
 //
 // Job defines the volcano job.
 type JobApplyConfiguration struct {
-	v1.TypeMetaApplyConfiguration    `json:",inline"`
+	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	// Specification of the desired behavior of the volcano job, including the minAvailable
 	Spec *JobSpecApplyConfiguration `json:"spec,omitempty"`

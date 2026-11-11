@@ -33,11 +33,39 @@ import (
 )
 
 // ColocationConfigurationInformer provides access to a shared informer and lister for
-// ColocationConfigurations.
+// ColocationConfigurations. Prefer using the type-safe variant (see [TypedColocationConfigurationInformer]).
 type ColocationConfigurationInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() configv1alpha1.ColocationConfigurationLister
 }
+
+// TypedColocationConfigurationInformer provides access to a shared informer and lister for
+// ColocationConfigurations, including the type-safe TypedInformer variant.
+// It is a superset of ColocationConfigurationInformer.
+type TypedColocationConfigurationInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() ColocationConfigurationIndexInformer
+	Lister() configv1alpha1.ColocationConfigurationLister
+}
+
+// ColocationConfigurationIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type ColocationConfigurationIndexInformer cache.TypedSharedIndexInformer[*apisconfigv1alpha1.ColocationConfiguration]
+
+// ColocationConfigurationHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for ColocationConfiguration.
+type ColocationConfigurationHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apisconfigv1alpha1.ColocationConfiguration]
+
+// ColocationConfigurationDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for ColocationConfiguration.
+type ColocationConfigurationDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apisconfigv1alpha1.ColocationConfiguration]
+
+// ColocationConfigurationFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for ColocationConfiguration.
+type ColocationConfigurationFilteringHandler = cache.TypedFilteringResourceEventHandler[*apisconfigv1alpha1.ColocationConfiguration]
+
+// ColocationConfigurationIndexers is a specialization of [cache.TypedIndexers] for ColocationConfiguration.
+type ColocationConfigurationIndexers = cache.TypedIndexers[*apisconfigv1alpha1.ColocationConfiguration]
+
+// DeletedColocationConfiguration is a specialization of [cache.DeletedObject] for ColocationConfiguration.
+type DeletedColocationConfiguration = cache.DeletedObject[*apisconfigv1alpha1.ColocationConfiguration]
 
 type colocationConfigurationInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -48,25 +76,49 @@ type colocationConfigurationInformer struct {
 // NewColocationConfigurationInformer constructs a new informer for ColocationConfiguration type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedColocationConfigurationInformer]).
 func NewColocationConfigurationInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewColocationConfigurationInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedColocationConfigurationInformer constructs a new informer for ColocationConfiguration type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedColocationConfigurationInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers ColocationConfigurationIndexers) ColocationConfigurationIndexInformer {
+	return NewTypedColocationConfigurationInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredColocationConfigurationInformer constructs a new informer for ColocationConfiguration type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredColocationConfigurationInformer]).
 func NewFilteredColocationConfigurationInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewColocationConfigurationInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+	return NewTypedColocationConfigurationInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredColocationConfigurationInformer constructs a new informer for ColocationConfiguration type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredColocationConfigurationInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers ColocationConfigurationIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) ColocationConfigurationIndexInformer {
+	return NewTypedColocationConfigurationInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
 }
 
 // NewColocationConfigurationInformerWithOptions constructs a new informer for ColocationConfiguration type with additional options.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedColocationConfigurationInformerWithOptions]).
 func NewColocationConfigurationInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedColocationConfigurationInformerWithOptions(client, namespace, options)
+}
+
+// NewTypedColocationConfigurationInformerWithOptions constructs a new informer for ColocationConfiguration type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedColocationConfigurationInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) ColocationConfigurationIndexInformer {
 	gvr := schema.GroupVersionResource{Group: "config.volcano.sh", Version: "v1alpha1", Resource: "colocationconfigurations"}
 	identifier := options.InformerName.WithResource(gvr)
 	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
+	return cache.NewTypedSharedIndexInformer[*apisconfigv1alpha1.ColocationConfiguration](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
@@ -99,17 +151,57 @@ func NewColocationConfigurationInformerWithOptions(client versioned.Interface, n
 			Indexers:     options.Indexers,
 			Identifier:   identifier,
 		},
-	)
+	))
 }
 
 func (f *colocationConfigurationInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewColocationConfigurationInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewTypedColocationConfigurationInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *colocationConfigurationInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apisconfigv1alpha1.ColocationConfiguration{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *colocationConfigurationInformer) TypedInformer() ColocationConfigurationIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisconfigv1alpha1.ColocationConfiguration](f.factory.InformerFor(&apisconfigv1alpha1.ColocationConfiguration{}, f.defaultInformer))
 }
 
 func (f *colocationConfigurationInformer) Lister() configv1alpha1.ColocationConfigurationLister {
 	return configv1alpha1.NewColocationConfigurationLister(f.Informer().GetIndexer())
+}
+
+// ToTypedColocationConfigurationInformer converts an untyped informer into a TypedColocationConfigurationInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *ColocationConfiguration. If that is not the case, calling type-safe methods of the returned
+// TypedColocationConfigurationInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedColocationConfigurationInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedColocationConfigurationInformer(informer ColocationConfigurationInformer) TypedColocationConfigurationInformer {
+	if informer, ok := informer.(TypedColocationConfigurationInformer); ok {
+		return informer
+	}
+	return &colocationConfigurationTypedInformerAdapter{informer}
+}
+
+type colocationConfigurationTypedInformerAdapter struct {
+	ColocationConfigurationInformer
+}
+
+func (a *colocationConfigurationTypedInformerAdapter) TypedInformer() ColocationConfigurationIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisconfigv1alpha1.ColocationConfiguration](a.Informer())
+}
+
+// ToColocationConfigurationIndexInformer converts an untyped informer into a ColocationConfigurationIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *ColocationConfiguration. If that is not the case, calling type-safe methods of the returned
+// ColocationConfigurationIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a ColocationConfigurationIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToColocationConfigurationIndexInformer(informer cache.SharedIndexInformer) ColocationConfigurationIndexInformer {
+	if informer, ok := informer.(ColocationConfigurationIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apisconfigv1alpha1.ColocationConfiguration](informer)
 }

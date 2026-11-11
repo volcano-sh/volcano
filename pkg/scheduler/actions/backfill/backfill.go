@@ -31,6 +31,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -82,6 +84,17 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 		predicateNodes, fitErrors := ph.PredicateNodes(task, ssn.NodeList, predicateFunc, backfill.enablePredicateErrorCache, ssn.NodesInShard)
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
+			if fitErrors != nil && ssn.RejectionTrackingEnabled() {
+				for plugin := range fitErrors.UnschedulablePlugins() {
+					if plugin == resourcefit.ProviderName {
+						if keys, complete := resourcefit.RejectionKeys(task, fitErrors, ssn.Nodes); complete {
+							ssn.AddRejectionWithKeys(job.UID, plugin, unschedulable.RejectionPredicate, keys, task.UID)
+							continue
+						}
+					}
+					ssn.AddRejection(job.UID, plugin, unschedulable.RejectionPredicate, task.UID)
+				}
+			}
 			continue
 		}
 
@@ -136,17 +149,30 @@ func (backfill *Action) pickUpPendingTasks(ssn *framework.Session) []*api.TaskIn
 			continue
 		}
 
+		if job.Skip.Allocate {
+			metrics.RegisterUnschedulableJobCacheSkip(job.Namespace, job.Name, backfill.Name())
+			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip backfill, reason: suppressed by unschedulable-job cache",
+				job.Namespace, job.Name, job.Queue)
+			continue
+		}
+
 		queue, found := ssn.Queues[job.Queue]
 		if !found {
 			continue
 		}
 
 		for _, task := range job.TaskStatusIndex[api.Pending] {
-			if !task.BestEffort {
+			// Backfill handles only tasks with neither ordinary requests nor DRA claims.
+			// DRA-only Pods may have BestEffort QoS, but still need allocate and gang checks.
+			if task.HasSchedulingResourceRequests() {
 				continue
 			}
 
 			if task.SchGated {
+				continue
+			}
+
+			if job.Skip.SkipTask(task.UID) {
 				continue
 			}
 
@@ -157,7 +183,9 @@ func (backfill *Action) pickUpPendingTasks(ssn *framework.Session) []*api.TaskIn
 		}
 
 		for _, task := range job.TaskStatusIndex[api.Pipelined] {
-			if !task.BestEffort {
+			// Backfill handles only tasks with neither ordinary requests nor DRA claims.
+			// DRA-only Pods may have BestEffort QoS, but still need allocate and gang checks.
+			if task.HasSchedulingResourceRequests() {
 				continue
 			}
 

@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -50,6 +51,7 @@ import (
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -70,12 +72,13 @@ const (
 type Session struct {
 	UID types.UID
 
-	kubeClient      kubernetes.Interface
-	vcClient        vcclient.Interface
-	recorder        record.EventRecorder
-	cache           cache.Cache
-	restConfig      *rest.Config
-	informerFactory informers.SharedInformerFactory
+	kubeClient            kubernetes.Interface
+	vcClient              vcclient.Interface
+	recorder              record.EventRecorder
+	cache                 cache.Cache
+	unschedulableJobCache unschedulableJobCache
+	restConfig            *rest.Config
+	informerFactory       informers.SharedInformerFactory
 
 	TotalResource *api.Resource
 	// PodGroupOldState contains podgroup status and annotations during schedule
@@ -115,6 +118,12 @@ type Session struct {
 	RealNodesList             map[string][]*api.NodeInfo
 	RealNodesSet              map[string]sets.Set[string]
 	HyperNodesReadyToSchedule bool
+	HyperNodeGeneration       uint64
+	// podGroupPlacementJobs contains policy owners and peers selected by enabled
+	// group topology rules in this Session. Unrelated Jobs do not track placement.
+	podGroupPlacementJobs    sets.Set[api.JobID]
+	hyperNodeIndex           *api.HyperNodeIndex
+	hyperNodeIndexGeneration uint64
 
 	plugins             map[string]Plugin
 	eventHandlers       []*EventHandler
@@ -123,6 +132,7 @@ type Session struct {
 	victimQueueOrderFns map[string]api.VictimCompareFn
 	taskOrderFns        map[string]api.CompareFn
 	clusterOrderFns     map[string]api.CompareFn
+	queueNodeFilterFns  map[string]api.QueueNodeFilterFn
 	predicateFns        map[string]api.PredicateFn
 	prePredicateFns     map[string]api.PrePredicateFn
 	bestNodeFns         map[string]api.BestNodeFn
@@ -157,6 +167,7 @@ type Session struct {
 	subJobOrderFns                map[string]api.CompareFn
 	hyperNodeGradientForJobFns    map[string]api.HyperNodeGradientForJobFn
 	hyperNodeGradientForSubJobFns map[string]api.HyperNodeGradientForSubJobFn
+	hyperNodeCandidateFns         map[string]api.HyperNodeCandidateFn
 
 	// cycleStatesMap is used to temporarily store the scheduling status of each pod, its life cycle is same as Session.
 	// Because state needs to be passed between different extension points (not only used in PreFilter and Filter),
@@ -165,19 +176,32 @@ type Session struct {
 	// The key is task's UID, value is the CycleState.
 	cycleStatesMap sync.Map
 
+	// jobRejections records confirmed rejections and isolates rejections produced
+	// by nested Job and SubJob evaluations.
+	jobRejections                jobRejectionTracker
+	unschedulableJobCacheEnabled bool
+
 	NodesInShard sets.Set[string]
 }
 
-func openSession(cache cache.Cache) *Session {
-	cache.OnSessionOpen()
+func openSession(schedulerCache cache.Cache, unschedulableJobCache unschedulableJobCache) *Session {
+	schedulerCache.OnSessionOpen()
+	// Feature gate flags initialization
+	unschedulableJobCacheEnabled := utilfeature.DefaultFeatureGate.Enabled(features.UnschedulableJobCache)
+	if unschedulableJobCacheEnabled && unschedulableJobCache == nil {
+		klog.Error("UnschedulableJobCache feature gate is enabled, but no unschedulable cache instance was provided")
+		unschedulableJobCacheEnabled = false
+	}
+
 	ssn := &Session{
-		UID:             uuid.NewUUID(),
-		kubeClient:      cache.Client(),
-		vcClient:        cache.VCClient(),
-		restConfig:      cache.ClientConfig(),
-		recorder:        cache.EventRecorder(),
-		cache:           cache,
-		informerFactory: cache.SharedInformerFactory(),
+		UID:                   uuid.NewUUID(),
+		kubeClient:            schedulerCache.Client(),
+		vcClient:              schedulerCache.VCClient(),
+		restConfig:            schedulerCache.ClientConfig(),
+		recorder:              schedulerCache.EventRecorder(),
+		cache:                 schedulerCache,
+		unschedulableJobCache: unschedulableJobCache,
+		informerFactory:       schedulerCache.SharedInformerFactory(),
 
 		TotalResource: api.EmptyResource(),
 		PodGroupOldState: &api.PodGroupOldState{
@@ -197,6 +221,7 @@ func openSession(cache cache.Cache) *Session {
 		victimQueueOrderFns:           map[string]api.VictimCompareFn{},
 		taskOrderFns:                  map[string]api.CompareFn{},
 		clusterOrderFns:               map[string]api.CompareFn{},
+		queueNodeFilterFns:            map[string]api.QueueNodeFilterFn{},
 		predicateFns:                  map[string]api.PredicateFn{},
 		prePredicateFns:               map[string]api.PrePredicateFn{},
 		bestNodeFns:                   map[string]api.BestNodeFn{},
@@ -229,9 +254,13 @@ func openSession(cache cache.Cache) *Session {
 		subJobOrderFns:                map[string]api.CompareFn{},
 		hyperNodeGradientForJobFns:    map[string]api.HyperNodeGradientForJobFn{},
 		hyperNodeGradientForSubJobFns: map[string]api.HyperNodeGradientForSubJobFn{},
+		unschedulableJobCacheEnabled:  unschedulableJobCacheEnabled,
+	}
+	if unschedulableJobCacheEnabled {
+		unschedulableJobCache.BeginSession()
 	}
 
-	snapshot := cache.Snapshot()
+	snapshot := schedulerCache.Snapshot()
 	taskCountsByQueue := make(map[api.QueueID]map[string]int, len(snapshot.Queues))
 
 	ssn.Jobs = snapshot.Jobs
@@ -257,19 +286,16 @@ func openSession(cache cache.Cache) *Session {
 	ssn.HyperNodeTierNameMap = snapshot.HyperNodeTierNameMap
 	ssn.RealNodesList, ssn.RealNodesSet = util.GetRealNodesByHyperNode(snapshot.RealNodesSet, snapshot.Nodes)
 	ssn.HyperNodesReadyToSchedule = snapshot.HyperNodesReadyToSchedule
+	ssn.HyperNodeGeneration = snapshot.HyperNodeGeneration
 	ssn.addClusterTopHyperNode(ssn.NodeList)
 	ssn.parseHyperNodesTiers()
 	ssn.adjustNetworkTopologySpec()
 
 	if ssn.HyperNodesReadyToSchedule {
-		// hyperNodes in ssn has ClusterTopHyperNode
-		hyperNodeSet := sets.New[string]()
-		for hn := range ssn.HyperNodes {
-			hyperNodeSet.Insert(hn)
-		}
 		for _, job := range ssn.Jobs {
-			ssn.removeInvalidAllocatedHyperNode(job, ssn.HyperNodes)
-			ssn.recoverAllocatedHyperNode(job, hyperNodeSet, ssn.HyperNodes, ssn.RealNodesSet)
+			if job.ContainsNetworkTopology() || job.ContainsSubJobPolicy() {
+				ssn.refreshAllocatedHyperNode(job)
+			}
 		}
 	}
 
@@ -328,159 +354,105 @@ func (ssn *Session) addClusterTopHyperNode(nodes []*api.NodeInfo) {
 	}
 }
 
-// removeInvalidAllocatedHyperNode removes the non-existent allocated hyperNode for job and subJobs in the job.
-// The allocated hyperNode will also be removed if there is no allocated task in the job or subJob.
-func (ssn *Session) removeInvalidAllocatedHyperNode(job *api.JobInfo, hyperNodes api.HyperNodeInfoMap) {
-	// remove job AllocatedHyperNode if invalid
-	if job.AllocatedHyperNode != "" {
-		remove := false
-		var reason string
-		if _, found := hyperNodes[job.AllocatedHyperNode]; !found {
-			remove = true
-			reason = "allocated hyperNode not exist"
-		}
-		if job.AllocatedTaskNum() == 0 {
-			remove = true
-			reason = "there is no allocated task in the job"
-		}
-		if remove {
-			job.AllocatedHyperNode = ""
-			ssn.MarkJobDirty(job.UID)
-			klog.V(3).InfoS("remove allocated hyperNode for job", "job", job.UID, "AllocatedHyperNode", job.AllocatedHyperNode, "reason", reason)
-		}
+// HyperNodeIndex lazily builds the reverse topology index. Ordinary scheduling
+// without topology consumers does not pay for constructing or querying it.
+func (ssn *Session) HyperNodeIndex() *api.HyperNodeIndex {
+	if ssn.hyperNodeIndex == nil || ssn.hyperNodeIndexGeneration != ssn.HyperNodeGeneration {
+		ssn.hyperNodeIndex = api.NewHyperNodeIndex(ssn.HyperNodes, ssn.RealNodesSet)
+		ssn.hyperNodeIndexGeneration = ssn.HyperNodeGeneration
 	}
-
-	// remove subJob AllocatedHyperNode if invalid
-	for _, subJob := range job.SubJobs {
-		if subJob.AllocatedHyperNode != "" {
-			remove := false
-			var reason string
-			if _, found := hyperNodes[subJob.AllocatedHyperNode]; !found {
-				remove = true
-				reason = "allocated hyperNode not exist"
-			}
-			if subJob.AllocatedTaskNum() == 0 {
-				remove = true
-				reason = "there is no allocated task in the subJob"
-			}
-			if remove {
-				subJob.AllocatedHyperNode = ""
-				ssn.MarkJobDirty(subJob.Job)
-				klog.V(3).InfoS("remove allocated hyperNode for subJob", "subJob", subJob.UID, "AllocatedHyperNode", subJob.AllocatedHyperNode, "reason", reason)
-			}
-		}
-	}
+	return ssn.hyperNodeIndex
 }
 
-// recoverAllocatedHyperNode recover the allocated hyperNode for the job and subJobs in the job with empty AllocatedHyperNode field.
-// When the scheduler reboot, the allocated hyperNode of job will be lost.
-// We recover this information through the nodes that tasks are running on.
-func (ssn *Session) recoverAllocatedHyperNode(job *api.JobInfo, hyperNodeSet sets.Set[string], hyperNodes api.HyperNodeInfoMap, nodesByHyperNode map[string]sets.Set[string]) {
-	if !job.ContainsNetworkTopology() {
+// EnablePodGroupPlacement registers a policy owner or selected peer before
+// scheduling starts, reconciling its placement against the Session snapshot.
+func (ssn *Session) EnablePodGroupPlacement(job *api.JobInfo) {
+	if job == nil || !ssn.HyperNodesReadyToSchedule || ssn.PodGroupPlacementEnabled(job.UID) {
 		return
 	}
-
-	subJobUpdated := false
-
-	// update subJob AllocatedHyperNode based on allocated nodes
-	for _, subJob := range job.SubJobs {
-		if !subJob.WithNetworkTopology() || subJob.AllocatedHyperNode != "" {
-			continue
-		}
-
-		// pick up allocated tasks in the subJob
-		allocatedTasks := make([]*api.TaskInfo, 0, subJob.AllocatedTaskNum())
-		for status, tasks := range subJob.TaskStatusIndex {
-			if !api.AllocatedStatus(status) {
-				continue
-			}
-			for _, task := range tasks {
-				allocatedTasks = append(allocatedTasks, task)
-			}
-		}
-
-		// find the allocated hyperNode through the nodes that tasks are running on
-		var subJobAllocatedHyperNode sets.Set[string]
-		for _, task := range allocatedTasks {
-			if task.NodeName == "" {
-				klog.Warningf("task %s/%s in allocated status %s with empty nodeName", task.Namespace, task.Name, task.Status)
-				continue
-			}
-
-			// For the first task, we search among all the hyperNodes.
-			// For the other tasks, we search from the hyperNodes that previous tasks were allocated to.
-			var search sets.Set[string]
-			if subJobAllocatedHyperNode == nil {
-				search = hyperNodeSet
-			} else {
-				search = subJobAllocatedHyperNode
-			}
-
-			taskAllocatedHyperNode := sets.New[string]()
-			for hn := range search {
-				if nodes, found := nodesByHyperNode[hn]; found && nodes.Has(task.NodeName) {
-					taskAllocatedHyperNode.Insert(hn)
-				}
-			}
-			klog.V(4).Infof("find allocated hyperNode %v for task %s/%s by node %s", taskAllocatedHyperNode, task.Namespace, task.Name, task.NodeName)
-
-			subJobAllocatedHyperNode = taskAllocatedHyperNode
-			if subJobAllocatedHyperNode.Len() == 0 {
-				klog.Errorf("failed to find allocated hyperNode for subJob %s by allocated nodes", subJob.UID)
-				break
-			}
-		}
-		minimumHyperNode := getLowestTierHyperNode(subJobAllocatedHyperNode, hyperNodes)
-
-		if subJob.AllocatedHyperNode != minimumHyperNode {
-			subJobUpdated = true
-			subJob.AllocatedHyperNode = minimumHyperNode
-			ssn.MarkJobDirty(subJob.Job)
-			klog.V(3).InfoS("update subJob allocated hyperNode", "subJob", subJob.UID, "AllocatedHyperNode", minimumHyperNode)
-		}
+	if ssn.podGroupPlacementJobs == nil {
+		ssn.podGroupPlacementJobs = sets.New[api.JobID]()
 	}
+	ssn.podGroupPlacementJobs.Insert(job.UID)
+	ssn.refreshAllocatedHyperNode(job)
+}
 
-	// update job AllocatedHyperNode based on subJob allocated hyperNode
-	if job.AllocatedHyperNode == "" || subJobUpdated {
-		var lca string
-		for _, subJob := range job.SubJobs {
-			if subJob.AllocatedHyperNode == "" {
-				continue
-			}
-			lca = hyperNodes.GetLCAHyperNode(lca, subJob.AllocatedHyperNode)
-			if lca == "" {
-				klog.Errorf("failed to find allocated hyperNode for job %s by subJob allocated hyperNodes", job.UID)
-				break
-			}
-		}
-		if job.AllocatedHyperNode != lca {
-			job.AllocatedHyperNode = lca
-			ssn.MarkJobDirty(job.UID)
-			klog.V(3).InfoS("update job allocated hyperNode", "job", job.UID, "AllocatedHyperNode", lca)
-		}
+// PodGroupPlacementEnabled reports whether a group topology rule needs this Job's placement.
+func (ssn *Session) PodGroupPlacementEnabled(jobID api.JobID) bool {
+	return ssn.podGroupPlacementJobs.Has(jobID)
+}
+
+func (ssn *Session) refreshAllocatedHyperNode(job *api.JobInfo) {
+	if !job.AllocatedHyperNodeDirty && job.AllocatedHyperNodeGeneration == ssn.HyperNodeGeneration && job.AllocatedTaskPlacementGeneration == job.TaskPlacementGeneration {
+		return
+	}
+	if ssn.reconcileAllocatedHyperNode(job) {
+		job.AllocatedHyperNodeDirty = false
+		job.AllocatedHyperNodeGeneration = ssn.HyperNodeGeneration
+		job.AllocatedTaskPlacementGeneration = job.TaskPlacementGeneration
+		// Persist the internal generation even when the placement itself did
+		// not change, so subsequent sessions stay on the cheap path.
+		ssn.MarkJobDirty(job.UID)
 	}
 }
 
-func getLowestTierHyperNode(hyperNodes sets.Set[string], hyperNodeInfos api.HyperNodeInfoMap) string {
-	if hyperNodes == nil || hyperNodes.Len() == 0 {
-		return ""
-	}
-
-	var lowestTierHyperNode *api.HyperNodeInfo
-	for name := range hyperNodes {
-		if hn, found := hyperNodeInfos[name]; found {
-			if lowestTierHyperNode == nil || hn.Tier() < lowestTierHyperNode.Tier() {
-				lowestTierHyperNode = hn
+// reconcileAllocatedHyperNode refreshes persisted Job/SubJob placement from the
+// tasks' actual nodes after task placement or the HyperNode topology changes. It returns
+// false when a placed task cannot yet be mapped into the current topology; in
+// that case the old placement and generation are retained so a later session can
+// retry without temporarily widening the scheduling domain.
+func (ssn *Session) reconcileAllocatedHyperNode(job *api.JobInfo) bool {
+	complete := true
+	for _, subJob := range job.SubJobs {
+		expected := ""
+		if subJob.HasTopologyDomainTasks() {
+			expected = ssn.HyperNodeIndex().SubJobAllocatedHyperNode(subJob)
+			if expected == "" {
+				complete = false
+				klog.V(3).InfoS("Defer reconciling subJob allocated HyperNode because task placement cannot be mapped to current topology",
+					"job", job.UID, "subJob", subJob.UID, "allocatedHyperNode", subJob.AllocatedHyperNode,
+					"hyperNodeGeneration", ssn.HyperNodeGeneration)
+				continue
 			}
+		}
+
+		if subJob.AllocatedHyperNode != expected {
+			old := subJob.AllocatedHyperNode
+			subJob.AllocatedHyperNode = expected
+			ssn.MarkJobDirty(job.UID)
+			klog.V(3).InfoS("Reconciled subJob allocated HyperNode after topology change",
+				"job", job.UID, "subJob", subJob.UID, "old", old, "new", expected,
+				"hyperNodeGeneration", ssn.HyperNodeGeneration)
 		}
 	}
 
-	if lowestTierHyperNode == nil {
-		klog.Warningf("No valid hypernodes found in hyperNodeInfos for the given set: %v", hyperNodes.UnsortedList())
-		return ""
+	// Do not derive a partial Job placement when any SubJob with placed tasks
+	// could not be mapped. Keeping the previous value fails closed until the
+	// HyperNode and Node informer views converge.
+	if !complete {
+		return false
 	}
 
-	return lowestTierHyperNode.Name
+	expected := ""
+	if job.HasTopologyDomainTasks() {
+		expected = ssn.HyperNodeIndex().JobAllocatedHyperNode(job)
+		if expected == "" {
+			klog.V(3).InfoS("Defer reconciling job allocated HyperNode because task placement cannot be mapped to current topology",
+				"job", job.UID, "allocatedHyperNode", job.AllocatedHyperNode,
+				"hyperNodeGeneration", ssn.HyperNodeGeneration)
+			return false
+		}
+	}
+
+	if job.AllocatedHyperNode != expected {
+		old := job.AllocatedHyperNode
+		job.AllocatedHyperNode = expected
+		ssn.MarkJobDirty(job.UID)
+		klog.V(3).InfoS("Reconciled job allocated HyperNode after topology change",
+			"job", job.UID, "old", old, "new", expected,
+			"hyperNodeGeneration", ssn.HyperNodeGeneration)
+	}
+	return true
 }
 
 func (ssn *Session) parseHyperNodesTiers() {
@@ -692,6 +664,7 @@ func closeSession(ssn *Session) {
 	ju.UpdateAll()
 
 	updateQueueStatus(ssn)
+	ssn.reconcileUnschedulableCache()
 
 	ssn.Jobs = nil
 	ssn.Nodes = nil
@@ -701,6 +674,7 @@ func closeSession(ssn *Session) {
 	ssn.jobOrderFns = nil
 	ssn.queueOrderFns = nil
 	ssn.clusterOrderFns = nil
+	ssn.queueNodeFilterFns = nil
 	ssn.NodeList = nil
 	ssn.TotalResource = nil
 
@@ -710,6 +684,28 @@ func closeSession(ssn *Session) {
 }
 
 func getPodGroupPhase(jobInfo *api.JobInfo, unschedulable bool) scheduling.PodGroupPhase {
+	// Latch the terminal phase: once a PodGroup reached Completed, keep it
+	// Completed while every remaining member task is itself in a terminal
+	// state. Pod deletion (TTL/GC/workload controller) is not atomic and
+	// usually spans multiple sessions; without this latch a partially or
+	// fully deleted group is recomputed below minMember, downgraded back to
+	// Pending/Inqueue, re-admitted by the enqueue action, and the
+	// capacity/proportion plugins reserve its MinResources queue quota again
+	// even though it can never run again. A remaining non-completed task
+	// (e.g. a fresh Pending pod) still falls through to the normal recompute.
+	if jobInfo.PodGroup.Status.Phase == scheduling.PodGroupCompleted {
+		allCompleted := true
+		for _, task := range jobInfo.Tasks {
+			if !api.CompletedStatus(task.Status) {
+				allCompleted = false
+				break
+			}
+		}
+		if allCompleted {
+			return scheduling.PodGroupCompleted
+		}
+	}
+
 	// If running tasks && unschedulable, unknown phase
 	if len(jobInfo.TaskStatusIndex[api.Running]) != 0 && unschedulable {
 		return scheduling.PodGroupUnknown
@@ -818,21 +814,33 @@ func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.Nod
 // - UnschedulableAndUnresolvable
 // - ErrorSkipOrWait
 func (ssn *Session) PredicateForPreemptAction(task *api.TaskInfo, node *api.NodeInfo) error {
-	err := ssn.PredicateFn(task, node)
-	if err == nil {
-		return nil
-	}
-
-	fitError, ok := err.(*api.FitError)
-	if !ok {
-		return api.NewFitError(task, node, err.Error())
-	}
-
-	// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
-	// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
-	statusSets := fitError.Status
-	if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
-		return fitError
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPredicate) {
+				continue
+			}
+			pfn, found := ssn.predicateFns[plugin.Name]
+			if !found {
+				continue
+			}
+			err := pfn(task, node)
+			if err == nil {
+				continue
+			}
+			fitError, ok := err.(*api.FitError)
+			if !ok {
+				return api.NewFitError(task, node, err.Error())
+			}
+			// A resolvable failure (e.g. Unschedulable because evicting victims
+			// frees resources) does not exclude the node from preemption. Keep
+			// evaluating the remaining plugins so a later
+			// UnschedulableAndUnresolvable status is not masked by the first
+			// plugin's error (PredicateFn short-circuits on the first failure).
+			statusSets := fitError.Status
+			if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
+				return fitError
+			}
+		}
 	}
 	return nil
 }

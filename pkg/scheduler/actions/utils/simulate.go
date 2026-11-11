@@ -89,8 +89,8 @@ func BuildNominationPlanInDomain(ssn *framework.Session, queue *api.QueueInfo, j
 
 		var winnerStmt *framework.Statement
 		var winnerHN string
-		if job.ContainsHardTopology() {
-			gradients := ssn.HyperNodeGradientForSubJobFn(subJob, jobDomainHyperNode, api.PurposeEvict)
+		if job.ContainsHardTopology() || job.ContainsHardPodGroupAntiAffinity() {
+			gradients, _ := ssn.HyperNodeGradientForSubJobFn(subJob, jobDomainHyperNode, api.PurposeEvict)
 		gradientSearch:
 			for _, row := range gradients {
 				for _, hn := range row {
@@ -197,7 +197,7 @@ func organizeEvictionWorksheet(ssn *framework.Session, job *api.JobInfo) *evicti
 			tasks: util.NewPriorityQueue(ssn.TaskOrderFn),
 		}
 		for _, task := range subJob.TaskStatusIndex[api.Pending] {
-			if task.SchGated || task.Resreq.IsEmpty() {
+			if task.SchGated || !task.HasSchedulingResourceRequests() {
 				continue
 			}
 			sjWorksheet.tasks.Push(task)

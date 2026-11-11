@@ -28,7 +28,7 @@ import (
 //
 // JobFlow is the Schema for the jobflows API
 type JobFlowApplyConfiguration struct {
-	v1.TypeMetaApplyConfiguration    `json:",inline"`
+	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	Spec                             *JobFlowSpecApplyConfiguration   `json:"spec,omitempty"`
 	Status                           *JobFlowStatusApplyConfiguration `json:"status,omitempty"`

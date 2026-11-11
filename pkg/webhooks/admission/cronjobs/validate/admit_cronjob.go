@@ -33,6 +33,8 @@ import (
 	"k8s.io/kubernetes/pkg/capabilities"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	commonutil "volcano.sh/volcano/pkg/util"
 
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
@@ -90,7 +92,11 @@ func AdmitCronjobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionRespons
 	case admissionv1.Create:
 		msg = validateCronJobCreate(cronjob, &reviewResponse)
 	case admissionv1.Update:
-		err = validateCronJobUpdate(cronjob)
+		oldCronJob, err := schema.DecodeCronJob(ar.Request.OldObject, ar.Request.Resource)
+		if err != nil {
+			return util.ToAdmissionResponse(err)
+		}
+		err = validateCronJobUpdate(oldCronJob, cronjob)
 		if err != nil {
 			return util.ToAdmissionResponse(err)
 		}
@@ -105,17 +111,48 @@ func AdmitCronjobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionRespons
 	return &reviewResponse
 }
 func validateCronJobCreate(cronjob *v1alpha1.CronJob, reviewResponse *admissionv1.AdmissionResponse) string {
-	msg := validateCronJob(cronjob)
-	if msg != "" {
+	var message strings.Builder
+	message.WriteString(validateCronJob(cronjob))
+	if queueMsg := validateCronJobQueue(cronjob); queueMsg != "" {
+		if message.Len() > 0 {
+			message.WriteString("; ")
+		}
+		message.WriteString(queueMsg)
+	}
+	if message.Len() > 0 {
 		reviewResponse.Allowed = false
 	}
-	return msg
+	return message.String()
 }
-func validateCronJobUpdate(new *v1alpha1.CronJob) error {
+func validateCronJobUpdate(old, new *v1alpha1.CronJob) error {
 	if msg := validateCronJob(new); msg != "" {
 		return errors.New(msg)
 	}
+	if old.Spec.JobTemplate.Spec.Queue != new.Spec.JobTemplate.Spec.Queue {
+		if msg := validateCronJobQueue(new); msg != "" {
+			return errors.New(msg)
+		}
+	}
 	return nil
+}
+
+func validateCronJobQueue(cronjob *v1alpha1.CronJob) string {
+	if !commonutil.HasNamespaceQueuePrefix(cronjob.Spec.JobTemplate.Spec.Queue) {
+		return ""
+	}
+	err := util.ValidateWorkloadQueueReference(
+		cronjob.Namespace,
+		cronjob.Spec.JobTemplate.Spec.Queue,
+		schedulingv1beta1.DefaultQueue,
+		config,
+		util.QueueReferenceValidationOptions{
+			RequireClusterQueueLeaf: true,
+		},
+	)
+	if err != nil {
+		return fmt.Sprintf("invalid cronjob queue reference: %v", err)
+	}
+	return ""
 }
 
 // validateCronJob runs the validators and joins their non-empty messages with

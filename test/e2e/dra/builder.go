@@ -287,7 +287,7 @@ var envLineRE = regexp.MustCompile(`^(?:admin|user|claim)_[a-zA-Z0-9_]*=.*$`)
 
 func testContainerEnv(ctx context.Context, f *framework.Framework, pod *v1.Pod, containerName string, fullMatch bool, env ...string) {
 	ginkgo.GinkgoHelper()
-	stdout, stderr, err := e2epod.ExecWithOptionsContext(ctx, f, e2epod.ExecOptions{
+	stdout, stderr, err := e2epod.Exec(f.TContext(ctx), e2epod.ExecOptions{
 		Command:       []string{"env"},
 		Namespace:     pod.Namespace,
 		PodName:       pod.Name,

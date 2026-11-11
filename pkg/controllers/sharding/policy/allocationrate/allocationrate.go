@@ -49,16 +49,15 @@ type allocationRatePolicy struct {
 
 // New creates a new allocation-rate policy instance.
 func New() policy.ShardPolicy {
-	return &allocationRatePolicy{
-		maxCPURounded:   1.0,
-		cpuRangeRounded: 1.0,
-	}
+	return &allocationRatePolicy{}
 }
 
 func (p *allocationRatePolicy) Name() string { return PolicyName }
 
 func (p *allocationRatePolicy) Initialize(args policy.Arguments) error {
-	var minCPU, maxCPU float64
+	// Default to the full range; GetFloat64 overrides only the bounds present
+	// in args, so an omitted arguments block does not collapse it to [0, 0].
+	minCPU, maxCPU := 0.0, 1.0
 	args.GetFloat64(&minCPU, ArgMinCPUUtil)
 	args.GetFloat64(&maxCPU, ArgMaxCPUUtil)
 

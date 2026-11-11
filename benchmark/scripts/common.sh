@@ -38,6 +38,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export BENCHMARK_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 export VOLCANO_ROOT="$(cd "${BENCHMARK_DIR}/.." && pwd)"
 
+# Tag for Volcano images built from local source. build-images.sh builds with
+# it and install-volcano.sh deploys it, so the two always match.
+export TAG="${TAG:-$(git -C "${VOLCANO_ROOT}" rev-parse --verify HEAD)}"
+
 # Logging functions
 log_info()  { echo "[INFO]  $(date '+%H:%M:%S') $*"; }
 log_warn()  { echo "[WARN]  $(date '+%H:%M:%S') $*" >&2; }

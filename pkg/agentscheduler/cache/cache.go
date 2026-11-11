@@ -380,44 +380,26 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *Schedule
 	metricsRecorder := k8smetrics.NewMetricsAsyncRecorder(1000, time.Second, ctx.Done())
 	sc.cancel = cancel
 
-	queueingHintMapPerProfile := make(k8sschedulingqueue.QueueingHintMapPerProfile)
-	queueingHintMapPerProfile[sc.schedulerName] = buildQueueingHintMap()
-	sc.schedulingQueue = k8sschedulingqueue.NewSchedulingQueue(
-		Less,
+	schedulingQueue, err := NewSchedulingQueue(
+		ctx, sc.schedulerName,
 		sc.informerFactory,
 		k8sschedulingqueue.WithClock(defaultSchedulerOptions.clock),
 		k8sschedulingqueue.WithPodInitialBackoffDuration(time.Duration(defaultSchedulerOptions.podInitialBackoffSeconds)*time.Second),
 		k8sschedulingqueue.WithPodMaxBackoffDuration(time.Duration(defaultSchedulerOptions.podMaxBackoffSeconds)*time.Second),
 		k8sschedulingqueue.WithPodMaxInUnschedulablePodsDuration(defaultSchedulerOptions.podMaxInUnschedulablePodsDuration),
 		k8sschedulingqueue.WithMetricsRecorder(metricsRecorder),
-		k8sschedulingqueue.WithQueueingHintMapPerProfile(queueingHintMapPerProfile),
 	)
+
+	if err != nil {
+		klog.Fatalf("Failed to initialize scheduling queue: %v", err)
+	}
+	sc.schedulingQueue = schedulingQueue
 
 	sc.ConflictAwareBinder = NewConflictAwareBinder(sc, sc.schedulingQueue)
 	if options.ServerOpts.ShardingMode != util.NoneShardingMode {
 		sc.ShardCoordinator = NewShardCoordinator(sc, int(opt.ScheduleWorkerCount), opt.ShardName, opt.ShardingMode)
 	}
 	return sc
-}
-
-// defaultQueueingHintFn is the default queueing hint function.
-// It always returns Queue as the queueing hint.
-var defaultQueueingHintFn = func(_ klog.Logger, _ *v1.Pod, _, _ interface{}) (fwk.QueueingHint, error) {
-	return fwk.Queue, nil
-}
-
-// buildQueueingHintMap builds the queueing hint map for the scheduling queue.
-func buildQueueingHintMap() k8sschedulingqueue.QueueingHintMap {
-	queueingHintMap := make(k8sschedulingqueue.QueueingHintMap)
-
-	// Currently, we only register a wild card event with the default queueing hint function.
-	// TODO: Support more specific events and queueing hint functions.
-	wildCardEvent := fwk.ClusterEvent{Resource: fwk.WildCard, ActionType: fwk.All}
-	queueingHintMap[wildCardEvent] = append(queueingHintMap[wildCardEvent], &k8sschedulingqueue.QueueingHintFunction{
-		QueueingHintFn: defaultQueueingHintFn,
-	})
-
-	return queueingHintMap
 }
 
 func (sc *SchedulerCache) addEventHandler() {
@@ -566,8 +548,7 @@ func (sc *SchedulerCache) addEventHandler() {
 		// If device taints are disabled, the additional informers are not needed and
 		// the tracker turns into a simple wrapper around the slice informer.
 		if resourceSliceTrackerOpts.EnableDeviceTaintRules {
-			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1beta2().DeviceTaintRules()
-			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
+			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1().DeviceTaintRules()
 		}
 		resourceSliceTracker, err := resourceslicetracker.StartTracker(ctx, resourceSliceTrackerOpts)
 		if err != nil {
@@ -1032,6 +1013,10 @@ func (sc *SchedulerCache) UpdateSnapshot(snapshot *k8sutil.Snapshot) error {
 			klog.V(2).Infof("Stop traversal at node %s, generation %d <= snapshot generation %d",
 				node.info.Name, node.info.Generation, snapshotGeneration)
 			break
+		}
+		if !node.info.Ready() {
+			klog.V(5).Infof("skip updating not-ready node %s in snapshot", node.info.Name)
+			continue
 		}
 		klog.V(5).Infof("current node name need to update in cache is %s", node.info.Name)
 		nodesToUpdate = append(nodesToUpdate, node.info)

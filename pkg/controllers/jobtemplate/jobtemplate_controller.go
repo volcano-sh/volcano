@@ -179,6 +179,7 @@ func (jt *jobtemplatecontroller) handleJobTemplate(req *apis.FlowRequest) error 
 
 		return fmt.Errorf("get jobTemplate %s failed for %v", req.JobFlowName, err)
 	}
+	jobTemplate = jobTemplate.DeepCopy()
 
 	klog.V(4).Infof("Begin syncJobTemplate for jobTemplate %s", req.JobFlowName)
 	if err := jt.syncJobTemplate(jobTemplate); err != nil {

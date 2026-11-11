@@ -24,6 +24,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	kubeclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -39,6 +40,7 @@ import (
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/cmd/controller-manager/app/options"
 	"volcano.sh/volcano/pkg/controllers/framework"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/signals"
 	commonutil "volcano.sh/volcano/pkg/util"
@@ -152,6 +154,11 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 
 	return func(ctx context.Context) {
 		framework.ForeachController(func(c framework.Controller) {
+			if c.Name() == "namespacequeue-controller" &&
+				!utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) {
+				klog.Infof("Controller <%s> is disabled by feature gate <%s>", c.Name(), features.NamespaceQueue)
+				return
+			}
 			// if controller is not enabled, skip it
 			if !isControllerEnabled(c.Name(), opt.Controllers) {
 				klog.Infof("Controller <%s> is not enable", c.Name())

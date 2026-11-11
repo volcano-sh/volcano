@@ -100,6 +100,7 @@ func DeleteQueueMetrics(queueName string) {
 	queuePodGroupCompleted.DeleteLabelValues(queueName)
 }
 
+// UpdateQueueMetrics updates queue workload metrics from the latest status.
 func UpdateQueueMetrics(queueName string, queueStatus *v1beta1.QueueStatus) {
 	UpdateQueuePodGroupPendingCount(queueName, queueStatus.Pending)
 	UpdateQueuePodGroupRunningCount(queueName, queueStatus.Running)

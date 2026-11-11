@@ -41,6 +41,7 @@ import (
 	_ "volcano.sh/volcano/pkg/controllers/job"
 	_ "volcano.sh/volcano/pkg/controllers/jobflow"
 	_ "volcano.sh/volcano/pkg/controllers/jobtemplate"
+	_ "volcano.sh/volcano/pkg/controllers/namespacequeue"
 	_ "volcano.sh/volcano/pkg/controllers/podgroup"
 	_ "volcano.sh/volcano/pkg/controllers/queue"
 	_ "volcano.sh/volcano/pkg/controllers/sharding"

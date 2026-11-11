@@ -29,6 +29,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/informers"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/features"
@@ -38,6 +39,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodedeclaredfeatures"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
@@ -49,9 +51,11 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/predicates/hintprovider"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodescore"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
 )
 
 const (
@@ -92,6 +96,8 @@ const (
 var (
 	volumeBindingPluginInstance *volumebinding.VolumeBinding
 	volumeBindingPluginOnce     sync.Once
+
+	dynamicResourceAllocationPlugins = map[informers.SharedInformerFactory]*dynamicresources.DynamicResources{}
 )
 
 type PredicatesPlugin struct {
@@ -134,6 +140,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 		cacheEnable:                     false,
 		volumeBindingEnable:             true,
 		dynamicResourceAllocationEnable: utilFeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation),
+		nodeDeclaredFeaturesEnable:      utilFeature.DefaultFeatureGate.Enabled(features.NodeDeclaredFeatures),
 	}
 
 	// Checks whether predicate enable args is provided or not.
@@ -152,7 +159,6 @@ func New(arguments framework.Arguments) framework.Plugin {
 		EnableStorageCapacityScoring:                 utilFeature.DefaultFeatureGate.Enabled(features.StorageCapacityScoring),
 		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
 		EnableMatchLabelKeysInPodTopologySpread:      utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
-		EnableSidecarContainers:                      utilFeature.DefaultFeatureGate.Enabled(features.SidecarContainers),
 		EnableDRAAdminAccess:                         utilFeature.DefaultFeatureGate.Enabled(features.DRAAdminAccess),
 		EnableDynamicResourceAllocation:              utilFeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation),
 		EnableVolumeAttributesClass:                  utilFeature.DefaultFeatureGate.Enabled(features.VolumeAttributesClass),
@@ -164,6 +170,12 @@ func New(arguments framework.Arguments) framework.Plugin {
 		EnableDRAResourceClaimDeviceStatus:           utilFeature.DefaultFeatureGate.Enabled(features.DRAResourceClaimDeviceStatus),
 		EnableDRADeviceBindingConditions:             utilFeature.DefaultFeatureGate.Enabled(features.DRADeviceBindingConditions),
 		EnableDRAPartitionableDevices:                utilFeature.DefaultFeatureGate.Enabled(features.DRAPartitionableDevices),
+		EnableNodeDeclaredFeatures:                   utilFeature.DefaultFeatureGate.Enabled(features.NodeDeclaredFeatures),
+		EnableDRAFractionalCapacityRange:             utilFeature.DefaultFeatureGate.Enabled(features.DRAFractionalCapacityRange),
+		EnableDRADerivedAttributes:                   utilFeature.DefaultFeatureGate.Enabled(features.DRADerivedAttributes),
+		EnableDRAOptionalNodeOperations:              utilFeature.DefaultFeatureGate.Enabled(features.DRAOptionalNodeOperations),
+		EnableDRADeviceCompatibilityGroups:           utilFeature.DefaultFeatureGate.Enabled(features.DRADeviceCompatibilityGroups),
+		EnableVolumeLimitScaling:                     utilFeature.DefaultFeatureGate.Enabled(features.VolumeLimitScaling),
 	}
 	return &PredicatesPlugin{pluginArguments: arguments, enabledPredicates: predicate, features: features}
 }
@@ -183,6 +195,7 @@ type predicateEnable struct {
 	cacheEnable                     bool
 	volumeBindingEnable             bool
 	dynamicResourceAllocationEnable bool
+	nodeDeclaredFeaturesEnable      bool
 }
 
 // bind context extension information of predicates
@@ -212,52 +225,7 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
-			klog.V(4).Infoln("predicates, allocate", event.Task.NodeName)
-			pod := pl.UpdateTask(event.Task, event.Task.NodeName)
-			nodeName := event.Task.NodeName
-			node, err := pp.Handle.SnapshotSharedLister().NodeInfos().Get(nodeName)
-			if err != nil {
-				klog.Errorf("predicates, get node %s info failed: %v", nodeName, err)
-				return
-			}
-			nodeInfo, ok := ssn.Nodes[nodeName]
-			if !ok {
-				klog.Errorf("Failed to get node %s info from cache", nodeName)
-				return
-			}
-			// run reserve plugins
-			pp.runReservePlugins(ssn, event)
-			if event.Err != nil {
-				return
-			}
-			//predicate gpu sharing
-			for _, val := range api.RegisteredDevices {
-				if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
-					if api.IsNilDevice(devices) {
-						continue
-					}
-					if !devices.HasDeviceRequest(pod) {
-						continue
-					}
-
-					reservation, err := devices.Allocate(ssn.KubeClient(), pod)
-					if err != nil {
-						klog.Errorf("AllocateToPod failed %s", err.Error())
-						event.Err = err
-						return
-					}
-					if reservation != nil && len(reservation.Annotations) > 0 {
-						event.Task.MergePodAnnotations(reservation.Annotations)
-					}
-				} else {
-					klog.Warningf("Devices %s assertion conversion failed, skip", val)
-				}
-			}
-			// ignore this err since apiserver doesn't properly validate affinity terms
-			// and we can't fix the validation for backwards compatibility.
-			podInfo, _ := k8sframework.NewPodInfo(pod)
-			node.AddPodInfo(podInfo)
-			klog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
+			pp.onAllocate(ssn, event)
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			klog.V(4).Infoln("predicates, deallocate", event.Task.NodeName)
@@ -339,6 +307,26 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.RegisterBinder(pp.Name(), pp)
+
+	if ssn.RejectionTrackingEnabled() {
+		// Add hint provider for PredicateFn and PrePredicateFn.
+		hintPlugins := make(map[string]fwk.Plugin, len(pp.FilterPlugins)+len(pp.PreFilterPlugins))
+		for name, plugin := range pp.FilterPlugins {
+			hintPlugins[name] = plugin
+		}
+		for name, plugin := range pp.PreFilterPlugins {
+			hintPlugins[name] = plugin
+		}
+		for name, plugin := range hintPlugins {
+			ext, ok := plugin.(fwk.EnqueueExtensions)
+			if !ok {
+				continue
+			}
+			ssn.AddHintProvider(name, &hintprovider.KubeHintProvider{Ext: ext})
+		}
+		// Volcano's built-in node resource predicate is not a wrapped Kubernetes plugin.
+		ssn.AddHintProvider(resourcefit.ProviderName, &hintprovider.ResourceFitHintProvider{})
+	}
 
 	// Add SimulateAddTask function
 	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
@@ -446,16 +434,6 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 // It is safe here to directly use the state to run plugins because we have already initialized the cycle state
 // for each pending pod when open session and will not meet nil state.
 func (pp *PredicatesPlugin) PrePredicate(task *api.TaskInfo, state *k8sframework.CycleState, nodeInfoList []fwk.NodeInfo) error {
-	// Check restartable container
-	if !pp.features.EnableSidecarContainers && task.HasRestartableInitContainer {
-		// Scheduler will calculate resources usage for a Pod containing
-		// restartable init containers that will be equal or more than kubelet will
-		// require to run the Pod. So there will be no overbooking. However, to
-		// avoid the inconsistency in resource calculation between the scheduler
-		// and the older (before v1.28) kubelet, make the Pod unschedulable.
-		return fmt.Errorf("pod has a restartable init container and the SidecarContainers feature is disabled")
-	}
-
 	// Run all PreFilter plugins
 	for _, name := range pp.PreFilterOrder {
 		plugin, exists := pp.PreFilterPlugins[name]
@@ -632,18 +610,35 @@ func (pp *PredicatesPlugin) InitPlugin() {
 	}
 	// 10. DRA
 	if pp.enabledPredicates.dynamicResourceAllocationEnable {
-		draArgs := defaultDynamicResourcesArgs()
-		setUpDynamicResourcesArgs(draArgs, pp.pluginArguments)
-		plugin, err := dynamicresources.New(context.TODO(), draArgs.DynamicResourcesArgs, pp.Handle, pp.features)
-		if err != nil {
-			klog.Fatalf("failed to create dra plugin with err: %v", err)
+		// Since Kubernetes 1.37 DRA registers a pod informer indexer, so create it once per factory.
+		factory := pp.Handle.SharedInformerFactory()
+		dynamicResourceAllocationPlugin, ok := dynamicResourceAllocationPlugins[factory]
+		if !ok {
+			draArgs := defaultDynamicResourcesArgs()
+			setUpDynamicResourcesArgs(draArgs, pp.pluginArguments)
+			plugin, err := dynamicresources.New(context.TODO(), draArgs.DynamicResourcesArgs, pp.Handle, pp.features)
+			if err != nil {
+				klog.Fatalf("failed to create dra plugin with err: %v", err)
+			}
+			dynamicResourceAllocationPlugin = plugin.(*dynamicresources.DynamicResources)
+			dynamicResourceAllocationPlugins[factory] = dynamicResourceAllocationPlugin
 		}
-		dynamicResourceAllocationPlugin := plugin.(*dynamicresources.DynamicResources)
 		addFilterPlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addPreFilterPlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addReservePlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addPreBindPlugin(dynamicresources.Name, dynamicResourceAllocationPlugin)
 		addScorePlugin(dynamicresources.Name, dynamicResourceAllocationPlugin, 1)
+	}
+	// 11. NodeDeclaredFeatures (stable filter for cache)
+	if pp.enabledPredicates.nodeDeclaredFeaturesEnable {
+		if plugin, err := nodedeclaredfeatures.New(context.TODO(), nil, pp.Handle, pp.features); err == nil {
+			nodeDeclaredFeaturesFilter := plugin.(*nodedeclaredfeatures.NodeDeclaredFeatures)
+			addFilterPlugin(nodedeclaredfeatures.Name, nodeDeclaredFeaturesFilter)
+			addStableFilterPlugin(nodedeclaredfeatures.Name, nodeDeclaredFeaturesFilter)
+			addPreFilterPlugin(nodedeclaredfeatures.Name, nodeDeclaredFeaturesFilter)
+		} else {
+			klog.Errorf("Failed to init %s plugin %v", nodedeclaredfeatures.Name, err)
+		}
 	}
 
 	pp.FilterPlugins = filterPlugins
@@ -683,9 +678,10 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 		klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed, allocatable <%d>, existed <%d>",
 			task.Namespace, task.Name, node.Name, node.Allocatable.MaxTaskNum, len(nodeInfo.GetPods()))
 		podsNumStatus := &api.Status{
-			Code:   api.Unschedulable,
-			Reason: api.NodePodNumberExceeded,
-			Plugin: pp.Name(),
+			Code:                  api.Unschedulable,
+			Reason:                api.NodePodNumberExceeded,
+			Plugin:                resourcefit.ProviderName,
+			InsufficientResources: []string{string(v1.ResourcePods)},
 		}
 		predicateStatus = append(predicateStatus, podsNumStatus)
 	}
@@ -705,6 +701,9 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 			status := plugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
 			filterStatus := api.ConvertPredicateStatus(status)
 			if filterStatus.Code != api.Success {
+				if filterStatus.Plugin == "" {
+					filterStatus.Plugin = name
+				}
 				predicateStatus = append(predicateStatus, filterStatus)
 				if util.ShouldAbort(filterStatus) {
 					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", name, status.Message())
@@ -759,6 +758,9 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 		status := plugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
 		filterStatus := api.ConvertPredicateStatus(status)
 		if filterStatus.Code != api.Success {
+			if filterStatus.Plugin == "" {
+				filterStatus.Plugin = name
+			}
 			predicateStatus = append(predicateStatus, filterStatus)
 			if util.ShouldAbort(filterStatus) {
 				return api.NewFitErrWithStatus(task, node, predicateStatus...)
@@ -775,54 +777,99 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 
 // BatchNodeOrder runs all Score plugins for the given task and nodes.
 func (pp *PredicatesPlugin) BatchNodeOrder(task *api.TaskInfo, nodes []fwk.NodeInfo, state *k8sframework.CycleState) (map[string]float64, error) {
-	nodeScores := make(map[string]float64, len(nodes))
-	skippedScorePlugins := map[string]struct{}{}
-
+	// Preserve the configured plugin order while adapting it to RunScorePlugins' common input.
+	preScorePluginEntries := make([]nodescore.PreScorePluginEntry, 0, len(pp.PreScoreOrder))
 	for _, name := range pp.PreScoreOrder {
 		plugin, exists := pp.PreScorePlugins[name]
 		if !exists {
 			continue
 		}
-
-		skipScore, err := nodescore.RunPreScorePlugin(plugin, state, task.Pod, nodes)
-		if err != nil {
-			return nil, fmt.Errorf("pre-score plugin %s failed: %w", name, err)
-		}
-		if skipScore {
-			skippedScorePlugins[name] = struct{}{}
-		}
+		preScorePluginEntries = append(preScorePluginEntries, nodescore.PreScorePluginEntry{Name: name, Plugin: plugin})
 	}
 
-	// Run all Score plugins
+	scorePluginEntries := make([]nodescore.ScorePluginEntry, 0, len(pp.ScoreOrder))
 	for _, name := range pp.ScoreOrder {
-		if _, skipped := skippedScorePlugins[name]; skipped {
-			continue
-		}
 		plugin, exists := pp.ScorePlugins[name]
 		if !exists {
 			continue
 		}
-		// Get weight from ScoreWeights map, default to 1 if not set
 		weight := 1
 		if w, exists := pp.ScoreWeights[name]; exists {
 			weight = w
 		}
-
-		// Calculate score using the helper function
-		pluginScores, err := nodescore.CalculatePluginScore(name, plugin, state, task.Pod, nodes, weight)
-		if err != nil {
-			return nil, err
-		}
-
-		// Accumulate scores
-		for _, node := range nodes {
-			nodeName := node.Node().Name
-			nodeScores[nodeName] += pluginScores[nodeName]
-		}
+		scorePluginEntries = append(scorePluginEntries, nodescore.ScorePluginEntry{Name: name, Plugin: plugin, Weight: weight})
 	}
 
+	nodeScores, err := nodescore.RunScorePlugins(preScorePluginEntries, scorePluginEntries, state, task.Pod, nodes)
+	if err != nil {
+		return nil, err
+	}
 	klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)
 	return nodeScores, nil
+}
+
+// onAllocate adds a task to the predicates node info once it is placed on a node.
+//
+// A task that is restored after a rolled-back eviction is still bound to the node:
+// its volumes and claims were never released, so this cycle has no prefilter state
+// to reserve against. Reserving it again fails with "not found" and returns before
+// the pod is added back, which leaves the victim missing from the node info used by
+// later predicates and by node scoring.
+//
+// The same task also comes back with its device accounting already restored:
+// Statement.unevict calls NodeInfo.UpdateTask before it fires this event, and
+// UpdateTask's AddTask puts the pod back on the device its gpu-index annotation
+// names. Allocating it again would place the pod on a second device, so the shared
+// device plugins are skipped for a restore as well.
+func (pp *PredicatesPlugin) onAllocate(ssn *framework.Session, event *framework.Event) {
+	klog.V(4).Infoln("predicates, allocate", event.Task.NodeName)
+	pod := ssn.PodLister.UpdateTask(event.Task, event.Task.NodeName)
+	nodeName := event.Task.NodeName
+	node, err := pp.Handle.SnapshotSharedLister().NodeInfos().Get(nodeName)
+	if err != nil {
+		klog.Errorf("predicates, get node %s info failed: %v", nodeName, err)
+		return
+	}
+	nodeInfo, ok := ssn.Nodes[nodeName]
+	if !ok {
+		klog.Errorf("Failed to get node %s info from cache", nodeName)
+		return
+	}
+	if !event.Restore {
+		// run reserve plugins
+		pp.runReservePlugins(ssn, event)
+		if event.Err != nil {
+			return
+		}
+		//predicate gpu sharing
+		for _, val := range api.RegisteredDevices {
+			if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
+				if api.IsNilDevice(devices) {
+					continue
+				}
+				if !devices.HasDeviceRequest(pod) {
+					continue
+				}
+
+				reservation, err := devices.Allocate(ssn.KubeClient(), pod)
+				if err != nil {
+					klog.Errorf("AllocateToPod failed %s", err.Error())
+					event.Err = err
+					return
+				}
+				if reservation != nil && len(reservation.Annotations) > 0 {
+					event.Task.MergePodAnnotations(reservation.Annotations)
+				}
+			} else {
+				klog.Warningf("Devices %s assertion conversion failed, skip", val)
+			}
+		}
+	}
+	// ignore this err since apiserver doesn't properly validate affinity terms
+	// and we can't fix the validation for backwards compatibility.
+	podInfo, _ := k8sframework.NewPodInfo(pod)
+	node.AddPodInfo(podInfo)
+	klog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
 }
 
 func (pp *PredicatesPlugin) runReservePlugins(ssn *framework.Session, event *framework.Event) {
@@ -936,11 +983,23 @@ func handleSkipPrePredicatePlugin(status *fwk.Status, state *k8sframework.CycleS
 		state.GetSkipFilterPlugins().Insert(pluginName)
 		klog.V(5).Infof("The predicate of plugin %s will skip execution for pod <%s/%s>, because the status returned by pre-predicate is skip",
 			pluginName, task.Namespace, task.Name)
-	} else if !status.IsSuccess() {
-		return fmt.Errorf("plugin %s pre-predicates failed %s", pluginName, status.Message())
+		return nil
 	}
 
-	return nil
+	if status.IsSuccess() {
+		return nil
+	}
+
+	if status.Code() == fwk.Unschedulable || status.Code() == fwk.UnschedulableAndUnresolvable {
+		// Preserve the rejecting plugin so its events can trigger a retry.
+		return &api.PrePredicateError{
+			Plugin: pluginName,
+			Reason: fmt.Sprintf("plugin %s pre-predicates failed %s", pluginName, status.Message()),
+		}
+	}
+
+	// Other errors such as fwk.Error, we should return an error to stop scheduling and log the error.
+	return fmt.Errorf("plugin %s pre-predicates failed %s", pluginName, status.Message())
 }
 
 func (pp *PredicatesPlugin) OnSessionClose(ssn *framework.Session) {}

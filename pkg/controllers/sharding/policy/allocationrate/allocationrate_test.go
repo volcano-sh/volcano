@@ -61,6 +61,28 @@ func TestAllocationRatePolicyInitialize(t *testing.T) {
 	}
 }
 
+// With no arguments the range must stay [0.0, 1.0]. Before the fix it collapsed
+// to [0.0, 0.0], so the filter kept only nodes at exactly 0 and starved the shard.
+func TestAllocationRatePolicyDefaultRange(t *testing.T) {
+	// nil is what an omitted arguments block decodes to.
+	f, s := newPolicy(t, nil)
+	ctx := &policy.PolicyContext{
+		NodeMetrics: map[string]*policy.NodeMetrics{
+			"idle": {CPUUtilization: 0.0},
+			"busy": {CPUUtilization: 0.5},
+			"hot":  {CPUUtilization: 0.9},
+		},
+	}
+	for _, name := range []string{"idle", "busy", "hot"} {
+		if !f.Filter(ctx, node(name)) {
+			t.Errorf("Filter(%s) = false with no arguments, want true", name)
+		}
+	}
+	if got := s.Score(ctx, node("busy")); got != 0.5 {
+		t.Errorf("Score(busy) = %v with no arguments, want 0.5", got)
+	}
+}
+
 // newPolicy constructs and Initialize-s a policy with the given args.
 func newPolicy(t *testing.T, args policy.Arguments) (policy.Filterer, policy.Scorer) {
 	t.Helper()

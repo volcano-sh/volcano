@@ -17,26 +17,125 @@ limitations under the License.
 package cache
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
+	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	fwk "k8s.io/kube-scheduler/framework"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
 	"k8s.io/utils/cpuset"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+type testHintProvider struct {
+	event  fwk.ClusterEvent
+	hintFn unschedulable.JobHintFn
+}
+
+func (p testHintProvider) EventsToRegister(context.Context) ([]unschedulable.EventWithHint, error) {
+	return []unschedulable.EventWithHint{{Event: p.event, HintFn: p.hintFn}}, nil
+}
+
+func TestRegisterHintEventHandler(t *testing.T) {
+	tests := []struct {
+		name             string
+		jobCache         *unschedulable.JobCache
+		wantRegistration bool
+	}{
+		{name: "cache disabled", wantRegistration: false},
+		{name: "cache enabled", jobCache: unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration), wantRegistration: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			schedulerCache := &SchedulerCache{unschedulableJobCache: test.jobCache}
+			informer := kcache.NewSharedIndexInformer(&kcache.ListWatch{}, &v1.PersistentVolume{}, 0, kcache.Indexers{})
+			handlers := make(map[string]kcache.ResourceEventHandlerRegistration)
+
+			schedulerCache.registerHintEventHandler(handlers, "pv", informer, fwk.PersistentVolume)
+
+			_, registered := handlers["pv"]
+			if registered != test.wantRegistration {
+				t.Fatalf("hint handler registered = %v, want %v", registered, test.wantRegistration)
+			}
+		})
+	}
+}
+
+func TestSchedulerCache_addEventHandler(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, kubefeatures.DynamicResourceAllocation, true)
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, kubefeatures.DRADeviceTaints, true)
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, kubefeatures.DRADeviceTaintRules, true)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const (
+		driver = "driver.example.com"
+		plugin = "plugin"
+	)
+	slice := &resourceapi.ResourceSlice{
+		ObjectMeta: metav1.ObjectMeta{Name: "slice"},
+		Spec: resourceapi.ResourceSliceSpec{
+			Driver:   driver,
+			Pool:     resourceapi.ResourcePool{Name: "pool", ResourceSliceCount: 1},
+			AllNodes: ptr.To(true),
+			Devices:  []resourceapi.Device{{Name: "device"}},
+		},
+	}
+	rule := &resourceapi.DeviceTaintRule{
+		ObjectMeta: metav1.ObjectMeta{Name: "rule"},
+		Spec: resourceapi.DeviceTaintRuleSpec{
+			DeviceSelector: &resourceapi.DeviceTaintSelector{Driver: ptr.To(driver)},
+			Taint:          resourceapi.DeviceTaint{Key: "example.com/taint", Effect: resourceapi.DeviceTaintEffectNoSchedule},
+		},
+	}
+	jobCache := unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration)
+	jobCache.AddHintProvider(plugin, testHintProvider{event: fwk.ClusterEvent{Resource: fwk.ResourceSlice, ActionType: fwk.Update}})
+	sc := newMockSchedulerCache("volcano")
+	t.Cleanup(func() { ShutdownMockSchedulerCache(sc) })
+	WithUnschedulableJobCache(jobCache)(sc)
+	_, err := sc.kubeClient.ResourceV1().ResourceSlices().Create(ctx, slice, metav1.CreateOptions{})
+	require.NoError(t, err)
+	_, err = sc.kubeClient.ResourceV1().DeviceTaintRules().Create(ctx, rule, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	sc.addEventHandler()
+	sc.informerFactory.Start(ctx.Done())
+	require.True(t, kcache.WaitForCacheSync(ctx.Done(), sc.registeredHandlers["resourceSlice"].HasSynced))
+
+	job := api.NewJobInfo("test/job")
+	jobCache.Record(job, []unschedulable.Rejection{{Plugin: plugin, Source: unschedulable.RejectionPredicate}})
+	require.NotEmpty(t, jobCache.CachedRejections(job))
+
+	require.NoError(t, sc.kubeClient.ResourceV1().DeviceTaintRules().Delete(ctx, rule.Name, metav1.DeleteOptions{}))
+
+	assert.Eventually(t, func() bool {
+		return len(jobCache.CachedRejections(job)) == 0
+	}, wait.ForeverTestTimeout, 10*time.Millisecond)
+}
 
 func TestSchedulerCache_updateTask(t *testing.T) {
 	namespace := "test"
@@ -363,6 +462,338 @@ func TestSchedulerCache_UpdatePodGroupV1beta1(t *testing.T) {
 	}
 }
 
+func TestUpdatePodGroupUnschedulableCache(t *testing.T) {
+	tests := []struct {
+		name       string
+		mutate     func(*schedulingv1.PodGroup)
+		wantCached bool
+	}{
+		{
+			name: "status-only update preserves cached rejection",
+			mutate: func(pg *schedulingv1.PodGroup) {
+				pg.Status.Phase = schedulingv1.PodGroupInqueue
+			},
+			wantCached: true,
+		},
+		{
+			name: "scheduler annotation update preserves cached rejection",
+			mutate: func(pg *schedulingv1.PodGroup) {
+				pg.Annotations[api.JobAllocatedHyperNode] = "hypernode-1"
+			},
+			wantCached: true,
+		},
+		{
+			name: "spec update invalidates cached rejection",
+			mutate: func(pg *schedulingv1.PodGroup) {
+				pg.Spec.MinMember = 2
+			},
+		},
+		{
+			name: "scheduling annotation update invalidates cached rejection",
+			mutate: func(pg *schedulingv1.PodGroup) {
+				pg.Annotations["volcano.sh/task-topology-affinity"] = "rack-a"
+			},
+		},
+		{
+			name: "scheduling label update invalidates cached rejection",
+			mutate: func(pg *schedulingv1.PodGroup) {
+				pg.Labels[schedulingv1.PodPreemptable] = "true"
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			const (
+				namespace = "test"
+				name      = "job"
+				plugin    = "plugin"
+			)
+			jobID := api.JobID(namespace + "/" + name)
+			job := api.NewJobInfo(jobID)
+			jobs := map[api.JobID]*api.JobInfo{jobID: job}
+			unschedulableCache := unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration)
+			unschedulableCache.AddHintProvider(plugin, testHintProvider{event: fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add}})
+			rejections := []unschedulable.Rejection{{Plugin: plugin, Source: unschedulable.RejectionPredicate}}
+			unschedulableCache.Record(job, rejections)
+
+			cache := &SchedulerCache{
+				Jobs:                  jobs,
+				unschedulableJobCache: unschedulableCache,
+			}
+			oldPodGroup := &schedulingv1.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            name,
+					Namespace:       namespace,
+					ResourceVersion: "1",
+					Annotations:     map[string]string{},
+					Labels:          map[string]string{},
+				},
+				Spec: schedulingv1.PodGroupSpec{MinMember: 1},
+			}
+			newPodGroup := oldPodGroup.DeepCopy()
+			newPodGroup.ResourceVersion = "2"
+			test.mutate(newPodGroup)
+
+			cache.UpdatePodGroupV1beta1(oldPodGroup, newPodGroup)
+
+			gotCached := len(unschedulableCache.CachedRejections(job)) > 0
+			if gotCached != test.wantCached {
+				t.Fatalf("cached rejection exists = %v, want %v", gotCached, test.wantCached)
+			}
+		})
+	}
+}
+
+func TestPodSchedulingInputChangeInvalidatesUnschedulableCache(t *testing.T) {
+	const (
+		namespace = "test"
+		groupName = "job"
+		plugin    = "plugin"
+	)
+	jobID := api.JobID(namespace + "/" + groupName)
+
+	newPod := func(name string) *v1.Pod {
+		pod := buildPod(namespace, name, "", v1.PodPending, api.BuildResourceList("1", "1Gi"), nil, nil)
+		pod.Annotations = map[string]string{schedulingv1.KubeGroupNameAnnotationKey: groupName}
+		return pod
+	}
+	newCache := func(t *testing.T, pods ...*v1.Pod) (*SchedulerCache, *unschedulable.JobCache) {
+		t.Helper()
+		unschedulableCache := unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration)
+		unschedulableCache.AddHintProvider(plugin, testHintProvider{event: fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add}})
+		schedulerCache := &SchedulerCache{
+			Jobs:                  make(map[api.JobID]*api.JobInfo),
+			Nodes:                 make(map[string]*api.NodeInfo),
+			unschedulableJobCache: unschedulableCache,
+		}
+		for _, pod := range pods {
+			schedulerCache.AddPod(pod)
+		}
+		job := schedulerCache.Jobs[jobID]
+		if job == nil {
+			t.Fatalf("job %s was not created", jobID)
+		}
+		// AddPod invalidates the Job. Begin a scheduler session after those
+		// initial mutations so Record models CloseSession.
+		unschedulableCache.BeginSession()
+		unschedulableCache.Record(job.Clone(), []unschedulable.Rejection{{
+			Plugin: plugin,
+			Source: unschedulable.RejectionPredicate,
+		}})
+		return schedulerCache, unschedulableCache
+	}
+	isCached := func(cache *SchedulerCache, unschedulableCache *unschedulable.JobCache) bool {
+		return len(unschedulableCache.CachedRejections(cache.Jobs[jobID])) > 0
+	}
+
+	t.Run("pod add", func(t *testing.T) {
+		cache, unschedulableCache := newCache(t, newPod("old"))
+
+		cache.AddPod(newPod("new"))
+
+		if isCached(cache, unschedulableCache) {
+			t.Fatal("cached rejection survived adding a task to the same job")
+		}
+	})
+
+	t.Run("pod delete", func(t *testing.T) {
+		deleted := newPod("deleted")
+		cache, unschedulableCache := newCache(t, deleted, newPod("kept"))
+
+		cache.DeletePod(deleted)
+
+		if isCached(cache, unschedulableCache) {
+			t.Fatal("cached rejection survived deleting a task from the same job")
+		}
+	})
+
+	t.Run("scheduling property update", func(t *testing.T) {
+		oldPod := newPod("pod")
+		cache, unschedulableCache := newCache(t, oldPod, newPod("kept"))
+		updatedPod := oldPod.DeepCopy()
+		updatedPod.Labels = map[string]string{"placement": "new"}
+
+		cache.UpdatePod(oldPod, updatedPod)
+
+		if isCached(cache, unschedulableCache) {
+			t.Fatal("cached rejection survived a scheduling-property update to the same job")
+		}
+	})
+
+	t.Run("terminal transition", func(t *testing.T) {
+		oldPod := newPod("pod")
+		cache, unschedulableCache := newCache(t, oldPod, newPod("kept"))
+		terminalPod := oldPod.DeepCopy()
+		terminalPod.Status.Phase = v1.PodSucceeded
+
+		cache.UpdatePod(oldPod, terminalPod)
+
+		if isCached(cache, unschedulableCache) {
+			t.Fatal("cached rejection survived a task becoming terminal")
+		}
+	})
+
+	t.Run("status-only update", func(t *testing.T) {
+		oldPod := newPod("pod")
+		cache, unschedulableCache := newCache(t, oldPod, newPod("kept"))
+		updatedPod := oldPod.DeepCopy()
+		updatedPod.Status.PodIP = "10.0.0.1"
+
+		cache.UpdatePod(oldPod, updatedPod)
+
+		if !isCached(cache, unschedulableCache) {
+			t.Fatal("status-only update invalidated cached rejection")
+		}
+	})
+}
+
+func TestPodBindingDispatchesAssignedPodAdd(t *testing.T) {
+	const plugin = "pod-add-plugin"
+	job := api.NewJobInfo("dependent-job")
+	jobCache := unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration)
+	jobCache.AddHintProvider(plugin, testHintProvider{
+		event: fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Add},
+	})
+	jobCache.Record(job, []unschedulable.Rejection{{
+		Plugin: plugin,
+		Source: unschedulable.RejectionPredicate,
+	}})
+
+	schedulerCache := &SchedulerCache{unschedulableJobCache: jobCache}
+	oldPod := buildPod("test", "anchor", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), nil, nil)
+	newPod := oldPod.DeepCopy()
+	newPod.Spec.NodeName = "node-a"
+
+	schedulerCache.handleUnschedulableJobCachePodUpdate(oldPod, newPod)
+
+	if got := jobCache.CachedRejections(job); len(got) != 0 {
+		t.Fatalf("cached rejection survived assigned Pod add: %v", got)
+	}
+}
+
+func TestQueueDeleteDispatchesInternalQueue(t *testing.T) {
+	const plugin = "queue-delete-plugin"
+	job := api.NewJobInfo("job")
+	jobCache := unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration)
+	jobCache.AddHintProvider(plugin, testHintProvider{
+		event: fwk.ClusterEvent{Resource: unschedulable.QueueEvent, ActionType: fwk.Delete},
+		hintFn: func(_ *api.JobInfo, _ unschedulable.Rejection, oldObj, _ any) (unschedulable.HintResult, error) {
+			if _, ok := oldObj.(*scheduling.Queue); ok {
+				return unschedulable.HintWakeup, nil
+			}
+			return unschedulable.HintSkip, nil
+		},
+	})
+	jobCache.Record(job, []unschedulable.Rejection{{
+		Plugin: plugin,
+		Source: unschedulable.RejectionEnqueue,
+	}})
+
+	queue := &schedulingv1.Queue{ObjectMeta: metav1.ObjectMeta{Name: "queue"}}
+	schedulerCache := &SchedulerCache{
+		Queues:                map[api.QueueID]*api.QueueInfo{"queue": api.NewQueueInfo(&scheduling.Queue{ObjectMeta: queue.ObjectMeta})},
+		unschedulableJobCache: jobCache,
+	}
+
+	schedulerCache.DeleteQueueV1beta1(queue)
+
+	if got := jobCache.CachedRejections(job); len(got) != 0 {
+		t.Fatalf("cached rejection survived Queue delete with internal payload: %v", got)
+	}
+}
+
+func TestPodJobAssignmentChangeInvalidatesUnschedulableCache(t *testing.T) {
+	const (
+		namespace = "test"
+		plugin    = "plugin"
+	)
+
+	tests := []struct {
+		name       string
+		oldGroup   string
+		newGroup   string
+		wantCached map[string]bool
+	}{
+		{
+			name:       "pod joins job",
+			newGroup:   "job-b",
+			wantCached: map[string]bool{"job-b": false},
+		},
+		{
+			name:       "pod leaves job",
+			oldGroup:   "job-a",
+			wantCached: map[string]bool{"job-a": false},
+		},
+		{
+			name:       "pod moves between jobs",
+			oldGroup:   "job-a",
+			newGroup:   "job-b",
+			wantCached: map[string]bool{"job-a": false, "job-b": false},
+		},
+		{
+			name:       "pod remains in job",
+			oldGroup:   "job-a",
+			newGroup:   "job-a",
+			wantCached: map[string]bool{"job-a": true},
+		},
+	}
+
+	newPod := func(name, group string) *v1.Pod {
+		pod := buildPod(namespace, name, "", v1.PodPending, api.BuildResourceList("1", "1Gi"), nil, nil)
+		if group != "" {
+			pod.Annotations = map[string]string{schedulingv1.KubeGroupNameAnnotationKey: group}
+		}
+		return pod
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			jobCache := unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration)
+			jobCache.AddHintProvider(plugin, testHintProvider{event: fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add}})
+			schedulerCache := &SchedulerCache{
+				Jobs:                  make(map[api.JobID]*api.JobInfo),
+				Nodes:                 make(map[string]*api.NodeInfo),
+				unschedulableJobCache: jobCache,
+			}
+
+			oldPod := newPod("updated", test.oldGroup)
+			schedulerCache.AddPod(oldPod)
+			for group := range test.wantCached {
+				schedulerCache.AddPod(newPod("kept-"+group, group))
+			}
+
+			jobCache.BeginSession()
+			for group := range test.wantCached {
+				jobID := api.JobID(namespace + "/" + group)
+				jobCache.Record(schedulerCache.Jobs[jobID].Clone(), []unschedulable.Rejection{{
+					Plugin: plugin,
+					Source: unschedulable.RejectionPredicate,
+				}})
+			}
+
+			updatedPod := oldPod.DeepCopy()
+			if test.newGroup == "" {
+				delete(updatedPod.Annotations, schedulingv1.KubeGroupNameAnnotationKey)
+			} else {
+				if updatedPod.Annotations == nil {
+					updatedPod.Annotations = make(map[string]string)
+				}
+				updatedPod.Annotations[schedulingv1.KubeGroupNameAnnotationKey] = test.newGroup
+			}
+			schedulerCache.UpdatePod(oldPod, updatedPod)
+
+			for group, wantCached := range test.wantCached {
+				jobID := api.JobID(namespace + "/" + group)
+				gotCached := len(jobCache.CachedRejections(schedulerCache.Jobs[jobID])) > 0
+				if gotCached != wantCached {
+					t.Errorf("Job %s cached rejection exists = %v, want %v", jobID, gotCached, wantCached)
+				}
+			}
+		})
+	}
+}
+
 func TestSchedulerCache_DeletePodGroupV1beta1(t *testing.T) {
 	namespace := "test"
 	owner := buildOwnerReference("j1")
@@ -645,6 +1076,45 @@ func TestSchedulerCache_DeleteQueueV1beta1(t *testing.T) {
 		if test.Expected != nil && queue != nil && queue.Queue != nil && (queue.Queue.Namespace != test.Expected.Namespace || queue.Queue.Name != test.Expected.Name) {
 			t.Errorf("Expected: %v but got: %v in case %d", test.Expected, queue.Queue, i)
 		}
+	}
+}
+
+func TestSchedulerCache_NamespaceQueueIdentityIsNamespaced(t *testing.T) {
+	sc := &SchedulerCache{Queues: make(map[api.QueueID]*api.QueueInfo)}
+	clusterQueue := &schedulingv1.Queue{ObjectMeta: metav1.ObjectMeta{Name: "shared"}}
+	first := &schedulingv1.NamespaceQueue{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "shared"},
+		Spec:       schedulingv1.NamespaceQueueSpec{Parent: "cluster/default"},
+	}
+	second := &schedulingv1.NamespaceQueue{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-b", Name: "shared"},
+		Spec:       schedulingv1.NamespaceQueueSpec{Parent: "cluster/default"},
+	}
+
+	sc.AddQueueV1beta1(clusterQueue)
+	sc.AddNamespaceQueueV1beta1(first)
+	sc.AddNamespaceQueueV1beta1(second)
+
+	if len(sc.Queues) != 3 {
+		t.Fatalf("queue count = %d, want 3", len(sc.Queues))
+	}
+	if sc.Queues[api.QueueID("shared")] == nil {
+		t.Fatal("cluster Queue identity was not preserved")
+	}
+	if sc.Queues[api.NamespaceQueueID("team-a", "shared")] == nil ||
+		sc.Queues[api.NamespaceQueueID("team-b", "shared")] == nil {
+		t.Fatal("same-name NamespaceQueues were not stored under independent IDs")
+	}
+
+	sc.DeleteNamespaceQueueV1beta1(first)
+	if sc.Queues[api.NamespaceQueueID("team-a", "shared")] != nil {
+		t.Fatal("deleted NamespaceQueue remained in cache")
+	}
+	if sc.Queues[api.NamespaceQueueID("team-b", "shared")] == nil {
+		t.Fatal("deleting one NamespaceQueue removed another namespace's queue")
+	}
+	if sc.Queues[api.QueueID("shared")] == nil {
+		t.Fatal("deleting a NamespaceQueue removed the cluster Queue")
 	}
 }
 
@@ -1576,6 +2046,63 @@ func TestSchedulerCache_SyncHyperNode(t *testing.T) {
 	}
 }
 
+func TestSchedulerCache_SyncHyperNode_LabelMembershipMoveAndDelete(t *testing.T) {
+	sc := NewDefaultMockSchedulerCache("volcano")
+	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name:   "node-0",
+		Labels: map[string]string{"rack": "a"},
+	}}
+	assert.NoError(t, sc.nodeInformer.Informer().GetIndexer().Add(node))
+
+	rackA := schedulingapi.BuildHyperNode("rack-a", 1, []schedulingapi.MemberConfig{{
+		Type:     topologyv1alpha1.MemberTypeNode,
+		Selector: "label",
+		LabelSelector: &metav1.LabelSelector{
+			MatchLabels: map[string]string{"rack": "a"},
+		},
+	}})
+	rackB := schedulingapi.BuildHyperNode("rack-b", 1, []schedulingapi.MemberConfig{{
+		Type:     topologyv1alpha1.MemberTypeNode,
+		Selector: "label",
+		LabelSelector: &metav1.LabelSelector{
+			MatchLabels: map[string]string{"rack": "b"},
+		},
+	}})
+	root := schedulingapi.BuildHyperNode("root", 2, []schedulingapi.MemberConfig{
+		{Name: "rack-a", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: "exact"},
+		{Name: "rack-b", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: "exact"},
+	})
+	for _, hyperNode := range []*topologyv1alpha1.HyperNode{rackA, rackB, root} {
+		assert.NoError(t, sc.updateHyperNode(hyperNode))
+	}
+	assert.Equal(t, sets.New("node-0"), sc.HyperNodesInfo.RealNodesSet()["rack-a"])
+	assert.Empty(t, sc.HyperNodesInfo.RealNodesSet()["rack-b"])
+
+	// Move the Node from rack-a to rack-b. Sync receives only the current Node
+	// name, so it must use cached membership to rebuild the old rack as well as
+	// the selector match to rebuild the new rack.
+	moved := node.DeepCopy()
+	moved.Labels = map[string]string{"rack": "b"}
+	assert.NoError(t, sc.nodeInformer.Informer().GetIndexer().Update(moved))
+	generationBeforeMove := sc.HyperNodesInfo.Generation()
+	assert.NoError(t, sc.SyncHyperNode("node/"+moved.Name))
+	afterMove := sc.HyperNodesInfo.RealNodesSet()
+	assert.Empty(t, afterMove["rack-a"])
+	assert.Equal(t, sets.New("node-0"), afterMove["rack-b"])
+	assert.Greater(t, sc.HyperNodesInfo.Generation(), generationBeforeMove)
+
+	// Once the Node has been deleted, label matching cannot query it from the
+	// lister. Historical membership must still cause rack-b to be rebuilt.
+	assert.NoError(t, sc.nodeInformer.Informer().GetIndexer().Delete(moved))
+	generationBeforeDelete := sc.HyperNodesInfo.Generation()
+	assert.NoError(t, sc.SyncHyperNode("node/"+moved.Name))
+	afterDelete := sc.HyperNodesInfo.RealNodesSet()
+	assert.Empty(t, afterDelete["rack-a"])
+	assert.Empty(t, afterDelete["rack-b"])
+	assert.Empty(t, afterDelete["root"])
+	assert.Greater(t, sc.HyperNodesInfo.Generation(), generationBeforeDelete)
+}
+
 // --- helpers shared with cache_test.go numa tests ---
 
 func newCacheWithNodes(names ...string) *SchedulerCache {
@@ -1774,4 +2301,37 @@ func TestAddPodWithUnresolvedPVCCachesTaskForResync(t *testing.T) {
 	// The task must be queued for resync so it is retried once the PVC
 	// informer catches up.
 	assert.Equal(t, 1, sc.errTasks.Len(), "task must be enqueued for resync")
+}
+
+func TestPodEventsInvalidatePlacementWithoutRecomputing(t *testing.T) {
+	sc := newMockSchedulerCache("volcano")
+	sc.Nodes["n1"] = schedulingapi.NewNodeInfo(buildNode("n1", schedulingapi.BuildResourceList("8", "8Gi")))
+	pod := buildPod("ns", "p1", "n1", v1.PodRunning, schedulingapi.BuildResourceList("1", "1Gi"), nil, nil)
+	pod.Annotations = map[string]string{schedulingv1.KubeGroupNameAnnotationKey: "pg"}
+	pod.Spec.SchedulerName = "volcano"
+	if err := sc.addPod(pod); err != nil {
+		t.Fatal(err)
+	}
+	job := sc.Jobs[schedulingapi.NewTaskInfo(pod).Job]
+	job.SetPodGroup(&schedulingapi.PodGroup{PodGroup: scheduling.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: "pg", Namespace: "ns"},
+		Spec:       scheduling.PodGroupSpec{MinMember: 1},
+	}})
+	job.AllocatedHyperNode = "persisted"
+	generation := job.TaskPlacementGeneration
+	statusOnly := pod.DeepCopy()
+	statusOnly.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionTrue}}
+	if err := sc.updatePod(pod, statusOnly); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, generation, job.TaskPlacementGeneration, "status-only updates must not trigger topology reconciliation")
+	assert.Equal(t, "persisted", job.AllocatedHyperNode, "Pod events must not recompute placement under the cache lock")
+
+	finished := statusOnly.DeepCopy()
+	finished.Status.Phase = v1.PodSucceeded
+	if err := sc.updatePod(statusOnly, finished); err != nil {
+		t.Fatal(err)
+	}
+	assert.Greater(t, job.TaskPlacementGeneration, generation)
+	assert.Equal(t, "persisted", job.AllocatedHyperNode, "Session reconciliation owns clearing stale placement")
 }

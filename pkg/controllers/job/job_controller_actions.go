@@ -18,6 +18,7 @@ package job
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -29,6 +30,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -38,9 +40,13 @@ import (
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 	"volcano.sh/volcano/pkg/controllers/metrics"
+	"volcano.sh/volcano/pkg/features"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 var calMutex sync.Mutex
+
+var errWaitForPods = errors.New("waiting for Pod names or informer observations")
 
 // getPodGroupByJob returns the podgroup related to the vcjob.
 // it will return normal pg if it exist in cluster,
@@ -52,9 +58,13 @@ func (cc *jobcontroller) getPodGroupByJob(job *batch.Job) (*scheduling.PodGroup,
 		return pg, nil
 	}
 	if apierrors.IsNotFound(err) {
+		originalErr := err
 		pg, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name)
 		if err != nil {
 			return nil, err
+		}
+		if !metav1.IsControlledBy(pg, job) {
+			return nil, originalErr
 		}
 		return pg, nil
 	}
@@ -66,6 +76,15 @@ func (cc *jobcontroller) generateRelatedPodGroupName(job *batch.Job) string {
 }
 
 func (cc *jobcontroller) killTarget(jobInfo *apis.JobInfo, target state.Target, updateStatus state.UpdateStatusFn) error {
+	if target.Type == state.TargetTypePod {
+		pod := jobInfo.Pods[target.TaskName][target.PodName]
+		if pod == nil || pod.UID != target.PodUID {
+			req := jobSyncRequest(jobInfo.Job)
+			cc.getWorkerQueue(jobhelpers.GetJobKeyByReq(&req)).Add(req)
+			return nil
+		}
+	}
+
 	switch target.Type {
 	case state.TargetTypeTask:
 		klog.V(3).Infof("Killing task <%s> of Job <%s/%s>, current version %d", target.TaskName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
@@ -178,8 +197,7 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 	}
 
 	for podName, pod := range podsToKill {
-		_, err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType,
-			jobhelpers.OutOfSyncJSONPatch(), metav1.PatchOptions{})
+		err := cc.markPodOutOfSync(pod)
 		if err != nil && !apierrors.IsNotFound(err) {
 			// record the error, and then collect the pod info like retained pod
 			errs = append(errs, err)
@@ -272,8 +290,8 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 			klog.Errorf("Failed to find PodGroup of Job: %s/%s, error: %s", job.Namespace, job.Name, err.Error())
 			return err
 		}
-		if pg != nil {
-			if err := cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Delete(context.TODO(), pg.Name, metav1.DeleteOptions{}); err != nil {
+		if pg != nil && metav1.IsControlledBy(pg, job) {
+			if err := cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Delete(context.TODO(), pg.Name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &pg.UID}}); err != nil {
 				if !apierrors.IsNotFound(err) {
 					klog.Errorf("Failed to delete PodGroup of Job %s/%s: %v", job.Namespace, job.Name, err)
 					return err
@@ -345,6 +363,34 @@ func (cc *jobcontroller) GetQueueInfo(queue string) (*scheduling.Queue, error) {
 	return queueInfo, err
 }
 
+func (cc *jobcontroller) getJobForwardingQueue(job *batch.Job) (*scheduling.Queue, error) {
+	if job == nil {
+		return nil, fmt.Errorf("job is nil")
+	}
+	if commonutil.HasNamespaceQueuePrefix(job.Spec.Queue) &&
+		!utilfeature.DefaultFeatureGate.Enabled(features.NamespaceQueue) {
+		return nil, fmt.Errorf("NamespaceQueue feature is disabled")
+	}
+
+	target, err := commonutil.ResolveWorkloadQueueReference(
+		job.Namespace,
+		job.Spec.Queue,
+		scheduling.DefaultQueue,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("resolve queue reference %q: %w", job.Spec.Queue, err)
+	}
+
+	switch target.Scope {
+	case commonutil.ClusterQueueReferenceScope:
+		return cc.GetQueueInfo(target.Name)
+	case commonutil.NamespaceQueueReferenceScope:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unsupported queue reference scope %q", target.Scope)
+	}
+}
+
 func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
 	job := jobInfo.Job
 	klog.V(3).Infof("Starting to sync up Job <%s/%s>, current version %d", job.Namespace, job.Name, job.Status.Version)
@@ -360,14 +406,13 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	job = job.DeepCopy()
 
 	// Find queue that job belongs to, and check if the queue has forwarding metadata
-	queueInfo, err := cc.GetQueueInfo(job.Spec.Queue)
+	queueInfo, err := cc.getJobForwardingQueue(job)
 	if err != nil {
 		return err
 	}
 
-	var jobForwarding bool
-	if len(queueInfo.Spec.ExtendClusters) != 0 {
-		jobForwarding = true
+	jobForwarding := queueInfo != nil && len(queueInfo.Spec.ExtendClusters) != 0
+	if jobForwarding {
 		if len(job.Annotations) == 0 {
 			job.Annotations = make(map[string]string)
 		}
@@ -391,8 +436,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		}
 	}
 
-	if len(queueInfo.Spec.ExtendClusters) != 0 {
-		jobForwarding = true
+	if jobForwarding {
 		job.Annotations[batch.JobForwardingKey] = "true"
 		_, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
 		if err != nil {
@@ -448,6 +492,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	podToCreate := make(map[string][]*v1.Pod)
 	var podToDelete []*v1.Pod
 	var creationErrs []error
+	var waitingForPods atomic.Bool
 	var deletionErrs []error
 	appendMutex := sync.Mutex{}
 
@@ -526,6 +571,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 					newPod, err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 					if err != nil {
 						if apierrors.IsAlreadyExists(err) {
+							waitingForPods.Store(true)
 							// Pod already exists - this can happen during controller restart or race conditions.
 							// Skip counting here; the pod will be properly counted when the informer cache syncs.
 							klog.V(4).Infof("Pod %s for Job %s already exists, skipping", pod.Name, job.Name)
@@ -554,6 +600,10 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		cc.recorder.Event(job, v1.EventTypeWarning, FailedCreatePodReason,
 			fmt.Sprintf("Error creating pods: %+v", creationErrs))
 		return fmt.Errorf("failed to create %d pods of %d", len(creationErrs), len(podToCreate))
+	}
+
+	if waitingForPods.Load() {
+		return errWaitForPods
 	}
 
 	// Delete pods when scale down.
@@ -671,6 +721,10 @@ func (cc *jobcontroller) isDependsOnPodsReady(task string, job *batch.Job) bool 
 				}
 			}
 			klog.Errorf("Failed to get pod %v/%v %v", job.Namespace, podName, err)
+			continue
+		}
+
+		if !metav1.IsControlledBy(pod, job) {
 			continue
 		}
 
@@ -918,7 +972,13 @@ func (cc *jobcontroller) shouldUpdateExistingPodGroup(pg *scheduling.PodGroup, j
 }
 
 func (cc *jobcontroller) deleteJobPod(jobName string, pod *v1.Pod) error {
-	err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+	if pod.UID == "" {
+		return fmt.Errorf("cannot delete Pod %s/%s without UID", pod.Namespace, pod.Name)
+	}
+	err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &pod.UID}})
+	if err != nil && cc.podInstanceGone(pod, err) {
+		return nil
+	}
 	if err != nil && !apierrors.IsNotFound(err) {
 		klog.Errorf("Failed to delete pod %s/%s for Job %s, err %#v",
 			pod.Namespace, pod.Name, jobName, err)
@@ -1155,4 +1215,26 @@ func getSubGroupPolicy(taskSpec batch.TaskSpec) scheduling.SubGroupPolicySpec {
 		subGroupPolicy.NetworkTopology = nt
 	}
 	return subGroupPolicy
+}
+
+func (cc *jobcontroller) markPodOutOfSync(pod *v1.Pod) error {
+	if pod.UID == "" {
+		return fmt.Errorf("cannot patch Pod %s/%s without UID", pod.Namespace, pod.Name)
+	}
+	_, err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, jobhelpers.OutOfSyncJSONPatch(pod.UID), metav1.PatchOptions{})
+	if err != nil && cc.podInstanceGone(pod, err) {
+		return nil
+	}
+	return err
+}
+
+func (cc *jobcontroller) podInstanceGone(pod *v1.Pod, err error) bool {
+	if apierrors.IsNotFound(err) {
+		return true
+	}
+	if !apierrors.IsConflict(err) && !apierrors.IsInvalid(err) {
+		return false
+	}
+	current, getErr := cc.kubeClient.CoreV1().Pods(pod.Namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+	return apierrors.IsNotFound(getErr) || (getErr == nil && current.UID != pod.UID)
 }

@@ -1,6 +1,7 @@
 {{- if .Values.custom.admission_enable }}
+{{- $enabled_admissions := include "volcano.enabledAdmissions" (dict "admissions" .Values.custom.enabled_admissions "namespaceQueueEnabled" .Values.custom.namespace_queue_enable) }}
 
-{{- if .Values.custom.enabled_admissions | regexMatch "/pods/mutate" }}
+{{- if $enabled_admissions | regexMatch "/pods/mutate" }}
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
@@ -47,7 +48,7 @@ webhooks:
     timeoutSeconds: 10
 {{- end }}
 
-{{- if .Values.custom.enabled_admissions | regexMatch "/queues/mutate" }}
+{{- if $enabled_admissions | regexMatch "/queues/mutate" }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -96,7 +97,7 @@ webhooks:
 {{- end }}
 
 
-{{- if .Values.custom.enabled_admissions | regexMatch "/podgroups/mutate" }}
+{{- if $enabled_admissions | regexMatch "/podgroups/mutate" }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -144,7 +145,7 @@ webhooks:
     timeoutSeconds: 10
 {{- end }}
 
-{{- if .Values.custom.enabled_admissions | regexMatch "/jobs/mutate" }}
+{{- if $enabled_admissions | regexMatch "/jobs/mutate" }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -193,7 +194,7 @@ webhooks:
 {{- end }}
 
 
-{{- if .Values.custom.enabled_admissions | regexMatch "/jobs/validate" }}
+{{- if $enabled_admissions | regexMatch "/jobs/validate" }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -241,7 +242,7 @@ webhooks:
     timeoutSeconds: 10
 {{- end }}
 
-{{- if .Values.custom.enabled_admissions | regexMatch "/jobflows/validate" }}
+{{- if $enabled_admissions | regexMatch "/jobflows/validate" }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -290,7 +291,7 @@ webhooks:
 {{- end }}
 
 
-{{- if .Values.custom.enabled_admissions | regexMatch "/pods/validate" }}
+{{- if $enabled_admissions | regexMatch "/pods/validate" }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -337,7 +338,7 @@ webhooks:
     timeoutSeconds: 10
 {{- end }}
 
-{{- if .Values.custom.enabled_admissions | regexMatch "/queues/validate" }}
+{{- if $enabled_admissions | regexMatch "/queues/validate" }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -386,7 +387,56 @@ webhooks:
     timeoutSeconds: 10
 {{- end }}
 
-{{- if .Values.custom.enabled_admissions | regexMatch "/podgroups/validate" }}
+{{- if $enabled_admissions | regexMatch "/namespacequeues/validate" }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: volcano-admission-service-namespacequeues-validate
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ .Release.Name }}-admission-service
+        namespace: {{ .Release.Namespace }}
+        path: /namespacequeues/validate
+        port: 443
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    name: validatenamespacequeue.volcano.sh
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - {{ .Release.Namespace }}
+            - kube-system
+{{- if .Values.custom.webhooks_namespace_selector_expressions }}
+        {{- toYaml .Values.custom.webhooks_namespace_selector_expressions | nindent 8 }}
+{{- end }}
+    objectSelector: {}
+    rules:
+      - apiGroups:
+          - scheduling.volcano.sh
+        apiVersions:
+          - v1beta1
+        operations:
+          - CREATE
+          - UPDATE
+          - DELETE
+        resources:
+          - namespacequeues
+        scope: Namespaced
+    sideEffects: NoneOnDryRun
+    timeoutSeconds: 10
+{{- end }}
+
+{{- if $enabled_admissions | regexMatch "/podgroups/validate" }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -426,6 +476,7 @@ webhooks:
           - v1beta1
         operations:
           - CREATE
+          - UPDATE
         resources:
           - podgroups
         scope: '*'
@@ -433,7 +484,7 @@ webhooks:
     timeoutSeconds: 10
 {{- end }}
 
-{{- if .Values.custom.enabled_admissions | regexMatch "/hypernodes/validate" }}
+{{- if $enabled_admissions | regexMatch "/hypernodes/validate" }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -468,7 +519,7 @@ webhooks:
     sideEffects: None
     timeoutSeconds: 10
 {{- end }}
-{{- if .Values.custom.enabled_admissions | regexMatch "/cronjobs/validate" }} 
+{{- if $enabled_admissions | regexMatch "/cronjobs/validate" }}
 ---  
 apiVersion: admissionregistration.k8s.io/v1  
 kind: ValidatingWebhookConfiguration  

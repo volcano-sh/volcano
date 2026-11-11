@@ -17,7 +17,9 @@ limitations under the License.
 package nodeorder
 
 import (
+	"maps"
 	"os"
+	"slices"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -25,6 +27,7 @@ import (
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8sframework "k8s.io/kube-scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/imagelocality"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
@@ -116,6 +119,30 @@ func TestNodeOrderPlugin(t *testing.T) {
 				},
 			},
 			LeastRequestedWeight: 0,
+			MostRequestedWeight:  1,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "least and most allocated enabled together",
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+					util.BuildNode("n2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				},
+				Queues: []*schedulingv1.Queue{
+					util.BuildQueue("c1", 1, nil),
+				},
+				ExpectBindsNum: 1,
+				ExpectBindMap: map[string]string{
+					"c1/p1": "n2",
+				},
+			},
+			LeastRequestedWeight: 2,
 			MostRequestedWeight:  1,
 		},
 		{
@@ -349,6 +376,97 @@ func TestNodeOrderPlugin(t *testing.T) {
 	}
 }
 
+func TestCalculateWeightBalancedResources(t *testing.T) {
+	defaultResources := map[v1.ResourceName]int32{
+		v1.ResourceCPU:                    1,
+		v1.ResourceMemory:                 1,
+		v1.ResourceName("nvidia.com/gpu"): 1,
+	}
+
+	tests := []struct {
+		name string
+		args framework.Arguments
+		want map[v1.ResourceName]int32
+	}{
+		{
+			name: "default resources",
+			args: nil,
+			want: defaultResources,
+		},
+		{
+			name: "empty resource list falls back to defaults",
+			args: framework.Arguments{
+				BalancedResourceResources: " , ",
+			},
+			want: defaultResources,
+		},
+		{
+			name: "custom resources",
+			args: framework.Arguments{
+				BalancedResourceResources: " nvidia.com/gpu , example.com/foo ",
+			},
+			want: map[v1.ResourceName]int32{
+				v1.ResourceName("nvidia.com/gpu"):  1,
+				v1.ResourceName("example.com/foo"): 1,
+			},
+		},
+		{
+			name: "duplicate resources are deduplicated",
+			args: framework.Arguments{
+				BalancedResourceResources: "nvidia.com/gpu,nvidia.com/gpu",
+			},
+			want: map[v1.ResourceName]int32{
+				v1.ResourceName("nvidia.com/gpu"): 1,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := calculateWeight(tt.args).balancedAllocationResources
+			if !maps.Equal(got, tt.want) {
+				t.Errorf("balancedAllocationResources = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildBalancedAllocationResourceSpecs(t *testing.T) {
+	tests := []struct {
+		name      string
+		resources map[v1.ResourceName]int32
+		want      []config.ResourceSpec
+	}{
+		{
+			name:      "nil resources",
+			resources: nil,
+			want:      []config.ResourceSpec{},
+		},
+		{
+			name: "resources are sorted by name and use weight 1",
+			resources: map[v1.ResourceName]int32{
+				v1.ResourceMemory:                 1,
+				v1.ResourceName("nvidia.com/gpu"): 1,
+				v1.ResourceCPU:                    1,
+			},
+			want: []config.ResourceSpec{
+				{Name: string(v1.ResourceCPU), Weight: 1},
+				{Name: string(v1.ResourceMemory), Weight: 1},
+				{Name: "nvidia.com/gpu", Weight: 1},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildBalancedAllocationResourceSpecs(tt.resources)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("buildBalancedAllocationResourceSpecs() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestInitPlugin(t *testing.T) {
 	tests := []struct {
 		name                    string
@@ -381,6 +499,28 @@ func TestInitPlugin(t *testing.T) {
 			expectNotInScorePlugins: []string{
 				noderesources.Name + "_MostAllocated",
 				imagelocality.Name,
+			},
+		},
+		{
+			name: "balanced allocation with custom resources",
+			weight: priorityWeight{
+				balancedResourceWeight: 1,
+				balancedAllocationResources: map[v1.ResourceName]int32{
+					v1.ResourceName("nvidia.com/gpu"):  1,
+					v1.ResourceName("example.com/foo"): 1,
+				},
+			},
+			expectScorePlugins: []string{
+				noderesources.BalancedAllocationName,
+			},
+		},
+		{
+			name: "balanced allocation with empty resources falls back to defaults",
+			weight: priorityWeight{
+				balancedResourceWeight: 1,
+			},
+			expectScorePlugins: []string{
+				noderesources.BalancedAllocationName,
 			},
 		},
 		{

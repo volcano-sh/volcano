@@ -46,14 +46,7 @@ const (
 type podRequest struct {
 	podName      string
 	podNamespace string
-}
-
-type metadataForMergePatch struct {
-	Metadata annotationForMergePatch `json:"metadata"`
-}
-
-type annotationForMergePatch struct {
-	Annotations map[string]string `json:"annotations"`
+	podUID       types.UID
 }
 
 func (pg *pgcontroller) addPod(obj interface{}) {
@@ -66,6 +59,7 @@ func (pg *pgcontroller) addPod(obj interface{}) {
 	req := podRequest{
 		podName:      pod.Name,
 		podNamespace: pod.Namespace,
+		podUID:       pod.UID,
 	}
 
 	pg.queue.Add(req)
@@ -187,19 +181,17 @@ func (pg *pgcontroller) updateStatefulSet(oldObj, newObj interface{}) {
 }
 
 func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
-	if pod.Annotations == nil {
-		pod.Annotations = make(map[string]string)
-	}
 	if pod.Annotations[scheduling.KubeGroupNameAnnotationKey] == "" {
-		patch := metadataForMergePatch{
-			Metadata: annotationForMergePatch{
-				Annotations: map[string]string{
+		patch := map[string]any{
+			"metadata": map[string]any{
+				"uid": pod.UID,
+				"annotations": map[string]string{
 					scheduling.KubeGroupNameAnnotationKey: pgName,
 				},
 			},
 		}
 
-		patchBytes, err := json.Marshal(&patch)
+		patchBytes, err := json.Marshal(patch)
 		if err != nil {
 			klog.Errorf("Failed to json.Marshal pod annotation: %v", err)
 			return err

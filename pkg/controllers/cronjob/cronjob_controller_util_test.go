@@ -165,6 +165,9 @@ func TestGetJobFromTemplate(t *testing.T) {
 			if !strings.HasPrefix(job.ObjectMeta.Name, "mycronjob-") {
 				t.Errorf("Wrong Name")
 			}
+			if job.ObjectMeta.Namespace != cj.Namespace {
+				t.Errorf("Wrong namespace, expected %s, got %s", cj.Namespace, job.ObjectMeta.Namespace)
+			}
 			if len(job.ObjectMeta.Labels) != 1 {
 				t.Errorf("Wrong number of labels")
 			}

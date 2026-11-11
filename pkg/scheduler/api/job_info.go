@@ -37,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
@@ -138,9 +139,12 @@ type TaskInfo struct {
 	// LastTransaction holds the context of last scheduling transaction
 	LastTransaction *TransactionContext
 
-	Priority                    int32
-	VolumeReady                 bool
-	Preemptable                 bool
+	Priority    int32
+	VolumeReady bool
+	Preemptable bool
+	// BestEffort is true when the task has no ordinary resource requests or DRA claims.
+	// DRA-only Pods may have Kubernetes BestEffort QoS, but this field is false
+	// because they still need device allocation and gang checks.
 	BestEffort                  bool
 	HasRestartableInitContainer bool
 	SchGated                    bool
@@ -207,7 +211,6 @@ const TaskPriorityAnnotation = "volcano.sh/task-priority"
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	initResReq := GetPodResourceRequest(pod)
 	resReq := initResReq
-	bestEffort := initResReq.IsEmpty()
 	preemptable := GetPodPreemptable(pod)
 	revocableZone := GetPodRevocableZone(pod)
 	topologyInfo := GetPodTopologyInfo(pod)
@@ -229,16 +232,17 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		Resreq:                      resReq,
 		InitResreq:                  initResReq,
 		Preemptable:                 preemptable,
-		BestEffort:                  bestEffort,
 		HasRestartableInitContainer: hasRestartableInitContainer,
 		RevocableZone:               revocableZone,
 		NumaInfo:                    topologyInfo,
 		SchGated:                    schGated,
 		TransactionContext: TransactionContext{
 			NodeName: pod.Spec.NodeName,
-			Status:   getTaskStatus(pod),
+			Status:   GetTaskStatus(pod),
 		},
 	}
+
+	ti.UpdateSchedulingBestEffort()
 
 	if pod.Spec.Priority != nil {
 		ti.Priority = *pod.Spec.Priority
@@ -251,6 +255,24 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	}
 
 	return ti
+}
+
+// HasInitResourceRequests checks InitResreq for ordinary requests, including CPU,
+// memory, extended resources, and scheduler-added CSI attachment counts.
+// DRA claims are not included, so DRA-only tasks return false.
+func (ti *TaskInfo) HasInitResourceRequests() bool {
+	return !ti.InitResreq.IsEmpty()
+}
+
+// HasSchedulingResourceRequests checks for ordinary requests or DRA claims that need allocation.
+// Pending tasks with either kind of request cannot count toward gang readiness before allocation.
+func (ti *TaskInfo) HasSchedulingResourceRequests() bool {
+	return ti.HasInitResourceRequests() || (ti.Pod != nil && len(ti.Pod.Spec.ResourceClaims) > 0)
+}
+
+// UpdateSchedulingBestEffort refreshes BestEffort after resource requests change.
+func (ti *TaskInfo) UpdateSchedulingBestEffort() {
+	ti.BestEffort = !ti.HasSchedulingResourceRequests()
 }
 
 // GetTransactionContext get transaction context of a task
@@ -395,6 +417,32 @@ type TasksMap map[TaskID]*TaskInfo
 // NodeResourceMap stores resource in a node
 type NodeResourceMap map[string]*Resource
 
+// SkipDecision describes the scheduling work skipped for a Job in one session.
+type SkipDecision struct {
+	// Enqueue skips the JobEnqueueable check.
+	Enqueue bool
+
+	// Allocate skips the allocate and backfill actions.
+	Allocate bool
+
+	// Tasks lists tasks skipped by allocate and backfill when Allocate is false.
+	Tasks map[TaskID]struct{}
+}
+
+// Skipped reports whether any scheduling work is skipped.
+func (d SkipDecision) Skipped() bool {
+	return d.Enqueue || d.Allocate || len(d.Tasks) > 0
+}
+
+// SkipTask reports whether a task is skipped.
+func (d SkipDecision) SkipTask(taskID TaskID) bool {
+	if d.Allocate {
+		return true
+	}
+	_, ok := d.Tasks[taskID]
+	return ok
+}
+
 // JobInfo will have all info of a Job
 type JobInfo struct {
 	UID   JobID
@@ -415,10 +463,23 @@ type JobInfo struct {
 	NodesFitErrors map[TaskID]*FitErrors
 
 	AllocatedHyperNode string
-	NetworkTopology    *scheduling.NetworkTopologySpec
-	SubJobs            map[SubJobID]*SubJobInfo
-	TaskToSubJob       map[TaskID]SubJobID
-	MinSubJobs         map[SubJobGID]int32 // key is name of "PodGroup.Spec.SubGroupPolicy", value is minSubGroups
+	// AllocatedHyperNodeGeneration records the effective HyperNode topology
+	// generation used to derive Job/SubJob placement. It is scheduler-internal
+	// state and is intentionally not persisted in the PodGroup API.
+	AllocatedHyperNodeGeneration uint64
+	// AllocatedHyperNodeDirty invalidates placement derived from Session-only
+	// allocations or pipelines. Cache task generations do not reflect these
+	// reservations, so the next Session must reconcile them against actual tasks.
+	AllocatedHyperNodeDirty bool
+	// TaskPlacementGeneration changes only for cache task events that affect
+	// placement. The reconciled generation prevents stale Session writeback from
+	// clearing newer changes that arrived after the scheduling snapshot.
+	TaskPlacementGeneration          uint64
+	AllocatedTaskPlacementGeneration uint64
+	NetworkTopology                  *scheduling.NetworkTopologySpec
+	SubJobs                          map[SubJobID]*SubJobInfo
+	TaskToSubJob                     map[TaskID]SubJobID
+	MinSubJobs                       map[SubJobGID]int32 // key is name of "PodGroup.Spec.SubGroupPolicy", value is minSubGroups
 
 	// All tasks of the Job.
 	TaskStatusIndex       map[TaskStatus]TasksMap
@@ -442,6 +503,11 @@ type JobInfo struct {
 	// * value means workload can use all the revocable node for during node active revocable time.
 	RevocableZone string
 	Budget        *DisruptionBudget
+
+	// Skip is derived from the unschedulable-job cache at OpenSession. enqueue
+	// reads Skip.Enqueue; allocate and backfill read Skip.Allocate and Skip.Tasks.
+	// Zero value means the Job is evaluated normally this session.
+	Skip SkipDecision
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
@@ -521,6 +587,8 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.NetworkTopology = cloneNetworkTopology(pg.Spec.NetworkTopology)
 
 	if oldPG == nil || !equality.Semantic.DeepEqual(oldPG.Spec.SubGroupPolicy, pg.Spec.SubGroupPolicy) {
+		// Regrouping invalidates SubJob placement even when task Nodes did not change.
+		ji.TaskPlacementGeneration++
 		clear(ji.SubJobs)
 		for _, task := range ji.Tasks {
 			ji.addTaskToSubJob(task)
@@ -791,11 +859,15 @@ func (ji *JobInfo) Clone() *JobInfo {
 			return nil
 		}(),
 
-		AllocatedHyperNode: ji.AllocatedHyperNode,
-		NetworkTopology:    cloneNetworkTopology(ji.NetworkTopology),
-		SubJobs:            map[SubJobID]*SubJobInfo{},
-		TaskToSubJob:       map[TaskID]SubJobID{},
-		MinSubJobs:         maps.Clone(ji.MinSubJobs),
+		AllocatedHyperNode:               ji.AllocatedHyperNode,
+		AllocatedHyperNodeGeneration:     ji.AllocatedHyperNodeGeneration,
+		AllocatedHyperNodeDirty:          ji.AllocatedHyperNodeDirty,
+		TaskPlacementGeneration:          ji.TaskPlacementGeneration,
+		AllocatedTaskPlacementGeneration: ji.AllocatedTaskPlacementGeneration,
+		NetworkTopology:                  cloneNetworkTopology(ji.NetworkTopology),
+		SubJobs:                          map[SubJobID]*SubJobInfo{},
+		TaskToSubJob:                     map[TaskID]SubJobID{},
+		MinSubJobs:                       maps.Clone(ji.MinSubJobs),
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
@@ -867,20 +939,43 @@ func (ji *JobInfo) FitError() string {
 		reasonMsg += "; " + fmt.Sprintf("%s: %s", Pending.String(), strings.Join(sortReasonsHistogram(reasons), ", "))
 	}
 
-	// record the original reason: such as can not enqueue or failed reasons of first pod failed to predicated
-	if ji.JobFitErrors != "" {
-		reasonMsg += ". Origin reason is: " + ji.JobFitErrors
-	} else {
-		for _, taskInfo := range ji.Tasks {
-			fitError := ji.NodesFitErrors[taskInfo.UID]
-			if fitError != nil {
-				reasonMsg += fmt.Sprintf(". Origin reason is %v: %v", taskInfo.Name, fitError.Error())
-				break
-			}
-		}
+	if dimensions := ji.schedulingDimensions(""); dimensions != "" {
+		reasonMsg += ". " + dimensions
 	}
 
 	return reasonMsg
+}
+
+func (ji *JobInfo) schedulingDimensions(taskID TaskID) string {
+	var nodeSummary string
+	if taskID != "" {
+		if fe := ji.NodesFitErrors[taskID]; fe != nil {
+			nodeSummary = fe.Error()
+		}
+	} else {
+		var selectedTask *TaskInfo
+		var selectedError *FitErrors
+		// Show one task's failure details to keep the job summary concise.
+		// Select by name for stable output across map iterations and same-name
+		// Pod recreation, avoiding status updates and events for unchanged failures.
+		for uid, fe := range ji.NodesFitErrors {
+			if fe == nil {
+				continue
+			}
+			task := ji.Tasks[uid]
+			if task == nil {
+				continue
+			}
+			if selectedTask == nil || task.Name < selectedTask.Name {
+				selectedTask = task
+				selectedError = fe
+			}
+		}
+		if selectedTask != nil {
+			nodeSummary = fmt.Sprintf("%s: %s", selectedTask.Name, selectedError.Error())
+		}
+	}
+	return FormatSchedulingDimensions(ji.JobFitErrors, nodeSummary)
 }
 
 // TaskSchedulingReason get detailed reason and message of the given task
@@ -897,27 +992,32 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason, msg, nominatedNodeN
 		ctx = *taskInfo.LastTransaction
 	}
 
-	msg = ji.JobFitErrors
 	switch status := ctx.Status; status {
 	case Allocated:
-		// Pod is schedulable
-		msg = fmt.Sprintf("Pod %s/%s can possibly be assigned to %s, once minAvailable is satisfied", taskInfo.Namespace, taskInfo.Name, ctx.NodeName)
+		msg = AppendSchedulingDimensions(
+			fmt.Sprintf("Pod %s/%s can possibly be assigned to %s, once minAvailable is satisfied", taskInfo.Namespace, taskInfo.Name, ctx.NodeName),
+			ji.JobFitErrors, "",
+		)
 		return PodReasonSchedulable, msg, ""
 	case Pipelined:
-		msg = fmt.Sprintf("Pod %s/%s can possibly be assigned to %s, once resource is released and minAvailable is satisfied", taskInfo.Namespace, taskInfo.Name, ctx.NodeName)
-		if ctx.EvictionOccurred {
-			nominatedNodeName = ctx.NodeName
+		msg = AppendSchedulingDimensions(
+			fmt.Sprintf("Pod %s/%s can possibly be assigned to %s, once resource is released and minAvailable is satisfied", taskInfo.Namespace, taskInfo.Name, ctx.NodeName),
+			ji.JobFitErrors, "",
+		)
+		// Derive the nomination from the live transaction, not the LastTransaction snapshot used for the message above.
+		liveCtx := taskInfo.GetTransactionContext()
+		if liveCtx.Status == Pipelined && liveCtx.NodeName != "" && liveCtx.EvictionOccurred {
+			nominatedNodeName = liveCtx.NodeName
 		}
 		return PodReasonUnschedulable, msg, nominatedNodeName
 	case Pending:
+		var nodeSummary string
 		if fe := ji.NodesFitErrors[tid]; fe != nil {
-			// Pod is unschedulable
-			return PodReasonUnschedulable, fe.Error(), ""
+			nodeSummary = fe.Error()
 		}
-		// Pod is not scheduled yet, keep UNSCHEDULABLE as the reason to support cluster autoscaler
-		return PodReasonUnschedulable, msg, ""
+		return PodReasonUnschedulable, FormatSchedulingDimensions(ji.JobFitErrors, nodeSummary), ""
 	default:
-		return status.String(), msg, ""
+		return status.String(), FormatSchedulingDimensions(ji.JobFitErrors, ""), ""
 	}
 }
 
@@ -938,10 +1038,12 @@ func (ji *JobInfo) WaitingTaskNum() int32 {
 	return int32(len(ji.TaskStatusIndex[Pipelined]))
 }
 
+// PendingBestEffortTaskNum counts pending tasks with neither ordinary requests nor DRA claims.
+// These tasks can count toward gang readiness without allocation; DRA-only tasks cannot.
 func (ji *JobInfo) PendingBestEffortTaskNum() int32 {
 	count := 0
 	for _, task := range ji.TaskStatusIndex[Pending] {
-		if task.BestEffort {
+		if !task.HasSchedulingResourceRequests() {
 			count++
 		}
 	}
@@ -1060,7 +1162,7 @@ func (ji *JobInfo) getJobAllocatedRoles() map[string]int32 {
 
 		if status == Pending {
 			for _, task := range tasks {
-				if task.InitResreq.IsEmpty() {
+				if !task.HasSchedulingResourceRequests() {
 					occupiedMap[task.TaskRole]++
 				}
 			}
@@ -1134,7 +1236,7 @@ func (ji *JobInfo) CheckTaskPipelined() bool {
 
 		if status == Pending {
 			for _, task := range tasks {
-				if task.InitResreq.IsEmpty() {
+				if !task.HasSchedulingResourceRequests() {
 					occupiedMap[task.TaskRole]++
 				}
 			}
@@ -1319,10 +1421,43 @@ func (ji *JobInfo) WithNetworkTopology() bool {
 	return ji.NetworkTopology != nil
 }
 
-// ResetFitErr will set job and node fit err to nil.
+// ResetFitErr clears node-level fit errors between HyperNode dry-run attempts.
 func (ji *JobInfo) ResetFitErr() {
-	ji.JobFitErrors = ""
 	ji.NodesFitErrors = make(map[TaskID]*FitErrors)
+}
+
+// SetHyperNodeFitErrors stores HyperNode-tier scheduling diagnostics in JobFitErrors.
+func (ji *JobInfo) SetHyperNodeFitErrors(
+	stats *HyperNodeGradientStats,
+	resourceStats *HyperNodeMinResourceFilterStats,
+	minResource *Resource,
+	hyperNodesSetByTier map[int]sets.Set[string],
+	tierNameMap HyperNodeTierNameMap,
+	hyperNodes HyperNodeInfoMap,
+) {
+	if stats == nil {
+		return
+	}
+	ji.JobFitErrors = FormatHyperNodeFitSummary(stats, resourceStats, minResource, hyperNodesSetByTier, tierNameMap, hyperNodes)
+}
+
+// MergeSubJobHyperNodeFitErrors appends SubJob diagnostics to the Job baseline.
+func (ji *JobInfo) MergeSubJobHyperNodeFitErrors(
+	baseline string,
+	subJobID SubJobID,
+	stats *HyperNodeGradientStats,
+	resourceStats *HyperNodeMinResourceFilterStats,
+	minResource *Resource,
+	hyperNodesSetByTier map[int]sets.Set[string],
+	tierNameMap HyperNodeTierNameMap,
+	hyperNodes HyperNodeInfoMap,
+) {
+	if stats == nil {
+		ji.JobFitErrors = baseline
+		return
+	}
+	summary := FormatHyperNodeFitSummary(stats, resourceStats, minResource, hyperNodesSetByTier, tierNameMap, hyperNodes)
+	ji.JobFitErrors = MergeHyperNodeFitSummary(baseline, string(subJobID), summary)
 }
 
 // ResetSubJobFitErr will set subJob's node fit err to nil.
@@ -1415,6 +1550,12 @@ func (ji *JobInfo) ContainsHardTopology() bool {
 		return true
 	}
 	return false
+}
+
+// RequiresHyperNodeAllocate returns whether the job needs HyperNode-level allocation.
+func (ji *JobInfo) RequiresHyperNodeAllocate() bool {
+	return ji.ContainsHardTopology() || ji.ContainsSubJobPolicy() ||
+		ji.ContainsHardPodGroupAntiAffinity() || ji.HasPreferredPodGroupAntiAffinity()
 }
 
 // ContainsNetworkTopologyInSubJob returns whether the subJobs in the job contain network topology

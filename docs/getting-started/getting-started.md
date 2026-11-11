@@ -17,5 +17,5 @@ frameworks like TensorFlow, Spark, Ray, PyTorch, MPI, etc, which Volcano integra
 To get the most out of Volcano, start by reviewing a few introductory topics:
 - [Prepare for development](../development/prepare-for-development.md) - Set up your development environment
 - [Setup](../development/development.md) - Install Volcano
-- [Contributing](https://github.com/volcano-sh/volcano/blob/master/contributing.md) - Contribute to Volcano
+- [Contributing](https://github.com/volcano-sh/volcano/blob/master/CONTRIBUTING.md) - Contribute to Volcano
 - [Troubleshooting](../troubleshooting/troubleshooting.md) - Troubleshoot commonly occurring issues. GitHub issues are [here](https://github.com/volcano-sh/volcano/issues)

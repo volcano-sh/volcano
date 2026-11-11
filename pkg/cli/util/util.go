@@ -217,8 +217,14 @@ func CaptureOutput(r *os.File, oldStdout *os.File) string {
 
 // CreateTestServer creates an HTTP server that responds with the given response.
 func CreateTestServer(response interface{}) *httptest.Server {
+	return CreateTestServerWithStatus(response, http.StatusOK)
+}
+
+// CreateTestServerWithStatus creates an HTTP server that responds with the given status code and response.
+func CreateTestServerWithStatus(response interface{}, statusCode int) *httptest.Server {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
 		val, err := json.Marshal(response)
 		if err == nil {
 			w.Write(val)

@@ -164,6 +164,26 @@ type Status struct {
 	Code   int
 	Reason string
 	Plugin string
+	// InsufficientResources is the structured counterpart to Reason for a
+	// resource-shortage Unschedulable/UnschedulableAndUnresolvable status: it
+	// lists the resource dimension names (e.g. "cpu", "memory", "pods", or a
+	// scalar resource name) that caused the failure. Any code path that fails
+	// a task due to resource capacity (built-in resource-fit checks, the
+	// predicates Pod-count check, etc.) must populate this field so that
+	// downstream consumers (e.g. hint-key derivation) never need to parse the
+	// human-readable Reason string.
+	InsufficientResources []string
+}
+
+// PrePredicateError reports an unschedulable PrePredicate result and the
+// plugin that produced it.
+type PrePredicateError struct {
+	Plugin string
+	Reason string
+}
+
+func (e *PrePredicateError) Error() string {
+	return e.Reason
 }
 
 // String represents status string
@@ -314,6 +334,12 @@ type JobEnqueuedFn func(interface{})
 // PredicateFn is the func declaration used to predicate node for task.
 type PredicateFn func(*TaskInfo, *NodeInfo) error
 
+// QueueNodeFilterFn narrows candidate nodes before per-task predicates are evaluated,
+// using queue-level constraints that remain valid throughout the session.
+// Implementations must preserve input order and must not add nodes or modify the input.
+// Callers must not modify the returned slice, which may be shared within a session.
+type QueueNodeFilterFn func(*QueueInfo, []*NodeInfo) []*NodeInfo
+
 // PrePredicateFn is the func declaration used to pre-predicate node for task.
 type PrePredicateFn func(*TaskInfo) error
 
@@ -407,10 +433,26 @@ const (
 	PurposeEvict
 )
 
-// HyperNodeGradientForJobFn group hyperNodes into several gradients,
-// and discard hyperNodes that unmatched the job topology requirements.
-type HyperNodeGradientForJobFn func(job *JobInfo, hyperNode *HyperNodeInfo, purpose SearchPurpose) [][]*HyperNodeInfo
+// HyperNodeGradientResult describes a plugin's constraints within the input search root.
+// Its zero value rejects the search; an unconstrained result must be explicit.
+type HyperNodeGradientResult struct {
+	// Unconstrained means the plugin permits the entire input subtree. Gradients
+	// must be empty when this is true. Preferred policies are evaluated by scoring.
+	Unconstrained bool
+	// Gradients contains eligible HyperNodes when Unconstrained is false.
+	// Both nil and empty gradients mean no feasible candidates remain.
+	Gradients [][]*HyperNodeInfo
+}
 
-// HyperNodeGradientForSubJobFn group hyperNodes into several gradients,
-// and discard hyperNodes that unmatched the subJob topology requirements.
-type HyperNodeGradientForSubJobFn func(subJob *SubJobInfo, hyperNode *HyperNodeInfo, purpose SearchPurpose) [][]*HyperNodeInfo
+// HyperNodeGradientForJobFn returns the plugin's topology constraints for a Job.
+type HyperNodeGradientForJobFn func(job *JobInfo, hyperNode *HyperNodeInfo, purpose SearchPurpose) HyperNodeGradientResult
+
+// HyperNodeGradientForSubJobFn returns the plugin's topology constraints for a SubJob.
+type HyperNodeGradientForSubJobFn func(subJob *SubJobInfo, hyperNode *HyperNodeInfo, purpose SearchPurpose) HyperNodeGradientResult
+
+// HyperNodeCandidateFn is an optional allocation-only fast path for nomination
+// validation. It must return exactly the supplied candidates that would occur in
+// the plugin's full allocation gradient, or Unconstrained for a neutral result.
+// A nil subJob requests the Job-level constraint. It does not replace either
+// gradient callback; plugins without this fast path keep using full gradients.
+type HyperNodeCandidateFn func(job *JobInfo, subJob *SubJobInfo, root *HyperNodeInfo, candidates []*HyperNodeInfo) HyperNodeGradientResult

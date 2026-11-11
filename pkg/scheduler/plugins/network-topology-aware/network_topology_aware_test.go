@@ -3711,10 +3711,10 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 			// Initialize hyperNodeResourceCache
 			plugin.initHyperNodeResourceCache(ssn)
 
-			// Override resource status for the first tier-1 HyperNode
+			// Allocation-time idle/future-idle filtering is applied after framework
+			// gradient intersection; the NTA callback only enforces total allocatable
+			// for eviction searches.
 			testHN := "hn-1-0"
-			plugin.hyperNodeResourceCache[testHN].idle = tt.idleResource
-			plugin.hyperNodeResourceCache[testHN].futureIdle = tt.futureIdleResource
 
 			// Call hyperNodeGradientFn
 			result, err := plugin.hyperNodeGradientFn(
@@ -3742,7 +3742,11 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 				}
 			}
 
-			if tt.expectTier1Selected {
+			expectTier1Selected := tt.expectTier1Selected
+			if tt.purpose == api.PurposeAllocate {
+				expectTier1Selected = true
+			}
+			if expectTier1Selected {
 				assert.True(t, found, "expected HyperNode %s to be selected, but it was filtered", testHN)
 			} else {
 				assert.False(t, found, "expected HyperNode %s to be filtered, but it was selected", testHN)
@@ -3885,6 +3889,75 @@ func TestHyperNodeGradientForSubJobFn_NoSubJobPolicyRespectsHardTopology(t *test
 	}
 	plugin.OnSessionOpen(ssn)
 
-	gradients := ssn.HyperNodeGradientForSubJobFn(subJob, ssn.HyperNodes[rootName], api.PurposeEvict)
+	gradients, _ := ssn.HyperNodeGradientForSubJobFn(subJob, ssn.HyperNodes[rootName], api.PurposeEvict)
 	assert.Empty(t, gradients, "hard topology without feasible tier-1 domain should not fallback to root")
+}
+
+func TestHyperNodeGradientForJobFn_UnconstrainedAndEvictionCapacity(t *testing.T) {
+	minimum := api.BuildResourceList("4", "0")
+	hardTier := 1
+	tests := []struct {
+		name          string
+		purpose       api.SearchPurpose
+		minResources  *corev1.ResourceList
+		hard          bool
+		allocated     string
+		unconstrained bool
+		want          []string
+	}{
+		{name: "allocate without topology", purpose: api.PurposeAllocate, unconstrained: true, want: []string{"a", "b", "root"}},
+		{name: "allocate defers resources", purpose: api.PurposeAllocate, minResources: &minimum, unconstrained: true, want: []string{"a", "b", "root"}},
+		{name: "evict without minimum", purpose: api.PurposeEvict, unconstrained: true, want: []string{"root", "a", "b"}},
+		{name: "evict filters total allocatable", purpose: api.PurposeEvict, minResources: &minimum, want: []string{"root", "b"}},
+		{name: "hard topology limits allocation tier", purpose: api.PurposeAllocate, minResources: &minimum, hard: true, want: []string{"a", "b"}},
+		{name: "hard topology and eviction capacity", purpose: api.PurposeEvict, minResources: &minimum, hard: true, want: []string{"b"}},
+		{name: "invalid placement still rejects", purpose: api.PurposeAllocate, allocated: "missing", want: []string{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			schedulerCache := cache.NewCustomMockSchedulerCache("gradient-test", util.NewFakeBinder(0), util.NewFakeEvictor(0), &util.FakeStatusUpdater{}, nil, nil)
+			ssn := framework.OpenSession(schedulerCache, nil, nil)
+			defer framework.CloseSession(ssn)
+			a := api.NewHyperNodeInfo(api.BuildHyperNode("a", 1, nil))
+			b := api.NewHyperNodeInfo(api.BuildHyperNode("b", 1, nil))
+			root := api.NewHyperNodeInfo(api.BuildHyperNode("root", 2, nil))
+			a.Parent, b.Parent = root.Name, root.Name
+			root.Children = sets.New(a.Name, b.Name)
+			ssn.HyperNodes = api.HyperNodeInfoMap{a.Name: a, b.Name: b, root.Name: root}
+			ssn.HyperNodesTiers = []int{1, 2}
+			ssn.Nodes = map[string]*api.NodeInfo{
+				"node-a": api.NewNodeInfo(util.BuildNode("node-a", api.BuildResourceList("2", "0"), nil)),
+				"node-b": api.NewNodeInfo(util.BuildNode("node-b", api.BuildResourceList("8", "0"), nil)),
+			}
+			ssn.RealNodesSet = map[string]sets.Set[string]{
+				a.Name: sets.New("node-a"), b.Name: sets.New("node-b"), root.Name: sets.New("node-a", "node-b"),
+			}
+			enabled := true
+			ssn.Tiers = []conf.Tier{{Plugins: []conf.PluginOption{{Name: PluginName, EnabledHyperNodeGradient: &enabled}}}}
+			plugin := New(framework.Arguments{})
+			plugin.OnSessionOpen(ssn)
+			job := api.NewJobInfo("job")
+			job.PodGroup = &api.PodGroup{PodGroup: scheduling.PodGroup{Spec: scheduling.PodGroupSpec{MinResources: tc.minResources}}}
+			job.AllocatedHyperNode = tc.allocated
+			if tc.hard {
+				job.NetworkTopology = &scheduling.NetworkTopologySpec{Mode: scheduling.HardNetworkTopologyMode, HighestTierAllowed: &hardTier}
+			}
+			gradients, stats := ssn.HyperNodeGradientForJobFn(job, root, tc.purpose)
+			got := []string{}
+			for _, layer := range gradients {
+				for _, hn := range layer {
+					got = append(got, hn.Name)
+				}
+			}
+			assert.Equal(t, tc.want, got)
+			if !assert.NotNil(t, stats) {
+				return
+			}
+			if tc.unconstrained {
+				assert.NotContains(t, stats.PluginEligibleByTier, PluginName)
+			} else {
+				assert.Contains(t, stats.PluginEligibleByTier, PluginName)
+			}
+		})
+	}
 }
