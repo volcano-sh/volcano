@@ -113,9 +113,8 @@ type ServerOption struct {
 	// Only used when SchedulingGatesQueueAdmission feature gate is enabled.
 	GateRemovalWorkerNum int
 
-	// IgnoredCSIProvisioners contains a list of provisioners, and pod request pvc with these provisioners will
-	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
-	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
+	// IgnoredCSIProvisioners is deprecated and has no effect: the CSI attach limit is not accounted
+	// as a resource of the pod and the node anymore, but enforced by the NodeVolumeLimits predicate.
 	IgnoredCSIProvisioners []string
 
 	// timeout on waiting for handlers handle initial resource synchronization before starting scheduling, 0 will skip waiting
@@ -216,6 +215,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&s.TaskUpdaterWorkerNum, "task-updater-worker-num", defaultTaskUpdaterWorkerNum, "The number of workers updating tasks concurrently for each job.")
 	fs.IntVar(&s.GateRemovalWorkerNum, "gate-removal-worker-num", 5, "The number of async workers for scheduling gate removal (used when SchedulingGatesQueueAdmission is enabled).")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
+	fs.MarkDeprecated("ignored-provisioners", "This flag has no effect anymore: the CSI volume limits are enforced by the NodeVolumeLimits predicate, which does not need provisioners to be ignored. It will be removed in a future release.")
 	fs.DurationVar(&s.ResourceSyncTimeout, "resource-sync-timeout", defaultResourceSyncTimeout, "timeout on waiting for handler handling initial resources synchronization before starting scheduler, default is 60s, 0 skip waiting")
 	fs.DurationVar(&s.UnschedulableJobCacheMaxSkipDuration, "unschedulable-job-cache-max-skip-duration", defaultUnschedulableJobCacheMaxSkipDuration,
 		"Maximum duration a Job may remain in the unschedulable-job cache without a matching event")
