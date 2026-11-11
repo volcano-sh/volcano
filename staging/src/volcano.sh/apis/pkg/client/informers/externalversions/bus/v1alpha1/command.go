@@ -33,11 +33,39 @@ import (
 )
 
 // CommandInformer provides access to a shared informer and lister for
-// Commands.
+// Commands. Prefer using the type-safe variant (see [TypedCommandInformer]).
 type CommandInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() busv1alpha1.CommandLister
 }
+
+// TypedCommandInformer provides access to a shared informer and lister for
+// Commands, including the type-safe TypedInformer variant.
+// It is a superset of CommandInformer.
+type TypedCommandInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() CommandIndexInformer
+	Lister() busv1alpha1.CommandLister
+}
+
+// CommandIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type CommandIndexInformer cache.TypedSharedIndexInformer[*apisbusv1alpha1.Command]
+
+// CommandHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for Command.
+type CommandHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apisbusv1alpha1.Command]
+
+// CommandDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for Command.
+type CommandDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apisbusv1alpha1.Command]
+
+// CommandFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for Command.
+type CommandFilteringHandler = cache.TypedFilteringResourceEventHandler[*apisbusv1alpha1.Command]
+
+// CommandIndexers is a specialization of [cache.TypedIndexers] for Command.
+type CommandIndexers = cache.TypedIndexers[*apisbusv1alpha1.Command]
+
+// DeletedCommand is a specialization of [cache.DeletedObject] for Command.
+type DeletedCommand = cache.DeletedObject[*apisbusv1alpha1.Command]
 
 type commandInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -48,25 +76,49 @@ type commandInformer struct {
 // NewCommandInformer constructs a new informer for Command type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedCommandInformer]).
 func NewCommandInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewCommandInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedCommandInformer constructs a new informer for Command type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedCommandInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers CommandIndexers) CommandIndexInformer {
+	return NewTypedCommandInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredCommandInformer constructs a new informer for Command type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredCommandInformer]).
 func NewFilteredCommandInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewCommandInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+	return NewTypedCommandInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredCommandInformer constructs a new informer for Command type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredCommandInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers CommandIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) CommandIndexInformer {
+	return NewTypedCommandInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
 }
 
 // NewCommandInformerWithOptions constructs a new informer for Command type with additional options.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedCommandInformerWithOptions]).
 func NewCommandInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedCommandInformerWithOptions(client, namespace, options)
+}
+
+// NewTypedCommandInformerWithOptions constructs a new informer for Command type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedCommandInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) CommandIndexInformer {
 	gvr := schema.GroupVersionResource{Group: "bus.volcano.sh", Version: "v1alpha1", Resource: "commands"}
 	identifier := options.InformerName.WithResource(gvr)
 	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
+	return cache.NewTypedSharedIndexInformer[*apisbusv1alpha1.Command](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
@@ -99,17 +151,57 @@ func NewCommandInformerWithOptions(client versioned.Interface, namespace string,
 			Indexers:     options.Indexers,
 			Identifier:   identifier,
 		},
-	)
+	))
 }
 
 func (f *commandInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewCommandInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewTypedCommandInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *commandInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apisbusv1alpha1.Command{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *commandInformer) TypedInformer() CommandIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisbusv1alpha1.Command](f.factory.InformerFor(&apisbusv1alpha1.Command{}, f.defaultInformer))
 }
 
 func (f *commandInformer) Lister() busv1alpha1.CommandLister {
 	return busv1alpha1.NewCommandLister(f.Informer().GetIndexer())
+}
+
+// ToTypedCommandInformer converts an untyped informer into a TypedCommandInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *Command. If that is not the case, calling type-safe methods of the returned
+// TypedCommandInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedCommandInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedCommandInformer(informer CommandInformer) TypedCommandInformer {
+	if informer, ok := informer.(TypedCommandInformer); ok {
+		return informer
+	}
+	return &commandTypedInformerAdapter{informer}
+}
+
+type commandTypedInformerAdapter struct {
+	CommandInformer
+}
+
+func (a *commandTypedInformerAdapter) TypedInformer() CommandIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apisbusv1alpha1.Command](a.Informer())
+}
+
+// ToCommandIndexInformer converts an untyped informer into a CommandIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *Command. If that is not the case, calling type-safe methods of the returned
+// CommandIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a CommandIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToCommandIndexInformer(informer cache.SharedIndexInformer) CommandIndexInformer {
+	if informer, ok := informer.(CommandIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apisbusv1alpha1.Command](informer)
 }

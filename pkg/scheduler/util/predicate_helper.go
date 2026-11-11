@@ -38,6 +38,7 @@ type PredicateHelper interface {
 
 type predicateHelper struct {
 	taskPredicateErrorCache map[string]map[string]error
+	feasibleNodeTarget      *int32
 }
 
 // PredicateNodes returns the specified number of nodes that fit a task
@@ -56,6 +57,9 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 		return make([]*api.NodeInfo, 0), fe
 	}
 	numNodesToFind := CalculateNumOfFeasibleNodesToFind(int32(allNodes))
+	if ph.feasibleNodeTarget != nil {
+		numNodesToFind = min(*ph.feasibleNodeTarget, int32(allNodes))
+	}
 
 	//allocate enough space to avoid growing it
 	predicateNodes := make([]*api.NodeInfo, numNodesToFind)
@@ -155,6 +159,16 @@ func taskGroupID(task *api.TaskInfo) string {
 
 func NewPredicateHelper() PredicateHelper {
 	return &predicateHelper{taskPredicateErrorCache: map[string]map[string]error{}}
+}
+
+// NewPredicateHelperWithFeasibleNodeTarget creates a helper with a fixed
+// feasible-node target, capped by the candidate count on each call.
+func NewPredicateHelperWithFeasibleNodeTarget(target int32) PredicateHelper {
+	target = max(target, 0)
+	return &predicateHelper{
+		taskPredicateErrorCache: map[string]map[string]error{},
+		feasibleNodeTarget:      &target,
+	}
 }
 
 // GetPredicatedNodeByShard return predicateNodes by shard

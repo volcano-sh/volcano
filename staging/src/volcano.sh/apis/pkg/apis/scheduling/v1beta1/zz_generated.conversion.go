@@ -23,8 +23,6 @@ package v1beta1
 import (
 	unsafe "unsafe"
 
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	conversion "k8s.io/apimachinery/pkg/conversion"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling"
@@ -281,8 +279,7 @@ func RegisterConversions(s *runtime.Scheme) error {
 }
 
 func autoConvert_v1beta1_Affinity_To_scheduling_Affinity(in *Affinity, out *scheduling.Affinity, s conversion.Scope) error {
-	out.NodeGroupAffinity = (*scheduling.NodeGroupAffinity)(unsafe.Pointer(in.NodeGroupAffinity))
-	out.NodeGroupAntiAffinity = (*scheduling.NodeGroupAntiAffinity)(unsafe.Pointer(in.NodeGroupAntiAffinity))
+	*out = *(*scheduling.Affinity)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -292,8 +289,7 @@ func Convert_v1beta1_Affinity_To_scheduling_Affinity(in *Affinity, out *scheduli
 }
 
 func autoConvert_scheduling_Affinity_To_v1beta1_Affinity(in *scheduling.Affinity, out *Affinity, s conversion.Scope) error {
-	out.NodeGroupAffinity = (*NodeGroupAffinity)(unsafe.Pointer(in.NodeGroupAffinity))
-	out.NodeGroupAntiAffinity = (*NodeGroupAntiAffinity)(unsafe.Pointer(in.NodeGroupAntiAffinity))
+	*out = *(*Affinity)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -303,9 +299,7 @@ func Convert_scheduling_Affinity_To_v1beta1_Affinity(in *scheduling.Affinity, ou
 }
 
 func autoConvert_v1beta1_Cluster_To_scheduling_Cluster(in *Cluster, out *scheduling.Cluster, s conversion.Scope) error {
-	out.Name = in.Name
-	out.Weight = in.Weight
-	out.Capacity = *(*v1.ResourceList)(unsafe.Pointer(&in.Capacity))
+	*out = *(*scheduling.Cluster)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -315,9 +309,7 @@ func Convert_v1beta1_Cluster_To_scheduling_Cluster(in *Cluster, out *scheduling.
 }
 
 func autoConvert_scheduling_Cluster_To_v1beta1_Cluster(in *scheduling.Cluster, out *Cluster, s conversion.Scope) error {
-	out.Name = in.Name
-	out.Weight = in.Weight
-	out.Capacity = *(*v1.ResourceList)(unsafe.Pointer(&in.Capacity))
+	*out = *(*Cluster)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -327,7 +319,7 @@ func Convert_scheduling_Cluster_To_v1beta1_Cluster(in *scheduling.Cluster, out *
 }
 
 func autoConvert_v1beta1_Guarantee_To_scheduling_Guarantee(in *Guarantee, out *scheduling.Guarantee, s conversion.Scope) error {
-	out.Resource = *(*v1.ResourceList)(unsafe.Pointer(&in.Resource))
+	*out = *(*scheduling.Guarantee)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -337,7 +329,7 @@ func Convert_v1beta1_Guarantee_To_scheduling_Guarantee(in *Guarantee, out *sched
 }
 
 func autoConvert_scheduling_Guarantee_To_v1beta1_Guarantee(in *scheduling.Guarantee, out *Guarantee, s conversion.Scope) error {
-	out.Resource = *(*v1.ResourceList)(unsafe.Pointer(&in.Resource))
+	*out = *(*Guarantee)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -401,15 +393,7 @@ func Convert_scheduling_NamespaceQueueList_To_v1beta1_NamespaceQueueList(in *sch
 }
 
 func autoConvert_v1beta1_NamespaceQueueSpec_To_scheduling_NamespaceQueueSpec(in *NamespaceQueueSpec, out *scheduling.NamespaceQueueSpec, s conversion.Scope) error {
-	out.Parent = in.Parent
-	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
-	out.Reclaimable = (*bool)(unsafe.Pointer(in.Reclaimable))
-	if err := Convert_v1beta1_Guarantee_To_scheduling_Guarantee(&in.Guarantee, &out.Guarantee, s); err != nil {
-		return err
-	}
-	out.Deserved = *(*v1.ResourceList)(unsafe.Pointer(&in.Deserved))
-	out.Priority = in.Priority
-	out.DequeueStrategy = scheduling.DequeueStrategy(in.DequeueStrategy)
+	*out = *(*scheduling.NamespaceQueueSpec)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -419,15 +403,7 @@ func Convert_v1beta1_NamespaceQueueSpec_To_scheduling_NamespaceQueueSpec(in *Nam
 }
 
 func autoConvert_scheduling_NamespaceQueueSpec_To_v1beta1_NamespaceQueueSpec(in *scheduling.NamespaceQueueSpec, out *NamespaceQueueSpec, s conversion.Scope) error {
-	out.Parent = in.Parent
-	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
-	out.Reclaimable = (*bool)(unsafe.Pointer(in.Reclaimable))
-	if err := Convert_scheduling_Guarantee_To_v1beta1_Guarantee(&in.Guarantee, &out.Guarantee, s); err != nil {
-		return err
-	}
-	out.Deserved = *(*v1.ResourceList)(unsafe.Pointer(&in.Deserved))
-	out.Priority = in.Priority
-	out.DequeueStrategy = DequeueStrategy(in.DequeueStrategy)
+	*out = *(*NamespaceQueueSpec)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -437,17 +413,7 @@ func Convert_scheduling_NamespaceQueueSpec_To_v1beta1_NamespaceQueueSpec(in *sch
 }
 
 func autoConvert_v1beta1_NamespaceQueueStatus_To_scheduling_NamespaceQueueStatus(in *NamespaceQueueStatus, out *scheduling.NamespaceQueueStatus, s conversion.Scope) error {
-	out.State = scheduling.QueueState(in.State)
-	out.Unknown = in.Unknown
-	out.Pending = in.Pending
-	out.Running = in.Running
-	out.Inqueue = in.Inqueue
-	out.Completed = in.Completed
-	if err := Convert_v1beta1_Reservation_To_scheduling_Reservation(&in.Reservation, &out.Reservation, s); err != nil {
-		return err
-	}
-	out.Allocated = *(*v1.ResourceList)(unsafe.Pointer(&in.Allocated))
-	out.Conditions = *(*[]metav1.Condition)(unsafe.Pointer(&in.Conditions))
+	*out = *(*scheduling.NamespaceQueueStatus)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -457,17 +423,7 @@ func Convert_v1beta1_NamespaceQueueStatus_To_scheduling_NamespaceQueueStatus(in 
 }
 
 func autoConvert_scheduling_NamespaceQueueStatus_To_v1beta1_NamespaceQueueStatus(in *scheduling.NamespaceQueueStatus, out *NamespaceQueueStatus, s conversion.Scope) error {
-	out.State = QueueState(in.State)
-	out.Unknown = in.Unknown
-	out.Pending = in.Pending
-	out.Running = in.Running
-	out.Inqueue = in.Inqueue
-	out.Completed = in.Completed
-	if err := Convert_scheduling_Reservation_To_v1beta1_Reservation(&in.Reservation, &out.Reservation, s); err != nil {
-		return err
-	}
-	out.Allocated = *(*v1.ResourceList)(unsafe.Pointer(&in.Allocated))
-	out.Conditions = *(*[]metav1.Condition)(unsafe.Pointer(&in.Conditions))
+	*out = *(*NamespaceQueueStatus)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -477,9 +433,7 @@ func Convert_scheduling_NamespaceQueueStatus_To_v1beta1_NamespaceQueueStatus(in 
 }
 
 func autoConvert_v1beta1_NetworkTopologySpec_To_scheduling_NetworkTopologySpec(in *NetworkTopologySpec, out *scheduling.NetworkTopologySpec, s conversion.Scope) error {
-	out.Mode = scheduling.NetworkTopologyMode(in.Mode)
-	out.HighestTierAllowed = (*int)(unsafe.Pointer(in.HighestTierAllowed))
-	out.HighestTierName = in.HighestTierName
+	*out = *(*scheduling.NetworkTopologySpec)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -489,9 +443,7 @@ func Convert_v1beta1_NetworkTopologySpec_To_scheduling_NetworkTopologySpec(in *N
 }
 
 func autoConvert_scheduling_NetworkTopologySpec_To_v1beta1_NetworkTopologySpec(in *scheduling.NetworkTopologySpec, out *NetworkTopologySpec, s conversion.Scope) error {
-	out.Mode = NetworkTopologyMode(in.Mode)
-	out.HighestTierAllowed = (*int)(unsafe.Pointer(in.HighestTierAllowed))
-	out.HighestTierName = in.HighestTierName
+	*out = *(*NetworkTopologySpec)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -501,8 +453,7 @@ func Convert_scheduling_NetworkTopologySpec_To_v1beta1_NetworkTopologySpec(in *s
 }
 
 func autoConvert_v1beta1_NodeGroupAffinity_To_scheduling_NodeGroupAffinity(in *NodeGroupAffinity, out *scheduling.NodeGroupAffinity, s conversion.Scope) error {
-	out.RequiredDuringSchedulingIgnoredDuringExecution = *(*[]string)(unsafe.Pointer(&in.RequiredDuringSchedulingIgnoredDuringExecution))
-	out.PreferredDuringSchedulingIgnoredDuringExecution = *(*[]string)(unsafe.Pointer(&in.PreferredDuringSchedulingIgnoredDuringExecution))
+	*out = *(*scheduling.NodeGroupAffinity)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -512,8 +463,7 @@ func Convert_v1beta1_NodeGroupAffinity_To_scheduling_NodeGroupAffinity(in *NodeG
 }
 
 func autoConvert_scheduling_NodeGroupAffinity_To_v1beta1_NodeGroupAffinity(in *scheduling.NodeGroupAffinity, out *NodeGroupAffinity, s conversion.Scope) error {
-	out.RequiredDuringSchedulingIgnoredDuringExecution = *(*[]string)(unsafe.Pointer(&in.RequiredDuringSchedulingIgnoredDuringExecution))
-	out.PreferredDuringSchedulingIgnoredDuringExecution = *(*[]string)(unsafe.Pointer(&in.PreferredDuringSchedulingIgnoredDuringExecution))
+	*out = *(*NodeGroupAffinity)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -523,8 +473,7 @@ func Convert_scheduling_NodeGroupAffinity_To_v1beta1_NodeGroupAffinity(in *sched
 }
 
 func autoConvert_v1beta1_NodeGroupAntiAffinity_To_scheduling_NodeGroupAntiAffinity(in *NodeGroupAntiAffinity, out *scheduling.NodeGroupAntiAffinity, s conversion.Scope) error {
-	out.RequiredDuringSchedulingIgnoredDuringExecution = *(*[]string)(unsafe.Pointer(&in.RequiredDuringSchedulingIgnoredDuringExecution))
-	out.PreferredDuringSchedulingIgnoredDuringExecution = *(*[]string)(unsafe.Pointer(&in.PreferredDuringSchedulingIgnoredDuringExecution))
+	*out = *(*scheduling.NodeGroupAntiAffinity)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -534,8 +483,7 @@ func Convert_v1beta1_NodeGroupAntiAffinity_To_scheduling_NodeGroupAntiAffinity(i
 }
 
 func autoConvert_scheduling_NodeGroupAntiAffinity_To_v1beta1_NodeGroupAntiAffinity(in *scheduling.NodeGroupAntiAffinity, out *NodeGroupAntiAffinity, s conversion.Scope) error {
-	out.RequiredDuringSchedulingIgnoredDuringExecution = *(*[]string)(unsafe.Pointer(&in.RequiredDuringSchedulingIgnoredDuringExecution))
-	out.PreferredDuringSchedulingIgnoredDuringExecution = *(*[]string)(unsafe.Pointer(&in.PreferredDuringSchedulingIgnoredDuringExecution))
+	*out = *(*NodeGroupAntiAffinity)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -577,11 +525,7 @@ func Convert_scheduling_PodGroup_To_v1beta1_PodGroup(in *scheduling.PodGroup, ou
 }
 
 func autoConvert_v1beta1_PodGroupAffinityTerm_To_scheduling_PodGroupAffinityTerm(in *PodGroupAffinityTerm, out *scheduling.PodGroupAffinityTerm, s conversion.Scope) error {
-	out.Weight = in.Weight
-	out.PodGroupSelector = (*metav1.LabelSelector)(unsafe.Pointer(in.PodGroupSelector))
-	out.NamespaceSelector = (*metav1.LabelSelector)(unsafe.Pointer(in.NamespaceSelector))
-	out.TopologyTierName = in.TopologyTierName
-	out.TopologyTier = (*int32)(unsafe.Pointer(in.TopologyTier))
+	*out = *(*scheduling.PodGroupAffinityTerm)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -591,11 +535,7 @@ func Convert_v1beta1_PodGroupAffinityTerm_To_scheduling_PodGroupAffinityTerm(in 
 }
 
 func autoConvert_scheduling_PodGroupAffinityTerm_To_v1beta1_PodGroupAffinityTerm(in *scheduling.PodGroupAffinityTerm, out *PodGroupAffinityTerm, s conversion.Scope) error {
-	out.Weight = in.Weight
-	out.PodGroupSelector = (*metav1.LabelSelector)(unsafe.Pointer(in.PodGroupSelector))
-	out.NamespaceSelector = (*metav1.LabelSelector)(unsafe.Pointer(in.NamespaceSelector))
-	out.TopologyTierName = in.TopologyTierName
-	out.TopologyTier = (*int32)(unsafe.Pointer(in.TopologyTier))
+	*out = *(*PodGroupAffinityTerm)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -605,8 +545,7 @@ func Convert_scheduling_PodGroupAffinityTerm_To_v1beta1_PodGroupAffinityTerm(in 
 }
 
 func autoConvert_v1beta1_PodGroupAntiAffinity_To_scheduling_PodGroupAntiAffinity(in *PodGroupAntiAffinity, out *scheduling.PodGroupAntiAffinity, s conversion.Scope) error {
-	out.Required = *(*[]scheduling.PodGroupAffinityTerm)(unsafe.Pointer(&in.Required))
-	out.Preferred = *(*[]scheduling.PodGroupAffinityTerm)(unsafe.Pointer(&in.Preferred))
+	*out = *(*scheduling.PodGroupAntiAffinity)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -616,8 +555,7 @@ func Convert_v1beta1_PodGroupAntiAffinity_To_scheduling_PodGroupAntiAffinity(in 
 }
 
 func autoConvert_scheduling_PodGroupAntiAffinity_To_v1beta1_PodGroupAntiAffinity(in *scheduling.PodGroupAntiAffinity, out *PodGroupAntiAffinity, s conversion.Scope) error {
-	out.Required = *(*[]PodGroupAffinityTerm)(unsafe.Pointer(&in.Required))
-	out.Preferred = *(*[]PodGroupAffinityTerm)(unsafe.Pointer(&in.Preferred))
+	*out = *(*PodGroupAntiAffinity)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -627,12 +565,7 @@ func Convert_scheduling_PodGroupAntiAffinity_To_v1beta1_PodGroupAntiAffinity(in 
 }
 
 func autoConvert_v1beta1_PodGroupCondition_To_scheduling_PodGroupCondition(in *PodGroupCondition, out *scheduling.PodGroupCondition, s conversion.Scope) error {
-	out.Type = scheduling.PodGroupConditionType(in.Type)
-	out.Status = v1.ConditionStatus(in.Status)
-	out.TransitionID = in.TransitionID
-	out.LastTransitionTime = in.LastTransitionTime
-	out.Reason = in.Reason
-	out.Message = in.Message
+	*out = *(*scheduling.PodGroupCondition)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -642,12 +575,7 @@ func Convert_v1beta1_PodGroupCondition_To_scheduling_PodGroupCondition(in *PodGr
 }
 
 func autoConvert_scheduling_PodGroupCondition_To_v1beta1_PodGroupCondition(in *scheduling.PodGroupCondition, out *PodGroupCondition, s conversion.Scope) error {
-	out.Type = PodGroupConditionType(in.Type)
-	out.Status = v1.ConditionStatus(in.Status)
-	out.TransitionID = in.TransitionID
-	out.LastTransitionTime = in.LastTransitionTime
-	out.Reason = in.Reason
-	out.Message = in.Message
+	*out = *(*PodGroupCondition)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -679,14 +607,7 @@ func Convert_scheduling_PodGroupList_To_v1beta1_PodGroupList(in *scheduling.PodG
 }
 
 func autoConvert_v1beta1_PodGroupSpec_To_scheduling_PodGroupSpec(in *PodGroupSpec, out *scheduling.PodGroupSpec, s conversion.Scope) error {
-	out.MinMember = in.MinMember
-	out.MinTaskMember = *(*map[string]int32)(unsafe.Pointer(&in.MinTaskMember))
-	out.Queue = in.Queue
-	out.PriorityClassName = in.PriorityClassName
-	out.MinResources = (*v1.ResourceList)(unsafe.Pointer(in.MinResources))
-	out.NetworkTopology = (*scheduling.NetworkTopologySpec)(unsafe.Pointer(in.NetworkTopology))
-	out.SubGroupPolicy = *(*[]scheduling.SubGroupPolicySpec)(unsafe.Pointer(&in.SubGroupPolicy))
-	out.TopologyAffinity = (*scheduling.TopologyAffinitySpec)(unsafe.Pointer(in.TopologyAffinity))
+	*out = *(*scheduling.PodGroupSpec)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -696,14 +617,7 @@ func Convert_v1beta1_PodGroupSpec_To_scheduling_PodGroupSpec(in *PodGroupSpec, o
 }
 
 func autoConvert_scheduling_PodGroupSpec_To_v1beta1_PodGroupSpec(in *scheduling.PodGroupSpec, out *PodGroupSpec, s conversion.Scope) error {
-	out.MinMember = in.MinMember
-	out.MinTaskMember = *(*map[string]int32)(unsafe.Pointer(&in.MinTaskMember))
-	out.Queue = in.Queue
-	out.PriorityClassName = in.PriorityClassName
-	out.MinResources = (*v1.ResourceList)(unsafe.Pointer(in.MinResources))
-	out.NetworkTopology = (*NetworkTopologySpec)(unsafe.Pointer(in.NetworkTopology))
-	out.SubGroupPolicy = *(*[]SubGroupPolicySpec)(unsafe.Pointer(&in.SubGroupPolicy))
-	out.TopologyAffinity = (*TopologyAffinitySpec)(unsafe.Pointer(in.TopologyAffinity))
+	*out = *(*PodGroupSpec)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -713,11 +627,7 @@ func Convert_scheduling_PodGroupSpec_To_v1beta1_PodGroupSpec(in *scheduling.PodG
 }
 
 func autoConvert_v1beta1_PodGroupStatus_To_scheduling_PodGroupStatus(in *PodGroupStatus, out *scheduling.PodGroupStatus, s conversion.Scope) error {
-	out.Phase = scheduling.PodGroupPhase(in.Phase)
-	out.Conditions = *(*[]scheduling.PodGroupCondition)(unsafe.Pointer(&in.Conditions))
-	out.Running = in.Running
-	out.Succeeded = in.Succeeded
-	out.Failed = in.Failed
+	*out = *(*scheduling.PodGroupStatus)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -727,11 +637,7 @@ func Convert_v1beta1_PodGroupStatus_To_scheduling_PodGroupStatus(in *PodGroupSta
 }
 
 func autoConvert_scheduling_PodGroupStatus_To_v1beta1_PodGroupStatus(in *scheduling.PodGroupStatus, out *PodGroupStatus, s conversion.Scope) error {
-	out.Phase = PodGroupPhase(in.Phase)
-	out.Conditions = *(*[]PodGroupCondition)(unsafe.Pointer(&in.Conditions))
-	out.Running = in.Running
-	out.Succeeded = in.Succeeded
-	out.Failed = in.Failed
+	*out = *(*PodGroupStatus)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -795,20 +701,7 @@ func Convert_scheduling_QueueList_To_v1beta1_QueueList(in *scheduling.QueueList,
 }
 
 func autoConvert_v1beta1_QueueSpec_To_scheduling_QueueSpec(in *QueueSpec, out *scheduling.QueueSpec, s conversion.Scope) error {
-	out.Weight = in.Weight
-	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
-	out.Reclaimable = (*bool)(unsafe.Pointer(in.Reclaimable))
-	out.ExtendClusters = *(*[]scheduling.Cluster)(unsafe.Pointer(&in.ExtendClusters))
-	if err := Convert_v1beta1_Guarantee_To_scheduling_Guarantee(&in.Guarantee, &out.Guarantee, s); err != nil {
-		return err
-	}
-	out.Affinity = (*scheduling.Affinity)(unsafe.Pointer(in.Affinity))
-	out.Type = in.Type
-	out.Parent = in.Parent
-	out.Deserved = *(*v1.ResourceList)(unsafe.Pointer(&in.Deserved))
-	out.Priority = in.Priority
-	out.DequeueStrategy = scheduling.DequeueStrategy(in.DequeueStrategy)
-	out.AllowedNamespaces = *(*[]string)(unsafe.Pointer(&in.AllowedNamespaces))
+	*out = *(*scheduling.QueueSpec)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -818,20 +711,7 @@ func Convert_v1beta1_QueueSpec_To_scheduling_QueueSpec(in *QueueSpec, out *sched
 }
 
 func autoConvert_scheduling_QueueSpec_To_v1beta1_QueueSpec(in *scheduling.QueueSpec, out *QueueSpec, s conversion.Scope) error {
-	out.Weight = in.Weight
-	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
-	out.Reclaimable = (*bool)(unsafe.Pointer(in.Reclaimable))
-	out.ExtendClusters = *(*[]Cluster)(unsafe.Pointer(&in.ExtendClusters))
-	if err := Convert_scheduling_Guarantee_To_v1beta1_Guarantee(&in.Guarantee, &out.Guarantee, s); err != nil {
-		return err
-	}
-	out.Affinity = (*Affinity)(unsafe.Pointer(in.Affinity))
-	out.Type = in.Type
-	out.Parent = in.Parent
-	out.Deserved = *(*v1.ResourceList)(unsafe.Pointer(&in.Deserved))
-	out.Priority = in.Priority
-	out.DequeueStrategy = DequeueStrategy(in.DequeueStrategy)
-	out.AllowedNamespaces = *(*[]string)(unsafe.Pointer(&in.AllowedNamespaces))
+	*out = *(*QueueSpec)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -841,16 +721,7 @@ func Convert_scheduling_QueueSpec_To_v1beta1_QueueSpec(in *scheduling.QueueSpec,
 }
 
 func autoConvert_v1beta1_QueueStatus_To_scheduling_QueueStatus(in *QueueStatus, out *scheduling.QueueStatus, s conversion.Scope) error {
-	out.State = scheduling.QueueState(in.State)
-	out.Unknown = in.Unknown
-	out.Pending = in.Pending
-	out.Running = in.Running
-	out.Inqueue = in.Inqueue
-	out.Completed = in.Completed
-	if err := Convert_v1beta1_Reservation_To_scheduling_Reservation(&in.Reservation, &out.Reservation, s); err != nil {
-		return err
-	}
-	out.Allocated = *(*v1.ResourceList)(unsafe.Pointer(&in.Allocated))
+	*out = *(*scheduling.QueueStatus)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -860,16 +731,7 @@ func Convert_v1beta1_QueueStatus_To_scheduling_QueueStatus(in *QueueStatus, out 
 }
 
 func autoConvert_scheduling_QueueStatus_To_v1beta1_QueueStatus(in *scheduling.QueueStatus, out *QueueStatus, s conversion.Scope) error {
-	out.State = QueueState(in.State)
-	out.Unknown = in.Unknown
-	out.Pending = in.Pending
-	out.Running = in.Running
-	out.Inqueue = in.Inqueue
-	out.Completed = in.Completed
-	if err := Convert_scheduling_Reservation_To_v1beta1_Reservation(&in.Reservation, &out.Reservation, s); err != nil {
-		return err
-	}
-	out.Allocated = *(*v1.ResourceList)(unsafe.Pointer(&in.Allocated))
+	*out = *(*QueueStatus)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -879,8 +741,7 @@ func Convert_scheduling_QueueStatus_To_v1beta1_QueueStatus(in *scheduling.QueueS
 }
 
 func autoConvert_v1beta1_Reservation_To_scheduling_Reservation(in *Reservation, out *scheduling.Reservation, s conversion.Scope) error {
-	out.Nodes = *(*[]string)(unsafe.Pointer(&in.Nodes))
-	out.Resource = *(*v1.ResourceList)(unsafe.Pointer(&in.Resource))
+	*out = *(*scheduling.Reservation)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -890,8 +751,7 @@ func Convert_v1beta1_Reservation_To_scheduling_Reservation(in *Reservation, out 
 }
 
 func autoConvert_scheduling_Reservation_To_v1beta1_Reservation(in *scheduling.Reservation, out *Reservation, s conversion.Scope) error {
-	out.Nodes = *(*[]string)(unsafe.Pointer(&in.Nodes))
-	out.Resource = *(*v1.ResourceList)(unsafe.Pointer(&in.Resource))
+	*out = *(*Reservation)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -901,12 +761,7 @@ func Convert_scheduling_Reservation_To_v1beta1_Reservation(in *scheduling.Reserv
 }
 
 func autoConvert_v1beta1_SubGroupPolicySpec_To_scheduling_SubGroupPolicySpec(in *SubGroupPolicySpec, out *scheduling.SubGroupPolicySpec, s conversion.Scope) error {
-	out.Name = in.Name
-	out.NetworkTopology = (*scheduling.NetworkTopologySpec)(unsafe.Pointer(in.NetworkTopology))
-	out.SubGroupSize = (*int32)(unsafe.Pointer(in.SubGroupSize))
-	out.MinSubGroups = (*int32)(unsafe.Pointer(in.MinSubGroups))
-	out.LabelSelector = (*metav1.LabelSelector)(unsafe.Pointer(in.LabelSelector))
-	out.MatchLabelKeys = *(*[]string)(unsafe.Pointer(&in.MatchLabelKeys))
+	*out = *(*scheduling.SubGroupPolicySpec)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -916,12 +771,7 @@ func Convert_v1beta1_SubGroupPolicySpec_To_scheduling_SubGroupPolicySpec(in *Sub
 }
 
 func autoConvert_scheduling_SubGroupPolicySpec_To_v1beta1_SubGroupPolicySpec(in *scheduling.SubGroupPolicySpec, out *SubGroupPolicySpec, s conversion.Scope) error {
-	out.Name = in.Name
-	out.NetworkTopology = (*NetworkTopologySpec)(unsafe.Pointer(in.NetworkTopology))
-	out.SubGroupSize = (*int32)(unsafe.Pointer(in.SubGroupSize))
-	out.MinSubGroups = (*int32)(unsafe.Pointer(in.MinSubGroups))
-	out.LabelSelector = (*metav1.LabelSelector)(unsafe.Pointer(in.LabelSelector))
-	out.MatchLabelKeys = *(*[]string)(unsafe.Pointer(&in.MatchLabelKeys))
+	*out = *(*SubGroupPolicySpec)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -931,7 +781,7 @@ func Convert_scheduling_SubGroupPolicySpec_To_v1beta1_SubGroupPolicySpec(in *sch
 }
 
 func autoConvert_v1beta1_TopologyAffinitySpec_To_scheduling_TopologyAffinitySpec(in *TopologyAffinitySpec, out *scheduling.TopologyAffinitySpec, s conversion.Scope) error {
-	out.PodGroupAntiAffinity = (*scheduling.PodGroupAntiAffinity)(unsafe.Pointer(in.PodGroupAntiAffinity))
+	*out = *(*scheduling.TopologyAffinitySpec)(unsafe.Pointer(in))
 	return nil
 }
 
@@ -941,7 +791,7 @@ func Convert_v1beta1_TopologyAffinitySpec_To_scheduling_TopologyAffinitySpec(in 
 }
 
 func autoConvert_scheduling_TopologyAffinitySpec_To_v1beta1_TopologyAffinitySpec(in *scheduling.TopologyAffinitySpec, out *TopologyAffinitySpec, s conversion.Scope) error {
-	out.PodGroupAntiAffinity = (*PodGroupAntiAffinity)(unsafe.Pointer(in.PodGroupAntiAffinity))
+	*out = *(*TopologyAffinitySpec)(unsafe.Pointer(in))
 	return nil
 }
 

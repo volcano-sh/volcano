@@ -49,9 +49,9 @@ func (u *unschedulablePods) addOrUpdate(pInfo *framework.QueuedPodInfo, event st
 	podID := u.keyFunc(pInfo.Pod)
 	if _, exists := u.podInfoMap[podID]; !exists {
 		if pInfo.Gated() && u.gatedRecorder != nil {
-			u.gatedRecorder.Inc()
+			u.gatedRecorder.Add(pInfo)
 		} else if !pInfo.Gated() && u.unschedulableRecorder != nil {
-			u.unschedulableRecorder.Inc()
+			u.unschedulableRecorder.Add(pInfo)
 		}
 		metrics.SchedulerQueueIncomingPods.WithLabelValues("unschedulable", event).Inc()
 	}
@@ -62,11 +62,11 @@ func (u *unschedulablePods) addOrUpdate(pInfo *framework.QueuedPodInfo, event st
 // The `gated` parameter is used to figure out which metric should be decreased.
 func (u *unschedulablePods) delete(pod *v1.Pod, gated bool) {
 	podID := u.keyFunc(pod)
-	if _, exists := u.podInfoMap[podID]; exists {
+	if pInfo, exists := u.podInfoMap[podID]; exists {
 		if gated && u.gatedRecorder != nil {
-			u.gatedRecorder.Dec()
+			u.gatedRecorder.Remove(pInfo)
 		} else if !gated && u.unschedulableRecorder != nil {
-			u.unschedulableRecorder.Dec()
+			u.unschedulableRecorder.Remove(pInfo)
 		}
 	}
 	delete(u.podInfoMap, podID)

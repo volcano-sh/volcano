@@ -70,28 +70,37 @@ Issues should be filed under the appropriate Volcano sub-repository.
 
 Please follow the prompted submission guidelines while opening an issue.
 
-Every bug report must include evidence. State the affected version and
-configuration. Provide the evidence that matches the type of report:
+Before submitting a bug report, reproduce the problem on a real Kubernetes
+cluster with Volcano deployed. Local kind or minikube clusters also count.
+Specify a Volcano release version or `master@<commit>`, the Kubernetes version,
+and the cluster setup. Include the relevant configuration, workload manifests,
+and exact commands to reproduce through normal user operations. For intermittent
+failures, state the frequency and test duration or attempt count.
+
+Provide actual evidence from that cluster run matching the type of report:
 
 1. For a bug observed in a cluster, include the workload or configuration.
    Include the relevant logs, events, or stack trace.
 2. For a race, panic, or deadlock, include a race report, panic stack, or
-   reproducer. A complete concurrent execution path is also acceptable.
-3. For a performance problem, include a profile or representative benchmark.
-   State the scale used for the test.
+   diagnostic trace from the cluster reproduction.
+3. For a performance problem, include a profile or benchmark from the cluster.
+   State the tested scale and how the measurements were collected.
 4. For validation or hardening, explain why the input is valid or expected in
-   normal use. Describe the failure it causes. Malformed input or an artificial
-   call to an internal function is not enough if the system rejects it safely.
+   normal use. Include the input and show the failure it causes in the cluster.
+   Malformed input or an artificial call to an internal function is not enough
+   if the system rejects it safely.
 
-If the report includes source code analysis, use permalinks that point to the
-exact commit. Do not replace these links with copied code blocks. If the problem
-has not been reproduced, state that clearly. Use the permalinks to explain the
-complete path from a user action or cluster event to the failure.
+If you have identified the root cause, explain it and link to the relevant code
+to help reviewers analyze the issue. Use permalinks pinned to the exact commit;
+a pasted code block or a `master` link is not sufficient. Source analysis is
+optional and does not replace cluster evidence.
 
-A suggested fix is optional. A patch plan does not replace evidence. A unit test
-that calls an internal function does not prove that users can reach the bug.
+A suggested fix is optional. A patch plan, unit tests, mocks, standalone
+benchmarks, static analysis, AI output, or code path reasoning cannot replace
+cluster reproduction.
 
-Maintainers may ask for missing information or evidence. They may close an issue that does not follow the issue template or these requirements. They may also close it if the requested information is not provided.
+Bug reports without cluster reproduction steps and actual evidence will be
+closed. They can be reconsidered when the required evidence is provided.
 
 # Contributor Workflow
 

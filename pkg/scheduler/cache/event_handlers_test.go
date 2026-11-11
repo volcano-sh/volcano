@@ -22,16 +22,24 @@ import (
 	"log"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
+	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	fwk "k8s.io/kube-scheduler/framework"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
 	"k8s.io/utils/cpuset"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -75,6 +83,58 @@ func TestRegisterHintEventHandler(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSchedulerCache_addEventHandler(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, kubefeatures.DynamicResourceAllocation, true)
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, kubefeatures.DRADeviceTaints, true)
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, kubefeatures.DRADeviceTaintRules, true)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const (
+		driver = "driver.example.com"
+		plugin = "plugin"
+	)
+	slice := &resourceapi.ResourceSlice{
+		ObjectMeta: metav1.ObjectMeta{Name: "slice"},
+		Spec: resourceapi.ResourceSliceSpec{
+			Driver:   driver,
+			Pool:     resourceapi.ResourcePool{Name: "pool", ResourceSliceCount: 1},
+			AllNodes: ptr.To(true),
+			Devices:  []resourceapi.Device{{Name: "device"}},
+		},
+	}
+	rule := &resourceapi.DeviceTaintRule{
+		ObjectMeta: metav1.ObjectMeta{Name: "rule"},
+		Spec: resourceapi.DeviceTaintRuleSpec{
+			DeviceSelector: &resourceapi.DeviceTaintSelector{Driver: ptr.To(driver)},
+			Taint:          resourceapi.DeviceTaint{Key: "example.com/taint", Effect: resourceapi.DeviceTaintEffectNoSchedule},
+		},
+	}
+	jobCache := unschedulable.NewJobCache(unschedulable.DefaultMaxSkipDuration)
+	jobCache.AddHintProvider(plugin, testHintProvider{event: fwk.ClusterEvent{Resource: fwk.ResourceSlice, ActionType: fwk.Update}})
+	sc := newMockSchedulerCache("volcano")
+	t.Cleanup(func() { ShutdownMockSchedulerCache(sc) })
+	WithUnschedulableJobCache(jobCache)(sc)
+	_, err := sc.kubeClient.ResourceV1().ResourceSlices().Create(ctx, slice, metav1.CreateOptions{})
+	require.NoError(t, err)
+	_, err = sc.kubeClient.ResourceV1().DeviceTaintRules().Create(ctx, rule, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	sc.addEventHandler()
+	sc.informerFactory.Start(ctx.Done())
+	require.True(t, kcache.WaitForCacheSync(ctx.Done(), sc.registeredHandlers["resourceSlice"].HasSynced))
+
+	job := api.NewJobInfo("test/job")
+	jobCache.Record(job, []unschedulable.Rejection{{Plugin: plugin, Source: unschedulable.RejectionPredicate}})
+	require.NotEmpty(t, jobCache.CachedRejections(job))
+
+	require.NoError(t, sc.kubeClient.ResourceV1().DeviceTaintRules().Delete(ctx, rule.Name, metav1.DeleteOptions{}))
+
+	assert.Eventually(t, func() bool {
+		return len(jobCache.CachedRejections(job)) == 0
+	}, wait.ForeverTestTimeout, 10*time.Millisecond)
 }
 
 func TestSchedulerCache_updateTask(t *testing.T) {

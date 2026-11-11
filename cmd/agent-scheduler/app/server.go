@@ -29,13 +29,10 @@ import (
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/klog/v2"
 
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
-
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
-	basecompatibility "k8s.io/component-base/compatibility"
 
 	// Register rest client metrics
 	_ "k8s.io/component-base/metrics/prometheus/restclient"
@@ -57,7 +54,7 @@ func Run(opt *options.ServerOption) error {
 	}
 
 	// Align default feature-gates with the connected cluster's version.
-	if err := setupComponentGlobals(config); err != nil {
+	if err := commonutil.SetupComponentGlobals(config, opt.FeatureGates); err != nil {
 		klog.Errorf("failed to set component globals: %v", err)
 		return err
 	}
@@ -134,36 +131,4 @@ func Run(opt *options.ServerOption) error {
 		},
 	})
 	return fmt.Errorf("lost lease")
-}
-
-// setupComponentGlobals discovers the API server version and sets
-// Volcano's effective version + feature gate defaults to match the cluster.
-// This makes defaults (like DRA) correct on older clusters.
-func setupComponentGlobals(config *restclient.Config) error {
-	client, err := clientset.NewForConfig(config)
-	if err != nil {
-		return err
-	}
-
-	serverVersion, err := client.Discovery().ServerVersion()
-	if err != nil {
-		return err
-	}
-
-	kubeVersion := fmt.Sprintf("%s.%s", serverVersion.Major, serverVersion.Minor)
-	kubeEffectiveVersion := basecompatibility.NewEffectiveVersionFromString(kubeVersion, "", "")
-
-	componentGlobalsRegistry := basecompatibility.NewComponentGlobalsRegistry()
-	if componentGlobalsRegistry.EffectiveVersionFor(basecompatibility.DefaultKubeComponent) == nil {
-		err = componentGlobalsRegistry.Register(
-			basecompatibility.DefaultKubeComponent,
-			kubeEffectiveVersion,
-			utilfeature.DefaultMutableFeatureGate,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to register component globals: %w", err)
-		}
-	}
-
-	return componentGlobalsRegistry.Set()
 }

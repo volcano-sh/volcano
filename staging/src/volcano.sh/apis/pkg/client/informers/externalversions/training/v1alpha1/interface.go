@@ -24,7 +24,7 @@ import (
 // Interface provides access to all the informers in this group version.
 type Interface interface {
 	// HyperJobs returns a HyperJobInformer.
-	HyperJobs() HyperJobInformer
+	HyperJobs() TypedHyperJobInformer
 }
 
 type version struct {
@@ -38,7 +38,7 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// HyperJobs returns a HyperJobInformer.
-func (v *version) HyperJobs() HyperJobInformer {
+// HyperJobs returns a TypedHyperJobInformer.
+func (v *version) HyperJobs() TypedHyperJobInformer {
 	return &hyperJobInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

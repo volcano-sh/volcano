@@ -221,37 +221,68 @@ func TestJobCacheSecondaryIndex(t *testing.T) {
 	}
 }
 
-func TestJobCacheWildcardIndexMatchesConcreteResource(t *testing.T) {
-	cache, registry := newTestUnschedulableCache()
-	job := api.NewJobInfo("job")
-	registeredEvent := fwk.ClusterEvent{Resource: fwk.WildCard, ActionType: fwk.Delete}
-	incomingEvent := fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}
-	hintCalls := 0
-
-	registerTestIndexedHint(
-		registry,
-		"plugin",
-		registeredEvent,
-		func(*api.JobInfo, Rejection) ([]HintKey, error) {
-			return []HintKey{"shared-key"}, nil
+func TestJobCacheOnEventMatchesRegisteredResource(t *testing.T) {
+	tests := []struct {
+		name          string
+		registered    fwk.ClusterEvent
+		wantHintCalls int
+		wantCached    bool
+	}{
+		{
+			name:          "wildcard registration matches a Pod event",
+			registered:    fwk.ClusterEvent{Resource: fwk.WildCard, ActionType: fwk.Delete},
+			wantHintCalls: 1,
 		},
-		func(any, any) ([]HintKey, error) {
-			return []HintKey{"shared-key"}, nil
+		{
+			name:          "AssignedPod registration matches a Pod event",
+			registered:    fwk.ClusterEvent{Resource: fwk.AssignedPod, ActionType: fwk.Delete},
+			wantHintCalls: 1,
 		},
-		func(*api.JobInfo, Rejection, any, any) (HintResult, error) {
-			hintCalls++
-			return HintWakeup, nil
+		{
+			name:          "UnscheduledPod registration matches a Pod event",
+			registered:    fwk.ClusterEvent{Resource: fwk.UnscheduledPod, ActionType: fwk.Delete},
+			wantHintCalls: 1,
 		},
-	)
-	cache.Record(job, []Rejection{{Plugin: "plugin", Source: RejectionPredicate}})
-
-	cache.OnEvent(incomingEvent, nil, "event")
-
-	if hintCalls != 1 {
-		t.Fatalf("wildcard hint calls = %d, want 1 for a concrete Pod event", hintCalls)
+		{
+			name:       "TargetPod registration does not match a Pod event",
+			registered: fwk.ClusterEvent{Resource: fwk.TargetPod, ActionType: fwk.Delete},
+			wantCached: true,
+		},
 	}
-	if got := cache.CachedRejections(job); got != nil {
-		t.Fatalf("CachedRejections() = %#v, want nil after the wildcard event wakes the Job", got)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cache, registry := newTestUnschedulableCache()
+			job := api.NewJobInfo("job")
+			incomingEvent := fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Delete}
+			hintCalls := 0
+
+			registerTestIndexedHint(
+				registry,
+				"plugin",
+				test.registered,
+				func(*api.JobInfo, Rejection) ([]HintKey, error) {
+					return []HintKey{"shared-key"}, nil
+				},
+				func(any, any) ([]HintKey, error) {
+					return []HintKey{"shared-key"}, nil
+				},
+				func(*api.JobInfo, Rejection, any, any) (HintResult, error) {
+					hintCalls++
+					return HintWakeup, nil
+				},
+			)
+			cache.Record(job, []Rejection{{Plugin: "plugin", Source: RejectionPredicate}})
+
+			cache.OnEvent(incomingEvent, nil, "event")
+
+			if hintCalls != test.wantHintCalls {
+				t.Fatalf("hint calls = %d, want %d", hintCalls, test.wantHintCalls)
+			}
+			if gotCached := cache.CachedRejections(job) != nil; gotCached != test.wantCached {
+				t.Fatalf("record cached = %v, want %v", gotCached, test.wantCached)
+			}
+		})
 	}
 }
 
@@ -454,6 +485,23 @@ func TestEventMatchesUsesKubeSchedulerSemantics(t *testing.T) {
 		{
 			name:       "classified update does not match unclassified update",
 			registered: fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.UpdatePodScaleDown},
+			incoming:   fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Update},
+		},
+		{
+			name:       "Pod event matches AssignedPod registration",
+			registered: fwk.ClusterEvent{Resource: fwk.AssignedPod, ActionType: fwk.Update},
+			incoming:   fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Update},
+			want:       true,
+		},
+		{
+			name:       "Pod event matches UnscheduledPod registration",
+			registered: fwk.ClusterEvent{Resource: fwk.UnscheduledPod, ActionType: fwk.Update},
+			incoming:   fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Update},
+			want:       true,
+		},
+		{
+			name:       "Pod event does not match TargetPod registration",
+			registered: fwk.ClusterEvent{Resource: fwk.TargetPod, ActionType: fwk.Update},
 			incoming:   fwk.ClusterEvent{Resource: fwk.Pod, ActionType: fwk.Update},
 		},
 		{
