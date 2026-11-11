@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/core/v1"
@@ -479,6 +480,111 @@ func TestValidateCronJobName(t *testing.T) {
 				t.Errorf("Unexpected error: %q", msg)
 			} else if tt.expected != "" && !strings.Contains(msg, tt.expected) {
 				t.Errorf("Expected %q in error, got %q", tt.expected, msg)
+			}
+		})
+	}
+}
+
+func TestValidateCronJobPodNames(t *testing.T) {
+	jobNameSuffixLen := len(fmt.Sprintf("-%d", time.Now().Unix()/60))
+	maxCronJobNameLen := func(podNameSuffix string) int {
+		return 63 - jobNameSuffixLen - len(podNameSuffix)
+	}
+
+	tests := []struct {
+		name        string
+		cronJobName string
+		taskNames   []string
+		wantErr     []string
+		notWantErr  []string
+	}{
+		{
+			name:        "pod name is exactly 63 characters",
+			cronJobName: strings.Repeat("a", maxCronJobNameLen("-worker-0")),
+			taskNames:   []string{"worker"},
+		},
+		{
+			name:        "pod name is 64 characters",
+			cronJobName: strings.Repeat("a", maxCronJobNameLen("-worker-0")+1),
+			taskNames:   []string{"worker"},
+			wantErr:     []string{`for task "worker" is invalid`, "no more than 63"},
+		},
+		{
+			name:        "max cronJob name with a one-letter task",
+			cronJobName: strings.Repeat("a", 52),
+			taskNames:   []string{"t"},
+			wantErr:     []string{`for task "t" is invalid`},
+		},
+		{
+			name:        "only the second task is too long",
+			cronJobName: strings.Repeat("a", 40),
+			taskNames:   []string{"a", "a-much-longer-task-name"},
+			wantErr:     []string{`for task "a-much-longer-task-name" is invalid`},
+			notWantErr:  []string{`for task "a" is invalid`},
+		},
+		{
+			name:        "unnamed task uses the default task name and fits",
+			cronJobName: strings.Repeat("a", maxCronJobNameLen("-default0-0")),
+			taskNames:   []string{""},
+		},
+		{
+			name:        "unnamed task uses the default task name and is too long",
+			cronJobName: strings.Repeat("a", maxCronJobNameLen("-default0-0")+1),
+			taskNames:   []string{""},
+			wantErr:     []string{`for task "default0" is invalid`},
+		},
+		{
+			name:        "cronJob name over the limit reports both errors",
+			cronJobName: strings.Repeat("a", 53),
+			taskNames:   []string{"worker"},
+			wantErr:     []string{"must be no more than 52 characters", `for task "worker" is invalid`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := getJobTemplate()
+			taskTemplate := spec.Tasks[0]
+			spec.Tasks = nil
+			for _, taskName := range tt.taskNames {
+				task := taskTemplate
+				task.Name = taskName
+				spec.Tasks = append(spec.Tasks, task)
+			}
+			cronjob := &v1alpha1.CronJob{
+				ObjectMeta: metav1.ObjectMeta{Name: tt.cronJobName, Namespace: metav1.NamespaceDefault},
+				Spec: v1alpha1.CronJobSpec{
+					Schedule:          "*/5 * * * *",
+					ConcurrencyPolicy: v1alpha1.AllowConcurrent,
+					JobTemplate:       v1alpha1.JobTemplateSpec{Spec: spec},
+				},
+			}
+
+			response := admissionv1.AdmissionResponse{Allowed: true}
+			createMsg := validateCronJobCreate(cronjob, &response)
+			updateMsg := ""
+			if err := validateCronJobUpdate(cronjob.DeepCopy(), cronjob); err != nil {
+				updateMsg = err.Error()
+			}
+
+			if len(tt.wantErr) == 0 {
+				if !response.Allowed || createMsg != "" || updateMsg != "" {
+					t.Errorf("expected cronJob to be allowed, got create=%q update=%q", createMsg, updateMsg)
+				}
+				return
+			}
+			if response.Allowed {
+				t.Errorf("expected create to be rejected")
+			}
+			for _, want := range tt.wantErr {
+				if !strings.Contains(createMsg, want) || !strings.Contains(updateMsg, want) {
+					t.Errorf("expected %q in errors, got create=%q update=%q", want, createMsg, updateMsg)
+				}
+			}
+			for _, notWant := range tt.notWantErr {
+				if strings.Contains(createMsg, notWant) || strings.Contains(updateMsg, notWant) {
+					t.Errorf("did not expect %q in errors, got create=%q update=%q", notWant, createMsg, updateMsg)
+				}
 			}
 		})
 	}
