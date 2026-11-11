@@ -632,6 +632,47 @@ var _ = Describe("GangPreempt E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	// GP-5b: Repeated high-priority preemptors should pack together instead of
+	// spreading across every saturated node. This exercises binpack's
+	// priority-aware node scoring through the real gangpreempt placement path.
+	It("GP-5b: repeated high-priority preemptors pack together", func() {
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{gpQueue},
+			NodesNumLimit:      4,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
+			DeservedResource: map[string]v1.ResourceList{
+				gpQueue: deservedCPU(4),
+			},
+			PriorityClasses: map[string]int32{
+				gpHighPri: gpHighPriVal,
+				gpLowPri:  gpLowPriVal,
+			},
+		})
+
+		By("Filling four nodes with a low-priority gang that has four surplus tasks")
+		victim := createGangJob(ctx, "victim-gp5b", gpQueue, gpLowPri, e2eutil.HalfCPU, 8, 4, true)
+		err := e2eutil.WaitTasksReady(ctx, victim, 8)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Submitting four high-priority preemptors one at a time")
+		preemptors := make([]*batchv1alpha1.Job, 0, 4)
+		for i := 0; i < 4; i++ {
+			preemptor := createGangJob(ctx, fmt.Sprintf("preemptor-gp5b-%d", i), gpQueue, gpHighPri, e2eutil.HalfCPU, 1, 1, false)
+			Expect(e2eutil.WaitTasksReady(ctx, preemptor, 1)).NotTo(HaveOccurred())
+			preemptors = append(preemptors, preemptor)
+		}
+
+		By("Verifying high-priority preemptors share at most two nodes")
+		highPriorityNodes := sets.New[string]()
+		for _, preemptor := range preemptors {
+			for node := range nodesOfRunningPods(ctx, preemptor) {
+				highPriorityNodes.Insert(node)
+			}
+		}
+		Expect(highPriorityNodes.Len()).To(BeNumerically("<=", 2),
+			"high-priority preemptors should be packed together, got nodes %v", sets.List(highPriorityNodes))
+	})
+
 	// GP-6: Gang preemption does not occur across queues.
 	It("GP-6: gang preemption does not cross queue boundaries", func() {
 		q1 := "gp6-q1"
