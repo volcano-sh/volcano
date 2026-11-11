@@ -17,13 +17,20 @@ limitations under the License.
 package predicates
 
 import (
+	"context"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/features"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumerestrictions"
 
+	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
@@ -130,4 +137,55 @@ func setUpDynamicResourcesArgs(dra *wrapDynamicResourcesArgs, rawArgs framework.
 			dra.FilterTimeout = &metav1.Duration{Duration: time.Duration(secs) * time.Second}
 		}
 	}
+}
+
+// updateVolumeRestrictionsState accounts for existing overlapping consumers, for
+// example pods bound before RWOP enforcement was enabled. Kubernetes initializes
+// this state assuming at most one reference per RWOP claim; simulation must remove
+// every reference before allowing a new consumer.
+func (pp *PredicatesPlugin) updateVolumeRestrictionsState(task *api.TaskInfo, state fwk.CycleState, nodes []fwk.NodeInfo) error {
+	claims := sets.New[string]()
+	for _, volume := range task.Pod.Spec.Volumes {
+		if pvc := volume.PersistentVolumeClaim; pvc != nil {
+			claims.Insert(pvc.ClaimName)
+		}
+	}
+	if len(claims) == 0 {
+		return nil
+	}
+	seen := sets.New[string]()
+	plugin := pp.FilterPlugins[volumerestrictions.Name].(*volumerestrictions.VolumeRestrictions)
+	for _, node := range nodes {
+		for _, info := range node.GetPods() {
+			pod := info.GetPod()
+			if pod.Namespace != task.Namespace {
+				continue
+			}
+			var extraVolumes []v1.Volume
+			for _, volume := range pod.Spec.Volumes {
+				pvc := volume.PersistentVolumeClaim
+				if pvc == nil || !claims.Has(pvc.ClaimName) {
+					continue
+				}
+				if seen.Has(pvc.ClaimName) {
+					extraVolumes = append(extraVolumes, volume)
+				} else {
+					seen.Insert(pvc.ClaimName)
+				}
+			}
+			if len(extraVolumes) == 0 {
+				continue
+			}
+			extra := pod.DeepCopy()
+			extra.Spec.Volumes = extraVolumes
+			extraInfo, err := k8sframework.NewPodInfo(extra)
+			if err != nil {
+				return err
+			}
+			if status := plugin.AddPod(context.TODO(), state, task.Pod, extraInfo, node); !status.IsSuccess() {
+				return status.AsError()
+			}
+		}
+	}
+	return nil
 }
