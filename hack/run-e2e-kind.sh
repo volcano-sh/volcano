@@ -542,6 +542,11 @@ case ${E2E_TYPE} in
     echo "Running dra e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress --focus="${DRA_GINKGO_FOCUS}" ./test/e2e/dra/
     ;;
+"CSI")
+    echo "Running csi e2e suite..."
+    KUBECONFIG=${KUBECONFIG} ./hack/install-csi-hostpath.sh
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/csi/
+    ;;
 "ADMISSION_POLICY")
     echo "Running admission policy e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/admission/
