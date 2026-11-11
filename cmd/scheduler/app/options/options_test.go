@@ -95,6 +95,7 @@ func TestAddFlags(t *testing.T) {
 		ResourceSyncTimeout:                  60 * time.Second,
 		UnschedulableJobCacheMaxSkipDuration: 10 * time.Second,
 		UnschedulableJobCacheDebugMetrics:    true,
+		SchedulingDiagnosticVerbosity:        diagnosticVerbosityDetailed,
 	}
 	expectedFeatureGates := map[featuregate.Feature]bool{
 		features.PodDisruptionBudgetsSupport: false,
@@ -172,5 +173,46 @@ func TestCheckOptionOrDieRejectsNamespaceQueueDefault(t *testing.T) {
 
 	if err := option.CheckOptionOrDie(); err == nil {
 		t.Fatal("CheckOptionOrDie() accepted a NamespaceQueue as default-queue")
+	}
+}
+
+func TestSchedulingDiagnosticVerbosityFlag(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    string
+		wantErr string
+	}{
+		{
+			name: "defaults to detailed",
+			want: diagnosticVerbosityDetailed,
+		},
+		{
+			name: "summary is accepted",
+			args: []string{"--scheduling-diagnostic-verbosity=summary"},
+			want: diagnosticVerbositySummary,
+		},
+		{
+			name:    "unknown value is rejected",
+			args:    []string{"--scheduling-diagnostic-verbosity=verbose"},
+			wantErr: `scheduling-diagnostic-verbosity must be "detailed" or "summary", got "verbose"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := pflag.NewFlagSet("diagnostic-verbosity-test", pflag.ExitOnError)
+			s := NewServerOption()
+			s.AddFlags(fs)
+			s.LeaderElection.LeaderElect = false
+
+			assert.NoError(t, fs.Parse(tt.args))
+			if tt.wantErr != "" {
+				assert.EqualError(t, s.CheckOptionOrDie(), tt.wantErr)
+				return
+			}
+			assert.NoError(t, s.CheckOptionOrDie())
+			assert.Equal(t, tt.want, s.SchedulingDiagnosticVerbosity)
+		})
 	}
 }
