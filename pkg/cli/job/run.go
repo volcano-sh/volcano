@@ -55,7 +55,7 @@ func InitRunFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &launchJobFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "i", "busybox", "the container image of job")
-	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "n", "", "the namespace of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "N", "", "the name of job")
 	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "m", 1, "the minimal available tasks of job")
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
@@ -94,7 +94,22 @@ func RunJob(ctx context.Context) error {
 		return err
 	}
 
-	if job == nil {
+	if job != nil {
+		if launchJobFlags.Namespace != "" && job.Namespace != "" && launchJobFlags.Namespace != job.Namespace {
+			return fmt.Errorf("the namespace from the provided object %q does not match the namespace %q", job.Namespace, launchJobFlags.Namespace)
+		}
+		if job.Namespace == "" {
+			if launchJobFlags.Namespace != "" {
+				job.Namespace = launchJobFlags.Namespace
+			} else {
+				job.Namespace = "default"
+			}
+		}
+		launchJobFlags.Namespace = job.Namespace
+	} else {
+		if launchJobFlags.Namespace == "" {
+			launchJobFlags.Namespace = "default"
+		}
 		job = constructLaunchJobFlagsJob(launchJobFlags, req, limit)
 	}
 
