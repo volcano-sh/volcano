@@ -18,7 +18,6 @@ package framework
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -103,10 +102,7 @@ func TestCalculateQueueAllocatedResourcesBottomUp(t *testing.T) {
 		},
 	}
 
-	allocated, _, err := calculateQueueAllocatedResources(ssn)
-	if err != nil {
-		t.Fatalf("calculateQueueAllocatedResources returned error: %v", err)
-	}
+	allocated, _ := calculateQueueAllocatedResources(ssn)
 
 	assertQueueResource(t, allocated["leaf"], 1000, float64(1<<30), 2000)
 	assertQueueResource(t, allocated["team"], 1500, float64(3*(1<<29)), 3000)
@@ -126,104 +122,154 @@ func TestCalculateQueueAllocatedResourcesDoesNotCreateEmptyDRAResults(t *testing
 		},
 	}
 
-	_, allocatedDRA, err := calculateQueueAllocatedResources(ssn)
-	if err != nil {
-		t.Fatalf("calculateQueueAllocatedResources returned error: %v", err)
-	}
+	_, allocatedDRA := calculateQueueAllocatedResources(ssn)
 	if allocatedDRA != nil {
 		t.Fatalf("expected no DRA result for queues without DRA resources, got %v", allocatedDRA)
 	}
 }
 
-func TestCalculateQueueAllocatedResourcesRejectsInvalidHierarchy(t *testing.T) {
+type recordingQueueUpdateCache struct {
+	schedcache.Cache
+
+	mu      sync.Mutex
+	updates map[api.QueueID]*api.QueueInfo
+}
+
+func (c *recordingQueueUpdateCache) UpdateQueueStatus(queue *api.QueueInfo) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.updates[queue.UID] = queue.Clone()
+	return nil
+}
+
+func TestUpdateQueueStatusHierarchy(t *testing.T) {
 	tests := []struct {
-		name    string
-		queues  map[api.QueueID]*api.QueueInfo
-		wantErr string
+		name   string
+		queues map[api.QueueID]*api.QueueInfo
+		want   map[api.QueueID]string
 	}{
 		{
-			name: "missing root",
+			name: "empty session",
+		},
+		{
+			name: "no root in snapshot",
 			queues: map[api.QueueID]*api.QueueInfo{
 				"leaf": newQueueInfo("leaf", ""),
 			},
-			wantErr: "root queue",
+			want: map[api.QueueID]string{"leaf": "1"},
 		},
 		{
-			name: "root has parent",
+			name: "missing parent does not block other queues",
 			queues: map[api.QueueID]*api.QueueInfo{
-				"root": newQueueInfo("root", "parent"),
+				"root":   newQueueInfo("root", ""),
+				"leaf":   newQueueInfo("leaf", "root"),
+				"orphan": newQueueInfo("orphan", "missing"),
 			},
-			wantErr: "must not have parent",
+			want: map[api.QueueID]string{"root": "1", "leaf": "1", "orphan": "1"},
 		},
 		{
-			name: "missing parent",
-			queues: map[api.QueueID]*api.QueueInfo{
-				"root": newQueueInfo("root", ""),
-				"leaf": newQueueInfo("leaf", "missing"),
-			},
-			wantErr: "missing",
-		},
-		{
-			name: "cycle",
+			name: "cycle does not block other queues or publish incomplete totals",
 			queues: map[api.QueueID]*api.QueueInfo{
 				"root":    newQueueInfo("root", ""),
+				"leaf":    newQueueInfo("leaf", "root"),
 				"queue-a": newQueueInfo("queue-a", "queue-b"),
 				"queue-b": newQueueInfo("queue-b", "queue-a"),
+				"child":   newQueueInfo("child", "queue-a"),
 			},
-			wantErr: "cycle",
+			want: map[api.QueueID]string{"root": "1", "leaf": "1", "child": "1"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := calculateQueueAllocatedResources(&Session{
-				Jobs:   map[api.JobID]*api.JobInfo{},
-				Nodes:  map[string]*api.NodeInfo{},
+			cache := &recordingQueueUpdateCache{updates: make(map[api.QueueID]*api.QueueInfo)}
+			ssn := &Session{
+				cache:  cache,
+				Jobs:   make(map[api.JobID]*api.JobInfo),
 				Queues: tt.queues,
-			})
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+			for queueID := range tt.queues {
+				if queueID == "root" {
+					continue
+				}
+				jobID := string(queueID)
+				ssn.Jobs[api.JobID(jobID)] = newJobInfo(jobID, jobID,
+					newTaskInfo(jobID, api.Running, queueTestResourceList("1", "1Gi", "")))
+			}
+
+			updateQueueStatus(ssn)
+
+			if len(cache.updates) != len(tt.want) {
+				t.Fatalf("updated queues = %v, want %v", cache.updates, tt.want)
+			}
+			for queueID, cpu := range tt.want {
+				queue := cache.updates[queueID]
+				if queue == nil {
+					t.Fatalf("queue %q was not updated", queueID)
+				}
+				got := queue.Queue.Status.Allocated[v1.ResourceCPU]
+				if got.Cmp(resource.MustParse(cpu)) != 0 {
+					t.Errorf("queue %q CPU = %s, want %s", queueID, got.String(), cpu)
+				}
 			}
 		})
 	}
 }
 
-type countingQueueUpdateCache struct {
-	schedcache.Cache
-
-	mu      sync.Mutex
-	updates int
-}
-
-func (c *countingQueueUpdateCache) UpdateQueueStatus(_ *api.QueueInfo) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.updates++
-	return nil
-}
-
-func (c *countingQueueUpdateCache) updateCount() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.updates
-}
-
-func TestUpdateQueueStatusDoesNotWriteInvalidHierarchy(t *testing.T) {
-	cache := &countingQueueUpdateCache{}
+func TestUpdateQueueStatusNamespaceQueues(t *testing.T) {
+	queues := map[api.QueueID]*api.QueueInfo{
+		"root": newQueueInfo("root", ""),
+		"team": newQueueInfo("team", "root"),
+	}
+	for _, queue := range []*scheduling.NamespaceQueue{
+		{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "root"},
+			Spec:       scheduling.NamespaceQueueSpec{Parent: "cluster/team"},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "leaf"},
+			Spec:       scheduling.NamespaceQueueSpec{Parent: "root"},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "team-b", Name: "root"},
+			Spec:       scheduling.NamespaceQueueSpec{Parent: "cluster/team"},
+		},
+	} {
+		info, err := api.NewNamespaceQueueInfo(queue)
+		if err != nil {
+			t.Fatal(err)
+		}
+		queues[info.UID] = info
+	}
+	cache := &recordingQueueUpdateCache{updates: make(map[api.QueueID]*api.QueueInfo)}
 	ssn := &Session{
-		cache: cache,
-		Jobs:  map[api.JobID]*api.JobInfo{},
-		Nodes: map[string]*api.NodeInfo{},
-		Queues: map[api.QueueID]*api.QueueInfo{
-			"root": newQueueInfo("root", ""),
-			"leaf": newQueueInfo("leaf", "missing"),
+		cache:  cache,
+		Queues: queues,
+		Jobs: map[api.JobID]*api.JobInfo{
+			"job-a": newJobInfo("job-a", "team-a/leaf", newTaskInfo("task-a", api.Running, queueTestResourceList("1", "1Gi", ""))),
+			"job-b": newJobInfo("job-b", "team-b/root", newTaskInfo("task-b", api.Running, queueTestResourceList("2", "2Gi", ""))),
 		},
 	}
 
 	updateQueueStatus(ssn)
 
-	if got := cache.updateCount(); got != 0 {
-		t.Fatalf("expected no queue writes, got %d", got)
+	if len(cache.updates) != len(queues) {
+		t.Fatalf("updated queues = %v, want all %d queues", cache.updates, len(queues))
+	}
+	for queueID, cpu := range map[api.QueueID]string{
+		"root": "3", "team": "3", "team-a/root": "1", "team-a/leaf": "1", "team-b/root": "2",
+	} {
+		queue := cache.updates[queueID]
+		if queue == nil {
+			t.Fatalf("queue %q was not updated", queueID)
+		}
+		got := queue.Queue.Status.Allocated[v1.ResourceCPU]
+		if got.Cmp(resource.MustParse(cpu)) != 0 {
+			t.Errorf("queue %q CPU = %s, want %s", queueID, got.String(), cpu)
+		}
+		if queues[queueID].Scope == api.NamespaceQueueScope && queue.NamespaceQueue == nil {
+			t.Errorf("queue %q lost the NamespaceQueue used for status persistence", queueID)
+		}
 	}
 }
 
@@ -402,11 +448,7 @@ func BenchmarkCalculateQueueAllocatedResources(b *testing.B) {
 	b.Run("bottom-up", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			var err error
-			benchmarkQueueAllocatedResources, _, err = calculateQueueAllocatedResources(ssn)
-			if err != nil {
-				b.Fatal(err)
-			}
+			benchmarkQueueAllocatedResources, _ = calculateQueueAllocatedResources(ssn)
 		}
 	})
 }

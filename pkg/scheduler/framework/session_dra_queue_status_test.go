@@ -80,10 +80,7 @@ func TestCalculateQueueAllocatedResourcesDeduplicatesSharedClaimsAcrossSiblingQu
 		},
 	}
 
-	_, allocatedDRA, err := calculateQueueAllocatedResources(ssn)
-	if err != nil {
-		t.Fatalf("calculateQueueAllocatedResources returned error: %v", err)
-	}
+	_, allocatedDRA := calculateQueueAllocatedResources(ssn)
 
 	for _, queueID := range []api.QueueID{"leaf-a", "leaf-b", "team", "root"} {
 		got := allocatedDRA[queueID]["gpu.example.com"]
