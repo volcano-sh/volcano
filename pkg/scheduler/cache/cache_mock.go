@@ -179,6 +179,9 @@ func (sc *SchedulerCache) initMockInformers() {
 	// Create node informer
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
 
+	// Create Pod informer (read by device topology recovery).
+	sc.podInformer = informerFactory.Core().V1().Pods()
+
 	// Create PVC informer (required by addPodCSIVolumesToTask for pods
 	// referencing a PersistentVolumeClaim). Materialise via Informer() so
 	// SharedInformerFactory.Start actually starts it — matches the real

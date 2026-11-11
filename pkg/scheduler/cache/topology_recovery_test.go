@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
@@ -82,12 +83,12 @@ func TestSchedulerCacheSkipsRecoveryForAdapterWithoutRecovery(t *testing.T) {
 
 func TestSchedulerCacheRestoresRecoveredAllocations(t *testing.T) {
 	tests := []struct {
-		name  string
-		state adapter.AdapterReservationLifecycleState
-		want  schedulingapi.DeviceAvailability
+		name        string
+		state       adapter.AdapterReservationLifecycleState
+		want        schedulingapi.DeviceAvailability
+		wantConfirm int
 	}{
-		{name: "held reservation", state: adapter.AdapterReservationHeld, want: schedulingapi.DeviceHeld},
-		{name: "binding reservation", state: adapter.AdapterReservationBinding, want: schedulingapi.DeviceBinding},
+		{name: "binding reservation", state: adapter.AdapterReservationBinding, want: schedulingapi.DeviceBinding, wantConfirm: 2},
 		{name: "allocated reservation", state: adapter.AdapterReservationAllocated, want: schedulingapi.DeviceAllocated},
 	}
 
@@ -99,8 +100,15 @@ func TestSchedulerCacheRestoresRecoveredAllocations(t *testing.T) {
 			plan := twoPodTopologyReservationTestPlan(t, schedulerCache, node, resourceName)
 			handle := adapter.AdapterReservation{Token: "recovered-token", PlanDigest: "recovered-digest"}
 			allocationAdapter.recoverStates = []adapter.AdapterReservationState{{Reservation: handle, Plan: plan, State: test.state}}
+			addTopologyTestPods(t, schedulerCache,
+				recoveryTopologyTestPod(schedulerCache, "pod-a", node.Name, corev1.PodRunning),
+				recoveryTopologyTestPod(schedulerCache, "pod-b", node.Name, corev1.PodRunning))
 
 			recoverTopologyTestAllocations(t, schedulerCache)
+			// Bound Binding Pods are confirmed again.
+			if got := schedulerCache.deviceTopologyPodConfirmQueue.Len(); got != test.wantConfirm {
+				t.Fatalf("queued confirmations = %d, want %d", got, test.wantConfirm)
+			}
 
 			assertTopologyReservationAvailability(t, schedulerCache, plan, test.want)
 			owner := deviceTopologyReservationOwner{resourceName: resourceName, token: handle.Token, planDigest: handle.PlanDigest}
@@ -118,12 +126,6 @@ func TestSchedulerCacheRestoresRecoveredAllocations(t *testing.T) {
 			free.Placements[0].TaskID, free.Placements[0].PodUID = "pod-c", "pod-c"
 			commitTopologyReservationTestPlan(t, schedulerCache, free)
 
-			if test.state == adapter.AdapterReservationHeld {
-				if _, holds := schedulerCache.deviceTopology.podAllocations["pod-a"]; holds {
-					t.Fatal("pod-a has a record from a Held reservation, want none because no Pod was bound")
-				}
-				return
-			}
 			want := []topologyTestPodCall{{reservation: handle, podUID: "pod-a"}}
 			for _, podUID := range []types.UID{"pod-a", "pod-b"} {
 				if allocations := schedulerCache.deviceTopology.podAllocations[podUID]; len(allocations) != 1 || allocations[0].owner != owner || len(allocations[0].deviceIDs) != 1 {
@@ -138,6 +140,157 @@ func TestSchedulerCacheRestoresRecoveredAllocations(t *testing.T) {
 			}
 			assertTopologyReservationAvailability(t, schedulerCache, topologyTestPlacementOnly(plan, 0), schedulingapi.DeviceAvailable)
 			assertTopologyReservationAvailability(t, schedulerCache, topologyTestPlacementOnly(plan, 1), test.want)
+		})
+	}
+}
+
+func TestSchedulerCacheRecoveryReleasesHeldReservationsNoPodUses(t *testing.T) {
+	tests := []struct {
+		name        string
+		pod         func(*SchedulerCache) *corev1.Pod
+		wantRelease bool
+	}{
+		{
+			name: "pending Pod of this scheduler",
+			pod: func(schedulerCache *SchedulerCache) *corev1.Pod {
+				return recoveryTopologyTestPod(schedulerCache, "pod-a", "", corev1.PodPending)
+			},
+			wantRelease: true,
+		},
+		{
+			name: "pending Pod of another scheduler",
+			pod: func(schedulerCache *SchedulerCache) *corev1.Pod {
+				pod := recoveryTopologyTestPod(schedulerCache, "pod-a", "", corev1.PodPending)
+				pod.Spec.SchedulerName = "other-scheduler"
+				return pod
+			},
+		},
+		{
+			name: "bound Pod",
+			pod: func(schedulerCache *SchedulerCache) *corev1.Pod {
+				return recoveryTopologyTestPod(schedulerCache, "pod-a", "node-a", corev1.PodRunning)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resourceName := corev1.ResourceName("nvidia.com/gpu")
+			allocationAdapter := newTopologyReservationTestAdapter(resourceName)
+			node, schedulerCache := newTopologyReservationTestCache(t, topologyBindTestDevices(resourceName), allocationAdapter)
+			// pod-b is gone, so only pod-a decides whether the reservation is used.
+			plan := twoPodTopologyReservationTestPlan(t, schedulerCache, node, resourceName)
+			handle := adapter.AdapterReservation{Token: "held-token", PlanDigest: "held-digest"}
+			allocationAdapter.recoverStates = []adapter.AdapterReservationState{{Reservation: handle, Plan: plan, State: adapter.AdapterReservationHeld}}
+			addTopologyTestPods(t, schedulerCache, test.pod(schedulerCache))
+
+			recoverTopologyTestAllocations(t, schedulerCache)
+
+			want := schedulingapi.DeviceHeld
+			var wantReleased []adapter.AdapterReservation
+			if test.wantRelease {
+				want = schedulingapi.DeviceAvailable
+				wantReleased = []adapter.AdapterReservation{handle}
+			}
+			if !reflect.DeepEqual(allocationAdapter.releasedReservations, wantReleased) {
+				t.Fatalf("Release() calls = %#v, want %#v", allocationAdapter.releasedReservations, wantReleased)
+			}
+			assertTopologyReservationAvailability(t, schedulerCache, plan, want)
+			if len(schedulerCache.deviceTopology.podAllocations) != 0 {
+				t.Fatalf("Pod records = %#v, want none for a Held reservation", schedulerCache.deviceTopology.podAllocations)
+			}
+		})
+	}
+}
+
+func TestSchedulerCacheRecoveryReconcilesBoundReservationsWithPods(t *testing.T) {
+	tests := []struct {
+		name        string
+		state       adapter.AdapterReservationLifecycleState
+		pod         func(*SchedulerCache) *corev1.Pod
+		want        schedulingapi.DeviceAvailability
+		wantRelease bool
+		wantConfirm bool
+	}{
+		{
+			name:        "Pod deleted while the scheduler was down",
+			state:       adapter.AdapterReservationBinding,
+			want:        schedulingapi.DeviceAvailable,
+			wantRelease: true,
+		},
+		{
+			name:  "Pod finished while the scheduler was down",
+			state: adapter.AdapterReservationAllocated,
+			pod: func(schedulerCache *SchedulerCache) *corev1.Pod {
+				return recoveryTopologyTestPod(schedulerCache, "pod-a", "node-a", corev1.PodSucceeded)
+			},
+			want:        schedulingapi.DeviceAvailable,
+			wantRelease: true,
+		},
+		{
+			name:  "Pod whose bind never reached the API server",
+			state: adapter.AdapterReservationBinding,
+			pod: func(schedulerCache *SchedulerCache) *corev1.Pod {
+				return recoveryTopologyTestPod(schedulerCache, "pod-a", "", corev1.PodPending)
+			},
+			want:        schedulingapi.DeviceAvailable,
+			wantRelease: true,
+		},
+		{
+			name:  "unbound Pod of another scheduler",
+			state: adapter.AdapterReservationBinding,
+			pod: func(schedulerCache *SchedulerCache) *corev1.Pod {
+				pod := recoveryTopologyTestPod(schedulerCache, "pod-a", "", corev1.PodPending)
+				pod.Spec.SchedulerName = "other-scheduler"
+				return pod
+			},
+			want: schedulingapi.DeviceBinding,
+		},
+		{
+			name:  "bound Binding Pod",
+			state: adapter.AdapterReservationBinding,
+			pod: func(schedulerCache *SchedulerCache) *corev1.Pod {
+				return recoveryTopologyTestPod(schedulerCache, "pod-a", "node-a", corev1.PodRunning)
+			},
+			want:        schedulingapi.DeviceAllocated,
+			wantConfirm: true,
+		},
+		{
+			name:  "bound Allocated Pod",
+			state: adapter.AdapterReservationAllocated,
+			pod: func(schedulerCache *SchedulerCache) *corev1.Pod {
+				return recoveryTopologyTestPod(schedulerCache, "pod-a", "node-a", corev1.PodRunning)
+			},
+			want: schedulingapi.DeviceAllocated,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resourceName := corev1.ResourceName("nvidia.com/gpu")
+			allocationAdapter := newTopologyReservationTestAdapter(resourceName)
+			node, schedulerCache := newTopologyReservationTestCache(t, topologyBindTestDevices(resourceName), allocationAdapter)
+			plan := topologyReservationTestPlan(t, schedulerCache, node, map[corev1.ResourceName]int64{resourceName: 1})
+			handle := adapter.AdapterReservation{Token: "recovered-token", PlanDigest: "recovered-digest"}
+			allocationAdapter.recoverStates = []adapter.AdapterReservationState{{Reservation: handle, Plan: plan, State: test.state}}
+			if test.pod != nil {
+				addTopologyTestPods(t, schedulerCache, test.pod(schedulerCache))
+			}
+
+			recoverTopologyTestAllocations(t, schedulerCache)
+			drainTopologyTestPodReleases(schedulerCache)
+			drainTopologyTestPodConfirms(schedulerCache)
+
+			if released := len(allocationAdapter.releasedPods) == 1; released != test.wantRelease {
+				t.Fatalf("ReleasePod() calls = %#v, want a release: %v", allocationAdapter.releasedPods, test.wantRelease)
+			}
+			if confirmed := len(allocationAdapter.confirmedPods) == 1; confirmed != test.wantConfirm {
+				t.Fatalf("Confirm() calls = %#v, want a confirmation: %v", allocationAdapter.confirmedPods, test.wantConfirm)
+			}
+			assertTopologyReservationAvailability(t, schedulerCache, plan, test.want)
+			if _, holds := schedulerCache.deviceTopology.podAllocations["pod-a"]; holds == test.wantRelease {
+				t.Fatalf("pod-a has a record: %v, want %v", holds, !test.wantRelease)
+			}
 		})
 	}
 }
@@ -174,6 +327,7 @@ func TestSchedulerCacheRecoveryKeepsDeviceWithoutFacts(t *testing.T) {
 	// The device's Node has not reported its facts yet.
 	plan.Placements[0].Assignments[0].DeviceIDs[0].Value = "gpu-without-facts"
 	allocationAdapter.recoverStates = []adapter.AdapterReservationState{{Reservation: adapter.AdapterReservation{Token: "token", PlanDigest: "digest"}, Plan: plan, State: adapter.AdapterReservationAllocated}}
+	addTopologyTestPods(t, schedulerCache, recoveryTopologyTestPod(schedulerCache, "pod-a", node.Name, corev1.PodRunning))
 
 	recoverTopologyTestAllocations(t, schedulerCache)
 	schedulerCache.Mutex.Lock()
@@ -197,15 +351,21 @@ func TestSchedulerCacheRecoversAfterRestartThroughMockAllocationAdapter(t *testi
 	plan := twoPodTopologyReservationTestPlan(t, before, node, resourceName)
 	commitTopologyReservationTestPlan(t, before, plan)
 
-	// A new scheduler starts with an empty ledger and the same backend.
+	// A new scheduler starts with an empty ledger and the same backend. Both
+	// Pods were bound before the restart.
 	_, after := newTopologyReservationTestCache(t, topologyBindTestDevices(resourceName), mockAdapter)
+	addTopologyTestPods(t, after,
+		recoveryTopologyTestPod(after, "pod-a", node.Name, corev1.PodRunning),
+		recoveryTopologyTestPod(after, "pod-b", node.Name, corev1.PodRunning))
 	recoverTopologyTestAllocations(t, after)
 	assertTopologyReservationAvailability(t, after, plan, schedulingapi.DeviceBinding)
+	drainTopologyTestPodConfirms(after)
+	assertTopologyReservationAvailability(t, after, plan, schedulingapi.DeviceAllocated)
 
 	after.DeletePod(topologyReleaseTestPod("pod-a", corev1.PodRunning))
 	drainTopologyTestPodReleases(after)
 	assertTopologyReservationAvailability(t, after, topologyTestPlacementOnly(plan, 0), schedulingapi.DeviceAvailable)
-	assertTopologyReservationAvailability(t, after, topologyTestPlacementOnly(plan, 1), schedulingapi.DeviceBinding)
+	assertTopologyReservationAvailability(t, after, topologyTestPlacementOnly(plan, 1), schedulingapi.DeviceAllocated)
 	states, err := mockAdapter.Recover(context.Background())
 	if err != nil || len(states) != 1 || len(states[0].Plan.Placements) != 1 || states[0].Plan.Placements[0].PodUID != "pod-b" {
 		t.Fatalf("mock Recover() after releasing pod-a = (%#v, %v), want only pod-b", states, err)
@@ -219,6 +379,27 @@ func recoverTopologyTestAllocations(t *testing.T, schedulerCache *SchedulerCache
 	schedulerCache.beginDeviceTopologyAllocationRecovery()
 	if pending := schedulerCache.recoverDeviceTopologyAllocations(context.Background()); pending {
 		t.Fatal("recoverDeviceTopologyAllocations() = pending, want done")
+	}
+}
+
+// recoveryTopologyTestPod returns a Pod of the test scheduler with the UID used
+// by the topology test plans. An empty nodeName means the Pod is not bound.
+func recoveryTopologyTestPod(schedulerCache *SchedulerCache, uid types.UID, nodeName string, phase corev1.PodPhase) *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: string(uid), Namespace: "default", UID: uid},
+		Spec:       corev1.PodSpec{SchedulerName: schedulerCache.schedulerNames[0], NodeName: nodeName},
+		Status:     corev1.PodStatus{Phase: phase},
+	}
+}
+
+// addTopologyTestPods puts Pods in the cache's Pod informer store, as if the
+// informer had synced them.
+func addTopologyTestPods(t *testing.T, schedulerCache *SchedulerCache, pods ...*corev1.Pod) {
+	t.Helper()
+	for _, pod := range pods {
+		if err := schedulerCache.podInformer.Informer().GetIndexer().Add(pod); err != nil {
+			t.Fatalf("add Pod %q to the informer store: %v", pod.Name, err)
+		}
 	}
 }
 

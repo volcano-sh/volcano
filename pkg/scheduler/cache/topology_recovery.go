@@ -23,6 +23,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
@@ -35,6 +36,7 @@ import (
 type recoveredDeviceTopologyReservation struct {
 	owner        deviceTopologyReservationOwner
 	availability schedulingapi.DeviceAvailability
+	plan         schedulingapi.TopologyPlacementPlan
 	deviceIDs    []schedulingapi.DeviceID
 	podUIDs      []types.UID
 	podDevices   map[types.UID][]schedulingapi.DeviceID
@@ -85,10 +87,27 @@ func (sc *SchedulerCache) runDeviceTopologyAllocationRecovery(stopCh <-chan stru
 }
 
 // recoverDeviceTopologyAllocations asks the adapter of each pending resource
-// for the reservations it holds and restores them in the cache. A resource
-// whose adapter fails stays pending, so its devices stay unavailable for exact
-// placement. It reports whether any resource is still pending.
+// for the reservations it holds, restores them in the cache, and frees the
+// ones no Pod uses any more. A resource whose adapter fails stays pending, so
+// its devices stay unavailable for exact placement. It reports whether any
+// resource is still pending.
 func (sc *SchedulerCache) recoverDeviceTopologyAllocations(ctx context.Context) bool {
+	pending, unused := sc.restoreDeviceTopologyAllocationsFromAdapters(ctx)
+	// The release takes the reservation mutex itself, so it runs after the
+	// restore lets it go. Until then the devices stay Held.
+	for _, reservation := range unused {
+		if err := sc.ReleaseDeviceTopologyReservation(ctx, reservation); err != nil {
+			klog.ErrorS(err, "Failed to release a recovered device topology reservation that no Pod uses", "token", reservation.AdapterReservations[0].Token)
+		}
+	}
+	return pending
+}
+
+// restoreDeviceTopologyAllocationsFromAdapters restores the reservations of
+// each pending resource and compares them with the Pods the scheduler sees
+// now. It reports whether any resource is still pending, and returns the Held
+// reservations that no Pod uses.
+func (sc *SchedulerCache) restoreDeviceTopologyAllocationsFromAdapters(ctx context.Context) (bool, []schedulingapi.TopologyReservation) {
 	sc.deviceTopologyReservationMutex.Lock()
 	defer sc.deviceTopologyReservationMutex.Unlock()
 
@@ -105,6 +124,7 @@ func (sc *SchedulerCache) recoverDeviceTopologyAllocations(ctx context.Context) 
 	})
 
 	stillPending := false
+	var unused []schedulingapi.TopologyReservation
 	for _, resourceName := range resourceNames {
 		allocationAdapter, exists := registry.AdapterFor(resourceName)
 		contract, _ := registry.IdentityContractFor(resourceName)
@@ -123,7 +143,8 @@ func (sc *SchedulerCache) recoverDeviceTopologyAllocations(ctx context.Context) 
 		}
 
 		sc.Mutex.Lock()
-		restoreErrors := state.restoreDeviceTopologyAllocations(contract, reservations, sc.deviceTopologyReservationTime().Add(deviceTopologyPodConfirmTimeout))
+		restored, restoreErrors := state.restoreDeviceTopologyAllocations(contract, reservations, sc.deviceTopologyReservationTime().Add(deviceTopologyPodConfirmTimeout))
+		unused = append(unused, sc.reconcileRecoveredDeviceTopologyLocked(restored)...)
 		delete(state.allocationRecoveryPending, resourceName)
 		state.publish()
 		sc.Mutex.Unlock()
@@ -133,7 +154,92 @@ func (sc *SchedulerCache) recoverDeviceTopologyAllocations(ctx context.Context) 
 		}
 		klog.V(2).InfoS("Recovered device topology allocations", "resource", resourceName, "reservations", len(reservations), "invalid", len(restoreErrors))
 	}
-	return stillPending
+	return stillPending, unused
+}
+
+// reconcileRecoveredDeviceTopologyLocked compares restored reservations with
+// the Pods the scheduler sees now, because a Pod can end, or never bind, while
+// no scheduler is running. A Pod that is gone or finished, or that this
+// scheduler owns but is not on a Node, has its devices released. A bound
+// Binding Pod is confirmed again. A running Pod of another scheduler is left
+// to that scheduler. It returns the Held reservations that no Pod uses, so
+// the caller can release them. The caller holds SchedulerCache.Mutex, so a
+// Pod event handled before this call shows here as a gone or finished Pod, and
+// one handled after it finds the restored record of a Binding or Allocated
+// reservation.
+func (sc *SchedulerCache) reconcileRecoveredDeviceTopologyLocked(reservations []recoveredDeviceTopologyReservation) []schedulingapi.TopologyReservation {
+	if len(reservations) == 0 {
+		return nil
+	}
+	if sc.podInformer == nil {
+		klog.ErrorS(nil, "No Pod informer is configured; recovered device topology devices stay as the adapter reported them")
+		return nil
+	}
+	pods, err := sc.podInformer.Lister().List(labels.Everything())
+	if err != nil {
+		klog.ErrorS(err, "Failed to list Pods; recovered device topology devices stay as the adapter reported them")
+		return nil
+	}
+	podsByUID := make(map[types.UID]*corev1.Pod, len(pods))
+	for _, pod := range pods {
+		podsByUID[pod.UID] = pod
+	}
+
+	var unused []schedulingapi.TopologyReservation
+	for _, reservation := range reservations {
+		if reservation.availability == schedulingapi.DeviceHeld {
+			// No bind started for a Held reservation before the restart, and
+			// this scheduler does not remember the plan, so it is released
+			// whole unless a Pod may still need it.
+			if sc.recoveredReservationUnused(reservation, podsByUID) {
+				unused = append(unused, schedulingapi.TopologyReservation{
+					Plan:                reservation.plan,
+					AdapterReservations: []schedulingapi.TopologyAdapterReservation{{ResourceName: reservation.owner.resourceName, Token: reservation.owner.token, PlanDigest: reservation.owner.planDigest}},
+				})
+			} else {
+				klog.V(2).InfoS("Recovered Held device topology reservation has a Pod that may still use it; its devices stay Held", "token", reservation.owner.token)
+			}
+			continue
+		}
+		for _, podUID := range reservation.podUIDs {
+			pod := podsByUID[podUID]
+			switch {
+			case recoveredPodEnded(pod):
+				sc.startDeviceTopologyPodReleaseLocked(podUID)
+			case !responsibleForPod(pod, sc.schedulerNames, sc.schedulerPodName, sc.c):
+				// Another scheduler owns the Pod and its devices.
+			case pod.Spec.NodeName == "":
+				// The bind never reached the API server, so the Pod does not
+				// use the devices and must be scheduled again.
+				sc.startDeviceTopologyPodReleaseLocked(podUID)
+			case reservation.availability == schedulingapi.DeviceBinding:
+				sc.deviceTopologyPodConfirmQueue.Add(podUID)
+			}
+		}
+	}
+	return unused
+}
+
+// recoveredReservationUnused reports whether no Pod of a recovered Held
+// reservation can still use it: each Pod is gone or finished, or is owned by
+// this scheduler and not on a Node.
+func (sc *SchedulerCache) recoveredReservationUnused(reservation recoveredDeviceTopologyReservation, podsByUID map[types.UID]*corev1.Pod) bool {
+	for _, podUID := range reservation.podUIDs {
+		pod := podsByUID[podUID]
+		if recoveredPodEnded(pod) {
+			continue
+		}
+		if !responsibleForPod(pod, sc.schedulerNames, sc.schedulerPodName, sc.c) || pod.Spec.NodeName != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// recoveredPodEnded reports whether a Pod is gone or finished, so it no longer
+// uses any device.
+func recoveredPodEnded(pod *corev1.Pod) bool {
+	return pod == nil || isTerminated(schedulingapi.GetTaskStatus(pod))
 }
 
 // restoreDeviceTopologyAllocations rebuilds the ledger states, reservation
@@ -141,9 +247,9 @@ func (sc *SchedulerCache) recoverDeviceTopologyAllocations(ctx context.Context) 
 // recovered. Binding devices must be confirmed again by confirmBy. A reservation
 // that is malformed, or that claims a device another reservation also claims,
 // cannot be trusted: its devices become Unreconciled with no owner, so they
-// stay unavailable. It returns one error per invalid reservation. The caller
-// holds SchedulerCache.Mutex.
-func (state *deviceTopologyState) restoreDeviceTopologyAllocations(contract adapter.DeviceIdentityContract, reservations []adapter.AdapterReservationState, confirmBy time.Time) []error {
+// stay unavailable. It returns the restored reservations and one error per
+// invalid reservation. The caller holds SchedulerCache.Mutex.
+func (state *deviceTopologyState) restoreDeviceTopologyAllocations(contract adapter.DeviceIdentityContract, reservations []adapter.AdapterReservationState, confirmBy time.Time) ([]recoveredDeviceTopologyReservation, []error) {
 	recovered := make([]recoveredDeviceTopologyReservation, 0, len(reservations))
 	claims := make(map[schedulingapi.DeviceID]int)
 	for _, reservation := range reservations {
@@ -157,6 +263,7 @@ func (state *deviceTopologyState) restoreDeviceTopologyAllocations(contract adap
 		recovered = append(recovered, parsed)
 	}
 
+	var restored []recoveredDeviceTopologyReservation
 	var restoreErrors []error
 	for _, reservation := range recovered {
 		if reservation.err == nil {
@@ -178,6 +285,7 @@ func (state *deviceTopologyState) restoreDeviceTopologyAllocations(contract adap
 			_ = state.ledger.restore(deviceID, reservation.availability)
 			state.reservationOwners[deviceID] = reservation.owner
 		}
+		restored = append(restored, reservation)
 		if reservation.availability == schedulingapi.DeviceHeld {
 			// No Pod was bound before the restart, so no Pod record exists.
 			continue
@@ -190,7 +298,7 @@ func (state *deviceTopologyState) restoreDeviceTopologyAllocations(contract adap
 			})
 		}
 	}
-	return restoreErrors
+	return restored, restoreErrors
 }
 
 // parseRecoveredDeviceTopologyReservation checks one recovered reservation and
@@ -200,6 +308,7 @@ func (state *deviceTopologyState) restoreDeviceTopologyAllocations(contract adap
 func parseRecoveredDeviceTopologyReservation(contract adapter.DeviceIdentityContract, reservation adapter.AdapterReservationState) recoveredDeviceTopologyReservation {
 	parsed := recoveredDeviceTopologyReservation{
 		owner:      deviceTopologyReservationOwner{resourceName: contract.ResourceName, token: reservation.Reservation.Token, planDigest: reservation.Reservation.PlanDigest},
+		plan:       reservation.Plan.Clone(),
 		podDevices: make(map[types.UID][]schedulingapi.DeviceID),
 	}
 	fail := func(format string, args ...interface{}) {
