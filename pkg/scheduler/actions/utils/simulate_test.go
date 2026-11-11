@@ -17,17 +17,24 @@ limitations under the License.
 package utils
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
+	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
+	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -203,61 +210,6 @@ func TestCollectPendingTasksForJobStartup_EmptyWorksheetReturnsNil(t *testing.T)
 	assert.Nil(t, collectPendingTasksForJobStartup(ssn, job))
 }
 
-func TestBuildNominationPlanInDomain_Success(t *testing.T) {
-	ensureServerOptsForTest()
-	jobID := api.JobID("ns/job2")
-	task := makeTask(jobID, "t1")
-	job := api.NewJobInfo(jobID, task)
-	node := api.NewNodeInfo(nil)
-	node.Name = "n1"
-	node.Idle = (&api.Resource{MilliCPU: 2000}).Clone()
-	node.Releasing = api.EmptyResource()
-	node.Pipelined = api.EmptyResource()
-
-	ssn := &framework.Session{
-		Jobs:  map[api.JobID]*api.JobInfo{jobID: job},
-		Nodes: map[string]*api.NodeInfo{node.Name: node},
-	}
-	hn := testDomainHyperNode(ssn, framework.ClusterTopHyperNode, []*api.NodeInfo{node})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, nil, "test", true)
-	assert.True(t, ok)
-	assert.NotNil(t, plan)
-	assert.Equal(t, 1, len(plan.Operations()))
-}
-
-func TestBuildNominationPlanInDomain_WithVictimIncludesEvictAndPipeline(t *testing.T) {
-	ensureServerOptsForTest()
-	jobID := api.JobID("ns/job4")
-	task := makeTask(jobID, "t1")
-	job := api.NewJobInfo(jobID, task)
-
-	victimJobID := api.JobID("ns/victim-job")
-	victim := makeTask(victimJobID, "v1")
-	victim.Status = api.Running
-	victim.NodeName = "n1"
-	victimJob := api.NewJobInfo(victimJobID, victim)
-
-	node := api.NewNodeInfo(nil)
-	node.Name = "n1"
-	node.Idle = (&api.Resource{MilliCPU: 3000}).Clone()
-	node.Releasing = api.EmptyResource()
-	node.Pipelined = api.EmptyResource()
-	assert.NoError(t, node.AddTask(victim))
-
-	ssn := &framework.Session{
-		Jobs: map[api.JobID]*api.JobInfo{
-			jobID:       job,
-			victimJobID: victimJob,
-		},
-		Nodes: map[string]*api.NodeInfo{node.Name: node},
-	}
-	hn := testDomainHyperNode(ssn, framework.ClusterTopHyperNode, []*api.NodeInfo{node})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, []*api.TaskInfo{victim}, "test", true)
-	assert.True(t, ok)
-	assert.NotNil(t, plan)
-	assert.Equal(t, 2, len(plan.Operations()))
-}
-
 func TestBuildNominationPlanInDomain_NoFeasibleNode(t *testing.T) {
 	ensureServerOptsForTest()
 	jobID := api.JobID("ns/job3")
@@ -279,53 +231,134 @@ func TestBuildNominationPlanInDomain_NoFeasibleNode(t *testing.T) {
 	assert.Nil(t, plan)
 }
 
-func TestBuildNominationPlanInDomain_PipelineFailureRollsBackEviction(t *testing.T) {
+func TestBuildNominationPlanInDomain_PlanOrRollback(t *testing.T) {
 	ensureServerOptsForTest()
-	options.ServerOpts.MinNodesToFind = 1
-
-	jobID := api.JobID("ns/job-pipeline-fail")
-	t1 := makeTask(jobID, "t1")
-	t1.NodeName = "other-node" // force Statement.Pipeline to fail on n1
-	job := api.NewJobInfo(jobID, t1)
-
-	victimJobID := api.JobID("ns/victim-job-fail")
-	victim := makeTask(victimJobID, "v1")
-	victim.Status = api.Running
-	victim.NodeName = "n1"
-	victimJob := api.NewJobInfo(victimJobID, victim)
-
-	node := api.NewNodeInfo(nil)
-	node.Name = "n1"
-	node.Idle = (&api.Resource{MilliCPU: 1000}).Clone()
-	node.Releasing = api.EmptyResource()
-	node.Pipelined = api.EmptyResource()
-	assert.NoError(t, node.AddTask(victim))
-	ghostNode := api.NewNodeInfo(nil)
-	ghostNode.Name = "ghost-node"
-	ghostNode.Idle = (&api.Resource{MilliCPU: 1000}).Clone()
-	ghostNode.Releasing = api.EmptyResource()
-	ghostNode.Pipelined = api.EmptyResource()
-
-	ssn := &framework.Session{
-		Jobs: map[api.JobID]*api.JobInfo{
-			jobID:       job,
-			victimJobID: victimJob,
+	plugins := map[string]framework.PluginBuilder{drf.PluginName: drf.New, gang.PluginName: gang.New}
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{
+		{Name: drf.PluginName}, {Name: gang.PluginName, EnabledJobReady: ptr.To(true), EnabledJobPipelined: ptr.To(true)},
+	}}}
+	resources := api.BuildResourceList("1", "1Gi")
+	victim := util.BuildPod("ns", "victim", "node1", v1.PodRunning, resources, "victim", nil, nil)
+	first := util.BuildPod("ns", "requester-0", "", v1.PodPending, resources, "requester", nil, nil)
+	second := util.BuildPod("ns", "requester-1", "", v1.PodPending, resources, "requester", nil, nil)
+	nodes := []*v1.Node{util.BuildNode("node1", api.BuildResourceList("8", "8Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)}
+	queues := []*schedulingv1beta1.Queue{util.BuildQueue("q", 1, nil)}
+	reservationErr := errors.New("external reservation unavailable")
+	tests := []struct {
+		uthelper.TestCommonStruct
+		jobID          api.JobID
+		victims        map[api.JobID][]api.TaskID
+		allocateErrors map[api.TaskID]error
+		wantPlan       bool
+		wantOperations int
+	}{
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "placement without eviction",
+				Pods: []*v1.Pod{first},
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					util.BuildPodGroup("requester", "ns", "q", 1, nil, schedulingv1beta1.PodGroupInqueue),
+				},
+				ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
+					"ns/requester": {api.Pending: 1},
+				},
+			},
+			jobID:          "ns/requester",
+			wantPlan:       true,
+			wantOperations: 1,
 		},
-		Nodes: map[string]*api.NodeInfo{node.Name: node},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "placement with eviction",
+				Pods: []*v1.Pod{victim, first},
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					util.BuildPodGroup("victim", "ns", "q", 1, nil, schedulingv1beta1.PodGroupRunning),
+					util.BuildPodGroup("requester", "ns", "q", 1, nil, schedulingv1beta1.PodGroupInqueue),
+				},
+				ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
+					"ns/victim":    {api.Running: 1},
+					"ns/requester": {api.Pending: 1},
+				},
+			},
+			jobID:          "ns/requester",
+			victims:        map[api.JobID][]api.TaskID{"ns/victim": {"ns-victim"}},
+			wantPlan:       true,
+			wantOperations: 2,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "first pipeline fails",
+				Pods: []*v1.Pod{victim, first},
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					util.BuildPodGroup("victim", "ns", "q", 1, nil, schedulingv1beta1.PodGroupRunning),
+					util.BuildPodGroup("requester", "ns", "q", 1, nil, schedulingv1beta1.PodGroupInqueue),
+				},
+				ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
+					"ns/victim":    {api.Running: 1},
+					"ns/requester": {api.Pending: 1},
+				},
+			},
+			allocateErrors: map[api.TaskID]error{"ns-requester-0": reservationErr},
+			jobID:          "ns/requester",
+			victims:        map[api.JobID][]api.TaskID{"ns/victim": {"ns-victim"}},
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "failure after a successful pipeline",
+				Pods: []*v1.Pod{victim, first, second},
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					util.BuildPodGroup("victim", "ns", "q", 1, nil, schedulingv1beta1.PodGroupRunning),
+					util.BuildPodGroup("requester", "ns", "q", 2, nil, schedulingv1beta1.PodGroupInqueue),
+				},
+				ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
+					"ns/victim":    {api.Running: 1},
+					"ns/requester": {api.Pending: 2},
+				},
+			},
+			allocateErrors: map[api.TaskID]error{"ns-requester-1": reservationErr},
+			jobID:          "ns/requester",
+			victims:        map[api.JobID][]api.TaskID{"ns/victim": {"ns-victim"}},
+		},
 	}
-	hn := testDomainHyperNode(ssn, "sim-domain", []*api.NodeInfo{ghostNode})
-	plan, _, ok := BuildNominationPlanInDomain(ssn, nil, job, hn, []*api.TaskInfo{victim}, "test", true)
-	assert.False(t, ok)
-	assert.Nil(t, plan)
-
-	// Dry-run must rollback temporary victim eviction when all pipeline attempts fail.
-	assert.Len(t, node.Tasks, 1)
-	_, victimStillOnNode := node.Tasks[api.PodKey(victim.Pod)]
-	assert.True(t, victimStillOnNode)
-	assert.Equal(t, api.Running, victim.Status)
-	assert.Equal(t, "", t1.NodeName)
-	assert.Equal(t, 1, len(job.TaskStatusIndex[api.Pending]))
-	assert.Equal(t, 0, len(job.TaskStatusIndex[api.Pipelined]))
+	for i, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			tc.Plugins, tc.Nodes, tc.Queues = plugins, nodes, queues
+			ssn := tc.RegisterSession(tiers, nil)
+			t.Cleanup(tc.Close)
+			ssn.AddEventHandler(&framework.EventHandler{
+				AllocateFunc: func(event *framework.Event) {
+					if err := tc.allocateErrors[event.Task.UID]; err != nil {
+						event.Err = err
+					}
+				},
+			})
+			job := ssn.Jobs[tc.jobID]
+			require.NotNil(t, job)
+			var victims []*api.TaskInfo
+			for jobID, taskIDs := range tc.victims {
+				victimJob := ssn.Jobs[jobID]
+				require.NotNil(t, victimJob)
+				for _, taskID := range taskIDs {
+					task := victimJob.Tasks[taskID]
+					require.NotNil(t, task)
+					victims = append(victims, task)
+				}
+			}
+			root := ssn.HyperNodes[framework.ClusterTopHyperNode]
+			require.NotNil(t, root)
+			require.NotPanics(t, func() {
+				plan, _, ok := BuildNominationPlanInDomain(ssn, ssn.Queues[job.Queue], job, root, victims, ReasonGangPreempt, false)
+				assert.Equal(t, tc.wantPlan, ok)
+				if tc.wantPlan {
+					require.NotNil(t, plan)
+					assert.Len(t, plan.Operations(), tc.wantOperations)
+				} else {
+					assert.Nil(t, plan)
+				}
+			})
+			assert.NoError(t, tc.CheckAll(i))
+		})
+	}
 }
 
 func TestBuildNominationPlanInDomain_PrefersIdleNodeOverFutureIdle(t *testing.T) {
