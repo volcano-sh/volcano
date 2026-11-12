@@ -239,6 +239,43 @@ func TestSortBundlesForReclaim_DeterministicTieBreaker(t *testing.T) {
 	assert.Equal(t, api.TaskID("b"), bundles[1].Tasks[0].UID)
 }
 
+func TestSortBundlesForReclaim_ResourceFitPreservesPolicyOrder(t *testing.T) {
+	makeBundle := func(uid api.JobID, queue api.QueueID, kind BundleType, globalCPU float64, fit int) *Bundle {
+		return &Bundle{
+			Type: kind, Job: &api.JobInfo{UID: uid, Queue: queue},
+			LocalRes: (&api.Resource{MilliCPU: 1000}).Clone(), GlobalRes: (&api.Resource{MilliCPU: globalCPU}).Clone(),
+			ResourceFitScore: fit,
+		}
+	}
+	queues := map[api.QueueID]*api.QueueInfo{"qa": {UID: "qa", Name: "qa"}, "qb": {UID: "qb", Name: "qb"}}
+	for _, tc := range []struct {
+		name string
+		a, b *Bundle
+		want api.JobID
+	}{
+		{"fit breaks an ROI tie", makeBundle("a", "qa", BundleSafe, 0, 0), makeBundle("b", "qa", BundleSafe, 0, 1), "b"},
+		{"SAFE remains before WHOLE", makeBundle("a", "qa", BundleSafe, 0, 0), makeBundle("b", "qa", BundleWhole, 0, 1), "a"},
+		{"queue order remains first", makeBundle("a", "qa", BundleSafe, 0, 0), makeBundle("b", "qb", BundleSafe, 0, 1), "a"},
+		{"ROI remains before fit", makeBundle("a", "qa", BundleWhole, 2000, 0), makeBundle("b", "qa", BundleWhole, 4000, 1), "a"},
+		{"equal scores retain stable identifiers", makeBundle("a", "qa", BundleSafe, 0, 1), makeBundle("b", "qa", BundleSafe, 0, 1), "a"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, bundles := range [][]*Bundle{{tc.a, tc.b}, {tc.b, tc.a}} {
+				SortBundlesForReclaim(bundles, &api.Resource{MilliCPU: 1000}, func(l, r *api.QueueInfo) bool {
+					return l.Name < r.Name
+				}, queues)
+				assert.Equal(t, tc.want, bundles[0].Job.UID)
+			}
+		})
+	}
+	// The gangpreempt comparator does not consume reclamation's optional score.
+	a := makeBundle("a", "qa", BundleSafe, 0, 0)
+	b := makeBundle("b", "qa", BundleSafe, 0, 1)
+	bundles := []*Bundle{b, a}
+	SortBundlesForPreempt(bundles, &api.Resource{MilliCPU: 1000}, nil)
+	assert.Equal(t, api.JobID("a"), bundles[0].Job.UID)
+}
+
 // addRunningTaskToSubJob wires a Running task into both the job-level indexes
 // and the named sub-job. It also records the task -> sub-job mapping so the
 // CreateJobBundles sub-job gate can resolve the task's sub-job.

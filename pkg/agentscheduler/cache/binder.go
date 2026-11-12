@@ -107,6 +107,9 @@ func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *agentapi.PodS
 
 	// 2. Bind pod if no conflict
 	task.NodeName = node.Name
+	// Informer listeners share the original Pod. Keep a scheduling decision
+	// private until the binding is observed from the API server.
+	task.Pod = task.Pod.DeepCopy()
 	task.Pod.Spec.NodeName = node.Name
 	nodeBindGeneration := node.BindGeneration
 	if err := binder.cache.AddBindTask(scheduleResult.BindContext); err != nil {
