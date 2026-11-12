@@ -354,33 +354,33 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
 			task := event.Task
-			node := task.NodeName
-			for hyperNode := range ssn.HyperNodes {
-				if ssn.RealNodesSet[hyperNode].Has(node) {
-					status, ok := nta.hyperNodeResourceCache[hyperNode]
-					if !ok {
-						klog.Warningf("plugin %s failed to find the resource status cache of hyperNode %s, which should not happen", PluginName, hyperNode)
-						continue
-					}
-					status.used.Add(task.Resreq)
-				}
-			}
+			nta.forEachHyperNodeResource(ssn, task.NodeName, func(status *resourceStatus) {
+				status.used.Add(task.Resreq)
+			})
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			task := event.Task
-			node := task.NodeName
-			for hyperNode := range ssn.HyperNodes {
-				if ssn.RealNodesSet[hyperNode].Has(node) {
-					status, ok := nta.hyperNodeResourceCache[hyperNode]
-					if !ok {
-						klog.Warningf("plugin %s failed to find the resource status cache of hyperNode %s, which should not happen", PluginName, hyperNode)
-						continue
-					}
-					status.used.Sub(task.Resreq)
-				}
-			}
+			nta.forEachHyperNodeResource(ssn, task.NodeName, func(status *resourceStatus) {
+				status.used.Sub(task.Resreq)
+			})
 		},
 	})
+}
+
+// forEachHyperNodeResource visits the cached resource status of every HyperNode
+// that contains the given node.
+func (nta *networkTopologyAwarePlugin) forEachHyperNodeResource(ssn *framework.Session, nodeName string, visit func(*resourceStatus)) {
+	for hyperNode := range ssn.HyperNodes {
+		if !ssn.RealNodesSet[hyperNode].Has(nodeName) {
+			continue
+		}
+		status, ok := nta.hyperNodeResourceCache[hyperNode]
+		if !ok {
+			klog.Warningf("plugin %s failed to find the resource status cache of hyperNode %s, which should not happen", PluginName, hyperNode)
+			continue
+		}
+		visit(status)
+	}
 }
 
 func (nta *networkTopologyAwarePlugin) HyperNodeOrderFn(ssn *framework.Session, subJob *api.SubJobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
