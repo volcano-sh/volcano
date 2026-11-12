@@ -680,9 +680,11 @@ func TestWaitForHandlerSync_AllHandlersSynced(t *testing.T) {
 	defer close(stopCh)
 
 	start := time.Now()
-	sc.WaitForHandlerSync(stopCh)
+	incompleteHandlers, err := sc.waitForHandlerSync(stopCh)
 	elapsed := time.Since(start)
 
+	assert.NoError(t, err)
+	assert.Empty(t, incompleteHandlers)
 	assert.Less(t, elapsed, time.Second, "WaitForHandlerSync should return quickly when all handlers are synced")
 }
 
@@ -701,9 +703,11 @@ func TestWaitForHandlerSync_SomeHandlersNotSyncedTimeout(t *testing.T) {
 	defer close(stopCh)
 
 	start := time.Now()
-	sc.WaitForHandlerSync(stopCh)
+	incompleteHandlers, err := sc.waitForHandlerSync(stopCh)
 	elapsed := time.Since(start)
 
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Equal(t, []string{"handler2"}, incompleteHandlers)
 	assert.GreaterOrEqual(t, elapsed, 200*time.Millisecond, "WaitForHandlerSync should wait until timeout when some handlers are not synced")
 	assert.Less(t, elapsed, 2*time.Second, "WaitForHandlerSync should not exceed much more than the resourceSyncTimeout")
 }
@@ -725,9 +729,11 @@ func TestWaitForHandlerSync_StopChanClosedBeforeSync(t *testing.T) {
 	}()
 
 	start := time.Now()
-	sc.WaitForHandlerSync(stopCh)
+	incompleteHandlers, err := sc.waitForHandlerSync(stopCh)
 	elapsed := time.Since(start)
 
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, []string{"handler1"}, incompleteHandlers)
 	assert.Less(t, elapsed, 2*time.Second, "WaitForHandlerSync should return early when stopChan is closed")
 }
 
@@ -748,9 +754,11 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_Synced(t *testing.T)
 	defer close(stopCh)
 
 	start := time.Now()
-	sc.WaitForHandlerSync(stopCh)
+	incompleteHandlers, err := sc.waitForHandlerSync(stopCh)
 	elapsed := time.Since(start)
 
+	assert.NoError(t, err)
+	assert.Empty(t, incompleteHandlers)
 	assert.True(t, tracker.HasSynced(), "InitialEventAsyncHandlerTracker should report HasSynced=true")
 	assert.Less(t, elapsed, time.Second, "WaitForHandlerSync should return quickly when InitialEventAsyncHandlerTracker is synced")
 }
@@ -772,9 +780,11 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_UpstreamNotSynced(t 
 	defer close(stopCh)
 
 	start := time.Now()
-	sc.WaitForHandlerSync(stopCh)
+	incompleteHandlers, err := sc.waitForHandlerSync(stopCh)
 	elapsed := time.Since(start)
 
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Equal(t, []string{"node"}, incompleteHandlers)
 	assert.False(t, tracker.HasSynced(), "InitialEventAsyncHandlerTracker should report HasSynced=false when upstream not synced")
 	assert.GreaterOrEqual(t, elapsed, 200*time.Millisecond, "WaitForHandlerSync should timeout when tracker upstream is not synced")
 }
@@ -799,9 +809,11 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_PendingObjects(t *te
 	defer close(stopCh)
 
 	start := time.Now()
-	sc.WaitForHandlerSync(stopCh)
+	incompleteHandlers, err := sc.waitForHandlerSync(stopCh)
 	elapsed := time.Since(start)
 
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Equal(t, []string{"node"}, incompleteHandlers)
 	assert.False(t, tracker.HasSynced(), "InitialEventAsyncHandlerTracker should report HasSynced=false when there are pending objects")
 	assert.GreaterOrEqual(t, elapsed, 200*time.Millisecond, "WaitForHandlerSync should timeout when tracker has pending objects")
 }
@@ -831,12 +843,33 @@ func TestWaitForHandlerSync_InitialEventAsyncHandlerTracker_CompletesAfterDone(t
 	}()
 
 	start := time.Now()
-	sc.WaitForHandlerSync(stopCh)
+	incompleteHandlers, err := sc.waitForHandlerSync(stopCh)
 	elapsed := time.Since(start)
 
+	assert.NoError(t, err)
+	assert.Empty(t, incompleteHandlers)
 	assert.True(t, tracker.HasSynced(), "InitialEventAsyncHandlerTracker should report HasSynced=true after all objects are Done")
 	assert.Less(t, elapsed, 2*time.Second, "WaitForHandlerSync should return after all pending objects are processed")
 	assert.GreaterOrEqual(t, elapsed, 100*time.Millisecond, "WaitForHandlerSync should wait until Done is called")
+}
+
+func TestWaitForHandlerSync_IncompleteHandlersAreSorted(t *testing.T) {
+	sc := &SchedulerCache{
+		registeredHandlers: map[string]kcache.ResourceEventHandlerRegistration{
+			"pod":   &mockHandlerRegistration{synced: false},
+			"node":  &mockHandlerRegistration{synced: false},
+			"queue": &mockHandlerRegistration{synced: true},
+		},
+		resourceSyncTimeout: 300 * time.Millisecond,
+	}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	incompleteHandlers, err := sc.waitForHandlerSync(stopCh)
+
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Equal(t, []string{"node", "pod"}, incompleteHandlers)
 }
 
 func TestAddUnassignedNumaPods_NodeMissingSkipsWithoutCrash(t *testing.T) {
