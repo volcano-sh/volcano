@@ -31,9 +31,9 @@ import (
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
-func createQueueCommand(ctx context.Context, config *rest.Config, action busv1alpha1.Action) error {
+func createQueueCommand(ctx context.Context, config *rest.Config, action busv1alpha1.Action, name string) error {
 	queueClient := versioned.NewForConfigOrDie(config)
-	queue, err := queueClient.SchedulingV1beta1().Queues().Get(ctx, operateQueueFlags.Name, metav1.GetOptions{})
+	queue, err := queueClient.SchedulingV1beta1().Queues().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
