@@ -75,6 +75,7 @@ func main() {
 
 	if err := s.CheckOptionOrDie(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
+		klog.Flush()
 		os.Exit(1)
 	}
 	if s.CaCertFile != "" && s.CertFile != "" && s.KeyFile != "" {
@@ -88,6 +89,7 @@ func main() {
 
 	if err := app.Run(s); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
+		klog.Flush()
 		os.Exit(1)
 	}
 }
