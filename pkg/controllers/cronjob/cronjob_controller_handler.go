@@ -27,7 +27,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
@@ -160,22 +159,30 @@ func (cc *cronjobcontroller) isControlledBy(job *batchv1.Job) *batchv1.CronJob {
 	return nil
 }
 
+const cronJobOwnerIndex = "cronJobOwner"
+
+func cronJobOwnerKey(namespace, name string, uid types.UID) string {
+	return namespace + "/" + name + "/" + string(uid)
+}
+
+func indexJobByCronJobOwner(obj interface{}) ([]string, error) {
+	job := obj.(*batchv1.Job)
+	owner := metav1.GetControllerOfNoCopy(job)
+	if owner == nil || owner.Kind != controllerKind.Kind {
+		return nil, nil
+	}
+	return []string{cronJobOwnerKey(job.Namespace, owner.Name, owner.UID)}, nil
+}
+
 func (cc *cronjobcontroller) getJobsByCronJob(cronJob *batchv1.CronJob) ([]*batchv1.Job, error) {
-	jobList, err := cc.jobLister.Jobs(cronJob.Namespace).List(labels.Everything())
+	key := cronJobOwnerKey(cronJob.Namespace, cronJob.Name, cronJob.UID)
+	objects, err := cc.jobIndexer.ByIndex(cronJobOwnerIndex, key)
 	if err != nil {
 		return nil, err
 	}
-	jobsByCronJob := make([]*batchv1.Job, 0, len(jobList))
-
-	for _, job := range jobList {
-		controllerRef := metav1.GetControllerOf(job)
-		if controllerRef == nil ||
-			controllerRef.Kind != "CronJob" ||
-			controllerRef.Name != cronJob.Name ||
-			controllerRef.UID != cronJob.UID {
-			continue
-		}
-		jobsByCronJob = append(jobsByCronJob, job)
+	jobsByCronJob := make([]*batchv1.Job, 0, len(objects))
+	for _, obj := range objects {
+		jobsByCronJob = append(jobsByCronJob, obj.(*batchv1.Job))
 	}
 
 	return jobsByCronJob, nil
