@@ -36,6 +36,7 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	commonutil "volcano.sh/volcano/pkg/util"
 
+	jobsvalidate "volcano.sh/volcano/pkg/webhooks/admission/jobs/validate"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -199,6 +200,14 @@ func validateCronjobSpec(spec *v1alpha1.CronJobSpec, nameSpace string) string {
 					msg += " invalid timeZone"
 				}
 			}
+		}
+	}
+
+	if jobMsg := strings.TrimSpace(jobsvalidate.ValidateJobTemplate(&spec.JobTemplate.Spec, nameSpace, "")); jobMsg != "" {
+		if msg != "" {
+			msg += "; " + jobMsg
+		} else {
+			msg = " " + jobMsg
 		}
 	}
 	return msg

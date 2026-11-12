@@ -118,6 +118,32 @@ func AdmitJobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 }
 
 func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionResponse) string {
+	msg := validateJobCommon(job, true)
+	if len(msg) > 0 {
+		reviewResponse.Allowed = false
+	}
+	return msg
+}
+
+// ValidateJobTemplate validates a JobSpec embedded in a higher-level workload template
+// (such as CronJob.Spec.JobTemplate.Spec) using the same rules as Job creation,
+// excluding top-level Job name and cluster queue lister checks which are handled by
+// the enclosing workload's admission validator.
+func ValidateJobTemplate(jobSpec *v1alpha1.JobSpec, namespace, jobName string) string {
+	if jobName == "" || len(validation.IsQualifiedName(jobName)) > 0 {
+		jobName = "cronjob"
+	}
+	job := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobName,
+			Namespace: namespace,
+		},
+		Spec: *jobSpec,
+	}
+	return validateJobCommon(job, false)
+}
+
+func validateJobCommon(job *v1alpha1.Job, validateNameAndQueue bool) string {
 	var b strings.Builder
 	taskNames := map[string]struct{}{}
 	var totalReplicas int32
@@ -127,7 +153,6 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	// job.MinAvailable <= totalReplicas, duplicate task name, task name DNS1123 format,
 	// These validations have been removed from webhook to avoid duplication.
 	if len(job.Spec.Tasks) == 0 {
-		reviewResponse.Allowed = false
 		return "No task specified in job spec"
 	}
 
@@ -135,7 +160,6 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		mp := controllerMpi.NewInstance(job.Spec.Plugins[controllerMpi.MPIPluginName])
 		masterIndex := jobhelpers.GetTaskIndexUnderJob(mp.GetMasterName(), job)
 		if masterIndex == -1 {
-			reviewResponse.Allowed = false
 			return "The specified mpi master task was not found"
 		}
 	}
@@ -175,7 +199,9 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		b.WriteString(validatePartitionPolicy(task, job))
 	}
 
-	b.WriteString(validateJobName(job))
+	if validateNameAndQueue {
+		b.WriteString(validateJobName(job))
+	}
 
 	if totalReplicas < job.Spec.MinAvailable {
 		b.WriteString(" job 'minAvailable' should not be greater than total replicas in tasks;")
@@ -199,17 +225,15 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		b.WriteString(err.Error())
 	}
 
-	b.WriteString(validateJobQueue(job.Namespace, job.Spec.Queue))
+	if validateNameAndQueue {
+		b.WriteString(validateJobQueue(job.Namespace, job.Spec.Queue))
+	}
 
 	if hasDependenciesBetweenTasks {
 		_, isDag := topoSort(job)
 		if !isDag {
 			b.WriteString(" job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG);")
 		}
-	}
-
-	if b.Len() > 0 {
-		reviewResponse.Allowed = false
 	}
 
 	return b.String()
