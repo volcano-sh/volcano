@@ -436,7 +436,8 @@ func TestSortedDeviceIndicesByPolicy_PicksExpectedDevice(t *testing.T) {
 
 func TestGPUScore(t *testing.T) {
 	idle := &GPUDevice{UsedNum: 0, UsedMem: 0, Memory: 16384}
-	shared := &GPUDevice{UsedNum: 1, UsedMem: 4096, Memory: 16384}
+	firstUse := &GPUDevice{UsedNum: 1, UsedMem: 4096, Memory: 16384}
+	shared := &GPUDevice{UsedNum: 2, UsedMem: 8192, Memory: 16384}
 	full := &GPUDevice{UsedNum: 4, UsedMem: 16384, Memory: 16384}
 
 	testCases := []struct {
@@ -445,8 +446,8 @@ func TestGPUScore(t *testing.T) {
 		device *GPUDevice
 		want   float64
 	}{
-		{name: "spread rewards idle GPU", policy: spreadPolicy, device: idle, want: spreadMultiplier},
-		{name: "spread does not reward shared GPU", policy: spreadPolicy, device: shared, want: 0},
+		{name: "spread rewards first use after trial placement", policy: spreadPolicy, device: firstUse, want: spreadMultiplier},
+		{name: "spread does not reward shared GPU after trial placement", policy: spreadPolicy, device: shared, want: 0},
 		{name: "spread does not reward full GPU", policy: spreadPolicy, device: full, want: 0},
 		{name: "binpack rewards full GPU most", policy: binpackPolicy, device: full, want: binpackMultiplier},
 		{name: "binpack does not reward idle GPU", policy: binpackPolicy, device: idle, want: 0},
