@@ -97,6 +97,9 @@ func (ssn *Session) AddJobPipelinedFn(name string, vf api.VoteFn) {
 
 // AddPredicateFn add Predicate function
 func (ssn *Session) AddPredicateFn(name string, pf api.PredicateFn) {
+	if ssn.predicateFns == nil {
+		ssn.predicateFns = map[string]api.PredicateFn{}
+	}
 	ssn.predicateFns[name] = pf
 }
 
@@ -107,6 +110,9 @@ func (ssn *Session) AddQueueNodeFilterFn(name string, fn api.QueueNodeFilterFn) 
 
 // AddPrePredicateFn add PrePredicate function
 func (ssn *Session) AddPrePredicateFn(name string, pf api.PrePredicateFn) {
+	if ssn.prePredicateFns == nil {
+		ssn.prePredicateFns = map[string]api.PrePredicateFn{}
+	}
 	ssn.prePredicateFns[name] = pf
 }
 
