@@ -19,6 +19,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync/atomic"
 	"time"
 
@@ -129,7 +130,9 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 
 	//workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
 	predicateStart := time.Now()
-	workqueue.ParallelizeUntil(ctx, 16, allNodes, checkNode)
+	// Match Kubernetes scheduler chunk sizing without changing the feasible-node target.
+	chunkSize := max(1, min(int(math.Sqrt(float64(allNodes))), allNodes/16+1))
+	workqueue.ParallelizeUntil(ctx, 16, allNodes, checkNode, workqueue.WithChunkSize(chunkSize))
 	metrics.UpdateSchedulingStageDuration(metrics.SchedulingStagePredicate, time.Since(predicateStart))
 
 	predicateNodes = predicateNodes[:numFoundNodes]
