@@ -29,6 +29,7 @@ custom:
   admission_enable: true
   admission_replicas: 1
   admission_init_ttl: 3600
+  admission_root_queue_protection_enable: true
   controller_enable: true
   controller_replicas: 1
   controller_metrics_enable: true
