@@ -133,35 +133,164 @@ func TestAddConfigMap(t *testing.T) {
 	assert.Equal(t, 1, controller.configMapQueue.Len())
 }
 
-func TestUpdateConfigMap(t *testing.T) {
-	controller := newFakeConfigMapController()
+const testValidConfig = `
+networkTopologyDiscovery:
+  - source: ufm
+    enabled: true
+    config:
+      url: "http://ufm-host:8080"
+`
 
+func TestUpdateConfigMap(t *testing.T) {
+	testCases := []struct {
+		name              string
+		oldConfigMap      *v1.ConfigMap
+		newConfigMap      *v1.ConfigMap
+		expectedQueueSize int
+	}{
+		{
+			name: "Unrelated key change does not trigger",
+			oldConfigMap: &v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: "test-namespace",
+				},
+				Data: map[string]string{
+					"key1": "value1",
+				},
+			},
+			newConfigMap: &v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: "test-namespace",
+				},
+				Data: map[string]string{
+					"key1": "value1",
+					"key2": "value2",
+				},
+			},
+			expectedQueueSize: 0,
+		},
+		{
+			name: "Unrelated change with unchanged network topology config does not trigger",
+			oldConfigMap: &v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: "test-namespace",
+				},
+				Data: map[string]string{
+					config.DefaultConfigKey: testValidConfig,
+					"key1":                  "value1",
+				},
+			},
+			newConfigMap: &v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: "test-namespace",
+				},
+				Data: map[string]string{
+					config.DefaultConfigKey: testValidConfig,
+					"key1":                  "value2",
+				},
+			},
+			expectedQueueSize: 0,
+		},
+		{
+			name: "Network topology config change triggers",
+			oldConfigMap: &v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: "test-namespace",
+				},
+				Data: map[string]string{
+					config.DefaultConfigKey: testValidConfig,
+				},
+			},
+			newConfigMap: &v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: "test-namespace",
+				},
+				Data: map[string]string{
+					config.DefaultConfigKey: `
+networkTopologyDiscovery:
+  - source: ufm
+    enabled: false
+    config:
+      url: "http://ufm-host:8080"
+`,
+				},
+			},
+			expectedQueueSize: 1,
+		},
+		{
+			name: "Network topology config key added triggers",
+			oldConfigMap: &v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: "test-namespace",
+				},
+				Data: map[string]string{
+					"key1": "value1",
+				},
+			},
+			newConfigMap: &v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: "test-namespace",
+				},
+				Data: map[string]string{
+					config.DefaultConfigKey: testValidConfig,
+					"key1":                  "value1",
+				},
+			},
+			expectedQueueSize: 1,
+		},
+		{
+			name: "Network topology config key removed triggers",
+			oldConfigMap: &v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: "test-namespace",
+				},
+				Data: map[string]string{
+					config.DefaultConfigKey: testValidConfig,
+				},
+			},
+			newConfigMap: &v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: "test-namespace",
+				},
+				Data: map[string]string{},
+			},
+			expectedQueueSize: 1,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			controller := newFakeConfigMapController()
+			controller.updateConfigMap(tc.oldConfigMap, tc.newConfigMap)
+			assert.Equal(t, tc.expectedQueueSize, controller.configMapQueue.Len())
+		})
+	}
+
+	// Test invalid object (non-ConfigMap)
+	controller := newFakeConfigMapController()
 	oldConfigMap := &v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-configmap",
 			Namespace: "test-namespace",
 		},
-		Data: map[string]string{
-			"key1": "value1",
-		},
 	}
-
-	newConfigMap := oldConfigMap.DeepCopy()
-	newConfigMap.Data["key2"] = "value2"
-
-	controller.updateConfigMap(oldConfigMap, newConfigMap)
-
-	// Verify the ConfigMap was added to the queue
-	assert.Equal(t, 1, controller.configMapQueue.Len())
-
-	// Test invalid object (non-ConfigMap)
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-pod",
 		},
 	}
 	controller.updateConfigMap(oldConfigMap, pod)
-	assert.Equal(t, 1, controller.configMapQueue.Len())
+	assert.Equal(t, 0, controller.configMapQueue.Len())
 }
 
 func TestDeleteConfigMap(t *testing.T) {
@@ -240,7 +369,7 @@ func TestIntegrationConfigMapHandling(t *testing.T) {
 			Namespace: "test-namespace",
 		},
 		Data: map[string]string{
-			"config": "initial",
+			config.DefaultConfigKey: testValidConfig,
 		},
 	}
 
@@ -263,14 +392,34 @@ func TestIntegrationConfigMapHandling(t *testing.T) {
 	// Process the queue
 	key, _ := controller.configMapQueue.Get()
 	controller.configMapQueue.Done(key)
+	assert.Equal(t, 0, controller.configMapQueue.Len())
 
-	updatedConfigMap := configMap.DeepCopy()
-	updatedConfigMap.Data["config"] = "updated"
+	// Unrelated change should not enqueue
+	unrelatedUpdate := configMap.DeepCopy()
+	unrelatedUpdate.Data["unrelated"] = "value"
 
 	_, err = controller.kubeClient.CoreV1().ConfigMaps("test-namespace").Update(
-		context.Background(), updatedConfigMap, metav1.UpdateOptions{})
+		context.Background(), unrelatedUpdate, metav1.UpdateOptions{})
 	assert.NoError(t, err)
 
 	time.Sleep(1 * time.Second)
-	assert.Equal(t, 1, controller.configMapQueue.Len())
+	assert.Equal(t, 0, controller.configMapQueue.Len(), "unrelated ConfigMap change should not enqueue")
+
+	// Network topology config change should enqueue
+	relevantUpdate := configMap.DeepCopy()
+	relevantUpdate.Data[config.DefaultConfigKey] = `
+networkTopologyDiscovery:
+  - source: ufm
+    enabled: false
+    config:
+      url: "http://ufm-host:8080"
+`
+
+	_, err = controller.kubeClient.CoreV1().ConfigMaps("test-namespace").Update(
+		context.Background(), relevantUpdate, metav1.UpdateOptions{})
+	assert.NoError(t, err)
+
+	assert.Eventually(t, func() bool {
+		return controller.configMapQueue.Len() == 1
+	}, 5*time.Second, 10*time.Millisecond, "expected network topology config change to enqueue one key")
 }
