@@ -82,6 +82,8 @@ type JobSpec struct {
 	MaxRetry int32
 	// network topology mode hard or soft
 	NetworkTopology *batchv1alpha1.NetworkTopologySpec
+	// device topology requirements of the whole Job
+	DeviceTopology *batchv1alpha1.DeviceTopologySpec
 }
 
 func Namespace(context *TestContext, job *JobSpec) string {
@@ -216,6 +218,7 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 			MinSuccess:              jobSpec.MinSuccess,
 			MaxRetry:                jobSpec.MaxRetry,
 			NetworkTopology:         jobSpec.NetworkTopology,
+			DeviceTopology:          jobSpec.DeviceTopology,
 		},
 	}
 

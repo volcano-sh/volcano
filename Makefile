@@ -257,6 +257,9 @@ e2e-test-shardingcontroller: images
 e2e-test-gangevict: images
 	E2E_TYPE=GANGEVICT ./hack/run-e2e-kind.sh
 
+e2e-test-devicetopology: images
+	E2E_TYPE=DEVICETOPOLOGY FEATURE_GATES="DeviceTopologyAwareScheduling=true" ./hack/run-e2e-kind.sh
+
 e2e-test-schedulersharding: images
 	E2E_TYPE=SCHEDULERSHARDING$(if $(SHARDING_MODE),_$(shell echo $(SHARDING_MODE) | tr '[:lower:]' '[:upper:]'),) ./hack/run-e2e-kind.sh
 
