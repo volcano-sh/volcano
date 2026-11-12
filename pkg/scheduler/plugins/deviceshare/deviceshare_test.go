@@ -73,6 +73,7 @@ func TestVgpuScore(t *testing.T) {
 		Device: make(map[int]*vgpu.GPUDevice),
 	}
 	gpuNode1.Device[0] = vgpu.NewGPUDevice(0, 30000)
+	gpuNode1.Device[0].Health = true
 	gpuNode1.Device[0].Type = "NVIDIA"
 	gpuNode1.Device[0].Number = 10
 	gpuNode1.Device[0].UsedNum = 1
@@ -111,6 +112,7 @@ func TestVgpuScore(t *testing.T) {
 		Device: make(map[int]*vgpu.GPUDevice),
 	}
 	gpuNode2.Device[0] = vgpu.NewGPUDevice(0, 30000)
+	gpuNode2.Device[0].Health = true
 	gpuNode2.Device[0].Type = "NVIDIA"
 	gpuNode2.Device[0].Number = 10
 	gpuNode2.Device[0].UsedNum = 0
@@ -142,14 +144,17 @@ func Test_FilterNode(t *testing.T) {
 		Device: make(map[int]*vgpu.GPUDevice),
 	}
 	gpuNode1.Device[0] = vgpu.NewGPUDevice(0, 30000)
+	gpuNode1.Device[0].Health = true
 	gpuNode1.Device[0].Type = "NVIDIA"
 	gpuNode1.Device[0].Number = 10
 
 	gpuNode1.Device[1] = vgpu.NewGPUDevice(0, 20000)
+	gpuNode1.Device[1].Health = true
 	gpuNode1.Device[1].Type = "NVIDIA"
 	gpuNode1.Device[1].Number = 10
 
 	gpuNode1.Device[2] = vgpu.NewGPUDevice(0, 30000)
+	gpuNode1.Device[2].Health = true
 	gpuNode1.Device[2].Type = "NVIDIA"
 	gpuNode1.Device[2].Number = 10
 
