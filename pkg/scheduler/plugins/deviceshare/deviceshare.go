@@ -18,6 +18,7 @@ package deviceshare
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"reflect"
 	"sync"
@@ -60,6 +61,12 @@ var (
 	once sync.Once
 )
 
+// ResetForTesting resets package-level sync.Once and registered devices for test isolation.
+func ResetForTesting() {
+	once = sync.Once{}
+	api.RegisteredDevices = []string{}
+}
+
 type deviceSharePlugin struct {
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
@@ -85,7 +92,10 @@ func New(arguments framework.Arguments) framework.Plugin {
 		persistedGPUs:     make(map[string]map[string]map[int]struct{}),
 		persistedPodRules: make(map[string]map[string]map[int]struct{}),
 	}
-	enablePredicate(dsp)
+	arguments.GetString(&dsp.schedulePolicy, SchedulePolicyArgument)
+	arguments.GetInt(&dsp.scheduleWeight, ScheduleWeight)
+	vgpu.SchedulePolicy = dsp.schedulePolicy
+
 	return dsp
 }
 
@@ -93,31 +103,38 @@ func (dp *deviceSharePlugin) Name() string {
 	return PluginName
 }
 
-func enablePredicate(dsp *deviceSharePlugin) {
-	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
+func (dp *deviceSharePlugin) Init() error {
+	gpuSharingEnable := false
+	gpuNumberEnable := false
 	nodeLockEnable := false
-	args := dsp.pluginArguments
-	args.GetBool(&gpushare.GpuSharingEnable, GPUSharingPredicate)
-	args.GetBool(&gpushare.GpuNumberEnable, GPUNumberPredicate)
+	vgpuEnable := false
+	mindClusterEnable := false
+	hamiEnable := false
+
+	args := dp.pluginArguments
+	args.GetBool(&gpuSharingEnable, GPUSharingPredicate)
+	args.GetBool(&gpuNumberEnable, GPUNumberPredicate)
 	args.GetBool(&nodeLockEnable, NodeLockEnable)
-	args.GetBool(&vgpu.VGPUEnable, VGPUEnable)
-	args.GetBool(&vnpu.AscendMindClusterVNPUEnable, AscendMindClusterVNPU)
-	args.GetBool(&hami.AscendHAMiVNPUEnable, AscendHAMiVNPUEnable)
+	args.GetBool(&vgpuEnable, VGPUEnable)
+	args.GetBool(&mindClusterEnable, AscendMindClusterVNPU)
+	args.GetBool(&hamiEnable, AscendHAMiVNPUEnable)
+
+	if gpuSharingEnable && gpuNumberEnable {
+		return fmt.Errorf("can not define true in both gpu sharing and gpu number")
+	}
+	if (gpuSharingEnable || gpuNumberEnable) && vgpuEnable {
+		return fmt.Errorf("gpu-share and vgpu can't be used together")
+	}
+
+	gpushare.GpuSharingEnable = gpuSharingEnable
+	gpushare.GpuNumberEnable = gpuNumberEnable
+	vgpu.VGPUEnable = vgpuEnable
+	vnpu.AscendMindClusterVNPUEnable = mindClusterEnable
+	hami.AscendHAMiVNPUEnable = hamiEnable
 
 	gpushare.NodeLockEnable = nodeLockEnable
 	vgpu.NodeLockEnable = nodeLockEnable
 	hami.NodeLockEnable = nodeLockEnable
-
-	args.GetString(&dsp.schedulePolicy, SchedulePolicyArgument)
-	args.GetInt(&dsp.scheduleWeight, ScheduleWeight)
-	vgpu.SchedulePolicy = dsp.schedulePolicy
-
-	if gpushare.GpuSharingEnable && gpushare.GpuNumberEnable {
-		klog.Fatal("can not define true in both gpu sharing and gpu number")
-	}
-	if (gpushare.GpuSharingEnable || gpushare.GpuNumberEnable) && vgpu.VGPUEnable {
-		klog.Fatal("gpu-share and vgpu can't be used together")
-	}
 
 	knownGeometriesCMName := "volcano-vgpu-device-config"
 	args.GetString(&knownGeometriesCMName, KnownGeometriesCMName)
@@ -125,6 +142,8 @@ func enablePredicate(dsp *deviceSharePlugin) {
 	args.GetString(&knownGeometriesCMNamespace, KnownGeometriesCMNamespace)
 	config.InitDevicesConfig(knownGeometriesCMName, knownGeometriesCMNamespace)
 	registerDevices()
+
+	return nil
 }
 
 func registerDevices() {
@@ -220,6 +239,16 @@ func initializeDevice(device api.Devices, ssn *framework.Session, nodeInfo *api.
 	return nil
 }
 
+func podRequestsDevice(pod *v1.Pod, deviceName string) bool {
+	if pod == nil {
+		return false
+	}
+	if hami.AscendHAMiVNPUEnable && hami.PodRequestsVNPU(pod, deviceName) {
+		return true
+	}
+	return false
+}
+
 func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 	// Wrap GPU devices with exclusivity-aware wrappers if rules are configured.
 	// This must happen before initializeDevicesWithSession and predicate registration
@@ -237,6 +266,10 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 			if dev, ok := node.Others[val].(api.Devices); ok {
 				if reflect.ValueOf(dev).IsNil() {
 					klog.V(4).Infof("device %s is null, skipping it", val)
+					if podRequestsDevice(task.Pod, val) {
+						predicateStatus = append(predicateStatus, createStatus(api.Unschedulable, fmt.Sprintf("device %s on node %s is nil", val, node.Name)))
+						return api.NewFitErrWithStatus(task, node, predicateStatus...)
+					}
 					continue
 				}
 				if !dev.HasDeviceRequest(task.Pod) {
@@ -255,7 +288,11 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 					return api.NewFitErrWithStatus(task, node, predicateStatus...)
 				}
 			} else {
-				klog.Warningf("Devices %s assertion conversion failed, skip", val)
+				klog.Warningf("Devices %s assertion conversion failed on node %s", val, node.Name)
+				if podRequestsDevice(task.Pod, val) {
+					predicateStatus = append(predicateStatus, createStatus(api.Unschedulable, fmt.Sprintf("node %s is missing device %s info", node.Name, val)))
+					return api.NewFitErrWithStatus(task, node, predicateStatus...)
+				}
 			}
 		}
 

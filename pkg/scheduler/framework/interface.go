@@ -50,6 +50,12 @@ type Plugin interface {
 	OnSessionClose(ssn *Session)
 }
 
+// PluginInitializer is implemented by plugins that need initialization
+// before the scheduler cache starts.
+type PluginInitializer interface {
+	Init() error
+}
+
 type BindContextHandler interface {
 	// SetupBindContextExtension allows the plugin to set up extension information in the bind context
 	SetupBindContextExtension(state *k8sframework.CycleState, bindCtx *cache.BindContext)

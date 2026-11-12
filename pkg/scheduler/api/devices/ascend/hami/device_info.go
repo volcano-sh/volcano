@@ -252,29 +252,42 @@ func (ads *AscendDevices) AddQueueResource(pod *v1.Pod) map[string]float64 {
 	return map[string]float64{}
 }
 
-func (ads *AscendDevices) HasDeviceRequest(pod *v1.Pod) bool {
-	if !AscendHAMiVNPUEnable {
+// PodRequestsVNPU checks whether a pod requests an Ascend VNPU device corresponding to commonWord.
+func PodRequestsVNPU(pod *v1.Pod, commonWord string) bool {
+	if !AscendHAMiVNPUEnable || pod == nil {
 		return false
 	}
-	randDev, err := ads.getFirstDevice()
-	if randDev == nil || err != nil {
+	curConfig := config.GetConfig()
+	if curConfig == nil {
+		curConfig = config.GetDefaultDevicesConfig()
+	}
+	if curConfig == nil {
 		return false
 	}
-	var vnpu_config = randDev.config
-	for _, container := range pod.Spec.Containers {
-		_, ok := container.Resources.Limits[v1.ResourceName(vnpu_config.ResourceName)]
-		if ok {
-			klog.V(5).Infof("%s check HasDeviceRequest ok. %s", ads.Type, vnpu_config.ResourceName)
-			return true
+	for _, vnpuCfg := range curConfig.VNPUConfigs() {
+		if vnpuCfg.CommonWord != commonWord {
+			continue
 		}
-		_, ok = container.Resources.Limits[v1.ResourceName(vnpu_config.ResourceMemoryName)]
-		if ok {
-			klog.V(5).Infof("%s check HasDeviceRequest ok. %s", ads.Type, vnpu_config.ResourceMemoryName)
-			return true
+		for _, container := range pod.Spec.Containers {
+			if _, ok := container.Resources.Limits[v1.ResourceName(vnpuCfg.ResourceName)]; ok {
+				return true
+			}
+			if _, ok := container.Resources.Limits[v1.ResourceName(vnpuCfg.ResourceMemoryName)]; ok {
+				return true
+			}
+			if _, ok := container.Resources.Requests[v1.ResourceName(vnpuCfg.ResourceName)]; ok {
+				return true
+			}
+			if _, ok := container.Resources.Requests[v1.ResourceName(vnpuCfg.ResourceMemoryName)]; ok {
+				return true
+			}
 		}
 	}
-	klog.V(5).Infof("%s check HasDeviceRequest false", ads.Type)
 	return false
+}
+
+func (ads *AscendDevices) HasDeviceRequest(pod *v1.Pod) bool {
+	return PodRequestsVNPU(pod, ads.Type)
 }
 
 func (ads *AscendDevices) FilterNode(pod *v1.Pod, policy string) (int, string, error) {
