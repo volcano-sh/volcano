@@ -331,3 +331,267 @@ func checkNoMPIHostEnvVar(t *testing.T, index int, testName string, containers [
 		}
 	}
 }
+
+func TestMpiWithMultipleWorkers(t *testing.T) {
+	job := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-mpi-multi"},
+		Spec: v1alpha1.JobSpec{
+			Tasks: []v1alpha1.TaskSpec{
+				{
+					Name:     "master",
+					Replicas: 1,
+					Template: v1.PodTemplateSpec{},
+				},
+				{
+					Name:     "worker",
+					Replicas: 2,
+					Template: v1.PodTemplateSpec{},
+				},
+				{
+					Name:     "worker-0",
+					Replicas: 2,
+					Template: v1.PodTemplateSpec{},
+				},
+			},
+		},
+	}
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-mpi-multi-master-0",
+			Annotations: map[string]string{
+				"volcano.sh/task-spec": "master",
+			},
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Name: "master",
+				},
+			},
+		},
+	}
+
+	// "ghost" task doesn't exist in the job and should be skipped
+	mp := New(pluginsinterface.PluginClientset{}, []string{"--worker=worker,ghost,worker-0"})
+	if err := mp.OnPodCreate(pod, job); err != nil {
+		t.Fatalf("expect no error, but got error %v", err)
+	}
+
+	expected := "test-mpi-multi-worker-0.test-mpi-multi,test-mpi-multi-worker-1.test-mpi-multi," +
+		"test-mpi-multi-worker-0-0.test-mpi-multi,test-mpi-multi-worker-0-1.test-mpi-multi"
+	found := false
+	for _, env := range pod.Spec.Containers[0].Env {
+		if env.Name == MPIHost {
+			found = true
+			if env.Value != expected {
+				t.Errorf("MPI_HOST mismatch, expected '%s', got '%s'", expected, env.Value)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("missing MPI_HOST environment variable")
+	}
+}
+
+// TestMpiSingleWorkerNameCompatibility verifies that a single custom worker
+// task name keeps exactly the same behavior as before the multi-worker support.
+func TestMpiSingleWorkerNameCompatibility(t *testing.T) {
+	job := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-mpi-compat"},
+		Spec: v1alpha1.JobSpec{
+			Tasks: []v1alpha1.TaskSpec{
+				{
+					Name:     "master",
+					Replicas: 1,
+					Template: v1.PodTemplateSpec{},
+				},
+				{
+					Name:     "mlworker",
+					Replicas: 2,
+					Template: v1.PodTemplateSpec{},
+				},
+				{
+					Name:     "other",
+					Replicas: 1,
+					Template: v1.PodTemplateSpec{},
+				},
+			},
+		},
+	}
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-mpi-compat-master-0",
+			Annotations: map[string]string{
+				"volcano.sh/task-spec": "master",
+			},
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Name: "master",
+				},
+			},
+		},
+	}
+
+	mp := New(pluginsinterface.PluginClientset{}, []string{"--worker=mlworker"})
+	if err := mp.OnPodCreate(pod, job); err != nil {
+		t.Fatalf("expect no error, but got error %v", err)
+	}
+
+	expected := "test-mpi-compat-mlworker-0.test-mpi-compat,test-mpi-compat-mlworker-1.test-mpi-compat"
+	found := false
+	for _, env := range pod.Spec.Containers[0].Env {
+		if env.Name == MPIHost {
+			found = true
+			if env.Value != expected {
+				t.Errorf("MPI_HOST mismatch, expected '%s', got '%s'", expected, env.Value)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("missing MPI_HOST environment variable")
+	}
+	if len(pod.Spec.Containers[0].Ports) != 1 || pod.Spec.Containers[0].Ports[0].ContainerPort != int32(DefaultPort) {
+		t.Errorf("ssh port not opened as before, got %v", pod.Spec.Containers[0].Ports)
+	}
+}
+
+// TestMpiWorkerOrderFollowsWorkerArgument pins that the worker argument order
+// defines the MPI_HOST order: listing worker-0 first puts its hosts first,
+// regardless of the task definition order in the job.
+func TestMpiWorkerOrderFollowsWorkerArgument(t *testing.T) {
+	job := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-mpi-order"},
+		Spec: v1alpha1.JobSpec{
+			Tasks: []v1alpha1.TaskSpec{
+				{
+					Name:     "master",
+					Replicas: 1,
+					Template: v1.PodTemplateSpec{},
+				},
+				{
+					Name:     "worker",
+					Replicas: 2,
+					Template: v1.PodTemplateSpec{},
+				},
+				{
+					Name:     "worker-0",
+					Replicas: 2,
+					Template: v1.PodTemplateSpec{},
+				},
+			},
+		},
+	}
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-mpi-order-master-0",
+			Annotations: map[string]string{
+				"volcano.sh/task-spec": "master",
+			},
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{{Name: "master"}},
+		},
+	}
+
+	// worker-0 listed first in the argument, although defined second in the job
+	mp := New(pluginsinterface.PluginClientset{}, []string{"--worker=worker-0,worker"})
+	if err := mp.OnPodCreate(pod, job); err != nil {
+		t.Fatalf("expect no error, but got error %v", err)
+	}
+
+	expected := "test-mpi-order-worker-0-0.test-mpi-order,test-mpi-order-worker-0-1.test-mpi-order," +
+		"test-mpi-order-worker-0.test-mpi-order,test-mpi-order-worker-1.test-mpi-order"
+	for _, env := range pod.Spec.Containers[0].Env {
+		if env.Name == MPIHost && env.Value != expected {
+			t.Errorf("MPI_HOST should follow worker argument order, expected '%s', got '%s'", expected, env.Value)
+		}
+	}
+}
+
+// TestMpiWorkersFlag verifies the dedicated multi-worker flag and its
+// precedence over the single-name worker flag.
+func TestMpiWorkersFlag(t *testing.T) {
+	job := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-mpi-workers"},
+		Spec: v1alpha1.JobSpec{
+			Tasks: []v1alpha1.TaskSpec{
+				{Name: "master", Replicas: 1, Template: v1.PodTemplateSpec{}},
+				{Name: "worker", Replicas: 2, Template: v1.PodTemplateSpec{}},
+				{Name: "worker-0", Replicas: 2, Template: v1.PodTemplateSpec{}},
+			},
+		},
+	}
+	newMasterPod := func() *v1.Pod {
+		return &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "test-mpi-workers-master-0",
+				Annotations: map[string]string{"volcano.sh/task-spec": "master"},
+			},
+			Spec: v1.PodSpec{Containers: []v1.Container{{Name: "master"}}},
+		}
+	}
+
+	expected := "test-mpi-workers-worker-0-0.test-mpi-workers,test-mpi-workers-worker-0-1.test-mpi-workers," +
+		"test-mpi-workers-worker-0.test-mpi-workers,test-mpi-workers-worker-1.test-mpi-workers"
+
+	testcases := []struct {
+		name string
+		args []string
+	}{
+		{name: "workers flag only", args: []string{"--workers=worker-0,worker"}},
+		// workers takes precedence over the single-name worker flag
+		{name: "workers flag wins over worker flag", args: []string{"--worker=worker", "--workers=worker-0,worker"}},
+	}
+
+	for index, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			pod := newMasterPod()
+			mp := New(pluginsinterface.PluginClientset{}, tc.args)
+			if err := mp.OnPodCreate(pod, job); err != nil {
+				t.Fatalf("Case %d (%s): expect no error, but got error %v", index, tc.name, err)
+			}
+			for _, env := range pod.Spec.Containers[0].Env {
+				if env.Name == MPIHost && env.Value != expected {
+					t.Errorf("Case %d (%s): MPI_HOST mismatch, expected '%s', got '%s'", index, tc.name, expected, env.Value)
+				}
+			}
+		})
+	}
+}
+
+// TestMpiWorkersFlagDedup verifies duplicated worker names produce a host
+// list without duplicated hosts.
+func TestMpiWorkersFlagDedup(t *testing.T) {
+	job := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-mpi-dedup"},
+		Spec: v1alpha1.JobSpec{
+			Tasks: []v1alpha1.TaskSpec{
+				{Name: "master", Replicas: 1, Template: v1.PodTemplateSpec{}},
+				{Name: "a", Replicas: 2, Template: v1.PodTemplateSpec{}},
+				{Name: "b", Replicas: 1, Template: v1.PodTemplateSpec{}},
+			},
+		},
+	}
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "test-mpi-dedup-master-0",
+			Annotations: map[string]string{"volcano.sh/task-spec": "master"},
+		},
+		Spec: v1.PodSpec{Containers: []v1.Container{{Name: "master"}}},
+	}
+
+	mp := New(pluginsinterface.PluginClientset{}, []string{"--workers=a, a,b,a"})
+	if err := mp.OnPodCreate(pod, job); err != nil {
+		t.Fatalf("expect no error, but got error %v", err)
+	}
+	expected := "test-mpi-dedup-a-0.test-mpi-dedup,test-mpi-dedup-a-1.test-mpi-dedup,test-mpi-dedup-b-0.test-mpi-dedup"
+	for _, env := range pod.Spec.Containers[0].Env {
+		if env.Name == MPIHost && env.Value != expected {
+			t.Errorf("MPI_HOST mismatch, expected '%s', got '%s'", expected, env.Value)
+		}
+	}
+}
