@@ -244,8 +244,11 @@ func runSimulateTrialAtHyperNode(
 		if queue != nil && !ssn.Allocatable(queue, task) {
 			return nil, false
 		}
-		schedulable := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
-		nodes := intersectNodesByName(candidate, schedulable)
+		nodes := candidate
+		if !victimsPresent {
+			schedulable := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
+			nodes = intersectNodesByName(candidate, schedulable)
+		}
 		if len(nodes) == 0 {
 			return nil, false
 		}
