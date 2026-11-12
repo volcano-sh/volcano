@@ -53,27 +53,33 @@ func LoadVertexs(data map[string][]string) ([]*Vertex, error) {
 
 // IsDAG solves the problem in O(V+E) time and O(V) space.
 func IsDAG(graph []*Vertex) bool {
+	visiting := make(map[*Vertex]struct{})
+	done := make(map[*Vertex]struct{})
 	for _, vertex := range graph {
-		visited := make(map[*Vertex]struct{})
-		visited[vertex] = struct{}{}
-		if hasCycle(vertex, visited) {
+		if hasCycle(vertex, visiting, done) {
 			return false
 		}
 	}
 	return true
 }
 
-func hasCycle(vertex *Vertex, visited map[*Vertex]struct{}) bool {
+// hasCycle reports whether a cycle is reachable from vertex. visiting holds
+// the vertices on the current DFS path and done holds vertices whose subgraph
+// is already known to be acyclic, so each vertex and edge is walked once.
+func hasCycle(vertex *Vertex, visiting, done map[*Vertex]struct{}) bool {
+	if _, ok := done[vertex]; ok {
+		return false
+	}
+	if _, ok := visiting[vertex]; ok {
+		return true
+	}
+	visiting[vertex] = struct{}{}
 	for _, neighbor := range vertex.Edges {
-		if _, ok := visited[neighbor]; !ok {
-			visited[neighbor] = struct{}{}
-			if hasCycle(neighbor, visited) {
-				return true
-			}
-			delete(visited, neighbor)
-		} else {
+		if hasCycle(neighbor, visiting, done) {
 			return true
 		}
 	}
+	delete(visiting, vertex)
+	done[vertex] = struct{}{}
 	return false
 }
