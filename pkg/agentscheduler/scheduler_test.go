@@ -158,3 +158,46 @@ func TestRunOnceRequeuesWhenSnapshotUpdateFails(t *testing.T) {
 		t.Fatalf("expected pod to be requeued after snapshot failure, got %d pending pods", len(pendingPods))
 	}
 }
+
+func TestRunOnceWhenQueueClosed(t *testing.T) {
+	agentuthelper.InitTestEnv(t)
+	options.ServerOpts.ShardingMode = commonutil.NoneShardingMode
+	scheduleroptions.ServerOpts.ShardingMode = commonutil.NoneShardingMode
+
+	testFwk, err := agentuthelper.NewTestFramework(
+		"test-scheduler",
+		1,
+		[]framework.Action{&noopAction{}},
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("failed to create test framework: %v", err)
+	}
+	defer testFwk.Close()
+
+	// Close the scheduling queue so Pop returns (nil, nil)
+	testFwk.SchedulingQueue.Close()
+	testFwk.SchedulingQueue = nil
+
+	worker := &Worker{
+		framework: testFwk.Frameworks[0],
+		index:     0,
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("unexpected panic when queue is closed: %v", r)
+		}
+	}()
+
+	worker.runOnce()
+
+	schedCtx, err := worker.generateNextSchedulingContext()
+	if err != nil {
+		t.Fatalf("expected nil error on closed queue, got: %v", err)
+	}
+	if schedCtx != nil {
+		t.Fatalf("expected nil scheduling context on closed queue, got: %v", schedCtx)
+	}
+}
