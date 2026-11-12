@@ -1343,3 +1343,123 @@ func TestScheduledTaskNum(t *testing.T) {
 		t.Fatalf("ScheduledTaskNum() = %v, want %v", got, want)
 	}
 }
+
+// newCandidateJob builds a one-task job whose last scheduling transaction put the
+// task in status (Allocated, Pipelined or Pending) on nodeName, and returns the job and the task ID.
+func newCandidateJob(nodeName string, status TaskStatus) (*JobInfo, TaskID) {
+	pod := buildPod("ns1", "task-1", nodeName, v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
+	pg := scheduling.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "ns1", Name: "pg1"},
+		Spec:       scheduling.PodGroupSpec{MinMember: 1},
+	}
+	pod.Annotations = map[string]string{schedulingv2.KubeGroupNameAnnotationKey: pg.Name}
+
+	job := NewJobInfo(JobID("verbosity"))
+	ti := NewTaskInfo(pod)
+	job.AddTaskInfo(ti)
+	ti.LastTransaction = &TransactionContext{NodeName: nodeName, Status: status}
+	job.SetPodGroup(&PodGroup{PodGroup: pg})
+	ti.Status = Pending
+	if status == Pipelined {
+		// The nomination is only published when the live transaction pipelined the
+		// task after evicting pods.
+		ti.TransactionContext = TransactionContext{NodeName: nodeName, Status: Pipelined, EvictionOccurred: true}
+	}
+	job.TaskStatusIndex = map[TaskStatus]TasksMap{ti.Status: {ti.UID: ti}}
+	return job, ti.UID
+}
+
+func TestTaskSchedulingReasonVerbosity(t *testing.T) {
+	tests := []struct {
+		name          string
+		verbosity     DiagnosticVerbosity
+		status        TaskStatus
+		wantReason    string
+		wantMsg       string
+		wantNominated string
+	}{
+		{
+			name:       "allocated detailed names the candidate node",
+			verbosity:  DiagnosticVerbosityDetailed,
+			status:     Allocated,
+			wantReason: PodReasonSchedulable,
+			wantMsg:    "Pod ns1/task-1 can possibly be assigned to node1, once minAvailable is satisfied",
+		},
+		{
+			name:       "allocated summary omits the candidate node",
+			verbosity:  DiagnosticVerbositySummary,
+			status:     Allocated,
+			wantReason: PodReasonSchedulable,
+			wantMsg:    "Pod ns1/task-1 can possibly be assigned, once minAvailable is satisfied",
+		},
+		{
+			name:          "pipelined detailed names the candidate node and nominates it",
+			verbosity:     DiagnosticVerbosityDetailed,
+			status:        Pipelined,
+			wantReason:    PodReasonUnschedulable,
+			wantMsg:       "Pod ns1/task-1 can possibly be assigned to node1, once resource is released and minAvailable is satisfied",
+			wantNominated: "node1",
+		},
+		{
+			name:          "pipelined summary omits the candidate node but still nominates it",
+			verbosity:     DiagnosticVerbositySummary,
+			status:        Pipelined,
+			wantReason:    PodReasonUnschedulable,
+			wantMsg:       "Pod ns1/task-1 can possibly be assigned, once resource is released and minAvailable is satisfied",
+			wantNominated: "node1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			useDiagnosticVerbosity(t, tt.verbosity)
+			job, uid := newCandidateJob("node1", tt.status)
+			reason, msg, nominatedNodeName := job.TaskSchedulingReason(uid)
+			assert.Equal(t, tt.wantReason, reason)
+			assert.Equal(t, tt.wantMsg, msg)
+			assert.Equal(t, tt.wantNominated, nominatedNodeName)
+		})
+	}
+}
+
+// TestTaskSchedulingReasonSummaryIgnoresCandidateNode checks that a different
+// candidate node alone does not change the summary-mode message.
+func TestTaskSchedulingReasonSummaryIgnoresCandidateNode(t *testing.T) {
+	useDiagnosticVerbosity(t, DiagnosticVerbositySummary)
+
+	jobA, uidA := newCandidateJob("node1", Allocated)
+	jobB, uidB := newCandidateJob("node2", Allocated)
+	_, msgA, _ := jobA.TaskSchedulingReason(uidA)
+	_, msgB, _ := jobB.TaskSchedulingReason(uidB)
+
+	assert.Equal(t, msgA, msgB)
+}
+
+func TestJobInfoFitErrorVerbosity(t *testing.T) {
+	const jobState = "pod group is not ready, 1 Pending, 1 minAvailable; Pending: 1 Unschedulable. Node: task-1: "
+	tests := []struct {
+		name      string
+		verbosity DiagnosticVerbosity
+		want      string
+	}{
+		{
+			name:      "detailed keeps node and reason counts",
+			verbosity: DiagnosticVerbosityDetailed,
+			want:      jobState + "0/3 nodes are unavailable: 1 Insufficient memory, 2 Insufficient cpu.",
+		},
+		{
+			name:      "summary keeps task state and lists distinct reasons only",
+			verbosity: DiagnosticVerbositySummary,
+			want:      jobState + "nodes are unavailable: Insufficient cpu, Insufficient memory.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			useDiagnosticVerbosity(t, tt.verbosity)
+			job, uid := newCandidateJob("", Pending)
+			job.NodesFitErrors[uid] = newCountedFitErrors(2, 1)
+			assert.Equal(t, tt.want, job.FitError())
+		})
+	}
+}

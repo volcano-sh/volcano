@@ -29,6 +29,7 @@ import (
 	componentbaseconfigvalidation "k8s.io/component-base/config/validation"
 
 	"volcano.sh/volcano/pkg/kube"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/util"
 )
 
@@ -59,6 +60,11 @@ const (
 
 var (
 	once sync.Once
+)
+
+const (
+	diagnosticVerbosityDetailed = string(schedulingapi.DiagnosticVerbosityDetailed)
+	diagnosticVerbositySummary  = string(schedulingapi.DiagnosticVerbositySummary)
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -136,6 +142,9 @@ type ServerOption struct {
 
 	//Shard name for this scheduler
 	ShardName string
+
+	// SchedulingDiagnosticVerbosity selects how detailed scheduling failure messages are: detailed or summary.
+	SchedulingDiagnosticVerbosity string
 }
 
 // DecryptFunc is custom function to parse ca file
@@ -165,6 +174,7 @@ func NewServerOption() *ServerOption {
 	return &ServerOption{
 		EnableCSIStorage:                     true,
 		UnschedulableJobCacheMaxSkipDuration: defaultUnschedulableJobCacheMaxSkipDuration,
+		SchedulingDiagnosticVerbosity:        diagnosticVerbosityDetailed,
 	}
 }
 
@@ -224,12 +234,16 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
 	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling, none(default)|hard|soft mode is supported")
 	fs.StringVar(&s.ShardName, "scheduler-sharding-name", defaultShardName, "The name of shard used for this scheduler")
+	fs.StringVar(&s.SchedulingDiagnosticVerbosity, "scheduling-diagnostic-verbosity", diagnosticVerbosityDetailed, "How detailed pod and PodGroup scheduling failure messages are: detailed(default)|summary. summary omits node counts, per-reason counts and candidate node names, so repeated failures for the same reasons do not trigger status updates")
 }
 
 // CheckOptionOrDie validates scheduler options.
 func (s *ServerOption) CheckOptionOrDie() error {
 	if s.JobUpdaterWorkerNum <= 0 {
 		return fmt.Errorf("job-updater-worker-num must be greater than 0")
+	}
+	if s.SchedulingDiagnosticVerbosity != diagnosticVerbosityDetailed && s.SchedulingDiagnosticVerbosity != diagnosticVerbositySummary {
+		return fmt.Errorf("scheduling-diagnostic-verbosity must be %q or %q, got %q", diagnosticVerbosityDetailed, diagnosticVerbositySummary, s.SchedulingDiagnosticVerbosity)
 	}
 	if s.TaskUpdaterWorkerNum <= 0 {
 		return fmt.Errorf("task-updater-worker-num must be greater than 0")
