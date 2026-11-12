@@ -274,6 +274,10 @@ func addMigUsed(gd *GPUDevice, groupName string, position int) uint {
 			klog.V(4).Infoln("add mig used: ", group.Group, groupIndex)
 			gd.MigUsage.Index = groupIndex
 			instanceIndex, resourceIndex := findPosition(group, position)
+			if instanceIndex < 0 {
+				klog.Errorf("mig position %d out of range for group %s on GPU %s", position, groupName, gd.UUID)
+				return 0
+			}
 			migName := group.Instances[instanceIndex].Name
 			klog.V(4).Infoln("add mig: ", migName, gd.MigUsage.UsageList)
 			for i := range gd.MigUsage.UsageList {
@@ -300,6 +304,10 @@ func subMigUsed(gd *GPUDevice, groupName string, position int) uint {
 		if group.Group == groupName {
 			gd.MigUsage.Index = groupIndex
 			instanceIndex, resourceIndex := findPosition(group, position)
+			if instanceIndex < 0 {
+				klog.Errorf("mig position %d out of range for group %s on GPU %s", position, groupName, gd.UUID)
+				return 0
+			}
 			migName := group.Instances[instanceIndex].Name
 			for i := range gd.MigUsage.UsageList {
 				if gd.MigUsage.UsageList[i].Name != migName {
