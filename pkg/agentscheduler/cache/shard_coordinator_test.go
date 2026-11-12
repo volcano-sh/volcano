@@ -237,6 +237,28 @@ func TestTryUpdateNodeShardStatus(t *testing.T) {
 			},
 			expectUpdateAttempt: true,
 		},
+		{
+			name:               "should skip uninitialized worker states",
+			lastSyncedRevision: 4,
+			latestRevision:     5,
+			workerStates: []*workerNodeShardState{
+				nil,
+				{revisionInScheduling: 5}, // Up to date
+				nil,
+			},
+			expectUpdateAttempt: true,
+		},
+		{
+			name:               "should keep inspecting workers after an uninitialized one",
+			lastSyncedRevision: 0,
+			latestRevision:     5,
+			workerStates: []*workerNodeShardState{
+				nil,
+				{revisionInScheduling: 4}, // Actively scheduling old nodes
+				nil,
+			},
+			expectUpdateAttempt: false,
+		},
 	}
 
 	for _, tt := range tests {
