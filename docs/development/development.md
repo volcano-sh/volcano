@@ -53,6 +53,28 @@ To build cross-platform images:
 make images DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry IMAGE_PREFIX=[yourregistry]
 ```
 
+To build once and publish the same multi-platform images to multiple registries,
+install Skopeo and jq, and use a Buildx builder with the `docker-container` driver:
+
+```bash
+docker buildx create --use
+export TAG=latest # Use a version tag for a versioned release.
+export IMAGES_DIR="$(mktemp -d)" # Keep archives outside the Docker build context.
+make release DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=oci
+docker login
+make push-images DOCKER_PLATFORMS="linux/amd64,linux/arm64"
+docker login ghcr.io
+make push-images DOCKER_PLATFORMS="linux/amd64,linux/arm64" IMAGE_PREFIX=ghcr.io/your-org
+```
+
+`push-images` only copies the existing OCI archives; it does not build images.
+It preserves all platform manifests and attestations, checks the requested
+architectures, and verifies that each published tag matches the local manifest.
+The daily release workflow uses `latest`; version-tag releases use the Git tag.
+If Docker uses a credential store, set `REGISTRY_AUTH_FILE` to an authentication
+file and use `skopeo login --authfile "$REGISTRY_AUTH_FILE" <registry>` instead of
+`docker login` for each registry.
+
 ## Building a Specific Component
 
 If you want to make a local change and test some component, say `vc-controller-manager`, you could do:
