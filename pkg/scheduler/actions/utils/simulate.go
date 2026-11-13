@@ -197,7 +197,7 @@ func organizeEvictionWorksheet(ssn *framework.Session, job *api.JobInfo) *evicti
 			tasks: util.NewPriorityQueue(ssn.TaskOrderFn),
 		}
 		for _, task := range subJob.TaskStatusIndex[api.Pending] {
-			if task.SchGated || task.Resreq.IsEmpty() {
+			if task.SchGated || !task.HasSchedulingResourceRequests() {
 				continue
 			}
 			sjWorksheet.tasks.Push(task)
@@ -267,7 +267,6 @@ func runSimulateTrialAtHyperNode(
 		}
 		if err := trial.Pipeline(task, bestNode.Name, victimsPresent); err != nil {
 			klog.ErrorS(err, "Simulate pipeline failed", "task", task.Name)
-			_ = trial.UnPipeline(task)
 			return nil, false
 		}
 	}

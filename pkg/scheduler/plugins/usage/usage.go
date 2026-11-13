@@ -370,8 +370,8 @@ func (up *usagePlugin) warmUpShadowCache(ssn *framework.Session) {
 
 			nodeCPUEst, nodeMemEst := up.shadowCache.GetNodeEst(nodeInfo.Name)
 			snapshot := up.shadowCache.GetSnapshot(task.UID)
-			klog.V(5).Infof("Shadow cache warm-up add: task %s/%s uid=%s node=%s status=%s estCPU=%.2f estMem=%.2f riskFactor=%.2f bestEffort=%v nodeShadowCPUEst=%.2f nodeShadowMemEst=%.2f snapshot=%+v",
-				task.Namespace, task.Name, task.UID, nodeInfo.Name, task.Status, estCPU, estMem, appliedRiskFactor, task.BestEffort, nodeCPUEst, nodeMemEst, snapshot)
+			klog.V(5).Infof("Shadow cache warm-up add: task %s/%s uid=%s node=%s status=%s estCPU=%.2f estMem=%.2f riskFactor=%.2f nodeShadowCPUEst=%.2f nodeShadowMemEst=%.2f snapshot=%+v",
+				task.Namespace, task.Name, task.UID, nodeInfo.Name, task.Status, estCPU, estMem, appliedRiskFactor, nodeCPUEst, nodeMemEst, snapshot)
 		}
 	}
 }
@@ -436,17 +436,19 @@ func (up *usagePlugin) calcAppliedRiskFactor(node *api.NodeInfo) float64 {
 }
 
 func (up *usagePlugin) estimateTaskResource(task *api.TaskInfo, appliedRiskFactor float64) (estCPU, estMem float64) {
-	if task.BestEffort {
+	// Tasks without ordinary requests use the configured be_cpu/be_mem estimates.
+	// This includes DRA-only tasks: their device claims do not provide CPU or memory estimates.
+	if !task.HasInitResourceRequests() {
 		estCPU = EstimateBestEffortResource(up.beCPU, appliedRiskFactor)
 		estMem = EstimateBestEffortResource(up.beMemory, appliedRiskFactor)
-		klog.V(5).Infof("Usage task estimate: task %s/%s uid=%s status=%s bestEffort=true beCPU=%.2f beMemory=%.2f riskFactor=%.2f estCPU=%.2f estMem=%.2f",
+		klog.V(5).Infof("Usage task estimate from configured be_cpu/be_mem: task %s/%s uid=%s status=%s beCPU=%.2f beMemory=%.2f riskFactor=%.2f estCPU=%.2f estMem=%.2f",
 			task.Namespace, task.Name, task.UID, task.Status, up.beCPU, up.beMemory, appliedRiskFactor, estCPU, estMem)
 		return estCPU, estMem
 	}
 	cpuReq, cpuLim, memReq, memLim := getPodResourceRequestLimit(task.Pod)
 	estCPU = EstimatePodResource(cpuReq, cpuLim, up.requestRatio, up.burstRatio, appliedRiskFactor)
 	estMem = EstimatePodResource(memReq, memLim, up.requestRatio, up.burstRatio, appliedRiskFactor)
-	klog.V(5).Infof("Usage task estimate: task %s/%s uid=%s status=%s bestEffort=false cpuRequest=%.2f cpuLimit=%.2f memRequest=%.2f memLimit=%.2f requestRatio=%.2f burstRatio=%.2f riskFactor=%.2f estCPU=%.2f estMem=%.2f",
+	klog.V(5).Infof("Usage task estimate from Pod CPU/memory requests and limits: task %s/%s uid=%s status=%s cpuRequest=%.2f cpuLimit=%.2f memRequest=%.2f memLimit=%.2f requestRatio=%.2f burstRatio=%.2f riskFactor=%.2f estCPU=%.2f estMem=%.2f",
 		task.Namespace, task.Name, task.UID, task.Status, cpuReq, cpuLim, memReq, memLim, up.requestRatio, up.burstRatio, appliedRiskFactor, estCPU, estMem)
 	return estCPU, estMem
 }

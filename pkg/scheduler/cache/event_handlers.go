@@ -260,8 +260,9 @@ func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, err
 	if err := sc.addPodCSIVolumesToTask(taskInfo); err != nil {
 		return taskInfo, err
 	}
-	// Update BestEffort because the InitResreq maybe changes
-	taskInfo.BestEffort = taskInfo.InitResreq.IsEmpty()
+	// Adding CSI attachment counts updates both Resreq and InitResreq, which share an object here.
+	// Refresh BestEffort so a task with these requests is no longer treated as resource-free.
+	taskInfo.UpdateSchedulingBestEffort()
 	draResreq, claimDRAResreq, claimKeys, err := sc.buildTaskDRAInfo(pod)
 	if err != nil {
 		return taskInfo, err
@@ -528,9 +529,10 @@ func (sc *SchedulerCache) handleUnschedulableJobCachePodUpdate(oldPod, newPod *v
 	terminalRelease := !schedulingapi.CompletedStatus(schedulingapi.GetTaskStatus(oldPod)) &&
 		schedulingapi.CompletedStatus(schedulingapi.GetTaskStatus(newPod))
 	podBecameAssigned := oldPod.Spec.NodeName == "" && newPod.Spec.NodeName != ""
-	events := kubeschedulerframework.PodSchedulingPropertiesChange(newPod, oldPod)
+	events := kubeschedulerframework.PodSchedulingPropertiesChange(newPod, oldPod, false)
 	schedulingInputsChanged := terminalRelease || podBecameAssigned || slices.ContainsFunc(events, func(event fwk.ClusterEvent) bool {
-		return event.ActionType != fwk.Update
+		// A larger request cannot relax a cached rejection.
+		return event.ActionType != fwk.Update && event.ActionType != fwk.UpdatePodScaleUp
 	})
 	sc.invalidateUnschedulableJobsForPodUpdate(oldPod, newPod, schedulingInputsChanged)
 

@@ -334,6 +334,12 @@ type JobEnqueuedFn func(interface{})
 // PredicateFn is the func declaration used to predicate node for task.
 type PredicateFn func(*TaskInfo, *NodeInfo) error
 
+// QueueNodeFilterFn narrows candidate nodes before per-task predicates are evaluated,
+// using queue-level constraints that remain valid throughout the session.
+// Implementations must preserve input order and must not add nodes or modify the input.
+// Callers must not modify the returned slice, which may be shared within a session.
+type QueueNodeFilterFn func(*QueueInfo, []*NodeInfo) []*NodeInfo
+
 // PrePredicateFn is the func declaration used to pre-predicate node for task.
 type PrePredicateFn func(*TaskInfo) error
 

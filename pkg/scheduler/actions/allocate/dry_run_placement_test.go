@@ -19,18 +19,22 @@ package allocate
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	pluginutil "volcano.sh/volcano/pkg/scheduler/plugins/util"
+	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -399,6 +403,7 @@ type dryRunPlacementEnv struct {
 func (e *dryRunPlacementEnv) action() *Action {
 	alloc := New()
 	alloc.session = e.ssn
+	alloc.queueNodes = make(map[queueNodeCacheKey][]*api.NodeInfo)
 	alloc.recorder = NewRecorder()
 	return alloc
 }
@@ -594,4 +599,167 @@ func buildDryRunJob(t *testing.T, opts dryRunEnvOptions) (*api.JobInfo, *api.Sub
 		t.Fatal("subJob not found")
 	}
 	return job, subJob
+}
+
+// queueCandidateTestPlugin supplies filters and scoring at the plugin boundary.
+type queueCandidateTestPlugin struct {
+	dryRunTestPluginImpl
+	filter api.QueueNodeFilterFn
+	score  api.NodeOrderFn
+}
+
+func (p *queueCandidateTestPlugin) OnSessionOpen(ssn *framework.Session) {
+	if p.filter != nil {
+		ssn.AddQueueNodeFilterFn(p.Name(), p.filter)
+	}
+	if p.score != nil {
+		ssn.AddNodeOrderFn(p.Name(), p.score)
+	}
+}
+
+func newQueueCandidateAllocation(t *testing.T, common uthelper.TestCommonStruct, filter api.QueueNodeFilterFn, score api.NodeOrderFn) (*framework.Session, *Action) {
+	t.Helper()
+	if common.Plugins == nil {
+		common.Plugins = map[string]framework.PluginBuilder{}
+	}
+	common.Plugins[gang.PluginName] = gang.New
+	common.Plugins[dryRunTestPlugin] = func(_ framework.Arguments) framework.Plugin {
+		return &queueCandidateTestPlugin{filter: filter, score: score}
+	}
+	plugins := []conf.PluginOption{
+		{Name: gang.PluginName, EnabledJobReady: ptr.To(true), EnabledJobPipelined: ptr.To(true)},
+		{Name: dryRunTestPlugin, EnabledQueueNodeFilter: ptr.To(true), EnabledNodeOrder: ptr.To(true)},
+	}
+	for name := range common.Plugins {
+		if name != gang.PluginName && name != dryRunTestPlugin {
+			plugins = append(plugins, conf.PluginOption{Name: name, EnabledPredicate: ptr.To(true)})
+		}
+	}
+	ssn := common.RegisterSession([]conf.Tier{{Plugins: plugins}}, nil)
+	t.Cleanup(common.Close)
+	alloc := New()
+	alloc.session = ssn
+	alloc.queueNodes = make(map[queueNodeCacheKey][]*api.NodeInfo)
+	alloc.recorder = NewRecorder()
+	return ssn, alloc
+}
+
+func TestAllocateResourcesForTasksQueueCandidateScopes(t *testing.T) {
+	var inputs [][]string
+	common := queueCandidateScopeFixture()
+	common.Queues = []*schedulingv1.Queue{util.MakeQueue("q1").Obj()}
+	common.PodGroups = []*schedulingv1.PodGroup{util.BuildPodGroup("pg1", "ns", "q1", 1, nil, schedulingv1.PodGroupInqueue)}
+	common.Pods = []*v1.Pod{util.BuildPod("ns", "p1", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", nil, nil)}
+	ssn, alloc := newQueueCandidateAllocation(t, common, func(_ *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
+		names := make([]string, 0, len(nodes))
+		for _, node := range nodes {
+			names = append(names, node.Name)
+		}
+		inputs = append(inputs, names)
+		// Reject the cluster scope and accept the restricted scope.
+		if len(nodes) > 1 {
+			return nil
+		}
+		return nodes
+	}, nil)
+	job := ssn.Jobs["ns/pg1"]
+	subJob := job.SubJobs[job.DefaultSubJobID()]
+	for _, tc := range []struct {
+		name      string
+		hyperNode string
+		wantNode  string
+	}{
+		{name: "empty cluster candidates", hyperNode: framework.ClusterTopHyperNode},
+		{name: "restricted scope remains allocatable", hyperNode: "sn-a", wantNode: "node-a"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
+			tasks.Push(job.Tasks["ns-p1"])
+			stmt := alloc.allocateResourcesForTasks(subJob, tasks, tc.hyperNode)
+			if tc.wantNode == "" {
+				require.Nil(t, stmt)
+				require.Empty(t, job.Tasks["ns-p1"].NodeName)
+				return
+			}
+			require.NotNil(t, stmt)
+			defer stmt.Discard()
+			require.Len(t, stmt.Operations(), 1)
+			require.Equal(t, tc.wantNode, job.Tasks["ns-p1"].NodeName)
+		})
+	}
+	require.Len(t, inputs, 2)
+	require.ElementsMatch(t, []string{"node-a", "node-b"}, inputs[0])
+	require.Equal(t, []string{"node-a"}, inputs[1])
+}
+
+func queueCandidateScopeFixture() uthelper.TestCommonStruct {
+	return uthelper.TestCommonStruct{
+		Nodes: []*v1.Node{
+			util.BuildNode("node-a", api.BuildResourceList("8", "16Gi", api.ScalarResource{Name: "pods", Value: "110"}), nil),
+			util.BuildNode("node-b", api.BuildResourceList("8", "16Gi", api.ScalarResource{Name: "pods", Value: "110"}), nil),
+		},
+		HyperNodes: map[string]sets.Set[string]{"sn-a": sets.New("node-a"), "sn-b": sets.New("node-b")},
+		HyperNodesMap: api.HyperNodeInfoMap{
+			"sn-a": newPlacementTestHyperNode("sn-a", 1, ""),
+			"sn-b": newPlacementTestHyperNode("sn-b", 1, ""),
+		},
+		HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New("sn-a", "sn-b")},
+	}
+}
+
+func TestAllocateResourcesForTasksQueueCandidateCache(t *testing.T) {
+	common := queueCandidateScopeFixture()
+	common.Queues = []*schedulingv1.Queue{util.MakeQueue("q1").Obj(), util.MakeQueue("q2").Obj()}
+	for _, queue := range []string{"q1", "q2"} {
+		common.PodGroups = append(common.PodGroups, util.BuildPodGroup(queue, "ns", queue, 1, nil, schedulingv1.PodGroupInqueue))
+		common.Pods = append(common.Pods, util.BuildPod("ns", queue, "", v1.PodPending, api.BuildResourceList("1", "1Gi"), queue, nil, nil))
+	}
+	inputs := map[api.QueueID][][]string{}
+	ssn, alloc := newQueueCandidateAllocation(t, common, func(queue *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
+		names := make([]string, 0, len(nodes))
+		candidates := make([]*api.NodeInfo, 0, len(nodes))
+		for _, node := range nodes {
+			names = append(names, node.Name)
+			if queue.UID == "q1" || node.Name == "node-b" {
+				candidates = append(candidates, node)
+			}
+		}
+		inputs[queue.UID] = append(inputs[queue.UID], names)
+		return candidates
+	}, nil)
+	for _, tc := range []struct {
+		name      string
+		queue     api.QueueID
+		hyperNode string
+		wantNode  string
+	}{
+		{name: "first queue first scope", queue: "q1", hyperNode: "sn-a", wantNode: "node-a"},
+		{name: "reuse first scope", queue: "q1", hyperNode: "sn-a", wantNode: "node-a"},
+		{name: "first queue second scope", queue: "q1", hyperNode: "sn-b", wantNode: "node-b"},
+		{name: "second queue empty scope", queue: "q2", hyperNode: "sn-a"},
+		{name: "reuse empty result", queue: "q2", hyperNode: "sn-a"},
+		{name: "second queue second scope", queue: "q2", hyperNode: "sn-b", wantNode: "node-b"},
+		{name: "first queue cache survives second queue", queue: "q1", hyperNode: "sn-a", wantNode: "node-a"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			job := ssn.Jobs[api.JobID("ns/"+string(tc.queue))]
+			task := job.Tasks[api.TaskID("ns-"+string(tc.queue))]
+			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
+			tasks.Push(task)
+			stmt := alloc.allocateResourcesForTasks(job.SubJobs[job.DefaultSubJobID()], tasks, tc.hyperNode)
+			if tc.wantNode == "" {
+				require.Nil(t, stmt, "empty cached candidates must not fall back to other nodes")
+				require.Empty(t, task.NodeName)
+				return
+			}
+			require.NotNil(t, stmt)
+			defer stmt.Discard()
+			require.Len(t, stmt.Operations(), 1)
+			require.Equal(t, tc.wantNode, task.NodeName)
+		})
+	}
+	require.Equal(t, map[api.QueueID][][]string{
+		"q1": {{"node-a"}, {"node-b"}},
+		"q2": {{"node-a"}, {"node-b"}},
+	}, inputs, "each queue and scope must be filtered once, including empty results")
 }

@@ -24,6 +24,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -558,6 +559,98 @@ func TestHyperNodeGradientForJobFn_NilCallbackFailsClosed(t *testing.T) {
 	assert.NotNil(t, stats)
 }
 
+// TestPredicateForPreemptAction covers Session.PredicateForPreemptAction in its
+// entirety against a realistic tier layout. The tier mirrors production: the
+// predicate plugins register predicate fns (resourcefit, predicates), while a
+// plugin like nodeorder registers none and is skipped. A node stays a preemption
+// candidate unless some plugin reports an UnschedulableAndUnresolvable (or
+// Error/Skip/Wait) failure; a resolvable Unschedulable failure must not stop the
+// tier walk and mask a later unresolvable one.
+func TestPredicateForPreemptAction(t *testing.T) {
+	task := &api.TaskInfo{Name: "preemptor"}
+	node := &api.NodeInfo{Name: "n1"}
+
+	resolvable := func(*api.TaskInfo, *api.NodeInfo) error {
+		return api.NewFitErrWithStatus(task, node,
+			&api.Status{Code: api.Unschedulable, Reason: "insufficient resources"})
+	}
+	unresolvable := func(*api.TaskInfo, *api.NodeInfo) error {
+		return api.NewFitErrWithStatus(task, node,
+			&api.Status{Code: api.UnschedulableAndUnresolvable, Reason: "node taint is not tolerated"})
+	}
+
+	newSession := func(predicateFns map[string]api.PredicateFn) *Session {
+		enabled := true
+		ssn := &Session{
+			Tiers: []conf.Tier{{Plugins: []conf.PluginOption{
+				{Name: "resourcefit", EnabledPredicate: &enabled},
+				{Name: "predicates", EnabledPredicate: &enabled},
+				// Non-predicate plugins (nodeorder, proportion, ...) appear in a
+				// real tier without a registered predicate fn and must be skipped.
+				{Name: "nodeorder", EnabledPredicate: &enabled},
+			}}},
+			predicateFns: map[string]api.PredicateFn{},
+		}
+		for name, fn := range predicateFns {
+			if fn != nil {
+				ssn.AddPredicateFn(name, fn)
+			}
+		}
+		return ssn
+	}
+
+	tests := []struct {
+		name          string
+		resourcefitFn api.PredicateFn
+		predicatesFn  api.PredicateFn
+		wantErr       bool
+	}{
+		{
+			name:          "all plugins pass, node stays a candidate",
+			resourcefitFn: nil,
+			predicatesFn:  nil,
+		},
+		{
+			name:          "only resolvable failures, node stays a candidate",
+			resourcefitFn: resolvable,
+		},
+		{
+			// The core fix: a later unresolvable failure must not be masked by an
+			// earlier resolvable one.
+			name:          "later unresolvable is not masked by an earlier resolvable failure",
+			resourcefitFn: resolvable,
+			predicatesFn:  unresolvable,
+			wantErr:       true,
+		},
+		{
+			name:          "unresolvable first excludes the node identically",
+			resourcefitFn: unresolvable,
+			wantErr:       true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ssn := newSession(map[string]api.PredicateFn{
+				"resourcefit": tc.resourcefitFn,
+				"predicates":  tc.predicatesFn,
+			})
+
+			err := ssn.PredicateForPreemptAction(task, node)
+			if !tc.wantErr {
+				assert.NoError(t, err, "node should stay a preemption candidate")
+				return
+			}
+			fe, ok := err.(*api.FitError)
+			if !assert.True(t, ok, "want FitError, got: %v", err) {
+				return
+			}
+			assert.True(t, fe.Status.ContainsUnschedulableAndUnresolvable(),
+				"an unresolvable failure must exclude the node from preemption candidates, got statuses: %v", fe.Status)
+		})
+	}
+}
+
 func TestHyperNodeGradientThreeStates(t *testing.T) {
 	root := api.NewHyperNodeInfo(api.BuildHyperNode("root", 3, nil))
 	rack := api.NewHyperNodeInfo(api.BuildHyperNode("rack", 2, nil))
@@ -653,5 +746,64 @@ func TestHyperNodeGradientThreeStates(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestQueueNodeFilterFn(t *testing.T) {
+	nodes := []*api.NodeInfo{{Name: "n1"}, {Name: "n2"}, {Name: "n3"}}
+	enabled, disabled := true, false
+	ssn := &Session{
+		queueNodeFilterFns: make(map[string]api.QueueNodeFilterFn),
+		Tiers: []conf.Tier{{Plugins: []conf.PluginOption{
+			{Name: "disabled", EnabledPredicate: &disabled},
+			{Name: "first", EnabledPredicate: &enabled},
+			{Name: "second", EnabledPredicate: &enabled},
+		}}},
+	}
+	queue := &api.QueueInfo{}
+	assert.Equal(t, nodes, ssn.QueueNodeFilterFn(queue, nodes), "unregistered filters must not change nodes")
+	ssn.AddQueueNodeFilterFn("disabled", func(*api.QueueInfo, []*api.NodeInfo) []*api.NodeInfo {
+		t.Fatal("disabled predicate must not filter candidates")
+		return nil
+	})
+	ssn.AddQueueNodeFilterFn("first", func(_ *api.QueueInfo, input []*api.NodeInfo) []*api.NodeInfo {
+		return input[1:]
+	})
+	ssn.AddQueueNodeFilterFn("second", func(_ *api.QueueInfo, input []*api.NodeInfo) []*api.NodeInfo {
+		assert.Equal(t, nodes[1:], input)
+		return input[:1]
+	})
+	assert.Equal(t, nodes[1:2], ssn.QueueNodeFilterFn(queue, nodes))
+	assert.Len(t, nodes, 3)
+}
+
+func TestQueueNodeFilterEnablement(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		predicate *bool
+		filter    *bool
+		wantCalls int
+	}{
+		{name: "unset flags"},
+		{name: "inherits enabled predicate", predicate: ptr.To(true), wantCalls: 1},
+		{name: "inherits disabled predicate", predicate: ptr.To(false)},
+		{name: "explicitly disabled", predicate: ptr.To(true), filter: ptr.To(false)},
+		{name: "explicitly enabled", predicate: ptr.To(false), filter: ptr.To(true), wantCalls: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ssn := &Session{
+				queueNodeFilterFns: make(map[string]api.QueueNodeFilterFn),
+				Tiers: []conf.Tier{{Plugins: []conf.PluginOption{{
+					Name: "filter", EnabledPredicate: tc.predicate, EnabledQueueNodeFilter: tc.filter,
+				}}}},
+			}
+			calls := 0
+			ssn.AddQueueNodeFilterFn("filter", func(_ *api.QueueInfo, nodes []*api.NodeInfo) []*api.NodeInfo {
+				calls++
+				return nodes
+			})
+			ssn.QueueNodeFilterFn(&api.QueueInfo{}, []*api.NodeInfo{{Name: "n1"}})
+			assert.Equal(t, tc.wantCalls, calls)
+		})
 	}
 }

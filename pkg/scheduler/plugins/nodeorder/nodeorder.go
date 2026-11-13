@@ -22,6 +22,9 @@ package nodeorder
 
 import (
 	"context"
+	"sort"
+	"strings"
+	"unicode"
 
 	v1 "k8s.io/api/core/v1"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
@@ -56,6 +59,8 @@ const (
 	LeastRequestedWeight = "leastrequested.weight"
 	// BalancedResourceWeight is the key for providing Balanced Resource Priority Weight in YAML
 	BalancedResourceWeight = "balancedresource.weight"
+	// BalancedResourceResources is the key for resources considered by Balanced Resource Allocation in YAML
+	BalancedResourceResources = "balancedresource.resources"
 	// MostRequestedWeight is the key for providing Most Requested Priority Weight in YAML
 	MostRequestedWeight = "mostrequested.weight"
 	// TaintTolerationWeight is the key for providing Taint Toleration Priority Weight in YAML
@@ -98,14 +103,15 @@ func (pp *NodeOrderPlugin) Name() string {
 }
 
 type priorityWeight struct {
-	leastReqWeight          int
-	mostReqWeight           int
-	nodeAffinityWeight      int
-	podAffinityWeight       int
-	balancedResourceWeight  int
-	taintTolerationWeight   int
-	imageLocalityWeight     int
-	podTopologySpreadWeight int
+	leastReqWeight              int
+	mostReqWeight               int
+	nodeAffinityWeight          int
+	podAffinityWeight           int
+	balancedResourceWeight      int
+	balancedAllocationResources map[v1.ResourceName]int32
+	taintTolerationWeight       int
+	imageLocalityWeight         int
+	podTopologySpreadWeight     int
 }
 
 // calculateWeight from the provided arguments.
@@ -132,6 +138,7 @@ type priorityWeight struct {
 //	      nodeaffinity.weight: 2
 //	      podaffinity.weight: 2
 //	      balancedresource.weight: 1
+//	      balancedresource.resources: nvidia.com/gpu, example.com/foo
 //	      tainttoleration.weight: 3
 //	      imagelocality.weight: 1
 //	      podtopologyspread.weight: 2
@@ -140,14 +147,15 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 	// By default, for backward compatibility and for reasonable scores,
 	// least requested priority is enabled and most requested priority is disabled.
 	weight := priorityWeight{
-		leastReqWeight:          1,
-		mostReqWeight:           0,
-		nodeAffinityWeight:      2,
-		podAffinityWeight:       2,
-		balancedResourceWeight:  1,
-		taintTolerationWeight:   3,
-		imageLocalityWeight:     1,
-		podTopologySpreadWeight: 2, // be consistent with kubernetes default setting.
+		leastReqWeight:              1,
+		mostReqWeight:               0,
+		nodeAffinityWeight:          2,
+		podAffinityWeight:           2,
+		balancedResourceWeight:      1,
+		balancedAllocationResources: make(map[v1.ResourceName]int32),
+		taintTolerationWeight:       3,
+		imageLocalityWeight:         1,
+		podTopologySpreadWeight:     2, // be consistent with kubernetes default setting.
 	}
 
 	// Checks whether nodeaffinity.weight is provided or not, if given, modifies the value in weight struct.
@@ -174,7 +182,55 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 	// Checks whether podtopologyspread.weight is provided or not, if given, modifies the value in weight struct.
 	args.GetInt(&weight.podTopologySpreadWeight, PodTopologySpreadWeight)
 
+	// Checks whether balancedresource.resources is provided or not. If provided, it
+	// defines the resources considered by Balanced Resource Allocation.
+	resourcesStr, ok := args[BalancedResourceResources].(string)
+	if !ok {
+		resourcesStr = ""
+	}
+
+	resources := strings.FieldsFunc(resourcesStr, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	})
+	for _, resource := range resources {
+		weight.balancedAllocationResources[v1.ResourceName(resource)] = 1
+	}
+
+	// Fall back to the historical default resources to stay backward compatible
+	// when balancedresource.resources is not configured.
+	if len(weight.balancedAllocationResources) == 0 {
+		weight.balancedAllocationResources = defaultBalancedAllocationResources()
+	}
+
 	return weight
+}
+
+func defaultBalancedAllocationResources() map[v1.ResourceName]int32 {
+	return map[v1.ResourceName]int32{
+		v1.ResourceCPU:                    1,
+		v1.ResourceMemory:                 1,
+		v1.ResourceName("nvidia.com/gpu"): 1,
+	}
+}
+
+// buildBalancedAllocationResourceSpecs converts the configured resources into the
+// ResourceSpec list expected by NodeResourcesBalancedAllocationArgs. Resources are
+// sorted by name so the generated configuration is deterministic.
+func buildBalancedAllocationResourceSpecs(resources map[v1.ResourceName]int32) []config.ResourceSpec {
+	names := make([]string, 0, len(resources))
+	for name := range resources {
+		names = append(names, string(name))
+	}
+	sort.Strings(names)
+
+	specs := make([]config.ResourceSpec, 0, len(names))
+	for _, name := range names {
+		specs = append(specs, config.ResourceSpec{
+			Name:   name,
+			Weight: int64(resources[v1.ResourceName(name)]),
+		})
+	}
+	return specs
 }
 
 func (pp *NodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
@@ -250,12 +306,12 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 
 	if pp.weight.balancedResourceWeight != 0 {
 		// 3. NodeResourcesBalancedAllocation
+		balancedResources := pp.weight.balancedAllocationResources
+		if len(balancedResources) == 0 {
+			balancedResources = defaultBalancedAllocationResources()
+		}
 		blArgs := &config.NodeResourcesBalancedAllocationArgs{
-			Resources: []config.ResourceSpec{
-				{Name: string(v1.ResourceCPU), Weight: 1},
-				{Name: string(v1.ResourceMemory), Weight: 1},
-				{Name: "nvidia.com/gpu", Weight: 1},
-			},
+			Resources: buildBalancedAllocationResourceSpecs(balancedResources),
 		}
 		if p, err := noderesources.NewBalancedAllocation(context.TODO(), blArgs, pp.Handle, fts); err == nil {
 			balancedAllocation := p.(*noderesources.BalancedAllocation)
@@ -344,7 +400,9 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 func (pp *NodeOrderPlugin) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo, k8sNodeInfo fwk.NodeInfo, state *k8sframework.CycleState) (float64, error) {
 	var nodeScore = 0.0
 	for name, p := range pp.NodeOrderScorePlugins {
-		klog.V(5).Infof("Score node through %s plugin", name)
+		if klog.V(5).Enabled() {
+			klog.V(5).Infof("Score node through %s plugin", name)
+		}
 		score, status := p.plugin.Score(context.TODO(), state, task.Pod, k8sNodeInfo)
 		if !status.IsSuccess() {
 			klog.Warningf("Node: %s, <%s> Priority Failed because of Error: %v", node.Name, name, status.AsError())
@@ -354,9 +412,13 @@ func (pp *NodeOrderPlugin) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo, k
 		// Score from each plugin is multiplied by its configured weight before being added to the total.
 		weightedScore := float64(score) * float64(p.weight)
 		nodeScore += weightedScore
-		klog.V(5).Infof("Node: %s, task<%s/%s> plugin %s weight %d, raw score: %d, weighted score: %f", node.Name, task.Namespace, task.Name, name, p.weight, score, weightedScore)
+		if klog.V(5).Enabled() {
+			klog.V(5).Infof("Node: %s, task<%s/%s> plugin %s weight %d, raw score: %d, weighted score: %f", node.Name, task.Namespace, task.Name, name, p.weight, score, weightedScore)
+		}
 	}
-	klog.V(4).Infof("Nodeorder Total Score for task<%s/%s> on node %s is: %f", task.Namespace, task.Name, node.Name, nodeScore)
+	if klog.V(4).Enabled() {
+		klog.V(4).Infof("Nodeorder Total Score for task<%s/%s> on node %s is: %f", task.Namespace, task.Name, node.Name, nodeScore)
+	}
 	return nodeScore, nil
 }
 

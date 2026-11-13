@@ -26,9 +26,12 @@ import (
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
@@ -102,9 +105,48 @@ func TestPreempt(t *testing.T) {
 		gang.PluginName:        gang.New,
 		priority.PluginName:    priority.New,
 		proportion.PluginName:  proportion.New,
+		predicates.PluginName:  predicates.New,
 	}
 	highPrio := util.BuildPriorityClass("high-priority", 100000)
 	lowPrio := util.BuildPriorityClass("low-priority", 10)
+
+	// The node's only Pod slot is occupied, so even a preemptor without CPU requests needs eviction.
+	// Its claim is already allocated: these cases test victim eligibility, not device reallocation.
+	draNode := util.BuildNode("n1", api.BuildResourceList("2", "4Gi", api.ScalarResource{Name: "pods", Value: "1"}), nil)
+	draClass := util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{{
+		CEL: &resourcev1.CELDeviceSelector{Expression: `device.driver == 'gpu.example.com'`},
+	}}, nil)
+	draSlice := util.BuildResourceSlice("slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{
+		Name:               "n1",
+		Generation:         1,
+		ResourceSliceCount: 1,
+	}, []resourcev1.Device{util.BuildDevice("gpu-1", nil, nil)})
+	allocatedClaim := util.BuildResourceClaim("c1", "claim1", []resourcev1.DeviceRequest{
+		util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil),
+	}, nil, nil)
+	allocatedClaim.UID = types.UID("claim1")
+	allocatedClaim.Status.Allocation = &resourcev1.AllocationResult{
+		Devices: resourcev1.DeviceAllocationResult{
+			Results: []resourcev1.DeviceRequestAllocationResult{{
+				Request: "gpu",
+				Driver:  "gpu.example.com",
+				Pool:    "n1",
+				Device:  "gpu-1",
+			}},
+		},
+	}
+	draOnlyPod := util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, nil, "pg1", nil, nil,
+		[]v1.ResourceClaim{{Name: "gpu"}}, []v1.PodResourceClaim{{
+			Name:              "gpu",
+			ResourceClaimName: ptr.To("claim1"),
+		}})
+	draOnlyPod.Spec.Priority = ptr.To(highPrio.Value)
+	cpuAndDRAPod := util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "0"), "pg1", nil, nil,
+		[]v1.ResourceClaim{{Name: "gpu"}}, []v1.PodResourceClaim{{
+			Name:              "gpu",
+			ResourceClaimName: ptr.To("claim1"),
+		}})
+	cpuAndDRAPod.Spec.Priority = ptr.To(highPrio.Value)
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -461,6 +503,84 @@ func TestPreempt(t *testing.T) {
 			ExpectEvicted:  []string{"c1/q2-preemptee1"},
 			ExpectEvictNum: 1,
 		},
+		{
+			Name: "DRA-only preemptor can evict an ordinary-request pod in another job",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("victims", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPodWithPriority("c1", "victim", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "victims", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, nil, ptr.To(lowPrio.Value)),
+				draOnlyPod.DeepCopy(),
+			},
+			Nodes:                []*v1.Node{draNode.DeepCopy()},
+			Queues:               []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, nil)},
+			DeviceClasses:        []*resourcev1.DeviceClass{draClass.DeepCopy()},
+			ResourceSlices:       []*resourcev1.ResourceSlice{draSlice.DeepCopy()},
+			ResourceClaims:       []*resourcev1.ResourceClaim{allocatedClaim.DeepCopy()},
+			ExpectEvictNum:       1,
+			ExpectEvicted:        []string{"c1/victim"},
+			ExpectPipeLined:      map[string][]string{"c1/pg1": {"n1"}},
+			ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{"c1/pg1": {api.Pipelined: 1}},
+		},
+		{
+			Name: "DRA-only preemptor can evict an ordinary-request pod in the same job",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 2, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPodWithPriority("c1", "victim", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, nil, ptr.To(lowPrio.Value)),
+				draOnlyPod.DeepCopy(),
+			},
+			Nodes:                []*v1.Node{draNode.DeepCopy()},
+			Queues:               []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, nil)},
+			DeviceClasses:        []*resourcev1.DeviceClass{draClass.DeepCopy()},
+			ResourceSlices:       []*resourcev1.ResourceSlice{draSlice.DeepCopy()},
+			ResourceClaims:       []*resourcev1.ResourceClaim{allocatedClaim.DeepCopy()},
+			ExpectEvictNum:       1,
+			ExpectEvicted:        []string{"c1/victim"},
+			ExpectPipeLined:      map[string][]string{"c1/pg1": {"n1"}},
+			ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{"c1/pg1": {api.Pipelined: 1}},
+		},
+		{
+			Name: "preemptor with CPU and DRA can evict an ordinary-request pod in another job",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("victims", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPodWithPriority("c1", "victim", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "victims", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, nil, ptr.To(lowPrio.Value)),
+				cpuAndDRAPod.DeepCopy(),
+			},
+			Nodes:                []*v1.Node{draNode.DeepCopy()},
+			Queues:               []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, nil)},
+			DeviceClasses:        []*resourcev1.DeviceClass{draClass.DeepCopy()},
+			ResourceSlices:       []*resourcev1.ResourceSlice{draSlice.DeepCopy()},
+			ResourceClaims:       []*resourcev1.ResourceClaim{allocatedClaim.DeepCopy()},
+			ExpectEvictNum:       1,
+			ExpectEvicted:        []string{"c1/victim"},
+			ExpectPipeLined:      map[string][]string{"c1/pg1": {"n1"}},
+			ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{"c1/pg1": {api.Pipelined: 1}},
+		},
+		{
+			Name: "preemptor with CPU and DRA can evict an ordinary-request pod in the same job",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 2, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPodWithPriority("c1", "victim", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, nil, ptr.To(lowPrio.Value)),
+				cpuAndDRAPod.DeepCopy(),
+			},
+			Nodes:                []*v1.Node{draNode.DeepCopy()},
+			Queues:               []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, nil)},
+			DeviceClasses:        []*resourcev1.DeviceClass{draClass.DeepCopy()},
+			ResourceSlices:       []*resourcev1.ResourceSlice{draSlice.DeepCopy()},
+			ResourceClaims:       []*resourcev1.ResourceClaim{allocatedClaim.DeepCopy()},
+			ExpectEvictNum:       1,
+			ExpectEvicted:        []string{"c1/victim"},
+			ExpectPipeLined:      map[string][]string{"c1/pg1": {"n1"}},
+			ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{"c1/pg1": {api.Pipelined: 1}},
+		},
 	}
 
 	trueValue := true
@@ -494,12 +614,36 @@ func TestPreempt(t *testing.T) {
 			},
 		}}
 
+	// Enable device predicates for the DRA cases; other cases keep their existing plugin setup.
+	draTiers := []conf.Tier{{Plugins: []conf.PluginOption{
+		{
+			Name:                gang.PluginName,
+			EnabledJobReady:     &trueValue,
+			EnabledJobPipelined: &trueValue,
+			EnabledJobStarving:  &trueValue,
+		},
+		{
+			Name:               priority.PluginName,
+			EnabledPreemptable: &trueValue,
+			EnabledTaskOrder:   &trueValue,
+		},
+		{
+			Name:             predicates.PluginName,
+			EnabledPredicate: &trueValue,
+			Arguments:        framework.Arguments{predicates.DynamicResourceAllocationEnable: true},
+		},
+	}}}
+
 	actions := []framework.Action{New()}
 	for i, test := range tests {
 		test.Plugins = plugins
 		test.PriClass = []*schedulingv1.PriorityClass{highPrio, lowPrio}
 		t.Run(test.Name, func(t *testing.T) {
-			test.RegisterSession(tiers, []conf.Configuration{{Name: actions[0].Name(),
+			caseTiers := tiers
+			if len(test.ResourceClaims) > 0 {
+				caseTiers = draTiers
+			}
+			test.RegisterSession(caseTiers, []conf.Configuration{{Name: actions[0].Name(),
 				Arguments: map[string]interface{}{EnableTopologyAwarePreemptionKey: false}}})
 			defer test.Close()
 			test.Run(actions)
