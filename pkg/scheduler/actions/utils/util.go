@@ -17,6 +17,8 @@ limitations under the License.
 package utils
 
 import (
+	"slices"
+
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -58,7 +60,8 @@ func SumResreq(tasks []*api.TaskInfo) *api.Resource {
 
 // PickDomainsFromGradients flattens HyperNode gradients into an ordered list of
 // domain names, capped at maxDomains. If no domains are found, fallback is used.
-func PickDomainsFromGradients(gradients [][]*api.HyperNodeInfo, maxDomains int, fallback string) []string {
+// HyperNodes rejected by a non-nil keep do not count toward the cap.
+func PickDomainsFromGradients(gradients [][]*api.HyperNodeInfo, maxDomains int, fallback string, keep func(*api.HyperNodeInfo) bool) []string {
 	seen := map[string]struct{}{}
 	domains := make([]string, 0)
 	for _, gradient := range gradients {
@@ -70,6 +73,9 @@ func PickDomainsFromGradients(gradients [][]*api.HyperNodeInfo, maxDomains int, 
 				continue
 			}
 			seen[hn.Name] = struct{}{}
+			if keep != nil && !keep(hn) {
+				continue
+			}
 			domains = append(domains, hn.Name)
 			if maxDomains > 0 && len(domains) >= maxDomains {
 				return domains
@@ -83,15 +89,63 @@ func PickDomainsFromGradients(gradients [][]*api.HyperNodeInfo, maxDomains int, 
 }
 
 // GetCandidateDomains fetches HyperNode gradients for the job with PurposeEvict
-// and returns an ordered domain list capped at maxDomains.
-func GetCandidateDomains(ssn *framework.Session, job *api.JobInfo, maxDomains int) []string {
+// and returns an ordered domain list capped at maxDomains. Domains where no
+// pending task passes the preemption predicates are dropped before the cap.
+func GetCandidateDomains(ssn *framework.Session, job *api.JobInfo, pending []*api.TaskInfo, maxDomains int) []string {
 	root := ssn.HyperNodes[framework.ClusterTopHyperNode]
 	gradients, _ := ssn.HyperNodeGradientForJobFn(job, root, api.PurposeEvict)
 	fallback := ""
 	if root != nil && (job == nil || (!job.ContainsHardTopology() && !job.ContainsHardPodGroupAntiAffinity())) {
 		fallback = root.Name
 	}
-	return PickDomainsFromGradients(gradients, maxDomains, fallback)
+	return PickDomainsFromGradients(gradients, maxDomains, fallback, feasibleDomainFn(ssn, pending))
+}
+
+// feasibleDomainFn rejects domains where no node passes the preemption
+// predicates for a pending task. Nomination runs the same check, so dropping
+// them is safe. It returns nil (no filtering) when pre-predicate fails.
+func feasibleDomainFn(ssn *framework.Session, pending []*api.TaskInfo) func(*api.HyperNodeInfo) bool {
+	probes := predicateProbes(ssn, pending)
+	if len(probes) == 0 {
+		return nil
+	}
+	nodeFits := map[string]bool{}
+	fits := func(node *api.NodeInfo) bool {
+		if node == nil {
+			return false
+		}
+		if fit, ok := nodeFits[node.Name]; ok {
+			return fit
+		}
+		fit := slices.ContainsFunc(probes, func(task *api.TaskInfo) bool {
+			return ssn.PredicateForPreemptAction(task, node) == nil
+		})
+		nodeFits[node.Name] = fit
+		return fit
+	}
+	return func(hn *api.HyperNodeInfo) bool {
+		return slices.ContainsFunc(ssn.RealNodesList[hn.Name], fits)
+	}
+}
+
+// predicateProbes keeps one pre-predicated task per role, like allocate's
+// per-role fit error skip (JobInfo.TaskHasFitErrors).
+func predicateProbes(ssn *framework.Session, pending []*api.TaskInfo) []*api.TaskInfo {
+	roles := map[string]struct{}{}
+	probes := make([]*api.TaskInfo, 0, len(pending))
+	for _, task := range pending {
+		if task.TaskRole != "" {
+			if _, ok := roles[task.TaskRole]; ok {
+				continue
+			}
+			roles[task.TaskRole] = struct{}{}
+		}
+		if err := ssn.PrePredicateFn(task); err != nil {
+			return nil
+		}
+		probes = append(probes, task)
+	}
+	return probes
 }
 
 // ApplySubJobNominations sets SubJobInfo.NominatedHyperNode on each
