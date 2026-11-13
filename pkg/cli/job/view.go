@@ -242,14 +242,14 @@ func GetEvents(ctx context.Context, config *rest.Config, job *v1alpha1.Job) []co
 		fmt.Printf("%v\n", err)
 		return nil
 	}
-	events, err := kubernetes.CoreV1().Events(viewJobFlags.Namespace).List(ctx, metav1.ListOptions{})
+	events, err := kubernetes.CoreV1().Events(job.Namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to list events: %v\n", err)
 		return nil
 	}
 	var jobEvents []coreV1.Event
 	for _, v := range events.Items {
-		if strings.HasPrefix(v.ObjectMeta.Name, job.Name+".") {
+		if v.InvolvedObject.UID == job.UID {
 			jobEvents = append(jobEvents, v)
 		}
 	}
