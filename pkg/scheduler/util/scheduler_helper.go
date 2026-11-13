@@ -324,8 +324,15 @@ func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api
 		futureIdle.Add(victim.Resreq)
 	}
 	// Every resource of the preemptor needs to be less or equal than corresponding
-	// idle resource after preemption.
-	if !preemptor.InitResreq.LessEqual(futureIdle, api.Zero) {
+	// idle resource after preemption. This arithmetic check is only authoritative for
+	// resources node.Allocatable actually carries a capacity number for (cpu, memory,
+	// volcano.sh/vgpu-number, ...). A resource a device plugin tracks entirely through its
+	// own ledger instead (like volcano.sh/vgpu-memory-percentage, a pure request-side
+	// modifier with no coherent node-wide total to advertise) can never pass this check,
+	// no matter how much room the device plugin's predicate would actually allow, so treat
+	// a shortfall confined to untracked dimensions as inconclusive rather than a hard no
+	// and let the real predicate decide once eviction is attempted.
+	if ok, failing := preemptor.InitResreq.LessEqualWithResourcesName(futureIdle, api.Zero); !ok && !api.AllUntrackedByAllocatable(failing, node) {
 		return fmt.Errorf("not enough resources: requested <%v>, but future idle <%v>",
 			preemptor.InitResreq, futureIdle)
 	}

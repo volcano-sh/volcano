@@ -476,3 +476,90 @@ func TestReclaimRechecksPredicateAfterEviction(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestReclaimUntrackedResourceDefersToPredicate covers the same #4863-class bug as
+// TestNormalPreemptUntrackedResourceDefersToPredicate in the preempt package, but for reclaim:
+// a reclaimer requesting a resource dimension the node never advertises in Allocatable at all
+// (volcano.sh/vgpu-memory-percentage here, mirroring HAMi's fractional vGPU resource) must not be
+// rejected by the generic scalar-resource arithmetic in reclaimerFitsOnNode/ValidateVictims before
+// the device-aware predicate ever runs.
+func TestReclaimUntrackedResourceDefersToPredicate(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{
+		conformance.PluginName: conformance.New,
+		gang.PluginName:        gang.New,
+		proportion.PluginName:  proportion.New,
+		deviceFitAfterReclaimPluginName: func(framework.Arguments) framework.Plugin {
+			return &deviceFitAfterReclaimPlugin{}
+		},
+	}
+	trueValue := true
+	// Same PodGroups/Pods/Queues as TestReclaimRechecksPredicateAfterEviction (including the
+	// unrelated q3/pg-demand job, which affects proportion's deserved-share math), so the only
+	// variable relative to that already-passing baseline is the untracked resource dimension
+	// added to the reclaimer's request below. That isolates this test to the fix in
+	// reclaimerFitsOnNode/ValidateVictims instead of also exercising queue-weight arithmetic.
+	test := uthelper.TestCommonStruct{
+		Name:    "reclaim evicts a victim for a resource untracked in node.Allocatable",
+		Plugins: plugins,
+		PodGroups: []*schedulingv1beta1.PodGroup{
+			util.BuildPodGroupWithPrio("pg-victim", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
+			util.BuildPodGroupWithPrio("pg-reclaimer", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			util.BuildPodGroupWithPrio("pg-demand", "c1", "q3", 0, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+		},
+		Pods: []*v1.Pod{
+			util.BuildPod("c1", "device-holder-1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+			util.BuildPod("c1", "device-holder-2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+			util.BuildPod("c1", "device-holder-3", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
+			// device-fit-after-reclaim's predicate only special-cases a task named "reclaimer", so
+			// this stays evicted regardless of the untracked resource on the reclaimer's request.
+			// vgpu-memory-percentage is never requested on its own in practice - the API requires
+			// vgpu-number (or vgpu-memory) alongside it. Both are requested here; only
+			// vgpu-memory-percentage is untracked in n1's Allocatable below, which is the one
+			// dimension this test is actually exercising.
+			util.BuildPod("c1", "reclaimer", "", v1.PodPending,
+				api.BuildResourceList("1", "1G",
+					api.ScalarResource{Name: "volcano.sh/vgpu-number", Value: "1"},
+					api.ScalarResource{Name: "volcano.sh/vgpu-memory-percentage", Value: "50"},
+				),
+				"pg-reclaimer", make(map[string]string), make(map[string]string)),
+			util.BuildPod("c1", "other-queue-demand", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg-demand", make(map[string]string), make(map[string]string)),
+		},
+		// n1's Allocatable tracks vgpu-number like a real HAMi node, but deliberately carries no
+		// volcano.sh/vgpu-memory-percentage entry at all.
+		Nodes: []*v1.Node{
+			util.BuildNode("n1", api.BuildResourceList("3", "3G", []api.ScalarResource{
+				{Name: "pods", Value: "10"},
+				{Name: "volcano.sh/vgpu-number", Value: "1"},
+			}...), make(map[string]string)),
+		},
+		Queues: []*schedulingv1beta1.Queue{
+			util.BuildQueue("q1", 1, nil),
+			util.BuildQueue("q2", 9, nil),
+			util.BuildQueue("q3", 1, nil),
+		},
+		ExpectEvicted:  []string{"c1/device-holder-1", "c1/device-holder-2"},
+		ExpectEvictNum: 2,
+		ExpectPipeLined: map[string][]string{
+			"c1/pg-reclaimer": {"n1"},
+		},
+	}
+	// proportion's EnablePreemptive reuses the same queueAllocatable arithmetic as its
+	// Allocatable check and has this identical untracked-resource gap independently (a
+	// separate, pre-existing bug in that plugin, out of scope here). Disabled so this test
+	// isolates the node-level fix in reclaimerFitsOnNode/ValidateVictims.
+	tiers := []conf.Tier{{
+		Plugins: []conf.PluginOption{
+			{Name: conformance.PluginName, EnabledReclaimable: &trueValue},
+			{Name: gang.PluginName, EnabledReclaimable: &trueValue, EnabledJobStarving: &trueValue},
+			{Name: proportion.PluginName, EnabledReclaimable: &trueValue, EnabledQueueOrder: &trueValue},
+			{Name: deviceFitAfterReclaimPluginName, EnabledPredicate: &trueValue},
+		},
+	}}
+
+	test.RegisterSession(tiers, nil)
+	defer test.Close()
+	test.Run([]framework.Action{New()})
+	if err := test.CheckAll(0); err != nil {
+		t.Fatal(err)
+	}
+}
