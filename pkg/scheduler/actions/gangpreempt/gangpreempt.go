@@ -17,6 +17,7 @@ limitations under the License.
 package gangpreempt
 
 import (
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/actions/utils"
@@ -145,7 +146,15 @@ func (gp *Action) preemptJobInDomains(ssn *framework.Session, stmt *framework.St
 	if len(pending) == 0 {
 		return nil
 	}
-
+	// The eviction plan and pending task placement are committed as one gang
+	// transaction. A task with PreemptNever therefore cannot be part of a plan
+	// that evicts a victim, even if another task in the same Job can preempt.
+	for _, task := range pending {
+		if task.Pod != nil && task.Pod.Spec.PreemptionPolicy != nil && *task.Pod.Spec.PreemptionPolicy == v1.PreemptNever {
+			klog.V(3).Infof("Task %s/%s cannot gang-preempt (policy Never)", task.Namespace, task.Name)
+			return nil
+		}
+	}
 	jobNeed := utils.SumInitResreq(pending)
 	domains := utils.GetCandidateDomains(ssn, preemptorJob, gp.maxDomains)
 	for _, domain := range domains {
