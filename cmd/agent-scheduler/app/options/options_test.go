@@ -139,3 +139,18 @@ func TestCheckOptionOrDieRejectsNonPositiveScheduleWorkerCount(t *testing.T) {
 	err = s.CheckOptionOrDie()
 	assert.EqualError(t, err, "scheduler-worker-count must be greater than 0")
 }
+
+func TestCheckOptionOrDieRejectsUnknownShardingMode(t *testing.T) {
+	fs := pflag.NewFlagSet("sharding-mode-test", pflag.ExitOnError)
+	s := NewServerOption()
+	commonutil.LeaderElectionDefault(&s.LeaderElection)
+	componentbaseoptions.BindLeaderElectionFlags(&s.LeaderElection, fs)
+	s.AddFlags(fs)
+	s.LeaderElection.ResourceName = commonutil.GenerateComponentName([]string{s.SchedulerName})
+
+	err := fs.Parse([]string{"--scheduler-sharding-mode=Soft"})
+	assert.NoError(t, err)
+
+	err = s.CheckOptionOrDie()
+	assert.EqualError(t, err, `scheduler-sharding-mode must be one of none, hard or soft, got "Soft"`)
+}
