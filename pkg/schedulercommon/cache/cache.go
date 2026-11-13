@@ -41,7 +41,7 @@ type QueueObjectWrapper struct {
 // InitialEventAsyncHandlerTracker records which initial-list objects are still pending in the
 // Volcano workqueue for a single informer handler registration.
 //
-// Flow (node/hypernode): the informer Add path enqueues work and calls Add(objectKey); the queue
+// Flow (node/hypernode): the informer Add path calls Add(objectKey) before enqueuing work; the queue
 // worker calls Done(objectKey) after handling. HasSynced is true only when the upstream informer
 // registration reports synced and there are no pending keys in ObjectSet.
 //

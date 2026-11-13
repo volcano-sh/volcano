@@ -48,7 +48,73 @@ import (
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/util"
+	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 )
+
+type queueWithAddHook struct {
+	workqueue.TypedRateLimitingInterface[schedulercache.QueueObjectWrapper]
+	afterAdd func(schedulercache.QueueObjectWrapper)
+}
+
+func (q queueWithAddHook) Add(item schedulercache.QueueObjectWrapper) {
+	q.TypedRateLimitingInterface.Add(item)
+	q.afterAdd(item)
+}
+
+func TestInitialEventsSyncWhenConsumedDuringEnqueue(t *testing.T) {
+	tests := []struct {
+		name     string
+		add      func(*SchedulerCache)
+		wantKeys []string
+	}{
+		{
+			name: "node",
+			add: func(sc *SchedulerCache) {
+				sc.AddNode(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-a"}}, true)
+			},
+			wantKeys: []string{"node-a", string(hyperNodeEventSourceNode) + "/node-a"},
+		},
+		{
+			name: "hypernode",
+			add: func(sc *SchedulerCache) {
+				sc.AddHyperNode(&topologyv1alpha1.HyperNode{ObjectMeta: metav1.ObjectMeta{Name: "hypernode-a"}}, true)
+			},
+			wantKeys: []string{string(hyperNodeEventSourceHyperNode) + "/hypernode-a"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &mockHandlerRegistration{synced: true}
+			nodeTracker := schedulercache.NewQueueHandlerTracker(upstream)
+			hyperNodeTracker := schedulercache.NewQueueHandlerTracker(upstream)
+			var consumed []string
+			newQueue := func(tracker *schedulercache.InitialEventAsyncHandlerTracker) queueWithAddHook {
+				type item = schedulercache.QueueObjectWrapper
+				queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[item]())
+				t.Cleanup(queue.ShutDown)
+				return queueWithAddHook{queue, func(enqueued item) {
+					// Reproduce a worker consuming the item as soon as the workqueue publishes it.
+					task, shutdown := queue.Get()
+					assert.False(t, shutdown)
+					assert.Equal(t, enqueued, task)
+					assert.True(t, task.IsInInitialList)
+					tracker.Done(task.Object)
+					queue.Done(task)
+					consumed = append(consumed, task.Object)
+				}}
+			}
+			sc := &SchedulerCache{
+				nodeQueue: newQueue(nodeTracker), hyperNodesQueue: newQueue(hyperNodeTracker),
+				nodeInitialEventTracker: nodeTracker, hyperNodesInitialEventTracker: hyperNodeTracker,
+			}
+			tt.add(sc)
+			assert.Equal(t, tt.wantKeys, consumed)
+			assert.True(t, nodeTracker.HasSynced(), "node handler should have no pending events")
+			assert.True(t, hyperNodeTracker.HasSynced(), "HyperNode handler should have no pending events")
+		})
+	}
+}
 
 type testHintProvider struct {
 	event  fwk.ClusterEvent
