@@ -153,6 +153,42 @@ func TestPreemptableAndReclaimableFn(t *testing.T) {
 	}
 }
 
+func TestPodsWithoutLabelsAreEvictable(t *testing.T) {
+	unlabeled := api.NewTaskInfo(makePod("unlabeled-pod", nil))
+	protected := api.NewTaskInfo(makePod("protected-pod", map[string]string{LabelName: "job-1"}))
+
+	client := fake.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(client, 0)
+	err := informerFactory.Policy().V1().PodDisruptionBudgets().Informer().GetStore().Add(&pdbPolicy.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-pdb", Namespace: "default"},
+		Spec:       pdbPolicy.PodDisruptionBudgetSpec{Selector: &metav1.LabelSelector{MatchLabels: map[string]string{LabelName: "job-1"}}},
+		Status:     pdbPolicy.PodDisruptionBudgetStatus{DisruptionsAllowed: 0},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	schedulerCache := cache.NewDefaultMockSchedulerCache("volcano")
+	schedulerCache.SetSharedInformerFactory(informerFactory)
+
+	enabled := true
+	ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+		{Plugins: []conf.PluginOption{{Name: PluginName, EnabledPreemptable: &enabled, EnabledReclaimable: &enabled, EnabledVictim: &enabled}}},
+	}, nil)
+	(&pdbPlugin{}).OnSessionOpen(ssn)
+
+	preemptees := []*api.TaskInfo{unlabeled, protected}
+	expect := []*api.TaskInfo{unlabeled}
+	if victims := ssn.Preemptable(&api.TaskInfo{}, preemptees); !equality.Semantic.DeepEqual(expect, victims) {
+		t.Errorf("preemptable: expected %v, got %v", expect, victims)
+	}
+	if victims := ssn.Reclaimable(&api.TaskInfo{}, preemptees); !equality.Semantic.DeepEqual(expect, victims) {
+		t.Errorf("reclaimable: expected %v, got %v", expect, victims)
+	}
+	if victims := ssn.VictimTasks(preemptees); !equality.Semantic.DeepEqual(map[*api.TaskInfo]bool{unlabeled: true}, victims) {
+		t.Errorf("victimTasks: expected only the unlabeled pod, got %v", victims)
+	}
+}
+
 func makePod(name string, labels map[string]string) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
