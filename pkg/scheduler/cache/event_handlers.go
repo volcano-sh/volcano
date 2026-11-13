@@ -740,12 +740,14 @@ func (sc *SchedulerCache) AddNode(obj interface{}, isInInitialList bool) {
 		klog.Errorf("Cannot convert to *v1.Node: %v", obj)
 		return
 	}
-	sc.nodeQueue.Add(schedulercache.QueueObjectWrapper{Object: node.Name, IsInInitialList: isInInitialList})
-	sc.hyperNodesQueue.Add(schedulercache.QueueObjectWrapper{Object: string(hyperNodeEventSourceNode) + "/" + node.Name, IsInInitialList: isInInitialList})
+	hyperNodeKey := string(hyperNodeEventSourceNode) + "/" + node.Name
 	if isInInitialList {
+		// Track initial events before workers can take them from either queue.
 		sc.nodeInitialEventTracker.Add(node.Name)
-		sc.hyperNodesInitialEventTracker.Add(string(hyperNodeEventSourceNode) + "/" + node.Name)
+		sc.hyperNodesInitialEventTracker.Add(hyperNodeKey)
 	}
+	sc.nodeQueue.Add(schedulercache.QueueObjectWrapper{Object: node.Name, IsInInitialList: isInInitialList})
+	sc.hyperNodesQueue.Add(schedulercache.QueueObjectWrapper{Object: hyperNodeKey, IsInInitialList: isInInitialList})
 }
 
 // UpdateNode update node to scheduler cache
@@ -1713,11 +1715,10 @@ func (sc *SchedulerCache) AddHyperNode(obj interface{}, isInInitialList bool) {
 		return
 	}
 	object := string(hyperNodeEventSourceHyperNode) + "/" + hn.Name
-	sc.hyperNodesQueue.Add(schedulercache.QueueObjectWrapper{Object: object, IsInInitialList: isInInitialList})
 	if isInInitialList {
-		//tack the obj handling from inital list
 		sc.hyperNodesInitialEventTracker.Add(object)
 	}
+	sc.hyperNodesQueue.Add(schedulercache.QueueObjectWrapper{Object: object, IsInInitialList: isInInitialList})
 }
 
 // UpdateHyperNode adds hyperNode name to the hyperNodesQueue.
