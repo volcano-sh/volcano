@@ -769,6 +769,7 @@ func TestGetAllJobStatusPhaseCoverage(t *testing.T) {
 		{"completing", v1alpha1.Completing, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.UnKnowJobs }},
 		{"terminating", v1alpha1.Terminating, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.UnKnowJobs }},
 		{"aborting", v1alpha1.Aborting, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.UnKnowJobs }},
+		{"aborted", v1alpha1.Aborted, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.UnKnowJobs }},
 		{"restarting", v1alpha1.Restarting, func(s *jobflowv1alpha1.JobFlowStatus) []string { return s.UnKnowJobs }},
 	}
 
