@@ -85,7 +85,9 @@ func (pp *pdbPlugin) OnSessionOpen(ssn *framework.Session) {
 			pdbForPodIsViolated := false
 
 			// A pod with no labels will not match any PDB. So, no need to check.
+			// It can never be protected by a PDB, so it stays a valid victim.
 			if len(pod.Labels) == 0 {
+				victims = append(victims, task)
 				continue
 			}
 
