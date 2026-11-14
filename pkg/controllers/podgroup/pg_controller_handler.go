@@ -99,9 +99,10 @@ func (pg *pgcontroller) addReplicaSet(obj interface{}) {
 				klog.V(4).Infof("Pod %s field SchedulerName is not matched", klog.KObj(&pod))
 				return
 			}
-			// If the pod is already associated with a podgroup, skip creating a new one.
-			if pgName := pod.Annotations[scheduling.KubeGroupNameAnnotationKey]; pgName != "" {
-				klog.V(4).Infof("Pod %s is already associated with a podgroup %s", klog.KObj(&pod), pgName)
+			expectedPGName := helpers.GeneratePodgroupName(&pod)
+			// If the pod is already associated with an external podgroup, skip creating or updating a new one.
+			if pgName := pod.Annotations[scheduling.KubeGroupNameAnnotationKey]; pgName != "" && pgName != expectedPGName {
+				klog.V(4).Infof("Pod %s is already associated with an external podgroup %s", klog.KObj(&pod), pgName)
 				return
 			}
 			// In the upgrade scenario, need to synchronize and update the podgroup-related information.
