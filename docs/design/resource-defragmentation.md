@@ -203,15 +203,4 @@ An action in the scheduler is the planner, executor and reserver. It creates and
 
 ## 9. Preference
 
-I prefer **Option B**: a scheduler action that owns the `DefragPlan`, takes one step per session, and finishes a plan over several sessions.
-
-- **Exact planning.** The plan is computed inside the real session, with the same predicates and state the scheduler uses, so there is no second snapshot to drift.
-- **Less to run.** No new binary, leader election or deployment. Eviction across sessions already has precedent in `preempt` and `gangpreempt`.
-- **The plan object removes the usual objections to an action.** Progress survives scheduler restarts, there is a readable audit trail, and `dryRun` and the read-only validator work as in Option A.
-
-The costs of Option B are manageable:
-- Planning is time-boxed and rate-limited, so it never slows a scheduling cycle.
-- Status writes are asynchronous and use the status subresource, so they stay off the hot path.
-- A plan has a single owning scheduler, which avoids conflicts with multiple schedulers or shards.
-
-I would keep the planner logic in a shared library, so a standalone component stays possible if the scheduler cannot carry this responsibility.
+I prefer **Option B**, the scheduler action: it plans inside the real scheduling session and uses the `DefragPlan` object to carry progress across sessions, with no new binary to run.
