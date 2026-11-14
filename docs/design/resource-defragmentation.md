@@ -201,10 +201,17 @@ An action in the scheduler is the planner, executor and reserver. It creates and
   - The scheduler becomes a status writer for a new object, and must keep those writes off the hot path and free of conflicts, particularly with multiple schedulers or shards.
   - Progress depends on the scheduler's cadence and restarts.
 
-### Common to both
+## 9. Preference
 
-Both options use the same `DefragPlan` and the same planner logic, which can live in a shared library. The choice affects sections 5.1 through 5.6 only in who runs each role, not in what each role does.
+I prefer **Option B**: a scheduler action that owns the `DefragPlan`, takes one step per session, and finishes a plan over several sessions.
 
-## 9. Alternatives Considered
+- **Exact planning.** The plan is computed inside the real session, with the same predicates and state the scheduler uses, so there is no second snapshot to drift.
+- **Less to run.** No new binary, leader election or deployment. Eviction across sessions already has precedent in `preempt` and `gangpreempt`.
+- **The plan object removes the usual objections to an action.** Progress survives scheduler restarts, there is a readable audit trail, and `dryRun` and the read-only validator work as in Option A.
 
-- **A descheduler-based design.** The descheduler evicts without coordinating with the scheduler, so evicted pods may not be re-placed where intended. A plan that includes the destination and a reservation fixes this.
+The costs of Option B are manageable:
+- Planning is time-boxed and rate-limited, so it never slows a scheduling cycle.
+- Status writes are asynchronous and use the status subresource, so they stay off the hot path.
+- A plan has a single owning scheduler, which avoids conflicts with multiple schedulers or shards.
+
+I would keep the planner logic in a shared library, so a standalone component stays possible if the scheduler cannot carry this responsibility.
