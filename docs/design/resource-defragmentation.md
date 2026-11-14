@@ -20,7 +20,7 @@ Node B: [job3 x3][job4 x1][ free x4 ]
 A pending pod requests 8 GPUs. Eight GPUs are free in total, but no single node has them, so the pod waits.
 
 - `allocate` cannot place it.
-- `gangpreempt` / `gangreclaim` could only help by killing other jobs, and only if they have lower priority or exceed their queue share. Here, nobody has to lose anything.
+- `preempt` / `reclaim` and their variations (`gangpreempt` / `gangreclaim`) could only help by killing other jobs, and only if they have lower priority or exceed their queue share. Here, nobody has to lose anything.
 
 Moving job1 and job2 from node A to node B fits everything:
 
