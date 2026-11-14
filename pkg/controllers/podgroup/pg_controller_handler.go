@@ -475,6 +475,10 @@ func (pg *pgcontroller) shouldUpdateExistingPodGroup(podGroup *scheduling.PodGro
 	isUpdated := false
 
 	newPodGroup := pg.buildPodGroupFromPod(pod, podGroup.Name)
+	// Without a Pod queue annotation, the queue was resolved at admission, e.g. from the namespace annotation.
+	if newPodGroup.Spec.Queue == "" {
+		newPodGroup.Spec.Queue = podGroup.Spec.Queue
+	}
 	if !reflect.DeepEqual(newPodGroup.Spec, podGroup.Spec) {
 		podGroup.Spec = newPodGroup.Spec
 		isUpdated = true
