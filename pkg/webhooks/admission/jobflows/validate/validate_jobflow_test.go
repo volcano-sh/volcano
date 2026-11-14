@@ -23,12 +23,216 @@ import (
 
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
 	schedulingv1beta2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 )
+
+func TestAdmitJobFlowLabelValueLength(t *testing.T) {
+	limit := validation.LabelValueMaxLength
+	namespace := "ns"
+	exactName := strings.Repeat("a", limit-len(namespace)-1)
+	overName := exactName + "b"
+	longFlow := strings.Repeat("f", limit-len("ml-training-pipelines"))
+
+	testCases := []struct {
+		name      string
+		namespace string
+		jobFlow   string
+		flows     []string
+		allowed   bool
+		contains  []string
+	}{
+		{
+			name:      "names from issue 6308 are rejected",
+			namespace: "ml-training-pipelines",
+			jobFlow:   "nightly-feature-extraction-and-training-run-v2",
+			flows:     []string{"prep"},
+			allowed:   false,
+			contains: []string{
+				"volcano.sh/createdByJobFlow",
+				"ml-training-pipelines.nightly-feature-extraction-and-training-run-v2",
+				"63",
+			},
+		},
+		{
+			name:      "flow name that overflows the jobtemplate label is rejected",
+			namespace: "ml-training-pipelines",
+			jobFlow:   "nightly-run",
+			flows:     []string{"prep", longFlow},
+			allowed:   false,
+			contains: []string{
+				"volcano.sh/createdByJobTemplate",
+				longFlow,
+				"63",
+			},
+		},
+		{
+			name:      "jobflow and flow labels that are both too long are both reported",
+			namespace: "ml-training-pipelines",
+			jobFlow:   "nightly-feature-extraction-and-training-run-v2",
+			flows:     []string{longFlow},
+			allowed:   false,
+			contains: []string{
+				"volcano.sh/createdByJobFlow",
+				"volcano.sh/createdByJobTemplate",
+			},
+		},
+		{
+			name:      "label value at the 63 byte limit is allowed",
+			namespace: namespace,
+			jobFlow:   exactName,
+			flows:     []string{"prep"},
+			allowed:   true,
+		},
+		{
+			name:      "label value one byte over the limit is rejected",
+			namespace: namespace,
+			jobFlow:   overName,
+			flows:     []string{"prep"},
+			allowed:   false,
+			contains:  []string{"volcano.sh/createdByJobFlow", "64"},
+		},
+		{
+			name:      "duplicate flow names are reported once",
+			namespace: "ml-training-pipelines",
+			jobFlow:   "nightly-run",
+			flows:     []string{longFlow, longFlow},
+			allowed:   false,
+			contains:  []string{"volcano.sh/createdByJobTemplate"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			flows := make([]flowv1alpha1.Flow, 0, len(testCase.flows))
+			for _, flowName := range testCase.flows {
+				flows = append(flows, flowv1alpha1.Flow{Name: flowName})
+			}
+			jobFlow := &flowv1alpha1.JobFlow{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testCase.jobFlow,
+					Namespace: testCase.namespace,
+				},
+				Spec: flowv1alpha1.JobFlowSpec{
+					Flows: flows,
+				},
+			}
+
+			for _, operation := range []admissionv1.Operation{admissionv1.Create, admissionv1.Update} {
+				response := admitJobFlow(jobFlow, operation)
+				if response.Allowed != testCase.allowed {
+					t.Errorf("%s allowed = %v, want %v", operation, response.Allowed, testCase.allowed)
+				}
+				if testCase.allowed {
+					if response.Result != nil {
+						t.Errorf("%s result = %v, want nil", operation, response.Result)
+					}
+					continue
+				}
+				if response.Result == nil {
+					t.Fatalf("%s result is nil", operation)
+				}
+				for _, want := range testCase.contains {
+					if !strings.Contains(response.Result.Message, want) {
+						t.Errorf("%s message %q does not contain %q", operation, response.Result.Message, want)
+					}
+				}
+			}
+		})
+	}
+
+	overFlow := strings.Repeat("f", limit)
+	duplicate := admitJobFlow(&flowv1alpha1.JobFlow{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nightly-run",
+			Namespace: "ml-training-pipelines",
+		},
+		Spec: flowv1alpha1.JobFlowSpec{
+			Flows: []flowv1alpha1.Flow{{Name: overFlow}, {Name: overFlow}},
+		},
+	}, admissionv1.Create)
+	if duplicate.Result == nil {
+		t.Fatal("expected a rejection for a duplicated long flow name")
+	}
+	if got, want := strings.Count(duplicate.Result.Message, "volcano.sh/createdByJobTemplate"), 1; got != want {
+		t.Errorf("jobtemplate label reported %d times, want %d: %s", got, want, duplicate.Result.Message)
+	}
+}
+
+func TestAdmitJobFlowStillRejectsCycle(t *testing.T) {
+	jobFlow := &flowv1alpha1.JobFlow{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "short",
+			Namespace: "ns",
+		},
+		Spec: flowv1alpha1.JobFlowSpec{
+			Flows: []flowv1alpha1.Flow{
+				{
+					Name: "a",
+					DependsOn: &flowv1alpha1.DependsOn{
+						Targets: []string{"b"},
+					},
+				},
+				{
+					Name: "b",
+					DependsOn: &flowv1alpha1.DependsOn{
+						Targets: []string{"a"},
+					},
+				},
+			},
+		},
+	}
+
+	response := admitJobFlow(jobFlow, admissionv1.Create)
+	if response.Allowed {
+		t.Fatal("expected a cycle to be rejected")
+	}
+	if response.Result == nil || !strings.Contains(response.Result.Message, "jobflow Flow is not DAG") {
+		t.Fatalf("message = %v", response.Result)
+	}
+}
+
+func TestAdmitJobFlowReportsLabelAndDAGErrors(t *testing.T) {
+	jobFlow := &flowv1alpha1.JobFlow{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nightly-feature-extraction-and-training-run-v2",
+			Namespace: "ml-training-pipelines",
+		},
+		Spec: flowv1alpha1.JobFlowSpec{
+			Flows: []flowv1alpha1.Flow{
+				{
+					Name: "a",
+					DependsOn: &flowv1alpha1.DependsOn{
+						Targets: []string{"b"},
+					},
+				},
+				{
+					Name: "b",
+					DependsOn: &flowv1alpha1.DependsOn{
+						Targets: []string{"a"},
+					},
+				},
+			},
+		},
+	}
+
+	response := admitJobFlow(jobFlow, admissionv1.Update)
+	if response.Allowed {
+		t.Fatal("expected the JobFlow to be rejected")
+	}
+	if response.Result == nil {
+		t.Fatal("expected an admission message")
+	}
+	for _, want := range []string{"volcano.sh/createdByJobFlow", "jobflow Flow is not DAG"} {
+		if !strings.Contains(response.Result.Message, want) {
+			t.Errorf("message %q does not contain %q", response.Result.Message, want)
+		}
+	}
+}
 
 func TestValidateJobFlowCreate(t *testing.T) {
 	namespace := "test"

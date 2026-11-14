@@ -53,6 +53,8 @@ func (jf *jobflowcontroller) syncJobFlow(jobFlow *v1alpha1flow.JobFlow, updateSt
 	if err := jf.deployJob(jobFlow); err != nil {
 		klog.Errorf("Failed to create jobs of JobFlow %v/%v: %v",
 			jobFlow.Namespace, jobFlow.Name, err)
+		// JobFlow status cannot store this error, so publish it as an event.
+		jf.recorder.Eventf(jobFlow, corev1.EventTypeWarning, "FailedCreate", "Failed to create jobs: %v", err)
 		return err
 	}
 
