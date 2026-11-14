@@ -150,6 +150,12 @@ func TestPreemptableAndReclaimableFn(t *testing.T) {
 		if !equality.Semantic.DeepEqual(test.expectVictimsMap, victimsMap) {
 			t.Errorf("Test of victimTasks: test name %s, expected: %v, got %v ", test.name, test.expectVictims, victims)
 		}
+
+		// (h. test the UnifiedEvictable used by gangpreempt and gangreclaim
+		victims = ssn.UnifiedEvictable(&api.EvictionContext{Kind: api.EvictionKindGangPreempt}, test.preemptees)
+		if !equality.Semantic.DeepEqual(test.expectVictims, victims) {
+			t.Errorf("Test of unifiedEvictable: test name: %s, expected: %v, got %v ", test.name, test.expectVictims, victims)
+		}
 	}
 }
 

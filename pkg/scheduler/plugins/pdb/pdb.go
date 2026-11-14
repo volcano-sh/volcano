@@ -130,11 +130,15 @@ func (pp *pdbPlugin) OnSessionOpen(ssn *framework.Session) {
 		return pdbFilterFn(preemptees), util.Permit
 	}
 
-	// 3. register VictimTasksFns, ReclaimableFn and PreemptableFn
+	// 3. register VictimTasksFns, ReclaimableFn, PreemptableFn and UnifiedEvictableFn
 	victimsFns := []api.VictimTasksFn{pdbFilterFn}
 	ssn.AddVictimTasksFns(pp.Name(), victimsFns)
 	ssn.AddReclaimableFn(pp.Name(), wrappedPdbFilterFn)
 	ssn.AddPreemptableFn(pp.Name(), wrappedPdbFilterFn)
+	// gangpreempt and gangreclaim filter victims only through UnifiedEvictableFn.
+	ssn.AddUnifiedEvictableFn(pp.Name(), func(_ *api.EvictionContext, candidates []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return pdbFilterFn(candidates), util.Permit
+	})
 }
 
 func (pp *pdbPlugin) OnSessionClose(ssn *framework.Session) {}
