@@ -6,7 +6,7 @@ GPU clusters often have enough free GPUs in total, but spread across nodes, so a
 
 This proposal frees a contiguous chunk by **relocating** running pods to other nodes. No pod is killed for good and no queue loses resources.
 
-The design is centred on a single object, the **`DefragPlan`**. A plan records which pods will move where, which space is reserved, and how far execution has progressed. Everything else (planning, reservation, execution, validation) is a role that reads or writes a plan. Which process plays which role is a packaging question, covered in section 8.
+The design is centred on a single object, the **`DefragPlan`**. A plan records which pods will move where, which space is reserved, and how far execution has progressed. Everything else (planning, reservation, execution) is a role that reads or writes a plan. Which process plays which role is a packaging question, covered in section 8.
 
 ## 2. Motivation
 
@@ -47,10 +47,9 @@ Node B: [job3 x3][job4 x1][job1 x2][job2 x2]
  stuck pods ──► PLANNER ──writes──►  DefragPlan  ◄──updates── EXECUTOR ──► evictions
                                          │                    (Eviction API,
                                          │ read by              PDBs respected)
-                       ┌─────────────────┴───────────────┐
-                       ▼                                 ▼
-                   RESERVER                          VALIDATOR
-        (scheduler holds the planned space)       (read-only checks)
+                                         ▼
+                                     RESERVER
+                          (scheduler holds the planned space)
 ```
 
 | Role | Responsibility |
@@ -58,7 +57,6 @@ Node B: [job3 x3][job4 x1][job1 x2][job2 x2]
 | **Planner** | Finds stuck pods and writes a `DefragPlan`. Uses the scheduler's own simulation. |
 | **Executor** | Advances a plan one step at a time and keeps its status up to date. |
 | **Reserver** | Lives in the scheduler. Subtracts the plan's reserved capacity from idle resources, so other pods cannot take it. |
-| **Validator** | Read-only. Re-checks every plan and reports violations. |
 
 **Relation to preemption.** Defrag only acts on pods that stay Pending after the scheduler's own actions (`allocate`, `preempt`, `reclaim`) could not place them, so it never competes with them. It handles the case they cannot: free resources exist, but not in one place.
 
@@ -163,12 +161,12 @@ Other guards: relocation is opt-in per job, the number of concurrent plans is ca
 
 Behind a flag, off by default, enabled per queue or namespace, with a kill switch that stops new plans and releases all reservations. Each phase widens what the system may do only after the previous one has proven its plans correct.
 
-1. **Dry-run.** Generate `DefragPlan` objects with `dryRun: true`. No evictions and no reservations. The validator re-checks every plan (invariants, replay on a fresh snapshot, whether the pod scheduled anyway).
+1. **Dry-run.** Generate `DefragPlan` objects with `dryRun: true`. No evictions and no reservations. Operators can inspect the plans before execution is enabled.
 2. **Safe bundles.** Enable execution for safe bundles only, with reservations. One plan at a time.
-3. **Whole bundles.** Enable whole bundles, then gangs and topology domains. One plan at a time. The validator keeps running.
+3. **Whole bundles.** Enable whole bundles, then gangs and topology domains. One plan at a time.
 4. **Plan concurrency.** Configurable, capped by a maximum set by the cluster owner.
 
-Gating signals for every phase: validator violations (must be zero), moved pods that fail to land, reservation leaks, PDB-blocked evictions, and jobs restarted per plan.
+Gating signals for every phase: moved pods that fail to land, reservation leaks, PDB-blocked evictions, and jobs restarted per plan.
 
 ## 8. Packaging: standalone component or scheduler action
 
@@ -176,7 +174,7 @@ The design above does not depend on which process plays the planner, executor an
 
 ### Option A: standalone component (`volcano-defrag`)
 
-A leader-elected controller is the planner, executor and validator. It embeds the scheduler framework to plan. A small scheduler plugin is the reserver.
+A leader-elected controller is the planner and executor. It embeds the scheduler framework to plan. A small scheduler plugin is the reserver.
 
 - **For:**
   - Long-running work (terminate, restart, verify) stays out of the scheduling loop.
@@ -190,7 +188,7 @@ A leader-elected controller is the planner, executor and validator. It embeds th
 
 ### Option B: scheduler action (`defrag`)
 
-An action in the scheduler is the planner, executor and reserver. It creates and updates the `DefragPlan`, and takes one step per scheduling session, so a plan finishes over several sessions. A read-only watcher is the validator.
+An action in the scheduler is the planner, executor and reserver. It creates and updates the `DefragPlan`, and takes one step per scheduling session, so a plan finishes over several sessions.
 
 - **For:**
   - Planning runs inside the real session, with the exact predicates and state, and no snapshot to drift.
