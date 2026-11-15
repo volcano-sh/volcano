@@ -143,41 +143,33 @@ If either fails, defragmentation cannot help. Only preemption or reclaim can.
 
 ### 5.3 Planning
 
-The planner builds a snapshot with the scheduler framework, so predicates, binpack and `TaskOrderFn` behave exactly as in the scheduler.
+The planner snapshots the cluster with the scheduler framework, so predicates and `TaskOrderFn` behave as in the scheduler.
 
-1. **Stuck pods.** Take the pending pods in `TaskOrderFn` order and keep the smallest prefix that satisfies `minAvailable`. Skip pods that already fit somewhere. Resource requests live on pods, so every node-level number below is per pod.
-2. **Candidate nodes.** Keep a node if `free + movable >= pod request` and it passes the non-resource predicates. Rank by smallest deficit (`request - free`) and cap how many are tried.
-3. **Movable sets.** Group the pods on a node by job into bundles:
-   - **Safe bundle:** after the pods leave, the job still has at least `minAvailable` ready pods. The job keeps running.
-   - **Whole bundle:** the job would drop below `minAvailable`. The gang breaks, so the cost is the whole job.
-4. **Eligibility.** A pod is movable only if all of these hold:
-   - It opts in with the annotation `volcano.sh/relocatable: "true"` (a label is also accepted). The default is off. This is a new key, separate from `volcano.sh/preemptable`: being killed for a higher-priority job and being restarted elsewhere are different promises, and a pod can accept one without the other.
-   - It has a controller owner (Deployment/ReplicaSet, StatefulSet, Volcano Job, and so on). **A bare pod with no owner is immovable**, because evicting it deletes it for good and nothing recreates it.
-   - Its job is at or below the pending job's priority (configurable).
-   - No PDB blocks it.
-5. **Selection.** Choose bundles that cover the deficit at the lowest cost: safe before whole, then lowest priority, then lowest restart cost.
-6. **Simulation.** Free the chosen pods, place the stuck pod, then place every moved pod on another node. A plan is valid only if every moved pod finds a home.
-
-The planner plans on top of in-flight plans: their reservations are already subtracted from the snapshot, and their evictions already count against PDB budgets.
+1. **Stuck pods.** Take pending pods in `TaskOrderFn` order, the smallest prefix that satisfies `minAvailable`.
+2. **Candidate nodes.** Keep nodes where `free + movable >= request`, ranked by smallest deficit.
+3. **Movable pods.** A pod is movable only if it:
+   - has the annotation `volcano.sh/relocatable: "true"` (default off; a label also works), separate from `volcano.sh/preemptable`,
+   - has a controller owner (a bare pod is immovable, nothing recreates it),
+   - belongs to a job at or below the pending job's priority, and
+   - is not blocked by a PDB.
+4. **Bundles and selection.** Group movable pods by job. A *safe* bundle keeps the job at or above `minAvailable`; a *whole* bundle breaks the gang. Pick the cheapest cover of the deficit: safe first, then lowest priority.
+5. **Simulation.** Free the chosen pods, place the stuck pod, then place every moved pod elsewhere. The plan is valid only if all of them fit.
 
 ### 5.4 Reservations
 
-Each scheduling session, the reserver reads `Executing` plans and subtracts two pieces of capacity from idle resources for every pod except the plan's own pods:
-- the freed space on the target node, held for the pending pods (matched by pod UID), and
-- the destination space, held for the moved pods. This reservation is keyed by owner and resource shape ("room for one pod of owner X on node B"), so the first unscheduled replacement of that owner with that shape claims it, whatever its name. Replicas of one owner are interchangeable.
+Each session, the reserver subtracts the capacity of `Executing` plans from idle resources, for every pod except the plan's own:
+- the freed space on the target node, held for the pending pods (by UID), and
+- the destination space, keyed by owner and resource shape, so any replacement of that owner can claim it.
 
-The freed space on the source node is also reserved, so a replacement cannot land back there. The reservation on the destination guarantees it a place, so steering needs no hard pin. At most the reserver adds a score preference for the reserved node.
-
-Reservations expire after the plan's TTL, and are released when the pods bind or the plan ends. A pod that binds must release its reservation at the same moment, so the space is never counted twice. Reserved space should not count as allocated to any queue.
+Reservations expire at the TTL and are released when pods bind or the plan ends. They never count as allocated to a queue.
 
 ### 5.5 Execution
 
-The executor moves one bundle at a time:
-1. Evict the bundle's pods with the Eviction API, so PDBs are respected.
-2. Wait until the owner is back at its desired replica count with the replacement bound on the destination node. The old pod name does not come back, so the executor matches by owner.
-3. Continue with the next bundle. When the target pods are scheduled, mark the plan `Succeeded` and start a cooldown.
+For each bundle, in order:
+1. Evict its pods through the Eviction API, so PDBs are respected.
+2. Wait until each owner is back at its desired replicas with the replacement bound on the destination.
 
-Before every step it re-validates the plan: the target is still pending and still does not fit, and the remaining moves are still valid. If not, it stops or re-plans.
+Before each step, re-validate the plan; if it no longer holds, stop or re-plan. When the target pods are scheduled, mark `Succeeded` and start a cooldown.
 
 ### 5.6 Concurrency
 
