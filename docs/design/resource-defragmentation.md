@@ -201,16 +201,18 @@ A global maximum, set by the cluster owner, caps concurrent plans. Stuck pods ar
 
 Other guards: relocation is opt-in per job, the number of concurrent plans is capped, and every plan is followed by a cooldown.
 
-## 7. Rollout
+## 7. Release Plan
 
-Behind a flag, off by default, enabled per queue or namespace, with a kill switch that stops new plans and releases all reservations. Each phase widens what the system may do only after the previous one has proven its plans correct.
+The feature ships behind a flag, off by default, enabled per queue or namespace, with a kill switch that stops new plans and releases all reservations. Each stage widens what the system may do only after the previous one has proven its plans correct.
 
-1. **Dry-run.** Generate `DefragPlan` objects with `dryRun: true`. No evictions and no reservations. Operators can inspect the plans before execution is enabled.
-2. **Safe bundles.** Enable execution for safe bundles only, with reservations. One plan at a time.
-3. **Whole bundles.** Enable whole bundles, then gangs and topology domains. One plan at a time.
-4. **Plan concurrency.** Configurable, capped by a maximum set by the cluster owner.
+| Stage | API | What it does | Exit criteria |
+|---|---|---|---|
+| **Alpha** | `v1alpha1` | Dry-run only. Writes `DefragPlan` objects with `dryRun: true`. No evictions, no reservations. | Plans look correct on real clusters, and planning cost stays within budget. |
+| **Beta** | `v1beta1` | Executes safe bundles, with reservations. One plan at a time. | No stuck reservations or failed moves in soak tests. |
+| **Beta 2** | `v1beta1` | Adds whole bundles, then gangs and topology domains. One plan at a time. | Gang-break cost behaves as the planner predicts. |
+| **GA** | `v1` | Plan concurrency, configurable and capped by a maximum set by the cluster owner. | Stable API, e2e tests and docs, and at least one release at beta with no breaking changes. |
 
-Gating signals for every phase: moved pods that fail to land, reservation leaks, PDB-blocked evictions, and jobs restarted per plan.
+Signals watched at every stage: moved pods that fail to land, reservation leaks, PDB-blocked evictions, and jobs restarted per plan.
 
 ## 8. Packaging: standalone component or scheduler action
 
