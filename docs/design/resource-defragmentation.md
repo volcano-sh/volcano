@@ -151,7 +151,7 @@ The planner builds a snapshot with the scheduler framework, so predicates, binpa
    - **Safe bundle:** after the pods leave, the job still has at least `minAvailable` ready pods. The job keeps running.
    - **Whole bundle:** the job would drop below `minAvailable`. The gang breaks, so the cost is the whole job.
 4. **Eligibility.** A pod is movable only if all of these hold:
-   - It is marked movable with the existing Volcano annotation `volcano.sh/preemptable: "true"` (the `PodPreemptable` key, read by `GetPodPreemptable`, which also accepts it as a label). No new key is needed.
+   - It opts in with the annotation `volcano.sh/relocatable: "true"` (a label is also accepted). The default is off. This is a new key, separate from `volcano.sh/preemptable`: being killed for a higher-priority job and being restarted elsewhere are different promises, and a pod can accept one without the other.
    - It has a controller owner (Deployment/ReplicaSet, StatefulSet, Volcano Job, and so on). **A bare pod with no owner is immovable**, because evicting it deletes it for good and nothing recreates it.
    - Its job is at or below the pending job's priority (configurable).
    - No PDB blocks it.
