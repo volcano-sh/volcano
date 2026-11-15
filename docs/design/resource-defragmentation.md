@@ -75,15 +75,17 @@ spec:
   ttl: 15m
   target:
     podGroup: train-big
-    pods: [{name: train-big-worker-0, request: {nvidia.com/gpu: "8"}, node: node-a}]
+    pods: [{name: train-big-worker-0, uid: 9c1e, request: {nvidia.com/gpu: "8"}, node: node-a}]
   moves:
   - {order: 1, podGroup: job1, bundle: safe,
-     pods: [{name: job1-worker-2, from: node-a, to: node-b, request: {nvidia.com/gpu: "2"}}]}
+     pods: [{name: job1-worker-2, uid: 41ab, owner: {kind: Job, uid: 77d0},
+             from: node-a, to: node-b, request: {nvidia.com/gpu: "2"}}]}
   - {order: 2, podGroup: job2, bundle: safe,
-     pods: [{name: job2-worker-1, from: node-a, to: node-b, request: {nvidia.com/gpu: "2"}}]}
+     pods: [{name: job2-worker-1, uid: 5e92, owner: {kind: ReplicaSet, uid: 3b18},
+             from: node-a, to: node-b, request: {nvidia.com/gpu: "2"}}]}
   reservations:
-  - {node: node-a, for: [train-big-worker-0], resources: {nvidia.com/gpu: "8"}}
-  - {node: node-b, for: [job1-worker-2, job2-worker-1], resources: {nvidia.com/gpu: "4"}}
+  - {node: node-a, for: {pods: [9c1e]}, resources: {nvidia.com/gpu: "8"}}
+  - {node: node-b, for: {owners: [77d0, 3b18]}, resources: {nvidia.com/gpu: "4"}}
 status:
   phase: Executing      # Planned -> Executing -> Succeeded | Failed | Obsolete | Aborted
   currentMove: 1
@@ -92,6 +94,7 @@ status:
 - **The spec is immutable** once created. It says what should happen.
 - **The status is written only by the executor.** It says what has happened.
 - **`dryRun: true`** records the plan and leaves it `Planned`. Nothing is evicted or reserved.
+- **Pods are identified by owner, not by name.** Evicting a Deployment pod makes its ReplicaSet create a replacement with a new name. So each moved pod records its UID (used only to evict that exact pod), its controller owner, and its resource shape. The name is for display only.
 - **One owner per plan.** A plan names the instance that executes it, so two instances never advance the same plan.
 - **Reads and writes** go through the status subresource and never block a scheduling session.
 
@@ -112,7 +115,11 @@ The planner builds a snapshot with the scheduler framework, so predicates, binpa
 3. **Movable sets.** Group the pods on a node by job into bundles:
    - **Safe bundle:** after the pods leave, the job still has at least `minAvailable` ready pods. The job keeps running.
    - **Whole bundle:** the job would drop below `minAvailable`. The gang breaks, so the cost is the whole job.
-4. **Eligibility.** Only jobs marked relocatable, only jobs at or below the pending job's priority (configurable), and no pod blocked by a PDB.
+4. **Eligibility.** A pod is movable only if all of these hold:
+   - It is marked movable with the existing Volcano annotation `volcano.sh/preemptable: "true"` (the `PodPreemptable` key, read by `GetPodPreemptable`, which also accepts it as a label). No new key is needed.
+   - It has a controller owner (Deployment/ReplicaSet, StatefulSet, Volcano Job, and so on). **A bare pod with no owner is immovable**, because evicting it deletes it for good and nothing recreates it.
+   - Its job is at or below the pending job's priority (configurable).
+   - No PDB blocks it.
 5. **Selection.** Choose bundles that cover the deficit at the lowest cost: safe before whole, then lowest priority, then lowest restart cost.
 6. **Simulation.** Free the chosen pods, place the stuck pod, then place every moved pod on another node. A plan is valid only if every moved pod finds a home.
 
@@ -121,8 +128,10 @@ The planner plans on top of in-flight plans: their reservations are already subt
 ### 5.4 Reservations
 
 Each scheduling session, the reserver reads `Executing` plans and subtracts two pieces of capacity from idle resources for every pod except the plan's own pods:
-- the freed space on the target node, held for the pending pods, and
-- the destination space, held for the moved pods.
+- the freed space on the target node, held for the pending pods (matched by pod UID), and
+- the destination space, held for the moved pods. This reservation is keyed by owner and resource shape ("room for one pod of owner X on node B"), so the first unscheduled replacement of that owner with that shape claims it, whatever its name. Replicas of one owner are interchangeable.
+
+The freed space on the source node is also reserved, so a replacement cannot land back there. The reservation on the destination guarantees it a place, so steering needs no hard pin. At most the reserver adds a score preference for the reserved node.
 
 Reservations expire after the plan's TTL, and are released when the pods bind or the plan ends. A pod that binds must release its reservation at the same moment, so the space is never counted twice. Reserved space should not count as allocated to any queue.
 
@@ -130,7 +139,7 @@ Reservations expire after the plan's TTL, and are released when the pods bind or
 
 The executor moves one bundle at a time:
 1. Evict the bundle's pods with the Eviction API, so PDBs are respected.
-2. Wait until each pod is running on its destination node.
+2. Wait until the owner is back at its desired replica count with the replacement bound on the destination node. The old pod name does not come back, so the executor matches by owner.
 3. Continue with the next bundle. When the target pods are scheduled, mark the plan `Succeeded` and start a cooldown.
 
 Before every step it re-validates the plan: the target is still pending and still does not fit, and the remaining moves are still valid. If not, it stops or re-plans.
