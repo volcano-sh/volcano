@@ -202,3 +202,31 @@ An action in the scheduler is the planner, executor and reserver. It creates and
 ## 9. Preference
 
 I prefer **Option B**, the scheduler action: it plans inside the real scheduling session and uses the `DefragPlan` object to carry progress across sessions, with no new binary to run.
+
+## 10. Future Work
+
+### Chained moves
+
+The planner in section 5.3 places each moved pod only into space that is free when the plan is made (direct moves). Some fragmentation can only be solved by a chain, where one move makes room for the next.
+
+Three nodes with 8 GPUs each, and a pending pod that needs 4 GPUs on one node:
+
+```
+Node 1: [4][2][1] + 1 free   (7 used)
+Node 2: [4][2]    + 2 free   (6 used)
+Node 3: [4][2][1] + 1 free   (7 used)
+```
+
+Four GPUs are free in total, but no node has four free. Freeing node 2 means moving its 2-GPU pod, and neither node 1 nor node 3 has two free GPUs, so a direct move fails. A chain of two moves works:
+
+```
+Move 1:  node 1's 1-GPU pod  ──►  node 3      (node 3 had exactly 1 free)
+         Node 1: [4][2]    + 2 free
+         Node 3: [4][2][1][1]  full
+
+Move 2:  node 2's 2-GPU pod  ──►  node 1      (node 1 now has 2 free)
+         Node 2: [4]       + 4 free   ✔ the pending 4-GPU pod fits here
+         Node 1: [4][2][2]  full
+```
+
+The `DefragPlan` already supports this, because `moves` are ordered. Supporting chains means changing the planner to treat space freed by an earlier move as available to a later one, and executing the moves in order. It is left out of the first version because every extra move is another pod restart and another step that can fail, and a chain that fails halfway leaves the cluster rearranged with nothing gained. When added, it should cap the chain length, for example at two moves.
