@@ -67,25 +67,60 @@ Node B: [job3 x3][job4 x1][job1 x2][job2 x2]
 A plan is the single source of truth for one relocation.
 
 ```yaml
-apiVersion: scheduling.volcano.sh/v1alpha1     # proposed
+apiVersion: scheduling.volcano.sh/v1alpha1   # proposed
 kind: DefragPlan
-metadata: {name: defrag-train-big-7f3a, namespace: team-a}
+metadata:
+  name: defrag-train-big-7f3a
+  namespace: team-a
 spec:
   dryRun: false
   ttl: 15m
   target:
     podGroup: train-big
-    pods: [{name: train-big-worker-0, uid: 9c1e, request: {nvidia.com/gpu: "8"}, node: node-a}]
+    pods:
+    - name: train-big-worker-0
+      uid: 9c1e
+      node: node-a
+      request:
+        nvidia.com/gpu: "8"
   moves:
-  - {order: 1, podGroup: job1, bundle: safe,
-     pods: [{name: job1-worker-2, uid: 41ab, owner: {kind: Job, uid: 77d0},
-             from: node-a, to: node-b, request: {nvidia.com/gpu: "2"}}]}
-  - {order: 2, podGroup: job2, bundle: safe,
-     pods: [{name: job2-worker-1, uid: 5e92, owner: {kind: ReplicaSet, uid: 3b18},
-             from: node-a, to: node-b, request: {nvidia.com/gpu: "2"}}]}
+  - order: 1
+    podGroup: job1
+    bundle: safe
+    pods:
+    - name: job1-worker-2
+      uid: 41ab
+      owner:
+        kind: Job
+        uid: 77d0
+      from: node-a
+      to: node-b
+      request:
+        nvidia.com/gpu: "2"
+  - order: 2
+    podGroup: job2
+    bundle: safe
+    pods:
+    - name: job2-worker-1
+      uid: 5e92
+      owner:
+        kind: ReplicaSet
+        uid: 3b18
+      from: node-a
+      to: node-b
+      request:
+        nvidia.com/gpu: "2"
   reservations:
-  - {node: node-a, for: {pods: [9c1e]}, resources: {nvidia.com/gpu: "8"}}
-  - {node: node-b, for: {owners: [77d0, 3b18]}, resources: {nvidia.com/gpu: "4"}}
+  - node: node-a
+    for:
+      pods: ["9c1e"]
+    resources:
+      nvidia.com/gpu: "8"
+  - node: node-b
+    for:
+      owners: ["77d0", "3b18"]
+    resources:
+      nvidia.com/gpu: "4"
 status:
   phase: Executing      # Planned -> Executing -> Succeeded | Failed | Obsolete | Aborted
   currentMove: 1
