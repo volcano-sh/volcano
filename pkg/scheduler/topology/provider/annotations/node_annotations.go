@@ -115,10 +115,6 @@ func (source *Provider) SyncNode(ctx context.Context, node *corev1.Node) (provid
 	if inventory.FreshUntil != nil && (inventory.FreshUntil.IsZero() || inventory.FreshUntil.Before(inventory.ObservedAt)) {
 		return provider.ProviderNodeUpdate{}, provider.NewSourceError(provider.SourceErrorInvalidTopology, fmt.Errorf("inventory freshness deadline must not precede observation time"))
 	}
-	if len(inventory.Fabrics) > 0 {
-		return provider.ProviderNodeUpdate{}, provider.NewSourceError(provider.SourceErrorUnsupportedFeature, fmt.Errorf("cross-Node fabric annotations require SchedulerCache member resolution"))
-	}
-
 	facts, err := source.normalizeFacts(node, inventory)
 	if err != nil {
 		return provider.ProviderNodeUpdate{}, provider.NewSourceError(provider.SourceErrorInvalidTopology, err)
@@ -288,6 +284,11 @@ func (source *Provider) normalizeFacts(node *corev1.Node, inventory inventory) (
 		}
 	}
 
+	fabricDeclarations, err := source.fabricDeclarations(node, inventory.Fabrics)
+	if err != nil {
+		return api.NodeTopologyFacts{}, err
+	}
+
 	freshUntil := time.Time{}
 	if inventory.FreshUntil != nil {
 		freshUntil = *inventory.FreshUntil
@@ -302,7 +303,46 @@ func (source *Provider) normalizeFacts(node *corev1.Node, inventory inventory) (
 		FreshUntil:          freshUntil,
 		Devices:             devices,
 		LocalDomains:        localDomains,
+		FabricDeclarations:  fabricDeclarations,
 	}, nil
+}
+
+// fabricDeclarations converts the fabrics this Node's annotation declares. Only
+// the owner Node declares a fabric. Members are kept as Node names, because one
+// annotation cannot see other Nodes; the scheduler cache resolves them.
+// Declarations, members, and local domains are sorted so that an unchanged
+// annotation always gives the same topology content.
+func (source *Provider) fabricDeclarations(node *corev1.Node, fabrics []inventoryFabric) ([]api.FabricDeclaration, error) {
+	if len(fabrics) == 0 {
+		return nil, nil
+	}
+	declarations := make([]api.FabricDeclaration, 0, len(fabrics))
+	for _, fabric := range fabrics {
+		if fabric.ID == "" {
+			return nil, fmt.Errorf("fabric ID is required")
+		}
+		if fabric.OwnerNode != node.Name {
+			return nil, fmt.Errorf("fabric %q names owner Node %q, but only its owner Node can declare it", fabric.ID, fabric.OwnerNode)
+		}
+		members := make([]api.FabricMemberDeclaration, 0, len(fabric.Members))
+		for _, member := range fabric.Members {
+			values := append([]string(nil), member.LocalDomains...)
+			sort.Strings(values)
+			members = append(members, api.FabricMemberDeclaration{NodeName: member.Node, LocalDomainValues: values})
+		}
+		sort.Slice(members, func(left, right int) bool {
+			return members[left].NodeName < members[right].NodeName
+		})
+		declarations = append(declarations, api.FabricDeclaration{
+			ID:           api.FabricDomainID{ProviderID: source.ID(), Namespace: source.identityNamespace, Value: fabric.ID},
+			Members:      members,
+			Interconnect: fabric.Interconnect,
+		})
+	}
+	sort.Slice(declarations, func(left, right int) bool {
+		return declarations[left].ID.Value < declarations[right].ID.Value
+	})
+	return declarations, nil
 }
 
 // deviceID builds the canonical identity for one source-owned device value.

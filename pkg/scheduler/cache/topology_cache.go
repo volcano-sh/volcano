@@ -47,7 +47,10 @@ type deviceTopologyState struct {
 	// not yet reported the reservations made before this scheduler started.
 	// Their devices cannot be reserved until recovery succeeds.
 	allocationRecoveryPending map[corev1.ResourceName]struct{}
-	snapshot                  *schedulingapi.TopologySnapshot
+	// resolvedFabrics holds, per owner fact set, the declared cross-Node
+	// fabrics whose member Nodes are resolved.
+	resolvedFabrics map[schedulingapi.ProviderNodeKey]resolvedFabricSet
+	snapshot        *schedulingapi.TopologySnapshot
 }
 
 // WithDeviceTopologyProviderRegistry configures the immutable authoritative
@@ -125,6 +128,7 @@ func newDeviceTopologyState() *deviceTopologyState {
 		podReleases:       make(map[types.UID][]deviceTopologyPodAllocation),
 
 		allocationRecoveryPending: make(map[corev1.ResourceName]struct{}),
+		resolvedFabrics:           make(map[schedulingapi.ProviderNodeKey]resolvedFabricSet),
 	}
 	state.snapshot = schedulingapi.NewTopologySnapshotWithAllocationState(state.revision, state.facts, state.readiness, state.ledger.snapshot(), state.allocationRecoveryPending)
 	return state
@@ -304,9 +308,12 @@ func (state *deviceTopologyState) validateNoTopologyConflicts(candidateKey sched
 	for _, device := range candidate.Devices {
 		candidateDevices[device.ID] = struct{}{}
 	}
-	candidateFabrics := make(map[schedulingapi.FabricDomainID]struct{}, len(candidate.Fabrics))
+	candidateFabrics := make(map[schedulingapi.FabricDomainID]struct{}, len(candidate.Fabrics)+len(candidate.FabricDeclarations))
 	for _, fabric := range candidate.Fabrics {
 		candidateFabrics[fabric.ID] = struct{}{}
+	}
+	for _, declaration := range candidate.FabricDeclarations {
+		candidateFabrics[declaration.ID] = struct{}{}
 	}
 
 	for key, facts := range state.facts {
@@ -323,6 +330,11 @@ func (state *deviceTopologyState) validateNoTopologyConflicts(candidateKey sched
 				return fmt.Errorf("fabric %q is already owned by provider %q on Node UID %q", fabric.ID.Value, key.ProviderID, key.NodeUID)
 			}
 		}
+		for _, declaration := range facts.FabricDeclarations {
+			if _, exists := candidateFabrics[declaration.ID]; exists {
+				return fmt.Errorf("fabric %q is already owned by provider %q on Node UID %q", declaration.ID.Value, key.ProviderID, key.NodeUID)
+			}
+		}
 	}
 	return nil
 }
@@ -330,7 +342,8 @@ func (state *deviceTopologyState) validateNoTopologyConflicts(candidateKey sched
 // publish increments the topology revision and rebuilds its immutable indexed
 // view from the accepted fact sets.
 func (state *deviceTopologyState) publish() {
+	state.resolveFabricDeclarations()
 	state.ledger.reconcile(state.facts)
 	state.revision++
-	state.snapshot = schedulingapi.NewTopologySnapshotWithAllocationState(state.revision, state.facts, state.readiness, state.ledger.snapshot(), state.allocationRecoveryPending)
+	state.snapshot = schedulingapi.NewTopologySnapshotWithAllocationState(state.revision, state.factsWithResolvedFabrics(), state.readiness, state.ledger.snapshot(), state.allocationRecoveryPending)
 }

@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -159,6 +160,31 @@ func TestProviderSyncNodeNormalizesValidInventory(t *testing.T) {
 	}
 }
 
+func TestProviderSyncNodeReadsFabricDeclarations(t *testing.T) {
+	source := newTestProvider(t)
+	node := testNode()
+	node.Annotations = map[string]string{AnnotationKey: strings.Replace(validInventory, `"fabrics": []`, `"fabrics": [{"id":"rack-1/fabric-0","ownerNode":"node-a","members":[{"node":"node-b","localDomains":["nvlink-1","nvlink-0"]},{"node":"node-a","localDomains":["nvlink-a"]}],"interconnect":"NVLink"}]`, 1)}
+
+	update, err := source.SyncNode(context.Background(), node)
+	if err != nil {
+		t.Fatalf("SyncNode() error = %v", err)
+	}
+	want := []api.FabricDeclaration{{
+		ID: api.FabricDomainID{ProviderID: annotationTestProviderID, Namespace: annotationTestNamespace, Value: "rack-1/fabric-0"},
+		Members: []api.FabricMemberDeclaration{
+			{NodeName: "node-a", LocalDomainValues: []string{"nvlink-a"}},
+			{NodeName: "node-b", LocalDomainValues: []string{"nvlink-0", "nvlink-1"}},
+		},
+		Interconnect: "NVLink",
+	}}
+	if !reflect.DeepEqual(update.Facts.FabricDeclarations, want) {
+		t.Fatalf("FabricDeclarations = %#v, want %#v", update.Facts.FabricDeclarations, want)
+	}
+	if len(update.Facts.Fabrics) != 0 {
+		t.Fatalf("Fabrics = %#v, want none before the cache resolves members", update.Facts.Fabrics)
+	}
+}
+
 func TestProviderSyncNodeReturnsClearFactsForMissingAnnotation(t *testing.T) {
 	source := newTestProvider(t)
 	update, err := source.SyncNode(context.Background(), testNode())
@@ -234,9 +260,29 @@ func TestProviderSyncNodeRejectsInvalidInventory(t *testing.T) {
 			},
 		},
 		{
-			name:       "fabric requires cache resolution",
+			name:       "fabric declared by a member that is not its owner",
+			inventory:  strings.Replace(validInventory, `"fabrics": []`, `"fabrics": [{"id":"fabric-a","ownerNode":"node-b","members":[{"node":"node-a","localDomains":["nvlink-a"]},{"node":"node-b","localDomains":["nvlink-0"]}]}]`, 1),
+			wantReason: provider.SourceErrorInvalidTopology,
+		},
+		{
+			name:       "fabric without its owner as a member",
+			inventory:  strings.Replace(validInventory, `"fabrics": []`, `"fabrics": [{"id":"fabric-a","ownerNode":"node-a","members":[{"node":"node-b","localDomains":["nvlink-0"]},{"node":"node-c","localDomains":["nvlink-0"]}]}]`, 1),
+			wantReason: provider.SourceErrorInvalidTopology,
+		},
+		{
+			name:       "fabric with one member Node",
 			inventory:  strings.Replace(validInventory, `"fabrics": []`, `"fabrics": [{"id":"fabric-a","ownerNode":"node-a","members":[{"node":"node-a","localDomains":["nvlink-a"]}]}]`, 1),
-			wantReason: provider.SourceErrorUnsupportedFeature,
+			wantReason: provider.SourceErrorInvalidTopology,
+		},
+		{
+			name:       "fabric with an unknown owner local domain",
+			inventory:  strings.Replace(validInventory, `"fabrics": []`, `"fabrics": [{"id":"fabric-a","ownerNode":"node-a","members":[{"node":"node-a","localDomains":["nvlink-x"]},{"node":"node-b","localDomains":["nvlink-0"]}]}]`, 1),
+			wantReason: provider.SourceErrorInvalidTopology,
+		},
+		{
+			name:       "fabric without an ID",
+			inventory:  strings.Replace(validInventory, `"fabrics": []`, `"fabrics": [{"id":"","ownerNode":"node-a","members":[{"node":"node-a","localDomains":["nvlink-a"]},{"node":"node-b","localDomains":["nvlink-0"]}]}]`, 1),
+			wantReason: provider.SourceErrorInvalidTopology,
 		},
 		{
 			name:      "incomplete Node identity",

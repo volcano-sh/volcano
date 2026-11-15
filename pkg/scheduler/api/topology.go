@@ -180,6 +180,22 @@ type FabricDomain struct {
 	Interconnect       string
 }
 
+// FabricMemberDeclaration names one member Node of a declared fabric and the
+// source values of its local domains on that Node.
+type FabricMemberDeclaration struct {
+	NodeName          string
+	LocalDomainValues []string
+}
+
+// FabricDeclaration is a cross-Node fabric as the source of its owner Node
+// declares it. Members are named by Node name. The scheduler cache resolves
+// them to current Node UIDs and local domain IDs before the fabric can be used.
+type FabricDeclaration struct {
+	ID           FabricDomainID
+	Members      []FabricMemberDeclaration
+	Interconnect string
+}
+
 // NodeTopologyFacts is the complete source-owned topology fact set for one
 // provider and Node. Scheduler-owned availability and reservation state is
 // deliberately not stored here.
@@ -194,6 +210,9 @@ type NodeTopologyFacts struct {
 	Devices             []TopologyDevice
 	LocalDomains        []DeviceDomain
 	Fabrics             []FabricDomain
+	// FabricDeclarations are the cross-Node fabrics this Node owns, as its
+	// source declares them. The cache resolves them into fabrics.
+	FabricDeclarations []FabricDeclaration
 }
 
 // Clone returns an independent copy of topology facts.
@@ -216,6 +235,17 @@ func (facts NodeTopologyFacts) Clone() NodeTopologyFacts {
 		for memberIndex, member := range fabric.Members {
 			clone.Fabrics[index].Members[memberIndex] = member
 			clone.Fabrics[index].Members[memberIndex].LocalDomainIDs = append([]DeviceDomainID(nil), member.LocalDomainIDs...)
+		}
+	}
+	if facts.FabricDeclarations != nil {
+		clone.FabricDeclarations = make([]FabricDeclaration, len(facts.FabricDeclarations))
+		for index, declaration := range facts.FabricDeclarations {
+			clone.FabricDeclarations[index] = declaration
+			clone.FabricDeclarations[index].Members = make([]FabricMemberDeclaration, len(declaration.Members))
+			for memberIndex, member := range declaration.Members {
+				clone.FabricDeclarations[index].Members[memberIndex] = member
+				clone.FabricDeclarations[index].Members[memberIndex].LocalDomainValues = append([]string(nil), member.LocalDomainValues...)
+			}
 		}
 	}
 	return clone
@@ -385,6 +415,66 @@ func ValidateNodeTopologyFacts(facts NodeTopologyFacts) error {
 		if !ownerIsMember {
 			return fmt.Errorf("fabric %q does not include its owner", fabric.ID.Value)
 		}
+	}
+
+	for _, declaration := range facts.FabricDeclarations {
+		if err := validateFabricDeclaration(facts, declaration, domains); err != nil {
+			return err
+		}
+		if err := observeNamespace(declaration.ID.Namespace); err != nil {
+			return fmt.Errorf("fabric %q: %w", declaration.ID.Value, err)
+		}
+		if _, exists := fabrics[declaration.ID]; exists {
+			return fmt.Errorf("duplicate fabric %q", declaration.ID.Value)
+		}
+		fabrics[declaration.ID] = struct{}{}
+	}
+	return nil
+}
+
+// validateFabricDeclaration checks one fabric declared by the source of the
+// facts' Node. The owner must be a member, and its own local domains must be
+// present in the facts. Other members are checked when the cache resolves them.
+func validateFabricDeclaration(facts NodeTopologyFacts, declaration FabricDeclaration, domains map[DeviceDomainID]DeviceDomain) error {
+	if declaration.ID.ProviderID != facts.ProviderID || declaration.ID.Namespace == "" || declaration.ID.Value == "" {
+		return fmt.Errorf("fabric declaration has an incomplete identity or a different provider ID")
+	}
+	if len(declaration.Members) < 2 {
+		return fmt.Errorf("fabric %q must have at least two member Nodes", declaration.ID.Value)
+	}
+	memberNames := make(map[string]struct{}, len(declaration.Members))
+	ownerIsMember := false
+	for _, member := range declaration.Members {
+		if member.NodeName == "" || len(member.LocalDomainValues) == 0 {
+			return fmt.Errorf("fabric %q has a member without a Node name or local domains", declaration.ID.Value)
+		}
+		if _, exists := memberNames[member.NodeName]; exists {
+			return fmt.Errorf("fabric %q has duplicate member Node %q", declaration.ID.Value, member.NodeName)
+		}
+		memberNames[member.NodeName] = struct{}{}
+		values := make(map[string]struct{}, len(member.LocalDomainValues))
+		for _, value := range member.LocalDomainValues {
+			if value == "" {
+				return fmt.Errorf("fabric %q member %q has an empty local domain", declaration.ID.Value, member.NodeName)
+			}
+			if _, exists := values[value]; exists {
+				return fmt.Errorf("fabric %q member %q has duplicate local domain %q", declaration.ID.Value, member.NodeName, value)
+			}
+			values[value] = struct{}{}
+		}
+		if member.NodeName != facts.NodeName {
+			continue
+		}
+		ownerIsMember = true
+		for _, value := range member.LocalDomainValues {
+			domainID := DeviceDomainID{ProviderID: facts.ProviderID, Namespace: declaration.ID.Namespace, NodeUID: facts.NodeUID, Value: value}
+			if _, exists := domains[domainID]; !exists {
+				return fmt.Errorf("fabric %q references unknown local domain %q on its owner Node", declaration.ID.Value, value)
+			}
+		}
+	}
+	if !ownerIsMember {
+		return fmt.Errorf("fabric %q does not include its owner Node %q", declaration.ID.Value, facts.NodeName)
 	}
 	return nil
 }

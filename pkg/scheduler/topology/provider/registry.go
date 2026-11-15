@@ -133,6 +133,11 @@ func (registry *Registry) ValidateOwnership(update ProviderNodeUpdate) error {
 			return fmt.Errorf("fabric %q uses identity namespace %q, want configured namespace %q", fabric.ID.Value, fabric.ID.Namespace, registration.IdentityNamespace)
 		}
 	}
+	for _, declaration := range update.Facts.FabricDeclarations {
+		if declaration.ID.Namespace != registration.IdentityNamespace {
+			return fmt.Errorf("fabric %q uses identity namespace %q, want configured namespace %q", declaration.ID.Value, declaration.ID.Namespace, registration.IdentityNamespace)
+		}
+	}
 
 	return nil
 }
