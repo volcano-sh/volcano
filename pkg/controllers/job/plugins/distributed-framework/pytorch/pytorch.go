@@ -122,11 +122,12 @@ func (pp *pytorchPlugin) isWorkerTask(taskName string) bool {
 }
 
 // getWorkerRankBase returns the rank base of the given worker task, which is
-// 1 (master occupies rank 0) plus the total replicas of all worker tasks
-// listed before it in the worker argument. Ranks of pods in the task are
-// the base plus their own pod index, so ranks stay unique across worker tasks.
+// the replicas of the master task (master pods take ranks 0..masterReplicas-1)
+// plus the total replicas of all worker tasks listed before it in the worker
+// argument. Ranks of pods in the task are the base plus their own pod index,
+// so ranks stay unique across the master and worker tasks.
 func (pp *pytorchPlugin) getWorkerRankBase(taskName string, job *batch.Job) int {
-	base := 1
+	base := int(helpers.GetTaskReplicasUnderJob(pp.masterName, job))
 	for _, workerName := range pp.workerNames {
 		if workerName == taskName {
 			break
@@ -169,6 +170,14 @@ func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 		workerRank = pp.getWorkerRankBase(taskType, job) + index
 		// Add init container to wait for master to be ready and accessible on the specified port
 		pp.addWaitForMasterInitContainer(pod, masterAddr)
+	} else if taskType == pp.masterName {
+		// Each master pod takes its own pod index as rank, so a master task
+		// with more than one replica does not hand out rank 0 twice.
+		index, err := strconv.Atoi(helpers.GetPodIndexUnderTask(pod))
+		if err != nil {
+			return err
+		}
+		masterRank = index
 	}
 
 	worldSize := strconv.FormatInt(pp.getWorldSize(job), 10)
