@@ -366,7 +366,9 @@ For a declared cross-Node fabric, one Node is the authoritative fabric owner. Th
 
 The source payload uses Node names only to look up fabric members and local-domain source values only within each named member. When it accepts the owner update, the cache resolves every member to its current Node UID and source generation, then builds each canonical `DeviceDomainID` with that member UID. The resulting canonical fabric stores the resolved membership, not name-derived domain IDs. A fabric ID has exactly one owner for one provider. The cache stamps `FabricDomain.OwnerProviderID`, `OwnerNodeUID`, and `SourceGeneration` from the validated owner update rather than trusting duplicated payload fields. Only an update from that owner can replace or remove the fabric. A member Node publishes its local domains, but must not publish a second declaration of the same fabric ID. Conflicting declarations, an owner outside the member set, or a declaration that changes ownership without an explicit replacement generation are rejected.
 
-The cache accepts the fabric only when every referenced Node and local domain is present in current, synced provider facts. A member Node becoming stale, leaving this scheduler's scope, being deleted, changing UID, or publishing a different source generation makes the fabric unavailable immediately. It must not automatically remap the old fabric declaration to replacement member facts. The owner must publish a newer fabric generation that resolves every member again. A clear or deletion of the owner Node removes the fabric declaration. A normal multi-Node cluster must not publish a fabric merely because its Nodes communicate over Ethernet, InfiniBand, or RoCE.
+The cache accepts the fabric only when every referenced Node and local domain is present in current, synced provider facts. A member Node becoming stale, leaving this scheduler's scope, being deleted, changing UID, or publishing a different source generation makes the fabric unavailable immediately. It must not automatically remap the old fabric declaration to replacement member facts. The owner must publish a newer fabric generation that resolves every member again. A clear or deletion of the owner Node removes the fabric declaration.
+
+Nodes sync independently, so the owner can be accepted before a member, or the other way round. The owner's facts store the fabric as a source declaration that names members by Node name. The cache keeps a declaration whose members are not all present yet as pending, and tries to resolve it again whenever it publishes a new topology view. Once every member resolves, the fabric is pinned to the member Node UIDs and source generations found at that time. A later member change makes it unavailable as described above, and only a new owner generation resolves it again. A normal multi-Node cluster must not publish a fabric merely because its Nodes communicate over Ethernet, InfiniBand, or RoCE.
 
 In the common multi-Node case, each Node publishes only its own local device domains and leaves `fabrics` empty. The Nodes may still be network-connected through an existing HyperNode/rack definition, but that network relationship is not an accelerator fabric:
 
@@ -385,7 +387,7 @@ For example, a four-GPU Pod can receive a valid local NVLink group on `node-a` a
 
 The surrounding Node object supplies the owner Node name and UID, so a device cannot claim a different Node. In an annotation payload, `devices[].id` is only the source-owned device value. The cache constructs its canonical `DeviceID` with the configured provider ID and identity namespace, neither of which is workload- or annotation-controlled. It constructs `DeviceDomainID` with the same provider and namespace plus the surrounding Node UID, so replacement Nodes with the same name cannot collide with an old domain or its allocation tombstone. The provider treats one accepted annotation as the complete topology fact set for that Node and source generation. Removing the annotation removes that source's Node facts, it does not immediately free an allocated device until the availability ledger reconciles an authoritative release.
 
-The provider reports structured errors for malformed JSON, an unsupported schema version, duplicate identities, unknown domain membership, stale generation, or a payload larger than the configured limit. It must never partially apply an invalid Node update.
+The provider reports structured errors for malformed JSON, an unsupported schema version, duplicate identities, unknown domain membership, or stale generation. It must never partially apply an invalid Node update. The provider sets no annotation size limit of its own, because the Kubernetes API server already limits the total size of a Node's annotations.
 
 ##### Annotation Writer Authorization and Validation
 
@@ -752,26 +754,11 @@ Volcano does not enable `/pods/validate` by default, so the PodGroup controller 
 
 Changing the policy follows the workload's PodGroup. A Deployment rollout creates a new ReplicaSet, which gets a new PodGroup with the new policy. A StatefulSet keeps one PodGroup for its whole life. When its Pod template gets a different policy, the PodGroup webhook rejects the controller's PodGroup update, so the PodGroup keeps its old policy. Other PodGroup changes in that same update, such as a new `minMember`, are rejected with it. In alpha, users recreate the StatefulSet to change its device topology policy.
 
-`claimName` is reserved for a future DRA-backed version of this API. It will identify the matching entry in each Pod's `spec.resourceClaims` once Volcano has a compatible ResourceSlice provider and DRA allocation adapter:
-
-```yaml
-spec:
-  deviceTopology:
-    requirements:
-    - resource:
-        claimName: accelerator
-      mode: soft
-    fabric:
-      mode: soft
-```
-
-The alpha webhook rejects `claimName` requirements. This avoids accepting an API shape that cannot yet map a DRA claim to stable, enforceable device identities. The future DRA version will require every Pod in the scheduling unit to contain the declared claim alias and will report `DeviceTopologyClaimNotFound` when it is absent.
-
-> **Alpha limitation:** The DRA example above describes the proposed future API only. It is rejected by the initial implementation.
+DRA-backed workloads are deferred. A later version can add a `claimName` resource selector that identifies the matching entry in each Pod's `spec.resourceClaims`, once Volcano has a compatible ResourceSlice provider and DRA allocation adapter. The alpha API does not include that field, so it never accepts a policy shape that cannot yet map a DRA claim to stable, enforceable device identities. Adding an optional field later is backward compatible. The DRA version will require every Pod in the scheduling unit to contain the declared claim alias and will report `DeviceTopologyClaimNotFound` when it is absent.
 
 Defaults are conservative: omitted local-domain affinity means no same-domain constraint, and omitted fabric means no fabric constraint. `deviceTopology` does not expose a per-workload packing or spreading choice. Hard constraints still apply when configured; the scheduler otherwise uses normal administrator-configured Node ordering and a deterministic topology tie-break. Workloads never name device, domain, fabric, or vendor identifiers.
 
-The webhook validates feature-gate use, one resource selector per requirement, and recognized values. It cannot prove that a runtime adapter can enforce selected IDs, the scheduler rejects a hard request with an explicit reason when no compatible adapter is active.
+The webhook validates feature-gate use, a resource name in every requirement, and recognized values. It cannot prove that a runtime adapter can enforce selected IDs, the scheduler rejects a hard request with an explicit reason when no compatible adapter is active.
 
 #### Proposed API Types and Semantics
 
@@ -792,7 +779,6 @@ type DeviceTopologyRequirement struct {
 
 type DeviceResourceSelector struct {
     ExtendedResourceName corev1.ResourceName `json:"extendedResourceName,omitempty"`
-    ClaimName            string              `json:"claimName,omitempty"`
 }
 
 type DeviceFabricAffinity struct {
@@ -813,10 +799,7 @@ type SubGroupPolicySpec struct {
 
 ```
 
-For one requirement, exactly one selector is set:
-
-- `extendedResourceName` identifies a full-device Kubernetes extended resource, such as `nvidia.com/gpu`.
-- `claimName` identifies the Pod `resourceClaims` alias for a future DRA-backed workload. It is not accepted in alpha.
+Every requirement sets `extendedResourceName`, which identifies a full-device Kubernetes extended resource, such as `nvidia.com/gpu`.
 
 The resource and fabric `mode` fields accept `hard` or `soft`. Each resource requirement selects the Tasks in its policy unit that request its declared resource; a Task that requests multiple declared resources must satisfy every requirement that selects it. `hard` is a filter and requires an allocation adapter that can enforce the selected device IDs: no matching healthy, enforceable topology means no placement. `soft` is a score only: a normal placement remains valid if no matching domain or exact-ID enforcement is available.
 
@@ -898,11 +881,11 @@ Normal controller-created Pods continue to support the documented parent-level `
 The webhook makes invalid intent fail at admission instead of becoming an ambiguous runtime placement failure:
 
 1. Reject a non-empty `deviceTopology` policy unless `DeviceTopologyAwareScheduling` is enabled.
-2. Require at least one resource requirement and exactly one of `extendedResourceName` or `claimName` in each requirement.
+2. Require at least one resource requirement and an `extendedResourceName` in each requirement.
 3. Require a valid extended resource name. Reject CPU and memory because the first scope is full accelerator devices, not CPU/NUMA topology.
 4. Accept only `hard` or `soft` mode. Reject unknown fields, including a per-workload packing or spreading strategy.
 5. Reject duplicate requirements targeting the same resource selector in one policy.
-6. Reject `claimName` in alpha. A later DRA-capable version will validate the alias at admission and resolve it against each Task Pod at runtime.
+6. Accept no DRA claim selector in alpha. A later DRA-capable version will add a `claimName` selector, validate the alias at admission, and resolve it against each Task Pod at runtime.
 7. Reject a policy that sets `fabric` with anything other than one resource requirement in alpha.
 8. Treat parent and subgroup `deviceTopology` as create-only in alpha on the Job, its scheduler-canonical PodGroup, and every `SubGroupPolicy`. Users create a new Job or controller rollout to change topology intent.
 9. For every subgroup `deviceTopology`, require a positive `subGroupSize` and a non-empty selector. Reject a PodGroup that sets both parent `deviceTopology` and any subgroup `deviceTopology` in alpha. Reject each resource requirement when no Task in its policy unit requests that resource. The Job webhook performs this check from Job Task templates; for a direct PodGroup or controller-created Pods, the PodGroup controller performs the same validation when it resolves membership, and the scheduler repeats it before planning. The scheduler validates the whole-device request shape for every selected Task.
@@ -1224,6 +1207,8 @@ Before recovering or creating a final Statement, `allocate` creates an allocatio
 
 Per-Pod filtering cannot safely coordinate a gang: allocating the first Pod greedily may consume a domain needed by a later Pod. A hard device-topology policy therefore triggers one bounded plan for the current existing gang unit: the parent PodGroup or one SubJob selected through `subGroupPolicy`.
 
+Per-Pod filtering must still see the earlier Pods of the same gang. Normal Node accounting only counts devices, so without more information two Pods can each pass the filter on the same Node and use the same free domain, and the final plan then fails in every session. While `allocate` places the Pods of one Statement, the plugin therefore records, through the session allocate and deallocate events, the local domain each placed Pod is expected to use, choosing the smallest domain that still fits. The predicate subtracts these pending devices and reports `DeviceTopologyDomainFragmented` when only pending devices block a domain. For a hard fabric policy, the first placed Pod pins the unit to one fabric, and later Pods are filtered to that fabric. Pending records hold no device. They are dropped when the Statement is discarded, and after a successful commit, when the reservation shows the devices as held. The final plan is still computed from the committed topology view. This follows the session event pattern of the existing `numaaware` plugin. `deviceshare` device pools are not used, because each resource has exactly one exact-allocation owner.
+
 ```mermaid
 flowchart TD
     Candidates[Domain-aware Queue, NodeShard, HyperNode, and predicate candidates] --> Scope[Apply hard fabric scope and exact feasibility recheck]
@@ -1302,11 +1287,8 @@ type TopologyContainerAssignment struct {
     // permits exactly one such container for each selected resource.
     ContainerName string
     // ResourceName identifies the Kubernetes extended resource, such as
-    // nvidia.com/gpu. It is set for the alpha extended-resource path.
+    // nvidia.com/gpu.
     ResourceName corev1.ResourceName
-    // ClaimName is reserved for a future DRA resource-claim alias and is empty
-    // in alpha.
-    ClaimName string
     // DeviceIDs are the exact canonical devices selected for this request.
     DeviceIDs []DeviceID
 }
@@ -1332,7 +1314,7 @@ type TopologyPlacementPlan struct {
 }
 ```
 
-Every container assignment sets exactly one of `ResourceName` or `ClaimName`. `PodUID`, `ContainerName`, and the selected resource or claim make the selected-ID handoff unambiguous across bind retries. `TopologyPlacementPlan.FabricID` records the one fabric that passed the alpha policy's single-resource fabric rule, and every placement must belong to it. The adapter rejects a plan whose Pod identity, resource or claim, container assignment, Node, domain, fabric, or device IDs no longer match the runtime request.
+Every container assignment sets `ContainerName` and `ResourceName`. `PodUID`, `ContainerName`, and the selected resource make the selected-ID handoff unambiguous across bind retries. `TopologyPlacementPlan.FabricID` records the one fabric that passed the alpha policy's single-resource fabric rule, and every placement must belong to it. The adapter rejects a plan whose Pod identity, resource, container assignment, Node, domain, fabric, or device IDs no longer match the runtime request.
 
 `allocate` asks the plugin for one plan for the applicable parent PodGroup or SubJob gang unit. After `ReservePlan` accepts the plan, the returned participant is attached to the same `Statement` that records task allocations. This requires a framework transaction change. The current `Statement.Commit` logs individual allocation errors and has no error result, so it cannot provide the required all-or-nothing pre-bind outcome. The proposed framework participant contract is deliberately small:
 
@@ -1372,16 +1354,16 @@ type BatchPreBinder interface {
 // BindBatchSubmitter accepts a complete prepared bind batch. It prevents one
 // gang member from reaching the bind worker before every context is accepted.
 type BindBatchSubmitter interface {
-    // AddBindBatch validates and enqueues all contexts as one bind unit.
+    // AddBindBatch accepts every context, then queues them for binding.
     AddBindBatch(contexts []*cache.BindContext) error
 }
 ```
 
-The existing `Statement.Commit()` remains unchanged for non-device-topology actions. `CommitWithParticipants()` is used only for a plan that attached a transaction participant. It first preflights every planned allocation without creating a bind context. It then applies all in-memory task and Node mutations. If any mutation fails, it reverses every earlier mutation, invokes participants' `Rollback` methods in reverse registration order, creates no bind context, and returns an error.
+The existing `Statement.Commit()` remains unchanged for non-device-topology actions. When no batch pre-binder is registered, or none of them prepares the Statement, `CommitWithParticipants()` runs the existing `Statement.Commit()` without building bind contexts first. `CommitWithParticipants()` uses the transaction path only for a plan that attached a transaction participant. It first preflights every planned allocation without creating a bind context. It then applies all in-memory task and Node mutations. If any mutation fails, it reverses every earlier mutation, invokes participants' `Rollback` methods in reverse registration order, creates no bind context, and returns an error.
 
 After in-memory mutations succeed, `CommitWithParticipants()` obtains and validates one immutable `DeviceTopologyHandoff` for every planned bind context. It then runs `BatchPreBinder.PrepareBindBatch` across the complete batch before a context is accepted by the bind cache. If any member preparation fails, it invokes every successful preparation rollback in reverse order, rolls back the transaction participant and allocation-attempt checkpoint, and submits no bind context. A hard device-topology batch must not fall back to the existing independent per-context prebind loop. A non-transactional prebind integration is therefore incompatible with this alpha batch path until it implements the batch contract.
 
-Only after all batch preparations succeed does `CommitWithParticipants()` call participant `Commit` and submit one `BindBatch`. `AddBindBatch` validates every context, including the handoff's Pod UID and Node, applies the corresponding scheduler-cache task and Node mutations under one cache lock, and enqueues the complete batch as one unit. If participant commit or batch submission fails, it invokes batch-preparation rollbacks, then follows the same transaction rollback path. The bind worker must not dispatch an individual context from a batch before the batch is fully accepted, and it must not run the ordinary per-context prebind loop a second time for a prepared device-topology batch. This new path avoids changing every existing `Statement.Commit()` caller.
+Only after all batch preparations succeed does `CommitWithParticipants()` call participant `Commit` and submit one `BindBatch`. `AddBindBatch` validates every context, including the handoff's Pod UID and Node, applies the corresponding scheduler-cache task and Node mutations under one cache lock, and only then queues the contexts on the existing bind channel. If participant commit or batch submission fails, it invokes batch-preparation rollbacks, then follows the same transaction rollback path. The bind worker must not dispatch an individual context from a batch before the batch is fully accepted, and it must not run the ordinary per-context prebind loop a second time for a prepared device-topology batch. This new path avoids changing every existing `Statement.Commit()` caller.
 
 After the batch is accepted, Kubernetes binding remains non-atomic. A later individual bind failure may coexist with another successfully bound Pod, which is handled through the `Binding` and `Unreconciled` lifecycle above. The exact ordering with existing `Statement` operations and bind-cache handoff must be covered by failure-injection tests.
 
@@ -1424,7 +1406,7 @@ sequenceDiagram
 - Exact hard scheduling depends on Volcano leader election. Followers may warm read-only informer and provider state, but they must never call `TryReserve`, commit a topology participant, or hand a topology batch to the bind cache. A promoted leader completes current provider sync and adapter recovery before it becomes ready to open scheduling sessions. A deployment that enables hard device-topology policy while leader election is disabled is rejected.
 - The scheduler-side reservation ledger is process-local and is not restored blindly after scheduler restart or leader promotion. An exact adapter reservation must therefore be a backend-durable lease until the adapter expires, releases, or confirms it. Before `SchedulerCache` marks an exact-allocation resource ready, the active leader reloads provider facts and calls `Recover` on its adapter. Recovery rebuilds ledger entries for active reservations and confirmed allocations from the returned immutable plans. Any active reservation that cannot be matched safely, and every device owned by an adapter whose recovery failed or timed out, is marked unavailable for hard placement. `SchedulerCache` enables hard scheduling for that resource only after recovery succeeds.
 
-Recommended fit reasons include `DeviceTopologyDataNotReady`, `DeviceTopologyDomainFragmented`, `DeviceTopologyFabricUnavailable`, `DeviceTopologyDeviceUnhealthy`, `DeviceTopologyStale`, `DeviceTopologyAssignmentNotEnforceable`, `DeviceTopologyUnsupportedPodRequest`, `DeviceTopologyClaimNotFound`, and `DeviceTopologyReservationConflict`.
+Recommended fit reasons include `DeviceTopologyDataNotReady`, `DeviceTopologyDomainFragmented`, `DeviceTopologyFabricUnavailable`, `DeviceTopologyDeviceUnhealthy`, `DeviceTopologyStale`, `DeviceTopologyAssignmentNotEnforceable`, `DeviceTopologyUnsupportedPodRequest`, `DeviceTopologyClaimNotFound` (DRA phase), and `DeviceTopologyReservationConflict`. Only `DeviceTopologyReservationConflict` can be resolved by evicting the Pods that hold the devices, so it is the only reason reported as `Unschedulable`. Every other reason is `UnschedulableAndUnresolvable`, so `preempt` and `reclaim` do not evict Pods for a failure that eviction cannot fix.
 
 #### Failure and Retry Semantics
 
@@ -1568,7 +1550,7 @@ Production DRA and Device Plugin companion adapters are follow-up work. The init
 
 ### Validation Plan
 
-Unit tests cover schema validation, source-generation ordering and reuse, effective freshness deadlines and invalid timestamps, stable identity, stale/conflicting updates, delayed `ClearFacts` after a newer replace, Node deletion and removal from scheduler scope, fabric ownership conflicts, live-device topology changes deferred until release, allocation/release/health reconciliation, preemption-driven release and missing-release reconciliation, adapter recovery after restart, one `SchedulerCache.Snapshot()` carrying consistent Node, HyperNode, and device topology views, typed Job, direct PodGroup, and subgroup policy propagation, Job partition-to-SubJob device-topology conversion, normal-Pod annotation parsing and generated-PodGroup conversion, rejection of a policy annotation on a non-Volcano Pod, rejection of a malformed annotation at Pod admission, no generated PodGroup for a Pod whose annotation does not decode, rejection of a policy change on an existing generated PodGroup, rejection of per-workload packing or spreading fields, immutable policy rejection, parent-plus-subgroup policy rejection, fail-closed gate and plugin configuration validation including disabled-feature refusal with persisted policies, alpha fabric single-resource validation, one-common-fabric gang plans, alpha unsupported Pod request rejection, DRA-selector rejection, selected-ID handoff identity and rollback, rejection of an edited handoff annotation, per-Pod confirmation and release after a partial bind failure, adapter-provider identity contract validation, `minAvailable` gang-plan units with later allocation waves, normal-resource shadow planning, dry-run plan finalization without reservations, search-state budget exhaustion, adapter-reservation compensation, gang rollback, bind-context batch failure, reservation confirmation timeout, and reservation conflicts.
+Unit tests cover schema validation, source-generation ordering and reuse, effective freshness deadlines and invalid timestamps, stable identity, stale/conflicting updates, delayed `ClearFacts` after a newer replace, Node deletion and removal from scheduler scope, fabric ownership conflicts, live-device topology changes deferred until release, allocation/release/health reconciliation, preemption-driven release and missing-release reconciliation, adapter recovery after restart, one `SchedulerCache.Snapshot()` carrying consistent Node, HyperNode, and device topology views, typed Job, direct PodGroup, and subgroup policy propagation, Job partition-to-SubJob device-topology conversion, normal-Pod annotation parsing and generated-PodGroup conversion, rejection of a policy annotation on a non-Volcano Pod, rejection of a malformed annotation at Pod admission, no generated PodGroup for a Pod whose annotation does not decode, rejection of a policy change on an existing generated PodGroup, rejection of per-workload packing or spreading fields, immutable policy rejection, parent-plus-subgroup policy rejection, fail-closed gate and plugin configuration validation including disabled-feature refusal with persisted policies, alpha fabric single-resource validation, one-common-fabric gang plans, alpha unsupported Pod request rejection, required extended resource name, fabric declaration resolution in any Node sync order and pinning to resolved members, gang Pods filtered against the pending devices of earlier Pods in the same session, selected-ID handoff identity and rollback, rejection of an edited handoff annotation, per-Pod confirmation and release after a partial bind failure, adapter-provider identity contract validation, `minAvailable` gang-plan units with later allocation waves, normal-resource shadow planning, dry-run plan finalization without reservations, search-state budget exhaustion, adapter-reservation compensation, gang rollback, bind-context batch failure, reservation confirmation timeout, and reservation conflicts.
 
 Additional regression tests prove that metadata-only provider heartbeats renew freshness without accepting changed topology content, a Node replacement with the same name starts `Pending`, and a fabric cannot revive until its owner republishes membership for replacement Node UIDs or generations. They also prove that a failed final reservation restores every worksheet, fit-error, nomination, and recorder decision before the next plan attempt, a batch prebind failure dispatches no member, a leader promotion completes recovery before hard scheduling, and an unsafe watched configuration reload keeps the prior configuration active.
 
