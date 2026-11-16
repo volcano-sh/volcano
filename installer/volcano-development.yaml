@@ -154,6 +154,7 @@ spec:
             - --webhook-service-name=volcano-admission-service
             - --enable-root-queue-protection=true
             - --enable-healthz=true
+            - --healthz-address=:11251
             - --logtostderr
             - --port=8443
             - -v=4
@@ -162,16 +163,6 @@ spec:
           imagePullPolicy: Always
           name: admission
           livenessProbe:
-            httpGet:
-              path: /healthz
-              port: 11251
-              scheme: HTTPS
-            initialDelaySeconds: 10
-            periodSeconds: 20
-            timeoutSeconds: 5
-            failureThreshold: 3
-            successThreshold: 1
-          readinessProbe:
             httpGet:
               path: /healthz
               port: 11251
@@ -9354,6 +9345,7 @@ spec:
           args:
             - --logtostderr
             - --enable-healthz=true
+            - --healthz-address=:11251
             - --enable-metrics=true
             - --leader-elect=false
             - --kube-api-qps=50
@@ -9612,6 +9604,7 @@ spec:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
             - --enable-healthz=true
+            - --healthz-address=:11251
             - --enable-metrics=true
             - --leader-elect=false
             - --kube-api-qps=2000
