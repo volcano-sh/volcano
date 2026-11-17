@@ -19,13 +19,16 @@ package gangevict
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
@@ -122,6 +125,9 @@ type roleSpec struct {
 	name         string
 	replicas     int32
 	minAvailable int32
+	// priorityClass optionally sets the role's pod priority, which orders the
+	// role's tasks within the victim job (lower priority is evicted first).
+	priorityClass string
 }
 
 // createMultiRoleGangJob creates a gang job with multiple roles. The
@@ -145,6 +151,7 @@ func createMultiRoleGangJob(ctx *e2eutil.TestContext, name, queue, pri string, r
 			Rep:          r.replicas,
 			MinAvailable: ptr.To(r.minAvailable),
 			Labels:       labels,
+			Taskpriority: r.priorityClass,
 		})
 	}
 	spec := &e2eutil.JobSpec{
@@ -987,6 +994,133 @@ var _ = Describe("GangPreempt E2E Test", func() {
 		})
 	})
 
+})
+
+// ── gangpreempt with PDB ───────────────────────────────────────────────
+
+// gangEvictPDBConfig is gangEvictConfig with the pdb plugin enabled in tier 1,
+// so its UnifiedEvictableFn takes part in gangpreempt victim selection.
+var gangEvictPDBConfig = strings.Replace(gangEvictConfig,
+	"  - name: capacity\n    enableHierarchy: false\n",
+	"  - name: capacity\n    enableHierarchy: false\n  - name: pdb\n", 1)
+
+// createRolePDB creates a PDB that protects every pod of one role of a job.
+func createRolePDB(ctx *e2eutil.TestContext, name string, job *batchv1alpha1.Job, role string, minAvailable int32) {
+	_, err := ctx.Kubeclient.PolicyV1().PodDisruptionBudgets(job.Namespace).Create(context.TODO(), &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			MinAvailable: ptr.To(intstr.FromInt32(minAvailable)),
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{
+				batchv1alpha1.JobNameKey:  job.Name,
+				batchv1alpha1.TaskSpecKey: role,
+			}},
+		},
+	}, metav1.CreateOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	// The disruption controller publishes the budget asynchronously.
+	Eventually(func() int32 {
+		pdb, err := ctx.Kubeclient.PolicyV1().PodDisruptionBudgets(job.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil || pdb.Status.ObservedGeneration == 0 {
+			return -1
+		}
+		return pdb.Status.DisruptionsAllowed
+	}, 2*time.Minute, time.Second).Should(BeZero())
+}
+
+// runningPodUIDsByRole returns the UIDs of the job's running pods in one role.
+func runningPodUIDsByRole(ctx *e2eutil.TestContext, job *batchv1alpha1.Job, role string) sets.Set[string] {
+	pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	uids := sets.New[string]()
+	for _, pod := range pods.Items {
+		if !metav1.IsControlledBy(&pod, job) || pod.Labels[batchv1alpha1.TaskSpecKey] != role {
+			continue
+		}
+		if pod.Status.Phase == v1.PodRunning && pod.DeletionTimestamp == nil {
+			uids.Insert(string(pod.UID))
+		}
+	}
+	return uids
+}
+
+var _ = Describe("GangPreempt PDB E2E Test", func() {
+	const (
+		gpHighPri         = "gp-pdb-high-pri"
+		gpLowPri          = "gp-pdb-low-pri"
+		gpProtectedPri    = "gp-pdb-protected-pri"
+		gpHighPriVal      = int32(100)
+		gpLowPriVal       = int32(10)
+		gpProtectedPriVal = int32(5)
+		gpQueue           = "gp-pdb-q"
+	)
+
+	var ctx *e2eutil.TestContext
+	var cmc *e2eutil.ConfigMapCase
+
+	BeforeEach(func() {
+		cmc = e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
+		cmc.ChangeBy(applySchedulerConfig(gangEvictPDBConfig))
+	})
+
+	AfterEach(func() {
+		if ctx != nil {
+			e2eutil.CleanupTestContext(ctx)
+		}
+		cmc.UndoChanged()
+	})
+
+	// GP-PDB-1: the victim gang (minAvail=1) has one PDB-protected task and three free
+	// tasks, so it can lose three tasks without breaking. The protected task has the
+	// lowest pod priority, so it is always the first eviction candidate. The cluster is
+	// full, so the preemptor needs two victims: without the PDB filter the protected task
+	// is evicted, and with it two free tasks are evicted instead.
+	It("GP-PDB-1: PDB-protected members of a victim gang are not evicted", func() {
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{gpQueue},
+			NodesNumLimit:      4,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
+			DeservedResource: map[string]v1.ResourceList{
+				gpQueue: deservedCPU(4),
+			},
+			PriorityClasses: map[string]int32{
+				gpHighPri:      gpHighPriVal,
+				gpLowPri:       gpLowPriVal,
+				gpProtectedPri: gpProtectedPriVal,
+			},
+		})
+
+		By("Creating low-priority gang with 1 protected and 3 free tasks (minAvail=1)")
+		victim := createMultiRoleGangJob(ctx, "victim-gp-pdb", gpQueue, gpLowPri, e2eutil.CPU1Mem1,
+			[]roleSpec{
+				{name: "protected", replicas: 1, minAvailable: 0, priorityClass: gpProtectedPri},
+				{name: "free", replicas: 3, minAvailable: 0, priorityClass: gpLowPri},
+			}, 1, true)
+		err := e2eutil.WaitTasksReady(ctx, victim, 4)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Protecting the protected task with a PDB")
+		createRolePDB(ctx, "victim-gp-pdb-protected", victim, "protected", 1)
+		protected := runningPodUIDsByRole(ctx, victim, "protected")
+		free := runningPodUIDsByRole(ctx, victim, "free")
+		Expect(protected.Len()).To(Equal(1))
+		Expect(free.Len()).To(Equal(3))
+
+		By("Creating high-priority preemptor gang (2 tasks, minAvail=2) on the full cluster")
+		preemptor := createGangJob(ctx, "preemptor-gp-pdb", gpQueue, gpHighPri, e2eutil.CPU1Mem1, 2, 2, false)
+		err = e2eutil.WaitTasksReady(ctx, preemptor, 2)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Expecting the protected task to keep running without being evicted")
+		Consistently(func() sets.Set[string] {
+			return runningPodUIDsByRole(ctx, victim, "protected")
+		}, 30*time.Second, 2*time.Second).Should(Equal(protected),
+			"the protected task must keep the same pod (an evicted pod is recreated with a new UID)")
+
+		By("Expecting the preemptor's room to come from free tasks")
+		Expect(runningPodUIDsByRole(ctx, victim, "free").Intersection(free).Len()).To(BeNumerically("<=", 1),
+			"at least two free tasks must be evicted to make room for the preemptor")
+	})
 })
 
 // ── gangreclaim ────────────────────────────────────────────────────────
