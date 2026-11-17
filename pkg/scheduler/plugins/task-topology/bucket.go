@@ -107,3 +107,19 @@ func (b *Bucket) TaskBound(task *api.TaskInfo) {
 	delete(b.tasks, task.Pod.UID)
 	b.CalcResReq(task.Resreq, reqSub)
 }
+
+// TaskUnbound restores bucket state after task deallocation.
+func (b *Bucket) TaskUnbound(task *api.TaskInfo) {
+	if task.NodeName != "" {
+		b.node[task.NodeName]--
+		if b.node[task.NodeName] <= 0 {
+			delete(b.node, task.NodeName)
+		}
+	}
+	if b.boundTask > 0 {
+		b.boundTask--
+	}
+
+	b.tasks[task.Pod.UID] = task
+	b.CalcResReq(task.Resreq, reqAdd)
+}
