@@ -368,6 +368,13 @@ func validateJobName(job *v1alpha1.Job) string {
 	if errMsgs := validation.IsQualifiedName(job.Name); len(errMsgs) > 0 {
 		return fmt.Sprintf("create job with name %s validate failed %v", job.Name, errMsgs)
 	}
+	// the svc plugin creates a Service named after the job and uses the job
+	// name as the pods' subdomain, so the name must be a valid Service name.
+	if _, ok := job.Spec.Plugins["svc"]; ok {
+		if errMsgs := validation.IsDNS1035Label(job.Name); len(errMsgs) > 0 {
+			return fmt.Sprintf("job name %s can not be used with the svc plugin, it must be a valid service name %v;", job.Name, errMsgs)
+		}
+	}
 	return ""
 }
 
