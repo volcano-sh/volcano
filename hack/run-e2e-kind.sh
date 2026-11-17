@@ -483,6 +483,15 @@ else
     kind-up-cluster
     install-kwok-with-helm
     install-volcano
+
+    if [[ "${E2E_TYPE}" == "ALL" || "${E2E_TYPE}" == "SCHEDULINGBASE" ]]; then
+        if [[ -z "${VOLUME_RESTRICTIONS_STORAGE_CLASS:-}" ]]; then
+            bash "${VK_ROOT}/hack/install-csi-hostpath.sh" || exit 1
+            export VOLUME_RESTRICTIONS_STORAGE_CLASS=csi-hostpath-sc
+        fi
+        # An explicitly configured class must exist; do not silently skip the tests.
+        kubectl get storageclass "${VOLUME_RESTRICTIONS_STORAGE_CLASS}" || exit 1
+    fi
 fi
 
 # Run e2e test
