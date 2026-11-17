@@ -73,7 +73,6 @@ custom:
   agent_scheduler_worker_count: 1
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/validate,/queues/mutate,/queues/validate,/hypernodes/validate,/cronjobs/validate"
   colocation_enable: false
-  ignored_provisioners: ~
 # Override the configuration for agent.
 # For example:
 # agent_supported_features: "OverSubscription,Eviction,Resources"

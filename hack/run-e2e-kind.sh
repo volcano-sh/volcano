@@ -164,7 +164,6 @@ custom:
   enabled_admissions: ""
   vap_enable: true
   map_enable: true
-  ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
   ;;
 "ADMISSION_WEBHOOK")
@@ -211,7 +210,6 @@ custom:
   enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
   vap_enable: false
   map_enable: false
-  ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
   ;;
 "AGENTSCHEDULER"|"AGENTSCHEDULER_NONE"|"AGENTSCHEDULER_SOFT"|"AGENTSCHEDULER_HARD")
@@ -420,7 +418,6 @@ custom:
   admission_feature_gates: ${FEATURE_GATES}
   namespace_queue_enable: ${NAMESPACE_QUEUE_ENABLE}
   enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
-  ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
   local helm_status=${PIPESTATUS[1]}
   [[ -n "${extra_values_flag}" ]] && rm -f "${tmpfile}"
@@ -541,6 +538,11 @@ case ${E2E_TYPE} in
 "DRA")
     echo "Running dra e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress --focus="${DRA_GINKGO_FOCUS}" ./test/e2e/dra/
+    ;;
+"CSI")
+    echo "Running csi e2e suite..."
+    KUBECONFIG=${KUBECONFIG} ./hack/install-csi-hostpath.sh
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/csi/
     ;;
 "ADMISSION_POLICY")
     echo "Running admission policy e2e suite..."

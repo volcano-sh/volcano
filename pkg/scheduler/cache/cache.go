@@ -87,9 +87,6 @@ const (
 	handlerSyncPollPeriod = 100 * time.Millisecond
 )
 
-// defaultIgnoredProvisioners contains provisioners that will be ignored during pod pvc request computation and preemption.
-var defaultIgnoredProvisioners = []string{"rancher.io/local-path", "hostpath.csi.k8s.io"}
-
 func init() {
 	schemeBuilder := runtime.SchemeBuilder{
 		v1.AddToScheme,
@@ -109,8 +106,8 @@ func WithUnschedulableJobCache(jobCache *unschedulable.JobCache) Option {
 }
 
 // New returns the Scheduler cache interface.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration, cacheOptions ...Option) Cache {
-	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners, resyncPeriod, resourceSyncTimeout, cacheOptions...)
+func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, resyncPeriod time.Duration, resourceSyncTimeout time.Duration, cacheOptions ...Option) Cache {
+	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, resyncPeriod, resourceSyncTimeout, cacheOptions...)
 }
 
 // SchedulerCache cache for the kube batch
@@ -187,11 +184,6 @@ type SchedulerCache struct {
 	imageStates map[string]*imageState
 
 	nodeWorkers uint32
-
-	// IgnoredCSIProvisioners contains a list of provisioners, and pod request pvc with these provisioners will
-	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
-	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
-	IgnoredCSIProvisioners sets.Set[string]
 
 	// multiSchedulerInfo holds multi schedulers info without using node selector, please see the following link for more details.
 	// https://github.com/volcano-sh/volcano/blob/master/docs/design/deploy-multi-volcano-schedulers-without-using-selector.md
@@ -575,7 +567,7 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 	}
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration, resourceSyncTimeout time.Duration, cacheOptions ...Option) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, resyncPeriod time.Duration, resourceSyncTimeout time.Duration, cacheOptions ...Option) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -637,11 +629,6 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 
 	sc.resyncPeriod = resyncPeriod
 	sc.schedulerPodName, sc.c = getMultiSchedulerInfo()
-	ignoredProvisionersSet := sets.New[string]()
-	for _, provisioner := range append(ignoredProvisioners, defaultIgnoredProvisioners...) {
-		ignoredProvisionersSet.Insert(provisioner)
-	}
-	sc.IgnoredCSIProvisioners = ignoredProvisionersSet
 
 	if len(nodeSelectors) > 0 {
 		sc.updateNodeSelectors(nodeSelectors)
@@ -2039,27 +2026,6 @@ func (e *pendingDRAResourceClaimError) Error() string {
 
 func isPendingDRAResourceClaimError(err error) bool {
 	_, ok := err.(*pendingDRAResourceClaimError)
-	return ok
-}
-
-// pendingPVCError marks a NewTaskInfo failure caused by a
-// PersistentVolumeClaim the pod references not yet being present in the
-// scheduler's PVC informer (a not-found lookup). It is treated like
-// pendingDRAResourceClaimError: the task is still added to the cache and
-// re-queued for resync so it is retried once the PVC informer catches up,
-// rather than being dropped. Using a dedicated type, created only for the
-// not-found case, keeps the retry path scoped to exactly this race and does
-// not swallow other lookup errors.
-type pendingPVCError struct {
-	err error
-}
-
-func (e *pendingPVCError) Error() string {
-	return e.err.Error()
-}
-
-func isPendingPVCError(err error) bool {
-	_, ok := err.(*pendingPVCError)
 	return ok
 }
 

@@ -97,6 +97,9 @@ var (
 	volumeBindingPluginInstance *volumebinding.VolumeBinding
 	volumeBindingPluginOnce     sync.Once
 
+	// nodeVolumeLimitsDisabledWarning logs once per process, since sessions open every scheduling cycle.
+	nodeVolumeLimitsDisabledWarning sync.Once
+
 	dynamicResourceAllocationPlugins = map[informers.SharedInformerFactory]*dynamicresources.DynamicResources{}
 )
 
@@ -561,6 +564,10 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		} else {
 			klog.Errorf("Failed to init %s plugin %v", nodevolumelimits.CSIName, err)
 		}
+	} else {
+		nodeVolumeLimitsDisabledWarning.Do(func() {
+			klog.Warningf("%s is disabled: CSI volume attach limits are not enforced by the scheduler", NodeVolumeLimitsEnable)
+		})
 	}
 	// 7. VolumeZone
 	if pp.enabledPredicates.volumeZoneEnable {
