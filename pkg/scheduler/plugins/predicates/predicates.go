@@ -78,6 +78,9 @@ const (
 	// NodeVolumeLimitsEnable is the key for enabling Node Volume Limits Predicates in scheduler configmap
 	NodeVolumeLimitsEnable = "predicate.NodeVolumeLimitsEnable"
 
+	// VolumeRestrictionsEnable controls volume conflict checks, including RWOP PVC exclusivity.
+	VolumeRestrictionsEnable = "predicate.VolumeRestrictionsEnable"
+
 	// VolumeZoneEnable is the key for enabling Volume Zone Predicates in scheduler configmap
 	VolumeZoneEnable = "predicate.VolumeZoneEnable"
 
@@ -136,6 +139,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 		taintTolerationEnable:           true,
 		podAffinityEnable:               true,
 		nodeVolumeLimitsEnable:          true,
+		volumeRestrictionsEnable:        true,
 		volumeZoneEnable:                true,
 		podTopologySpreadEnable:         true,
 		cacheEnable:                     false,
@@ -151,6 +155,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 	arguments.GetBool(&predicate.taintTolerationEnable, TaintTolerationEnable)
 	arguments.GetBool(&predicate.podAffinityEnable, PodAffinityEnable)
 	arguments.GetBool(&predicate.nodeVolumeLimitsEnable, NodeVolumeLimitsEnable)
+	arguments.GetBool(&predicate.volumeRestrictionsEnable, VolumeRestrictionsEnable)
 	arguments.GetBool(&predicate.volumeZoneEnable, VolumeZoneEnable)
 	arguments.GetBool(&predicate.podTopologySpreadEnable, PodTopologySpreadEnable)
 	arguments.GetBool(&predicate.volumeBindingEnable, VolumeBindingEnable)
@@ -191,6 +196,7 @@ type predicateEnable struct {
 	taintTolerationEnable           bool
 	podAffinityEnable               bool
 	nodeVolumeLimitsEnable          bool
+	volumeRestrictionsEnable        bool
 	volumeZoneEnable                bool
 	podTopologySpreadEnable         bool
 	cacheEnable                     bool
@@ -339,29 +345,18 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		k8sNodeInfo := k8sframework.NewNodeInfo(nodeInfo.Pods()...)
 		k8sNodeInfo.SetNode(nodeInfo.Node)
 
-		if pp.enabledPredicates.podAffinityEnable {
-			if podAffinityFilter, exist := pp.FilterPlugins[interpodaffinity.Name].(*interpodaffinity.InterPodAffinity); exist {
-				isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, podAffinityFilter.Name())
-				if !isSkipInterPodAffinity {
-					status := podAffinityFilter.AddPod(ctx, cycleState, taskToSchedule.Pod, podInfoToAdd, k8sNodeInfo)
-					if !status.IsSuccess() {
-						return fmt.Errorf("failed to add pod to node %s: %w", nodeInfo.Name, status.AsError())
-					}
-				}
-			} else {
-				return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", interpodaffinity.Name, taskToAdd.Namespace, taskToAdd.Name, nodeInfo.Name)
+		for _, name := range pp.PreFilterOrder {
+			plugin, exists := pp.PreFilterPlugins[name]
+			if !exists || handleSkipPredicatePlugin(cycleState, name) {
+				continue
 			}
-		}
-
-		if volumeRestrictionsFilter, exist := pp.FilterPlugins[volumerestrictions.Name].(*volumerestrictions.VolumeRestrictions); exist {
-			if !handleSkipPredicatePlugin(cycleState, volumeRestrictionsFilter.Name()) {
-				status := volumeRestrictionsFilter.AddPod(ctx, cycleState, taskToSchedule.Pod, podInfoToAdd, k8sNodeInfo)
-				if !status.IsSuccess() {
-					return fmt.Errorf("failed to add pod to node %s: %w", nodeInfo.Name, status.AsError())
-				}
+			ext := plugin.PreFilterExtensions()
+			if ext == nil {
+				continue
 			}
-		} else {
-			return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", volumerestrictions.Name, taskToAdd.Namespace, taskToAdd.Name, nodeInfo.Name)
+			if status := ext.AddPod(ctx, cycleState, taskToSchedule.Pod, podInfoToAdd, k8sNodeInfo); !status.IsSuccess() {
+				return fmt.Errorf("running AddPod on PreFilter plugin %q for node %s: %w", name, nodeInfo.Name, status.AsError())
+			}
 		}
 
 		return nil
@@ -377,30 +372,20 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		k8sNodeInfo := k8sframework.NewNodeInfo(nodeInfo.Pods()...)
 		k8sNodeInfo.SetNode(nodeInfo.Node)
 
-		if pp.enabledPredicates.podAffinityEnable {
-			if podAffinityFilter, exist := pp.FilterPlugins[interpodaffinity.Name].(*interpodaffinity.InterPodAffinity); exist {
-				isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, podAffinityFilter.Name())
-				if !isSkipInterPodAffinity {
-					status := podAffinityFilter.RemovePod(ctx, cycleState, taskToSchedule.Pod, podInfoToRemove, k8sNodeInfo)
-					if !status.IsSuccess() {
-						return fmt.Errorf("failed to remove pod from node %s: %w", nodeInfo.Name, status.AsError())
-					}
-				}
-			} else {
-				return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", interpodaffinity.Name, taskToRemove.Namespace, taskToRemove.Name, nodeInfo.Name)
+		for _, name := range pp.PreFilterOrder {
+			plugin, exists := pp.PreFilterPlugins[name]
+			if !exists || handleSkipPredicatePlugin(cycleState, name) {
+				continue
+			}
+			ext := plugin.PreFilterExtensions()
+			if ext == nil {
+				continue
+			}
+			if status := ext.RemovePod(ctx, cycleState, taskToSchedule.Pod, podInfoToRemove, k8sNodeInfo); !status.IsSuccess() {
+				return fmt.Errorf("running RemovePod on PreFilter plugin %q for node %s: %w", name, nodeInfo.Name, status.AsError())
 			}
 		}
 
-		if volumeRestrictionsFilter, exist := pp.FilterPlugins[volumerestrictions.Name].(*volumerestrictions.VolumeRestrictions); exist {
-			if !handleSkipPredicatePlugin(cycleState, volumeRestrictionsFilter.Name()) {
-				status := volumeRestrictionsFilter.RemovePod(ctx, cycleState, taskToSchedule.Pod, podInfoToRemove, k8sNodeInfo)
-				if !status.IsSuccess() {
-					return fmt.Errorf("failed to remove pod from node %s: %w", nodeInfo.Name, status.AsError())
-				}
-			}
-		} else {
-			return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", volumerestrictions.Name, taskToRemove.Namespace, taskToRemove.Name, nodeInfo.Name)
-		}
 		return nil
 	})
 
@@ -409,30 +394,15 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		k8sNodeInfo := k8sframework.NewNodeInfo(node.Pods()...)
 		k8sNodeInfo.SetNode(node.Node)
 
-		if pp.enabledPredicates.podAffinityEnable {
-			isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, interpodaffinity.Name)
-			if !isSkipInterPodAffinity {
-				if podAffinityFilter, exist := pp.FilterPlugins[interpodaffinity.Name]; exist {
-					status := podAffinityFilter.Filter(ctx, cycleState, task.Pod, k8sNodeInfo)
-					if !status.IsSuccess() {
-						return fmt.Errorf("failed to filter pod on node %s: %w", node.Name, status.AsError())
-					} else {
-						klog.Infof("pod affinity for task %s/%s filter success on node %s", task.Namespace, task.Name, node.Name)
-					}
-				} else {
-					return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", interpodaffinity.Name, task.Namespace, task.Name, node.Name)
-				}
+		// Evaluate the simulated node and cycle state, without using predicate results
+		// cached before victim removal or reading the session's original NodeInfo.
+		for _, name := range pp.FilterOrder {
+			plugin, exists := pp.FilterPlugins[name]
+			if !exists || handleSkipPredicatePlugin(cycleState, name) {
+				continue
 			}
-		}
-
-		if !handleSkipPredicatePlugin(cycleState, volumerestrictions.Name) {
-			if volumeRestrictionsFilter, exist := pp.FilterPlugins[volumerestrictions.Name]; exist {
-				status := volumeRestrictionsFilter.Filter(ctx, cycleState, task.Pod, k8sNodeInfo)
-				if !status.IsSuccess() {
-					return fmt.Errorf("failed to filter pod on node %s: %w", node.Name, status.AsError())
-				}
-			} else {
-				return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", volumerestrictions.Name, task.Namespace, task.Name, node.Name)
+			if status := plugin.Filter(ctx, cycleState, task.Pod, k8sNodeInfo); !status.IsSuccess() {
+				return fmt.Errorf("running Filter on plugin %q for node %s: %w", name, node.Name, status.AsError())
 			}
 		}
 
@@ -597,12 +567,14 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		}
 	}
 	// 7. VolumeRestrictions
-	if plugin, err := volumerestrictions.New(context.TODO(), nil, pp.Handle, pp.features); err == nil {
-		volumeRestrictionsFilter := plugin.(*volumerestrictions.VolumeRestrictions)
-		addFilterPlugin(volumerestrictions.Name, volumeRestrictionsFilter)
-		addPreFilterPlugin(volumerestrictions.Name, volumeRestrictionsFilter)
-	} else {
-		klog.Errorf("Failed to init %s plugin %v", volumerestrictions.Name, err)
+	if pp.enabledPredicates.volumeRestrictionsEnable {
+		if plugin, err := volumerestrictions.New(context.TODO(), nil, pp.Handle, pp.features); err == nil {
+			volumeRestrictionsFilter := plugin.(*volumerestrictions.VolumeRestrictions)
+			addFilterPlugin(volumerestrictions.Name, volumeRestrictionsFilter)
+			addPreFilterPlugin(volumerestrictions.Name, volumeRestrictionsFilter)
+		} else {
+			klog.Errorf("Failed to init %s plugin %v", volumerestrictions.Name, err)
+		}
 	}
 	// 8. VolumeZone
 	if pp.enabledPredicates.volumeZoneEnable {
@@ -1029,6 +1001,7 @@ func handleSkipPrePredicatePlugin(status *fwk.Status, state *k8sframework.CycleS
 	}
 
 	if status.IsSuccess() {
+		state.GetSkipFilterPlugins().Delete(pluginName)
 		return nil
 	}
 
