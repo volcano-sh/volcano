@@ -1163,6 +1163,28 @@ func (sc *SchedulerCache) moveNodeToHead(name string) {
 	sc.headNode = ni
 }
 
+// removeNodeFromList removes a NodeInfo from the "cache.nodes" doubly
+// linked list.
+// We assume cache lock is already acquired.
+func (sc *SchedulerCache) removeNodeFromList(name string) {
+	ni, ok := sc.Nodes[name]
+	if !ok {
+		klog.Errorf("No node info with given node name <%s> found in the cache", name)
+		return
+	}
+
+	if ni.prev != nil {
+		ni.prev.next = ni.next
+	}
+	if ni.next != nil {
+		ni.next.prev = ni.prev
+	}
+	// if the removed item was at the head, we must update the head.
+	if ni == sc.headNode {
+		sc.headNode = ni.next
+	}
+}
+
 // newNodeInfoListItem initializes a new nodeInfoListItem.
 func newNodeInfoListItem(node *schedulingapi.NodeInfo) *nodeInfoListItem {
 	return &nodeInfoListItem{

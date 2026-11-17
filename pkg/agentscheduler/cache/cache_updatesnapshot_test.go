@@ -36,6 +36,7 @@ func TestUpdateSnapshot(t *testing.T) {
 		wantPresent       []string
 		wantAbsent        []string
 		wantNodesInBinder map[string]int
+		wantMilliCPU      map[string]float64
 	}{
 		{
 			name: "clone NodesInBinder into snapshot",
@@ -136,14 +137,55 @@ func TestUpdateSnapshot(t *testing.T) {
 			wantAbsent:  []string{"deleted-node"},
 		},
 		{
+			name: "use new node info after node is removed and added again",
+			setup: func(sc *SchedulerCache) {
+				addReadyNode(t, sc, "other-node")
+				addReadyNode(t, sc, "readded-node")
+			},
+			prepareSnapshot: func(sc *SchedulerCache, snapshot *k8sutil.Snapshot) {
+				if err := sc.UpdateSnapshot(snapshot); err != nil {
+					t.Fatalf("seed UpdateSnapshot failed: %v", err)
+				}
+				if err := sc.RemoveNode("readded-node"); err != nil {
+					t.Fatalf("RemoveNode(readded-node) failed: %v", err)
+				}
+				setNodeCPU(t, sc, "readded-node", "8")
+			},
+			wantPresent:  []string{"other-node", "readded-node"},
+			wantMilliCPU: map[string]float64{"other-node": 4000, "readded-node": 8000},
+		},
+		{
+			name: "use new node info after node in the middle of the list is removed and added again",
+			setup: func(sc *SchedulerCache) {
+				// The list is node-c, node-b, node-a from the head.
+				addReadyNode(t, sc, "node-a")
+				addReadyNode(t, sc, "node-b")
+				addReadyNode(t, sc, "node-c")
+			},
+			prepareSnapshot: func(sc *SchedulerCache, snapshot *k8sutil.Snapshot) {
+				if err := sc.UpdateSnapshot(snapshot); err != nil {
+					t.Fatalf("seed UpdateSnapshot failed: %v", err)
+				}
+				if err := sc.RemoveNode("node-b"); err != nil {
+					t.Fatalf("RemoveNode(node-b) failed: %v", err)
+				}
+				// node-c changes too, so the next walk goes past it to where node-b was.
+				setNodeCPU(t, sc, "node-c", "8")
+				setNodeCPU(t, sc, "node-b", "8")
+			},
+			wantPresent:  []string{"node-a", "node-b", "node-c"},
+			wantMilliCPU: map[string]float64{"node-a": 4000, "node-b": 8000, "node-c": 8000},
+		},
+		{
 			name: "empty cache keeps empty snapshot",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sc, _ := mockForTest()
+			sc, schedulingQueue := mockForTest()
 			defer sc.cancel()
+			sc.ConflictAwareBinder = NewConflictAwareBinder(sc, schedulingQueue)
 
 			if tt.nodesInBinder != nil {
 				sc.BinderMutex.Lock()
@@ -176,6 +218,17 @@ func TestUpdateSnapshot(t *testing.T) {
 				}
 			}
 
+			for name, want := range tt.wantMilliCPU {
+				node, err := snapshot.GetVolcanoNodeInfo(name)
+				if err != nil {
+					t.Errorf("GetVolcanoNodeInfo(%q) failed: %v", name, err)
+					continue
+				}
+				if got := node.Allocatable.MilliCPU; got != want {
+					t.Errorf("node %q allocatable milli CPU = %v, want %v", name, got, want)
+				}
+			}
+
 			wantBinder := tt.wantNodesInBinder
 			if wantBinder == nil {
 				wantBinder = map[string]int{}
@@ -191,6 +244,8 @@ func TestUpdateSnapshot(t *testing.T) {
 			if got := snapshot.GetGeneration(); got != wantGeneration {
 				t.Errorf("snapshot generation = %d, want %d", got, wantGeneration)
 			}
+
+			checkNodeList(t, sc)
 		})
 	}
 }
@@ -203,6 +258,35 @@ func addReadyNode(t *testing.T, sc *SchedulerCache, name string) {
 	}
 	if !sc.Nodes[name].info.Ready() {
 		t.Fatalf("expected node %q to be Ready", name)
+	}
+}
+
+func setNodeCPU(t *testing.T, sc *SchedulerCache, name, cpu string) {
+	t.Helper()
+	node := util.BuildNode(name, schedulingapi.BuildResourceList(cpu, "8Gi"), nil)
+	if err := sc.AddOrUpdateNode(node); err != nil {
+		t.Fatalf("AddOrUpdateNode(%s) failed: %v", name, err)
+	}
+}
+
+// checkNodeList checks that the cache node list only holds nodes that are in
+// sc.Nodes, and that its prev and next links agree.
+func checkNodeList(t *testing.T, sc *SchedulerCache) {
+	t.Helper()
+	var prev *nodeInfoListItem
+	n := 0
+	for item := sc.headNode; item != nil; item = item.next {
+		if sc.Nodes[item.info.Name] != item {
+			t.Fatalf("cache node list has an item for %q that is not the node in the cache", item.info.Name)
+		}
+		if item.prev != prev {
+			t.Fatalf("cache node list item for %q has a wrong prev link", item.info.Name)
+		}
+		n++
+		if n > len(sc.Nodes) {
+			t.Fatalf("cache node list is longer than the number of cached nodes (%d)", len(sc.Nodes))
+		}
+		prev = item
 	}
 }
 
