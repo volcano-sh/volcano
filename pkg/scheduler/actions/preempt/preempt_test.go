@@ -28,6 +28,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -147,6 +149,11 @@ func TestPreempt(t *testing.T) {
 			ResourceClaimName: ptr.To("claim1"),
 		}})
 	cpuAndDRAPod.Spec.Priority = ptr.To(highPrio.Value)
+	// A PVC counts against the node's CSI attach limit, so a pod without other requests still competes.
+	pvcOnlyPod := util.BuildPodWithPriority("c1", "p1", "", v1.PodPending, v1.ResourceList{}, "pg1", nil, nil, ptr.To(highPrio.Value))
+	pvcOnlyPod.Spec.Volumes = []v1.Volume{{Name: "data", VolumeSource: v1.VolumeSource{
+		PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{ClaimName: "data"},
+	}}}
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -504,6 +511,26 @@ func TestPreempt(t *testing.T) {
 			ExpectEvictNum: 1,
 		},
 		{
+			Name: "PVC-only preemptor can evict an ordinary-request pod in another job",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("victims", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPodWithPriority("c1", "victim", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "victims", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, nil, ptr.To(lowPrio.Value)),
+				pvcOnlyPod.DeepCopy(),
+			},
+			Nodes:                []*v1.Node{draNode.DeepCopy()},
+			Queues:               []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, nil)},
+			SCs:                  []*storagev1.StorageClass{util.BuildStorageClass("sc", "csi.example.com", storagev1.VolumeBindingWaitForFirstConsumer)},
+			PVs:                  []*v1.PersistentVolume{util.BuildPV("pv1", "sc", v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Gi")})},
+			PVCs:                 []*v1.PersistentVolumeClaim{util.BuildPVC("c1", "data", v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Gi")}, "sc")},
+			ExpectEvictNum:       1,
+			ExpectEvicted:        []string{"c1/victim"},
+			ExpectPipeLined:      map[string][]string{"c1/pg1": {"n1"}},
+			ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{"c1/pg1": {api.Pipelined: 1}},
+		},
+		{
 			Name: "DRA-only preemptor can evict an ordinary-request pod in another job",
 			PodGroups: []*schedulingv1beta1.PodGroup{
 				util.BuildPodGroupWithPrio("victims", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
@@ -614,7 +641,7 @@ func TestPreempt(t *testing.T) {
 			},
 		}}
 
-	// Enable device predicates for the DRA cases; other cases keep their existing plugin setup.
+	// Enable predicates for the DRA and PVC cases; other cases keep their existing plugin setup.
 	draTiers := []conf.Tier{{Plugins: []conf.PluginOption{
 		{
 			Name:                gang.PluginName,
@@ -640,8 +667,12 @@ func TestPreempt(t *testing.T) {
 		test.PriClass = []*schedulingv1.PriorityClass{highPrio, lowPrio}
 		t.Run(test.Name, func(t *testing.T) {
 			caseTiers := tiers
-			if len(test.ResourceClaims) > 0 {
+			if len(test.ResourceClaims) > 0 || len(test.PVCs) > 0 {
 				caseTiers = draTiers
+			}
+			if len(test.PVCs) > 0 {
+				// VolumeBinding is a process-wide singleton; rebuild it on this case's PVC informers.
+				predicates.ResetVolumeBindingPluginForTest()
 			}
 			test.RegisterSession(caseTiers, []conf.Configuration{{Name: actions[0].Name(),
 				Arguments: map[string]interface{}{EnableTopologyAwarePreemptionKey: false}}})

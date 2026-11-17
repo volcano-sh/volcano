@@ -162,7 +162,7 @@ func (backfill *Action) pickUpPendingTasks(ssn *framework.Session) []*api.TaskIn
 		}
 
 		for _, task := range job.TaskStatusIndex[api.Pending] {
-			// Backfill handles only tasks with neither ordinary requests nor DRA claims.
+			// Backfill handles only tasks without scheduling requests.
 			// DRA-only Pods may have BestEffort QoS, but still need allocate and gang checks.
 			if task.HasSchedulingResourceRequests() {
 				continue
@@ -183,7 +183,7 @@ func (backfill *Action) pickUpPendingTasks(ssn *framework.Session) []*api.TaskIn
 		}
 
 		for _, task := range job.TaskStatusIndex[api.Pipelined] {
-			// Backfill handles only tasks with neither ordinary requests nor DRA claims.
+			// Backfill handles only tasks without scheduling requests.
 			// DRA-only Pods may have BestEffort QoS, but still need allocate and gang checks.
 			if task.HasSchedulingResourceRequests() {
 				continue

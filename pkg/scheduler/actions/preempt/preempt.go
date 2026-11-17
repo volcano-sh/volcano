@@ -198,9 +198,9 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					if !api.PreemptableStatus(task.Status) {
 						return false
 					}
-					// A task with neither ordinary requests nor DRA claims cannot preempt one that has them.
-					// DRA-only tasks compete for devices, so empty ordinary requests do not
-					// disqualify them from preemption.
+					// A task without scheduling requests cannot preempt one that has them.
+					// DRA-only and PVC-only tasks compete for devices or volume attach slots, so
+					// empty ordinary requests do not disqualify them from preemption.
 					if !preemptor.HasSchedulingResourceRequests() && task.HasSchedulingResourceRequests() {
 						return false
 					}
@@ -260,9 +260,9 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					if !api.PreemptableStatus(task.Status) {
 						return false
 					}
-					// A task with neither ordinary requests nor DRA claims cannot preempt one that has them.
-					// DRA-only tasks compete for devices, so empty ordinary requests do not
-					// disqualify them from preemption.
+					// A task without scheduling requests cannot preempt one that has them.
+					// DRA-only and PVC-only tasks compete for devices or volume attach slots, so
+					// empty ordinary requests do not disqualify them from preemption.
 					if !preemptor.HasSchedulingResourceRequests() && task.HasSchedulingResourceRequests() {
 						return false
 					}

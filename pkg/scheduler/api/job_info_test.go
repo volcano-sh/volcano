@@ -43,6 +43,7 @@ func TestNewTaskInfo(t *testing.T) {
 		name             string
 		requests         v1.ResourceList
 		claims           []v1.PodResourceClaim
+		volumes          []v1.Volume
 		wantBestEffort   bool
 		wantInitRequests bool
 	}{
@@ -83,11 +84,33 @@ func TestNewTaskInfo(t *testing.T) {
 			claims:           []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("gpu-claim")}},
 			wantInitRequests: true,
 		},
+		{
+			name: "PVC only",
+			volumes: []v1.Volume{{Name: "data", VolumeSource: v1.VolumeSource{
+				PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{ClaimName: "data"},
+			}}},
+			wantBestEffort: false,
+		},
+		{
+			name: "generic ephemeral volume only",
+			volumes: []v1.Volume{{Name: "scratch", VolumeSource: v1.VolumeSource{
+				Ephemeral: &v1.EphemeralVolumeSource{},
+			}}},
+			wantBestEffort: false,
+		},
+		{
+			name: "emptyDir only",
+			volumes: []v1.Volume{{Name: "tmp", VolumeSource: v1.VolumeSource{
+				EmptyDir: &v1.EmptyDirVolumeSource{},
+			}}},
+			wantBestEffort: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pod := buildPod("c1", "p1", "", v1.PodPending, tt.requests, nil, nil)
 			pod.Spec.ResourceClaims = tt.claims
+			pod.Spec.Volumes = tt.volumes
 			for _, claim := range tt.claims {
 				pod.Spec.Containers[0].Resources.Claims = append(pod.Spec.Containers[0].Resources.Claims, v1.ResourceClaim{Name: claim.Name})
 			}
