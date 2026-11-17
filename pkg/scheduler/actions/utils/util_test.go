@@ -165,9 +165,10 @@ const blockGradientPluginName = "test-block-gradient"
 // task only on nodes of its node group. Like the k8s filters, its predicate
 // fails with an Error when the task's pre-predicate state is missing.
 type blockGradientPlugin struct {
-	blocks        []*api.HyperNodeInfo
-	resolvable    bool
-	prePredicated sets.Set[api.TaskID]
+	blocks            []*api.HyperNodeInfo
+	resolvable        bool
+	prePredicateFails string
+	prePredicated     sets.Set[api.TaskID]
 }
 
 func (p *blockGradientPlugin) Name() string { return blockGradientPluginName }
@@ -178,6 +179,9 @@ func (p *blockGradientPlugin) OnSessionOpen(ssn *framework.Session) {
 		return api.HyperNodeGradientResult{Gradients: [][]*api.HyperNodeInfo{p.blocks}}
 	})
 	ssn.AddPrePredicateFn(p.Name(), func(task *api.TaskInfo) error {
+		if p.prePredicateFails != "" && task.TaskRole == p.prePredicateFails {
+			return fmt.Errorf("pre-predicate failed")
+		}
 		p.prePredicated.Insert(task.UID)
 		return nil
 	})
@@ -217,11 +221,12 @@ func TestGetCandidateDomains_SkipsDomainsWithoutFeasibleNodes(t *testing.T) {
 		name string
 		job  *api.JobInfo
 		// teamABlocks are in node group team-a; the rest are in shared.
-		teamABlocks []int
-		pending     []pendingTask
-		resolvable  bool
-		maxDomains  int
-		want        []string
+		teamABlocks       []int
+		pending           []pendingTask
+		resolvable        bool
+		prePredicateFails string
+		maxDomains        int
+		want              []string
 	}{
 		{
 			name:        "only feasible block sorts past the cap",
@@ -269,6 +274,29 @@ func TestGetCandidateDomains_SkipsDomainsWithoutFeasibleNodes(t *testing.T) {
 			want:       []string{"block-9"},
 		},
 		{
+			name:        "tasks without a role are probed one by one",
+			job:         hardTopologyJob,
+			teamABlocks: []int{9},
+			pending: []pendingTask{
+				{nodeGroup: "team-b"},
+				{nodeGroup: "team-a"},
+			},
+			maxDomains: 8,
+			want:       []string{"block-9"},
+		},
+		{
+			name:        "failed pre-predicate on one role leaves the blocks unfiltered",
+			job:         hardTopologyJob,
+			teamABlocks: []int{9},
+			pending: []pendingTask{
+				{role: "worker", nodeGroup: "team-a"},
+				{role: "ps", nodeGroup: "team-a"},
+			},
+			prePredicateFails: "ps",
+			maxDomains:        3,
+			want:              []string{"block-1", "block-2", "block-3"},
+		},
+		{
 			name:       "no feasible block under hard topology",
 			job:        hardTopologyJob,
 			pending:    teamAWorker,
@@ -286,7 +314,7 @@ func TestGetCandidateDomains_SkipsDomainsWithoutFeasibleNodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			plugin := &blockGradientPlugin{resolvable: tt.resolvable}
+			plugin := &blockGradientPlugin{resolvable: tt.resolvable, prePredicateFails: tt.prePredicateFails}
 			framework.RegisterPluginBuilder(blockGradientPluginName, func(framework.Arguments) framework.Plugin {
 				return plugin
 			})

@@ -19,6 +19,8 @@ package utils
 import (
 	"slices"
 
+	"k8s.io/klog/v2"
+
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -128,8 +130,9 @@ func feasibleDomainFn(ssn *framework.Session, pending []*api.TaskInfo) func(*api
 	}
 }
 
-// predicateProbes keeps one pre-predicated task per role, like allocate's
-// per-role fit error skip (JobInfo.TaskHasFitErrors).
+// predicateProbes keeps one pre-predicated task per role. Tasks without a role
+// can differ from each other, so each is its own probe, as in
+// JobInfo.TaskHasFitErrors.
 func predicateProbes(ssn *framework.Session, pending []*api.TaskInfo) []*api.TaskInfo {
 	roles := map[string]struct{}{}
 	probes := make([]*api.TaskInfo, 0, len(pending))
@@ -141,6 +144,10 @@ func predicateProbes(ssn *framework.Session, pending []*api.TaskInfo) []*api.Tas
 			roles[task.TaskRole] = struct{}{}
 		}
 		if err := ssn.PrePredicateFn(task); err != nil {
+			// The eviction simulation pre-predicates every task as well, so no
+			// domain can succeed; leave them unfiltered, as before this check.
+			klog.V(4).Infof("Not filtering eviction domains for job <%s>: pre-predicate failed for task <%s/%s>: %v",
+				task.Job, task.Namespace, task.Name, err)
 			return nil
 		}
 		probes = append(probes, task)
