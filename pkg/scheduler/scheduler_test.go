@@ -50,6 +50,7 @@ func TestValidatePluginReload(t *testing.T) {
 	validator := &rejectingReloadValidator{}
 	const pluginName = "test-reload-validator"
 	framework.RegisterPluginReloadValidator(pluginName, validator)
+	defer framework.UnregisterPluginReloadValidator(pluginName)
 
 	err := validatePluginReload(
 		[]conf.Tier{{Plugins: []conf.PluginOption{{Name: pluginName, Arguments: map[string]interface{}{"backend": "old"}}}}},
@@ -328,6 +329,28 @@ func TestScheduler_InitPlugins_ErrorHandling(t *testing.T) {
 	errConflict := schedConflict.initPlugins()
 	assert.Error(t, errConflict, "expected error on conflicting deviceshare arguments")
 	assert.False(t, schedConflict.pluginsInitialized, "must stay false when Init fails")
+}
+
+func TestScheduler_InitPlugins_RejectsDuplicateDeviceShare(t *testing.T) {
+	deviceshare.ResetForTesting()
+	t.Cleanup(deviceshare.ResetForTesting)
+
+	originalHAMiEnabled := hami.AscendHAMiVNPUEnable
+	t.Cleanup(func() { hami.AscendHAMiVNPUEnable = originalHAMiEnabled })
+	hami.AscendHAMiVNPUEnable = false
+
+	sched := &Scheduler{
+		plugins: []conf.Tier{{Plugins: []conf.PluginOption{
+			{Name: deviceshare.PluginName},
+			{Name: deviceshare.PluginName, Arguments: map[string]interface{}{deviceshare.AscendHAMiVNPUEnable: true}},
+		}}},
+	}
+
+	err := sched.initPlugins()
+	assert.ErrorContains(t, err, "multiple DeviceShare declarations")
+	assert.False(t, sched.pluginsInitialized)
+	assert.False(t, hami.AscendHAMiVNPUEnable, "startup validation must run before any DeviceShare global mutation")
+	assert.Empty(t, api.RegisteredDevices, "startup validation must run before device registration")
 }
 
 // TestScheduler_SessionCreatesFreshPluginInstances verifies that OpenSession

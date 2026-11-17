@@ -50,12 +50,13 @@ func RegisterPluginBuilder(name string, pc PluginBuilder) {
 	pluginBuilders[name] = pc
 }
 
-// CleanupPluginBuilders cleans up all the plugin
+// CleanupPluginBuilders cleans up all plugin builders and reload validators.
 func CleanupPluginBuilders() {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 
 	pluginBuilders = map[string]PluginBuilder{}
+	pluginReloadValidators = map[string]PluginReloadValidator{}
 }
 
 // UnregisterPluginBuilder removes a specific plugin builder by name.
@@ -75,6 +76,17 @@ func RegisterPluginReloadValidator(name string, validator PluginReloadValidator)
 	defer pluginMutex.Unlock()
 
 	pluginReloadValidators[name] = validator
+}
+
+// UnregisterPluginReloadValidator removes a specific plugin reload validator.
+//
+// For testing only. It remains exported because scheduler-package tests use
+// framework registries from outside this package.
+func UnregisterPluginReloadValidator(name string) {
+	pluginMutex.Lock()
+	defer pluginMutex.Unlock()
+
+	delete(pluginReloadValidators, name)
 }
 
 // GetPluginReloadValidator returns the optional reload validator for a plugin.

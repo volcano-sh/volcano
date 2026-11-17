@@ -74,6 +74,14 @@ type PluginReloadValidator interface {
 	ValidateReload(current, updated []PluginConfiguration) error
 }
 
+// PluginStartupValidator is optionally implemented by a reload validator when
+// multiple declarations of its plugin cannot be initialized safely. The
+// scheduler calls it before any plugin initializer runs. Plugins that do not
+// implement this optional contract retain the existing startup behavior.
+type PluginStartupValidator interface {
+	ValidateStartup(configurations []PluginConfiguration) error
+}
+
 type BindContextHandler interface {
 	// SetupBindContextExtension allows the plugin to set up extension information in the bind context
 	SetupBindContextExtension(state *k8sframework.CycleState, bindCtx *cache.BindContext)

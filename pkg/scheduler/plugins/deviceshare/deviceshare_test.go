@@ -136,6 +136,16 @@ func TestReloadValidator(t *testing.T) {
 	}
 }
 
+func TestReloadValidatorValidateStartup(t *testing.T) {
+	validator := ReloadValidator{}
+	if err := validator.ValidateStartup([]framework.PluginConfiguration{{}}); err != nil {
+		t.Fatalf("expected one DeviceShare declaration to be valid: %v", err)
+	}
+	if err := validator.ValidateStartup([]framework.PluginConfiguration{{}, {}}); err == nil || !strings.Contains(err.Error(), "multiple DeviceShare declarations") {
+		t.Fatalf("expected duplicate DeviceShare declarations to be rejected, got %v", err)
+	}
+}
+
 func TestArguments(t *testing.T) {
 	framework.RegisterPluginBuilder(PluginName, New)
 	defer framework.CleanupPluginBuilders()

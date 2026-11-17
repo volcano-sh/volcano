@@ -253,6 +253,9 @@ func (pc *Scheduler) initPlugins() error {
 	}
 	tiers := pc.plugins
 	pc.mutex.Unlock()
+	if err := validatePluginStartup(tiers); err != nil {
+		return err
+	}
 
 	for _, tier := range tiers {
 		for _, pluginConf := range tier.Plugins {
@@ -273,6 +276,31 @@ func (pc *Scheduler) initPlugins() error {
 	pc.mutex.Lock()
 	pc.pluginsInitialized = true
 	pc.mutex.Unlock()
+	return nil
+}
+
+func validatePluginStartup(tiers []conf.Tier) error {
+	configs := pluginConfigurations(tiers)
+	names := make([]string, 0, len(configs))
+	for name := range configs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		validator, found := framework.GetPluginReloadValidator(name)
+		if !found {
+			continue
+		}
+		startupValidator, ok := validator.(framework.PluginStartupValidator)
+		if !ok {
+			continue
+		}
+		if err := startupValidator.ValidateStartup(configs[name]); err != nil {
+			return fmt.Errorf("plugin %q configuration is incompatible with scheduler startup: %w", name, err)
+		}
+	}
+
 	return nil
 }
 

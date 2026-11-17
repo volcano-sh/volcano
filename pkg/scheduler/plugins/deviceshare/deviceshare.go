@@ -95,6 +95,7 @@ type deviceSharePlugin struct {
 type ReloadValidator struct{}
 
 var _ framework.PluginReloadValidator = ReloadValidator{}
+var _ framework.PluginStartupValidator = ReloadValidator{}
 
 // New return priority plugin
 func New(arguments framework.Arguments) framework.Plugin {
@@ -120,43 +121,25 @@ func (dp *deviceSharePlugin) Init() error {
 	initMu.Lock()
 	defer initMu.Unlock()
 
-	gpuSharingEnable := false
-	gpuNumberEnable := false
-	nodeLockEnable := false
-	vgpuEnable := false
-	mindClusterEnable := false
-	hamiEnable := false
-
-	args := dp.pluginArguments
-	args.GetBool(&gpuSharingEnable, GPUSharingPredicate)
-	args.GetBool(&gpuNumberEnable, GPUNumberPredicate)
-	args.GetBool(&nodeLockEnable, NodeLockEnable)
-	args.GetBool(&vgpuEnable, VGPUEnable)
-	args.GetBool(&mindClusterEnable, AscendMindClusterVNPU)
-	args.GetBool(&hamiEnable, AscendHAMiVNPUEnable)
-
-	if gpuSharingEnable && gpuNumberEnable {
+	backend := backendConfigFromArguments(dp.pluginArguments)
+	if backend.gpuSharing && backend.gpuNumber {
 		return fmt.Errorf("can not define true in both gpu sharing and gpu number")
 	}
-	if (gpuSharingEnable || gpuNumberEnable) && vgpuEnable {
+	if (backend.gpuSharing || backend.gpuNumber) && backend.vgpu {
 		return fmt.Errorf("gpu-share and vgpu can't be used together")
 	}
 
-	gpushare.GpuSharingEnable = gpuSharingEnable
-	gpushare.GpuNumberEnable = gpuNumberEnable
-	vgpu.VGPUEnable = vgpuEnable
-	vnpu.AscendMindClusterVNPUEnable = mindClusterEnable
-	hami.AscendHAMiVNPUEnable = hamiEnable
+	gpushare.GpuSharingEnable = backend.gpuSharing
+	gpushare.GpuNumberEnable = backend.gpuNumber
+	vgpu.VGPUEnable = backend.vgpu
+	vnpu.AscendMindClusterVNPUEnable = backend.mindCluster
+	hami.AscendHAMiVNPUEnable = backend.hami
 
-	gpushare.NodeLockEnable = nodeLockEnable
-	vgpu.NodeLockEnable = nodeLockEnable
-	hami.NodeLockEnable = nodeLockEnable
+	gpushare.NodeLockEnable = backend.nodeLock
+	vgpu.NodeLockEnable = backend.nodeLock
+	hami.NodeLockEnable = backend.nodeLock
 
-	knownGeometriesCMName := "volcano-vgpu-device-config"
-	args.GetString(&knownGeometriesCMName, KnownGeometriesCMName)
-	knownGeometriesCMNamespace := "kube-system"
-	args.GetString(&knownGeometriesCMNamespace, KnownGeometriesCMNamespace)
-	config.InitDevicesConfig(knownGeometriesCMName, knownGeometriesCMNamespace)
+	config.InitDevicesConfig(backend.cmName, backend.cmNamespace)
 	registerDevices()
 
 	return nil
@@ -175,23 +158,36 @@ type backendConfig struct {
 }
 
 func backendConfigFromPluginConfiguration(pluginConfig framework.PluginConfiguration) backendConfig {
-	config := backendConfig{
-		enabledPredicate: pluginConfig.EnabledPredicate != nil && *pluginConfig.EnabledPredicate,
-		cmName:           "volcano-vgpu-device-config",
-		cmNamespace:      "kube-system",
+	backend := backendConfigFromArguments(pluginConfig.Arguments)
+	backend.enabledPredicate = pluginConfig.EnabledPredicate != nil && *pluginConfig.EnabledPredicate
+	return backend
+}
+
+func backendConfigFromArguments(args framework.Arguments) backendConfig {
+	backend := backendConfig{
+		cmName:      "volcano-vgpu-device-config",
+		cmNamespace: "kube-system",
 	}
 
-	args := pluginConfig.Arguments
-	args.GetBool(&config.gpuSharing, GPUSharingPredicate)
-	args.GetBool(&config.gpuNumber, GPUNumberPredicate)
-	args.GetBool(&config.nodeLock, NodeLockEnable)
-	args.GetBool(&config.vgpu, VGPUEnable)
-	args.GetBool(&config.mindCluster, AscendMindClusterVNPU)
-	args.GetBool(&config.hami, AscendHAMiVNPUEnable)
-	args.GetString(&config.cmName, KnownGeometriesCMName)
-	args.GetString(&config.cmNamespace, KnownGeometriesCMNamespace)
+	args.GetBool(&backend.gpuSharing, GPUSharingPredicate)
+	args.GetBool(&backend.gpuNumber, GPUNumberPredicate)
+	args.GetBool(&backend.nodeLock, NodeLockEnable)
+	args.GetBool(&backend.vgpu, VGPUEnable)
+	args.GetBool(&backend.mindCluster, AscendMindClusterVNPU)
+	args.GetBool(&backend.hami, AscendHAMiVNPUEnable)
+	args.GetString(&backend.cmName, KnownGeometriesCMName)
+	args.GetString(&backend.cmNamespace, KnownGeometriesCMNamespace)
 
-	return config
+	return backend
+}
+
+// ValidateStartup rejects duplicate declarations because DeviceShare owns
+// process-wide backend flags and sync.Once-protected device registration.
+func (ReloadValidator) ValidateStartup(configurations []framework.PluginConfiguration) error {
+	if len(configurations) > 1 {
+		return fmt.Errorf("multiple DeviceShare declarations are unsupported because device backend initialization is process-wide")
+	}
+	return nil
 }
 
 // ValidateReload rejects changes which would make cached node device state
