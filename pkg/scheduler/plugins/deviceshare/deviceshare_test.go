@@ -17,6 +17,7 @@ limitations under the License.
 package deviceshare
 
 import (
+	"strings"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -28,6 +29,112 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+func TestReloadValidator(t *testing.T) {
+	enabled := true
+	disabled := false
+	defaultConfig := framework.PluginConfiguration{}
+	hamiConfig := framework.PluginConfiguration{
+		EnabledPredicate: &enabled,
+		Arguments: framework.Arguments{
+			AscendHAMiVNPUEnable: true,
+		},
+	}
+
+	tests := []struct {
+		name    string
+		current []framework.PluginConfiguration
+		updated []framework.PluginConfiguration
+		wantErr bool
+	}{
+		{
+			name:    "unchanged",
+			current: []framework.PluginConfiguration{hamiConfig},
+			updated: []framework.PluginConfiguration{hamiConfig},
+		},
+		{
+			name:    "omitted backend defaults match explicit defaults",
+			current: []framework.PluginConfiguration{defaultConfig},
+			updated: []framework.PluginConfiguration{{
+				Arguments: framework.Arguments{
+					KnownGeometriesCMName:      "volcano-vgpu-device-config",
+					KnownGeometriesCMNamespace: "kube-system",
+				},
+			}},
+		},
+		{
+			name:    "session settings are reloadable",
+			current: []framework.PluginConfiguration{hamiConfig},
+			updated: []framework.PluginConfiguration{{
+				EnabledPredicate: &enabled,
+				Arguments: framework.Arguments{
+					AscendHAMiVNPUEnable:   true,
+					SchedulePolicyArgument: "spread",
+					ScheduleWeight:         20,
+				},
+			}},
+		},
+		{
+			name:    "backend modification",
+			current: []framework.PluginConfiguration{hamiConfig},
+			updated: []framework.PluginConfiguration{{EnabledPredicate: &enabled}},
+			wantErr: true,
+		},
+		{
+			name:    "enable predicate modification",
+			current: []framework.PluginConfiguration{hamiConfig},
+			updated: []framework.PluginConfiguration{{EnabledPredicate: &disabled, Arguments: hamiConfig.Arguments}},
+			wantErr: true,
+		},
+		{
+			name:    "addition",
+			updated: []framework.PluginConfiguration{hamiConfig},
+			wantErr: true,
+		},
+		{
+			name:    "removal",
+			current: []framework.PluginConfiguration{hamiConfig},
+			wantErr: true,
+		},
+		{
+			name:    "declaration count modification",
+			current: []framework.PluginConfiguration{hamiConfig},
+			updated: []framework.PluginConfiguration{hamiConfig, hamiConfig},
+			wantErr: true,
+		},
+		{
+			name: "declaration order modification",
+			current: []framework.PluginConfiguration{
+				{EnabledPredicate: &enabled},
+				hamiConfig,
+			},
+			updated: []framework.PluginConfiguration{
+				hamiConfig,
+				{EnabledPredicate: &enabled},
+			},
+			wantErr: true,
+		},
+	}
+
+	validator := ReloadValidator{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validator.ValidateReload(tt.current, tt.updated)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected reload validation to fail")
+				}
+				if !strings.Contains(err.Error(), "restart the scheduler") {
+					t.Fatalf("reload error %q does not include the restart action", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected reload validation to succeed: %v", err)
+			}
+		})
+	}
+}
 
 func TestArguments(t *testing.T) {
 	framework.RegisterPluginBuilder(PluginName, New)

@@ -55,6 +55,7 @@ func init() {
 	framework.RegisterPluginBuilder(drf.PluginName, drf.New)
 	framework.RegisterPluginBuilder(gang.PluginName, gang.New)
 	framework.RegisterPluginBuilder(deviceshare.PluginName, deviceshare.New)
+	framework.RegisterPluginReloadValidator(deviceshare.PluginName, deviceshare.ReloadValidator{})
 	framework.RegisterPluginBuilder(predicates.PluginName, predicates.New)
 	framework.RegisterPluginBuilder(priority.PluginName, priority.New)
 	framework.RegisterPluginBuilder(nodeorder.PluginName, nodeorder.New)

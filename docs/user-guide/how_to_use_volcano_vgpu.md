@@ -83,6 +83,20 @@ Check with:
 kubectl get node {node-name} -o yaml
 ```
 
+### Updating DeviceShare Configuration
+
+DeviceShare backend settings are read before the scheduler cache starts so
+cached nodes have the matching device state. Changing backend settings in the
+scheduler ConfigMap therefore requires restarting the scheduler. This includes
+adding or removing DeviceShare, changing `enablePredicate`, device backend
+enablement flags, or the device geometry ConfigMap name or namespace.
+
+The scheduler rejects an incompatible live reload atomically: actions, plugin
+settings, and metrics remain at their previously active values, and an error
+log identifies the rejected DeviceShare change and the restart requirement.
+Session-only settings such as `deviceshare.SchedulePolicy` and
+`deviceshare.ScheduleWeight` remain reloadable when the backend is unchanged.
+
 ---
 
 ### PodGroup Device Spread

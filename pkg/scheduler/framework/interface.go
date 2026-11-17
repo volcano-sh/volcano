@@ -53,7 +53,25 @@ type Plugin interface {
 // PluginInitializer is implemented by plugins that need initialization
 // before the scheduler cache starts.
 type PluginInitializer interface {
+	// Init is invoked once per scheduler startup, before the scheduler cache
+	// starts. It is not invoked for the fresh plugin instances created for each
+	// scheduling session.
 	Init() error
+}
+
+// PluginConfiguration is the portion of a plugin declaration that can affect
+// compatibility with an already-running scheduler.
+type PluginConfiguration struct {
+	EnabledPredicate *bool
+	Arguments        Arguments
+}
+
+// PluginReloadValidator is implemented by plugins whose startup configuration
+// cannot be safely changed while the scheduler is running. The scheduler calls
+// it before atomically applying a configuration reload. Plugins that do not
+// implement this optional contract retain the existing reload behavior.
+type PluginReloadValidator interface {
+	ValidateReload(current, updated []PluginConfiguration) error
 }
 
 type BindContextHandler interface {

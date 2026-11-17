@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -43,7 +44,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/gate"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
-	"volcano.sh/volcano/pkg/scheduler/plugins/deviceshare"
 	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
@@ -57,6 +57,7 @@ type Scheduler struct {
 	fileWatcher           filewatcher.FileWatcher
 	schedulePeriod        time.Duration
 	once                  sync.Once
+	pluginInitMutex       sync.Mutex
 
 	mutex              sync.Mutex
 	actions            []framework.Action
@@ -222,11 +223,14 @@ func (pc *Scheduler) loadSchedulerConf() {
 		return
 	}
 
+	pc.pluginInitMutex.Lock()
+	defer pc.pluginInitMutex.Unlock()
+
 	pc.mutex.Lock()
 	if pc.pluginsInitialized {
-		if err := validateDeviceShareReload(pc.plugins, plugins); err != nil {
+		if err := validatePluginReload(pc.plugins, plugins); err != nil {
 			pc.mutex.Unlock()
-			klog.Errorf("Failed to reload scheduler configuration: %v; retaining previously active configuration", err)
+			klog.ErrorS(err, "Rejected scheduler configuration reload; retaining all active scheduler settings", "action", "restart the scheduler after changing the DeviceShare backend")
 			return
 		}
 	}
@@ -239,7 +243,14 @@ func (pc *Scheduler) loadSchedulerConf() {
 }
 
 func (pc *Scheduler) initPlugins() error {
+	pc.pluginInitMutex.Lock()
+	defer pc.pluginInitMutex.Unlock()
+
 	pc.mutex.Lock()
+	if pc.pluginsInitialized {
+		pc.mutex.Unlock()
+		return nil
+	}
 	tiers := pc.plugins
 	pc.mutex.Unlock()
 
@@ -265,96 +276,43 @@ func (pc *Scheduler) initPlugins() error {
 	return nil
 }
 
-func findPluginOptions(tiers []conf.Tier, name string) []conf.PluginOption {
-	var opts []conf.PluginOption
+func pluginConfigurations(tiers []conf.Tier) map[string][]framework.PluginConfiguration {
+	configs := make(map[string][]framework.PluginConfiguration)
 	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
-			if plugin.Name == name {
-				opts = append(opts, plugin)
-			}
+			configs[plugin.Name] = append(configs[plugin.Name], framework.PluginConfiguration{
+				EnabledPredicate: plugin.EnabledPredicate,
+				Arguments:        framework.Arguments(plugin.Arguments),
+			})
 		}
 	}
-	return opts
+	return configs
 }
 
-type deviceShareBackendConfig struct {
-	enabledPredicate bool
-	gpuSharing       bool
-	gpuNumber        bool
-	nodeLock         bool
-	vgpu             bool
-	mindCluster      bool
-	hami             bool
-	cmName           string
-	cmNamespace      string
-}
-
-func extractDeviceShareBackendConfig(opt conf.PluginOption) deviceShareBackendConfig {
-	cfg := deviceShareBackendConfig{
-		enabledPredicate: opt.EnabledPredicate != nil && *opt.EnabledPredicate,
-		cmName:           "volcano-vgpu-device-config",
-		cmNamespace:      "kube-system",
+func validatePluginReload(currentTiers, updatedTiers []conf.Tier) error {
+	current := pluginConfigurations(currentTiers)
+	updated := pluginConfigurations(updatedTiers)
+	names := make(map[string]struct{}, len(current)+len(updated))
+	for name := range current {
+		names[name] = struct{}{}
 	}
-	args := framework.Arguments(opt.Arguments)
-	args.GetBool(&cfg.gpuSharing, deviceshare.GPUSharingPredicate)
-	args.GetBool(&cfg.gpuNumber, deviceshare.GPUNumberPredicate)
-	args.GetBool(&cfg.nodeLock, deviceshare.NodeLockEnable)
-	args.GetBool(&cfg.vgpu, deviceshare.VGPUEnable)
-	args.GetBool(&cfg.mindCluster, deviceshare.AscendMindClusterVNPU)
-	args.GetBool(&cfg.hami, deviceshare.AscendHAMiVNPUEnable)
-	args.GetString(&cfg.cmName, deviceshare.KnownGeometriesCMName)
-	args.GetString(&cfg.cmNamespace, deviceshare.KnownGeometriesCMNamespace)
-	return cfg
-}
-
-func validateDeviceShareReload(currentTiers, newTiers []conf.Tier) error {
-	currentOpts := findPluginOptions(currentTiers, deviceshare.PluginName)
-	newOpts := findPluginOptions(newTiers, deviceshare.PluginName)
-
-	if len(currentOpts) > 0 && len(newOpts) == 0 {
-		return fmt.Errorf("live removal of DeviceShare plugin is unsupported without restarting the scheduler (cached node device state cannot be rebuilt dynamically)")
-	}
-	if len(currentOpts) == 0 && len(newOpts) > 0 {
-		return fmt.Errorf("live addition of DeviceShare plugin is unsupported without restarting the scheduler (node cache was not initialized with device support)")
-	}
-	if len(currentOpts) == 0 && len(newOpts) == 0 {
-		return nil
+	for name := range updated {
+		names[name] = struct{}{}
 	}
 
-	if len(currentOpts) != len(newOpts) {
-		return fmt.Errorf("live modification of DeviceShare plugin declaration count (from %d to %d) is unsupported without restarting the scheduler", len(currentOpts), len(newOpts))
+	orderedNames := make([]string, 0, len(names))
+	for name := range names {
+		orderedNames = append(orderedNames, name)
 	}
+	sort.Strings(orderedNames)
 
-	for i := range currentOpts {
-		curCfg := extractDeviceShareBackendConfig(currentOpts[i])
-		newCfg := extractDeviceShareBackendConfig(newOpts[i])
-
-		if curCfg.enabledPredicate != newCfg.enabledPredicate {
-			return fmt.Errorf("live modification of DeviceShare enablePredicate (from %v to %v) is unsupported without restarting the scheduler", curCfg.enabledPredicate, newCfg.enabledPredicate)
+	for _, name := range orderedNames {
+		validator, found := framework.GetPluginReloadValidator(name)
+		if !found {
+			continue
 		}
-		if curCfg.hami != newCfg.hami {
-			return fmt.Errorf("live modification of DeviceShare %s (from %v to %v) is unsupported without restarting the scheduler", deviceshare.AscendHAMiVNPUEnable, curCfg.hami, newCfg.hami)
-		}
-		if curCfg.gpuSharing != newCfg.gpuSharing {
-			return fmt.Errorf("live modification of DeviceShare %s (from %v to %v) is unsupported without restarting the scheduler", deviceshare.GPUSharingPredicate, curCfg.gpuSharing, newCfg.gpuSharing)
-		}
-		if curCfg.gpuNumber != newCfg.gpuNumber {
-			return fmt.Errorf("live modification of DeviceShare %s (from %v to %v) is unsupported without restarting the scheduler", deviceshare.GPUNumberPredicate, curCfg.gpuNumber, newCfg.gpuNumber)
-		}
-		if curCfg.vgpu != newCfg.vgpu {
-			return fmt.Errorf("live modification of DeviceShare %s (from %v to %v) is unsupported without restarting the scheduler", deviceshare.VGPUEnable, curCfg.vgpu, newCfg.vgpu)
-		}
-		if curCfg.mindCluster != newCfg.mindCluster {
-			return fmt.Errorf("live modification of DeviceShare %s (from %v to %v) is unsupported without restarting the scheduler", deviceshare.AscendMindClusterVNPU, curCfg.mindCluster, newCfg.mindCluster)
-		}
-		if curCfg.nodeLock != newCfg.nodeLock {
-			return fmt.Errorf("live modification of DeviceShare %s (from %v to %v) is unsupported without restarting the scheduler", deviceshare.NodeLockEnable, curCfg.nodeLock, newCfg.nodeLock)
-		}
-		if curCfg.cmName != newCfg.cmName {
-			return fmt.Errorf("live modification of DeviceShare %s (from %v to %v) is unsupported without restarting the scheduler", deviceshare.KnownGeometriesCMName, curCfg.cmName, newCfg.cmName)
-		}
-		if curCfg.cmNamespace != newCfg.cmNamespace {
-			return fmt.Errorf("live modification of DeviceShare %s (from %v to %v) is unsupported without restarting the scheduler", deviceshare.KnownGeometriesCMNamespace, curCfg.cmNamespace, newCfg.cmNamespace)
+		if err := validator.ValidateReload(current[name], updated[name]); err != nil {
+			return fmt.Errorf("plugin %q configuration is incompatible with a live reload: %w", name, err)
 		}
 	}
 

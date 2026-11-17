@@ -58,11 +58,18 @@ const (
 )
 
 var (
-	once sync.Once
+	once   sync.Once
+	initMu sync.Mutex
 )
 
-// ResetForTesting resets package-level sync.Once and registered devices for test isolation.
+// ResetForTesting resets package-level initialization state and registered devices.
+//
+// For testing only. It remains exported because scheduler-package tests need to
+// isolate DeviceShare initialization from outside this package.
 func ResetForTesting() {
+	initMu.Lock()
+	defer initMu.Unlock()
+
 	once = sync.Once{}
 	api.RegisteredDevices = []string{}
 }
@@ -82,6 +89,12 @@ type deviceSharePlugin struct {
 	// persistedPodRules maps nodeName → namespace/name → set of rule indices.
 	persistedPodRules map[string]map[string]map[int]struct{}
 }
+
+// ReloadValidator validates whether an already-running DeviceShare backend can
+// safely accept a scheduler configuration reload.
+type ReloadValidator struct{}
+
+var _ framework.PluginReloadValidator = ReloadValidator{}
 
 // New return priority plugin
 func New(arguments framework.Arguments) framework.Plugin {
@@ -104,6 +117,9 @@ func (dp *deviceSharePlugin) Name() string {
 }
 
 func (dp *deviceSharePlugin) Init() error {
+	initMu.Lock()
+	defer initMu.Unlock()
+
 	gpuSharingEnable := false
 	gpuNumberEnable := false
 	nodeLockEnable := false
@@ -142,6 +158,88 @@ func (dp *deviceSharePlugin) Init() error {
 	args.GetString(&knownGeometriesCMNamespace, KnownGeometriesCMNamespace)
 	config.InitDevicesConfig(knownGeometriesCMName, knownGeometriesCMNamespace)
 	registerDevices()
+
+	return nil
+}
+
+type backendConfig struct {
+	enabledPredicate bool
+	gpuSharing       bool
+	gpuNumber        bool
+	nodeLock         bool
+	vgpu             bool
+	mindCluster      bool
+	hami             bool
+	cmName           string
+	cmNamespace      string
+}
+
+func backendConfigFromPluginConfiguration(pluginConfig framework.PluginConfiguration) backendConfig {
+	config := backendConfig{
+		enabledPredicate: pluginConfig.EnabledPredicate != nil && *pluginConfig.EnabledPredicate,
+		cmName:           "volcano-vgpu-device-config",
+		cmNamespace:      "kube-system",
+	}
+
+	args := pluginConfig.Arguments
+	args.GetBool(&config.gpuSharing, GPUSharingPredicate)
+	args.GetBool(&config.gpuNumber, GPUNumberPredicate)
+	args.GetBool(&config.nodeLock, NodeLockEnable)
+	args.GetBool(&config.vgpu, VGPUEnable)
+	args.GetBool(&config.mindCluster, AscendMindClusterVNPU)
+	args.GetBool(&config.hami, AscendHAMiVNPUEnable)
+	args.GetString(&config.cmName, KnownGeometriesCMName)
+	args.GetString(&config.cmNamespace, KnownGeometriesCMNamespace)
+
+	return config
+}
+
+// ValidateReload rejects changes which would make cached node device state
+// disagree with the process-wide DeviceShare backend. Session-only settings,
+// such as SchedulePolicy and ScheduleWeight, are intentionally not compared.
+func (ReloadValidator) ValidateReload(current, updated []framework.PluginConfiguration) error {
+	if len(current) > 0 && len(updated) == 0 {
+		return fmt.Errorf("live removal of DeviceShare is unsupported: restart the scheduler after changing the device backend")
+	}
+	if len(current) == 0 && len(updated) > 0 {
+		return fmt.Errorf("live addition of DeviceShare is unsupported: restart the scheduler after changing the device backend")
+	}
+	if len(current) == 0 && len(updated) == 0 {
+		return nil
+	}
+	if len(current) != len(updated) {
+		return fmt.Errorf("live modification of DeviceShare declaration count (from %d to %d) is unsupported: restart the scheduler after changing the device backend", len(current), len(updated))
+	}
+
+	for index := range current {
+		if err := compareBackendConfig(backendConfigFromPluginConfiguration(current[index]), backendConfigFromPluginConfiguration(updated[index])); err != nil {
+			return fmt.Errorf("DeviceShare declaration %d: %w", index, err)
+		}
+	}
+
+	return nil
+}
+
+func compareBackendConfig(current, updated backendConfig) error {
+	for _, change := range []struct {
+		name    string
+		current interface{}
+		updated interface{}
+	}{
+		{"enablePredicate", current.enabledPredicate, updated.enabledPredicate},
+		{GPUSharingPredicate, current.gpuSharing, updated.gpuSharing},
+		{GPUNumberPredicate, current.gpuNumber, updated.gpuNumber},
+		{NodeLockEnable, current.nodeLock, updated.nodeLock},
+		{VGPUEnable, current.vgpu, updated.vgpu},
+		{AscendMindClusterVNPU, current.mindCluster, updated.mindCluster},
+		{AscendHAMiVNPUEnable, current.hami, updated.hami},
+		{KnownGeometriesCMName, current.cmName, updated.cmName},
+		{KnownGeometriesCMNamespace, current.cmNamespace, updated.cmNamespace},
+	} {
+		if change.current != change.updated {
+			return fmt.Errorf("live modification of DeviceShare %s (from %v to %v) is unsupported: restart the scheduler after changing the device backend", change.name, change.current, change.updated)
+		}
+	}
 
 	return nil
 }

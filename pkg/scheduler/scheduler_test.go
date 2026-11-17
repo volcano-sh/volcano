@@ -17,6 +17,7 @@ limitations under the License.
 package scheduler
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,6 +36,34 @@ import (
 	_ "volcano.sh/volcano/pkg/scheduler/plugins"
 	"volcano.sh/volcano/pkg/scheduler/plugins/deviceshare"
 )
+
+type rejectingReloadValidator struct {
+	calls int
+}
+
+func (v *rejectingReloadValidator) ValidateReload(current, updated []framework.PluginConfiguration) error {
+	v.calls++
+	return errors.New("test reload rejected")
+}
+
+func TestValidatePluginReload(t *testing.T) {
+	validator := &rejectingReloadValidator{}
+	const pluginName = "test-reload-validator"
+	framework.RegisterPluginReloadValidator(pluginName, validator)
+
+	err := validatePluginReload(
+		[]conf.Tier{{Plugins: []conf.PluginOption{{Name: pluginName, Arguments: map[string]interface{}{"backend": "old"}}}}},
+		[]conf.Tier{{Plugins: []conf.PluginOption{{Name: pluginName, Arguments: map[string]interface{}{"backend": "new"}}}}},
+	)
+	assert.ErrorContains(t, err, "test reload rejected")
+	assert.Equal(t, 1, validator.calls)
+
+	err = validatePluginReload(
+		[]conf.Tier{{Plugins: []conf.PluginOption{{Name: "plugin-without-reload-validator", Arguments: map[string]interface{}{"old": true}}}}},
+		[]conf.Tier{{Plugins: []conf.PluginOption{{Name: "plugin-without-reload-validator", Arguments: map[string]interface{}{"new": true}}}}},
+	)
+	assert.NoError(t, err, "plugins without the optional reload validator keep existing reload behavior")
+}
 
 func buildAscendTestNode(name string) *v1.Node {
 	return &v1.Node{
@@ -495,6 +524,81 @@ tiers:
 	assert.True(t, hamiVal, "AscendHAMiVNPUEnable: true must be retained")
 }
 
+// TestScheduler_Reload_RejectsMixedChangesAtomically verifies that an
+// incompatible DeviceShare change rejects the complete reload, including an
+// otherwise valid action change.
+func TestScheduler_Reload_RejectsMixedChangesAtomically(t *testing.T) {
+	deviceshare.ResetForTesting()
+	defer deviceshare.ResetForTesting()
+
+	initialConf := `
+actions: "allocate"
+tiers:
+- plugins:
+  - name: deviceshare
+    enablePredicate: true
+    arguments:
+      deviceshare.AscendHAMiVNPUEnable: true
+`
+	confPath := createTempConfigFile(t, initialConf)
+	sched := &Scheduler{schedulerConf: confPath, disableDefaultConf: true}
+	sched.loadSchedulerConf()
+	assert.NoError(t, sched.initPlugins())
+
+	mixedConf := `
+actions: "enqueue"
+tiers:
+- plugins:
+  - name: deviceshare
+    enablePredicate: true
+    arguments:
+      deviceshare.AscendHAMiVNPUEnable: false
+`
+	assert.NoError(t, os.WriteFile(confPath, []byte(mixedConf), 0644))
+	sched.loadSchedulerConf()
+
+	assert.Len(t, sched.actions, 1)
+	assert.Equal(t, "allocate", sched.actions[0].Name(), "action change must not be partially applied")
+	args := framework.Arguments(sched.plugins[0].Plugins[0].Arguments)
+	var hamiEnabled bool
+	args.GetBool(&hamiEnabled, deviceshare.AscendHAMiVNPUEnable)
+	assert.True(t, hamiEnabled, "backend change must not be partially applied")
+}
+
+func TestScheduler_Reload_AcceptsActionChangeWithoutBackendChange(t *testing.T) {
+	deviceshare.ResetForTesting()
+	defer deviceshare.ResetForTesting()
+
+	initialConf := `
+actions: "allocate"
+tiers:
+- plugins:
+  - name: deviceshare
+    enablePredicate: true
+    arguments:
+      deviceshare.AscendHAMiVNPUEnable: true
+`
+	confPath := createTempConfigFile(t, initialConf)
+	sched := &Scheduler{schedulerConf: confPath, disableDefaultConf: true}
+	sched.loadSchedulerConf()
+	assert.NoError(t, sched.initPlugins())
+
+	updatedConf := `
+actions: "enqueue"
+tiers:
+- plugins:
+  - name: deviceshare
+    enablePredicate: true
+    arguments:
+      deviceshare.AscendHAMiVNPUEnable: true
+`
+	assert.NoError(t, os.WriteFile(confPath, []byte(updatedConf), 0644))
+	sched.loadSchedulerConf()
+
+	assert.Len(t, sched.actions, 1)
+	assert.Equal(t, "enqueue", sched.actions[0].Name())
+}
+
 // TestScheduler_Reload_AcceptSessionSettingsModification tests that modifying session-only
 // settings (e.g. SchedulePolicy, ScheduleWeight) on reload is accepted and applied.
 func TestScheduler_Reload_AcceptSessionSettingsModification(t *testing.T) {
@@ -577,4 +681,6 @@ func TestScheduler_InitPlugins_SkipsUnknownAndInitializesKnown(t *testing.T) {
 	assert.NoError(t, sched.initPlugins())
 	assert.Equal(t, 1, calls, "known plugin Init must run once")
 	assert.True(t, sched.pluginsInitialized)
+	assert.NoError(t, sched.initPlugins(), "repeated scheduler initialization must be a no-op")
+	assert.Equal(t, 1, calls, "a plugin initializer must run once per scheduler startup")
 }
