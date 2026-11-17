@@ -2600,3 +2600,86 @@ func TestValidateTaskTopoPolicy(t *testing.T) {
 		}
 	}
 }
+
+// Pods are named <job>-<task>-<replica index>, so the length check has to look at
+// the last replica index, not at the task's position in spec.tasks.
+func TestValidatePodNameLengthUsesReplicaIndex(t *testing.T) {
+	config.VolcanoClient = fakeclient.NewSimpleClientset(&schedulingv1beta2.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "default"},
+		Spec:       schedulingv1beta2.QueueSpec{Weight: 1},
+		Status:     schedulingv1beta2.QueueStatus{State: schedulingv1beta2.QueueStateOpen},
+	})
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	config.QueueLister = informerFactory.Scheduling().V1beta1().Queues().Lister()
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	informerFactory.Start(stopCh)
+	informerFactory.WaitForCacheSync(stopCh)
+
+	t.Run("too long name at the last replica is denied", func(t *testing.T) {
+		job := newJob()
+		job.Name = strings.Repeat("a", 54)
+		job.Spec.Tasks[0].Replicas = 11 // last pod: <54>-task-1-10, 64 chars
+		job.Spec.MinAvailable = 1
+		resp := admissionv1.AdmissionResponse{Allowed: true}
+		msg := validateJobCreate(job, &resp)
+		if resp.Allowed {
+			t.Fatalf("job admitted, but pod %q is longer than 63 chars", job.Name+"-task-1-10")
+		}
+		if !strings.Contains(msg, job.Name+"-task-1-10") {
+			t.Errorf("expected the message to name the last pod, got %q", msg)
+		}
+	})
+
+	t.Run("name that fits at every replica is allowed", func(t *testing.T) {
+		job := newJob()
+		job.Name = strings.Repeat("a", 54)
+		job.Spec.Tasks[0].Replicas = 10 // last pod: <54>-task-1-9, 63 chars
+		job.Spec.MinAvailable = 1
+		resp := admissionv1.AdmissionResponse{Allowed: true}
+		if msg := validateJobCreate(job, &resp); !resp.Allowed {
+			t.Fatalf("valid job denied: %s", msg)
+		}
+	})
+
+	t.Run("task position is not part of the pod name", func(t *testing.T) {
+		job := newJob()
+		job.Name = strings.Repeat("b", 57)
+		template := job.Spec.Tasks[0].Template
+		job.Spec.Tasks = nil
+		for i := 0; i <= 10; i++ { // longest real pod: <57>-t10-0, 63 chars
+			job.Spec.Tasks = append(job.Spec.Tasks, v1alpha1.TaskSpec{
+				Name: fmt.Sprintf("t%02d", i), Replicas: 1, Template: template,
+			})
+		}
+		job.Spec.MinAvailable = 1
+		resp := admissionv1.AdmissionResponse{Allowed: true}
+		if msg := validateJobCreate(job, &resp); !resp.Allowed {
+			t.Fatalf("valid job denied: %s", msg)
+		}
+	})
+
+	t.Run("scale up past the name limit is denied", func(t *testing.T) {
+		old := newJob()
+		old.Name = strings.Repeat("a", 54)
+		old.Spec.Tasks[0].Replicas = 10
+		old.Spec.MinAvailable = 1
+		new := old.DeepCopy()
+		new.Spec.Tasks[0].Replicas = 11
+		if err := validateJobUpdate(old, new); err == nil {
+			t.Fatalf("scale up admitted, but pod %q is longer than 63 chars", new.Name+"-task-1-10")
+		}
+	})
+
+	t.Run("scale down of an existing job is not blocked", func(t *testing.T) {
+		old := newJob()
+		old.Name = strings.Repeat("a", 54)
+		old.Spec.Tasks[0].Replicas = 12
+		old.Spec.MinAvailable = 1
+		new := old.DeepCopy()
+		new.Spec.Tasks[0].Replicas = 11
+		if err := validateJobUpdate(old, new); err != nil {
+			t.Fatalf("scale down denied: %v", err)
+		}
+	})
+}
