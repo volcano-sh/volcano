@@ -20,6 +20,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 
 	v1 "k8s.io/api/core/v1"
@@ -64,6 +65,10 @@ func Run(opt *options.ServerOption) error {
 	sched, err := scheduler.NewAgentScheduler(config, opt)
 	if err != nil {
 		panic(err)
+	}
+
+	if opt.EnableMetrics {
+		go startMetricsServer(opt)
 	}
 
 	if opt.EnableHealthz {
@@ -131,4 +136,21 @@ func Run(opt *options.ServerOption) error {
 		},
 	})
 	return fmt.Errorf("lost lease")
+}
+
+func startMetricsServer(opt *options.ServerOption) {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", commonutil.PromHandler())
+
+	server := &http.Server{
+		Addr:              opt.ListenAddress,
+		Handler:           mux,
+		ReadHeaderTimeout: helpers.DefaultReadHeaderTimeout,
+		ReadTimeout:       helpers.DefaultReadTimeout,
+		WriteTimeout:      helpers.DefaultWriteTimeout,
+	}
+
+	if err := server.ListenAndServe(); err != nil {
+		klog.Errorf("start metrics http server failed: %v", err)
+	}
 }
