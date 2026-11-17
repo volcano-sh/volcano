@@ -17,11 +17,15 @@ limitations under the License.
 package ssh
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/fake"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
@@ -126,5 +130,38 @@ func TestInvalidSSHPortFallsBackToDefault(t *testing.T) {
 
 	if plugin.sshPort != 22 {
 		t.Errorf("Expected sshPort to fall back to 22, got %d", plugin.sshPort)
+	}
+}
+
+func TestSSHPluginKeepsSecretNotOwnedByJob(t *testing.T) {
+	const namespace = "team-a"
+	const jobName = "deploy"
+
+	// Secret created by the namespace owner, not by the Job.
+	kubeClient := fake.NewSimpleClientset(&v1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: jobName + "-ssh"},
+		Data:       map[string][]byte{SSHPrivateKey: []byte("keep")},
+	})
+	job := &batch.Job{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: jobName, UID: types.UID("job-uid")},
+		Status:     batch.JobStatus{ControlledResources: map[string]string{}},
+	}
+	plugin := New(pluginsinterface.PluginClientset{KubeClients: kubeClient}, nil)
+
+	if err := plugin.OnJobAdd(job); err == nil {
+		t.Errorf("expected OnJobAdd to fail on a Secret not controlled by the Job")
+	}
+
+	job.Status.ControlledResources["plugin-"+plugin.Name()] = plugin.Name()
+	if err := plugin.OnJobDelete(job); err != nil {
+		t.Fatalf("OnJobDelete failed: %v", err)
+	}
+
+	secret, err := kubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), jobName+"-ssh", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Secret not owned by the Job was deleted: %v", err)
+	}
+	if string(secret.Data[SSHPrivateKey]) != "keep" {
+		t.Errorf("Secret not owned by the Job was overwritten: %v", secret.Data)
 	}
 }

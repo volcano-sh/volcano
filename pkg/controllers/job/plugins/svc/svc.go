@@ -165,21 +165,65 @@ func (sp *servicePlugin) OnJobDelete(job *batch.Job) error {
 		return err
 	}
 
-	if err := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{}); err != nil {
-		if !apierrors.IsNotFound(err) {
-			klog.Errorf("Failed to delete Service of Job %v/%v: %v", job.Namespace, job.Name, err)
-			return err
-		}
+	if err := sp.deleteServiceIfControlled(job); err != nil {
+		klog.Errorf("Failed to delete Service of Job %v/%v: %v", job.Namespace, job.Name, err)
+		return err
 	}
 	delete(job.Status.ControlledResources, "plugin-"+sp.Name())
 
 	if !sp.disableNetworkPolicy {
-		if err := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{}); err != nil {
-			if !apierrors.IsNotFound(err) {
-				klog.Errorf("Failed to delete Network policy of Job %v/%v: %v", job.Namespace, job.Name, err)
-				return err
-			}
+		if err := sp.deleteNetworkPolicyIfControlled(job); err != nil {
+			klog.Errorf("Failed to delete Network policy of Job %v/%v: %v", job.Namespace, job.Name, err)
+			return err
 		}
+	}
+	return nil
+}
+
+// deleteServiceIfControlled deletes the Service named after the job only if the
+// job controls it, so a same-named Service created by someone else is kept.
+func (sp *servicePlugin) deleteServiceIfControlled(job *batch.Job) error {
+	svc, err := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if !metav1.IsControlledBy(svc, job) {
+		klog.Warningf("Skip deleting Service %v/%v: not controlled by Job", job.Namespace, job.Name)
+		return nil
+	}
+
+	err = sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{
+		Preconditions: metav1.NewUIDPreconditions(string(svc.UID)),
+	})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	return nil
+}
+
+// deleteNetworkPolicyIfControlled deletes the NetworkPolicy named after the job
+// only if the job controls it, so a same-named policy created by someone else is kept.
+func (sp *servicePlugin) deleteNetworkPolicyIfControlled(job *batch.Job) error {
+	np, err := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if !metav1.IsControlledBy(np, job) {
+		klog.Warningf("Skip deleting Network policy %v/%v: not controlled by Job", job.Namespace, job.Name)
+		return nil
+	}
+
+	err = sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{
+		Preconditions: metav1.NewUIDPreconditions(string(np.UID)),
+	})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
 	}
 	return nil
 }
