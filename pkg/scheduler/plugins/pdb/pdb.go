@@ -17,6 +17,7 @@ limitations under the License.
 package pdb
 
 import (
+	v1 "k8s.io/api/core/v1"
 	pdbPolicy "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -72,10 +73,13 @@ func (pp *pdbPlugin) OnSessionOpen(ssn *framework.Session) {
 			return victims
 		}
 
-		// (b. init the pdbsAllowed array
+		// (b. init the pdbsAllowed array, charging pods already evicted in this
+		// session: the scheduler deletes pods directly, so PDB status does not
+		// see those evictions until the disruption controller catches up.
+		evicted := evictedInSession(ssn)
 		pdbsAllowed := make([]int32, len(pdbs))
 		for i, pdb := range pdbs {
-			pdbsAllowed[i] = pdb.Status.DisruptionsAllowed
+			pdbsAllowed[i] = pdb.Status.DisruptionsAllowed - countMatchingPods(pdb, evicted)
 		}
 
 		// (c. range every task to check if it violates the PDB constraints.
@@ -89,22 +93,14 @@ func (pp *pdbPlugin) OnSessionOpen(ssn *framework.Session) {
 				continue
 			}
 
-			for i, pdb := range pdbs {
-				if pdb.Namespace != pod.Namespace {
-					continue
-				}
-				selector, err := metav1.LabelSelectorAsSelector(pdb.Spec.Selector)
-				if err != nil {
-					continue
-				}
-				// A PDB with a nil or empty selector matches nothing.
-				if selector.Empty() || !selector.Matches(labels.Set(pod.Labels)) {
-					continue
-				}
+			// A pod being evicted in this session has already been charged above.
+			if _, exist := evicted[task.UID]; exist {
+				victims = append(victims, task)
+				continue
+			}
 
-				// Existing in DisruptedPods means it has been processed in API server,
-				// we don't treat it as a violating case.
-				if _, exist := pdb.Status.DisruptedPods[pod.Name]; exist {
+			for i, pdb := range pdbs {
+				if !pdbCountsPod(pdb, pod) {
 					continue
 				}
 				// Only decrement the matched pdb when it's not in its <DisruptedPods>;
@@ -142,6 +138,47 @@ func (pp *pdbPlugin) OnSessionOpen(ssn *framework.Session) {
 }
 
 func (pp *pdbPlugin) OnSessionClose(ssn *framework.Session) {}
+
+// evictedInSession returns the pods that were evicted after the session
+// snapshot was taken. A pod that is terminating in the API server has a
+// deletion timestamp; one evicted by this scheduler is Releasing without it.
+func evictedInSession(ssn *framework.Session) map[api.TaskID]*v1.Pod {
+	evicted := map[api.TaskID]*v1.Pod{}
+	for _, job := range ssn.Jobs {
+		for uid, task := range job.TaskStatusIndex[api.Releasing] {
+			if task.Pod != nil && task.Pod.DeletionTimestamp == nil {
+				evicted[uid] = task.Pod
+			}
+		}
+	}
+	return evicted
+}
+
+func countMatchingPods(pdb *pdbPolicy.PodDisruptionBudget, pods map[api.TaskID]*v1.Pod) int32 {
+	var n int32
+	for _, pod := range pods {
+		if pdbCountsPod(pdb, pod) {
+			n++
+		}
+	}
+	return n
+}
+
+// pdbCountsPod reports whether evicting pod spends a disruption of pdb.
+func pdbCountsPod(pdb *pdbPolicy.PodDisruptionBudget, pod *v1.Pod) bool {
+	if pdb.Namespace != pod.Namespace || len(pod.Labels) == 0 {
+		return false
+	}
+	selector, err := metav1.LabelSelectorAsSelector(pdb.Spec.Selector)
+	// A PDB with a nil or empty selector matches nothing.
+	if err != nil || selector.Empty() || !selector.Matches(labels.Set(pod.Labels)) {
+		return false
+	}
+	// Existing in DisruptedPods means it has been processed in API server,
+	// we don't treat it as a violating case.
+	_, disrupted := pdb.Status.DisruptedPods[pod.Name]
+	return !disrupted
+}
 
 // getPDBLister returns the lister of PodDisruptionBudget
 func getPDBLister(informerFactory informers.SharedInformerFactory) policylisters.PodDisruptionBudgetLister {
