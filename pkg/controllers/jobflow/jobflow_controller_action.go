@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -74,10 +75,20 @@ func (jf *jobflowcontroller) syncJobFlow(jobFlow *v1alpha1flow.JobFlow, updateSt
 }
 
 func (jf *jobflowcontroller) deployJob(jobFlow *v1alpha1flow.JobFlow) error {
+	var conflicts []error
 	// load jobTemplate by flow and deploy it
 	for _, flow := range jobFlow.Spec.Flows {
 		jobName := getJobName(jobFlow.Name, flow.Name)
-		if _, err := jf.jobLister.Jobs(jobFlow.Namespace).Get(jobName); err != nil {
+		job, err := jf.jobLister.Jobs(jobFlow.Namespace).Get(jobName)
+		if err == nil && !metav1.IsControlledBy(job, jobFlow) {
+			// job names are <jobflow>-<flow>, so another jobflow (or any vcjob) can
+			// already use this name. don't take it as this flow's job.
+			msg := fmt.Sprintf("job %s for flow %s already exists and is not owned by this jobflow", jobName, flow.Name)
+			jf.recorder.Event(jobFlow, corev1.EventTypeWarning, "JobNameConflict", msg)
+			conflicts = append(conflicts, fmt.Errorf("%s", msg))
+			continue
+		}
+		if err != nil {
 			if errors.IsNotFound(err) {
 				// If it is not distributed, judge whether the dependency of the VcJob meets the requirements
 				if flow.DependsOn == nil || flow.DependsOn.Targets == nil {
@@ -101,7 +112,7 @@ func (jf *jobflowcontroller) deployJob(jobFlow *v1alpha1flow.JobFlow) error {
 			return err
 		}
 	}
-	return nil
+	return utilerrors.NewAggregate(conflicts)
 }
 
 // judge query whether the dependencies of the job have been met. If it is satisfied, create the job, if not, judge the next job. Create the job if satisfied
@@ -116,7 +127,7 @@ func (jf *jobflowcontroller) judge(jobFlow *v1alpha1flow.JobFlow, flow v1alpha1f
 			}
 			return false, err
 		}
-		if job.Status.State.Phase != v1alpha1.Completed {
+		if !metav1.IsControlledBy(job, jobFlow) || job.Status.State.Phase != v1alpha1.Completed {
 			return false, nil
 		}
 	}
