@@ -220,9 +220,6 @@ spec:
             {{- if .Values.custom.scheduler_feature_gates }}
             - --feature-gates={{ .Values.custom.scheduler_feature_gates }}
             {{- end }}
-            {{- if .Values.custom.ignored_provisioners }}
-            - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}
-            {{- end}}
             - --scheduler-worker-count={{.Values.custom.agent_scheduler_worker_count}}
             {{- if .Values.custom.agent_scheduler_sharding_mode }}
             - --scheduler-sharding-mode={{.Values.custom.agent_scheduler_sharding_mode}}

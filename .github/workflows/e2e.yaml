@@ -21,6 +21,10 @@ jobs:
     needs: build-images
     uses: ./.github/workflows/e2e_admission.yaml
 
+  e2e-csi:
+    needs: build-images
+    uses: ./.github/workflows/e2e_csi.yaml
+
   e2e-cronjob:
     needs: build-images
     uses: ./.github/workflows/e2e_cronjob.yaml

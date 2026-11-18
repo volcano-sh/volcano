@@ -2597,8 +2597,6 @@ func TestAllocateWithPVC(t *testing.T) {
 		},
 	}
 
-	ignoreProvisioners := sets.New[string]("ignore-provisioner")
-
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name: "static pv matched but node without enough resource",
@@ -2621,7 +2619,6 @@ func TestAllocateWithPVC(t *testing.T) {
 			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
 				"c1/pg1": scheduling.PodGroupInqueue,
 			},
-			IgnoreProvisioners: ignoreProvisioners,
 		},
 		// This test case may have error logs, mainly because of the binding PV and PVC depends on pv-controller.
 		// The mock pv-controller in the UT is too complex and requires accurate timing to trigger the binding of PV and PVC,
@@ -2641,10 +2638,9 @@ func TestAllocateWithPVC(t *testing.T) {
 			Nodes: []*v1.Node{
 				util.BuildNode("n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
 			},
-			SCs:                []*storagev1.StorageClass{sc},
-			PVs:                []*v1.PersistentVolume{pv1, pv2},
-			PVCs:               []*v1.PersistentVolumeClaim{pvc1, pvc2},
-			IgnoreProvisioners: ignoreProvisioners,
+			SCs:  []*storagev1.StorageClass{sc},
+			PVs:  []*v1.PersistentVolume{pv1, pv2},
+			PVCs: []*v1.PersistentVolumeClaim{pvc1, pvc2},
 			ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
 				"c1/pg1": {api.Binding: 2},
 			},

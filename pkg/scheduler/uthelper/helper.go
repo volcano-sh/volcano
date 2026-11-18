@@ -75,11 +75,9 @@ type TestCommonStruct struct {
 	Queues                    []*vcapisv1.Queue
 	PriClass                  []*schedulingv1.PriorityClass
 	ResourceQuotas            []*v1.ResourceQuota
-	// IgnoreProvisioners is the provisioners that need to be ignored
-	IgnoreProvisioners sets.Set[string]
-	PVs                []*v1.PersistentVolume
-	PVCs               []*v1.PersistentVolumeClaim
-	SCs                []*storagev1.StorageClass
+	PVs                       []*v1.PersistentVolume
+	PVCs                      []*v1.PersistentVolumeClaim
+	SCs                       []*storagev1.StorageClass
 	// DRA related resources
 	ResourceSlices []*resourcev1.ResourceSlice
 	DeviceClasses  []*resourcev1.DeviceClass
@@ -169,7 +167,6 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	for _, node := range test.Nodes {
 		schedulerCache.AddOrUpdateNode(node)
 	}
-	schedulerCache.IgnoredCSIProvisioners = test.IgnoreProvisioners
 	for _, pod := range test.Pods {
 		schedulerCache.AddPod(pod)
 	}
