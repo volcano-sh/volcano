@@ -566,7 +566,8 @@ func GPUScore(schedulePolicy string, device *GPUDevice) float64 {
 	case binpackPolicy:
 		score = binpackMultiplier * (float64(device.UsedMem) / float64(device.Memory))
 	case spreadPolicy:
-		if device.UsedNum == 0 {
+		// Scoring follows TryAddPod, so one use means the GPU was idle before trial placement.
+		if device.UsedNum == 1 {
 			score = spreadMultiplier
 		}
 	default:

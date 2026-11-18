@@ -27,8 +27,52 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 )
+
+func TestGPUDevicesFilterNodeSpreadScore(t *testing.T) {
+	previousVGPUEnable := VGPUEnable
+	VGPUEnable = true
+	t.Cleanup(func() { VGPUEnable = previousVGPUEnable })
+
+	const (
+		gpuMemory       = 16384
+		requestedMemory = 4096
+	)
+	tests := []struct {
+		name           string
+		alreadyUsed    bool
+		wantScore      float64
+		wantDeviceUses uint
+	}{
+		{name: "idle GPU receives spread reward", wantScore: spreadMultiplier, wantDeviceUses: 0},
+		{name: "shared GPU receives no spread reward", alreadyUsed: true, wantDeviceUses: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gs := makeGPUDevices("node-1", 1, gpuMemory, 4)
+			if tt.alreadyUsed {
+				if err := gs.Sharing.AddPod(gs.Device[0], requestedMemory, 25, "existing-pod", gs.Device[0].UUID); err != nil {
+					t.Fatalf("seed GPU usage: %v", err)
+				}
+			}
+			pod := makeVGPUPod("worker", "default", "worker", requestedMemory, false, "")
+
+			status, _, err := gs.FilterNode(pod, spreadPolicy)
+			if err != nil || status != devices.Success {
+				t.Fatalf("FilterNode() = (%d, %v), want (%d, nil)", status, err, devices.Success)
+			}
+			if got := gs.ScoreNode(pod, spreadPolicy); got != tt.wantScore {
+				t.Errorf("ScoreNode() = %v, want %v", got, tt.wantScore)
+			}
+			if got := gs.Device[0].UsedNum; got != tt.wantDeviceUses {
+				t.Errorf("original GPU UsedNum = %d, want %d", got, tt.wantDeviceUses)
+			}
+		})
+	}
+}
 
 func TestGetGPUMemoryOfPod(t *testing.T) {
 	testCases := []struct {
