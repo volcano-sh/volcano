@@ -727,6 +727,11 @@ func (dev *AscendDevice) ResourceReqs(pod *v1.Pod) []devices.ContainerDeviceRequ
 			klog.V(5).Infof("raw mem %d, trimed mem %d", req.Memreq, m)
 			req.Memreq = int32(m)
 		}
+		if req.MemPercentagereq == 100 && req.Coresreq == 100 && !isHAMiCoreMode(pod) {
+			// Set the req.Coresreq to dev.config.AICore if hamicoremode is disabled and both req.Coresreq and req.MemPercentagereq are set to 100.
+			// This can fix the select devices failure on no hamicore mode, where the req.Coresreq is 100 percent and device.DeviceInfo.Devcore is 20 cores.
+			req.Coresreq = dev.config.AICore
+		}
 	}
 	return reqs
 }
