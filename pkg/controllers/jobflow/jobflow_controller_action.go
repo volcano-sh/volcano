@@ -143,7 +143,7 @@ func (jf *jobflowcontroller) createJob(jobFlow *v1alpha1flow.JobFlow, flow v1alp
 func (jf *jobflowcontroller) getAllJobStatus(jobFlow *v1alpha1flow.JobFlow) (*v1alpha1flow.JobFlowStatus, error) {
 	jobList, err := jf.getAllJobsCreatedByJobFlow(jobFlow)
 	if err != nil {
-		klog.Error(err, "get jobList error")
+		klog.ErrorS(err, "get jobList error")
 		return nil, err
 	}
 
