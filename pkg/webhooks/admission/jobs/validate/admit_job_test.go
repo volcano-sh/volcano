@@ -2600,3 +2600,49 @@ func TestValidateTaskTopoPolicy(t *testing.T) {
 		}
 	}
 }
+
+// the svc plugin creates a Service named after the job and sets the pod subdomain
+// to the job name, so with svc the job name has to be a DNS-1035 label.
+func TestValidateJobNameWithSvcPlugin(t *testing.T) {
+	config.VolcanoClient = fakeclient.NewSimpleClientset(&schedulingv1beta2.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "default"},
+		Spec:       schedulingv1beta2.QueueSpec{Weight: 1},
+		Status:     schedulingv1beta2.QueueStatus{State: schedulingv1beta2.QueueStateOpen},
+	})
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	config.QueueLister = informerFactory.Scheduling().V1beta1().Queues().Lister()
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	informerFactory.Start(stopCh)
+	informerFactory.WaitForCacheSync(stopCh)
+
+	tests := []struct {
+		name    string
+		jobName string
+		svc     bool
+		allowed bool
+	}{
+		{name: "dot in name with svc", jobName: "train.v1", svc: true, allowed: false},
+		{name: "leading digit with svc", jobName: "1train", svc: true, allowed: false},
+		{name: "valid name with svc", jobName: "train-v1", svc: true, allowed: true},
+		{name: "dot in name without svc", jobName: "train.v1", svc: false, allowed: true},
+		{name: "leading digit without svc", jobName: "1train", svc: false, allowed: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			job := newJob()
+			job.Name = tc.jobName
+			if tc.svc {
+				job.Spec.Plugins = map[string][]string{"svc": {}}
+			}
+			resp := admissionv1.AdmissionResponse{Allowed: true}
+			msg := validateJobCreate(job, &resp)
+			if resp.Allowed != tc.allowed {
+				t.Fatalf("job %q (svc=%v): allowed=%v, want %v; msg=%q", tc.jobName, tc.svc, resp.Allowed, tc.allowed, msg)
+			}
+			if !tc.allowed && !strings.Contains(msg, "svc") {
+				t.Errorf("expected the message to mention the svc plugin, got %q", msg)
+			}
+		})
+	}
+}
