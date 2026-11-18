@@ -83,9 +83,6 @@ func (m *SchGateManager) Stop() {
 	m.shutdownOnce.Do(func() {
 		close(m.stopCh)
 		m.workersWg.Wait()
-		if m.opCh != nil {
-			close(m.opCh)
-		}
 		klog.V(3).Infof("Async gate removal workers shut down")
 	})
 }
