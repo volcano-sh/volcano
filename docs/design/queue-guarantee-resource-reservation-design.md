@@ -93,6 +93,18 @@ if `queueAttr.deserved` is bigger than `queueAttr.allocated`, the new task can b
 
 After doing this, a queue owns the resources which is bigger than `queueAttr.guarantee` and less than `queueAttr.realCapability`
 
+#### how `queueAttr.deserved` is computed
+
+`deserved` is a weighted max-min fair allocation, solved independently for every resource dimension (cpu, memory and each scalar resource such as GPUs):
+
+`deserved = clamp(weight * level, floor, cap)`, where `level` is chosen so that the `deserved` of all queues adds up to the capacity of the dimension.
+
+- `floor` is `min(guarantee, realCapability)`. It is reserved even when the queue has no job, but it never adds a bonus on top of the weighted share: a queue whose weighted share already covers its guarantee is not affected by it, and a queue whose weighted share is below its guarantee keeps the guarantee while the remaining resources are shared by the other queues by weight.
+- `cap` is `min(realCapability, request)`, and is never lower than `floor`. Resources a queue does not need are shared by the other queues.
+- the guarantees of queues without any job are reserved before the rest is shared.
+- if the guarantees of a dimension exceed its capacity, they are scaled down proportionally, so the `deserved` of all queues never exceeds the capacity of the cluster.
+- a guarantee on one resource never changes how the other resources are shared.
+
 ### create a new queue whose `spec.guarantee` is not nil
 
 if there are three queues and 30 GPUs in cluster, there are many task in queue1/queue2/queue3 and running out the 30 GPUs,
