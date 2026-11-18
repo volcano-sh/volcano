@@ -395,6 +395,7 @@ func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobs
 			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
 				stmt.Commit()
 				committed = true
+				recordJobScheduled(job)
 				ssn.MarkJobDirty(job.UID)
 				alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
 
@@ -425,6 +426,7 @@ func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobs
 				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
 					stmt.Commit()
 					committed = true
+					recordJobScheduled(job)
 
 					// Mirror recorder.UpdateDecisionToJob: clear the redeemed nomination.
 					if subJob.NominatedHyperNode != "" {
@@ -819,7 +821,7 @@ func (alloc *Action) allocateFromNomination(subJob *api.SubJobInfo, subJobWorksh
 		if shouldTrackHyperNodePlacement(ssn, subJob) {
 			p.task.JobAllocatedHyperNode = pinned
 		}
-		if err := alloc.allocateResourcesForTask(stmt, p.task, p.node, job); err != nil {
+		if err := alloc.allocateResourcesForTask(stmt, p.task, p.node); err != nil {
 			klog.ErrorS(err, "Allocate from nomination fail, falling back to normal allocation process",
 				"subJob", subJob.UID, "task", p.task.UID, "node", p.node.Name)
 			stmt.Discard()
@@ -1078,7 +1080,7 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 			continue
 		}
 
-		if err := alloc.allocateResourcesForTask(stmt, task, bestNode, job); err != nil {
+		if err := alloc.allocateResourcesForTask(stmt, task, bestNode); err != nil {
 			klog.ErrorS(err, "Allocate resources for task fail", "task", task.Name)
 			continue
 		}
@@ -1243,16 +1245,22 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 	return bestNode, higestScore
 }
 
-func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo, job *api.JobInfo) (err error) {
+// recordJobScheduled updates the per-job e2e scheduling metrics. Call it only
+// after the job's statement is committed: allocations in a statement that is
+// later discarded (gang not satisfied, hyperNode dry run) are not scheduling
+// results and must not be observed.
+func recordJobScheduled(job *api.JobInfo) {
+	metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
+	metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
+}
+
+func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo) (err error) {
 	// Allocate idle resource to the task.
 	if task.InitResreq.LessEqual(node.Idle, api.Zero) {
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
 		if err = stmt.Allocate(task, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 				task.UID, node.Name, alloc.session.UID, err)
-		} else {
-			metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
-			metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 		}
 		return
 	}
@@ -1267,9 +1275,6 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 		if err = stmt.Pipeline(task, node.Name, false); err != nil {
 			klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 				task.UID, node.Name, alloc.session.UID, err)
-		} else {
-			metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
-			metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 		}
 	}
 	return
