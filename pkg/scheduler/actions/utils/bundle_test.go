@@ -59,23 +59,72 @@ func TestCreateJobBundles_SafeAndWhole(t *testing.T) {
 	assert.Equal(t, 3, len(bundles[1].Tasks))
 }
 
-func TestApplyAllowedTasks_WholeAtomicAndSafeShrink(t *testing.T) {
-	t1 := &api.TaskInfo{UID: "t1", Resreq: (&api.Resource{MilliCPU: 1000}).Clone()}
-	t2 := &api.TaskInfo{UID: "t2", Resreq: (&api.Resource{MilliCPU: 1000}).Clone()}
-	t3 := &api.TaskInfo{UID: "t3", Resreq: (&api.Resource{MilliCPU: 1000}).Clone()}
-	job := &api.JobInfo{}
-
-	bundles := []*Bundle{
-		{Type: BundleSafe, Job: job, Tasks: []*api.TaskInfo{t1, t2}, LocalRes: sumTasks([]*api.TaskInfo{t1, t2}), GlobalRes: api.EmptyResource()},
-		{Type: BundleWhole, Job: job, Tasks: []*api.TaskInfo{t3}, LocalRes: sumTasks([]*api.TaskInfo{t3}), GlobalRes: sumTasks([]*api.TaskInfo{t1, t2, t3})},
+// newRunningJob returns a job whose running tasks are a, b, c, ... (one CPU each).
+func newRunningJob(minAvailable int32, taskNum int) (*api.JobInfo, []*api.TaskInfo) {
+	job := &api.JobInfo{
+		MinAvailable:    minAvailable,
+		TaskStatusIndex: map[api.TaskStatus]api.TasksMap{api.Running: {}},
+		Tasks:           map[api.TaskID]*api.TaskInfo{},
 	}
-	allowed := map[api.TaskID]struct{}{"t1": {}, "t3x": {}}
+	tasks := make([]*api.TaskInfo, 0, taskNum)
+	for i := 0; i < taskNum; i++ {
+		task := &api.TaskInfo{
+			UID:    api.TaskID(string(rune('a' + i))),
+			Resreq: (&api.Resource{MilliCPU: 1000}).Clone(),
+		}
+		job.TaskStatusIndex[api.Running][task.UID] = task
+		job.Tasks[task.UID] = task
+		tasks = append(tasks, task)
+	}
+	return job, tasks
+}
 
+func taskUIDs(tasks []*api.TaskInfo) []api.TaskID {
+	uids := make([]api.TaskID, 0, len(tasks))
+	for _, t := range tasks {
+		uids = append(uids, t.UID)
+	}
+	return uids
+}
+
+func TestApplyAllowedTasks_NothingFilteredKeepsBundles(t *testing.T) {
+	job, tasks := newRunningJob(2, 4)
+	bundles := CreateJobBundles(job, tasks)
+	allowed := map[api.TaskID]struct{}{"a": {}, "b": {}, "c": {}, "d": {}}
+
+	valid := ApplyAllowedTasks(bundles, allowed)
+	assert.Equal(t, bundles, valid)
+}
+
+func TestApplyAllowedTasks_RefillsSafeSlotsFromAllowedTasks(t *testing.T) {
+	// minAvailable 2 of 4 running: safe = [a b], whole = [c d].
+	job, tasks := newRunningJob(2, 4)
+	bundles := CreateJobBundles(job, tasks)
+	assert.Equal(t, []api.TaskID{"a", "b"}, taskUIDs(bundles[0].Tasks))
+
+	// a and c are filtered (e.g. PDB-protected). Evicting b and d still keeps
+	// the gang at minAvailable, so both must be offered as safe victims.
+	allowed := map[api.TaskID]struct{}{"b": {}, "d": {}}
 	valid := ApplyAllowedTasks(bundles, allowed)
 	assert.Len(t, valid, 1)
 	assert.Equal(t, BundleSafe, valid[0].Type)
-	assert.Len(t, valid[0].Tasks, 1)
-	assert.Equal(t, api.TaskID("t1"), valid[0].Tasks[0].UID)
+	assert.Equal(t, []api.TaskID{"b", "d"}, taskUIDs(valid[0].Tasks))
+	assert.Equal(t, float64(2000), valid[0].LocalRes.MilliCPU)
+}
+
+func TestApplyAllowedTasks_WholeDroppedWhenAnyTaskFiltered(t *testing.T) {
+	// minAvailable 3 of 4 running: safe = [a], whole = [b c d].
+	job, tasks := newRunningJob(3, 4)
+	bundles := CreateJobBundles(job, tasks)
+
+	// d is filtered, so breaking the gang would also evict it.
+	allowed := map[api.TaskID]struct{}{"a": {}, "b": {}, "c": {}}
+	valid := ApplyAllowedTasks(bundles, allowed)
+	assert.Len(t, valid, 1)
+	assert.Equal(t, BundleSafe, valid[0].Type)
+	assert.Equal(t, []api.TaskID{"a"}, taskUIDs(valid[0].Tasks))
+
+	assert.Empty(t, ApplyAllowedTasks(bundles, map[api.TaskID]struct{}{}))
 }
 
 func TestSelectBundles_RespectsAllowWhole(t *testing.T) {

@@ -284,9 +284,10 @@ func TestSelectDomainVictims_PDBProtectedMembers(t *testing.T) {
 		withPDB          bool
 		allowWholeBundle bool
 		want             []string
+		wantWhole        bool
 	}{
 		{
-			name:             "safe bundle of PDB-protected members is dropped, the free members are evicted as a whole bundle",
+			name:             "safe slots held by PDB-protected members go to the free members, so the gang is not broken",
 			members:          []string{"a-prot-1", "a-prot-2", "b-free-1", "b-free-2"},
 			minAvailable:     2,
 			withPDB:          true,
@@ -294,12 +295,12 @@ func TestSelectDomainVictims_PDBProtectedMembers(t *testing.T) {
 			want:             []string{"b-free-1", "b-free-2"},
 		},
 		{
-			name:             "safe bundle keeps only the members the PDB allows to evict",
+			name:             "every free member that fits the job surplus is a safe victim",
 			members:          []string{"a-prot-1", "b-free-1", "b-free-2"},
 			minAvailable:     1,
 			withPDB:          true,
 			allowWholeBundle: false,
-			want:             []string{"b-free-1"},
+			want:             []string{"b-free-1", "b-free-2"},
 		},
 		{
 			name:             "whole bundle is dropped when one member is PDB-protected",
@@ -325,6 +326,7 @@ func TestSelectDomainVictims_PDBProtectedMembers(t *testing.T) {
 			withPDB:          false,
 			allowWholeBundle: true,
 			want:             []string{"a-prot-1", "b-free-1", "b-free-2"},
+			wantWhole:        true,
 		},
 	}
 
@@ -397,6 +399,12 @@ func TestSelectDomainVictims_PDBProtectedMembers(t *testing.T) {
 			}
 			sort.Strings(got)
 			assert.Equal(t, tc.want, got)
+
+			gotWhole := false
+			for _, b := range bundles {
+				gotWhole = gotWhole || b.Type == utils.BundleWhole
+			}
+			assert.Equal(t, tc.wantWhole, gotWhole, "whole bundle (gang break) offered")
 		})
 	}
 }
