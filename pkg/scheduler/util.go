@@ -51,13 +51,28 @@ tiers:
 `
 
 func UnmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []conf.Configuration, map[string]string, error) {
-	var actions []framework.Action
-
-	schedulerConf := &conf.SchedulerConfiguration{}
-
-	if err := yaml.Unmarshal([]byte(confStr), schedulerConf); err != nil {
+	schedulerConf, err := unmarshalSchedulerConfiguration(confStr)
+	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	return schedulerConfigurationRuntime(schedulerConf)
+}
+
+// unmarshalSchedulerConfiguration decodes the complete scheduler
+// configuration so startup-only cache configuration can be consumed alongside
+// the action and plugin settings.
+func unmarshalSchedulerConfiguration(confStr string) (*conf.SchedulerConfiguration, error) {
+	schedulerConf := &conf.SchedulerConfiguration{}
+	if err := yaml.Unmarshal([]byte(confStr), schedulerConf); err != nil {
+		return nil, err
+	}
+	return schedulerConf, nil
+}
+
+// schedulerConfigurationRuntime resolves the dynamically reloadable action
+// and plugin settings from a decoded scheduler configuration.
+func schedulerConfigurationRuntime(schedulerConf *conf.SchedulerConfiguration) ([]framework.Action, []conf.Tier, []conf.Configuration, map[string]string, error) {
+	var actions []framework.Action
 	// Set default settings for each plugin if not set
 	for i, tier := range schedulerConf.Tiers {
 		// drf with hierarchy enabled

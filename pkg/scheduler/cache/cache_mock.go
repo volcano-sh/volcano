@@ -84,6 +84,8 @@ func ShutdownMockSchedulerCache(sc *SchedulerCache) {
 	sc.nodeQueue.ShutDown()
 	sc.DeletedJobs.ShutDown()
 	sc.hyperNodesQueue.ShutDown()
+	sc.deviceTopologyPodReleaseQueue.ShutDown()
+	sc.deviceTopologyPodConfirmQueue.ShutDown()
 }
 
 func checkAndSetDefaultInterface(sc *SchedulerCache) {
@@ -154,6 +156,9 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 		NodeList:       []string{},
 		binderRegistry: NewBinderRegistry(),
 		resyncPeriod:   0,
+
+		deviceTopologyPodReleaseQueue: newDeviceTopologyPodQueue(),
+		deviceTopologyPodConfirmQueue: newDeviceTopologyPodQueue(),
 	}
 	if options.ServerOpts != nil && len(options.ServerOpts.NodeSelector) > 0 {
 		msc.updateNodeSelectors(options.ServerOpts.NodeSelector)
@@ -173,6 +178,9 @@ func (sc *SchedulerCache) initMockInformers() {
 
 	// Create node informer
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
+
+	// Create Pod informer (read by device topology recovery).
+	sc.podInformer = informerFactory.Core().V1().Pods()
 
 	// Create PVC informer (required by addPodCSIVolumesToTask for pods
 	// referencing a PersistentVolumeClaim). Materialise via Informer() so

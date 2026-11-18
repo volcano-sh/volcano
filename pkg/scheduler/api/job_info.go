@@ -477,9 +477,12 @@ type JobInfo struct {
 	TaskPlacementGeneration          uint64
 	AllocatedTaskPlacementGeneration uint64
 	NetworkTopology                  *scheduling.NetworkTopologySpec
-	SubJobs                          map[SubJobID]*SubJobInfo
-	TaskToSubJob                     map[TaskID]SubJobID
-	MinSubJobs                       map[SubJobGID]int32 // key is name of "PodGroup.Spec.SubGroupPolicy", value is minSubGroups
+	// DeviceTopology is the independent copy of the parent PodGroup's device
+	// topology policy. Scheduler plugins must not mutate the PodGroup API object.
+	DeviceTopology *scheduling.DeviceTopologySpec
+	SubJobs        map[SubJobID]*SubJobInfo
+	TaskToSubJob   map[TaskID]SubJobID
+	MinSubJobs     map[SubJobGID]int32 // key is name of "PodGroup.Spec.SubGroupPolicy", value is minSubGroups
 
 	// All tasks of the Job.
 	TaskStatusIndex       map[TaskStatus]TasksMap
@@ -540,10 +543,20 @@ func cloneNetworkTopology(spec *scheduling.NetworkTopologySpec) *scheduling.Netw
 	return spec.DeepCopy()
 }
 
+// cloneDeviceTopology returns an independent copy of a device topology policy
+// held by a scheduler-internal JobInfo or SubJobInfo.
+func cloneDeviceTopology(spec *scheduling.DeviceTopologySpec) *scheduling.DeviceTopologySpec {
+	if spec == nil {
+		return nil
+	}
+	return spec.DeepCopy()
+}
+
 // UnsetPodGroup removes podGroup details from a job
 func (ji *JobInfo) UnsetPodGroup() {
 	ji.PodGroup = nil
 	ji.NetworkTopology = nil
+	ji.DeviceTopology = nil
 
 	clear(ji.SubJobs)
 	for _, task := range ji.Tasks {
@@ -585,6 +598,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.PgUID = pg.UID
 	ji.PodGroup = pg
 	ji.NetworkTopology = cloneNetworkTopology(pg.Spec.NetworkTopology)
+	ji.DeviceTopology = cloneDeviceTopology(pg.Spec.DeviceTopology)
 
 	if oldPG == nil || !equality.Semantic.DeepEqual(oldPG.Spec.SubGroupPolicy, pg.Spec.SubGroupPolicy) {
 		// Regrouping invalidates SubJob placement even when task Nodes did not change.
@@ -865,6 +879,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		TaskPlacementGeneration:          ji.TaskPlacementGeneration,
 		AllocatedTaskPlacementGeneration: ji.AllocatedTaskPlacementGeneration,
 		NetworkTopology:                  cloneNetworkTopology(ji.NetworkTopology),
+		DeviceTopology:                   cloneDeviceTopology(ji.DeviceTopology),
 		SubJobs:                          map[SubJobID]*SubJobInfo{},
 		TaskToSubJob:                     map[TaskID]SubJobID{},
 		MinSubJobs:                       maps.Clone(ji.MinSubJobs),

@@ -57,6 +57,8 @@ type PodGroupSpecApplyConfiguration struct {
 	SubGroupPolicy []SubGroupPolicySpecApplyConfiguration `json:"subGroupPolicy,omitempty"`
 	// TopologyAffinity expresses inter-group topology affinity and anti-affinity on the HyperNode tree.
 	TopologyAffinity *TopologyAffinitySpecApplyConfiguration `json:"topologyAffinity,omitempty"`
+	// DeviceTopology defines accelerator-locality and fabric placement intent for the whole PodGroup.
+	DeviceTopology *DeviceTopologySpecApplyConfiguration `json:"deviceTopology,omitempty"`
 }
 
 // PodGroupSpecApplyConfiguration constructs a declarative configuration of the PodGroupSpec type for use with
@@ -137,5 +139,13 @@ func (b *PodGroupSpecApplyConfiguration) WithSubGroupPolicy(values ...*SubGroupP
 // If called multiple times, the TopologyAffinity field is set to the value of the last call.
 func (b *PodGroupSpecApplyConfiguration) WithTopologyAffinity(value *TopologyAffinitySpecApplyConfiguration) *PodGroupSpecApplyConfiguration {
 	b.TopologyAffinity = value
+	return b
+}
+
+// WithDeviceTopology sets the DeviceTopology field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DeviceTopology field is set to the value of the last call.
+func (b *PodGroupSpecApplyConfiguration) WithDeviceTopology(value *DeviceTopologySpecApplyConfiguration) *PodGroupSpecApplyConfiguration {
+	b.DeviceTopology = value
 	return b
 }

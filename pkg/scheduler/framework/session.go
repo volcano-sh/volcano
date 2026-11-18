@@ -23,6 +23,7 @@ limitations under the License.
 package framework
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"sort"
@@ -94,6 +95,11 @@ type Session struct {
 	RevocableNodes map[string]*api.NodeInfo
 	Queues         map[api.QueueID]*api.QueueInfo
 	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
+	// DeviceTopology is the immutable topology view captured when this Session
+	// opened. Plugins must treat it as read-only. Device topology reservations
+	// and releases replace it with the cache's current view, so plugins must
+	// read this field at use time instead of keeping their own copy.
+	DeviceTopology *api.TopologySnapshot
 
 	// NodeMap is like Nodes except that it uses k8s NodeInfo api and should only
 	// be used in k8s compatible api scenarios such as in predicates and nodeorder plugins.
@@ -307,6 +313,7 @@ func openSession(schedulerCache cache.Cache, unschedulableJobCache unschedulable
 	ssn.RevocableNodes = snapshot.RevocableNodes
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
+	ssn.DeviceTopology = snapshot.DeviceTopology
 	// calculate all nodes' resource only once in each schedule cycle, other plugins can clone it when need
 	for _, n := range ssn.Nodes {
 		ssn.TotalResource.Add(n.Allocatable)
@@ -1014,6 +1021,60 @@ func (ssn *Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reaso
 // SharedDRAManager returns the shared DRAManager from cache
 func (ssn *Session) SharedDRAManager() fwk.SharedDRAManager {
 	return ssn.cache.SharedDRAManager()
+}
+
+// ReserveDeviceTopologyPlan asks the cache's optional trusted topology
+// reservation extension to hold every exact device in one complete plan.
+func (ssn *Session) ReserveDeviceTopologyPlan(ctx context.Context, plan api.TopologyPlacementPlan) (api.TopologyReservation, error) {
+	reservationCache, supported := ssn.cache.(cache.DeviceTopologyReservationCache)
+	if !supported {
+		return api.TopologyReservation{}, fmt.Errorf("scheduler cache does not support device topology reservations")
+	}
+	defer ssn.refreshDeviceTopology(reservationCache)
+	return reservationCache.ReserveDeviceTopologyPlan(ctx, plan)
+}
+
+// refreshDeviceTopology replaces the session topology view after a
+// reservation, release, bind commit, or bind rollback changed device
+// availability, so later plans in the same session use the current revision
+// and skip devices that are no longer available. It also runs after a
+// failure, because a rollback can change availability.
+func (ssn *Session) refreshDeviceTopology(reservationCache cache.DeviceTopologyReservationCache) {
+	ssn.DeviceTopology = reservationCache.DeviceTopologySnapshot()
+}
+
+// PrepareDeviceTopologyReservationBind asks the cache's optional trusted
+// topology extension for immutable resource-specific handoffs for every Pod
+// in an already reserved exact-device plan.
+func (ssn *Session) PrepareDeviceTopologyReservationBind(ctx context.Context, reservation api.TopologyReservation) (map[api.TaskID][]cache.DeviceTopologyBindHandoff, error) {
+	bindCache, supported := ssn.cache.(cache.DeviceTopologyBindHandoffCache)
+	if !supported {
+		return nil, fmt.Errorf("scheduler cache does not support device topology bind handoffs")
+	}
+	return bindCache.PrepareDeviceTopologyReservationBind(ctx, reservation)
+}
+
+// CommitDeviceTopologyReservationBind advances an already prepared topology
+// reservation to the scheduler's Binding state before the cache accepts its
+// Pod bind contexts.
+func (ssn *Session) CommitDeviceTopologyReservationBind(ctx context.Context, reservation api.TopologyReservation) error {
+	bindCache, supported := ssn.cache.(cache.DeviceTopologyBindHandoffCache)
+	if !supported {
+		return fmt.Errorf("scheduler cache does not support device topology bind handoffs")
+	}
+	defer ssn.refreshDeviceTopology(bindCache)
+	return bindCache.CommitDeviceTopologyReservationBind(ctx, reservation)
+}
+
+// RollbackDeviceTopologyReservationBind releases an unbound topology
+// reservation through the cache's trusted bind-handoff extension.
+func (ssn *Session) RollbackDeviceTopologyReservationBind(ctx context.Context, reservation api.TopologyReservation) error {
+	bindCache, supported := ssn.cache.(cache.DeviceTopologyBindHandoffCache)
+	if !supported {
+		return fmt.Errorf("scheduler cache does not support device topology bind handoffs")
+	}
+	defer ssn.refreshDeviceTopology(bindCache)
+	return bindCache.RollbackDeviceTopologyReservationBind(ctx, reservation)
 }
 
 // GetMetricsConf returns the metrics server related configuration from cache

@@ -21,6 +21,12 @@ limitations under the License.
 
 package conf
 
+import (
+	"time"
+
+	corev1 "k8s.io/api/core/v1"
+)
+
 // EnabledActionMap check if a action exist in scheduler configmap. If not exist the value is false.
 var EnabledActionMap map[string]bool
 
@@ -33,7 +39,51 @@ type SchedulerConfiguration struct {
 	// Configurations is configuration for actions
 	Configurations       []Configuration   `yaml:"configurations"`
 	MetricsConfiguration map[string]string `yaml:"metrics"`
+	// DeviceTopology configures cache-owned sources of accelerator topology.
+	// It is optional so clusters that do not configure device topology retain
+	// their current scheduler behavior.
+	DeviceTopology *DeviceTopologyConfiguration `yaml:"deviceTopology,omitempty"`
 }
+
+// DeviceTopologyConfiguration configures the authoritative topology sources
+// that SchedulerCache synchronizes while it processes Nodes.
+type DeviceTopologyConfiguration struct {
+	Providers []DeviceTopologyProviderConfiguration `yaml:"providers,omitempty"`
+	// Adapters configures the exact allocation owner of provider resources.
+	// Without an adapter, hard device-topology placement is rejected.
+	Adapters []DeviceTopologyAdapterConfiguration `yaml:"adapters,omitempty"`
+}
+
+// DeviceTopologyProviderConfiguration configures one authoritative source for
+// the complete topology of its declared extended resources.
+type DeviceTopologyProviderConfiguration struct {
+	ID                string                `yaml:"id"`
+	Type              string                `yaml:"type"`
+	IdentityNamespace string                `yaml:"identityNamespace"`
+	Resources         []corev1.ResourceName `yaml:"resources"`
+	// MaxAge bounds how long the provider's facts stay fresh after their
+	// observation time, such as "2m". The source must refresh its facts
+	// within this time. Zero means the default of two minutes.
+	MaxAge time.Duration `yaml:"maxAge,omitempty"`
+}
+
+// DeviceTopologyProviderTypeAnnotation identifies the trusted Node annotation
+// source supported by the initial device-topology implementation.
+const DeviceTopologyProviderTypeAnnotation = "annotation"
+
+// DeviceTopologyAdapterConfiguration configures the exact allocation adapter
+// for one resource published by a configured provider. The adapter uses that
+// provider's ID and identity namespace, so its device IDs always match.
+type DeviceTopologyAdapterConfiguration struct {
+	Type     string              `yaml:"type"`
+	Provider string              `yaml:"provider"`
+	Resource corev1.ResourceName `yaml:"resource"`
+}
+
+// DeviceTopologyAdapterTypeMock identifies the in-memory allocation adapter.
+// It reserves exact device IDs only in scheduler memory and does not enforce
+// them on Nodes, so it is meant for simulation such as KWOK.
+const DeviceTopologyAdapterTypeMock = "mock"
 
 // Tier defines plugin tier
 type Tier struct {

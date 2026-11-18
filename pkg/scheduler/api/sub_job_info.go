@@ -59,6 +59,9 @@ type SubJobInfo struct {
 	NominatedHyperNode string
 
 	NetworkTopology *scheduling.NetworkTopologySpec
+	// DeviceTopology is the independent copy of the matching subgroup policy.
+	// It is nil when this SubJob has no device topology policy of its own.
+	DeviceTopology *scheduling.DeviceTopologySpec
 }
 
 func NewSubJobInfo(gid SubJobGID, uid SubJobID, job JobID, policy *scheduling.SubGroupPolicySpec, matchValues []string) *SubJobInfo {
@@ -78,6 +81,7 @@ func NewSubJobInfo(gid SubJobGID, uid SubJobID, job JobID, policy *scheduling.Su
 		if policy.NetworkTopology != nil {
 			sji.NetworkTopology = policy.NetworkTopology.DeepCopy()
 		}
+		sji.DeviceTopology = cloneDeviceTopology(policy.DeviceTopology)
 	}
 	if len(matchValues) > 0 {
 		if v, err := strconv.Atoi(matchValues[0]); err == nil {

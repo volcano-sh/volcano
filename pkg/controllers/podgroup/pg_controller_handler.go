@@ -37,6 +37,7 @@ import (
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/util"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 const (
@@ -291,6 +292,9 @@ func (pg *pgcontroller) inheritUpperAnnotations(upperAnnotations map[string]stri
 }
 
 func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
+	if hasUndecodableDeviceTopology(pod) {
+		return nil
+	}
 	pgName := helpers.GeneratePodgroupName(pod)
 
 	if _, err := pg.pgLister.PodGroups(pod.Namespace).Get(pgName); err != nil {
@@ -322,6 +326,9 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 // When statefulSet is updated, its associated pod template may change.
 // In such cases, we need to update the corresponding PodGroup simultaneously.
 func (pg *pgcontroller) createOrUpdateNormalPodPG(pod *v1.Pod) error {
+	if hasUndecodableDeviceTopology(pod) {
+		return nil
+	}
 	pgName := helpers.GeneratePodgroupName(pod)
 
 	if podGroup, err := pg.pgLister.PodGroups(pod.Namespace).Get(pgName); err != nil {
@@ -427,7 +434,35 @@ func (pg *pgcontroller) buildPodGroupFromPod(pod *v1.Pod, pgName string) *schedu
 			obj.Namespace, obj.Name, networkTopology.Mode, highestTier)
 	}
 
+	obj.Spec.DeviceTopology = parseDeviceTopologyFromPod(pod)
+
 	return obj
+}
+
+// hasUndecodableDeviceTopology reports whether the device topology annotation
+// of a normal Pod does not decode, for example because of a misspelled field.
+// Such a Pod gets no PodGroup, so the scheduler never places it without the
+// policy it asked for, and it stays Pending. The Pod webhook rejects such a Pod
+// at creation, but /pods/validate is not enabled by default. The controller
+// only handles a Pod when it is added, so retrying cannot help: the Pod must
+// be recreated with a valid annotation.
+func hasUndecodableDeviceTopology(pod *v1.Pod) bool {
+	if _, err := commonutil.DecodeDeviceTopologyAnnotation(pod.Annotations[scheduling.DeviceTopologyAnnotationKey]); err != nil {
+		klog.Errorf("Not creating a PodGroup for Pod %s/%s: annotation %q %v", pod.Namespace, pod.Name, scheduling.DeviceTopologyAnnotationKey, err)
+		return true
+	}
+	return false
+}
+
+// parseDeviceTopologyFromPod reads the device topology policy of a normal Pod
+// from its annotation. Callers skip a Pod whose annotation does not decode
+// before they build its PodGroup.
+func parseDeviceTopologyFromPod(pod *v1.Pod) *scheduling.DeviceTopologySpec {
+	policy, err := commonutil.DecodeDeviceTopologyAnnotation(pod.Annotations[scheduling.DeviceTopologyAnnotationKey])
+	if err != nil {
+		return nil
+	}
+	return policy
 }
 
 // parseNetworkTopologyFromPod extracts NetworkTopology configuration from Pod annotations

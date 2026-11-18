@@ -153,6 +153,30 @@ func TestNewSubJobInfo(t *testing.T) {
 	}
 }
 
+func TestNewSubJobInfoDeepCopiesDeviceTopology(t *testing.T) {
+	policy := &scheduling.SubGroupPolicySpec{
+		DeviceTopology: &scheduling.DeviceTopologySpec{
+			Requirements: []scheduling.DeviceTopologyRequirement{{
+				Resource: scheduling.DeviceResourceSelector{ExtendedResourceName: "nvidia.com/gpu"},
+				Mode:     scheduling.HardDeviceTopologyMode,
+			}},
+		},
+	}
+
+	subJob := NewSubJobInfo("group", "subjob", "job", policy, nil)
+	if subJob.DeviceTopology == nil {
+		t.Fatal("DeviceTopology = nil, want copied subgroup policy")
+	}
+	if subJob.DeviceTopology == policy.DeviceTopology {
+		t.Fatal("DeviceTopology reuses the PodGroup policy pointer")
+	}
+
+	subJob.DeviceTopology.Requirements[0].Mode = scheduling.SoftDeviceTopologyMode
+	if got := policy.DeviceTopology.Requirements[0].Mode; got != scheduling.HardDeviceTopologyMode {
+		t.Fatalf("source policy mode = %q, want hard", got)
+	}
+}
+
 func TestSubJobInfo_IsHardTopologyMode(t *testing.T) {
 	type fields struct {
 		UID               SubJobID

@@ -61,6 +61,8 @@ type JobSpecApplyConfiguration struct {
 	MinSuccess *int32 `json:"minSuccess,omitempty"`
 	// NetworkTopology defines the NetworkTopology config, this field works in conjunction with network topology feature and hyperNode CRD.
 	NetworkTopology *NetworkTopologySpecApplyConfiguration `json:"networkTopology,omitempty"`
+	// DeviceTopology defines accelerator-locality and fabric placement intent for the whole Job.
+	DeviceTopology *DeviceTopologySpecApplyConfiguration `json:"deviceTopology,omitempty"`
 }
 
 // JobSpecApplyConfiguration constructs a declarative configuration of the JobSpec type for use with
@@ -191,5 +193,13 @@ func (b *JobSpecApplyConfiguration) WithMinSuccess(value int32) *JobSpecApplyCon
 // If called multiple times, the NetworkTopology field is set to the value of the last call.
 func (b *JobSpecApplyConfiguration) WithNetworkTopology(value *NetworkTopologySpecApplyConfiguration) *JobSpecApplyConfiguration {
 	b.NetworkTopology = value
+	return b
+}
+
+// WithDeviceTopology sets the DeviceTopology field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DeviceTopology field is set to the value of the last call.
+func (b *JobSpecApplyConfiguration) WithDeviceTopology(value *DeviceTopologySpecApplyConfiguration) *JobSpecApplyConfiguration {
+	b.DeviceTopology = value
 	return b
 }

@@ -34,6 +34,8 @@ import (
 	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/topology/adapter"
+	"volcano.sh/volcano/pkg/scheduler/topology/provider"
 )
 
 // Cache collects pods/nodes/queues information
@@ -109,6 +111,56 @@ type Cache interface {
 	OnSessionClose()
 }
 
+// DeviceTopologyReservationCache is an optional Cache extension used by the
+// device-topology plugin to reserve exact selected device IDs. It is separate
+// from Cache so existing cache implementations remain compatible until they
+// opt into trusted topology allocation.
+type DeviceTopologyReservationCache interface {
+	ReserveDeviceTopologyPlan(ctx context.Context, plan api.TopologyPlacementPlan) (api.TopologyReservation, error)
+	ReleaseDeviceTopologyReservation(ctx context.Context, reservation api.TopologyReservation) error
+	// DeviceTopologySnapshot returns the current immutable topology view,
+	// including availability changes made by reservations and releases.
+	DeviceTopologySnapshot() *api.TopologySnapshot
+}
+
+// DeviceTopologyBindHandoff carries one resource-specific immutable adapter
+// handoff for the exact Pod selected by a device topology reservation.
+type DeviceTopologyBindHandoff struct {
+	ResourceName v1.ResourceName
+	Handoff      adapter.AllocationHandoff
+}
+
+// DeviceTopologyBindContextExtension carries the immutable exact-device
+// handoffs that the device-topology plugin prepared for one Pod bind.
+type DeviceTopologyBindContextExtension struct {
+	Handoffs []DeviceTopologyBindHandoff
+}
+
+// DeviceTopologyBindHandoffCache is an optional Cache extension that prepares
+// and commits exact-device handoffs after a reservation succeeds.
+type DeviceTopologyBindHandoffCache interface {
+	// DeviceTopologyReservationCache supplies the reservations this extension
+	// hands off and the current topology view after bind state changes.
+	DeviceTopologyReservationCache
+	PrepareDeviceTopologyReservationBind(ctx context.Context, reservation api.TopologyReservation) (map[api.TaskID][]DeviceTopologyBindHandoff, error)
+	CommitDeviceTopologyReservationBind(ctx context.Context, reservation api.TopologyReservation) error
+	RollbackDeviceTopologyReservationBind(ctx context.Context, reservation api.TopologyReservation) error
+}
+
+// DeviceTopologyProviderCache is an optional Cache extension that receives
+// startup-only topology provider configuration. It is intentionally separate
+// from Cache so existing cache implementations do not need trusted topology
+// source support until they opt in.
+type DeviceTopologyProviderCache interface {
+	ConfigureDeviceTopologyProviders(registry *provider.Registry, sources []provider.NodeTopologyProvider) error
+}
+
+// DeviceTopologyAdapterCache is an optional Cache extension that receives the
+// startup-only allocation adapter registry for exact hard placement.
+type DeviceTopologyAdapterCache interface {
+	ConfigureDeviceTopologyAdapters(registry *adapter.Registry) error
+}
+
 // Binder interface for binding task and hostname
 type Binder interface {
 	Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) map[api.TaskID]string
@@ -137,4 +189,27 @@ type PreBinder interface {
 
 	// PreBindRollBack is called when the pre-bind or bind fails.
 	PreBindRollBack(ctx context.Context, bindCtx *BindContext)
+}
+
+// BatchBindPreparation represents external state prepared for one complete
+// bind batch. Commit makes the preparation visible to the bind path, while
+// Rollback compensates all prepared state when any later step fails.
+type BatchBindPreparation interface {
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
+// BatchPreBinder prepares all bind contexts before SchedulerCache accepts any
+// of them. This lets gang-scoped backends create immutable handoffs without
+// exposing a partially prepared batch to Kubernetes binding.
+type BatchPreBinder interface {
+	PrepareBindBatch(ctx context.Context, bindContexts []*BindContext) (BatchBindPreparation, error)
+}
+
+// BatchBindCache is an optional Cache extension that supports an all-or-none
+// pre-bind preparation phase followed by one atomic cache batch admission.
+type BatchBindCache interface {
+	HasBatchPreBinders() bool
+	PrepareBindBatch(ctx context.Context, bindContexts []*BindContext) (BatchBindPreparation, error)
+	AddBindBatch(bindContexts []*BindContext) error
 }
