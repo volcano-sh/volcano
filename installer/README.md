@@ -47,30 +47,24 @@ replicaset.apps/volcano-scheduler-94998fc64      1         1         1       36s
 
 ## Installing volcano via helm charts
 
-To install the volcano with chart:
+From the repository's `installer` directory, install Volcano with Helm 3 or later.
 
 ```bash
-helm install <specified-name> helm/chart/volcano --namespace <namespace> --create-namespace
-
-e.g :
-helm install volcano-trial helm/chart/volcano --namespace volcano-trial --create-namespace
+helm install volcano-trial ./helm/chart/volcano --namespace volcano-trial --create-namespace
 ```
 
-This command deploys volcano in kubernetes cluster with default configuration.  The [configuration](#configuration) section lists the parameters that can be configured during installation.
+For installation options, see [Configuration](#configuration).
 
-To list the volcano chart:
+List the release in its namespace.
 
 ```bash
-helm list -n <namespace>
-
-e.g:
- helm list -n volcano-trial
+helm list --namespace volcano-trial
 ```
 
 ## Uninstalling the Chart
 
 ```bash
-$ helm delete volcano-release --purge
+helm uninstall volcano-trial --namespace volcano-trial
 ```
 
 ## Configuration
@@ -172,15 +166,15 @@ For prerequisites, topology discovery configuration, verification, and migration
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 
 ```bash
-$ helm install --name volcano-release --set basic.image_pull_policy=Always volcano/volcano
+helm install volcano-trial ./helm/chart/volcano --namespace volcano-trial --create-namespace --set basic.image_pull_policy=IfNotPresent
 ```
 
-The above command set image pull policy to `Always`, so docker image will be pulled each time.
+With this setting, Kubernetes only pulls an image if it is missing locally.
 
 Alternatively, a YAML file that specifies the values for the parameters can be provided while installing the chart. For example,
 
 ```bash
-$ helm install --name volcano-release -f values.yaml volcano/volcano
+helm install volcano-trial ./helm/chart/volcano --namespace volcano-trial --create-namespace -f values.yaml
 ```
 
 > **Tip**: You can use the default [values.yaml](helm/chart/volcano/values.yaml)
