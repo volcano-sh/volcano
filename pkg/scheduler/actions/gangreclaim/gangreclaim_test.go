@@ -61,6 +61,7 @@ func TestParseArguments(t *testing.T) {
 				Arguments: map[string]interface{}{
 					MaxDomainsKey:       5,
 					AllowWholeBundleKey: false,
+					PruneVictimsKey:     true,
 				},
 			},
 		},
@@ -69,6 +70,21 @@ func TestParseArguments(t *testing.T) {
 	action.parseArguments(ssn)
 	assert.Equal(t, 5, action.maxDomains)
 	assert.False(t, action.allowWholeBundle)
+	assert.True(t, action.pruneVictims)
+}
+
+func TestParseArguments_PruneVictimsDefaultsOff(t *testing.T) {
+	ssn := &framework.Session{
+		Configurations: []conf.Configuration{
+			{
+				Name:      "gangreclaim",
+				Arguments: map[string]interface{}{},
+			},
+		},
+	}
+	action := New()
+	action.parseArguments(ssn)
+	assert.False(t, action.pruneVictims)
 }
 
 func TestParseArguments_InvalidMaxDomainsFallsBackToDefault(t *testing.T) {
