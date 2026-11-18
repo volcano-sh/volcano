@@ -1303,7 +1303,10 @@ type TopologyPlacementPlan struct {
     // handoff for one subgroup from being reused by another.
     SchedulingUnitID string
     // Revision identifies the immutable topology snapshot used to make the
-    // plan and is revalidated before reservation.
+    // plan. Reservation rejects a revision newer than the current one. It
+    // accepts an older revision when every selected device still passes the
+    // live availability checks, because any device or Node change creates a
+    // new revision.
     Revision TopologyRevision
     // FabricID identifies the one selected fabric. It is empty when fabric
     // affinity is not used.
@@ -1512,13 +1515,25 @@ tiers:
 - plugins:
   - name: device-topology-aware
     arguments:
-      device-topology.provider: annotation
-      device-topology.provider-max-age: 2m
       device-topology.max-candidate-domains-per-task: 8
       device-topology.max-search-states: 256
       device-topology.max-planning-attempts: 3
       device-topology.planning-deadline: 100ms
+deviceTopology:
+  providers:
+  - id: node-annotation
+    type: annotation
+    identityNamespace: gpu-v1
+    maxAge: 2m
+    resources:
+    - nvidia.com/gpu
+  adapters:
+  - type: mock
+    provider: node-annotation
+    resource: nvidia.com/gpu
 ```
+
+Providers and allocation adapters are configured in the top-level `deviceTopology` section of the scheduler configuration, not as plugin arguments, because `SchedulerCache` needs them before any session opens. Each provider names the resources it owns and its identity namespace. Its `maxAge` is the `providerMaxAge` used for freshness and defaults to `2m`. Each adapter names the resource it allocates and the provider whose device IDs it understands.
 
 The following planner budgets are proposed initial defaults. They bound the work performed for one hard gang plan and must be benchmarked before the alpha defaults are finalized. Every value must be positive, and an invalid value fails scheduler configuration validation rather than disabling the limit.
 
