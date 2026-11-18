@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="440" viewBox="0 0 900 440" role="img" aria-labelledby="title desc">
+  <title id="title">PodGroup and member Pod diagnostics</title>
+  <desc id="desc">PodGroup ns/job sits above Pods A, B and C. Pod A reports its affinity failure and contributes the member node affinity blocker to the PodGroup. Pod B has a rolled-back allocation and Pod C was skipped after gang early exit. Both report waiting for the PodGroup. Pod B trial placements and rollback details go to scheduler logs.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#333" stroke-width="1.4"/></marker>
+  </defs>
+  <style>
+    text { font-family: Arial, Helvetica, sans-serif; font-size: 15px; fill: #222; }
+    .name { font-weight: 600; }
+    .label { font-size: 13px; fill: #444; }
+    .box { fill: #fff; stroke: #444; stroke-width: 1; }
+    .rule { fill: none; stroke: #bbb; stroke-width: 1; }
+    .arrow { fill: none; stroke: #333; stroke-width: 1.2; marker-end: url(#arrow); }
+  </style>
+  <rect width="900" height="440" fill="#fff"/>
+
+  <rect x="280" y="24" width="340" height="112" class="box"/>
+  <rect x="280" y="24" width="340" height="43" fill="#fbf0e3" stroke="#b58b62"/><text x="450" y="52" class="name" text-anchor="middle">PodGroup ns/job</text>
+  <path d="M280 67 H620" class="rule"/>
+  <text x="450" y="91" text-anchor="middle">Gang requirements not satisfied</text>
+  <text x="450" y="115" text-anchor="middle" style="fill:#985927">Blocker: Pod A node affinity</text>
+
+  <path d="M160 230 V178 H335 V136" class="arrow"/>
+  <text x="245" y="165" class="label" text-anchor="middle">contributes blocker</text>
+  <path d="M450 136 V230" class="arrow"/>
+  <text x="464" y="199" class="label">group waiting</text>
+  <path d="M565 136 V178 H740 V230" class="arrow"/>
+  <text x="650" y="165" class="label" text-anchor="middle">group waiting</text>
+
+  <rect x="35" y="230" width="250" height="100" class="box"/>
+  <rect x="35" y="230" width="250" height="43" fill="#e9f0f8" stroke="#748eaa"/><text x="160" y="257" class="name" text-anchor="middle">Pod A</text>
+  <path d="M35 273 H285" class="rule"/>
+  <text x="160" y="297" text-anchor="middle" style="fill:#985927">Affinity failure</text>
+  <text x="160" y="319" text-anchor="middle">Reports own fit error</text>
+
+  <rect x="325" y="230" width="250" height="100" class="box"/>
+  <rect x="325" y="230" width="250" height="43" fill="#e9f0f8" stroke="#748eaa"/><text x="450" y="257" class="name" text-anchor="middle">Pod B</text>
+  <path d="M325 273 H575" class="rule"/>
+  <text x="450" y="297" text-anchor="middle">Allocation rolled back</text>
+  <text x="450" y="319" text-anchor="middle">Waiting for PodGroup</text>
+
+  <rect x="615" y="230" width="250" height="100" class="box"/>
+  <rect x="615" y="230" width="250" height="43" fill="#e9f0f8" stroke="#748eaa"/><text x="740" y="257" class="name" text-anchor="middle">Pod C</text>
+  <path d="M615 273 H865" class="rule"/>
+  <text x="740" y="297" text-anchor="middle">Not evaluated after early exit</text>
+  <text x="740" y="319" text-anchor="middle">Waiting for PodGroup</text>
+
+  <path d="M450 330 V396 H640" class="arrow" stroke-dasharray="4 4"/>
+  <text x="545" y="382" class="label" text-anchor="middle">trial nodes / rollback</text>
+  <rect x="640" y="374" width="225" height="44" class="box"/>
+  <text x="752" y="402" text-anchor="middle">Scheduler logs</text>
+</svg>

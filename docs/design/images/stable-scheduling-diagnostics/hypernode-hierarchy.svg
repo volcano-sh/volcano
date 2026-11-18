@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="270" viewBox="0 0 1040 270" role="img" aria-labelledby="title desc">
+<title id="title">HyperNode hierarchy used in the examples</title>
+<desc id="desc">H1 and H2 are Job-level HyperNode candidates. H1 contains child HyperNodes H1-a and H1-b, and H2 contains child HyperNodes H2-a and H2-b. SubJobs search within the selected Job candidate. Branches show containment.</desc>
+<style>
+text {font-family:Arial,Helvetica,sans-serif;font-size:20px;fill:#253441;}
+.level {font-size:18px;font-weight:600;}
+.name {font-weight:600;}
+.note {font-size:16px;fill:#596777;}
+rect.node {fill:#fbfcfd;stroke:#8a98a7;stroke-width:1.3;}
+path {fill:none;stroke:#697684;stroke-width:1.5;}
+</style>
+<rect width="1040" height="270" fill="white"/>
+<text x="25" y="72" class="level">Job candidates</text>
+<text x="25" y="207" class="level">SubJob candidates</text>
+<rect x="310" y="35" width="150" height="60" class="node" style="fill:#e9f0f8;stroke:#748eaa;"/>
+<text x="385" y="72" class="name" text-anchor="middle">H1</text>
+<rect x="710" y="35" width="150" height="60" class="node" style="fill:#e9f0f8;stroke:#748eaa;"/>
+<text x="785" y="72" class="name" text-anchor="middle">H2</text>
+<path d="M385 95 V130 M295 175 V130 H475 V175"/>
+<path d="M785 95 V130 M695 175 V130 H875 V175"/>
+<rect x="225" y="175" width="140" height="55" class="node" style="fill:#f1f3f5;stroke:#748eaa;"/>
+<text x="295" y="209" class="name" text-anchor="middle">H1-a</text>
+<rect x="405" y="175" width="140" height="55" class="node" style="fill:#f1f3f5;stroke:#748eaa;"/>
+<text x="475" y="209" class="name" text-anchor="middle">H1-b</text>
+<rect x="625" y="175" width="140" height="55" class="node" style="fill:#f1f3f5;stroke:#748eaa;"/>
+<text x="695" y="209" class="name" text-anchor="middle">H2-a</text>
+<rect x="805" y="175" width="140" height="55" class="node" style="fill:#f1f3f5;stroke:#748eaa;"/>
+<text x="875" y="209" class="name" text-anchor="middle">H2-b</text>
+<text x="585" y="260" class="note" text-anchor="middle">Branches show HyperNode containment.</text>
+</svg>

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="735" viewBox="0 0 1200 735" role="img" aria-labelledby="title desc">
+<title id="title">The Job selects H2</title>
+<desc id="desc">H1 fails after temporarily placing B. The Job rolls back B, selects successful H2 and commits all three Pods. Final Pending diagnostics are nil and the group diagnostic has no blockers. After successful binding handoff, PendingTaskDiagnostics is nil, GroupDiagnostic is a non-nil empty GroupSchedulingDiagnostic, and the live status of A, B and C is Binding.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#333"/></marker></defs>
+<style>text{font-family:Arial,Helvetica,sans-serif;font-size:18px;fill:#222} .heading{font-weight:600} .code{font-family:"DejaVu Sans Mono",monospace;font-size:17px} .small{font-size:16px} .blue{fill:#315a7b} .orange{fill:#985927} .muted{fill:#596777}</style>
+<rect width="1200" height="735" fill="white"/>
+<rect x="300" y="25" width="600" height="45" fill="#e9f0f8" stroke="#748eaa" stroke-width="1.2"/>
+<text x="600.0" y="53.5" class=" blue" text-anchor="middle">Job ns/job — requires Pods A, B and C</text>
+<rect x="190" y="115" width="820" height="130" fill="white" stroke="#748eaa" stroke-width="1.2"/>
+<rect x="190" y="115" width="820" height="36" fill="#e9f0f8" stroke="#748eaa" stroke-width="1.2"/>
+<text x="202" y="140" class="heading blue" text-anchor="start">Job HyperNode H1</text>
+<rect x="220" y="170" width="235" height="55" fill="#f5f8fc" stroke="#8ca1b6" stroke-width="1.2"/>
+<text x="337.5" y="190.5" class="" text-anchor="middle">Pod B</text>
+<text x="337.5" y="216.5" class="" text-anchor="middle">Temporary allocation</text>
+<rect x="480" y="170" width="235" height="55" fill="#fbf0e3" stroke="#b58b62" stroke-width="1.2"/>
+<text x="597.5" y="190.5" class=" orange" text-anchor="middle">Pod A</text>
+<text x="597.5" y="216.5" class=" orange" text-anchor="middle">Node affinity failure</text>
+<rect x="740" y="170" width="240" height="55" fill="#ffffff" stroke="#8a98a7" stroke-width="1.2"/>
+<text x="860.0" y="190.5" class="" text-anchor="middle">Pod C</text>
+<text x="860.0" y="216.5" class="" text-anchor="middle">Skipped by gang</text>
+<rect x="430" y="280" width="340" height="45" fill="#fbf0e3" stroke="#b58b62" stroke-width="1.2"/>
+<text x="600.0" y="308.5" class=" orange" text-anchor="middle">Roll back B</text>
+<rect x="190" y="360" width="820" height="95" fill="white" stroke="#748eaa" stroke-width="1.2"/>
+<rect x="190" y="360" width="820" height="36" fill="#e9f0f8" stroke="#748eaa" stroke-width="1.2"/>
+<text x="202" y="385" class="heading blue" text-anchor="start">Job HyperNode H2</text>
+<text x="220" y="432" class="blue" text-anchor="start">A, B and C fit. Select H2 and commit.</text>
+<path d="M600.0 70L600.0 115" fill="none" stroke="#333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M600.0 245L600.0 280" fill="none" stroke="#333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M600.0 325L600.0 360" fill="none" stroke="#333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M600.0 455L600.0 500" fill="none" stroke="#333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="70" y="500" width="1060" height="210" fill="white" stroke="#748eaa" stroke-width="1.2"/>
+<rect x="70" y="500" width="1060" height="36" fill="#e9f0f8" stroke="#748eaa" stroke-width="1.2"/>
+<text x="82" y="525" class="heading blue" text-anchor="start">Final JobInfo after successful binding handoff</text>
+<rect x="90" y="554" width="510" height="101" fill="white" stroke="#748eaa" stroke-width="1.2"/>
+<rect x="90" y="554" width="510" height="36" fill="#e9f0f8" stroke="#748eaa" stroke-width="1.2"/>
+<text x="102" y="579" class="heading blue" text-anchor="start">PendingTaskDiagnostics</text>
+<rect x="90" y="590" width="510" height="65" fill="#ffffff" stroke="#8a98a7" stroke-width="1.2"/>
+<text x="106" y="628.5" class="code" text-anchor="start">nil</text>
+<rect x="620" y="554" width="490" height="101" fill="white" stroke="#b58b62" stroke-width="1.2"/>
+<rect x="620" y="554" width="490" height="36" fill="#fbf0e3" stroke="#b58b62" stroke-width="1.2"/>
+<text x="632" y="579" class="heading orange" text-anchor="start">GroupDiagnostic</text>
+<rect x="620" y="590" width="490" height="65" fill="#ffffff" stroke="#8a98a7" stroke-width="1.2"/>
+<text x="636" y="628.5" class="code" text-anchor="start">&amp;api.GroupSchedulingDiagnostic{}</text>
+<text x="100" y="690" class="code" text-anchor="start">Tasks[A/B/C].Status = Binding</text>
+</svg>
