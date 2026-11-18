@@ -217,6 +217,14 @@ spec:
       containers:
         - name: {{ .Release.Name }}-scheduler
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.scheduler_image_name}}:{{ .Values.basic.scheduler_image_tag_version | default .Values.basic.image_tag_version }}
+            {{- if .Values.custom.scheduler_liveness_probe }}
+          livenessProbe:
+            {{- include "volcano.probe" (dict "port" .Values.basic.healthz_port "scheme" "HTTP" "values" .Values.custom.scheduler_liveness_probe) | nindent 12 }}
+            {{- end }}
+            {{- if .Values.custom.scheduler_readiness_probe }}
+          readinessProbe:
+            {{- include "volcano.probe" (dict "port" .Values.basic.healthz_port "scheme" "HTTP" "values" .Values.custom.scheduler_readiness_probe) | nindent 12 }}
+            {{- end }}
           {{- if .Values.custom.scheduler_resources }}
           resources:
           {{- toYaml .Values.custom.scheduler_resources | nindent 12 }}
@@ -228,6 +236,7 @@ spec:
             - --scheduler-name={{- $scheduler_name }}
             {{- end }}
             - --enable-healthz=true
+            - --healthz-address=:{{ .Values.basic.healthz_port }}
             {{- if .Values.custom.scheduler_metrics_enable }}
             - --enable-metrics=true
             {{- if .Values.custom.scheduler_unschedulable_job_cache_debug_metrics }}
