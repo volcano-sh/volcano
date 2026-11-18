@@ -1121,6 +1121,68 @@ var _ = Describe("GangPreempt PDB E2E Test", func() {
 		Expect(runningPodUIDsByRole(ctx, victim, "free").Intersection(free).Len()).To(BeNumerically("<=", 1),
 			"at least two free tasks must be evicted to make room for the preemptor")
 	})
+
+	// GP-PDB-2: the victim gang (minAvail=2) can lose two tasks without breaking. Its four
+	// single-task roles are ordered by pod priority: protected-a, free-a, protected-b,
+	// free-b. The safe bundle (the two tasks the gang can lose) is built before the PDB
+	// filter runs, so it is [protected-a, free-a] and the whole bundle is [protected-b,
+	// free-b]. If the filter only shrinks the safe bundle and drops the whole bundle
+	// (it contains a protected task), only free-a is offered and the preemptor cannot run
+	// on the full cluster. Both free tasks must be offered as safe victims.
+	It("GP-PDB-2: safe eviction slots held by PDB-protected tasks go to free tasks", func() {
+		const gpMidPri, gpMidPriVal = "gp-pdb-mid-pri", int32(8)
+		const gpFreeAPri, gpFreeAPriVal = "gp-pdb-free-a-pri", int32(7)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{gpQueue},
+			NodesNumLimit:      4,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
+			DeservedResource: map[string]v1.ResourceList{
+				gpQueue: deservedCPU(4),
+			},
+			PriorityClasses: map[string]int32{
+				gpHighPri:      gpHighPriVal,
+				gpLowPri:       gpLowPriVal,
+				gpProtectedPri: gpProtectedPriVal,
+				gpFreeAPri:     gpFreeAPriVal,
+				gpMidPri:       gpMidPriVal,
+			},
+		})
+
+		By("Creating low-priority gang with protected and free tasks interleaved by priority (minAvail=2)")
+		victim := createMultiRoleGangJob(ctx, "victim-gp-pdb2", gpQueue, gpLowPri, e2eutil.CPU1Mem1,
+			[]roleSpec{
+				{name: "protected-a", replicas: 1, minAvailable: 0, priorityClass: gpProtectedPri},
+				{name: "free-a", replicas: 1, minAvailable: 0, priorityClass: gpFreeAPri},
+				{name: "protected-b", replicas: 1, minAvailable: 0, priorityClass: gpMidPri},
+				{name: "free-b", replicas: 1, minAvailable: 0, priorityClass: gpLowPri},
+			}, 2, true)
+		err := e2eutil.WaitTasksReady(ctx, victim, 4)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Protecting both protected tasks with PDBs")
+		createRolePDB(ctx, "victim-gp-pdb2-protected-a", victim, "protected-a", 1)
+		createRolePDB(ctx, "victim-gp-pdb2-protected-b", victim, "protected-b", 1)
+		protected := runningPodUIDsByRole(ctx, victim, "protected-a").Union(runningPodUIDsByRole(ctx, victim, "protected-b"))
+		free := runningPodUIDsByRole(ctx, victim, "free-a").Union(runningPodUIDsByRole(ctx, victim, "free-b"))
+		Expect(protected.Len()).To(Equal(2))
+		Expect(free.Len()).To(Equal(2))
+
+		By("Creating high-priority preemptor gang (2 tasks, minAvail=2) on the full cluster")
+		preemptor := createGangJob(ctx, "preemptor-gp-pdb2", gpQueue, gpHighPri, e2eutil.CPU1Mem1, 2, 2, false)
+		err = e2eutil.WaitTasksReady(ctx, preemptor, 2)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Expecting both free tasks to be evicted")
+		runningFree := runningPodUIDsByRole(ctx, victim, "free-a").Union(runningPodUIDsByRole(ctx, victim, "free-b"))
+		Expect(runningFree.Intersection(free).Len()).To(BeZero(),
+			"both free tasks must be evicted to make room for the preemptor")
+
+		By("Expecting the protected tasks to keep running without being evicted")
+		Consistently(func() sets.Set[string] {
+			return runningPodUIDsByRole(ctx, victim, "protected-a").Union(runningPodUIDsByRole(ctx, victim, "protected-b"))
+		}, 30*time.Second, 2*time.Second).Should(Equal(protected),
+			"protected tasks must keep the same pods (an evicted pod is recreated with a new UID)")
+	})
 })
 
 // ── gangreclaim ────────────────────────────────────────────────────────

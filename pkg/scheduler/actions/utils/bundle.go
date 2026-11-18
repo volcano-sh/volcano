@@ -199,31 +199,57 @@ func FlattenBundles(bundles []*Bundle) []*api.TaskInfo {
 	return out
 }
 
+// ApplyAllowedTasks restricts bundles to the tasks allowed by UnifiedEvictableFn.
+//
+// Bundles are built before plugins filter victims, so a filtered task (for example
+// one protected by a PodDisruptionBudget) may hold a safe slot that an allowed task
+// of the same job could use instead. For every job with filtered tasks, the bundles
+// are rebuilt from its allowed tasks so the safe slots go to evictable tasks. A whole
+// bundle is kept only if every task of its job is allowed, because breaking the gang
+// would also evict the filtered tasks.
 func ApplyAllowedTasks(bundles []*Bundle, allowed map[api.TaskID]struct{}) []*Bundle {
-	valid := make([]*Bundle, 0, len(bundles))
+	type jobTasks struct {
+		job      *api.JobInfo
+		bundles  []*Bundle
+		approved []*api.TaskInfo
+		filtered bool
+	}
+	byJob := map[*api.JobInfo]*jobTasks{}
+	order := make([]*jobTasks, 0, len(bundles))
 	for _, b := range bundles {
 		if len(b.Tasks) == 0 {
 			continue
 		}
-		approved := make([]*api.TaskInfo, 0, len(b.Tasks))
+		jt, ok := byJob[b.Job]
+		if !ok {
+			jt = &jobTasks{job: b.Job}
+			byJob[b.Job] = jt
+			order = append(order, jt)
+		}
+		jt.bundles = append(jt.bundles, b)
 		for _, t := range b.Tasks {
 			if _, ok := allowed[t.UID]; ok {
-				approved = append(approved, t)
+				jt.approved = append(jt.approved, t)
+			} else {
+				jt.filtered = true
 			}
 		}
+	}
 
-		if b.Type == BundleWhole {
-			if len(approved) == len(b.Tasks) {
-				valid = append(valid, b)
-			}
+	valid := make([]*Bundle, 0, len(bundles))
+	for _, jt := range order {
+		if !jt.filtered {
+			valid = append(valid, jt.bundles...)
 			continue
 		}
-
-		if len(approved) > 0 {
-			nb := *b
-			nb.Tasks = approved
-			nb.LocalRes = sumTasks(approved)
-			valid = append(valid, &nb)
+		if len(jt.approved) == 0 {
+			continue
+		}
+		for _, b := range CreateJobBundles(jt.job, jt.approved) {
+			if b.Type == BundleWhole {
+				continue
+			}
+			valid = append(valid, b)
 		}
 	}
 	return valid
