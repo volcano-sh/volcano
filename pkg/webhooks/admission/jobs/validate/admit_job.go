@@ -169,8 +169,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 			fmt.Fprintf(&b, " valid events are %v, valid actions are %v;",
 				getValidEvents(), getValidActions())
 		}
-		podName := jobhelpers.MakePodName(job.Name, task.Name, index)
-		b.WriteString(validateK8sPodNameLength(podName))
+		b.WriteString(validateK8sPodNameLength(lastPodName(job.Name, task)))
 		b.WriteString(validateTaskTemplate(task, job, index))
 		b.WriteString(validatePartitionPolicy(task, job))
 	}
@@ -275,6 +274,12 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	// We do not support this for vcjob  (More details in design doc pod-scheduling-readiness.md)
 
 	for i := range new.Spec.Tasks {
+		// a scale up adds pods with higher indexes, and so longer names
+		if new.Spec.Tasks[i].Replicas > old.Spec.Tasks[i].Replicas {
+			if msg := validateK8sPodNameLength(lastPodName(new.Name, new.Spec.Tasks[i])); msg != "" {
+				return fmt.Errorf("%s", msg)
+			}
+		}
 		new.Spec.Tasks[i].Replicas = old.Spec.Tasks[i].Replicas
 		new.Spec.Tasks[i].MinAvailable = old.Spec.Tasks[i].MinAvailable
 	}
@@ -355,6 +360,17 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 
 	msg := validateTaskTopoPolicy(task, index)
 	return msg
+}
+
+// lastPodName returns the longest pod name the controller creates for a task.
+// pods are named <job>-<task>-<replica index>, with the index going from 0 to
+// replicas-1, so the last replica has the longest name.
+func lastPodName(jobName string, task v1alpha1.TaskSpec) string {
+	last := int(task.Replicas) - 1
+	if last < 0 {
+		last = 0
+	}
+	return jobhelpers.MakePodName(jobName, task.Name, last)
 }
 
 func validateK8sPodNameLength(podName string) string {
