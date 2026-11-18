@@ -17,16 +17,134 @@ limitations under the License.
 package deviceshare
 
 import (
+	"strings"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/hami"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+func TestReloadValidator(t *testing.T) {
+	enabled := true
+	disabled := false
+	defaultConfig := framework.PluginConfiguration{}
+	hamiConfig := framework.PluginConfiguration{
+		EnabledPredicate: &enabled,
+		Arguments: framework.Arguments{
+			AscendHAMiVNPUEnable: true,
+		},
+	}
+
+	tests := []struct {
+		name    string
+		current []framework.PluginConfiguration
+		updated []framework.PluginConfiguration
+		wantErr bool
+	}{
+		{
+			name:    "unchanged",
+			current: []framework.PluginConfiguration{hamiConfig},
+			updated: []framework.PluginConfiguration{hamiConfig},
+		},
+		{
+			name:    "omitted backend defaults match explicit defaults",
+			current: []framework.PluginConfiguration{defaultConfig},
+			updated: []framework.PluginConfiguration{{
+				Arguments: framework.Arguments{
+					KnownGeometriesCMName:      "volcano-vgpu-device-config",
+					KnownGeometriesCMNamespace: "kube-system",
+				},
+			}},
+		},
+		{
+			name:    "session settings are reloadable",
+			current: []framework.PluginConfiguration{hamiConfig},
+			updated: []framework.PluginConfiguration{{
+				EnabledPredicate: &enabled,
+				Arguments: framework.Arguments{
+					AscendHAMiVNPUEnable:   true,
+					SchedulePolicyArgument: "spread",
+					ScheduleWeight:         20,
+				},
+			}},
+		},
+		{
+			name:    "backend modification",
+			current: []framework.PluginConfiguration{hamiConfig},
+			updated: []framework.PluginConfiguration{{EnabledPredicate: &enabled}},
+			wantErr: true,
+		},
+		{
+			name:    "enable predicate modification",
+			current: []framework.PluginConfiguration{hamiConfig},
+			updated: []framework.PluginConfiguration{{EnabledPredicate: &disabled, Arguments: hamiConfig.Arguments}},
+			wantErr: true,
+		},
+		{
+			name:    "addition",
+			updated: []framework.PluginConfiguration{hamiConfig},
+			wantErr: true,
+		},
+		{
+			name:    "removal",
+			current: []framework.PluginConfiguration{hamiConfig},
+			wantErr: true,
+		},
+		{
+			name:    "declaration count modification",
+			current: []framework.PluginConfiguration{hamiConfig},
+			updated: []framework.PluginConfiguration{hamiConfig, hamiConfig},
+			wantErr: true,
+		},
+		{
+			name: "declaration order modification",
+			current: []framework.PluginConfiguration{
+				{EnabledPredicate: &enabled},
+				hamiConfig,
+			},
+			updated: []framework.PluginConfiguration{
+				hamiConfig,
+				{EnabledPredicate: &enabled},
+			},
+			wantErr: true,
+		},
+	}
+
+	validator := ReloadValidator{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validator.ValidateReload(tt.current, tt.updated)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected reload validation to fail")
+				}
+				if !strings.Contains(err.Error(), "restart the scheduler") {
+					t.Fatalf("reload error %q does not include the restart action", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected reload validation to succeed: %v", err)
+			}
+		})
+	}
+}
+
+func TestReloadValidatorValidateStartup(t *testing.T) {
+	validator := ReloadValidator{}
+	if err := validator.ValidateStartup([]framework.PluginConfiguration{{}}); err != nil {
+		t.Fatalf("expected one DeviceShare declaration to be valid: %v", err)
+	}
+	if err := validator.ValidateStartup([]framework.PluginConfiguration{{}, {}}); err == nil || !strings.Contains(err.Error(), "multiple DeviceShare declarations") {
+		t.Fatalf("expected duplicate DeviceShare declarations to be rejected, got %v", err)
+	}
+}
 
 func TestArguments(t *testing.T) {
 	framework.RegisterPluginBuilder(PluginName, New)
@@ -198,5 +316,56 @@ func Test_FilterNode(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestInit_DeviceShare(t *testing.T) {
+	originalHAMiEnabled := hami.AscendHAMiVNPUEnable
+	t.Cleanup(func() {
+		hami.AscendHAMiVNPUEnable = originalHAMiEnabled
+	})
+
+	// 1. Test conflicting arguments return error
+	conflictArgs1 := framework.Arguments{
+		GPUSharingPredicate: true,
+		GPUNumberPredicate:  true,
+	}
+	p1 := New(conflictArgs1)
+	if err := p1.(interface{ Init() error }).Init(); err == nil {
+		t.Errorf("expected error when both GPUSharingEnable and GPUNumberEnable are true, got nil")
+	}
+
+	conflictArgs2 := framework.Arguments{
+		GPUSharingPredicate: true,
+		VGPUEnable:          true,
+	}
+	p2 := New(conflictArgs2)
+	if err := p2.(interface{ Init() error }).Init(); err == nil {
+		t.Errorf("expected error when both GPUSharingEnable and VGPUEnable are true, got nil")
+	}
+
+	// 2. Test AscendHAMiVNPUEnable disabled
+	hami.AscendHAMiVNPUEnable = false
+	disabledArgs := framework.Arguments{
+		AscendHAMiVNPUEnable: false,
+	}
+	pDisabled := New(disabledArgs)
+	if err := pDisabled.(interface{ Init() error }).Init(); err != nil {
+		t.Errorf("unexpected error on disabled HAMi init: %v", err)
+	}
+	if hami.AscendHAMiVNPUEnable {
+		t.Errorf("expected AscendHAMiVNPUEnable to be false, got true")
+	}
+
+	// 3. Test AscendHAMiVNPUEnable enabled
+	enabledArgs := framework.Arguments{
+		AscendHAMiVNPUEnable: true,
+	}
+	pEnabled := New(enabledArgs)
+	if err := pEnabled.(interface{ Init() error }).Init(); err != nil {
+		t.Errorf("unexpected error on enabled HAMi init: %v", err)
+	}
+	if !hami.AscendHAMiVNPUEnable {
+		t.Errorf("expected AscendHAMiVNPUEnable to be true, got false")
 	}
 }

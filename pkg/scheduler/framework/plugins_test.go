@@ -18,6 +18,24 @@ package framework
 
 import "testing"
 
+type testReloadValidator struct{}
+
+func (testReloadValidator) ValidateReload([]PluginConfiguration, []PluginConfiguration) error {
+	return nil
+}
+
+func TestCleanupPluginBuildersRemovesReloadValidators(t *testing.T) {
+	const pluginName = "test-reload-validator"
+	RegisterPluginReloadValidator(pluginName, testReloadValidator{})
+	CleanupPluginBuilders()
+	t.Cleanup(CleanupPluginBuilders)
+
+	_, found := GetPluginReloadValidator(pluginName)
+	if found {
+		t.Fatalf("reload validator %q was not removed", pluginName)
+	}
+}
+
 func TestGetPluginName(t *testing.T) {
 	cases := []struct {
 		pluginPath string

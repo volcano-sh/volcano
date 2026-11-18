@@ -38,6 +38,10 @@ type PluginBuilder = func(Arguments) Plugin
 // Plugin management
 var pluginBuilders = map[string]PluginBuilder{}
 
+// Plugin reload validation is registered independently of plugin construction
+// so validation never creates a session plugin or mutates plugin state.
+var pluginReloadValidators = map[string]PluginReloadValidator{}
+
 // RegisterPluginBuilder register the plugin
 func RegisterPluginBuilder(name string, pc PluginBuilder) {
 	pluginMutex.Lock()
@@ -46,12 +50,52 @@ func RegisterPluginBuilder(name string, pc PluginBuilder) {
 	pluginBuilders[name] = pc
 }
 
-// CleanupPluginBuilders cleans up all the plugin
+// CleanupPluginBuilders cleans up all plugin builders and reload validators.
 func CleanupPluginBuilders() {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 
 	pluginBuilders = map[string]PluginBuilder{}
+	pluginReloadValidators = map[string]PluginReloadValidator{}
+}
+
+// UnregisterPluginBuilder removes a specific plugin builder by name.
+//
+// For testing only. It remains exported because scheduler-package tests use
+// framework builders from outside this package.
+func UnregisterPluginBuilder(name string) {
+	pluginMutex.Lock()
+	defer pluginMutex.Unlock()
+
+	delete(pluginBuilders, name)
+}
+
+// RegisterPluginReloadValidator registers a plugin's optional reload validator.
+func RegisterPluginReloadValidator(name string, validator PluginReloadValidator) {
+	pluginMutex.Lock()
+	defer pluginMutex.Unlock()
+
+	pluginReloadValidators[name] = validator
+}
+
+// UnregisterPluginReloadValidator removes a specific plugin reload validator.
+//
+// For testing only. It remains exported because scheduler-package tests use
+// framework registries from outside this package.
+func UnregisterPluginReloadValidator(name string) {
+	pluginMutex.Lock()
+	defer pluginMutex.Unlock()
+
+	delete(pluginReloadValidators, name)
+}
+
+// GetPluginReloadValidator returns the optional reload validator for a plugin.
+func GetPluginReloadValidator(name string) (PluginReloadValidator, bool) {
+	pluginMutex.RLock()
+	defer pluginMutex.RUnlock()
+
+	validator, found := pluginReloadValidators[name]
+	return validator, found
 }
 
 // GetPluginBuilder get the pluginbuilder by name
