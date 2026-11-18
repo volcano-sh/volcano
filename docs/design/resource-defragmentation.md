@@ -1,0 +1,270 @@
+# Resource Defragmentation for Volcano
+
+## 1. Summary
+
+GPU clusters often have enough free GPUs in total, but spread across nodes, so a pod that needs a whole node cannot be scheduled. Today the only remedies are `preempt` and `reclaim`, which kill running pods.
+
+This proposal frees a contiguous chunk by **relocating** running pods to other nodes. No pod is killed for good and no queue loses resources.
+
+The design is centred on a single object, the **`DefragPlan`**. A plan records which pods will move where, which space is reserved, and how far execution has progressed. Everything else (planning, reservation, execution) is a role that reads or writes a plan. Which process plays which role is a packaging question, covered in section 8.
+
+## 2. Motivation
+
+Two 8-GPU nodes, four GPUs free on each:
+
+```
+Node A: [job1 x2][job2 x2][ free x4 ]
+Node B: [job3 x3][job4 x1][ free x4 ]
+```
+
+A pending pod requests 8 GPUs. Eight GPUs are free in total, but no single node has them, so the pod waits.
+
+- `allocate` cannot place it.
+- `preempt` / `reclaim` and their variations (`gangpreempt` / `gangreclaim`) could only help by killing other jobs, and only if they have lower priority or exceed their queue share. Here, nobody has to lose anything.
+
+Moving job1 and job2 from node A to node B fits everything:
+
+```
+Node A: [ pending pod x8 ]
+Node B: [job3 x3][job4 x1][job1 x2][job2 x2]
+```
+
+## 3. Goals and Non-Goals
+
+**Goals**
+- Unblock pending pods that need a contiguous chunk, without killing running work.
+- Plan at pod level, and respect gang semantics (`minAvailable`).
+- Be safe by default: opt-in jobs, PDBs respected, and a dry-run mode.
+
+**Non-goals**
+- Live migration of running containers.
+- Fractional or shared GPUs in the first version.
+- General rebalancing or load-based descheduling.
+
+## 4. Overview
+
+```
+ stuck pods ──► PLANNER ──writes──►  DefragPlan  ◄──updates── EXECUTOR ──► evictions
+                                         │                    (Eviction API,
+                                         │ read by              PDBs respected)
+                                         ▼
+                                     RESERVER
+                          (scheduler holds the planned space)
+```
+
+| Role | Responsibility |
+|---|---|
+| **Planner** | Finds stuck pods and writes a `DefragPlan`. Uses the scheduler's own simulation. |
+| **Executor** | Advances a plan one step at a time and keeps its status up to date. |
+| **Reserver** | Lives in the scheduler. Subtracts the plan's reserved capacity from idle resources, so other pods cannot take it. |
+
+**Relation to preemption.** Defrag only acts on pods that stay Pending after the scheduler's own actions (`allocate`, `preempt`, `reclaim`) could not place them, so it never competes with them. It handles the case they cannot: free resources exist, but not in one place.
+
+## 5. Detailed Design
+
+### 5.1 The DefragPlan
+
+A plan is the single source of truth for one relocation.
+
+```yaml
+apiVersion: scheduling.volcano.sh/v1alpha1   # proposed
+kind: DefragPlan
+metadata:
+  name: defrag-train-big-7f3a
+  namespace: team-a
+spec:
+  dryRun: false
+  ttl: 15m
+  target:
+    podGroup: train-big
+    pods:
+    - name: train-big-worker-0
+      uid: 9c1e
+      node: node-a
+      request:
+        nvidia.com/gpu: "8"
+  moves:
+  - order: 1
+    podGroup: job1
+    bundle: safe
+    pods:
+    - name: job1-worker-2
+      uid: 41ab
+      owner:
+        kind: Job
+        uid: 77d0
+      from: node-a
+      to: node-b
+      request:
+        nvidia.com/gpu: "2"
+  - order: 2
+    podGroup: job2
+    bundle: safe
+    pods:
+    - name: job2-worker-1
+      uid: 5e92
+      owner:
+        kind: ReplicaSet
+        uid: 3b18
+      from: node-a
+      to: node-b
+      request:
+        nvidia.com/gpu: "2"
+  reservations:
+  - node: node-a
+    for:
+      pods: ["9c1e"]
+    resources:
+      nvidia.com/gpu: "8"
+  - node: node-b
+    for:
+      owners: ["77d0", "3b18"]
+    resources:
+      nvidia.com/gpu: "4"
+status:
+  phase: Executing      # Planned -> Executing -> Succeeded | Failed | Obsolete | Aborted
+  currentMove: 1
+```
+
+- **The spec is immutable** once created. It says what should happen.
+- **The status is written only by the executor.** It says what has happened.
+- **`dryRun: true`** records the plan and leaves it `Planned`. Nothing is evicted or reserved.
+- **Pods are identified by owner, not by name.** Evicting a Deployment pod makes its ReplicaSet create a replacement with a new name. So each moved pod records its UID (used only to evict that exact pod), its controller owner, and its resource shape. The name is for display only.
+- **One owner per plan.** A plan names the instance that executes it, so two instances never advance the same plan.
+- **Reads and writes** go through the status subresource and never block a scheduling session.
+
+### 5.2 Trigger
+
+A PodGroup is a candidate when it has been Pending beyond a threshold (so the scheduler's own actions, including preemption and reclaim, could not place it) and:
+- its queue has quota for it, and
+- the cluster's total free resources would cover its need.
+
+If either fails, defragmentation cannot help. Only preemption or reclaim can.
+
+### 5.3 Planning
+
+The planner snapshots the cluster with the scheduler framework, so predicates and `TaskOrderFn` behave as in the scheduler.
+
+1. **Stuck pods.** Take pending pods in `TaskOrderFn` order, the smallest prefix that satisfies `minAvailable`.
+2. **Candidate nodes.** Keep nodes where `free + movable >= request`, ranked by smallest deficit.
+3. **Movable pods.** A pod is movable only if it:
+   - has the annotation `volcano.sh/relocatable: "true"` (default off; a label also works), separate from `volcano.sh/preemptable`,
+   - has a controller owner (a bare pod is immovable, nothing recreates it),
+   - belongs to a job at or below the pending job's priority, and
+   - is not blocked by a PDB.
+4. **Bundles and selection.** Group movable pods by job. A *safe* bundle keeps the job at or above `minAvailable`; a *whole* bundle breaks the gang. Pick the cheapest cover of the deficit: safe first, then lowest priority.
+5. **Simulation.** Free the chosen pods, place the stuck pod, then place every moved pod elsewhere. The plan is valid only if all of them fit.
+
+### 5.4 Reservations
+
+Each session, the reserver subtracts the capacity of `Executing` plans from idle resources, for every pod except the plan's own:
+- the freed space on the target node, held for the pending pods (by UID), and
+- the destination space, keyed by owner and resource shape, so any replacement of that owner can claim it.
+
+Reservations expire at the TTL and are released when pods bind or the plan ends. They never count as allocated to a queue.
+
+### 5.5 Execution
+
+For each bundle, in order:
+1. Evict its pods through the Eviction API, so PDBs are respected.
+2. Wait until each owner is back at its desired replicas with the replacement bound on the destination.
+
+Before each step, re-validate the plan; if it no longer holds, stop or re-plan. When the target pods are scheduled, mark `Succeeded` and start a cooldown.
+
+### 5.6 Concurrency
+
+Plans run concurrently only if they cannot invalidate each other. A new plan is rejected, and re-planned later, if it overlaps an active plan on:
+- a moved job (one in-flight plan per job, so gang math stays valid),
+- a source node that another plan is freeing, or a node that is another plan's target, or
+- a target pod or PodGroup.
+
+A global maximum, set by the cluster owner, caps concurrent plans. Stuck pods are picked by priority, then by how long they have waited.
+
+## 6. Safety and Failure Handling
+
+| Situation | Behavior |
+|---|---|
+| Target pod gets scheduled by itself (another job ended) | Stop, mark the plan `Obsolete`, release both reservations. |
+| A moved pod cannot land at its destination | Stop, mark `Failed`, release the reservations. Finished moves stay where they are. |
+| The executor restarts | The plan resumes from its status. The reservations expire at the TTL if it does not. |
+| PDB blocks an eviction | Pause that step, retry until the TTL, then abort. |
+| Target job deleted, or its priority or quota changes | The pre-step check aborts the plan. |
+| Another job tries to use the freed space | Blocked by the reservation. |
+
+Other guards: relocation is opt-in per job, the number of concurrent plans is capped, and every plan is followed by a cooldown.
+
+## 7. Release Plan
+
+The feature ships behind a flag, off by default, enabled per queue or namespace, with a kill switch that stops new plans and releases all reservations. Each stage widens what the system may do only after the previous one has proven its plans correct.
+
+| Stage | API | What it does | Exit criteria |
+|---|---|---|---|
+| **Alpha** | `v1alpha1` | Dry-run only. Writes `DefragPlan` objects with `dryRun: true`. No evictions, no reservations. | Plans look correct on real clusters, and planning cost stays within budget. |
+| **Beta** | `v1beta1` | Executes safe bundles, with reservations. One plan at a time. | No stuck reservations or failed moves in soak tests. |
+| **Beta 2** | `v1beta1` | Adds whole bundles, then gangs and topology domains. One plan at a time. | Gang-break cost behaves as the planner predicts. |
+| **GA** | `v1` | Plan concurrency, configurable and capped by a maximum set by the cluster owner. | Stable API, e2e tests and docs, and at least one release at beta with no breaking changes. |
+
+Signals watched at every stage: moved pods that fail to land, reservation leaks, PDB-blocked evictions, and jobs restarted per plan.
+
+## 8. Packaging: standalone component or scheduler action
+
+The design above does not depend on which process plays the planner, executor and reserver roles. There are two ways to package them.
+
+### Option A: standalone component (`volcano-defrag`)
+
+A leader-elected controller is the planner and executor. It embeds the scheduler framework to plan. A small scheduler plugin is the reserver.
+
+- **For:**
+  - Long-running work (terminate, restart, verify) stays out of the scheduling loop.
+  - Planning cost never slows a scheduling cycle.
+  - It can be enabled, scaled and fail independently of the scheduler.
+  - It matches the roadmap wording of a new component.
+- **Against:**
+  - A new binary, with RBAC, Helm and operations to maintain.
+  - The planner works on its own snapshot, which can drift from the scheduler's live view.
+  - Two code paths that must stay consistent, and a scheduler plugin is still needed.
+
+### Option B: scheduler action (`defrag`)
+
+An action in the scheduler is the planner, executor and reserver. It creates and updates the `DefragPlan`, and takes one step per scheduling session, so a plan finishes over several sessions.
+
+- **For:**
+  - Planning runs inside the real session, with the exact predicates and state, and no snapshot to drift.
+  - No new binary, leader election or deployment, and the scheduler's single-threaded loop makes concurrency simple.
+  - `preempt` and `gangpreempt` already evict from inside a session and finish over later cycles.
+- **Against:**
+  - Planning cost sits in the hot path, so it must be time-boxed and rate-limited.
+  - The scheduler becomes a status writer for a new object, and must keep those writes off the hot path and free of conflicts, particularly with multiple schedulers or shards.
+  - Progress depends on the scheduler's cadence and restarts.
+
+## 9. Preference
+
+I prefer **Option B**, the scheduler action: it plans inside the real scheduling session and uses the `DefragPlan` object to carry progress across sessions, with no new binary to run.
+
+## 10. Future Work
+
+### Chained moves
+
+The planner in section 5.3 places each moved pod only into space that is free when the plan is made (direct moves). Some fragmentation can only be solved by a chain, where one move makes room for the next.
+
+Three nodes with 8 GPUs each, and a pending pod that needs 4 GPUs on one node:
+
+```
+Node 1: [4][2][1] + 1 free   (7 used)
+Node 2: [4][2]    + 2 free   (6 used)
+Node 3: [4][2][1] + 1 free   (7 used)
+```
+
+Four GPUs are free in total, but no node has four free. Freeing node 2 means moving its 2-GPU pod, and neither node 1 nor node 3 has two free GPUs, so a direct move fails. A chain of two moves works:
+
+```
+Move 1:  node 1's 1-GPU pod  ──►  node 3      (node 3 had exactly 1 free)
+         Node 1: [4][2]    + 2 free
+         Node 3: [4][2][1][1]  full
+
+Move 2:  node 2's 2-GPU pod  ──►  node 1      (node 1 now has 2 free)
+         Node 2: [4]       + 4 free   ✔ the pending 4-GPU pod fits here
+         Node 1: [4][2][2]  full
+```
+
+The `DefragPlan` already supports this, because `moves` are ordered. Supporting chains means changing the planner to treat space freed by an earlier move as available to a later one, and executing the moves in order. It is left out of the first version because every extra move is another pod restart and another step that can fail, and a chain that fails halfway leaves the cluster rearranged with nothing gained. When added, it should cap the chain length, for example at two moves.
