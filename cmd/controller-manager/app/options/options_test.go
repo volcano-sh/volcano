@@ -39,6 +39,7 @@ import (
 	_ "volcano.sh/volcano/pkg/controllers/jobflow"
 	_ "volcano.sh/volcano/pkg/controllers/jobtemplate"
 	_ "volcano.sh/volcano/pkg/controllers/podgroup"
+	podgroup "volcano.sh/volcano/pkg/controllers/podgroup/options"
 	_ "volcano.sh/volcano/pkg/controllers/queue"
 	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/kube"
@@ -74,6 +75,12 @@ func TestAddFlags(t *testing.T) {
 		"--leader-elect-renew-deadline=20s",
 		"--leader-elect-retry-period=10s",
 		"--feature-gates=ResourceTopology=false",
+		"--inherit-owner-annotation-prefixes=volcano.sh/",
+		"--inherit-owner-annotation-prefixes=test.group.annotation/",
+		"--inherit-owner-label-prefixes=test.group.label/",
+		"--inherit-pod-annotation-prefixes=volcano.sh/",
+		"--inherit-pod-annotation-prefixes=test.group.annotation/",
+		"--inherit-pod-label-prefixes=test.group.label/",
 	}
 	fs.Parse(args)
 
@@ -92,7 +99,27 @@ func TestAddFlags(t *testing.T) {
 		MaxRequeueNum:           defaultMaxRequeueNum,
 		HealthzBindAddress:      ":11251",
 		ListenAddress:           defaultListenAddress,
-		InheritOwnerAnnotations: true,
+
+		PodGroupOptions: podgroup.Options{
+			InheritOwnerAnnotations: true,
+			InheritOwnerLabels:      false,
+			InheritPodAnnotations:   true,
+			InheritPodLabels:        true,
+			InheritOwnerAnnotationPrefixes: []string{
+				"volcano.sh/",
+				"test.group.annotation/",
+			},
+			InheritOwnerLabelPrefixes: []string{
+				"test.group.label/",
+			},
+			InheritPodAnnotationPrefixes: []string{
+				"volcano.sh/",
+				"test.group.annotation/",
+			},
+			InheritPodLabelPrefixes: []string{
+				"test.group.label/",
+			},
+		},
 		LeaderElection: config.LeaderElectionConfiguration{
 			LeaderElect:       true,
 			LeaseDuration:     metav1.Duration{Duration: 60 * time.Second},
