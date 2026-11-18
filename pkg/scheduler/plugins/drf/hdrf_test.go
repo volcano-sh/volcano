@@ -206,8 +206,8 @@ func TestHDRF(t *testing.T) {
 			defer test.Close()
 			test.Run([]framework.Action{allocate.New()})
 			for _, job := range ssn.Jobs {
-				if equality.Semantic.DeepEqual(test.expected, job.Allocated) {
-					t.Fatalf("%s: job %s expected resource %s, but got %s", test.Name, job.Name, test.expected[job.Name], job.Allocated)
+				if !equality.Semantic.DeepEqual(test.expected[job.Name], job.Allocated) {
+					t.Errorf("%s: job %s expected resource %s, but got %s", test.Name, job.Name, test.expected[job.Name], job.Allocated)
 				}
 			}
 		})
