@@ -18,6 +18,8 @@ package numaaware
 
 import (
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
@@ -26,6 +28,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/cpuset"
 
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -356,4 +360,207 @@ func TestNuma_OnSessionClose_VerifiesContent(t *testing.T) {
 		t.Errorf("CPUSet mismatch: got %v, want %v", got, wantCPUSet)
 	}
 	framework.CloseSession(ssn)
+}
+
+// TestNuma_PredicateFn runs the numa-aware predicate through a scheduling session
+// and checks how the task and node NUMA policies decide whether the node is
+// rejected, skipped by the plugin, or gets NUMA resources reserved for the task.
+func TestNuma_PredicateFn(t *testing.T) {
+	var tmp *cache.SchedulerCache
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
+
+	var plugin *numaPlugin
+	framework.RegisterPluginBuilder(PluginName, func(arguments framework.Arguments) framework.Plugin {
+		plugin = New(arguments).(*numaPlugin)
+		return plugin
+	})
+	defer framework.CleanupPluginBuilders()
+
+	const (
+		nodeName        = "n1"
+		staticCPUMgr    = "static"
+		noneCPUMgr      = "none"
+		allNodeCPUs     = "0-7"
+		noNodeCPUs      = ""
+		nodeCPUCount    = 8
+		cpusPerNUMANode = 4
+	)
+
+	// buildNumatopo describes a node with two NUMA nodes of four CPUs each.
+	buildNumatopo := func(cpuManagerPolicy string, topologyPolicy batch.NumaPolicy, allocatableCPUs string) *nodeinfov1alpha1.Numatopology {
+		cpuDetail := make(map[string]nodeinfov1alpha1.CPUInfo, nodeCPUCount)
+		for cpuID := 0; cpuID < nodeCPUCount; cpuID++ {
+			cpuDetail[strconv.Itoa(cpuID)] = nodeinfov1alpha1.CPUInfo{
+				NUMANodeID: cpuID / cpusPerNUMANode,
+				SocketID:   cpuID / cpusPerNUMANode,
+				CoreID:     cpuID,
+			}
+		}
+		return &nodeinfov1alpha1.Numatopology{
+			ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+			Spec: nodeinfov1alpha1.NumatopoSpec{
+				Policies: map[nodeinfov1alpha1.PolicyName]string{
+					nodeinfov1alpha1.CPUManagerPolicy:      cpuManagerPolicy,
+					nodeinfov1alpha1.TopologyManagerPolicy: string(topologyPolicy),
+				},
+				NumaResMap: map[string]nodeinfov1alpha1.ResourceInfo{
+					string(v1.ResourceCPU): {Allocatable: allocatableCPUs, Capacity: nodeCPUCount},
+				},
+				CPUDetail: cpuDetail,
+			},
+		}
+	}
+
+	tests := []struct {
+		name           string
+		taskPolicy     batch.NumaPolicy
+		cpuRequest     string
+		guaranteed     bool
+		numatopo       *nodeinfov1alpha1.Numatopology
+		wantErr        string
+		wantNumaAssign bool
+	}{
+		{
+			name:       "non-guaranteed task is not checked by the plugin",
+			taskPolicy: batch.SingleNumaNode,
+			cpuRequest: "2",
+			guaranteed: false,
+		},
+		{
+			name:       "task with policy is rejected on node without numa topology",
+			taskPolicy: batch.SingleNumaNode,
+			cpuRequest: "2",
+			guaranteed: true,
+			wantErr:    "numa info is empty",
+		},
+		{
+			name:       "task with policy is rejected when cpu manager policy is not static",
+			taskPolicy: batch.SingleNumaNode,
+			cpuRequest: "2",
+			guaranteed: true,
+			numatopo:   buildNumatopo(noneCPUMgr, batch.SingleNumaNode, allNodeCPUs),
+			wantErr:    "cpu manager policy isn't static",
+		},
+		{
+			name:       "task with policy is rejected when node topology policy differs",
+			taskPolicy: batch.SingleNumaNode,
+			cpuRequest: "2",
+			guaranteed: true,
+			numatopo:   buildNumatopo(staticCPUMgr, batch.BestEffort, allNodeCPUs),
+			wantErr:    "task topology policy[single-numa-node] is different with node[best-effort]",
+		},
+		{
+			name:       "task with policy is rejected when node has no allocatable cpus",
+			taskPolicy: batch.SingleNumaNode,
+			cpuRequest: "2",
+			guaranteed: true,
+			numatopo:   buildNumatopo(staticCPUMgr, batch.SingleNumaNode, noNodeCPUs),
+			wantErr:    "cpu allocatable map is empty",
+		},
+		{
+			name:           "task with policy gets numa resources on matching node",
+			taskPolicy:     batch.SingleNumaNode,
+			cpuRequest:     "2",
+			guaranteed:     true,
+			numatopo:       buildNumatopo(staticCPUMgr, batch.SingleNumaNode, allNodeCPUs),
+			wantNumaAssign: true,
+		},
+		{
+			name:       "single-numa-node task is rejected when request spans numa nodes",
+			taskPolicy: batch.SingleNumaNode,
+			cpuRequest: "6",
+			guaranteed: true,
+			numatopo:   buildNumatopo(staticCPUMgr, batch.SingleNumaNode, allNodeCPUs),
+			wantErr:    "cannot be assigned by numa",
+		},
+		{
+			name:       "task without policy skips node without numa topology",
+			cpuRequest: "2",
+			guaranteed: true,
+		},
+		{
+			name:       "task without policy skips node whose cpu manager policy is not static",
+			cpuRequest: "2",
+			guaranteed: true,
+			numatopo:   buildNumatopo(noneCPUMgr, batch.SingleNumaNode, allNodeCPUs),
+		},
+		{
+			name:       "task without policy skips node whose topology policy is none",
+			cpuRequest: "2",
+			guaranteed: true,
+			numatopo:   buildNumatopo(staticCPUMgr, batch.None, allNodeCPUs),
+		},
+		{
+			name:           "task without policy gets numa resources on node with topology policy",
+			cpuRequest:     "2",
+			guaranteed:     true,
+			numatopo:       buildNumatopo(staticCPUMgr, batch.BestEffort, allNodeCPUs),
+			wantNumaAssign: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resources := api.BuildResourceList(test.cpuRequest, "1Gi")
+			pod := util.BuildPod("c1", "p1", "", v1.PodPending, resources, "pg1", make(map[string]string), make(map[string]string))
+			if test.guaranteed {
+				pod.Spec.Containers[0].Resources.Limits = resources
+			}
+			if test.taskPolicy != "" {
+				pod.Annotations[schedulingv1.NumaPolicyKey] = string(test.taskPolicy)
+			}
+
+			schedulerCache := &cache.SchedulerCache{
+				Nodes:          make(map[string]*api.NodeInfo),
+				Jobs:           make(map[api.JobID]*api.JobInfo),
+				Queues:         make(map[api.QueueID]*api.QueueInfo),
+				StatusUpdater:  &util.FakeStatusUpdater{},
+				HyperNodesInfo: api.NewHyperNodesInfo(nil),
+				Recorder:       record.NewFakeRecorder(100),
+			}
+			schedulerCache.AddOrUpdateNode(util.BuildNode(nodeName, api.BuildResourceList("8", "16Gi"), make(map[string]string)))
+			if test.numatopo != nil {
+				schedulerCache.AddNumaInfoV1alpha1(test.numatopo)
+			}
+			schedulerCache.AddPod(pod)
+			schedulerCache.AddPodGroupV1beta1(util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue))
+			schedulerCache.AddQueueV1beta1(util.BuildQueue("c1", 1, nil))
+
+			trueValue := true
+			ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+				{
+					Plugins: []conf.PluginOption{
+						{Name: PluginName, EnabledPredicate: &trueValue},
+					},
+				},
+			}, nil)
+			defer framework.CloseSession(ssn)
+
+			var task *api.TaskInfo
+			for _, job := range ssn.Jobs {
+				for _, jobTask := range job.Tasks {
+					task = jobTask
+				}
+			}
+			if task == nil {
+				t.Fatalf("task for pod %s/%s not found in session", pod.Namespace, pod.Name)
+			}
+
+			err := ssn.PredicateFn(task, ssn.Nodes[nodeName])
+			if test.wantErr == "" && err != nil {
+				t.Errorf("unexpected predicate error: %v", err)
+			}
+			if test.wantErr != "" && (err == nil || !strings.Contains(err.Error(), test.wantErr)) {
+				t.Errorf("predicate error = %v, want error containing %q", err, test.wantErr)
+			}
+
+			_, assigned := plugin.assignRes[task.UID][nodeName]
+			if assigned != test.wantNumaAssign {
+				t.Errorf("numa resources reserved on %s = %v, want %v", nodeName, assigned, test.wantNumaAssign)
+			}
+		})
+	}
 }
