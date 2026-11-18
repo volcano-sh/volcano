@@ -18,11 +18,13 @@ package validate
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/klog/v2"
 
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
@@ -73,22 +75,64 @@ func AdmitJobFlows(ar admissionv1.AdmissionReview) *admissionv1.AdmissionRespons
 		return util.ToAdmissionResponse(err)
 	}
 
+	return admitJobFlow(jobFlow, ar.Request.Operation)
+}
+
+func admitJobFlow(jobFlow *flowv1alpha1.JobFlow, operation admissionv1.Operation) *admissionv1.AdmissionResponse {
 	var msg string
 	reviewResponse := admissionv1.AdmissionResponse{}
 	reviewResponse.Allowed = true
 
-	switch ar.Request.Operation {
+	switch operation {
 	case admissionv1.Create, admissionv1.Update:
-		msg = validateJobFlowDAG(jobFlow, &reviewResponse)
+		msg = validateJobFlow(jobFlow, &reviewResponse)
 	default:
-		err := OperationNotCreateOrUpdate
-		return util.ToAdmissionResponse(err)
+		return util.ToAdmissionResponse(OperationNotCreateOrUpdate)
 	}
 
 	if !reviewResponse.Allowed {
 		reviewResponse.Result = &metav1.Status{Message: strings.TrimSpace(msg)}
 	}
 	return &reviewResponse
+}
+
+// validateJobFlow checks the DAG and the label values stamped onto every Job
+// this JobFlow creates. Those values are "<namespace>.<jobflow name>" and
+// "<namespace>.<flow name>", and Kubernetes rejects label values longer than
+// 63 bytes.
+func validateJobFlow(jobflow *flowv1alpha1.JobFlow, reviewResponse *admissionv1.AdmissionResponse) string {
+	var msgs []string
+	if labelMsg := validateJobFlowLabels(jobflow); labelMsg != "" {
+		reviewResponse.Allowed = false
+		msgs = append(msgs, labelMsg)
+	}
+	if dagMsg := validateJobFlowDAG(jobflow, reviewResponse); dagMsg != "" {
+		msgs = append(msgs, dagMsg)
+	}
+	return strings.Join(msgs, "; ")
+}
+
+func validateJobFlowLabels(jobflow *flowv1alpha1.JobFlow) string {
+	var msgs []string
+	jobFlowValue := jobflow.Namespace + "." + jobflow.Name
+	if len(jobFlowValue) > validation.LabelValueMaxLength {
+		msgs = append(msgs, fmt.Sprintf("volcano.sh/createdByJobFlow label value %q is %d bytes, which exceeds the %d byte limit; shorten the JobFlow namespace or name",
+			jobFlowValue, len(jobFlowValue), validation.LabelValueMaxLength))
+	}
+
+	seen := make(map[string]struct{}, len(jobflow.Spec.Flows))
+	for _, flow := range jobflow.Spec.Flows {
+		if _, ok := seen[flow.Name]; ok {
+			continue
+		}
+		seen[flow.Name] = struct{}{}
+		flowValue := jobflow.Namespace + "." + flow.Name
+		if len(flowValue) > validation.LabelValueMaxLength {
+			msgs = append(msgs, fmt.Sprintf("volcano.sh/createdByJobTemplate label value %q for flow %q is %d bytes, which exceeds the %d byte limit; shorten the namespace or flow name",
+				flowValue, flow.Name, len(flowValue), validation.LabelValueMaxLength))
+		}
+	}
+	return strings.Join(msgs, "; ")
 }
 
 func validateJobFlowDAG(jobflow *flowv1alpha1.JobFlow, reviewResponse *admissionv1.AdmissionResponse) string {

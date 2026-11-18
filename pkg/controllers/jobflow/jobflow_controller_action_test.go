@@ -18,14 +18,20 @@ package jobflow
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -955,5 +961,69 @@ func TestDeleteAllJobsCreateByJobFlowFunc(t *testing.T) {
 				t.Error("Expected deleteAllJobsCreatedByJobFlow() return nil, but not nil")
 			}
 		})
+	}
+}
+
+func TestSyncJobFlowCreateJobFailureEmitsWarning(t *testing.T) {
+	const (
+		namespace   = "ml-training-pipelines"
+		jobFlowName = "nightly-feature-extraction-and-training-run-v2"
+		flowName    = "prep"
+	)
+	labelValue := GenerateObjectString(namespace, jobFlowName)
+
+	fakeController := newFakeController()
+	recorder := record.NewFakeRecorder(5)
+	fakeController.recorder = recorder
+
+	jobFlow := &jobflowv1alpha1.JobFlow{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobFlowName,
+			Namespace: namespace,
+		},
+		Spec: jobflowv1alpha1.JobFlowSpec{
+			Flows: []jobflowv1alpha1.Flow{
+				{Name: flowName},
+			},
+			JobRetainPolicy: jobflowv1alpha1.Retain,
+		},
+	}
+	jobTemplate := &jobflowv1alpha1.JobTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      flowName,
+			Namespace: namespace,
+		},
+	}
+	if err := fakeController.jobTemplateInformer.Informer().GetIndexer().Add(jobTemplate); err != nil {
+		t.Fatalf("add jobTemplate: %v", err)
+	}
+
+	createErr := apierrors.NewBadRequest(fmt.Sprintf(
+		"Job.batch.volcano.sh %q is invalid: metadata.labels: Invalid value: %q: must be no more than 63 bytes",
+		getJobName(jobFlowName, flowName), labelValue))
+	vcClient := fakeController.vcClient.(*volcanoclient.Clientset)
+	vcClient.PrependReactor("create", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, createErr
+	})
+
+	err := fakeController.syncJobFlow(jobFlow, func(status *jobflowv1alpha1.JobFlowStatus, allJobList int) {
+		status.State.Phase = jobflowv1alpha1.Running
+	})
+	if !apierrors.IsBadRequest(err) {
+		t.Fatalf("syncJobFlow() error = %v, want a bad-request create failure", err)
+	}
+	if jobFlow.Status.State.Phase != "" {
+		t.Fatalf("status phase = %q, want it left unset when job creation fails", jobFlow.Status.State.Phase)
+	}
+
+	select {
+	case event := <-recorder.Events:
+		for _, want := range []string{"Warning", "FailedCreate", "Failed to create jobs", labelValue, "63 bytes"} {
+			if !strings.Contains(event, want) {
+				t.Errorf("event %q does not contain %q", event, want)
+			}
+		}
+	default:
+		t.Fatal("expected a Warning event for the failed job create")
 	}
 }
