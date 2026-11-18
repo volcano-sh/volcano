@@ -897,8 +897,13 @@ func schedulerMetricValue(ctx *e2eutil.TestContext, name string, labels map[stri
 }
 
 func expectJobUnbound(ctx *e2eutil.TestContext, job *batchv1alpha1.Job) {
-	tasks := e2eutil.GetTasksOfJob(ctx, job)
-	Expect(tasks).NotTo(BeEmpty())
+	// The job controller creates the Pods after it observes the PodGroup in
+	// Inqueue, so they may not exist yet right after waitForJobPodGroupPhase.
+	var tasks []*v1.Pod
+	Eventually(func() []*v1.Pod {
+		tasks = e2eutil.GetTasksOfJob(ctx, job)
+		return tasks
+	}, eventWakeupTimeout, 500*time.Millisecond).ShouldNot(BeEmpty(), "the Job's Pods should be created")
 	for _, task := range tasks {
 		Expect(task.Spec.NodeName).To(BeEmpty())
 	}
