@@ -118,12 +118,15 @@ make images
 make e2e
 ```
 
-If you want to run e2e tests in an existing cluster with Volcano deployed, run the following:
+If you want to run e2e tests in an existing cluster with Volcano deployed, run the following from the source root. Set `VC_BIN` to the directory containing `vcctl`, then select an e2e suite, for example the CLI suite:
 
 ```bash
-export VC_BIN=<path-to-vcctl-binary> (e.g., .../src/volcano.sh/volcano/_output/bin/)
-KUBECONFIG=${KUBECONFIG} go test ./test/e2e
+make vcctl
+export VC_BIN="$(pwd)/_output/bin"
+KUBECONFIG="${KUBECONFIG}" go test -count=1 -v ./test/e2e/vcctl
 ```
+
+Other suites are in the subdirectories of `test/e2e/`; choose one that matches the features enabled in your cluster.
 
 ## Auto-Formatting Source Code
 
