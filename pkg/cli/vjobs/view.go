@@ -21,7 +21,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -164,10 +166,14 @@ func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
 		WriteLine(writer, Level2, "Replicas:\t%d\n", job.Spec.Tasks[i].Replicas)
 		WriteLine(writer, Level2, "Template:\n")
 		WriteLine(writer, Level2+1, "Metadata:\n")
-		WriteLine(writer, Level2+2, "Annotations:\n")
-		WriteLine(writer, Level2+3, "Cri . Cci . Io / Container - Type:          \t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["cri.cci.io/container-type"])
-		WriteLine(writer, Level2+3, "Kubernetes . Io / Availablezone:            \t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["kubernetes.io/availablezone"])
-		WriteLine(writer, Level2+3, "Network . Alpha . Kubernetes . Io / Network:\t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["network.alpha.kubernetes.io/network"])
+		if annotations := job.Spec.Tasks[i].Template.ObjectMeta.Annotations; len(annotations) > 0 {
+			WriteLine(writer, Level2+2, "Annotations:\n")
+			for _, key := range slices.Sorted(maps.Keys(annotations)) {
+				WriteLine(writer, Level2+3, "%s:\t%s\n", key, annotations[key])
+			}
+		} else {
+			WriteLine(writer, Level2+2, "Annotations:\t<none>\n")
+		}
 		WriteLine(writer, Level2+2, "Creation Timestamp:\t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.CreationTimestamp)
 
 		WriteLine(writer, Level2+1, "Spec:\n")
