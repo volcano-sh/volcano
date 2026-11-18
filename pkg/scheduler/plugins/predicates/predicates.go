@@ -699,6 +699,9 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 				continue
 			}
 			status := plugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
+			if status.IsSuccess() {
+				continue
+			}
 			filterStatus := api.ConvertPredicateStatus(status)
 			if filterStatus.Code != api.Success {
 				if filterStatus.Plugin == "" {
@@ -756,6 +759,9 @@ func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, st
 		}
 
 		status := plugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
+		if status.IsSuccess() {
+			continue
+		}
 		filterStatus := api.ConvertPredicateStatus(status)
 		if filterStatus.Code != api.Success {
 			if filterStatus.Plugin == "" {

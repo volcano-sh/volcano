@@ -1278,7 +1278,7 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 	// Check for Resource Predicate
 	var statusSets api.StatusSets
-	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {
+	if ok, resources := task.InitResreq.LessEqualWithResourcesName(resourcesForPredicate(node), api.Zero); !ok {
 		statusSets = append(statusSets, &api.Status{
 			Code:                  api.Unschedulable,
 			Reason:                api.WrapInsufficientResourceReason(resources),
@@ -1288,6 +1288,18 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
 	return alloc.session.PredicateForAllocateAction(task, node)
+}
+
+// resourcesForPredicate returns a read-only resource view. Without releasing or
+// pipelined resources, future idle is exactly idle; avoid copying its scalar map
+// for every candidate node. Keep FutureIdle's arithmetic for all other cases,
+// including zero-valued scalar entries and fractional/negative adjustments.
+func resourcesForPredicate(node *api.NodeInfo) *api.Resource {
+	if node.Releasing.MilliCPU == 0 && node.Releasing.Memory == 0 && len(node.Releasing.ScalarResources) == 0 &&
+		node.Pipelined.MilliCPU == 0 && node.Pipelined.Memory == 0 && len(node.Pipelined.ScalarResources) == 0 {
+		return node.Idle
+	}
+	return node.FutureIdle()
 }
 
 func logHyperNodeTiers(ssn *framework.Session) {
