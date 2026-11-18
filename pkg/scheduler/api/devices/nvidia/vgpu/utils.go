@@ -451,6 +451,12 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 				continue
 			}
 			uuidMatched = true
+			// The device plugin reports a GPU that failed its health checks as unhealthy in the
+			// node register annotation; never hand out a share of it.
+			if !gs.Device[i].Health {
+				klog.V(3).InfoS("Skipping unhealthy device", "Index", i, "UUID", gs.Device[i].UUID)
+				continue
+			}
 			if gs.Device[i].Number <= uint(gs.Device[i].UsedNum) {
 				continue
 			}
