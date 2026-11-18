@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -36,6 +37,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
@@ -1414,4 +1416,88 @@ func TestNoPodGroupCreatedForWhenKubeGroupNameAnnotationExists(t *testing.T) {
 		}
 		assert.Equal(t, 1, len(pgList.Items), "Expected 1 PodGroup, found %d: %v", len(pgList.Items), names)
 	})
+}
+
+func TestWorkloadUpdateKeepsAdmittedPodGroupQueue(t *testing.T) {
+	const (
+		namespace = "team-a"
+		queue     = "team-a-queue"
+	)
+	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}}
+
+	tests := []struct {
+		name   string
+		sts    *appsv1.StatefulSet
+		rs     *appsv1.ReplicaSet
+		labels map[string]string
+	}{
+		{
+			name: "StatefulSet rolling update recreates a Pod",
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: namespace, UID: "sts-uid"},
+				Spec:       appsv1.StatefulSetSpec{Replicas: ptr.To[int32](1), Selector: selector},
+				Status:     appsv1.StatefulSetStatus{UpdateRevision: "web-v2"},
+			},
+			labels: map[string]string{"app": "web", controllerRevisionHashLabelKey: "web-v2"},
+		},
+		{
+			name: "ReplicaSet creates a Pod",
+			rs: &appsv1.ReplicaSet{
+				ObjectMeta: metav1.ObjectMeta{Name: "web-5d8f", Namespace: namespace, UID: "rs-uid"},
+				Spec:       appsv1.ReplicaSetSpec{Replicas: ptr.To[int32](1), Selector: selector},
+			},
+			labels: map[string]string{"app": "web"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newFakeController()
+			var owner metav1.OwnerReference
+			if tt.sts != nil {
+				_, err := c.kubeClient.AppsV1().StatefulSets(namespace).Create(context.TODO(), tt.sts, metav1.CreateOptions{})
+				require.NoError(t, err)
+				owner = *metav1.NewControllerRef(tt.sts, appsv1.SchemeGroupVersion.WithKind("StatefulSet"))
+			} else {
+				_, err := c.kubeClient.AppsV1().ReplicaSets(namespace).Create(context.TODO(), tt.rs, metav1.CreateOptions{})
+				require.NoError(t, err)
+				owner = *metav1.NewControllerRef(tt.rs, appsv1.SchemeGroupVersion.WithKind("ReplicaSet"))
+			}
+
+			pod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            "web-0",
+					Namespace:       namespace,
+					Labels:          tt.labels,
+					OwnerReferences: []metav1.OwnerReference{owner},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+					Containers: []v1.Container{{
+						Name:      "app",
+						Resources: v1.ResourceRequirements{Requests: api.BuildResourceList("1", "1Gi")},
+					}},
+				},
+			}
+			pod, err := c.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+			require.NoError(t, err)
+			require.NoError(t, c.podInformer.Informer().GetIndexer().Add(pod))
+
+			admitted := c.buildPodGroupFromPod(pod, helpers.GeneratePodgroupName(pod))
+			admitted.Spec.Queue = queue
+			admitted, err = c.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), admitted, metav1.CreateOptions{})
+			require.NoError(t, err)
+			require.NoError(t, c.pgInformer.Informer().GetIndexer().Add(admitted))
+
+			if tt.sts != nil {
+				c.updateStatefulSet(tt.sts, tt.sts)
+			} else {
+				c.updateReplicaSet(tt.rs, tt.rs)
+			}
+
+			pg, err := c.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), admitted.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			assert.Equal(t, queue, pg.Spec.Queue)
+		})
+	}
 }
