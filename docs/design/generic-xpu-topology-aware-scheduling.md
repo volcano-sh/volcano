@@ -38,7 +38,7 @@ plugin is `device-topology-aware`; and Node inventory uses
     - [Per-Task Filter and Score](#per-task-filter-and-score)
     - [Plugin Responsibilities and Boundaries](#plugin-responsibilities-and-boundaries)
     - [Scheduling Pipeline and Existing Component Integration](#scheduling-pipeline-and-existing-component-integration)
-    - [Proposed Plugin and GangPlan Contracts](#proposed-plugin-and-gangplan-contracts)
+    - [Plugin Callbacks and Commit-Time Gang Planning](#plugin-callbacks-and-commit-time-gang-planning)
     - [Gang Planning Flow](#gang-planning-flow)
     - [Transaction Participant Contract](#transaction-participant-contract)
   - [Topology Cases](#topology-cases)
@@ -1045,7 +1045,8 @@ At session open, the plugin reads the immutable device topology view included in
 | Candidate preparation | Proposed reviewed framework integration | After Queue, gang, and NodeShard scope is known, exposes a read-only domain-feasibility summary to existing HyperNode and Node selection. For hard mode, it removes only Nodes proven to have no fitting domain. For soft mode, it removes no Nodes. |
 | Filter | `Session.AddPredicateFn` | Rejects a Node when hard local-domain/fabric, freshness, health, or enforcement conditions fail. |
 | Score | `Session.AddNodeOrderFn` or `AddBatchNodeOrderFn` | Adds soft-mode topology-affinity scores after normal eligibility. |
-| Gang plan | New framework-owned `GangPlan` hook in `allocate`. | Produces a side-effect-free plan candidate for all Tasks in the unit. |
+| Pending accounting | `Session.AddEventHandler` | Records the devices that allocated, not yet committed Tasks are expected to use, so later Tasks of the gang are filtered correctly. |
+| Gang plan | Batch pre-binder `PrepareBindBatch`, called by `CommitWithParticipants` | Plans and reserves the complete unit on the Nodes `allocate` assigned. A pre-allocation gang-plan callback is future work. |
 | Commit/Discard | Proposed `Statement` transaction participant. | Keeps or rolls back topology reservations with the existing tentative allocation. |
 
 The plugin uses a deterministic topology tie-break after existing Node and HyperNode scores. Existing administrator-configured Node-order plugins, such as binpack, retain ownership of packing and spreading policy.
@@ -1128,80 +1129,32 @@ Group topology affinity is a proposed HyperNode-level capability and is not impl
 
 Hard device-topology requirements are evaluated before topology preference. A hard local-domain or fabric failure produces a structured device-topology fit error and is not converted to a low score. Soft local-domain and fabric rules contribute scores only after normal eligibility. The first alpha implementation should use the existing predicate and Node-order callback mechanisms, any new gang-planning callback requires explicit framework review rather than hidden logic in a single plugin.
 
-#### Proposed Plugin and GangPlan Contracts
+#### Plugin Callbacks and Commit-Time Gang Planning
 
-The following Go-like contracts are illustrative. They make the proposed ownership explicit. Final names and signatures require framework API review.
-
-```go
-// GangPlanContext contains the immutable scheduling inputs used to build one
-// side-effect-free topology plan for the current gang admission unit.
-type GangPlanContext struct {
-    // Job owns the current scheduler-visible task state.
-    Job *api.JobInfo
-    // SubJob identifies the existing subgroup being admitted. It is nil only
-    // when the parent PodGroup itself is the scheduling unit.
-    SubJob *api.SubJobInfo
-    // PlanTasks are exactly the pending Tasks the existing gang logic is
-    // considering for this admission attempt.
-    PlanTasks []*api.TaskInfo
-    // CandidateNodes contains only Nodes that passed existing scope and normal
-    // predicate checks for each Task.
-    CandidateNodes map[api.TaskID][]*api.NodeInfo
-    // NodeResourceState holds plan-owned NodeInfo clones. The planner applies
-    // tentative normal resource usage here without mutating the live session.
-    NodeResourceState map[string]*api.NodeInfo
-    // AssignedNodes is populated only during finalization after allocate has
-    // chosen Task/Node placements. A final plan must use these exact Nodes.
-    AssignedNodes map[api.TaskID]*api.NodeInfo
-}
-
-// GangPlan exposes the selected topology placement for every device-requesting
-// Task in the admission unit. It carries no reservation or backend allocation
-// state.
-type GangPlan interface {
-    // TaskPlacements returns the selected Node, domain, and device IDs for
-    // every device-requesting Task covered by this complete plan.
-    TaskPlacements() []TopologyTaskPlacement
-}
-
-// GangPlanFn computes a complete topology plan without reserving devices or
-// calling an allocation adapter. When AssignedNodes is set, every returned
-// placement must use that exact Node.
-type GangPlanFn func(*GangPlanContext) (GangPlan, error)
-
-// TopologyReservationCoordinator turns an accepted final plan into a
-// transaction participant that Statement commits or rolls back with its normal
-// task and Node allocation changes.
-type TopologyReservationCoordinator interface {
-    // ReservePlan atomically holds every selected device in plan and returns a
-    // participant that releases the complete hold if the Statement fails.
-    ReservePlan(ctx context.Context, plan TopologyPlacementPlan) (TransactionParticipant, error)
-}
-```
-
-The gang plan unit is the exact set of pending Tasks that the existing gang logic is about to admit in one `Statement`. It is not automatically every Job replica. For example, when a Job has ten replicas and `minAvailable: 4`, the first unit contains the four Tasks needed for the current gang admission. Later pending Tasks receive a new plan unit when the normal allocate and gang logic selects them. The normal Statement still covers every Task in this unit; the topology plan must cover every Task in it that is selected by a device requirement, or allocate none of them. A hard fabric policy is the exception in alpha: every Task of the scheduling unit must use one fabric, but a later plan does not yet know which fabric the earlier Tasks received. While any Task of a hard-fabric unit is already placed, a later plan for that unit, including the replacement for a failed Pod, is rejected with `DeviceTopologyFabricUnavailable` instead of risking a second fabric. Tracking the earlier fabric choice is follow-up work.
-
-`CandidateNodes` contains only Nodes that already passed normal scheduler predicates and any applicable Queue, NodeShard, and HyperNode/network scope. When the reviewed early integration is available, this candidate selection also consumes the read-only device-topology domain-feasibility summary. A gang plan therefore cannot expand the candidate set or bypass existing scheduling policy.
-
-`NodeResourceState` contains plan-owned clones of the session Nodes. As the planner assigns each Task, it applies the same normal `NodeInfo.AddTask` resource accounting to the clone before accepting that placement. This prevents a plan from placing two Tasks on a Node that each fit individually but do not fit together. The final `Statement` preflight repeats the check against current session state before reservation commit. If that preflight fails because state changed, the planner retries a bounded alternative plan rather than repeatedly reserving the same invalid placement.
-
-The device-topology implementation returns `TopologyTaskPlacement` values only when it can plan every device-requesting Task selected from the unit. A provisional plan may be evaluated during normal or HyperNode trial placement, but it contains no reservation, adapter token, or mutable transaction participant.
-
-The plugin continues to use existing callbacks for per-Task work and registers the proposed planning callback at session open:
+The alpha adds no gang-planning framework callback. It uses the existing session extension points, and it registers the plugin as a batch pre-binder for the transactional commit path described in [Transaction Participant Contract](#transaction-participant-contract):
 
 ```go
 func (p *deviceTopologyPlugin) OnSessionOpen(ssn *framework.Session) {
-    ssn.AddPredicateFn(p.Name(), p.filter)
-    ssn.AddNodeOrderFn(p.Name(), p.score)
-    ssn.AddGangPlanFn(p.Name(), p.planGang) // proposed framework API
+    ssn.RegisterBinder(p.Name(), p)             // BatchPreBinder: PrepareBindBatch
+    ssn.AddPredicateFn(p.Name(), p.predicate)   // hard local domain and fabric
+    ssn.AddNodeOrderFn(p.Name(), p.nodeOrder)   // soft preference score
+    ssn.AddEventHandler(p.eventHandler())       // pending accounting
 }
 ```
 
-`allocate` invokes `GangPlanFn` only for an applicable hard-mode device-topology scheduling unit after normal candidate preparation. The unit is either the parent PodGroup gang unit or one existing SubJob created from `subGroupPolicy`; it is never a new device-topology-only grouping. It first uses only pure plan candidates while normal allocation and any HyperNode trial Statements choose a gang-ready Task/Node set. After the winning trial Statement has been recovered, or after a non-trial Statement has tentatively allocated its gang plan unit, `allocate` invokes `GangPlanFn` again with `AssignedNodes` fixed to those selected placements. It then calls `TopologyReservationCoordinator.ReservePlan` for that final plan and registers the returned participant on the final Statement.
+`allocate` places the Tasks of a gang one at a time with the normal predicate and Node-order callbacks. The plugin's pending accounting, described in [Gang Planning Flow](#gang-planning-flow), lets each later Task see the devices that earlier Tasks of the same Statement are expected to use. `allocate` commits its Statements through `CommitWithParticipants`, which builds the bind contexts and calls `PrepareBindBatch` before any context reaches the bind cache.
 
-Before recovering or creating a final Statement, `allocate` creates an allocation-attempt checkpoint. It owns cloned `JobWorksheet` and `SubJobWorksheet` queues, `NodesFitErrors`, SubJob allocation and nomination fields, and recorder decision state. The final attempt consumes only those clones. `Statement.Discard` still reverses session Task and Node operations, while the checkpoint restores every non-Statement mutation if final planning, reservation, preflight, batch preparation, or commit fails. Only a successful `CommitWithParticipants` adopts the cloned worksheets and recorder decision into the live allocation context. This prevents a failed first reservation attempt from silently dropping Tasks, retaining a stale HyperNode decision, or skipping a candidate during bounded replan.
+For each hard policy unit in the batch, the parent PodGroup gang unit or one existing SubJob created from `subGroupPolicy`, `PrepareBindBatch` builds one complete plan for exactly the unit's Tasks in the batch. The plan uses the Nodes that `allocate` assigned to those Tasks. It chooses only the local domains, the fabric, and the exact device IDs on those Nodes. It never moves a Task to another Node, and it cannot widen the candidate set or bypass Queue, gang, NodeShard, or HyperNode scope. The plugin then reserves the plan through `SchedulerCache.ReserveDeviceTopologyPlan` and prepares one immutable handoff per Pod. If planning, reservation, or handoff preparation fails for any unit, every prepared unit is rolled back, the Statement is discarded, and no bind context reaches the bind cache. The gang stays pending and is retried in a later session. A batch with only soft policies needs no preparation and uses the normal commit.
 
-`SaveOperations` and `RecoverOperations` transfer only normal task operations, never an adapter reservation, handoff, transaction participant, or allocation-attempt checkpoint. Before any bind context is handed to the bind cache, the transaction preflights every planned Task and Node placement against the current session and revalidates all reserved IDs against the live ledger. A failed plan, reservation, or preflight creates no partial task allocation and leaves gang readiness to the existing gang plugin.
+The gang plan unit is the exact set of pending Tasks that the existing gang logic is about to admit in one `Statement`. It is not automatically every Job replica. For example, when a Job has ten replicas and `minAvailable: 4`, the first unit contains the four Tasks needed for the current gang admission. Later pending Tasks receive a new plan unit when the normal allocate and gang logic selects them. The normal Statement still covers every Task in this unit; the topology plan must cover every Task in it that is selected by a device requirement, or allocate none of them. A hard fabric policy is the exception in alpha: every Task of the scheduling unit must use one fabric, but a later plan does not yet know which fabric the earlier Tasks received. While any Task of a hard-fabric unit is already placed, a later plan for that unit, including the replacement for a failed Pod, is rejected with `DeviceTopologyFabricUnavailable` instead of risking a second fabric. Tracking the earlier fabric choice is follow-up work.
+
+##### Known Limitation: Greedy Node Choice
+
+Because `allocate` chooses Nodes Task by Task, and the commit-time plan only works on those Nodes, a hard gang can stay pending even when another set of Nodes would fit it. For example, a hard fabric gang of four Pods can start on a Node whose local domains belong to two fabrics. If the first fabric in stable ID order has room for only two of the Pods, pending accounting pins the gang to that fabric, and the remaining Pods have no fitting Node. The second fabric could hold all four Pods, but it is never tried. Best-fit domain choice and pending accounting make this less likely but cannot rule it out. Because the choice is deterministic, the same gang can stay pending in every session. The reported reason is the normal hard topology reason, such as `DeviceTopologyFabricUnavailable` or `DeviceTopologyDomainFragmented`.
+
+##### Future Work: Pre-Allocation Gang-Plan Callback
+
+A framework-owned gang-planning callback would remove this limitation. `allocate` would call it, for example through `ssn.AddGangPlanFn`, before tentative allocation of a hard unit, with each Task's candidate Nodes after normal predicates and scope, and with plan-owned `NodeInfo` clones for normal resource accounting. The callback would return a complete side-effect-free placement, so the planner could search Node sets and fabrics together instead of accepting the first greedy choice. `allocate` would then allocate along that placement, and an allocation-attempt checkpoint would restore its worksheets, fit errors, and recorder state if the final plan or reservation fails. This changes `allocate` and the framework API, so it needs framework maintainer review. It is deferred until real workloads show that greedy Node choice leaves gangs pending in practice.
 
 #### Gang Planning Flow
 
@@ -1211,21 +1164,21 @@ Per-Pod filtering must still see the earlier Pods of the same gang. Normal Node 
 
 ```mermaid
 flowchart TD
-    Candidates[Domain-aware Queue, NodeShard, HyperNode, and predicate candidates] --> Scope[Apply hard fabric scope and exact feasibility recheck]
-    Scope --> Plan["Build pure plan candidates<br/>for every hard-mode Task"]
-    Plan --> Statement[Statement.Allocate]
+    Candidates[Queue, NodeShard, HyperNode, and predicate candidates] --> Filter["Device-topology predicate<br/>minus pending devices"]
+    Filter --> Statement["Statement.Allocate per Task<br/>record pending devices"]
     Statement --> Ready[Existing gang readiness]
-    Ready --> Finalize["Finalize plan for selected Nodes<br/>and revalidate device IDs"]
+    Ready --> Commit[CommitWithParticipants]
+    Commit --> Finalize["PrepareBindBatch: plan the unit<br/>on the assigned Nodes"]
     Finalize --> Reserve{Reserve every selected ID?}
-    Reserve -->|no| Pending["Discard and replan<br/>No partial allocation"]
-    Reserve -->|yes| Commit[CommitWithParticipants]
-    Commit --> Bind[Existing bind path]
+    Reserve -->|no| Pending["Roll back and discard<br/>No partial allocation"]
+    Reserve -->|yes| Batch["Handoffs, Binding state,<br/>AddBindBatch"]
+    Batch --> Bind[Existing bind path]
     Bind --> Confirm[Adapter confirms allocation]
 
     classDef normal fill:#e8f1ff,stroke:#2563eb,color:#172554
     classDef safe fill:#eafaf1,stroke:#16a34a,color:#14532d
     classDef wait fill:#fff7e6,stroke:#d97706,color:#78350f
-    class Candidates,Scope,Plan,Statement,Ready,Finalize,Commit,Bind normal
+    class Candidates,Filter,Statement,Ready,Commit,Finalize,Batch,Bind normal
     class Reserve,Confirm safe
     class Pending wait
 ```
@@ -1234,7 +1187,7 @@ The planner orders tasks by fewest candidate domains, then largest device reques
 
 `TryReserve(plan)` is the topology ledger's internal all-or-nothing hold. It validates every selected ID against the current ledger and either creates every scheduler-side hold or creates none. Locks use canonical fabric/domain/device order to avoid deadlock.
 
-`TopologyReservationCoordinator.ReservePlan` is the only path that combines the ledger and the allocation backend. It first creates the ledger hold, then calls `AllocationAdapter.Reserve` with the immutable plan. Only when both succeed does it return a transaction participant containing the linked scheduler reservation and adapter token. If adapter reservation fails, it releases the ledger hold. If a later compensating adapter or ledger release fails, it marks the IDs `Unreconciled` and blocks new hard placements until authoritative reconciliation. The adapter must never choose IDs outside the immutable plan, and the ledger must never claim to have assigned a device in the backend.
+`SchedulerCache.ReserveDeviceTopologyPlan` is the only path that combines the ledger and the allocation backend. It first creates the ledger hold, then calls `AllocationAdapter.Reserve` with the immutable plan. Only when both succeed does it return a `TopologyReservation` that links the scheduler hold and the adapter token. If adapter reservation fails, it releases the ledger hold. If a later compensating adapter or ledger release fails, it marks the IDs `Unreconciled` and blocks new hard placements until authoritative reconciliation. The adapter must never choose IDs outside the immutable plan, and the ledger must never claim to have assigned a device in the backend.
 
 Reservations have an explicit lifecycle:
 
@@ -1319,7 +1272,7 @@ type TopologyPlacementPlan struct {
 
 Every container assignment sets `ContainerName` and `ResourceName`. `PodUID`, `ContainerName`, and the selected resource make the selected-ID handoff unambiguous across bind retries. `TopologyPlacementPlan.FabricID` records the one fabric that passed the alpha policy's single-resource fabric rule, and every placement must belong to it. The adapter rejects a plan whose Pod identity, resource, container assignment, Node, domain, fabric, or device IDs no longer match the runtime request.
 
-`allocate` asks the plugin for one plan for the applicable parent PodGroup or SubJob gang unit. After `ReservePlan` accepts the plan, the returned participant is attached to the same `Statement` that records task allocations. This requires a framework transaction change. The current `Statement.Commit` logs individual allocation errors and has no error result, so it cannot provide the required all-or-nothing pre-bind outcome. The proposed framework participant contract is deliberately small:
+The batch pre-binder plans and reserves the applicable parent PodGroup or SubJob gang unit when the `Statement` that records its task allocations commits, as described in [Plugin Callbacks and Commit-Time Gang Planning](#plugin-callbacks-and-commit-time-gang-planning). Its preparation then commits or rolls back together with those task allocations. This requires a framework transaction change. The current `Statement.Commit` logs individual allocation errors and has no error result, so it cannot provide the required all-or-nothing pre-bind outcome. The proposed framework participant contract is deliberately small:
 
 ```go
 // TransactionParticipant coordinates an external reservation with one
@@ -1364,7 +1317,7 @@ type BindBatchSubmitter interface {
 
 The existing `Statement.Commit()` remains unchanged for non-device-topology actions. When no batch pre-binder is registered, or none of them prepares the Statement, `CommitWithParticipants()` runs the existing `Statement.Commit()` without building bind contexts first. `CommitWithParticipants()` uses the transaction path only for a plan that attached a transaction participant. It first preflights every planned allocation without creating a bind context. It then applies all in-memory task and Node mutations. If any mutation fails, it reverses every earlier mutation, invokes participants' `Rollback` methods in reverse registration order, creates no bind context, and returns an error.
 
-After in-memory mutations succeed, `CommitWithParticipants()` obtains and validates one immutable `DeviceTopologyHandoff` for every planned bind context. It then runs `BatchPreBinder.PrepareBindBatch` across the complete batch before a context is accepted by the bind cache. If any member preparation fails, it invokes every successful preparation rollback in reverse order, rolls back the transaction participant and allocation-attempt checkpoint, and submits no bind context. A hard device-topology batch must not fall back to the existing independent per-context prebind loop. A non-transactional prebind integration is therefore incompatible with this alpha batch path until it implements the batch contract.
+After in-memory mutations succeed, `CommitWithParticipants()` obtains and validates one immutable `DeviceTopologyHandoff` for every planned bind context. It then runs `BatchPreBinder.PrepareBindBatch` across the complete batch before a context is accepted by the bind cache. If any member preparation fails, it invokes every successful preparation rollback in reverse order, rolls back the transaction participant, and submits no bind context. A hard device-topology batch must not fall back to the existing independent per-context prebind loop. A non-transactional prebind integration is therefore incompatible with this alpha batch path until it implements the batch contract.
 
 Only after all batch preparations succeed does `CommitWithParticipants()` call participant `Commit` and submit one `BindBatch`. `AddBindBatch` validates every context, including the handoff's Pod UID and Node, applies the corresponding scheduler-cache task and Node mutations under one cache lock, and only then queues the contexts on the existing bind channel. If participant commit or batch submission fails, it invokes batch-preparation rollbacks, then follows the same transaction rollback path. The bind worker must not dispatch an individual context from a batch before the batch is fully accepted, and it must not run the ordinary per-context prebind loop a second time for a prepared device-topology batch. This new path avoids changing every existing `Statement.Commit()` caller.
 
@@ -1421,7 +1374,7 @@ Recommended fit reasons include `DeviceTopologyDataNotReady`, `DeviceTopologyDom
 | Complete gang plan cannot be found | Keep the gang pending. Do not allocate a partial topology plan. | No reservation is created. |
 | Concurrent plan reserves a selected ID first | Rebuild or retry the plan against the current ledger. | `TryReserve` changes nothing on failure. |
 | Adapter rejects the immutable plan reservation | Report the structured adapter failure. Retry a different topology plan only when the error is retryable, otherwise keep the gang pending with the explicit device-topology reason. | Release the complete ledger hold. Mark IDs `Unreconciled` if compensation fails. |
-| A transaction, handoff, or batch pre-bind preparation fails | Roll back every prepared member, tentative task and Node mutation, and allocation-attempt checkpoint before the bind cache sees a context. | Release the complete `Held` reservation. |
+| A transaction, handoff, or batch pre-bind preparation fails | Roll back every prepared member and every tentative task and Node mutation before the bind cache sees a context. | Release the complete `Held` reservation. |
 | An individual Kubernetes bind or adapter enforcement fails after a prepared batch is dispatched | Kubernetes binding is non-atomic, so reconcile any member that already bound and retry the unbound work through normal scheduling. | Release unconfirmed reservations and reconcile every bound allocation. |
 | A confirmation deadline expires after bind handoff | Report the missing confirmation and stop new hard plans from using those IDs. | Mark IDs `Unreconciled` until authoritative reconciliation. |
 | Scheduler restarts with exact adapter reservations | Reload provider facts, recover active adapter reservations and allocations, then reconstruct safe ledger state before enabling hard placement. | Block the adapter-owned resource when recovery fails or leaves an unknown reservation. |
@@ -1480,9 +1433,9 @@ The following package layout keeps source parsing, reusable scheduler API types,
 | Cache integration | `pkg/scheduler/cache/cache.go`, `event_handlers.go`, `cache_mock.go`, `pkg/scheduler/api/cluster_info.go` | Initialize SchedulerCache topology state, serialize provider work per Node UID, enforce provider initial-sync readiness, process liveness heartbeats, defer live-device identity changes until release, attach the immutable device topology view to `ClusterInfo.Snapshot()`, and initialize test caches. |
 | SubJob integration | `pkg/scheduler/api/job_info.go`, `sub_job_info.go` | Copy the matching subgroup device-topology policy into `SubJobInfo`, preserve existing subgroup membership and gang accounting, and identify the parent or SubJob scheduling unit in every plan digest and reservation. |
 | Session integration | `pkg/scheduler/framework/session.go`, `framework.go` | Keep the ordinary `SchedulerCache.Snapshot()` path, copy `ClusterInfo.DeviceTopology` to `Session.DeviceTopology`, and expose it to the device-topology plugin before plugin initialization. |
-| Transaction integration | `pkg/scheduler/framework/statement.go`, proposed `topology_transaction.go`, `pkg/scheduler/cache/cache.go` | Keep gang-plan trials side-effect free, checkpoint allocation worksheets and recorder state, finalize and reserve only after the final Statement is recovered, add `CommitWithParticipants`, reservation participants, immutable `DeviceTopologyHandoff` attachment, reversible batch prebind, rollback of every tentative mutation, and atomic bind-context batch handoff without changing existing `Statement.Commit()` callers. |
+| Transaction integration | `pkg/scheduler/framework/statement.go`, proposed `topology_transaction.go`, `pkg/scheduler/cache/cache.go` | Add `CommitWithParticipants`, reservation participants, immutable `DeviceTopologyHandoff` attachment, reversible batch prebind, rollback of every tentative mutation, and atomic bind-context batch handoff without changing existing `Statement.Commit()` callers. |
 | Plugin | `pkg/scheduler/plugins/devicetopology/` | Policy resolution, domain-feasibility summary, predicate, score, gang planner, reservation participant, and tests. |
-| Allocation integration | `pkg/scheduler/actions/allocate/allocate.go` | Request one complete plan before tentative allocation of the applicable gang unit. |
+| Allocation integration | `pkg/scheduler/actions/allocate/allocate.go` | Commit Statements through `CommitWithParticipants`, so the batch pre-binder plans and reserves each hard gang unit before any bind context is submitted. A pre-allocation gang-plan request is future work. |
 | Configuration | `pkg/scheduler/conf/volcano_features.go`, scheduler config/Helm values | Feature gate, plugin arguments, leader-election requirement for exact mode, replica consistency, hot-reload validation, and safe feature-drain validation. |
 | Annotation security | Helm manifests and admission-policy or webhook configuration | Dedicated publisher ServiceAccount, least-privilege Node RBAC, annotation-key write protection, and audit configuration. |
 | API, webhook, Job, and PodGroup controller | batch and scheduling API types, generated code, Job and PodGroup validation, `pkg/controllers/job/job_controller_actions.go`, `pkg/controllers/podgroup/pg_controller_handler.go` | Add typed parent and `SubGroupPolicy.deviceTopology` fields, copy a Job partition device policy into its generated subgroup policy, parse and normalize normal-Pod parent policies into generated PodGroups, and reject malformed, conflicting, or ambiguous parent-plus-subgroup policy updates. |
@@ -1558,7 +1511,7 @@ The implementation is phased as follows. Phases 1 through 4 together are the alp
 | --- | --- |
 | 1 | Typed Job, PodGroup, and SubGroup policy API, Job partition-to-subgroup policy conversion, normal-Pod parent-policy annotation parsing and generated-PodGroup conversion, fail-closed policy validation, canonical types/cache, feature-gate and plugin configuration validation including leader-election and safe feature-drain validation, Node-inventory annotation/mock provider, ordered Node UID updates, liveness refresh, explicit fabric ownership and member identity, immutable indexes, and unit tests. |
 | 2 | One `SchedulerCache` snapshot carrying Node, HyperNode, and immutable device topology views; reviewed domain-summary integration for HyperNode and Node selection; hard/soft local-domain filtering and affinity scoring; fit reasons; immutable policy validation; and disabled-feature regressions. |
-| 3 | Gang-plan units, allocation-attempt checkpoints, linked ledger and adapter reservations, reservation lifecycle, `CommitWithParticipants`, reversible batch prebind and bind-context batch handoff, failure injection, leader-handoff recovery, and concurrency tests. |
+| 3 | Gang-plan units planned at commit, pending accounting, linked ledger and adapter reservations, reservation lifecycle, `CommitWithParticipants`, reversible batch prebind and bind-context batch handoff, failure injection, leader-handoff recovery, and concurrency tests. |
 | 4 | Mock/KWOK cross-Node fabric and HyperNode intersection, E2E scenarios, benchmarks, operational metrics, and user documentation. |
 
 Production DRA and Device Plugin companion adapters are follow-up work. The initial implementation delivers their interfaces and mock coverage so future integrations do not redesign the policy, cache, or transaction model.
