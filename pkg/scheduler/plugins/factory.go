@@ -26,6 +26,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/capacity"
 	"volcano.sh/volcano/pkg/scheduler/plugins/cdp"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
+	"volcano.sh/volcano/pkg/scheduler/plugins/crossquota"
 	"volcano.sh/volcano/pkg/scheduler/plugins/deviceshare"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
@@ -74,6 +75,8 @@ func init() {
 	framework.RegisterPluginBuilder(nodegroup.PluginName, nodegroup.New)
 	framework.RegisterPluginBuilder(networktopologyaware.PluginName, networktopologyaware.New)
 	framework.RegisterPluginBuilder(grouptopologyaffinity.PluginName, grouptopologyaffinity.New)
+
+	framework.RegisterPluginBuilder(crossquota.PluginName, crossquota.New)
 
 	// Plugins for Queues
 	framework.RegisterPluginBuilder(proportion.PluginName, proportion.New)
