@@ -754,6 +754,97 @@ var _ = Describe("Reclaim E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue11 running")
 	})
 
+	// reclaimable: false on a parent queue blocks reclaim from outside its subtree but not from inside it.
+	It("Capacity Reclaim Case 13: Non-reclaimable parent queue protects its subtree", func() {
+		cmc := e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
+		modifier := func(sc *e2eutil.SchedulerConfiguration) bool {
+			trueValue := true
+			for _, tier := range sc.Tiers {
+				for i, plugin := range tier.Plugins {
+					if plugin.Name == "proportion" {
+						tier.Plugins[i] = e2eutil.PluginOption{
+							Name:             "capacity",
+							EnabledHierarchy: &trueValue,
+						}
+						return true
+					}
+				}
+			}
+			return false
+		}
+		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
+			return e2eutil.ModifySchedulerConfig(data, modifier)
+		})
+		defer cmc.UndoChanged()
+
+		tenantA, tenantB := "reclaim-tenant-a", "reclaim-tenant-b"
+		a1, a2, b1 := "reclaim-a1", "reclaim-a2", "reclaim-b1"
+		cpu4Mem4 := v1.ResourceList{v1.ResourceCPU: *resource.NewQuantity(4, resource.DecimalSI), v1.ResourceMemory: *resource.NewQuantity(4*1024*1024*1024, resource.BinarySI)}
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:        []string{tenantA, tenantB, a1, a2, b1},
+			NodesNumLimit: 4,
+			DeservedResource: map[string]v1.ResourceList{
+				tenantA: cpu4Mem4,
+				tenantB: cpu4Mem4,
+				a1:      e2eutil.CPU2Mem2,
+				a2:      e2eutil.CPU2Mem2,
+				b1:      e2eutil.CPU2Mem2,
+			},
+			QueueParent: map[string]string{
+				tenantA: "root",
+				tenantB: "root",
+				a1:      tenantA,
+				a2:      tenantA,
+				b1:      tenantB,
+			},
+			NodesResourceLimit: e2eutil.CPU2Mem2,
+		})
+		ctx.Queues = []string{a1, a2, b1, tenantA, tenantB}
+		defer e2eutil.CleanupTestContext(ctx)
+
+		e2eutil.SetQueueReclaimable(ctx, []string{tenantA}, false)
+
+		By("Setup initial jobs")
+
+		spec := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    e2eutil.CPU2Mem2,
+					Min:    1,
+					Rep:    4,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
+				},
+			},
+		}
+
+		spec.Name = "reclaim-j1"
+		spec.Queue = a1
+		job1 := e2eutil.CreateJob(ctx, spec)
+		err := e2eutil.WaitTasksReady(ctx, job1, 4)
+		Expect(err).NotTo(HaveOccurred(), "Wait for job1 failed")
+
+		By("a2 reclaims from a1 inside tenant A")
+
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU2Mem2, "reclaim-j2", a2, "", "", true)
+		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
+
+		err = CheckPodGroupStatistics(ctx, "Running", 1, a2)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue a2 running")
+
+		By("b1 cannot reclaim from a1 across tenant A")
+
+		job3, err := CreateReclaimJob(ctx, e2eutil.CPU2Mem2, "reclaim-j3", b1, "", "", false)
+		Expect(err).NotTo(HaveOccurred(), "Create job3 failed")
+
+		// WaitJobUnschedulable polls every 10s, so several scheduling cycles run before it returns.
+		err = e2eutil.WaitJobUnschedulable(ctx, job3)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for job3 unschedulable")
+
+		pgStats := e2eutil.GetPodGroupStatistics(ctx, ctx.Namespace, b1)
+		Expect(pgStats.Running).To(Equal(0), "Expected no running podgroup in queue b1")
+	})
+
 	It("Reclaim", func() {
 		Skip("skip: the case has some problem")
 		q1, q2 := "reclaim-q1", "reclaim-q2"
