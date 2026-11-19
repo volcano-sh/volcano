@@ -84,7 +84,7 @@ data:
 |----------|---------|-------------|
 | `fairshare.targetQueues` | _(all queues)_ | Comma-separated queue names to apply fair share to; if unset, applies to every queue |
 | `fairshare.resourceKey` | `nvidia.com/gpu` | Default resource to track |
-| `fairshare.resourceKey.<queue>` | _(none)_ | Per-queue resource override (e.g., `amd.com/gpu`, `cpu`) |
+| `fairshare.resourceKey.<queue>` | _(none)_ | Per-queue resource override (e.g., `amd.com/gpu`, `cpu`); applies whether or not `fairshare.targetQueues` is set |
 | `fairshare.halfLifeMinutes` | `240` | Half-life for usage decay in minutes |
 | `fairshare.enableEnqueueGate` | `false` | When `true`, blocks namespaces at/above their calculated share from entering the scheduling pipeline |
 | `fairshare.persistState` | `false` | When `true`, persists usage state to a ConfigMap so it survives scheduler restarts |
