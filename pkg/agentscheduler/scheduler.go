@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -44,6 +45,12 @@ import (
 
 	agentmetrics "volcano.sh/volcano/pkg/agentscheduler/metrics"
 )
+
+type configSnapshot struct {
+	actions        []framework.Action
+	tiers          []conf.Tier
+	configurations []conf.Configuration
+}
 
 // Scheduler represents a "Volcano Agent Scheduler".
 // Scheduler watches for new unscheduled pods.
@@ -63,11 +70,32 @@ type Scheduler struct {
 	disableDefaultConf bool
 	workerCount        int
 	shardingMode       string
+	confSnapshot       atomic.Pointer[configSnapshot]
+}
+
+func (sched *Scheduler) getConfSnapshot() *configSnapshot {
+	return sched.confSnapshot.Load()
 }
 
 type Worker struct {
 	framework *framework.Framework
 	index     int
+	sched     *Scheduler
+	conf      *configSnapshot
+}
+
+func (worker *Worker) updateFrameworkIfNeeded() {
+	if worker.sched == nil {
+		return
+	}
+
+	snap := worker.sched.getConfSnapshot()
+	if snap == nil || snap == worker.conf {
+		return
+	}
+
+	worker.framework = framework.NewFramework(snap.actions, snap.tiers, worker.sched.cache, snap.configurations)
+	worker.conf = snap
 }
 
 // NewAgentScheduler returns a Scheduler
@@ -104,14 +132,17 @@ func (sched *Scheduler) Run(stopCh <-chan struct{}) {
 	sched.cache.SetMetricsConf(sched.metricsConf)
 	sched.cache.Run(stopCh)
 
-	for _, action := range sched.actions {
-		action.OnActionInit(sched.configurations)
-	}
-
+	snap := sched.getConfSnapshot()
 	klog.V(2).Infof("Scheduler completes Initialization and start to run %d workers", sched.workerCount)
 	for i := range sched.workerCount {
-		worker := &Worker{index: i}
-		worker.framework = framework.NewFramework(sched.actions, sched.tiers, sched.cache, sched.configurations)
+		worker := &Worker{
+			index: i,
+			sched: sched,
+			conf:  snap,
+		}
+		if snap != nil {
+			worker.framework = framework.NewFramework(snap.actions, snap.tiers, sched.cache, snap.configurations)
+		}
 		go func() {
 			for {
 				select {
@@ -145,6 +176,8 @@ func (worker *Worker) runOnce() {
 		klog.Warningf("No task to schedule")
 		return
 	}
+
+	worker.updateFrameworkIfNeeded()
 
 	scheduleStartTime := time.Now()
 
@@ -228,10 +261,26 @@ func (sched *Scheduler) loadSchedulerConf() {
 	var err error
 	if !sched.disableDefaultConf {
 		sched.once.Do(func() {
-			sched.actions, sched.tiers, sched.configurations, sched.metricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
+			var dActions []framework.Action
+			var dTiers []conf.Tier
+			var dConfigurations []conf.Configuration
+			var dMetricsConf map[string]string
+			dActions, dTiers, dConfigurations, dMetricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
 			if err != nil {
 				klog.Fatalf("Invalid default configuration: unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
 			}
+			for _, action := range dActions {
+				action.OnActionInit(dConfigurations)
+			}
+			sched.actions = dActions
+			sched.tiers = dTiers
+			sched.configurations = dConfigurations
+			sched.metricsConf = dMetricsConf
+			sched.confSnapshot.Store(&configSnapshot{
+				actions:        dActions,
+				tiers:          dTiers,
+				configurations: dConfigurations,
+			})
 		})
 	}
 
@@ -258,12 +307,21 @@ func (sched *Scheduler) loadSchedulerConf() {
 		return
 	}
 
+	for _, action := range actions {
+		action.OnActionInit(configurations)
+	}
+
 	sched.mutex.Lock()
 	sched.actions = actions
 	sched.tiers = tiers
 	sched.configurations = configurations
 	sched.metricsConf = metricsConf
-	defer sched.mutex.Unlock()
+	sched.confSnapshot.Store(&configSnapshot{
+		actions:        actions,
+		tiers:          tiers,
+		configurations: configurations,
+	})
+	sched.mutex.Unlock()
 }
 
 func (sched *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
