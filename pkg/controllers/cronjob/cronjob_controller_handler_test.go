@@ -21,12 +21,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 
 	batchv1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
 func TestGetJobsByCronJob(t *testing.T) {
@@ -418,4 +423,68 @@ type fakeQueue struct {
 func (f *fakeQueue) AddAfter(key string, delay time.Duration) {
 	f.delay = delay
 	f.key = key
+}
+
+type jobsByName map[string]*batchv1.Job
+
+func (j jobsByName) GetJobClient(_ vcclientset.Interface, _ string, name string) (*batchv1.Job, error) {
+	if job, ok := j[name]; ok {
+		return job, nil
+	}
+	return nil, errors.NewNotFound(batchv1.Resource("jobs"), name)
+}
+
+func (j jobsByName) DeleteJobClient(_ vcclientset.Interface, _ string, name string) error {
+	if _, ok := j[name]; !ok {
+		return errors.NewNotFound(batchv1.Resource("jobs"), name)
+	}
+	delete(j, name)
+	return nil
+}
+
+func (j jobsByName) CreateJobClient(_ vcclientset.Interface, _ string, job *batchv1.Job) (*batchv1.Job, error) {
+	j[job.Name] = job
+	return job, nil
+}
+
+func cronJobWithActive(policy batchv1.ConcurrencyPolicy, names ...string) *batchv1.CronJob {
+	cj := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "cj", Namespace: "default", UID: "cj-uid"},
+		Spec:       batchv1.CronJobSpec{ConcurrencyPolicy: policy},
+	}
+	for _, name := range names {
+		cj.Status.Active = append(cj.Status.Active, corev1.ObjectReference{
+			Kind: "Job", Namespace: "default", Name: name, UID: types.UID(name + "-uid"),
+		})
+	}
+	return cj
+}
+
+func TestProcessCtlJobAndActiveJobRemovesEveryStaleReference(t *testing.T) {
+	controller, _ := setupTestController()
+	cronJob := cronJobWithActive(batchv1.AllowConcurrent, "job-a", "job-b", "job-c")
+
+	updateStatus, err := controller.processCtlJobAndActiveJob(cronJob, nil)
+
+	require.NoError(t, err)
+	assert.True(t, updateStatus)
+	assert.Empty(t, cronJob.Status.Active)
+}
+
+func TestReplaceConcurrentDeletesEveryActiveJob(t *testing.T) {
+	controller, _ := setupTestController()
+	jobs := jobsByName{}
+	for _, name := range []string{"job-a", "job-b", "job-c"} {
+		jobs[name] = &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: name, UID: types.UID(name + "-uid")}}
+	}
+	controller.jobClient = jobs
+	cronJob := cronJobWithActive(batchv1.ReplaceConcurrent, "job-a", "job-b", "job-c")
+
+	requeue, updateStatus, err := controller.processConcurrencyPolicy(cronJob)
+
+	require.NoError(t, err)
+	assert.False(t, requeue)
+	assert.True(t, updateStatus)
+	assert.Empty(t, jobs)
+	assert.Empty(t, cronJob.Status.Active)
 }
