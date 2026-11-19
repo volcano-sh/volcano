@@ -39,8 +39,8 @@ data:
       - name: priority
       - name: gang
         enablePreemptable: false
-      - name: conformance
     - plugins:
+      - name: conformance
       - name: drf
         enablePreemptable: false
       - name: predicates
@@ -48,6 +48,10 @@ data:
       - name: nodeorder
       - name: binpack
 ```
+
+> [!NOTE]
+> When using eviction actions like `reclaim` or `preempt`, victim eligibility filter plugins such as `conformance` should be placed in the **same tier** as quota plugins (`capacity` or `proportion`).
+> In Volcano, `Session.Reclaimable` and `Session.Preemptable` evaluate plugin tiers in sequence and short-circuit at the first tier that returns a non-nil candidate list. Placing `conformance` in a higher tier by itself causes it to return all non-critical pods, preventing lower-tier plugins like `capacity` from enforcing queue deserved quotas.
 
 ## Configure ancestor reclaim level
 
@@ -74,8 +78,8 @@ data:
       - name: priority
       - name: gang
         enablePreemptable: false
-      - name: conformance
     - plugins:
+      - name: conformance
       - name: drf
         enablePreemptable: false
       - name: predicates
