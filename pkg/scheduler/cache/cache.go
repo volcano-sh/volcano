@@ -939,6 +939,11 @@ func (sc *SchedulerCache) addEventHandler() {
 			sc.registerHintEventHandler(handlers, "resourceSlice", resourceSliceTracker, fwk.ResourceSlice)
 		}
 		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, sc.resourceClaimCache, resourceSliceTracker, informerFactory)
+		if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRAExtendedResource) {
+			// KEP-5004: extended resources mapped to a DeviceClass are allocated by DRA, so they
+			// are excluded from the per-node resource fit and from NodeInfo accounting.
+			schedulingapi.SetDRAExtendedResourceResolver(schedulingapi.NewDRAExtendedResourceResolver(sc.sharedDRAManager))
+		}
 	}
 	sc.registeredHandlers = handlers
 }

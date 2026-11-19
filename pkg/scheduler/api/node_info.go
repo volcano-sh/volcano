@@ -471,6 +471,10 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 	// Node will hold a copy of task to make sure the status
 	// change will not impact resource in node.
 	ti := task.Clone()
+	// KEP-5004: extended resources delegated to DRA are not part of node allocatable, so keep them
+	// out of Idle/Used/Releasing/Pipelined. RemoveTask subtracts this stored clone's Resreq, which
+	// keeps removal symmetric with addition.
+	ti.Resreq = ni.FitRequest(ti.Resreq)
 
 	if ni.Node != nil {
 		switch ti.Status {

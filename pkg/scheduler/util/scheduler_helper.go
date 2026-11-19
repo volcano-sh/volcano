@@ -325,9 +325,11 @@ func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api
 	}
 	// Every resource of the preemptor needs to be less or equal than corresponding
 	// idle resource after preemption.
-	if !preemptor.InitResreq.LessEqual(futureIdle, api.Zero) {
+	// Extended resources delegated to DRA on this node (KEP-5004) are not part of node idle.
+	request := node.FitRequest(preemptor.InitResreq)
+	if !request.LessEqual(futureIdle, api.Zero) {
 		return fmt.Errorf("not enough resources: requested <%v>, but future idle <%v>",
-			preemptor.InitResreq, futureIdle)
+			request, futureIdle)
 	}
 	return nil
 }
