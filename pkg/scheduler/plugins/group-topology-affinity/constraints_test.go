@@ -250,7 +250,7 @@ func TestCompiledNamespaceSelectors(t *testing.T) {
 		{name: "namespace labels", selector: &metav1.LabelSelector{MatchLabels: map[string]string{"team": "b"}}, want: sets.New(remote.UID)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			terms, err := compileTerms(ssn, job, []scheduling.PodGroupAffinityTerm{{TopologyTierName: "supernode", PodGroupSelector: &metav1.LabelSelector{}, NamespaceSelector: tt.selector}})
+			terms, err := compileTerms(ssn, job, []scheduling.PodGroupAffinityTerm{{TopologyTierName: "supernode", PodGroupSelector: &metav1.LabelSelector{}, NamespaceSelector: tt.selector}}, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -283,7 +283,7 @@ func TestCompiledPodGroupSelectors(t *testing.T) {
 			foreign := otherJobOn("foreign", "sn-b", "prod")
 			foreign.Namespace = "other"
 			ssn := &framework.Session{Jobs: map[api.JobID]*api.JobInfo{job.UID: job, peer.UID: peer, foreign.UID: foreign, "nil": nil, "no-podgroup": {UID: "no-podgroup"}}, HyperNodeTierNameMap: defaultTierNameMap()}
-			terms, err := compileTerms(ssn, job, []scheduling.PodGroupAffinityTerm{{TopologyTierName: "supernode", PodGroupSelector: tc.selector}})
+			terms, err := compileTerms(ssn, job, []scheduling.PodGroupAffinityTerm{{TopologyTierName: "supernode", PodGroupSelector: tc.selector}}, false)
 			require.NoError(t, err)
 			require.Len(t, terms[0].peers, tc.want)
 			if tc.want > 0 {
