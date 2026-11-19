@@ -84,13 +84,13 @@ func PrintJobTemplates(jobTemplates *v1alpha1.JobTemplateList, writer io.Writer)
 	// Print the header.
 	_, err := fmt.Fprintf(writer, formatStr, Name, Namespace)
 	if err != nil {
-		fmt.Printf("Failed to print JobTemplate command result: %s.\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to print JobTemplate command result: %s.\n", err)
 	}
 	// Print the job templates.
 	for _, jobTemplate := range jobTemplates.Items {
 		_, err := fmt.Fprintf(writer, formatStr, jobTemplate.Name, jobTemplate.Namespace)
 		if err != nil {
-			fmt.Printf("Failed to print JobTemplate command result: %s.\n", err)
+			fmt.Fprintf(os.Stderr, "Failed to print JobTemplate command result: %s.\n", err)
 		}
 	}
 }
