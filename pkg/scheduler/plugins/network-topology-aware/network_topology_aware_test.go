@@ -17,6 +17,7 @@ limitations under the License.
 package networktopologyaware
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -3402,6 +3403,190 @@ func Test_batchNodeOrderFnForNormalPods(t *testing.T) {
 			fmt.Printf("The time cost for invoking the batchNodeOrderFnForNormalPods function is %v.\n", elapsed)
 		})
 	}
+}
+
+// TestHyperNodeResourceCacheUpdatesAfterAllocation verifies that the cached
+// used resources of every HyperNode containing a node are updated when a task
+// is allocated, and restored when the allocation is discarded.
+func TestHyperNodeResourceCacheUpdatesAfterAllocation(t *testing.T) {
+	const (
+		nodeName      = "node-1"
+		hyperNodeName = "hypernode-1"
+	)
+
+	allocatedPod := util.BuildPod(
+		"default",
+		"allocated-pod",
+		"",
+		corev1.PodPending,
+		api.BuildResourceList("4", "1Gi"),
+		"allocated-job",
+		nil,
+		nil,
+	)
+	nodeObject := util.BuildNode(
+		nodeName,
+		api.BuildResourceList("4", "8Gi", api.ScalarResource{Name: "pods", Value: "10"}),
+		nil,
+	)
+	schedulerCache := cache.NewDefaultMockSchedulerCache("test-scheduler")
+	schedulerCache.AddOrUpdateNode(nodeObject)
+	schedulerCache.AddPod(allocatedPod)
+	schedulerCache.AddPodGroupV1beta1(
+		util.BuildPodGroup("allocated-job", "default", "q1", 1, nil, schedulingv1.PodGroupInqueue),
+	)
+	schedulerCache.AddQueueV1beta1(util.BuildQueue("q1", 1, nil))
+
+	ssn := framework.OpenSession(schedulerCache, nil, nil)
+	defer framework.CloseSession(ssn)
+	node := ssn.Nodes[nodeName]
+	allocatedJob := ssn.Jobs[api.JobID("default/allocated-job")]
+	allocatedTask := allocatedJob.Tasks[api.TaskID(allocatedPod.UID)]
+
+	hyperNode := api.NewHyperNodeInfo(api.BuildHyperNode(hyperNodeName, 1, []api.MemberConfig{
+		{
+			Name:     nodeName,
+			Type:     topologyv1alpha1.MemberTypeNode,
+			Selector: "exact",
+		},
+	}))
+
+	enabled := true
+	ssn.HyperNodes = map[string]*api.HyperNodeInfo{
+		hyperNodeName: hyperNode,
+	}
+	ssn.HyperNodesSetByTier = map[int]sets.Set[string]{
+		1: sets.New[string](hyperNodeName),
+	}
+	ssn.HyperNodesTiers = []int{1}
+	ssn.RealNodesSet = map[string]sets.Set[string]{
+		hyperNodeName: sets.New[string](nodeName),
+	}
+	ssn.Tiers = []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:                     PluginName,
+					EnabledHyperNodeGradient: &enabled,
+				},
+			},
+		},
+	}
+
+	plugin := New(framework.Arguments{}).(*networkTopologyAwarePlugin)
+	plugin.OnSessionOpen(ssn)
+
+	status := plugin.hyperNodeResourceCache[hyperNodeName]
+	assert.Zero(t, status.used.MilliCPU)
+
+	stmt := framework.NewStatement(ssn)
+	assert.NoError(t, stmt.Allocate(allocatedTask, node))
+	assert.Equal(t, float64(4000), status.used.MilliCPU)
+
+	// Save the allocation, then discard it: the cache must be restored.
+	saved := framework.SaveOperations(stmt)
+	stmt.Discard()
+	assert.Zero(t, status.used.MilliCPU)
+
+	// Recover the saved allocation: the cache must be deducted again.
+	recoverStmt := framework.NewStatement(ssn)
+	assert.NoError(t, recoverStmt.RecoverOperations(saved))
+	assert.Equal(t, float64(4000), status.used.MilliCPU)
+
+	// Discard the recovered allocation: the cache must be restored again.
+	recoverStmt.Discard()
+	assert.Zero(t, status.used.MilliCPU)
+}
+
+// TestHyperNodeResourceCacheRollbackAfterFailedPipeline verifies that a failed
+// Statement.Pipeline leaves the cached used resources at their pre-attempt
+// values. Statement.Pipeline triggers AllocateFunc and its deferred unPipeline
+// rollback triggers DeallocateFunc, so the two must cancel out.
+func TestHyperNodeResourceCacheRollbackAfterFailedPipeline(t *testing.T) {
+	const (
+		nodeName      = "node-1"
+		hyperNodeName = "hypernode-1"
+	)
+
+	pod := util.BuildPod(
+		"default",
+		"pipeline-pod",
+		"",
+		corev1.PodPending,
+		api.BuildResourceList("4", "1Gi"),
+		"pipeline-job",
+		nil,
+		nil,
+	)
+	nodeObject := util.BuildNode(
+		nodeName,
+		api.BuildResourceList("4", "8Gi", api.ScalarResource{Name: "pods", Value: "10"}),
+		nil,
+	)
+	schedulerCache := cache.NewDefaultMockSchedulerCache("test-scheduler")
+	schedulerCache.AddOrUpdateNode(nodeObject)
+	schedulerCache.AddPod(pod)
+	schedulerCache.AddPodGroupV1beta1(
+		util.BuildPodGroup("pipeline-job", "default", "q1", 1, nil, schedulingv1.PodGroupInqueue),
+	)
+	schedulerCache.AddQueueV1beta1(util.BuildQueue("q1", 1, nil))
+
+	ssn := framework.OpenSession(schedulerCache, nil, nil)
+	defer framework.CloseSession(ssn)
+	job := ssn.Jobs[api.JobID("default/pipeline-job")]
+	task := job.Tasks[api.TaskID(pod.UID)]
+
+	hyperNode := api.NewHyperNodeInfo(api.BuildHyperNode(hyperNodeName, 1, []api.MemberConfig{
+		{
+			Name:     nodeName,
+			Type:     topologyv1alpha1.MemberTypeNode,
+			Selector: "exact",
+		},
+	}))
+
+	enabled := true
+	ssn.HyperNodes = map[string]*api.HyperNodeInfo{
+		hyperNodeName: hyperNode,
+	}
+	ssn.HyperNodesSetByTier = map[int]sets.Set[string]{
+		1: sets.New[string](hyperNodeName),
+	}
+	ssn.HyperNodesTiers = []int{1}
+	ssn.RealNodesSet = map[string]sets.Set[string]{
+		hyperNodeName: sets.New[string](nodeName),
+	}
+	ssn.Tiers = []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:                     PluginName,
+					EnabledHyperNodeGradient: &enabled,
+				},
+			},
+		},
+	}
+
+	plugin := New(framework.Arguments{}).(*networkTopologyAwarePlugin)
+	plugin.OnSessionOpen(ssn)
+
+	status := plugin.hyperNodeResourceCache[hyperNodeName]
+	preUsed := status.used.MilliCPU
+	assert.Zero(t, preUsed)
+
+	// Inject an allocation callback error so that Statement.Pipeline fails and
+	// the deferred unPipeline rollback is triggered.
+	pipelineErr := errors.New("injected pipeline allocation error")
+	ssn.AddEventHandler(&framework.EventHandler{
+		AllocateFunc: func(event *framework.Event) {
+			event.Err = pipelineErr
+		},
+	})
+
+	stmt := framework.NewStatement(ssn)
+	err := stmt.Pipeline(task, nodeName, false)
+	assert.Error(t, err)
+
+	assert.Equal(t, preUsed, status.used.MilliCPU)
 }
 
 // TestHyperNodeGradientPreFiltering tests the pre-filtering logic in hyperNodeGradientFn.
