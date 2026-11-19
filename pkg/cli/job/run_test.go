@@ -19,16 +19,19 @@ package job
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
-	"volcano.sh/volcano/pkg/cli/util"
 
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/cli/util"
+	"volcano.sh/volcano/pkg/cli/vsub"
 )
 
 func TestCreateJob(t *testing.T) {
@@ -117,4 +120,44 @@ func TestInitRunFlags(t *testing.T) {
 		t.Errorf("Could not find the flag limits")
 	}
 
+}
+
+func TestRunDottedJobName(t *testing.T) {
+	saved := launchJobFlags
+	t.Cleanup(func() { launchJobFlags = saved })
+	for _, legacy := range []bool{false, true} {
+		t.Run(fmt.Sprint("vsub=", legacy), func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				var job v1alpha1.Job
+				if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
+					t.Error(err)
+				}
+				if job.Name != "train.v2" {
+					t.Errorf("job name = %q, want train.v2", job.Name)
+				}
+				name := job.Spec.Tasks[0].Template.Spec.Containers[0].Name
+				if errs := validation.IsDNS1123Label(name); len(errs) != 0 {
+					t.Errorf("invalid container name %q: %v", name, errs)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(job)
+			}))
+			defer server.Close()
+			initFlags, runJob := InitRunFlags, RunJob
+			if legacy {
+				initFlags, runJob = vsub.InitRunFlags, vsub.RunJob
+			}
+			cmd := &cobra.Command{RunE: func(cmd *cobra.Command, args []string) error { return runJob(cmd.Context()) }}
+			initFlags(cmd)
+			cmd.SetArgs([]string{"--master", server.URL, "--name", "train.v2"})
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if requests != 1 {
+				t.Errorf("got %d create requests, want 1", requests)
+			}
+		})
+	}
 }
