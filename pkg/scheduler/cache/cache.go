@@ -1835,12 +1835,38 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 				msg = baseErrorMessage
 			}
 
+			if schedulingapi.IsSummaryDiagnostics() && klog.V(4).Enabled() {
+				logSchedulingDetails(job, taskInfo)
+			}
+
 			if err := sc.taskUnschedulable(taskInfo, reason, msg, nominatedNodeName); err != nil {
 				klog.ErrorS(err, "Failed to update unschedulable task status", "task", klog.KRef(taskInfo.Namespace, taskInfo.Name),
 					"reason", reason, "message", msg)
 			}
 		})
 	}
+}
+
+// logSchedulingDetails records what summary-mode messages leave out (node counts,
+// per-reason counts and the candidate node) so it can still be inspected with -v=4.
+func logSchedulingDetails(job *schedulingapi.JobInfo, task *schedulingapi.TaskInfo) {
+	ctx := task.GetTransactionContext()
+	if task.LastTransaction != nil {
+		ctx = *task.LastTransaction
+	}
+
+	var nodeFitErrors string
+	if fe := job.NodesFitErrors[task.UID]; fe != nil {
+		nodeFitErrors = fe.DetailedError()
+	}
+	if ctx.NodeName == "" && nodeFitErrors == "" {
+		return
+	}
+	klog.V(4).InfoS("Scheduling diagnostics omitted from summary messages",
+		"task", klog.KRef(task.Namespace, task.Name),
+		"status", ctx.Status.String(),
+		"candidateNode", ctx.NodeName,
+		"nodeFitErrors", nodeFitErrors)
 }
 
 // UpdateJobStatus update the status of job and its tasks.

@@ -388,13 +388,23 @@ func (f *FitErrors) NodePluginInsufficientResources(plugin string) map[string][]
 	return result
 }
 
-// Error returns the final error message
+// Error returns the final error message. In summary mode it omits node and per-reason counts.
 func (f *FitErrors) Error() string {
-	if f.err == "" {
-		f.err = fmt.Sprintf("0/%v", len(f.nodes)) + " nodes are unavailable"
+	if IsSummaryDiagnostics() {
+		return f.summaryError()
+	}
+	return f.DetailedError()
+}
+
+// DetailedError returns the message with node and per-reason counts,
+// whatever the configured verbosity.
+func (f *FitErrors) DetailedError() string {
+	prefix := f.err
+	if prefix == "" {
+		prefix = fmt.Sprintf("0/%v", len(f.nodes)) + " nodes are unavailable"
 	}
 	if len(f.nodes) == 0 {
-		return f.err
+		return prefix
 	}
 
 	reasons := make(map[string]int)
@@ -412,7 +422,31 @@ func (f *FitErrors) Error() string {
 		sort.Strings(reasonStrings)
 		return reasonStrings
 	}
-	reasonMsg := fmt.Sprintf(f.err+": %v.", strings.Join(sortReasonsHistogram(), ", "))
+	reasonMsg := fmt.Sprintf(prefix+": %v.", strings.Join(sortReasonsHistogram(), ", "))
+	if f.hyperNode != "" {
+		reasonMsg = fmt.Sprintf("In hyperNode %s: %s", f.hyperNode, reasonMsg)
+	}
+	return reasonMsg
+}
+
+// summaryError is the summary-mode form of Error. It lists only the distinct,
+// sorted failure reasons, without node counts or per-reason counts, so that a
+// change in counts alone does not change the message.
+func (f *FitErrors) summaryError() string {
+	prefix := f.err
+	if prefix == "" {
+		prefix = "nodes are unavailable"
+	}
+	if len(f.nodes) == 0 {
+		return prefix
+	}
+
+	reasons := sets.New[string]()
+	for _, node := range f.nodes {
+		reasons.Insert(node.Reasons()...)
+	}
+
+	reasonMsg := fmt.Sprintf("%s: %s.", prefix, strings.Join(sets.List(reasons), ", "))
 	if f.hyperNode != "" {
 		reasonMsg = fmt.Sprintf("In hyperNode %s: %s", f.hyperNode, reasonMsg)
 	}
