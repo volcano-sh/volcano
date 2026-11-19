@@ -26,8 +26,10 @@ import (
 
 // ExecInterface is an interface of os/exec API.
 type ExecInterface interface {
-	// CommandContext runs command
+	// CommandContext runs cmd via "sh -c". Do not pass untrusted input.
 	CommandContext(ctx context.Context, cmd string) (string, error)
+	// CommandContextWithArgs runs cmd with explicit arguments (no shell).
+	CommandContextWithArgs(ctx context.Context, cmd string, args ...string) (string, error)
 }
 
 var _ ExecInterface = &Executor{}
@@ -47,16 +49,20 @@ func SetExecutor(e ExecInterface) {
 	executor = e
 }
 
+// CommandContext runs cmd via "sh -c". Do not pass untrusted input; use CommandContextWithArgs instead.
 func (e *Executor) CommandContext(ctx context.Context, cmd string) (string, error) {
 	if ctx == nil {
 		return "", fmt.Errorf("command failed, nil Context")
 	}
-	var outBytes []byte
-	var err error
-	outBytes, err = exec.CommandContext(ctx, "sh", "-c", cmd).CombinedOutput()
-	outputStr := ""
-	if len(outBytes) != 0 {
-		outputStr = string(outBytes)
+	outBytes, err := exec.CommandContext(ctx, "sh", "-c", cmd).CombinedOutput()
+	return string(outBytes), err
+}
+
+// CommandContextWithArgs runs cmd directly with explicit arguments without invoking a shell.
+func (e *Executor) CommandContextWithArgs(ctx context.Context, cmd string, args ...string) (string, error) {
+	if ctx == nil {
+		return "", fmt.Errorf("command failed, nil Context")
 	}
-	return outputStr, err
+	outBytes, err := exec.CommandContext(ctx, cmd, args...).CombinedOutput()
+	return string(outBytes), err
 }
