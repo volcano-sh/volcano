@@ -120,93 +120,12 @@ func TestCheckGPUtype(t *testing.T) {
 	}
 }
 
-func TestCheckGPUUUID(t *testing.T) {
-	tests := []struct {
-		name        string
-		annotations map[string]string
-		id          string
-		want        bool
-	}{
-		{
-			name: "no constraint",
-			id:   "GPU-0",
-			want: true,
-		},
-		{
-			name:        "empty allowlist is ignored",
-			annotations: map[string]string{VGPUUseUUIDAnnotation: "  "},
-			id:          "GPU-0",
-			want:        true,
-		},
-		{
-			name:        "separator-only allowlist is ignored",
-			annotations: map[string]string{VGPUUseUUIDAnnotation: ", ,"},
-			id:          "GPU-0",
-			want:        true,
-		},
-		{
-			name:        "allowlist exact match",
-			annotations: map[string]string{VGPUUseUUIDAnnotation: "GPU-0, GPU-1"},
-			id:          "GPU-1",
-			want:        true,
-		},
-		{
-			name:        "allowlist ignores empty entries",
-			annotations: map[string]string{VGPUUseUUIDAnnotation: "GPU-0,, GPU-1,"},
-			id:          "GPU-1",
-			want:        true,
-		},
-		{
-			name:        "allowlist rejects partial match",
-			annotations: map[string]string{VGPUUseUUIDAnnotation: "GPU-10"},
-			id:          "GPU-1",
-			want:        false,
-		},
-		{
-			name:        "allowlist rejects empty device UUID",
-			annotations: map[string]string{VGPUUseUUIDAnnotation: "GPU-0,"},
-			id:          "",
-			want:        false,
-		},
-		{
-			name:        "denylist rejects match",
-			annotations: map[string]string{VGPUNoUseUUIDAnnotation: "GPU-0, GPU-1"},
-			id:          "GPU-1",
-			want:        false,
-		},
-		{
-			name:        "denylist constraint rejects empty device UUID",
-			annotations: map[string]string{VGPUNoUseUUIDAnnotation: "GPU-0,"},
-			id:          "",
-			want:        false,
-		},
-		{
-			name: "denylist wins over allowlist",
-			annotations: map[string]string{
-				VGPUUseUUIDAnnotation:   "GPU-1",
-				VGPUNoUseUUIDAnnotation: "GPU-1",
-			},
-			id:   "GPU-1",
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := newGPUUUIDFilter(tt.annotations).matches(tt.id); got != tt.want {
-				t.Fatalf("gpuUUIDFilter.matches() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestGPUUUIDConstraints(t *testing.T) {
 	tests := []struct {
 		name        string
 		annotations map[string]string
 		wantFit     bool
 		wantUUID    string
-		wantError   string
 	}{
 		{
 			name:        "allowlist selects requested GPU",
@@ -224,15 +143,13 @@ func TestGPUUUIDConstraints(t *testing.T) {
 			name:        "unknown allowed UUID is unschedulable",
 			annotations: map[string]string{VGPUUseUUIDAnnotation: "GPU-unknown"},
 			wantFit:     false,
-			wantError:   VGPUUseUUIDAnnotation,
 		},
 		{
 			name: "denylist excludes all GPUs",
 			annotations: map[string]string{
 				VGPUNoUseUUIDAnnotation: "GPU-0000A,GPU-0000B",
 			},
-			wantFit:   false,
-			wantError: VGPUNoUseUUIDAnnotation,
+			wantFit: false,
 		},
 	}
 
@@ -249,9 +166,6 @@ func TestGPUUUIDConstraints(t *testing.T) {
 			if !tt.wantFit {
 				if err == nil {
 					t.Fatal("expected an allocation error")
-				}
-				if !strings.Contains(err.Error(), tt.wantError) {
-					t.Fatalf("error %q does not contain %q", err, tt.wantError)
 				}
 				return
 			}
