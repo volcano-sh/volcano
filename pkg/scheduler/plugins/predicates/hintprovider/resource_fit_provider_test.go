@@ -158,6 +158,76 @@ func TestResourceFitNodeHint(t *testing.T) {
 	}
 }
 
+// TestResourceFitNodeHintWithDRAExtendedResource covers KEP-5004: a node without allocatable for an
+// extended resource that is mapped to a DeviceClass can fit the rejected task, so node events must wake it.
+func TestResourceFitNodeHintWithDRAExtendedResource(t *testing.T) {
+	const gpu v1.ResourceName = "nvidia.com/gpu"
+	pod := podWithCPU("target", "1")
+	pod.Spec.Containers[0].Resources.Requests[gpu] = resource.MustParse("1")
+	task := api.NewTaskInfo(pod)
+	job := api.NewJobInfo("job", task)
+	rejection := unschedulable.Rejection{Tasks: []api.TaskID{task.UID}}
+
+	mapGPU := func(rName v1.ResourceName) bool { return rName == gpu }
+	draOnlyNode := nodeWithResources("2", "1Gi")
+	gpuNode := nodeWithResources("2", "1Gi")
+	gpuNode.Status.Allocatable[gpu] = resource.MustParse("1")
+
+	tests := []struct {
+		name     string
+		resolver api.DRAExtendedResourceResolver
+		oldObj   any
+		newObj   any
+		want     unschedulable.HintResult
+	}{
+		{
+			name:     "new DRA-only node can fit the pod once the DRA resource is excluded",
+			resolver: mapGPU,
+			newObj:   draOnlyNode,
+			want:     unschedulable.HintWakeup,
+		},
+		{
+			name:   "new DRA-only node without a DeviceClass mapping cannot fit the pod",
+			newObj: draOnlyNode,
+			want:   unschedulable.HintSkip,
+		},
+		{
+			name:     "new node advertising the resource still fits through normal accounting",
+			resolver: mapGPU,
+			newObj:   gpuNode,
+			want:     unschedulable.HintWakeup,
+		},
+		{
+			name:     "CPU increase on a DRA-only node wakes the pod",
+			resolver: mapGPU,
+			oldObj:   nodeWithResources("0", "1Gi"),
+			newObj:   draOnlyNode,
+			want:     unschedulable.HintWakeup,
+		},
+		{
+			name:   "CPU increase on a DRA-only node without a DeviceClass mapping is skipped",
+			oldObj: nodeWithResources("0", "1Gi"),
+			newObj: draOnlyNode,
+			want:   unschedulable.HintSkip,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Cleanup(func() { api.SetDRAExtendedResourceResolver(nil) })
+			api.SetDRAExtendedResourceResolver(test.resolver)
+
+			got, err := resourceFitNodeHint(job, rejection, test.oldObj, test.newObj)
+			if err != nil {
+				t.Fatalf("resourceFitNodeHint() error = %v", err)
+			}
+			if got != test.want {
+				t.Fatalf("resourceFitNodeHint() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestResourceFitHintsWakeWhenRejectedTaskIsMissing(t *testing.T) {
 	task := api.NewTaskInfo(podWithCPU("target", "3"))
 	job := api.NewJobInfo("job", task)
@@ -170,7 +240,7 @@ func TestResourceFitHintsWakeWhenRejectedTaskIsMissing(t *testing.T) {
 		{
 			name: "new Node",
 			hint: func(rejection unschedulable.Rejection) unschedulable.HintResult {
-				return newNodeFitHint(job, rejection, twoCPUs)
+				return newNodeFitHint(job, rejection, nil, twoCPUs)
 			},
 		},
 		{
@@ -182,7 +252,7 @@ func TestResourceFitHintsWakeWhenRejectedTaskIsMissing(t *testing.T) {
 		{
 			name: "Node allocatable increase",
 			hint: func(rejection unschedulable.Rejection) unschedulable.HintResult {
-				return allocatableIncreaseHint(job, rejection, oneCPU, twoCPUs)
+				return allocatableIncreaseHint(job, rejection, nil, oneCPU, twoCPUs)
 			},
 		},
 	}

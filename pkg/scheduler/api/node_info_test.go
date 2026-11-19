@@ -504,3 +504,72 @@ func TestNodeInfoClonePreservesUnassignedNumaPods(t *testing.T) {
 		t.Errorf("Clone mutation leaked back into original: %v", ni.UnassignedNumaPods)
 	}
 }
+
+// TestNodeInfoAddRemoveTaskWithDRAExtendedResource covers KEP-5004 accounting: an extended resource that
+// is delegated to DRA on a node (no allocatable, mapped by a DeviceClass) must not be charged to the
+// node's Idle/Used, otherwise Idle goes negative and a Binding task is rejected by AddTask.
+func TestNodeInfoAddRemoveTaskWithDRAExtendedResource(t *testing.T) {
+	const gpu v1.ResourceName = "nvidia.com/gpu"
+	gpuRequest := BuildResourceList("1", "1Gi", ScalarResource{Name: string(gpu), Value: "1"})
+	nodeResources := BuildResourceList("4", "8Gi", ScalarResource{Name: "pods", Value: "10"})
+	mapGPU := func(rName v1.ResourceName) bool { return rName == gpu }
+
+	tests := []struct {
+		name     string
+		resolver DRAExtendedResourceResolver
+		status   TaskStatus
+		wantErr  bool
+	}{
+		{name: "Binding task is added without error", resolver: mapGPU, status: Binding},
+		{name: "Allocated task does not make Idle negative", resolver: mapGPU, status: Allocated},
+		{name: "Pipelined task is not charged to Pipelined", resolver: mapGPU, status: Pipelined},
+		{name: "Releasing task is not charged to Releasing", resolver: mapGPU, status: Releasing},
+		{name: "without a DeviceClass mapping a Binding task is rejected", status: Binding, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Cleanup(func() { SetDRAExtendedResourceResolver(nil) })
+			SetDRAExtendedResourceResolver(tt.resolver)
+
+			ni := NewNodeInfo(buildNode("n1", nil, nodeResources))
+			idleBefore, usedBefore := ni.Idle.Clone(), ni.Used.Clone()
+			releasingBefore, pipelinedBefore := ni.Releasing.Clone(), ni.Pipelined.Clone()
+
+			task := NewTaskInfo(buildPod("c1", "p1", "", v1.PodPending, gpuRequest, []metav1.OwnerReference{}, map[string]string{}))
+			task.Status = tt.status
+
+			err := ni.AddTask(task)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("AddTask() expected an error for an unmapped extended resource, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("AddTask() unexpected error: %v", err)
+			}
+			if got := ni.Idle.ScalarResources[gpu]; got < 0 {
+				t.Errorf("Idle must never have a negative %s value, got %v", gpu, got)
+			}
+			if _, ok := ni.Idle.ScalarResources[gpu]; ok {
+				t.Errorf("Idle must not account the DRA-delegated %s, got %s", gpu, ni.Idle)
+			}
+			if _, ok := task.Resreq.ScalarResources[gpu]; !ok {
+				t.Errorf("the caller's task must keep its original request, got %s", task.Resreq)
+			}
+
+			ni.RemoveTask(task)
+			for name, pair := range map[string][2]*Resource{
+				"Idle":      {ni.Idle, idleBefore},
+				"Used":      {ni.Used, usedBefore},
+				"Releasing": {ni.Releasing, releasingBefore},
+				"Pipelined": {ni.Pipelined, pipelinedBefore},
+			} {
+				if !pair[0].Equal(pair[1], Zero) {
+					t.Errorf("RemoveTask must restore %s exactly, got %s want %s", name, pair[0], pair[1])
+				}
+			}
+		})
+	}
+}
