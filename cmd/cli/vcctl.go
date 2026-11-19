@@ -38,6 +38,7 @@ func main() {
 	rootCmd.AddCommand(buildJobTemplateCmd())
 	rootCmd.AddCommand(buildJobFlowCmd())
 	rootCmd.AddCommand(buildPodCmd())
+	rootCmd.AddCommand(buildHyperNodeCmd())
 	rootCmd.AddCommand(versionCommand())
 
 	code := cli.Run(&rootCmd)

@@ -32,6 +32,7 @@ Usage:
 
 Available Commands:
   help        Help about any command
+  hypernode   HyperNode operations
   job         vcctl command line operation job
   jobflow     vcctl command line operation jobflow
   jobtemplate vcctl command line operation jobtemplate
