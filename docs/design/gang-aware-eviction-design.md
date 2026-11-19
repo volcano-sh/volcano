@@ -80,7 +80,14 @@ For `PurposeEvict`, ordering should favor feasibility and latency. Gradients are
 Instead of extending the current actions, this design introduces two dedicated actions: `gangPreempt` and `gangReclaim`. The existing `preempt` and `reclaim` actions remain unchanged, while gang-aware behavior is isolated in the new actions for cleaner rollout and lower regression risk.
 
 ```yaml
-actions: "allocate, backfill, gangPreempt, gangReclaim"
+actions: "allocate, backfill, gangpreempt, gangreclaim"
+configurations:
+  - name: gangpreempt
+    arguments:
+      victimOrderPolicy: priority-first
+  - name: gangreclaim
+    arguments:
+      victimOrderPolicy: priority-first
 tiers:
   - plugins:
       - name: gang
@@ -104,11 +111,11 @@ A bundle is the smallest eviction selection unit in this action: once selected, 
 - A safe bundle contains surplus tasks, or tasks from gangs already below their effective availability target.
 - A whole bundle contains core tasks whose eviction implies breaking the gang.
 
-Note that a task in a candidate job is either in its safe bundle or its whole bundle. This split gives the action an explicit disruption model. Safe bundles are low-cost opportunities. Whole bundles are high-cost decisions that are considered only when safe opportunities are insufficient.
+Note that a task in a candidate job is either in its safe bundle or its whole bundle. This split gives the action an explicit disruption model. Safe bundles are low-cost opportunities. Their relative order depends on the configured policy within the victim queue.
 
 Bundle ordering is performed in two passes for each HyperNode.
 
-In the first pass, the scheduler sorts all raw bundles and then flattens them into an ordered task slice for plugin filtering. It calls `Reclaimable` or `Preemptable` exactly once per HyperNode with that ordered slice. This one-shot call is important for stateful plugins such as the `capacity` plugin; repeated per-job calls would reset internal accounting and can violate queue deserved guarantees.
+In the first pass, the scheduler sorts raw bundles, omits disabled Whole bundles, and calls UnifiedEvictable on the ordered tasks. After the first rejected or reduced bundle, each subsequent check tests the retained tasks with the next bundle. Each call includes the retained prefix so cumulative PDB and quota checks see the entire proposed set. Placement still consumes approved Safe tasks as a bundle, even if the target needs only one of them.
 
 After plugins return allowed tasks, the action rebuilds valid bundles with integrity rules: a whole bundle is kept only if all of its tasks remain allowed, while a safe bundle can be shrunk to its allowed subset.
 
@@ -125,7 +132,7 @@ flowchart TB
     S([Start pending preemptor]) --> H[Get HyperNodes with PurposeEvict]
     H --> L{Next HyperNode}
     L --> B[Build and rank bundles]
-    B --> F[One-shot plugin filtering]
+    B --> F[Cumulative plugin filtering]
     F --> R[Rebuild bundles and second-pass sort]
     R --> P{Select bundles + simulate placement}
     P -- Success --> C[Evict + nominate transaction]
@@ -144,7 +151,14 @@ The design therefore treats nomination (`.status.nominatedNodeName`) as part of 
 
 Both sorting passes use the same comparator family, but on different inputs. The first pass ranks raw bundles before plugin filtering. The second pass ranks plugin-validated bundles after whole-bundle drops and safe-bundle shrinking. Using the same ordering logic in both passes keeps behavior predictable while still adapting to post-filter changes.
 
-The comparator applies a fixed order. It prefers safe bundles over whole bundles, then applies queue-level fairness or priority depending on action type. For remaining ties, it applies an efficiency metric that compares local gain in the chosen HyperNode against global disruption of the victim job.
+The `victimOrderPolicy` action argument controls the ordering of workloads and bundle types. It accepts two values:
+
+- `safe-first` is the default. Within a victim queue it considers all safe bundles before whole bundles, then prefers lower-priority workloads.
+- `priority-first` prefers lower-priority workloads before higher-priority workloads. This allows a lower-priority workload's whole bundle to be used before a higher-priority workload's safe bundle. Within the same priority level, safe bundles remain ahead of whole bundles to avoid unnecessary gang disruption.
+
+The argument is configured independently on `gangpreempt` and `gangreclaim`. An invalid value emits a warning and falls back to `safe-first`.
+
+For `gangreclaim`, victim queue ordering is always the outermost key. `victimOrderPolicy` only changes ordering among workloads inside the same victim queue, so queue-level fairness cannot be bypassed by workload priority or bundle type. Tied victim queues are grouped by queue UID. For `gangpreempt`, the policy applies inside the relevant preemption queue context. Remaining ties use the action's existing workload ordering, an efficiency metric that compares local gain in the chosen HyperNode against global disruption of the victim job, and finally deterministic identifiers.
 
 A practical way to read the efficiency metric is "how much local relief do we get per unit of global disruption."
 
@@ -176,25 +190,11 @@ def select_gang_victims_in_hypernode(preemptor, hypernode, candidates, ssn):
         if whole_bundle:
             bundles.append(whole_bundle)
 
-    # Phase 2: first-pass sort and one-shot plugin filtering.
-    bundles = sort_bundles(bundles, preemptor)  # safe before whole, then policy order
-    ordered_tasks = flatten_tasks(bundles)
-    allowed = set(filter_eligible_tasks(ssn, preemptor.any_task(), ordered_tasks))
-
-    # Rebuild bundles with integrity rules.
-    valid = []
-    for b in bundles:
-        if b.is_whole():
-            if all(t in allowed for t in b.tasks):
-                valid.append(b)
-        else:
-            kept = [t for t in b.tasks if t in allowed]
-            if kept:
-                b.tasks = kept
-                valid.append(b)
+    bundles = sort_bundles(bundles, preemptor, victim_order_policy)
+    valid = filter_victim_bundles(bundles, allow_whole_bundle, unified_evictable)
 
     # Phase 3: second-pass sort, then incremental select + simulate.
-    valid = sort_bundles(valid, preemptor)
+    valid = sort_bundles(valid, preemptor, victim_order_policy)
     chosen = []
     released = zero_resource()
     for b in valid:
@@ -211,9 +211,9 @@ def select_gang_victims_in_hypernode(preemptor, hypernode, candidates, ssn):
 
 The two new actions share the same core mechanism but use different comparator orders for bundle sorting.
 
-`gangPreempt` is priority-driven. It chooses lower-priority victims in the relevant queue context and uses efficiency as a secondary optimizer rather than a rule that can override priority.
+`gangPreempt` chooses victims in the relevant queue context. With `safe-first`, disruption class precedes workload priority. With `priority-first`, workload priority precedes disruption class and efficiency cannot override either key.
 
-`gangReclaim` is fairness-driven. It recovers resources from overused queues for under-served queues, with `VictimQueueOrderFn` and reclaimability checks taking precedence. Efficiency and job-level ordering are used only after fairness constraints are satisfied.
+`gangReclaim` is fairness-driven. It recovers resources from overused queues for under-served queues, with `VictimQueueOrderFn` and reclaimability checks taking precedence. The configured victim policy, efficiency, and deterministic workload ordering are applied only after the victim queue has been selected.
 
 This separation keeps existing scheduling semantics clear while letting both actions benefit from the same HyperNode and bundle mechanics.
 
