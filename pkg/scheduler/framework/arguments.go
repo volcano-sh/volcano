@@ -130,7 +130,7 @@ func (a Arguments) GetString(ptr *string, key string) {
 // Get can automatically convert parameters according to the passed generic T type.
 // If the parameter conversion is successful, it returns the converted parameter.
 // If the parameter does not exist, it returns false.
-// If the conversion fails, it will terminate the program with a fatal error.
+// If the conversion fails, it will log an error and return false.
 func Get[T any](a Arguments, key string) (T, bool) {
 	var result T
 	argv, ok := a[key]
@@ -140,7 +140,9 @@ func Get[T any](a Arguments, key string) (T, bool) {
 
 	err := mapstructure.Decode(argv, &result)
 	if err != nil {
-		klog.Fatalf("Could not parse argument for key %s to type %T: %v", key, result, err)
+		klog.Errorf("Could not parse argument for key %s to type %T: %v", key, result, err)
+		var zero T
+		return zero, false
 	}
 
 	return result, true
