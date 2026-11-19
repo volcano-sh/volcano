@@ -22,10 +22,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -381,5 +384,65 @@ func TestProcessNextWorkItem(t *testing.T) {
 		if c.queue.Len() != 0 {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, c.queue.Len())
 		}
+	}
+}
+
+func TestHandleCommandVerifiesQueueUID(t *testing.T) {
+	const queueName = "test-queue"
+	const realUID = types.UID("11111111-1111-1111-1111-111111111111")
+
+	testCases := []struct {
+		name         string
+		targetUID    types.UID
+		queueExists  bool
+		wantEnqueued int
+	}{
+		{
+			name:         "matching uid is honored",
+			targetUID:    realUID,
+			queueExists:  true,
+			wantEnqueued: 1,
+		},
+		{
+			name:         "mismatched uid is dropped",
+			targetUID:    types.UID("22222222-2222-2222-2222-222222222222"),
+			queueExists:  true,
+			wantEnqueued: 0,
+		},
+		{
+			name:         "missing target queue is dropped",
+			targetUID:    realUID,
+			queueExists:  false,
+			wantEnqueued: 0,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newFakeController()
+
+			if tc.queueExists {
+				queue := &schedulingv1beta1.Queue{
+					ObjectMeta: metav1.ObjectMeta{Name: queueName, UID: realUID},
+				}
+				require.NoError(t, c.queueInformer.Informer().GetIndexer().Add(queue))
+			}
+
+			cmd := &busv1alpha1.Command{
+				ObjectMeta: metav1.ObjectMeta{Name: "close-queue", Namespace: "tenant"},
+				Action:     string(busv1alpha1.CloseQueueAction),
+				TargetObject: &metav1.OwnerReference{
+					APIVersion: schedulingv1beta1.SchemeGroupVersion.String(),
+					Kind:       "Queue",
+					Name:       queueName,
+					UID:        tc.targetUID,
+				},
+			}
+			_, err := c.vcClient.BusV1alpha1().Commands(cmd.Namespace).Create(context.TODO(), cmd, metav1.CreateOptions{})
+			require.NoError(t, err)
+
+			require.NoError(t, c.handleCommand(cmd))
+			assert.Equal(t, tc.wantEnqueued, c.queue.Len())
+		})
 	}
 }

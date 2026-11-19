@@ -300,6 +300,28 @@ func (c *queuecontroller) handleCommand(cmd *busv1alpha1.Command) error {
 		return fmt.Errorf("failed to delete command <%s/%s> for %v", cmd.Namespace, cmd.Name, err)
 	}
 
+	// A Command is namespaced but a Queue is cluster scoped, so the Command's
+	// namespace does not bound which Queue it may drive. Only act on the Command
+	// when its TargetObject references the live Queue by UID, which is the owner
+	// reference `vcctl queue` fills in from the real Queue. This stops a Command
+	// created in any namespace from opening or closing a Queue whose UID its
+	// creator cannot read.
+	queue, err := c.queueLister.Get(cmd.TargetObject.Name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			klog.V(3).Infof("Skip command <%s/%s>: target queue %s not found.",
+				cmd.Namespace, cmd.Name, cmd.TargetObject.Name)
+			return nil
+		}
+		return fmt.Errorf("failed to get queue %s for command <%s/%s>: %v",
+			cmd.TargetObject.Name, cmd.Namespace, cmd.Name, err)
+	}
+	if cmd.TargetObject.UID != queue.UID {
+		klog.V(2).Infof("Skip command <%s/%s>: target queue %s uid %q does not match live queue uid %q.",
+			cmd.Namespace, cmd.Name, cmd.TargetObject.Name, cmd.TargetObject.UID, queue.UID)
+		return nil
+	}
+
 	req := &apis.Request{
 		QueueName: cmd.TargetObject.Name,
 		Event:     busv1alpha1.CommandIssuedEvent,
