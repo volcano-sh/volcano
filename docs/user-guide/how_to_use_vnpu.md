@@ -162,7 +162,11 @@ See the `ResourceName` table in the [Usage](#usage) section above for the suppor
 
 **Note**: If the pod's annotations do not specify `hami-core`, the device will be allocated in the template vNPU mode even if the `hami-core` feature is enabled in the configuration file.
 
-### Monitoring
+#### Compute oversell (`deviceCoreScaling`)
+
+`hami-core` treats `-core` as a **percentage** (0–100). With [ascend-device-plugin](https://github.com/Project-HAMi/ascend-device-plugin) `hamiVnpuCore.deviceCoreScaling` greater than `1`, the plugin advertises `Devcore = round(100 * deviceCoreScaling)` (for example `1.5` → `150`). Volcano admits pods against that advertised budget so more than 100% of soft-slice compute can be scheduled onto one card. Runtime still applies each container's own requested percentage (`NPU_PRIORITY`); oversell only expands scheduling inventory.
+
+A request of `100` core (or a single occupant already holding ≥100) remains exclusive and will not share an oversold card. Template vNPU mode is unchanged and continues to use physical AICore counts.
 
 When a node runs in **`hami-core` (soft slicing) mode**, `ascend-device-plugin` starts an **embedded Prometheus exporter** on **`:9395/metrics`** that reports physical-device and per-container vNPU usage. It is **not** started for the template vNPU (or whole-card) path. 
 

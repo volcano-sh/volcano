@@ -20,4 +20,9 @@ const (
 	VNPUModeAnnotation         = "huawei.com/vnpu-mode"
 	VNPUModeHamiCore           = "hami-core"
 	VNPUNodeSelectorAnnotation = "hami-vnpu-core"
+
+	// hamiCorePercentBase is the fixed 0-100 percentage scale used by hami-core
+	// Coresreq. Ascend device plugin may advertise Devcore above this base when
+	// deviceCoreScaling > 1 (compute oversell).
+	hamiCorePercentBase int32 = 100
 )
