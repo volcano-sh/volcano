@@ -238,6 +238,16 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			if shouldSkipUnschedulableForReleasing(job) {
 				continue
 			}
+			// Fix for #4503: an Inqueue job that was never attempted this
+			// session (no fit errors) has no real scheduling failure yet.
+			// Writing Unschedulable here produces the spurious
+			// NotEnoughResources condition/event before the real Scheduled one.
+			if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue &&
+				!job.IsGenuinelyUnschedulable() {
+				klog.V(4).Infof("Job <%s/%s> is inqueue and not genuinely unschedulable, skip unschedulable condition",
+					job.Namespace, job.Name)
+				continue
+			}
 			schedulableTaskNum := func() (num int32) {
 				for _, task := range job.TaskStatusIndex[api.Pending] {
 					ctx := task.GetTransactionContext()
