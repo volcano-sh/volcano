@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	commonutil "volcano.sh/volcano/pkg/util"
 
 	"volcano.sh/volcano/pkg/webhooks/router"
@@ -165,6 +167,28 @@ func validateCronJob(cronjob *v1alpha1.CronJob) string {
 	}
 	if msg := strings.TrimSpace(validateCronJobName(cronjob.Name)); msg != "" {
 		errs = append(errs, msg)
+	}
+
+	if msg := validateCronJobPodNames(cronjob); msg != "" {
+		errs = append(errs, msg)
+	}
+	return strings.Join(errs, "; ")
+}
+
+func validateCronJobPodNames(cronjob *v1alpha1.CronJob) string {
+	jobName := fmt.Sprintf("%s-%d", cronjob.Name, time.Now().Unix()/60)
+
+	var errs []string
+	for index, task := range cronjob.Spec.JobTemplate.Spec.Tasks {
+		taskName := task.Name
+		if len(taskName) == 0 {
+			taskName = v1alpha1.DefaultTaskSpec + strconv.Itoa(index)
+		}
+		podName := jobhelpers.MakePodName(jobName, taskName, index)
+		if msgs := validation.IsQualifiedName(podName); len(msgs) > 0 {
+			errs = append(errs, fmt.Sprintf("generated pod name %q for task %q is invalid: %s, shorten the cronJob or task name",
+				podName, taskName, strings.Join(msgs, ", ")))
+		}
 	}
 	return strings.Join(errs, "; ")
 }
