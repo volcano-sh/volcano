@@ -293,23 +293,38 @@ func (pg *pgcontroller) inheritUpperAnnotations(upperAnnotations map[string]stri
 func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 	pgName := helpers.GeneratePodgroupName(pod)
 
+	needCreate := false
 	if _, err := pg.pgLister.PodGroups(pod.Namespace).Get(pgName); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to get normal PodGroup for Pod <%s/%s>: %v",
 				pod.Namespace, pod.Name, err)
 			return err
 		}
+		needCreate = true
+	} else {
+		// Lister may be stale right after Delete (e.g. RS scale-to-0). Confirm
+		// with a live GET before binding the pod's group-name annotation to a
+		// ghost PodGroup that processNextReq would never repair (#6037).
+		if _, liveErr := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{}); liveErr != nil {
+			if !apierrors.IsNotFound(liveErr) {
+				klog.Errorf("Failed to confirm normal PodGroup for Pod <%s/%s>: %v",
+					pod.Namespace, pod.Name, liveErr)
+				return liveErr
+			}
+			needCreate = true
+		}
+	}
 
+	if needCreate {
 		podGroup := pg.buildPodGroupFromPod(pod, pgName)
 		if _, err := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(context.TODO(), podGroup, metav1.CreateOptions{}); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				klog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",
 					pod.Namespace, pod.Name, err)
 				return err
-			} else {
-				klog.V(4).Infof("PodGroup <%s/%s> already exists for Pod <%s/%s>",
-					pod.Namespace, pgName, pod.Namespace, pod.Name)
 			}
+			klog.V(4).Infof("PodGroup <%s/%s> already exists for Pod <%s/%s>",
+				pod.Namespace, pgName, pod.Namespace, pod.Name)
 		} else {
 			klog.V(4).Infof("PodGroup <%s/%s> created for Pod <%s/%s>",
 				pod.Namespace, pgName, pod.Namespace, pod.Name)
