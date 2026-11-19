@@ -82,6 +82,11 @@ func OpenSession(schedulerCache cache.Cache, tiers []conf.Tier, configurations [
 		}
 	}
 
+	// Policy reloads can remove nodegroup without giving the plugin another session.
+	if _, enabled := ssn.plugins["nodegroup"]; !enabled {
+		metrics.SyncQueueNodeGroupAllocated(nil)
+	}
+
 	ssn.InitCycleState()
 	ssn.applyCachedSkips()
 	metrics.UpdateOpenSessionDuration(time.Since(openStart))
