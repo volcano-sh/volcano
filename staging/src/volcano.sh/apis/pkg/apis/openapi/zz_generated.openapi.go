@@ -3753,6 +3753,55 @@ func schema_pkg_apis_scheduling_v1beta1_PodGroupStatus(ref common.ReferenceCallb
 							Format:      "int32",
 						},
 					},
+					"pending": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The number of tasks in Volcano Pending state, waiting for scheduling.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"allocated": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The number of tasks in Volcano Allocated state, assigned to a node by the scheduler.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"pipelined": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The number of tasks in Volcano Pipelined state, waiting for resources to be released.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"binding": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The number of tasks in Volcano Binding state, being bound to a node.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"bound": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The number of tasks in Volcano Bound state, bound to a node but not yet running.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"releasing": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The number of tasks in Volcano Releasing state, being deleted.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"unknown": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The number of tasks in Volcano Unknown state.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
 				},
 			},
 		},
