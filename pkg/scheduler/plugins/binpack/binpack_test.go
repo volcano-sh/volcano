@@ -143,23 +143,23 @@ func TestNode(t *testing.T) {
 			},
 			expected: map[string]map[string]float64{
 				"c1/p1": {
-					"n1": 700,
-					"n2": 137.5,
+					"n1": 850,
+					"n2": 568.75,
 					"n3": 0, // n3 has used 1.5c by pod p2, idle cpu not enough for p1
 				},
 				"c1/p2": {
 					"n1": 0,
-					"n2": 375,
+					"n2": 687.5,
 					"n3": 0,
 				},
 				"c1/p3": {
 					"n1": 0,
-					"n2": 531.25,
+					"n2": 765.625,
 					"n3": 0,
 				},
 				"c1/p4": {
 					"n1": 0,
-					"n2": 173.076923076,
+					"n2": 278.84615384615387,
 					"n3": 0, // required 3c, but node only has 2c
 				},
 			},
@@ -182,23 +182,23 @@ func TestNode(t *testing.T) {
 			},
 			expected: map[string]map[string]float64{
 				"c1/p1": {
-					"n1": 75,
-					"n2": 15.625,
+					"n1": 87.5,
+					"n2": 57.8125,
 					"n3": 0,
 				},
 				"c1/p2": {
 					"n1": 0,
-					"n2": 37.5,
+					"n2": 68.75,
 					"n3": 0,
 				},
 				"c1/p3": {
 					"n1": 0,
-					"n2": 50.5,
+					"n2": 75.25,
 					"n3": 0,
 				},
 				"c1/p4": {
 					"n1": 0,
-					"n2": 50,
+					"n2": 75,
 					"n3": 0,
 				},
 			},
@@ -234,5 +234,30 @@ func TestNode(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestBinPackingScorePrefersSamePriorityWorkloads(t *testing.T) {
+	highPriority := int32(100)
+	lowPriority := int32(10)
+	target := api.NewTaskInfo(util.BuildPodWithPriority("c1", "target", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg", nil, nil, &highPriority))
+
+	buildNode := func(name string, priority *int32) *api.NodeInfo {
+		node := api.NewNodeInfo(util.BuildNode(name, api.BuildResourceList("10", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil))
+		occupant := api.NewTaskInfo(util.BuildPodWithPriority("c1", name+"-occupant", name, v1.PodRunning, api.BuildResourceList("2", "2G"), "pg", nil, nil, priority))
+		if err := node.AddTask(occupant); err != nil {
+			t.Fatalf("failed to add occupant to %s: %v", name, err)
+		}
+		return node
+	}
+
+	weight := priorityWeight{
+		BinPackingWeight:    1,
+		BinPackingResources: map[v1.ResourceName]int{v1.ResourceCPU: 1, v1.ResourceMemory: 1},
+	}
+	samePriorityScore := BinPackingScore(target, buildNode("same-priority", &highPriority), weight)
+	differentPriorityScore := BinPackingScore(target, buildNode("different-priority", &lowPriority), weight)
+	if samePriorityScore <= differentPriorityScore {
+		t.Fatalf("same-priority node score %v should exceed different-priority node score %v", samePriorityScore, differentPriorityScore)
 	}
 }
