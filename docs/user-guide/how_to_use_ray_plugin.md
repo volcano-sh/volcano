@@ -26,9 +26,9 @@ The Ray Plugin will do three things:
 | 2   | worker           | string | worker        | No       | Name of Worker Task in Volcano Job      | --worker=worker          |
 | 3   | headContainer    | string | head          | No       | Name of Main Container in a head task   | --headContainer=head     |
 | 4   | workerContainer  | string | worker        | No       | Name of Main Container in a worker task | --workerContainer=worker |
-| 5   | port             | string | 6379          | No       | The port to open for the GCS            | --port=6379              |
-| 6   | dashboardPort    | string | 8265          | No       | The port to open for the Ray dashboard  | --dashboardPort=8265     |
-| 7   | clientServerPort | string | 10001         | No       | The port to open for the client server  | --clientServerPort=10001 |
+| 5   | port             | int    | 6379          | No       | The port to open for the GCS            | --port=6379              |
+| 6   | dashboardPort    | int    | 8265          | No       | The port to open for the Ray dashboard  | --dashboardPort=8265     |
+| 7   | clientPort       | int    | 10001         | No       | The port to open for the client server  | --clientPort=10001       |
 
 ## Examples
 > This guide is based on the instructions provided in the [RayCluster Quick Start.](https://docs.ray.io/en/master/cluster/kubernetes/getting-started/raycluster-quick-start.html#step-4-run-an-application-on-a-raycluster)
