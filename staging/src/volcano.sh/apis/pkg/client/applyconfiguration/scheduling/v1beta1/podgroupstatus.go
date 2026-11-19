@@ -36,6 +36,20 @@ type PodGroupStatusApplyConfiguration struct {
 	Succeeded *int32 `json:"succeeded,omitempty"`
 	// The number of pods which reached phase Failed.
 	Failed *int32 `json:"failed,omitempty"`
+	// The number of tasks in Volcano Pending state, waiting for scheduling.
+	Pending *int32 `json:"pending,omitempty"`
+	// The number of tasks in Volcano Allocated state, assigned to a node by the scheduler.
+	Allocated *int32 `json:"allocated,omitempty"`
+	// The number of tasks in Volcano Pipelined state, waiting for resources to be released.
+	Pipelined *int32 `json:"pipelined,omitempty"`
+	// The number of tasks in Volcano Binding state, being bound to a node.
+	Binding *int32 `json:"binding,omitempty"`
+	// The number of tasks in Volcano Bound state, bound to a node but not yet running.
+	Bound *int32 `json:"bound,omitempty"`
+	// The number of tasks in Volcano Releasing state, being deleted.
+	Releasing *int32 `json:"releasing,omitempty"`
+	// The number of tasks in Volcano Unknown state.
+	Unknown *int32 `json:"unknown,omitempty"`
 }
 
 // PodGroupStatusApplyConfiguration constructs a declarative configuration of the PodGroupStatus type for use with
@@ -86,5 +100,61 @@ func (b *PodGroupStatusApplyConfiguration) WithSucceeded(value int32) *PodGroupS
 // If called multiple times, the Failed field is set to the value of the last call.
 func (b *PodGroupStatusApplyConfiguration) WithFailed(value int32) *PodGroupStatusApplyConfiguration {
 	b.Failed = &value
+	return b
+}
+
+// WithPending sets the Pending field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Pending field is set to the value of the last call.
+func (b *PodGroupStatusApplyConfiguration) WithPending(value int32) *PodGroupStatusApplyConfiguration {
+	b.Pending = &value
+	return b
+}
+
+// WithAllocated sets the Allocated field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Allocated field is set to the value of the last call.
+func (b *PodGroupStatusApplyConfiguration) WithAllocated(value int32) *PodGroupStatusApplyConfiguration {
+	b.Allocated = &value
+	return b
+}
+
+// WithPipelined sets the Pipelined field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Pipelined field is set to the value of the last call.
+func (b *PodGroupStatusApplyConfiguration) WithPipelined(value int32) *PodGroupStatusApplyConfiguration {
+	b.Pipelined = &value
+	return b
+}
+
+// WithBinding sets the Binding field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Binding field is set to the value of the last call.
+func (b *PodGroupStatusApplyConfiguration) WithBinding(value int32) *PodGroupStatusApplyConfiguration {
+	b.Binding = &value
+	return b
+}
+
+// WithBound sets the Bound field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Bound field is set to the value of the last call.
+func (b *PodGroupStatusApplyConfiguration) WithBound(value int32) *PodGroupStatusApplyConfiguration {
+	b.Bound = &value
+	return b
+}
+
+// WithReleasing sets the Releasing field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Releasing field is set to the value of the last call.
+func (b *PodGroupStatusApplyConfiguration) WithReleasing(value int32) *PodGroupStatusApplyConfiguration {
+	b.Releasing = &value
+	return b
+}
+
+// WithUnknown sets the Unknown field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Unknown field is set to the value of the last call.
+func (b *PodGroupStatusApplyConfiguration) WithUnknown(value int32) *PodGroupStatusApplyConfiguration {
+	b.Unknown = &value
 	return b
 }

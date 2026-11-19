@@ -357,6 +357,41 @@ type PodGroupStatus struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	Failed int32 `json:"failed,omitempty" protobuf:"bytes,5,opt,name=failed"`
+
+	// The number of tasks in Volcano Pending state, waiting for scheduling.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Pending int32 `json:"pending,omitempty" protobuf:"varint,6,opt,name=pending"`
+
+	// The number of tasks in Volcano Allocated state, assigned to a node by the scheduler.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Allocated int32 `json:"allocated,omitempty" protobuf:"varint,7,opt,name=allocated"`
+
+	// The number of tasks in Volcano Pipelined state, waiting for resources to be released.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Pipelined int32 `json:"pipelined,omitempty" protobuf:"varint,8,opt,name=pipelined"`
+
+	// The number of tasks in Volcano Binding state, being bound to a node.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Binding int32 `json:"binding,omitempty" protobuf:"varint,9,opt,name=binding"`
+
+	// The number of tasks in Volcano Bound state, bound to a node but not yet running.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Bound int32 `json:"bound,omitempty" protobuf:"varint,10,opt,name=bound"`
+
+	// The number of tasks in Volcano Releasing state, being deleted.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Releasing int32 `json:"releasing,omitempty" protobuf:"varint,11,opt,name=releasing"`
+
+	// The number of tasks in Volcano Unknown state.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Unknown int32 `json:"unknown,omitempty" protobuf:"varint,12,opt,name=unknown"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

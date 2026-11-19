@@ -117,6 +117,31 @@ reasons will be appended to `Reason` field.
 | Running | Unknown       | When some pods of `spec.minMember` are restarted but can not be rescheduled |
 | Unknown | Pending       | When all pods (`spec.minMember`) in PodGroups are deleted |
 
+### Task state counts
+
+In addition to `phase`, PodGroup status exposes task counts from the scheduler's
+`TaskStatusIndex`. The counts are snapshots at the existing scheduler status-update
+time, rather than cumulative counts over the PodGroup's lifetime.
+
+| Status field | Volcano task state | Meaning |
+|--------------|--------------------|---------|
+| `pending` | Pending | Waiting for scheduling |
+| `allocated` | Allocated | Assigned to a node by the scheduler |
+| `pipelined` | Pipelined | Waiting for resources to be released on an assigned node |
+| `binding` | Binding | Being bound to a node |
+| `bound` | Bound | Bound to a node but not yet running |
+| `running` | Running | Running on a node |
+| `releasing` | Releasing | Being deleted |
+| `succeeded` | Succeeded | Completed successfully |
+| `failed` | Failed | Completed with failure |
+| `unknown` | Unknown | State unknown to the scheduler |
+
+These fields use Volcano task states, not Kubernetes Pod phases. For example, a
+Pod with Kubernetes phase `Pending` can already be `Bound` in Volcano. Tasks in
+`Allocated`, `Pipelined`, `Binding`, or `Bound` are counted separately from
+`pending`. The existing `running`, `succeeded`, and `failed` fields keep their
+semantics. Zero counts may be omitted from the serialized status.
+
 ## Feature Interaction
 
 ### Cluster AutoScale

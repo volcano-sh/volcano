@@ -861,6 +861,103 @@ func TestAdjustNetworkTopologySpec_SoftToHardConversion(t *testing.T) {
 	}
 }
 
+func TestJobStatus(t *testing.T) {
+	mixedTaskCounts := map[api.TaskStatus]int{
+		api.Pending: 1, api.Allocated: 2, api.Pipelined: 3, api.Binding: 4, api.Bound: 5,
+		api.Running: 6, api.Releasing: 7, api.Succeeded: 8, api.Failed: 9, api.Unknown: 10,
+	}
+	tests := []struct {
+		name        string
+		taskCounts  map[api.TaskStatus]int
+		nextStatus  api.TaskStatus
+		removeTasks bool
+		want        scheduling.PodGroupStatus
+	}{
+		{
+			name:       "mixed task states are counted separately",
+			taskCounts: mixedTaskCounts,
+			want: scheduling.PodGroupStatus{
+				Phase:   scheduling.PodGroupRunning,
+				Pending: 1, Allocated: 2, Pipelined: 3, Binding: 4, Bound: 5,
+				Running: 6, Releasing: 7, Succeeded: 8, Failed: 9, Unknown: 10,
+			},
+		},
+		{
+			name:       "pending tasks enter binding",
+			taskCounts: map[api.TaskStatus]int{api.Pending: 2},
+			nextStatus: api.Binding,
+			want:       scheduling.PodGroupStatus{Phase: scheduling.PodGroupPending, Binding: 2},
+		},
+		{
+			name:       "pipelined tasks are allocated",
+			taskCounts: map[api.TaskStatus]int{api.Pipelined: 2},
+			nextStatus: api.Allocated,
+			want:       scheduling.PodGroupStatus{Phase: scheduling.PodGroupPending, Allocated: 2},
+		},
+		{
+			name:       "bound tasks start running",
+			taskCounts: map[api.TaskStatus]int{api.Bound: 2},
+			nextStatus: api.Running,
+			want:       scheduling.PodGroupStatus{Phase: scheduling.PodGroupRunning, Running: 2},
+		},
+		{
+			name:       "running tasks are released",
+			taskCounts: map[api.TaskStatus]int{api.Running: 2},
+			nextStatus: api.Releasing,
+			want:       scheduling.PodGroupStatus{Phase: scheduling.PodGroupRunning, Releasing: 2},
+		},
+		{
+			name:        "removing all tasks clears every count",
+			taskCounts:  mixedTaskCounts,
+			removeTasks: true,
+			want:        scheduling.PodGroupStatus{Phase: scheduling.PodGroupPending},
+		},
+		{
+			name: "empty podgroup has zero counts",
+			want: scheduling.PodGroupStatus{Phase: scheduling.PodGroupPending},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			job := api.NewJobInfo("test-job")
+			job.PodGroup = &api.PodGroup{PodGroup: scheduling.PodGroup{
+				Spec: scheduling.PodGroupSpec{MinMember: 1},
+			}}
+			var tasks []*api.TaskInfo
+			for status, count := range tt.taskCounts {
+				for i := 0; i < count; i++ {
+					nodeName := "node-1"
+					if status == api.Pending || status == api.Unknown {
+						nodeName = ""
+					}
+					task := &api.TaskInfo{
+						UID: api.TaskID(fmt.Sprintf("%s-%d", status, i)),
+						TransactionContext: api.TransactionContext{
+							Status: status, NodeName: nodeName,
+						},
+						Resreq: api.EmptyResource(),
+					}
+					job.AddTaskInfo(task)
+					tasks = append(tasks, task)
+				}
+			}
+			ssn := &Session{}
+			job.PodGroup.Status = jobStatus(ssn, job)
+			for _, task := range tasks {
+				if tt.nextStatus != 0 {
+					task.NodeName = "node-1"
+					job.UpdateTaskStatus(task, tt.nextStatus)
+				}
+				if tt.removeTasks {
+					job.DeleteTaskInfo(task)
+				}
+			}
+			assert.Equal(t, tt.want, jobStatus(ssn, job))
+		})
+	}
+}
+
 func TestGetPodGroupPhase(t *testing.T) {
 	newJob := func(minMember int32, currentPhase scheduling.PodGroupPhase, tasks ...*api.TaskInfo) *api.JobInfo {
 		job := api.NewJobInfo("test-job", tasks...)
