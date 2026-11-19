@@ -66,6 +66,11 @@ func (alloc *Action) parseArguments(configurations []conf.Configuration) {
 	arguments := vfwk.GetArgOfActionFromConf(configurations, alloc.Name())
 	arguments.GetBool(&alloc.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
 	arguments.GetInt(&alloc.candidateNodeCount, CandidateNodeCountKey)
+	if alloc.candidateNodeCount <= 0 {
+		klog.Warningf("%s should be greater than 0, got %d. Falling back to %d.",
+			CandidateNodeCountKey, alloc.candidateNodeCount, DefaultCandidateNodeCount)
+		alloc.candidateNodeCount = DefaultCandidateNodeCount
+	}
 }
 
 func (alloc *Action) Execute(fwk *framework.Framework, schedCtx *agentapi.SchedulingContext) {
@@ -105,6 +110,9 @@ func (alloc *Action) allocateTask(fwk *framework.Framework, schedCtx *agentapi.S
 		return err
 	}
 	bestNodes := alloc.prioritizeNodes(fwk, task, predicatedNodes, schedCtx.NodesInShard)
+	if len(bestNodes) == 0 {
+		return fmt.Errorf(api.AllNodeUnavailableMsg)
+	}
 	result := &agentapi.PodScheduleResult{
 		SuggestedNodes: bestNodes,
 		SchedCtx:       schedCtx,
