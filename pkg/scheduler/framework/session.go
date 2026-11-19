@@ -23,6 +23,7 @@ limitations under the License.
 package framework
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"sort"
@@ -39,6 +40,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
@@ -48,6 +50,7 @@ import (
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -481,48 +484,115 @@ func addNodeSharableDeviceUsage(ssn *Session, task *api.TaskInfo) {
 	}
 }
 
-// updateQueueStatus updates allocated field in queue status on session close.
-func updateQueueStatus(ssn *Session) {
+// calculateQueueAllocatedResources adds each task to its queue once,
+// then rolls queue totals up from leaves to root.
+func calculateQueueAllocatedResources(ssn *Session) (
+	map[api.QueueID]*api.Resource,
+	map[api.QueueID]map[string]*api.DRAResource,
+) {
 	rootQueue := api.QueueID("root")
-	// calculate allocated resources on each queue
-	var allocatedResources = make(map[api.QueueID]*api.Resource, len(ssn.Queues))
-	var allocatedDRAResources = make(map[api.QueueID]map[string]*api.DRAResource, len(ssn.Queues))
-	var allocatedDRAClaimRefs = make(map[api.QueueID]map[string]int, len(ssn.Queues))
+	allocatedResources := make(map[api.QueueID]*api.Resource, len(ssn.Queues))
+	var allocatedDRAResources map[api.QueueID]*queueDRAAllocation
 	for queueID := range ssn.Queues {
-		allocatedResources[queueID] = &api.Resource{}
+		allocatedResources[queueID] = api.EmptyResource()
 	}
+
+	parents := make(map[api.QueueID]api.QueueID, len(ssn.Queues))
+	remainingChildren := make(map[api.QueueID]int, len(ssn.Queues))
+	for queueID, queue := range ssn.Queues {
+		if queueID == rootQueue {
+			continue
+		}
+		parent := rootQueue
+		if queue.Queue.Spec.Parent != "" {
+			parent = api.QueueID(queue.Queue.Spec.Parent)
+		}
+		if _, found := ssn.Queues[parent]; found {
+			parents[queueID] = parent
+			remainingChildren[parent]++
+		}
+	}
+	leaves := make([]api.QueueID, 0, len(ssn.Queues))
+	for queueID := range ssn.Queues {
+		if remainingChildren[queueID] == 0 {
+			leaves = append(leaves, queueID)
+		}
+	}
+
 	for _, job := range ssn.Jobs {
 		for status, tasks := range job.TaskStatusIndex {
-			if api.AllocatedStatus(status) {
-				for _, task := range tasks {
-					addNodeSharableDeviceUsage(ssn, task)
-					allocatedResources[job.Queue].Add(task.Resreq)
-					addTaskDRAAllocatedByQueue(allocatedDRAResources, allocatedDRAClaimRefs, job.Queue, task)
-					// recursively updates the allocated resources of parent queues
-					queue := ssn.Queues[job.Queue].Queue
-					// compatibility unit testing
-					for ssn.Queues[rootQueue] != nil {
-						parent := string(rootQueue)
-						if queue.Spec.Parent != "" {
-							parent = queue.Spec.Parent
-						}
-						allocatedResources[api.QueueID(parent)].Add(task.Resreq)
-						addTaskDRAAllocatedByQueue(allocatedDRAResources, allocatedDRAClaimRefs, api.QueueID(parent), task)
-
-						if parent == string(rootQueue) {
-							break
-						}
-						queue = ssn.Queues[api.QueueID(queue.Spec.Parent)].Queue
+			if !api.AllocatedStatus(status) {
+				continue
+			}
+			for _, task := range tasks {
+				addNodeSharableDeviceUsage(ssn, task)
+				allocatedResources[job.Queue].Add(task.Resreq)
+				if len(task.DRAResreq) > 0 || len(task.ResourceClaimDRAResreq) > 0 {
+					if allocatedDRAResources == nil {
+						allocatedDRAResources = make(map[api.QueueID]*queueDRAAllocation)
 					}
+					allocated := allocatedDRAResources[job.Queue]
+					if allocated == nil {
+						allocated = newQueueDRAAllocation()
+						allocatedDRAResources[job.Queue] = allocated
+					}
+					allocated.addTask(task)
 				}
 			}
 		}
 	}
 
-	// update queue status
-	for queueID := range ssn.Queues {
-		// convert api.Resource to v1.ResourceList
-		var queueStatus = util.ConvertRes2ResList(allocatedResources[queueID]).DeepCopy()
+	// A parent is ready only after all of its children have contributed.
+	for i := 0; i < len(leaves); i++ {
+		queueID := leaves[i]
+		parentID, found := parents[queueID]
+		if !found {
+			continue
+		}
+		allocatedResources[parentID].Add(allocatedResources[queueID])
+		if childDRA := allocatedDRAResources[queueID]; !childDRA.empty() {
+			parentDRA := allocatedDRAResources[parentID]
+			if parentDRA == nil {
+				parentDRA = newQueueDRAAllocation()
+				allocatedDRAResources[parentID] = parentDRA
+			}
+			parentDRA.addChild(childDRA)
+		}
+		remainingChildren[parentID]--
+		if remainingChildren[parentID] == 0 {
+			leaves = append(leaves, parentID)
+		}
+	}
+	// Do not publish partial subtree totals for queues that could not be drained.
+	for queueID, children := range remainingChildren {
+		if children > 0 {
+			klog.Warningf("Skipping allocated status update for queue <%s>: subtree aggregation is incomplete", queueID)
+			delete(allocatedResources, queueID)
+			delete(allocatedDRAResources, queueID)
+		}
+	}
+
+	var queueDRAResources map[api.QueueID]map[string]*api.DRAResource
+	for queueID, allocated := range allocatedDRAResources {
+		total := allocated.total()
+		if len(total) == 0 {
+			continue
+		}
+		if queueDRAResources == nil {
+			queueDRAResources = make(map[api.QueueID]map[string]*api.DRAResource, len(allocatedDRAResources))
+		}
+		queueDRAResources[queueID] = total
+	}
+	return allocatedResources, queueDRAResources
+}
+
+// updateQueueStatus updates allocated field in queue status on session close.
+func updateQueueStatus(ssn *Session) {
+	allocatedResources, allocatedDRAResources := calculateQueueAllocatedResources(ssn)
+
+	updates := make([]*api.QueueInfo, 0, len(ssn.Queues))
+	for queueID := range allocatedResources {
+		queueStatus := util.ConvertRes2ResList(allocatedResources[queueID]).DeepCopy()
 		queueStatus = mergeDRAAllocatedIntoResourceList(queueStatus, allocatedDRAResources[queueID])
 
 		if equality.Semantic.DeepEqual(ssn.Queues[queueID].Queue.Status.Allocated, queueStatus) {
@@ -532,11 +602,15 @@ func updateQueueStatus(ssn *Session) {
 		}
 
 		ssn.Queues[queueID].Queue.Status.Allocated = queueStatus
-
-		if err := ssn.cache.UpdateQueueStatus(ssn.Queues[queueID]); err != nil {
-			klog.Errorf("failed to update queue <%s> status: %s", ssn.Queues[queueID].Name, err.Error())
-		}
+		updates = append(updates, ssn.Queues[queueID])
 	}
+
+	workqueue.ParallelizeUntil(context.TODO(), options.GetQueueUpdaterWorkerNum(), len(updates), func(piece int) {
+		queue := updates[piece]
+		if err := ssn.cache.UpdateQueueStatus(queue); err != nil {
+			klog.Errorf("failed to update queue <%s> status: %s", queue.Name, err.Error())
+		}
+	})
 }
 
 func closeSession(ssn *Session) {
