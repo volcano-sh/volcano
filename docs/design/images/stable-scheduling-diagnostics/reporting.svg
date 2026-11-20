@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="950" viewBox="0 0 1120 950" role="img" aria-labelledby="title desc">
+<title id="title">Scheduling results, JobInfo and publication</title>
+<desc id="desc">Read from top to bottom. Part 2 records action results. HyperNode scheduling uses part 3 to select or combine candidate diagnostics. After the Job decision, the action writes PendingTaskDiagnostics and GroupDiagnostic in JobInfo, shown in part 1. NodesFitErrors remains the working node-check field. At session close, part 4 combines the diagnostic records with live state to construct Pod and PodGroup conditions, then uses their respective status and Event publication paths. Blue identifies the Pod path and orange identifies the PodGroup path.</desc>
+<defs>
+<marker id="gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#364855"/></marker>
+<marker id="blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#315a7b"/></marker>
+<marker id="orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#985927"/></marker>
+</defs>
+<style>text{font-family:Arial,Helvetica,sans-serif;font-size:20px;fill:#253441}.title{font-size:22px;font-weight:600}.code{font-family:"DejaVu Sans Mono",monospace;font-size:18px}.number{font-size:22px;font-weight:600;fill:white}.blue{fill:#315a7b}.orange{fill:#985927}.muted{fill:#596777}</style>
+<rect width="1120" height="950" fill="white"/>
+<rect x="60" y="35" width="430" height="105" fill="white" stroke="#8a98a7" stroke-width="1.3"/>
+<rect x="60" y="35" width="430" height="44" fill="#f1f3f5" stroke="#8a98a7" stroke-width="1.3"/>
+<rect x="60" y="35" width="44" height="44" fill="#364855"/>
+<text x="82" y="65" class="number" text-anchor="middle">2</text>
+<text x="120" y="65" class="title" text-anchor="start">Scheduling actions</text>
+<text x="80" y="110" class="" text-anchor="start">Record failures and gang waiting</text>
+<rect x="630" y="35" width="430" height="105" fill="white" stroke="#8a98a7" stroke-width="1.3"/>
+<rect x="630" y="35" width="430" height="44" fill="#f1f3f5" stroke="#8a98a7" stroke-width="1.3"/>
+<rect x="630" y="35" width="44" height="44" fill="#364855"/>
+<text x="652" y="65" class="number" text-anchor="middle">3</text>
+<text x="690" y="65" class="title" text-anchor="start">HyperNode selection</text>
+<text x="650" y="110" class="" text-anchor="start">Select or combine candidate diagnostics</text>
+<path d="M490 86 H630" fill="none" stroke="#364855" stroke-width="1.5" marker-end="url(#gray)"/>
+<text x="560" y="66" class="muted" text-anchor="middle">HyperNodes</text>
+<path d="M275 140 V185 H560 V230" fill="none" stroke="#364855" stroke-width="1.5"/>
+<path d="M845 140 V185 H560 V230" fill="none" stroke="#364855" stroke-width="1.5" marker-end="url(#gray)"/>
+<rect x="300" y="230" width="520" height="60" fill="#f1f3f5" stroke="#8a98a7" stroke-width="1.3"/>
+<text x="560.0" y="267.0" class="" text-anchor="middle">Commit, retain a Pipeline or roll back</text>
+<path d="M560 290 V370" fill="none" stroke="#364855" stroke-width="1.5" marker-end="url(#gray)"/>
+<text x="580" y="337" class="muted" text-anchor="start">Write final diagnostics</text>
+<rect x="60" y="370" width="1000" height="200" fill="white" stroke="#748eaa" stroke-width="1.3"/>
+<rect x="60" y="370" width="1000" height="44" fill="#e9f0f8" stroke="#748eaa" stroke-width="1.3"/>
+<rect x="60" y="370" width="44" height="44" fill="#364855"/>
+<text x="82" y="400" class="number" text-anchor="middle">1</text>
+<text x="120" y="400" class="title" text-anchor="start">JobInfo</text>
+<text x="80" y="447" class="code" text-anchor="start">NodesFitErrors</text>
+<text x="500" y="447" class="code muted" text-anchor="start">map[TaskID]*FitErrors</text>
+<rect x="60" y="464" width="500" height="106" fill="white" stroke="#748eaa" stroke-width="1.3"/>
+<rect x="60" y="464" width="500" height="42" fill="#e9f0f8" stroke="#748eaa" stroke-width="1.3"/>
+<text x="80" y="493" class="title blue" text-anchor="start">PendingTaskDiagnostics</text>
+<text x="80" y="547" class="code" text-anchor="start">map[TaskID]PendingTaskDiagnostic</text>
+<rect x="560" y="464" width="500" height="106" fill="white" stroke="#b58b62" stroke-width="1.3"/>
+<rect x="560" y="464" width="500" height="42" fill="#fbf0e3" stroke="#b58b62" stroke-width="1.3"/>
+<text x="580" y="493" class="title orange" text-anchor="start">GroupDiagnostic</text>
+<text x="580" y="547" class="code" text-anchor="start">*GroupSchedulingDiagnostic</text>
+<path d="M310 570 V660" fill="none" stroke="#315a7b" stroke-width="1.5" marker-end="url(#blue)"/>
+<path d="M810 570 V660" fill="none" stroke="#985927" stroke-width="1.5" marker-end="url(#orange)"/>
+<text x="560" y="620" class="muted" text-anchor="middle">Read with live state at session close</text>
+<rect x="60" y="660" width="1000" height="255" fill="white" stroke="#8a98a7" stroke-width="1.3"/>
+<rect x="60" y="660" width="1000" height="44" fill="#f1f3f5" stroke="#8a98a7" stroke-width="1.3"/>
+<rect x="60" y="660" width="44" height="44" fill="#364855"/>
+<text x="82" y="690" class="number" text-anchor="middle">4</text>
+<text x="120" y="690" class="title" text-anchor="start">Publication</text>
+<rect x="90" y="735" width="440" height="60" fill="#e9f0f8" stroke="#748eaa" stroke-width="1.3"/>
+<text x="310.0" y="772.0" class="" text-anchor="middle">Construct Pod condition</text>
+<rect x="590" y="735" width="440" height="60" fill="#fbf0e3" stroke="#b58b62" stroke-width="1.3"/>
+<text x="810.0" y="772.0" class="" text-anchor="middle">Construct PodGroup condition</text>
+<path d="M310 795 V850" fill="none" stroke="#315a7b" stroke-width="1.5" marker-end="url(#blue)"/>
+<path d="M810 795 V850" fill="none" stroke="#985927" stroke-width="1.5" marker-end="url(#orange)"/>
+<rect x="90" y="850" width="440" height="45" fill="#e9f0f8" stroke="#748eaa" stroke-width="1.3"/>
+<text x="310.0" y="879.5" class="" text-anchor="middle">Pod status + Event</text>
+<rect x="590" y="850" width="440" height="45" fill="#fbf0e3" stroke="#b58b62" stroke-width="1.3"/>
+<text x="810.0" y="879.5" class="" text-anchor="middle">PodGroup status + Event</text>
+</svg>
