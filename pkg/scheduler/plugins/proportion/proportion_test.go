@@ -381,6 +381,29 @@ func TestEnqueueAndAllocable(t *testing.T) {
 		},
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:    "redistribute fractional shares after one queue reaches its demand",
+				Plugins: plugins,
+				Nodes:   []*apiv1.Node{util.BuildNode("n1", api.BuildResourceList("1", "1Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)},
+				Queues: []*schedulingv1beta1.Queue{
+					util.BuildQueue("q1", 1, nil), util.BuildQueue("q2", 4, nil), util.BuildQueue("q3", 12, nil),
+				},
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue),
+					util.BuildPodGroup("pg2", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue),
+					util.BuildPodGroup("pg3", "ns1", "q3", 1, nil, schedulingv1beta1.PodGroupInqueue),
+				},
+				Pods: []*apiv1.Pod{
+					util.BuildPod("ns1", "p1", "", apiv1.PodPending, api.BuildResourceList("64m", ""), "pg1", nil, nil),
+					util.BuildPod("ns1", "p2", "", apiv1.PodPending, api.BuildResourceList("256m", ""), "pg2", nil, nil),
+					util.BuildPod("ns1", "p3", "", apiv1.PodPending, api.BuildResourceList("680m", ""), "pg3", nil, nil),
+				},
+				ExpectBindsNum: 3,
+				ExpectBindMap:  map[string]string{"ns1/p1": "n1", "ns1/p2": "n1", "ns1/p3": "n1"},
+			},
+			tiers: allocatable,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
 				Name:           "case1: cpu exceed derserved, job only request memory can be enqueued and allocated",
 				Plugins:        plugins,
 				Pods:           []*apiv1.Pod{p1, p2, p4},

@@ -76,19 +76,27 @@ type queueAttr struct {
 
 // addWeightedShare adds this queue's portion of the remaining cluster capacity.
 func (attr *queueAttr) addWeightedShare(remaining *api.Resource, totalWeight int64) {
-	// Reduce the integer ratio before scaling. When the share is a whole
-	// number of resource units, the reduced denominator divides the capacity
-	// exactly. Rounding the ratio first can put that share just below a request.
+	// For an integer capacity, its weighted share is integral exactly when
+	// the reduced denominator divides the capacity. Rounding the ratio first
+	// can put that share just below a request.
 	weight := int64(attr.weight)
 	gcd, remainder := totalWeight, weight
 	for remainder != 0 {
 		gcd, remainder = remainder, gcd%remainder
 	}
 	numerator, denominator := float64(weight/gcd), float64(totalWeight/gcd)
-	attr.deserved.MilliCPU += remaining.MilliCPU / denominator * numerator
-	attr.deserved.Memory += remaining.Memory / denominator * numerator
+	ratio := float64(weight) / float64(totalWeight)
+	share := func(quantity float64) float64 {
+		if math.Mod(quantity, denominator) == 0 {
+			return quantity / denominator * numerator
+		}
+		// Keep fractional increments consistent across redistribution rounds.
+		return quantity * ratio
+	}
+	attr.deserved.MilliCPU += share(remaining.MilliCPU)
+	attr.deserved.Memory += share(remaining.Memory)
 	for name, quantity := range remaining.ScalarResources {
-		attr.deserved.AddScalar(name, quantity/denominator*numerator)
+		attr.deserved.AddScalar(name, share(quantity))
 	}
 }
 
