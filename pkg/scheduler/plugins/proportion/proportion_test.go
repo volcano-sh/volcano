@@ -447,6 +447,61 @@ func TestEnqueueAndAllocable(t *testing.T) {
 	}
 }
 
+func TestAllocatableAtWeightedEntitlement(t *testing.T) {
+	enabled := true
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{{
+		Name: PluginName, EnabledAllocatable: &enabled, EnabledPredicate: &enabled,
+	}}}}
+
+	// At weights 5:34 the primary queue gets 1000m out of 7800m CPU,
+	// 1000Mi out of 7800Mi memory, and 5 of the 39 GPUs.
+	for _, tc := range []struct {
+		name, capacity, request string
+		weightScale             int32
+		want                    bool
+	}{
+		{"one millicore below", "7800m", "999m", 1, true},
+		{"exact share", "7800m", "1000m", 1, true},
+		{"same ratio with scaled weights", "7800m", "1000m", 29, true},
+		{"one millicore above", "7800m", "1001m", 1, false},
+		{"fractional share just below request", "7792m", "999m", 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := api.BuildResourceListWithGPU(tc.request, "1000Mi", "5")
+			candidate := util.BuildPod("ns", "candidate", "", apiv1.PodPending, request, "primary", nil, nil)
+			peerRequest := api.BuildResourceListWithGPU("6800m", "6800Mi", "34")
+			peer := util.BuildPod("ns", "peer", "", apiv1.PodPending, peerRequest, "peer", nil, nil)
+			test := uthelper.TestCommonStruct{
+				Plugins: map[string]framework.PluginBuilder{PluginName: New},
+				Queues: []*schedulingv1beta1.Queue{
+					util.BuildQueue("primary", 5*tc.weightScale, nil),
+					util.BuildQueue("peer", 34*tc.weightScale, nil),
+				},
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					util.BuildPodGroup("primary", "ns", "primary", 1, nil, schedulingv1beta1.PodGroupInqueue),
+					util.BuildPodGroup("peer", "ns", "peer", 1, nil, schedulingv1beta1.PodGroupInqueue),
+				},
+				Pods: []*apiv1.Pod{candidate, peer},
+				Nodes: []*apiv1.Node{util.BuildNode("node", api.BuildResourceListWithGPU(tc.capacity, "7800Mi", "39",
+					api.ScalarResource{Name: "pods", Value: "32"}), nil)},
+			}
+			ssn := test.RegisterSession(tiers, nil)
+			defer test.Close()
+			task := api.NewTaskInfo(candidate)
+			queue := ssn.Queues["primary"]
+			if got := ssn.Allocatable(queue, task); got != tc.want {
+				t.Errorf("Allocatable(%s) = %t, want %t", tc.request, got, tc.want)
+			}
+			if err := ssn.PrePredicateFn(task); err != nil {
+				t.Fatal(err)
+			}
+			if got := ssn.SimulateAllocatableFn(t.Context(), ssn.GetCycleState(task.UID), queue, task); got != tc.want {
+				t.Errorf("SimulateAllocatableFn(%s) = %t, want %t", tc.request, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestAllocate(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 	trueValue := true
