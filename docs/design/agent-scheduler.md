@@ -91,7 +91,9 @@ Design of snapshot fast update mechanism and why.
 TBD
 
 ## Multi-Worker scheduling
-Single scheduling process has performance bottleneck when a large number of Pods need to be scheduled. To improve throughput of scheduling, multiple worker can be enabled to perform parallel scheduling. Worker count can be configured via startup parameter `agent_scheduler_worker_count=x`.
+Single scheduling process has performance bottleneck when a large number of Pods need to be scheduled. To improve throughput of scheduling, multiple worker can be enabled to perform parallel scheduling.
+Configure the worker count with `--scheduler-worker-count=<count>`.
+With Helm, set `custom.agent_scheduler_worker_count`.
 Parallel scheduling may bring scheduling conflict when cluster lack of resource. So Binder component is involved to resolve the conflict before executing real binding.
 
 
@@ -115,46 +117,35 @@ Workers pops Pods from the scheduling queue and perform scheduling. After predic
 Nodes within a shard is saved in NodeShard CR and it may be changed dynamically, so the scheduler needs to be aware of these changes to determine which nodes can be used for scheduling. Scheduler also needs to coordinate with other schedulers to ensure that the same node does not appear simultaneously in the scheduling caches of different schedulers, because nodes being used in scheduler cache and Shard definition may be different.
 ![](images/agent-scheduler/shard-sync.png)
 
-NodeShard example:
+When assigning nodes manually, define the desired membership in `spec.nodesDesired`.
+Replace the example node names with node names from your cluster before applying this manifest.
 ```yaml
 apiVersion: shard.volcano.sh/v1alpha1
 kind: NodeShard
 metadata:
-  name: volcano 
+  name: volcano
 spec:
-  nodesDesired: #Nodes should be used within this shard.
-  - node1
-  - node2
-  - node3
-status
-  lastUpdateTime: "2025-12-08T06:00:00Z"
-  nodesInUse: #Node being used by scheduler.
-  - node0
-  - node1
-  - node2
-  nodesToRemove:  #Node should be remove from scheduler. (nodes is being used by scheduler, so they cannot be removed from InUse list immediately)
-  - node0
-  nodesToAdd: #Node should be added to scheduler. (nodes is being used by other schedulers, so they cannot be add into InUse list immediately)
-  - node3
+  nodesDesired:
+    - node1
+    - node2
+    - node3
 ---
 apiVersion: shard.volcano.sh/v1alpha1
 kind: NodeShard
 metadata:
-  name: agent-scheduler 
+  name: agent-scheduler
 spec:
-  nodesDesired: #Nodes should be used within this shard.
-  - node0
-  - node4
-  - node5
-status
-  lastUpdateTime: "2025-12-08T06:00:00Z"
-  nodesInUse: #Node being used by scheduler.
-  - node4
-  - node5
-  nodesToAdd:  #Node should be added to scheduler. (nodes is being used by other schedulers, so they cannot be add into InUse list immediately)
-  - node0
+  nodesDesired:
+    - node0
+    - node4
+    - node5
 ```
 
+When the sharding controller is enabled, it manages `spec.nodesDesired` based on the
+[sharding configuration](../user-guide/how_to_configure_sharding_configmap.md).
+Volcano records current membership and pending changes in `status.nodesInUse`,
+`status.nodesToAdd`, and `status.nodesToRemove`. Inspect this status with
+`kubectl get nodeshards -o yaml`.
 
 ### Scheduler Configuration
 Sharding mode can be configured via startup parameter `--scheduler-sharding-mode=xxx`,  available value are  `none`, `soft`, or `hard`. Scheduling behavior is different based on this setting. 
@@ -165,7 +156,10 @@ Sharding mode can be configured via startup parameter `--scheduler-sharding-mode
 
 - **hard:** Hard isolation. The scheduler can only schedule Pods onto nodes within its shard, preventing conflicts with other schedulers. However, due to the restricted scheduling scope, the global optimality of scheduling may be further reduced.
 
-By default, scheduler will read shard information from NodeShard with same name as scheduler name. The shard name can also be specified in scheduler startup parameter `--agent_scheduler_sharding_name=xxx`, then scheduler will read shard information from NodeShard with the specified name.
+In soft or hard mode, the Agent Scheduler reads the NodeShard named `agent-scheduler` by default.
+To use a different shard, set `--scheduler-sharding-name=<name>` to the NodeShard's `metadata.name`.
+With Helm, set `custom.agent_scheduler_sharding_mode` and
+`custom.agent_scheduler_sharding_name` to the corresponding values.
 
 ### Scheduling
 #### Agent Scheduler
