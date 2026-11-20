@@ -24,11 +24,12 @@ import (
 	"k8s.io/klog/v2"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 type predicateCache struct {
 	sync.RWMutex
-	cache map[string]map[string]bool //key_1: nodename key_2:pod uid
+	cache map[string]map[string]bool //key_1: nodename key_2: pod template key
 }
 
 // predicateCacheNew return cache map
@@ -38,14 +39,17 @@ func predicateCacheNew() *predicateCache {
 	}
 }
 
-// getPodTemplateUID return pod template key
+// getPodTemplateUID returns the key under which the predicate result of the pod is cached.
+// The volcano.sh/template-uid annotation is "<job name>-<task name>", which is only unique
+// within one job, so the key also includes the namespace and the PodGroup of the pod.
+// Otherwise jobs with the same name in different namespaces would share results.
 func getPodTemplateUID(pod *v1.Pod) string {
 	uid, found := pod.Annotations[batch.PodTemplateKey]
 	if !found {
 		return ""
 	}
 
-	return uid
+	return pod.Namespace + "/" + pod.Annotations[schedulingv1beta1.KubeGroupNameAnnotationKey] + "/" + uid
 }
 
 // PredicateWithCache: check the predicate result existed in cache
