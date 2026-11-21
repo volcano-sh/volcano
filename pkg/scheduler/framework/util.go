@@ -80,9 +80,12 @@ func NewPodLister(ssn *Session) *PodLister {
 
 			for _, task := range tasks {
 				pl.Tasks[task.UID] = task
-
-				pod := pl.copyTaskPod(task)
-				pl.CachedPods[task.UID] = pod
+				// GetPod returns task.Pod when the node names already match,
+				// and UpdateTask copies on a cache miss. Pre-copy only when
+				// the names differ so GetPod does not deep-copy on the read path.
+				if task.NodeName != task.Pod.Spec.NodeName {
+					pl.CachedPods[task.UID] = pl.copyTaskPod(task)
+				}
 
 				if HaveAffinity(task.Pod) {
 					pl.TaskWithAffinity[task.UID] = task
@@ -110,8 +113,11 @@ func NewPodListerFromNode(ssn *Session) *PodLister {
 			}
 
 			pl.Tasks[task.UID] = task
-			pod := pl.copyTaskPod(task)
-			pl.CachedPods[task.UID] = pod
+			// Same rule as NewPodLister: the cache is only needed when the
+			// scheduled node differs from the pod spec.
+			if task.NodeName != task.Pod.Spec.NodeName {
+				pl.CachedPods[task.UID] = pl.copyTaskPod(task)
+			}
 			if HaveAffinity(task.Pod) {
 				pl.TaskWithAffinity[task.UID] = task
 			}
