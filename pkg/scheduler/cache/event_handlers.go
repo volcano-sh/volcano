@@ -309,33 +309,71 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	return sc.addTask(pi)
 }
 
+var errTaskSyncConflict = fmt.Errorf("task changed during resync")
+
 func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
-	newPod, err := sc.kubeClient.CoreV1().Pods(oldTask.Namespace).Get(context.TODO(), oldTask.Name, metav1.GetOptions{})
+	// The API read must not hold the scheduler-wide lock. Remember the cache
+	// state it is based on so a delayed result cannot overwrite an informer
+	// update or a scheduling transaction that happens while the read is in flight.
+	sc.Mutex.Lock()
+	job, task, err := sc.findJobAndTask(oldTask)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			sc.Mutex.Lock()
-			defer sc.Mutex.Unlock()
-			sc.clearUnassignedNumaTask(oldTask)
-			err := sc.deleteTask(oldTask)
-			if err != nil {
-				klog.Errorf("Failed to delete Pod <%v/%v> and remove from cache: %s", oldTask.Namespace, oldTask.Name, err.Error())
-				return err
-			}
-			klog.V(3).Infof("Pod <%v/%v> was deleted, removed from cache.", oldTask.Namespace, oldTask.Name)
-
-			return nil
-		}
-		return fmt.Errorf("failed to get Pod <%v/%v>: err %v", oldTask.Namespace, oldTask.Name, err)
+		sc.Mutex.Unlock()
+		return nil
 	}
+	if task != oldTask {
+		sc.Mutex.Unlock()
+		return errTaskSyncConflict
+	}
+	pod := task.Pod
+	podUID, resourceVersion := pod.UID, pod.ResourceVersion
+	transaction := task.GetTransactionContext()
+	pgUID := job.PgUID
+	sc.Mutex.Unlock()
 
-	newTask, err := sc.NewTaskInfo(newPod)
-	if err != nil {
-		return fmt.Errorf("failed to generate taskInfo of pod(%s), error: %v", newPod.Name, err)
+	newPod, getErr := sc.kubeClient.CoreV1().Pods(oldTask.Namespace).Get(context.TODO(), oldTask.Name, metav1.GetOptions{})
+	var newTask *schedulingapi.TaskInfo
+	var taskErr error
+	if getErr == nil && newPod.UID == podUID {
+		newTask, taskErr = sc.NewTaskInfo(newPod)
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
-	return sc.updateTask(oldTask, newTask)
+	currentJob, currentTask, err := sc.findJobAndTask(oldTask)
+	if err != nil {
+		return nil
+	}
+	if currentJob != job || currentJob.PgUID != pgUID || currentTask != task ||
+		currentTask.Pod != pod || currentTask.Pod.UID != podUID ||
+		currentTask.Pod.ResourceVersion != resourceVersion || currentTask.GetTransactionContext() != transaction {
+		return errTaskSyncConflict
+	}
+
+	if getErr != nil {
+		if errors.IsNotFound(getErr) {
+			sc.clearUnassignedNumaTask(currentTask)
+			if err := sc.deleteTask(currentTask); err != nil {
+				return err
+			}
+			klog.V(3).Infof("Pod <%v/%v> was deleted, removed from cache.", oldTask.Namespace, oldTask.Name)
+			return nil
+		}
+		return fmt.Errorf("failed to get Pod <%v/%v>: err %v", oldTask.Namespace, oldTask.Name, getErr)
+	}
+	if newPod.UID != podUID {
+		// A GET is by name, but the workqueue item identifies a specific UID.
+		// Leave the replacement Pod to its own informer events.
+		sc.clearUnassignedNumaTask(currentTask)
+		if err := sc.deleteTask(currentTask); err != nil {
+			return err
+		}
+		return nil
+	}
+	if taskErr != nil {
+		return fmt.Errorf("failed to generate taskInfo of pod(%s), error: %v", newPod.Name, taskErr)
+	}
+	return sc.updateTask(currentTask, newTask)
 }
 
 func (sc *SchedulerCache) updateTask(oldTask, newTask *schedulingapi.TaskInfo) error {
