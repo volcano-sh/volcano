@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"time"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -393,7 +392,7 @@ func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobs
 				"allocatedHyperNode", job.AllocatedHyperNode, "subJobNum", jobWorksheet.subJobs.Len())
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
 			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
-				stmt.Commit()
+				commitJobStatement(stmt, job)
 				committed = true
 				ssn.MarkJobDirty(job.UID)
 				alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
@@ -423,7 +422,7 @@ func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobs
 				}
 
 				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
-					stmt.Commit()
+					commitJobStatement(stmt, job)
 					committed = true
 
 					// Mirror recorder.UpdateDecisionToJob: clear the redeemed nomination.
@@ -450,6 +449,18 @@ func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobs
 	}
 
 	return committed
+}
+
+// commitJobStatement commits the statement of a ready job and, if the statement dispatches
+// any task for binding, records the job's end-to-end scheduling metrics. The metrics are
+// recorded here rather than when a task is tentatively placed, because a statement may
+// still be discarded, and pipelined tasks are not bound when the statement is committed.
+func commitJobStatement(stmt *framework.Statement, job *api.JobInfo) {
+	allocated := stmt.HasAllocations()
+	stmt.Commit()
+	if allocated {
+		metrics.UpdateE2eSchedulingByJob(job.Name, string(job.Queue), job.Namespace, job.CreationTimestamp.Time)
+	}
 }
 
 func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet, hyperNodeToAllocate *api.HyperNodeInfo) *framework.Statement {
@@ -819,7 +830,7 @@ func (alloc *Action) allocateFromNomination(subJob *api.SubJobInfo, subJobWorksh
 		if shouldTrackHyperNodePlacement(ssn, subJob) {
 			p.task.JobAllocatedHyperNode = pinned
 		}
-		if err := alloc.allocateResourcesForTask(stmt, p.task, p.node, job); err != nil {
+		if err := alloc.allocateResourcesForTask(stmt, p.task, p.node); err != nil {
 			klog.ErrorS(err, "Allocate from nomination fail, falling back to normal allocation process",
 				"subJob", subJob.UID, "task", p.task.UID, "node", p.node.Name)
 			stmt.Discard()
@@ -1078,7 +1089,7 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 			continue
 		}
 
-		if err := alloc.allocateResourcesForTask(stmt, task, bestNode, job); err != nil {
+		if err := alloc.allocateResourcesForTask(stmt, task, bestNode); err != nil {
 			klog.ErrorS(err, "Allocate resources for task fail", "task", task.Name)
 			continue
 		}
@@ -1243,16 +1254,13 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 	return bestNode, higestScore
 }
 
-func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo, job *api.JobInfo) (err error) {
+func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo) (err error) {
 	// Allocate idle resource to the task.
 	if task.InitResreq.LessEqual(node.Idle, api.Zero) {
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
 		if err = stmt.Allocate(task, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 				task.UID, node.Name, alloc.session.UID, err)
-		} else {
-			metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
-			metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 		}
 		return
 	}
@@ -1267,9 +1275,6 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 		if err = stmt.Pipeline(task, node.Name, false); err != nil {
 			klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 				task.UID, node.Name, alloc.session.UID, err)
-		} else {
-			metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
-			metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 		}
 	}
 	return
