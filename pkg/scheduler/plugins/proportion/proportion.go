@@ -74,6 +74,32 @@ type queueAttr struct {
 	guarantee      *api.Resource
 }
 
+// addWeightedShare adds this queue's portion of the remaining cluster capacity.
+func (attr *queueAttr) addWeightedShare(remaining *api.Resource, totalWeight int64) {
+	// For an integer capacity, its weighted share is integral exactly when
+	// the reduced denominator divides the capacity. Rounding the ratio first
+	// can put that share just below a request.
+	weight := int64(attr.weight)
+	gcd, remainder := totalWeight, weight
+	for remainder != 0 {
+		gcd, remainder = remainder, gcd%remainder
+	}
+	numerator, denominator := float64(weight/gcd), float64(totalWeight/gcd)
+	ratio := float64(weight) / float64(totalWeight)
+	share := func(quantity float64) float64 {
+		if math.Mod(quantity, denominator) == 0 {
+			return quantity / denominator * numerator
+		}
+		// Keep fractional increments consistent across redistribution rounds.
+		return quantity * ratio
+	}
+	attr.deserved.MilliCPU += share(remaining.MilliCPU)
+	attr.deserved.Memory += share(remaining.Memory)
+	for name, quantity := range remaining.ScalarResources {
+		attr.deserved.AddScalar(name, share(quantity))
+	}
+}
+
 // New return proportion action
 func New(arguments framework.Arguments) framework.Plugin {
 	return &proportionPlugin{
@@ -204,12 +230,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	remaining := pp.totalResource.Clone()
 	meet := map[api.QueueID]struct{}{}
 	for {
-		totalWeight := int32(0)
+		var totalWeight int64
 		for _, attr := range pp.queueOpts {
 			if _, found := meet[attr.queueID]; found {
 				continue
 			}
-			totalWeight += attr.weight
+			totalWeight += int64(attr.weight)
 		}
 
 		// If no queues, break
@@ -232,7 +258,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			oldDeserved := attr.deserved.Clone()
-			attr.deserved.Add(remaining.Clone().Multi(float64(attr.weight) / float64(totalWeight)))
+			attr.addWeightedShare(remaining, totalWeight)
 
 			if attr.realCapability != nil {
 				attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
