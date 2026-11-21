@@ -539,13 +539,12 @@ func TestNuma_PredicateFn(t *testing.T) {
 			}, nil)
 			defer framework.CloseSession(ssn)
 
-			var task *api.TaskInfo
-			for _, job := range ssn.Jobs {
-				for _, jobTask := range job.Tasks {
-					task = jobTask
-				}
+			job, found := ssn.Jobs[api.JobID("c1/pg1")]
+			if !found {
+				t.Fatalf("job c1/pg1 not found in session")
 			}
-			if task == nil {
+			task, found := job.Tasks[api.TaskID(pod.UID)]
+			if !found {
 				t.Fatalf("task for pod %s/%s not found in session", pod.Namespace, pod.Name)
 			}
 
@@ -557,9 +556,22 @@ func TestNuma_PredicateFn(t *testing.T) {
 				t.Errorf("predicate error = %v, want error containing %q", err, test.wantErr)
 			}
 
-			_, assigned := plugin.assignRes[task.UID][nodeName]
+			resNumaSets, assigned := plugin.assignRes[task.UID][nodeName]
 			if assigned != test.wantNumaAssign {
 				t.Errorf("numa resources reserved on %s = %v, want %v", nodeName, assigned, test.wantNumaAssign)
+			}
+			if !assigned {
+				return
+			}
+
+			cpus := resNumaSets[string(v1.ResourceCPU)]
+			if want := int(resources.Cpu().Value()); cpus.Size() != want {
+				t.Errorf("reserved cpus = %v, want %d cpus", cpus, want)
+			}
+			// CPUs 0-3 are on NUMA node 0 and CPUs 4-7 on NUMA node 1.
+			numaNode0, numaNode1 := cpuset.New(0, 1, 2, 3), cpuset.New(4, 5, 6, 7)
+			if test.taskPolicy == batch.SingleNumaNode && !cpus.IsSubsetOf(numaNode0) && !cpus.IsSubsetOf(numaNode1) {
+				t.Errorf("reserved cpus = %v, want all cpus from one numa node", cpus)
 			}
 		})
 	}
