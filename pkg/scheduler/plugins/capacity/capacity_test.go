@@ -840,6 +840,116 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	}
 }
 
+func Test_capacityPlugin_AllocateWithHierarchy(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New, predicates.PluginName: predicates.New, gang.PluginName: gang.New}
+	trueValue := true
+	actions := []framework.Action{enqueue.New(), allocate.New()}
+
+	// 4 cpu in total, 1 of them is already used by the team-b leaf queue.
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+	root := buildQueueWithParents("root", "", nil, nil)
+
+	// buildPods returns a running pod in leafB, and two pending one-pod jobs in each of
+	// leafA and leafB. Jobs with equal priority are ordered by UID, so p1 is taken
+	// before p2 and p3 before p4.
+	buildPods := func(leafA, leafB string) ([]*corev1.Pod, []*schedulingv1beta1.PodGroup) {
+		pods := []*corev1.Pod{
+			util.BuildPod("ns1", "running", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg-running", make(map[string]string), make(map[string]string)),
+		}
+		podGroups := []*schedulingv1beta1.PodGroup{
+			util.BuildPodGroup("pg-running", "ns1", leafB, 1, nil, schedulingv1beta1.PodGroupRunning),
+		}
+		for i, queue := range []string{leafA, leafA, leafB, leafB} {
+			name := fmt.Sprintf("p%d", i+1)
+			pods = append(pods, util.BuildPod("ns1", name, "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), "pg-"+name, make(map[string]string), make(map[string]string)))
+			podGroups = append(podGroups, util.BuildPodGroup("pg-"+name, "ns1", queue, 1, nil, schedulingv1beta1.PodGroupInqueue))
+		}
+		return pods, podGroups
+	}
+
+	// The queue order compares the shares of team-a and team-b. With the shares kept up to
+	// date it is team-a (0) -> team-b (1/3) -> team-b (2/3, still below team-a's 1), so each
+	// side ends at its deserved. If the shares were frozen at session open, team-a would
+	// keep share 0 and take every free cpu.
+	case0Pods, case0PodGroups := buildPods("team-a-dev", "team-b-dev")
+	case1Pods, case1PodGroups := buildPods("team-a-dev-1", "team-b-dev-1")
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name:      "case0: leaf queues under different parents are ordered by the parents' current share",
+			Plugins:   plugins,
+			Pods:      case0Pods,
+			Nodes:     []*corev1.Node{n1},
+			PodGroups: case0PodGroups,
+			Queues: []*schedulingv1beta1.Queue{
+				root,
+				buildQueueWithParents("team-a", "root", api.BuildResourceList("1", "1Gi"), nil),
+				buildQueueWithParents("team-a-dev", "team-a", api.BuildResourceList("1", "1Gi"), nil),
+				buildQueueWithParents("team-b", "root", api.BuildResourceList("3", "3Gi"), nil),
+				buildQueueWithParents("team-b-dev", "team-b", api.BuildResourceList("3", "3Gi"), nil),
+			},
+			ExpectBindMap: map[string]string{
+				"ns1/p1": "n1",
+				"ns1/p3": "n1",
+				"ns1/p4": "n1",
+			},
+			ExpectBindsNum: 3,
+		},
+		{
+			Name:      "case1: the shares of every ancestor level are kept up to date",
+			Plugins:   plugins,
+			Pods:      case1Pods,
+			Nodes:     []*corev1.Node{n1},
+			PodGroups: case1PodGroups,
+			Queues: []*schedulingv1beta1.Queue{
+				root,
+				buildQueueWithParents("team-a", "root", api.BuildResourceList("1", "1Gi"), nil),
+				buildQueueWithParents("team-a-dev", "team-a", api.BuildResourceList("1", "1Gi"), nil),
+				buildQueueWithParents("team-a-dev-1", "team-a-dev", api.BuildResourceList("1", "1Gi"), nil),
+				buildQueueWithParents("team-b", "root", api.BuildResourceList("3", "3Gi"), nil),
+				buildQueueWithParents("team-b-dev", "team-b", api.BuildResourceList("3", "3Gi"), nil),
+				buildQueueWithParents("team-b-dev-1", "team-b-dev", api.BuildResourceList("3", "3Gi"), nil),
+			},
+			ExpectBindMap: map[string]string{
+				"ns1/p1": "n1",
+				"ns1/p3": "n1",
+				"ns1/p4": "n1",
+			},
+			ExpectBindsNum: 3,
+		},
+	}
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledQueueOrder:  &trueValue,
+					EnabledHierarchy:   &trueValue,
+					EnabledJobEnqueued: &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name: gang.PluginName,
+				},
+			},
+		},
+	}
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run(actions)
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func Test_capacityPlugin_AncestorReclaimScenarios(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{
 		PluginName:            New,
