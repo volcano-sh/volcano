@@ -101,6 +101,7 @@ func newRollbackSession(t *testing.T, withBoundTask bool) (*framework.Session, *
 	t.Cleanup(func() {
 		plugin.OnSessionClose(session)
 		framework.CloseSession(session)
+		cache.ShutdownMockSchedulerCache(schedulerCache)
 	})
 
 	var job *api.JobInfo

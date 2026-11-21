@@ -41,6 +41,7 @@ import (
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/utils/ptr"
 
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
@@ -60,6 +61,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
+	tasktopology "volcano.sh/volcano/pkg/scheduler/plugins/task-topology"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/resourcefit"
 	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
@@ -2175,6 +2177,65 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			defer test.Close()
 			test.Run([]framework.Action{New()})
 			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestAllocateWithTaskTopologyRollback(t *testing.T) {
+	for _, annotation := range []string{tasktopology.JobAffinityAnnotations, tasktopology.JobAntiAffinityAnnotations} {
+		t.Run(annotation, func(t *testing.T) {
+			podGroup := util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "", "q1", 1, nil, schedulingv1.PodGroupInqueue, string(schedulingv1.HardNetworkTopologyMode), 1)
+			podGroup.Annotations[annotation] = "worker"
+			pod := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", nil, nil)
+			pod.Annotations[batchv1alpha1.TaskSpecKey] = "worker"
+
+			test := uthelper.TestCommonStruct{
+				Plugins: map[string]framework.PluginBuilder{
+					gang.PluginName:                 gang.New,
+					tasktopology.PluginName:         tasktopology.New,
+					networktopologyaware.PluginName: networktopologyaware.New,
+				},
+				PodGroups: []*schedulingv1.PodGroup{podGroup},
+				Pods:      []*v1.Pod{pod},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", api.BuildResourceList("2", "4Gi", api.ScalarResource{Name: string(v1.ResourcePods), Value: "10"}), nil),
+				},
+				HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0")},
+				HyperNodes:          map[string]sets.Set[string]{"s0": sets.New[string]("n1")},
+				HyperNodesMap: map[string]*api.HyperNodeInfo{
+					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+						{Name: "n1", Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"},
+					})),
+				},
+				Queues:         []*schedulingv1.Queue{util.BuildQueue("q1", 1, nil)},
+				ExpectBindMap:  map[string]string{"c1/p1": "n1"},
+				ExpectBindsNum: 1,
+			}
+			tiers := []conf.Tier{{Plugins: []conf.PluginOption{
+				{
+					Name:                   gang.PluginName,
+					EnabledJobReady:        ptr.To(true),
+					EnabledJobPipelined:    ptr.To(true),
+					EnabledSubJobReady:     ptr.To(true),
+					EnabledSubJobPipelined: ptr.To(true),
+				},
+				{
+					Name:             tasktopology.PluginName,
+					EnabledTaskOrder: ptr.To(true),
+					EnabledNodeOrder: ptr.To(true),
+				},
+				{
+					Name:                     networktopologyaware.PluginName,
+					EnabledHyperNodeOrder:    ptr.To(true),
+					EnabledHyperNodeGradient: ptr.To(true),
+				},
+			}}}
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run([]framework.Action{New()})
+			if err := test.CheckAll(0); err != nil {
 				t.Fatal(err)
 			}
 		})
