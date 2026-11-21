@@ -267,7 +267,6 @@ func runSimulateTrialAtHyperNode(
 		}
 		if err := trial.Pipeline(task, bestNode.Name, victimsPresent); err != nil {
 			klog.ErrorS(err, "Simulate pipeline failed", "task", task.Name)
-			_ = trial.UnPipeline(task)
 			return nil, false
 		}
 	}

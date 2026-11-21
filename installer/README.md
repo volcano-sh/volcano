@@ -95,6 +95,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.metrics_enable`|Whether to Enable Metrics|`false`|
 |`custom.admission_enable`|Whether to Enable Admission|`true`|
 |`custom.admission_replicas`|The number of Admission pods to run|`1`|
+|`custom.admission_root_queue_protection_enable`|Whether to prevent modifying root queue resource attributes (`capability`, `deserved`, `guarantee`)|`true`|
 |`custom.controller_enable`|Whether to Enable Controller|`true`|
 |`custom.controller_replicas`|The number of Controller pods to run|`1`|
 |`custom.hypernode_controller_mode`|HyperNode controller deployment mode: `controller-manager`, `standalone`, or `disabled`|`controller-manager`|
