@@ -17,6 +17,7 @@ limitations under the License.
 package metrics
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -79,7 +80,7 @@ var (
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoSubSystemName,
 			Name:      "e2e_job_scheduling_latency_milliseconds",
-			Help:      "End-to-end job scheduling latency in milliseconds (histogram of per-job duration from creation to last task assumed)",
+			Help:      "End-to-end job scheduling latency in milliseconds (histogram of per-job duration from creation to the job's tasks first being committed for binding, one sample per job)",
 			Buckets:   prometheus.ExponentialBucketsRange(100, 120000, 30),
 		},
 	)
@@ -88,7 +89,7 @@ var (
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
 			Name:      "e2e_job_scheduling_duration",
-			Help:      "Per-job duration from job creation to last task assumed in scheduler cache, in milliseconds",
+			Help:      "Per-job duration from job creation to the latest commit of its tasks for binding, in milliseconds",
 		},
 		[]string{"job_name", "queue", "job_namespace"},
 	)
@@ -110,6 +111,10 @@ var (
 		},
 		[]string{"job_name", "queue", "job_namespace"},
 	)
+
+	// e2eObservedJobs maps the jobs already observed in e2eJobSchedulingLatency to their
+	// creation time, entries are removed by DeleteJobMetrics.
+	e2eObservedJobs sync.Map
 
 	pluginSchedulingLatency = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -286,20 +291,34 @@ func SetUnschedulableJobCacheDebugMetricsEnabled(enabled bool) {
 	unschedulableJobCacheDebugMetricsEnabled.Store(enabled)
 }
 
-// UpdateE2eSchedulingDurationByJob updates per-job duration from creation to last task assumed/pipelined
-func UpdateE2eSchedulingDurationByJob(jobName string, queue string, namespace string, duration time.Duration) {
-	e2eJobSchedulingDuration.WithLabelValues(jobName, queue, namespace).Set(DurationInMilliseconds(duration))
-	e2eJobSchedulingLatency.Observe(DurationInMilliseconds(duration))
+// e2eJobKey identifies a job in e2eObservedJobs.
+type e2eJobKey struct {
+	namespace string
+	name      string
+}
+
+// UpdateE2eSchedulingByJob records that tasks of a job have been committed for binding.
+// The per-job duration and last time gauges always reflect the latest commit, while the
+// latency histogram is observed only once per job, so that a job committed in several
+// rounds (e.g. replicas > minAvailable) contributes a single sample. A job recreated with
+// the same name, which has a different creation time, is observed again.
+// Callers must only invoke it once a placement is final, never for tentative placements
+// in a statement that may still be discarded.
+func UpdateE2eSchedulingByJob(jobName string, queue string, namespace string, creationTime time.Time) {
+	duration := DurationInMilliseconds(Duration(creationTime))
+	e2eJobSchedulingDuration.WithLabelValues(jobName, queue, namespace).Set(duration)
+	e2eJobSchedulingLastTime.WithLabelValues(jobName, queue, namespace).Set(ConvertToUnix(time.Now()))
+	key := e2eJobKey{namespace: namespace, name: jobName}
+	if observed, ok := e2eObservedJobs.Load(key); ok && observed.(time.Time).Equal(creationTime) {
+		return
+	}
+	e2eObservedJobs.Store(key, creationTime)
+	e2eJobSchedulingLatency.Observe(duration)
 }
 
 // UpdateE2eSchedulingStartTimeByJob updates the start time of scheduling
 func UpdateE2eSchedulingStartTimeByJob(jobName string, queue string, namespace string, t time.Time) {
 	e2eJobSchedulingStartTime.WithLabelValues(jobName, queue, namespace).Set(ConvertToUnix(t))
-}
-
-// UpdateE2eSchedulingLastTimeByJob updates the last time of scheduling
-func UpdateE2eSchedulingLastTimeByJob(jobName string, queue string, namespace string, t time.Time) {
-	e2eJobSchedulingLastTime.WithLabelValues(jobName, queue, namespace).Set(ConvertToUnix(t))
 }
 
 // UpdateTaskScheduleDuration updates single task scheduling latency (from creation to stage)

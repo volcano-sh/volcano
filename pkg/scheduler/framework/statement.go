@@ -78,6 +78,17 @@ func (s *Statement) HasEvictions() bool {
 	return false
 }
 
+// HasAllocations returns whether the statement contains at least one allocate operation,
+// i.e. whether committing it dispatches any task for binding.
+func (s *Statement) HasAllocations() bool {
+	for _, op := range s.operations {
+		if op.name == Allocate {
+			return true
+		}
+	}
+	return false
+}
+
 // Evict the pod
 func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) {
 	// Update status in session
