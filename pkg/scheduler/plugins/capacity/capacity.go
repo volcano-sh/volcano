@@ -969,6 +969,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 					if cp.dynamicResourceAllocationEnable && ancestorAttr.dra != nil && event.Task.DRAResreq != nil {
 						addTaskDRAAllocated(ancestorAttr, event.Task)
 					}
+					// The hierarchical queue order compares ancestor shares, so keep them current.
+					cp.updateShare(ancestorAttr)
 				}
 			}
 
@@ -1007,6 +1009,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 					if cp.dynamicResourceAllocationEnable && ancestorAttr.dra != nil && event.Task.DRAResreq != nil {
 						removeTaskDRAAllocated(ancestorAttr, event.Task)
 					}
+					cp.updateShare(ancestorAttr)
 				}
 			}
 
