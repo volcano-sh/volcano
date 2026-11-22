@@ -32,9 +32,14 @@ const (
 )
 
 var _ = Describe("SLA Test", func() {
+	var ctx *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(ctx, CurrentSpecReport())
+	})
 	It("sla permits job to be inqueue", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 
 		slot := e2eutil.OneCPU
 		rep := e2eutil.ClusterSize(ctx, slot)
@@ -61,8 +66,8 @@ var _ = Describe("SLA Test", func() {
 	})
 
 	It("sla adjusts job order", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 
 		slot := e2eutil.OneCPU
 		rep := e2eutil.ClusterSize(ctx, slot)

@@ -24,10 +24,15 @@ import (
 )
 
 var _ = Describe("DRF Test", func() {
+	var ctx *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(ctx, CurrentSpecReport())
+	})
 	It("drf works", func() {
 		Skip("Failed when add yaml, test case may fail in some condition")
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 
 		slot := e2eutil.OneCPU
 		rep := e2eutil.ClusterSize(ctx, slot)
