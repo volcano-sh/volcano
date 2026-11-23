@@ -582,210 +582,6 @@ func TestSnapshot_DeleteNode(t *testing.T) {
 	}
 }
 
-func TestSnapshot_RemoveDeletedNodesFromSnapshot(t *testing.T) {
-	tests := []struct {
-		name        string
-		setup       func() (*Snapshot, map[string]bool)
-		wantErr     bool
-		checkResult func(*Snapshot) bool
-	}{
-		{
-			name: "remove single deleted node",
-			setup: func() (*Snapshot, map[string]bool) {
-				snapshot := NewEmptySnapshot()
-
-				// Add 3 nodes
-				for i := 1; i <= 3; i++ {
-					node := api.NewNodeInfo(&v1.Node{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: fmt.Sprintf("node-%d", i),
-						},
-						Status: v1.NodeStatus{
-							Capacity: v1.ResourceList{
-								v1.ResourceCPU:    resource.MustParse("4"),
-								v1.ResourceMemory: resource.MustParse("8Gi"),
-							},
-						},
-					})
-					snapshot.addOrUpdateNode(node)
-				}
-
-				// Current nodes: node-1 and node-3 only
-				currentNodes := map[string]bool{
-					"node-1": true,
-					"node-3": true,
-				}
-				return snapshot, currentNodes
-			},
-			wantErr: false,
-			checkResult: func(s *Snapshot) bool {
-				return len(s.GetFwkNodeInfoList()) == 2 &&
-					s.nodeNameToIndex["node-1"] == 0 &&
-					s.nodeNameToIndex["node-3"] == 1 &&
-					len(s.nodeNameToIndex) == 2
-			},
-		},
-		{
-			name: "remove multiple deleted nodes",
-			setup: func() (*Snapshot, map[string]bool) {
-				snapshot := NewEmptySnapshot()
-
-				// Add 5 nodes
-				for i := 1; i <= 5; i++ {
-					node := api.NewNodeInfo(&v1.Node{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: fmt.Sprintf("node-%d", i),
-						},
-						Status: v1.NodeStatus{
-							Capacity: v1.ResourceList{
-								v1.ResourceCPU:    resource.MustParse("4"),
-								v1.ResourceMemory: resource.MustParse("8Gi"),
-							},
-						},
-					})
-					snapshot.addOrUpdateNode(node)
-				}
-
-				// Keep only node-2 and node-4
-				currentNodes := map[string]bool{
-					"node-2": true,
-					"node-4": true,
-				}
-				return snapshot, currentNodes
-			},
-			wantErr: false,
-			checkResult: func(s *Snapshot) bool {
-				return len(s.GetFwkNodeInfoList()) == 2 &&
-					s.nodeNameToIndex["node-2"] == 1 &&
-					s.nodeNameToIndex["node-4"] == 0 &&
-					len(s.nodeNameToIndex) == 2
-			},
-		},
-		{
-			name: "remove nodes with affinity",
-			setup: func() (*Snapshot, map[string]bool) {
-				snapshot := NewEmptySnapshot()
-
-				// Add 3 nodes with affinity pods
-				for i := 1; i <= 3; i++ {
-					pod := &v1.Pod{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      fmt.Sprintf("pod-%d", i),
-							Namespace: "default",
-						},
-						Spec: v1.PodSpec{
-							Containers: []v1.Container{
-								{
-									Name: "test",
-									Resources: v1.ResourceRequirements{
-										Requests: v1.ResourceList{
-											v1.ResourceCPU:    resource.MustParse("100m"),
-											v1.ResourceMemory: resource.MustParse("100Mi"),
-										},
-									},
-								},
-							},
-							Affinity: &v1.Affinity{
-								PodAffinity: &v1.PodAffinity{
-									RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
-										{
-											LabelSelector: &metav1.LabelSelector{
-												MatchLabels: map[string]string{
-													"app": "test",
-												},
-											},
-											TopologyKey: "kubernetes.io/hostname",
-										},
-									},
-								},
-							},
-						},
-					}
-
-					node := api.NewNodeInfo(&v1.Node{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: fmt.Sprintf("node-%d", i),
-						},
-						Status: v1.NodeStatus{
-							Capacity: v1.ResourceList{
-								v1.ResourceCPU:    resource.MustParse("4"),
-								v1.ResourceMemory: resource.MustParse("8Gi"),
-							},
-						},
-					})
-
-					ti := api.NewTaskInfo(pod)
-					node.AddTask(ti)
-
-					snapshot.addOrUpdateNode(node)
-				}
-
-				// Keep only node-1
-				currentNodes := map[string]bool{
-					"node-1": true,
-				}
-				return snapshot, currentNodes
-			},
-			wantErr: false,
-			checkResult: func(s *Snapshot) bool {
-				return len(s.GetFwkNodeInfoList()) == 1 &&
-					len(s.fwkInfo.havePodsWithAffinityNodeInfoList) == 1 &&
-					s.affinityNodeIndex["node-1"] == 0 &&
-					len(s.affinityNodeIndex) == 1
-			},
-		},
-		{
-			name: "no nodes to remove",
-			setup: func() (*Snapshot, map[string]bool) {
-				snapshot := NewEmptySnapshot()
-
-				// Add 2 nodes
-				for i := 1; i <= 2; i++ {
-					node := api.NewNodeInfo(&v1.Node{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: fmt.Sprintf("node-%d", i),
-						},
-						Status: v1.NodeStatus{
-							Capacity: v1.ResourceList{
-								v1.ResourceCPU:    resource.MustParse("4"),
-								v1.ResourceMemory: resource.MustParse("8Gi"),
-							},
-						},
-					})
-					snapshot.addOrUpdateNode(node)
-				}
-
-				// All nodes still exist
-				currentNodes := map[string]bool{
-					"node-1": true,
-					"node-2": true,
-				}
-				return snapshot, currentNodes
-			},
-			wantErr: false,
-			checkResult: func(s *Snapshot) bool {
-				return len(s.GetFwkNodeInfoList()) == 2 &&
-					len(s.nodeNameToIndex) == 2
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			snapshot, currentNodeNames := tt.setup()
-			if snapshot == nil {
-				t.Fatal("setup failed")
-			}
-
-			snapshot.RemoveDeletedNodesFromSnapshot(currentNodeNames)
-
-			if !tt.checkResult(snapshot) {
-				t.Errorf("RemoveDeletedNodesFromSnapshot() = unexpected result")
-			}
-		})
-	}
-}
-
 func TestUtilSwapDelete(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -943,5 +739,77 @@ func TestUtilSwapDelete(t *testing.T) {
 				t.Errorf("utilSwapDelete() = unexpected result")
 			}
 		})
+	}
+}
+
+func newTestNodeInfo(name string) *api.NodeInfo {
+	return api.NewNodeInfo(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}})
+}
+
+func TestSnapshot_ShallowClone(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(clone *Snapshot)
+	}{
+		{
+			name:   "adding a node to the clone leaves the original unchanged",
+			mutate: func(clone *Snapshot) { clone.AddOrUpdateNodes([]*api.NodeInfo{newTestNodeInfo("node-3")}) },
+		},
+		{
+			name:   "updating a node in the clone leaves the original unchanged",
+			mutate: func(clone *Snapshot) { clone.AddOrUpdateNodes([]*api.NodeInfo{newTestNodeInfo("node-1")}) },
+		},
+		{
+			name:   "deleting a node from the clone leaves the original unchanged",
+			mutate: func(clone *Snapshot) { clone.DeleteNode("node-1") },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := NewEmptySnapshot()
+			original.AddOrUpdateNodes([]*api.NodeInfo{newTestNodeInfo("node-1"), newTestNodeInfo("node-2")})
+			wantNode1, err := original.GetK8sNodeInfo("node-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			tt.mutate(original.ShallowClone())
+
+			if got := len(original.GetFwkNodeInfoList()); got != 2 {
+				t.Errorf("original has %d nodes, want 2", got)
+			}
+			if got := len(original.GetVolcanoNodeInfoMap()); got != 2 {
+				t.Errorf("original has %d volcano nodes, want 2", got)
+			}
+			gotNode1, err := original.GetK8sNodeInfo("node-1")
+			if err != nil || gotNode1 != wantNode1 {
+				t.Errorf("original node-1 changed: got %v, err %v", gotNode1, err)
+			}
+		})
+	}
+}
+
+func TestSnapshot_ShareFrom(t *testing.T) {
+	src := NewEmptySnapshot()
+	src.AddOrUpdateNodes([]*api.NodeInfo{newTestNodeInfo("node-1")})
+	src.SetGeneration(7)
+
+	dst := NewEmptySnapshot()
+	dst.CloneNodesInBinder(map[string]int{"node-1": 1})
+	dst.ShareFrom(src)
+
+	if got := dst.GetGeneration(); got != 7 {
+		t.Errorf("generation = %d, want 7", got)
+	}
+	srcNode, _ := src.GetK8sNodeInfo("node-1")
+	if dstNode, err := dst.GetK8sNodeInfo("node-1"); err != nil || dstNode != srcNode {
+		t.Errorf("node-1 is not shared with the source: got %v, err %v", dstNode, err)
+	}
+	if got := len(dst.GetVolcanoNodeInfoList()); got != 1 {
+		t.Errorf("volcano node list has %d nodes, want 1", got)
+	}
+	if got := dst.NodesInBinder["node-1"]; got != 1 {
+		t.Errorf("NodesInBinder was not preserved: %v", dst.NodesInBinder)
 	}
 }

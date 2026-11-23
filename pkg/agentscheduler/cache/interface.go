@@ -91,6 +91,8 @@ type Cache interface {
 	SharedDRAManager() fwk.SharedDRAManager
 
 	// UpdateSnapshot is used to update the passed-in snapshot to ensure consistency between the cache's nodeinfo and the snapshot.
+	// The node data in the snapshot is shared read-only by all workers, so it must never be modified.
+	// Per-cycle state belongs in CycleState.
 	UpdateSnapshot(snapshot *k8sutil.Snapshot) error
 
 	// TaskUnschedulable update pod unschedulable status
