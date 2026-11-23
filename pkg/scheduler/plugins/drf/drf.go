@@ -465,7 +465,10 @@ func (drf *drfPlugin) buildHierarchy(root *hierarchicalNode, job *api.JobInfo, a
 		if child, ok := inode.children[paths[i]]; ok {
 			inode = child
 		} else {
-			fweight, _ := strconv.ParseFloat(weights[i], 64)
+			var fweight float64
+			if i < len(weights) {
+				fweight, _ = strconv.ParseFloat(weights[i], 64)
+			}
 			if fweight < 1 {
 				fweight = 1
 			}
