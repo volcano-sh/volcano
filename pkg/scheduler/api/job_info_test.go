@@ -1281,3 +1281,51 @@ func TestScheduledTaskNum(t *testing.T) {
 		t.Fatalf("ScheduledTaskNum() = %v, want %v", got, want)
 	}
 }
+
+func TestSetPodGroupAssignsTasksToSubGroupPolicy(t *testing.T) {
+	tests := []struct {
+		name           string
+		matchLabelKeys []string
+	}{
+		{
+			name: "label selector only",
+		},
+		{
+			name:           "label selector with match label keys",
+			matchLabelKeys: []string{"role-name"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var policies []scheduling.SubGroupPolicySpec
+			for _, role := range []string{"prefill", "decode"} {
+				policies = append(policies, scheduling.SubGroupPolicySpec{
+					Name:           role,
+					MinSubGroups:   ptr.To[int32](1),
+					LabelSelector:  &metav1.LabelSelector{MatchLabels: map[string]string{"role-name": role}},
+					MatchLabelKeys: tt.matchLabelKeys,
+				})
+			}
+			pg := &PodGroup{
+				PodGroup: scheduling.PodGroup{
+					Spec: scheduling.PodGroupSpec{MinMember: 2, SubGroupPolicy: policies},
+				},
+			}
+			prefill := NewTaskInfo(buildPod("ns", "prefill-0", "", v1.PodPending, nil, nil, map[string]string{"role-name": "prefill"}))
+			prefill1 := NewTaskInfo(buildPod("ns", "prefill-1", "", v1.PodPending, nil, nil, map[string]string{"role-name": "prefill", "index": "1"}))
+			decode := NewTaskInfo(buildPod("ns", "decode-0", "", v1.PodPending, nil, nil, map[string]string{"role-name": "decode"}))
+			unmatched := NewTaskInfo(buildPod("ns", "other-0", "", v1.PodPending, nil, nil, nil))
+			job := NewJobInfo("job", prefill, prefill1, decode, unmatched)
+
+			job.SetPodGroup(pg)
+
+			assert.Equal(t, getSubJobGID(job.UID, "prefill"), job.SubJobs[job.TaskToSubJob[prefill.UID]].GID)
+			assert.Equal(t, job.TaskToSubJob[prefill.UID], job.TaskToSubJob[prefill1.UID])
+			assert.Len(t, job.SubJobs[job.TaskToSubJob[prefill.UID]].Tasks, 2)
+			assert.Equal(t, getSubJobGID(job.UID, "decode"), job.SubJobs[job.TaskToSubJob[decode.UID]].GID)
+			assert.Equal(t, job.DefaultSubJobID(), job.TaskToSubJob[unmatched.UID])
+			assert.True(t, job.CheckSubJobValid())
+		})
+	}
+}
