@@ -1216,12 +1216,14 @@ func TestNamespaceQueueChildDoesNotBlockOtherSchedulingAfterParentOccupied(t *te
 		PodGroups: []*schedulingv1beta1.PodGroup{
 			util.BuildPodGroup("pg-running", "ns1", "parent", 1, nil, schedulingv1beta1.PodGroupRunning),
 			util.BuildPodGroup("pg-parent", "ns1", "parent", 1, nil, schedulingv1beta1.PodGroupInqueue),
-			util.BuildPodGroup("pg-child", "ns1", "child", 1, nil, schedulingv1beta1.PodGroupInqueue),
+			util.BuildPodGroup("pg-child", "ns1", "namespace/child", 1, nil, schedulingv1beta1.PodGroupInqueue),
 		},
 		Queues: []*schedulingv1beta1.Queue{
 			buildQueueWithParents("root", "", nil, nil),
 			buildQueueWithParents("parent", "root", nil, nil),
-			buildQueueWithParents("child", "parent", nil, nil),
+		},
+		NamespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+			buildSchedulableNamespaceQueue("ns1", "child", "cluster/parent"),
 		},
 		ExpectBindMap:  map[string]string{"ns1/child-work": "n1"},
 		ExpectBindsNum: 1,
@@ -1232,30 +1234,6 @@ func TestNamespaceQueueChildDoesNotBlockOtherSchedulingAfterParentOccupied(t *te
 	}}}
 	ssn := test.RegisterSession(tiers, nil)
 	defer test.Close()
-	// The session sees the newly added child as a NamespaceQueue while the
-	// parent still has a previously admitted Job in its snapshot.
-	child, err := api.NewNamespaceQueueInfo(&scheduling.NamespaceQueue{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "ns1", Name: "child", Generation: 1},
-		Spec:       scheduling.NamespaceQueueSpec{Parent: "cluster/parent"},
-		Status: scheduling.NamespaceQueueStatus{
-			State: scheduling.QueueStateOpen,
-			Conditions: []metav1.Condition{
-				{Type: commonutil.NamespaceQueueAuthorizedCondition, Status: metav1.ConditionTrue, ObservedGeneration: 1},
-				{Type: commonutil.NamespaceQueueReadyCondition, Status: metav1.ConditionTrue, ObservedGeneration: 1},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	delete(ssn.Queues, api.QueueID("child"))
-	ssn.Queues[child.UID] = child
-	for _, job := range ssn.Jobs {
-		if job.Queue == api.QueueID("child") {
-			job.Queue = child.UID
-			job.PodGroup.Spec.Queue = "namespace/child"
-		}
-	}
 	ssn.Tiers[0].Plugins = append(ssn.Tiers[0].Plugins, conf.PluginOption{
 		Name: PluginName, EnabledAllocatable: &enabled, EnabledHierarchy: &enabled,
 	})
@@ -1265,9 +1243,87 @@ func TestNamespaceQueueChildDoesNotBlockOtherSchedulingAfterParentOccupied(t *te
 	if got := plugin.queueOpts[api.QueueID("parent")].allocated.MilliCPU; got != 1000 {
 		t.Fatalf("parent allocation = %v, want 1000 millicores for the running Job", got)
 	}
+	if got := plugin.queueOpts[api.NamespaceQueueID("ns1", "child")].request.MilliCPU; got != 1000 {
+		t.Fatalf("child request = %v, want 1000 millicores for the pending Job", got)
+	}
 	test.Run([]framework.Action{allocate.New()})
 	if err := test.CheckAll(0); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// buildSchedulableNamespaceQueue returns an open NamespaceQueue whose
+// authorized and ready conditions match its generation.
+func buildSchedulableNamespaceQueue(namespace, name, parent string) *schedulingv1beta1.NamespaceQueue {
+	return &schedulingv1beta1.NamespaceQueue{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name, Generation: 1},
+		Spec:       schedulingv1beta1.NamespaceQueueSpec{Parent: parent},
+		Status: schedulingv1beta1.NamespaceQueueStatus{
+			State: schedulingv1beta1.QueueStateOpen,
+			Conditions: []metav1.Condition{
+				{Type: commonutil.NamespaceQueueAuthorizedCondition, Status: metav1.ConditionTrue, ObservedGeneration: 1},
+				{Type: commonutil.NamespaceQueueReadyCondition, Status: metav1.ConditionTrue, ObservedGeneration: 1},
+			},
+		},
+	}
+}
+
+func Test_buildHierarchicalQueueAttrs_allocatedAndRequest(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NamespaceQueue, true)
+	enabled := true
+	pod := func(name, podGroup, node string, phase corev1.PodPhase, cpu string) *corev1.Pod {
+		return util.BuildPod("ns1", name, node, phase, api.BuildResourceList(cpu, "1Gi"), podGroup, nil, nil)
+	}
+	test := uthelper.TestCommonStruct{
+		Nodes: []*corev1.Node{util.BuildNode("n1", api.BuildResourceList("16", "16Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)},
+		Queues: []*schedulingv1beta1.Queue{
+			buildQueueWithParents("root", "", nil, nil),
+			buildQueueWithParents("parent", "root", nil, nil),
+			buildQueueWithParents("sibling", "root", nil, nil),
+		},
+		NamespaceQueues: []*schedulingv1beta1.NamespaceQueue{
+			buildSchedulableNamespaceQueue("ns1", "child", "cluster/parent"),
+		},
+		PodGroups: []*schedulingv1beta1.PodGroup{
+			util.BuildPodGroup("pg-parent", "ns1", "parent", 1, nil, schedulingv1beta1.PodGroupRunning),
+			util.BuildPodGroup("pg-child", "ns1", "namespace/child", 1, nil, schedulingv1beta1.PodGroupRunning),
+			util.BuildPodGroup("pg-sibling", "ns1", "sibling", 1, nil, schedulingv1beta1.PodGroupRunning),
+			util.BuildPodGroup("pg-missing", "ns1", "missing", 1, nil, schedulingv1beta1.PodGroupRunning),
+		},
+		Pods: []*corev1.Pod{
+			pod("parent-running", "pg-parent", "n1", corev1.PodRunning, "1"),
+			pod("parent-pending", "pg-parent", "", corev1.PodPending, "2"),
+			pod("child-running", "pg-child", "n1", corev1.PodRunning, "3"),
+			pod("child-pending", "pg-child", "", corev1.PodPending, "4"),
+			pod("sibling-running", "pg-sibling", "n1", corev1.PodRunning, "5"),
+			pod("missing-running", "pg-missing", "n1", corev1.PodRunning, "6"),
+		},
+	}
+	ssn := test.RegisterSession([]conf.Tier{{}}, nil)
+	defer test.Close()
+	ssn.Tiers[0].Plugins = append(ssn.Tiers[0].Plugins, conf.PluginOption{Name: PluginName, EnabledHierarchy: &enabled})
+	plugin := New(nil).(*capacityPlugin)
+	plugin.OnSessionOpen(ssn)
+	defer plugin.OnSessionClose(ssn)
+
+	// CPU in millicores. Each queue counts its own Jobs plus its child queues;
+	// the Job in the missing queue counts nowhere.
+	want := map[api.QueueID]struct{ allocated, request float64 }{
+		"root":                               {allocated: 9000, request: 15000},
+		"parent":                             {allocated: 4000, request: 10000},
+		api.NamespaceQueueID("ns1", "child"): {allocated: 3000, request: 7000},
+		"sibling":                            {allocated: 5000, request: 5000},
+	}
+	for queueID, w := range want {
+		attr := plugin.queueOpts[queueID]
+		if attr == nil {
+			t.Errorf("queue %s has no attributes", queueID)
+			continue
+		}
+		if attr.allocated.MilliCPU != w.allocated || attr.request.MilliCPU != w.request {
+			t.Errorf("queue %s allocated = %v, request = %v; want %v, %v",
+				queueID, attr.allocated.MilliCPU, attr.request.MilliCPU, w.allocated, w.request)
+		}
 	}
 }
 

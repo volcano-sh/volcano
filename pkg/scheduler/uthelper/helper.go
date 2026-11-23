@@ -73,6 +73,7 @@ type TestCommonStruct struct {
 	HyperNodesReadyToSchedule bool
 	PodGroups                 []*vcapisv1.PodGroup
 	Queues                    []*vcapisv1.Queue
+	NamespaceQueues           []*vcapisv1.NamespaceQueue
 	PriClass                  []*schedulingv1.PriorityClass
 	ResourceQuotas            []*v1.ResourceQuota
 	// IgnoreProvisioners is the provisioners that need to be ignored
@@ -178,6 +179,9 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	}
 	for _, queue := range test.Queues {
 		schedulerCache.AddQueueV1beta1(queue)
+	}
+	for _, namespaceQueue := range test.NamespaceQueues {
+		schedulerCache.AddNamespaceQueueV1beta1(namespaceQueue)
 	}
 	for _, pc := range test.PriClass {
 		schedulerCache.AddPriorityClass(pc)

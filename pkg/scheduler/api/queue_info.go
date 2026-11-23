@@ -62,6 +62,24 @@ type QueueInfo struct {
 	Namespace      string
 	Queue          *scheduling.Queue
 	NamespaceQueue *scheduling.NamespaceQueue
+
+	// DirectAllocated and DirectRequest are the queue's direct resource totals.
+	// They count only the jobs assigned to this queue, not those of its child
+	// queues, and only jobs with a PodGroup (the jobs a Snapshot exposes):
+	//
+	//	DirectAllocated = sum of Resreq of tasks in AllocatedStatus
+	//	DirectRequest   = DirectAllocated + sum of Resreq of Pending tasks
+	//
+	// Queue.Status.Allocated is a different value: the persisted status, which
+	// also counts child queues.
+	//
+	// The scheduler cache updates these totals as pods, PodGroups and queues
+	// change, and each Session gets a copy through Snapshot, so moving a job to
+	// another queue inside a Session does not move them. The capacity and
+	// proportion plugins read them instead of walking every task. Policy state
+	// (inqueue, elastic, DRA, deserved, share) stays in the plugins.
+	DirectAllocated *Resource
+	DirectRequest   *Resource
 }
 
 // NewQueueInfo creates new queueInfo object
@@ -70,10 +88,12 @@ func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
 		UID:  QueueID(queue.Name),
 		Name: queue.Name,
 
-		Weight:    queue.Spec.Weight,
-		Hierarchy: queue.Annotations[v1beta1.KubeHierarchyAnnotationKey],
-		Weights:   queue.Annotations[v1beta1.KubeHierarchyWeightAnnotationKey],
-		Scope:     ClusterQueueScope,
+		Weight:          queue.Spec.Weight,
+		Hierarchy:       queue.Annotations[v1beta1.KubeHierarchyAnnotationKey],
+		Weights:         queue.Annotations[v1beta1.KubeHierarchyWeightAnnotationKey],
+		Scope:           ClusterQueueScope,
+		DirectAllocated: EmptyResource(),
+		DirectRequest:   EmptyResource(),
 
 		Queue: queue,
 	}
@@ -133,13 +153,15 @@ func NewNamespaceQueueInfo(namespaceQueue *scheduling.NamespaceQueue) (*QueueInf
 		},
 	}
 	return &QueueInfo{
-		UID:            NamespaceQueueID(namespaceQueue.Namespace, namespaceQueue.Name),
-		Name:           namespaceQueue.Name,
-		Weight:         1,
-		Scope:          NamespaceQueueScope,
-		Namespace:      namespaceQueue.Namespace,
-		Queue:          queue,
-		NamespaceQueue: namespaceQueue.DeepCopy(),
+		UID:             NamespaceQueueID(namespaceQueue.Namespace, namespaceQueue.Name),
+		Name:            namespaceQueue.Name,
+		Weight:          1,
+		Scope:           NamespaceQueueScope,
+		Namespace:       namespaceQueue.Namespace,
+		Queue:           queue,
+		NamespaceQueue:  namespaceQueue.DeepCopy(),
+		DirectAllocated: EmptyResource(),
+		DirectRequest:   EmptyResource(),
 	}, nil
 }
 
@@ -163,10 +185,25 @@ func (q *QueueInfo) Clone() *QueueInfo {
 		Namespace: q.Namespace,
 		Queue:     q.Queue.DeepCopy(),
 	}
+	clone.DirectAllocated, clone.DirectRequest = q.DirectTotals()
 	if q.NamespaceQueue != nil {
 		clone.NamespaceQueue = q.NamespaceQueue.DeepCopy()
 	}
 	return clone
+}
+
+// DirectTotals returns copies of the queue's DirectAllocated and DirectRequest
+// totals; nil totals are returned as empty resources.
+func (q *QueueInfo) DirectTotals() (allocated, request *Resource) {
+	return cloneOrEmpty(q.DirectAllocated), cloneOrEmpty(q.DirectRequest)
+}
+
+// cloneOrEmpty returns a copy of r, or an empty resource when r is nil.
+func cloneOrEmpty(r *Resource) *Resource {
+	if r == nil {
+		return EmptyResource()
+	}
+	return r.Clone()
 }
 
 // Reclaimable return whether queue is reclaimable

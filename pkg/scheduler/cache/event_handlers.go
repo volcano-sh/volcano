@@ -250,6 +250,7 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 		if pi.OccupiesTopologyDomain() {
 			job.TaskPlacementGeneration++
 		}
+		sc.updateQueueForJob(job)
 	}
 
 	return nil
@@ -417,6 +418,7 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 			if ti.OccupiesTopologyDomain() {
 				job.TaskPlacementGeneration++
 			}
+			sc.updateQueueForJob(job)
 		} else {
 			klog.Warningf("Failed to find Job <%v> for Task <%v/%v> in cache.", ti.Job, ti.Namespace, ti.Name)
 		}
@@ -1023,6 +1025,7 @@ func (sc *SchedulerCache) setPodGroup(ss *schedulingapi.PodGroup) error {
 
 	sc.Jobs[job].SetPodGroup(ss)
 	sc.Jobs[job].Queue = queueID
+	sc.updateQueueForJob(sc.Jobs[job])
 
 	metrics.UpdateE2eSchedulingStartTimeByJob(sc.Jobs[job].Name, string(sc.Jobs[job].Queue), sc.Jobs[job].Namespace,
 		sc.Jobs[job].CreationTimestamp.Time)
@@ -1071,6 +1074,7 @@ func (sc *SchedulerCache) deletePodGroup(id schedulingapi.JobID) error {
 
 	// Unset SchedulingSpec
 	job.UnsetPodGroup()
+	sc.updateQueueForJob(job)
 
 	sc.deleteJob(job)
 
@@ -1293,8 +1297,7 @@ func (sc *SchedulerCache) DeleteQueueV1beta1(obj interface{}) {
 }
 
 func (sc *SchedulerCache) addQueue(queue *scheduling.Queue) {
-	qi := schedulingapi.NewQueueInfo(queue)
-	sc.Queues[qi.UID] = qi
+	sc.setQueueInfo(schedulingapi.NewQueueInfo(queue))
 }
 
 func (sc *SchedulerCache) updateQueue(queue *scheduling.Queue) {
@@ -1325,7 +1328,7 @@ func (sc *SchedulerCache) AddNamespaceQueueV1beta1(obj interface{}) {
 		return
 	}
 	sc.Mutex.Lock()
-	sc.Queues[info.UID] = info
+	sc.setQueueInfo(info)
 	sc.Mutex.Unlock()
 }
 
@@ -1659,6 +1662,7 @@ func (sc *SchedulerCache) AddJob(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 	sc.Jobs[job.UID] = job
+	sc.updateQueueForJob(job)
 }
 
 // csiAttachLimitResourceName returns the node ResourceName used for per-CSI-driver volume attach limits.

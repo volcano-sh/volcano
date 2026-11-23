@@ -165,6 +165,10 @@ type SchedulerCache struct {
 	// InUseNodesInShard cached the nodes that are immediatly available for current shard (desiredNodes of this shard - inUseNodes in other shards)
 	InUseNodesInShard sets.Set[string]
 
+	// jobQueueContribution records what each job currently adds to its queue's
+	// DirectAllocated/DirectRequest totals (see queue_accounting.go).
+	jobQueueContribution map[schedulingapi.JobID]*queueContribution
+
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
 	errTasks                      workqueue.TypedRateLimitingInterface[string]
@@ -1087,6 +1091,7 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 		job.TaskPlacementGeneration++
 	}
 	job.UpdateTaskStatus(task, schedulingapi.Releasing)
+	sc.updateQueueForJob(job)
 
 	// Add new task to node.
 	node.UpdateTask(task)
@@ -1496,6 +1501,10 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	if err != nil {
 		return err
 	}
+	// The task moves to Binding without a pod event, so refresh the queue
+	// totals. On the error paths the rollback restores the job's totals and the
+	// refresh changes nothing.
+	defer sc.updateQueueForJob(job)
 
 	node, found := sc.Nodes[bindContext.TaskInfo.NodeName]
 	if !found {
