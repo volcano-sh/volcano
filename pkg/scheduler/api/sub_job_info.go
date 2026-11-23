@@ -167,7 +167,7 @@ func (sji *SubJobInfo) getTaskHighestPriority() int32 {
 // It first checks if the pod matches the policy's label selector. If not, returns nil.
 // Then, it collects values from the pod's labels corresponding to the policy's MatchLabelKeys.
 // If any key is missing or has an empty value, returns nil.
-// If no matching rules are configured, returns an empty slice indicating the default group.
+// If no MatchLabelKeys are configured, returns an empty slice, and all matching pods share one subjob of the policy.
 func getSubJobMatchValues(policy scheduling.SubGroupPolicySpec, pod *v1.Pod) []string {
 	// Check if the pod matches the label selector specified in the policy
 	if policy.LabelSelector != nil {
@@ -206,8 +206,8 @@ func getSubJobMatchValues(policy scheduling.SubGroupPolicySpec, pod *v1.Pod) []s
 		return matchValues
 	}
 
-	// Log when no matching rules are configured, using default group
-	klog.V(4).Infof("No MatchLabelKeys configured for policy, pod %s/%s uses default subjob group", pod.Namespace, pod.Name)
+	// Log when no MatchLabelKeys are configured, so the pod uses the single subjob of the policy
+	klog.V(4).Infof("No MatchLabelKeys configured for policy %q, pod %s/%s uses the single subjob of the policy", policy.Name, pod.Namespace, pod.Name)
 	return matchValues
 }
 

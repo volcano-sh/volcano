@@ -1346,7 +1346,8 @@ func (ji *JobInfo) getOrCreateSubJob(ti *TaskInfo) *SubJobInfo {
 	}
 
 	for _, policy := range ji.PodGroup.Spec.SubGroupPolicy {
-		if matchValues := getSubJobMatchValues(policy, ti.Pod); len(matchValues) > 0 {
+		// An empty non-nil slice means the pod matches a policy without MatchLabelKeys.
+		if matchValues := getSubJobMatchValues(policy, ti.Pod); matchValues != nil {
 			groupID := getSubJobGID(ji.UID, policy.Name)
 			subJobID := getSubJobID(ji.UID, policy.Name, matchValues)
 			if _, found := ji.SubJobs[subJobID]; !found {
