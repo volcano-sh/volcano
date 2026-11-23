@@ -163,6 +163,89 @@ func TestSelectDomainVictims_ReclaimableCrossQueueOnly(t *testing.T) {
 	assert.Equal(t, api.TaskID(victim.UID), victims[0].UID)
 }
 
+func TestSelectDomainVictims_ReclaimableParentBoundary(t *testing.T) {
+	nodeName := "n1"
+	reclaimable := true
+	nonReclaimable := false
+	queue := func(name, parent string, reclaimable *bool) *api.QueueInfo {
+		return &api.QueueInfo{UID: api.QueueID(name), Name: name, Queue: &schedulingapi.Queue{
+			Spec: schedulingapi.QueueSpec{Parent: parent, Reclaimable: reclaimable},
+		}}
+	}
+
+	// tenant-a is not reclaimable, so only a2 inside it can reclaim from a1.
+	cases := []struct {
+		name           string
+		reclaimerQueue api.QueueID
+		wantVictim     bool
+	}{
+		{name: "queue outside the protected parent", reclaimerQueue: "b1", wantVictim: false},
+		{name: "queue inside the protected parent", reclaimerQueue: "a2", wantVictim: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reclaimerJobID := api.JobID("ns/reclaimer")
+			victimJobID := api.JobID("ns/victim")
+
+			reclaimer := testTask(reclaimerJobID, "reclaimer", "", api.Pending, 100, 1000)
+			reclaimerJob := api.NewJobInfo(reclaimerJobID, reclaimer)
+			reclaimerJob.Queue = tc.reclaimerQueue
+
+			victim := testTask(victimJobID, "victim", nodeName, api.Running, 10, 1000)
+			victimJob := api.NewJobInfo(victimJobID, victim)
+			victimJob.Queue = "a1"
+			victimJob.Preemptable = true
+
+			ssn := &framework.Session{
+				Jobs: map[api.JobID]*api.JobInfo{
+					reclaimerJobID: reclaimerJob,
+					victimJobID:    victimJob,
+				},
+				Queues: map[api.QueueID]*api.QueueInfo{
+					"root":     queue("root", "", &reclaimable),
+					"tenant-a": queue("tenant-a", "root", &nonReclaimable),
+					"a1":       queue("a1", "tenant-a", &reclaimable),
+					"a2":       queue("a2", "tenant-a", &reclaimable),
+					"tenant-b": queue("tenant-b", "root", &reclaimable),
+					"b1":       queue("b1", "tenant-b", &reclaimable),
+				},
+				Tiers: []conf.Tier{
+					{
+						Plugins: []conf.PluginOption{
+							{Name: "test-reclaim"},
+						},
+					},
+				},
+			}
+			ssn.AddUnifiedEvictableFn("test-reclaim", func(_ *api.EvictionContext, candidates []*api.TaskInfo) ([]*api.TaskInfo, int) {
+				return candidates, 1
+			})
+
+			node := &api.NodeInfo{
+				Name: nodeName,
+				Tasks: map[api.TaskID]*api.TaskInfo{
+					api.PodKey(victim.Pod): victim,
+				},
+			}
+			ssn.RealNodesList = map[string][]*api.NodeInfo{
+				"d1": {node},
+			}
+
+			action := New()
+			action.allowWholeBundle = true
+			pending := []*api.TaskInfo{reclaimer}
+			jobNeed := utils.SumInitResreq(pending)
+			victims := utils.FlattenBundles(action.selectDomainBundles(ssn, nil, reclaimerJob, pending, jobNeed, "d1"))
+			if tc.wantVictim {
+				assert.Len(t, victims, 1)
+				assert.Equal(t, api.TaskID(victim.UID), victims[0].UID)
+			} else {
+				assert.Empty(t, victims)
+			}
+		})
+	}
+}
+
 func TestSelectDomainVictims_RespectVictimJobPreemptable(t *testing.T) {
 	reclaimerJobID := api.JobID("ns/reclaimer")
 	victimJobID := api.JobID("ns/victim")
