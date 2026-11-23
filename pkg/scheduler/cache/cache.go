@@ -18,6 +18,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -1412,7 +1413,12 @@ func (sc *SchedulerCache) processResyncTask() {
 
 	reSynced := false
 	if err := sc.syncTask(task); err != nil {
-		klog.ErrorS(err, "Failed to sync task, retry it", "namespace", task.Namespace, "name", task.Name)
+		if errors.Is(err, errTaskSyncConflict) {
+			klog.V(4).InfoS("task changed during resync, retrying", "namespace", task.Namespace, "name", task.Name)
+		} else {
+			klog.ErrorS(err, "Failed to sync task, retry it", "namespace", task.Namespace, "name", task.Name)
+		}
+		// Transaction and PodGroup changes do not necessarily enqueue errTasks.
 		sc.retryResyncTask(task)
 		reSynced = true
 	} else {
