@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GOPATH: /home/runner/work/${{ github.repository }}
+      IMAGES_DIR: /tmp/volcano-images
     steps:
       - name: Install Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
@@ -65,14 +66,25 @@ jobs:
           sudo make unit-test
         working-directory: ./src/github.com/${{ github.repository }}
 
+      - name: Install image publishing tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo jq
+
       - name: Login to DockerHub
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Build release images
+        run: |
+          docker buildx create --use
+          make TAG=${{ env.TAG }} RELEASE_VER=${{ env.RELEASE_VER }} CC=/usr/local/musl/bin/musl-gcc DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=oci release
+        working-directory: ./src/github.com/${{ github.repository }}
+
       - name: Daily Release to Docker Hub
-        run: docker buildx create --use && make TAG=${{ env.TAG }} RELEASE_VER=${{ env.RELEASE_VER }} DOCKER_USERNAME=${{ secrets.DOCKERHUB_USERNAME }} DOCKER_PASSWORD=${{ secrets.DOCKERHUB_TOKEN }} CC=/usr/local/musl/bin/musl-gcc DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry release
+        run: make TAG=${{ env.TAG }} DOCKER_PLATFORMS="linux/amd64,linux/arm64" push-images
         working-directory: ./src/github.com/${{ github.repository }}
 
       - name: Login to GitHub Container Registry
@@ -83,7 +95,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Daily Release to GitHub Container Registry
-        run: make TAG=${{ env.TAG }} RELEASE_VER=${{ env.RELEASE_VER }} IMAGE_PREFIX=ghcr.io/${{ env.REPO_OWNER }} CC=/usr/local/musl/bin/musl-gcc DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry release
+        run: make TAG=${{ env.TAG }} IMAGE_PREFIX=ghcr.io/${{ env.REPO_OWNER }} DOCKER_PLATFORMS="linux/amd64,linux/arm64" push-images
         working-directory: ./src/github.com/${{ github.repository }}
 
       - name: Logout from registries

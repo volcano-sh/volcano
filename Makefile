@@ -15,7 +15,7 @@
 OUTPUT_DIR ?= _output
 BIN_DIR=${OUTPUT_DIR}/bin
 RELEASE_DIR=${OUTPUT_DIR}/release
-IMAGES_DIR=${OUTPUT_DIR}/images
+IMAGES_DIR ?= ${OUTPUT_DIR}/images
 REPO_PATH=volcano.sh/volcano
 IMAGE_PREFIX=volcanosh
 CRD_OPTIONS ?= "crd:crdVersions=v1,generateEmbeddedObjectMeta=true"
@@ -26,6 +26,7 @@ SUPPORT_PLUGINS ?= "no"
 CRD_VERSION ?= v1
 BUILDX_OUTPUT_TYPE ?= "docker"
 FORCE_REBUILD ?= true
+IMAGE_COMPONENTS = scheduler agent-scheduler controller-manager hypernode-controller-manager webhook-manager agent
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -107,15 +108,24 @@ vcctl: init
 
 image_bins: vc-scheduler vc-agent-scheduler vc-controller-manager vc-hypernode-controller-manager vc-webhook-manager vc-agent
 
-images: vc-scheduler-image vc-agent-scheduler-image vc-controller-manager-image vc-hypernode-controller-manager-image vc-webhook-manager-image vc-agent-image
+images: $(addprefix vc-,$(addsuffix -image,$(IMAGE_COMPONENTS)))
+
+.PHONY: push-images
+push-images:
+	bash ./hack/push-images.sh ${DOCKER_PLATFORMS} $(IMAGE_COMPONENTS)
 
 # Define a reusable build function for individual component images
 define build_component_image
-	@if [ "$(FORCE_REBUILD)" = "true" ] || [ "$(BUILDX_OUTPUT_TYPE)" = "registry" ] || ! docker image inspect "${IMAGE_PREFIX}/vc-$(1):$(TAG)" >/dev/null 2>&1; then \
+	@if [ "$(FORCE_REBUILD)" = "true" ] || [ "$(BUILDX_OUTPUT_TYPE)" = "registry" ] || [ "$(BUILDX_OUTPUT_TYPE)" = "oci" ] || ! docker image inspect "${IMAGE_PREFIX}/vc-$(1):$(TAG)" >/dev/null 2>&1; then \
+		output="type=$(BUILDX_OUTPUT_TYPE)"; \
+		if [ "$(BUILDX_OUTPUT_TYPE)" = "oci" ]; then \
+			mkdir -p "${IMAGES_DIR}" || exit 1; \
+			output="$$output,dest=${IMAGES_DIR}/vc-$(1)-$(TAG).tar"; \
+		fi; \
 		echo "Building image ${IMAGE_PREFIX}/vc-$(1):$(TAG)..."; \
 		docker buildx build -t "${IMAGE_PREFIX}/vc-$(1):$(TAG)" . \
 			-f ./installer/dockerfile/$(1)/Dockerfile \
-			--output=type=${BUILDX_OUTPUT_TYPE} \
+			--output="$$output" \
 			--platform ${DOCKER_PLATFORMS} \
 			--build-arg APK_MIRROR=${APK_MIRROR} \
 			--build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}; \
