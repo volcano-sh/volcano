@@ -1262,6 +1262,124 @@ func TestBuildPodGroupFromPodWithNetworkTopology(t *testing.T) {
 	}
 }
 
+func TestBuildPodGroupFromPodWithDeviceTopology(t *testing.T) {
+	testCases := []struct {
+		name       string
+		annotation string
+		expected   *scheduling.DeviceTopologySpec
+	}{
+		{
+			name:     "Pod without the annotation",
+			expected: nil,
+		},
+		{
+			name:       "Pod with a hard local and soft fabric policy",
+			annotation: `{"requirements":[{"resource":{"extendedResourceName":"nvidia.com/gpu"},"mode":"hard"}],"fabric":{"mode":"soft"}}`,
+			expected: &scheduling.DeviceTopologySpec{
+				Requirements: []scheduling.DeviceTopologyRequirement{{
+					Resource: scheduling.DeviceResourceSelector{ExtendedResourceName: "nvidia.com/gpu"},
+					Mode:     scheduling.HardDeviceTopologyMode,
+				}},
+				Fabric: &scheduling.DeviceFabricAffinity{Mode: scheduling.SoftDeviceTopologyMode},
+			},
+		},
+		{
+			name:       "Pod with an annotation that does not decode",
+			annotation: "hard",
+			expected:   nil,
+		},
+	}
+
+	controller := newFakeController()
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			pod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test"},
+				Spec:       v1.PodSpec{Containers: []v1.Container{{Name: "test-container", Image: "test-image"}}},
+			}
+			if testCase.annotation != "" {
+				pod.Annotations = map[string]string{scheduling.DeviceTopologyAnnotationKey: testCase.annotation}
+			}
+
+			podGroup := controller.buildPodGroupFromPod(pod, "test-podgroup")
+
+			assert.Equal(t, testCase.expected, podGroup.Spec.DeviceTopology)
+		})
+	}
+}
+
+func TestNormalPodWithUndecodableDeviceTopologyGetsNoPodGroup(t *testing.T) {
+	validPolicy := `{"requirements":[{"resource":{"extendedResourceName":"nvidia.com/gpu"},"mode":"hard"}]}`
+	paths := map[string]func(*pgcontroller, *v1.Pod) error{
+		"createNormalPodPGIfNotExist": (*pgcontroller).createNormalPodPGIfNotExist,
+		"createOrUpdateNormalPodPG":   (*pgcontroller).createOrUpdateNormalPodPG,
+	}
+	testCases := []struct {
+		name          string
+		annotation    string
+		wantPodGroup  bool
+		wantDeviceTop *scheduling.DeviceTopologySpec
+	}{
+		{
+			name:         "valid policy",
+			annotation:   validPolicy,
+			wantPodGroup: true,
+			wantDeviceTop: &scheduling.DeviceTopologySpec{
+				Requirements: []scheduling.DeviceTopologyRequirement{{
+					Resource: scheduling.DeviceResourceSelector{ExtendedResourceName: "nvidia.com/gpu"},
+					Mode:     scheduling.HardDeviceTopologyMode,
+				}},
+			},
+		},
+		{
+			name:       "misspelled field",
+			annotation: `{"requirments":[{"resource":{"extendedResourceName":"nvidia.com/gpu"},"mode":"hard"}]}`,
+		},
+		{
+			name:       "value that is not JSON",
+			annotation: "hard",
+		},
+	}
+
+	for pathName, createPodGroup := range paths {
+		for _, testCase := range testCases {
+			t.Run(pathName+"/"+testCase.name, func(t *testing.T) {
+				c := newFakeController()
+				pod := &v1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        "pod",
+						Namespace:   "test",
+						UID:         types.UID("pod-uid"),
+						Annotations: map[string]string{scheduling.DeviceTopologyAnnotationKey: testCase.annotation},
+					},
+					Spec: v1.PodSpec{
+						SchedulerName: "volcano",
+						Containers:    []v1.Container{{Name: "main", Image: "test-image"}},
+					},
+				}
+				pod, err := c.kubeClient.CoreV1().Pods(pod.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+				assert.NoError(t, err)
+
+				assert.NoError(t, createPodGroup(c, pod))
+
+				podGroups, err := c.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).List(context.TODO(), metav1.ListOptions{})
+				assert.NoError(t, err)
+				current, err := c.kubeClient.CoreV1().Pods(pod.Namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+				assert.NoError(t, err)
+				if !testCase.wantPodGroup {
+					assert.Empty(t, podGroups.Items)
+					assert.Empty(t, current.Annotations[scheduling.KubeGroupNameAnnotationKey])
+					return
+				}
+				if assert.Len(t, podGroups.Items, 1) {
+					assert.Equal(t, testCase.wantDeviceTop, podGroups.Items[0].Spec.DeviceTopology)
+					assert.Equal(t, podGroups.Items[0].Name, current.Annotations[scheduling.KubeGroupNameAnnotationKey])
+				}
+			})
+		}
+	}
+}
+
 func TestNoPodGroupCreatedForWhenKubeGroupNameAnnotationExists(t *testing.T) {
 	setup := func(t *testing.T) (*pgcontroller, string, string) {
 		c := newFakeController()

@@ -17,6 +17,7 @@
 package allocate
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"slices"
@@ -393,14 +394,17 @@ func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobs
 				"allocatedHyperNode", job.AllocatedHyperNode, "subJobNum", jobWorksheet.subJobs.Len())
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
 			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
-				stmt.Commit()
-				committed = true
-				ssn.MarkJobDirty(job.UID)
-				alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
+				if err := stmt.CommitWithParticipants(context.Background()); err != nil {
+					klog.ErrorS(err, "Failed to commit allocation statement", "job", job.UID)
+				} else {
+					committed = true
+					ssn.MarkJobDirty(job.UID)
+					alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
 
-				// There are still left tasks that need to be allocated when min available < replicas, put the job back
-				if !jobWorksheet.Empty() {
-					jobs.Push(job)
+					// There are still left tasks that need to be allocated when min available < replicas, put the job back
+					if !jobWorksheet.Empty() {
+						jobs.Push(job)
+					}
 				}
 			}
 		} else {
@@ -423,19 +427,22 @@ func (alloc *Action) allocateResourcesForQueues(queues *util.PriorityQueue, jobs
 				}
 
 				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
-					stmt.Commit()
-					committed = true
+					if err := stmt.CommitWithParticipants(context.Background()); err != nil {
+						klog.ErrorS(err, "Failed to commit allocation statement", "job", job.UID)
+					} else {
+						committed = true
 
-					// Mirror recorder.UpdateDecisionToJob: clear the redeemed nomination.
-					if subJob.NominatedHyperNode != "" {
-						klog.V(3).InfoS("clear nominated hyperNode for committed subJob",
-							"subJob", subJob.UID, "old", subJob.NominatedHyperNode)
-						subJob.NominatedHyperNode = ""
-					}
+						// Mirror recorder.UpdateDecisionToJob: clear the redeemed nomination.
+						if subJob.NominatedHyperNode != "" {
+							klog.V(3).InfoS("clear nominated hyperNode for committed subJob",
+								"subJob", subJob.UID, "old", subJob.NominatedHyperNode)
+							subJob.NominatedHyperNode = ""
+						}
 
-					// There are still left tasks that need to be allocated when min available < replicas, put the job back
-					if tasks.Len() > 0 {
-						jobs.Push(job)
+						// There are still left tasks that need to be allocated when min available < replicas, put the job back
+						if tasks.Len() > 0 {
+							jobs.Push(job)
+						}
 					}
 				}
 			} else {

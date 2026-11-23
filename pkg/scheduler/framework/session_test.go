@@ -3,8 +3,10 @@ package framework
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/utils/ptr"
@@ -12,7 +14,98 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	schedulercache "volcano.sh/volcano/pkg/scheduler/cache"
+	"volcano.sh/volcano/pkg/scheduler/topology/provider"
 )
+
+const (
+	sessionTopologyTestProviderID = "session-topology-provider"
+	sessionTopologyTestNamespace  = "session-topology.example"
+)
+
+func TestOpenSessionExposesDeviceTopologySnapshot(t *testing.T) {
+	schedulerCache := schedulercache.NewDefaultMockSchedulerCache("session-topology-test")
+	t.Cleanup(func() {
+		schedulercache.ShutdownMockSchedulerCache(schedulerCache)
+	})
+
+	registry, err := provider.NewRegistry([]provider.Registration{{
+		ProviderID:        sessionTopologyTestProviderID,
+		IdentityNamespace: sessionTopologyTestNamespace,
+		ResourceNames:     []corev1.ResourceName{"nvidia.com/gpu"},
+	}})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	schedulercache.WithDeviceTopologyProviderRegistry(registry)(schedulerCache)
+
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-a", UID: "node-a-uid", ResourceVersion: "1"}}
+	if err := schedulerCache.AddOrUpdateNode(node); err != nil {
+		t.Fatalf("AddOrUpdateNode() error = %v", err)
+	}
+	if err := schedulerCache.ApplyProviderNodeUpdate(sessionTopologyTestUpdate(node, 1, "device-a")); err != nil {
+		t.Fatalf("initial ApplyProviderNodeUpdate() error = %v", err)
+	}
+
+	wantTopology := schedulerCache.DeviceTopologySnapshot()
+	ssn := OpenSession(schedulerCache, nil, nil)
+	defer CloseSession(ssn)
+	if ssn.DeviceTopology == nil {
+		t.Fatal("Session.DeviceTopology = nil, want the topology snapshot captured at session open")
+	}
+	if ssn.DeviceTopology != wantTopology {
+		t.Fatal("Session.DeviceTopology does not reference the topology snapshot captured from SchedulerCache")
+	}
+	if ssn.DeviceTopology.Revision() != 1 {
+		t.Fatalf("Session.DeviceTopology.Revision() = %d, want 1", ssn.DeviceTopology.Revision())
+	}
+	facts, exists := ssn.DeviceTopology.Facts(sessionTopologyTestProviderID, node.UID)
+	if !exists || facts.SourceGeneration != 1 || len(facts.Devices) != 1 || facts.Devices[0].ID.Value != "device-a" {
+		t.Fatalf("Session.DeviceTopology.Facts() = (%#v, %t), want generation-one device-a facts", facts, exists)
+	}
+}
+
+func sessionTopologyTestUpdate(node *corev1.Node, generation uint64, deviceValue string) provider.ProviderNodeUpdate {
+	observedAt := time.Date(2026, time.October, 19, 10, 0, 0, 0, time.UTC).Add(time.Duration(generation) * time.Minute)
+	freshUntil := observedAt.Add(5 * time.Minute)
+	domainID := api.DeviceDomainID{ProviderID: sessionTopologyTestProviderID, Namespace: sessionTopologyTestNamespace, NodeUID: node.UID, Value: "domain-a"}
+	deviceID := api.DeviceID{ProviderID: sessionTopologyTestProviderID, Namespace: sessionTopologyTestNamespace, Value: deviceValue}
+	facts := api.NodeTopologyFacts{
+		ProviderID:          sessionTopologyTestProviderID,
+		NodeName:            node.Name,
+		NodeUID:             node.UID,
+		NodeResourceVersion: node.ResourceVersion,
+		SourceGeneration:    generation,
+		ObservedAt:          observedAt,
+		FreshUntil:          freshUntil,
+		Devices: []api.TopologyDevice{{
+			ID:            deviceID,
+			ResourceName:  corev1.ResourceName("nvidia.com/gpu"),
+			NodeName:      node.Name,
+			NodeUID:       node.UID,
+			LocalDomainID: domainID,
+			Health:        api.DeviceHealthy,
+		}},
+		LocalDomains: []api.DeviceDomain{{
+			ID:           domainID,
+			NodeName:     node.Name,
+			NodeUID:      node.UID,
+			ResourceName: corev1.ResourceName("nvidia.com/gpu"),
+			DeviceIDs:    []api.DeviceID{deviceID},
+		}},
+	}
+	return provider.ProviderNodeUpdate{
+		ProviderID:          sessionTopologyTestProviderID,
+		NodeName:            node.Name,
+		NodeUID:             node.UID,
+		NodeResourceVersion: node.ResourceVersion,
+		SourceGeneration:    generation,
+		ObservedAt:          observedAt,
+		FreshUntil:          freshUntil,
+		Operation:           provider.ReplaceFacts,
+		Facts:               &facts,
+	}
+}
 
 func TestRefreshAllocatedHyperNodeOnTopologyGenerationChange(t *testing.T) {
 	root := api.NewHyperNodeInfo(&topologyv1alpha1.HyperNode{

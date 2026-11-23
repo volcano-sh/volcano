@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -75,6 +76,8 @@ import (
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
+	"volcano.sh/volcano/pkg/scheduler/topology/adapter"
+	"volcano.sh/volcano/pkg/scheduler/topology/provider"
 	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 	schedulercache "volcano.sh/volcano/pkg/schedulercommon/cache"
 	"volcano.sh/volcano/pkg/util"
@@ -213,6 +216,45 @@ type SchedulerCache struct {
 	resourceSyncTimeout time.Duration
 	// resourceClaimCache is a cache for ResourceClaims, used for DRA
 	resourceClaimCache *assumecache.AssumeCache
+
+	// deviceTopology holds cache-owned provider facts and immutable topology
+	// indexes. It is initialized lazily while SchedulerCache.Mutex is held.
+	deviceTopology *deviceTopologyState
+	// deviceTopologyProviderRegistry is the immutable scheduler configuration
+	// that selects authoritative topology providers for extended resources.
+	deviceTopologyProviderRegistry *provider.Registry
+	// deviceTopologyProviders are the configured trusted sources that publish
+	// complete facts while SchedulerCache synchronizes Nodes.
+	deviceTopologyProviders []provider.NodeTopologyProvider
+	// deviceTopologyProvidersConfigured prevents a second startup configuration
+	// from changing provider ownership before cache startup.
+	deviceTopologyProvidersConfigured bool
+	// deviceTopologyProvidersFrozen prevents all configuration changes, of
+	// providers and adapters, after informer processing begins.
+	deviceTopologyProvidersFrozen bool
+	// deviceTopologyAdapterRegistry owns exact backend allocation for configured
+	// device resources. It is immutable after SchedulerCache starts.
+	deviceTopologyAdapterRegistry *adapter.Registry
+	// deviceTopologyAdaptersConfigured prevents a second startup configuration
+	// from changing adapter ownership before cache startup.
+	deviceTopologyAdaptersConfigured bool
+	// deviceTopologyReservationMutex serializes the adapter operations of the
+	// scheduling path and of recovery without holding SchedulerCache.Mutex
+	// during I/O. The Pod release and confirm workers do not take it.
+	deviceTopologyReservationMutex sync.Mutex
+	// deviceTopologyNow supplies the current time for dynamic topology
+	// freshness checks. A nil value uses time.Now.
+	deviceTopologyNow func() time.Time
+	// deviceTopologyAdapterCallTimeout bounds one allocation adapter call made
+	// during a scheduling attempt or a Pod confirmation. A zero value uses the
+	// default timeout.
+	deviceTopologyAdapterCallTimeout time.Duration
+	// deviceTopologyPodReleaseQueue holds Pods whose devices wait for an
+	// adapter release.
+	deviceTopologyPodReleaseQueue workqueue.TypedRateLimitingInterface[types.UID]
+	// deviceTopologyPodConfirmQueue holds bound Pods whose Binding devices wait
+	// for an adapter confirmation.
+	deviceTopologyPodConfirmQueue workqueue.TypedRateLimitingInterface[types.UID]
 }
 
 type multiSchedulerInfo struct {
@@ -626,6 +668,9 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		NodeList:            []string{},
 		nodeWorkers:         nodeWorkers,
 		resourceSyncTimeout: resourceSyncTimeout,
+
+		deviceTopologyPodReleaseQueue: newDeviceTopologyPodQueue(),
+		deviceTopologyPodConfirmQueue: newDeviceTopologyPodQueue(),
 	}
 	for _, option := range cacheOptions {
 		option(sc)
@@ -976,9 +1021,13 @@ func (sc *SchedulerCache) registerHintEventHandler(
 
 // Run  starts the schedulerCache
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
+	sc.freezeDeviceTopologyProviders()
+	// Keep exact placement off until adapters report what they already hold.
+	sc.beginDeviceTopologyAllocationRecovery()
 	sc.informerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
 	sc.WaitForCacheSync(stopCh)
+	go sc.runDeviceTopologyAllocationRecovery(stopCh)
 	for i := 0; i < int(sc.nodeWorkers); i++ {
 		go wait.Until(sc.runNodeWorker, 0, stopCh)
 	}
@@ -993,6 +1042,12 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go wait.Until(sc.processCleanupJob, 0, stopCh)
 
 	go wait.Until(sc.processBindTask, time.Millisecond*20, stopCh)
+
+	// Release the devices of ended Pods.
+	go wait.Until(sc.processDeviceTopologyPodReleaseQueue, 0, stopCh)
+
+	// Confirm the devices of bound Pods.
+	go wait.Until(sc.processDeviceTopologyPodConfirmQueue, 0, stopCh)
 
 	// Get metrics data
 	klog.V(3).Infof("Start metrics collection, metricsConf is %v", sc.metricsConf)
@@ -1118,9 +1173,11 @@ func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*BindContext,
 		klog.V(3).Infof("There are %d tasks in total and %d binds failed, latency %v", len(readyToBindTasks), len(errMsg), time.Since(tmp))
 	}
 
+	boundTasks := make([]*schedulingapi.TaskInfo, 0, len(bindContexts))
 	for _, bindContext := range bindContexts {
 		if reason, ok := errMsg[bindContext.TaskInfo.UID]; !ok {
 			sc.Recorder.Eventf(bindContext.TaskInfo.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name, bindContext.TaskInfo.NodeName)
+			boundTasks = append(boundTasks, bindContext.TaskInfo)
 		} else {
 			unschedulableMsg := fmt.Sprintf("failed to bind to node %s: %s", bindContext.TaskInfo.NodeName, reason)
 			if err := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, unschedulableMsg, ""); err != nil {
@@ -1132,11 +1189,13 @@ func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*BindContext,
 					preBinder.PreBindRollBack(ctx, bindContext)
 				}
 			}
+			sc.releaseFailedBindDeviceTopology(bindContext.TaskInfo)
 
 			klog.V(2).Infof("resyncTask task %s", bindContext.TaskInfo.Name)
 			sc.resyncTask(bindContext.TaskInfo)
 		}
 	}
+	sc.confirmBoundDeviceTopology(boundTasks)
 }
 
 // BindPodGroup binds job to silo cluster
@@ -1593,6 +1652,7 @@ func (sc *SchedulerCache) executePreBinds(ctx context.Context, bindContexts []*B
 		if err := sc.executePreBind(ctx, bindContext, preBinders); err != nil {
 			reason := fmt.Sprintf("execute preBind for pod %s failed: %v, resync the task", klog.KObj(bindContext.TaskInfo.Pod), err)
 			klog.Error(reason)
+			sc.releaseFailedBindDeviceTopology(bindContext.TaskInfo)
 			sc.resyncTask(bindContext.TaskInfo)
 			if updateErr := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, reason, ""); updateErr != nil {
 				logger.Error(updateErr, "Failed to update pod status", "pod", klog.KObj(bindContext.TaskInfo.Pod))
@@ -1633,6 +1693,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
+	deviceTopology := sc.ensureDeviceTopologyState().snapshot
 	snapshot := &schedulingapi.ClusterInfo{
 		Nodes:                make(map[string]*schedulingapi.NodeInfo),
 		HyperNodes:           make(map[string]*schedulingapi.HyperNodeInfo),
@@ -1646,6 +1707,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		NodeList:             make([]string, len(sc.NodeList)),
 		CSINodesStatus:       make(map[string]*schedulingapi.CSINodeStatusInfo),
 		NodesInShard:         sets.Set[string]{},
+		DeviceTopology:       deviceTopology,
 	}
 
 	copy(snapshot.NodeList, sc.NodeList)

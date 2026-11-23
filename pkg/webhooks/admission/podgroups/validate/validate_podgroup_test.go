@@ -457,6 +457,7 @@ func TestValidatePodGroup(t *testing.T) {
 					Operation: operation,
 					Name:      tt.podGroup.Name,
 					Object:    runtime.RawExtension{Raw: pgJson},
+					OldObject: runtime.RawExtension{Raw: pgJson},
 					Resource: metav1.GroupVersionResource{
 						Group:    schedulingv1beta1.SchemeGroupVersion.Group,
 						Version:  schedulingv1beta1.SchemeGroupVersion.Version,

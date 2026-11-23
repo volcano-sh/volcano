@@ -63,6 +63,10 @@ jobs:
             make_target: e2e-test-unschedulablejobcache
             artifact_name: volcano_e2e_unschedulable_job_cache_logs
             log_directory: e2e-unschedulable-job-cache-logs
+          - suite_name: E2E about Device Topology
+            make_target: e2e-test-devicetopology
+            artifact_name: volcano_e2e_devicetopology_logs
+            log_directory: e2e-devicetopology-logs
     uses: ./.github/workflows/e2e_feature_gated.yaml
     with:
       suite_name: ${{ matrix.suite_name }}

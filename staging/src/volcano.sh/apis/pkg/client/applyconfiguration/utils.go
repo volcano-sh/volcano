@@ -57,6 +57,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &batchv1alpha1.CronJobStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DependsOn"):
 		return &batchv1alpha1.DependsOnApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DeviceFabricAffinity"):
+		return &batchv1alpha1.DeviceFabricAffinityApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DeviceResourceSelector"):
+		return &batchv1alpha1.DeviceResourceSelectorApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DeviceTopologyRequirement"):
+		return &batchv1alpha1.DeviceTopologyRequirementApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DeviceTopologySpec"):
+		return &batchv1alpha1.DeviceTopologySpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Job"):
 		return &batchv1alpha1.JobApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("JobCondition"):
@@ -169,6 +177,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &schedulingv1beta1.AffinityApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("Cluster"):
 		return &schedulingv1beta1.ClusterApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("DeviceFabricAffinity"):
+		return &schedulingv1beta1.DeviceFabricAffinityApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("DeviceResourceSelector"):
+		return &schedulingv1beta1.DeviceResourceSelectorApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("DeviceTopologyRequirement"):
+		return &schedulingv1beta1.DeviceTopologyRequirementApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("DeviceTopologySpec"):
+		return &schedulingv1beta1.DeviceTopologySpecApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("Guarantee"):
 		return &schedulingv1beta1.GuaranteeApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("NamespaceQueue"):

@@ -1146,6 +1146,119 @@ func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 
 }
 
+func TestConvertDeviceTopologySpec(t *testing.T) {
+	source := &v1alpha1.DeviceTopologySpec{
+		Requirements: []v1alpha1.DeviceTopologyRequirement{
+			{
+				Resource: v1alpha1.DeviceResourceSelector{ExtendedResourceName: "nvidia.com/gpu"},
+				Mode:     v1alpha1.HardDeviceTopologyMode,
+			},
+			{
+				Resource: v1alpha1.DeviceResourceSelector{ExtendedResourceName: "amd.com/gpu"},
+				Mode:     v1alpha1.SoftDeviceTopologyMode,
+			},
+		},
+		Fabric: &v1alpha1.DeviceFabricAffinity{Mode: v1alpha1.SoftDeviceTopologyMode},
+	}
+
+	got := convertDeviceTopologySpec(source)
+	want := &schedulingapi.DeviceTopologySpec{
+		Requirements: []schedulingapi.DeviceTopologyRequirement{
+			{
+				Resource: schedulingapi.DeviceResourceSelector{ExtendedResourceName: "nvidia.com/gpu"},
+				Mode:     schedulingapi.HardDeviceTopologyMode,
+			},
+			{
+				Resource: schedulingapi.DeviceResourceSelector{ExtendedResourceName: "amd.com/gpu"},
+				Mode:     schedulingapi.SoftDeviceTopologyMode,
+			},
+		},
+		Fabric: &schedulingapi.DeviceFabricAffinity{Mode: schedulingapi.SoftDeviceTopologyMode},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("converted device topology = %#v, want %#v", got, want)
+	}
+
+	source.Requirements[0].Resource.ExtendedResourceName = "amd.com/gpu"
+	source.Fabric.Mode = v1alpha1.HardDeviceTopologyMode
+	if got.Requirements[0].Resource.ExtendedResourceName != "nvidia.com/gpu" {
+		t.Fatalf("converted requirements share the source slice: %#v", got.Requirements)
+	}
+	if got.Fabric.Mode != schedulingapi.SoftDeviceTopologyMode {
+		t.Fatalf("converted fabric shares the source pointer: %#v", got.Fabric)
+	}
+	if convertDeviceTopologySpec(nil) != nil {
+		t.Fatal("nil device topology should stay nil")
+	}
+}
+
+func TestCreateOrUpdatePodGroupPropagatesDeviceTopology(t *testing.T) {
+	const namespace = "test"
+
+	controller := newFakeController()
+	job := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      "device-topology-job",
+			UID:       "device-topology-job-uid",
+		},
+		Spec: v1alpha1.JobSpec{
+			DeviceTopology: &v1alpha1.DeviceTopologySpec{
+				Requirements: []v1alpha1.DeviceTopologyRequirement{{
+					Resource: v1alpha1.DeviceResourceSelector{ExtendedResourceName: "nvidia.com/gpu"},
+					Mode:     v1alpha1.HardDeviceTopologyMode,
+				}},
+				Fabric: &v1alpha1.DeviceFabricAffinity{Mode: v1alpha1.SoftDeviceTopologyMode},
+			},
+			Tasks: []v1alpha1.TaskSpec{{
+				Name:     "workers",
+				Replicas: 2,
+				PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+					TotalPartitions: 1,
+					PartitionSize:   2,
+					DeviceTopology: &v1alpha1.DeviceTopologySpec{
+						Requirements: []v1alpha1.DeviceTopologyRequirement{{
+							Resource: v1alpha1.DeviceResourceSelector{ExtendedResourceName: "amd.com/gpu"},
+							Mode:     v1alpha1.SoftDeviceTopologyMode,
+						}},
+						Fabric: &v1alpha1.DeviceFabricAffinity{Mode: v1alpha1.HardDeviceTopologyMode},
+					},
+				},
+			}},
+		},
+	}
+
+	if err := controller.createOrUpdatePodGroup(job); err != nil {
+		t.Fatalf("create PodGroup: %v", err)
+	}
+
+	pgName := controller.generateRelatedPodGroupName(job)
+	pg, err := controller.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get created PodGroup: %v", err)
+	}
+	wantParent := &schedulingapi.DeviceTopologySpec{
+		Requirements: []schedulingapi.DeviceTopologyRequirement{{
+			Resource: schedulingapi.DeviceResourceSelector{ExtendedResourceName: "nvidia.com/gpu"},
+			Mode:     schedulingapi.HardDeviceTopologyMode,
+		}},
+		Fabric: &schedulingapi.DeviceFabricAffinity{Mode: schedulingapi.SoftDeviceTopologyMode},
+	}
+	wantSubGroup := &schedulingapi.DeviceTopologySpec{
+		Requirements: []schedulingapi.DeviceTopologyRequirement{{
+			Resource: schedulingapi.DeviceResourceSelector{ExtendedResourceName: "amd.com/gpu"},
+			Mode:     schedulingapi.SoftDeviceTopologyMode,
+		}},
+		Fabric: &schedulingapi.DeviceFabricAffinity{Mode: schedulingapi.HardDeviceTopologyMode},
+	}
+	if !reflect.DeepEqual(pg.Spec.DeviceTopology, wantParent) {
+		t.Fatalf("created parent device topology = %#v, want %#v", pg.Spec.DeviceTopology, wantParent)
+	}
+	if len(pg.Spec.SubGroupPolicy) != 1 || !reflect.DeepEqual(pg.Spec.SubGroupPolicy[0].DeviceTopology, wantSubGroup) {
+		t.Fatalf("created subgroup device topology = %#v, want %#v", pg.Spec.SubGroupPolicy, wantSubGroup)
+	}
+}
+
 func TestDeleteJobPod(t *testing.T) {
 	namespace := "test"
 

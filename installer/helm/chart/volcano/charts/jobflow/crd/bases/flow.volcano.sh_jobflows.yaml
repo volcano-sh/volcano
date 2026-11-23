@@ -104,6 +104,34 @@ spec:
                       properties:
                         jobSpec:
                           properties:
+                            deviceTopology:
+                              properties:
+                                fabric:
+                                  properties:
+                                    mode:
+                                      enum:
+                                      - hard
+                                      - soft
+                                      type: string
+                                  type: object
+                                requirements:
+                                  items:
+                                    properties:
+                                      mode:
+                                        enum:
+                                        - hard
+                                        - soft
+                                        type: string
+                                      resource:
+                                        properties:
+                                          extendedResourceName:
+                                            type: string
+                                        type: object
+                                    required:
+                                    - resource
+                                    type: object
+                                  type: array
+                              type: object
                             maxRetry:
                               default: 3
                               format: int32
@@ -220,6 +248,34 @@ spec:
                                     type: string
                                   partitionPolicy:
                                     properties:
+                                      deviceTopology:
+                                        properties:
+                                          fabric:
+                                            properties:
+                                              mode:
+                                                enum:
+                                                - hard
+                                                - soft
+                                                type: string
+                                            type: object
+                                          requirements:
+                                            items:
+                                              properties:
+                                                mode:
+                                                  enum:
+                                                  - hard
+                                                  - soft
+                                                  type: string
+                                                resource:
+                                                  properties:
+                                                    extendedResourceName:
+                                                      type: string
+                                                  type: object
+                                              required:
+                                              - resource
+                                              type: object
+                                            type: array
+                                        type: object
                                       minPartitions:
                                         default: 0
                                         format: int32

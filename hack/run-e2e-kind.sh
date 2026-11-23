@@ -30,6 +30,8 @@ if [[ "${E2E_TYPE}" == "ALL" || "${E2E_TYPE}" == "NAMESPACEQUEUE" ]]; then
 fi
 if [[ "${E2E_TYPE}" == "ALL" || "${E2E_TYPE}" == "NAMESPACEQUEUE" ]]; then
   export SCHEDULER_CONFIG_FILE=${SCHEDULER_CONFIG_FILE:-config/volcano-scheduler-namespacequeue.conf}
+elif [[ "${E2E_TYPE}" == "DEVICETOPOLOGY" ]]; then
+  export SCHEDULER_CONFIG_FILE=${SCHEDULER_CONFIG_FILE:-config/volcano-scheduler-device-topology-ci.conf}
 else
   export SCHEDULER_CONFIG_FILE=${SCHEDULER_CONFIG_FILE:-config/volcano-scheduler-ci.conf}
 fi
@@ -586,6 +588,12 @@ case ${E2E_TYPE} in
 "SHARDINGCONTROLLER")
     echo "Running sharding controller e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/shardingcontroller/
+    ;;
+"DEVICETOPOLOGY")
+    echo "Creating 2 kwok nodes for device topology tests"
+    install-kwok-nodes 2
+    echo "Running device topology e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} VOLCANO_E2E_NAMESPACE=${NAMESPACE} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/devicetopology/
     ;;
 "GANGEVICT")
     echo "Creating 4 kwok nodes for gang eviction topology tests"

@@ -141,6 +141,9 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	}
 
 	b.WriteString(validateNetworkTopology(job.Spec.NetworkTopology))
+	if msg := validateJobDeviceTopology(job); msg != "" {
+		fmt.Fprintf(&b, " %s;", msg)
+	}
 	hasDependenciesBetweenTasks := false
 	for index, task := range job.Spec.Tasks {
 		if task.DependsOn != nil {
@@ -296,6 +299,10 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	}
 
 	return nil
+}
+
+func validateJobDeviceTopology(job *v1alpha1.Job) string {
+	return strings.Join(util.ValidateBatchJobDeviceTopology(&job.Spec), "; ")
 }
 
 func validatePartitionPolicy(task v1alpha1.TaskSpec, job *v1alpha1.Job) string {

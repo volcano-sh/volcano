@@ -321,6 +321,7 @@ func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
 				klog.Errorf("Failed to delete Pod <%v/%v> and remove from cache: %s", oldTask.Namespace, oldTask.Name, err.Error())
 				return err
 			}
+			sc.releaseEndedPodDeviceTopologyLocked(oldTask.Pod)
 			klog.V(3).Infof("Pod <%v/%v> was deleted, removed from cache.", oldTask.Namespace, oldTask.Name)
 
 			return nil
@@ -592,6 +593,9 @@ func (sc *SchedulerCache) UpdatePod(oldObj, newObj interface{}) {
 
 	sc.Mutex.Lock()
 	err := sc.updatePod(oldPod, newPod)
+	if isTerminated(schedulingapi.GetTaskStatus(newPod)) {
+		sc.releaseEndedPodDeviceTopologyLocked(newPod)
+	}
 	sc.Mutex.Unlock()
 	if err != nil {
 		klog.Errorf("Failed to update pod %v in cache: %v", oldPod.Name, err)
@@ -623,6 +627,7 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 	sc.Mutex.Lock()
 	sc.clearUnassignedNumaPod(pod)
 	err := sc.deletePod(pod)
+	sc.releaseEndedPodDeviceTopologyLocked(pod)
 	sc.Mutex.Unlock()
 	if err != nil {
 		klog.Errorf("Failed to delete pod %v from cache: %v", pod.Name, err)
@@ -683,11 +688,16 @@ func (sc *SchedulerCache) AddOrUpdateNode(node *v1.Node) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
+	var previousNode *v1.Node
 	if sc.Nodes[node.Name] != nil {
+		previousNode = sc.Nodes[node.Name].Node
 		sc.Nodes[node.Name].SetNode(node)
 		sc.removeNodeImageStates(node.Name)
 	} else {
 		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
+	}
+	if sc.deviceTopology != nil && previousNode != nil && previousNode.UID != node.UID {
+		sc.deviceTopology.removeNode(previousNode.UID)
 	}
 	sc.addNodeImageStates(node, sc.Nodes[node.Name])
 
@@ -719,6 +729,9 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 
 	if _, ok := sc.Nodes[nodeName]; !ok {
 		return fmt.Errorf("node <%s> does not exist", nodeName)
+	}
+	if sc.deviceTopology != nil && sc.Nodes[nodeName].Node != nil {
+		sc.deviceTopology.removeNode(sc.Nodes[nodeName].Node.UID)
 	}
 
 	numaInfo := sc.Nodes[nodeName].NumaInfo
@@ -841,6 +854,9 @@ func (sc *SchedulerCache) SyncNode(nodeName string) error {
 	if err := sc.AddOrUpdateNode(nodeCopy); err != nil {
 		return err
 	}
+	if err := sc.syncDeviceTopologyProviders(context.Background(), nodeCopy); err != nil {
+		return err
+	}
 	if sc.unschedulableJobCache == nil {
 		return nil
 	}
@@ -850,6 +866,27 @@ func (sc *SchedulerCache) SyncNode(nodeName string) error {
 	}
 	for _, event := range kubeschedulerframework.NodeSchedulingPropertiesChange(nodeCopy, oldNode) {
 		sc.unschedulableJobCache.OnEvent(fwk.ClusterEvent{Resource: fwk.Node, ActionType: event.ActionType}, oldNode, nodeCopy)
+	}
+	return nil
+}
+
+// syncDeviceTopologyProviders collects the complete topology result from each
+// configured source and applies it after the current Node is in SchedulerCache.
+// Provider calls run outside the cache mutex; any error is returned so the Node
+// worker retries the synchronization. The sources are set before Run and never
+// change, so reading them needs no lock.
+func (sc *SchedulerCache) syncDeviceTopologyProviders(ctx context.Context, node *v1.Node) error {
+	for _, source := range sc.deviceTopologyProviders {
+		update, err := source.SyncNode(ctx, node)
+		if err != nil {
+			return fmt.Errorf("sync device topology provider %q for Node %q: %w", source.ID(), node.Name, err)
+		}
+		if update.ProviderID != source.ID() {
+			return fmt.Errorf("device topology provider %q returned an update for provider %q", source.ID(), update.ProviderID)
+		}
+		if err := sc.ApplyProviderNodeUpdate(update); err != nil {
+			return fmt.Errorf("apply device topology update from provider %q for Node %q: %w", source.ID(), node.Name, err)
+		}
 	}
 	return nil
 }
