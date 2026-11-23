@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.26.2 AS builder
+FROM golang:1.26.11 AS builder
 WORKDIR /go/src/volcano.sh/
 COPY go.mod go.sum ./
 COPY staging/ ./staging/
