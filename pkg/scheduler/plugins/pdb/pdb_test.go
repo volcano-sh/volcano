@@ -83,6 +83,25 @@ func TestPreemptableAndReclaimableFn(t *testing.T) {
 		preemptees:       []*api.TaskInfo{task1, task2},
 		expectVictims:    []*api.TaskInfo{task1},
 		expectVictimsMap: map[*api.TaskInfo]bool{task1: true},
+	}, {
+		name: "test with empty selector (cannot evict any pod)",
+		pdbs: []*pdbPolicy.PodDisruptionBudget{{
+			ObjectMeta: metav1.ObjectMeta{Name: "pdb-empty", Namespace: "default"},
+			Spec:       pdbPolicy.PodDisruptionBudgetSpec{Selector: &metav1.LabelSelector{}},
+			Status:     pdbPolicy.PodDisruptionBudgetStatus{DisruptionsAllowed: 0},
+		}},
+		preemptees:       []*api.TaskInfo{task1, task2},
+		expectVictims:    nil,
+		expectVictimsMap: make(map[*api.TaskInfo]bool),
+	}, {
+		name: "test with nil selector matches nothing",
+		pdbs: []*pdbPolicy.PodDisruptionBudget{{
+			ObjectMeta: metav1.ObjectMeta{Name: "pdb-nil", Namespace: "default"},
+			Status:     pdbPolicy.PodDisruptionBudgetStatus{DisruptionsAllowed: 0},
+		}},
+		preemptees:       []*api.TaskInfo{task1, task2},
+		expectVictims:    []*api.TaskInfo{task1, task2},
+		expectVictimsMap: map[*api.TaskInfo]bool{task1: true, task2: true},
 	},
 	}
 
