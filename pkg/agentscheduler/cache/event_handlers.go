@@ -367,8 +367,6 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 		return fmt.Errorf("node <%s> does not exist", nodeName)
 	}
 
-	sc.Nodes[nodeName].info.Generation = nextGeneration()
-	klog.V(5).Infof("Node %s deleted, generation incremented to %d", nodeName, sc.Nodes[nodeName].info.Generation)
 	node := sc.Nodes[nodeName].info.Node
 
 	numaInfo := sc.Nodes[nodeName].info.NumaInfo
@@ -379,6 +377,7 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 			klog.Errorf("delete numatopo <%s/%s> failed.", numaInfo.Namespace, numaInfo.Name)
 		}
 	}
+	sc.removeNodeFromList(nodeName)
 	delete(sc.Nodes, nodeName)
 
 	evt := fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Delete}
