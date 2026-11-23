@@ -65,6 +65,44 @@ func TestStatementHasEvictions(t *testing.T) {
 	}
 }
 
+func TestStatementHasAllocations(t *testing.T) {
+	task := &api.TaskInfo{Name: "task"}
+
+	tests := []struct {
+		name       string
+		operations []operation
+		want       bool
+	}{
+		{
+			name: "empty statement",
+		},
+		{
+			name: "statement with only pipeline and eviction",
+			operations: []operation{
+				{name: Pipeline, task: task},
+				{name: Evict, task: task, reason: "preempt"},
+			},
+		},
+		{
+			name: "statement with allocation",
+			operations: []operation{
+				{name: Pipeline, task: task},
+				{name: Allocate, task: task},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stmt := &Statement{operations: tt.operations}
+			if got := stmt.HasAllocations(); got != tt.want {
+				t.Fatalf("HasAllocations() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStatementMerge(t *testing.T) {
 	makeTask := func(name string) *api.TaskInfo {
 		return &api.TaskInfo{

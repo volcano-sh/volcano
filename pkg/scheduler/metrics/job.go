@@ -54,6 +54,7 @@ func DeleteJobMetrics(jobName, queue, namespace string) {
 	e2eJobSchedulingDuration.DeleteLabelValues(jobName, queue, namespace)
 	e2eJobSchedulingStartTime.DeleteLabelValues(jobName, queue, namespace)
 	e2eJobSchedulingLastTime.DeleteLabelValues(jobName, queue, namespace)
+	e2eObservedJobs.Delete(e2eJobKey{namespace: namespace, name: jobName})
 	unscheduleTaskCount.DeleteLabelValues(jobName)
 	jobShare.DeleteLabelValues(namespace, jobName)
 	jobRetryCount.DeleteLabelValues(jobName)

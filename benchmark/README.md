@@ -574,8 +574,8 @@ Volcano version with the metrics instrumented.
 |--------|------|--------|-------------|
 | `volcano_e2e_scheduling_latency_milliseconds` | Histogram | — | Duration of one scheduling session execution |
 | `volcano_open_session_duration_milliseconds` | Histogram | — | Duration of opening a scheduling session |
-| `volcano_e2e_job_scheduling_latency_milliseconds` | Histogram | — | Per-job duration from creation to last task assumed |
-| `volcano_e2e_job_scheduling_duration` | Gauge | `job_name`, `queue`, `job_namespace` | Per-job duration from creation to last task assumed |
+| `volcano_e2e_job_scheduling_latency_milliseconds` | Histogram | — | Per-job duration from creation to the job's tasks first being committed for binding, one sample per job |
+| `volcano_e2e_job_scheduling_duration` | Gauge | `job_name`, `queue`, `job_namespace` | Per-job duration from creation to the latest commit of its tasks for binding |
 | `volcano_plugin_scheduling_latency_milliseconds` | Histogram | `plugin`, `OnSession` | Plugin execution latency |
 | `volcano_action_scheduling_latency_milliseconds` | Histogram | `action` | Action (allocate/reclaim/preempt) latency |
 | `volcano_task_scheduling_latency_milliseconds` | Histogram | `stage` | Task latency from creation to `Watched`, `Assumed`, `PreBound`, or `Bound` |
