@@ -120,7 +120,7 @@ that participates in node sharding. At least one entry is required.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | yes | Scheduler name. Must match the `schedulerName` field in NodeShard CRDs. |
+| `name` | string | yes | Name of the NodeShard (`metadata.name`). Match the shard name configured for the scheduler. |
 | `type` | string | yes | Scheduler type, e.g. `"volcano"` or `"agent"`. |
 | `policies` | list | yes | Ordered policy chain. See the ConfigMap Format section above. |
 | `minNodes` | int | no | Deprecated. Still synthesizes `node-limit` for compatibility and logs a warning; use `policies[].arguments.minNodes` on the `node-limit` policy instead. |
