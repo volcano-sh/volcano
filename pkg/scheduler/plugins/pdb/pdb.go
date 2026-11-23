@@ -97,8 +97,9 @@ func (pp *pdbPlugin) OnSessionOpen(ssn *framework.Session) {
 				if err != nil {
 					continue
 				}
-				// A PDB with a nil or empty selector matches nothing.
-				if selector.Empty() || !selector.Matches(labels.Set(pod.Labels)) {
+				// A nil selector matches no pods (labels.Nothing()); an empty selector
+				// matches every pod in the namespace.
+				if !selector.Matches(labels.Set(pod.Labels)) {
 					continue
 				}
 
