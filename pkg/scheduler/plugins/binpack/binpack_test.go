@@ -47,6 +47,7 @@ func TestArguments(t *testing.T) {
 		"binpack.resources":                 "nvidia.com/gpu, example.com/foo",
 		"binpack.resources.nvidia.com/gpu":  7,
 		"binpack.resources.example.com/foo": -3,
+		DynamicResourceAllocationEnable:     false,
 	}
 
 	builder, ok := framework.GetPluginBuilder(PluginName)
@@ -61,6 +62,9 @@ func TestArguments(t *testing.T) {
 	}
 
 	weight := binpack.weight
+	if binpack.dynamicResourceAllocationEnable {
+		t.Error("DRA scoring should be disabled by plugin arguments")
+	}
 	if weight.BinPackingWeight != 10 {
 		t.Errorf("weight should be 10, but not %v", weight.BinPackingWeight)
 	}
@@ -140,6 +144,7 @@ func TestNode(t *testing.T) {
 				"binpack.resources":                 "nvidia.com/gpu, example.com/foo",
 				"binpack.resources.nvidia.com/gpu":  7,
 				"binpack.resources.example.com/foo": 8,
+				DynamicResourceAllocationEnable:     false,
 			},
 			expected: map[string]map[string]float64{
 				"c1/p1": {
@@ -179,6 +184,7 @@ func TestNode(t *testing.T) {
 				"binpack.memory":                   1,
 				"binpack.resources":                "nvidia.com/gpu",
 				"binpack.resources.nvidia.com/gpu": 23,
+				DynamicResourceAllocationEnable:    false,
 			},
 			expected: map[string]map[string]float64{
 				"c1/p1": {
