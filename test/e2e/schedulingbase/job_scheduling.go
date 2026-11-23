@@ -39,9 +39,14 @@ import (
 )
 
 var _ = Describe("Job E2E Test", func() {
+	var ctx *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(ctx, CurrentSpecReport())
+	})
 	It("Schedule Job", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)
 
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
@@ -61,8 +66,8 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Schedule Multiple Jobs", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 
 		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)
 
@@ -95,8 +100,8 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Gang scheduling", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)/2 + 1
 
 		replicaset := e2eutil.CreateReplicaSet(ctx, "rs-1", rep, e2eutil.DefaultNginxImage, e2eutil.OneCPU)
@@ -132,8 +137,8 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Gang scheduling: Full Occupied", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)
 
 		job := &e2eutil.JobSpec{
@@ -163,8 +168,8 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Gang scheduling: Contains both best-effort pod and non-best-effort pod", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)
 
 		if rep < 2 {
@@ -198,8 +203,8 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Schedule BestEffort Job", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 
 		slot := e2eutil.OneCPU
 		rep := e2eutil.ClusterSize(ctx, slot)
@@ -228,8 +233,8 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Statement", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 
 		slot := e2eutil.OneCPU
 		rep := e2eutil.ClusterSize(ctx, slot)
@@ -265,8 +270,8 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("support binpack policy", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 
 		slot := e2eutil.OneCPU
 
@@ -348,8 +353,8 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Schedule v1.Job type using Volcano scheduler", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 		parallel := int32(2)
 
 		job := &batchv1.Job{
@@ -383,8 +388,8 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Schedule v1.Job type using Volcano scheduler with error case", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 		parallel := int32(2)
 
 		errorJob := &batchv1.Job{
@@ -445,10 +450,10 @@ var _ = Describe("Job E2E Test", func() {
 	It("Queue Fair Share", func() {
 		Skip("Failed when add yaml, test case may fail in some condition")
 		q1, q2 := "q1", "q2"
-		ctx := e2eutil.InitTestContext(e2eutil.Options{
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{q1, q2},
 		})
-		defer e2eutil.CleanupTestContext(ctx)
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 
 		slot := e2eutil.HalfCPU
 		rep := e2eutil.ClusterSize(ctx, slot)
@@ -538,8 +543,8 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("PodGroup's Count change with Deployment's Request change", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)/2 + 1
 
 		d := e2eutil.CreateDeployment(ctx, "d-1", rep, e2eutil.DefaultNginxImage, e2eutil.OneCPU)
@@ -573,8 +578,8 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("PodGroup's Phase with k8s Job in Completed", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 
 		jb := e2eutil.CreateSampleK8sJob(ctx, "job1", e2eutil.DefaultNginxImage, e2eutil.OneCPU)
 		err := e2eutil.Waitk8sJobCompleted(ctx, jb.Name)
@@ -596,8 +601,8 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("PodGroup's Phase should be Completed when Job fails", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		ctx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, ctx)
 
 		jb := e2eutil.CreateFailK8sJob(ctx, "job1", e2eutil.DefaultNginxImage, e2eutil.OneCPU)
 		err := e2eutil.Waitk8sJobCompleted(ctx, jb.Name)
