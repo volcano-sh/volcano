@@ -27,6 +27,10 @@ type PodGroupStatistics struct {
 }
 
 func (pgStats *PodGroupStatistics) StatPodGroupCountsForQueue(pg *v1beta1.PodGroup) {
+	if pgStats == nil || pg == nil {
+		return
+	}
+
 	switch pg.Status.Phase {
 	case v1beta1.PodGroupInqueue:
 		pgStats.Inqueue++
