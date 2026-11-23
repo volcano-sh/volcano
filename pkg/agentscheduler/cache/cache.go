@@ -125,6 +125,12 @@ type SchedulerCache struct {
 	NodeShards    map[string]*schedulingapi.NodeShardInfo
 	NodesInBinder map[string]int //Candidate nodes wait to be checked in binder
 
+	// sharedSnapshot is the latest node snapshot, shared read-only by all workers. A new one is
+	// built (never modified in place) when the cache has changed, and is guarded by Mutex.
+	sharedSnapshot *k8sutil.Snapshot
+	// removedNodes are the nodes deleted from the cache that sharedSnapshot still contains.
+	removedNodes sets.Set[string]
+
 	taskCache *TaskCache
 
 	nodeQueue               workqueue.TypedRateLimitingInterface[schedulercache.QueueObjectWrapper]
@@ -993,47 +999,67 @@ func (sc *SchedulerCache) UpdateSnapshot(snapshot *k8sutil.Snapshot) error {
 	sc.BinderMutex.RUnlock()
 
 	sc.Mutex.RLock()
-	defer sc.Mutex.RUnlock()
+	shared, stale := sc.sharedSnapshot, sc.sharedSnapshotStale()
+	sc.Mutex.RUnlock()
 
-	klog.V(5).Infof("begin to update the snapshot ...")
-	klog.V(5).Infof("the snapshot is %v", snapshot)
-
-	snapshotGeneration := snapshot.GetGeneration()
-	// currentNodeNames record the names of nodes that exist in the cache for later deletion of nodes that do not exist in the snapshot.
-	currentNodeNames := make(map[string]bool)
-	var nodesToUpdate []*schedulingapi.NodeInfo
-
-	for _, node := range sc.Nodes {
-		currentNodeNames[node.info.Name] = true
+	if stale {
+		sc.Mutex.Lock()
+		sc.refreshSharedSnapshot()
+		shared = sc.sharedSnapshot
+		sc.Mutex.Unlock()
 	}
 
+	snapshot.ShareFrom(shared)
+	klog.V(2).Infof("Snapshot updated: generation=%d, total nodes num=%d",
+		snapshot.GetGeneration(), len(snapshot.GetFwkNodeInfoMap()))
+	return nil
+}
+
+// sharedSnapshotStale reports whether the cache has changed since sharedSnapshot was built.
+// We assume cache lock is already acquired.
+func (sc *SchedulerCache) sharedSnapshotStale() bool {
+	if sc.sharedSnapshot == nil || len(sc.removedNodes) > 0 {
+		return true
+	}
+	return sc.headNode != nil && sc.headNode.info.Generation > sc.sharedSnapshot.GetGeneration()
+}
+
+// refreshSharedSnapshot builds a new sharedSnapshot from the previous one, only touching the nodes
+// that were removed or changed since. We assume cache write lock is already acquired.
+func (sc *SchedulerCache) refreshSharedSnapshot() {
+	if !sc.sharedSnapshotStale() {
+		return
+	}
+	prev := sc.sharedSnapshot
+	if prev == nil {
+		prev = k8sutil.NewEmptySnapshot()
+	}
+	next := prev.ShallowClone()
+
+	for name := range sc.removedNodes {
+		next.DeleteNode(name)
+	}
+	clear(sc.removedNodes)
+
+	var nodesToUpdate []*schedulingapi.NodeInfo
 	// Traverse the doubly linked list starting from the head, only processing nodes whose Generation is greater than the previous snapshot's Generation.
 	for node := sc.headNode; node != nil; node = node.next {
-		if node.info.Generation <= snapshotGeneration {
-			klog.V(2).Infof("Stop traversal at node %s, generation %d <= snapshot generation %d",
-				node.info.Name, node.info.Generation, snapshotGeneration)
+		if node.info.Generation <= prev.GetGeneration() {
 			break
 		}
 		if !node.info.Ready() {
 			klog.V(5).Infof("skip updating not-ready node %s in snapshot", node.info.Name)
 			continue
 		}
-		klog.V(5).Infof("current node name need to update in cache is %s", node.info.Name)
 		nodesToUpdate = append(nodesToUpdate, node.info)
 	}
-
-	if len(nodesToUpdate) > 0 {
-		snapshot.AddOrUpdateNodes(nodesToUpdate)
-	}
+	next.AddOrUpdateNodes(nodesToUpdate)
 
 	if sc.headNode != nil {
-		snapshot.SetGeneration(sc.headNode.info.Generation)
+		next.SetGeneration(sc.headNode.info.Generation)
 	}
-	// Remove deleted nodes and rebuild node lists in place
-	snapshot.RemoveDeletedNodesFromSnapshot(currentNodeNames)
-	klog.V(2).Infof("Snapshot updated: generation=%d, total nodes num=%d, updated nodes num=%d",
-		snapshot.GetGeneration(), len(snapshot.GetFwkNodeInfoMap()), len(nodesToUpdate))
-	return nil
+	sc.sharedSnapshot = next
+	klog.V(2).Infof("Shared snapshot rebuilt: generation=%d, updated nodes num=%d", next.GetGeneration(), len(nodesToUpdate))
 }
 
 func (sc *SchedulerCache) SharedDRAManager() fwk.SharedDRAManager {
@@ -1161,6 +1187,21 @@ func (sc *SchedulerCache) moveNodeToHead(name string) {
 	ni.next = sc.headNode
 	ni.prev = nil
 	sc.headNode = ni
+}
+
+// removeNodeFromList unlinks a NodeInfo from the "cache.nodes" doubly linked list.
+// We assume cache lock is already acquired.
+func (sc *SchedulerCache) removeNodeFromList(ni *nodeInfoListItem) {
+	if ni.prev != nil {
+		ni.prev.next = ni.next
+	}
+	if ni.next != nil {
+		ni.next.prev = ni.prev
+	}
+	if ni == sc.headNode {
+		sc.headNode = ni.next
+	}
+	ni.prev, ni.next = nil, nil
 }
 
 // newNodeInfoListItem initializes a new nodeInfoListItem.

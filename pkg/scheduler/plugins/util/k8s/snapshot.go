@@ -26,6 +26,7 @@ package k8s
 import (
 	"fmt"
 	"maps"
+	"slices"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1alpha3 "k8s.io/api/scheduling/v1alpha3"
@@ -235,19 +236,6 @@ func utilSwapDelete(indexMap map[string]int, list *[]fwk.NodeInfo, nodeName stri
 	delete(indexMap, nodeName)
 }
 
-// RemoveDeletedNodesFromSnapshot removes nodes that are not in the cache from the snapshot
-func (s *Snapshot) RemoveDeletedNodesFromSnapshot(currentNodeNames map[string]bool) {
-	nodesToDelete := make([]string, 0, len(s.nodeNameToIndex))
-	for nodeName := range s.nodeNameToIndex {
-		if !currentNodeNames[nodeName] {
-			nodesToDelete = append(nodesToDelete, nodeName)
-		}
-	}
-	for _, nodeName := range nodesToDelete {
-		s.DeleteNode(nodeName)
-	}
-}
-
 // updateAffinityList updates an affinity list based on node changes
 func (s *Snapshot) updateAffinityList(nodeName string) {
 	hasAffinity := len(s.fwkInfo.nodeInfoMap[nodeName].GetPodsWithAffinity()) > 0
@@ -399,6 +387,40 @@ func (s *Snapshot) GetFwkNodeInfoList() []fwk.NodeInfo {
 // GetVolcanoNodeInfoList returns internal volcano nodeInfoList
 func (s *Snapshot) GetVolcanoNodeInfoList() []*api.NodeInfo {
 	return s.volcanoInfo.nodeInfoList
+}
+
+// ShallowClone returns a copy of the snapshot whose maps and lists can be changed without
+// affecting s. The NodeInfo records themselves are shared, so they must be treated as read-only.
+// NodesInBinder is not copied.
+func (s *Snapshot) ShallowClone() *Snapshot {
+	return &Snapshot{
+		fwkInfo: fwkInfo{
+			nodeInfoMap:                      maps.Clone(s.fwkInfo.nodeInfoMap),
+			nodeInfoList:                     slices.Clone(s.fwkInfo.nodeInfoList),
+			havePodsWithAffinityNodeInfoList: slices.Clone(s.fwkInfo.havePodsWithAffinityNodeInfoList),
+			havePodsWithRequiredAntiAffinityNodeInfoList: slices.Clone(s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList),
+		},
+		volcanoInfo: volcanoInfo{
+			nodeInfoMap:  maps.Clone(s.volcanoInfo.nodeInfoMap),
+			nodeInfoList: slices.Clone(s.volcanoInfo.nodeInfoList),
+		},
+		generation:            s.generation,
+		nodeNameToIndex:       maps.Clone(s.nodeNameToIndex),
+		affinityNodeIndex:     maps.Clone(s.affinityNodeIndex),
+		antiAffinityNodeIndex: maps.Clone(s.antiAffinityNodeIndex),
+	}
+}
+
+// ShareFrom makes s read the node data of src without copying it, keeping s's own NodesInBinder.
+// src must not be modified afterwards, and s must not be modified either, because they share
+// the same maps and lists.
+func (s *Snapshot) ShareFrom(src *Snapshot) {
+	s.fwkInfo = src.fwkInfo
+	s.volcanoInfo = src.volcanoInfo
+	s.generation = src.generation
+	s.nodeNameToIndex = src.nodeNameToIndex
+	s.affinityNodeIndex = src.affinityNodeIndex
+	s.antiAffinityNodeIndex = src.antiAffinityNodeIndex
 }
 
 func (s *Snapshot) CloneNodesInBinder(nodesInBinder map[string]int) {

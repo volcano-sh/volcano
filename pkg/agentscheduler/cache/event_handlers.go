@@ -379,7 +379,12 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 			klog.Errorf("delete numatopo <%s/%s> failed.", numaInfo.Namespace, numaInfo.Name)
 		}
 	}
+	sc.removeNodeFromList(sc.Nodes[nodeName])
 	delete(sc.Nodes, nodeName)
+	if sc.removedNodes == nil {
+		sc.removedNodes = sets.New[string]()
+	}
+	sc.removedNodes.Insert(nodeName)
 
 	evt := fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Delete}
 	sc.schedulingQueue.MoveAllToActiveOrBackoffQueue(klog.Background(), evt, node, nil, nil)

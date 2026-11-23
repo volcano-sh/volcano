@@ -17,7 +17,9 @@ limitations under the License.
 package cache
 
 import (
+	"fmt"
 	"maps"
+	"sync"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -74,36 +76,6 @@ func TestUpdateSnapshot(t *testing.T) {
 			},
 			wantPresent: []string{"ready-node"},
 			wantAbsent:  []string{"missing-node"},
-		},
-		{
-			name: "only update nodes newer than snapshot generation",
-			setup: func(sc *SchedulerCache) {
-				addReadyNode(t, sc, "older-node")
-				addReadyNode(t, sc, "newer-node")
-			},
-			prepareSnapshot: func(sc *SchedulerCache, snapshot *k8sutil.Snapshot) {
-				older := sc.Nodes["older-node"]
-				if older == nil {
-					t.Fatal("expected older-node in cache")
-				}
-				// Walk starts from head(newer). newer is updated, then older stops the traversal.
-				snapshot.SetGeneration(older.info.Generation)
-			},
-			wantPresent: []string{"newer-node"},
-			wantAbsent:  []string{"older-node"},
-		},
-		{
-			name: "skip update when generation is not newer",
-			setup: func(sc *SchedulerCache) {
-				addReadyNode(t, sc, "ready-node")
-			},
-			prepareSnapshot: func(sc *SchedulerCache, snapshot *k8sutil.Snapshot) {
-				if sc.headNode == nil {
-					t.Fatal("expected headNode after setup")
-				}
-				snapshot.SetGeneration(sc.headNode.info.Generation)
-			},
-			wantAbsent: []string{"ready-node"},
 		},
 		{
 			name: "update existing ready node already in snapshot",
@@ -228,4 +200,117 @@ func addPlaceholderNode(t *testing.T, sc *SchedulerCache, name string) {
 	if placeholder.info.Ready() {
 		t.Fatalf("expected placeholder node %q to be not Ready", name)
 	}
+}
+
+func TestUpdateSnapshotSharesNodeRecords(t *testing.T) {
+	sc, _ := mockForTest()
+	defer sc.cancel()
+	addReadyNode(t, sc, "node-a")
+	addReadyNode(t, sc, "node-b")
+
+	worker1, worker2 := k8sutil.NewEmptySnapshot(), k8sutil.NewEmptySnapshot()
+	for _, s := range []*k8sutil.Snapshot{worker1, worker2} {
+		if err := sc.UpdateSnapshot(s); err != nil {
+			t.Fatalf("UpdateSnapshot failed: %v", err)
+		}
+	}
+	for _, name := range []string{"node-a", "node-b"} {
+		n1, _ := worker1.GetVolcanoNodeInfo(name)
+		n2, _ := worker2.GetVolcanoNodeInfo(name)
+		if n1 == nil || n1 != n2 {
+			t.Errorf("node %q is not shared between workers", name)
+		}
+	}
+
+	// Only node-b changes: node-a's record must be reused, node-b rebuilt, and the
+	// snapshot an earlier cycle is still reading must not change.
+	oldNodeB, _ := worker1.GetVolcanoNodeInfo("node-b")
+	updated := util.BuildNode("node-b", schedulingapi.BuildResourceList("8", "16Gi"), nil)
+	if err := sc.AddOrUpdateNode(updated); err != nil {
+		t.Fatalf("AddOrUpdateNode(node-b) failed: %v", err)
+	}
+	worker3 := k8sutil.NewEmptySnapshot()
+	if err := sc.UpdateSnapshot(worker3); err != nil {
+		t.Fatalf("UpdateSnapshot failed: %v", err)
+	}
+
+	oldNodeA, _ := worker1.GetVolcanoNodeInfo("node-a")
+	newNodeA, _ := worker3.GetVolcanoNodeInfo("node-a")
+	if oldNodeA != newNodeA {
+		t.Error("unchanged node-a was rebuilt")
+	}
+	newNodeB, _ := worker3.GetVolcanoNodeInfo("node-b")
+	if newNodeB == oldNodeB {
+		t.Error("changed node-b was not rebuilt")
+	}
+	if current, _ := worker1.GetVolcanoNodeInfo("node-b"); current != oldNodeB {
+		t.Error("snapshot of an earlier cycle was modified")
+	}
+}
+
+func TestUpdateSnapshotRemovedNode(t *testing.T) {
+	sc, queue := mockForTest()
+	defer sc.cancel()
+	sc.ConflictAwareBinder = NewConflictAwareBinder(sc, queue)
+	addReadyNode(t, sc, "node-a")
+	addReadyNode(t, sc, "node-b")
+
+	snapshot := k8sutil.NewEmptySnapshot()
+	if err := sc.UpdateSnapshot(snapshot); err != nil {
+		t.Fatalf("UpdateSnapshot failed: %v", err)
+	}
+
+	if err := sc.RemoveNode("node-b"); err != nil {
+		t.Fatalf("RemoveNode failed: %v", err)
+	}
+	if err := sc.UpdateSnapshot(snapshot); err != nil {
+		t.Fatalf("UpdateSnapshot failed: %v", err)
+	}
+	if _, ok := snapshot.GetFwkNodeInfoMap()["node-b"]; ok {
+		t.Error("removed node-b is still in the snapshot")
+	}
+	if _, ok := snapshot.GetFwkNodeInfoMap()["node-a"]; !ok {
+		t.Error("node-a is missing from the snapshot")
+	}
+
+	addReadyNode(t, sc, "node-b")
+	if err := sc.UpdateSnapshot(snapshot); err != nil {
+		t.Fatalf("UpdateSnapshot failed: %v", err)
+	}
+	if _, ok := snapshot.GetFwkNodeInfoMap()["node-b"]; !ok {
+		t.Error("re-added node-b is missing from the snapshot")
+	}
+}
+
+func TestUpdateSnapshotConcurrentWorkers(t *testing.T) {
+	sc, _ := mockForTest()
+	defer sc.cancel()
+	for i := range 20 {
+		addReadyNode(t, sc, fmt.Sprintf("node-%d", i))
+	}
+
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			snapshot := k8sutil.NewEmptySnapshot()
+			for range 200 {
+				if err := sc.UpdateSnapshot(snapshot); err != nil {
+					t.Errorf("UpdateSnapshot failed: %v", err)
+					return
+				}
+				for _, node := range snapshot.GetFwkNodeInfoList() {
+					_ = node.Node().Name
+				}
+			}
+		}()
+	}
+	for i := range 200 {
+		node := util.BuildNode(fmt.Sprintf("node-%d", i%20), schedulingapi.BuildResourceList("4", "8Gi"), nil)
+		if err := sc.AddOrUpdateNode(node); err != nil {
+			t.Fatalf("AddOrUpdateNode failed: %v", err)
+		}
+	}
+	wg.Wait()
 }
