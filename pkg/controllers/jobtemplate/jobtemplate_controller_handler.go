@@ -57,7 +57,7 @@ func (jt *jobtemplatecontroller) addJob(obj interface{}) {
 	}
 
 	//Filter vcjobs created by JobFlow
-	namespaceName := strings.Split(job.Labels[CreatedByJobTemplate], ".")
+	namespaceName := strings.SplitN(job.Labels[CreatedByJobTemplate], ".", CreateByJobTemplateValueNum)
 	if len(namespaceName) != CreateByJobTemplateValueNum {
 		return
 	}

@@ -77,6 +77,17 @@ func TestAddJob(t *testing.T) {
 			},
 			ExpectValue: 1,
 		},
+		{
+			Name: "AddJob with dotted JobTemplate name",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job2",
+					Namespace: namespace,
+					Labels:    map[string]string{CreatedByJobTemplate: "test.train.v2"},
+				},
+			},
+			ExpectValue: 1,
+		},
 	}
 	for i, testcase := range testCases {
 		t.Run(testcase.Name, func(t *testing.T) {
