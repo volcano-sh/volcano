@@ -79,6 +79,9 @@ func OperateQueue(ctx context.Context) error {
 	case ActionOpen:
 		action = v1alpha1.OpenQueueAction
 	case ActionClose:
+		if operateQueueFlags.Name == "root" {
+			return fmt.Errorf("`%s` queue can not be closed", "root")
+		}
 		action = v1alpha1.CloseQueueAction
 	case ActionUpdate:
 		if operateQueueFlags.Weight == 0 {
