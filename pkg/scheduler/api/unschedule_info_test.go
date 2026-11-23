@@ -17,6 +17,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -182,4 +183,102 @@ func TestFitErrors(t *testing.T) {
 		assert.Equal(t, test.want, got)
 		assert.Equal(t, test.filterNodes, fitErrs.GetUnschedulableAndUnresolvableNodes())
 	}
+}
+
+// useDiagnosticVerbosity sets the process-wide verbosity for one test and
+// restores the default (detailed) when the test ends.
+func useDiagnosticVerbosity(t *testing.T, v DiagnosticVerbosity) {
+	t.Helper()
+	SetDiagnosticVerbosity(v)
+	t.Cleanup(func() { SetDiagnosticVerbosity(DiagnosticVerbosityDetailed) })
+}
+
+// newCountedFitErrors builds FitErrors where cpuNodes nodes lack CPU and
+// memNodes nodes lack memory.
+func newCountedFitErrors(cpuNodes, memNodes int) *FitErrors {
+	fe := NewFitErrors()
+	for i := 0; i < cpuNodes; i++ {
+		name := fmt.Sprintf("cpu-node-%d", i)
+		fe.SetNodeError(name, NewFitError(&TaskInfo{}, &NodeInfo{Name: name}, "Insufficient cpu"))
+	}
+	for i := 0; i < memNodes; i++ {
+		name := fmt.Sprintf("mem-node-%d", i)
+		fe.SetNodeError(name, NewFitError(&TaskInfo{}, &NodeInfo{Name: name}, "Insufficient memory"))
+	}
+	return fe
+}
+
+func TestFitErrorsErrorVerbosity(t *testing.T) {
+	tests := []struct {
+		name      string
+		verbosity DiagnosticVerbosity
+		cpuNodes  int
+		memNodes  int
+		want      string
+	}{
+		{
+			name:      "detailed keeps node and reason counts",
+			verbosity: DiagnosticVerbosityDetailed,
+			cpuNodes:  2,
+			memNodes:  1,
+			want:      "0/3 nodes are unavailable: 1 Insufficient memory, 2 Insufficient cpu.",
+		},
+		{
+			name:      "summary lists distinct sorted reasons only",
+			verbosity: DiagnosticVerbositySummary,
+			cpuNodes:  2,
+			memNodes:  1,
+			want:      "nodes are unavailable: Insufficient cpu, Insufficient memory.",
+		},
+		{
+			name:      "summary with a single reason",
+			verbosity: DiagnosticVerbositySummary,
+			cpuNodes:  3,
+			want:      "nodes are unavailable: Insufficient cpu.",
+		},
+		{
+			name:      "summary without node errors",
+			verbosity: DiagnosticVerbositySummary,
+			want:      "nodes are unavailable",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			useDiagnosticVerbosity(t, tt.verbosity)
+			assert.Equal(t, tt.want, newCountedFitErrors(tt.cpuNodes, tt.memNodes).Error())
+		})
+	}
+}
+
+// TestFitErrorsSummaryIgnoresCountOnlyChanges checks the point of summary mode:
+// counts changing while the reasons stay the same must not change the message,
+// while a genuinely different set of reasons still must.
+func TestFitErrorsSummaryIgnoresCountOnlyChanges(t *testing.T) {
+	before := func() *FitErrors { return newCountedFitErrors(2, 1) }
+	countOnlyChange := func() *FitErrors { return newCountedFitErrors(1, 2) }
+	reasonChange := func() *FitErrors { return newCountedFitErrors(2, 0) }
+
+	t.Run("detailed changes with counts", func(t *testing.T) {
+		useDiagnosticVerbosity(t, DiagnosticVerbosityDetailed)
+		assert.NotEqual(t, before().Error(), countOnlyChange().Error())
+	})
+
+	t.Run("summary is stable across count-only changes", func(t *testing.T) {
+		useDiagnosticVerbosity(t, DiagnosticVerbositySummary)
+		assert.Equal(t, before().Error(), countOnlyChange().Error())
+	})
+
+	t.Run("summary still changes when the reasons change", func(t *testing.T) {
+		useDiagnosticVerbosity(t, DiagnosticVerbositySummary)
+		assert.NotEqual(t, before().Error(), reasonChange().Error())
+	})
+}
+
+func TestFitErrorsDetailedErrorIgnoresVerbosity(t *testing.T) {
+	useDiagnosticVerbosity(t, DiagnosticVerbositySummary)
+	fe := newCountedFitErrors(2, 1)
+	assert.Equal(t, "0/3 nodes are unavailable: 1 Insufficient memory, 2 Insufficient cpu.", fe.DetailedError())
+	// Asking for the detailed text must not change fe, or its counts would leak into the summary below.
+	assert.Equal(t, "nodes are unavailable: Insufficient cpu, Insufficient memory.", fe.Error())
 }

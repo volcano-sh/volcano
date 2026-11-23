@@ -27,6 +27,7 @@ import (
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/signals"
@@ -52,6 +53,7 @@ import (
 
 // Run the volcano scheduler.
 func Run(opt *options.ServerOption) error {
+	schedulingapi.SetDiagnosticVerbosity(schedulingapi.DiagnosticVerbosity(opt.SchedulingDiagnosticVerbosity))
 	config, err := kube.BuildConfig(opt.KubeClientOptions)
 	if err != nil {
 		return err
