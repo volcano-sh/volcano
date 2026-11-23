@@ -442,7 +442,7 @@ func (pmpt *Action) normalPreempt(
 // the predicate passes after enough victims are evicted.
 func preemptorFitsOnNode(ssn *framework.Session, queue *api.QueueInfo, preemptor *api.TaskInfo, node *api.NodeInfo) bool {
 	return ssn.Allocatable(queue, preemptor) &&
-		preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) &&
+		node.FitRequest(preemptor.InitResreq).LessEqual(node.FutureIdle(), api.Zero) &&
 		ssn.PredicateFn(preemptor, node) == nil
 }
 
@@ -799,7 +799,7 @@ func SelectVictimsOnNode(
 			return nil, api.AsStatus(err)
 		}
 
-		if ssn.SimulateAllocatableFn(ctx, state, currentQueue, preemptor) && preemptor.InitResreq.LessEqual(nodeInfo.FutureIdle(), api.Zero) {
+		if ssn.SimulateAllocatableFn(ctx, state, currentQueue, preemptor) && nodeInfo.FitRequest(preemptor.InitResreq).LessEqual(nodeInfo.FutureIdle(), api.Zero) {
 			if err := ssn.SimulatePredicateFn(ctx, state, preemptor, nodeInfo); err == nil {
 				klog.V(3).Infof("Pod %v/%v can be scheduled on node %v after preempt %v/%v, stop evicting more pods", preemptor.Namespace, preemptor.Name, nodeInfo.Name, task.Namespace, task.Name)
 				break
@@ -835,7 +835,7 @@ func SelectVictimsOnNode(
 		}
 
 		var fits bool
-		if ssn.SimulateAllocatableFn(ctx, state, currentQueue, preemptor) && preemptor.InitResreq.LessEqual(nodeInfo.FutureIdle(), api.Zero) {
+		if ssn.SimulateAllocatableFn(ctx, state, currentQueue, preemptor) && nodeInfo.FitRequest(preemptor.InitResreq).LessEqual(nodeInfo.FutureIdle(), api.Zero) {
 			err := ssn.SimulatePredicateFn(ctx, state, preemptor, nodeInfo)
 			fits = err == nil
 		}

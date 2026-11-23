@@ -6978,3 +6978,86 @@ func buildQueueCandidateSamplingNodes(clusterNodes, scopedNodes, candidates int)
 	}
 	return nodes, scope
 }
+
+// TestAllocateWithDRAExtendedResource covers KEP-5004 (DRAExtendedResource): a pod requesting an
+// extended resource that is not in node allocatable but is mapped to a DeviceClass must not be
+// rejected by Volcano's own resource fit, because the device is allocated by DRA.
+func TestAllocateWithDRAExtendedResource(t *testing.T) {
+	const gpuName = "nvidia.com/gpu"
+	gpuPodResources := api.BuildResourceList("1", "1Gi", api.ScalarResource{Name: gpuName, Value: "1"})
+
+	tests := []struct {
+		name            string
+		resolverMapsGPU bool
+		nodeAllocatable v1.ResourceList
+		expectBindMap   map[string]string
+	}{
+		{
+			name:            "DRA-only node, resource mapped to a DeviceClass: task is allocated",
+			resolverMapsGPU: true,
+			nodeAllocatable: api.BuildResourceList("4", "8Gi", api.ScalarResource{Name: "pods", Value: "10"}),
+			expectBindMap:   map[string]string{"c1/p1": "n1"},
+		},
+		{
+			name:            "DRA-only node, resolver not installed: task is rejected with insufficient resource",
+			resolverMapsGPU: false,
+			nodeAllocatable: api.BuildResourceList("4", "8Gi", api.ScalarResource{Name: "pods", Value: "10"}),
+			expectBindMap:   map[string]string{},
+		},
+		{
+			name:            "device-plugin node with exhausted allocatable: resource is still fit-checked",
+			resolverMapsGPU: true,
+			nodeAllocatable: api.BuildResourceList("4", "8Gi", api.ScalarResource{Name: "pods", Value: "10"}, api.ScalarResource{Name: gpuName, Value: "0.5"}),
+			expectBindMap:   map[string]string{},
+		},
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{Name: gang.PluginName, EnabledJobReady: &trueValue, EnabledJobPipelined: &trueValue},
+				{Name: predicates.PluginName, EnabledPredicate: &trueValue},
+			},
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			test := uthelper.TestCommonStruct{
+				Name: tt.name,
+				Plugins: map[string]framework.PluginBuilder{
+					gang.PluginName:       gang.New,
+					predicates.PluginName: predicates.New,
+				},
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPod("c1", "p1", "", v1.PodPending, gpuPodResources, "pg1", make(map[string]string), make(map[string]string)),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", tt.nodeAllocatable, make(map[string]string)),
+				},
+				Queues: []*schedulingv1.Queue{
+					util.BuildQueue("c1", 1, nil),
+				},
+				ExpectBindMap:  tt.expectBindMap,
+				ExpectBindsNum: len(tt.expectBindMap),
+			}
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			// Install the resolver after RegisterSession: creating the scheduler cache installs its own
+			// DeviceClass-backed resolver, which has no DeviceClass objects in this unit test.
+			t.Cleanup(func() { api.SetDRAExtendedResourceResolver(nil) })
+			api.SetDRAExtendedResourceResolver(nil)
+			if tt.resolverMapsGPU {
+				api.SetDRAExtendedResourceResolver(func(rName v1.ResourceName) bool { return rName == gpuName })
+			}
+			test.Run([]framework.Action{New()})
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

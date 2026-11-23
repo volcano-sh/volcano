@@ -105,7 +105,7 @@ func resourceFitNodeHint(job *api.JobInfo, rejection unschedulable.Rejection, ol
 	// 1. A newly added Node triggers a retry when its allocatable resources can
 	// satisfy at least one rejected task's initial resource request.
 	if oldObj == nil {
-		return newNodeFitHint(job, rejection, api.NewNodeAllocatable(newNode)), nil
+		return newNodeFitHint(job, rejection, newNode, api.NewNodeAllocatable(newNode)), nil
 	}
 	oldNode, ok := oldObj.(*v1.Node)
 	if !ok || oldNode == nil {
@@ -114,13 +114,14 @@ func resourceFitNodeHint(job *api.JobInfo, rejection unschedulable.Rejection, ol
 
 	// 2. A Node update triggers a retry only when requested allocatable
 	// resources increase.
-	return allocatableIncreaseHint(job, rejection, api.NewNodeAllocatable(oldNode), api.NewNodeAllocatable(newNode)), nil
+	return allocatableIncreaseHint(job, rejection, newNode, api.NewNodeAllocatable(oldNode), api.NewNodeAllocatable(newNode)), nil
 }
 
 // newNodeFitHint reports whether a newly added Node's allocatable resources can
-// satisfy at least one rejected task's initial resource request. Missing Job,
+// satisfy at least one rejected task's initial resource request. Extended
+// resources delegated to DRA on newNode (KEP-5004) are not compared. Missing Job,
 // rejection, or resource data returns HintWakeup.
-func newNodeFitHint(job *api.JobInfo, rejection unschedulable.Rejection, newAllocatable *api.Resource) unschedulable.HintResult {
+func newNodeFitHint(job *api.JobInfo, rejection unschedulable.Rejection, newNode *v1.Node, newAllocatable *api.Resource) unschedulable.HintResult {
 	if job == nil || len(rejection.Tasks) == 0 || newAllocatable == nil {
 		return unschedulable.HintWakeup
 	}
@@ -132,7 +133,7 @@ func newNodeFitHint(job *api.JobInfo, rejection unschedulable.Rejection, newAllo
 		if task.InitResreq == nil {
 			return unschedulable.HintWakeup
 		}
-		if task.InitResreq.LessEqual(newAllocatable, api.Zero) {
+		if api.ExcludeDRADelegatedResources(task.InitResreq, newNode).LessEqual(newAllocatable, api.Zero) {
 			return unschedulable.HintWakeup
 		}
 	}
@@ -180,8 +181,9 @@ func resourceReleaseHint(job *api.JobInfo, rejection unschedulable.Rejection, ol
 // A task triggers HintWakeup only when it fits within newAllocatable and one of
 // its requested resource dimensions increased. The event does not include the task state required to calculate
 // FutureIdle, so the next scheduling cycle performs the complete resource-fit
-// check. Missing Job, rejection, or resource data returns HintWakeup.
-func allocatableIncreaseHint(job *api.JobInfo, rejection unschedulable.Rejection, oldAllocatable, newAllocatable *api.Resource) unschedulable.HintResult {
+// check. Extended resources delegated to DRA on newNode (KEP-5004) are not
+// compared. Missing Job, rejection, or resource data returns HintWakeup.
+func allocatableIncreaseHint(job *api.JobInfo, rejection unschedulable.Rejection, newNode *v1.Node, oldAllocatable, newAllocatable *api.Resource) unschedulable.HintResult {
 	if job == nil || len(rejection.Tasks) == 0 || oldAllocatable == nil || newAllocatable == nil {
 		return unschedulable.HintWakeup
 	}
@@ -193,7 +195,8 @@ func allocatableIncreaseHint(job *api.JobInfo, rejection unschedulable.Rejection
 		if task.InitResreq == nil {
 			return unschedulable.HintWakeup
 		}
-		if task.InitResreq.LessEqual(newAllocatable, api.Zero) && requestedResourceIncreased(task.InitResreq, oldAllocatable, newAllocatable) {
+		request := api.ExcludeDRADelegatedResources(task.InitResreq, newNode)
+		if request.LessEqual(newAllocatable, api.Zero) && requestedResourceIncreased(request, oldAllocatable, newAllocatable) {
 			return unschedulable.HintWakeup
 		}
 	}
