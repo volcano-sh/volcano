@@ -19,6 +19,7 @@ package cronjob
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -304,20 +305,9 @@ func deleteFromActiveList(cc *batchv1.CronJob, uid types.UID) {
 	if cc == nil || uid == "" || len(cc.Status.Active) == 0 {
 		return
 	}
-	active := cc.Status.Active
-	originalLen := len(active)
-	newLen := 0
-
-	for i := 0; i < originalLen; i++ {
-		if active[i].UID != uid {
-			active[newLen] = active[i]
-			newLen++
-		}
-	}
-
-	if newLen < originalLen {
-		cc.Status.Active = active[:newLen:newLen]
-	}
+	cc.Status.Active = slices.DeleteFunc(slices.Clone(cc.Status.Active), func(ref corev1.ObjectReference) bool {
+		return ref.UID == uid
+	})
 }
 func (cc *cronjobcontroller) validateTZandSchedule(cj *batchv1.CronJob, recorder record.EventRecorder) (cron.Schedule, error) {
 	if cj.Spec.TimeZone != nil {
