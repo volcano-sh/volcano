@@ -436,7 +436,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 
 Direct evidence of resource contention was found during testing:
 
-- Under multi-job workloads, the "stair-step" patterns in the cumulative pod count curves for Volcano's Pod creation (CREATE) and scheduling (SCHEDULE) did not occur at the same time. In the per-second throughput curves, the two alternated between performance peaks and troughs but were never in a trough simultaneously.
+- Under multi-job workloads, the "stair-step" patterns in the cumulative pod count curves for Volcano's Pod creation (CREATE) and scheduling (SCHEDULE) did not occur at the same time. In the per-second throughput curves, the two alternated between performance peaks and troughs but were never in a through simultaneously.
 
 ![CREATE/SCHEDULE Cumulative Pod Counts Show Alternating Stair-Steps](../images/performance-tuning/stair-step-stall-phenomenon.png)
 
