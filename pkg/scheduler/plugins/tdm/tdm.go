@@ -330,9 +330,10 @@ func (tp *tdmPlugin) getMaxPodEvictNum(job *api.JobInfo) int {
 
 	if job.Budget.MinAvailable != "" {
 		minAvailable := tp.parseIntStr(job.Budget.MinAvailable, len(job.Tasks))
-		if jobRunningTaskNum >= minAvailable {
-			return jobRunningTaskNum - minAvailable
+		if jobRunningTaskNum <= minAvailable {
+			return 0
 		}
+		return jobRunningTaskNum - minAvailable
 	}
 
 	return defaultPodEvictNum
