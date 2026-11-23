@@ -1258,3 +1258,97 @@ func TestPytorchWorldSizeCalculation(t *testing.T) {
 		t.Errorf("WORLD_SIZE mismatch, expected '4' (replicas), got '%s'", ws)
 	}
 }
+
+// TestPytorchRanksWithMultipleMasterReplicas verifies that every pod of the
+// master and worker tasks gets a distinct RANK covering 0..WORLD_SIZE-1, also
+// when the master task has more than one replica.
+func TestPytorchRanksWithMultipleMasterReplicas(t *testing.T) {
+	type podRank struct {
+		task  string
+		index int
+		rank  string
+	}
+	newJob := func(masterReplicas int32, workers ...v1alpha1.TaskSpec) *v1alpha1.Job {
+		return &v1alpha1.Job{
+			ObjectMeta: metav1.ObjectMeta{Name: "pt"},
+			Spec: v1alpha1.JobSpec{
+				Tasks: append([]v1alpha1.TaskSpec{{Name: "master", Replicas: masterReplicas}}, workers...),
+			},
+		}
+	}
+
+	testcases := []struct {
+		name string
+		args []string
+		job  *v1alpha1.Job
+		pods []podRank
+	}{
+		{
+			name: "single master keeps the existing ranks",
+			job:  newJob(1, v1alpha1.TaskSpec{Name: "worker", Replicas: 2}),
+			pods: []podRank{{"master", 0, "0"}, {"worker", 0, "1"}, {"worker", 1, "2"}},
+		},
+		{
+			name: "two masters and two workers",
+			job:  newJob(2, v1alpha1.TaskSpec{Name: "worker", Replicas: 2}),
+			pods: []podRank{{"master", 0, "0"}, {"master", 1, "1"}, {"worker", 0, "2"}, {"worker", 1, "3"}},
+		},
+		{
+			name: "three masters and no workers",
+			job:  newJob(3, v1alpha1.TaskSpec{Name: "worker", Replicas: 0}),
+			pods: []podRank{{"master", 0, "0"}, {"master", 1, "1"}, {"master", 2, "2"}},
+		},
+		{
+			name: "two masters and multiple worker tasks",
+			args: []string{"--workers=worker-a,worker-b"},
+			job: newJob(2,
+				v1alpha1.TaskSpec{Name: "worker-a", Replicas: 2},
+				v1alpha1.TaskSpec{Name: "worker-b", Replicas: 3}),
+			pods: []podRank{
+				{"master", 0, "0"}, {"master", 1, "1"},
+				{"worker-a", 0, "2"}, {"worker-a", 1, "3"},
+				{"worker-b", 0, "4"}, {"worker-b", 1, "5"}, {"worker-b", 2, "6"},
+			},
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			pp := New(pluginsinterface.PluginClientset{}, tc.args)
+			wantWorldSize := fmt.Sprintf("%d", len(tc.pods))
+			seen := map[string]string{}
+			for _, want := range tc.pods {
+				podName := fmt.Sprintf("%s-%s-%d", tc.job.Name, want.task, want.index)
+				pod := &v1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        podName,
+						Annotations: map[string]string{v1alpha1.TaskSpecKey: want.task},
+					},
+					Spec: v1.PodSpec{Containers: []v1.Container{{Name: "main"}}},
+				}
+				if err := pp.OnPodCreate(pod, tc.job); err != nil {
+					t.Fatalf("pod %s: unexpected error %v", podName, err)
+				}
+				var rank, worldSize string
+				for _, env := range pod.Spec.Containers[0].Env {
+					switch env.Name {
+					case EnvRank:
+						rank = env.Value
+					case EnvWorldSize:
+						worldSize = env.Value
+					}
+				}
+				if rank != want.rank {
+					t.Errorf("pod %s: RANK = %q, want %q", podName, rank, want.rank)
+				}
+				if worldSize != wantWorldSize {
+					t.Errorf("pod %s: WORLD_SIZE = %q, want %q", podName, worldSize, wantWorldSize)
+				}
+				if other, dup := seen[rank]; dup {
+					t.Errorf("pods %s and %s both get RANK=%s", other, podName, rank)
+				}
+				seen[rank] = podName
+			}
+		})
+	}
+}
