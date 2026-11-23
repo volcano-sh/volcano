@@ -224,6 +224,9 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			resp := &PrioritizeResponse{}
 			err := ep.send(ep.config.prioritizeVerb, &PrioritizeRequest{Task: task, Nodes: nodes}, resp)
+			if err == nil && resp.ErrorMessage != "" {
+				err = errors.New(resp.ErrorMessage)
+			}
 			if err != nil {
 				klog.Warningf("Prioritize failed with error %v", err)
 
@@ -233,10 +236,8 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 				return nil, err
 			}
 
-			if resp.ErrorMessage == "" && resp.NodeScore != nil {
-				return resp.NodeScore, nil
-			}
-			return nil, errors.New(resp.ErrorMessage)
+			// A response without node scores means the extender has no preference.
+			return resp.NodeScore, nil
 		})
 	}
 
