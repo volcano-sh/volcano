@@ -319,6 +319,34 @@ type PodGroupStatus struct {
 	// The number of pods which reached phase Failed.
 	// +optional
 	Failed int32 `json:"failed,omitempty" protobuf:"varint,5,opt,name=failed"`
+
+	// The number of tasks in Volcano Pending state, waiting for scheduling.
+	// +optional
+	Pending int32 `json:"pending,omitempty" protobuf:"varint,6,opt,name=pending"`
+
+	// The number of tasks in Volcano Allocated state, assigned to a node by the scheduler.
+	// +optional
+	Allocated int32 `json:"allocated,omitempty" protobuf:"varint,7,opt,name=allocated"`
+
+	// The number of tasks in Volcano Pipelined state, waiting for resources to be released.
+	// +optional
+	Pipelined int32 `json:"pipelined,omitempty" protobuf:"varint,8,opt,name=pipelined"`
+
+	// The number of tasks in Volcano Binding state, being bound to a node.
+	// +optional
+	Binding int32 `json:"binding,omitempty" protobuf:"varint,9,opt,name=binding"`
+
+	// The number of tasks in Volcano Bound state, bound to a node but not yet running.
+	// +optional
+	Bound int32 `json:"bound,omitempty" protobuf:"varint,10,opt,name=bound"`
+
+	// The number of tasks in Volcano Releasing state, being deleted.
+	// +optional
+	Releasing int32 `json:"releasing,omitempty" protobuf:"varint,11,opt,name=releasing"`
+
+	// The number of tasks in Volcano Unknown state.
+	// +optional
+	Unknown int32 `json:"unknown,omitempty" protobuf:"varint,12,opt,name=unknown"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

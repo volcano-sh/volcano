@@ -10089,6 +10089,24 @@ spec:
               Status represents the current information about a pod group.
               This data may not be up to date.
             properties:
+              allocated:
+                description: The number of tasks in Volcano Allocated state, assigned
+                  to a node by the scheduler.
+                format: int32
+                minimum: 0
+                type: integer
+              binding:
+                description: The number of tasks in Volcano Binding state, being bound
+                  to a node.
+                format: int32
+                minimum: 0
+                type: integer
+              bound:
+                description: The number of tasks in Volcano Bound state, bound to
+                  a node but not yet running.
+                format: int32
+                minimum: 0
+                type: integer
               conditions:
                 description: The conditions of PodGroup.
                 items:
@@ -10124,6 +10142,12 @@ spec:
                 format: int32
                 minimum: 0
                 type: integer
+              pending:
+                description: The number of tasks in Volcano Pending state, waiting
+                  for scheduling.
+                format: int32
+                minimum: 0
+                type: integer
               phase:
                 description: Current phase of PodGroup.
                 enum:
@@ -10133,6 +10157,18 @@ spec:
                 - Inqueue
                 - Completed
                 type: string
+              pipelined:
+                description: The number of tasks in Volcano Pipelined state, waiting
+                  for resources to be released.
+                format: int32
+                minimum: 0
+                type: integer
+              releasing:
+                description: The number of tasks in Volcano Releasing state, being
+                  deleted.
+                format: int32
+                minimum: 0
+                type: integer
               running:
                 description: The number of actively running pods.
                 format: int32
@@ -10140,6 +10176,11 @@ spec:
                 type: integer
               succeeded:
                 description: The number of pods which reached phase Succeeded.
+                format: int32
+                minimum: 0
+                type: integer
+              unknown:
+                description: The number of tasks in Volcano Unknown state.
                 format: int32
                 minimum: 0
                 type: integer

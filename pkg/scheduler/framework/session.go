@@ -637,6 +637,13 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 	status.Running = int32(len(jobInfo.TaskStatusIndex[api.Running]))
 	status.Failed = int32(len(jobInfo.TaskStatusIndex[api.Failed]))
 	status.Succeeded = int32(len(jobInfo.TaskStatusIndex[api.Succeeded]))
+	status.Pending = int32(len(jobInfo.TaskStatusIndex[api.Pending]))
+	status.Allocated = int32(len(jobInfo.TaskStatusIndex[api.Allocated]))
+	status.Pipelined = int32(len(jobInfo.TaskStatusIndex[api.Pipelined]))
+	status.Binding = int32(len(jobInfo.TaskStatusIndex[api.Binding]))
+	status.Bound = int32(len(jobInfo.TaskStatusIndex[api.Bound]))
+	status.Releasing = int32(len(jobInfo.TaskStatusIndex[api.Releasing]))
+	status.Unknown = int32(len(jobInfo.TaskStatusIndex[api.Unknown]))
 
 	return status
 }
