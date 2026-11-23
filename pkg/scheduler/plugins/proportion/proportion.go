@@ -116,8 +116,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				weight:  queue.Weight,
 
 				deserved:  api.EmptyResource(),
-				allocated: api.EmptyResource(),
-				request:   api.EmptyResource(),
 				elastic:   api.EmptyResource(),
 				inqueue:   api.EmptyResource(),
 				guarantee: api.EmptyResource(),
@@ -142,23 +140,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				realCapability.MinDimensionResource(attr.capability, api.Infinity)
 				attr.realCapability = realCapability
 			}
+			// The scheduler cache maintains the direct allocated/request totals.
+			attr.allocated, attr.request = queue.DirectTotals()
 			pp.queueOpts[job.Queue] = attr
 			klog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
 		}
 
 		attr := pp.queueOpts[job.Queue]
-		for status, tasks := range job.TaskStatusIndex {
-			if api.AllocatedStatus(status) {
-				for _, t := range tasks {
-					attr.allocated.Add(t.Resreq)
-					attr.request.Add(t.Resreq)
-				}
-			} else if status == api.Pending {
-				for _, t := range tasks {
-					attr.request.Add(t.Resreq)
-				}
-			}
-		}
 
 		// calculate inqueue resource for inqueue jobs
 		// deduct already-allocated task resources from minResources to avoid double-counting:

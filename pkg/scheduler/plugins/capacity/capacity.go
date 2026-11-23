@@ -1114,26 +1114,14 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		if _, found := cp.queueOpts[job.Queue]; !found {
 			queue := ssn.Queues[job.Queue]
 			attr := cp.initQueueAttr(queue)
+			// The scheduler cache maintains the direct allocated/request totals.
+			attr.allocated, attr.request = queue.DirectTotals()
 			cp.queueOpts[job.Queue] = attr
 			klog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
 		}
 
 		attr := cp.queueOpts[job.Queue]
-		for status, tasks := range job.TaskStatusIndex {
-			if api.AllocatedStatus(status) {
-				for _, t := range tasks {
-					attr.allocated.Add(t.Resreq)
-					attr.request.Add(t.Resreq)
-					if cp.dynamicResourceAllocationEnable && attr.dra != nil && t.DRAResreq != nil {
-						addTaskDRAAllocated(attr, t)
-					}
-				}
-			} else if status == api.Pending {
-				for _, t := range tasks {
-					attr.request.Add(t.Resreq)
-				}
-			}
-		}
+		cp.addJobDRAAllocated(attr, job)
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
 			// calculate inqueue resource for inqueue jobs
@@ -1228,6 +1216,21 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		}
 	}
 
+	// The scheduler cache maintains each queue's direct allocated/request
+	// totals; add them to the queue and to each of its ancestors.
+	for _, queue := range ssn.Queues {
+		if queue.DirectAllocated == nil || queue.DirectRequest == nil {
+			continue
+		}
+		attr := cp.queueOpts[queue.UID]
+		attr.allocated.Add(queue.DirectAllocated)
+		attr.request.Add(queue.DirectRequest)
+		for _, ancestor := range attr.ancestors {
+			cp.queueOpts[ancestor].allocated.Add(queue.DirectAllocated)
+			cp.queueOpts[ancestor].request.Add(queue.DirectRequest)
+		}
+	}
+
 	for _, job := range ssn.Jobs {
 		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
 		attr := cp.queueOpts[job.Queue]
@@ -1247,8 +1250,6 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 			klog.Warningf("Accounting for Job <%s/%s> on Queue <%s> after a NamespaceQueue child was added", job.Namespace, job.Name, attr.name)
 		}
 
-		oldAllocated := attr.allocated.Clone()
-		oldRequest := attr.request.Clone()
 		oldInqueue := attr.inqueue.Clone()
 		oldElastic := attr.elastic.Clone()
 		var oldDRA *draQuotaAttr
@@ -1256,21 +1257,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 			oldDRA = attr.dra.Clone()
 		}
 
-		for status, tasks := range job.TaskStatusIndex {
-			if api.AllocatedStatus(status) {
-				for _, t := range tasks {
-					attr.allocated.Add(t.Resreq)
-					attr.request.Add(t.Resreq)
-					if cp.dynamicResourceAllocationEnable && attr.dra != nil && t.DRAResreq != nil {
-						addTaskDRAAllocated(attr, t)
-					}
-				}
-			} else if status == api.Pending {
-				for _, t := range tasks {
-					attr.request.Add(t.Resreq)
-				}
-			}
-		}
+		cp.addJobDRAAllocated(attr, job)
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
 			// same double-counting fix as buildQueueAttrs: deduct already-allocated resources
@@ -1292,8 +1279,6 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		}
 		attr.elastic.Add(job.GetElasticResources())
 
-		allocatedDelta := attr.allocated.Clone().Sub(oldAllocated)
-		requestDelta := attr.request.Clone().Sub(oldRequest)
 		inqueueDelta := attr.inqueue.Clone().Sub(oldInqueue)
 		elasticDelta := attr.elastic.Clone().Sub(oldElastic)
 
@@ -1304,8 +1289,6 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 
 		for _, ancestor := range attr.ancestors {
 			ancestorAttr := cp.queueOpts[ancestor]
-			ancestorAttr.allocated.Add(allocatedDelta)
-			ancestorAttr.request.Add(requestDelta)
 			ancestorAttr.inqueue.Add(inqueueDelta)
 			ancestorAttr.elastic.Add(elasticDelta)
 			if cp.dynamicResourceAllocationEnable && ancestorAttr.dra != nil && draDelta != nil {
@@ -1421,6 +1404,24 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 	})
 
 	return true
+}
+
+// addJobDRAAllocated adds the DRA usage of the job's allocated tasks to attr.
+// DRA accounting stays plugin-owned; regular resources come from the cache.
+func (cp *capacityPlugin) addJobDRAAllocated(attr *queueAttr, job *api.JobInfo) {
+	if !cp.dynamicResourceAllocationEnable || attr.dra == nil {
+		return
+	}
+	for status, tasks := range job.TaskStatusIndex {
+		if !api.AllocatedStatus(status) {
+			continue
+		}
+		for _, t := range tasks {
+			if t.DRAResreq != nil {
+				addTaskDRAAllocated(attr, t)
+			}
+		}
+	}
 }
 
 func hasNamespaceQueueChild(attr *queueAttr, ssn *framework.Session) bool {
