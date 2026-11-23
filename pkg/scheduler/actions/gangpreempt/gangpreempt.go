@@ -32,6 +32,8 @@ const (
 	MaxDomainsKey = "maxDomains"
 	// AllowWholeBundleKey toggles whether whole-job ("whole-bundle") victim bundles may be selected.
 	AllowWholeBundleKey = "allowWholeBundle"
+	// VictimOrderPolicyKey selects safe-first or priority-first victim bundle ordering.
+	VictimOrderPolicyKey = "victimOrderPolicy"
 	// defaultMaxDomains is used when maxDomains is unset or invalid (<= 0).
 	defaultMaxDomains = 8
 	// defaultWholeBundleOn is the default for allowWholeBundle.
@@ -43,14 +45,17 @@ type Action struct {
 	maxDomains int
 	// allowWholeBundle permits selecting whole-job victim bundles when true.
 	allowWholeBundle bool
+	// victimOrderPolicy controls whether safe bundles or lower-priority workloads are considered first.
+	victimOrderPolicy utils.VictimOrderPolicy
 	// configured flag for predicate error cache
 	enablePredicateErrorCache bool
 }
 
 func New() *Action {
 	return &Action{
-		maxDomains:       defaultMaxDomains,
-		allowWholeBundle: defaultWholeBundleOn,
+		maxDomains:        defaultMaxDomains,
+		allowWholeBundle:  defaultWholeBundleOn,
+		victimOrderPolicy: utils.VictimOrderSafeFirst,
 	}
 }
 
@@ -69,6 +74,14 @@ func (gp *Action) parseArguments(ssn *framework.Session) {
 		gp.maxDomains = defaultMaxDomains
 	}
 	arguments.GetBool(&gp.allowWholeBundle, AllowWholeBundleKey)
+	configuredPolicy := string(utils.VictimOrderSafeFirst)
+	arguments.GetString(&configuredPolicy, VictimOrderPolicyKey)
+	policy, valid := utils.ParseVictimOrderPolicy(configuredPolicy)
+	if !valid {
+		klog.Warningf("Invalid %s value %q for action %s, falling back to %q",
+			VictimOrderPolicyKey, configuredPolicy, gp.Name(), utils.VictimOrderSafeFirst)
+	}
+	gp.victimOrderPolicy = policy
 
 	// Honor allocate's predicateErrorCacheEnable for the per-sub-job simulation, defaulting to
 	// enabled when allocate is not configured.
@@ -223,7 +236,7 @@ func (gp *Action) selectDomainBundles(ssn *framework.Session, preemptorJob *api.
 	if len(bundles) == 0 {
 		return nil
 	}
-	utils.SortBundlesForPreempt(bundles, jobNeed, func(l, r *api.JobInfo) bool {
+	utils.SortBundlesForPreempt(bundles, jobNeed, gp.victimOrderPolicy, func(l, r *api.JobInfo) bool {
 		return !ssn.JobOrderFn(l, r)
 	})
 
@@ -232,28 +245,11 @@ func (gp *Action) selectDomainBundles(ssn *framework.Session, preemptorJob *api.
 		Job:       preemptorJob,
 		HyperNode: domain,
 	}
-	orderedCandidates := utils.FlattenBundles(bundles)
-	allowed := ssn.UnifiedEvictable(evictCtx, orderedCandidates)
-	if len(allowed) == 0 {
-		return nil
-	}
-	allowedSet := make(map[api.TaskID]struct{}, len(allowed))
-	for _, t := range allowed {
-		allowedSet[t.UID] = struct{}{}
-	}
-	valid := utils.ApplyAllowedTasks(bundles, allowedSet)
-	if len(valid) == 0 {
-		return nil
-	}
-	utils.SortBundlesForPreempt(valid, jobNeed, func(l, r *api.JobInfo) bool {
+	valid := utils.FilterVictimBundles(bundles, gp.allowWholeBundle, func(tasks []*api.TaskInfo) []*api.TaskInfo {
+		return ssn.UnifiedEvictable(evictCtx, tasks)
+	})
+	utils.SortBundlesForPreempt(valid, jobNeed, gp.victimOrderPolicy, func(l, r *api.JobInfo) bool {
 		return !ssn.JobOrderFn(l, r)
 	})
-	selected := make([]*utils.Bundle, 0, len(valid))
-	for _, bundle := range valid {
-		if bundle.Type == utils.BundleWhole && !gp.allowWholeBundle {
-			continue
-		}
-		selected = append(selected, bundle)
-	}
-	return selected
+	return valid
 }
