@@ -152,9 +152,10 @@ func TestAddTaskInfo(t *testing.T) {
 			uid:  case01UID,
 			pods: []*v1.Pod{case01Pod1, case01Pod2, case01Pod3, case01Pod4},
 			expected: &JobInfo{
-				UID:          case01UID,
-				Allocated:    buildResource("4000m", "4G", map[string]string{"pods": "3"}, 0),
-				TotalRequest: buildResource("5000m", "5G", map[string]string{"pods": "4"}, 0),
+				UID:            case01UID,
+				Allocated:      buildResource("4000m", "4G", map[string]string{"pods": "3"}, 0),
+				TotalRequest:   buildResource("5000m", "5G", map[string]string{"pods": "4"}, 0),
+				PendingRequest: buildResource("1000m", "1G", map[string]string{"pods": "1"}, 0),
 				Tasks: TasksMap{
 					case01Task1.UID: case01Task1,
 					case01Task2.UID: case01Task2,
@@ -270,9 +271,10 @@ func TestDeleteTaskInfo(t *testing.T) {
 			pods:   []*v1.Pod{case01Pod1, case01Pod2, case01Pod3},
 			rmPods: []*v1.Pod{case01Pod2},
 			expected: &JobInfo{
-				Allocated:    buildResource("3000m", "3G", map[string]string{"pods": "1"}, 0),
-				TotalRequest: buildResource("4000m", "4G", map[string]string{"pods": "2"}, 0),
-				UID:          case01UID,
+				Allocated:      buildResource("3000m", "3G", map[string]string{"pods": "1"}, 0),
+				TotalRequest:   buildResource("4000m", "4G", map[string]string{"pods": "2"}, 0),
+				PendingRequest: buildResource("1000m", "1G", map[string]string{"pods": "1"}, 0),
+				UID:            case01UID,
 				Tasks: TasksMap{
 					case01Task1.UID: case01Task1,
 					case01Task3.UID: case01Task3,
@@ -320,9 +322,10 @@ func TestDeleteTaskInfo(t *testing.T) {
 			pods:   []*v1.Pod{case02Pod1, case02Pod2, case02Pod3},
 			rmPods: []*v1.Pod{case02Pod2},
 			expected: &JobInfo{
-				Allocated:    buildResource("3000m", "3G", map[string]string{"pods": "1"}, 0),
-				TotalRequest: buildResource("4000m", "4G", map[string]string{"pods": "2"}, 0),
-				UID:          case02UID,
+				Allocated:      buildResource("3000m", "3G", map[string]string{"pods": "1"}, 0),
+				TotalRequest:   buildResource("4000m", "4G", map[string]string{"pods": "2"}, 0),
+				PendingRequest: buildResource("1000m", "1G", map[string]string{"pods": "1"}, 0),
+				UID:            case02UID,
 				Tasks: TasksMap{
 					case02Task1.UID: case02Task1,
 					case02Task3.UID: case02Task3,

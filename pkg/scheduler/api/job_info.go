@@ -489,6 +489,8 @@ type JobInfo struct {
 
 	Allocated    *Resource
 	TotalRequest *Resource
+	// PendingRequest is the sum of Resreq over tasks in Pending status.
+	PendingRequest *Resource
 
 	CreationTimestamp metav1.Time
 	PodGroup          *PodGroup
@@ -518,6 +520,7 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 		NodesFitErrors:   make(map[TaskID]*FitErrors),
 		Allocated:        EmptyResource(),
 		TotalRequest:     EmptyResource(),
+		PendingRequest:   EmptyResource(),
 		TaskStatusIndex:  map[TaskStatus]TasksMap{},
 		Tasks:            TasksMap{},
 		TaskMinAvailable: map[string]int32{},
@@ -779,6 +782,8 @@ func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
 	ji.TotalRequest.Add(ti.Resreq)
 	if AllocatedStatus(ti.Status) {
 		ji.Allocated.Add(ti.Resreq)
+	} else if ti.Status == Pending {
+		ji.PendingRequest.Add(ti.Resreq)
 	}
 	ji.addTaskToSubJob(ti)
 }
@@ -811,6 +816,8 @@ func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) {
 		ji.TotalRequest.Sub(task.Resreq)
 		if AllocatedStatus(task.Status) {
 			ji.Allocated.Sub(task.Resreq)
+		} else if task.Status == Pending {
+			ji.PendingRequest.Sub(task.Resreq)
 		}
 		delete(ji.Tasks, task.UID)
 		ji.deleteTaskIndex(task)
@@ -837,6 +844,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		NodesFitErrors: make(map[TaskID]*FitErrors),
 		Allocated:      EmptyResource(),
 		TotalRequest:   EmptyResource(),
+		PendingRequest: EmptyResource(),
 
 		PodGroup: func() *PodGroup {
 			if ji.PodGroup != nil {
