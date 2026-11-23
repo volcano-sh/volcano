@@ -179,11 +179,11 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 			NamespaceInfo:  ssn.NamespaceInfo,
 			RevocableNodes: ssn.RevocableNodes,
 		}, nil)
+		// Keep registering the callbacks below even if this call failed. Each of
+		// them handles an unavailable extender according to extender.ignorable;
+		// skipping them would schedule as if the extender were not configured.
 		if err != nil {
-			klog.Warningf("OnSessionClose failed with error %v", err)
-		}
-		if err != nil && !ep.config.ignorable {
-			return
+			klog.Warningf("OnSessionOpen failed with error %v", err)
 		}
 	}
 
