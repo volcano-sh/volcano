@@ -381,6 +381,29 @@ func TestEnqueueAndAllocable(t *testing.T) {
 		},
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:    "redistribute fractional shares after one queue reaches its demand",
+				Plugins: plugins,
+				Nodes:   []*apiv1.Node{util.BuildNode("n1", api.BuildResourceList("1", "1Gi", api.ScalarResource{Name: "pods", Value: "10"}), nil)},
+				Queues: []*schedulingv1beta1.Queue{
+					util.BuildQueue("q1", 1, nil), util.BuildQueue("q2", 4, nil), util.BuildQueue("q3", 12, nil),
+				},
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue),
+					util.BuildPodGroup("pg2", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue),
+					util.BuildPodGroup("pg3", "ns1", "q3", 1, nil, schedulingv1beta1.PodGroupInqueue),
+				},
+				Pods: []*apiv1.Pod{
+					util.BuildPod("ns1", "p1", "", apiv1.PodPending, api.BuildResourceList("64m", ""), "pg1", nil, nil),
+					util.BuildPod("ns1", "p2", "", apiv1.PodPending, api.BuildResourceList("256m", ""), "pg2", nil, nil),
+					util.BuildPod("ns1", "p3", "", apiv1.PodPending, api.BuildResourceList("680m", ""), "pg3", nil, nil),
+				},
+				ExpectBindsNum: 3,
+				ExpectBindMap:  map[string]string{"ns1/p1": "n1", "ns1/p2": "n1", "ns1/p3": "n1"},
+			},
+			tiers: allocatable,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
 				Name:           "case1: cpu exceed derserved, job only request memory can be enqueued and allocated",
 				Plugins:        plugins,
 				Pods:           []*apiv1.Pod{p1, p2, p4},
@@ -442,6 +465,61 @@ func TestEnqueueAndAllocable(t *testing.T) {
 
 			if err := test.CheckAll(i); err != nil {
 				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestAllocatableAtWeightedEntitlement(t *testing.T) {
+	enabled := true
+	tiers := []conf.Tier{{Plugins: []conf.PluginOption{{
+		Name: PluginName, EnabledAllocatable: &enabled, EnabledPredicate: &enabled,
+	}}}}
+
+	// At weights 5:34 the primary queue gets 1000m out of 7800m CPU,
+	// 1000Mi out of 7800Mi memory, and 5 of the 39 GPUs.
+	for _, tc := range []struct {
+		name, capacity, request string
+		weightScale             int32
+		want                    bool
+	}{
+		{"one millicore below", "7800m", "999m", 1, true},
+		{"exact share", "7800m", "1000m", 1, true},
+		{"same ratio with scaled weights", "7800m", "1000m", 29, true},
+		{"one millicore above", "7800m", "1001m", 1, false},
+		{"fractional share just below request", "7792m", "999m", 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := api.BuildResourceListWithGPU(tc.request, "1000Mi", "5")
+			candidate := util.BuildPod("ns", "candidate", "", apiv1.PodPending, request, "primary", nil, nil)
+			peerRequest := api.BuildResourceListWithGPU("6800m", "6800Mi", "34")
+			peer := util.BuildPod("ns", "peer", "", apiv1.PodPending, peerRequest, "peer", nil, nil)
+			test := uthelper.TestCommonStruct{
+				Plugins: map[string]framework.PluginBuilder{PluginName: New},
+				Queues: []*schedulingv1beta1.Queue{
+					util.BuildQueue("primary", 5*tc.weightScale, nil),
+					util.BuildQueue("peer", 34*tc.weightScale, nil),
+				},
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					util.BuildPodGroup("primary", "ns", "primary", 1, nil, schedulingv1beta1.PodGroupInqueue),
+					util.BuildPodGroup("peer", "ns", "peer", 1, nil, schedulingv1beta1.PodGroupInqueue),
+				},
+				Pods: []*apiv1.Pod{candidate, peer},
+				Nodes: []*apiv1.Node{util.BuildNode("node", api.BuildResourceListWithGPU(tc.capacity, "7800Mi", "39",
+					api.ScalarResource{Name: "pods", Value: "32"}), nil)},
+			}
+			ssn := test.RegisterSession(tiers, nil)
+			defer test.Close()
+			task := api.NewTaskInfo(candidate)
+			queue := ssn.Queues["primary"]
+			if got := ssn.Allocatable(queue, task); got != tc.want {
+				t.Errorf("Allocatable(%s) = %t, want %t", tc.request, got, tc.want)
+			}
+			if err := ssn.PrePredicateFn(task); err != nil {
+				t.Fatal(err)
+			}
+			if got := ssn.SimulateAllocatableFn(t.Context(), ssn.GetCycleState(task.UID), queue, task); got != tc.want {
+				t.Errorf("SimulateAllocatableFn(%s) = %t, want %t", tc.request, got, tc.want)
 			}
 		})
 	}
