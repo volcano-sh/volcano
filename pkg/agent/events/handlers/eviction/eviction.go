@@ -90,6 +90,7 @@ func (m *manager) Handle(event interface{}) error {
 		for _, pod := range preemptablePods {
 			if err = m.DisableSchedule(); err != nil {
 				klog.ErrorS(err, "Failed to add eviction annotation")
+				return err
 			}
 			klog.InfoS("Successfully disable schedule")
 
