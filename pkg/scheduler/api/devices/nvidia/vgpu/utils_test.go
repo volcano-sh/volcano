@@ -532,3 +532,109 @@ func TestDecodeContainerDevicesRejectsInvalidUsage(t *testing.T) {
 		})
 	}
 }
+
+func TestUnhealthyDevicesAreNotAllocated(t *testing.T) {
+	VGPUEnable = true
+	defer func() { VGPUEnable = false }()
+
+	testCases := []struct {
+		name      string
+		numGPUs   int
+		seed      func(gs *GPUDevices)
+		policy    string
+		wantFit   bool
+		wantDevID int
+	}{
+		{
+			name:    "unset policy skips the unhealthy highest-index device",
+			numGPUs: 2,
+			seed: func(gs *GPUDevices) {
+				gs.Device[1].Health = false
+			},
+			policy:    "",
+			wantFit:   true,
+			wantDevID: 0,
+		},
+		{
+			name:    "binpack skips the busier device once it turns unhealthy",
+			numGPUs: 2,
+			seed: func(gs *GPUDevices) {
+				gs.Device[0].UsedMem = 4096
+				gs.Device[0].UsedNum = 1
+				gs.Device[0].Health = false
+			},
+			policy:    binpackPolicy,
+			wantFit:   true,
+			wantDevID: 1,
+		},
+		{
+			name:    "spread skips the idle device once it turns unhealthy",
+			numGPUs: 2,
+			seed: func(gs *GPUDevices) {
+				gs.Device[0].UsedMem = 4096
+				gs.Device[0].UsedNum = 1
+				gs.Device[1].Health = false
+			},
+			policy:    spreadPolicy,
+			wantFit:   true,
+			wantDevID: 0,
+		},
+		{
+			name:    "no fit when every device is unhealthy",
+			numGPUs: 2,
+			seed: func(gs *GPUDevices) {
+				gs.Device[0].Health = false
+				gs.Device[1].Health = false
+			},
+			policy:  binpackPolicy,
+			wantFit: false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			gs := makeGPUDevices("node-1", tc.numGPUs, 16384, 4)
+			tc.seed(gs)
+			pod := makeVGPUPod("worker", "default", "uid", 4096, false, "")
+			fit, devs, _, err := checkNodeGPUSharingPredicateAndScore(pod, gs, true, tc.policy)
+			if fit != tc.wantFit {
+				t.Fatalf("fit = %v, want %v; err: %v; devices: %v", fit, tc.wantFit, err, devs)
+			}
+			if !tc.wantFit {
+				if err == nil {
+					t.Fatal("expected an allocation error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected allocation error: %v", err)
+			}
+			if got, want := getDeviceUUID(devs), gs.Device[tc.wantDevID].UUID; got != want {
+				t.Errorf("allocated UUID = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestUnhealthyDeviceFromRegisterAnnotationIsNotAllocated(t *testing.T) {
+	VGPUEnable = true
+	defer func() { VGPUEnable = false }()
+
+	// The device plugin encodes each GPU as uuid,count,memory,type,health,mode.
+	gs, _ := decodeNodeDevices("node-1",
+		"GPU-sick,4,16384,NVIDIA-A100,false,hami-core:GPU-ok,4,16384,NVIDIA-A100,true,hami-core:")
+	if gs == nil || len(gs.Device) != 2 {
+		t.Fatalf("failed to decode node devices: %+v", gs)
+	}
+	gs.Sharing, _ = GetSharingHandler(gs.Mode)
+
+	for _, policy := range []string{"", binpackPolicy, spreadPolicy} {
+		pod := makeVGPUPod("worker", "default", "uid", 4096, false, "")
+		fit, devs, _, err := checkNodeGPUSharingPredicateAndScore(pod, gs, true, policy)
+		if err != nil || !fit {
+			t.Fatalf("policy=%q: pod should fit on the healthy GPU: fit=%v err=%v", policy, fit, err)
+		}
+		if got := getDeviceUUID(devs); got != "GPU-ok" {
+			t.Errorf("policy=%q: allocated UUID = %q, want %q", policy, got, "GPU-ok")
+		}
+	}
+}
