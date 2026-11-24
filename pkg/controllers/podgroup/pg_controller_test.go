@@ -1426,10 +1426,11 @@ func TestWorkloadUpdateKeepsAdmittedPodGroupQueue(t *testing.T) {
 	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}}
 
 	tests := []struct {
-		name   string
-		sts    *appsv1.StatefulSet
-		rs     *appsv1.ReplicaSet
-		labels map[string]string
+		name     string
+		sts      *appsv1.StatefulSet
+		rs       *appsv1.ReplicaSet
+		labels   map[string]string
+		admitted string
 	}{
 		{
 			name: "StatefulSet rolling update recreates a Pod",
@@ -1438,7 +1439,18 @@ func TestWorkloadUpdateKeepsAdmittedPodGroupQueue(t *testing.T) {
 				Spec:       appsv1.StatefulSetSpec{Replicas: ptr.To[int32](1), Selector: selector},
 				Status:     appsv1.StatefulSetStatus{UpdateRevision: "web-v2"},
 			},
-			labels: map[string]string{"app": "web", controllerRevisionHashLabelKey: "web-v2"},
+			labels:   map[string]string{"app": "web", controllerRevisionHashLabelKey: "web-v2"},
+			admitted: queue,
+		},
+		{
+			name: "StatefulSet Pod queue annotation was removed",
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: namespace, UID: "sts-uid"},
+				Spec:       appsv1.StatefulSetSpec{Replicas: ptr.To[int32](1), Selector: selector},
+				Status:     appsv1.StatefulSetStatus{UpdateRevision: "web-v2"},
+			},
+			labels:   map[string]string{"app": "web", controllerRevisionHashLabelKey: "web-v2"},
+			admitted: "other-queue",
 		},
 		{
 			name: "ReplicaSet creates a Pod",
@@ -1446,13 +1458,19 @@ func TestWorkloadUpdateKeepsAdmittedPodGroupQueue(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "web-5d8f", Namespace: namespace, UID: "rs-uid"},
 				Spec:       appsv1.ReplicaSetSpec{Replicas: ptr.To[int32](1), Selector: selector},
 			},
-			labels: map[string]string{"app": "web"},
+			labels:   map[string]string{"app": "web"},
+			admitted: queue,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := newFakeController()
+			_, err := c.kubeClient.CoreV1().Namespaces().Create(context.TODO(), &v1.Namespace{ObjectMeta: metav1.ObjectMeta{
+				Name:        namespace,
+				Annotations: map[string]string{scheduling.QueueNameAnnotationKey: queue},
+			}}, metav1.CreateOptions{})
+			require.NoError(t, err)
 			var owner metav1.OwnerReference
 			if tt.sts != nil {
 				_, err := c.kubeClient.AppsV1().StatefulSets(namespace).Create(context.TODO(), tt.sts, metav1.CreateOptions{})
@@ -1479,12 +1497,12 @@ func TestWorkloadUpdateKeepsAdmittedPodGroupQueue(t *testing.T) {
 					}},
 				},
 			}
-			pod, err := c.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+			pod, err = c.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 			require.NoError(t, err)
 			require.NoError(t, c.podInformer.Informer().GetIndexer().Add(pod))
 
 			admitted := c.buildPodGroupFromPod(pod, helpers.GeneratePodgroupName(pod))
-			admitted.Spec.Queue = queue
+			admitted.Spec.Queue = tt.admitted
 			admitted, err = c.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), admitted, metav1.CreateOptions{})
 			require.NoError(t, err)
 			require.NoError(t, c.pgInformer.Informer().GetIndexer().Add(admitted))
