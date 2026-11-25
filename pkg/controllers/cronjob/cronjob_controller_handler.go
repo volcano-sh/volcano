@@ -132,7 +132,7 @@ func (cc *cronjobcontroller) updateCronJob(oldObj interface{}, newObj interface{
 	if oldCronjob.Spec.Schedule != newCronjob.Spec.Schedule || !ptr.Equal(oldCronjob.Spec.TimeZone, newCronjob.Spec.TimeZone) {
 		sched, err := cron.ParseStandard(formatSchedule(newCronjob, nil))
 		if err != nil {
-			klog.V(2).Info("Unparseable schedule for cronjob", "cronjob", klog.KObj(newCronjob), "schedule", newCronjob.Spec.Schedule, "err", err)
+			klog.V(2).InfoS("Unparseable schedule for cronjob", "cronjob", klog.KObj(newCronjob), "schedule", newCronjob.Spec.Schedule, "err", err)
 			cc.recorder.Eventf(newCronjob, corev1.EventTypeWarning, "UnParseableCronJobSchedule", "unparseable schedule for cronjob: %s", newCronjob.Spec.Schedule)
 			return
 		}
@@ -304,10 +304,10 @@ func (cc *cronjobcontroller) removeOldestJobs(cj *batchv1.CronJob, js []*batchv1
 	if numToDelete <= 0 {
 		return updateStatus
 	}
-	klog.V(4).Info("Cleaning up jobs from CronJob list", "deletejobnum", numToDelete, "jobnum", len(js), "cronjob", klog.KObj(cj))
+	klog.V(4).InfoS("Cleaning up jobs from CronJob list", "deletejobnum", numToDelete, "jobnum", len(js), "cronjob", klog.KObj(cj))
 	sort.Sort(byJobCreationTimestamp(js))
 	for i := 0; i < numToDelete; i++ {
-		klog.V(4).Info("Removing job from CronJob list", "job", js[i].Name, "cronjob", klog.KObj(cj))
+		klog.V(4).InfoS("Removing job from CronJob list", "job", js[i].Name, "cronjob", klog.KObj(cj))
 		if deleteJobByClient(cc.vcClient, cc.jobClient, cj, js[i], cc.recorder) {
 			updateStatus = true
 		}
@@ -349,7 +349,7 @@ func deleteJobByClient(vcClient vcclientset.Interface, jobClient jobClientInterf
 func (cc *cronjobcontroller) processConcurrencyPolicy(cj *batchv1.CronJob) (bool, bool, error) {
 	if cj.Spec.ConcurrencyPolicy == batchv1.ForbidConcurrent {
 		if len(cj.Status.Active) > 0 {
-			klog.V(4).Info("Forbid concurrent jobs for CronJob", "cronjob", klog.KObj(cj))
+			klog.V(4).InfoS("Forbid concurrent jobs for CronJob", "cronjob", klog.KObj(cj))
 			cc.recorder.Eventf(cj, corev1.EventTypeWarning, "ForbidConcurrent",
 				"Skipping job creation because another job is already running")
 			return true, false, nil
@@ -359,11 +359,11 @@ func (cc *cronjobcontroller) processConcurrencyPolicy(cj *batchv1.CronJob) (bool
 	if cj.Spec.ConcurrencyPolicy == batchv1.ReplaceConcurrent {
 		updateStatus := false
 		if len(cj.Status.Active) > 0 {
-			klog.V(4).Info("Replacing active job for CronJob", "cronjob", klog.KObj(cj))
+			klog.V(4).InfoS("Replacing active job for CronJob", "cronjob", klog.KObj(cj))
 			cc.recorder.Eventf(cj, corev1.EventTypeWarning, "ReplaceConcurrent",
 				"Replacing active job for CronJob")
 			for _, activeJob := range cj.Status.Active {
-				klog.V(4).Info("Deleting job that was still running at next scheduled start time", "job", klog.KRef(activeJob.Namespace, activeJob.Name))
+				klog.V(4).InfoS("Deleting job that was still running at next scheduled start time", "job", klog.KRef(activeJob.Namespace, activeJob.Name))
 				job, err := cc.jobClient.GetJobClient(cc.vcClient, activeJob.Namespace, activeJob.Name)
 				if err != nil {
 					cc.recorder.Eventf(cj, corev1.EventTypeWarning, "FailedGet", "Get job: %v", err)
