@@ -662,6 +662,11 @@ func runTaskPodReleaseWakeupCase(pluginName, queueName, jobName string) {
 		}},
 	})
 	waitForJobPodGroupPhase(ctx, job, schedulingv1beta1.PodGroupInqueue)
+	// Queue admission precedes task Pod creation by the Job controller.
+	Eventually(func() []*v1.Pod {
+		return e2eutil.GetTasksOfJob(ctx, job)
+	}, eventWakeupTimeout, 500*time.Millisecond).Should(HaveLen(1),
+		"the Job controller should create the task Pod after queue admission")
 	expectJobUnbound(ctx, job)
 
 	// Bind a standalone Pod directly so it contributes 600m to the Queue while
