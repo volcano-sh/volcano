@@ -141,7 +141,7 @@ spec:
           level: s0:c123,c456
         seccompProfile:
           type: RuntimeDefault
-      serviceAccount: volcano-admission
+      serviceAccountName: volcano-admission
       priorityClassName: system-cluster-critical
       containers:
         - args:
@@ -3496,7 +3496,7 @@ spec:
                                       type: string
                                   type: object
                               type: object
-                            serviceAccount:
+                            serviceAccountName:
                               type: string
                             serviceAccountName:
                               type: string
@@ -7910,7 +7910,7 @@ spec:
                                               type: string
                                           type: object
                                       type: object
-                                    serviceAccount:
+                                    serviceAccountName:
                                       type: string
                                     serviceAccountName:
                                       type: string
@@ -9306,7 +9306,7 @@ spec:
           level: s0:c123,c456
         seccompProfile:
           type: RuntimeDefault
-      serviceAccount: volcano-controllers
+      serviceAccountName: volcano-controllers
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-controllers
@@ -9543,7 +9543,7 @@ spec:
           level: s0:c123,c456
         seccompProfile:
           type: RuntimeDefault
-      serviceAccount: volcano-scheduler
+      serviceAccountName: volcano-scheduler
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-scheduler
@@ -15486,7 +15486,7 @@ spec:
                                       type: string
                                   type: object
                               type: object
-                            serviceAccount:
+                            serviceAccountName:
                               type: string
                             serviceAccountName:
                               type: string
@@ -19857,7 +19857,7 @@ spec:
                                                     type: string
                                                 type: object
                                             type: object
-                                          serviceAccount:
+                                          serviceAccountName:
                                             type: string
                                           serviceAccountName:
                                             type: string

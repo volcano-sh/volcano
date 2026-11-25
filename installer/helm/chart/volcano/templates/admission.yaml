@@ -132,7 +132,7 @@ spec:
       securityContext:
           {{- toYaml $admission_sc | nindent 8 }}
       {{- end }}
-      serviceAccount: {{ .Release.Name }}-admission
+      serviceAccountName: {{ .Release.Name }}-admission
       priorityClassName: system-cluster-critical
       {{- if .Values.basic.image_pull_secret }}
       imagePullSecrets:
