@@ -593,9 +593,17 @@ func getPodGroupPhase(jobInfo *api.JobInfo, unschedulable bool) scheduling.PodGr
 
 	scheduled := int(jobInfo.ScheduledTaskNum())
 	completed := 0
+	// active counts member tasks that have not finished yet, such as Pending,
+	// Allocated, Pipelined, Binding, Bound and Running tasks. Releasing tasks
+	// are excluded: scheduled ones are already counted below, and
+	// never-scheduled ones are being deleted.
+	active := 0
 	for s, tasks := range jobInfo.TaskStatusIndex {
-		if api.CompletedStatus(s) {
+		switch {
+		case api.CompletedStatus(s):
 			completed += len(tasks)
+		case s != api.Releasing:
+			active += len(tasks)
 		}
 	}
 	// Releasing tasks that were already scheduled (pods with deletionTimestamp
@@ -606,8 +614,10 @@ func getPodGroupPhase(jobInfo *api.JobInfo, unschedulable bool) scheduling.PodGr
 	scheduled += int(jobInfo.ReleasingScheduledTaskNum())
 
 	if int32(scheduled) >= jobInfo.PodGroup.Spec.MinMember {
-		// If all scheduled tasks are completed, then the podgroup is completed
-		if scheduled == completed {
+		// The podgroup is completed only when all of its pods are completed:
+		// every scheduled task has finished and no member task is still
+		// waiting to be scheduled or bound.
+		if scheduled == completed && active == 0 {
 			return scheduling.PodGroupCompleted
 		}
 		return scheduling.PodGroupRunning
