@@ -45,15 +45,16 @@ var getJobFlowFlags = &getFlags{}
 func InitGetFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &getJobFlowFlags.CommonFlags)
 	cmd.Flags().StringVarP(&getJobFlowFlags.Name, "name", "N", "", "the name of jobflow")
-	cmd.Flags().StringVarP(&getJobFlowFlags.Namespace, "namespace", "n", "default", "the namespace of jobflow")
+	cmd.Flags().StringVarP(&getJobFlowFlags.Namespace, "namespace", "n", "", "the namespace of jobflow")
 }
 
 // GetJobFlow gets a jobflow.
 func GetJobFlow(ctx context.Context) error {
-	config, err := util.BuildConfig(getJobFlowFlags.Master, getJobFlowFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(getJobFlowFlags.Master, getJobFlowFlags.Kubeconfig, getJobFlowFlags.Namespace)
 	if err != nil {
 		return err
 	}
+	getJobFlowFlags.Namespace = namespace
 
 	if getJobFlowFlags.Name == "" {
 		err := fmt.Errorf("name is mandatory to get the particular jobflow details")

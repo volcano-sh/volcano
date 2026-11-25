@@ -49,15 +49,16 @@ var listJobTemplateFlags = &listFlags{}
 // InitListFlags inits all flags.
 func InitListFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &listJobTemplateFlags.CommonFlags)
-	cmd.Flags().StringVarP(&listJobTemplateFlags.Namespace, "namespace", "n", "default", "the namespace of job template")
+	cmd.Flags().StringVarP(&listJobTemplateFlags.Namespace, "namespace", "n", "", "the namespace of job template")
 }
 
 // ListJobTemplate lists all job templates.
 func ListJobTemplate(ctx context.Context) error {
-	config, err := util.BuildConfig(listJobTemplateFlags.Master, listJobTemplateFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(listJobTemplateFlags.Master, listJobTemplateFlags.Kubeconfig, listJobTemplateFlags.Namespace)
 	if err != nil {
 		return err
 	}
+	listJobTemplateFlags.Namespace = namespace
 
 	jobClient := versioned.NewForConfigOrDie(config)
 	jobTemplates, err := jobClient.FlowV1alpha1().JobTemplates(listJobTemplateFlags.Namespace).List(ctx, metav1.ListOptions{})

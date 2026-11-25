@@ -49,7 +49,7 @@ func InitCreateFlags(cmd *cobra.Command) {
 
 // CreateJobFlow create a jobflow.
 func CreateJobFlow(ctx context.Context) error {
-	config, err := util.BuildConfig(createJobFlowFlags.Master, createJobFlowFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(createJobFlowFlags.Master, createJobFlowFlags.Kubeconfig, "")
 	if err != nil {
 		return err
 	}
@@ -78,7 +78,7 @@ func CreateJobFlow(ctx context.Context) error {
 		}
 		// Set the namespace if it's not specified.
 		if obj.Namespace == "" {
-			obj.Namespace = "default"
+			obj.Namespace = namespace
 		}
 
 		_, err = jobFlowClient.FlowV1alpha1().JobFlows(obj.Namespace).Create(ctx, obj, metav1.CreateOptions{})

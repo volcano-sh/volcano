@@ -194,6 +194,11 @@ Deleted JobTemplate: default/b`,
 			deleteJobTemplateFlags.Namespace = testCase.Namespace
 			deleteJobTemplateFlags.Name = testCase.name
 			deleteJobTemplateFlags.FilePath = testCase.FilePath
+			kubeconfig, err := util.CreateTestKubeconfig(t.TempDir(), server.URL, "")
+			if err != nil {
+				t.Fatalf("Failed to write kubeconfig: %v", err)
+			}
+			t.Setenv("KUBECONFIG", kubeconfig)
 
 			if testCase.FilePath != "" {
 				err := createAndWriteFile(testCase.FilePath, content)
@@ -211,7 +216,7 @@ Deleted JobTemplate: default/b`,
 
 			r, oldStdout := util.RedirectStdout()
 			defer r.Close()
-			err := DeleteJobTemplate(context.TODO())
+			err = DeleteJobTemplate(context.TODO())
 			gotOutput := util.CaptureOutput(r, oldStdout)
 			if testCase.WantErr {
 				if err == nil {
@@ -229,13 +234,15 @@ Deleted JobTemplate: default/b`,
 
 func TestCreateJobTemplate(t *testing.T) {
 	testCases := []struct {
-		name           string
-		Response       *flowv1alpha1.JobTemplate
-		FilePath       string
-		StatusCode     int
-		WantErr        bool
-		ExpectedErr    error
-		ExpectedOutput string
+		name             string
+		Response         *flowv1alpha1.JobTemplate
+		FilePath         string
+		Content          string
+		ContextNamespace string
+		StatusCode       int
+		WantErr          bool
+		ExpectedErr      error
+		ExpectedOutput   string
 	}{
 		{
 			name: "Normal Case",
@@ -264,6 +271,25 @@ Created JobTemplate: default/b`,
 			WantErr:        true,
 			ExpectedOutput: ``,
 		},
+		{
+			name: "Namespace from the kubeconfig context",
+			Response: &flowv1alpha1.JobTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "c",
+				},
+			},
+			FilePath: "test.yaml",
+			Content: `apiVersion: flow.volcano.sh/v1alpha1
+kind: JobTemplate
+metadata:
+  name: c
+spec:
+  minAvailable: 1
+`,
+			ContextNamespace: "volcano-system",
+			StatusCode:       http.StatusOK,
+			ExpectedOutput:   `Created JobTemplate: volcano-system/c`,
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -272,9 +298,18 @@ Created JobTemplate: default/b`,
 			// Set the server URL as the master flag
 			createJobTemplateFlags.Master = server.URL
 			createJobTemplateFlags.FilePath = testCase.FilePath
+			kubeconfig, err := util.CreateTestKubeconfig(t.TempDir(), server.URL, testCase.ContextNamespace)
+			if err != nil {
+				t.Fatalf("Failed to write kubeconfig: %v", err)
+			}
+			t.Setenv("KUBECONFIG", kubeconfig)
 
 			if testCase.FilePath != "" {
-				err := createAndWriteFile(testCase.FilePath, content)
+				fileContent := content
+				if testCase.Content != "" {
+					fileContent = testCase.Content
+				}
+				err := createAndWriteFile(testCase.FilePath, fileContent)
 				if err != nil {
 					t.Fatalf("Failed to create and write file: %v", err)
 				}
@@ -288,7 +323,7 @@ Created JobTemplate: default/b`,
 			}
 			r, oldStdout := util.RedirectStdout()
 			defer r.Close()
-			err := CreateJobTemplate(context.TODO())
+			err = CreateJobTemplate(context.TODO())
 			gotOutput := util.CaptureOutput(r, oldStdout)
 			if testCase.WantErr {
 				if err == nil {

@@ -17,8 +17,8 @@ limitations under the License.
 package util
 
 import (
+	"path/filepath"
 	"testing"
-
 	"time"
 )
 
@@ -105,5 +105,113 @@ func TestJobUtil(t *testing.T) {
 		if answer != testcase.ExpectValue {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, answer)
 		}
+	}
+}
+
+func TestBuildConfigAndNamespace(t *testing.T) {
+	const (
+		contextServer = "https://context.example.com"
+		masterServer  = "https://master.example.com"
+	)
+	withNamespace, err := CreateTestKubeconfig(t.TempDir(), contextServer, "volcano-system")
+	if err != nil {
+		t.Fatalf("failed to write kubeconfig: %v", err)
+	}
+	withoutNamespace, err := CreateTestKubeconfig(t.TempDir(), contextServer, "")
+	if err != nil {
+		t.Fatalf("failed to write kubeconfig: %v", err)
+	}
+	missing := filepath.Join(t.TempDir(), "missing")
+
+	testCases := []struct {
+		name          string
+		envKubeconfig string
+		master        string
+		kubeconfig    string
+		namespace     string
+		wantErr       bool
+		wantHost      string
+		wantNamespace string
+	}{
+		{
+			name:          "namespace of the current context",
+			kubeconfig:    withNamespace,
+			wantHost:      contextServer,
+			wantNamespace: "volcano-system",
+		},
+		{
+			name:          "namespace flag overrides the context",
+			kubeconfig:    withNamespace,
+			namespace:     "flag-namespace",
+			wantHost:      contextServer,
+			wantNamespace: "flag-namespace",
+		},
+		{
+			name:          "context without a namespace",
+			kubeconfig:    withoutNamespace,
+			wantHost:      contextServer,
+			wantNamespace: "default",
+		},
+		{
+			name:          "kubeconfig from the KUBECONFIG environment variable",
+			envKubeconfig: withNamespace,
+			wantHost:      contextServer,
+			wantNamespace: "volcano-system",
+		},
+		{
+			name:          "kubeconfig flag takes precedence over KUBECONFIG",
+			envKubeconfig: withNamespace,
+			kubeconfig:    withoutNamespace,
+			wantHost:      contextServer,
+			wantNamespace: "default",
+		},
+		{
+			name:          "master flag keeps the context namespace",
+			kubeconfig:    withNamespace,
+			master:        masterServer,
+			wantHost:      masterServer,
+			wantNamespace: "volcano-system",
+		},
+		{
+			name:          "master flag without a kubeconfig",
+			master:        masterServer,
+			wantHost:      masterServer,
+			wantNamespace: "default",
+		},
+		{
+			name:       "missing kubeconfig file",
+			kubeconfig: missing,
+			wantErr:    true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			envKubeconfig := tc.envKubeconfig
+			if envKubeconfig == "" {
+				// Keep the test away from the kubeconfig of the machine it runs on.
+				envKubeconfig = missing
+			}
+			t.Setenv("KUBECONFIG", envKubeconfig)
+			// Make sure the in-cluster namespace is never used.
+			t.Setenv("KUBERNETES_SERVICE_HOST", "")
+
+			config, namespace, err := BuildConfigAndNamespace(tc.master, tc.kubeconfig, tc.namespace)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error, got namespace %q", namespace)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if config.Host != tc.wantHost {
+				t.Errorf("host: got %q, want %q", config.Host, tc.wantHost)
+			}
+			if namespace != tc.wantNamespace {
+				t.Errorf("namespace: got %q, want %q", namespace, tc.wantNamespace)
+			}
+		})
 	}
 }

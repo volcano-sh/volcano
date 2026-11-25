@@ -49,7 +49,7 @@ var describeJobFlowFlags = &describeFlags{}
 func InitDescribeFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &describeJobFlowFlags.CommonFlags)
 	cmd.Flags().StringVarP(&describeJobFlowFlags.Name, "name", "N", "", "the name of jobflow")
-	cmd.Flags().StringVarP(&describeJobFlowFlags.Namespace, "namespace", "n", "default", "the namespace of jobflow")
+	cmd.Flags().StringVarP(&describeJobFlowFlags.Namespace, "namespace", "n", "", "the namespace of jobflow")
 	cmd.Flags().StringVarP(&describeJobFlowFlags.Format, "format", "o", "yaml", "the format of output")
 }
 
@@ -59,10 +59,11 @@ func DescribeJobFlow(ctx context.Context) error {
 		return err
 	}
 
-	config, err := util.BuildConfig(describeJobFlowFlags.Master, describeJobFlowFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(describeJobFlowFlags.Master, describeJobFlowFlags.Kubeconfig, describeJobFlowFlags.Namespace)
 	if err != nil {
 		return err
 	}
+	describeJobFlowFlags.Namespace = namespace
 	jobFlowClient := versioned.NewForConfigOrDie(config)
 
 	// Get jobflow list detail

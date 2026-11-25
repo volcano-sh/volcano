@@ -18,7 +18,10 @@ package job
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 
@@ -271,5 +274,63 @@ func TestInitListFlags(t *testing.T) {
 	}
 	if cmd.Flag("queue") == nil {
 		t.Errorf("Could not find the flag queue")
+	}
+}
+
+func TestListJobNamespace(t *testing.T) {
+	var requestPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(&v1alpha1.JobList{})
+	}))
+	defer server.Close()
+
+	kubeconfig, err := util.CreateTestKubeconfig(t.TempDir(), server.URL, "volcano-system")
+	if err != nil {
+		t.Fatalf("failed to write kubeconfig: %v", err)
+	}
+
+	testCases := []struct {
+		name          string
+		namespace     string
+		allNamespaces bool
+		wantPath      string
+	}{
+		{
+			name:     "namespace of the current kubeconfig context",
+			wantPath: "/apis/batch.volcano.sh/v1alpha1/namespaces/volcano-system/jobs",
+		},
+		{
+			name:      "namespace flag",
+			namespace: "team-a",
+			wantPath:  "/apis/batch.volcano.sh/v1alpha1/namespaces/team-a/jobs",
+		},
+		{
+			name:          "all namespaces",
+			allNamespaces: true,
+			wantPath:      "/apis/batch.volcano.sh/v1alpha1/jobs",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			requestPath = ""
+			listJobFlags = &listFlags{
+				CommonFlags:  util.CommonFlags{Kubeconfig: kubeconfig},
+				Namespace:    tc.namespace,
+				allNamespace: tc.allNamespaces,
+			}
+			r, oldStdout := util.RedirectStdout()
+			defer r.Close()
+			err := ListJobs(context.TODO())
+			util.CaptureOutput(r, oldStdout)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if requestPath != tc.wantPath {
+				t.Errorf("request path: got %q, want %q", requestPath, tc.wantPath)
+			}
+		})
 	}
 }

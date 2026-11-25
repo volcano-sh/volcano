@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	"volcano.sh/apis/pkg/apis/helpers"
@@ -54,6 +56,28 @@ func InitFlags(cmd *cobra.Command, cf *CommonFlags) {
 
 // BuildConfig builds the configuration file for command lines.
 func BuildConfig(master, kubeconfig string) (*rest.Config, error) {
+	return newClientConfig(master, kubeconfig, "").ClientConfig()
+}
+
+// BuildConfigAndNamespace builds the configuration file for command lines and
+// resolves the namespace they work in, the same way kubectl does. A non-empty
+// namespace, usually from the --namespace flag, is used as is. Otherwise the
+// namespace of the current kubeconfig context is used, or "default" if the
+// context does not set one.
+func BuildConfigAndNamespace(master, kubeconfig, namespace string) (*rest.Config, string, error) {
+	clientConfig := newClientConfig(master, kubeconfig, namespace)
+	config, err := clientConfig.ClientConfig()
+	if err != nil {
+		return nil, "", err
+	}
+	namespace, _, err = clientConfig.Namespace()
+	if err != nil {
+		return nil, "", err
+	}
+	return config, namespace, nil
+}
+
+func newClientConfig(master, kubeconfig, namespace string) clientcmd.ClientConfig {
 	// This will automatically load KUBECONFIG environment variable.
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if kubeconfig != "" {
@@ -63,7 +87,8 @@ func BuildConfig(master, kubeconfig string) (*rest.Config, error) {
 	if master != "" {
 		overrides.ClusterInfo.Server = master
 	}
-	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides).ClientConfig()
+	overrides.Context.Namespace = namespace
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
 }
 
 // PopulateResourceListV1 takes strings of form <resourceName1>=<value1>,<resourceName2>=<value2> and returns ResourceList.
@@ -233,4 +258,19 @@ func CreateTestServerWithStatus(response interface{}, statusCode int) *httptest.
 
 	server := httptest.NewServer(handler)
 	return server
+}
+
+// CreateTestKubeconfig writes a kubeconfig file into dir whose current context
+// points at server and uses namespace, and returns the path of the file.
+func CreateTestKubeconfig(dir, server, namespace string) (string, error) {
+	config := clientcmdapi.NewConfig()
+	config.Clusters["test"] = &clientcmdapi.Cluster{Server: server}
+	config.AuthInfos["test"] = &clientcmdapi.AuthInfo{}
+	config.Contexts["test"] = &clientcmdapi.Context{Cluster: "test", AuthInfo: "test", Namespace: namespace}
+	config.CurrentContext = "test"
+	path := filepath.Join(dir, "kubeconfig")
+	if err := clientcmd.WriteToFile(*config, path); err != nil {
+		return "", err
+	}
+	return path, nil
 }

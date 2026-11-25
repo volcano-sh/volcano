@@ -49,7 +49,7 @@ func InitCreateFlags(cmd *cobra.Command) {
 
 // CreateJobTemplate create a job template.
 func CreateJobTemplate(ctx context.Context) error {
-	config, err := util.BuildConfig(createJobTemplateFlags.Master, createJobTemplateFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(createJobTemplateFlags.Master, createJobTemplateFlags.Kubeconfig, "")
 	if err != nil {
 		return err
 	}
@@ -78,7 +78,7 @@ func CreateJobTemplate(ctx context.Context) error {
 		}
 		// Set the namespace if it's not specified.
 		if obj.Namespace == "" {
-			obj.Namespace = "default"
+			obj.Namespace = namespace
 		}
 
 		_, err = jobTemplateClient.FlowV1alpha1().JobTemplates(obj.Namespace).Create(ctx, obj, metav1.CreateOptions{})

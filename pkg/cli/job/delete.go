@@ -40,16 +40,17 @@ var deleteJobFlags = &deleteFlags{}
 // InitDeleteFlags init the delete command flags.
 func InitDeleteFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &deleteJobFlags.CommonFlags)
-	cmd.Flags().StringVarP(&deleteJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&deleteJobFlags.Namespace, "namespace", "n", "", "the namespace of job")
 	cmd.Flags().StringVarP(&deleteJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
 // DeleteJob delete the job.
 func DeleteJob(ctx context.Context) error {
-	config, err := util.BuildConfig(deleteJobFlags.Master, deleteJobFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(deleteJobFlags.Master, deleteJobFlags.Kubeconfig, deleteJobFlags.Namespace)
 	if err != nil {
 		return err
 	}
+	deleteJobFlags.Namespace = namespace
 
 	if deleteJobFlags.JobName == "" {
 		err := fmt.Errorf("job name is mandatory to delete a particular job")

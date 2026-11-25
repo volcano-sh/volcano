@@ -85,7 +85,7 @@ func InitListFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &listJobFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&listJobFlags.QueueName, "queue", "q", "", "list job with specified queue name")
-	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "n", "", "the namespace of job")
 	cmd.Flags().StringVarP(&listJobFlags.SchedulerName, "scheduler", "S", "", "list job with specified scheduler name")
 	cmd.Flags().BoolVarP(&listJobFlags.allNamespace, "all-namespaces", "", false, "list jobs in all namespaces")
 	cmd.Flags().StringVarP(&listJobFlags.selector, "selector", "", "", "fuzzy matching jobName")
@@ -93,10 +93,11 @@ func InitListFlags(cmd *cobra.Command) {
 
 // ListJobs lists all jobs details.
 func ListJobs(ctx context.Context) error {
-	config, err := util.BuildConfig(listJobFlags.Master, listJobFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(listJobFlags.Master, listJobFlags.Kubeconfig, listJobFlags.Namespace)
 	if err != nil {
 		return err
 	}
+	listJobFlags.Namespace = namespace
 	if listJobFlags.allNamespace {
 		listJobFlags.Namespace = ""
 	}

@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 	"volcano.sh/volcano/pkg/cli/util"
@@ -89,6 +90,91 @@ func TestCreateJob(t *testing.T) {
 		}
 	}
 
+}
+
+func TestRunJobNamespace(t *testing.T) {
+	var requestPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(&v1alpha1.Job{})
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	kubeconfig, err := util.CreateTestKubeconfig(dir, server.URL, "volcano-system")
+	if err != nil {
+		t.Fatalf("failed to write kubeconfig: %v", err)
+	}
+	writeJobFile := func(name, namespace string) string {
+		content := "apiVersion: batch.volcano.sh/v1alpha1\nkind: Job\nmetadata:\n  name: file-job\n"
+		if namespace != "" {
+			content += "  namespace: " + namespace + "\n"
+		}
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatalf("failed to write job file: %v", err)
+		}
+		return path
+	}
+	withNamespace := writeJobFile("with-namespace.yaml", "default")
+	withoutNamespace := writeJobFile("without-namespace.yaml", "")
+
+	testCases := []struct {
+		name      string
+		namespace string
+		fileName  string
+		wantPath  string
+	}{
+		{
+			name:     "namespace of the current kubeconfig context",
+			wantPath: "/apis/batch.volcano.sh/v1alpha1/namespaces/volcano-system/jobs",
+		},
+		{
+			name:      "namespace flag",
+			namespace: "team-a",
+			wantPath:  "/apis/batch.volcano.sh/v1alpha1/namespaces/team-a/jobs",
+		},
+		{
+			name:     "namespace of the job file",
+			fileName: withNamespace,
+			wantPath: "/apis/batch.volcano.sh/v1alpha1/namespaces/default/jobs",
+		},
+		{
+			name:     "job file without a namespace",
+			fileName: withoutNamespace,
+			wantPath: "/apis/batch.volcano.sh/v1alpha1/namespaces/volcano-system/jobs",
+		},
+		{
+			name:      "namespace flag with a job file without a namespace",
+			namespace: "team-a",
+			fileName:  withoutNamespace,
+			wantPath:  "/apis/batch.volcano.sh/v1alpha1/namespaces/team-a/jobs",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			requestPath = ""
+			launchJobFlags = &runFlags{
+				CommonFlags: util.CommonFlags{Kubeconfig: kubeconfig},
+				Name:        "test",
+				Namespace:   tc.namespace,
+				Requests:    "cpu=1000m,memory=100Mi",
+				FileName:    tc.fileName,
+			}
+			r, oldStdout := util.RedirectStdout()
+			defer r.Close()
+			err := RunJob(context.TODO())
+			util.CaptureOutput(r, oldStdout)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if requestPath != tc.wantPath {
+				t.Errorf("request path: got %q, want %q", requestPath, tc.wantPath)
+			}
+		})
+	}
 }
 
 func TestInitRunFlags(t *testing.T) {

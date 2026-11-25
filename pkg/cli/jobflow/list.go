@@ -57,16 +57,17 @@ var listJobFlowFlags = &listFlags{}
 // InitListFlags inits all flags.
 func InitListFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &listJobFlowFlags.CommonFlags)
-	cmd.Flags().StringVarP(&listJobFlowFlags.Namespace, "namespace", "n", "default", "the namespace of jobflow")
+	cmd.Flags().StringVarP(&listJobFlowFlags.Namespace, "namespace", "n", "", "the namespace of jobflow")
 	cmd.Flags().BoolVarP(&listJobFlowFlags.AllNamespace, "all-namespaces", "", false, "list jobflows in all namespaces")
 }
 
 // ListJobFlow lists all jobflow.
 func ListJobFlow(ctx context.Context) error {
-	config, err := util.BuildConfig(listJobFlowFlags.Master, listJobFlowFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(listJobFlowFlags.Master, listJobFlowFlags.Kubeconfig, listJobFlowFlags.Namespace)
 	if err != nil {
 		return err
 	}
+	listJobFlowFlags.Namespace = namespace
 
 	if listJobFlowFlags.AllNamespace {
 		listJobFlowFlags.Namespace = ""
