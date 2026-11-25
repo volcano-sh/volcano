@@ -23,6 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	fwk "k8s.io/kube-scheduler/framework"
+	"k8s.io/utils/ptr"
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -474,12 +475,39 @@ func TestHyperNodeOrderFn(t *testing.T) {
 			},
 		},
 		{
-			name:    "invalid preferred term tierName returns error",
-			selfJob: jobWithTopologyAffinity(nil, []scheduling.PodGroupAffinityTerm{{PodGroupSelector: prodSelector, TopologyTierName: "missing"}}),
-			candidates: map[string][]*api.NodeInfo{
-				"sn-a": {},
+			name:       "preferred term with unknown tierName applies no penalty",
+			jobs:       map[api.JobID]*api.JobInfo{"other": otherJobOn("other", "sn-a", "prod")},
+			weight:     1,
+			selfJob:    jobWithTopologyAffinity(nil, []scheduling.PodGroupAffinityTerm{{PodGroupSelector: prodSelector, TopologyTierName: "missing", Weight: 50}}),
+			candidates: map[string][]*api.NodeInfo{"sn-a": {}, "sn-b": {}},
+			wantScores: map[string]float64{
+				"sn-a": 1.0 * float64(fwk.MaxNodeScore),
+				"sn-b": 1.0 * float64(fwk.MaxNodeScore),
 			},
-			wantErr: true,
+		},
+		{
+			name:   "unknown tierName on one preferred term does not drop the other",
+			weight: 1,
+			jobs:   map[api.JobID]*api.JobInfo{"other": otherJobOn("other", "sn-a", "prod")},
+			selfJob: jobWithTopologyAffinity(nil, []scheduling.PodGroupAffinityTerm{
+				{PodGroupSelector: prodSelector, TopologyTierName: "missing", Weight: 30},
+				preferredTerm,
+			}),
+			candidates: map[string][]*api.NodeInfo{"sn-a": {}, "sn-b": {}},
+			wantScores: map[string]float64{
+				"sn-a": 0.5 * float64(fwk.MaxNodeScore),
+				"sn-b": 1.0 * float64(fwk.MaxNodeScore),
+			},
+		},
+		{
+			name: "preferred term that sets both tier and tierName still returns error",
+			selfJob: jobWithTopologyAffinity(nil, []scheduling.PodGroupAffinityTerm{{
+				PodGroupSelector: prodSelector,
+				TopologyTier:     ptr.To(int32(1)),
+				TopologyTierName: "supernode",
+			}}),
+			candidates: map[string][]*api.NodeInfo{"sn-a": {}},
+			wantErr:    true,
 		},
 	}
 
