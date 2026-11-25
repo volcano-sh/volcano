@@ -534,3 +534,102 @@ func TestValidateCronJobSingleErrorHasNoSeparator(t *testing.T) {
 		t.Errorf("single-error message should not contain %q, got %q", "; ", msg)
 	}
 }
+
+func TestValidateCronJobTemplate(t *testing.T) {
+	tests := []struct {
+		name        string
+		mutateSpec  func(spec *v1alpha1.JobSpec)
+		wantAllowed bool
+		wantErrSub  string
+	}{
+		{
+			name:        "valid jobTemplate is admitted",
+			mutateSpec:  func(spec *v1alpha1.JobSpec) {},
+			wantAllowed: true,
+		},
+		{
+			name: "minAvailable greater than total replicas is rejected",
+			mutateSpec: func(spec *v1alpha1.JobSpec) {
+				spec.MinAvailable = 5
+			},
+			wantAllowed: false,
+			wantErrSub:  "job 'minAvailable' should not be greater than total replicas in tasks",
+		},
+		{
+			name: "empty tasks in jobTemplate is rejected",
+			mutateSpec: func(spec *v1alpha1.JobSpec) {
+				spec.Tasks = nil
+			},
+			wantAllowed: false,
+			wantErrSub:  "No task specified in job spec",
+		},
+		{
+			name: "duplicate task names in jobTemplate is rejected",
+			mutateSpec: func(spec *v1alpha1.JobSpec) {
+				spec.Tasks = append(spec.Tasks, spec.Tasks[0])
+			},
+			wantAllowed: false,
+			wantErrSub:  "duplicated task name task-1",
+		},
+		{
+			name: "non-DAG task dependencies in jobTemplate is rejected",
+			mutateSpec: func(spec *v1alpha1.JobSpec) {
+				task2 := spec.Tasks[0]
+				task2.Name = "task-2"
+				spec.Tasks[0].DependsOn = &v1alpha1.DependsOn{Name: []string{"task-2"}}
+				task2.DependsOn = &v1alpha1.DependsOn{Name: []string{"task-1"}}
+				spec.Tasks = append(spec.Tasks, task2)
+			},
+			wantAllowed: false,
+			wantErrSub:  "doesn't form a directed acyclic graph(DAG)",
+		},
+		{
+			name: "invalid policy action in jobTemplate is rejected",
+			mutateSpec: func(spec *v1alpha1.JobSpec) {
+				spec.Policies = []v1alpha1.LifecyclePolicy{
+					{
+						Event:  busv1alpha1.PodEvictedEvent,
+						Action: busv1alpha1.Action("InvalidAction"),
+					},
+				}
+			},
+			wantAllowed: false,
+			wantErrSub:  "invalid policy action",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			validCronJob := &v1alpha1.CronJob{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "nightly",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: v1alpha1.CronJobSpec{
+					Schedule:    "* * * * *",
+					JobTemplate: v1alpha1.JobTemplateSpec{Spec: getJobTemplate()},
+				},
+			}
+
+			candidate := validCronJob.DeepCopy()
+			tt.mutateSpec(&candidate.Spec.JobTemplate.Spec)
+
+			resp := admissionv1.AdmissionResponse{Allowed: true}
+			msg := validateCronJobCreate(candidate, &resp)
+			if resp.Allowed != tt.wantAllowed {
+				t.Fatalf("validateCronJobCreate() allowed = %v, want %v (msg=%q)", resp.Allowed, tt.wantAllowed, msg)
+			}
+			if tt.wantErrSub != "" && !strings.Contains(msg, tt.wantErrSub) {
+				t.Fatalf("validateCronJobCreate() msg = %q, want substring %q", msg, tt.wantErrSub)
+			}
+
+			updateErr := validateCronJobUpdate(validCronJob, candidate)
+			if (updateErr == nil) != tt.wantAllowed {
+				t.Fatalf("validateCronJobUpdate() err = %v, wantAllowed = %v", updateErr, tt.wantAllowed)
+			}
+			if tt.wantErrSub != "" && (updateErr == nil || !strings.Contains(updateErr.Error(), tt.wantErrSub)) {
+				t.Fatalf("validateCronJobUpdate() err = %v, want substring %q", updateErr, tt.wantErrSub)
+			}
+		})
+	}
+}
