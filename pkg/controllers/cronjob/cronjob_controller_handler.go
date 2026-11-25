@@ -326,7 +326,7 @@ func deleteJobByClient(vcClient vcclientset.Interface, jobClient jobClientInterf
 		return false
 	}
 
-	// Execute Clinet deletion
+	// Execute Client deletion
 	err := jobClient.DeleteJobClient(vcClient, job.Namespace, job.Name)
 	if err != nil {
 		klog.ErrorS(err, "Failed to delete Job",
