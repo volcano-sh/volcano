@@ -199,7 +199,7 @@ func nextScheduleTime(cj *batchv1.CronJob, now time.Time, schedule cron.Schedule
 
 	if missedSchedules == manyMissed {
 		recorder.Eventf(cj, corev1.EventTypeWarning, "TooManyMissedTimes", "too many missed start times. Set or decrease .spec.startingDeadlineSeconds or check clock skew")
-		klog.Info("too many missed times", "cronjob", klog.KObj(cj))
+		klog.InfoS("too many missed times", "cronjob", klog.KObj(cj))
 	}
 
 	return mostRecentTime, err
