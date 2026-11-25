@@ -77,9 +77,13 @@ func DescribeJobFlow(ctx context.Context) error {
 			if err := PrintJobFlowDetail(&jobFlow, describeJobFlowFlags.Format); err != nil {
 				return err
 			}
-			// Print space if it's not the last element
+			// Separate YAML documents; JSON objects only need whitespace.
 			if len(jobFlows.Items) != 1 && i < len(jobFlows.Items)-1 {
-				fmt.Printf("\n\n")
+				if describeJobFlowFlags.Format == "yaml" {
+					fmt.Println("---")
+				} else {
+					fmt.Printf("\n\n")
+				}
 			}
 		}
 		// Get jobflow detail
