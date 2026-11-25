@@ -973,6 +973,63 @@ func TestGetPodGroupPhase(t *testing.T) {
 			unschedulable: true,
 			expected:      scheduling.PodGroupUnknown,
 		},
+		{
+			name: "succeeded task with pending member keeps Running",
+			job: newJob(1, scheduling.PodGroupRunning,
+				newTask("task-1", api.Succeeded, "node-1"),
+				newTask("task-2", api.Pending, "")),
+			expected: scheduling.PodGroupRunning,
+		},
+		{
+			name: "completed podgroup with new pending task and minMember 1 recomputes to Running",
+			job: newJob(1, scheduling.PodGroupCompleted,
+				newTask("task-1", api.Succeeded, "node-1"),
+				newTask("task-2", api.Pending, "")),
+			expected: scheduling.PodGroupRunning,
+		},
+		{
+			name: "succeeded task with allocated member keeps Running",
+			job: newJob(1, scheduling.PodGroupRunning,
+				newTask("task-1", api.Succeeded, "node-1"),
+				newTask("task-2", api.Allocated, "node-2")),
+			expected: scheduling.PodGroupRunning,
+		},
+		{
+			name: "succeeded task with pipelined member keeps Running",
+			job: newJob(1, scheduling.PodGroupRunning,
+				newTask("task-1", api.Succeeded, "node-1"),
+				newTask("task-2", api.Pipelined, "node-2")),
+			expected: scheduling.PodGroupRunning,
+		},
+		{
+			name: "succeeded task with binding member keeps Running",
+			job: newJob(1, scheduling.PodGroupRunning,
+				newTask("task-1", api.Succeeded, "node-1"),
+				newTask("task-2", api.Binding, "node-2")),
+			expected: scheduling.PodGroupRunning,
+		},
+		{
+			name: "failed task with pending retry keeps Running",
+			job: newJob(1, scheduling.PodGroupRunning,
+				newTask("task-1", api.Failed, "node-1"),
+				newTask("task-2", api.Pending, "")),
+			expected: scheduling.PodGroupRunning,
+		},
+		{
+			name: "all scheduled tasks completed with pending member keeps Running",
+			job: newJob(2, scheduling.PodGroupRunning,
+				newTask("task-1", api.Succeeded, "node-1"),
+				newTask("task-2", api.Succeeded, "node-2"),
+				newTask("task-3", api.Pending, "")),
+			expected: scheduling.PodGroupRunning,
+		},
+		{
+			name: "never-scheduled releasing task does not block Completed",
+			job: newJob(1, scheduling.PodGroupRunning,
+				newTask("task-1", api.Succeeded, "node-1"),
+				newTask("task-2", api.Releasing, "")),
+			expected: scheduling.PodGroupCompleted,
+		},
 	}
 
 	for _, tc := range tests {
