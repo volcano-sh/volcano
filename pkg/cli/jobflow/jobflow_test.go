@@ -243,13 +243,15 @@ Deleted JobFlow: default/test-b`,
 
 func TestCreateJobFlow(t *testing.T) {
 	testCases := []struct {
-		name           string
-		Response       *flowv1alpha1.JobFlow
-		FilePath       string
-		StatusCode     int
-		WantErr        bool
-		ExpectedErr    error
-		ExpectedOutput string
+		name             string
+		Response         *flowv1alpha1.JobFlow
+		FilePath         string
+		Content          string
+		ContextNamespace string
+		StatusCode       int
+		WantErr          bool
+		ExpectedErr      error
+		ExpectedOutput   string
 	}{
 		{
 			name: "Normal Case",
@@ -278,6 +280,26 @@ Created JobFlow: default/test-b`,
 			WantErr:        true,
 			ExpectedOutput: ``,
 		},
+		{
+			name: "Namespace from the kubeconfig context",
+			Response: &flowv1alpha1.JobFlow{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-c",
+				},
+			},
+			FilePath: "test.yaml",
+			Content: `apiVersion: flow.volcano.sh/v1alpha1
+kind: JobFlow
+metadata:
+  name: test-c
+spec:
+  flows:
+    - name: a
+`,
+			ContextNamespace: "volcano-system",
+			StatusCode:       http.StatusOK,
+			ExpectedOutput:   `Created JobFlow: volcano-system/test-c`,
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -286,9 +308,18 @@ Created JobFlow: default/test-b`,
 			// Set the server URL as the master flag
 			createJobFlowFlags.Master = server.URL
 			createJobFlowFlags.FilePath = testCase.FilePath
+			kubeconfig, err := util.CreateTestKubeconfig(t.TempDir(), server.URL, testCase.ContextNamespace)
+			if err != nil {
+				t.Fatalf("Failed to write kubeconfig: %v", err)
+			}
+			t.Setenv("KUBECONFIG", kubeconfig)
 
 			if testCase.FilePath != "" {
-				err := createAndWriteFile(testCase.FilePath, content)
+				fileContent := content
+				if testCase.Content != "" {
+					fileContent = testCase.Content
+				}
+				err := createAndWriteFile(testCase.FilePath, fileContent)
 				if err != nil {
 					t.Fatalf("Failed to create and write file: %v", err)
 				}
@@ -302,7 +333,7 @@ Created JobFlow: default/test-b`,
 			}
 			r, oldStdout := redirectStdout()
 			defer r.Close()
-			err := CreateJobFlow(context.TODO())
+			err = CreateJobFlow(context.TODO())
 			gotOutput := captureOutput(r, oldStdout)
 			if testCase.WantErr {
 				if err == nil {

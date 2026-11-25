@@ -45,15 +45,16 @@ var getJobTemplateFlags = &getFlags{}
 func InitGetFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &getJobTemplateFlags.CommonFlags)
 	cmd.Flags().StringVarP(&getJobTemplateFlags.Name, "name", "N", "", "the name of job template")
-	cmd.Flags().StringVarP(&getJobTemplateFlags.Namespace, "namespace", "n", "default", "the namespace of job template")
+	cmd.Flags().StringVarP(&getJobTemplateFlags.Namespace, "namespace", "n", "", "the namespace of job template")
 }
 
 // GetJobTemplate gets a job template.
 func GetJobTemplate(ctx context.Context) error {
-	config, err := util.BuildConfig(getJobTemplateFlags.Master, getJobTemplateFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(getJobTemplateFlags.Master, getJobTemplateFlags.Kubeconfig, getJobTemplateFlags.Namespace)
 	if err != nil {
 		return err
 	}
+	getJobTemplateFlags.Namespace = namespace
 
 	if getJobTemplateFlags.Name == "" {
 		err := fmt.Errorf("name is mandatory to get the particular job template details")

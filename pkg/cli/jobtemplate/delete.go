@@ -50,16 +50,17 @@ var deleteJobTemplateFlags = &deleteFlags{}
 func InitDeleteFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &deleteJobTemplateFlags.CommonFlags)
 	cmd.Flags().StringVarP(&deleteJobTemplateFlags.Name, "name", "N", "", "the name of job template")
-	cmd.Flags().StringVarP(&deleteJobTemplateFlags.Namespace, "namespace", "n", "default", "the namespace of job template")
+	cmd.Flags().StringVarP(&deleteJobTemplateFlags.Namespace, "namespace", "n", "", "the namespace of job template")
 	cmd.Flags().StringVarP(&deleteJobTemplateFlags.FilePath, "file", "f", "", "the path to the YAML file containing the job template")
 }
 
 // DeleteJobTemplate is used to delete a job template.
 func DeleteJobTemplate(ctx context.Context) error {
-	config, err := util.BuildConfig(deleteJobTemplateFlags.Master, deleteJobTemplateFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(deleteJobTemplateFlags.Master, deleteJobTemplateFlags.Kubeconfig, deleteJobTemplateFlags.Namespace)
 	if err != nil {
 		return err
 	}
+	deleteJobTemplateFlags.Namespace = namespace
 
 	jobTemplateClient := versioned.NewForConfigOrDie(config)
 	if err != nil {
@@ -87,7 +88,7 @@ func DeleteJobTemplate(ctx context.Context) error {
 			}
 
 			if jobTemplate.Namespace == "" {
-				jobTemplate.Namespace = "default"
+				jobTemplate.Namespace = deleteJobTemplateFlags.Namespace
 			}
 
 			err := jobTemplateClient.FlowV1alpha1().JobTemplates(jobTemplate.Namespace).Delete(ctx, jobTemplate.Name, metav1.DeleteOptions{})

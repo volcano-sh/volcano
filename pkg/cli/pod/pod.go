@@ -82,16 +82,17 @@ func InitListFlags(cmd *cobra.Command) {
 
 	cmd.Flags().StringVarP(&listPodFlags.QueueName, "queue", "q", "", "list pod with specified queue name")
 	cmd.Flags().StringVarP(&listPodFlags.JobName, "job", "j", "", "list pod with specified job name")
-	cmd.Flags().StringVarP(&listPodFlags.Namespace, "namespace", "n", "default", "the namespace of pod")
+	cmd.Flags().StringVarP(&listPodFlags.Namespace, "namespace", "n", "", "the namespace of pod")
 	cmd.Flags().BoolVarP(&listPodFlags.allNamespace, "all-namespaces", "", false, "list pods in all namespaces")
 }
 
 // ListPods lists all pods details created by vcjob
 func ListPods(ctx context.Context) error {
-	config, err := util.BuildConfig(listPodFlags.Master, listPodFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(listPodFlags.Master, listPodFlags.Kubeconfig, listPodFlags.Namespace)
 	if err != nil {
 		return err
 	}
+	listPodFlags.Namespace = namespace
 	if listPodFlags.allNamespace {
 		listPodFlags.Namespace = ""
 	}

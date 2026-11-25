@@ -55,7 +55,7 @@ func InitRunFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &launchJobFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "i", "busybox", "the container image of job")
-	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "n", "", "the namespace of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "N", "", "the name of job")
 	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "m", 1, "the minimal available tasks of job")
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
@@ -69,7 +69,7 @@ var jobName = "job.volcano.sh"
 
 // RunJob creates the job.
 func RunJob(ctx context.Context) error {
-	config, err := util.BuildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(launchJobFlags.Master, launchJobFlags.Kubeconfig, launchJobFlags.Namespace)
 	if err != nil {
 		return err
 	}
@@ -93,6 +93,13 @@ func RunJob(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// Without --namespace, a namespace set in the job file is used before the
+	// namespace of the kubeconfig context, as kubectl create -f does.
+	if launchJobFlags.Namespace == "" && job != nil && job.Namespace != "" {
+		namespace = job.Namespace
+	}
+	launchJobFlags.Namespace = namespace
 
 	if job == nil {
 		job = constructLaunchJobFlagsJob(launchJobFlags, req, limit)

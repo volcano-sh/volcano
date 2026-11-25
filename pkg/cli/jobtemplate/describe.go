@@ -49,7 +49,7 @@ var describeJobTemplateFlags = &describeFlags{}
 func InitDescribeFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &describeJobTemplateFlags.CommonFlags)
 	cmd.Flags().StringVarP(&describeJobTemplateFlags.Name, "name", "N", "", "the name of job template")
-	cmd.Flags().StringVarP(&describeJobTemplateFlags.Namespace, "namespace", "n", "default", "the namespace of job template")
+	cmd.Flags().StringVarP(&describeJobTemplateFlags.Namespace, "namespace", "n", "", "the namespace of job template")
 	cmd.Flags().StringVarP(&describeJobTemplateFlags.Format, "format", "o", "yaml", "the format of output")
 }
 
@@ -59,10 +59,11 @@ func DescribeJobTemplate(ctx context.Context) error {
 		return err
 	}
 
-	config, err := util.BuildConfig(describeJobTemplateFlags.Master, describeJobTemplateFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(describeJobTemplateFlags.Master, describeJobTemplateFlags.Kubeconfig, describeJobTemplateFlags.Namespace)
 	if err != nil {
 		return err
 	}
+	describeJobTemplateFlags.Namespace = namespace
 	jobTemplateClient := versioned.NewForConfigOrDie(config)
 
 	// Get job template list detail

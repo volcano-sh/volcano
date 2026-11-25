@@ -50,16 +50,17 @@ var deleteJobFlowFlags = &deleteFlags{}
 func InitDeleteFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &deleteJobFlowFlags.CommonFlags)
 	cmd.Flags().StringVarP(&deleteJobFlowFlags.Name, "name", "N", "", "the name of jobflow")
-	cmd.Flags().StringVarP(&deleteJobFlowFlags.Namespace, "namespace", "n", "default", "the namespace of jobflow")
+	cmd.Flags().StringVarP(&deleteJobFlowFlags.Namespace, "namespace", "n", "", "the namespace of jobflow")
 	cmd.Flags().StringVarP(&deleteJobFlowFlags.FilePath, "file", "f", "", "the path to the YAML file containing the jobflow")
 }
 
 // DeleteJobFlow is used to delete a jobflow.
 func DeleteJobFlow(ctx context.Context) error {
-	config, err := util.BuildConfig(deleteJobFlowFlags.Master, deleteJobFlowFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(deleteJobFlowFlags.Master, deleteJobFlowFlags.Kubeconfig, deleteJobFlowFlags.Namespace)
 	if err != nil {
 		return err
 	}
+	deleteJobFlowFlags.Namespace = namespace
 
 	jobFlowClient := versioned.NewForConfigOrDie(config)
 	if err != nil {
@@ -87,7 +88,7 @@ func DeleteJobFlow(ctx context.Context) error {
 			}
 
 			if jobFlow.Namespace == "" {
-				jobFlow.Namespace = "default"
+				jobFlow.Namespace = deleteJobFlowFlags.Namespace
 			}
 
 			err := jobFlowClient.FlowV1alpha1().JobFlows(jobFlow.Namespace).Delete(ctx, jobFlow.Name, metav1.DeleteOptions{})

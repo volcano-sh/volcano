@@ -56,16 +56,17 @@ var viewJobFlags = &viewFlags{}
 func InitViewFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &viewJobFlags.CommonFlags)
 
-	cmd.Flags().StringVarP(&viewJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&viewJobFlags.Namespace, "namespace", "n", "", "the namespace of job")
 	cmd.Flags().StringVarP(&viewJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
 // ViewJob gives full details of the job.
 func ViewJob(ctx context.Context) error {
-	config, err := util.BuildConfig(viewJobFlags.Master, viewJobFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(viewJobFlags.Master, viewJobFlags.Kubeconfig, viewJobFlags.Namespace)
 	if err != nil {
 		return err
 	}
+	viewJobFlags.Namespace = namespace
 	if viewJobFlags.JobName == "" {
 		err := fmt.Errorf("job name (specified by --name or -N) is mandatory to view a particular job")
 		return err

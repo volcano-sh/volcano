@@ -39,16 +39,17 @@ var resumeJobFlags = &resumeFlags{}
 func InitResumeFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &resumeJobFlags.CommonFlags)
 
-	cmd.Flags().StringVarP(&resumeJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&resumeJobFlags.Namespace, "namespace", "n", "", "the namespace of job")
 	cmd.Flags().StringVarP(&resumeJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
 // ResumeJob resumes the job.
 func ResumeJob(ctx context.Context) error {
-	config, err := util.BuildConfig(resumeJobFlags.Master, resumeJobFlags.Kubeconfig)
+	config, namespace, err := util.BuildConfigAndNamespace(resumeJobFlags.Master, resumeJobFlags.Kubeconfig, resumeJobFlags.Namespace)
 	if err != nil {
 		return err
 	}
+	resumeJobFlags.Namespace = namespace
 	if resumeJobFlags.JobName == "" {
 		err := fmt.Errorf("job name is mandatory to resume a particular job")
 		return err
