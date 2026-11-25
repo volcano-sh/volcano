@@ -55,7 +55,10 @@ func InitRunFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &launchJobFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "i", "busybox", "the container image of job")
-	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	// The flag defaults to empty so that RunJob can tell an explicit namespace from none: a job
+	// file's own metadata.namespace is used when the flag is not set (see resolveJobNamespace).
+	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "n", "",
+		fmt.Sprintf("the namespace of job (default %q)", metav1.NamespaceDefault))
 	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "N", "", "the name of job")
 	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "m", 1, "the minimal available tasks of job")
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
@@ -94,12 +97,18 @@ func RunJob(ctx context.Context) error {
 		return err
 	}
 
+	namespace, err := resolveJobNamespace(launchJobFlags.Namespace, job)
+	if err != nil {
+		return err
+	}
+
 	if job == nil {
 		job = constructLaunchJobFlagsJob(launchJobFlags, req, limit)
 	}
+	job.Namespace = namespace
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	newJob, err := jobClient.BatchV1alpha1().Jobs(launchJobFlags.Namespace).Create(ctx, job, metav1.CreateOptions{})
+	newJob, err := jobClient.BatchV1alpha1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
 	if err != nil {
 		return err
 	}
@@ -111,6 +120,29 @@ func RunJob(ctx context.Context) error {
 	fmt.Printf("run job %v successfully\n", newJob.Name)
 
 	return nil
+}
+
+// resolveJobNamespace returns the namespace to create the job in: the --namespace flag when set,
+// otherwise the job file's metadata.namespace, otherwise "default". A flag that contradicts the
+// file is an error, since the API server rejects an object whose namespace differs from the
+// namespace of the request.
+func resolveJobNamespace(flagNamespace string, job *vcbatch.Job) (string, error) {
+	fileNamespace := ""
+	if job != nil {
+		fileNamespace = job.Namespace
+	}
+
+	switch {
+	case flagNamespace != "" && fileNamespace != "" && flagNamespace != fileNamespace:
+		return "", fmt.Errorf("the namespace %q from the job file does not match the namespace %q given by --namespace",
+			fileNamespace, flagNamespace)
+	case flagNamespace != "":
+		return flagNamespace, nil
+	case fileNamespace != "":
+		return fileNamespace, nil
+	default:
+		return metav1.NamespaceDefault, nil
+	}
 }
 
 func readFile(filename string) (*vcbatch.Job, error) {
