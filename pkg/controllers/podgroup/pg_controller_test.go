@@ -1415,3 +1415,176 @@ func TestNoPodGroupCreatedForWhenKubeGroupNameAnnotationExists(t *testing.T) {
 		assert.Equal(t, 1, len(pgList.Items), "Expected 1 PodGroup, found %d: %v", len(pgList.Items), names)
 	})
 }
+
+func TestReplicaSetAnnotationPropagationToPodGroup(t *testing.T) {
+	namespace := "test"
+	rsUID := types.UID("rs-uid-test")
+	expectedPGName := vcbatch.PodgroupNamePrefix + string(rsUID)
+
+	t.Run("Update ReplicaSet annotations propagates to existing Volcano-managed PodGroup", func(t *testing.T) {
+		c := newFakeController()
+
+		rs := &appsv1.ReplicaSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "rs-managed",
+				Namespace: namespace,
+				UID:       rsUID,
+				Annotations: map[string]string{
+					scheduling.VolcanoGroupMinMemberAnnotationKey: "1",
+				},
+			},
+			Spec: appsv1.ReplicaSetSpec{
+				Replicas: ptr.To[int32](2),
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "rs-managed"},
+				},
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{
+						SchedulerName: "volcano",
+					},
+				},
+			},
+		}
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "rs-pod-managed",
+				Namespace: namespace,
+				Labels:    map[string]string{"app": "rs-managed"},
+				Annotations: map[string]string{
+					scheduling.KubeGroupNameAnnotationKey: expectedPGName,
+				},
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "apps/v1",
+						Kind:       "ReplicaSet",
+						Name:       "rs-managed",
+						UID:        rsUID,
+						Controller: ptr.To(true),
+					},
+				},
+			},
+			Spec: v1.PodSpec{
+				SchedulerName: "volcano",
+			},
+		}
+
+		_, err := c.kubeClient.AppsV1().ReplicaSets(namespace).Create(context.TODO(), rs, metav1.CreateOptions{})
+		assert.NoError(t, err)
+		_, err = c.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+		assert.NoError(t, err)
+
+		existingPG := &scheduling.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      expectedPGName,
+				Namespace: namespace,
+			},
+			Spec: scheduling.PodGroupSpec{
+				MinMember: 1,
+			},
+		}
+		_, err = c.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), existingPG, metav1.CreateOptions{})
+		assert.NoError(t, err)
+		err = c.pgInformer.Informer().GetIndexer().Add(existingPG)
+		assert.NoError(t, err)
+
+		// Update ReplicaSet annotation from minMember 1 to 2
+		updatedRS := rs.DeepCopy()
+		updatedRS.Annotations[scheduling.VolcanoGroupMinMemberAnnotationKey] = "2"
+		_, err = c.kubeClient.AppsV1().ReplicaSets(namespace).Update(context.TODO(), updatedRS, metav1.UpdateOptions{})
+		assert.NoError(t, err)
+
+		// Trigger ReplicaSet update event
+		c.updateReplicaSet(rs, updatedRS)
+
+		pg, err := c.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), expectedPGName, metav1.GetOptions{})
+		assert.NoError(t, err)
+		assert.Equal(t, int32(2), pg.Spec.MinMember, "Expected PodGroup minMember to be updated to 2")
+	})
+
+	t.Run("Update ReplicaSet annotations skips externally managed PodGroup", func(t *testing.T) {
+		c := newFakeController()
+		externalPGName := "external-custom-pg"
+
+		rs := &appsv1.ReplicaSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "rs-external",
+				Namespace: namespace,
+				UID:       rsUID,
+				Annotations: map[string]string{
+					scheduling.VolcanoGroupMinMemberAnnotationKey: "1",
+				},
+			},
+			Spec: appsv1.ReplicaSetSpec{
+				Replicas: ptr.To[int32](2),
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "rs-external"},
+				},
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{
+						SchedulerName: "volcano",
+					},
+				},
+			},
+		}
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "rs-pod-external",
+				Namespace: namespace,
+				Labels:    map[string]string{"app": "rs-external"},
+				Annotations: map[string]string{
+					scheduling.KubeGroupNameAnnotationKey: externalPGName,
+				},
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "apps/v1",
+						Kind:       "ReplicaSet",
+						Name:       "rs-external",
+						UID:        rsUID,
+						Controller: ptr.To(true),
+					},
+				},
+			},
+			Spec: v1.PodSpec{
+				SchedulerName: "volcano",
+			},
+		}
+
+		_, err := c.kubeClient.AppsV1().ReplicaSets(namespace).Create(context.TODO(), rs, metav1.CreateOptions{})
+		assert.NoError(t, err)
+		_, err = c.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+		assert.NoError(t, err)
+
+		externalPG := &scheduling.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      externalPGName,
+				Namespace: namespace,
+			},
+			Spec: scheduling.PodGroupSpec{
+				MinMember: 1,
+			},
+		}
+		_, err = c.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), externalPG, metav1.CreateOptions{})
+		assert.NoError(t, err)
+		err = c.pgInformer.Informer().GetIndexer().Add(externalPG)
+		assert.NoError(t, err)
+
+		// Update ReplicaSet annotation
+		updatedRS := rs.DeepCopy()
+		updatedRS.Annotations[scheduling.VolcanoGroupMinMemberAnnotationKey] = "2"
+		_, err = c.kubeClient.AppsV1().ReplicaSets(namespace).Update(context.TODO(), updatedRS, metav1.UpdateOptions{})
+		assert.NoError(t, err)
+
+		// Trigger ReplicaSet update event
+		c.updateReplicaSet(rs, updatedRS)
+
+		// External PodGroup should remain unchanged
+		pg, err := c.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), externalPGName, metav1.GetOptions{})
+		assert.NoError(t, err)
+		assert.Equal(t, int32(1), pg.Spec.MinMember, "External PodGroup should not have been updated")
+
+		// Volcano PodGroup should not have been created
+		_, err = c.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), expectedPGName, metav1.GetOptions{})
+		assert.Error(t, err)
+		assert.True(t, apierrors.IsNotFound(err), "Expected Volcano PodGroup to not exist")
+	})
+}
