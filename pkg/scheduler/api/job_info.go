@@ -258,16 +258,34 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 }
 
 // HasInitResourceRequests checks InitResreq for ordinary requests, including CPU,
-// memory, extended resources, and scheduler-added CSI attachment counts.
-// DRA claims are not included, so DRA-only tasks return false.
+// memory and extended resources. DRA claims are not included, so DRA-only tasks return false.
 func (ti *TaskInfo) HasInitResourceRequests() bool {
 	return !ti.InitResreq.IsEmpty()
 }
 
-// HasSchedulingResourceRequests checks for ordinary requests or DRA claims that need allocation.
-// Pending tasks with either kind of request cannot count toward gang readiness before allocation.
+// HasSchedulingResourceRequests checks for ordinary requests, DRA claims or persistent volumes
+// that need allocation. Persistent volumes count because attach limits (NodeVolumeLimits) make
+// them node-constrained, so a PVC-only pod is not best-effort and can preempt like any other pod.
+// Pending tasks with any of these cannot count toward gang readiness before allocation.
 func (ti *TaskInfo) HasSchedulingResourceRequests() bool {
-	return ti.HasInitResourceRequests() || (ti.Pod != nil && len(ti.Pod.Spec.ResourceClaims) > 0)
+	if ti.HasInitResourceRequests() {
+		return true
+	}
+	if ti.Pod == nil {
+		return false
+	}
+	return len(ti.Pod.Spec.ResourceClaims) > 0 || usesPersistentVolumes(ti.Pod)
+}
+
+// usesPersistentVolumes reports whether the pod mounts a PVC or a generic ephemeral volume,
+// the volume kinds counted against a node's CSI attach limit.
+func usesPersistentVolumes(pod *v1.Pod) bool {
+	for _, vol := range pod.Spec.Volumes {
+		if vol.PersistentVolumeClaim != nil || vol.Ephemeral != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // UpdateSchedulingBestEffort refreshes BestEffort after resource requests change.
@@ -1038,7 +1056,7 @@ func (ji *JobInfo) WaitingTaskNum() int32 {
 	return int32(len(ji.TaskStatusIndex[Pipelined]))
 }
 
-// PendingBestEffortTaskNum counts pending tasks with neither ordinary requests nor DRA claims.
+// PendingBestEffortTaskNum counts pending tasks without scheduling requests.
 // These tasks can count toward gang readiness without allocation; DRA-only tasks cannot.
 func (ji *JobInfo) PendingBestEffortTaskNum() int32 {
 	count := 0

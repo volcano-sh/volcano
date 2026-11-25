@@ -43,6 +43,9 @@ type PodSpec struct {
 	Image                         string
 	Command                       []string
 	TerminationGracePeriodSeconds *int64
+	PriorityClassName             string
+	// Volumes are added to the pod and each is mounted at /mnt/<name>.
+	Volumes []v1.Volume
 }
 
 func CreatePod(ctx *TestContext, spec PodSpec) *v1.Pod {
@@ -72,14 +75,19 @@ func CreatePod(ctx *TestContext, spec PodSpec) *v1.Pod {
 	if len(spec.Command) > 0 {
 		container.Command = spec.Command
 	}
+	for _, vol := range spec.Volumes {
+		container.VolumeMounts = append(container.VolumeMounts, v1.VolumeMount{Name: vol.Name, MountPath: "/mnt/" + vol.Name})
+	}
 
 	pod := &v1.Pod{
 		ObjectMeta: meta,
 		Spec: v1.PodSpec{
-			NodeName:      spec.Node,
-			SchedulerName: spec.SchedulerName,
-			Containers:    []v1.Container{container},
-			Tolerations:   spec.Tolerations,
+			NodeName:          spec.Node,
+			SchedulerName:     spec.SchedulerName,
+			Containers:        []v1.Container{container},
+			Tolerations:       spec.Tolerations,
+			PriorityClassName: spec.PriorityClassName,
+			Volumes:           spec.Volumes,
 		},
 	}
 

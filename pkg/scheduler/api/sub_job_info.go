@@ -256,7 +256,7 @@ func (sji *SubJobInfo) ReadyTaskNum() int32 {
 	return int32(occupied)
 }
 
-// PendingBestEffortTaskNum counts pending tasks with neither ordinary requests nor DRA claims.
+// PendingBestEffortTaskNum counts pending tasks without scheduling requests.
 // These tasks can count toward sub-job readiness without allocation; DRA-only tasks cannot.
 func (sji *SubJobInfo) PendingBestEffortTaskNum() int32 {
 	count := 0
