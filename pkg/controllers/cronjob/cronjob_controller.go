@@ -69,8 +69,9 @@ type cronjobcontroller struct {
 	cronJobList batchlister.CronJobLister
 	cronJobSync func() bool
 	// A store of jobs
-	jobLister batchlister.JobLister
-	jobSynced func() bool
+	jobLister  batchlister.JobLister
+	jobIndexer cache.Indexer
+	jobSynced  func() bool
 
 	queue    workqueue.TypedRateLimitingInterface[string]
 	recorder record.EventRecorder
@@ -99,13 +100,20 @@ func (cc *cronjobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.vcInformerFactory = factory
 	if utilfeature.DefaultFeatureGate.Enabled(features.VolcanoJobSupport) {
 		cc.jobInformer = factory.Batch().V1alpha1().Jobs()
-		cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		informer := cc.jobInformer.Informer()
+		if err := informer.AddIndexers(cache.Indexers{
+			cronJobOwnerIndex: indexJobByCronJobOwner,
+		}); err != nil {
+			return fmt.Errorf("register CronJob owner index: %w", err)
+		}
+		cc.jobIndexer = informer.GetIndexer()
+		informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    cc.addJob,
 			UpdateFunc: cc.updateJob,
 			DeleteFunc: cc.deleteJob,
 		})
 		cc.jobLister = cc.jobInformer.Lister()
-		cc.jobSynced = cc.jobInformer.Informer().HasSynced
+		cc.jobSynced = informer.HasSynced
 	}
 	if utilfeature.DefaultFeatureGate.Enabled(features.CronVolcanoJobSupport) {
 		cc.cronJobInformer = factory.Batch().V1alpha1().CronJobs()
