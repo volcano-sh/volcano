@@ -17,6 +17,7 @@ limitations under the License.
 package vgpu
 
 import (
+	"reflect"
 	"testing"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
@@ -260,9 +261,11 @@ func TestAddAndSubMigUsed(t *testing.T) {
 		addPosition     int
 		wantAddMemory   uint
 		wantAddInUse    bool
+		wantAddErr      bool
 		wantAddUsedPos  int
 		wantAfterSubLen int
 		wantSubMemory   uint
+		wantIndex       int
 	}{
 		{
 			name: "Add then Sub with valid position",
@@ -352,13 +355,40 @@ func TestAddAndSubMigUsed(t *testing.T) {
 			wantAfterSubLen: 0,
 			wantSubMemory:   0,
 		},
+		{
+			name: "Out-of-range position is rejected and keeps the active group",
+			initialDevice: &GPUDevice{
+				UUID: "gpu-5",
+				MigTemplate: []config.Geometry{
+					{
+						Group: "group-e",
+						Instances: []config.MigTemplate{
+							{Name: "1g.10gb", Memory: 10240, Count: 2},
+						},
+					},
+				},
+				MigUsage: config.MigInUse{Index: -1},
+			},
+			groupName: "group-e",
+			// group-e has two instances, so valid positions are 0 and 1.
+			addPosition:     2,
+			wantAddErr:      true,
+			wantAddMemory:   0,
+			wantAddUsedPos:  -1,
+			wantAfterSubLen: 0,
+			wantSubMemory:   0,
+			wantIndex:       -1,
+		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			gd := c.initialDevice
 
-			mem := addMigUsed(gd, c.groupName, c.addPosition)
+			mem, err := addMigUsed(gd, c.groupName, c.addPosition)
+			if (err != nil) != c.wantAddErr {
+				t.Errorf("addMigUsed error: want error %v, got %v", c.wantAddErr, err)
+			}
 			if mem != c.wantAddMemory {
 				t.Errorf("addMigUsed memory: want %d, got %d", c.wantAddMemory, mem)
 			}
@@ -388,7 +418,49 @@ func TestAddAndSubMigUsed(t *testing.T) {
 			if len(gd.MigUsage.UsageList) != c.wantAfterSubLen {
 				t.Errorf("UsageList length after sub: want %d, got %d", c.wantAfterSubLen, len(gd.MigUsage.UsageList))
 			}
+
+			if gd.MigUsage.Index != c.wantIndex {
+				t.Errorf("MigUsage.Index after sub: want %d, got %d", c.wantIndex, gd.MigUsage.Index)
+			}
 		})
+	}
+}
+
+func TestMIGFactory_AddPod_OutOfRangePosition(t *testing.T) {
+	config.InitDevicesConfig("", "")
+
+	// group1 has two 1g.10gb instances, so position 2 is one past the end.
+	newDevice := func() *GPUDevice {
+		return &GPUDevice{
+			UUID:   "gpu-1",
+			PodMap: make(map[string]*GPUUsage),
+			MigTemplate: []config.Geometry{
+				{
+					Group: "group0",
+					Instances: []config.MigTemplate{
+						{Name: "7g.40gb", Memory: 40960, Count: 1},
+					},
+				},
+				{
+					Group: "group1",
+					Instances: []config.MigTemplate{
+						{Name: "1g.10gb", Memory: 10240, Count: 2},
+					},
+				},
+			},
+			MigUsage: config.MigInUse{
+				Index:     -1,
+				UsageList: config.MIGS{},
+			},
+		}
+	}
+
+	device := newDevice()
+	if err := (MIGFactory{}).AddPod(device, 0, 30, "pod-1", "gpu-1[group1-2]"); err == nil {
+		t.Fatal("AddPod with out-of-range position: want error, got nil")
+	}
+	if want := newDevice(); !reflect.DeepEqual(device, want) {
+		t.Errorf("AddPod with out-of-range position changed the device:\ngot  %+v\nwant %+v", device, want)
 	}
 }
 
@@ -491,7 +563,10 @@ func TestMIGFactory_TryAddPod_WithMemoryFactor(t *testing.T) {
 						t.Errorf("Expected group %s, got %s in devID %s\nDescription: %s",
 							tc.expectedGroup, group, devID, tc.description)
 					}
-					actualMem := addMigUsed(device, group, position)
+					actualMem, err := addMigUsed(device, group, position)
+					if err != nil {
+						t.Errorf("addMigUsed unexpected error: %v\nDescription: %s", err, tc.description)
+					}
 					if actualMem != tc.expectedMemReturned {
 						t.Errorf("addMigUsed returned memory = %d, want %d\nDescription: %s",
 							actualMem, tc.expectedMemReturned, tc.description)
