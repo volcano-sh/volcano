@@ -175,7 +175,7 @@ spec:
       securityContext:
         {{- toYaml $agent_scheduler_sc | nindent 8 }}
       {{- end }}
-      serviceAccount: {{ .Release.Name }}-agent-scheduler
+      serviceAccountName: {{ .Release.Name }}-agent-scheduler
       priorityClassName: system-cluster-critical
       {{- if .Values.basic.image_pull_secret }}
       imagePullSecrets:
