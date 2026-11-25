@@ -19,6 +19,7 @@ package gangevict
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -128,6 +129,26 @@ type roleSpec struct {
 	// priorityClass optionally sets the role's pod priority, which orders the
 	// role's tasks within the victim job (lower priority is evicted first).
 	priorityClass string
+	// node optionally pins the role's pods to one node.
+	node string
+}
+
+// nodeAffinity requires the pod to run on node, or returns nil if node is empty.
+func nodeAffinity(node string) *v1.Affinity {
+	if node == "" {
+		return nil
+	}
+	return &v1.Affinity{NodeAffinity: &v1.NodeAffinity{
+		RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+			NodeSelectorTerms: []v1.NodeSelectorTerm{{
+				MatchExpressions: []v1.NodeSelectorRequirement{{
+					Key:      v1.LabelHostname,
+					Operator: v1.NodeSelectorOpIn,
+					Values:   []string{node},
+				}},
+			}},
+		},
+	}}
 }
 
 // createMultiRoleGangJob creates a gang job with multiple roles. The
@@ -152,6 +173,7 @@ func createMultiRoleGangJob(ctx *e2eutil.TestContext, name, queue, pri string, r
 			MinAvailable: ptr.To(r.minAvailable),
 			Labels:       labels,
 			Taskpriority: r.priorityClass,
+			Affinity:     nodeAffinity(r.node),
 		})
 	}
 	spec := &e2eutil.JobSpec{
@@ -1764,3 +1786,246 @@ func countReadyTasks(ctx *e2eutil.TestContext, job *batchv1alpha1.Job) int {
 	}
 	return count
 }
+
+// ── minimal victim selection ────────────────────────────────────────────
+
+// schedulableWorkers returns the names of the first n untainted nodes, sorted by name.
+func schedulableWorkers(ctx *e2eutil.TestContext, n int) []string {
+	nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	names := []string{}
+	for _, node := range nodes.Items {
+		if len(node.Spec.Taints) == 0 && !node.Spec.Unschedulable {
+			names = append(names, node.Name)
+		}
+	}
+	sort.Strings(names)
+	Expect(len(names)).To(BeNumerically(">=", n), "need at least %d untainted nodes", n)
+	return names[:n]
+}
+
+// evictedRoles returns the roles of victim whose original pod (by UID) is no longer running.
+func evictedRoles(ctx *e2eutil.TestContext, victim *batchv1alpha1.Job, before map[string]sets.Set[string]) []string {
+	roles := []string{}
+	for role, uids := range before {
+		if runningPodUIDsByRole(ctx, victim, role).Intersection(uids).Len() < uids.Len() {
+			roles = append(roles, role)
+		}
+	}
+	sort.Strings(roles)
+	return roles
+}
+
+var _ = Describe("GangEvict Minimal Victims E2E Test", func() {
+	const (
+		mvHighPri    = "mv-high-pri"
+		mvHighPriVal = int32(100)
+		mvLowPri     = "mv-low-pri"
+		mvLowPriVal  = int32(10)
+	)
+
+	var ctx *e2eutil.TestContext
+	var cmc *e2eutil.ConfigMapCase
+
+	BeforeEach(func() {
+		cmc = e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
+		cmc.ChangeBy(applySchedulerConfig(gangEvictConfig))
+	})
+
+	AfterEach(func() {
+		if ctx != nil {
+			e2eutil.CleanupTestContext(ctx)
+		}
+		cmc.UndoChanged()
+	})
+
+	// priorityClasses returns the preemptor and victim job classes plus mv-p1..mv-pN, the
+	// per-role classes that order the victims (mv-p1 lowest).
+	priorityClasses := func(n int) map[string]int32 {
+		classes := map[string]int32{mvHighPri: mvHighPriVal, mvLowPri: mvLowPriVal}
+		for i := 1; i <= n; i++ {
+			classes[fmt.Sprintf("mv-p%d", i)] = int32(i)
+		}
+		return classes
+	}
+
+	// victimRoles builds one single-pod role per entry of nodes, named r1, r2, ... and ordered
+	// by pod priority in that order, so r1 is the first eviction candidate.
+	victimRoles := func(nodes []string) []roleSpec {
+		roles := []roleSpec{}
+		for i, node := range nodes {
+			roles = append(roles, roleSpec{name: fmt.Sprintf("r%d", i+1), replicas: 1, minAvailable: 0, priorityClass: fmt.Sprintf("mv-p%d", i+1), node: node})
+		}
+		return roles
+	}
+
+	snapshot := func(victim *batchv1alpha1.Job, roles []roleSpec) map[string]sets.Set[string] {
+		before := map[string]sets.Set[string]{}
+		for _, r := range roles {
+			before[r.name] = runningPodUIDsByRole(ctx, victim, r.name)
+			Expect(before[r.name].Len()).To(Equal(1), "role %s should be running", r.name)
+		}
+		return before
+	}
+
+	// MV-1: 4 nodes with 2 CPU free each, filled by 8 one-CPU victims of one gang (minAvail=1)
+	// ordered r1..r8 and placed round-robin, so r1 and r5 share the first node. A 2-CPU
+	// preemptor fits on a node only once both its victims are evicted. The fewest victims are
+	// r1 and r5: victims are added in order until the preemptor fits (r1..r5), then those on
+	// nodes the preemptor does not use are dropped. Master evicts the whole safe bundle (r1..r7).
+	It("MV-1: gangpreempt evicts only the victims on the node the preemptor uses", func() {
+		const queue = "mv1-q"
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{queue},
+			NodesNumLimit:      4,
+			NodesResourceLimit: v1.ResourceList{"cpu": resource.MustParse("2"), "memory": resource.MustParse("2Gi")},
+			DeservedResource:   map[string]v1.ResourceList{queue: deservedCPU(8)},
+			PriorityClasses:    priorityClasses(8),
+		})
+		w := schedulableWorkers(ctx, 4)
+		roles := victimRoles([]string{w[0], w[1], w[2], w[3], w[0], w[1], w[2], w[3]})
+
+		victim := createMultiRoleGangJob(ctx, "victim-mv1", queue, mvLowPri, e2eutil.CPU1Mem1, roles, 1, true)
+		Expect(e2eutil.WaitTasksReady(ctx, victim, 8)).To(Succeed())
+		before := snapshot(victim, roles)
+
+		preemptor := createGangJob(ctx, "preemptor-mv1", queue, mvHighPri,
+			v1.ResourceList{"cpu": resource.MustParse("2"), "memory": resource.MustParse("2Gi")}, 1, 1, false)
+		Expect(e2eutil.WaitTasksReady(ctx, preemptor, 1)).To(Succeed())
+
+		Consistently(func() []string { return evictedRoles(ctx, victim, before) }, 20*time.Second, 2*time.Second).
+			Should(Equal([]string{"r1", "r5"}))
+	})
+
+	// MV-2: one node with 2 CPU free, filled by 4 half-CPU victims of one gang (minAvail=1), so
+	// the safe bundle is r1..r3. A preemptor needing n half-CPUs must evict exactly r1..rn, not
+	// the whole safe bundle. Sizes stay within 2 CPU per node so the placeholders can be set up
+	// on CI runners, whose kind nodes have less than 4 CPU free.
+	DescribeTable("MV-2: gangpreempt evicts only as many victims as the preemptor needs on a single node",
+		func(n int) {
+			queue := fmt.Sprintf("mv2-%d-q", n)
+			ctx = e2eutil.InitTestContext(e2eutil.Options{
+				Queues:             []string{queue},
+				NodesNumLimit:      1,
+				NodesResourceLimit: v1.ResourceList{"cpu": resource.MustParse("2"), "memory": resource.MustParse("2Gi")},
+				DeservedResource:   map[string]v1.ResourceList{queue: deservedCPU(2)},
+				PriorityClasses:    priorityClasses(4),
+			})
+			roles := victimRoles([]string{"", "", "", ""})
+
+			halfCPU := v1.ResourceList{"cpu": resource.MustParse("500m"), "memory": resource.MustParse("512Mi")}
+			victim := createMultiRoleGangJob(ctx, "victim-mv2", queue, mvLowPri, halfCPU, roles, 1, true)
+			Expect(e2eutil.WaitTasksReady(ctx, victim, 4)).To(Succeed())
+			Expect(nodesOfRunningPods(ctx, victim).Len()).To(Equal(1),
+				"all victims must share the single node left free by the placeholders")
+			before := snapshot(victim, roles)
+
+			cpu := resource.NewMilliQuantity(int64(500*n), resource.DecimalSI)
+			mem := resource.NewQuantity(int64(512*n)<<20, resource.BinarySI)
+			preemptor := createGangJob(ctx, "preemptor-mv2", queue, mvHighPri, v1.ResourceList{"cpu": *cpu, "memory": *mem}, 1, 1, false)
+			Expect(e2eutil.WaitTasksReady(ctx, preemptor, 1)).To(Succeed())
+
+			expected := []string{}
+			for i := 1; i <= n; i++ {
+				expected = append(expected, fmt.Sprintf("r%d", i))
+			}
+			Consistently(func() []string { return evictedRoles(ctx, victim, before) }, 20*time.Second, 2*time.Second).
+				Should(Equal(expected))
+		},
+		Entry("preemptor needs 0.5 CPU", 1),
+		Entry("preemptor needs 1 CPU", 2),
+		Entry("preemptor needs 1.5 CPU", 3),
+	)
+
+	// MV-3: same layout as MV-1, but the victims run in another queue above its deserved share
+	// and are reclaimed by gangreclaim. r1 and r5 are enough; master evicts all 6 reclaimable
+	// victims.
+	It("MV-3: gangreclaim evicts only the victims on the node the reclaimer uses", func() {
+		const reclaimerQueue, victimQueue = "mv3-q1", "mv3-q2"
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{reclaimerQueue, victimQueue},
+			NodesNumLimit:      4,
+			NodesResourceLimit: v1.ResourceList{"cpu": resource.MustParse("2"), "memory": resource.MustParse("2Gi")},
+			// The victim queue may only be reclaimed down to its deserved 2 CPU, so 6 victims
+			// (r1..r6) are reclaimable, including r1 and r5 on the first node.
+			DeservedResource: map[string]v1.ResourceList{
+				reclaimerQueue: deservedCPU(6),
+				victimQueue:    deservedCPU(2),
+			},
+			PriorityClasses: priorityClasses(8),
+		})
+		w := schedulableWorkers(ctx, 4)
+		roles := victimRoles([]string{w[0], w[1], w[2], w[3], w[0], w[1], w[2], w[3]})
+
+		victim := createMultiRoleGangJob(ctx, "victim-mv3", victimQueue, mvLowPri, e2eutil.CPU1Mem1, roles, 1, true)
+		Expect(e2eutil.WaitTasksReady(ctx, victim, 8)).To(Succeed())
+		before := snapshot(victim, roles)
+
+		reclaimer := createGangJob(ctx, "reclaimer-mv3", reclaimerQueue, mvLowPri,
+			v1.ResourceList{"cpu": resource.MustParse("2"), "memory": resource.MustParse("2Gi")}, 1, 1, false)
+		Expect(e2eutil.WaitTasksReady(ctx, reclaimer, 1)).To(Succeed())
+
+		Consistently(func() []string { return evictedRoles(ctx, victim, before) }, 20*time.Second, 2*time.Second).
+			Should(Equal([]string{"r1", "r5"}))
+	})
+
+	// MV-4: the queue is at its 5-CPU capability. 3 nodes with 2 CPU free each hold 5 one-CPU
+	// victims: r1 on the first node (which keeps 1 CPU free), r2 and r4 on the second, r3 and r5
+	// on the third. The 2-CPU preemptor fits on the first node once r1 is evicted, but the queue
+	// also needs 2 CPU freed, so a victim on another node is needed too. r1 and r2 are enough;
+	// dropping r2 because it is not on the first node would leave the queue over its capability,
+	// which the re-simulation after pruning catches. Master evicts the whole safe bundle (r1..r4).
+	It("MV-4: gangpreempt keeps an off-node victim that frees queue quota", func() {
+		const queue = "mv4-q"
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{queue},
+			NodesNumLimit:      3,
+			NodesResourceLimit: v1.ResourceList{"cpu": resource.MustParse("2"), "memory": resource.MustParse("2Gi")},
+			DeservedResource:   map[string]v1.ResourceList{queue: deservedCPU(5)},
+			CapabilityResource: map[string]v1.ResourceList{queue: deservedCPU(5)},
+			PriorityClasses:    priorityClasses(5),
+		})
+		w := schedulableWorkers(ctx, 3)
+		roles := victimRoles([]string{w[0], w[1], w[2], w[1], w[2]})
+
+		victim := createMultiRoleGangJob(ctx, "victim-mv4", queue, mvLowPri, e2eutil.CPU1Mem1, roles, 1, true)
+		Expect(e2eutil.WaitTasksReady(ctx, victim, 5)).To(Succeed())
+		before := snapshot(victim, roles)
+
+		preemptor := createGangJob(ctx, "preemptor-mv4", queue, mvHighPri,
+			v1.ResourceList{"cpu": resource.MustParse("2"), "memory": resource.MustParse("2Gi")}, 1, 1, false)
+		Expect(e2eutil.WaitTasksReady(ctx, preemptor, 1)).To(Succeed())
+
+		Consistently(func() []string { return evictedRoles(ctx, victim, before) }, 20*time.Second, 2*time.Second).
+			Should(Equal([]string{"r1", "r2"}))
+	})
+
+	// MV-5: the queue is at its 2-CPU capability. Of 3 nodes with 2 CPU free each, the first is
+	// left empty and the other two hold one 1-CPU victim each. The 2-CPU preemptor fits on the
+	// empty node without evicting anything there, but the queue needs 2 CPU freed, so both
+	// victims must be evicted even though the preemptor runs on neither of their nodes.
+	It("MV-5: gangpreempt evicts victims on other nodes only to free queue quota", func() {
+		const queue = "mv5-q"
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{queue},
+			NodesNumLimit:      3,
+			NodesResourceLimit: v1.ResourceList{"cpu": resource.MustParse("2"), "memory": resource.MustParse("2Gi")},
+			DeservedResource:   map[string]v1.ResourceList{queue: deservedCPU(2)},
+			CapabilityResource: map[string]v1.ResourceList{queue: deservedCPU(2)},
+			PriorityClasses:    priorityClasses(2),
+		})
+		w := schedulableWorkers(ctx, 3)
+		roles := victimRoles([]string{w[1], w[2]})
+
+		victim := createMultiRoleGangJob(ctx, "victim-mv5", queue, mvLowPri, e2eutil.CPU1Mem1, roles, 1, true)
+		Expect(e2eutil.WaitTasksReady(ctx, victim, 2)).To(Succeed())
+		before := snapshot(victim, roles)
+
+		preemptor := createGangJob(ctx, "preemptor-mv5", queue, mvHighPri,
+			v1.ResourceList{"cpu": resource.MustParse("2"), "memory": resource.MustParse("2Gi")}, 1, 1, false)
+		Expect(e2eutil.WaitTasksReady(ctx, preemptor, 1)).To(Succeed())
+
+		Consistently(func() []string { return evictedRoles(ctx, victim, before) }, 20*time.Second, 2*time.Second).
+			Should(Equal([]string{"r1", "r2"}))
+	})
+})
