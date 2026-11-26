@@ -19,6 +19,7 @@ package source
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -32,7 +33,6 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
-	"volcano.sh/volcano/pkg/agent/apis"
 	"volcano.sh/volcano/pkg/agent/config/api"
 	"volcano.sh/volcano/pkg/agent/config/utils"
 )
@@ -107,9 +107,9 @@ func (cs *configMapSource) nodeUpdate(oldObj, newObj interface{}) {
 		return
 	}
 
-	if oldNode.Labels[apis.ColocationEnableNodeLabelKey] == newNode.Labels[apis.ColocationEnableNodeLabelKey] &&
-		oldNode.Labels[apis.OverSubscriptionNodeLabelKey] == newNode.Labels[apis.OverSubscriptionNodeLabelKey] &&
-		oldNode.Labels[apis.ColocationPolicyKey] == newNode.Labels[apis.ColocationPolicyKey] {
+	// nodesConfig selectors can match on any node label, so any label change
+	// may change the effective config for this node.
+	if maps.Equal(oldNode.Labels, newNode.Labels) {
 		return
 	}
 	cs.queue.Add("node")
