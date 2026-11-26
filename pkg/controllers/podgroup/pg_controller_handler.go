@@ -475,6 +475,16 @@ func (pg *pgcontroller) shouldUpdateExistingPodGroup(podGroup *scheduling.PodGro
 	isUpdated := false
 
 	newPodGroup := pg.buildPodGroupFromPod(pod, podGroup.Name)
+	// The mutating webhook resolves the namespace queue only on create, so resolve it again here.
+	if newPodGroup.Spec.Queue == "" {
+		ns, err := pg.kubeClient.CoreV1().Namespaces().Get(context.TODO(), pod.Namespace, metav1.GetOptions{})
+		if err != nil {
+			klog.ErrorS(err, "Failed to get namespace, keeping the PodGroup queue", "namespace", pod.Namespace)
+			newPodGroup.Spec.Queue = podGroup.Spec.Queue
+		} else if queue, ok := ns.Annotations[scheduling.QueueNameAnnotationKey]; ok {
+			newPodGroup.Spec.Queue = queue
+		}
+	}
 	if !reflect.DeepEqual(newPodGroup.Spec, podGroup.Spec) {
 		podGroup.Spec = newPodGroup.Spec
 		isUpdated = true
