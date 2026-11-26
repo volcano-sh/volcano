@@ -18,6 +18,7 @@ package deviceshare
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"reflect"
 	"sync"
@@ -57,8 +58,21 @@ const (
 )
 
 var (
-	once sync.Once
+	once   sync.Once
+	initMu sync.Mutex
 )
+
+// ResetForTesting resets package-level initialization state and registered devices.
+//
+// For testing only. It remains exported because scheduler-package tests need to
+// isolate DeviceShare initialization from outside this package.
+func ResetForTesting() {
+	initMu.Lock()
+	defer initMu.Unlock()
+
+	once = sync.Once{}
+	api.RegisteredDevices = []string{}
+}
 
 type deviceSharePlugin struct {
 	// Arguments given for the plugin
@@ -76,6 +90,13 @@ type deviceSharePlugin struct {
 	persistedPodRules map[string]map[string]map[int]struct{}
 }
 
+// ReloadValidator validates whether an already-running DeviceShare backend can
+// safely accept a scheduler configuration reload.
+type ReloadValidator struct{}
+
+var _ framework.PluginReloadValidator = ReloadValidator{}
+var _ framework.PluginStartupValidator = ReloadValidator{}
+
 // New return priority plugin
 func New(arguments framework.Arguments) framework.Plugin {
 	dsp := &deviceSharePlugin{
@@ -85,7 +106,10 @@ func New(arguments framework.Arguments) framework.Plugin {
 		persistedGPUs:     make(map[string]map[string]map[int]struct{}),
 		persistedPodRules: make(map[string]map[string]map[int]struct{}),
 	}
-	enablePredicate(dsp)
+	arguments.GetString(&dsp.schedulePolicy, SchedulePolicyArgument)
+	arguments.GetInt(&dsp.scheduleWeight, ScheduleWeight)
+	vgpu.SchedulePolicy = dsp.schedulePolicy
+
 	return dsp
 }
 
@@ -93,38 +117,127 @@ func (dp *deviceSharePlugin) Name() string {
 	return PluginName
 }
 
-func enablePredicate(dsp *deviceSharePlugin) {
-	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
-	nodeLockEnable := false
-	args := dsp.pluginArguments
-	args.GetBool(&gpushare.GpuSharingEnable, GPUSharingPredicate)
-	args.GetBool(&gpushare.GpuNumberEnable, GPUNumberPredicate)
-	args.GetBool(&nodeLockEnable, NodeLockEnable)
-	args.GetBool(&vgpu.VGPUEnable, VGPUEnable)
-	args.GetBool(&vnpu.AscendMindClusterVNPUEnable, AscendMindClusterVNPU)
-	args.GetBool(&hami.AscendHAMiVNPUEnable, AscendHAMiVNPUEnable)
+func (dp *deviceSharePlugin) Init() error {
+	initMu.Lock()
+	defer initMu.Unlock()
 
-	gpushare.NodeLockEnable = nodeLockEnable
-	vgpu.NodeLockEnable = nodeLockEnable
-	hami.NodeLockEnable = nodeLockEnable
-
-	args.GetString(&dsp.schedulePolicy, SchedulePolicyArgument)
-	args.GetInt(&dsp.scheduleWeight, ScheduleWeight)
-	vgpu.SchedulePolicy = dsp.schedulePolicy
-
-	if gpushare.GpuSharingEnable && gpushare.GpuNumberEnable {
-		klog.Fatal("can not define true in both gpu sharing and gpu number")
+	backend := backendConfigFromArguments(dp.pluginArguments)
+	if backend.gpuSharing && backend.gpuNumber {
+		return fmt.Errorf("can not define true in both gpu sharing and gpu number")
 	}
-	if (gpushare.GpuSharingEnable || gpushare.GpuNumberEnable) && vgpu.VGPUEnable {
-		klog.Fatal("gpu-share and vgpu can't be used together")
+	if (backend.gpuSharing || backend.gpuNumber) && backend.vgpu {
+		return fmt.Errorf("gpu-share and vgpu can't be used together")
 	}
 
-	knownGeometriesCMName := "volcano-vgpu-device-config"
-	args.GetString(&knownGeometriesCMName, KnownGeometriesCMName)
-	knownGeometriesCMNamespace := "kube-system"
-	args.GetString(&knownGeometriesCMNamespace, KnownGeometriesCMNamespace)
-	config.InitDevicesConfig(knownGeometriesCMName, knownGeometriesCMNamespace)
+	gpushare.GpuSharingEnable = backend.gpuSharing
+	gpushare.GpuNumberEnable = backend.gpuNumber
+	vgpu.VGPUEnable = backend.vgpu
+	vnpu.AscendMindClusterVNPUEnable = backend.mindCluster
+	hami.AscendHAMiVNPUEnable = backend.hami
+
+	gpushare.NodeLockEnable = backend.nodeLock
+	vgpu.NodeLockEnable = backend.nodeLock
+	hami.NodeLockEnable = backend.nodeLock
+
+	config.InitDevicesConfig(backend.cmName, backend.cmNamespace)
 	registerDevices()
+
+	return nil
+}
+
+type backendConfig struct {
+	enabledPredicate bool
+	gpuSharing       bool
+	gpuNumber        bool
+	nodeLock         bool
+	vgpu             bool
+	mindCluster      bool
+	hami             bool
+	cmName           string
+	cmNamespace      string
+}
+
+func backendConfigFromPluginConfiguration(pluginConfig framework.PluginConfiguration) backendConfig {
+	backend := backendConfigFromArguments(pluginConfig.Arguments)
+	backend.enabledPredicate = pluginConfig.EnabledPredicate != nil && *pluginConfig.EnabledPredicate
+	return backend
+}
+
+func backendConfigFromArguments(args framework.Arguments) backendConfig {
+	backend := backendConfig{
+		cmName:      "volcano-vgpu-device-config",
+		cmNamespace: "kube-system",
+	}
+
+	args.GetBool(&backend.gpuSharing, GPUSharingPredicate)
+	args.GetBool(&backend.gpuNumber, GPUNumberPredicate)
+	args.GetBool(&backend.nodeLock, NodeLockEnable)
+	args.GetBool(&backend.vgpu, VGPUEnable)
+	args.GetBool(&backend.mindCluster, AscendMindClusterVNPU)
+	args.GetBool(&backend.hami, AscendHAMiVNPUEnable)
+	args.GetString(&backend.cmName, KnownGeometriesCMName)
+	args.GetString(&backend.cmNamespace, KnownGeometriesCMNamespace)
+
+	return backend
+}
+
+// ValidateStartup rejects duplicate declarations because DeviceShare owns
+// process-wide backend flags and sync.Once-protected device registration.
+func (ReloadValidator) ValidateStartup(configurations []framework.PluginConfiguration) error {
+	if len(configurations) > 1 {
+		return fmt.Errorf("multiple DeviceShare declarations are unsupported because device backend initialization is process-wide")
+	}
+	return nil
+}
+
+// ValidateReload rejects changes which would make cached node device state
+// disagree with the process-wide DeviceShare backend. Session-only settings,
+// such as SchedulePolicy and ScheduleWeight, are intentionally not compared.
+func (ReloadValidator) ValidateReload(current, updated []framework.PluginConfiguration) error {
+	if len(current) > 0 && len(updated) == 0 {
+		return fmt.Errorf("live removal of DeviceShare is unsupported: restart the scheduler after changing the device backend")
+	}
+	if len(current) == 0 && len(updated) > 0 {
+		return fmt.Errorf("live addition of DeviceShare is unsupported: restart the scheduler after changing the device backend")
+	}
+	if len(current) == 0 && len(updated) == 0 {
+		return nil
+	}
+	if len(current) != len(updated) {
+		return fmt.Errorf("live modification of DeviceShare declaration count (from %d to %d) is unsupported: restart the scheduler after changing the device backend", len(current), len(updated))
+	}
+
+	for index := range current {
+		if err := compareBackendConfig(backendConfigFromPluginConfiguration(current[index]), backendConfigFromPluginConfiguration(updated[index])); err != nil {
+			return fmt.Errorf("DeviceShare declaration %d: %w", index, err)
+		}
+	}
+
+	return nil
+}
+
+func compareBackendConfig(current, updated backendConfig) error {
+	for _, change := range []struct {
+		name    string
+		current interface{}
+		updated interface{}
+	}{
+		{"enablePredicate", current.enabledPredicate, updated.enabledPredicate},
+		{GPUSharingPredicate, current.gpuSharing, updated.gpuSharing},
+		{GPUNumberPredicate, current.gpuNumber, updated.gpuNumber},
+		{NodeLockEnable, current.nodeLock, updated.nodeLock},
+		{VGPUEnable, current.vgpu, updated.vgpu},
+		{AscendMindClusterVNPU, current.mindCluster, updated.mindCluster},
+		{AscendHAMiVNPUEnable, current.hami, updated.hami},
+		{KnownGeometriesCMName, current.cmName, updated.cmName},
+		{KnownGeometriesCMNamespace, current.cmNamespace, updated.cmNamespace},
+	} {
+		if change.current != change.updated {
+			return fmt.Errorf("live modification of DeviceShare %s (from %v to %v) is unsupported: restart the scheduler after changing the device backend", change.name, change.current, change.updated)
+		}
+	}
+
+	return nil
 }
 
 func registerDevices() {
@@ -220,6 +333,16 @@ func initializeDevice(device api.Devices, ssn *framework.Session, nodeInfo *api.
 	return nil
 }
 
+func podRequestsDevice(pod *v1.Pod, deviceName string) bool {
+	if pod == nil {
+		return false
+	}
+	if hami.AscendHAMiVNPUEnable && hami.PodRequestsVNPU(pod, deviceName) {
+		return true
+	}
+	return false
+}
+
 func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 	// Wrap GPU devices with exclusivity-aware wrappers if rules are configured.
 	// This must happen before initializeDevicesWithSession and predicate registration
@@ -237,6 +360,10 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 			if dev, ok := node.Others[val].(api.Devices); ok {
 				if reflect.ValueOf(dev).IsNil() {
 					klog.V(4).Infof("device %s is null, skipping it", val)
+					if podRequestsDevice(task.Pod, val) {
+						predicateStatus = append(predicateStatus, createStatus(api.Unschedulable, fmt.Sprintf("device %s on node %s is nil", val, node.Name)))
+						return api.NewFitErrWithStatus(task, node, predicateStatus...)
+					}
 					continue
 				}
 				if !dev.HasDeviceRequest(task.Pod) {
@@ -255,7 +382,11 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 					return api.NewFitErrWithStatus(task, node, predicateStatus...)
 				}
 			} else {
-				klog.Warningf("Devices %s assertion conversion failed, skip", val)
+				klog.Warningf("Devices %s assertion conversion failed on node %s", val, node.Name)
+				if podRequestsDevice(task.Pod, val) {
+					predicateStatus = append(predicateStatus, createStatus(api.Unschedulable, fmt.Sprintf("node %s is missing device %s info", node.Name, val)))
+					return api.NewFitErrWithStatus(task, node, predicateStatus...)
+				}
 			}
 		}
 

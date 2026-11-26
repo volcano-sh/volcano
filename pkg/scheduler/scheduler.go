@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -46,6 +47,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
+var schedulerSocketOnce sync.Once
+
 // Scheduler represents a "Volcano Scheduler".
 // Scheduler watches for new unscheduled pods(PodGroup) in Volcano.
 // It attempts to find nodes that can accommodate these pods and writes the binding information back to the API server.
@@ -56,6 +59,7 @@ type Scheduler struct {
 	fileWatcher           filewatcher.FileWatcher
 	schedulePeriod        time.Duration
 	once                  sync.Once
+	pluginInitMutex       sync.Mutex
 
 	mutex              sync.Mutex
 	actions            []framework.Action
@@ -64,6 +68,7 @@ type Scheduler struct {
 	metricsConf        map[string]string
 	dumper             schedcache.Dumper
 	disableDefaultConf bool
+	pluginsInitialized bool
 
 	// schGateManager is used for async scheduling gate removal.
 	schGateManager *gate.SchGateManager
@@ -108,6 +113,10 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	pc.loadSchedulerConf()
 
+	if err := pc.initPlugins(); err != nil {
+		klog.Fatalf("Failed to initialize plugins: %v", err)
+	}
+
 	// Start the gate manager (if the feature gate is enabled).
 	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingGatesQueueAdmission) {
 		pc.schGateManager = gate.NewSchGateManager(pc.cache.Client(), options.ServerOpts.GateRemovalWorkerNum)
@@ -130,7 +139,11 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	if options.ServerOpts.EnableCacheDumper {
 		pc.dumper.ListenForSignal(stopCh)
 	}
-	go runSchedulerSocket()
+	// The klog debug listener binds a single fixed unix socket and initializes
+	// package-level state, so start it at most once per process.
+	schedulerSocketOnce.Do(func() {
+		go runSchedulerSocket()
+	})
 }
 
 // runOnce executes a single scheduling cycle. This function is called periodically
@@ -216,13 +229,128 @@ func (pc *Scheduler) loadSchedulerConf() {
 		return
 	}
 
+	pc.pluginInitMutex.Lock()
+	defer pc.pluginInitMutex.Unlock()
+
 	pc.mutex.Lock()
+	if pc.pluginsInitialized {
+		if err := validatePluginReload(pc.plugins, plugins); err != nil {
+			pc.mutex.Unlock()
+			klog.ErrorS(err, "Rejected scheduler configuration reload; retaining all active scheduler settings", "action", "restart the scheduler after changing the DeviceShare backend")
+			return
+		}
+	}
 	pc.actions = actions
 	pc.plugins = plugins
 	pc.configurations = configurations
 	pc.metricsConf = metricsConf
 	pc.mutex.Unlock()
 	logLoadedSchedulerConf(config)
+}
+
+func (pc *Scheduler) initPlugins() error {
+	pc.pluginInitMutex.Lock()
+	defer pc.pluginInitMutex.Unlock()
+
+	pc.mutex.Lock()
+	if pc.pluginsInitialized {
+		pc.mutex.Unlock()
+		return nil
+	}
+	tiers := pc.plugins
+	pc.mutex.Unlock()
+	if err := validatePluginStartup(tiers); err != nil {
+		return err
+	}
+
+	for _, tier := range tiers {
+		for _, pluginConf := range tier.Plugins {
+			pb, found := framework.GetPluginBuilder(pluginConf.Name)
+			if !found {
+				klog.Errorf("Failed to get plugin %s.", pluginConf.Name)
+				continue
+			}
+			plugin := pb(pluginConf.Arguments)
+			if initializer, ok := plugin.(framework.PluginInitializer); ok {
+				if err := initializer.Init(); err != nil {
+					return fmt.Errorf("failed to initialize plugin %s: %w", pluginConf.Name, err)
+				}
+			}
+		}
+	}
+
+	pc.mutex.Lock()
+	pc.pluginsInitialized = true
+	pc.mutex.Unlock()
+	return nil
+}
+
+func validatePluginStartup(tiers []conf.Tier) error {
+	configs := pluginConfigurations(tiers)
+	names := make([]string, 0, len(configs))
+	for name := range configs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		validator, found := framework.GetPluginReloadValidator(name)
+		if !found {
+			continue
+		}
+		startupValidator, ok := validator.(framework.PluginStartupValidator)
+		if !ok {
+			continue
+		}
+		if err := startupValidator.ValidateStartup(configs[name]); err != nil {
+			return fmt.Errorf("plugin %q configuration is incompatible with scheduler startup: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+func pluginConfigurations(tiers []conf.Tier) map[string][]framework.PluginConfiguration {
+	configs := make(map[string][]framework.PluginConfiguration)
+	for _, tier := range tiers {
+		for _, plugin := range tier.Plugins {
+			configs[plugin.Name] = append(configs[plugin.Name], framework.PluginConfiguration{
+				EnabledPredicate: plugin.EnabledPredicate,
+				Arguments:        framework.Arguments(plugin.Arguments),
+			})
+		}
+	}
+	return configs
+}
+
+func validatePluginReload(currentTiers, updatedTiers []conf.Tier) error {
+	current := pluginConfigurations(currentTiers)
+	updated := pluginConfigurations(updatedTiers)
+	names := make(map[string]struct{}, len(current)+len(updated))
+	for name := range current {
+		names[name] = struct{}{}
+	}
+	for name := range updated {
+		names[name] = struct{}{}
+	}
+
+	orderedNames := make([]string, 0, len(names))
+	for name := range names {
+		orderedNames = append(orderedNames, name)
+	}
+	sort.Strings(orderedNames)
+
+	for _, name := range orderedNames {
+		validator, found := framework.GetPluginReloadValidator(name)
+		if !found {
+			continue
+		}
+		if err := validator.ValidateReload(current[name], updated[name]); err != nil {
+			return fmt.Errorf("plugin %q configuration is incompatible with a live reload: %w", name, err)
+		}
+	}
+
+	return nil
 }
 
 func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
