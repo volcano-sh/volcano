@@ -17,27 +17,63 @@ limitations under the License.
 package scheduler
 
 import (
+	"context"
 	"errors"
+	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/hami"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/mindcluster/ascend310p/vnpu"
 	deviceconfig "volcano.sh/volcano/pkg/scheduler/api/devices/config"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	_ "volcano.sh/volcano/pkg/scheduler/plugins"
 	"volcano.sh/volcano/pkg/scheduler/plugins/deviceshare"
+	pkgutil "volcano.sh/volcano/pkg/util"
 )
+
+func TestMain(m *testing.M) {
+	os.Exit(runTests(m))
+}
+
+func runTests(m *testing.M) int {
+	options.Default()
+	// Mirror cmd/scheduler/main.go so Scheduler.Run() -> runSchedulerSocket() finds -v.
+	if flag.CommandLine.Lookup("v") == nil {
+		klog.InitFlags(nil)
+	}
+	if os.Getenv(pkgutil.SocketDirEnvName) == "" {
+		if socketDir, err := os.MkdirTemp("", "volcano-scheduler-test-*"); err == nil {
+			_ = os.Setenv(pkgutil.SocketDirEnvName, socketDir)
+			defer func() {
+				_ = os.RemoveAll(socketDir)
+			}()
+		}
+	}
+	return m.Run()
+}
 
 type rejectingReloadValidator struct {
 	calls int
@@ -102,117 +138,446 @@ func buildNvidiaVGPUTestNode(name string) *v1.Node {
 	}
 }
 
-// TestIssue5846_EarlyPluginInitFix verifies the fix:
-// When initPlugins() is executed before cache.Run() / NewNodeInfo(),
-// AscendHAMiVNPUEnable is set, cached nodes receive AscendDevices, and cloned session nodes retain them.
-func TestIssue5846_EarlyPluginInitFix(t *testing.T) {
-	hami.AscendHAMiVNPUEnable = false
-	defer func() { hami.AscendHAMiVNPUEnable = false }()
+func resetDeviceShareTestState(t *testing.T) {
+	t.Helper()
 
-	enablePredicate := true
-	sched := &Scheduler{
-		plugins: []conf.Tier{
-			{
-				Plugins: []conf.PluginOption{
-					{
-						Name:             deviceshare.PluginName,
-						EnabledPredicate: &enablePredicate,
-						Arguments: map[string]interface{}{
-							deviceshare.AscendHAMiVNPUEnable: true,
-						},
-					},
-				},
-			},
-		},
-	}
+	origGPUSharing := gpushare.GpuSharingEnable
+	origGPUNumber := gpushare.GpuNumberEnable
+	origGPUShareNodeLock := gpushare.NodeLockEnable
+	origVGPU := vgpu.VGPUEnable
+	origVGPUNodeLock := vgpu.NodeLockEnable
+	origVGPUPolicy := vgpu.SchedulePolicy
+	origMindCluster := vnpu.AscendMindClusterVNPUEnable
+	origHAMi := hami.AscendHAMiVNPUEnable
+	origHAMiNodeLock := hami.NodeLockEnable
+	origActionMap := conf.EnabledActionMap
+	origIgnoredDevices := api.IgnoredDevicesList.List()
 
-	// 1. Run early plugin initialization before cache starts
-	err := sched.initPlugins()
-	assert.NoError(t, err, "sched.initPlugins() should succeed")
-	assert.True(t, hami.AscendHAMiVNPUEnable, "AscendHAMiVNPUEnable should be true after initPlugins()")
-
-	// 2. Cache informers create NodeInfo during startup sync
-	node := buildAscendTestNode("ascend-node-fixed")
-	cachedNode := api.NewNodeInfo(node)
-	assert.NotNil(t, cachedNode.Others["Ascend310P"], "cached node must contain Ascend310P devices")
-
-	// 3. Session opens and snapshots the cached node
-	clonedNode := cachedNode.Clone()
-	assert.NotNil(t, clonedNode.Others["Ascend310P"], "cloned session node must retain Ascend310P devices")
-
-	dev, ok := clonedNode.Others["Ascend310P"].(api.Devices)
-	assert.True(t, ok, "device in cloned node must implement api.Devices")
-	assert.NotNil(t, dev)
-}
-
-// TestIssue5846_EarlyPluginInitFixNvidiaVGPU verifies that early DeviceShare
-// initialization populates NVIDIA vGPU data before cached nodes are created.
-func TestIssue5846_EarlyPluginInitFixNvidiaVGPU(t *testing.T) {
-	originalVGPUEnabled := vgpu.VGPUEnable
-	originalHAMiEnabled := hami.AscendHAMiVNPUEnable
 	deviceshare.ResetForTesting()
+	api.IgnoredDevicesList.Set(nil)
+	gpushare.GpuSharingEnable = false
+	gpushare.GpuNumberEnable = false
+	gpushare.NodeLockEnable = false
 	vgpu.VGPUEnable = false
+	vgpu.NodeLockEnable = false
+	vgpu.SchedulePolicy = ""
+	vnpu.AscendMindClusterVNPUEnable = false
 	hami.AscendHAMiVNPUEnable = false
+	hami.NodeLockEnable = false
+
 	t.Cleanup(func() {
 		deviceshare.ResetForTesting()
-		vgpu.VGPUEnable = originalVGPUEnabled
-		hami.AscendHAMiVNPUEnable = originalHAMiEnabled
+		api.IgnoredDevicesList.Set(origIgnoredDevices)
+		gpushare.GpuSharingEnable = origGPUSharing
+		gpushare.GpuNumberEnable = origGPUNumber
+		gpushare.NodeLockEnable = origGPUShareNodeLock
+		vgpu.VGPUEnable = origVGPU
+		vgpu.NodeLockEnable = origVGPUNodeLock
+		vgpu.SchedulePolicy = origVGPUPolicy
+		vnpu.AscendMindClusterVNPUEnable = origMindCluster
+		hami.AscendHAMiVNPUEnable = origHAMi
+		hami.NodeLockEnable = origHAMiNodeLock
+		conf.EnabledActionMap = origActionMap
 	})
-	assert.False(t, vgpu.VGPUEnable, "VGPUEnable must start false before plugin initialization")
+}
+
+type initGatePlugin struct {
+	framework.Plugin
+	onInit func(realInit func() error) error
+}
+
+func (p *initGatePlugin) Init() error {
+	initializer, ok := p.Plugin.(framework.PluginInitializer)
+	if !ok {
+		return fmt.Errorf("plugin %T does not implement framework.PluginInitializer", p.Plugin)
+	}
+	return p.onInit(initializer.Init)
+}
+
+type lifecycleOrderingCache struct {
+	*cache.SchedulerCache
+	targetNodeName  string
+	onRun           func()
+	onNodePopulated func(error)
+	onSessionOpen   func()
+	onSnapshot      func(*api.ClusterInfo)
+	onSessionClose  func()
+}
+
+func (c *lifecycleOrderingCache) Run(stopCh <-chan struct{}) {
+	if c.onRun != nil {
+		c.onRun()
+	}
+	c.SchedulerCache.Run(stopCh)
+
+	// NewDefaultMockSchedulerCache leaves resourceSyncTimeout=0 so SchedulerCache.Run
+	// skips WaitForHandlerSync and returns before runNodeWorker finishes AddOrUpdateNode.
+	// Wait for the node worker to populate NodeInfo so the first session sees it.
+	ctx, cancel := context.WithTimeout(wait.ContextForChannel(stopCh), wait.ForeverTestTimeout)
+	defer cancel()
+	syncErr := wait.PollUntilContextCancel(ctx, 5*time.Millisecond, true, func(context.Context) (bool, error) {
+		c.SchedulerCache.Mutex.Lock()
+		_, exists := c.SchedulerCache.Nodes[c.targetNodeName]
+		c.SchedulerCache.Mutex.Unlock()
+		return exists, nil
+	})
+	if c.onNodePopulated != nil {
+		c.onNodePopulated(syncErr)
+	}
+}
+
+func (c *lifecycleOrderingCache) OnSessionOpen() {
+	if c.onSessionOpen != nil {
+		c.onSessionOpen()
+	}
+	c.SchedulerCache.OnSessionOpen()
+}
+
+func (c *lifecycleOrderingCache) Snapshot() *api.ClusterInfo {
+	snap := c.SchedulerCache.Snapshot()
+	if c.onSnapshot != nil {
+		c.onSnapshot(snap)
+	}
+	return snap
+}
+
+func (c *lifecycleOrderingCache) OnSessionClose() {
+	c.SchedulerCache.OnSessionClose()
+	if c.onSessionClose != nil {
+		c.onSessionClose()
+	}
+}
+
+type deviceShareLifecycleSpec struct {
+	nodeName       string
+	node           *v1.Node
+	pluginArgs     map[string]interface{}
+	registeredName string
+	isEnabled      func() bool
+	assertCached   func(t *testing.T, cached *api.NodeInfo)
+	assertCloned   func(t *testing.T, cached, cloned *api.NodeInfo)
+}
+
+func verifyDeviceShareRunOrdering(t *testing.T, spec deviceShareLifecycleSpec) {
+	t.Helper()
+	resetDeviceShareTestState(t)
+
+	origBuilder, found := framework.GetPluginBuilder(deviceshare.PluginName)
+	require.True(t, found, "deviceshare plugin builder must be registered")
+	t.Cleanup(func() {
+		framework.RegisterPluginBuilder(deviceshare.PluginName, origBuilder)
+	})
+
+	realCache := cache.NewDefaultMockSchedulerCache("volcano")
+	origEnableCacheDumper := options.ServerOpts.EnableCacheDumper
+	options.ServerOpts.EnableCacheDumper = false
+	t.Cleanup(func() {
+		options.ServerOpts.EnableCacheDumper = origEnableCacheDumper
+	})
+
+	_, err := realCache.Client().CoreV1().Nodes().Create(context.Background(), spec.node, metav1.CreateOptions{})
+	require.NoError(t, err)
+	require.False(t, spec.isEnabled(), "device flag must start false before Scheduler.Run()")
+
+	var (
+		stateMu           sync.Mutex
+		events            []string
+		initCalls         atomic.Int32
+		initCompleted     atomic.Bool
+		cacheRunCalled    atomic.Bool
+		sessionOpened     atomic.Bool
+		enabledAtCacheRun bool
+		regAtCacheRun     bool
+		nodesAtCacheRun   int
+		nodeSyncErr       error
+		clonedNode        *api.NodeInfo
+	)
+	recordEvent := func(event string) {
+		stateMu.Lock()
+		events = append(events, event)
+		stateMu.Unlock()
+	}
+
+	initStarted := make(chan struct{})
+	releaseInit := make(chan struct{})
+	cacheRunStarted := make(chan struct{})
+	sessionCompleted := make(chan struct{})
+	runReturned := make(chan struct{})
+	stopCh := make(chan struct{})
+
+	var (
+		initStartOnce    sync.Once
+		releaseInitOnce  sync.Once
+		cacheRunOnce     sync.Once
+		sessionCloseOnce sync.Once
+		stopOnce         sync.Once
+		shutdownOnce     sync.Once
+	)
+
+	stopScheduler := func(waitForRun bool) {
+		releaseInitOnce.Do(func() { close(releaseInit) })
+		stopOnce.Do(func() { close(stopCh) })
+		if waitForRun {
+			select {
+			case <-runReturned:
+			case <-time.After(wait.ForeverTestTimeout):
+				t.Errorf("timed out waiting for Scheduler.Run() to exit")
+			}
+			if sessionOpened.Load() {
+				select {
+				case <-sessionCompleted:
+				case <-time.After(wait.ForeverTestTimeout):
+					t.Errorf("timed out waiting for active scheduling session to finish")
+				}
+			}
+		}
+		shutdownOnce.Do(func() { cache.ShutdownMockSchedulerCache(realCache) })
+	}
+
+	framework.RegisterPluginBuilder(deviceshare.PluginName, func(args framework.Arguments) framework.Plugin {
+		realPlugin := origBuilder(args)
+		return &initGatePlugin{
+			Plugin: realPlugin,
+			onInit: func(realInit func() error) error {
+				initCalls.Add(1)
+				if cacheRunCalled.Load() {
+					t.Errorf("cache.Run() started before DeviceShare.Init() began")
+				}
+				recordEvent("init-started")
+				initStartOnce.Do(func() { close(initStarted) })
+				<-releaseInit
+
+				if err := realInit(); err != nil {
+					return err
+				}
+				initCompleted.Store(true)
+				recordEvent("init-completed")
+				return nil
+			},
+		}
+	})
+
+	wrappedCache := &lifecycleOrderingCache{
+		SchedulerCache: realCache,
+		targetNodeName: spec.nodeName,
+		onRun: func() {
+			realCache.Mutex.Lock()
+			nodesCount := len(realCache.Nodes)
+			realCache.Mutex.Unlock()
+
+			stateMu.Lock()
+			enabledAtCacheRun = spec.isEnabled()
+			regAtCacheRun = slices.Contains(api.RegisteredDevices, spec.registeredName)
+			nodesAtCacheRun = nodesCount
+			stateMu.Unlock()
+
+			if !initCompleted.Load() {
+				t.Errorf("cache.Run() started before DeviceShare.Init() completed")
+			}
+			cacheRunCalled.Store(true)
+			recordEvent("cache-run-started")
+			cacheRunOnce.Do(func() { close(cacheRunStarted) })
+		},
+		onNodePopulated: func(syncErr error) {
+			stateMu.Lock()
+			nodeSyncErr = syncErr
+			stateMu.Unlock()
+			if syncErr == nil {
+				recordEvent("cache-node-populated")
+			}
+		},
+		onSessionOpen: func() {
+			sessionOpened.Store(true)
+		},
+		onSnapshot: func(snap *api.ClusterInfo) {
+			if ni, ok := snap.Nodes[spec.nodeName]; ok {
+				stateMu.Lock()
+				if clonedNode == nil {
+					clonedNode = ni
+				}
+				stateMu.Unlock()
+			}
+		},
+		onSessionClose: func() {
+			sessionCloseOnce.Do(func() { close(sessionCompleted) })
+		},
+	}
 
 	enablePredicate := true
-	sched := &Scheduler{
-		plugins: []conf.Tier{
+	rawConf, err := yaml.Marshal(&conf.SchedulerConfiguration{
+		Actions: "allocate",
+		Tiers: []conf.Tier{
 			{
 				Plugins: []conf.PluginOption{
 					{
 						Name:             deviceshare.PluginName,
 						EnabledPredicate: &enablePredicate,
-						Arguments: map[string]interface{}{
-							deviceshare.VGPUEnable: true,
-						},
+						Arguments:        spec.pluginArgs,
 					},
 				},
 			},
 		},
+	})
+	require.NoError(t, err)
+	confPath := createTempConfigFile(t, string(rawConf))
+
+	sched := &Scheduler{
+		cache:              wrappedCache,
+		schedulerConf:      confPath,
+		disableDefaultConf: true,
+		schedulePeriod:     time.Hour,
 	}
 
-	assert.NoError(t, sched.initPlugins())
-	assert.True(t, vgpu.VGPUEnable, "VGPUEnable should be true after initPlugins()")
+	runStarted := false
+	t.Cleanup(func() {
+		stopScheduler(runStarted)
+	})
 
-	cachedNode := api.NewNodeInfo(buildNvidiaVGPUTestNode("nvidia-vgpu-node"))
-	cachedDevices, ok := cachedNode.Others[vgpu.DeviceName].(*vgpu.GPUDevices)
-	if assert.True(t, ok, "cached node must contain NVIDIA vGPU devices") && assert.NotNil(t, cachedDevices) {
-		device, exists := cachedDevices.Device[0]
-		if assert.True(t, exists, "cached NVIDIA vGPU devices must contain the registered GPU") && assert.NotNil(t, device) {
-			assert.Equal(t, "GPU-test-uuid", device.UUID)
-			assert.Equal(t, uint(1), device.Number)
-			assert.Equal(t, uint(16384), device.Memory)
-			assert.Equal(t, vgpu.NvidiaGPUDevice, device.Type)
-			assert.True(t, device.Health)
-		}
+	runStarted = true
+	go func() {
+		sched.Run(stopCh)
+		close(runReturned)
+	}()
+
+	select {
+	case <-initStarted:
+	case <-cacheRunStarted:
+		require.FailNow(t, "cache.Run() started before DeviceShare.Init() began")
+	case <-time.After(wait.ForeverTestTimeout):
+		require.FailNow(t, "timed out waiting for DeviceShare.Init() to start")
 	}
 
-	clonedNode := cachedNode.Clone()
-	clonedDevices, ok := clonedNode.Others[vgpu.DeviceName].(*vgpu.GPUDevices)
-	if assert.True(t, ok, "cloned node must retain NVIDIA vGPU devices") && assert.NotNil(t, clonedDevices) {
-		clonedDevice, exists := clonedDevices.Device[0]
-		if assert.True(t, exists, "cloned NVIDIA vGPU devices must contain the registered GPU") && assert.NotNil(t, clonedDevice) {
+	// While DeviceShare.Init() is still paused before completion, cache.Run()
+	// must not start and device enablement must not be applied yet.
+	select {
+	case <-cacheRunStarted:
+		require.FailNow(t, "cache.Run() started before DeviceShare.Init() completed")
+	case <-time.After(30 * time.Millisecond):
+	}
+	assert.False(t, spec.isEnabled(), "device flag must remain false before DeviceShare.Init() completes")
+	assert.Empty(t, api.RegisteredDevices, "devices must not be registered before DeviceShare.Init() completes")
+
+	releaseInitOnce.Do(func() { close(releaseInit) })
+
+	select {
+	case <-runReturned:
+	case <-time.After(wait.ForeverTestTimeout):
+		require.FailNow(t, "timed out waiting for Scheduler.Run() startup to complete")
+	}
+
+	select {
+	case <-sessionCompleted:
+	case <-time.After(wait.ForeverTestTimeout):
+		require.FailNow(t, "timed out waiting for scheduling session snapshot")
+	}
+
+	stopScheduler(true)
+
+	stateMu.Lock()
+	gotEvents := slices.Clone(events)
+	gotEnabledAtCacheRun := enabledAtCacheRun
+	gotRegAtCacheRun := regAtCacheRun
+	gotNodesAtCacheRun := nodesAtCacheRun
+	gotNodeSyncErr := nodeSyncErr
+	gotClonedNode := clonedNode
+	stateMu.Unlock()
+
+	assert.Equal(t, int32(1), initCalls.Load(), "DeviceShare.Init() must run once at startup, not per session")
+	assert.Equal(t, []string{"init-started", "init-completed", "cache-run-started", "cache-node-populated"}, gotEvents)
+	assert.True(t, gotEnabledAtCacheRun, "device flag must be enabled before cache.Run()")
+	assert.True(t, gotRegAtCacheRun, "device %q must be registered before cache.Run()", spec.registeredName)
+	assert.Zero(t, gotNodesAtCacheRun, "cache must not hold nodes before cache.Run() starts")
+	require.NoError(t, gotNodeSyncErr, "cache worker must populate NodeInfo after cache.Run()")
+
+	realCache.Mutex.Lock()
+	cachedNode := realCache.Nodes[spec.nodeName]
+	realCache.Mutex.Unlock()
+
+	require.NotNil(t, cachedNode, "cache must populate NodeInfo via AddOrUpdateNode")
+	spec.assertCached(t, cachedNode)
+
+	require.NotNil(t, gotClonedNode, "scheduling session snapshot must clone cached NodeInfo")
+	assert.NotSame(t, cachedNode, gotClonedNode)
+	spec.assertCloned(t, cachedNode, gotClonedNode)
+}
+
+// TestIssue5846_EarlyPluginInitFix verifies through Scheduler.Run() that
+// DeviceShare initializes Ascend HAMi settings before cache.Run() starts,
+// cache workers populate AscendDevices in NodeInfo, and session snapshots retain them.
+func TestIssue5846_EarlyPluginInitFix(t *testing.T) {
+	const nodeName = "ascend-node-fixed"
+	verifyDeviceShareRunOrdering(t, deviceShareLifecycleSpec{
+		nodeName:       nodeName,
+		node:           buildAscendTestNode(nodeName),
+		pluginArgs:     map[string]interface{}{deviceshare.AscendHAMiVNPUEnable: true},
+		registeredName: "Ascend310P",
+		isEnabled:      func() bool { return hami.AscendHAMiVNPUEnable },
+		assertCached: func(t *testing.T, cached *api.NodeInfo) {
+			cachedDevices, ok := cached.Others["Ascend310P"].(*hami.AscendDevices)
+			require.True(t, ok, "cached node must contain Ascend310P devices")
+			require.NotNil(t, cachedDevices)
+		},
+		assertCloned: func(t *testing.T, cached, cloned *api.NodeInfo) {
+			cachedDevices, ok := cached.Others["Ascend310P"].(*hami.AscendDevices)
+			require.True(t, ok)
+			clonedDevices, ok := cloned.Others["Ascend310P"].(*hami.AscendDevices)
+			require.True(t, ok, "cloned session node must retain Ascend310P devices")
+			require.NotNil(t, clonedDevices)
 			assert.NotSame(t, cachedDevices, clonedDevices)
-			assert.NotSame(t, cachedDevices.Device[0], clonedDevice)
-			assert.Equal(t, "GPU-test-uuid", clonedDevice.UUID)
-			assert.Equal(t, uint(1), clonedDevice.Number)
-			assert.Equal(t, uint(16384), clonedDevice.Memory)
-			assert.Equal(t, vgpu.NvidiaGPUDevice, clonedDevice.Type)
-			assert.True(t, clonedDevice.Health)
-		}
-	}
+
+			dev, ok := cloned.Others["Ascend310P"].(api.Devices)
+			assert.True(t, ok, "device in cloned node must implement api.Devices")
+			assert.NotNil(t, dev)
+		},
+	})
+}
+
+func requireNvidiaVGPUDevice(t *testing.T, node *api.NodeInfo, role string) (*vgpu.GPUDevices, *vgpu.GPUDevice) {
+	t.Helper()
+
+	devices, ok := node.Others[vgpu.DeviceName].(*vgpu.GPUDevices)
+	require.True(t, ok, "%s node must contain NVIDIA vGPU devices", role)
+	require.NotNil(t, devices)
+
+	device, exists := devices.Device[0]
+	require.True(t, exists, "%s NVIDIA vGPU devices must contain the registered GPU", role)
+	require.NotNil(t, device)
+	assert.Equal(t, "GPU-test-uuid", device.UUID)
+	assert.Equal(t, uint(1), device.Number)
+	assert.Equal(t, uint(16384), device.Memory)
+	assert.Equal(t, vgpu.NvidiaGPUDevice, device.Type)
+	assert.True(t, device.Health)
+	return devices, device
+}
+
+// TestIssue5846_EarlyPluginInitFixNvidiaVGPU verifies through Scheduler.Run() that
+// DeviceShare.Init() runs before cache.Run(), cannot be bypassed by starting the cache
+// before initialization completes, populates NVIDIA vGPU NodeInfo when the cache syncs
+// nodes, and keeps the deep-copied GPU info intact after Snapshot() cloning.
+func TestIssue5846_EarlyPluginInitFixNvidiaVGPU(t *testing.T) {
+	const nodeName = "nvidia-vgpu-node"
+	verifyDeviceShareRunOrdering(t, deviceShareLifecycleSpec{
+		nodeName:       nodeName,
+		node:           buildNvidiaVGPUTestNode(nodeName),
+		pluginArgs:     map[string]interface{}{deviceshare.VGPUEnable: true},
+		registeredName: vgpu.DeviceName,
+		isEnabled:      func() bool { return vgpu.VGPUEnable },
+		assertCached: func(t *testing.T, cached *api.NodeInfo) {
+			requireNvidiaVGPUDevice(t, cached, "cached")
+		},
+		assertCloned: func(t *testing.T, cached, cloned *api.NodeInfo) {
+			cachedDevices, cachedDevice := requireNvidiaVGPUDevice(t, cached, "cached")
+			clonedDevices, clonedDevice := requireNvidiaVGPUDevice(t, cloned, "cloned")
+			assert.NotSame(t, cachedDevices, clonedDevices)
+			assert.NotSame(t, cachedDevice, clonedDevice)
+		},
+	})
 }
 
 // TestIssue5846_DisabledConfiguration verifies that when AscendHAMiVNPUEnable is disabled,
 // initPlugins() does not enable it and cached nodes do not receive Ascend devices.
 func TestIssue5846_DisabledConfiguration(t *testing.T) {
-	hami.AscendHAMiVNPUEnable = false
+	resetDeviceShareTestState(t)
 
 	sched := &Scheduler{
 		plugins: []conf.Tier{
@@ -242,12 +607,7 @@ func TestIssue5846_DisabledConfiguration(t *testing.T) {
 // devices, but the candidate node is missing AscendDevices in Others (or has 0 devices),
 // DeviceShare fails closed (rejects the node) rather than failing open (allowing it without enforcement).
 func TestIssue5846_MissingAscendDevices_FailClosed(t *testing.T) {
-	deviceshare.ResetForTesting()
-	hami.AscendHAMiVNPUEnable = false
-	defer func() {
-		deviceshare.ResetForTesting()
-		hami.AscendHAMiVNPUEnable = false
-	}()
+	resetDeviceShareTestState(t)
 
 	enablePredicate := true
 	sched := &Scheduler{

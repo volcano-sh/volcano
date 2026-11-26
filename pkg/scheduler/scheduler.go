@@ -47,6 +47,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/unschedulable"
 )
 
+var schedulerSocketOnce sync.Once
+
 // Scheduler represents a "Volcano Scheduler".
 // Scheduler watches for new unscheduled pods(PodGroup) in Volcano.
 // It attempts to find nodes that can accommodate these pods and writes the binding information back to the API server.
@@ -137,7 +139,11 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	if options.ServerOpts.EnableCacheDumper {
 		pc.dumper.ListenForSignal(stopCh)
 	}
-	go runSchedulerSocket()
+	// The klog debug listener binds a single fixed unix socket and initializes
+	// package-level state, so start it at most once per process.
+	schedulerSocketOnce.Do(func() {
+		go runSchedulerSocket()
+	})
 }
 
 // runOnce executes a single scheduling cycle. This function is called periodically
