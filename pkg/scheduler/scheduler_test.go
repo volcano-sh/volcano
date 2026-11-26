@@ -30,6 +30,8 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/hami"
+	deviceconfig "volcano.sh/volcano/pkg/scheduler/api/devices/config"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -82,28 +84,22 @@ func buildAscendTestNode(name string) *v1.Node {
 	}
 }
 
-// TestIssue5846_OriginalOrderingBug reproduces the ordering race in issue #5846:
-// When NodeInfo is initialized before Plugin.Init() sets AscendHAMiVNPUEnable,
-// cached nodes lack AscendDevices, and subsequent Clone() overwrites Others with the empty map.
-func TestIssue5846_OriginalOrderingBug(t *testing.T) {
-	// Simulate state before fix: HAMi is not enabled at startup
-	hami.AscendHAMiVNPUEnable = false
-	node := buildAscendTestNode("ascend-node-bug")
-
-	// 1. Informer handler creates NodeInfo before plugin init
-	cachedNode := api.NewNodeInfo(node)
-	assert.Nil(t, cachedNode.Others["Ascend310P"], "pre-condition: cached node lacks Ascend310P devices when HAMi is disabled")
-
-	// 2. Later, a scheduling session runs and sets HAMi enable
-	hami.AscendHAMiVNPUEnable = true
-	defer func() { hami.AscendHAMiVNPUEnable = false }()
-
-	// 3. Cache snapshot clones the cached node
-	clonedNode := cachedNode.Clone()
-
-	// In the original bug, Clone() overwrote Others with CloneOthers() from cachedNode,
-	// so clonedNode.Others["Ascend310P"] remained nil even though HAMi is now enabled.
-	assert.Nil(t, clonedNode.Others["Ascend310P"], "original bug: cloned node still lacks Ascend devices because cached node had none")
+func buildNvidiaVGPUTestNode(name string) *v1.Node {
+	return &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Annotations: map[string]string{
+				deviceconfig.VolcanoVGPURegister: "GPU-test-uuid,1,16384," + vgpu.NvidiaGPUDevice + ",true,hami-core:",
+			},
+		},
+		Status: v1.NodeStatus{
+			Allocatable: v1.ResourceList{
+				v1.ResourceName(deviceconfig.VolcanoVGPUNumber): resource.MustParse("1"),
+				v1.ResourceName(deviceconfig.VolcanoVGPUCores):  resource.MustParse("100"),
+				v1.ResourceName(deviceconfig.VolcanoVGPUMemory): resource.MustParse("16384"),
+			},
+		},
+	}
 }
 
 // TestIssue5846_EarlyPluginInitFix verifies the fix:
@@ -147,6 +143,70 @@ func TestIssue5846_EarlyPluginInitFix(t *testing.T) {
 	dev, ok := clonedNode.Others["Ascend310P"].(api.Devices)
 	assert.True(t, ok, "device in cloned node must implement api.Devices")
 	assert.NotNil(t, dev)
+}
+
+// TestIssue5846_EarlyPluginInitFixNvidiaVGPU verifies that early DeviceShare
+// initialization populates NVIDIA vGPU data before cached nodes are created.
+func TestIssue5846_EarlyPluginInitFixNvidiaVGPU(t *testing.T) {
+	originalVGPUEnabled := vgpu.VGPUEnable
+	originalHAMiEnabled := hami.AscendHAMiVNPUEnable
+	deviceshare.ResetForTesting()
+	vgpu.VGPUEnable = false
+	hami.AscendHAMiVNPUEnable = false
+	t.Cleanup(func() {
+		deviceshare.ResetForTesting()
+		vgpu.VGPUEnable = originalVGPUEnabled
+		hami.AscendHAMiVNPUEnable = originalHAMiEnabled
+	})
+	assert.False(t, vgpu.VGPUEnable, "VGPUEnable must start false before plugin initialization")
+
+	enablePredicate := true
+	sched := &Scheduler{
+		plugins: []conf.Tier{
+			{
+				Plugins: []conf.PluginOption{
+					{
+						Name:             deviceshare.PluginName,
+						EnabledPredicate: &enablePredicate,
+						Arguments: map[string]interface{}{
+							deviceshare.VGPUEnable: true,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	assert.NoError(t, sched.initPlugins())
+	assert.True(t, vgpu.VGPUEnable, "VGPUEnable should be true after initPlugins()")
+
+	cachedNode := api.NewNodeInfo(buildNvidiaVGPUTestNode("nvidia-vgpu-node"))
+	cachedDevices, ok := cachedNode.Others[vgpu.DeviceName].(*vgpu.GPUDevices)
+	if assert.True(t, ok, "cached node must contain NVIDIA vGPU devices") && assert.NotNil(t, cachedDevices) {
+		device, exists := cachedDevices.Device[0]
+		if assert.True(t, exists, "cached NVIDIA vGPU devices must contain the registered GPU") && assert.NotNil(t, device) {
+			assert.Equal(t, "GPU-test-uuid", device.UUID)
+			assert.Equal(t, uint(1), device.Number)
+			assert.Equal(t, uint(16384), device.Memory)
+			assert.Equal(t, vgpu.NvidiaGPUDevice, device.Type)
+			assert.True(t, device.Health)
+		}
+	}
+
+	clonedNode := cachedNode.Clone()
+	clonedDevices, ok := clonedNode.Others[vgpu.DeviceName].(*vgpu.GPUDevices)
+	if assert.True(t, ok, "cloned node must retain NVIDIA vGPU devices") && assert.NotNil(t, clonedDevices) {
+		clonedDevice, exists := clonedDevices.Device[0]
+		if assert.True(t, exists, "cloned NVIDIA vGPU devices must contain the registered GPU") && assert.NotNil(t, clonedDevice) {
+			assert.NotSame(t, cachedDevices, clonedDevices)
+			assert.NotSame(t, cachedDevices.Device[0], clonedDevice)
+			assert.Equal(t, "GPU-test-uuid", clonedDevice.UUID)
+			assert.Equal(t, uint(1), clonedDevice.Number)
+			assert.Equal(t, uint(16384), clonedDevice.Memory)
+			assert.Equal(t, vgpu.NvidiaGPUDevice, clonedDevice.Type)
+			assert.True(t, clonedDevice.Health)
+		}
+	}
 }
 
 // TestIssue5846_DisabledConfiguration verifies that when AscendHAMiVNPUEnable is disabled,
