@@ -148,17 +148,13 @@ func NewReschedulingConfigs() *Configs {
 func (rc *Configs) parseArguments(arguments framework.Arguments) {
 	var intervalStr string
 	var err error
-	if intervalArg, ok := arguments["interval"]; ok {
-		intervalStr = intervalArg.(string)
-	}
+	arguments.GetString(&intervalStr, "interval")
 	rc.interval, err = time.ParseDuration(intervalStr)
 	if err != nil {
 		klog.V(4).Infof("Parse rescheduling interval failed. Reset the interval to 5m by default.")
 		rc.interval = DefaultInterval
 	}
-	if metricsPeriodArg, ok := arguments["metricsPeriod"]; ok {
-		MetricsPeriod = metricsPeriodArg.(string)
-	}
+	arguments.GetString(&MetricsPeriod, "metricsPeriod")
 	if MetricsPeriod == "" {
 		MetricsPeriod = DefaultMetricsPeriod
 	}
