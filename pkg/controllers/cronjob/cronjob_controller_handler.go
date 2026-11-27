@@ -210,6 +210,8 @@ func (cc *cronjobcontroller) processFinishedJobs(cronJob *batchv1.CronJob, jobsB
 			case batchv1.Failed, batchv1.Terminated:
 				// A terminated job did not succeed, so it is pruned with the failed ones
 				failedJobs = append(failedJobs, job)
+			case batchv1.Terminated:
+				failedJobs = append(failedJobs, job)
 			}
 		}
 	}
