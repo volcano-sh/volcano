@@ -15,6 +15,7 @@ package sharding
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -205,4 +206,59 @@ func TestNodeAdditionAndDeletion(t *testing.T) {
 	VerifyAssignment(t, controller, "agent-scheduler", []string{})
 	VerifyAssignmentUpdate(t, controller, "agent-scheduler", []string{}, []string{"initial-node"})
 	VerifyAssignment(t, controller, "volcano-scheduler", []string{"new-node"})
+}
+
+// TestNodeShardStatusSubresourceUpdate tests that status subresource updates persist NodesToAdd and NodesToRemove
+func TestNodeShardStatusSubresourceUpdate(t *testing.T) {
+	opt := &TestControllerOption{
+		ShardSyncPeriod:  2 * time.Second,
+		SchedulerConfigs: getDefaultTestSchedulerConfigs(),
+	}
+
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
+
+	controller := testCtrl.Controller
+
+	node := CreateTestNode("status-node", "8", false, nil)
+	_, err := controller.kubeClient.CoreV1().Nodes().Create(context.TODO(), node, metav1.CreateOptions{})
+	assert.NoError(t, err)
+
+	time.Sleep(300 * time.Millisecond)
+	controller.addNodeEvent(node)
+
+	ForceSyncShards(t, controller, 2*time.Second)
+
+	shard, err := controller.vcClient.ShardV1alpha1().NodeShards().Get(context.TODO(), "volcano-scheduler", metav1.GetOptions{})
+	assert.NoError(t, err)
+	assert.Contains(t, shard.Status.NodesToAdd, "status-node")
+}
+
+// TestBatchedShardingGlobalPolicyEnforcement verifies that large clusters (>50 nodes) preserve global policy limits
+func TestBatchedShardingGlobalPolicyEnforcement(t *testing.T) {
+	spec := SchedulerConfigSpec{
+		Name:              "volcano-capped",
+		Type:              "volcano",
+		MinNodes:          0,
+		MaxNodes:          10,
+		CPUUtilizationMin: 0.0,
+		CPUUtilizationMax: 1.0,
+	}
+	applyPolicyDefaults(&spec)
+	cfg := schedulerConfigFromSpec(spec)
+
+	var nodes []*corev1.Node
+	metrics := make(map[string]*NodeMetrics)
+	for i := 1; i <= 120; i++ {
+		name := fmt.Sprintf("node-%d", i)
+		nodes = append(nodes, nodeWithLabels(name, nil))
+		metrics[name] = &NodeMetrics{NodeName: name, CPUUtilization: 0.1}
+	}
+
+	mgr := NewShardingManager([]SchedulerConfig{cfg}, &stubMetricsProvider{metrics: metrics})
+	assignments, err := mgr.CalculateShardAssignments(nodes, nil)
+	assert.NoError(t, err)
+
+	got := assignments["volcano-capped"].NodesDesired
+	assert.Equal(t, 10, len(got), "should enforce maxNodes cap globally across 120 nodes")
 }
