@@ -18,6 +18,7 @@ package validate
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
@@ -34,6 +35,7 @@ import (
 var (
 	VertexNotDefinedError      = errors.New("vertex is not defined")
 	FlowNotDAGError            = errors.New("jobflow Flow is not DAG")
+	DuplicateFlowNameError     = errors.New("jobflow Flow names must be unique")
 	OperationNotCreateOrUpdate = errors.New("expect operation to be 'CREATE' or 'UPDATE'")
 )
 
@@ -93,30 +95,24 @@ func AdmitJobFlows(ar admissionv1.AdmissionReview) *admissionv1.AdmissionRespons
 
 func validateJobFlowDAG(jobflow *flowv1alpha1.JobFlow, reviewResponse *admissionv1.AdmissionResponse) string {
 	var msg string
+
+	// Reject duplicate flow names before building the graph. Without this
+	// check, duplicate names silently collide as map keys below, and the
+	// JobFlow controller later derives Job names from jobFlowName+flowName,
+	// causing duplicate flows to collapse onto one Job. Completion is then
+	// checked against len(spec.flows), which can never be satisfied by the
+	// smaller number of uniquely-named Jobs actually created, leaving the
+	// JobFlow stuck in Running forever.
+	seen := make(map[string]struct{}, len(jobflow.Spec.Flows))
+	for _, flow := range jobflow.Spec.Flows {
+		if _, ok := seen[flow.Name]; ok {
+			reviewResponse.Allowed = false
+			return fmt.Sprintf("%s: %q", DuplicateFlowNameError.Error(), flow.Name)
+		}
+		seen[flow.Name] = struct{}{}
+	}
+
 	graphMap := make(map[string][]string, len(jobflow.Spec.Flows))
 	for _, flow := range jobflow.Spec.Flows {
 		if flow.DependsOn != nil && len(flow.DependsOn.Targets) > 0 {
-			graphMap[flow.Name] = flow.DependsOn.Targets
-		} else {
-			graphMap[flow.Name] = []string{}
-		}
-	}
-
-	vetexs, err := LoadVertexs(graphMap)
-
-	if err != nil {
-		msg = FlowNotDAGError.Error() + ": " + err.Error()
-		if msg != "" {
-			reviewResponse.Allowed = false
-		}
-		return msg
-	}
-
-	if !IsDAG(vetexs) {
-		msg = FlowNotDAGError.Error()
-		if msg != "" {
-			reviewResponse.Allowed = false
-		}
-	}
-	return msg
-}
+			graphMap[flow.Name] =
