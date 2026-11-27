@@ -188,7 +188,7 @@ var _ = ginkgo.Describe("JobFlow Validating E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Should allow jobflow update with valid DAG structure", func() {
+	ginkgo.It("Should reject jobflow spec update", func() {
 		jobFlowName := "update-valid-jobflow"
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
@@ -218,7 +218,10 @@ var _ = ginkgo.Describe("JobFlow Validating E2E Test", func() {
 		createdJobFlow, err := testCtx.Vcclient.FlowV1alpha1().JobFlows(testCtx.Namespace).Create(context.TODO(), jobFlow, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		// Update with valid DAG structure
+		createdJobFlow.Labels = map[string]string{"test": "true"}
+		createdJobFlow, err = testCtx.Vcclient.FlowV1alpha1().JobFlows(testCtx.Namespace).Update(context.TODO(), createdJobFlow, metav1.UpdateOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
 		createdJobFlow.Spec.Flows = append(createdJobFlow.Spec.Flows, flowv1alpha1.Flow{
 			Name: "c",
 			DependsOn: &flowv1alpha1.DependsOn{
@@ -227,7 +230,8 @@ var _ = ginkgo.Describe("JobFlow Validating E2E Test", func() {
 		})
 
 		_, err = testCtx.Vcclient.FlowV1alpha1().JobFlows(testCtx.Namespace).Update(context.TODO(), createdJobFlow, metav1.UpdateOptions{})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		gomega.Expect(err).To(gomega.HaveOccurred())
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("jobflow spec updates are not supported"))
 	})
 
 	ginkgo.It("Should allow jobflow creation with simple linear dependency chain", func() {
