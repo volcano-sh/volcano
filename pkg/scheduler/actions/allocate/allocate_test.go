@@ -91,6 +91,48 @@ func TestAllocate(t *testing.T) {
 	}
 	tests := []uthelper.TestCommonStruct{
 		{
+			Name: "gang job with an unplaceable BestEffort task binds nothing",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg1", "c1", "c1", 3, nil, schedulingv1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "launcher-0", "", v1.PodPending, v1.ResourceList{}, "pg1", map[string]string{"volcano.sh/task-spec": "launcher"}, map[string]string{"no-such-node": "true"}),
+				util.BuildPod("c1", "worker-0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+				util.BuildPod("c1", "worker-1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("c1", 1, nil),
+			},
+			ExpectBindMap:  map[string]string{},
+			ExpectBindsNum: 0,
+		},
+		{
+			Name: "gang job with a placeable BestEffort task binds every task",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg1", "c1", "c1", 3, nil, schedulingv1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "launcher-0", "", v1.PodPending, v1.ResourceList{}, "pg1", map[string]string{"volcano.sh/task-spec": "launcher"}, nil),
+				util.BuildPod("c1", "worker-0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+				util.BuildPod("c1", "worker-1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("c1", 1, nil),
+			},
+			ExpectBindMap: map[string]string{
+				"c1/launcher-0": "n1",
+				"c1/worker-0":   "n1",
+				"c1/worker-1":   "n1",
+			},
+			ExpectBindsNum: 3,
+		},
+		{
 			Name: "prepredicate failed: node selector does not match",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
