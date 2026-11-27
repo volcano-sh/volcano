@@ -320,9 +320,9 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 				continue
 			}
 
-			// Leave tasks without ordinary requests or DRA claims to backfill.
+			// Leave tasks without ordinary requests or DRA claims to backfill, unless they are part of a gang.
 			// DRA-only tasks still need device allocation and gang checks here.
-			if !task.HasSchedulingResourceRequests() {
+			if !task.HasSchedulingResourceRequests() && subJob.MinAvailable <= 1 {
 				klog.V(4).Infof("Task <%v/%v> has no resource requests or DRA claims, skip it.",
 					task.Namespace, task.Name)
 				continue
@@ -967,6 +967,7 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 	allocatedHyperNode := subJob.AllocatedHyperNode
 	trackHyperNodePlacement := shouldTrackHyperNodePlacement(ssn, subJob)
 	placementAtStart := captureHyperNodePlacement(job, subJob)
+	var unplacedBestEffort int32
 
 	for !tasks.Empty() {
 		task := tasks.Pop().(*api.TaskInfo)
@@ -1000,6 +1001,9 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 			fitErrors := api.NewFitErrors()
 			fitErrors.SetError(msg)
 			job.NodesFitErrors[task.UID] = fitErrors
+			if !task.HasSchedulingResourceRequests() {
+				unplacedBestEffort++
+			}
 			continue
 		}
 
@@ -1012,6 +1016,9 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 				fitErrors.SetNodeError(ni.Name, err)
 			}
 			job.NodesFitErrors[task.UID] = fitErrors
+			if !task.HasSchedulingResourceRequests() {
+				unplacedBestEffort++
+			}
 			if job.NeedContinueAllocating(subJob.UID) {
 				continue
 			}
@@ -1060,6 +1067,9 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 					ssn.AddRejection(job.UID, plugin, unschedulable.RejectionPredicate, task.UID)
 				}
 			}
+			if !task.HasSchedulingResourceRequests() {
+				unplacedBestEffort++
+			}
 			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,
 			// so we should break from continuously allocating.
 			// otherwise, should continue to find other allocatable task
@@ -1089,12 +1099,14 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 			updateJobAllocatedHyperNodeFromSubJob(ssn, job, subJob, allocatedHyperNode)
 		}
 
-		if ssn.SubJobReady(job, subJob) {
+		if ssn.SubJobReady(job, subJob) && (subJob.MinAvailable <= 1 || subJob.PendingBestEffortTaskNum() == unplacedBestEffort) {
 			break
 		}
 	}
 
-	if ssn.SubJobReady(job, subJob) {
+	bestEffortFits := unplacedBestEffort == 0 ||
+		subJob.ReadyTaskNum()+subJob.PendingBestEffortTaskNum()-unplacedBestEffort >= subJob.MinAvailable
+	if bestEffortFits && ssn.SubJobReady(job, subJob) {
 		klog.V(3).InfoS("SubJob ready, return statement", "job", job.UID, "subJob", subJob.UID)
 		if subJob.IsSoftTopologyMode() {
 			subJob.AllocatedHyperNode = allocatedHyperNode
