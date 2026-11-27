@@ -26,16 +26,19 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
 )
 
+const maxRequestBody = 1 << 20 // 1 MiB
+
 var snapshot *api.ClusterInfo
 
 func onSessionOpen(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+	defer r.Body.Close()
+
 	content, err := io.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
 		return
 	}
-
-	r.Body.Close()
 
 	req := &extender.OnSessionOpenRequest{}
 	if err := json.Unmarshal(content, req); err != nil {
@@ -50,6 +53,7 @@ func onSessionOpen(w http.ResponseWriter, r *http.Request) {
 		NamespaceInfo:  req.NamespaceInfo,
 		RevocableNodes: req.RevocableNodes,
 	}
+
 	klog.V(4).Infof("the snapshot of cluster %+v", *snapshot)
 }
 
@@ -58,13 +62,14 @@ func onSessionClose(w http.ResponseWriter, r *http.Request) {
 }
 
 func predicate(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+	defer r.Body.Close()
+
 	content, err := io.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
 		return
 	}
-
-	r.Body.Close()
 
 	req := &extender.PredicateRequest{}
 	if err := json.Unmarshal(content, req); err != nil || req.Task == nil || req.Node == nil {
@@ -77,6 +82,7 @@ func predicate(w http.ResponseWriter, r *http.Request) {
 		resp.ErrorMessage = "Too many tasks on the node"
 		resp.Code = api.Unschedulable
 	}
+
 	response, err := json.Marshal(resp)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -89,13 +95,14 @@ func predicate(w http.ResponseWriter, r *http.Request) {
 }
 
 func prioritize(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+	defer r.Body.Close()
+
 	content, err := io.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
 		return
 	}
-
-	r.Body.Close()
 
 	req := &extender.PrioritizeRequest{}
 	if err := json.Unmarshal(content, req); err != nil || req.Task == nil || len(req.Nodes) == 0 {
@@ -103,7 +110,10 @@ func prioritize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := &extender.PrioritizeResponse{NodeScore: map[string]float64{}}
+	resp := &extender.PrioritizeResponse{
+		NodeScore: map[string]float64{},
+	}
+
 	for i := range req.Nodes {
 		if req.Task.BestEffort && len(req.Nodes[i].Tasks) > 5 {
 			resp.NodeScore[req.Nodes[i].Name] = 0
