@@ -514,6 +514,12 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) {
 		return
 	}
 
+	if ti.UID != "" && task.UID != "" && ti.UID != task.UID {
+		klog.V(5).Infof("skip removing task %s/%s, candidate UID %s does not match stored UID %s",
+			ti.Namespace, ti.Name, ti.UID, task.UID)
+		return
+	}
+
 	if ni.Node != nil {
 		switch task.Status {
 		case Releasing:
