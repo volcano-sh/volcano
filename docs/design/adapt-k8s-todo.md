@@ -53,11 +53,8 @@ The main things that need to be done are as follows:
     - Update `KUBE_VERSION` in Dockerfiles to keep consistent with k8s
     - Update Go version in GitHub Actions workflows if needed
 
-3. **Regenerate main project code**:
-   ```bash
-   bash hack/update-gencode.sh
-   bash hack/verify-gencode.sh  # Verify generated code is up to date
-   ```
+3. **Regenerate code**: all generated API code lives in the staging APIs, so the staging steps above cover it.
+   `make generate-code` and `make verify` run the same staging scripts from the repository root.
 
 4. **VolumeBinding**:
     - Use upstream `k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding` directly (no fork under `pkg/scheduler/capabilities/`). Track kube-scheduler behavior when bumping `k8s.io/kubernetes`.
@@ -125,7 +122,6 @@ After merging the upgrade PR to master, the `sync-apis` workflow will automatica
 
 3. **Upgrade main repository** (in the same branch):
     - Update `go.mod` (main and all subdirectories)
-    - Regenerate code: `bash hack/update-gencode.sh`
     - Fix compilation issues
     - Update build tools and Dockerfiles
 
