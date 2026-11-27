@@ -87,12 +87,20 @@ func maybeFlush(client kubernetes.Interface, cfg persistConfig) {
 		return
 	}
 
-	// lastFlushAt tracks the last *successful* flush, not the last attempt.
-	// Only advance it once flushState actually succeeds, so a transient
-	// failure (e.g. a momentary apiserver error) is retried on the very
-	// next cycle instead of being suppressed for a full flushInterval.
+	// lastFlushAt tracks the last *successful* flush, not the last attempt,
+	// so it is only advanced once flushState actually succeeds. A failed
+	// attempt is recorded separately in lastFlushFailedAt and retried after
+	// flushInterval: flushState runs inline in the scheduling loop and a hung
+	// apiserver call blocks it for the full apiCallTimeout, so retrying on
+	// every cycle would stall every scheduling cycle for as long as the
+	// apiserver stays slow.
+	if time.Since(state.lastFlushFailedAt) < cfg.flushInterval {
+		return
+	}
+
 	if err := flushState(client, cfg); err != nil {
-		klog.Warningf("[fairshare] flush failed: %v", err)
+		klog.Warningf("[fairshare] flush failed, retrying in %s: %v", cfg.flushInterval, err)
+		state.lastFlushFailedAt = time.Now()
 		return
 	}
 

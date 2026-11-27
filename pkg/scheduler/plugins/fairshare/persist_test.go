@@ -50,17 +50,20 @@ func saveAndResetState(t *testing.T) func() {
 	savedLastCycle := state.lastCycle
 	savedPersistenceInitialized := state.persistenceInitialized
 	savedLastFlushAt := state.lastFlushAt
+	savedLastFlushFailedAt := state.lastFlushFailedAt
 
 	state.usage = make(map[string]map[string]float64)
 	state.lastCycle = time.Time{}
 	state.persistenceInitialized = false
 	state.lastFlushAt = time.Time{}
+	state.lastFlushFailedAt = time.Time{}
 
 	return func() {
 		state.usage = savedUsage
 		state.lastCycle = savedLastCycle
 		state.persistenceInitialized = savedPersistenceInitialized
 		state.lastFlushAt = savedLastFlushAt
+		state.lastFlushFailedAt = savedLastFlushFailedAt
 	}
 }
 
@@ -381,34 +384,51 @@ func TestMaybeFlush_FlushesAgainAfterIntervalElapses(t *testing.T) {
 	}
 }
 
-func TestMaybeFlush_FailedFlushDoesNotAdvanceLastFlushAt(t *testing.T) {
+func TestMaybeFlush_FailedFlushBacksOffRetry(t *testing.T) {
 	restore := saveAndResetState(t)
 	defer restore()
 
 	client := fake.NewSimpleClientset()
+	getCalls := 0
 	client.PrependReactor("get", "configmaps", func(action ktesting.Action) (bool, runtime.Object, error) {
-		return true, nil, fmt.Errorf("simulated transient apiserver error")
+		getCalls++
+		return true, nil, fmt.Errorf("simulated apiserver error")
 	})
 	cfg := testPersistConfig()
-	cfg.flushInterval = 1 * time.Hour // long enough that a retry-on-next-call only happens if the failed attempt didn't set lastFlushAt
+	cfg.flushInterval = 300 * time.Millisecond
 
 	state.usage = map[string]map[string]float64{"gpu-queue": {"alice": 100.0}}
 
-	maybeFlush(client, cfg) // fails (simulated), must not advance lastFlushAt
+	maybeFlush(client, cfg) // fails (simulated)
 
+	if getCalls != 1 {
+		t.Fatalf("first maybeFlush: got %d apiserver calls, want 1", getCalls)
+	}
 	if !state.lastFlushAt.IsZero() {
-		t.Error("lastFlushAt should remain zero after a failed flush, so the next call retries promptly")
+		t.Error("lastFlushAt should remain zero after a failed flush: it tracks the last successful flush")
 	}
 
-	// Remove the failing reactor and retry immediately — should succeed
-	// despite the long flushInterval, because the failed attempt never
-	// counted as "due" having been satisfied.
+	// The next scheduling cycle must not hit the apiserver again right away.
+	// A failed attempt that timed out would otherwise stall every cycle for
+	// the full API call timeout.
+	maybeFlush(client, cfg)
+
+	if getCalls != 1 {
+		t.Errorf("maybeFlush right after a failed flush: got %d apiserver calls, want 1 (retry must back off)", getCalls)
+	}
+
+	// Once the backoff has elapsed and the apiserver has recovered, the
+	// flush is retried and succeeds.
 	client.ReactionChain = client.ReactionChain[1:]
+	time.Sleep(cfg.flushInterval + 50*time.Millisecond)
 	maybeFlush(client, cfg)
 
 	if _, err := client.CoreV1().ConfigMaps(cfg.namespace).Get(
 		context.TODO(), cfg.configMapName, metav1.GetOptions{}); err != nil {
-		t.Errorf("expected the retry to succeed and create the ConfigMap, get failed: %v", err)
+		t.Errorf("expected the retry after the backoff to create the ConfigMap, get failed: %v", err)
+	}
+	if state.lastFlushAt.IsZero() {
+		t.Error("lastFlushAt should be set once a flush succeeds")
 	}
 }
 
