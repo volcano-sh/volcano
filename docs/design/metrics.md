@@ -38,6 +38,9 @@ This metrics describe internal state of volcano.
 | `queue_allocated_milli_cpu`            | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Allocated CPU count for one queue             |
 | `queue_allocated_memory_bytes`         | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Allocated memory for one queue                |
 | `queue_allocated_scalar_resources`     | Gauge           | `queue_name`=&lt;queue_name&gt;, `resource`=&lt;resource_name&gt; | Allocated scalar resource for one queue       |
+| `queue_nodegroup_allocated_milli_cpu`  | Gauge           | `queue_name`=&lt;queue_name&gt;, `nodegroup_name`=&lt;nodegroup_name&gt; | Allocated CPU requests in millicores for one queue on one nodegroup |
+| `queue_nodegroup_allocated_memory_bytes` | Gauge         | `queue_name`=&lt;queue_name&gt;, `nodegroup_name`=&lt;nodegroup_name&gt; | Allocated memory requests in bytes for one queue on one nodegroup |
+| `queue_nodegroup_allocated_scalar_resources` | Gauge   | `queue_name`=&lt;queue_name&gt;, `nodegroup_name`=&lt;nodegroup_name&gt;, `resource`=&lt;resource_name&gt; | Allocated scalar resource requests for one queue on one nodegroup |
 | `queue_request_milli_cpu`              | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Requested CPU count for one queue             |
 | `queue_request_memory_bytes`           | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Requested memory for one queue                |
 | `queue_request_scalar_resources`       | Gauge           | `queue_name`=&lt;queue_name&gt;, `resource`=&lt;resource_name&gt; | Requested scalar resource for one queue       |
@@ -68,6 +71,8 @@ This metrics describe internal state of volcano.
 | `job_retry_counts`                     | Counter         | `job_id`=&lt;job_id&gt;                                           | The number of retry counts for one job        |
 | `job_completed_phase_count`            | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job completed phase             |
 | `job_failed_phase_count`               | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job failed phase                |
+
+The `queue_nodegroup_allocated_*` metrics are reconciled by the `nodegroup` plugin at the end of each scheduling session, updating only changed values and reflecting the session's allocation and deallocation events. They report Pod resource requests for allocated tasks directly assigned to the queue, grouped by the assigned node's `volcano.sh/nodegroup-name` label; they do not report actual node utilization. Scalar values use the same units as `queue_allocated_scalar_resources`. Missing Queue/NodeGroup pairs and scalar resource names are removed at the next reconciliation. All series for a Queue are removed when it is deleted. Removing the `nodegroup` plugin via configuration reload stops reconciliation and leaves its metrics at their last published values until the scheduler restarts, the plugin is re-enabled, or the Queue is deleted.
 
 ### volcano agent scheduler related metrics
 
