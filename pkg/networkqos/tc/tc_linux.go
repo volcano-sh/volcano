@@ -19,6 +19,8 @@ package tc
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/vishvananda/netlink"
@@ -89,29 +91,75 @@ func (t *TCCmd) AddFilter(netns, ifName string) error {
 			return fmt.Errorf("failed to lookup device on ns:ifName(%s:%s): %v", netns, ifName, err)
 		}
 
-		fq := &netlink.Fq{
-			QdiscAttrs: netlink.QdiscAttrs{
-				LinkIndex: link.Attrs().Index,
-				Parent:    netlink.HANDLE_ROOT,
-			},
-			Pacing: 1,
+		existing, err := listExistingQdiscs(link)
+		if err != nil {
+			return fmt.Errorf("failed to list qdiscs on ns:ifName(%s:%s): %v", netns, ifName, err)
 		}
-		if err = netlink.QdiscAdd(fq); err != nil {
-			return fmt.Errorf("failed to create fq qdisc ns:ifName(%s:%s): %v", netns, ifName, err)
-		}
-		klog.InfoS("Successfully added qdisc", "type", QdiscTypeFq, "netns", netns, "ifName", ifName)
 
-		clsact := &netlink.GenericQdisc{
-			QdiscAttrs: netlink.QdiscAttrs{
-				LinkIndex: link.Attrs().Index,
-				Parent:    netlink.HANDLE_CLSACT,
-			},
-			QdiscType: QdiscTypeClsact,
+		// PreAddFilter accepts an interface that already has a root fq qdisc
+		// or a clsact qdisc, so reuse them here instead of failing with EEXIST.
+		// Only the qdiscs created by this call are rolled back on failure, so a
+		// partial failure never leaves state behind that breaks the next ADD,
+		// and qdiscs installed by someone else are never removed.
+		var created []netlink.Qdisc
+		success := false
+		defer func() {
+			if success {
+				return
+			}
+			for i := len(created) - 1; i >= 0; i-- {
+				if delErr := netlink.QdiscDel(created[i]); delErr != nil {
+					klog.ErrorS(delErr, "Failed to roll back qdisc", "type", created[i].Type(), "netns", netns, "ifName", ifName)
+				}
+			}
+		}()
+
+		if existing.rootFq {
+			klog.InfoS("Root fq qdisc already exists, reusing it", "netns", netns, "ifName", ifName)
+		} else {
+			fq := &netlink.Fq{
+				QdiscAttrs: netlink.QdiscAttrs{
+					LinkIndex: link.Attrs().Index,
+					Parent:    netlink.HANDLE_ROOT,
+				},
+				Pacing: 1,
+			}
+			if err = netlink.QdiscAdd(fq); err != nil {
+				return fmt.Errorf("failed to create fq qdisc ns:ifName(%s:%s): %v", netns, ifName, err)
+			}
+			created = append(created, fq)
+			klog.InfoS("Successfully added qdisc", "type", QdiscTypeFq, "netns", netns, "ifName", ifName)
 		}
-		if err = netlink.QdiscAdd(clsact); err != nil {
-			return fmt.Errorf("failed to create clsact qdisc on ns:ifName(%s:%s): %v", netns, ifName, err)
+
+		if existing.clsact {
+			klog.InfoS("Clsact qdisc already exists, reusing it", "netns", netns, "ifName", ifName)
+		} else {
+			clsact := &netlink.GenericQdisc{
+				QdiscAttrs: netlink.QdiscAttrs{
+					LinkIndex: link.Attrs().Index,
+					Parent:    netlink.HANDLE_CLSACT,
+				},
+				QdiscType: QdiscTypeClsact,
+			}
+			if err = netlink.QdiscAdd(clsact); err != nil {
+				return fmt.Errorf("failed to create clsact qdisc on ns:ifName(%s:%s): %v", netns, ifName, err)
+			}
+			created = append(created, clsact)
+			klog.InfoS("Successfully added qdisc", "type", QdiscTypeClsact, "netns", netns, "ifName", ifName)
 		}
-		klog.InfoS("Successfully added qdisc", "type", QdiscTypeClsact, "netns", netns, "ifName", ifName)
+
+		// Do not attach the program a second time if a previous ADD already did.
+		if existing.clsact {
+			attached, err := hasNetworkQoSFilter(link)
+			if err != nil {
+				return fmt.Errorf("failed to list egress filters on ns:ifName(%s:%s): %v", netns, ifName, err)
+			}
+			if attached {
+				klog.InfoS("Network qos egress filter already attached", "ebpf-obj", utils.TCPROGPath, "netns", netns, "ifName", ifName)
+				success = true
+				return nil
+			}
+		}
 
 		filterCmd := fmt.Sprintf("tc filter add dev %s egress bpf direct-action obj %s sec tc", ifName, utils.TCPROGPath)
 		ctx, cancel := context.WithTimeout(context.Background(), CmdTimeout)
@@ -121,10 +169,52 @@ func (t *TCCmd) AddFilter(netns, ifName string) error {
 			return fmt.Errorf("add dev on ns:ifName(%s:%s) failed : %v, %s, %s", netns, ifName, err, output, filterCmd)
 		}
 		klog.InfoS("Successfully added filter", "ebpf-obj", utils.TCPROGPath, "netns", netns, "ifName", ifName)
+		success = true
 		return nil
 	})
 
 	return addErr
+}
+
+// existingQdiscs records which of the qdiscs needed by network qos are
+// already installed on a link.
+type existingQdiscs struct {
+	rootFq bool
+	clsact bool
+}
+
+func listExistingQdiscs(link netlink.Link) (existingQdiscs, error) {
+	var result existingQdiscs
+	qdiscs, err := netlink.QdiscList(link)
+	if err != nil {
+		return result, err
+	}
+	for _, qdisc := range qdiscs {
+		switch {
+		case qdisc.Attrs().Parent == netlink.HANDLE_ROOT && qdisc.Type() == QdiscTypeFq:
+			result.rootFq = true
+		case qdisc.Attrs().Parent == netlink.HANDLE_CLSACT && qdisc.Type() == QdiscTypeClsact:
+			result.clsact = true
+		}
+	}
+	return result, nil
+}
+
+// hasNetworkQoSFilter reports whether the network qos bpf program is already
+// attached to the egress hook of link. tc names a bpf filter loaded from an
+// object file "<file name>:[<section>]".
+func hasNetworkQoSFilter(link netlink.Link) (bool, error) {
+	filters, err := netlink.FilterList(link, netlink.HANDLE_MIN_EGRESS)
+	if err != nil {
+		return false, err
+	}
+	prefix := filepath.Base(utils.TCPROGPath) + ":"
+	for _, f := range filters {
+		if bpf, ok := f.(*netlink.BpfFilter); ok && strings.HasPrefix(bpf.Name, prefix) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (t *TCCmd) RemoveFilter(netns, ifName string) error {
