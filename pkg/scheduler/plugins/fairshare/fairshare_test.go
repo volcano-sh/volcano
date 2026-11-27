@@ -297,6 +297,51 @@ func TestDecayAllUsage_CleansUpNegligible(t *testing.T) {
 	}
 }
 
+func TestDecayAllUsage_RemovesFullyDecayedQueues(t *testing.T) {
+	oldUsage := state.usage
+	defer func() { state.usage = oldUsage }()
+
+	state.usage = map[string]map[string]float64{
+		"deleted-queue": {"alice": 0.005, "bob": 0.001},
+		"mixed-queue":   {"carol": 0.005, "dave": 1000.0},
+		"empty-queue":   {},
+	}
+	decayAllUsage(1*time.Hour, 1*time.Hour)
+
+	if _, exists := state.usage["deleted-queue"]; exists {
+		t.Error("a queue whose namespaces all decayed away should be removed")
+	}
+	if _, exists := state.usage["empty-queue"]; exists {
+		t.Error("an already empty queue should be removed")
+	}
+	mixed, exists := state.usage["mixed-queue"]
+	if !exists {
+		t.Fatal("a queue with remaining usage must be kept")
+	}
+	if _, exists := mixed["carol"]; exists {
+		t.Error("negligible namespace usage should still be cleaned up")
+	}
+	if math.Abs(mixed["dave"]-500.0) > 0.01 {
+		t.Errorf("dave: got %.2f, want 500.0", mixed["dave"])
+	}
+}
+
+func TestDecayAllUsage_RemovedQueueIsRecreatedOnNewUsage(t *testing.T) {
+	oldUsage := state.usage
+	defer func() { state.usage = oldUsage }()
+
+	state.usage = map[string]map[string]float64{"q": {"ns": 0.001}}
+	decayAllUsage(1*time.Hour, 1*time.Hour)
+	if _, exists := state.usage["q"]; exists {
+		t.Fatal("expected fully decayed queue to be removed")
+	}
+
+	ensureGlobalQueueUsage("q")["ns"] += 42
+	if got := state.usage["q"]["ns"]; got != 42 {
+		t.Errorf("usage after recreation: got %.2f, want 42", got)
+	}
+}
+
 func TestDecayAllUsage_MultipleQueues(t *testing.T) {
 	oldUsage := state.usage
 	state.usage = map[string]map[string]float64{

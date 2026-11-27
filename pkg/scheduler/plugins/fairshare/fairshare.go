@@ -480,7 +480,7 @@ func decayAllUsage(elapsed, halfLife time.Duration) {
 	}
 	factor := math.Pow(2.0, -elapsed.Seconds()/halfLife.Seconds())
 
-	for _, namespaces := range state.usage {
+	for queueName, namespaces := range state.usage {
 		for namespace, usage := range namespaces {
 			decayed := usage * factor
 			if decayed < usageCleanupThreshold {
@@ -488,6 +488,13 @@ func decayAllUsage(elapsed, halfLife time.Duration) {
 			} else {
 				namespaces[namespace] = decayed
 			}
+		}
+		// Drop a queue whose usage has fully decayed, so queues that were
+		// deleted or removed from targetQueues do not stay in memory and in
+		// the persisted ConfigMap forever. ensureGlobalQueueUsage recreates
+		// the entry the next time the queue accrues usage.
+		if len(namespaces) == 0 {
+			delete(state.usage, queueName)
 		}
 	}
 }
