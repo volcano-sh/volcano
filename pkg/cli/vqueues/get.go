@@ -93,6 +93,9 @@ func ListQueue() error {
 
 // PrintQueues prints queue information.
 func PrintQueues(queues *v1beta1.QueueList, writer io.Writer) {
+	if queues == nil || writer == nil {
+		return
+	}
 	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s\n",
 		Name, Weight, State, Inqueue, Pending, Running, Unknown)
 	if err != nil {
@@ -133,6 +136,9 @@ func GetQueue(ctx context.Context) error {
 
 // PrintQueue prints queue information.
 func PrintQueue(queue *v1beta1.Queue, writer io.Writer) {
+	if queue == nil || writer == nil {
+		return
+	}
 	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s\n",
 		Name, Weight, State, Inqueue, Pending, Running, Unknown)
 	if err != nil {
