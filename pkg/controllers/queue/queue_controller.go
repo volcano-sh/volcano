@@ -118,6 +118,9 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 	c.queueSynced = queueInformer.Informer().HasSynced
 	c.pgLister = pgInformer.Lister()
 	c.pgSynced = pgInformer.Informer().HasSynced
+	if err := c.initPodGroupIndexers(); err != nil {
+		return fmt.Errorf("failed to init PodGroup indexers: %v", err)
+	}
 	c.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[*apis.Request]())
 	c.commandQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[*busv1alpha1.Command]())
 	c.podGroups = make(map[string]map[string]struct{})
