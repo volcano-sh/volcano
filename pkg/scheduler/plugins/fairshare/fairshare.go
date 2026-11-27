@@ -68,7 +68,8 @@ type fairShareProcessState struct {
 	lastCycle time.Time
 
 	persistenceInitialized bool
-	lastFlushAt            time.Time
+	lastFlushAt            time.Time // last successful flush
+	lastFlushFailedAt      time.Time // last failed flush attempt
 }
 
 var state = &fairShareProcessState{

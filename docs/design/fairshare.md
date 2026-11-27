@@ -281,7 +281,8 @@ type fairShareProcessState struct {
     lastCycle time.Time
 
     persistenceInitialized bool
-    lastFlushAt            time.Time
+    lastFlushAt            time.Time // last successful flush
+    lastFlushFailedAt      time.Time // last failed flush attempt
 }
 ```
 
@@ -304,7 +305,9 @@ When `fairshare.persistState` is set to `"true"`:
    optimistic concurrency. Tying the flush to the session lifecycle rather than a
    detached goroutine+ticker means persistence stops the moment the plugin stops being
    invoked (e.g. removed from the tier list via a config hot-reload) — a ticker would
-   otherwise keep writing stale state forever with no shutdown hook.
+   otherwise keep writing stale state forever with no shutdown hook. A failed flush is
+   retried after `flushIntervalSeconds` rather than on every cycle, because the flush runs
+   inline in the scheduling loop and a hung apiserver call would otherwise stall every cycle.
 3. On restart, the loaded `state.lastCycle` is used to compute the elapsed time and apply
    the correct decay, so namespaces are not unfairly penalized or forgiven by the downtime.
 
@@ -363,7 +366,7 @@ data:
 - `targetQueues` allowlist behavior (defaults to all queues when unset, restricts to the allowlist when set)
 - Enqueue gate through the real `enqueue` action: a namespace at/above its share is held back whether or not its pending jobs already have pods (`jobTotalResource` and pending demand fall back to `PodGroup.Spec.MinResources` for jobs whose pods have not been created yet, such as vcjobs)
 - `shouldAbstainOrdering` (abstains unless both jobs are in the same targeted queue)
-- A failed persistence flush is retried on the next cycle instead of waiting a full `flushIntervalSeconds`
+- A failed persistence flush is not retried until `flushIntervalSeconds` has elapsed, and is then retried
 - Persistence: flush creates ConfigMap, flush updates existing, load populates globals,
   load handles missing ConfigMap, load handles empty data, flush→load round-trip,
   disabled persistence is no-op, corrupt JSON returns error
