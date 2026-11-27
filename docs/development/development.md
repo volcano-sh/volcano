@@ -125,6 +125,13 @@ export VC_BIN=<path-to-vcctl-binary> (e.g., .../src/volcano.sh/volcano/_output/b
 KUBECONFIG=${KUBECONFIG} go test ./test/e2e
 ```
 
+The kind `SCHEDULINGBASE` and `ALL` suites install the CSI hostpath driver for
+the volume restriction tests. To run these tests on an existing cluster, set
+`VOLUME_RESTRICTIONS_STORAGE_CLASS` to an RWOP-capable CSI StorageClass. For a
+disposable test cluster, `bash hack/install-csi-hostpath.sh` installs the pinned
+upstream driver and the `csi-hostpath-sc` class. An explicitly configured class
+that is missing fails the tests instead of skipping them.
+
 ## Auto-Formatting Source Code
 
 You can automatically format the source code to follow our conventions by going to the top of the repo and entering:

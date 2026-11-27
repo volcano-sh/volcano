@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
@@ -106,6 +107,57 @@ func TestSnapshot(t *testing.T) {
 				t.Fatalf("unexpected NodeInfos list value\ngot:  %+v\nwant: %+v\nerr: %v", nodeInfos, tc.expectedNodeInfos, err)
 			}
 		})
+	}
+}
+
+func TestSnapshotIsPVCUsedByPods(t *testing.T) {
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "pod",
+			UID:       "pod",
+		},
+		Spec: v1.PodSpec{
+			NodeName: "node-1",
+			Volumes: []v1.Volume{
+				{
+					Name: "data",
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "data",
+						},
+					},
+				},
+			},
+		},
+	}
+	nodeInfo := framework.NewNodeInfo(pod)
+	nodeInfo.SetNode(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}})
+	snapshot := NewSnapshot(map[string]fwk.NodeInfo{"node-1": nodeInfo})
+
+	tests := []struct {
+		name string
+		key  string
+		want bool
+	}{
+		{name: "used claim", key: "default/data", want: true},
+		{name: "another namespace", key: "other/data"},
+		{name: "unused claim", key: "default/unused"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := snapshot.IsPVCUsedByPods(tc.key); got != tc.want {
+				t.Errorf("IsPVCUsedByPods(%q) = %t, want %t", tc.key, got, tc.want)
+			}
+		})
+	}
+
+	if err := nodeInfo.RemovePod(klog.Background(), pod); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.IsPVCUsedByPods("default/data") {
+		t.Error("claim still in use after its last consumer was removed")
 	}
 }
 

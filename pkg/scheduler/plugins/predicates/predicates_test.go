@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	apiv1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -46,6 +47,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumerestrictions"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -432,6 +434,328 @@ func TestPodAntiAffinity(t *testing.T) {
 	}
 }
 
+func TestReadWriteOncePodPreemption(t *testing.T) {
+	const (
+		namespace = "ns1"
+		claimName = "data"
+		nodeName  = "node1"
+	)
+
+	pvc := &apiv1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: claimName},
+		Spec: apiv1.PersistentVolumeClaimSpec{
+			AccessModes: []apiv1.PersistentVolumeAccessMode{apiv1.ReadWriteOncePod},
+		},
+	}
+	preempteePod := util.BuildPodWithPVC(namespace, "preemptee", nodeName, apiv1.PodRunning,
+		api.BuildResourceList("1", "1G"), pvc, "pg1", nil, nil)
+	preemptorPod := util.BuildPodWithPVC(namespace, "preemptor", "", apiv1.PodPending,
+		api.BuildResourceList("1", "1G"), pvc, "pg2", nil, nil)
+
+	test := uthelper.TestCommonStruct{
+		Name:    "preempt pod using ReadWriteOncePod PVC",
+		Plugins: map[string]framework.PluginBuilder{PluginName: New},
+		Pods:    []*apiv1.Pod{preempteePod, preemptorPod},
+		Nodes: []*apiv1.Node{
+			util.BuildNode(nodeName, api.BuildResourceList("2", "2G", api.ScalarResource{Name: "pods", Value: "10"}), nil),
+		},
+		PodGroups: []*schedulingv1beta1.PodGroup{
+			util.BuildPodGroup("pg1", namespace, "q1", 0, nil, schedulingv1beta1.PodGroupRunning),
+			util.BuildPodGroup("pg2", namespace, "q1", 1, nil, schedulingv1beta1.PodGroupInqueue),
+		},
+		Queues: []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, api.BuildResourceList("2", "2G"))},
+		PVCs:   []*apiv1.PersistentVolumeClaim{pvc},
+	}
+
+	enabled := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledPredicate:   &enabled,
+					EnabledPreemptable: &enabled,
+					Arguments: map[string]interface{}{
+						NodeVolumeLimitsEnable: false,
+						VolumeBindingEnable:    false,
+						VolumeZoneEnable:       false,
+					},
+				},
+			},
+		},
+	}
+
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	ctx := context.Background()
+	preemptee := api.NewTaskInfo(preempteePod)
+	preemptor := api.NewTaskInfo(preemptorPod)
+	state := ssn.GetCycleState(preemptor.UID)
+	nodeInfo := ssn.Nodes[nodeName]
+
+	require.NoError(t, ssn.PrePredicateFn(preemptor))
+	require.Error(t, ssn.SimulatePredicateFn(ctx, state, preemptor, nodeInfo), "expected RWOP conflict before removing preemptee")
+
+	require.NoError(t, ssn.SimulateRemoveTaskFn(ctx, state, preemptor, preemptee, nodeInfo))
+	nodeInfo.RemoveTask(preemptee)
+	require.NoError(t, ssn.SimulatePredicateFn(ctx, state, preemptor, nodeInfo), "expected preemptor to fit after removing RWOP holder")
+
+	require.NoError(t, ssn.SimulateAddTaskFn(ctx, state, preemptor, preemptee, nodeInfo))
+	require.NoError(t, nodeInfo.AddTask(preemptee))
+	assert.Error(t, ssn.SimulatePredicateFn(ctx, state, preemptor, nodeInfo), "expected RWOP conflict after adding preemptee back")
+}
+
+func TestSimulatePredicates(t *testing.T) {
+	type constraintKind int
+	const (
+		constraintPodAntiAffinity constraintKind = iota
+		constraintTopologySpread
+		constraintHostPort
+		constraintRWOP
+	)
+
+	tests := []struct {
+		name       string
+		constraint constraintKind
+		protected  bool
+		wantVictim bool
+	}{
+		{
+			name:       "topology spread removes matching victim and reprieves unrelated pod",
+			constraint: constraintTopologySpread,
+			wantVictim: true,
+		},
+		{
+			name:       "pod anti affinity removes matching victim and reprieves unrelated pod",
+			constraint: constraintPodAntiAffinity,
+			wantVictim: true,
+		},
+		{
+			name:       "RWOP removes holder and reprieves unrelated pod",
+			constraint: constraintRWOP,
+			wantVictim: true,
+		},
+		{
+			name:       "host port removes matching victim and reprieves unrelated pod",
+			constraint: constraintHostPort,
+			wantVictim: true,
+		},
+		{
+			name:       "topology spread remains blocked by an equal priority job",
+			constraint: constraintTopologySpread,
+			protected:  true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			low := util.BuildPriorityClass("low", 10)
+			medium := util.BuildPriorityClass("medium", 20)
+			high := util.BuildPriorityClass("high", 100)
+			labels := map[string]string{"role": "worker"}
+			requests := api.BuildResourceList("1", "1G")
+
+			unrelated := util.BuildPodWithPriority("ns1", "unrelated", "n1", apiv1.PodRunning, requests, "existing", nil, nil, &low.Value)
+			victim := util.BuildPodWithPriority("ns1", "victim", "n1", apiv1.PodRunning, requests, "existing", labels, nil, &medium.Value)
+			incoming := util.BuildPodWithPriority("ns1", "incoming", "", apiv1.PodPending, requests, "incoming", labels, nil, &high.Value)
+
+			var pvcs []*apiv1.PersistentVolumeClaim
+			switch tc.constraint {
+			case constraintRWOP:
+				pvcs = []*apiv1.PersistentVolumeClaim{
+					{
+						ObjectMeta: metav1.ObjectMeta{Namespace: "ns1", Name: "data"},
+						Spec: apiv1.PersistentVolumeClaimSpec{
+							AccessModes: []apiv1.PersistentVolumeAccessMode{apiv1.ReadWriteOncePod},
+						},
+					},
+				}
+				volumes := []apiv1.Volume{
+					{
+						Name: "data",
+						VolumeSource: apiv1.VolumeSource{
+							PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{ClaimName: "data"},
+						},
+					},
+				}
+				victim.Spec.Volumes = volumes
+				incoming.Spec.Volumes = volumes
+			case constraintHostPort:
+				ports := []apiv1.ContainerPort{{ContainerPort: 8080, HostPort: 8080, Protocol: apiv1.ProtocolTCP}}
+				victim.Spec.Containers[0].Ports = ports
+				incoming.Spec.Containers[0].Ports = ports
+			case constraintTopologySpread:
+				// One eligible domain with minDomains=2 makes the global minimum zero,
+				// so the incoming pod fits only after the matching victim is removed.
+				minDomains := int32(2)
+				incoming.Spec.TopologySpreadConstraints = []apiv1.TopologySpreadConstraint{
+					{
+						MaxSkew:           1,
+						MinDomains:        &minDomains,
+						TopologyKey:       apiv1.LabelHostname,
+						WhenUnsatisfiable: apiv1.DoNotSchedule,
+						LabelSelector:     &metav1.LabelSelector{MatchLabels: labels},
+					},
+				}
+			case constraintPodAntiAffinity:
+				incoming.Spec.Affinity = getWorkerAffinity()
+			}
+
+			pods := []*apiv1.Pod{unrelated, victim, incoming}
+			if tc.protected {
+				pods = append(pods, util.BuildPodWithPriority("ns1", "protected", "n1", apiv1.PodRunning, requests, "protected", labels, nil, &high.Value))
+			}
+
+			test := uthelper.TestCommonStruct{
+				Plugins: map[string]framework.PluginBuilder{
+					PluginName:          New,
+					priority.PluginName: priority.New,
+				},
+				Pods: pods,
+				PVCs: pvcs,
+				Nodes: []*apiv1.Node{
+					util.BuildNode("n1", api.BuildResourceList("10", "10G", api.ScalarResource{Name: "pods", Value: "10"}), map[string]string{apiv1.LabelHostname: "n1"}),
+				},
+				PriClass: []*schedulingv1.PriorityClass{low, medium, high},
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					util.BuildPodGroupWithPrio("existing", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning, low.Name),
+					util.BuildPodGroupWithPrio("incoming", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, high.Name),
+					util.BuildPodGroupWithPrio("protected", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning, high.Name),
+				},
+				Queues: []*schedulingv1beta1.Queue{util.BuildQueue("q1", 1, nil)},
+			}
+			if tc.wantVictim {
+				test.ExpectEvicted = []string{"ns1/victim"}
+				test.ExpectEvictNum = 1
+				test.ExpectPipeLined = map[string][]string{"ns1/incoming": {"n1"}}
+			}
+
+			enabled := true
+			tiers := []conf.Tier{
+				{
+					Plugins: []conf.PluginOption{
+						{
+							Name:               PluginName,
+							EnabledPredicate:   &enabled,
+							EnabledPreemptable: &enabled,
+							Arguments: framework.Arguments{
+								NodeVolumeLimitsEnable: false,
+								VolumeBindingEnable:    false,
+								VolumeZoneEnable:       false,
+							},
+						},
+						{
+							Name:               priority.PluginName,
+							EnabledPreemptable: &enabled,
+							EnabledJobStarving: &enabled,
+							EnabledTaskOrder:   &enabled,
+							EnabledJobOrder:    &enabled,
+						},
+					},
+				},
+			}
+			configurations := []conf.Configuration{
+				{
+					Name:      "preempt",
+					Arguments: framework.Arguments{preempt.EnableTopologyAwarePreemptionKey: true},
+				},
+			}
+
+			test.RegisterSession(tiers, configurations)
+			defer test.Close()
+			test.Run([]framework.Action{preempt.New()})
+			require.NoError(t, test.CheckAll(0))
+		})
+	}
+}
+
+func TestSimulateFilterDispatch(t *testing.T) {
+	ResetVolumeBindingPluginForTest()
+	defer ResetVolumeBindingPluginForTest()
+
+	var pp *PredicatesPlugin
+	fixture := uthelper.TestCommonStruct{
+		Plugins: map[string]framework.PluginBuilder{
+			PluginName: func(args framework.Arguments) framework.Plugin {
+				pp = New(args).(*PredicatesPlugin)
+				return pp
+			},
+		},
+		Nodes: []*apiv1.Node{util.BuildNode("node", api.BuildResourceList("10", "10Gi"), nil)},
+	}
+
+	enabled := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{Name: PluginName, EnabledPredicate: &enabled},
+			},
+		},
+	}
+	ssn := fixture.RegisterSession(tiers, nil)
+	defer fixture.Close()
+
+	expectedOrder := []string{
+		nodeports.Name,
+		interpodaffinity.Name,
+		nodevolumelimits.CSIName,
+		volumerestrictions.Name,
+		podtopologyspread.Name,
+		dynamicresources.Name,
+	}
+	assert.Equal(t, expectedOrder, pp.SimulateFilterOrder)
+
+	task := api.NewTaskInfo(util.BuildPod("default", "incoming", "", apiv1.PodPending, nil, "job", nil, nil))
+	simulated := sets.New(pp.SimulateFilterOrder...)
+
+	tests := []struct {
+		name    string
+		skipDRA bool
+	}{
+		{name: "DRA rejection is preserved"},
+		{name: "PreFilter Skip is respected", skipDRA: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			trackers := make(map[string]*fakeTrackingFilterPlugin, len(pp.FilterOrder))
+			for _, name := range pp.FilterOrder {
+				tracker := &fakeTrackingFilterPlugin{name: name}
+				trackers[name] = tracker
+				pp.FilterPlugins[name] = tracker
+			}
+			pp.FilterPlugins[dynamicresources.Name] = &fakeFilterPlugin{
+				name:    dynamicresources.Name,
+				message: "claim unavailable",
+			}
+
+			state := schedframework.NewCycleState()
+			if tc.skipDRA {
+				state.SetSkipFilterPlugins(sets.New(dynamicresources.Name))
+			}
+
+			err := ssn.SimulatePredicateFn(context.Background(), state, task, ssn.Nodes["node"])
+			if tc.skipDRA {
+				assert.NoError(t, err)
+			} else {
+				assert.ErrorContains(t, err, "claim unavailable")
+			}
+
+			for name, tracker := range trackers {
+				if name == dynamicresources.Name {
+					continue
+				}
+				wantCalls := 0
+				if simulated.Has(name) {
+					wantCalls = 1
+				}
+				assert.Equal(t, wantCalls, tracker.callCount, name)
+			}
+		})
+	}
+}
+
 func TestSetUpDynamicResourcesArgs_Default(t *testing.T) {
 	dra := defaultDynamicResourcesArgs()
 	setUpDynamicResourcesArgs(dra, nil)
@@ -473,32 +797,39 @@ func TestSetUpDynamicResourcesArgs_OverideSeconds(t *testing.T) {
 
 func TestInitPlugin(t *testing.T) {
 	tests := []struct {
-		name                    string
-		enableNodeAffinity      bool
-		enableNodePorts         bool
-		enableTaintToleration   bool
-		enablePodAffinity       bool
-		enableNodeVolumeLimits  bool
-		enableVolumeZone        bool
-		enablePodTopologySpread bool
-		enableVolumeBinding     bool
-		enableDRA               bool
-		enableNodeDeclaredFeat  bool
-		expectInFilter          []string
-		expectInStableFilter    []string
-		expectInPrefilter       []string
-		expectInPreScore        []string
-		expectInReserve         []string
-		expectInPreBind         []string
-		expectInScore           []string
-		expectNotInFilter       []string
-		expectNotInStableFilter []string
-		expectNotInPrefilter    []string
-		expectNotInPreScore     []string
-		expectNotInReserve      []string
-		expectNotInPreBind      []string
-		expectNotInScore        []string
+		name                      string
+		disableVolumeRestrictions bool
+		enableNodeAffinity        bool
+		enableNodePorts           bool
+		enableTaintToleration     bool
+		enablePodAffinity         bool
+		enableNodeVolumeLimits    bool
+		enableVolumeZone          bool
+		enablePodTopologySpread   bool
+		enableVolumeBinding       bool
+		enableDRA                 bool
+		enableNodeDeclaredFeat    bool
+		expectInFilter            []string
+		expectInStableFilter      []string
+		expectInPrefilter         []string
+		expectInPreScore          []string
+		expectInReserve           []string
+		expectInPreBind           []string
+		expectInScore             []string
+		expectNotInFilter         []string
+		expectNotInStableFilter   []string
+		expectNotInPrefilter      []string
+		expectNotInPreScore       []string
+		expectNotInReserve        []string
+		expectNotInPreBind        []string
+		expectNotInScore          []string
 	}{
+		{
+			name:                      "volume restrictions disabled",
+			disableVolumeRestrictions: true,
+			expectNotInFilter:         []string{volumerestrictions.Name},
+			expectNotInPrefilter:      []string{volumerestrictions.Name},
+		},
 		{
 			name:                    "all default plugins enabled without volume binding and dra",
 			enableNodeAffinity:      true,
@@ -510,9 +841,9 @@ func TestInitPlugin(t *testing.T) {
 			enablePodTopologySpread: true,
 			enableVolumeBinding:     false,
 			enableDRA:               false,
-			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumezone.Name, podtopologyspread.Name},
+			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumerestrictions.Name, volumezone.Name, podtopologyspread.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
-			expectInPrefilter:       []string{nodeaffinity.Name, nodeports.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumezone.Name, podtopologyspread.Name},
+			expectInPrefilter:       []string{nodeaffinity.Name, nodeports.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumerestrictions.Name, volumezone.Name, podtopologyspread.Name},
 			expectNotInPreScore:     []string{volumebinding.Name, dynamicresources.Name},
 			expectInReserve:         []string{},
 			expectInPreBind:         []string{},
@@ -535,9 +866,9 @@ func TestInitPlugin(t *testing.T) {
 			enablePodTopologySpread: false,
 			enableVolumeBinding:     true,
 			enableDRA:               false,
-			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, volumebinding.Name},
+			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, volumerestrictions.Name, volumebinding.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
-			expectInPrefilter:       []string{volumebinding.Name},
+			expectInPrefilter:       []string{volumerestrictions.Name, volumebinding.Name},
 			expectInPreScore:        []string{volumebinding.Name},
 			expectNotInPreScore:     []string{dynamicresources.Name},
 			expectInReserve:         []string{volumebinding.Name},
@@ -558,9 +889,9 @@ func TestInitPlugin(t *testing.T) {
 			enablePodTopologySpread: false,
 			enableVolumeBinding:     false,
 			enableDRA:               true,
-			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, dynamicresources.Name},
+			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name, volumerestrictions.Name, dynamicresources.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
-			expectInPrefilter:       []string{nodeaffinity.Name, dynamicresources.Name},
+			expectInPrefilter:       []string{nodeaffinity.Name, volumerestrictions.Name, dynamicresources.Name},
 			expectNotInPreScore:     []string{volumebinding.Name, dynamicresources.Name},
 			expectInReserve:         []string{dynamicresources.Name},
 			expectInPreBind:         []string{dynamicresources.Name},
@@ -581,9 +912,9 @@ func TestInitPlugin(t *testing.T) {
 			enablePodTopologySpread: true,
 			enableVolumeBinding:     true,
 			enableDRA:               true,
-			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumezone.Name, podtopologyspread.Name, volumebinding.Name, dynamicresources.Name},
+			expectInFilter:          []string{nodeunschedulable.Name, nodeaffinity.Name, nodeports.Name, tainttoleration.Name, interpodaffinity.Name, nodevolumelimits.CSIName, volumerestrictions.Name, volumezone.Name, podtopologyspread.Name, volumebinding.Name, dynamicresources.Name},
 			expectInStableFilter:    []string{nodeunschedulable.Name, nodeaffinity.Name, tainttoleration.Name},
-			expectInPrefilter:       []string{nodeports.Name, interpodaffinity.Name, podtopologyspread.Name, volumebinding.Name, dynamicresources.Name},
+			expectInPrefilter:       []string{nodeports.Name, interpodaffinity.Name, volumerestrictions.Name, podtopologyspread.Name, volumebinding.Name, dynamicresources.Name},
 			expectInPreScore:        []string{volumebinding.Name},
 			expectNotInPreScore:     []string{dynamicresources.Name},
 			expectInReserve:         []string{volumebinding.Name, dynamicresources.Name},
@@ -608,15 +939,20 @@ func TestInitPlugin(t *testing.T) {
 			featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.36"))
 			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NodeDeclaredFeatures, tt.enableNodeDeclaredFeat)
 
-			pp := New(nil).(*PredicatesPlugin)
-			pp.enabledPredicates.nodeAffinityEnable = tt.enableNodeAffinity
-			pp.enabledPredicates.nodePortEnable = tt.enableNodePorts
-			pp.enabledPredicates.taintTolerationEnable = tt.enableTaintToleration
-			pp.enabledPredicates.podAffinityEnable = tt.enablePodAffinity
-			pp.enabledPredicates.nodeVolumeLimitsEnable = tt.enableNodeVolumeLimits
-			pp.enabledPredicates.volumeZoneEnable = tt.enableVolumeZone
-			pp.enabledPredicates.podTopologySpreadEnable = tt.enablePodTopologySpread
-			pp.enabledPredicates.volumeBindingEnable = tt.enableVolumeBinding
+			arguments := framework.Arguments{
+				NodeAffinityEnable:      tt.enableNodeAffinity,
+				NodePortsEnable:         tt.enableNodePorts,
+				TaintTolerationEnable:   tt.enableTaintToleration,
+				PodAffinityEnable:       tt.enablePodAffinity,
+				NodeVolumeLimitsEnable:  tt.enableNodeVolumeLimits,
+				VolumeZoneEnable:        tt.enableVolumeZone,
+				PodTopologySpreadEnable: tt.enablePodTopologySpread,
+				VolumeBindingEnable:     tt.enableVolumeBinding,
+			}
+			if tt.disableVolumeRestrictions {
+				arguments[VolumeRestrictionsEnable] = false
+			}
+			pp := New(arguments).(*PredicatesPlugin)
 			pp.enabledPredicates.dynamicResourceAllocationEnable = tt.enableDRA
 
 			nodeMap := map[string]k8sframework.NodeInfo{}
@@ -830,6 +1166,107 @@ func TestBatchNodeOrderRunsScoreOnlyPlugins(t *testing.T) {
 			}
 			if scores["node-a"] != tt.wantScore {
 				t.Fatalf("expected node score %v, got %v", tt.wantScore, scores["node-a"])
+			}
+		})
+	}
+}
+
+func TestHandleSkipPrePredicatePluginRetry(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   *k8sframework.Status
+		wantSkip bool
+	}{
+		{name: "nil status re-enables the plugin"},
+		{name: "explicit success re-enables the plugin", status: k8sframework.NewStatus(k8sframework.Success)},
+		{name: "another skip keeps the plugin disabled", status: k8sframework.NewStatus(k8sframework.Skip), wantSkip: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			const retryingPlugin, otherPlugin = "retrying-plugin", "other-plugin"
+			task := api.NewTaskInfo(util.BuildPod("default", "pending", "", apiv1.PodPending, nil, "pg", nil, nil))
+			state := schedframework.NewCycleState()
+
+			for _, name := range []string{retryingPlugin, otherPlugin} {
+				require.NoError(t, handleSkipPrePredicatePlugin(k8sframework.NewStatus(k8sframework.Skip), state, task, name))
+				require.True(t, handleSkipPredicatePlugin(state, name))
+			}
+
+			require.NoError(t, handleSkipPrePredicatePlugin(tc.status, state, task, retryingPlugin))
+			assert.Equal(t, tc.wantSkip, handleSkipPredicatePlugin(state, retryingPlugin))
+			assert.True(t, handleSkipPredicatePlugin(state, otherPlugin), "retrying one plugin must preserve another plugin's Skip")
+		})
+	}
+}
+
+func TestPredicateVolumeRestrictions(t *testing.T) {
+	tests := []struct {
+		name         string
+		mode         apiv1.PersistentVolumeAccessMode
+		disabled     bool
+		wantConflict bool
+	}{
+		{name: "RWOP rejects a second consumer after retry", mode: apiv1.ReadWriteOncePod, wantConflict: true},
+		{name: "RWO allows same-node sharing", mode: apiv1.ReadWriteOnce},
+		{name: "disabled restrictions allow a second consumer", mode: apiv1.ReadWriteOncePod, disabled: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			const namespace, nodeName = "default", "node-1"
+
+			pvc := &apiv1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "data"},
+				Spec: apiv1.PersistentVolumeClaimSpec{
+					AccessModes: []apiv1.PersistentVolumeAccessMode{tc.mode},
+				},
+			}
+			holder := util.BuildPodWithPVC(namespace, "holder", nodeName, apiv1.PodRunning, api.BuildResourceList("1", "1G"), pvc, "pg1", nil, nil)
+			pending := util.BuildPodWithPVC(namespace, "pending", "", apiv1.PodPending, api.BuildResourceList("1", "1G"), pvc, "pg2", nil, nil)
+
+			node := api.NewNodeInfo(util.BuildNode(nodeName, api.BuildResourceList("4", "4G", api.ScalarResource{Name: "pods", Value: "10"}), nil))
+			nodeInfo := schedframework.NewNodeInfo()
+			nodeInfo.SetNode(node.Node)
+
+			client := k8sfake.NewSimpleClientset(pvc)
+			factory := informers.NewSharedInformerFactory(client, 0)
+			require.NoError(t, factory.Core().V1().PersistentVolumeClaims().Informer().GetStore().Add(pvc))
+
+			pp := New(framework.Arguments{
+				NodeAffinityEnable:       false,
+				NodePortsEnable:          false,
+				TaintTolerationEnable:    false,
+				PodAffinityEnable:        false,
+				NodeVolumeLimitsEnable:   false,
+				VolumeZoneEnable:         false,
+				PodTopologySpreadEnable:  false,
+				VolumeBindingEnable:      false,
+				VolumeRestrictionsEnable: !tc.disabled,
+			}).(*PredicatesPlugin)
+			pp.enabledPredicates.dynamicResourceAllocationEnable = false
+			pp.Handle = k8s.NewFramework(
+				map[string]k8sframework.NodeInfo{nodeName: nodeInfo},
+				k8s.WithClientSet(client),
+				k8s.WithInformerFactory(factory),
+			)
+			pp.InitPlugin()
+
+			state := schedframework.NewCycleState()
+			task := api.NewTaskInfo(pending)
+
+			// An unused claim initially returns Skip; a retry after another pod uses
+			// the claim must re-enable VolumeRestrictions on the same CycleState.
+			require.NoError(t, pp.PrePredicate(task, state, []k8sframework.NodeInfo{nodeInfo}))
+			require.NoError(t, pp.Predicate(task, node, state))
+
+			nodeInfo.AddPod(holder)
+			require.NoError(t, pp.PrePredicate(task, state, []k8sframework.NodeInfo{nodeInfo}))
+			err := pp.Predicate(task, node, state)
+			if tc.wantConflict {
+				assert.ErrorContains(t, err, volumerestrictions.ErrReasonReadWriteOncePodConflict)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
