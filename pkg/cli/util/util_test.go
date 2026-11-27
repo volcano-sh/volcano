@@ -20,7 +20,79 @@ import (
 	"testing"
 
 	"time"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
+
+func TestPopulateResourceListV1(t *testing.T) {
+	testCases := []struct {
+		Name      string
+		Spec      string
+		Expect    v1.ResourceList
+		ExpectErr bool
+	}{
+		{
+			Name:   "EmptySpec",
+			Spec:   "",
+			Expect: nil,
+		},
+		{
+			Name: "SingleResource",
+			Spec: "cpu=1",
+			Expect: v1.ResourceList{
+				v1.ResourceCPU: resource.MustParse("1"),
+			},
+		},
+		{
+			Name: "MultipleResources",
+			Spec: "cpu=1,memory=1Gi",
+			Expect: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("1"),
+				v1.ResourceMemory: resource.MustParse("1Gi"),
+			},
+		},
+		{
+			Name:      "MissingEquals",
+			Spec:      "cpu",
+			ExpectErr: true,
+		},
+		{
+			Name:      "TooManyEquals",
+			Spec:      "cpu=1=2",
+			ExpectErr: true,
+		},
+		{
+			Name:      "InvalidQuantity",
+			Spec:      "cpu=notaquantity",
+			ExpectErr: true,
+		},
+	}
+
+	for _, testcase := range testCases {
+		t.Run(testcase.Name, func(t *testing.T) {
+			got, err := PopulateResourceListV1(testcase.Spec)
+			if testcase.ExpectErr {
+				if err == nil {
+					t.Fatalf("expected an error, got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != len(testcase.Expect) {
+				t.Fatalf("expected %v, got %v", testcase.Expect, got)
+			}
+			for name, want := range testcase.Expect {
+				gotQuantity, ok := got[name]
+				if !ok || gotQuantity.Cmp(want) != 0 {
+					t.Errorf("resource %s: expected %v, got %v", name, want, got[name])
+				}
+			}
+		})
+	}
+}
 
 func TestJobUtil(t *testing.T) {
 	testCases := []struct {
