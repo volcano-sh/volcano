@@ -247,11 +247,13 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 				}
 				allocations[preemptee.Job] = ratt.allocated.Clone()
 			}
-			ralloc := allocations[preemptee.Job].Sub(preemptee.Resreq)
+			base := allocations[preemptee.Job].Clone()
+			ralloc := base.Sub(preemptee.Resreq.Clone())
 			_, rs := drf.calculateShare(ralloc, drf.totalResource)
 
 			if ls < rs || math.Abs(ls-rs) <= shareDelta {
 				addVictim(preemptee)
+				allocations[preemptee.Job].Sub(preemptee.Resreq)
 			}
 		}
 
