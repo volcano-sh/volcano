@@ -132,8 +132,13 @@ type TaskInfo struct {
 	DRAResreq map[string]*DRAResource
 	// ResourceClaimKeys lists namespaced ResourceClaims referenced by this task.
 	ResourceClaimKeys []string
+	// DRAResourceClaimKeys lists ResourceClaims referenced by this task,
+	// regardless of whether their requests participate in DRA quota tracking.
+	DRAResourceClaimKeys map[string]bool
 	// ResourceClaimDRAResreq stores per-claim DRA resources for shared-claim deduplication.
 	ResourceClaimDRAResreq map[string]map[string]*DRAResource
+	// DRAPreAllocatedDevices records the pre-allocate device set computed by the DRA validator.
+	DRAPreAllocatedDevices *DRADeviceInfo
 
 	TransactionContext
 	// LastTransaction holds the context of last scheduling transaction
@@ -379,8 +384,14 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 	if len(ti.ResourceClaimKeys) > 0 {
 		res.ResourceClaimKeys = append([]string(nil), ti.ResourceClaimKeys...)
 	}
+	if len(ti.DRAResourceClaimKeys) > 0 {
+		res.DRAResourceClaimKeys = cloneDraResourceClaimKeys(ti.DRAResourceClaimKeys)
+	}
 	if ti.ResourceClaimDRAResreq != nil {
 		res.ResourceClaimDRAResreq = cloneResourceClaimDRAResreq(ti.ResourceClaimDRAResreq)
+	}
+	if ti.DRAPreAllocatedDevices != nil {
+		res.DRAPreAllocatedDevices = ti.DRAPreAllocatedDevices.Clone()
 	}
 	return res
 }
@@ -1592,6 +1603,17 @@ func cloneResourceClaimDRAResreq(in map[string]map[string]*DRAResource) map[stri
 		for deviceClass, res := range resources {
 			out[claimKey][deviceClass] = res.Clone()
 		}
+	}
+	return out
+}
+
+func cloneDraResourceClaimKeys(in map[string]bool) map[string]bool {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]bool, len(in))
+	for claimKey, v := range in {
+		out[claimKey] = v
 	}
 	return out
 }

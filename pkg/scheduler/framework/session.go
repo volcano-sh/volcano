@@ -42,7 +42,6 @@ import (
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
-
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -307,6 +306,10 @@ func openSession(schedulerCache cache.Cache, unschedulableJobCache unschedulable
 	ssn.RevocableNodes = snapshot.RevocableNodes
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
+	if err := util.BuildDRASnapshot(schedulerCache.SharedDRAManager(), ssn.Nodes); err != nil {
+		klog.ErrorS(err, "Failed to build DRA snapshot at session open, continue with empty snapshot")
+	}
+
 	// calculate all nodes' resource only once in each schedule cycle, other plugins can clone it when need
 	for _, n := range ssn.Nodes {
 		ssn.TotalResource.Add(n.Allocatable)
@@ -653,6 +656,14 @@ func (ssn *Session) FilterOutUnschedulableAndUnresolvableNodesForTask(task *api.
 	}
 
 	skipNodes := fitErr.GetUnschedulableAndUnresolvableNodes()
+	// For tasks with DRA resource requirements, nodes excluded during the allocate phase
+	// due to insufficient DRA devices can be remediated via preemption/reclaim, so remove
+	// them from the filtered set.
+	if len(task.DRAResourceClaimKeys) > 0 {
+		for nodeName := range fitErr.GetDRAFailedNodes() {
+			delete(skipNodes, nodeName)
+		}
+	}
 	if len(skipNodes) == 0 {
 		return ssn.NodeList
 	}

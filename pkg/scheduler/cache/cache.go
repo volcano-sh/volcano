@@ -2081,14 +2081,15 @@ func addDRAResource(dst map[string]*schedulingapi.DRAResource, deviceClass strin
 	}
 }
 
-// buildTaskDRAInfo builds aggregated and per-claim DRA resource requests from Pod ResourceClaims.
-func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulingapi.DRAResource, map[string]map[string]*schedulingapi.DRAResource, []string, error) {
+// buildTaskDRAInfo builds aggregated and per-claim DRA resource requests from Pod ResourceClaim.
+func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulingapi.DRAResource, map[string]map[string]*schedulingapi.DRAResource, []string, map[string]bool, error) {
 	if !utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) || len(pod.Spec.ResourceClaims) == 0 || sc.resourceClaimCache == nil {
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 
 	result := make(map[string]*schedulingapi.DRAResource)
 	claimResources := make(map[string]map[string]*schedulingapi.DRAResource)
+	draClaimKeys := make(map[string]bool)
 	consumableCapacityEnabled := utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRAConsumableCapacity)
 
 	for _, podClaim := range pod.Spec.ResourceClaims {
@@ -2096,37 +2097,39 @@ func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulinga
 		claimName := resolvePodClaimName(pod, podClaim)
 		if claimName == "" {
 			if templateClaim {
-				return nil, nil, nil, &pendingDRAResourceClaimError{
+				return nil, nil, nil, nil, &pendingDRAResourceClaimError{
 					err: fmt.Errorf("ResourceClaim for pod claim %s in pod %s/%s is not resolved yet", podClaim.Name, pod.Namespace, pod.Name),
 				}
 			}
-			return nil, nil, nil, fmt.Errorf("failed to resolve ResourceClaim name for pod claim %s in pod %s/%s", podClaim.Name, pod.Namespace, pod.Name)
+			return nil, nil, nil, nil, fmt.Errorf("failed to resolve ResourceClaim name for pod claim %s in pod %s/%s", podClaim.Name, pod.Namespace, pod.Name)
 		}
 		claimKey := pod.Namespace + "/" + claimName
 		if _, exists := claimResources[claimKey]; exists {
 			continue
 		}
 
+		draClaimKeys[claimKey] = true
+
 		obj, err := sc.resourceClaimCache.Get(claimKey)
 		if err != nil || obj == nil {
 			if templateClaim {
 				if err != nil {
-					return nil, nil, nil, &pendingDRAResourceClaimError{
+					return nil, nil, nil, nil, &pendingDRAResourceClaimError{
 						err: fmt.Errorf("ResourceClaim %s for pod %s/%s is not synced yet: %w", claimKey, pod.Namespace, pod.Name, err),
 					}
 				}
-				return nil, nil, nil, &pendingDRAResourceClaimError{
+				return nil, nil, nil, nil, &pendingDRAResourceClaimError{
 					err: fmt.Errorf("ResourceClaim %s for pod %s/%s is not synced yet", claimKey, pod.Namespace, pod.Name),
 				}
 			}
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("failed to get ResourceClaim %s: %w", claimKey, err)
+				return nil, nil, nil, nil, fmt.Errorf("failed to get ResourceClaim %s: %w", claimKey, err)
 			}
-			return nil, nil, nil, fmt.Errorf("failed to get ResourceClaim %s: cache returned nil object", claimKey)
+			return nil, nil, nil, nil, fmt.Errorf("failed to get ResourceClaim %s: cache returned nil object", claimKey)
 		}
 		claim, ok := obj.(*resourcev1.ResourceClaim)
 		if !ok {
-			return nil, nil, nil, fmt.Errorf("ResourceClaim cache entry %s has unexpected type %T", claimKey, obj)
+			return nil, nil, nil, nil, fmt.Errorf("ResourceClaim cache entry %s has unexpected type %T", claimKey, obj)
 		}
 
 		perClaim := make(map[string]*schedulingapi.DRAResource)
@@ -2168,9 +2171,11 @@ func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulinga
 			claimResources[claimKey] = perClaim
 		}
 	}
-
+	if len(draClaimKeys) == 0 {
+		draClaimKeys = nil
+	}
 	if len(claimResources) == 0 {
-		return nil, nil, nil, nil
+		return nil, nil, nil, draClaimKeys, nil
 	}
 	claimKeys := make([]string, 0, len(claimResources))
 	for claimKey := range claimResources {
@@ -2181,5 +2186,5 @@ func (sc *SchedulerCache) buildTaskDRAInfo(pod *v1.Pod) (map[string]*schedulinga
 	if len(result) == 0 {
 		result = nil
 	}
-	return result, claimResources, claimKeys, nil
+	return result, claimResources, claimKeys, draClaimKeys, nil
 }

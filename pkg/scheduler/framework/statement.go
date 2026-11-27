@@ -91,6 +91,7 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) {
 	// Update task in node.
 	if node, found := s.ssn.Nodes[reclaimee.NodeName]; found {
 		node.UpdateTask(reclaimee)
+		node.AddDraReleasing(reclaimee)
 	}
 
 	for _, eh := range s.ssn.eventHandlers {
@@ -133,6 +134,7 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 	// Update task in node.
 	if node, found := s.ssn.Nodes[reclaimee.NodeName]; found {
 		node.UpdateTask(reclaimee)
+		node.RemoveDraReleasing(reclaimee)
 	}
 
 	for _, eh := range s.ssn.eventHandlers {
