@@ -65,10 +65,7 @@ func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
 			klog.Warningln("Assert lowThresholdsConfigs to map error, abort the configuration parse.")
 			return
 		}
-		config := make(map[string]int)
-		for k, v := range lowConfigs {
-			config[k.(string)] = v.(int)
-		}
+		config := convertThresholdConfig(lowConfigs)
 		parseThreshold(config, lnuc, "Thresholds")
 	}
 	targetThresholdsConfigs, ok := configs["targetThresholds"]
@@ -78,30 +75,48 @@ func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
 			klog.Warningln("Assert targetThresholdsConfigs to map error, abort the configuration parse.")
 			return
 		}
-		config := make(map[string]int)
-		for k, v := range targetConfigs {
-			config[k.(string)] = v.(int)
-		}
+		config := convertThresholdConfig(targetConfigs)
 		parseThreshold(config, lnuc, "TargetThresholds")
 	}
 }
 
-func parseThreshold(thresholdsConfig map[string]int, lnuc *LowNodeUtilizationConf, param string) {
+// convertThresholdConfig converts the raw threshold configs to map[string]float64, invalid entries are skipped
+func convertThresholdConfig(thresholdConfigs map[interface{}]interface{}) map[string]float64 {
+	config := make(map[string]float64)
+	for k, v := range thresholdConfigs {
+		key, ok := k.(string)
+		if !ok {
+			klog.Warningf("Invalid threshold key %v of type %T, skip it.", k, k)
+			continue
+		}
+		switch value := v.(type) {
+		case int:
+			config[key] = float64(value)
+		case float64:
+			config[key] = value
+		default:
+			klog.Warningf("Invalid value %v of type %T for threshold %s, skip it.", v, v, key)
+		}
+	}
+	return config
+}
+
+func parseThreshold(thresholdsConfig map[string]float64, lnuc *LowNodeUtilizationConf, param string) {
 	if len(thresholdsConfig) > 0 {
 		configValue := reflect.ValueOf(lnuc).Elem().FieldByName(param)
 		config := configValue.Interface().(map[string]float64)
 
 		cpuThreshold, ok := thresholdsConfig["cpu"]
 		if ok {
-			config["cpu"] = float64(cpuThreshold)
+			config["cpu"] = cpuThreshold
 		}
 		memoryThreshold, ok := thresholdsConfig["memory"]
 		if ok {
-			config["memory"] = float64(memoryThreshold)
+			config["memory"] = memoryThreshold
 		}
-		podThreshold, ok := thresholdsConfig["pod"]
+		podThreshold, ok := thresholdsConfig["pods"]
 		if ok {
-			config["pod"] = float64(podThreshold)
+			config["pods"] = podThreshold
 		}
 	}
 }
