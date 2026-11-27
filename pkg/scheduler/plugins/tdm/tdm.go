@@ -86,6 +86,10 @@ func (tp *tdmPlugin) Name() string {
 }
 
 func parseRevocableZone(rzRaw string) (start, end time.Time, err error) {
+	return parseRevocableZoneWithTime(rzRaw, time.Now())
+}
+
+func parseRevocableZoneWithTime(rzRaw string, now time.Time) (start, end time.Time, err error) {
 	rzValues := strings.Split(strings.TrimSpace(rzRaw), "-")
 
 	if len(rzValues) != 2 {
@@ -103,28 +107,36 @@ func parseRevocableZone(rzRaw string) (start, end time.Time, err error) {
 		return
 	}
 
-	now := time.Now()
+	todayT2 := time.Date(now.Year(), now.Month(), now.Day(), t2.Hour(), t2.Minute(), 0, 0, now.Location())
 
-	start = time.Date(now.Year(), now.Month(), now.Day(), t1.Hour(), t1.Minute(), 0, 0, now.Location())
 	if t1.After(t2) || t1.Equal(t2) {
-		end = time.Date(now.Year(), now.Month(), now.Day()+1, t2.Hour(), t2.Minute(), 0, 0, now.Location())
+		if !now.After(todayT2) {
+			start = time.Date(now.Year(), now.Month(), now.Day()-1, t1.Hour(), t1.Minute(), 0, 0, now.Location())
+			end = todayT2
+		} else {
+			start = time.Date(now.Year(), now.Month(), now.Day(), t1.Hour(), t1.Minute(), 0, 0, now.Location())
+			end = time.Date(now.Year(), now.Month(), now.Day()+1, t2.Hour(), t2.Minute(), 0, 0, now.Location())
+		}
 	} else {
-		end = time.Date(now.Year(), now.Month(), now.Day(), t2.Hour(), t2.Minute(), 0, 0, now.Location())
+		start = time.Date(now.Year(), now.Month(), now.Day(), t1.Hour(), t1.Minute(), 0, 0, now.Location())
+		end = todayT2
 	}
 
 	return
 }
 
 func (tp *tdmPlugin) availableRevocableZone(rz string) error {
+	return tp.availableRevocableZoneWithTime(rz, time.Now())
+}
+
+func (tp *tdmPlugin) availableRevocableZoneWithTime(rz string, now time.Time) error {
 	// rzRaw format 00:00-23:59
 	rzRaw, ok := tp.revocableZone[rz]
 	if !ok {
 		return fmt.Errorf("revocable zone %v not support", rz)
 	}
 
-	now := time.Now()
-
-	start, end, err := parseRevocableZone(rzRaw)
+	start, end, err := parseRevocableZoneWithTime(rzRaw, now)
 	if err != nil {
 		return err
 	}
