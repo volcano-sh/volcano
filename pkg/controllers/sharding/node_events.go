@@ -212,10 +212,7 @@ func (sc *ShardingController) processNodeEventWithRetry(nodeName, eventType, sou
 		// Check if significant change
 		if isSignificantlyChanged {
 			klog.V(4).Infof("Node %s utilization changed significantly, scheduling shard sync", nodeName)
-			// Schedule sync in background with delay
-			time.AfterFunc(200*time.Millisecond, func() {
-				sc.syncShards()
-			})
+			sc.scheduleShardSync()
 		}
 
 		return nil
