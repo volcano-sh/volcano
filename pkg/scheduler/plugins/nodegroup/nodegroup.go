@@ -474,7 +474,6 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 		return candidates
 	})
 	np.initNodeGroupAllocated(ssn)
-	np.syncNodeGroupAllocatedMetrics(ssn)
 	for id, attr := range np.queueAttrs {
 		if attr.affinity != nil {
 			klog.V(4).Infof("queue <%v> affinity: anti-required %v, anti-preferred %v, required %v, preferred %v",
@@ -567,5 +566,6 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 }
 
 func (np *nodeGroupPlugin) OnSessionClose(ssn *framework.Session) {
+	np.syncNodeGroupAllocatedMetrics(ssn)
 	np.queueAttrs = nil
 }
