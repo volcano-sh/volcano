@@ -17,7 +17,7 @@ limitations under the License.
 package mutate
 
 import (
-	"github.com/imdario/mergo"
+	"dario.cat/mergo"
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"

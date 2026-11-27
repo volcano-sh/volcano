@@ -83,7 +83,7 @@ func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName s
 	memQueryStr := fmt.Sprintf("100*avg_over_time(((1-node_memory_MemAvailable_bytes{instance=\"%s\"}/node_memory_MemTotal_bytes{instance=\"%s\"}))[%s:30s])", nodeName, nodeName, NODE_METRICS_PERIOD)
 
 	for _, metric := range []string{cpuQueryStr, memQueryStr} {
-		res, warnings, err := v1api.Query(ctx, metric, time.Now())
+		res, warnings, _, err := v1api.Query(ctx, metric, time.Now())
 		if err != nil {
 			klog.Errorf("Error querying Prometheus: %v", err)
 		}
