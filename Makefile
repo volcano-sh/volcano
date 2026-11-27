@@ -167,7 +167,7 @@ load-images:
 	@echo "All images loaded successfully"
 
 generate-code:
-	./hack/update-gencode.sh
+	cd staging/src/volcano.sh/apis && GOOS=$(OS) bash hack/update-codegen.sh
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
@@ -281,7 +281,7 @@ clean:
 
 verify:
 	hack/verify-gofmt.sh
-	hack/verify-gencode.sh
+	cd staging/src/volcano.sh/apis && GOOS=$(OS) bash hack/verify-codegen.sh
     # this verify is deprecated and use make lint-licenses instead.
 	#hack/verify-vendor-licenses.sh
 
